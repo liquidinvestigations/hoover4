@@ -67,7 +67,7 @@ pub fn MarkdownishText(
     let blocks = unique_card_blocks(blocks, card_handles.as_deref());
     rsx! {
         div {
-            style: "font-size: {BODY_PX}px; line-height: 1.65; color: #0F172A; \
+            style: "font-size: {BODY_PX}px; line-height: 1.65; color: var(--x-ink-strong); \
                     word-break: break-word; overflow-wrap: anywhere;",
             for (i, block) in blocks.into_iter().enumerate() {
                 CitationBlock { key: "{i}", block, sources: sources.clone(), pages: pages.clone(), conflicting: conflicting_handles.clone() }
@@ -186,7 +186,7 @@ fn BlockView(
             rsx! {
                 div {
                     style: "font-size: {size}px; font-weight: {weight}; margin: {top}px 0 6px 0; \
-                            line-height: 1.35; color: #0F172A;",
+                            line-height: 1.35; color: var(--x-ink-strong);",
                     InlineSpans { spans }
                 }
             }
@@ -212,16 +212,16 @@ fn BlockView(
             div { style: "margin: 0 0 10px 0;",
                 if !language.is_empty() {
                     div {
-                        style: "font-size: 11px; color: #64748B; text-transform: uppercase; \
+                        style: "font-size: var(--x-text-xs); color: var(--x-ink-muted); text-transform: uppercase; \
                                 letter-spacing: 0.4px; margin-bottom: 2px;",
                         "{language}"
                     }
                 }
                 pre {
-                    style: "margin: 0; background: #F1F5F9; border: 1px solid #E2E8F0; \
+                    style: "margin: 0; background: #F1F5F9; border: 1px solid var(--x-border); \
                             border-radius: 8px; padding: 10px 12px; overflow-x: auto; \
                             font-family: ui-monospace, SFMono-Regular, Menlo, monospace; \
-                            font-size: 12.5px; line-height: 1.5; white-space: pre;",
+                            font-size: var(--x-text-sm); line-height: 1.5; white-space: pre;",
                     "{body}"
                 }
             }
@@ -229,7 +229,7 @@ fn BlockView(
         Block::Quote(spans) => rsx! {
             blockquote {
                 style: "margin: 0 0 10px 0; padding: 2px 0 2px 12px; \
-                        border-left: 3px solid #CBD5E1; color: #475569;",
+                        border-left: 3px solid #CBD5E1; color: var(--x-ink);",
                 InlineSpans { spans }
             }
         },
@@ -241,7 +241,7 @@ fn BlockView(
             rsx! {
             div { style: "margin: 0 0 10px 0; overflow-x: auto;",
                 table {
-                    style: "border-collapse: collapse; font-size: 13.5px; min-width: 100%;",
+                    style: "border-collapse: collapse; font-size: var(--x-text-sm); min-width: 100%;",
                     if !header.is_empty() {
                         thead {
                             tr {
@@ -271,7 +271,7 @@ fn BlockView(
                                 for (c, cell) in row.into_iter().enumerate() {
                                     td {
                                         key: "{c}",
-                                        style: "padding: 6px 10px; border-bottom: 1px solid #E2E8F0; \
+                                        style: "padding: 6px 10px; border-bottom: 1px solid var(--x-border); \
                                                 vertical-align: top;",
                                         InlineSpans { spans: cell }
                                     }
@@ -291,7 +291,7 @@ fn BlockView(
             }
         }},
         Block::Rule => rsx! {
-            hr { style: "border: none; border-top: 1px solid #E2E8F0; margin: 14px 0;" }
+            hr { style: "border: none; border-top: 1px solid var(--x-border); margin: 14px 0;" }
         },
     }
 }
@@ -332,7 +332,7 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                     Span::Code(t) => rsx! {
                         code {
                             key: "{i}",
-                            style: "background: #F1F5F9; border: 1px solid #E2E8F0; \
+                            style: "background: #F1F5F9; border: 1px solid var(--x-border); \
                                     border-radius: 4px; padding: 0 4px; \
                                     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; \
                                     font-size: 0.88em;",
@@ -343,8 +343,8 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                         button {
                             key: "{i}",
                             style: "
-                                display: inline; border: 1px solid #E5E7EB;
-                                background: #F8FAFC; color: #334155; border-radius: 5px;
+                                display: inline; border: 1px solid var(--x-border);
+                                background: #F8FAFC; color: var(--x-ink); border-radius: 5px;
                                 padding: 0 4px; margin: 0 1px; font-size: 0.82em;
                                 font-weight: 400; cursor: pointer; vertical-align: baseline;
                             ",
@@ -359,7 +359,7 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                     Span::UncitedHandle(handle) => rsx! {
                         span {
                             key: "{i}",
-                            style: "color: #64748B;",
+                            style: "color: var(--x-ink-muted);",
                             title: "No citation of this conversation gave this handle, so \
                                     no document stands behind it.",
                             "{handle} ({UNCITED_LABEL})"
@@ -369,7 +369,7 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                         span {
                             key: "{i}",
                             "data-conflicting-handle": "{handle}",
-                            style: "color: #B45309;",
+                            style: "color: var(--x-warning);",
                             title: "Citations of this conversation gave this handle to more \
                                     than one document, so it links to none of them.",
                             "{handle} ({CONFLICTING_LABEL})"
@@ -383,7 +383,7 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                             // a citation reach back into this tab.
                             target: "_blank",
                             rel: "noopener noreferrer nofollow",
-                            style: "color: #4F46E5; text-decoration: underline;",
+                            style: "color: var(--x-link); text-decoration: underline;",
                             "{text}"
                         }
                     },

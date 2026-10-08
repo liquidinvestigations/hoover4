@@ -99,6 +99,9 @@ def admit_operation(op_id: str) -> str:
         update_operation(op_id, base_row=row, state="queued")
     log.info("operation %s (%s): %s, running %d, ahead %d, cap %d",
              op_id, row["kind"], decision, running, ahead, cap)
+    # The row is live now, so its datasets show as processing.
+    from database.dataset_stats import refresh_dataset_states_logged
+    refresh_dataset_states_logged(row.get("collectionname", ""))
     return decision
 
 

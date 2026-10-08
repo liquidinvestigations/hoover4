@@ -258,12 +258,30 @@ async fn _search_string_facet(
     let merged = fanout::merge_facet_pairs(per_shard_buckets, fanout::FACET_DISPLAY_LIMIT);
 
     result.facet_values = facet_items_from_pairs(merged)?;
+    if column == "extracted_by" {
+        label_text_sources(&mut result.facet_values);
+    }
 
     result
         .facet_values
         .sort_by_key(|item| (u64::MAX - item.count, item.display_string.clone()));
 
     Ok(result)
+}
+
+/// Give text source buckets their display labels, and drop the synthetic filename row.
+///
+/// The filename row is how a document matches by name. It is not a text source a reader
+/// can select.
+fn label_text_sources(items: &mut Vec<SearchResultFacetItem>) {
+    items.retain(|item| {
+        !matches!(&item.original_value, FacetOriginalValue::String(value) if value == crate::api::search::search_sql::FILENAME_INDEX_EXTRACTED_BY)
+    });
+    for item in items.iter_mut() {
+        if let FacetOriginalValue::String(value) = &item.original_value {
+            item.display_string = common::document_sources::text_source_label(value);
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

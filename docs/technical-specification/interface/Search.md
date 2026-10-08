@@ -22,7 +22,7 @@ The remembered query is specific to the dataset, container, and folder path.
 | `.folder.query` | folder search input, submit icon, clear button | searches the selected folder and its descendants | it retains its value during mounted return navigation |
 | `.folder.open_search` | Open in Search link | opens the folder constraint in Search | it opens a new tab and preserves the folder page |
 | `.collections` | collection selector | which collections and datasets are searched | an empty selection searches nothing and says so, rather than searching everything |
-| `.facet.<name>` | facet chips, collections, file types, file location, entities, email attachments, language, red flags | narrow by an indexed value; each carries a live count | a chip commits on click; counts are the count *within the rest of the query*, not the corpus |
+| `.facet.<name>` | facet chips, collections, file types, file location, entities, email attachments, language, text source, red flags | narrow by an indexed value; each carries a live count | a chip commits on click; counts are the count *within the rest of the query*, not the corpus |
 | `.range.dates` | date filter, before, after, between, no confirmed date | narrow by the document's date interval | a document with no confirmed date matches only through "no confirmed date": it can never fall inside a range |
 | `.range.file_size_bytes` | file size filter | narrow by size | Unknown size is excluded from every range. Reopening the filter restores its applied bounds, including after reload. |
 | `.filters_modal` | "All filters", clear all, cancel, show results | edits every filter at once, pending until `.search_button` commits them | edits are pending until committed; cancel discards them; the button names how many results committing would show |
@@ -65,6 +65,8 @@ backend). The fan-out, the match builder and the caching boundary are
 `../../architecture/Search_Architecture.md`.
 
 Language values show English names and accept a code or name in facet search.
+Text source values show the source labels of the document viewer and omit the filename row.
+A text source filter matches a document through its text from a selected source.
 The Red flags child of Entities shows category titles from the scanner catalog.
 Counts retain the other active filters.
 

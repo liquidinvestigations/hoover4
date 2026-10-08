@@ -16,7 +16,7 @@ pub fn AdminAiStatusPage() -> Element {
         AdminGuard {
             AdminShell {
                 title: "AI status".to_string(),
-                breadcrumb: "AI status".to_string(),
+                breadcrumb: String::new(),
                 active: "ai_status".to_string(),
                 SuspendWrapper { AiStatusContent {} }
             }
@@ -30,7 +30,7 @@ fn AiStatusContent() -> Element {
     let status = status_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned();
     rsx! {
         p { style: "{HELP_TEXT} margin: 0 0 16px;",
-            "Configured versus actually serving. Auto-fallback to CPU twins is silent by design, and this page is how you notice."
+            "The configured service and the service that actually answers. A fallback to the CPU service shows here only."
         }
         match status {
             None => rsx! { "Loading\u{2026}" },
@@ -125,7 +125,7 @@ fn CapabilitiesPanel(status: AdminAiStatus) -> Element {
                                 td { style: TD, "{c.serving_provider}" }
                                 td { style: TD, "{c.serving_model}" }
                                 td { style: TD, if c.reachable { "yes" } else { "NO" } }
-                                td { style: "{TD} font-size: 12px; color: #666;", "{c.detail}" }
+                                td { style: "{TD} font-size: var(--x-text-xs); color: var(--x-ink-muted);", "{c.detail}" }
                             }
                         }
                     }
@@ -227,7 +227,7 @@ fn UsePanel(status: AdminAiStatus) -> Element {
             h2 { style: MODULE_CAPTION, "Service use% (24 h)" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",
-                    "Busy seconds / 86400 from ai_service_telemetry (and llm_call_events for LLM when the telemetry table is still empty)."
+                    "Busy seconds in the last 24 hours, as a share of the day."
                 }
                 if status.service_use.is_empty() {
                     p { style: HELP_TEXT, "No samples yet." }

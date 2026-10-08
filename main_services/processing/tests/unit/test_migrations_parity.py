@@ -48,6 +48,8 @@ EXPECTED_GLOBAL_TABLES = {
     "collections",
     "dataset",
     "dataset_settings",
+    "dataset_stats",
+    "feedback_reports",
     "llm_call_events",
     "llm_models",
     "operations",

@@ -111,17 +111,29 @@ pub struct OperationDetail {
 }
 
 /// The re-run outcome sentence, or `None` when this operation has no re-run counts.
+///
+/// The sentence lists only the nonzero counters. A run that found no earlier errors and
+/// changed none has no sentence, because a list of zeros tells the reader nothing.
 pub fn rerun_outcome_summary(row: &OperationRow) -> Option<String> {
     let before = row.errors_before_run?;
-    let recovered = row.recovered_errors.unwrap_or(0);
-    let still_failing = row.still_failing_errors.unwrap_or(0);
-    let removed = row.removed_stage_off_errors.unwrap_or(0);
-    let without_plan = row.without_plan_errors.unwrap_or(0);
-    let unknown = row.unknown_task_errors.unwrap_or(0);
-    let partial = if row.state == "cancelled" { "partial " } else { "" };
-    Some(format!(
-        "{partial}{recovered} recovered, {still_failing} still failing, {removed} removed (stage off), {without_plan} without a plan, {unknown} unknown task, {before} before this run"
-    ))
+    let counters = [
+        (row.recovered_errors.unwrap_or(0), "recovered"),
+        (row.still_failing_errors.unwrap_or(0), "still failing"),
+        (row.removed_stage_off_errors.unwrap_or(0), "removed (stage off)"),
+        (row.without_plan_errors.unwrap_or(0), "without a plan"),
+        (row.unknown_task_errors.unwrap_or(0), "unknown task"),
+    ];
+    if before == 0 && counters.iter().all(|(count, _)| *count == 0) {
+        return None;
+    }
+    let mut parts: Vec<String> = counters
+        .iter()
+        .filter(|(count, _)| *count > 0)
+        .map(|(count, label)| format!("{count} {label}"))
+        .collect();
+    parts.push(format!("{before} before this run"));
+    let partial = if row.state == "cancelled" { "partial: " } else { "" };
+    Some(format!("{partial}{}", parts.join(", ")))
 }
 
 /// The error rate of one task type, and whether it is above the configured line.
@@ -206,7 +218,7 @@ mod tests {
     fn rerun_outcome_summary_formats_finished_cancelled_and_unknown_rows() {
         assert_eq!(
             rerun_outcome_summary(&row("finished", Some(12))),
-            Some("3 recovered, 1 still failing, 2 removed (stage off), 0 without a plan, 0 unknown task, 12 before this run".into())
+            Some("3 recovered, 1 still failing, 2 removed (stage off), 12 before this run".into())
         );
         let mut cancelled = row("cancelled", Some(4));
         cancelled.recovered_errors = Some(0);
@@ -214,8 +226,13 @@ mod tests {
         cancelled.removed_stage_off_errors = Some(0);
         assert_eq!(
             rerun_outcome_summary(&cancelled),
-            Some("partial 0 recovered, 0 still failing, 0 removed (stage off), 0 without a plan, 0 unknown task, 4 before this run".into())
+            Some("partial: 4 before this run".into())
         );
         assert_eq!(rerun_outcome_summary(&row("finished", None)), None);
+        let mut clean = row("finished", Some(0));
+        clean.recovered_errors = Some(0);
+        clean.still_failing_errors = Some(0);
+        clean.removed_stage_off_errors = Some(0);
+        assert_eq!(rerun_outcome_summary(&clean), None);
     }
 }

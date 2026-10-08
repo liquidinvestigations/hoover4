@@ -160,7 +160,7 @@ pub fn WebSearchCard(
                 // read as a result rather than as the absence of one.
                 if failure.is_none() {
                     span {
-                        style: "flex-shrink: 0; font-size: 11px; opacity: 0.8; \
+                        style: "flex-shrink: 0; font-size: var(--x-text-xs); opacity: 0.8; \
                                 font-variant-numeric: tabular-nums;",
                         "{results.len()} results"
                     }
@@ -168,8 +168,8 @@ pub fn WebSearchCard(
                 if !degraded.is_empty() {
                     span {
                         title: "These sources returned nothing, so the results come from fewer than intended",
-                        style: "flex-shrink: 0; background: #FEE2E2; color: #991B1B; \
-                                border-radius: 999px; padding: 1px 7px; font-size: 11px;",
+                        style: "flex-shrink: 0; background: #FEE2E2; color: var(--x-danger); \
+                                border-radius: 999px; padding: 1px 7px; font-size: var(--x-text-xs);",
                         "\u{26a0} {degraded.len()} degraded"
                     }
                 }
@@ -177,14 +177,14 @@ pub fn WebSearchCard(
 
             if !error.is_empty() {
                 div {
-                    style: "background: #FEF2F2; color: #991B1B; border: 1px solid #FECACA; \
-                            border-radius: 6px; padding: 6px 8px; font-size: 12px;",
+                    style: "background: #FEF2F2; color: var(--x-danger); border: 1px solid #FECACA; \
+                            border-radius: 6px; padding: 6px 8px; font-size: var(--x-text-xs);",
                     "{error}"
                 }
             }
 
             for (index, form) in queries.iter().enumerate() {
-                div { style: "font-size: 12px;", "Form {index}: {form}" }
+                div { style: "font-size: var(--x-text-xs);", "Form {index}: {form}" }
             }
             if !degraded.is_empty() { div { "No results from: {degraded_text}" } }
             if let Some(note) = content.get("note").and_then(|note| note.as_str()) { div { "{note}" } }
@@ -195,7 +195,7 @@ pub fn WebSearchCard(
 
             if results.is_empty() && error.is_empty() {
                 div {
-                    style: "font-size: 12px; font-style: italic; opacity: 0.75;",
+                    style: "font-size: var(--x-text-xs); font-style: italic; opacity: 0.75;",
                     "No results. Every source answered and none of them had anything for this query."
                 }
             }
@@ -204,7 +204,7 @@ pub fn WebSearchCard(
             // model saw the whole result set; this row is the transcript's copy of it.
             if json_bool(&content, "truncated") {
                 div {
-                    style: "font-size: 11px; font-style: italic; opacity: 0.75;",
+                    style: "font-size: var(--x-text-xs); font-style: italic; opacity: 0.75;",
                     "The lowest-ranked results were dropped so this call fits in the \
                      transcript. The assistant saw all of them."
                 }
@@ -213,8 +213,8 @@ pub fn WebSearchCard(
             if has_artifact {
                 div {
                     button {
-                        style: "background: none; border: none; color: #475569; cursor: pointer; \
-                                font-size: 12px; padding: 0; text-decoration: underline;",
+                        style: "background: none; border: none; color: var(--x-ink); cursor: pointer; \
+                                font-size: var(--x-text-xs); padding: 0; text-decoration: underline;",
                         onmounted: move |e| opener.set(Some(e.data())),
                         onclick: move |_| popup_open.set(true),
                         "View search details."
@@ -247,17 +247,17 @@ fn PendingSearch(query: String, sources: Vec<String>, elapsed_ms: Option<u32>) -
     rsx! {
         div {
             style: "align-self: flex-start; max-width: 92%; background: #FFFFFF; \
-                    border: 1px solid #E5E7EB; border-radius: 10px; padding: 8px 12px; \
-                    font-size: 13px; color: #1E293B; display: flex; align-items: center; \
+                    border: 1px solid var(--x-border); border-radius: 10px; padding: 8px 12px; \
+                    font-size: var(--x-text-sm); color: var(--x-ink-strong); display: flex; align-items: center; \
                     gap: 10px; flex-wrap: wrap;",
             span {
-                style: "flex-shrink: 0; background: #E5E7EB; color: #1E293B; \
-                        border-radius: 999px; padding: 1px 8px; font-size: 11px; \
+                style: "flex-shrink: 0; background: #E5E7EB; color: var(--x-ink-strong); \
+                        border-radius: 999px; padding: 1px 8px; font-size: var(--x-text-xs); \
                         font-weight: 400; font-family: inherit;",
                 "web_search"
             }
             span { style: "flex: 1; min-width: 0;", "\u{201c}{query}\u{201d}" }
-            span { style: "flex-shrink: 0; font-size: 11px; opacity: 0.75;", "{waiting}" }
+            span { style: "flex-shrink: 0; font-size: var(--x-text-xs); opacity: 0.75;", "{waiting}" }
             ElapsedCounter { already_ms: elapsed_ms }
         }
     }
@@ -292,13 +292,13 @@ fn UnparseableSearch(query: String, raw: String) -> Element {
 
             if raw.trim().is_empty() {
                 div {
-                    style: "font-size: 12px; font-style: italic; opacity: 0.75;",
+                    style: "font-size: var(--x-text-xs); font-style: italic; opacity: 0.75;",
                     "Nothing was stored for this call."
                 }
             } else {
                 pre {
                     style: "margin: 0; white-space: pre-wrap; word-break: break-word; \
-                            font-family: ui-monospace, monospace; font-size: 11px; \
+                            font-family: ui-monospace, monospace; font-size: var(--x-text-xs); \
                             background: #FEE2E2; padding: 8px; border-radius: 6px; \
                             max-height: 320px; overflow: auto;",
                     "{raw}"
@@ -331,7 +331,7 @@ fn ResultRow(row: Row) -> Element {
                             href: "{href}",
                             target: "_blank",
                             rel: "noopener noreferrer nofollow",
-                            style: "color: #1D4ED8; text-decoration: none; font-weight: 500; \
+                            style: "color: var(--x-link); text-decoration: none; font-weight: 500; \
                                     word-break: break-word;",
                             "{title}"
                         }
@@ -340,21 +340,21 @@ fn ResultRow(row: Row) -> Element {
                     }
                 }
                 div {
-                    style: "font-size: 11px; color: #166534; word-break: break-all;",
+                    style: "font-size: var(--x-text-xs); color: #166534; word-break: break-all;",
                     "{host}"
                 }
                 if !forms.is_empty() {
-                    div { style: "font-size: 11px;", "Forms: {forms}" }
+                    div { style: "font-size: var(--x-text-xs);", "Forms: {forms}" }
                 }
                 if !row.kind.is_empty() {
-                    div { style: "font-size: 11px;", "Kind: {row.kind}" }
+                    div { style: "font-size: var(--x-text-xs);", "Kind: {row.kind}" }
                 }
                 if !row.published.is_empty() {
-                    div { style: "font-size: 11px;", "Published: {row.published}" }
+                    div { style: "font-size: var(--x-text-xs);", "Published: {row.published}" }
                 }
                 if !row.snippet.is_empty() {
                     div {
-                        style: "font-size: 12px; line-height: 1.5; margin-top: 2px; \
+                        style: "font-size: var(--x-text-xs); line-height: 1.5; margin-top: 2px; \
                                 word-break: break-word;",
                         "{row.snippet}"
                     }
@@ -378,7 +378,7 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
         Some(Err(e)) => rsx! {
             div {
                 class: "x-error-display",
-                style: "padding: 20px; color: #991B1B;",
+                style: "padding: 20px; color: var(--x-danger);",
                 "Could not load the search detail: {e}"
             }
         },
@@ -386,7 +386,7 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
             Err(e) => rsx! {
                 div {
                     class: "x-error-display",
-                    style: "padding: 20px; color: #991B1B;",
+                    style: "padding: 20px; color: var(--x-danger);",
                     "Malformed detail: {e}"
                 }
             },
@@ -405,17 +405,17 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
                 );
                 rsx! {
                     div {
-                        style: "padding: 12px 16px; border-bottom: 1px solid #E2E8F0; \
-                                font-size: 12px; color: #334155; line-height: 1.7;",
+                        style: "padding: 12px 16px; border-bottom: 1px solid var(--x-border); \
+                                font-size: var(--x-text-xs); color: var(--x-ink); line-height: 1.7;",
                         div { "The tool returned selected results to the model." }
                         div { "{dedupe}" }
                         if applied {
                             div { "The cross-encoder ranked results in {rerank_ms:.0} ms." }
                         } else {
-                            div { style: "color: #475569;", "Results use reciprocal rank fusion." }
+                            div { style: "color: var(--x-ink);", "Results use reciprocal rank fusion." }
                         }
                         if !degraded.is_empty() {
-                            div { style: "color: #991B1B;", "returned nothing: {degraded}" }
+                            div { style: "color: var(--x-danger);", "returned nothing: {degraded}" }
                         }
                         SourceTimings { latency, counts }
                     }
@@ -452,8 +452,8 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
             header: rsx! {
                 div {
                     style: "display: flex; align-items: center; justify-content: space-between; \
-                            padding: 12px 16px; border-bottom: 1px solid #E2E8F0;",
-                    strong { style: "font-size: 14px;", "Search detail" }
+                            padding: 12px 16px; border-bottom: 1px solid var(--x-border);",
+                    strong { style: "font-size: var(--x-text-md);", "Search detail" }
                     ModalCloseButton { on_close }
                 }
             },
@@ -479,7 +479,7 @@ fn SourceTimings(latency: serde_json::Value, counts: serde_json::Value) -> Eleme
                         span {
                             key: "{name}",
                             style: "background: #F1F5F9; border-radius: 6px; padding: 1px 7px; \
-                                    font-size: 11px; font-variant-numeric: tabular-nums;",
+                                    font-size: var(--x-text-xs); font-variant-numeric: tabular-nums;",
                             "{name}: {n} in {ms:.0} ms"
                         }
                     }
@@ -493,11 +493,11 @@ fn SourceTimings(latency: serde_json::Value, counts: serde_json::Value) -> Eleme
 fn RankColumn(heading: String, rows: Vec<Row>, show_source_ranks: bool) -> Element {
     rsx! {
         div {
-            style: "flex: 1; min-width: 0; border-right: 1px solid #E2E8F0; overflow-y: auto; \
+            style: "flex: 1; min-width: 0; border-right: 1px solid var(--x-border); overflow-y: auto; \
                     padding: 10px 14px;",
             div {
-                style: "font-size: 11px; font-weight: 600; text-transform: uppercase; \
-                        letter-spacing: 0.4px; color: #64748B; margin-bottom: 8px; \
+                style: "font-size: var(--x-text-xs); font-weight: 600; text-transform: uppercase; \
+                        letter-spacing: 0.4px; color: var(--x-ink-muted); margin-bottom: 8px; \
                         position: sticky; top: 0; background: white; padding-bottom: 4px;",
                 "{heading}"
             }
@@ -505,18 +505,18 @@ fn RankColumn(heading: String, rows: Vec<Row>, show_source_ranks: bool) -> Eleme
                 div {
                     key: "{i}",
                     style: "display: flex; gap: 8px; padding: 5px 0; border-top: 1px solid #F1F5F9; \
-                            font-size: 12px;",
+                            font-size: var(--x-text-xs);",
                     span {
-                        style: "flex-shrink: 0; min-width: 20px; text-align: right; color: #94A3B8; \
+                        style: "flex-shrink: 0; min-width: 20px; text-align: right; color: var(--x-ink-faint); \
                                 font-variant-numeric: tabular-nums;",
                         "{i + 1}"
                     }
                     div {
                         style: "min-width: 0;",
-                        div { style: "word-break: break-word; color: #0F172A;", "{row.title}" }
-                        div { style: "font-size: 11px; color: #166534; word-break: break-all;", "{row.display_url}" }
+                        div { style: "word-break: break-word; color: var(--x-ink-strong);", "{row.title}" }
+                        div { style: "font-size: var(--x-text-xs); color: #166534; word-break: break-all;", "{row.display_url}" }
                         div {
-                            style: "font-size: 10px; color: #64748B; margin-top: 2px;",
+                            style: "font-size: var(--x-text-xs); color: var(--x-ink-muted); margin-top: 2px;",
                             if show_source_ranks {
                                 "{row.sources.join(\", \")}"
                             } else if let Some(score) = row.rerank_score {

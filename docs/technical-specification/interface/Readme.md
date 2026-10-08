@@ -27,6 +27,7 @@ added, renamed or deleted in the code mechanically visible against this tree, an
 | `UI-AdminOperationDetailPage` | `/admin/operations/:op_id` | - |
 | `UI-AdminFailuresPage` | `/admin/failures` | - |
 | `UI-AdminFailureDetailPage` | `/admin/failures/:op_id` | - |
+| `UI-AdminFeedbackPage` | `/admin/feedback` | - |
 | `UI-AdminUsersPage` | `/admin/users` | - |
 | `UI-AdminUserPage` | `/admin/users/:username` | - |
 | `UI-AdminUserLlmPage` | `/admin/users/:username/llm` | - |

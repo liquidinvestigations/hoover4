@@ -313,10 +313,8 @@ rung 11 rather than rung 45. Every visible row is therefore indented strictly mo
 row it hangs off, at any depth and at any pane width, which is the thing a tree has to
 show. `indent_px` spends 16 px on the first four rungs and 8 px on every rung after them,
 bounded by a pixel ceiling and (through a CSS `min()`) by a share of the pane, so
-dragging the sidebar narrow tightens the ladder with no re-render. The 8 px step is small
-because the app lays out at a 1920 px design width and `zoom`s it to the window
-(`assets/main.css`): a 4 px step would be 2.5 device pixels at a 1280 px window, which is
-not a step anyone can see. Past four rungs the row also states its true depth in a badge,
+dragging the sidebar narrow tightens the ladder with no re-render. The 8 px step is the
+smallest step a reader can see. Past four rungs the row also states its true depth in a badge,
 because the ladder does not count it.
 
 **That pane share is scaled by the rung, not applied flat**, which is the difference

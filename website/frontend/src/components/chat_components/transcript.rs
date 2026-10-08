@@ -168,7 +168,7 @@ pub fn ChatTranscript(
             style: "flex: 1; overflow-y: auto; padding: 18px; display: flex; \
                     flex-direction: column; gap: 12px;",
             if messages.is_empty() {
-                div { style: "color: #94A3B8; font-size: 14px;",
+                div { style: "color: var(--x-ink-faint); font-size: var(--x-text-md);",
                     "Ask a question about the documents in your collections."
                 }
             }
@@ -279,18 +279,18 @@ pub fn ChatTranscript(
                         // The cursor marks this as the live tail rather than a finished
                         // answer, identical content, different promise.
                         if stream_live {
-                            span { style: "color: #4F46E5;", "\u{258D}" }
+                            span { style: "color: var(--x-link);", "\u{258D}" }
                         }
                     }
                 }
                 if stream_live && !waiting_line.is_empty() {
                     div {
-                        style: "color: #64748B; font-size: 13px; font-style: italic;",
+                        style: "color: var(--x-ink-muted); font-size: var(--x-text-sm); font-style: italic;",
                         "{waiting_line}"
                     }
                 } else if turn.content.is_empty() && turn.tool_rows.is_empty() && stream_live {
                     div {
-                        style: "color: #64748B; font-size: 13px; font-style: italic;",
+                        style: "color: var(--x-ink-muted); font-size: var(--x-text-sm); font-style: italic;",
                         "The assistant is working\u{2026}"
                     }
                 }
@@ -466,8 +466,8 @@ fn ToolRunGroup(
                 class: "x-chat-tool-run-toggle",
                 "aria-expanded": "{shown}",
                 style: "align-self: flex-start; display: flex; gap: 8px; align-items: baseline; \
-                        background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; \
-                        padding: 5px 10px; cursor: pointer; font-size: 13px; color: #334155; \
+                        background: #F8FAFC; border: 1px solid var(--x-border); border-radius: 8px; \
+                        padding: 5px 10px; cursor: pointer; font-size: var(--x-text-sm); color: var(--x-ink); \
                         text-align: left;",
                 onclick: move |_| {
                     let next = !*open.peek();
@@ -475,7 +475,7 @@ fn ToolRunGroup(
                 },
                 span { "{summary}" }
                 if live { ElapsedCounter { already_ms: elapsed_ms } }
-                span { style: "font-size: 12px; color: #4F46E5; text-decoration: underline;", "{action}" }
+                span { style: "font-size: var(--x-text-xs); color: var(--x-link); text-decoration: underline;", "{action}" }
             }
             if shown {
                 div {
@@ -829,7 +829,7 @@ fn MessageEntry(
                         details {
                             "data-chat-replaced-answer": "{message.seq}",
                             summary {
-                                style: "cursor: pointer; color: #64748B; font-size: 13px;",
+                                style: "cursor: pointer; color: var(--x-ink-muted); font-size: var(--x-text-sm);",
                                 "Earlier answer"
                             }
                             MarkdownishText {
@@ -875,7 +875,7 @@ fn MessageEntry(
                                 if retries.len() == 1 { "" } else { "s" },
                             ),
                             errors: retries,
-                            tone_color: "#B45309",
+                            tone_color: "var(--x-warning)",
                         }
                     }
                     if !replaced {
@@ -940,7 +940,7 @@ fn MessageEntry(
             details {
                 class: "x-chat-nag",
                 style: "align-self: flex-start; max-width: 88%; background: white; \
-                        color: #475569; border-left: 3px solid #AAAAAA33; padding: 6px 12px; \
+                        color: var(--x-ink); border-left: 3px solid #AAAAAA33; padding: 6px 12px; \
                         border-radius: 0 8px 8px 0; font-size: 0.9em; {ring}",
                 summary { style: "cursor: pointer; font-weight: 600;", "Instruction to the agent" }
                 div {
@@ -956,7 +956,7 @@ fn MessageEntry(
             let retries = message.parsed_retry_errors();
             rsx! {
                 div {
-                    style: "align-self: flex-start; background: #FEF2F2; color: #991B1B; \
+                    style: "align-self: flex-start; background: #FEF2F2; color: var(--x-danger); \
                             max-width: 88%; border: 1px solid #FECACA; padding: 10px 14px; \
                             border-radius: 12px; {ring}",
                     div { "{message.content}" }
@@ -973,7 +973,7 @@ fn MessageEntry(
                                 if retries.len() == 1 { "" } else { "s" },
                             ),
                             errors: retries,
-                            tone_color: "#991B1B",
+                            tone_color: "var(--x-danger)",
                         }
                     }
                 }
@@ -1006,13 +1006,13 @@ fn CompactionLine(content: String, ring: String) -> Element {
         format!("Context compacted: {steps} steps summarised, {before} tokens to {after}.")
     };
     rsx! {
-        div { class: "x-chat-compaction", style: "align-self: stretch; font-size: 12px; color: #475569; {ring}",
+        div { class: "x-chat-compaction", style: "align-self: stretch; font-size: var(--x-text-xs); color: var(--x-ink); {ring}",
             "{line}"
             if !reached && !summary_failed { span { " The context stays above the target of {target}." } }
             if failed > 0 { span { " {failed} summary parts failed. The record holds the lists only." } }
             if let Some(record) = value.get("record").and_then(|v| v.as_str()).filter(|r| !r.is_empty()) {
                 button {
-                    style: "margin-left: 8px; background: none; border: none; color: #4F46E5; cursor: pointer; text-decoration: underline;",
+                    style: "margin-left: 8px; background: none; border: none; color: var(--x-link); cursor: pointer; text-decoration: underline;",
                     onclick: move |_| {
                         let next = !*record_open.peek();
                         record_open.set(next);
@@ -1034,7 +1034,7 @@ fn ReasoningDisclosure(reasoning: String) -> Element {
         div { style: "margin-bottom: 6px;",
             button {
                 style: "background: none; border: none; padding: 0; cursor: pointer; \
-                        font-size: 12px; color: #64748B; text-decoration: underline;",
+                        font-size: var(--x-text-xs); color: var(--x-ink-muted); text-decoration: underline;",
                 onclick: move |_| {
                     let next = !*open.peek();
                     open.set(next);
@@ -1044,7 +1044,7 @@ fn ReasoningDisclosure(reasoning: String) -> Element {
             if *open.read() {
                 pre {
                     style: "margin: 6px 0 0 0; white-space: pre-wrap; word-break: break-word; \
-                            font-size: 12px; line-height: 1.5; color: #475569; \
+                            font-size: var(--x-text-xs); line-height: 1.5; color: var(--x-ink); \
                             background: #F1F5F9; padding: 8px 10px; border-radius: 8px; \
                             max-height: 260px; overflow: auto;",
                     "{reasoning}"
@@ -1077,7 +1077,7 @@ fn DocRefsDisclosure(tool_name: String, refs: Vec<ChatDocRef>) -> Element {
             button {
                 class: "x-chat-docrefs-toggle",
                 style: "align-self: flex-start; background: none; border: none; padding: 0; \
-                        cursor: pointer; font-size: 12px; color: #4F46E5; \
+                        cursor: pointer; font-size: var(--x-text-xs); color: var(--x-link); \
                         text-decoration: underline;",
                 onclick: move |_| {
                     let next = !*open.peek();
@@ -1120,7 +1120,7 @@ fn AttemptDisclosure(
         div { style: "margin-top: 6px;",
             button {
                 style: "background: none; border: none; padding: 0; cursor: pointer; \
-                        font-size: 12px; text-decoration: underline; color: {tone_color};",
+                        font-size: var(--x-text-xs); text-decoration: underline; color: {tone_color};",
                 onclick: move |_| {
                     let next = !*open.peek();
                     open.set(next);
@@ -1130,7 +1130,7 @@ fn AttemptDisclosure(
             if *open.read() {
                 ul {
                     class: "x-error-display",
-                    style: "margin: 6px 0 0 0; padding-left: 18px; font-size: 12px; \
+                    style: "margin: 6px 0 0 0; padding-left: 18px; font-size: var(--x-text-xs); \
                             line-height: 1.5; opacity: 0.9;",
                     for (i, e) in errors.into_iter().enumerate() {
                         li { key: "{i}", style: "word-break: break-word;", "{e}" }
@@ -1174,7 +1174,7 @@ pub(super) fn DocumentCitationCards(
         .filter(|doc| seen.insert(doc.file_hash.clone())).collect::<Vec<_>>();
     rsx! {
         div {
-            style: "margin-top: 10px; border-top: 1px solid #E2E8F0; padding-top: 8px;",
+            style: "margin-top: 10px; border-top: 1px solid var(--x-border); padding-top: 8px;",
             div {
                 style: "display: flex; flex-direction: column; gap: 8px;",
                 for (index, doc) in grouped.into_iter().enumerate() {
@@ -1188,9 +1188,9 @@ pub(super) fn DocumentCitationCards(
                         if !doc.handle.is_empty() {
                             div {
                                 style: "
-                                    flex-shrink: 0; font-size: 12px; font-weight: 600;
-                                    color: #334155; background: #F8FAFC;
-                                    border: 1px solid #E5E7EB; border-radius: 5px;
+                                    flex-shrink: 0; font-size: var(--x-text-xs); font-weight: 600;
+                                    color: var(--x-ink); background: #F8FAFC;
+                                    border: 1px solid var(--x-border); border-radius: 5px;
                                     padding: 1px 5px; margin-top: 10px;
                                 ",
                                 "{doc.handle}"
@@ -1198,11 +1198,11 @@ pub(super) fn DocumentCitationCards(
                         }
                         div {
                             style: "flex: 1 1 auto; min-width: 0;",
-                            if !doc.why.is_empty() { div { style: "font-size: 13px; color: #475569; padding: 0 8px;", "{doc.why}" } }
+                            if !doc.why.is_empty() { div { style: "font-size: var(--x-text-sm); color: var(--x-ink); padding: 0 8px;", "{doc.why}" } }
                             ChatDocRefCard { doc: doc.clone(), index: index as u64, passages: sources.iter().filter(|source| source.file_hash == doc.file_hash).cloned().collect::<Vec<_>>() }
                             if conflicting.contains(&doc.handle) {
                                 div {
-                                    style: "font-size: 12px; color: #B45309; padding: 0 4px 2px 4px;",
+                                    style: "font-size: var(--x-text-xs); color: var(--x-warning); padding: 0 4px 2px 4px;",
                                     "Citations of this conversation give {doc.handle} to more than one document. The answer links it to none of them."
                                 }
                             }
@@ -1210,7 +1210,7 @@ pub(super) fn DocumentCitationCards(
                             if !doc.quote.is_empty() && !doc.quote_verified {
                                 div {
                                     style: "
-                                        font-size: 12px; color: #92400E; background: #FFFBEB;
+                                        font-size: var(--x-text-xs); color: #92400E; background: #FFFBEB;
                                         border: 1px solid #FDE68A; border-radius: 6px;
                                         padding: 3px 7px; margin: 2px 4px;
                                     ",

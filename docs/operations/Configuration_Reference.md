@@ -467,7 +467,7 @@ Deployment renders this value into the server override XML.
 ### `[operations]`: the operation caps
 
 - `add_dataset_cap`, `rescan_dataset_cap`, `compute_plans_cap`, `execute_plans_cap`
-- `purge_dataset_cap`, `delete_dataset_cap`, `change_ocr_languages_cap`, `reindex_collection_cap`
+- `purge_dataset_cap`, `delete_dataset_cap`, `change_ocr_languages_cap`, `rerun_ocr_cap`, `reindex_collection_cap`
 - `refresh_document_locations_cap`, `retry_failed_files_cap`, `ensure_collection_cap`
 - `drop_collection_database_cap`, `export_collection_cap`, `import_collection_cap`
 - `purge_unattributed_entities_cap`, `backfill_vectors_cap`

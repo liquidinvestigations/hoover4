@@ -22,6 +22,9 @@ pub struct DocumentViewerResultStore {
 
     pub     document_identifier: ReadSignal<DocumentIdentifier>,
     pub source: ReadSignal<DocumentTextSourceItem>,
+    /// True when the preamble and the text share one scroll container. See
+    /// [`DocumentPreviewTextWithSearch`].
+    pub flow_layout: bool,
 }
 
 #[component]
@@ -29,6 +32,14 @@ pub fn DocumentPreviewTextWithSearch(
     document_identifier: ReadSignal<DocumentIdentifier>,
     source: ReadSignal<DocumentTextSourceItem>,
     preamble: Element,
+    /// Put the preamble and the text in one scroll container, in normal vertical flow.
+    ///
+    /// The email preview sets it: its expanded header list can be taller than the
+    /// viewer, and in the default layout only the text below it scrolls, so the list is
+    /// cut off. Without it the preamble keeps its natural height and the text scrolls on
+    /// its own, which is what a plain text source needs.
+    #[props(default)]
+    flow_layout: bool,
 ) -> Element {
     // ============== HIT COUNTS: ==============
     let control_state = use_context::<DocViewerStateControl>().doc_viewer_state;
@@ -128,6 +139,7 @@ pub fn DocumentPreviewTextWithSearch(
         current_highlighted_word_index,
         document_identifier,
         source,
+        flow_layout,
     });
 
     rsx! {
@@ -136,18 +148,27 @@ pub fn DocumentPreviewTextWithSearch(
                 SearchHitSelector {}
             },
             page: rsx! {
-                div {
-                    style: "
-                        height: 100%;
-                        width: 100%;
-                        display: flex;
-                        flex-direction: column;
-                        overflow: hidden;
-                    ",
-                    {preamble}
+                if flow_layout {
                     div {
-                        style: "flex: 1; min-height: 0;",
+                        id: "x-document-flow-scroll",
+                        style: "height: 100%; width: 100%; overflow-y: auto;",
+                        {preamble}
                         text_data_viewer::TextDataViewer {}
+                    }
+                } else {
+                    div {
+                        style: "
+                            height: 100%;
+                            width: 100%;
+                            display: flex;
+                            flex-direction: column;
+                            overflow: hidden;
+                        ",
+                        {preamble}
+                        div {
+                            style: "flex: 1; min-height: 0;",
+                            text_data_viewer::TextDataViewer {}
+                        }
                     }
                 }
             }

@@ -63,6 +63,7 @@ KINDS: dict[str, dict] = {
     "purge_dataset": {"target_kind": "dataset", "destructive": True},
     "delete_dataset": {"target_kind": "dataset", "destructive": True},
     "change_ocr_languages": {"target_kind": "dataset", "destructive": False},
+    "rerun_ocr": {"target_kind": "dataset", "destructive": False},
     "reindex_collection": {"target_kind": "collection", "destructive": False},
     "refresh_document_locations": {"target_kind": "dataset", "destructive": False},
     "retry_failed_files": {"target_kind": "dataset", "destructive": False},
@@ -85,6 +86,7 @@ PROGRESS_SOURCES = {
     "purge_dataset": "rows",
     "delete_dataset": "rows",
     "change_ocr_languages": "plans",
+    "rerun_ocr": "plans",
     "reindex_collection": None,
     "refresh_document_locations": None,
     "retry_failed_files": "plans",
@@ -104,6 +106,7 @@ DRIVEN_KINDS = (
     "purge_dataset",
     "delete_dataset",
     "change_ocr_languages",
+    "rerun_ocr",
     "reindex_collection",
     "refresh_document_locations",
     "retry_failed_files",
@@ -392,11 +395,20 @@ def update_operation(op_id: str, *, base_row: dict | None = None, **changes) -> 
 
 
 def finish_operation(op_id: str, state: str, error: str = "") -> dict | None:
-    """Land a row in a terminal state, stamping `finished_at`. This releases the lock."""
+    """Land a row in a terminal state, stamping `finished_at`. This releases the lock.
+
+    It then refreshes the cached statistics of the row's collection, so they hold the
+    final numbers and the `done` state. A failed refresh is logged and does not fail
+    the transition.
+    """
     if state not in TERMINAL_STATES:
         raise ValueError(f"Not a terminal state: {state}")
-    return update_operation(op_id, state=state, error=error[:4000],
-                            finished_at=_now())
+    row = update_operation(op_id, state=state, error=error[:4000],
+                           finished_at=_now())
+    if row is not None:
+        from .dataset_stats import refresh_dataset_stats_logged
+        refresh_dataset_stats_logged(row.get("collectionname", ""))
+    return row
 
 
 def merge_detail(op_id: str, **fields) -> dict | None:

@@ -58,7 +58,7 @@ fn load_state<T: Clone + 'static>(res: Resource<Result<T, ServerFnError>>) -> Lo
 fn PanelError(message: String) -> Element {
     rsx! {
         p {
-            style: "color: #ba2121; font-size: 13px; margin: 0;",
+            style: "color: var(--x-danger); font-size: var(--x-text-sm); margin: 0;",
             "Could not load this panel: {message}"
         }
     }
@@ -68,11 +68,11 @@ fn PanelError(message: String) -> Element {
 pub fn AdminCollectionProcessingPage(collection_id: String) -> Element {
     let for_content = collection_id.clone();
     rsx! {
-        Title { "Admin \u{2014} Processing {collection_id}" }
+        Title { "Admin: processing of {collection_id}" }
         AdminGuard {
             AdminShell {
-                title: "Collection processing".to_string(),
-                breadcrumb: format!("Collections \u{203a} {collection_id} \u{203a} Processing"),
+                title: format!("Processing of {collection_id}"),
+                breadcrumb: format!("Collections \u{203a} {collection_id}"),
                 active: "collections".to_string(),
                 SuspendWrapper { ProcessingContent { collection_id: for_content } }
             }
@@ -214,11 +214,11 @@ fn StagesPanel(status: Load<CollectionProcessingStatus>, eta_samples: Option<Vec
                     Load::Ready(s) => rsx! {
                         for ds in s.datasets {
                             div { key: "{ds.collection_dataset}", style: "margin-bottom: 22px;",
-                                div { style: "font-size: 13px; font-weight: 700; color: #333; margin-bottom: 8px;",
+                                div { style: "font-size: var(--x-text-sm); font-weight: 700; color: var(--x-ink); margin-bottom: 8px;",
                                     "{ds.dataset_display_name} "
                                     span { style: HELP_TEXT, "({ds.collection_dataset})" }
                                     if ds.error_count > 0 {
-                                        span { style: "color: #ba2121; margin-left: 8px;", "{ds.error_count} errors" }
+                                        span { style: "color: var(--x-danger); margin-left: 8px;", "{ds.error_count} errors" }
                                     }
                                 }
                                 for stage in ds.stages {
@@ -248,12 +248,12 @@ fn StagesPanel(status: Load<CollectionProcessingStatus>, eta_samples: Option<Vec
 fn StageBar(stage: StageProgress) -> Element {
     let percent = stage.percent();
     let complete = stage.is_complete();
-    let bar_color = if complete { "#5fa25f" } else { "#79aec8" };
+    let bar_color = if complete { "var(--x-ok)" } else { "var(--x-link)" };
     let width = percent.unwrap_or(0.0);
 
     rsx! {
         div { style: "display: flex; align-items: center; gap: 10px; margin-bottom: 5px;",
-            div { style: "width: 220px; font-size: 12px; color: #333; flex-shrink: 0;", "{stage.label}" }
+            div { style: "width: 220px; font-size: var(--x-text-xs); color: var(--x-ink); flex-shrink: 0;", "{stage.label}" }
             div {
                 style: "flex: 1; height: 14px; background: #eee; border-radius: 3px; overflow: hidden; min-width: 80px;",
                 // A stage with no denominator gets a flat neutral fill rather than a
@@ -264,16 +264,16 @@ fn StageBar(stage: StageProgress) -> Element {
                     div { style: "height: 100%; width: 100%; background: repeating-linear-gradient(45deg, #ddd, #ddd 6px, #eee 6px, #eee 12px);" }
                 }
             }
-            div { style: "width: 190px; font-size: 12px; color: #666; flex-shrink: 0;",
+            div { style: "width: 190px; font-size: var(--x-text-xs); color: var(--x-ink-muted); flex-shrink: 0;",
                 match stage.total {
                     Some(total) => rsx! { "{stage.done} / {total} {stage.unit}" },
                     None => rsx! { "{stage.done} {stage.unit}" },
                 }
             }
-            div { style: "width: 130px; font-size: 12px; color: #999; flex-shrink: 0;",
+            div { style: "width: 130px; font-size: var(--x-text-xs); color: var(--x-ink-muted); flex-shrink: 0;",
                 match stage.eta_seconds {
                     Some(eta) => rsx! { "ETA {humanize_seconds(eta)}" },
-                    None if complete => rsx! { span { style: "color: #5fa25f;", "done" } },
+                    None if complete => rsx! { span { style: "color: var(--x-ok);", "done" } },
                     None => rsx! { "\u{2014}" },
                 }
             }
@@ -281,9 +281,9 @@ fn StageBar(stage: StageProgress) -> Element {
             // records per-document failures and carries on by design, so `done / total`
             // alone hides them. This is the column that says so, next to the bar the
             // failure happened at rather than only in the panels further down.
-            div { style: "width: 110px; font-size: 12px; flex-shrink: 0;",
+            div { style: "width: 110px; font-size: var(--x-text-xs); flex-shrink: 0;",
                 if stage.failed_documents > 0 {
-                    span { style: "color: #ba2121;", "{stage.failed_documents} failed" }
+                    span { style: "color: var(--x-danger);", "{stage.failed_documents} failed" }
                 }
             }
         }
@@ -296,10 +296,10 @@ fn StageBar(stage: StageProgress) -> Element {
 
 /// Stage colors for the estimate chart, keyed by the `STAGE_*` constants.
 const ETA_STAGE_STYLES: &[(&str, &str, &str)] = &[
-    (STAGE_PLAN, "P1 plan", "#79aec8"),
-    (STAGE_EXECUTE, "P2/P3 execute", "#417690"),
+    (STAGE_PLAN, "P1 plan", "var(--x-link)"),
+    (STAGE_EXECUTE, "P2/P3 execute", "var(--x-link)"),
     (STAGE_NLP, "P4 nlp", "#c1883c"),
-    (STAGE_INDEX, "P6 index", "#5fa25f"),
+    (STAGE_INDEX, "P6 index", "var(--x-ok)"),
 ];
 
 /// Per-dataset ETA: the current best-effort deadline and a chart of the last
@@ -317,7 +317,7 @@ fn EtaSection(samples: Vec<EtaSamplePoint>) -> Element {
     if samples.is_empty() {
         return rsx! {
             p { style: "{HELP_TEXT} margin: 4px 0 0;",
-                "No ETA samples yet. They are collected in the background while the dataset is being processed, and never for a finished one."
+                "No estimate samples yet. They are collected while the dataset is processing."
             }
         };
     }
@@ -336,8 +336,8 @@ fn EtaSection(samples: Vec<EtaSamplePoint>) -> Element {
         .max_by_key(|s| s.deadline_unix);
 
     rsx! {
-        div { style: "margin: 8px 0 4px; padding: 10px; background: #f8f8f8; border: 1px solid #eee; border-radius: 4px;",
-            div { style: "font-size: 13px; color: #333; margin-bottom: 6px;",
+        div { style: "margin: 8px 0 4px; padding: 10px; background: var(--x-surface-muted); border: 1px solid var(--x-border); border-radius: 4px;",
+            div { style: "font-size: var(--x-text-sm); color: var(--x-ink); margin-bottom: 6px;",
                 match current {
                     Some(c) => rsx! {
                         "Estimated completion: "
@@ -352,7 +352,7 @@ fn EtaSection(samples: Vec<EtaSamplePoint>) -> Element {
             EtaChart { samples: samples.clone() }
             div { style: "display: flex; gap: 14px; margin-top: 4px;",
                 for (stage, label, color) in ETA_STAGE_STYLES {
-                    span { key: "{stage}", style: "font-size: 11px; color: #666;",
+                    span { key: "{stage}", style: "font-size: var(--x-text-xs); color: var(--x-ink-muted);",
                         span { style: "display: inline-block; width: 10px; height: 10px; background: {color}; margin-right: 4px; border-radius: 2px;" }
                         "{label}"
                     }
@@ -418,7 +418,7 @@ fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
             width: "100%",
             height: "{H}",
             "viewBox": "0 0 {W} {H}",
-            style: "background: white; border: 1px solid #eee; max-width: 720px; display: block;",
+            style: "background: white; border: 1px solid var(--x-border); max-width: 720px; display: block;",
 
             // Keyed by position on the axis, never by the label: two ticks can carry the
             // same text, and duplicate keys among siblings are a dioxus-core assertion on
@@ -433,7 +433,7 @@ fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
                     text {
                         x: "{LEFT - 6.0}", y: "{y + 3.5}",
                         "text-anchor": "end",
-                        style: "font-size: 10px; fill: #666;",
+                        style: "font-size: var(--x-text-xs); fill: #666;",
                         "{label}"
                     }
                 }
@@ -441,7 +441,7 @@ fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
             text {
                 x: "{LEFT - 6.0}", y: "{TOP - 3.0}",
                 "text-anchor": "end",
-                style: "font-size: 10px; fill: #999;",
+                style: "font-size: var(--x-text-xs); fill: #999;",
                 "left"
             }
 
@@ -480,14 +480,14 @@ fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
                 text {
                     x: "{LEFT}", y: "{H - 7.0}",
                     "text-anchor": "start",
-                    style: "font-size: 10px; fill: #666;",
+                    style: "font-size: var(--x-text-xs); fill: #666;",
                     "{f.sampled_at}"
                 }
                 if l.sampled_at_unix != f.sampled_at_unix {
                     text {
                         x: "{W - RIGHT}", y: "{H - 7.0}",
                         "text-anchor": "end",
-                        style: "font-size: 10px; fill: #666;",
+                        style: "font-size: var(--x-text-xs); fill: #666;",
                         "{l.sampled_at}"
                     }
                 }
@@ -593,7 +593,7 @@ fn TaskTimePanel(breakdown: Load<TaskTimeBreakdown>) -> Element {
                                         td { style: "{TD} white-space: nowrap;", {format_seconds(row.total_seconds)} }
                                         td { style: TD,
                                             div { style: "display: flex; align-items: center; gap: 8px;",
-                                                ShareBar { percent: row.share_percent, color: "#417690".to_string() }
+                                                ShareBar { percent: row.share_percent, color: "var(--x-link)".to_string() }
                                                 span { {format!("{:.1}%", row.share_percent)} }
                                             }
                                         }
@@ -603,9 +603,9 @@ fn TaskTimePanel(breakdown: Load<TaskTimeBreakdown>) -> Element {
                                         td { style: TD, {format!("{} ms", row.max_ms)} }
                                         td {
                                             style: if row.error_count > 0 {
-                                                "{TD} color: #ba2121; font-weight: 700;"
+                                                "{TD} color: var(--x-danger); font-weight: 700;"
                                             } else {
-                                                "{TD} color: #999;"
+                                                "{TD} color: var(--x-ink-muted);"
                                             },
                                             "{row.error_count}"
                                         }
@@ -625,8 +625,8 @@ fn TaskTimePanel(breakdown: Load<TaskTimeBreakdown>) -> Element {
 fn Metric(label: String, value: String, note: String) -> Element {
     rsx! {
         div {
-            div { style: "font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #888;", "{label}" }
-            div { style: "font-size: 20px; font-weight: 700; color: #333;", "{value}" }
+            div { style: "font-size: var(--x-text-xs); letter-spacing: 0.04em; color: #888;", "{label}" }
+            div { style: "font-size: 20px; font-weight: 700; color: var(--x-ink);", "{value}" }
             div { style: HELP_TEXT, "{note}" }
         }
     }
@@ -737,9 +737,9 @@ fn LiveActivityBody(live: LiveTaskActivity) -> Element {
                         td { style: TD, "{row.completed}" }
                         td {
                             style: if row.in_flight > 0 {
-                                "{TD} color: #417690; font-weight: 700;"
+                                "{TD} color: var(--x-link); font-weight: 700;"
                             } else {
-                                "{TD} color: #999;"
+                                "{TD} color: var(--x-ink-muted);"
                             },
                             "{row.in_flight}"
                         }
@@ -747,7 +747,7 @@ fn LiveActivityBody(live: LiveTaskActivity) -> Element {
                             if row.in_flight > 0 {
                                 {humanize_seconds(row.oldest_age_seconds)}
                             } else {
-                                span { style: "color: #999;", "\u{2014}" }
+                                span { style: "color: var(--x-ink-muted);", "\u{2014}" }
                             }
                         }
                     }
@@ -768,9 +768,9 @@ fn WorkflowsPanel(workflows: Load<Vec<WorkflowSummary>>, filter: Signal<Workflow
                         button {
                             key: "{label}",
                             style: if *filter.read() == value {
-                                "background: #417690; color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;"
+                                "background: var(--x-link); color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: var(--x-text-xs);"
                             } else {
-                                "background: white; color: #417690; border: 1px solid #79aec8; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 12px;"
+                                "background: white; color: var(--x-link); border: 1px solid var(--x-link); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: var(--x-text-xs);"
                             },
                             onclick: move |_| filter.set(value),
                             "{label}"
@@ -778,7 +778,7 @@ fn WorkflowsPanel(workflows: Load<Vec<WorkflowSummary>>, filter: Signal<Workflow
                     }
                 }
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
-                    "Workflows started for this collection's datasets, child workflows included (matched on the CollectionDataset search attribute; runs from before it existed are matched on their workflow id)."
+                    "Workflows of this collection's datasets, child workflows included."
                 }
                 match workflows {
                     Load::Pending => rsx! { "Loading\u{2026}" },
@@ -806,11 +806,11 @@ fn WorkflowsPanel(workflows: Load<Vec<WorkflowSummary>>, filter: Signal<Workflow
                                         td { style: TD,
                                             span {
                                                 style: if wf.is_failed() {
-                                                    "color: #ba2121; font-weight: 700;"
+                                                    "color: var(--x-danger); font-weight: 700;"
                                                 } else if wf.is_running() {
-                                                    "color: #417690; font-weight: 700;"
+                                                    "color: var(--x-link); font-weight: 700;"
                                                 } else {
-                                                    "color: #5fa25f;"
+                                                    "color: var(--x-ok);"
                                                 },
                                                 "{wf.status}"
                                             }
@@ -867,10 +867,10 @@ fn TaskFailuresPanel(
                                     tr { key: "{f.collection_dataset}-{f.task_name}",
                                         td { style: TD, "{f.task_name}" }
                                         td { style: TD, "{f.collection_dataset}" }
-                                        td { style: "{TD} color: #ba2121; font-weight: 700;", "{f.error_count}" }
+                                        td { style: "{TD} color: var(--x-danger); font-weight: 700;", "{f.error_count}" }
                                         td { style: TD, "{f.document_count}" }
                                         td { style: TD, "{f.last_seen}" }
-                                        td { style: "{TD} font-family: monospace; font-size: 11px; max-width: 380px; overflow: hidden; text-overflow: ellipsis;", "{f.sample_error}" }
+                                        td { style: "{TD} font-family: monospace; font-size: var(--x-text-xs); max-width: 380px; overflow: hidden; text-overflow: ellipsis;", "{f.sample_error}" }
                                         td { style: TD,
                                             button {
                                                 style: BTN_SMALL,
@@ -948,7 +948,7 @@ fn DocumentFailuresPanel(
                                                 span { style: HELP_TEXT, "dataset-level" }
                                             } else {
                                                 div {
-                                                    div { style: "font-family: monospace; font-size: 11px;", "{f.hash}" }
+                                                    div { style: "font-family: monospace; font-size: var(--x-text-xs);", "{f.hash}" }
                                                     if let Some(p) = f.path.clone() {
                                                         div { style: HELP_TEXT, "{p}" }
                                                     }
@@ -957,7 +957,7 @@ fn DocumentFailuresPanel(
                                         }
                                         td { style: TD, "{f.collection_dataset}" }
                                         td { style: TD, {f.task_names.join(", ")} }
-                                        td { style: "{TD} color: #ba2121; font-weight: 700;", "{f.error_count}" }
+                                        td { style: "{TD} color: var(--x-danger); font-weight: 700;", "{f.error_count}" }
                                         td { style: TD, "{f.last_seen}" }
                                         td { style: TD,
                                             if !f.hash.is_empty() {

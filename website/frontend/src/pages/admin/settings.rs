@@ -37,9 +37,7 @@ fn setting_description(key: &str) -> &'static str {
 fn deployment_description(key: &str) -> &'static str {
     match key {
         "datasets_mount_path" => {
-            "Root the dataset-creation form lists subfolders of. Set in hoover4.ini and \
-             mounted into both the worker and the website, so it can only be changed by a \
-             redeploy \u{2014} shown here because it decides what the UI is able to ingest."
+            "The folder whose subfolders the dataset form lists. Changing it needs a redeploy."
         }
         _ => "From hoover4.ini. Changing it needs a redeploy.",
     }
@@ -52,7 +50,7 @@ pub fn AdminSettingsPage() -> Element {
         AdminGuard {
             AdminShell {
                 title: "Server settings".to_string(),
-                breadcrumb: "Settings".to_string(),
+                breadcrumb: String::new(),
                 active: "settings".to_string(),
                 SuspendWrapper { SettingsContent {} }
             }
@@ -114,7 +112,7 @@ fn SettingsContent() -> Element {
                                     },
                                 }
                             }
-                            td { style: "{TD} color: #999; font-size: 12px;", "{setting_description(&s.key)}" }
+                            td { style: "{TD} color: var(--x-ink-muted); font-size: var(--x-text-xs);", "{setting_description(&s.key)}" }
                             td { style: TD,
                                 button {
                                     style: BTN_SMALL,
@@ -151,7 +149,7 @@ fn SettingsContent() -> Element {
 
         if let Some(Ok(deployment)) = deployment_res.read().as_ref() {
             if !deployment.is_empty() {
-                h2 { style: "margin: 24px 0 8px; color: #666; font-size: 16px; font-weight: 400;",
+                h2 { style: "margin: 24px 0 8px; color: var(--x-ink-muted); font-size: 16px; font-weight: 400;",
                     "Deployment configuration (read-only)"
                 }
                 table { style: TABLE,
@@ -169,7 +167,7 @@ fn SettingsContent() -> Element {
                                 td { style: "{TD} font-family: ui-monospace, monospace;",
                                     if item.value.is_empty() { "(not set)" } else { "{item.value}" }
                                 }
-                                td { style: "{TD} color: #999; font-size: 12px;",
+                                td { style: "{TD} color: var(--x-ink-muted); font-size: var(--x-text-xs);",
                                     "{deployment_description(&item.key)}"
                                 }
                             }

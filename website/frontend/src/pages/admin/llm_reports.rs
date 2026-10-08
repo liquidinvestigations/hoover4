@@ -65,7 +65,7 @@ pub fn LlmReports() -> Element {
     rsx! {
         h2 { style: "font-size: 18px; margin: 24px 0 8px;", "Reports" }
         p { style: "{HELP_TEXT} margin: 0 0 12px;",
-            "Each report reads the agent step rows when you click its button. One row is one attempt of a model call, a tool call or a title call."
+            "Each report runs when you select its button."
         }
         ErrorCountsReport {}
         ErrorLogReport {}
@@ -202,7 +202,7 @@ fn ErrorLogReport() -> Element {
                                         td { style: TD,
                                             details {
                                                 summary { style: "cursor: pointer;", "Show" }
-                                                pre { style: "white-space: pre-wrap; margin: 6px 0 0; font-size: 12px;", "{r.error}" }
+                                                pre { style: "white-space: pre-wrap; margin: 6px 0 0; font-size: var(--x-text-xs);", "{r.error}" }
                                             }
                                         }
                                     }
@@ -235,7 +235,7 @@ fn ToolTableReport() -> Element {
             h2 { style: MODULE_CAPTION, "Tool calls" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 8px;",
-                    "One row for each tool, by calls in 30 days. An error is a call that failed. A result that reports an error code is a correct answer."
+                    "One row for each tool, by calls in 30 days. An error is a failed call."
                 }
                 RunBar { id: "x-llm-report-tools-run", busy: *busy.read(), read_at: at, onclick: run }
                 match current {
@@ -305,7 +305,7 @@ fn TopUsersReport() -> Element {
             h2 { style: MODULE_CAPTION, "Top users" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 8px;",
-                    "The 30 users with the most model time in the window. Model time and model calls include title calls."
+                    "The 30 users with the most model time in the window."
                 }
                 select {
                     id: "x-llm-report-users-window",

@@ -49,7 +49,8 @@ Every page shares the dark rail down the left edge. From the top:
 | magnifier | Search |
 | folder | Storage (the file browser) |
 | speech bubble | AI chat |
-| person (bottom) | your account |
+| bug (bottom) | report a bug or send feedback |
+| person (bottom) | administration, for administrators only |
 
 ![Home page](img/home.png)
 
@@ -64,7 +65,16 @@ submits on Enter, there is no separate button.
 
 **AI Chat** links to a new conversation or to your earlier ones.
 
-Below them is a feedback link.
+Below them is a feedback card. Its button opens the same report as the bug icon in the rail.
+
+### Reporting a bug or sending feedback
+
+Select the bug icon at the bottom of the rail. The icon turns red while the browser copies the
+page and draws an image of it. A full-screen form then shows the image, the size of the image
+and of the page copy, the browser information and the browser log. Select **Bug** or
+**Feedback**, write a title and a description, and select **Send**. You can paste links to
+other pages of the application into the description. Frames, some canvases and some embedded
+viewers can look different in the image, and the form names them when the page has them.
 
 ---
 
@@ -128,9 +138,9 @@ The **⋮** button on a result card opens a small menu:
 
 ## 5. Filters
 
-**Filter** in the toolbar opens the filter dialog. It has seven panes down the left; changes
-accumulate across panes and are applied together by the button at the bottom right, which
-tells you how many documents you will get.
+**Filter** in the toolbar opens the filter dialog. It has nine panes down the left. Changes
+accumulate across panes. The button at the bottom right applies them together and states how
+many documents you will get.
 
 **Clear all** (bottom left) drops every filter; **Cancel** closes without applying.
 
@@ -146,6 +156,17 @@ from each.
 Broad categories, `text`, `email`, `html`, `code`, `pdf`, `doc`, `image`, `archive`, `other`.
 
 ![The File types pane](img/filter-file-types.png)
+
+### Language
+
+The languages detected in the documents' text. For an email, the language comes from its
+body and not from its headers.
+
+### Text source
+
+Where the matching text came from: for example **Raw file text**, **Email body**, or an OCR
+engine such as **OCR · Tesseract · eng**. Ticking a source keeps documents whose text from
+that source matches the query.
 
 ### File size
 
@@ -289,13 +310,16 @@ original file under its real name.
 
 The folder icon in the rail opens **Storage**: the corpus as it is laid out on disk.
 
-The landing page lists the collections and how many datasets each has, with the same tree in
-the pane on the left.
+The landing page shows one card for each collection, with the same tree in the pane on the
+left. A card shows the number of datasets and the summed documents, total size, indexed
+documents and processing errors of those datasets. A card marked Processing belongs to a
+collection whose data is changing.
 
 ![Storage, all collections](img/storage-collections.png)
 
 Choosing a collection shows a card per dataset with its document count, total size, how many
-are indexed, and how many hit processing errors.
+are indexed, and how many hit processing errors. The pipeline counts these numbers during and
+after processing. A dataset that it has not counted yet says so.
 
 ![A collection's datasets](img/storage-collection.png)
 
@@ -391,19 +415,23 @@ Reachable at `/admin`. On this deployment the proxy asserts an administrator by 
 
 ### Dashboard
 
-Counts of users, groups, collections and datasets, each linking to its section.
+Counts of users, groups, collections and datasets, each linking to its section. The Datasets
+card opens the Datasets section of the Collections page.
 
 ![Admin dashboard](img/admin-dashboard.png)
 
 ### Collections
 
-The list shows each collection's display name, dataset count, how many groups have access,
-whether it is `public` or `restricted`, and whether its database is ready. The form at the top
-adds a collection.
+The first table shows each collection's display name, dataset count, documents, size, state
+and access. The state is Processing while an operation changes the collection, and Done
+otherwise. A failed operation also ends in Done. The Datasets section lists the datasets of
+every collection with their documents, size, indexed documents, errors, state and creation
+date. The form at the bottom adds a collection.
 
 ![Admin, collections](img/admin-collections.png)
 
-A collection's own page renames it, links to its processing view, and lists its datasets.
+A collection's own page lists its datasets first, then renames it, links to its processing
+view, sets its access, and shows its newest ten operations.
 
 ![Admin, one collection](img/admin-collection.png)
 
@@ -419,10 +447,20 @@ now, and a table of where the processing time actually goes.
 
 ### Datasets
 
-A dataset's page shows its type and source path, when it was created, and its processing
-statistics: blobs, VFS files, plans total and finished, errors, and the OCR languages in use.
+A dataset's page shows its type and source path, when it was created, and its statistics:
+state, documents, size, indexed documents, errors, and finished plans. It also shows the OCR
+languages in use. **Run missing OCR** produces the OCR results that the current settings ask
+for and that do not exist yet. **Run all OCR again** also produces the existing results again.
 
 ![Admin, one dataset](img/admin-dataset.png)
+
+### Feedback
+
+The Feedback page lists the reports that people sent, newest first. Search finds text in the
+title, the description, the account and the page address. The status list shows the reports
+that are not archived, the unread reports, the archived reports, or all of them. Select a title
+to see the description, the page image, a link to the page copy, and the debug context. **Mark
+read** and **Archive** are separate, so an archived report keeps its read state.
 
 ### Users and groups
 

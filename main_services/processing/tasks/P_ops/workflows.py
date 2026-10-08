@@ -283,6 +283,8 @@ class Operation:
             return await self._delete_dataset(params)
         if params.kind == "change_ocr_languages":
             return await self._change_ocr_languages(params)
+        if params.kind == "rerun_ocr":
+            return await self._rerun_ocr(params)
         if params.kind == "retry_failed_files":
             return await self._retry_failed_files(params)
         if params.kind == "purge_unattributed_entities":
@@ -589,6 +591,27 @@ class Operation:
         result = await child
         progress = await self._sample_selector_counts(params, {}, result.get("execution_counts", {}))
         return f"Updated OCR languages. The operation kept {progress['failed_documents']} document failures."
+
+    async def _rerun_ocr(self, params: OperationParams) -> str:
+        """Run OCR again for a dataset with its current settings.
+
+        `replace_existing` travels in the row's `detail`, where the OCR stages read it.
+        Progress is the dataset's plans, as for `change_ocr_languages`.
+        """
+        result = await workflow.execute_child_workflow(
+            "RerunOcr",
+            {
+                "collectionname": params.collectionname,
+                "collection_dataset": params.collection_dataset,
+                "op_id": params.op_id,
+            },
+            id=f"ocr-rerun-{params.op_id}",
+            task_queue="processing-common-queue",
+            search_attributes=dataset_search_attributes(params.collection_dataset),
+        )
+        progress = await self._sample_selector_counts(params, {}, result.get("execution_counts", {}))
+        return (f"Ran OCR again for {result.get('plans', 0)} plans. "
+                f"The operation kept {progress['failed_documents']} document failures.")
 
     async def _collection_database(self, params: OperationParams) -> str:
         """Provision a collection's database, or drop it and its Manticore tables.

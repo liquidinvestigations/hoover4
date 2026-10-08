@@ -73,6 +73,21 @@ fn main() {
                     "/_chat_artifact/{artifact_id}/{asset}",
                     axum::routing::get(backend::server_extra::chat_artifact::chat_artifact),
                 )
+                // A feedback report holds a page image and a DOM copy, so its upload
+                // route has its own body limit. The objects of a report are read by an
+                // administrator only.
+                .route(
+                    "/_feedback/submit",
+                    axum::routing::post(backend::server_extra::feedback::submit_feedback).layer(
+                        axum::extract::DefaultBodyLimit::max(
+                            backend::server_extra::feedback::UPLOAD_MAX_BYTES,
+                        ),
+                    ),
+                )
+                .route(
+                    "/_feedback/{report_id}/{asset}",
+                    axum::routing::get(backend::server_extra::feedback::feedback_asset),
+                )
                 // The agent's eighteen stable read routes, under
                 // `backend::auth::route_policy::AGENT_ROUTE_PREFIX`. Merged in here, before
                 // the session-middleware layer below, so that layer's agent branch resolves

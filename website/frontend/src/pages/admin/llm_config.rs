@@ -11,8 +11,7 @@ use crate::api::admin_api::{
 };
 use crate::components::admin_components::{
     AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN, BTN_PRIMARY, BTN_SMALL, HELP_TEXT, INPUT,
-    LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
-};
+    LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH, SUBHEADING};
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::pages::admin::llm_reports::LlmReports;
 use crate::routes::Route;
@@ -24,7 +23,7 @@ pub fn AdminLlmPage() -> Element {
         AdminGuard {
             AdminShell {
                 title: "LLM".to_string(),
-                breadcrumb: "LLM".to_string(),
+                breadcrumb: String::new(),
                 active: "llm".to_string(),
                 SuspendWrapper { LlmContent {} }
             }
@@ -103,7 +102,7 @@ fn ProviderPanel(page: LlmPageData, mut reload: Signal<u32>, mut flash: Signal<O
             h2 { style: MODULE_CAPTION, "Providers" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",
-                    "Catalog refresh is single-flight and runs in the background. Stale rows stay visible while it works."
+                    "The refresh runs in the background. The current list stays visible meanwhile."
                     if page.refresh_in_flight {
                         " Refresh in flight\u{2026}"
                     }
@@ -189,7 +188,7 @@ fn DefaultsPanel(
                     "Thinking"
                 }
                 p { style: "{HELP_TEXT} margin: 0 0 14px;",
-                    "The model reasons before each tool call and each answer. Titles and compaction summaries never reason."
+                    "The model reasons before each tool call and each answer."
                 }
                 div { style: "display: flex; flex-wrap: wrap; gap: 16px; align-items: end;",
                     label { style: LABEL,
@@ -247,9 +246,9 @@ fn DefaultsPanel(
                     "Current chat default: {page.default_chat_model}. Summarisation: {page.summarization_model}."
                 }
 
-                h3 { style: "font-size: 15px; margin: 18px 0 4px;", "Per-profile models" }
+                h3 { style: SUBHEADING, "Per-profile models" }
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
-                    "A lead orchestrator reading a hundred search hits and a summariser                      writing a chat title do not need the same model. Leave a row empty to                      use the chat default; clearing a row puts it back on the default."
+                    "An empty row uses the chat default model."
                 }
                 for (key, label) in PROFILE_ROWS {
                     ProfileModelRow {
@@ -424,9 +423,8 @@ fn CatalogPanel(
                     }
                 }
                 p { style: "{HELP_TEXT} margin-top: 12px;",
-                    "A forged model id in a chat request is rejected server-side, not merely hidden here. "
                     Link { to: Route::AdminAiStatusPage {}, style: LINK, "AI status" }
-                    " shows live serving health."
+                    " shows the serving health."
                 }
             }
         }

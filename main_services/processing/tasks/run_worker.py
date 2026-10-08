@@ -311,8 +311,10 @@ async def run_common_worker():
         reopen_plans_for_ocr_change,
         report_ocr_language_progress,
     )
+    from .P_admin.ocr_rerun import reopen_plans_for_ocr_rerun
     from .P_admin.workflows import (
         ChangeOcrLanguages,
+        RerunOcr,
         CollectEtaSamples,
         DropCollectionDatabase,
         EnsureCollectionDatabase,
@@ -381,6 +383,7 @@ async def run_common_worker():
             DropCollectionDatabase,
             PurgeDataset,
             ChangeOcrLanguages,
+            RerunOcr,
             CollectEtaSamples,
             SweepChatArtifacts,
           ],
@@ -439,6 +442,10 @@ async def run_common_worker():
             reopen_plans_for_ocr_change,
             purge_dropped_ocr_variants,
             delete_orphaned_derived_pdfs,
+
+            # P_admin rerun_ocr
+            reopen_plans_for_ocr_rerun,
+
             select_historical_errors,
             reconcile_selected_errors,
             clear_unattributed_entities,

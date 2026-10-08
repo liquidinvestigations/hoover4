@@ -29,7 +29,7 @@ pub fn AdminOperationsPage() -> Element {
         AdminGuard {
             AdminShell {
                 title: "Operations".to_string(),
-                breadcrumb: "Operations".to_string(),
+                breadcrumb: String::new(),
                 active: "operations".to_string(),
                 SuspendWrapper { OperationsContent {} }
             }
@@ -185,20 +185,19 @@ fn TaskErrorRatePanel(
             h2 { style: MODULE_CAPTION, "Failure rate by task type ({collectionname})" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
-                    "One row per activity execution, retries included. Anything over "
+                    "One row per activity execution, retries included. A rate over "
                     b { "{threshold:.1}%" }
-                    " is called out as a possible tooling limitation; below that is an ordinary "
-                    "failure rate on a messy corpus."
+                    " is marked."
                 }
                 if rates.is_empty() {
                     p { style: HELP_TEXT, "No task executions recorded for this collection yet." }
                 } else {
                     if above.is_empty() {
-                        p { style: "font-size: 13px; color: #2e7d32; margin: 0 0 10px;",
+                        p { style: "font-size: var(--x-text-sm); color: var(--x-ok); margin: 0 0 10px;",
                             "No task type is failing above {threshold:.1}%."
                         }
                     } else {
-                        p { style: "font-size: 13px; color: {C_DANGER}; font-weight: 600; margin: 0 0 10px;",
+                        p { style: "font-size: var(--x-text-sm); color: {C_DANGER}; font-weight: 600; margin: 0 0 10px;",
                             "{above.len()} task type(s) failing above {threshold:.1}%."
                         }
                     }
@@ -224,11 +223,11 @@ fn TaskErrorRatePanel(
                                         style: if r.above_threshold {
                                             "{TD} color: {C_DANGER}; font-weight: 700;"
                                         } else {
-                                            "{TD} color: #666;"
+                                            "{TD} color: var(--x-ink-muted);"
                                         },
                                         "{r.error_rate_percent:.1}%"
                                         if r.above_threshold {
-                                            span { style: "margin-left: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;",
+                                            span { style: "margin-left: 6px; font-size: var(--x-text-xs);",
                                                 "above the line"
                                             }
                                         }
@@ -260,9 +259,9 @@ fn format_duration(seconds: u64) -> String {
 /// row says so beside it.
 fn state_colour(state: &str) -> &'static str {
     match state {
-        "running" => "#417690",
+        "running" => "var(--x-link)",
         "pending" | "queued" => "#8a6d3b",
-        "finished" => "#2e7d32",
+        "finished" => "var(--x-ok)",
         "cancelled" => "#666",
         _ => C_DANGER,
     }
@@ -289,6 +288,7 @@ pub fn OperationsTable(
                     th { style: TH, "Kind" }
                     th { style: TH, "Target" }
                     th { style: TH, "State" }
+                    th { style: TH, "Workflow" }
                     th { style: TH, "Queued at" }
                     th { style: TH, "Started" }
                     th { style: TH, "Duration" }
@@ -333,7 +333,6 @@ fn OperationTableRow(
         tr {
             "data-op-id": "{row.op_id}",
             td { style: TD,
-                code { "{row.kind}" }
                 Link {
                     to: Route::AdminOperationDetailPage {
                         op_id: row.op_id.clone(),
@@ -342,22 +341,16 @@ fn OperationTableRow(
                     },
                     class: "x-ops-detail-link",
                     style: LINK,
-                    code { "{row.op_id}" }
+                    title: "{row.op_id}",
+                    "{row.kind}"
                 }
                 if row.destructive {
-                    div { style: "font-size: 11px; color: {C_DANGER}; text-transform: uppercase; letter-spacing: 0.5px;",
-                        "destructive"
+                    div { style: "font-size: var(--x-text-xs); color: {C_DANGER};",
+                        "Destructive"
                     }
                 }
                 if !row.rerun_of.is_empty() {
-                    div { style: HELP_TEXT, "re-run of {row.rerun_of}" }
-                }
-                a {
-                    class: "x-ops-temporal-link",
-                    href: "{row.temporal_url}",
-                    target: "_blank",
-                    style: "{LINK} font-size: 12px; display: inline-block; margin-top: 4px;",
-                    "Temporal"
+                    div { style: HELP_TEXT, title: "{row.rerun_of}", "Repeated run" }
                 }
             }
             td { style: TD,
@@ -365,13 +358,22 @@ fn OperationTableRow(
                 div { style: HELP_TEXT, "{row.user_id}" }
             }
             td {
-                style: "{TD} color: {state_colour(&row.state)}; font-weight: 600;",
+                style: "{TD} color: {state_colour(&row.state)}; font-weight: 500;",
                 "{row.state}"
             }
-            td { style: TD, "{row.started_at}" }
             td { style: TD,
+                a {
+                    class: "x-ops-temporal-link",
+                    href: "{row.temporal_url}",
+                    target: "_blank",
+                    style: LINK,
+                    "(Temporal)"
+                }
+            }
+            td { style: "{TD} white-space: nowrap;", "{short_time(&row.started_at)}" }
+            td { style: "{TD} white-space: nowrap;",
                 if let Some(run_started_at) = row.run_started_at.as_ref() {
-                    "{run_started_at}"
+                    "{short_time(run_started_at)}"
                 } else {
                     "-"
                 }
@@ -452,6 +454,12 @@ fn OperationTableRow(
     }
 }
 
+/// An RFC 3339 timestamp as `YYYY-MM-DD HH:MM`, which fits one table line.
+fn short_time(rfc3339: &str) -> String {
+    let text = rfc3339.replace('T', " ");
+    text.get(..16).map(str::to_string).unwrap_or(text)
+}
+
 /// The counters as a sentence, in the unit the kind actually counts.
 ///
 /// **The unit is a property of the kind, not of the page.** A purge counts rows still in
@@ -493,7 +501,7 @@ fn ProgressCell(row: OperationRow) -> Element {
     }
     let percent = (row.progress_done as f64 * 100.0 / row.progress_total as f64).clamp(0.0, 100.0);
     let complete = row.progress_done >= row.progress_total;
-    let bar = if complete { "#79aec8" } else { "#417690" };
+    let bar = if complete { "var(--x-link)" } else { "var(--x-link)" };
     rsx! {
         div { style: "min-width: 110px;",
             div { style: "background: #eee; border-radius: 3px; height: 8px; overflow: hidden;",
@@ -515,7 +523,7 @@ fn OutcomeCell(row: OperationRow) -> Element {
     rsx! {
         div {
             if row.has_failure_tree {
-                div { style: "font-size: 12px; max-width: 320px; overflow-wrap: anywhere;",
+                div { style: "font-size: var(--x-text-xs); max-width: 320px; overflow-wrap: anywhere;",
                     Link {
                         to: Route::AdminFailureDetailPage { op_id: row.op_id.clone() },
                         style: LINK,
@@ -528,17 +536,17 @@ fn OutcomeCell(row: OperationRow) -> Element {
                     }
                 }
             } else if !row.error.is_empty() {
-                div { style: "color: {C_DANGER}; font-size: 12px; max-width: 320px; overflow-wrap: anywhere;",
+                div { style: "color: {C_DANGER}; font-size: var(--x-text-xs); max-width: 320px; overflow-wrap: anywhere;",
                     "{row.error}"
                     div { style: HELP_TEXT, "no captured tree" }
                 }
             }
             match row.failed_documents {
                 Some(0) => rsx! {
-                    span { style: "font-size: 12px; color: #2e7d32;", "no failed documents" }
+                    span { style: "font-size: var(--x-text-xs); color: var(--x-ok);", "no failed documents" }
                 },
                 Some(n) => rsx! {
-                    div { style: "color: {C_DANGER}; font-weight: 700; font-size: 12px;",
+                    div { style: "color: {C_DANGER}; font-weight: 700; font-size: var(--x-text-xs);",
                         "{n} document(s) failed"
                     }
                     if let Some(t) = row.failed_tasks {
@@ -587,8 +595,8 @@ pub fn CollectionOperationsPanel(collectionname: String) -> Element {
             h2 { style: MODULE_CAPTION, "Operations" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
-                    "Long operations dispatched against this collection, newest first. "
-                    "Per-dataset OCR language changes are not operations yet and do not appear here."
+                    "The newest ten operations of this collection. "
+                    Link { to: Route::AdminOperationsPage {}, style: LINK, "All operations" }
                 }
                 if let Some(m) = msg() {
                     SuccessBar { message: m }

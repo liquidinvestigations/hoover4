@@ -2,7 +2,7 @@
 
 use common::search_query::SearchQuery;
 use common::search_result::DocumentIdentifier;
-use common::storage_tree::{CollectionNode, format_size};
+use common::storage_tree::{DatasetAggregates, format_size};
 use common::vfs::{PathDescriptor, VfsFileEntry, VfsListing};
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
@@ -14,7 +14,7 @@ use dioxus_free_icons::icons::md_file_icons::MdFolder;
 
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
 use crate::components::resizable_sidebar::ResizableSidebar;
-use crate::api::storage_api::{collection_overview, list_storage_tree};
+use crate::api::storage_api::{collection_overview, collections_overview};
 use crate::api::vfs_api::{vfs_node_term_id, vfs_search_in_folder};
 use crate::components::search_components::card_action_buttons::{
     DocCardActionButtonMore, DocCardActionButtonOpenNewTab,
@@ -32,8 +32,8 @@ use crate::routes::Route;
 
 const PAGE_STYLE: &str = "
     background: #FFFFFF;
-    color: #111827;
-    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    color: var(--x-ink);
+    font-family: var(--x-font);
     height: 100%;
     width: 100%;
     box-sizing: border-box;
@@ -68,8 +68,8 @@ const SIDEBAR_HEADER_STYLE: &str = "
     padding: 14px 16px;
     background: #F3F4F6;
     border-bottom: 1px solid #E5E7EB;
-    color: #6B7280;
-    font-size: 13px;
+    color: var(--x-ink-muted);
+    font-size: var(--x-text-sm);
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -115,29 +115,29 @@ const BREADCRUMB_BAR_STYLE: &str = "
     padding: 14px 20px;
     background: #F3F4F6;
     border-bottom: 1px solid #E5E7EB;
-    font-size: 14px;
-    color: #374151;
+    font-size: var(--x-text-md);
+    color: var(--x-ink);
     flex-shrink: 0;
 ";
 
-const CRUMB_LABEL_STYLE: &str = "color: #374151; font-weight: 500; text-decoration: none;";
-pub(crate) const CRUMB_LINK_STYLE: &str = "color: #2563EB; text-decoration: none; font-weight: 500;";
-pub(crate) const CRUMB_SEP_STYLE: &str = "color: #9CA3AF; font-size: 14px;";
+const CRUMB_LABEL_STYLE: &str = "color: var(--x-ink); font-weight: 500; text-decoration: none;";
+pub(crate) const CRUMB_LINK_STYLE: &str = "color: var(--x-link); text-decoration: none; font-weight: 500;";
+pub(crate) const CRUMB_SEP_STYLE: &str = "color: var(--x-ink-faint); font-size: var(--x-text-md);";
 
 const TABLE_STYLE: &str = "
     width: 100%;
     border-collapse: collapse;
     background: #FFFFFF;
-    font-size: 14px;
+    font-size: var(--x-text-md);
 ";
 
 const TH_NAME_STYLE: &str = "
     text-align: left;
     padding: 12px 20px;
     background: #F3F4F6;
-    color: #6B7280;
+    color: var(--x-ink-muted);
     font-weight: 500;
-    font-size: 13px;
+    font-size: var(--x-text-sm);
     border-bottom: 1px solid #E5E7EB;
 ";
 
@@ -145,9 +145,9 @@ const TH_SIZE_STYLE: &str = "
     text-align: left;
     padding: 12px 20px;
     background: #F3F4F6;
-    color: #6B7280;
+    color: var(--x-ink-muted);
     font-weight: 500;
-    font-size: 13px;
+    font-size: var(--x-text-sm);
     border-bottom: 1px solid #E5E7EB;
     width: 130px;
 ";
@@ -166,15 +166,15 @@ const ROW_HOVER_CLASS: &str = "hoover4-hover-shadow-background";
 const TD_NAME_STYLE: &str = "
     padding: 14px 20px;
     border-bottom: 1px solid #E5E7EB;
-    color: #111827;
+    color: var(--x-ink-strong);
     vertical-align: middle;
 ";
 
 const TD_SIZE_STYLE: &str = "
     padding: 14px 20px;
     border-bottom: 1px solid #E5E7EB;
-    color: #6B7280;
-    font-size: 13px;
+    color: var(--x-ink-muted);
+    font-size: var(--x-text-sm);
     vertical-align: middle;
 ";
 
@@ -203,19 +203,19 @@ const NAME_INNER_STYLE: &str = "
 ";
 
 const ICON_STYLE: &str = "
-    font-size: 18px;
+    font-size: var(--x-text-xl);
     width: 22px;
     text-align: center;
     flex-shrink: 0;
-    color: #4B5563;
+    color: var(--x-ink);
 ";
 
 const FOLDER_LINK_STYLE: &str = "
-    color: #111827;
+    color: var(--x-ink-strong);
     text-decoration: none;
 ";
 
-const FILE_NAME_STYLE: &str = "color: #111827;";
+const FILE_NAME_STYLE: &str = "color: var(--x-ink-strong);";
 
 // ---------- Top-level "all collections" page (route: /file_browser) ----------
 
@@ -225,16 +225,41 @@ const FILE_NAME_STYLE: &str = "color: #111827;";
 pub fn FileBrowserCollectionsPage() -> Element {
     // No dataset and no folder: the tree shows collections and their datasets only.
     let nothing = use_memo(String::new);
-    let tree = use_resource(move || async move { list_storage_tree().await });
+    let overview = use_resource(move || async move { collections_overview().await });
 
-    let body = match tree.read().clone() {
+    let body = match overview.read().clone() {
         None => rsx! { div { padding: "20px", "Loading..." } },
         Some(Err(e)) => rsx! { div { class: "x-error-display", padding: "20px", "Error: {e}" } },
         Some(Ok(collections)) => {
             if collections.is_empty() {
-                rsx! { p { padding: "20px", "(no collections found)" } }
+                rsx! { p { padding: "20px", "No collections are available to you." } }
             } else {
-                rsx! { CollectionsTable { collections } }
+                rsx! {
+                    div {
+                        style: CARD_GRID_STYLE,
+                        for collection in collections.iter() {
+                            StatsCard {
+                                key: "collection-{collection.collectionname}",
+                                to: Route::FileBrowserCollectionPage {
+                                    collectionname: collection.collectionname.clone(),
+                                },
+                                title: collection.collectionname.clone(),
+                                tooltip: collection.collectionname.clone(),
+                                is_collection: true,
+                                dataset_count: Some(collection.dataset_count),
+                                stats: (collection.counted_dataset_count > 0).then(|| DatasetAggregates {
+                                    collection_dataset: String::new(),
+                                    document_count: collection.document_count,
+                                    total_size_bytes: collection.total_size_bytes,
+                                    indexed_count: collection.indexed_count,
+                                    error_count: collection.error_count,
+                                    processing: collection.processing,
+                                }),
+                                incomplete: !collection.is_complete(),
+                            }
+                        }
+                    }
+                }
             }
         }
     };
@@ -252,53 +277,6 @@ pub fn FileBrowserCollectionsPage() -> Element {
                     span { style: CRUMB_LABEL_STYLE, "Collections" }
                 }
                 {body}
-            }
-        }
-    }
-}
-
-#[component]
-fn CollectionsTable(collections: Vec<CollectionNode>) -> Element {
-    rsx! {
-        table {
-            style: TABLE_STYLE,
-            thead {
-                tr {
-                    th { style: TH_NAME_STYLE, "Name" }
-                    th { style: TH_SIZE_STYLE, "Datasets" }
-                }
-            }
-            tbody {
-                for collection in collections.iter() {
-                    {
-                        let name = collection.collectionname.clone();
-                        let count = collection.datasets.len();
-                        rsx! {
-                            tr {
-                                key: "collection-{name}",
-                                style: ROW_CLICKABLE_STYLE,
-                                class: ROW_HOVER_CLASS,
-                                onclick: {
-                                    let name = name.clone();
-                                    move |_| {
-                                        navigator().push(Route::FileBrowserCollectionPage {
-                                            collectionname: name.clone(),
-                                        });
-                                    }
-                                },
-                                td {
-                                    style: TD_NAME_STYLE,
-                                    div {
-                                        style: NAME_INNER_STYLE,
-                                        span { style: ICON_STYLE, {collection_icon()} }
-                                        span { style: FOLDER_LINK_STYLE, "{name}" }
-                                    }
-                                }
-                                td { style: TD_SIZE_STYLE, "{count}" }
-                            }
-                        }
-                    }
-                }
             }
         }
     }
@@ -336,19 +314,94 @@ const CARD_GRID_STYLE: &str = "
 const CARD_STYLE: &str = "
     display: flex; flex-direction: column; gap: 10px;
     padding: 16px 18px; min-width: 0;
-    border: 1px solid #E5E7EB; border-radius: 12px; background: #FFFFFF;
-    cursor: pointer; text-decoration: none; color: #111827;
+    border: 1px solid var(--x-border); border-radius: var(--x-radius); background: white;
+    cursor: pointer; text-decoration: none; color: var(--x-ink);
 ";
 
 const CARD_STAT_ROW: &str = "
     display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
-    font-size: 13px; color: #6B7280;
+    font-size: var(--x-text-sm); color: var(--x-ink-muted);
 ";
 
-/// The datasets of one collection, as cards carrying the numbers the pipeline already
-/// materialises. Nothing here is computed for the card's sake: the counts and the total
-/// size come from the same `blobs` / `index_state` / `processing_errors` reads the admin
-/// pages use, aggregated per collection and cached like the other ledger reads.
+const CARD_VALUE_STYLE: &str = "color: var(--x-ink-strong); font-weight: 500;";
+
+const CARD_BADGE_STYLE: &str = "
+    flex-shrink: 0; padding: 1px 8px; border-radius: 10px;
+    font-size: var(--x-text-xs); font-weight: 500;
+    color: var(--x-link); border: 1px solid var(--x-link);
+";
+
+/// One storage card: a collection on the root page, or a dataset on a collection page.
+///
+/// `stats` is `None` when the pipeline has not counted the dataset yet, and the card then
+/// says so instead of showing zeros. `incomplete` marks a collection sum that leaves out
+/// such datasets.
+#[component]
+fn StatsCard(
+    to: Route,
+    title: String,
+    tooltip: String,
+    is_collection: bool,
+    dataset_count: Option<u64>,
+    stats: Option<DatasetAggregates>,
+    #[props(default)] incomplete: bool,
+) -> Element {
+    rsx! {
+        Link {
+            to: to,
+            style: CARD_STYLE,
+            class: ROW_HOVER_CLASS,
+            title: "{tooltip}",
+            div {
+                style: "display: flex; align-items: center; gap: 10px; min-width: 0;",
+                span { style: ICON_STYLE, if is_collection { {collection_icon()} } else { {dataset_icon()} } }
+                span {
+                    style: "flex: 1 1 auto; font-size: var(--x-text-lg); font-weight: 600; color: var(--x-ink-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+                    "{title}"
+                }
+                if stats.as_ref().is_some_and(|s| s.processing) {
+                    span { class: "x-storage-card-processing", style: CARD_BADGE_STYLE, "Processing" }
+                }
+            }
+            if let Some(count) = dataset_count {
+                div { style: CARD_STAT_ROW,
+                    span { "Datasets" }
+                    span { style: CARD_VALUE_STYLE, "{count}" }
+                }
+            }
+            match stats {
+                None => rsx! {
+                    div { style: CARD_STAT_ROW, span { "Not counted yet" } }
+                },
+                Some(aggregates) => rsx! {
+                    div { style: CARD_STAT_ROW,
+                        span { "Documents" }
+                        span { style: CARD_VALUE_STYLE, "{aggregates.document_count}" }
+                    }
+                    div { style: CARD_STAT_ROW,
+                        span { "Total size" }
+                        span { style: CARD_VALUE_STYLE, "{format_size(aggregates.total_size_bytes)}" }
+                    }
+                    div { style: CARD_STAT_ROW,
+                        span { "Indexed" }
+                        span { style: CARD_VALUE_STYLE, "{aggregates.indexed_count}" }
+                    }
+                    if aggregates.error_count > 0 {
+                        div { style: CARD_STAT_ROW,
+                            span { "Processing errors" }
+                            span { style: "color: var(--x-warning); font-weight: 500;", "{aggregates.error_count}" }
+                        }
+                    }
+                    if incomplete {
+                        div { style: CARD_STAT_ROW, span { "Some datasets are not counted yet." } }
+                    }
+                },
+            }
+        }
+    }
+}
+
+/// The datasets of one collection, as cards with their cached statistics.
 #[component]
 pub fn FileBrowserCollectionPage(collectionname: String) -> Element {
     // The signal, read inside the closure: that read is the subscription, and this page
@@ -365,47 +418,20 @@ pub fn FileBrowserCollectionPage(collectionname: String) -> Element {
                 style: CARD_GRID_STYLE,
                 for dataset in overview.datasets.iter() {
                     {
-                        let aggregates = overview
-                            .aggregates_for(&dataset.collection_dataset)
-                            .cloned()
-                            .unwrap_or_default();
+                        let aggregates = overview.aggregates_for(&dataset.collection_dataset).cloned();
                         rsx! {
-                            Link {
+                            StatsCard {
                                 key: "{dataset.collection_dataset}",
                                 to: Route::file_browser_page(
                                     dataset.collection_dataset.clone(),
                                     PathDescriptor::root(),
                                     None,
                                 ),
-                                style: CARD_STYLE,
-                                class: ROW_HOVER_CLASS,
-                                title: "{dataset.collection_dataset}",
-                                div {
-                                    style: "display: flex; align-items: center; gap: 10px; min-width: 0;",
-                                    span { style: ICON_STYLE, {dataset_icon()} }
-                                    span {
-                                        style: "font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
-                                        "{dataset.label()}"
-                                    }
-                                }
-                                div { style: CARD_STAT_ROW,
-                                    span { "Documents" }
-                                    span { style: "color: #111827; font-weight: 500;", "{aggregates.document_count}" }
-                                }
-                                div { style: CARD_STAT_ROW,
-                                    span { "Total size" }
-                                    span { style: "color: #111827; font-weight: 500;", "{format_size(aggregates.total_size_bytes)}" }
-                                }
-                                div { style: CARD_STAT_ROW,
-                                    span { "Indexed" }
-                                    span { style: "color: #111827; font-weight: 500;", "{aggregates.indexed_count}" }
-                                }
-                                if aggregates.error_count > 0 {
-                                    div { style: CARD_STAT_ROW,
-                                        span { "Processing errors" }
-                                        span { style: "color: #B45309; font-weight: 500;", "{aggregates.error_count}" }
-                                    }
-                                }
+                                title: dataset.label().to_string(),
+                                tooltip: dataset.collection_dataset.clone(),
+                                is_collection: false,
+                                dataset_count: None,
+                                stats: aggregates,
                             }
                         }
                     }
@@ -705,7 +731,7 @@ const CRUMB_CHIP_STYLE: &str = "
     display: inline-flex; align-items: center; justify-content: center;
     width: 26px; height: 22px; border-radius: 100px;
     border: 1px solid rgba(0,0,0,0.25); background: white;
-    cursor: pointer; padding: 0; color: #374151;
+    cursor: pointer; padding: 0; color: var(--x-ink);
 ";
 
 const CRUMB_POPUP_STYLE: &str = "
@@ -719,8 +745,8 @@ const CRUMB_POPUP_STYLE: &str = "
 
 const CRUMB_POPUP_ITEM_STYLE: &str = "
     display: flex; align-items: center; gap: 8px;
-    padding: 6px 12px; font-size: 14px; line-height: 20px;
-    text-decoration: none; color: #2563EB;
+    padding: 6px 12px; font-size: var(--x-text-md); line-height: 20px;
+    text-decoration: none; color: var(--x-link);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 ";
 
@@ -903,7 +929,7 @@ fn ListingTable(
     on_file_click: Callback<DocumentIdentifier>,
 ) -> Element {
     if listing.directories.is_empty() && listing.files.is_empty() {
-        return rsx! { p { padding: "20px", color: "#6B7280", "(empty folder)" } };
+        return rsx! { p { padding: "20px", color: "var(--x-ink-muted)", "(empty folder)" } };
     }
     let mut mounts = use_signal(move || std::collections::HashMap::new());
     let onmounted = Callback::new(move |(_id, _d): (DocumentIdentifier, Event<MountedData>)| {
@@ -1123,7 +1149,7 @@ fn ViewDetailsButton(
         button {
             style: "
                 padding: 4px 10px; border: 1px solid rgba(0,0,0,0.4); border-radius: 16px;
-                background: white; cursor: pointer; font-size: 13px;
+                background: white; cursor: pointer; font-size: var(--x-text-sm);
                 white-space: nowrap; display: inline-flex; align-items: center;
             ",
             class: ROW_HOVER_CLASS,
@@ -1243,7 +1269,7 @@ fn FolderToolbar(
                 style: "
                     display: inline-flex; align-items: center; gap: 6px;
                     padding: 5px 12px; border: 1px solid rgba(0,0,0,0.35); border-radius: 100px;
-                    text-decoration: none; color: #111827; font-size: 14px; white-space: nowrap;
+                    text-decoration: none; color: var(--x-ink-strong); font-size: var(--x-text-md); white-space: nowrap;
                 ",
                 class: ROW_HOVER_CLASS,
                 title: "Search the whole corpus, filtered to this folder and everything below it",
@@ -1253,7 +1279,7 @@ fn FolderToolbar(
         }
         if let Some(count) = match_count() {
             div {
-                style: "padding: 6px 14px; font-size: 14px; color: rgba(0,0,0,0.7); border-bottom: 1px solid #E5E7EB;",
+                style: "padding: 6px 14px; font-size: var(--x-text-md); color: rgba(0,0,0,0.7); border-bottom: 1px solid #E5E7EB;",
                 "{count} matches in this folder and below"
             }
         }
@@ -1269,7 +1295,7 @@ fn FolderSearchResults(
     on_file_click: Callback<DocumentIdentifier>,
 ) -> Element {
     if nodes.is_empty() {
-        return rsx! { p { padding: "20px", color: "#6B7280", "No matches in this folder." } };
+        return rsx! { p { padding: "20px", color: "var(--x-ink-muted)", "No matches in this folder." } };
     }
     rsx! {
         table {
@@ -1326,7 +1352,7 @@ fn FolderSearchResults(
                                     }
                                 }
                                 td {
-                                    style: "padding: 6px 10px; color: #6B7280; font-size: 13px; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+                                    style: "padding: 6px 10px; color: var(--x-ink-muted); font-size: var(--x-text-sm); max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
                                     title: "{node.path}",
                                     "{node.path}"
                                 }

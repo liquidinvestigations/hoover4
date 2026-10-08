@@ -148,12 +148,12 @@ pub fn BrowserCard(
         return rsx! {
             div {
                 style: "align-self: flex-start; max-width: 92%; background: #FFFFFF; \
-                        border: 1px solid #E5E7EB; border-radius: 10px; padding: 8px 12px; \
-                        font-size: 13px; color: #1E293B; display: flex; align-items: center; \
+                        border: 1px solid var(--x-border); border-radius: 10px; padding: 8px 12px; \
+                        font-size: var(--x-text-sm); color: var(--x-ink-strong); display: flex; align-items: center; \
                         gap: 10px; flex-wrap: wrap;",
                 span {
-                    style: "flex-shrink: 0; background: #E5E7EB; color: #1E293B; \
-                            border-radius: 999px; padding: 1px 8px; font-size: 11px; \
+                    style: "flex-shrink: 0; background: #E5E7EB; color: var(--x-ink-strong); \
+                            border-radius: 999px; padding: 1px 8px; font-size: var(--x-text-xs); \
                             font-weight: 400; font-family: inherit;",
                     "{tool_name}"
                 }
@@ -207,7 +207,7 @@ pub fn BrowserCard(
                         on_open: move |e| popup.set(Some(e)),
                         img_style: "height: 40px; width: 71px; object-fit: cover; \
                                     border-radius: 3px; display: block;".to_string(),
-                        button_style: "padding: 0; border: 1px solid #E5E7EB; background: none; \
+                        button_style: "padding: 0; border: 1px solid var(--x-border); background: none; \
                                        border-radius: 4px; cursor: pointer; flex-shrink: 0; \
                                        line-height: 0;".to_string(),
                     }
@@ -216,8 +216,8 @@ pub fn BrowserCard(
 
             if !error.is_empty() {
                 div {
-                    style: "background: #FEF2F2; color: #991B1B; border: 1px solid #FECACA; \
-                            border-radius: 6px; padding: 6px 8px; font-size: 12px; \
+                    style: "background: #FEF2F2; color: var(--x-danger); border: 1px solid #FECACA; \
+                            border-radius: 6px; padding: 6px 8px; font-size: var(--x-text-xs); \
                             word-break: break-word;",
                     "{error}"
                 }
@@ -228,7 +228,7 @@ pub fn BrowserCard(
                     href: "{href}",
                     target: "_blank",
                     rel: "noopener noreferrer nofollow",
-                    style: "color: #1D4ED8; font-size: 12px; word-break: break-all;",
+                    style: "color: var(--x-link); font-size: var(--x-text-xs); word-break: break-all;",
                     "{href}"
                 }
             }
@@ -311,17 +311,17 @@ fn CaptureBlock(
                 opener,
                 on_open,
                 img_style: "max-width: 100%; border-radius: 5px; display: block;".to_string(),
-                button_style: "padding: 0; border: 1px solid #E5E7EB; background: none; \
+                button_style: "padding: 0; border: 1px solid var(--x-border); background: none; \
                                border-radius: 6px; cursor: pointer; line-height: 0; \
                                max-width: 100%;".to_string(),
             }
             if !artifact.title.is_empty() {
-                div { style: "font-size: 12px; font-weight: 500;", "{artifact.title}" }
+                div { style: "font-size: var(--x-text-xs); font-weight: 500;", "{artifact.title}" }
             }
             // Never an absent element: a capture that is not there must say why.
             if !has_page {
                 div {
-                    style: "font-size: 11px; color: #475569; font-style: italic;",
+                    style: "font-size: var(--x-text-xs); color: var(--x-ink); font-style: italic;",
                     if artifact.detail.is_empty() {
                         "The page itself was not archived (status: {artifact.status}). The screenshot above is what was kept."
                     } else {
@@ -330,7 +330,7 @@ fn CaptureBlock(
                 }
             } else {
                 div {
-                    style: "font-size: 11px;",
+                    style: "font-size: var(--x-text-xs);",
                     "Click the screenshot to open the archived page."
                 }
             }
@@ -353,15 +353,15 @@ fn PageText(text: String) -> Element {
         div {
             pre {
                 style: "margin: 0; white-space: pre-wrap; word-break: break-word; \
-                        font-family: ui-monospace, monospace; font-size: 11px; \
+                        font-family: ui-monospace, monospace; font-size: var(--x-text-xs); \
                         background: #F1F5F9; padding: 8px; border-radius: 6px; \
                         max-height: 320px; overflow: auto;",
                 "{clipped}"
             }
             if long {
                 button {
-                    style: "background: none; border: none; color: #475569; cursor: pointer; \
-                            font-size: 12px; padding: 2px 0 0 0; text-decoration: underline;",
+                    style: "background: none; border: none; color: var(--x-ink); cursor: pointer; \
+                            font-size: var(--x-text-xs); padding: 2px 0 0 0; text-decoration: underline;",
                     onclick: move |_| {
                         let next = !*show_all.peek();
                         show_all.set(next);
@@ -450,14 +450,14 @@ fn ArchivedPagePopup(artifact: ArtifactRef, on_close: EventHandler<()>) -> Eleme
             header: rsx! {
                 div {
                     style: "display: flex; align-items: center; gap: 12px; padding: 10px 14px; \
-                            border-bottom: 1px solid #E2E8F0; font-size: 12px;",
+                            border-bottom: 1px solid var(--x-border); font-size: var(--x-text-xs);",
                     strong { style: "flex-shrink: 0;", "Archived page" }
                     if let Some(href) = link.clone() {
                         a {
                             href: "{href}",
                             target: "_blank",
                             rel: "noopener noreferrer nofollow",
-                            style: "flex: 1; min-width: 0; color: #1D4ED8; overflow: hidden; \
+                            style: "flex: 1; min-width: 0; color: var(--x-link); overflow: hidden; \
                                     text-overflow: ellipsis; white-space: nowrap;",
                             "{href}"
                         }
@@ -468,7 +468,7 @@ fn ArchivedPagePopup(artifact: ArtifactRef, on_close: EventHandler<()>) -> Eleme
                         a {
                             href: "{page}",
                             download: "page.html",
-                            style: "flex-shrink: 0; color: #4F46E5;",
+                            style: "flex-shrink: 0; color: var(--x-link);",
                             "Download"
                         }
                     }
@@ -489,7 +489,7 @@ fn ArchivedPagePopup(artifact: ArtifactRef, on_close: EventHandler<()>) -> Eleme
             } else {
                 div {
                     style: "flex: 1; display: flex; align-items: center; justify-content: center; \
-                            padding: 30px; text-align: center; color: #475569; font-size: 13px;",
+                            padding: 30px; text-align: center; color: var(--x-ink); font-size: var(--x-text-sm);",
                     if artifact.detail.is_empty() {
                         "This page was not archived (status: {artifact.status})."
                     } else {

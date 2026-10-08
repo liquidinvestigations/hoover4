@@ -140,10 +140,8 @@ const INDENT_PX: usize = 16;
 
 /// Pixels of indent per rung past [`FULL_STEP_RUNGS`].
 ///
-/// Small, but not as small as it looks: the app lays out at a 1920 px design width and
-/// `zoom`s to the window (`assets/main.css`), so at a 1280 px window this is 5 device
-/// pixels. 4 px would be 2.5, which is not a step anyone can see, and an indent nobody can
-/// see is the flat cap again under another name.
+/// 4 px is not a step a reader can see, and an indent nobody can see is the flat cap
+/// again under another name.
 const DEEP_INDENT_PX: usize = 8;
 
 /// The indent may never grow past this, however many rungs there are.

@@ -10,6 +10,12 @@ use crate::routes::Route;
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const THEME_CSS: Asset = asset!("/assets/dx-components-theme.css");
+/// html-to-image 1.11.13, MIT licence, vendored with its licence file. The feedback
+/// script draws the page image with it.
+const HTML_TO_IMAGE_JS: Asset = asset!("/assets/feedback/html-to-image.js");
+/// The feedback log collector and capture. It loads with the application, so the log
+/// holds the entries since the application loaded.
+const FEEDBACK_JS: Asset = asset!("/assets/feedback/feedback.js");
 
 /// The vendored Roboto and Inter font files and their stylesheet, declared so `dx`
 /// ships the whole folder.
@@ -33,6 +39,8 @@ pub fn App() -> Element {
         document::Link { rel: "stylesheet", href: THEME_CSS }
 
         PdfViewerJsScriptTag {  }
+        document::Script { src: HTML_TO_IMAGE_JS }
+        document::Script { src: FEEDBACK_JS }
 
         GlobalErrorBoundary {
             boundary_name: "App".to_string(),

@@ -6,6 +6,7 @@ INPUT_KEYS: dict[str, tuple[str, ...]] = {
     "add_dataset": ("dataset_path",),
     "rescan_dataset": ("dataset_path",),
     "change_ocr_languages": ("tesseract_languages", "easyocr_languages"),
+    "rerun_ocr": ("replace_existing",),
     "retry_failed_files": ("task_name", "hash"),
     "refresh_document_locations": ("item_hashes",),
     "export_collection": ("destination",),

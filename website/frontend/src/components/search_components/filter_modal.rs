@@ -35,7 +35,7 @@ use dioxus_free_icons::{
         md_communication_icons::{MdBusiness, MdEmail, MdLocationOn, MdPhone},
         md_content_icons::MdFilterList,
         md_device_icons::MdStorage,
-        md_editor_icons::{MdAttachMoney, MdInsertDriveFile},
+        md_editor_icons::{MdAttachMoney, MdInsertDriveFile, MdTextFields},
         md_image_icons::MdStraighten,
         md_navigation_icons::MdClose,
         md_social_icons::{MdDomain, MdPerson},
@@ -82,6 +82,7 @@ pub enum FilterCategory {
     Collections,
     FileTypes,
     Language,
+    TextSource,
     FileSize,
     FileLocation,
     Dates,
@@ -90,10 +91,11 @@ pub enum FilterCategory {
 }
 
 impl FilterCategory {
-    pub const ALL: [FilterCategory; 8] = [
+    pub const ALL: [FilterCategory; 9] = [
         FilterCategory::Collections,
         FilterCategory::FileTypes,
         FilterCategory::Language,
+        FilterCategory::TextSource,
         FilterCategory::FileSize,
         FilterCategory::FileLocation,
         FilterCategory::Dates,
@@ -106,6 +108,7 @@ impl FilterCategory {
             FilterCategory::Collections => "Collections",
             FilterCategory::FileTypes => "File types",
             FilterCategory::Language => "Language",
+            FilterCategory::TextSource => "Text source",
             FilterCategory::FileSize => "File size",
             FilterCategory::FileLocation => "File location",
             FilterCategory::Dates => "Date",
@@ -120,6 +123,8 @@ impl FilterCategory {
             FilterCategory::Collections => &["collection_dataset"],
             FilterCategory::FileTypes => &["file_types"],
             FilterCategory::Language => &["language"],
+            // A selected source matches a document through its text from that source.
+            FilterCategory::TextSource => &["extracted_by"],
             FilterCategory::FileLocation => &["file_paths"],
             FilterCategory::Email => &["email_from", "email_to", "struct_flags"],
             FilterCategory::Entities => &EntitySub::VALUE_FIELDS,
@@ -436,6 +441,10 @@ fn display_value(
         Some(texts) => Some(texts.get(i).cloned().unwrap_or_else(|| format!("#{i}"))),
     };
     match value {
+        FacetOriginalValue::String(s) if field == "extracted_by" => {
+            let label = common::document_sources::text_source_label(s);
+            (label.clone(), label)
+        }
         FacetOriginalValue::String(s) => (s.clone(), s.clone()),
         FacetOriginalValue::Int(i) => match int_text(i) {
             // A `vfs_node` term value IS the node key, which is machine text.
@@ -631,6 +640,15 @@ pub fn FilterModal(
                                     placeholder: "Search languages…".to_string(),
                                 }
                             },
+                            FilterCategory::TextSource => rsx! {
+                                SearchableFacetPane {
+                                    original_query, pending, field: "extracted_by".to_string(),
+                                    map_string_terms: None,
+                                    placeholder: "Search text sources…".to_string(),
+                                    // A few sources per corpus, all on screen.
+                                    server_side: false,
+                                }
+                            },
                             FilterCategory::FileSize => rsx! {
                                 FileSizePane { original_query, pending }
                             },
@@ -663,6 +681,7 @@ fn CategoryIcon(category: FilterCategory) -> Element {
         FilterCategory::Collections => rsx! { Icon { icon: GoDatabase, style } },
         FilterCategory::FileTypes => rsx! { Icon { icon: MdInsertDriveFile, style } },
         FilterCategory::Language => rsx! { Icon { icon: MdInfo, style } },
+        FilterCategory::TextSource => rsx! { Icon { icon: MdTextFields, style } },
         FilterCategory::FileSize => rsx! { Icon { icon: MdStraighten, style } },
         FilterCategory::FileLocation => rsx! { Icon { icon: MdStorage, style } },
         FilterCategory::Dates => rsx! { Icon { icon: MdDateRange, style } },

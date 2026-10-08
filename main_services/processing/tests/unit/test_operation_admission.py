@@ -28,7 +28,7 @@ def test_caps_default_to_two_for_every_kind(monkeypatch):
     monkeypatch.delenv("HOOVER4_OPERATION_CAPS", raising=False)
     caps = operation_caps()
     assert set(caps) == set(KINDS)
-    assert len(caps) == 16
+    assert len(caps) == 17
     assert set(caps.values()) == {DEFAULT_OPERATION_CAP} == {2}
 
 

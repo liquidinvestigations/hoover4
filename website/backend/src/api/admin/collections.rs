@@ -1,6 +1,11 @@
 //! Admin collection management API.
 
-use common::admin_types::{AdminCollectionDetail, AdminCollectionItem, AdminDatasetItem};
+use std::collections::HashMap;
+
+use common::admin_types::{
+    AdminCollectionDetail, AdminCollectionItem, AdminDatasetItem, AdminDatasetListItem,
+};
+use common::storage_tree::{CollectionAggregates, DatasetAggregates};
 use common::current_user::CurrentUser;
 use time::format_description::well_known::Rfc3339;
 
@@ -67,11 +72,17 @@ fn format_datetime(dt: time::OffsetDateTime) -> String {
 pub async fn admin_list_collections(user: &CurrentUser) -> anyhow::Result<Vec<AdminCollectionItem>> {
     guard::require_admin(user)?;
     let cols = collections::list_collections().await?;
+    let stored = stored_stats_by_dataset().await?;
     let mut result = Vec::with_capacity(cols.len());
     for c in cols {
         let datasets = collections::list_collection_datasets(&c.collectionname).await?;
         let perms = collections::list_permissions_for_collection(&c.collectionname).await?;
         let db_ready = collections::collection_db_ready(&c.collectionname).await?;
+        let counted: Vec<&DatasetAggregates> = datasets
+            .iter()
+            .filter_map(|d| stored.get(&d.collection_dataset))
+            .collect();
+        let stats = CollectionAggregates::sum(&c.collectionname, datasets.len() as u64, &counted);
         result.push(AdminCollectionItem {
             collectionname: c.collectionname,
             fullname: c.fullname,
@@ -79,9 +90,53 @@ pub async fn admin_list_collections(user: &CurrentUser) -> anyhow::Result<Vec<Ad
             group_count: perms.len() as u32,
             db_ready,
             is_public: c.is_public == 1,
+            stats,
         });
     }
     Ok(result)
+}
+
+/// The cached statistics of every registered dataset, by dataset id.
+async fn stored_stats_by_dataset() -> anyhow::Result<HashMap<String, DatasetAggregates>> {
+    Ok(crate::api::list_datasets::stored_dataset_aggregates(None)
+        .await?
+        .into_iter()
+        .map(|a| (a.collection_dataset.clone(), a))
+        .collect())
+}
+
+#[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
+struct DatasetRegistryRow {
+    pub collectionname: String,
+    pub collection_dataset: String,
+    pub dataset_name: String,
+    pub dataset_display_name: String,
+    #[serde(with = "clickhouse::serde::time::datetime")]
+    pub date_created: time::OffsetDateTime,
+}
+
+/// Every registered dataset of every collection, with its cached statistics.
+pub async fn admin_list_datasets(user: &CurrentUser) -> anyhow::Result<Vec<AdminDatasetListItem>> {
+    guard::require_admin(user)?;
+    let rows: Vec<DatasetRegistryRow> = crate::db_utils::clickhouse_utils::get_global_client()
+        .query(
+            "SELECT collectionname, collection_dataset, dataset_name, dataset_display_name, date_created \
+             FROM dataset FINAL WHERE is_deleted = 0 ORDER BY collectionname, dataset_name",
+        )
+        .fetch_all()
+        .await?;
+    let mut stored = stored_stats_by_dataset().await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| AdminDatasetListItem {
+            stats: stored.remove(&row.collection_dataset),
+            collectionname: row.collectionname,
+            collection_dataset: row.collection_dataset,
+            dataset_name: row.dataset_name,
+            dataset_display_name: row.dataset_display_name,
+            date_created: format_datetime(row.date_created),
+        })
+        .collect())
 }
 
 pub async fn admin_get_collection(
@@ -95,6 +150,7 @@ pub async fn admin_get_collection(
     let dataset_links = collections::list_collection_datasets(&collectionname).await?;
     let perms = collections::list_permissions_for_collection(&collectionname).await?;
     let client = crate::db_utils::clickhouse_utils::get_global_client();
+    let mut stored = stored_stats_by_dataset().await?;
     let mut datasets = Vec::new();
     for link in &dataset_links {
         let rows = client
@@ -104,6 +160,7 @@ pub async fn admin_get_collection(
             .await?;
         if let Some(row) = rows.into_iter().next() {
             datasets.push(AdminDatasetItem {
+                stats: stored.remove(&row.collection_dataset),
                 collection_dataset: row.collection_dataset,
                 dataset_name: row.dataset_name,
                 dataset_display_name: row.dataset_display_name,
@@ -114,6 +171,8 @@ pub async fn admin_get_collection(
         }
     }
     let db_ready = collections::collection_db_ready(&c.collectionname).await?;
+    let counted: Vec<&DatasetAggregates> = datasets.iter().filter_map(|d| d.stats.as_ref()).collect();
+    let stats = CollectionAggregates::sum(&c.collectionname, datasets.len() as u64, &counted);
     Ok(AdminCollectionDetail {
         collection: AdminCollectionItem {
             collectionname: c.collectionname,
@@ -122,6 +181,7 @@ pub async fn admin_get_collection(
             group_count: perms.len() as u32,
             db_ready,
             is_public: c.is_public == 1,
+            stats,
         },
         datasets,
         groups_with_access: perms.into_iter().map(|p| p.groupname).collect(),

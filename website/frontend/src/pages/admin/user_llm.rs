@@ -7,8 +7,7 @@ use dioxus::prelude::*;
 
 use crate::api::admin_api::admin_get_user_llm;
 use crate::components::admin_components::{
-    AdminGuard, AdminShell, HELP_TEXT, LINK, MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
-};
+    AdminGuard, AdminShell, HELP_TEXT, LINK, MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH, SUBHEADING};
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
 
@@ -19,8 +18,8 @@ pub fn AdminUserLlmPage(username: String) -> Element {
         Title { "Admin: LLM use by {username}" }
         AdminGuard {
             AdminShell {
-                title: "LLM usage".to_string(),
-                breadcrumb: format!("Users \u{203a} {username} \u{203a} LLM usage"),
+                title: format!("LLM usage of {username}"),
+                breadcrumb: format!("Users \u{203a} {username}"),
                 active: "users".to_string(),
                 SuspendWrapper { UserLlmContent { username: for_content } }
             }
@@ -108,11 +107,11 @@ fn LimitsPanel(metrics: AdminUserLlmMetrics) -> Element {
                 }
                 div { style: "display: flex; gap: 32px; flex-wrap: wrap;",
                     div {
-                        h3 { style: "font-size: 13px; color: #333; margin: 0 0 8px;", "Chat messages" }
+                        h3 { style: SUBHEADING, "Chat messages" }
                         WindowTable { usage: metrics.chat_limit.clone() }
                     }
                     div {
-                        h3 { style: "font-size: 13px; color: #333; margin: 0 0 8px;", "API calls" }
+                        h3 { style: SUBHEADING, "API calls" }
                         WindowTable { usage: metrics.api_limit.clone() }
                     }
                 }
@@ -137,7 +136,7 @@ fn WindowTable(usage: Vec<RateWindowUsage>) -> Element {
                     tr { key: "{w.window}",
                         td { style: TD, "{w.window}" }
                         td {
-                            style: if w.used >= w.budget { format!("{TD} color: #ba2121; font-weight: 700;") } else { TD.to_string() },
+                            style: if w.used >= w.budget { format!("{TD} color: var(--x-danger); font-weight: 700;") } else { TD.to_string() },
                             "{w.used}"
                         }
                         td { style: TD, "{w.budget}" }

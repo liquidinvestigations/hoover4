@@ -16,8 +16,8 @@ pub fn AdminUsersPage() -> Element {
         Title { "Admin: users" }
         AdminGuard {
             AdminShell {
-                title: "Select user to change".to_string(),
-                breadcrumb: "Users".to_string(),
+                title: "Users".to_string(),
+                breadcrumb: String::new(),
                 active: "users".to_string(),
                 SuspendWrapper { UsersListContent {} }
             }
@@ -32,7 +32,7 @@ fn UsersListContent() -> Element {
 
     rsx! {
         div { style: "display: flex; gap: 8px; margin-bottom: 16px; align-items: center;",
-            span { style: "color: #999; font-size: 16px;", "\u{1F50D}" }
+            span { style: "color: var(--x-ink-muted); font-size: 16px;", "\u{1F50D}" }
             input {
                 style: "{INPUT} flex: 0 1 320px;",
                 placeholder: "Search users",
@@ -76,9 +76,9 @@ fn UsersListContent() -> Element {
                                     td { style: TD, "{user.email}" }
                                     td { style: TD,
                                         if user.is_admin {
-                                            span { style: "color: #5fa25f; font-weight: 700;", "\u{2714}" }
+                                            span { style: "color: var(--x-ok); font-weight: 700;", "\u{2714}" }
                                         } else {
-                                            span { style: "color: #ba2121;", "\u{2716}" }
+                                            span { style: "color: var(--x-danger);", "\u{2716}" }
                                         }
                                     }
                                     td { style: TD, "{user.group_count}" }

@@ -7,11 +7,9 @@
 //! tree reads. Its rows are sized in pixels. A pixel is what the drag produces, what the
 //! layout consumes, and what the content actually needs.
 //!
-//! Those pixels are the app's LAYOUT pixels, before the scale `#x-nav-container` applies
-//! (`assets/main.css` lays the app out at a 1920 px design width and `zoom`s it down to
-//! the window). A pointer event's `clientX` is in the unscaled viewport instead, so the
-//! drag divides by the measured scale, without that the pane grows more slowly than the
-//! cursor moves and the handle visibly lags behind it.
+//! The application applies no CSS zoom, so a pointer event's `clientX` and the pane width
+//! use the same CSS pixels at every browser zoom level. The drag adds the cursor's
+//! movement to the width directly.
 //!
 //! **A remembered width can never make the pane unusable, and never off-screen.** Three
 //! independent guards, because a stored value is user data that outlives every assumption
@@ -20,23 +18,15 @@
 //! * anything that is not a positive integer is not a width, and falls back to the default
 //!   rather than to zero;
 //! * every value is clamped to [`MIN_SIDEBAR_PX`]..=[`MAX_SIDEBAR_PX`] on the way in AND on
-//!   the way out, so a hand-edited or stale entry cannot widen the pane past the clamp.
-//!   That clamp is also what keeps the pane on screen at every window size: the app scales
-//!   a ~1920 px design width to fit, so [`MAX_SIDEBAR_PX`] is a fixed 37 % of the window
-//!   whatever the window is, and no resize can change that;
-//! * `max-width: 50%` in the style is the backstop for the day the layout stops
-//!   normalising to a design width, and costs nothing until then. It is a percentage of
-//!   the page rather than of the viewport on purpose: `vw` is measured before the app's
-//!   scale, so it would cap at the wrong place.
+//!   the way out, so a hand-edited or stale entry cannot widen the pane past the clamp;
+//! * `max-width: 50%` in the style keeps the pane on screen in a narrow window or at a
+//!   high browser zoom, where [`MAX_SIDEBAR_PX`] is wider than half the page.
 
 use dioxus::prelude::*;
 
 /// Where the width is remembered. The unit is part of the key: a value written under a
 /// different unit must not be readable as this one.
 const WIDTH_KEY: &str = "hoover4.sidebar-width-css-px";
-
-/// The element carrying the app's layout scale. See the module docs.
-const SCALED_ROOT_ID: &str = "x-nav-container";
 
 /// Default pane width: 40 % wider than the 240 px the tree's row budget is drawn against,
 /// because a deep row spends most of a 240 px pane on indent, chevron, icon and depth
@@ -70,40 +60,15 @@ pub fn parse_sidebar_px(raw: &str) -> Option<u32> {
         .map(clamp_sidebar_px)
 }
 
-/// The pane width in layout pixels for a drag that started at `start_px`.
+/// The pane width in CSS pixels for a drag that started at `start_px`.
 ///
-/// `delta_client_px` is the cursor's movement in viewport pixels and `scale` is the app's
-/// layout scale, so the division is what makes the edge follow the cursor exactly.
-pub fn dragged_sidebar_px(start_px: u32, delta_client_px: f64, scale: f64) -> u32 {
-    let scale = if scale.is_finite() && scale > 0.05 { scale } else { 1.0 };
-    let next = f64::from(start_px) + delta_client_px / scale;
+/// `delta_client_px` is the cursor's movement in the same CSS pixels.
+pub fn dragged_sidebar_px(start_px: u32, delta_client_px: f64) -> u32 {
+    let next = f64::from(start_px) + delta_client_px;
     if !next.is_finite() {
         return clamp_sidebar_px(start_px);
     }
     clamp_sidebar_px(next.round().max(0.0).min(f64::from(u32::MAX)) as u32)
-}
-
-/// The app's layout scale, measured rather than assumed.
-///
-/// `assets/main.css` picks a `zoom` per window-width breakpoint, so the factor is not a
-/// constant and duplicating that ladder here would be a second copy to keep in step.
-/// `clientWidth` is in the element's own (unscaled) pixels and the client rect is in
-/// viewport pixels, so their ratio is the scale in force. Anything unmeasurable (no
-/// window, no such element, a zero width) is 1.0, which degrades the drag to layout
-/// pixels rather than breaking it.
-fn layout_scale() -> f64 {
-    let Some(element) = web_sys::window()
-        .and_then(|window| window.document())
-        .and_then(|document| document.get_element_by_id(SCALED_ROOT_ID))
-    else {
-        return 1.0;
-    };
-    let unscaled = element.client_width();
-    if unscaled <= 0 {
-        return 1.0;
-    }
-    let scale = element.get_bounding_client_rect().width() / f64::from(unscaled);
-    if scale.is_finite() && scale > 0.05 { scale } else { 1.0 }
 }
 
 fn read_stored_px() -> Option<u32> {
@@ -117,14 +82,12 @@ fn write_stored_px(px: u32) {
     }
 }
 
-/// A drag in progress: where the cursor started, how wide the pane was, and the scale that
-/// was in force. All three are captured at `mousedown`. Re-measuring the scale per move
-/// would let a mid-drag breakpoint change turn the cursor's motion into a jump.
+/// A drag in progress: where the cursor started and how wide the pane was, both captured
+/// at `mousedown`.
 #[derive(Clone, Copy)]
 struct Drag {
     client_x: f64,
     start_px: u32,
-    scale: f64,
 }
 
 /// The longest gap between two presses that still reads as one double-click, in
@@ -250,7 +213,6 @@ pub fn ResizableSidebar(children: Element) -> Element {
                     drag.set(Some(Drag {
                         client_x,
                         start_px: *width.peek(),
-                        scale: layout_scale(),
                     }));
                 },
                 // Kept as well as the press-pair above: a synthetic `dblclick` (an
@@ -265,7 +227,7 @@ pub fn ResizableSidebar(children: Element) -> Element {
                 onmousemove: move |event: Event<MouseData>| {
                     let Some(origin) = *drag.peek() else { return };
                     let delta = event.client_coordinates().x - origin.client_x;
-                    width.set(dragged_sidebar_px(origin.start_px, delta, origin.scale));
+                    width.set(dragged_sidebar_px(origin.start_px, delta));
                 },
                 onmouseup: move |_| end_drag.call(()),
                 // The cursor leaving the overlay means it left the window: without this
@@ -311,15 +273,9 @@ mod tests {
     }
 
     #[test]
-    fn the_drag_follows_the_cursor_through_the_layout_scale() {
-        // At the app's 1200 px breakpoint the layout is scaled to 0.62, so 62 viewport
-        // pixels of cursor travel is 100 layout pixels of pane.
-        assert_eq!(dragged_sidebar_px(300, 62.0, 0.62), 400);
-        assert_eq!(dragged_sidebar_px(400, -62.0, 0.62), 300);
-        // Unscaled and unmeasurable both mean "one for one" rather than "no drag".
-        assert_eq!(dragged_sidebar_px(300, 100.0, 1.0), 400);
-        assert_eq!(dragged_sidebar_px(300, 100.0, 0.0), 400);
-        assert_eq!(dragged_sidebar_px(300, 100.0, f64::NAN), 400);
+    fn the_drag_follows_the_cursor() {
+        assert_eq!(dragged_sidebar_px(300, 100.0), 400);
+        assert_eq!(dragged_sidebar_px(400, -100.0), 300);
     }
 
     /// The reset gesture is recognised from the presses, because nothing else arrives.
@@ -346,12 +302,12 @@ mod tests {
 
     #[test]
     fn dragging_past_either_limit_stops_at_it() {
-        assert_eq!(dragged_sidebar_px(MIN_SIDEBAR_PX, -10_000.0, 1.0), MIN_SIDEBAR_PX);
-        assert_eq!(dragged_sidebar_px(MAX_SIDEBAR_PX, 10_000.0, 1.0), MAX_SIDEBAR_PX);
+        assert_eq!(dragged_sidebar_px(MIN_SIDEBAR_PX, -10_000.0), MIN_SIDEBAR_PX);
+        assert_eq!(dragged_sidebar_px(MAX_SIDEBAR_PX, 10_000.0), MAX_SIDEBAR_PX);
         // A delta that is not a finite number is not a gesture: the pane stays where it
         // was rather than snapping to a limit.
         for delta in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
-            assert_eq!(dragged_sidebar_px(400, delta, 1.0), 400);
+            assert_eq!(dragged_sidebar_px(400, delta), 400);
         }
     }
 }

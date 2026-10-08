@@ -40,6 +40,13 @@ fn TextDataInner() -> Element {
     // every hook index after it. The signal is `Copy`, so the closure captures it.
     let mut current_highlighted_word_index =
         use_context::<DocumentViewerResultStore>().current_highlighted_word_index;
+    // In the flow layout the enclosing container scrolls, so the text takes its natural
+    // height. Otherwise the text is its own scroll container.
+    let viewer_style = if use_context::<DocumentViewerResultStore>().flow_layout {
+        "width: 100%;"
+    } else {
+        "height: 100%; width: 100%; overflow-y: scroll;"
+    };
 
     let text_data = match current_text_data.read().clone() {
         Some(Ok(text_data)) => {
@@ -89,11 +96,7 @@ fn TextDataInner() -> Element {
     rsx! {
         div {
             id: "x-document-text-viewer",
-            style: "
-                height: 100%;
-                width: 100%;
-                overflow-y: scroll;
-            ",
+            style: "{viewer_style}",
             pre {
                 style: "
                     white-space: pre-wrap; word-wrap: break-word;
@@ -125,6 +128,11 @@ fn TextDataFallback(
 
 ) -> Element {
 
+    let viewer_style = if use_context::<DocumentViewerResultStore>().flow_layout {
+        "width: 100%;"
+    } else {
+        "height: 100%; width: 100%; overflow-y: scroll;"
+    };
     let _data = use_resource(move || {
         let document_identifier = document_identifier.read().clone();
         let source = source.read().clone();
@@ -152,11 +160,8 @@ fn TextDataFallback(
 
     rsx! {
          div {
-            style: "
-                height: 100%;
-                width: 100%;
-                overflow-y: scroll;
-            ",
+            id: "x-document-text-viewer",
+            style: "{viewer_style}",
             pre {
                 style: "
                     white-space: pre-wrap; word-wrap: break-word;

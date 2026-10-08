@@ -135,7 +135,7 @@ pub fn AiChatPage() -> Element {
                     display: flex; flex-direction: column; align-items: center; \
                     padding: 48px 24px 32px; overflow: auto;",
             h1 {
-                style: "margin: 0 0 28px; font-size: 32px; font-weight: 600; color: #0F172A; \
+                style: "margin: 0 0 28px; font-size: 32px; font-weight: 600; color: var(--x-ink-strong); \
                         text-align: center;",
                 "What are you researching?"
             }
@@ -152,7 +152,7 @@ pub fn AiChatPage() -> Element {
                     style: "margin-bottom: 20px;",
                     Link {
                         to: Route::AiChatHistoryPage {},
-                        style: "font-size: 13px; color: #4F46E5; text-decoration: none;",
+                        style: "font-size: var(--x-text-sm); color: var(--x-link); text-decoration: none;",
                         "View all conversations"
                     }
                 }
@@ -184,12 +184,12 @@ pub fn AiChatPage() -> Element {
             if let Some(e) = error.read().clone() {
                 div {
                     class: "x-error-display",
-                    style: "margin-top: 12px; color: #B91C1C; font-size: 13px;",
+                    style: "margin-top: 12px; color: var(--x-danger); font-size: var(--x-text-sm);",
                     "{e}"
                 }
             }
             if *sending.read() {
-                div { style: "margin-top: 12px; color: #64748B; font-size: 13px;",
+                div { style: "margin-top: 12px; color: var(--x-ink-muted); font-size: var(--x-text-sm);",
                     "Starting conversation\u{2026}"
                 }
             }

@@ -1,6 +1,7 @@
 //! Admin API server function wrappers.
 
 use common::admin_types::*;
+use common::feedback_types::{FeedbackListRow, FeedbackPage, FeedbackStatusFilter};
 use common::failure_types::{FailureInstanceRow, FailureListFilter, FailureListSort, FailureTree, FailuresPage};
 use common::metrics_types::{AdminMetrics, AdminUserLlmMetrics, ManticoreDaemonLoad};
 use common::operations_types::{OperationDetail, OperationsPage};
@@ -46,6 +47,7 @@ admin_server_fn!(admin_remove_member, backend::api::admin::groups::admin_remove_
 admin_server_fn!(admin_set_group_admin, backend::api::admin::groups::admin_set_group_admin, (groupname: String, username: String, is_group_admin: bool));
 
 admin_server_fn!(admin_list_collections, backend::api::admin::collections::admin_list_collections, () -> Vec<AdminCollectionItem>);
+admin_server_fn!(admin_list_datasets, backend::api::admin::collections::admin_list_datasets, () -> Vec<AdminDatasetListItem>);
 admin_server_fn!(admin_get_collection, backend::api::admin::collections::admin_get_collection, (collectionname: String) -> AdminCollectionDetail);
 admin_server_fn!(admin_create_collection, backend::api::admin::collections::admin_create_collection, (collectionname: String, fullname: String));
 admin_server_fn!(admin_update_collection, backend::api::admin::collections::admin_update_collection, (collectionname: String, fullname: String));
@@ -134,3 +136,7 @@ pub async fn admin_dashboard_counts() -> Result<(u32, u32, u32, u32), ServerFnEr
         datasets.len() as u32,
     ))
 }
+
+admin_server_fn!(admin_list_feedback, backend::api::feedback::admin_list_feedback, (search: String, status: FeedbackStatusFilter, page: u32) -> FeedbackPage);
+admin_server_fn!(admin_get_feedback, backend::api::feedback::admin_get_feedback, (report_id: String) -> FeedbackListRow);
+admin_server_fn!(admin_set_feedback_flags, backend::api::feedback::admin_set_feedback_flags, (report_id: String, is_read: bool, is_archived: bool));

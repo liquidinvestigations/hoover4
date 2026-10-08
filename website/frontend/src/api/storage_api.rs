@@ -3,7 +3,7 @@
 //! The VFS calls in `vfs_api` are all scoped to one dataset, because the structure index
 //! is. These are the two levels above it, which come from the dataset registry instead.
 
-use common::storage_tree::{CollectionNode, CollectionOverview};
+use common::storage_tree::{CollectionAggregates, CollectionNode, CollectionOverview};
 use dioxus::prelude::*;
 
 #[cfg(feature = "server")]
@@ -19,13 +19,22 @@ pub async fn list_storage_tree() -> Result<Vec<CollectionNode>, ServerFnError> {
         .map_err(to_server_fn_error)
 }
 
-/// One collection's datasets with their cached aggregates: the landing page's cards.
+/// One collection's datasets with their cached statistics: the landing page's cards.
 #[server]
 pub async fn collection_overview(
     collectionname: String,
 ) -> Result<CollectionOverview, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::list_datasets::collection_overview(&user, collectionname)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+/// The summed cached statistics of every readable collection: the storage root's cards.
+#[server]
+pub async fn collections_overview() -> Result<Vec<CollectionAggregates>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::list_datasets::collections_overview(&user)
         .await
         .map_err(to_server_fn_error)
 }

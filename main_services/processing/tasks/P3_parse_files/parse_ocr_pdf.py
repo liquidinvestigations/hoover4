@@ -94,7 +94,14 @@ def _already_done(client, params: RunOcrPdfParams, languages: str) -> bool:
 
     `argMax(is_deleted)` rather than a plain count: the purge in `change_ocr_languages`
     tombstones rows, and a tombstoned variant must be re-derivable.
+
+    An operation `rerun_ocr` with `replace_existing` skips nothing, so each of its passes
+    writes a new result.
     """
+    from tasks.P_admin.ocr_rerun import replaces_existing
+
+    if replaces_existing(params.op_id):
+        return False
     try:
         # `count()` alongside the tombstone read, and not only for tidiness: an aggregate
         # with no GROUP BY over an empty match still returns ONE row, with argMax's

@@ -14,20 +14,20 @@ pub fn LockedOptionsBar(options: ChatOptions) -> Element {
     rsx! {
         div {
             style: "display: flex; align-items: center; gap: 16px; flex-wrap: wrap; \
-                    padding: 8px 14px; background: #F8FAFC; border-bottom: 1px solid #E5E7EB; \
+                    padding: 8px 14px; background: #F8FAFC; border-bottom: 1px solid var(--x-border); \
                     flex-shrink: 0;",
             LockedFlag { label: "Internet tools", on: options.internet_tools }
             div { style: "flex: 1;" }
             span {
                 style: "display: inline-flex; align-items: center; gap: 4px; \
-                        font-size: 12px; color: #94A3B8;",
+                        font-size: var(--x-text-xs); color: var(--x-ink-faint);",
                 title: "These decide which agent answers, so they are fixed once the \
                         conversation starts. Start a new chat to change them.",
                 // The padlock comes from the icon crate, not from a code point: it
                 // inherits this line's colour and scales with it, where an emoji is
                 // rendered by whichever font the platform picked and is the one glyph
                 // the interface does not control.
-                Icon { icon: MdLock, style: "width: 13px; height: 13px; color: #94A3B8;" }
+                Icon { icon: MdLock, style: "width: 13px; height: 13px; color: var(--x-ink-faint);" }
                 "locked for this conversation"
             }
         }
@@ -39,10 +39,10 @@ fn LockedFlag(label: &'static str, on: bool) -> Element {
     // Off is stated, not merely absent: "Internet tools" greyed and unticked reads as
     // "this chat had no web access", which is exactly the question a user asks when an
     // answer says it could not reach the internet.
-    let color = if on { "#334155" } else { "#94A3B8" };
+    let color = if on { "var(--x-ink)" } else { "var(--x-ink-faint)" };
     rsx! {
         label {
-            style: "display: flex; align-items: center; gap: 6px; font-size: 13px; \
+            style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); \
                     color: {color}; cursor: not-allowed; user-select: none;",
             input {
                 r#type: "checkbox",

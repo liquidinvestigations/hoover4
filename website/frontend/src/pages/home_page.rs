@@ -255,6 +255,7 @@ fn AiChatCard() -> Element {
 
 #[component]
 fn FeedbackCard() -> Element {
+    let feedback = crate::components::feedback_control::use_feedback();
     rsx! {
         div {
             id: "x-card-feedback",
@@ -296,11 +297,13 @@ fn FeedbackCard() -> Element {
                     flex-direction: column;
                     gap: 16px;
                 ",
-                div { style: "font-size: 20px; font-weight: 500;", "We'd love to hear from you. Share your ideas, suggestions, or issues to help us improve Hoover." }
+                div { style: "font-size: 20px; font-weight: 500;", "Send us an idea, or report a problem. The bug icon at the bottom of the left rail opens the same form." }
 
                 div {
                     style: "display:flex; flex-direction:row;",
                     button {
+                        id: "x-home-feedback-button",
+                        onclick: move |_| feedback.start(),
                         style: "
                             height: 34px;
                             padding: 0 12px;
@@ -311,7 +314,7 @@ fn FeedbackCard() -> Element {
                             border: 1px solid #D1D5DB;
                             cursor: pointer;
                         ",
-                        "Feedback Form",
+                        "Send feedback",
                     }
                 }
             }

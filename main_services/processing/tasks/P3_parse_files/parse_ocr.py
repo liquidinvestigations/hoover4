@@ -86,7 +86,14 @@ def _already_done(client, params: RunOcrParams, languages: str) -> bool:
     The watermark is checked before the image is even read: OCR is the most expensive
     thing in the pipeline per byte, and a retry that re-OCRs what it already produced is
     the difference between a cheap retry and a doubled bill.
+
+    An operation `rerun_ocr` with `replace_existing` skips nothing, so each of its passes
+    writes a new result.
     """
+    from tasks.P_admin.ocr_rerun import replaces_existing
+
+    if replaces_existing(params.op_id):
+        return False
     try:
         rows = client.query(
             "SELECT count() FROM raw_ocr_results "

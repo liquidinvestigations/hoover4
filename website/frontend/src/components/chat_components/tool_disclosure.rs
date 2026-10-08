@@ -58,8 +58,8 @@ pub fn ToolCallDisclosure(
     // card of their own must say so here or nowhere.
     let failure = tool_content(&tool_output).as_ref().and_then(tool_failure);
     let (background, border, ink) = match failure {
-        Some(_) => ("#FEF2F2", "#FECACA", "#991B1B"),
-        None => ("#FFFFFF", "#E5E7EB", "#1E293B"),
+        Some(_) => ("#FEF2F2", "#FECACA", "var(--x-danger)"),
+        None => ("#FFFFFF", "#E5E7EB", "var(--x-ink-strong)"),
     };
     let chip_bg = if failure.is_some() { "#FECACA" } else { "#E5E7EB" };
 
@@ -85,12 +85,12 @@ pub fn ToolCallDisclosure(
         div {
             style: "align-self: flex-start; max-width: 92%; background: {background}; \
                     border: 1px solid {border}; border-radius: 10px; padding: 8px 12px; \
-                    font-size: 13px; color: {ink};",
+                    font-size: var(--x-text-sm); color: {ink};",
             div {
                 style: "display: flex; align-items: center; gap: 10px; flex-wrap: wrap;",
                 span {
                     style: "flex-shrink: 0; background: {chip_bg}; color: {ink}; \
-                            border-radius: 999px; padding: 1px 8px; font-size: 11px; \
+                            border-radius: 999px; padding: 1px 8px; font-size: var(--x-text-xs); \
                             font-weight: 400; font-family: inherit;",
                     "{chip}"
                 }
@@ -99,21 +99,21 @@ pub fn ToolCallDisclosure(
                     span {
                         title: "{f.message}",
                         style: "flex-shrink: 0; background: #DC2626; color: white; \
-                                border-radius: 999px; padding: 1px 7px; font-size: 11px; \
+                                border-radius: 999px; padding: 1px 7px; font-size: var(--x-text-xs); \
                                 font-weight: 600;",
                         "\u{26a0} {f.verb()}"
                     }
                 }
                 if running {
                     span {
-                        style: "flex-shrink: 0; font-size: 12px; font-style: italic; color: #64748B;",
+                        style: "flex-shrink: 0; font-size: var(--x-text-xs); font-style: italic; color: var(--x-ink-muted);",
                         "running\u{2026}"
                     }
                 }
                 if let Some(route) = search_route {
                     Link {
                         to: route,
-                        style: "color: #4F46E5; text-decoration: underline; font-size: 12px; \
+                        style: "color: var(--x-link); text-decoration: underline; font-size: var(--x-text-xs); \
                                 white-space: nowrap;",
                         "Search this"
                     }
@@ -121,15 +121,15 @@ pub fn ToolCallDisclosure(
                 if let Some(route) = search_all_route {
                     Link {
                         to: route,
-                        style: "color: #4F46E5; text-decoration: underline; font-size: 12px; \
+                        style: "color: var(--x-link); text-decoration: underline; font-size: var(--x-text-xs); \
                                 white-space: nowrap;",
                         "Search every collection"
                     }
                 }
                 if !running {
                     button {
-                        style: "background: none; border: none; color: #475569; cursor: pointer; \
-                                font-size: 12px; padding: 0; white-space: nowrap;",
+                        style: "background: none; border: none; color: var(--x-ink); cursor: pointer; \
+                                font-size: var(--x-text-xs); padding: 0; white-space: nowrap;",
                         onclick: move |_| {
                             let next = !*expanded.peek();
                             expanded.set(next);
@@ -148,8 +148,8 @@ pub fn ToolCallDisclosure(
 
                     if let Some(f) = failure.clone() {
                         div {
-                            style: "background: white; color: #991B1B; border: 1px solid #FECACA; \
-                                    border-radius: 6px; padding: 6px 8px; font-size: 12px; \
+                            style: "background: white; color: var(--x-danger); border: 1px solid #FECACA; \
+                                    border-radius: 6px; padding: 6px 8px; font-size: var(--x-text-xs); \
                                     word-break: break-word;",
                             "{f.message}"
                         }
@@ -157,13 +157,13 @@ pub fn ToolCallDisclosure(
 
                     if !has_payload {
                         div {
-                            style: "font-size: 12px; font-style: italic; opacity: 0.75;",
+                            style: "font-size: var(--x-text-xs); font-style: italic; opacity: 0.75;",
                             "This step was recorded before tool arguments and results were \
                              stored. Only the summary below is available."
                         }
                         pre {
                             style: "margin: 0; white-space: pre-wrap; word-break: break-word; \
-                                    font-family: ui-monospace, monospace; font-size: 11px; \
+                                    font-family: ui-monospace, monospace; font-size: var(--x-text-xs); \
                                     background: #F1F5F9; padding: 8px; border-radius: 6px; \
                                     max-height: 220px; overflow: auto;",
                             "{content_summary}"
@@ -177,7 +177,7 @@ pub fn ToolCallDisclosure(
                         FieldSection { heading: "Result", fields: output_view.clone() }
                     }
                     if !next_line.is_empty() {
-                        div { style: "font-size: 12px;", "{next_line}" }
+                        div { style: "font-size: var(--x-text-xs);", "{next_line}" }
                     }
                     if !object_rows.is_empty() {
                         ObjectRowsTable { rows: object_rows.clone() }
@@ -189,8 +189,8 @@ pub fn ToolCallDisclosure(
                     if has_payload {
                         div {
                             button {
-                                style: "background: none; border: none; color: #475569; \
-                                        cursor: pointer; font-size: 12px; padding: 0; \
+                                style: "background: none; border: none; color: var(--x-ink); \
+                                        cursor: pointer; font-size: var(--x-text-xs); padding: 0; \
                                         text-decoration: underline;",
                                 onclick: move |_| {
                                     let next = !*show_raw.peek();
@@ -216,13 +216,13 @@ fn ObjectRowsTable(rows: Vec<serde_json::Value>) -> Element {
     let columns = object_row_columns(&rows);
     rsx! {
         div { style: "max-width: 100%; overflow-x: auto;",
-            table { style: "border-collapse: collapse; font-size: 11px;",
+            table { style: "border-collapse: collapse; font-size: var(--x-text-xs);",
                 thead { tr { for column in columns.iter() { th { style: "padding: 4px; text-align: left;", "{column}" } } } }
                 tbody {
                     for (index, row) in rows.into_iter().take(20).enumerate() {
                         tr { key: "{index}",
                             for column in columns.iter() {
-                                td { style: "padding: 4px; vertical-align: top; border-top: 1px solid #E5E7EB;",
+                                td { style: "padding: 4px; vertical-align: top; border-top: 1px solid var(--x-border);",
                                     "{row.get(column).map(summarise_value).unwrap_or_default()}"
                                 }
                             }
@@ -251,7 +251,7 @@ fn FieldSection(heading: &'static str, fields: Vec<(String, String)>) -> Element
     rsx! {
         div {
             div {
-                style: "font-size: 11px; font-weight: 600; text-transform: uppercase; \
+                style: "font-size: var(--x-text-xs); font-weight: 600; text-transform: uppercase; \
                         letter-spacing: 0.4px; opacity: 0.8; margin-bottom: 4px;",
                 "{heading}"
             }
@@ -263,13 +263,13 @@ fn FieldSection(heading: &'static str, fields: Vec<(String, String)>) -> Element
                         rsx! {
                             div {
                                 key: "k{i}",
-                                style: "font-family: ui-monospace, monospace; font-size: 11px; \
+                                style: "font-family: ui-monospace, monospace; font-size: var(--x-text-xs); \
                                         opacity: 0.75; white-space: nowrap;",
                                 "{k}"
                             }
                             div {
                                 key: "v{i}",
-                                style: "font-size: 12px; word-break: break-word; \
+                                style: "font-size: var(--x-text-xs); word-break: break-word; \
                                         overflow-wrap: anywhere;",
                                 "{v}"
                             }
@@ -289,13 +289,13 @@ fn RawJson(heading: &'static str, body: String) -> Element {
     rsx! {
         div {
             div {
-                style: "font-size: 11px; font-weight: 600; text-transform: uppercase; \
+                style: "font-size: var(--x-text-xs); font-weight: 600; text-transform: uppercase; \
                         letter-spacing: 0.4px; opacity: 0.8; margin-bottom: 2px;",
                 "{heading}"
             }
             pre {
                 style: "margin: 0; white-space: pre-wrap; word-break: break-word; \
-                        font-family: ui-monospace, monospace; font-size: 11px; \
+                        font-family: ui-monospace, monospace; font-size: var(--x-text-xs); \
                         background: #F1F5F9; padding: 8px; border-radius: 6px; \
                         max-height: 280px; overflow: auto;",
                 "{pretty_json(&body)}"

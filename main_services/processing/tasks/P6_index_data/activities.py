@@ -642,7 +642,7 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
 def refresh_stale_document_locations(
     params: RefreshDocumentLocationsParams,
 ) -> RefreshDocumentLocationsResult:
-    """Rewrite page rows for documents whose folder closure is behind `vfs_files`.
+    """Rewrite page rows for documents whose folder or language attributes are stale.
 
     Rebuilds no shard tables and does not run extraction, OCR, or embedding.
     Vectors stay as they are. Callers rebuild ClickHouse `vfs_nodes` first so
@@ -671,6 +671,34 @@ def refresh_stale_document_locations(
         refreshed_count=len(refreshed),
         mechanism=mechanism,
     )
+
+
+def document_languages(client, collection_dataset: str,
+                       item_hashes: list[str] | None = None) -> dict[str, list[str]]:
+    """The language codes indexed for each document, by file hash.
+
+    A document's languages come from its parsed sources. `raw_text` decides only when it
+    is the file's only source: for an email it holds the MIME headers, and a long
+    recipient list there can classify as another language than the body. A document
+    whose parsed sources are all undetermined has no language. `item_hashes` limits the
+    read, and `None` reads the whole dataset.
+    """
+    hash_filter = " AND file_hash IN {hashes:Array(String)}" if item_hashes is not None else ""
+    parameters = {"ds": collection_dataset}
+    if item_hashes is not None:
+        parameters["hashes"] = item_hashes
+    rows = client.query(f"""
+        SELECT file_hash,
+            if(countIf(extracted_by != 'raw_text') > 0,
+               groupUniqArrayIf(language, extracted_by != 'raw_text' AND language NOT IN ('und', '')),
+               groupUniqArrayIf(language, language NOT IN ('und', ''))) AS languages
+        FROM (
+            SELECT file_hash, extracted_by, page_id, argMax(language, version) AS language
+            FROM text_content WHERE collection_dataset = {{ds:String}}{hash_filter}
+            GROUP BY file_hash, extracted_by, page_id)
+        GROUP BY file_hash HAVING length(languages) > 0
+    """, parameters=parameters).result_rows
+    return {file_hash: list(languages) for file_hash, languages in rows}
 
 
 def primary_filename(basenames) -> str:
@@ -889,14 +917,7 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
         """, {"collection_dataset": collection_dataset}).to_pylist()
 
     with get_collection_client(params.collectionname) as client:
-        language_rows = client.query_arrow("""
-            SELECT file_hash, groupUniqArray(language) AS languages FROM (
-                SELECT file_hash, extracted_by, page_id, argMax(language, version) AS language
-                FROM text_content WHERE collection_dataset = {ds:String} AND file_hash IN {hashes:Array(String)}
-                GROUP BY file_hash, extracted_by, page_id)
-            WHERE language != 'und' AND language != '' GROUP BY file_hash
-        """, {"ds": collection_dataset, "hashes": item_hashes}).to_pylist()
-    languages_by_hash = {row["file_hash"]: row["languages"] for row in language_rows}
+        languages_by_hash = document_languages(client, collection_dataset, item_hashes)
 
     container_parents = container_parents_from_nodes(node_rows)
 

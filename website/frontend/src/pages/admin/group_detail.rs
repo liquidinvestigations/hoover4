@@ -22,8 +22,8 @@ pub fn AdminGroupPage(groupname: String) -> Element {
         Title { "Admin: group {groupname}" }
         AdminGuard {
             AdminShell {
-                title: "Change group".to_string(),
-                breadcrumb: format!("Groups \u{203a} {groupname}"),
+                title: format!("Group {groupname}"),
+                breadcrumb: "Groups".to_string(),
                 active: "groups".to_string(),
                 SuspendWrapper { GroupDetailContent { groupname: groupname_for_content } }
             }
@@ -137,12 +137,12 @@ fn GroupDetailContent(groupname: String) -> Element {
                                 td { style: TD,
                                     Link {
                                         to: Route::AdminUserPage { username: m.username.clone() },
-                                        style: "color: #447e9b; text-decoration: none; font-weight: 600;",
+                                        style: "color: var(--x-link); text-decoration: none; font-weight: 600;",
                                         "{m.username}"
                                     }
                                 }
                                 td { style: TD,
-                                    span { style: "background: #eef4f8; color: #447e9b; padding: 2px 8px; border-radius: 4px; font-size: 11px;", "{m.origin}" }
+                                    span { style: "background: #eef4f8; color: var(--x-link); padding: 2px 8px; border-radius: 4px; font-size: var(--x-text-xs);", "{m.origin}" }
                                 }
                                 td { style: TD,
                                     input {
@@ -226,7 +226,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                     for c in granted_collections {
                         li {
                             key: "{c}",
-                            style: "display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 13px;",
+                            style: "display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--x-border); font-size: var(--x-text-sm);",
                             span { style: "flex: 1;", "{c}" }
                             button {
                                 style: BTN_SMALL_DANGER,
@@ -287,7 +287,7 @@ fn GroupDetailContent(groupname: String) -> Element {
         }
         if !is_reserved {
             div { style: MODULE,
-                h2 { style: "{MODULE_CAPTION} background: #ba2121;", "Danger zone" }
+                h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", "Danger zone" }
                 div { style: MODULE_BODY,
                     button {
                         style: BTN_DANGER,

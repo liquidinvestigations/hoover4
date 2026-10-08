@@ -19,7 +19,7 @@ use crate::pages::admin::{
     operation_detail::AdminOperationDetailPage, operations::AdminOperationsPage,
     settings::AdminSettingsPage, user_detail::AdminUserPage,
     user_llm::AdminUserLlmPage, users_list::AdminUsersPage,
-    failures::AdminFailuresPage, failure_detail::AdminFailureDetailPage,
+    failures::AdminFailuresPage, failure_detail::AdminFailureDetailPage, feedback::AdminFeedbackPage,
 };
 use crate::pages::ai_chat::{AiChatHistoryPage, AiChatPage, AiChatSessionPage};
 use crate::pages::email_graph_page::EmailGraphPage;
@@ -134,6 +134,9 @@ pub enum Route {
 
     #[route("/admin/failures/:op_id")]
     AdminFailureDetailPage { op_id: String },
+
+    #[route("/admin/feedback?:search&:status&:page")]
+    AdminFeedbackPage { search: String, status: String, page: u32 },
 
     #[route("/admin/users")]
     AdminUsersPage {},

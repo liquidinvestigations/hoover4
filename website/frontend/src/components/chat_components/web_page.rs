@@ -41,11 +41,11 @@ pub fn WebPageCard(page: ChatPageRef, #[props(default)] passages: Vec<ChatPageRe
             "data-citation-select": "true",
             "data-selected": "{selected}",
             style: "background: {background}; border: 3px solid {border}; border-radius: 8px; \
-                    padding: 12px 16px; margin: 8px; font-size: 15px; cursor: pointer;",
+                    padding: 12px 16px; margin: 8px; font-size: var(--x-text-md); cursor: pointer;",
             onclick: move |_| { if let Some(open) = open { open.open.call(target.clone()); } },
             if let Some(href) = href {
                 a { href, target: "_blank", rel: "noopener noreferrer nofollow",
-                    style: "color: #0000EE; font-size: 18px; text-decoration: none;",
+                    style: "color: #0000EE; font-size: var(--x-text-xl); text-decoration: none;",
                     onclick: move |event| event.stop_propagation(),
                     "{title}"
                 }
@@ -90,7 +90,7 @@ pub fn WebPagePreview(artifact_id: ReadSignal<String>, find: ReadSignal<String>)
     rsx! {
         div { "data-web-preview": "true", style: "height: 100%; display: flex; flex-direction: column; background: #F5F6F8;",
             style { "::highlight(web-page-find) {{ background: #FFF176; }} ::highlight(web-page-current) {{ background: #FFB74D; }}" }
-            div { style: "display: flex; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid #E5E7EB;",
+            div { style: "display: flex; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid var(--x-border);",
                 input { placeholder: "Find exact text", value: "{find}",
                     style: "min-width: 0; flex: 1; border: 1px solid #AAAAAA; border-radius: 14px; padding: 8px 12px; background: white;",
                     oninput: move |event| {
@@ -99,7 +99,7 @@ pub fn WebPagePreview(artifact_id: ReadSignal<String>, find: ReadSignal<String>)
                         control.set_doc_viewer_state.call(state);
                     }
                 }
-                span { id: "web-page-find-count", style: "font-size: 13px; color: #64748B;", "0/0" }
+                span { id: "web-page-find-count", style: "font-size: var(--x-text-sm); color: var(--x-ink-muted);", "0/0" }
                 button { title: "Previous match", onclick: move |_| find_in_page(&find(), -1), "▲" }
                 button { title: "Next match", onclick: move |_| find_in_page(&find(), 1), "▼" }
                 button { title: "Close preview", onclick: move |_| {
@@ -109,7 +109,7 @@ pub fn WebPagePreview(artifact_id: ReadSignal<String>, find: ReadSignal<String>)
                 }, "×" }
             }
             if let Some(page) = page {
-                div { style: "padding: 12px 16px; font-size: 18px; background: white; border-bottom: 1px solid #E5E7EB;", "{page.title}" }
+                div { style: "padding: 12px 16px; font-size: var(--x-text-xl); background: white; border-bottom: 1px solid var(--x-border);", "{page.title}" }
                 div { id: "web-page-preview-text", style: "overflow: auto; padding: 16px; flex: 1;",
                     onmounted: move |_| find_in_page(&find(), 0),
                     MarkdownishText { text: page.markdown, citation_links: false }

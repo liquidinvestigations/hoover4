@@ -506,8 +506,8 @@ pub fn CardShell(
 ) -> Element {
     let mut show_raw = use_signal(|| false);
     let (background, border, ink) = match failure {
-        Some(_) => ("#FEF2F2", "#FECACA", "#991B1B"),
-        None => ("#FFFFFF", "#E5E7EB", "#1E293B"),
+        Some(_) => ("#FEF2F2", "#FECACA", "var(--x-danger)"),
+        None => ("#FFFFFF", "#E5E7EB", "var(--x-ink-strong)"),
     };
     let chip_bg = if failure.is_some() { "#FECACA" } else { "#E5E7EB" };
     rsx! {
@@ -515,12 +515,12 @@ pub fn CardShell(
             "data-card-chip": "{chip}",
             style: "align-self: flex-start; max-width: 92%; background: {background}; \
                     border: 1px solid {border}; border-radius: 10px; padding: 8px 12px; \
-                    font-size: 13px; color: {ink};",
+                    font-size: var(--x-text-sm); color: {ink};",
             div {
                 style: "display: flex; align-items: center; gap: 10px; flex-wrap: wrap;",
                 span {
                     style: "flex-shrink: 0; background: {chip_bg}; color: {ink}; \
-                            border-radius: 999px; padding: 1px 8px; font-size: 11px; \
+                            border-radius: 999px; padding: 1px 8px; font-size: var(--x-text-xs); \
                             font-weight: 400; font-family: inherit;",
                     "{chip}"
                 }
@@ -529,7 +529,7 @@ pub fn CardShell(
                     span {
                         title: "{f.message}",
                         style: "flex-shrink: 0; background: #DC2626; color: white; \
-                                border-radius: 999px; padding: 1px 7px; font-size: 11px; \
+                                border-radius: 999px; padding: 1px 7px; font-size: var(--x-text-xs); \
                                 font-weight: 600;",
                         "\u{26a0} {f.verb()}"
                     }
@@ -537,13 +537,13 @@ pub fn CardShell(
                 {badges}
                 if running {
                     span {
-                        style: "flex-shrink: 0; font-size: 12px; font-style: italic; color: #64748B;",
+                        style: "flex-shrink: 0; font-size: var(--x-text-xs); font-style: italic; color: var(--x-ink-muted);",
                         "running\u{2026}"
                     }
                 } else {
                     button {
                         style: "background: none; border: none; color: {ink}; cursor: pointer; \
-                                font-size: 12px; padding: 0; white-space: nowrap; \
+                                font-size: var(--x-text-xs); padding: 0; white-space: nowrap; \
                                 text-decoration: underline;",
                         onclick: move |_| {
                             let next = !*expanded.peek();
@@ -656,8 +656,8 @@ pub fn ModalCloseButton(on_close: EventHandler<()>) -> Element {
     rsx! {
         button {
             "aria-label": "Close",
-            style: "background: none; border: none; font-size: 20px; cursor: pointer; \
-                    color: #64748B; line-height: 1; flex-shrink: 0;",
+            style: "background: none; border: none; font-size: var(--x-text-2xl); cursor: pointer; \
+                    color: var(--x-ink-muted); line-height: 1; flex-shrink: 0;",
             onclick: move |_| on_close.call(()),
             "\u{00d7}"
         }
@@ -689,7 +689,7 @@ pub fn ElapsedCounter(already_ms: Option<u32>) -> Element {
     let n = *seconds.read();
     rsx! {
         span {
-            style: "flex-shrink: 0; font-size: 11px; color: #64748B; \
+            style: "flex-shrink: 0; font-size: var(--x-text-xs); color: var(--x-ink-muted); \
                     font-variant-numeric: tabular-nums;",
             "{n}s"
         }

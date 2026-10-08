@@ -70,6 +70,7 @@ Home, an unknown route, and a malformed document parameter.
 | `001-home` | Exercises the home case. | none named | `--names home` |
 | `002-bad-url-unknown-route` | Exercises the bad url unknown route case. | none named | `--names bad-url-unknown-route` |
 | `003-bad-url-malformed-param` | Exercises the bad url malformed param case. | none named | `--names bad-url-malformed-param` |
+| `004-feedback-report` | Captures the page with the bug control and sends a feedback report. | none named | `--names feedback-report` |
 
 ## Search, filters, and sort
 
@@ -112,6 +113,7 @@ Search results, filter panes, sort menus, and query chips.
 | `133-search-collections-filter-expanded` | Exercises the search collections filter expanded case. | none named | `--names search-collections-filter-expanded` |
 | `134-filter-pane-language` | Verifies language labels and applies the English filter. | `any` | `--names filter-pane-language` |
 | `135-filter-pane-red-flags` | Applies a scored red flag category from the Entities filter. | `any` | `--names filter-pane-red-flags` |
+| `137-filter-pane-text-source` | Verifies text source labels and applies the Raw file text filter. | `any` | `--names filter-pane-text-source` |
 
 ## Document view
 
@@ -137,6 +139,8 @@ PDF, image, email, text, metadata, file locations, and entity cards.
 | `216-signal-terms` | Verifies category definitions, calibration, recall notes, and expandable terms. | none named | `--names signal-terms` |
 | `217-view-doc-red-flags` | Verifies the document signal section and its category definition link. | `testdata_testfiles` | `--names view-doc-red-flags` |
 | `219-view-doc-empty-archive` | Verifies the completed state of a document without text sources. | `testdata_manualqa` | `--names view-doc-empty-archive` |
+| `220-view-doc-email-long-details` | Verifies wheel scrolling through a long recipient list into the email body. | `enron_kaminski` | `--names view-doc-email-long-details` |
+| `221-view-doc-pdf-feedback-capture` | Opens the report overlay on a PDF document and shows the drawn image with its notes. | `testdata_testfiles` | `--names view-doc-pdf-feedback-capture` |
 
 ## Storage and folder tree
 
@@ -254,6 +258,8 @@ Admin dashboard, collections, users, groups, settings, metrics, and operations.
 | `632-admin-failure-scrubbed` | Exercises the scrubbed-copy control on a failure tree. | none named | `--names admin-failure-scrubbed` |
 | `633-admin-operation-detail` | Exercises both second-page controls and rows on the operation detail page. | none named | `--names admin-operation-detail` |
 | `634-admin-metrics-live-runs` | Shows the live chats panel while a delegated turn runs, with one row for each open run. | none named | `--names admin-metrics-live-runs` |
+| `635-admin-datasets-section` | Verifies the dashboard link to the Datasets section and its columns. | `any` | `--names admin-datasets-section` |
+| `636-admin-feedback` | Finds a sent report, opens it, and marks it read. Incomplete when `004-feedback-report` sent no report. | none named | `--names admin-feedback` |
 
 ## Manual QA procedures
 

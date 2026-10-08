@@ -21,8 +21,8 @@ pub fn AdminUserPage(username: String) -> Element {
         Title { "Admin: user {username}" }
         AdminGuard {
             AdminShell {
-                title: "Change user".to_string(),
-                breadcrumb: format!("Users \u{203a} {username}"),
+                title: format!("User {username}"),
+                breadcrumb: "Users".to_string(),
                 active: "users".to_string(),
                 SuspendWrapper {
                     UserDetailContent { username: username_for_content }
@@ -94,7 +94,7 @@ fn UserDetailContent(username: String) -> Element {
             h2 { style: MODULE_CAPTION, "User" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",
-                    "For header-authenticated users, full name, email and superuser status are overwritten at next login."
+                    "The next login replaces the full name, email and superuser status of a user from the login proxy."
                 }
                 p { style: "margin: 0 0 12px;",
                     Link {
@@ -160,7 +160,7 @@ fn UserDetailContent(username: String) -> Element {
                             tr { key: "{m.groupname}",
                                 td { style: TD, "{m.groupname}" }
                                 td { style: TD,
-                                    span { style: "background: #eef4f8; color: #447e9b; padding: 2px 8px; border-radius: 4px; font-size: 11px;", "{m.origin}" }
+                                    span { style: "background: #eef4f8; color: var(--x-link); padding: 2px 8px; border-radius: 4px; font-size: var(--x-text-xs);", "{m.origin}" }
                                 }
                                 td { style: TD,
                                     input {
@@ -244,7 +244,7 @@ fn UserDetailContent(username: String) -> Element {
             }
         }
         div { style: MODULE,
-            h2 { style: "{MODULE_CAPTION} background: #ba2121;", "Danger zone" }
+            h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", "Danger zone" }
             div { style: MODULE_BODY,
                 button {
                     style: BTN_DANGER,

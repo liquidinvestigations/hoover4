@@ -35,6 +35,7 @@ with workflow.unsafe.imports_passed_through():
         reopen_plans_for_ocr_change,
         report_ocr_language_progress,
     )
+    from tasks.P_admin.ocr_rerun import RerunOcrParams, reopen_plans_for_ocr_rerun
     from tasks.P2_execute_plan.workflows import ExecutePlans, ExecutePlansParams
     from tasks.visibility import dataset_search_attributes
     from tasks.P_admin.eta_collector import (
@@ -122,6 +123,40 @@ class PurgeDataset:
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
+
+
+@workflow.defn
+class RerunOcr:
+    """Reopen the plans holding images and PDFs, and run them again.
+
+    See `tasks/P_admin/ocr_rerun.py`. It is always a child of the `rerun_ocr`
+    operation, which owns the row's state.
+    """
+
+    @workflow.run
+    async def run(self, params: "RerunOcrParams") -> dict:
+        reopened = await workflow.execute_activity(
+            reopen_plans_for_ocr_rerun,
+            params,
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+        )
+        execution_counts = {}
+        if reopened:
+            execution_counts = await workflow.execute_child_workflow(
+                ExecutePlans.run,
+                ExecutePlansParams(
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                    base_temp_dir="/tmp/hoover4",
+                    op_id=params.op_id,
+                ),
+                id=f"ocr-rerun-execute-{params.op_id}",
+                task_queue="processing-common-queue",
+                search_attributes=dataset_search_attributes(params.collection_dataset),
+            )
+        return {"plans": reopened, "execution_counts": execution_counts}
 
 
 @workflow.defn

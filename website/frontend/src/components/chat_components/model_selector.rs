@@ -54,11 +54,11 @@ pub fn ModelSelector(
     let current = selected.read().clone();
     rsx! {
         label {
-            style: "display: flex; align-items: center; gap: 6px; font-size: 13px; color: #475569;",
+            style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); color: var(--x-ink);",
             span { "Model" }
             select {
-                style: "border: 1px solid #CBD5E1; border-radius: 8px; padding: 4px 8px; \
-                        font-size: 13px; color: #0F172A; background: white; max-width: 320px;",
+                style: "border: 1px solid var(--x-border); border-radius: 8px; padding: 4px 8px; \
+                        font-size: var(--x-text-sm); color: var(--x-ink-strong); background: white; max-width: 320px;",
                 disabled: disabled,
                 value: "{current}",
                 onchange: move |e| selected.set(e.value()),

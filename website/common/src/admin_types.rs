@@ -58,6 +58,21 @@ pub struct AdminCollectionItem {
     /// True when the collection is readable by every authenticated user without a group
     /// grant. False = restricted to the groups listed in `collection_group_permissions`.
     pub is_public: bool,
+    /// The summed cached statistics of the collection's datasets.
+    #[serde(default)]
+    pub stats: crate::storage_tree::CollectionAggregates,
+}
+
+/// One row of the administration Datasets list, which covers every collection.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AdminDatasetListItem {
+    pub collectionname: String,
+    pub collection_dataset: String,
+    pub dataset_name: String,
+    pub dataset_display_name: String,
+    pub date_created: String,
+    /// `None` until the pipeline writes the dataset's first statistics row.
+    pub stats: Option<crate::storage_tree::DatasetAggregates>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -75,6 +90,9 @@ pub struct AdminDatasetItem {
     pub dataset_type: String,
     pub dataset_path: String,
     pub date_created: String,
+    /// The cached statistics, `None` until the pipeline writes the first row.
+    #[serde(default)]
+    pub stats: Option<crate::storage_tree::DatasetAggregates>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -85,6 +103,9 @@ pub struct AdminDatasetDetail {
     /// exist any more.
     pub collectionname: String,
     pub stats: AdminDatasetStats,
+    /// The cached statistics, `None` until the pipeline writes the first row.
+    #[serde(default)]
+    pub aggregates: Option<crate::storage_tree::DatasetAggregates>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

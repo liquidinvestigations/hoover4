@@ -204,7 +204,7 @@ pub fn DocViewerRoot(
             {content_view}
             div {
                 style: "
-                    width: calc(max(35%, 575px));
+                    width: clamp(320px, 30%, 575px);
                     flex: 0 0 auto;
                     height: 100%;
                     overflow: hidden;
@@ -382,7 +382,7 @@ fn _make_view_wrapper(controls: Element, page: Element) -> Element {
                 ",
                 div {
                     style: "
-                        width: 340px;
+                        width: clamp(220px, 20%, 340px);
                         flex: 0 0 auto;
                         height: 100%;
                         overflow: hidden;

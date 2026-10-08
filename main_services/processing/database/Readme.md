@@ -57,7 +57,7 @@ ClickHouse storage is split across `1 + N` databases.
 
 | | Database | Migrations | Holds |
 |---|---|---|---|
-| Global | `Hoover4_Processing` | `db_global_migrations/` | `users`, `user_groups`, `user_group_membership`, `collections`, `collection_group_permissions`, `web_sessions`, `server_settings`, `dataset`, `search_manticore_cache`, `temp_chat_json_objects`, `processing_eta_samples`, `processing_task_runs` (unroutable activity timings), `processing_queue_backlog`, `bench_runs` |
+| Global | `Hoover4_Processing` | `db_global_migrations/` | `users`, `user_groups`, `user_group_membership`, `collections`, `collection_group_permissions`, `web_sessions`, `server_settings`, `dataset`, `search_manticore_cache`, `temp_chat_json_objects`, `processing_eta_samples`, `processing_task_runs` (unroutable activity timings), `processing_queue_backlog`, `bench_runs`, `dataset_stats`, `feedback_reports` |
 | Per collection | `Hoover4_Collection_<collectionname>` | `db_collection_migrations/` | blobs, VFS, parsed content, plans, errors, task runs, document outcomes, term dictionaries, NLP watermark, Manticore shard ledger |
 
 `operation_error_events` stores `selection_complete` after all selector class events.
@@ -71,6 +71,15 @@ activity writes one task run for each of its files, so each file has its own mat
 assigns an identity before it calls the recorder. Recorder retries keep that identity.
 The table stores later writes with `write_version`, and current-row queries use `FINAL`.
 Migration copies retain equal-key historical rows with separate legacy identities.
+
+`dataset_stats` holds the newest document count, size, indexed count, error count and
+processing state of each dataset. `dataset_stats.py` writes it when an operation is
+admitted, when an operation reaches a terminal state, and during the ETA collector pass
+while a collection has a live operation. A dataset is `processing` while a live operation
+other than `export_collection` holds it under the operation lock rule, and `done`
+otherwise. A failed or errored operation is not live, so its dataset shows as `done`.
+Each statistics query stops after 30 seconds. A refresh that stops leaves the row in
+`processing`, and the next collector pass writes the row again.
 
 The global `operations` table uses `ReplacingMergeTree(row_version)`. Open rows use rank
 zero. Finished and errored rows use rank one. Cancelled rows use rank two. Each row keeps

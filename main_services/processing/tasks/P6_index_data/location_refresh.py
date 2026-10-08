@@ -1,9 +1,10 @@
-"""Select documents whose indexed folder closure does not match current locations.
+"""Select documents whose indexed folder or language attributes are stale.
 
 A content hash that gains another path does not create a processing plan. The
 page writer still has to refresh that document's folder attributes, or a folder
-filter keeps answering from the previous locations. This module names those
-documents and rewrites their page rows. It does not extract, OCR, or embed.
+filter keeps answering from the previous locations. A change to the document
+language rule has the same effect on the language filter. This module names
+those documents and rewrites their page rows. It does not extract, OCR, or embed.
 """
 
 from __future__ import annotations
@@ -65,10 +66,10 @@ def hashes_with_stale_locations(
     expected_by_hash: dict[str, frozenset[int]],
     indexed_by_hash: dict[str, frozenset[int]],
 ) -> list[str]:
-    """Hashes that have an indexed closure and whose current closure differs.
+    """Hashes that have an indexed term-id set and whose current set differs.
 
-    A hash with no indexed row is not selected. It has never been indexed and
-    needs a processing plan, not a location refresh.
+    The sets are folder closures or languages. A hash with no indexed row is not
+    selected. It has never been indexed and needs a processing plan, not a refresh.
     """
     stale = []
     for file_hash, expected in expected_by_hash.items():
@@ -156,14 +157,36 @@ def load_shard_assignments(
     return {file_hash: shard_name for file_hash, shard_name in rows}
 
 
-def load_indexed_path_ids(
-    collectionname: str, collection_dataset: str, assignments: dict[str, str]
+def load_expected_language_ids(
+    collectionname: str, collection_dataset: str
 ) -> dict[str, frozenset[int]]:
-    """Indexed `file_paths` per hash, read from each assigned pages table.
+    """Current `language` term ids per hash, by the rule the page writer applies."""
+    from database.clickhouse import get_collection_client
 
-    Reads the `filename_index` row. That row is identified by `extracted_by`,
-    because a bound `page_id = -1` does not match the unsigned value Manticore
-    stores for that sentinel.
+    from .activities import document_languages
+    from .string_term_encodings import get_string_term_ids_by_field
+
+    with get_collection_client(collectionname) as client:
+        languages = document_languages(client, collection_dataset)
+    codes = {code for values in languages.values() for code in values}
+    ids = get_string_term_ids_by_field(
+        collectionname, collection_dataset, {"language": codes}
+    )["language"] if codes else {}
+    return {
+        file_hash: frozenset(ids[code] for code in values)
+        for file_hash, values in languages.items()
+    }
+
+
+def load_indexed_ids(
+    collectionname: str, collection_dataset: str, assignments: dict[str, str]
+) -> tuple[dict[str, frozenset[int]], dict[str, frozenset[int]]]:
+    """Indexed `file_paths` and `language` per hash, read from each assigned pages table.
+
+    Reads the `filename_index` row, which carries the same document attributes as the
+    document's other page rows. That row is identified by `extracted_by`, because a
+    bound `page_id = -1` does not match the unsigned value Manticore stores for that
+    sentinel.
     """
     from database.manticore import get_manticore_client, shard_table_from_name
 
@@ -173,7 +196,8 @@ def load_indexed_path_ids(
     for file_hash, shard_name in assignments.items():
         by_shard.setdefault(shard_name, []).append(file_hash)
 
-    indexed: dict[str, frozenset[int]] = {}
+    paths: dict[str, frozenset[int]] = {}
+    languages: dict[str, frozenset[int]] = {}
     with get_manticore_client() as cnx:
         cur = cnx.cursor()
         for shard_name, hashes in by_shard.items():
@@ -185,30 +209,39 @@ def load_indexed_path_ids(
                 # stores `page_id` as unsigned 4294967295, and a bound `-1`
                 # matches no row through this client.
                 cur.execute(
-                    f"SELECT file_hash, file_paths FROM {table} "
+                    f"SELECT file_hash, file_paths, language FROM {table} "
                     "WHERE collection_dataset = %s AND extracted_by = %s "
                     f"AND file_hash IN ({placeholders}) "
                     f"LIMIT {len(chunk)} OPTION max_matches={len(chunk)}",
                     (collection_dataset, FILENAME_EXTRACTED_BY, *chunk),
                 )
-                for file_hash, file_paths in cur.fetchall() or []:
-                    indexed[file_hash] = parse_mva_ids(file_paths)
-    return indexed
+                for file_hash, file_paths, language in cur.fetchall() or []:
+                    paths[file_hash] = parse_mva_ids(file_paths)
+                    languages[file_hash] = parse_mva_ids(language)
+    return paths, languages
 
 
 def list_stale_location_hashes(
     collectionname: str, collection_dataset: str, item_hashes: list[str] | None = None
 ) -> tuple[list[str], int, str]:
-    """Hashes whose indexed folder closure is behind `vfs_files`.
+    """Hashes whose indexed folder closure or languages differ from current values.
 
     Returns the selected hashes, the indexed document count, and the mechanism
     name. A supplied `item_hashes` list is intersected with that stale set when
     it is non-empty; an empty list means "select the stale set".
     """
-    expected = load_expected_path_ids(collectionname, collection_dataset)
+    expected_paths = load_expected_path_ids(collectionname, collection_dataset)
     assignments = load_shard_assignments(collectionname, collection_dataset)
-    indexed = load_indexed_path_ids(collectionname, collection_dataset, assignments)
-    stale = hashes_with_stale_locations(expected, indexed)
+    indexed_paths, indexed_languages = load_indexed_ids(
+        collectionname, collection_dataset, assignments
+    )
+    expected_languages = {
+        file_hash: frozenset() for file_hash in indexed_languages
+    } | load_expected_language_ids(collectionname, collection_dataset)
+    stale = sorted(
+        set(hashes_with_stale_locations(expected_paths, indexed_paths))
+        | set(hashes_with_stale_locations(expected_languages, indexed_languages))
+    )
     if item_hashes:
         wanted = set(item_hashes)
         stale = [h for h in stale if h in wanted]

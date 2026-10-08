@@ -7,8 +7,7 @@ use dioxus::prelude::*;
 use crate::api::admin_api::{admin_get_manticore_load, admin_get_metrics};
 use crate::components::admin_components::{
     AdminGuard, AdminShell, LiveChatsPanel, HELP_TEXT, MODULE, MODULE_BODY, MODULE_CAPTION,
-    TABLE, TD, TH,
-};
+    TABLE, TD, TH, SUBHEADING};
 use crate::components::suspend_boundary::SuspendWrapper;
 // Shadows the prelude's element table so `svg_title` exists. See its module docs. The
 // bar tooltip is the only place the exact bucket timestamp and count are readable.
@@ -21,7 +20,7 @@ pub fn AdminMetricsPage() -> Element {
         AdminGuard {
             AdminShell {
                 title: "Metrics".to_string(),
-                breadcrumb: "Metrics".to_string(),
+                breadcrumb: String::new(),
                 active: "metrics".to_string(),
                 SuspendWrapper { MetricsContent {} }
             }
@@ -47,7 +46,7 @@ fn MetricsContent() -> Element {
         // Live first: it is the only thing on this page that is actionable right now.
         LiveChatsPanel {}
         p { style: "{HELP_TEXT} margin: 0 0 16px;",
-            "Rolling last 24 hours. Events record who, which route class or function name, and when. Never a URL or a query string."
+            "The last 24 hours."
         }
         match metrics {
             None => rsx! { "Loading\u{2026}" },
@@ -76,16 +75,16 @@ fn ManticorePanel() -> Element {
             h2 { style: MODULE_CAPTION, "Manticore load (now)" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",
-                    "Manticore reports no process memory and no CPU time. The RAM figure is the memory that its tables hold. The container holds more memory than that, because it maps the table files. Thread load is shown as Manticore reports it, for the last 1, 5 and 15 minutes. The Manticore manual gives no unit for it."
+                    "RAM is the memory of the tables. Thread load is for the last 1, 5 and 15 minutes."
                 }
                 match state {
                     None => rsx! { "Loading\u{2026}" },
                     Some(Err(error)) => rsx! {
-                        p { style: "{HELP_TEXT} color: #ba2121;", "Manticore status could not be read: {error}" }
+                        p { style: "{HELP_TEXT} color: var(--x-danger);", "Manticore status could not be read: {error}" }
                     },
                     Some(Ok(loads)) => rsx! {
                         for daemon in loads {
-                            h3 { style: "font-size: 13px; color: #333; margin: 0 0 8px;", "{daemon.daemon}" }
+                            h3 { style: SUBHEADING, "{daemon.daemon}" }
                             ManticoreLoadTables { load: daemon.load }
                         }
                     },
@@ -116,14 +115,14 @@ fn ManticoreLoadTables(load: ManticoreLoad) -> Element {
                 tr {
                     td { style: TD, "Tables read" }
                     td {
-                        style: if load.unread_tables > 0 { format!("{TD} color: #ba2121;") } else { TD.to_string() },
+                        style: if load.unread_tables > 0 { format!("{TD} color: var(--x-danger);") } else { TD.to_string() },
                         "{load.table_count - load.unread_tables} of {load.table_count}"
                     }
                 }
                 tr { td { style: TD, "Read at" } td { style: TD, "{load.read_at}" } }
             }
         }
-        h3 { style: "font-size: 13px; color: #333; margin: 0 0 8px;", "Largest tables by RAM" }
+        h3 { style: SUBHEADING, "Largest tables by RAM" }
         table { style: TABLE,
             thead {
                 tr {
@@ -137,7 +136,7 @@ fn ManticoreLoadTables(load: ManticoreLoad) -> Element {
             tbody {
                 for t in load.largest_tables {
                     tr { key: "{t.table}",
-                        td { style: "{TD} font-family: monospace; font-size: 12px;", "{t.table}" }
+                        td { style: "{TD} font-family: monospace; font-size: var(--x-text-xs);", "{t.table}" }
                         td { style: TD, "{humanize_bytes(t.ram_bytes)}" }
                         td { style: TD, "{humanize_bytes(t.disk_bytes)}" }
                         td { style: TD, "{t.disk_chunks}" }
@@ -156,7 +155,7 @@ fn UsagePanel(usage: UsageMetrics) -> Element {
         div { style: MODULE,
             h2 { style: MODULE_CAPTION, "Usage (last 24 h)" }
             div { style: MODULE_BODY,
-                h3 { style: "font-size: 13px; color: #333; margin: 0 0 8px;", "Events by type" }
+                h3 { style: SUBHEADING, "Events by type" }
                 table { style: "{TABLE} margin-bottom: 20px;",
                     thead {
                         tr {
@@ -174,14 +173,14 @@ fn UsagePanel(usage: UsageMetrics) -> Element {
                     }
                 }
 
-                h3 { style: "font-size: 13px; color: #333; margin: 0 0 8px;", "Events per hour" }
+                h3 { style: SUBHEADING, "Events per hour" }
                 if usage.series.is_empty() {
                     p { style: HELP_TEXT, "No events recorded yet." }
                 } else {
                     HourlyEventsChart { series: usage.series, max_count: max_series }
                 }
 
-                h3 { style: "font-size: 13px; color: #333; margin: 0 0 8px;", "Busiest users" }
+                h3 { style: SUBHEADING, "Busiest users" }
                 table { style: TABLE,
                     thead {
                         tr {
@@ -330,7 +329,7 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
                     text {
                         x: "{LEFT - 6.0}", y: "{y + 3.5}",
                         "text-anchor": "end",
-                        style: "font-size: 10px; fill: #666;",
+                        style: "font-size: var(--x-text-xs); fill: #666;",
                         "{value}"
                     }
                 }
@@ -348,7 +347,7 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
                             x: "{x}", y: "{baseline - height}",
                             width: "{bar_w}", height: "{height}",
                             rx: "2",
-                            fill: "#79aec8",
+                            fill: "var(--x-link)",
                             svgtitle { "{point.bucket}: {point.count} events" }
                         }
                     }
@@ -364,14 +363,14 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
                     key: "x-{tick}",
                     x: "{x}", y: "{H - 7.0}",
                     "text-anchor": "middle",
-                    style: "font-size: 10px; fill: #666;",
+                    style: "font-size: var(--x-text-xs); fill: #666;",
                     "{label}"
                 }
             }
             text {
                 x: "{LEFT - 6.0}", y: "{H - 7.0}",
                 "text-anchor": "end",
-                style: "font-size: 10px; fill: #999;",
+                style: "font-size: var(--x-text-xs); fill: #999;",
                 "UTC"
             }
         }
@@ -404,10 +403,10 @@ fn ApiPanel(api: Vec<ApiFunctionStats>) -> Element {
                         tbody {
                             for f in api {
                                 tr { key: "{f.function_name}",
-                                    td { style: "{TD} font-family: monospace; font-size: 12px;", "{f.function_name}" }
+                                    td { style: "{TD} font-family: monospace; font-size: var(--x-text-xs);", "{f.function_name}" }
                                     td { style: TD, "{f.calls}" }
                                     td {
-                                        style: if f.errors > 0 { format!("{TD} color: #ba2121; font-weight: 700;") } else { TD.to_string() },
+                                        style: if f.errors > 0 { format!("{TD} color: var(--x-danger); font-weight: 700;") } else { TD.to_string() },
                                         "{f.errors}"
                                     }
                                     td { style: TD, "{f.error_rate * 100.0:.1}%" }

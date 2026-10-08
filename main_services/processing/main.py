@@ -567,13 +567,14 @@ def scan_signals_collection(collectionname: str):
 @click.argument("collectionname", type=str)
 @click.argument("collection_dataset", type=str)
 @click.option("--apply/--dry-run", default=False, show_default=True,
-              help="--dry-run (the default) lists hashes whose indexed folder "
-                   "attributes lag current locations. --apply dispatches the rewrite.")
+              help="--dry-run (the default) lists hashes whose indexed folder or "
+                   "language attributes differ from current values. --apply dispatches the rewrite.")
 def refresh_document_locations(collectionname: str, collection_dataset: str, apply: bool):
-    """Rewrite searchable folder attributes for documents whose locations changed.
+    """Rewrite folder and language attributes of documents whose values changed.
 
     Does not extract, OCR, or embed. Does not drop shard tables. Selects only
-    hashes whose indexed `file_paths` differ from current `vfs_files` closures.
+    hashes whose indexed `file_paths` differ from current `vfs_files` closures, or
+    whose indexed `language` differs from the current document language rule.
     Invocation is explicit: deployment does not start this.
 
     The dry run is a local read. `--apply` dispatches a
@@ -593,7 +594,7 @@ def refresh_document_locations(collectionname: str, collection_dataset: str, app
         collectionname, collection_dataset, [],
     )
     click.echo(
-        f"{collection_dataset}: {len(selected)} stale location hash(es) "
+        f"{collection_dataset}: {len(selected)} stale hash(es) "
         f"out of {indexed_count} indexed documents ({mechanism})"
     )
     for file_hash in selected[:50]:
@@ -602,7 +603,7 @@ def refresh_document_locations(collectionname: str, collection_dataset: str, app
         click.echo(f"... {len(selected) - 50} more")
 
     if not apply:
-        click.echo("dry run; pass --apply to rewrite those page-row folder attributes")
+        click.echo("dry run; pass --apply to rewrite those page rows")
         return
     if not selected:
         click.echo("nothing to refresh")

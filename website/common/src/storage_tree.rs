@@ -61,19 +61,72 @@ impl CollectionNode {
     }
 }
 
-/// Materialised per-dataset numbers for the collection landing page's cards.
+/// The cached statistics of one dataset, read from the `dataset_stats` table.
 ///
-/// Every field is something the pipeline already writes and something the admin pages
-/// already count; nothing here is computed for the sake of a card.
+/// The pipeline writes that table when an operation starts and ends, and while a
+/// collection is processing. A dataset with no row has no `DatasetAggregates` at all, so
+/// a reader shows it as not counted yet rather than as zero.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct DatasetAggregates {
     pub collection_dataset: String,
     /// Distinct blobs, which is the population every processing stage reports against.
+    /// Files extracted from emails and archives count as documents.
     pub document_count: u64,
+    /// One size for each distinct blob, summed.
     pub total_size_bytes: u64,
     /// Documents that reached the search index (`index_state`).
     pub indexed_count: u64,
     pub error_count: u64,
+    /// True while a live operation holds the dataset. A finished, failed or cancelled
+    /// operation does not, so permanently failed work reads as done.
+    #[serde(default)]
+    pub processing: bool,
+}
+
+/// The summed statistics of one collection's readable datasets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct CollectionAggregates {
+    pub collectionname: String,
+    /// Readable datasets in the collection.
+    pub dataset_count: u64,
+    /// Readable datasets that have a statistics row. The sums cover only these.
+    pub counted_dataset_count: u64,
+    pub document_count: u64,
+    pub total_size_bytes: u64,
+    pub indexed_count: u64,
+    pub error_count: u64,
+    /// True when one of the counted datasets is processing.
+    pub processing: bool,
+}
+
+impl CollectionAggregates {
+    /// Sum the statistics of `datasets`, which are the readable datasets of one collection.
+    pub fn sum(collectionname: &str, dataset_count: u64, datasets: &[&DatasetAggregates]) -> Self {
+        let mut total = CollectionAggregates {
+            collectionname: collectionname.to_string(),
+            dataset_count,
+            ..Default::default()
+        };
+        for dataset in datasets {
+            total.counted_dataset_count += 1;
+            total.document_count += dataset.document_count;
+            total.total_size_bytes += dataset.total_size_bytes;
+            total.indexed_count += dataset.indexed_count;
+            total.error_count += dataset.error_count;
+            total.processing |= dataset.processing;
+        }
+        total
+    }
+
+    /// Whether every dataset is counted.
+    pub fn is_complete(&self) -> bool {
+        self.counted_dataset_count == self.dataset_count
+    }
+}
+
+/// The processing state as the interface shows it.
+pub fn state_label(processing: bool) -> &'static str {
+    if processing { "Processing" } else { "Done" }
 }
 
 /// A collection's datasets with their aggregates, in one response.

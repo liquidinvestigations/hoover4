@@ -13,6 +13,7 @@ use crate::components::admin_components::{
     TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
+use crate::pages::admin::collections_list::{short_date, DatasetStatCells, DatasetStateCell};
 use crate::pages::admin::operations::CollectionOperationsPanel;
 use crate::routes::Route;
 
@@ -23,8 +24,8 @@ pub fn AdminCollectionPage(collection_id: String) -> Element {
         Title { "Admin: collection {collection_id}" }
         AdminGuard {
             AdminShell {
-                title: "Change collection".to_string(),
-                breadcrumb: format!("Collections \u{203a} {collection_id}"),
+                title: format!("Collection {collection_id}"),
+                breadcrumb: "Collections".to_string(),
                 active: "collections".to_string(),
                 SuspendWrapper { CollectionDetailContent { collection_id: collection_id_for_content } }
             }
@@ -89,21 +90,55 @@ fn CollectionDetailContent(collection_id: String) -> Element {
             ErrorBar { message: err }
         }
         div { style: MODULE,
-            h2 { style: MODULE_CAPTION, "Collection" }
+            h2 { style: MODULE_CAPTION, "Datasets" }
             div { style: MODULE_BODY,
-                p { style: "{HELP_TEXT} margin: 0 0 8px;",
-                    "Database "
-                    code { "Hoover4_Collection_{cname}" }
-                    if detail.collection.db_ready {
-                        span { style: "color: #5fa25f; font-weight: 700;", " \u{2714} ready" }
-                    } else {
-                        span { style: "color: #ba2121;", " \u{2026} provisioning" }
+                table { style: TABLE,
+                    thead {
+                        tr {
+                            th { style: TH, "Dataset" }
+                            th { style: "{TH} text-align: right;", "Documents" }
+                            th { style: "{TH} text-align: right;", "Size" }
+                            th { style: "{TH} text-align: right;", "Indexed" }
+                            th { style: "{TH} text-align: right;", "Errors" }
+                            th { style: TH, "State" }
+                            th { style: TH, "Created" }
+                        }
                     }
+                    tbody {
+                        for ds in datasets {
+                            tr { key: "{ds.collection_dataset}",
+                                td { style: TD,
+                                    Link {
+                                        to: Route::AdminDatasetPage {
+                                            collection_id: collection_id.clone(),
+                                            dataset_id: ds.collection_dataset.clone(),
+                                        },
+                                        style: LINK,
+                                        "{ds.dataset_name}"
+                                    }
+                                    if !ds.dataset_display_name.is_empty() && ds.dataset_display_name != ds.dataset_name {
+                                        div { style: HELP_TEXT, "{ds.dataset_display_name}" }
+                                    }
+                                }
+                                DatasetStatCells { stats: ds.stats.clone() }
+                                DatasetStateCell { stats: ds.stats.clone() }
+                                td { style: "{TD} white-space: nowrap;", "{short_date(&ds.date_created)}" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        div { style: MODULE,
+            h2 { style: MODULE_CAPTION, "Settings" }
+            div { style: MODULE_BODY,
+                if !detail.collection.db_ready {
+                    p { style: "margin: 0 0 8px; color: var(--x-danger);", "The collection database is not ready yet." }
                 }
                 Link {
                     to: Route::AdminCollectionProcessingPage { collection_id: cname.clone() },
                     style: LINK,
-                    "Processing status, workflows and failures \u{2192}"
+                    "Processing progress and estimates"
                 }
             }
             div { style: "{MODULE_BODY} display: flex; gap: 8px; flex-wrap: wrap; align-items: center;",
@@ -135,56 +170,18 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                 }
             }
         }
-        CollectionOperationsPanel { collectionname: cname.clone() }
-        div { style: MODULE,
-            h2 { style: MODULE_CAPTION, "Datasets" }
-            div { style: MODULE_BODY,
-                p { style: "{HELP_TEXT} margin: 0 0 8px;",
-                    "A dataset's collection is fixed when it is created and cannot be changed."
-                }
-                table { style: TABLE,
-                    thead {
-                        tr {
-                            th { style: TH, "Dataset" }
-                            th { style: TH, "Name" }
-                            th { style: TH, "Type" }
-                            th { style: TH, "Created" }
-                        }
-                    }
-                    tbody {
-                        for ds in datasets {
-                            tr { key: "{ds.collection_dataset}",
-                                td { style: TD,
-                                    Link {
-                                        to: Route::AdminDatasetPage {
-                                            collection_id: collection_id.clone(),
-                                            dataset_id: ds.collection_dataset.clone(),
-                                        },
-                                        style: LINK,
-                                        "{ds.collection_dataset}"
-                                    }
-                                }
-                                td { style: TD, "{ds.dataset_display_name}" }
-                                td { style: TD, "{ds.dataset_type}" }
-                                td { style: TD, "{ds.date_created}" }
-                            }
-                        }
-                    }
-                }
-            }
-        }
         DatasetCreatePanel {
             collectionname: collection_id.clone(),
             on_created: move |_| detail_res.restart(),
         }
         div { style: MODULE,
-            h2 { style: MODULE_CAPTION, "Access mode" }
+            h2 { style: MODULE_CAPTION, "Access" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
                     if detail.collection.is_public {
-                        "Public \u{2014} every signed-in user can search and read this collection. The group grants below still apply but are redundant while it is public."
+                        "Public. Every signed-in user can search and read this collection."
                     } else {
-                        "Restricted \u{2014} only members of the groups listed below can search and read this collection."
+                        "Restricted. Only members of the groups below can search and read this collection."
                     }
                 }
                 div { style: "display: flex; gap: 8px; align-items: center;",
@@ -229,7 +226,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                     for g in groups_with_access {
                         li {
                             key: "{g}",
-                            style: "display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 13px;",
+                            style: "display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--x-border); font-size: var(--x-text-sm);",
                             Link {
                                 to: Route::AdminGroupPage { groupname: g.clone() },
                                 style: "{LINK} flex: 1;",
@@ -292,11 +289,12 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                 }
             }
         }
+        CollectionOperationsPanel { collectionname: cname.clone() }
         div { style: MODULE,
-            h2 { style: "{MODULE_CAPTION} background: #ba2121;", "Danger zone" }
+            h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", "Danger zone" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 8px;", "A collection can only be deleted while it has no datasets." }
-                p { style: "{HELP_TEXT} margin: 0 0 8px; color: #ba2121;",
+                p { style: "{HELP_TEXT} margin: 0 0 8px; color: var(--x-danger);",
                     "Deleting the collection also drops its database "
                     code { "Hoover4_Collection_{cname}" }
                     " and everything in it. This cannot be undone. Type the collection name to confirm."

@@ -17,7 +17,7 @@ use crate::api::admin_api::{
     admin_apply_ocr_languages, admin_get_dataset_ocr, admin_get_dataset_operation,
 };
 use crate::components::admin_components::{
-    ErrorBar, SuccessBar, BTN, C_HEADER, HELP_TEXT, INPUT, MODULE, MODULE_BODY, MODULE_CAPTION,
+    ErrorBar, SuccessBar, BTN, HELP_TEXT, SUBHEADING, INPUT, MODULE, MODULE_BODY, MODULE_CAPTION,
 };
 
 /// How often the strip re-reads the operation row while one is running. Fast enough that
@@ -147,30 +147,29 @@ pub fn DatasetOperationStrip(
     rsx! {
         div {
             style: "background: {background}; border: 1px solid {border}; color: {ink}; \
-                    border-radius: 4px; padding: 10px 12px; margin-bottom: 16px; font-size: 13px;",
-            div { style: "font-weight: 600;",
-                "{current.kind} \u{2014} {current.state}"
+                    border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; font-size: var(--x-text-md);",
+            div { style: "font-weight: 500;",
+                "Last operation: {current.kind}, {current.state}"
                 if current.is_running() {
-                    span { style: "font-weight: 400;", " \u{b7} started {current.started_at}" }
+                    span { style: "font-weight: 400;", ", started {current.started_at}" }
+                } else if !current.finished_at.is_empty() {
+                    span { style: "font-weight: 400;", ", {current.finished_at}" }
                 }
             }
-            if !current.detail.is_empty() || matches!(current.kind.as_str(), "add_dataset" | "rescan_dataset") {
+            if current.is_running() && (!current.detail.is_empty() || matches!(current.kind.as_str(), "add_dataset" | "rescan_dataset")) {
                 div { style: "margin-top: 3px;", "{describe(&current)}" }
             }
             if stale {
-                div { style: "margin-top: 3px; font-weight: 600;",
-                    "No progress for {current.stale_seconds / 60} minutes. It may be stuck \u{2014} check the Temporal workflow, and cancel the operation if it is, because the lock is released by cancelling and by nothing else."
+                div { style: "margin-top: 3px; font-weight: 500;",
+                    "No progress for {current.stale_seconds / 60} minutes. Check the Temporal workflow, and cancel the operation if it is stuck."
                 }
             }
             if !current.error.is_empty() {
                 div {
-                    style: "margin-top: 6px; font-family: ui-monospace, monospace; font-size: 12px; \
+                    style: "margin-top: 6px; font-family: ui-monospace, monospace; font-size: var(--x-text-xs); \
                             white-space: pre-wrap; word-break: break-word;",
                     "{current.error}"
                 }
-            }
-            if !current.is_running() && !current.finished_at.is_empty() {
-                div { style: "margin-top: 3px; opacity: 0.8;", "finished {current.finished_at}" }
             }
         }
     }
@@ -187,7 +186,7 @@ fn LanguageChecklist(
     selected: Signal<Vec<String>>,
     disabled: bool,
 ) -> Element {
-    let ink = if disabled { "#999" } else { "#333" };
+    let ink = if disabled { "var(--x-ink-faint)" } else { "var(--x-ink)" };
     rsx! {
         div {
             style: "display: flex; flex-wrap: wrap; gap: 10px 16px;",
@@ -199,7 +198,7 @@ fn LanguageChecklist(
                     rsx! {
                         label {
                             key: "{code}",
-                            style: "display: flex; align-items: center; gap: 5px; font-size: 13px; \
+                            style: "display: flex; align-items: center; gap: 5px; font-size: var(--x-text-sm); \
                                     color: {ink};",
                             input {
                                 r#type: "checkbox",
@@ -316,17 +315,11 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                 if let Some(e) = error_msg.read().clone() { ErrorBar { message: e } }
 
                 p { style: "{HELP_TEXT} margin: 0;",
-                    "Each language set is a separate stored variant of every document's text. "
-                    "A "
-                    strong { "Tesseract" }
-                    " language is nearly free: it takes eng+ron in a single pass and picks per region, so the whole set is one pass and one variant. "
-                    "An "
-                    strong { "EasyOCR" }
-                    " language in a new script is not: EasyOCR cannot mix scripts, so each script group is a full extra pass over the dataset plus a complete set of entity, chunk, embedding and index rows for it."
+                    "Each EasyOCR script group adds one OCR pass over the dataset. Tesseract reads all its languages in one pass."
                 }
 
                 div {
-                    div { style: "font-size: 12px; font-weight: 600; color: {C_HEADER}; margin-bottom: 6px;",
+                    h3 { style: SUBHEADING,
                         "Tesseract"
                     }
                     if panel.tesseract_available.is_empty() {
@@ -341,15 +334,14 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                             disabled: operation_running,
                         }
                         p { style: "{HELP_TEXT} margin: 6px 0 0;",
-                            "Order matters: the first language is the primary one, so eng+ron and ron+eng are different variants. "
-                            "Selected: "
+                            "The first language is the primary one. Selected: "
                             strong { "{selected_tesseract.join(\"+\")}" }
                         }
                     }
                 }
 
                 div {
-                    div { style: "font-size: 12px; font-weight: 600; color: {C_HEADER}; margin-bottom: 6px;",
+                    h3 { style: SUBHEADING,
                         "EasyOCR"
                     }
                     if panel.easyocr_configured {
@@ -362,44 +354,43 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                     } else {
                         input { style: "{INPUT} width: 260px;", value: "{panel.easyocr_languages}", disabled: true }
                         p { style: "{HELP_TEXT} margin: 6px 0 0;",
-                            "The EasyOCR service is not deployed on this stack (easyocr_enabled = false in hoover4.ini), so no EasyOCR variants are produced and this setting has no effect until it is. "
-                            "It is shown rather than hidden because the stored value is still what a future deployment would run with."
+                            "EasyOCR is off on this deployment, so this setting has no effect."
                         }
                     }
                 }
 
                 if !panel.text_variants.is_empty() {
                     div {
-                        div { style: "font-size: 12px; font-weight: 600; color: {C_HEADER}; margin-bottom: 6px;",
+                        h3 { style: SUBHEADING,
                             "Stored text variants"
                         }
                         div { style: "display: flex; flex-wrap: wrap; gap: 6px;",
                             for variant in panel.text_variants.iter() {
                                 span {
                                     key: "{variant.extracted_by}",
-                                    style: "background: #f6f6f6; border: 1px solid #eee; border-radius: 999px; \
-                                            padding: 2px 10px; font-size: 12px;",
+                                    style: "background: var(--x-surface-muted); border: 1px solid var(--x-border); border-radius: 999px; \
+                                            padding: 2px 10px; font-size: var(--x-text-xs);",
                                     "{common::document_sources::text_source_label(&variant.extracted_by)} \u{b7} {variant.page_count} pages"
                                 }
                             }
                         }
                         p { style: "{HELP_TEXT} margin: 6px 0 0;",
-                            "Removing a language deletes its variant here and in the search index, and the derived PDF that goes with it."
+                            "Removing a language deletes its text, its search rows and its searchable PDF."
                         }
                     }
                 }
 
                 if panel.ocr_pdf_configured && !panel.pdf_variants.is_empty() {
                     div {
-                        div { style: "font-size: 12px; font-weight: 600; color: {C_HEADER}; margin-bottom: 6px;",
+                        h3 { style: SUBHEADING,
                             "Searchable PDFs"
                         }
                         div { style: "display: flex; flex-wrap: wrap; gap: 6px;",
                             for variant in panel.pdf_variants.iter() {
                                 span {
                                     key: "{variant.engine}-{variant.languages}",
-                                    style: "background: #f6f6f6; border: 1px solid #eee; border-radius: 999px; \
-                                            padding: 2px 10px; font-size: 12px;",
+                                    style: "background: var(--x-surface-muted); border: 1px solid var(--x-border); border-radius: 999px; \
+                                            padding: 2px 10px; font-size: var(--x-text-xs);",
                                     "{variant.engine} \u{b7} {variant.languages} \u{b7} {variant.pdf_count} files \u{b7} {variant.total_bytes / 1024 / 1024} MB"
                                 }
                             }
@@ -407,14 +398,14 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                     }
                 } else if !panel.ocr_pdf_configured {
                     p { style: "{HELP_TEXT} margin: 0;",
-                        "Searchable PDFs are turned off for this deployment (ocr_pdf_enabled = false), so no OCR'd PDF source is produced for scanned documents."
+                        "Searchable PDFs are off on this deployment."
                     }
                 }
 
                 div {
                     if operation_running {
                         p { style: "{HELP_TEXT} margin: 0 0 6px;",
-                            "We're working on it. The form unlocks when the operation above finishes, and you can change the languages again then."
+                            "The form unlocks when the operation above finishes."
                         }
                     }
                     button {

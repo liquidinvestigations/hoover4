@@ -68,7 +68,8 @@ A matching header value opens the details panel.
 Entity cards show the value before the category.
 Entity counts state that they include all sources.
 Text hit navigation finds the current rendered span after query, source, or page changes.
-PDF pointer coordinates remain correct at each application zoom.
+PDF pointer coordinates remain correct at each browser zoom.
+The email headers, expanded details, attachments and body share one scroll container.
 A filename-only search match opens the table without a row filter.
 
 Table find removes double-quote phrase delimiters before literal cell matching.

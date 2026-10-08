@@ -57,14 +57,14 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
         };
         return rsx! {
             div {
-                style: "margin: 8px 0; padding: 12px 16px; border: 1px solid #E5E7EB; \
-                        border-radius: 8px; background: white; font-size: 14px; color: #64748B;",
+                style: "margin: 8px 0; padding: 12px 16px; border: 1px solid var(--x-border); \
+                        border-radius: 8px; background: white; font-size: var(--x-text-md); color: var(--x-ink-muted);",
                 "{doc.display_title()}"
                 if !doc.collectionname.is_empty() {
                     span { style: "margin-left: 8px; font-style: italic;", "({doc.collectionname})" }
                 }
                 div {
-                    style: "font-size: 12px; color: #94A3B8; margin-top: 4px;",
+                    style: "font-size: var(--x-text-xs); color: var(--x-ink-faint); margin-top: 4px;",
                     "Not openable: {reason}."
                 }
             }
@@ -138,8 +138,8 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
                 }),
             }
             if !doc.term.is_empty() && !doc.search_route.is_empty() {
-                div { "data-citation-search-term": "{doc.term}", style: "padding: 0 12px; font-size: 12px;",
-                    Link { to: doc.search_route.clone(), style: "color: #475569;",
+                div { "data-citation-search-term": "{doc.term}", style: "padding: 0 12px; font-size: var(--x-text-xs);",
+                    Link { to: doc.search_route.clone(), style: "color: var(--x-ink);",
                         "The search term was "
                         strong { em { code { "{doc.term}" } } }
                         "."
@@ -161,25 +161,25 @@ pub fn ChatDocRefRow(doc: ChatDocRef) -> Element {
     rsx! {
         div {
             class: "x-chat-docref-row",
-            style: "display: flex; align-items: baseline; gap: 10px; font-size: 13px; \
-                    padding: 4px 8px; background: white; border: 1px solid #E5E7EB; \
+            style: "display: flex; align-items: baseline; gap: 10px; font-size: var(--x-text-sm); \
+                    padding: 4px 8px; background: white; border: 1px solid var(--x-border); \
                     border-radius: 6px;",
-            span { style: "flex: 1; min-width: 0; word-break: break-all; color: #1E293B;", "{label}" }
+            span { style: "flex: 1; min-width: 0; word-break: break-all; color: var(--x-ink-strong);", "{label}" }
             if !doc.collectionname.is_empty() {
-                span { style: "flex-shrink: 0; font-style: italic; color: #64748B;", "{doc.collectionname}" }
+                span { style: "flex-shrink: 0; font-style: italic; color: var(--x-ink-muted);", "{doc.collectionname}" }
             }
             match (openable, chat_open) {
                 (true, Some(chat_open)) => rsx! {
                     button {
                         style: "flex-shrink: 0; background: none; border: none; padding: 0; \
-                                cursor: pointer; color: #4F46E5; text-decoration: underline; \
-                                font-size: 12px;",
+                                cursor: pointer; color: var(--x-link); text-decoration: underline; \
+                                font-size: var(--x-text-xs);",
                         onclick: move |_| chat_open.open.call(target.clone()),
                         "Open"
                     }
                 },
                 _ => rsx! {
-                    span { style: "flex-shrink: 0; font-size: 12px; color: #94A3B8;", "Not openable" }
+                    span { style: "flex-shrink: 0; font-size: var(--x-text-xs); color: var(--x-ink-faint);", "Not openable" }
                 },
             }
         }

@@ -90,6 +90,10 @@ pub async fn admin_get_dataset(
     // rows with an empty collectionname.
     collection_db_name(&row.collectionname)?;
     let stats = fetch_stats(&collection_dataset, &row.collectionname).await?;
+    let aggregates = crate::api::list_datasets::stored_dataset_aggregates(Some(&row.collectionname))
+        .await?
+        .into_iter()
+        .find(|a| a.collection_dataset == collection_dataset);
     Ok(AdminDatasetDetail {
         dataset: AdminDatasetItem {
             collection_dataset: row.collection_dataset,
@@ -98,9 +102,11 @@ pub async fn admin_get_dataset(
             dataset_type: row.dataset_type,
             dataset_path: row.dataset_path,
             date_created: format_datetime(row.date_created),
+            stats: aggregates.clone(),
         },
         collectionname: row.collectionname,
         stats,
+        aggregates,
     })
 }
 
@@ -180,11 +186,13 @@ pub async fn admin_trigger_workflow(
     kind: String,
 ) -> anyhow::Result<String> {
     guard::require_admin(user)?;
-    let operation_kind = match kind.as_str() {
-        "ingest_and_process" => "add_dataset",
-        "rescan" => "rescan_dataset",
-        "compute_plans" => "compute_plans",
-        "execute_plans" => "execute_plans",
+    let (operation_kind, detail) = match kind.as_str() {
+        "ingest_and_process" => ("add_dataset", ""),
+        "rescan" => ("rescan_dataset", ""),
+        "compute_plans" => ("compute_plans", ""),
+        "execute_plans" => ("execute_plans", ""),
+        "rerun_ocr" => ("rerun_ocr", r#"{"replace_existing":false}"#),
+        "rerun_ocr_replace" => ("rerun_ocr", r#"{"replace_existing":true}"#),
         other => anyhow::bail!("unknown workflow kind: {other}"),
     };
     let Some(row) = get_dataset_row(&collection_dataset).await? else {
@@ -196,7 +204,7 @@ pub async fn admin_trigger_workflow(
         &collection_dataset,
         &user.username,
         "",
-        "",
+        detail,
     )
     .await
 }

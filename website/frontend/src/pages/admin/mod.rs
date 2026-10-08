@@ -8,6 +8,7 @@ pub mod dashboard;
 pub mod dataset_detail;
 pub mod failure_detail;
 pub mod failures;
+pub mod feedback;
 pub mod group_detail;
 pub mod groups_list;
 pub mod llm_config;

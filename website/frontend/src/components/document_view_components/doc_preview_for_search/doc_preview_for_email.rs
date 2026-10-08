@@ -152,6 +152,7 @@ pub fn DocumentPreviewForEmail(
                 max_page,
             },
             preamble,
+            flow_layout: true,
         }
     }
 }

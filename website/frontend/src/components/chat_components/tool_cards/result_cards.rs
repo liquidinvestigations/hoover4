@@ -74,7 +74,7 @@ fn HashLink(row: serde_json::Value, refs: Vec<ChatDocRef>) -> Element {
         let find = reference.find_query;
         rsx! {
             button {
-                style: "background: none; border: none; color: #4F46E5; cursor: pointer; padding: 0; text-decoration: underline;",
+                style: "background: none; border: none; color: var(--x-link); cursor: pointer; padding: 0; text-decoration: underline;",
                 onclick: move |_| open.open.call((identifier.clone(), find.clone())),
                 "{hash}"
             }
@@ -111,16 +111,16 @@ pub fn SearchCard(tool_name: String, tool_input: String, tool_output: String, ru
         if let Some(route) = search_route { Link { to: route, "Search this" } }
         if let Some(route) = search_all_route { Link { to: route, "Search every collection" } }
         for (index, form) in forms.iter().enumerate() {
-            div { style: "font-size: 12px;", "Form {index}: {form}" }
+            div { style: "font-size: var(--x-text-xs);", "Form {index}: {form}" }
         }
-        div { style: "font-size: 12px; color: #475569;", "{tool_input}" }
+        div { style: "font-size: var(--x-text-xs); color: var(--x-ink);", "{tool_input}" }
         for (key, value) in fields.iter() {
-            if key != "source" { div { style: "font-size: 12px;", "{key}: {value}" } }
+            if key != "source" { div { style: "font-size: var(--x-text-xs);", "{key}: {value}" } }
         }
         for (index, row) in rows.into_iter().enumerate() {
-            div { key: "{index}", style: "border-top: 1px solid #E5E7EB; padding-top: 6px;",
+            div { key: "{index}", style: "border-top: 1px solid var(--x-border); padding-top: 6px;",
                 for (key, value) in row.as_object().into_iter().flat_map(|row| row.iter()) {
-                    if key != "snippet" && key != "file_hash" { div { style: "font-size: 11px;", "{key}: {value}" } }
+                    if key != "snippet" && key != "file_hash" { div { style: "font-size: var(--x-text-xs);", "{key}: {value}" } }
                 }
                 HashLink { row: row.clone(), refs: doc_refs.clone() }
                 if !json_str(&row, "snippet").is_empty() {
@@ -142,7 +142,7 @@ pub fn ReadCard(tool_name: String, tool_input: String, tool_output: String, runn
     };
     rsx! { CardShell { chip: "Read", label, running, expanded, failure, raw_output: tool_output.clone(),
         badges: rsx! {},
-        div { style: "font-size: 12px; color: #475569;", "{tool_input}" }
+        div { style: "font-size: var(--x-text-xs); color: var(--x-ink);", "{tool_input}" }
         for (index, row) in rows.into_iter().enumerate() {
             ReadRow { key: "{index}", row, refs: doc_refs.clone() }
         }
@@ -155,9 +155,9 @@ fn ReadRow(row: serde_json::Value, refs: Vec<ChatDocRef>) -> Element {
     let excerpt: String = text.chars().take(400).collect();
     let cut = text.chars().count() > 400;
     rsx! {
-        div { style: "border-top: 1px solid #E5E7EB; padding-top: 6px; white-space: pre-wrap;",
+        div { style: "border-top: 1px solid var(--x-border); padding-top: 6px; white-space: pre-wrap;",
             for (key, value) in row.as_object().into_iter().flat_map(|row| row.iter()) {
-                if key != "text" && key != "file_hash" { div { style: "font-size: 11px;", "{key}: {value}" } }
+                if key != "text" && key != "file_hash" { div { style: "font-size: var(--x-text-xs);", "{key}: {value}" } }
             }
             HashLink { row: row.clone(), refs }
             div { "{excerpt}" }
@@ -188,7 +188,7 @@ pub fn CiteCard(tool_input: String, tool_output: String, running: bool, doc_refs
     let failure = tool_failure(&output);
     rsx! { CardShell { chip: "Cite", label, running, expanded, failure, raw_output: tool_output.clone(),
         badges: rsx! {},
-        div { style: "font-size: 12px; color: #475569;", "{tool_input}" }
+        div { style: "font-size: var(--x-text-xs); color: var(--x-ink);", "{tool_input}" }
         for (index, citation) in citations.into_iter().enumerate() {
             {
                 let request = requests.get(index).cloned().unwrap_or_default();
@@ -197,7 +197,7 @@ pub fn CiteCard(tool_input: String, tool_output: String, running: bool, doc_refs
                 let reason = json_str(&citation, "quote_reason");
                 let check = if citation.get("quote_verified").and_then(|value| value.as_bool()) == Some(true) { "Quote found" } else if !reason.is_empty() { "Quote not found" } else { "Quote not checked" };
                 rsx! {
-            div { key: "{index}", style: "border-top: 1px solid #E5E7EB; padding-top: 6px; white-space: pre-wrap;",
+            div { key: "{index}", style: "border-top: 1px solid var(--x-border); padding-top: 6px; white-space: pre-wrap;",
                 div { "{check}" }
                 if !quote.is_empty() { div { "Quote: {quote}" } }
                 if !why.is_empty() { div { "Reason: {why}" } }
@@ -235,7 +235,7 @@ fn QuestionOption(answer: String, draft: Option<Signal<String>>) -> Element {
     let chosen = answer.clone();
     rsx! {
         button {
-            style: "border: 1px solid #E5E7EB; background: white; border-radius: 6px; padding: 6px; cursor: pointer;",
+            style: "border: 1px solid var(--x-border); background: white; border-radius: 6px; padding: 6px; cursor: pointer;",
             onclick: move |_| { if let Some(mut draft) = draft { draft.set(chosen.clone()); } },
             "{answer}"
         }
@@ -330,11 +330,11 @@ pub fn TodoChanges(tool_output: String, running: bool, todo_versions: Vec<common
     rsx! {
         div {
             class: "x-chat-todo-list",
-            style: "background: #000; color: #fff; border-radius: 6px; padding: 14px 18px; font-size: 15px;",
+            style: "background: #000; color: #fff; border-radius: 6px; padding: 14px 18px; font-size: var(--x-text-md);",
             if let Some(failure) = failure {
                 div { role: "alert", "{failure.message}" }
             } else if let Some(current) = current {
-                div { style: "font-size: 17px; font-weight: 700; margin-bottom: 8px;", "{current.goal}" }
+                div { style: "font-size: var(--x-text-lg); font-weight: 700; margin-bottom: 8px;", "{current.goal}" }
                 ul { style: "margin: 0; padding-left: 20px; list-style: disc;",
                     for item in current.items.clone() {
                         li { key: "{item.id}",

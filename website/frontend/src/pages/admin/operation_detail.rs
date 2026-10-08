@@ -18,8 +18,8 @@ pub fn AdminOperationDetailPage(op_id: String, plans_page: u32, events_page: u32
         Title { "Admin: operation {op_id}" }
         AdminGuard {
             AdminShell {
-                title: "Operation".to_string(),
-                breadcrumb: format!("Operations / {op_id}"),
+                title: format!("Operation {op_id}"),
+                breadcrumb: "Operations".to_string(),
                 active: "operations".to_string(),
                 SuspendWrapper { OperationDetailContent { op_id, plans_page, events_page } }
             }

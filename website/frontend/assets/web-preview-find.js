@@ -44,8 +44,7 @@ function findCapturedPageText(query, direction) {
         if (ranges[current]) {
             const rect = ranges[current].getBoundingClientRect();
             const bounds = root.getBoundingClientRect();
-            const scale = parseFloat(getComputedStyle(root).getPropertyValue('--app-zoom')) || 1;
-            root.scrollBy({ top: (rect.top - bounds.top - bounds.height / 3) / scale, behavior: 'smooth' });
+            root.scrollBy({ top: rect.top - bounds.top - bounds.height / 3, behavior: 'smooth' });
         }
     });
 }

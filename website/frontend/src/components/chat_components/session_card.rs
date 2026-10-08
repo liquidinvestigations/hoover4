@@ -2,6 +2,8 @@
 
 use common::chat_types::ChatSessionItem;
 use dioxus::prelude::*;
+use dioxus_free_icons::Icon;
+use dioxus_free_icons::icons::md_communication_icons::MdChat;
 
 use crate::routes::Route;
 
@@ -23,23 +25,23 @@ pub fn ChatSessionCard(session: ChatSessionItem) -> Element {
             to: Route::ai_chat_session(session.session_id.clone(), None, None),
             style: "text-decoration: none; color: inherit; display: block;",
             div {
-                style: "background: white; border: 1px solid #E5E7EB; border-radius: 14px; \
+                style: "background: white; border: 1px solid var(--x-border); border-radius: var(--x-radius); \
                         padding: 18px 20px; display: flex; gap: 14px; align-items: flex-start; \
                         min-height: 88px; box-sizing: border-box; transition: border-color 0.15s;",
                 div {
                     style: "width: 40px; height: 40px; border-radius: 999px; background: #EEF2FF; \
-                            color: #4F46E5; display: flex; align-items: center; justify-content: center; \
-                            flex-shrink: 0; font-size: 18px;",
-                    "\u{1f4ac}"
+                            color: var(--x-link); display: flex; align-items: center; justify-content: center; \
+                            flex-shrink: 0; font-size: var(--x-text-xl);",
+                    Icon { icon: MdChat, style: "width: 20px; height: 20px;" }
                 }
                 div { style: "min-width: 0; flex: 1;",
                     div {
-                        style: "font-size: 15px; font-weight: 600; color: #0F172A; \
+                        style: "font-size: var(--x-text-md); font-weight: 600; color: var(--x-ink-strong); \
                                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
                         "{title}"
                     }
                     div {
-                        style: "font-size: 13px; color: #64748B; margin-top: 4px; line-height: 1.45; \
+                        style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px; line-height: 1.45; \
                                 display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; \
                                 overflow: hidden;",
                         "{summary}"

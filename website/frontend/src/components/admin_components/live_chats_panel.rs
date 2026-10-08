@@ -61,7 +61,7 @@ pub fn LiveChatsPanel() -> Element {
                      is here too."
                 }
                 if let Some(e) = action_error.read().clone() {
-                    p { style: "color: #ba2121; font-size: 12px; margin: 0 0 8px;", "{e}" }
+                    p { style: "color: var(--x-danger); font-size: var(--x-text-xs); margin: 0 0 8px;", "{e}" }
                 }
                 match runs {
                     None => rsx! { p { style: HELP_TEXT, "Loading\u{2026}" } },
@@ -109,7 +109,7 @@ fn LiveChatRow(
     let workflow_id = run.workflow_id.clone();
 
     let duration_style = if run.running_ms >= SLOW_RUN_MS {
-        format!("{TD} color: #ba2121; font-weight: 700;")
+        format!("{TD} color: var(--x-danger); font-weight: 700;")
     } else {
         TD.to_string()
     };
@@ -124,15 +124,15 @@ fn LiveChatRow(
                 "{run.title}"
             }
             td {
-                style: "{TD} max-width: 320px; font-size: 12px; color: #555;",
+                style: "{TD} max-width: 320px; font-size: var(--x-text-xs); color: var(--x-ink-muted);",
                 "{run.message_preview}"
             }
             td { style: TD, {yes_no(run.internet_tools)} }
             td { style: duration_style, "{humanize_duration(run.running_ms)}" }
-            td { style: "{TD} font-size: 12px; color: #555;", "{run.started_at}" }
+            td { style: "{TD} font-size: var(--x-text-xs); color: var(--x-ink-muted);", "{run.started_at}" }
             td { style: TD,
                 button {
-                    style: "font-size: 12px; padding: 2px 8px; cursor: pointer;",
+                    style: "font-size: var(--x-text-xs); padding: 2px 8px; cursor: pointer;",
                     disabled: *killing.read(),
                     title: "Cancels the workflow. The turn ends with a stopped marker in \
                             the transcript rather than vanishing.",
@@ -158,9 +158,9 @@ fn LiveChatRow(
 
 fn yes_no(on: bool) -> Element {
     if on {
-        rsx! { span { style: "color: #2e7d32; font-weight: 600;", "on" } }
+        rsx! { span { style: "color: var(--x-ok); font-weight: 600;", "on" } }
     } else {
-        rsx! { span { style: "color: #999;", "off" } }
+        rsx! { span { style: "color: var(--x-ink-muted);", "off" } }
     }
 }
 

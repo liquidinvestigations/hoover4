@@ -106,6 +106,23 @@ DEFAULT_BASE_URL = os.environ.get(
 # the first navigation is given room rather than the browser start.
 PAGE_TIMEOUT_S = 30.0
 
+# How long a capture waits for visible loading indicators to disappear before it takes
+# the screenshot. A page still loading after this is an application error, because a
+# capture of a loading indicator verifies nothing about the page.
+LOADING_SETTLE_TIMEOUT_S = 30.0
+
+# True when no visible element shows only a loading indicator text.
+LOADING_DONE_JS = r"""
+const texts = new Set(['Loading...', 'Loading\u2026']);
+for (const element of document.querySelectorAll('body *')) {
+  if (element.children.length) continue;
+  if (!texts.has((element.textContent || '').trim())) continue;
+  const box = element.getBoundingClientRect();
+  if (box.width > 0 && box.height > 0) return {ok: false};
+}
+return {ok: true};
+"""
+
 # Named sizes `--resolutions` may select. `set_device_metrics_override` is what makes
 # these exact -- `tab.set_window_size` sets the OUTER window and does not establish the
 # image size; a 1280x900 request measured 1280x813 through that path.
@@ -547,6 +564,9 @@ async def run_action(tab, base_url: str, verb: str, argument: str):
         await click_css(tab, argument)
     elif verb == "pointer_click_css":
         return await pointer_click_css(tab, argument)
+    elif verb == "pointer_wheel_css":
+        selector, _, delta = argument.partition("::")
+        return await pointer_wheel_css(tab, selector.strip(), int(delta.strip() or "600"))
     elif verb == "type_css":
         selector, _, text = argument.partition("::")
         await type_css(tab, selector.strip(), text.strip())
@@ -687,6 +707,17 @@ async def wait_eval(tab, expression: str, timeout: float = PAGE_TIMEOUT_S):
     raise RuntimeError(f"timed out waiting for expression {expression!r}")
 
 
+async def wait_for_loading_to_end(tab, timeout: float = LOADING_SETTLE_TIMEOUT_S) -> bool:
+    """Wait until no visible loading indicator remains. Returns False on timeout."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = await js(tab, LOADING_DONE_JS)
+        if isinstance(result, dict) and result.get("ok") is True:
+            return True
+        await asyncio.sleep(0.25)
+    return False
+
+
 async def set_color_scheme(tab, color_scheme: str) -> None:
     """Apply one color-scheme preference before a scenario navigation."""
     import nodriver.cdp.emulation as emulation_cdp
@@ -730,6 +761,34 @@ return {ok: true, x, y, selector_target: describe(el), hit_target: describe(hit)
     await tab.send(input_cdp.dispatch_mouse_event(
         type_="mouseReleased", button=input_cdp.MouseButton.LEFT, buttons=0, click_count=1, **common,
     ))
+    return point
+
+
+async def pointer_wheel_css(tab, selector: str, delta_y: int) -> dict:
+    """Send one real mouse-wheel event at the center of `selector`.
+
+    A wheel event scrolls the nearest scrollable ancestor that can move, so it verifies
+    scroll ownership. Setting `scrollTop` from a script does not: it also moves content
+    that a clipping ancestor hides from the pointer.
+    """
+    import nodriver.cdp.input_ as input_cdp
+
+    point = await js(tab, """
+const el = document.querySelector(%s);
+if (!el) return {ok: false};
+const box = el.getBoundingClientRect();
+const x = box.left + Math.min(box.width, 200) / 2;
+const y = Math.min(box.top + box.height / 2, innerHeight - 20);
+if (!box.width || x < 0 || y < 0) return {ok: false};
+return {ok: true, x, y};
+""" % json.dumps(selector))
+    if not point.get("ok"):
+        raise RuntimeError(f"cannot wheel over visible selector {selector!r}")
+    await tab.send(input_cdp.dispatch_mouse_event(
+        type_="mouseWheel", x=point["x"], y=point["y"], delta_x=0, delta_y=delta_y,
+        pointer_type="mouse",
+    ))
+    await asyncio.sleep(0.4)
     return point
 
 
@@ -1221,6 +1280,7 @@ async def capture_one(
         from manual_qa_runtime import run_procedure
         await run_procedure(page.procedure, tab, base_url, network, res_dir, stem, sys.modules[__name__])
     await asyncio.sleep(page.settle_ms / 1000.0)
+    still_loading = not await wait_for_loading_to_end(tab)
 
     actual_w, actual_h = await measured_viewport(tab)
     shot = await screenshot(tab, False)
@@ -1228,6 +1288,11 @@ async def capture_one(
     pw, ph = png_dimensions(shot)
 
     observations: list[tuple[str, str]] = []
+    if still_loading:
+        observations.append((
+            APPLICATION_ERROR,
+            f"the page still shows a loading indicator after {LOADING_SETTLE_TIMEOUT_S:.0f} s",
+        ))
     if (actual_w, actual_h) != (rw, rh):
         observations.append((
             DIAGNOSTIC_WARNING,

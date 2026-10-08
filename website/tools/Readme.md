@@ -31,8 +31,10 @@ with a code other than 0, 1 or 2 is incomplete execution over the scenarios it h
 The screenshot wrapper, the chat observer wrapper and `run-manual-qa.sh` require `--remote-target` when the login file supplies their only target.
 Operation scenarios use `--operation-id ID` to select a row by its exact operation id.
 
-Screenshot scenarios can use `pointer_click_css`, `press_key`, and `wait_eval` for CDP
-input and bounded assertions. Set `color_scheme` to `light` or `dark` before navigation.
+Screenshot scenarios can use `pointer_click_css`, `pointer_wheel_css SELECTOR :: DELTA`,
+`press_key`, and `wait_eval` for CDP input and bounded assertions.
+Before each capture, the harness waits up to 30 seconds until no visible loading indicator remains.
+A page that still shows one is an application error. Set `color_scheme` to `light` or `dark` before navigation.
 Use `history_back` and `history_forward` to navigate actual browser history entries.
 Each scenario writes a steps JSON file with input, starting URL, observed values, and API request counts.
 An optional `init_script` runs before the scenario's document loads and does not affect later documents.

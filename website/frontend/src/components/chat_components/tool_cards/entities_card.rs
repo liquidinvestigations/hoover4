@@ -160,7 +160,7 @@ pub fn EntitiesCard(
             badges: rsx! {
                 if !running && openable > 0 {
                     span {
-                        style: "flex-shrink: 0; font-size: 11px; color: #1E293B; \
+                        style: "flex-shrink: 0; font-size: var(--x-text-xs); color: var(--x-ink-strong); \
                                 background: #E5E7EB; border-radius: 999px; padding: 1px 8px;",
                         "{openable} with a card"
                     }
@@ -169,7 +169,7 @@ pub fn EntitiesCard(
             div {
                 style: "margin-top: 8px; display: flex; flex-direction: column; gap: 10px;",
                 if !note.is_empty() {
-                    div { style: "font-size: 12px; font-style: italic;", "{note}" }
+                    div { style: "font-size: var(--x-text-xs); font-style: italic;", "{note}" }
                 }
                 for document in documents.clone() {
                     DocumentEntityRow {
@@ -198,18 +198,18 @@ fn DocumentEntityRow(
 
     rsx! {
         div {
-            style: "background: white; border: 1px solid #E5E7EB; border-radius: 8px; \
+            style: "background: white; border: 1px solid var(--x-border); border-radius: 8px; \
                     padding: 7px 9px;",
             div {
-                style: "font-size: 11px; font-family: ui-monospace, monospace; \
-                        color: #475569; margin-bottom: 5px;",
+                style: "font-size: var(--x-text-xs); font-family: ui-monospace, monospace; \
+                        color: var(--x-ink); margin-bottom: 5px;",
                 "{document.collectionname} \u{b7} {short_hash}"
             }
             if !document.error.is_empty() {
-                div { style: "font-size: 12px; color: #991B1B;", "{document.error}" }
+                div { style: "font-size: var(--x-text-xs); color: var(--x-danger);", "{document.error}" }
             }
             if document.truncated {
-                div { style: "font-size: 12px; color: #475569;", "The entity list was cut." }
+                div { style: "font-size: var(--x-text-xs); color: var(--x-ink);", "The entity list was cut." }
             }
             if !document.structured.is_empty() {
                 div {
@@ -220,9 +220,9 @@ fn DocumentEntityRow(
                                 key: "s{value}",
                                 to: Route::entity_card(identifier, value.clone()),
                                 title: "Open the card for this value ({rule_id})",
-                                style: "border: 1px solid #E5E7EB; background: #F8FAFC; \
+                                style: "border: 1px solid var(--x-border); background: #F8FAFC; \
                                         border-radius: 999px; padding: 1px 9px; \
-                                        font-size: 12px; color: #334155; \
+                                        font-size: var(--x-text-xs); color: var(--x-ink); \
                                         text-decoration: none; word-break: break-all;",
                                 "{entity_label(&value, count)}"
                             }
@@ -230,9 +230,9 @@ fn DocumentEntityRow(
                             span {
                                 key: "s{value}",
                                 title: "{rule_id}",
-                                style: "border: 1px solid #E5E7EB; background: #F8FAFC; \
+                                style: "border: 1px solid var(--x-border); background: #F8FAFC; \
                                         border-radius: 999px; padding: 1px 9px; \
-                                        font-size: 12px; color: #64748B; \
+                                        font-size: var(--x-text-xs); color: var(--x-ink-muted); \
                                         word-break: break-all;",
                                 "{entity_label(&value, count)}"
                             }
@@ -241,7 +241,7 @@ fn DocumentEntityRow(
                 }
                 if identifier.is_none() {
                     div {
-                        style: "font-size: 11px; color: #475569; margin-top: 4px;",
+                        style: "font-size: var(--x-text-xs); color: var(--x-ink); margin-top: 4px;",
                         "No card: this conversation never named the dataset these values \
                          came from, and the viewer is addressed by dataset."
                     }
@@ -253,15 +253,15 @@ fn DocumentEntityRow(
                     for value in document.model_found.iter().take(MODEL_VALUES_SHOWN).cloned() {
                         span {
                             key: "m{value}",
-                            style: "border: 1px solid #E5E7EB; background: #F8FAFC; \
-                                    border-radius: 999px; padding: 1px 9px; font-size: 12px; \
-                                    color: #64748B; word-break: break-all;",
+                            style: "border: 1px solid var(--x-border); background: #F8FAFC; \
+                                    border-radius: 999px; padding: 1px 9px; font-size: var(--x-text-xs); \
+                                    color: var(--x-ink-muted); word-break: break-all;",
                             "{value}"
                         }
                     }
                 }
                 div {
-                    style: "font-size: 11px; color: #475569; margin-top: 4px;",
+                    style: "font-size: var(--x-text-xs); color: var(--x-ink); margin-top: 4px;",
                     if document.model_found.len() > MODEL_VALUES_SHOWN {
                         {
                             let rest = document.model_found.len() - MODEL_VALUES_SHOWN;
@@ -276,7 +276,7 @@ fn DocumentEntityRow(
             if document.structured.is_empty() && document.model_found.is_empty()
                 && document.error.is_empty() {
                 div {
-                    style: "font-size: 12px; color: #475569;",
+                    style: "font-size: var(--x-text-xs); color: var(--x-ink);",
                     "Nothing extracted from this document."
                 }
             }

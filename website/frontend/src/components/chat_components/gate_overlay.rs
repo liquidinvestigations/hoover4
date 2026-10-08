@@ -18,11 +18,11 @@ pub fn ChatGateOverlay(reason: ChatGateClosed) -> Element {
                     display: flex; flex-direction: column; justify-content: center; \
                     gap: 10px; color: #92400E; pointer-events: auto;",
             p {
-                style: "margin: 0; font-size: 18px; font-weight: 600; line-height: 1.4;",
+                style: "margin: 0; font-size: var(--x-text-xl); font-weight: 600; line-height: 1.4;",
                 "{lead}"
             }
             p {
-                style: "margin: 0; font-size: 14px; line-height: 1.5;",
+                style: "margin: 0; font-size: var(--x-text-md); line-height: 1.5;",
                 "{action}"
             }
         }

@@ -19,81 +19,50 @@ html, body, #main {
     border: 0px;
     top: 0px; left: 0px;
     overflow: hidden;
-    font-family: "Roboto", sans-serif;
+    font-family: var(--x-font);
     background-color: rgba(255,255,255,1.0);
-    color: rgba(0,0,0,0.75);
+    color: var(--x-ink);
 }
 :root {
 	color-scheme: light;
 }
 
+/* Reference type and colour values, taken from the search and document pages. Every
+   other page reads these properties, so the application has one type scale and one
+   palette. One property has one meaning: a label is always --x-ink-muted. */
+:root {
+    --x-font: "Roboto", sans-serif;
+    --x-text-xs: 12px;
+    --x-text-sm: 13px;
+    --x-text-md: 14px;
+    --x-text-lg: 16px;
+    --x-text-xl: 18px;
+    --x-text-2xl: 20px;
+    --x-ink: rgba(0,0,0,0.75);
+    --x-ink-strong: rgba(0,0,0,0.87);
+    --x-ink-muted: rgba(0,0,0,0.6);
+    --x-ink-faint: rgba(0,0,0,0.45);
+    --x-link: #1a73e8;
+    --x-danger: rgb(160,30,30);
+    --x-warning: #B45309;
+    --x-ok: #2e7d32;
+    --x-border: rgba(0,0,0,0.1);
+    --x-border-strong: rgba(0,0,0,0.25);
+    --x-surface-muted: #f5f5f7;
+    --x-selected: #4096FF33;
+    --x-radius: 8px;
+}
+
 
 /* Navbar styles */
+/* The application uses the browser's own zoom. It applies no CSS zoom of its own, so
+   browser zoom and the operating system text size enlarge it like any other page. */
 #x-nav-container {
-    --app-zoom: 1;
-    zoom: var(--app-zoom);
     display:flex;
     flex-direction:row;
-    /* gap:1px; */
     width:100%;
     height:100%;
 }
-@media screen and (min-width: 200px) {
-    #x-nav-container {
-        --app-zoom: 0.10; /* 200/1920 */
-    }
-}
-@media screen and (min-width: 300px) {
-    #x-nav-container {
-        --app-zoom: 0.15; /* 300/1920 */
-    }
-}
-@media screen and (min-width: 350px) {
-    #x-nav-container {
-        --app-zoom: 0.18;
-    }
-}
-@media screen and (min-width: 400px) {
-    #x-nav-container {
-        --app-zoom: 0.20; /* 400/1920 */
-    }
-}
-@media screen and (min-width: 600px) {
-    #x-nav-container {
-        --app-zoom: 0.31; /* 600/1920 */
-    }
-}
-@media screen and (min-width: 800px) {
-    #x-nav-container {
-        --app-zoom: 0.41; /* 800/1920 */
-    }
-}
-@media screen and (min-width: 1000px) {
-    #x-nav-container {
-        --app-zoom: 0.51; /* 1000/1920 */
-    }
-}
-@media screen and (min-width: 1200px) {
-    #x-nav-container {
-        --app-zoom: 0.62; /* 1200/1920 */
-    }
-}
-@media screen and (min-width: 1400px) {
-    #x-nav-container {
-        --app-zoom: 0.72; /* 1400/1920 */
-    }
-}
-@media screen and (min-width: 1600px) {
-    #x-nav-container {
-        --app-zoom: 0.83;
-    }
-}
-@media screen and (min-width: 1800px) {
-    #x-nav-container {
-        --app-zoom: 0.93;
-    }
-}
-
 
 #x-nav-sidebar {
     width:15rem;
@@ -180,10 +149,6 @@ html, body, #main {
 @keyframes x-source-flash-fade {
     0% { background-color: rgba(199, 210, 254, 0.85); }
     100% { background-color: transparent; }
-}
-
-#x-pdf-viewer {
-    zoom: calc(1 / var(--app-zoom));
 }
 
 /* Category headings and term columns need spacing after the global style reset. */

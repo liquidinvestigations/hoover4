@@ -1,17 +1,15 @@
 //! Endpoint for listing datasets.
 
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
-use std::time::{Duration, Instant};
 
 use common::current_user::CurrentUser;
-use common::storage_tree::{CollectionNode, CollectionOverview, DatasetAggregates, DatasetSummary};
+use common::storage_tree::{
+    CollectionAggregates, CollectionNode, CollectionOverview, DatasetAggregates, DatasetSummary,
+};
 use common::vfs::dataset_root_key;
 
 use crate::auth::permissions::{self, PermissionSet};
-use crate::db_utils::clickhouse_utils::{
-    collection_db_name, get_collection_client, get_global_client,
-};
+use crate::db_utils::clickhouse_utils::{collection_db_name, get_global_client};
 use crate::db_utils::manticore_utils::manticore_search_sql_uncached;
 
 pub async fn list_dataset_ids() -> anyhow::Result<Vec<String>> {
@@ -127,7 +125,7 @@ fn group_by_collection(datasets: Vec<DatasetSummary>) -> Vec<CollectionNode> {
     nodes
 }
 
-/// One collection's datasets with their cached aggregates: what the collection landing
+/// One collection's datasets with their cached statistics: what the collection landing
 /// page's cards show.
 pub async fn collection_overview(
     user: &CurrentUser,
@@ -159,82 +157,75 @@ pub async fn collection_overview(
     })
 }
 
-/// How long a collection's aggregates are cached in-process.
-///
-/// The same TTL the shard ledger uses (`clickhouse_utils::SHARD_STATE_TTL`): these are
-/// three grouped scans of a collection's largest tables, they move only while an ingest
-/// runs, and the page they back is a landing page people bounce off.
-const AGGREGATE_TTL: Duration = Duration::from_secs(30);
+#[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
+struct StoredStatsRow {
+    collection_dataset: String,
+    document_count: u64,
+    total_size_bytes: u64,
+    indexed_count: u64,
+    error_count: u64,
+    state: String,
+}
 
-static AGGREGATE_CACHE: LazyLock<Mutex<HashMap<String, (Instant, Vec<DatasetAggregates>)>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
-/// Per-dataset document count, total size, indexed count and error count for every
-/// dataset in one collection.
+/// The cached statistics of every registered dataset, or of one collection's datasets.
 ///
-/// Three grouped queries for the whole collection rather than five per dataset (which is
-/// what `admin::datasets::fetch_stats` does for its single-dataset page): the landing
-/// page shows every dataset at once, so the per-dataset shape would be N x 5 round trips
-/// on one load.
-async fn dataset_aggregates(collectionname: &str) -> anyhow::Result<Vec<DatasetAggregates>> {
-    {
-        let cache = AGGREGATE_CACHE.lock().unwrap();
-        if let Some((fetched, values)) = cache.get(collectionname)
-            && fetched.elapsed() < AGGREGATE_TTL
-        {
-            return Ok(values.clone());
-        }
+/// One read of the global `dataset_stats` table, which the pipeline writes during and
+/// after processing. The join with the registry hides the rows of deleted datasets. A
+/// dataset with no statistics row is absent from the result.
+pub async fn stored_dataset_aggregates(
+    collectionname: Option<&str>,
+) -> anyhow::Result<Vec<DatasetAggregates>> {
+    let filter = if collectionname.is_some() { "AND d.collectionname = ?" } else { "" };
+    let sql = format!(
+        "SELECT s.collection_dataset AS collection_dataset, s.document_count AS document_count, \
+         s.total_size_bytes AS total_size_bytes, s.indexed_count AS indexed_count, \
+         s.error_count AS error_count, s.state AS state \
+         FROM dataset_stats AS s FINAL \
+         INNER JOIN (SELECT collection_dataset, collectionname FROM dataset FINAL WHERE is_deleted = 0) AS d \
+         ON d.collection_dataset = s.collection_dataset \
+         WHERE 1 {filter}"
+    );
+    let mut query = get_global_client().query(&sql);
+    if let Some(name) = collectionname {
+        query = query.bind(name);
     }
-    // Validated first, with the fallible call: `get_collection_client` panics on a bad
-    // slug and this is reachable from a request handler with whatever the registry holds.
-    collection_db_name(collectionname)?;
-    let client = get_collection_client(collectionname);
-
-    // `blobs` is a ReplacingMergeTree, so an un-merged duplicate row would double both
-    // the count and the size. Collapsing per hash first is what the ETA collector does
-    // (`P_admin/eta_collector.py`) and is the only form that is stable between merges.
-    let sizes: Vec<(String, u64, u64)> = client
-        .query(
-            "SELECT collection_dataset, count() AS documents, sum(sz) AS bytes FROM ( \
-               SELECT collection_dataset, blob_hash, any(blob_size_bytes) AS sz \
-               FROM blobs GROUP BY collection_dataset, blob_hash \
-             ) GROUP BY collection_dataset",
-        )
-        .fetch_all()
-        .await?;
-    let indexed: Vec<(String, u64)> = client
-        .query(
-            "SELECT collection_dataset, uniqExact(file_hash) AS value \
-             FROM index_state GROUP BY collection_dataset",
-        )
-        .fetch_all()
-        .await?;
-    let errors: Vec<(String, u64)> = client
-        .query(
-            "SELECT collection_dataset, count() AS value \
-             FROM processing_errors FINAL GROUP BY collection_dataset",
-        )
-        .fetch_all()
-        .await?;
-
-    let indexed: HashMap<String, u64> = indexed.into_iter().collect();
-    let errors: HashMap<String, u64> = errors.into_iter().collect();
-    let values: Vec<DatasetAggregates> = sizes
+    let rows: Vec<StoredStatsRow> = query.fetch_all().await?;
+    Ok(rows
         .into_iter()
-        .map(|(collection_dataset, document_count, total_size_bytes)| DatasetAggregates {
-            indexed_count: indexed.get(&collection_dataset).copied().unwrap_or(0),
-            error_count: errors.get(&collection_dataset).copied().unwrap_or(0),
-            collection_dataset,
-            document_count,
-            total_size_bytes,
+        .map(|row| DatasetAggregates {
+            collection_dataset: row.collection_dataset,
+            document_count: row.document_count,
+            total_size_bytes: row.total_size_bytes,
+            indexed_count: row.indexed_count,
+            error_count: row.error_count,
+            processing: row.state == "processing",
         })
-        .collect();
+        .collect())
+}
 
-    AGGREGATE_CACHE
-        .lock()
-        .unwrap()
-        .insert(collectionname.to_string(), (Instant::now(), values.clone()));
-    Ok(values)
+async fn dataset_aggregates(collectionname: &str) -> anyhow::Result<Vec<DatasetAggregates>> {
+    stored_dataset_aggregates(Some(collectionname)).await
+}
+
+/// The summed statistics of each collection the user may read, for the storage root.
+pub async fn collections_overview(user: &CurrentUser) -> anyhow::Result<Vec<CollectionAggregates>> {
+    let tree = group_by_collection(list_permitted_datasets(user).await?);
+    let stored: HashMap<String, DatasetAggregates> = stored_dataset_aggregates(None)
+        .await?
+        .into_iter()
+        .map(|a| (a.collection_dataset.clone(), a))
+        .collect();
+    Ok(tree
+        .iter()
+        .map(|collection| {
+            let counted: Vec<&DatasetAggregates> = collection
+                .datasets
+                .iter()
+                .filter_map(|d| stored.get(&d.collection_dataset))
+                .collect();
+            CollectionAggregates::sum(&collection.collectionname, collection.datasets.len() as u64, &counted)
+        })
+        .collect())
 }
 
 #[cfg(test)]

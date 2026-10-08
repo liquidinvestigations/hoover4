@@ -442,6 +442,7 @@ DEFAULTS = {
         "purge_dataset_cap": "2",
         "delete_dataset_cap": "2",
         "change_ocr_languages_cap": "2",
+        "rerun_ocr_cap": "2",
         "reindex_collection_cap": "2",
         "refresh_document_locations_cap": "2",
         "retry_failed_files_cap": "2",

@@ -8,10 +8,11 @@ use crate::api::admin_api::{
 };
 use crate::components::admin_components::{
     AdminGuard, AdminShell, DatasetOcrSettingsPanel, ErrorBar, SuccessBar, BTN, BTN_DANGER,
-    C_HEADER, HELP_TEXT, INPUT, LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION,
+    HELP_TEXT, INPUT, LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
+use common::storage_tree::{format_size, state_label};
 
 #[component]
 pub fn AdminDatasetPage(collection_id: String, dataset_id: String) -> Element {
@@ -21,8 +22,8 @@ pub fn AdminDatasetPage(collection_id: String, dataset_id: String) -> Element {
         Title { "Admin: dataset {dataset_id}" }
         AdminGuard {
             AdminShell {
-                title: "Change dataset".to_string(),
-                breadcrumb: format!("Collections \u{203a} {collection_id} \u{203a} {dataset_id}"),
+                title: format!("Dataset {dataset_id}"),
+                breadcrumb: format!("Collections \u{203a} {collection_id}"),
                 active: "collections".to_string(),
                 SuspendWrapper {
                     DatasetDetailContent {
@@ -86,35 +87,32 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
             h2 { style: MODULE_CAPTION, "Metadata" }
             div { style: "{MODULE_BODY} display: flex; flex-direction: column; gap: 10px; max-width: 640px;",
                 label { style: LABEL,
-                    span { style: "width: 90px; color: #666;", "Display name" }
+                    span { style: "width: 90px; color: var(--x-ink-muted);", "Display name" }
                     input { style: "{INPUT} flex: 1;", value: "{display_name}", oninput: move |e| display_name.set(e.value()) }
                 }
-                div { style: "display: flex; font-size: 13px;",
-                    span { style: "width: 96px; color: #666;", "Name" }
+                div { style: "display: flex; font-size: var(--x-text-sm);",
+                    span { style: "width: 96px; color: var(--x-ink-muted);", "Name" }
                     span { "{detail.dataset.dataset_name}" }
                 }
-                div { style: "display: flex; font-size: 13px;",
-                    span { style: "width: 96px; color: #666;", "Type" }
+                div { style: "display: flex; font-size: var(--x-text-sm);",
+                    span { style: "width: 96px; color: var(--x-ink-muted);", "Type" }
                     span { "{detail.dataset.dataset_type}" }
                 }
-                div { style: "display: flex; font-size: 13px;",
-                    span { style: "width: 96px; color: #666;", "Path" }
+                div { style: "display: flex; font-size: var(--x-text-sm);",
+                    span { style: "width: 96px; color: var(--x-ink-muted);", "Path" }
                     span { style: "word-break: break-all;", "{detail.dataset.dataset_path}" }
                 }
-                div { style: "display: flex; font-size: 13px;",
-                    span { style: "width: 96px; color: #666;", "Created" }
+                div { style: "display: flex; font-size: var(--x-text-sm);",
+                    span { style: "width: 96px; color: var(--x-ink-muted);", "Created" }
                     span { "{detail.dataset.date_created}" }
                 }
-                div { style: "display: flex; font-size: 13px; align-items: baseline;",
-                    span { style: "width: 96px; color: #666;", "Collection" }
+                div { style: "display: flex; font-size: var(--x-text-sm); align-items: baseline;",
+                    span { style: "width: 96px; color: var(--x-ink-muted);", "Collection" }
                     Link {
                         to: Route::AdminCollectionPage { collection_id: detail.collectionname.clone() },
                         style: LINK,
                         "{detail.collectionname}"
                     }
-                }
-                p { style: "{HELP_TEXT} margin: 0;",
-                    "A dataset's collection is fixed when it is created and cannot be changed."
                 }
                 div {
                     button {
@@ -143,33 +141,42 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
             }
         }
         div { style: MODULE,
-            h2 { style: MODULE_CAPTION, "Processing stats" }
+            h2 { style: MODULE_CAPTION, "Statistics" }
             div { style: "{MODULE_BODY} display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px;",
-                StatCard { label: "Blobs", value: detail.stats.blob_count }
-                StatCard { label: "VFS files", value: detail.stats.vfs_file_count }
-                StatCard { label: "Plans total", value: detail.stats.plans_total }
-                StatCard { label: "Plans finished", value: detail.stats.plans_finished }
-                StatCard { label: "Errors", value: detail.stats.error_count }
+                match detail.aggregates.clone() {
+                    Some(a) => rsx! {
+                        StatCard { label: "State", value: state_label(a.processing).to_string() }
+                        StatCard { label: "Documents", value: a.document_count.to_string() }
+                        StatCard { label: "Size", value: format_size(a.total_size_bytes) }
+                        StatCard { label: "Indexed", value: a.indexed_count.to_string() }
+                        StatCard { label: "Errors", value: a.error_count.to_string() }
+                    },
+                    None => rsx! {
+                        StatCard { label: "Documents", value: "Not counted yet".to_string() }
+                    },
+                }
+                StatCard { label: "Plans finished", value: format!("{} of {}", detail.stats.plans_finished, detail.stats.plans_total) }
             }
         }
         DatasetOcrSettingsPanel { collection_dataset: dataset_id.clone() }
         div { style: MODULE,
-            h2 { style: MODULE_CAPTION, "Processing workflows" }
+            h2 { style: MODULE_CAPTION, "Processing" }
             div { style: MODULE_BODY,
-                p { style: "{HELP_TEXT} margin: 0 0 10px;", "Triggers a Temporal workflow for this dataset." }
                 div { style: "display: flex; gap: 8px; flex-wrap: wrap;",
                     if is_disk {
                         WorkflowButton { label: "Rescan disk", kind: "rescan", dataset_id: dataset_id.clone(), pending, msg, error_msg }
                     }
                     WorkflowButton { label: "Compute plans", kind: "compute_plans", dataset_id: dataset_id.clone(), pending, msg, error_msg }
                     WorkflowButton { label: "Execute plans", kind: "execute_plans", dataset_id: dataset_id.clone(), pending, msg, error_msg }
+                    WorkflowButton { label: "Run missing OCR", kind: "rerun_ocr", dataset_id: dataset_id.clone(), pending, msg, error_msg }
+                    WorkflowButton { label: "Run all OCR again", kind: "rerun_ocr_replace", dataset_id: dataset_id.clone(), pending, msg, error_msg }
                 }
             }
         }
         div { style: MODULE,
-            h2 { style: "{MODULE_CAPTION} background: #ba2121;", "Danger zone" }
+            h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", "Danger zone" }
             div { style: MODULE_BODY,
-                p { style: "{HELP_TEXT} margin: 0 0 8px;", "Deletes the dataset and everything extracted from it: blobs, text, entities, chunks and vectors, from ClickHouse and from the search index. Only the stored objects survive, orphaned. This cannot be undone." }
+                p { style: "{HELP_TEXT} margin: 0 0 8px;", "This deletes the dataset and all data extracted from it. You cannot undo it." }
                 button {
                     style: BTN_DANGER,
                     onclick: {
@@ -196,11 +203,11 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
 }
 
 #[component]
-fn StatCard(label: String, value: u64) -> Element {
+fn StatCard(label: String, value: String) -> Element {
     rsx! {
-        div { style: "background: #f6f6f6; padding: 12px; border: 1px solid #eee;",
-            div { style: "font-size: 24px; font-weight: 600; color: {C_HEADER};", "{value}" }
-            div { style: "color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px;", "{label}" }
+        div { style: "padding: 12px 14px; border: 1px solid var(--x-border); border-radius: var(--x-radius);",
+            div { style: "color: var(--x-ink-muted); font-size: var(--x-text-sm);", "{label}" }
+            div { style: "font-size: var(--x-text-xl); font-weight: 500; color: var(--x-ink-strong); margin-top: 2px;", "{value}" }
         }
     }
 }
@@ -232,7 +239,7 @@ fn WorkflowButton(
                         msg.set(None);
                         error_msg.set(None);
                         match admin_trigger_workflow(ds, kind).await {
-                            Ok(run_id) => msg.set(Some(format!("Workflow started: {run_id}"))),
+                            Ok(run_id) => msg.set(Some(format!("Operation started: {run_id}"))),
                             Err(e) => error_msg.set(Some(user_facing_message(&e))),
                         }
                         pending.set(false);

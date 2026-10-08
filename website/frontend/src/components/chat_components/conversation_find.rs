@@ -15,12 +15,12 @@ pub fn ConversationFindBar(
     rsx! {
         div {
             style: "display: flex; align-items: center; gap: 8px; padding: 10px 14px; \
-                    border-bottom: 1px solid #E5E7EB; background: #F8FCFF; flex-shrink: 0;",
+                    border-bottom: 1px solid var(--x-border); background: #F8FCFF; flex-shrink: 0;",
             input {
                 r#type: "text",
                 placeholder: "Search in conversation",
                 style: "flex: 1; border: 1px solid rgba(0,0,0,0.35); border-radius: 14px; \
-                        padding: 8px 12px; font-size: 14px; outline: none; background: white;",
+                        padding: 8px 12px; font-size: var(--x-text-md); outline: none; background: white;",
                 value: "{query}",
                 oninput: move |e| {
                     query.set(e.value());
@@ -28,11 +28,11 @@ pub fn ConversationFindBar(
                 },
             }
             span {
-                style: "font-size: 13px; color: #64748B; min-width: 42px; text-align: center;",
+                style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); min-width: 42px; text-align: center;",
                 "{display_idx}/{count}"
             }
             button {
-                style: "border: 1px solid #E5E7EB; background: white; border-radius: 6px; \
+                style: "border: 1px solid var(--x-border); background: white; border-radius: 6px; \
                         width: 28px; height: 28px; cursor: pointer;",
                 title: "Previous match",
                 disabled: count == 0,
@@ -46,7 +46,7 @@ pub fn ConversationFindBar(
                 "\u{25b2}"
             }
             button {
-                style: "border: 1px solid #E5E7EB; background: white; border-radius: 6px; \
+                style: "border: 1px solid var(--x-border); background: white; border-radius: 6px; \
                         width: 28px; height: 28px; cursor: pointer;",
                 title: "Next match",
                 disabled: count == 0,

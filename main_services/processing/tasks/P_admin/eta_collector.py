@@ -365,8 +365,14 @@ def insert_samples(rows: list[dict]) -> None:
 def run_collection_pass(params: CollectEtaSamplesParams) -> CollectEtaSamplesResult:
     """One sampling pass over all collections. Sync; runs inside the activity."""
     from database.clickhouse import list_collections
+    from database.dataset_stats import collections_to_refresh, refresh_dataset_stats_logged
 
     started = time.monotonic()
+    # Missing rows and rows left in `processing` are written here. See
+    # `collections_to_refresh`.
+    refreshed = set(collections_to_refresh())
+    for collectionname in refreshed:
+        refresh_dataset_stats_logged(collectionname)
     completed: list[str] = []
     active: list[str] = []
     all_rows: list[dict] = []
@@ -386,6 +392,9 @@ def run_collection_pass(params: CollectEtaSamplesParams) -> CollectEtaSamplesRes
             completed.append(collectionname)
             continue
         active.append(collectionname)
+        # Statistics refresh at this pass's cadence while the collection is processing.
+        if collectionname not in refreshed:
+            refresh_dataset_stats_logged(collectionname)
         for row in rows:
             row["collection_duration_ms"] = collection_ms
         all_rows.extend(rows)

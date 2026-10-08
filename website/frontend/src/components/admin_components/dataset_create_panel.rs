@@ -107,11 +107,11 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
                 } else if folders.is_empty() {
                     p { style: "{HELP_TEXT} margin: 0;",
                         "No subfolders were found under the configured datasets path. "
-                        "Put the documents in a folder there (datasets_mount_path in hoover4.ini) and reload."
+                        "Put the documents in a folder there and reload this page."
                     }
                 } else {
                     label { style: LABEL,
-                        span { style: "width: 130px; color: #666;", "Folder" }
+                        span { style: "width: 130px; color: var(--x-ink-muted);", "Folder" }
                         select {
                             style: "{SELECT} flex: 1;",
                             value: "{folder}",
@@ -122,14 +122,14 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
                                 }
                                 folder.set(value);
                             },
-                            option { value: "", "\u{2014} pick a folder \u{2014}" }
+                            option { value: "", "Select a folder" }
                             for option in folders.iter() {
                                 option {
                                     key: "{option.name}",
                                     value: "{option.name}",
                                     disabled: option.already_used,
                                     if option.already_used {
-                                        "{option.name} ({option.entry_count} entries) \u{2014} already a dataset"
+                                        "{option.name} ({option.entry_count} entries), already a dataset"
                                     } else {
                                         "{option.name} ({option.entry_count} entries)"
                                     }
@@ -138,11 +138,11 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
                         }
                     }
                     p { style: "{HELP_TEXT} margin: 0;",
-                        "Only direct subfolders of the configured datasets path are offered, and the path is composed on the server \u{2014} the form never carries one."
+                        "The list shows the direct subfolders of the datasets folder."
                     }
 
                     label { style: LABEL,
-                        span { style: "width: 130px; color: #666;", "Dataset name" }
+                        span { style: "width: 130px; color: var(--x-ink-muted);", "Dataset name" }
                         input {
                             style: "{INPUT} flex: 1;",
                             value: "{dataset_name}",
@@ -150,11 +150,11 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
                         }
                     }
                     p { style: "{HELP_TEXT} margin: 0;",
-                        "Lowercase letters, digits and underscores. It becomes part of the dataset id and cannot be changed afterwards."
+                        "Use lowercase letters, digits and underscores. The name cannot change later."
                     }
 
                     label { style: LABEL,
-                        span { style: "width: 130px; color: #666;", "Tesseract" }
+                        span { style: "width: 130px; color: var(--x-ink-muted);", "Tesseract" }
                         input {
                             style: "{INPUT} flex: 1;",
                             value: "{tesseract}",
@@ -162,7 +162,7 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
                         }
                     }
                     label { style: LABEL,
-                        span { style: "width: 130px; color: #666;", "EasyOCR" }
+                        span { style: "width: 130px; color: var(--x-ink-muted);", "EasyOCR" }
                         input {
                             style: "{INPUT} flex: 1;",
                             value: "{easyocr}",
@@ -192,7 +192,7 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
                                         match admin_set_collection_ocr_defaults(collectionname, tess, easy).await {
                                             Ok(()) => {
                                                 msg.set(Some(
-                                                    "Saved as this collection's defaults. Existing datasets keep their own settings \u{2014}                                                      there is deliberately no apply-to-all, because it would re-OCR every one of them."
+                                                    "Saved as this collection's defaults. Existing datasets keep their own settings."
                                                         .to_string(),
                                                 ));
                                                 defaults_res.restart();

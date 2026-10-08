@@ -17,8 +17,8 @@ pub fn AdminGroupsPage() -> Element {
         Title { "Admin: groups" }
         AdminGuard {
             AdminShell {
-                title: "Select group to change".to_string(),
-                breadcrumb: "Groups".to_string(),
+                title: "Groups".to_string(),
+                breadcrumb: String::new(),
                 active: "groups".to_string(),
                 SuspendWrapper { GroupsListContent {} }
             }
@@ -51,7 +51,7 @@ fn GroupsListContent() -> Element {
                 // value in a format it never named, so the first thing a person types
                 // ("TestGroup") is rejected by a rule they had no way to know.
                 p { style: "{HELP_TEXT} width: 100%; margin: 0;",
-                    "Group name: lowercase letters, digits, underscores and hyphens only. It cannot be changed afterwards. The display name is free text."
+                    "Use lowercase letters, digits, underscores and hyphens in the name. The name cannot change later."
                 }
                 button {
                     style: BTN_PRIMARY,

@@ -264,7 +264,7 @@ fn AiChatSessionRoot(
     let Some(detail) = detail else {
         return rsx! {
             div {
-                style: "padding: 24px; color: #64748B;",
+                style: "padding: 24px; color: var(--x-ink-muted);",
                 if load_error { "This conversation could not be loaded." } else { "Loading\u{2026}" }
             }
         };
@@ -604,16 +604,16 @@ fn ChatConversationPanel(
                     flex-direction: column; background: #ECEEF2; border-right: 1px solid #D1D5DB;",
             div {
                 style: "padding: 10px 14px; display: flex; align-items: center; gap: 12px; \
-                        background: white; border-bottom: 1px solid #E5E7EB; flex-shrink: 0;",
+                        background: white; border-bottom: 1px solid var(--x-border); flex-shrink: 0;",
                 Link {
                     to: Route::AiChatPage {},
-                    style: "color: #4F46E5; text-decoration: none; font-size: 13px; \
+                    style: "color: var(--x-link); text-decoration: none; font-size: var(--x-text-sm); \
                             white-space: nowrap;",
                     "\u{2190} Chats"
                 }
                 Link {
                     to: Route::AiChatHistoryPage {},
-                    style: "color: #64748B; text-decoration: none; font-size: 13px; \
+                    style: "color: var(--x-ink-muted); text-decoration: none; font-size: var(--x-text-sm); \
                             white-space: nowrap;",
                     "History"
                 }
@@ -621,8 +621,8 @@ fn ChatConversationPanel(
                 // list still says which one it is once you have scrolled away from
                 // the first message.
                 div {
-                    style: "flex: 1; min-width: 0; font-size: 14px; font-weight: 600; \
-                            color: #0F172A; overflow: hidden; text-overflow: ellipsis; \
+                    style: "flex: 1; min-width: 0; font-size: var(--x-text-md); font-weight: 600; \
+                            color: var(--x-ink-strong); overflow: hidden; text-overflow: ellipsis; \
                             white-space: nowrap;",
                     title: "{detail.session.title}",
                     "{detail.session.title}"
@@ -655,7 +655,7 @@ fn ChatConversationPanel(
             if *interrupted.read() {
                 div {
                     style: "margin: 0 18px 8px; padding: 8px 12px; background: #FEF3C7; \
-                            border: 1px solid #FDE68A; border-radius: 8px; font-size: 13px; \
+                            border: 1px solid #FDE68A; border-radius: 8px; font-size: var(--x-text-sm); \
                             color: #92400E; display: flex; align-items: center; gap: 10px;",
                     span { style: "flex: 1;",
                         "This answer was interrupted before it finished, because the page or \
@@ -663,7 +663,7 @@ fn ChatConversationPanel(
                     }
                     button {
                         style: "background: none; border: 1px solid #D97706; border-radius: 6px; \
-                                color: #92400E; cursor: pointer; font-size: 12px; padding: 2px 8px;",
+                                color: #92400E; cursor: pointer; font-size: var(--x-text-xs); padding: 2px 8px;",
                         onclick: on_dismiss_interrupted,
                         "Dismiss"
                     }
@@ -671,14 +671,14 @@ fn ChatConversationPanel(
             }
             if *sending.read() && stream_turn.read().is_none() {
                 div {
-                    style: "padding: 0 18px 8px; color: #64748B; font-size: 13px; font-style: italic;",
+                    style: "padding: 0 18px 8px; color: var(--x-ink-muted); font-size: var(--x-text-sm); font-style: italic;",
                     "The assistant is searching your collections\u{2026}"
                 }
             }
             if let Some(e) = error.read().clone() {
                 div {
                     class: "x-error-display",
-                    style: "padding: 0 18px 8px; color: #B91C1C; font-size: 13px;",
+                    style: "padding: 0 18px 8px; color: var(--x-danger); font-size: var(--x-text-sm);",
                     "{e}"
                 }
             }

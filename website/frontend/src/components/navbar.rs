@@ -6,6 +6,7 @@ use dioxus_primitives::ContentAlign;
 use dioxus_primitives::ContentSide;
 
 use crate::components::error_boundary::GlobalErrorBoundary;
+use crate::components::feedback_control::{use_feedback_provider, FeedbackRailButton};
 use crate::components::hover_card::HoverCard;
 use crate::components::hover_card::HoverCardContent;
 use crate::components::hover_card::HoverCardTrigger;
@@ -28,6 +29,8 @@ use dioxus_free_icons::{Icon, IconShape};
 /// Shared navbar component.
 #[component]
 pub fn Navbar() -> Element {
+    // The rail control and the home page card share one feedback state.
+    use_feedback_provider();
     rsx! {
 
         div {
@@ -68,7 +71,9 @@ pub fn Navbar() -> Element {
 
             div {
                 id:"x-page-container",
-                style: "flex-grow:1; min-width: 100px;",
+                // A page that does not fit scrolls inside this container, so a narrow
+                // window or a high browser zoom never hides a control.
+                style: "flex-grow:1; min-width: 0; height: 100%; overflow: auto;",
                 GlobalErrorBoundary {
                     boundary_name: "Navbar".to_string(),
                     Outlet::<Route> {}
@@ -131,6 +136,7 @@ fn NavbarBottomIconLinks() -> Element {
                 justify-content: center;
             ",
 
+            FeedbackRailButton {}
             if show_admin {
                 IconLink { to: Route::AdminDashboardPage { }, icon: MdPerson, label: "Admin" }
             }

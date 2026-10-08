@@ -20,6 +20,9 @@ singleton, rather than as part of ingestion.
   settings, reopen the plans holding OCR candidates, re-run them, then purge the variants
   the change dropped, from ClickHouse, then Manticore, then Garage. The order is the
   point; `ocr_languages.py`'s module docstring says why each step cannot move.
+- Run OCR again with unchanged settings (`RerunOcr`): reopen the plans holding images and
+  PDFs and run them. Missing results are produced. With `replace_existing`, existing
+  results are produced again (`ocr_rerun.py`).
 
 The website backend never owns migration SQL; it triggers these workflows so the schema has
 exactly one source of truth in Python.
@@ -27,7 +30,7 @@ exactly one source of truth in Python.
 ## Entry Points
 
 - Workflows: `EnsureCollectionDatabase`, `DropCollectionDatabase`, `PurgeDataset`,
-  `ChangeOcrLanguages`, `CollectEtaSamples` in `workflows.py`
+  `ChangeOcrLanguages`, `RerunOcr`, `CollectEtaSamples` in `workflows.py`
 - Activities: `ensure_collection_database`, `drop_collection_database`,
   `purge_dataset_from_manticore`, `purge_dataset_from_clickhouse`,
   `recompute_shard_ledger_activity`, `collect_eta_samples` in `activities.py`
@@ -45,7 +48,7 @@ exactly one source of truth in Python.
 - Website: every workflow here is reached as the child of an operation:
   `EnsureCollectionDatabase` and `DropCollectionDatabase` under the collection-lifecycle
   kinds, `PurgeDataset` under `purge_dataset` and `delete_dataset`, `ChangeOcrLanguages`
-  under `change_ocr_languages`. Each run therefore carries the operation's timestamped id,
+  under `change_ocr_languages`, `RerunOcr` under `rerun_ocr`. Each run therefore carries the operation's timestamped id,
   which is what makes a second click run again: a reused id makes it a no-op, and two
   language changes are two different runs with two different before/after states.
 

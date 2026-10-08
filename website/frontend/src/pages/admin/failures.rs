@@ -27,7 +27,7 @@ pub fn AdminFailuresPage() -> Element {
         AdminGuard {
             AdminShell {
                 title: "Failures".to_string(),
-                breadcrumb: "Failures".to_string(),
+                breadcrumb: String::new(),
                 active: "failures".to_string(),
                 SuspendWrapper { FailuresContent {} }
             }
@@ -355,7 +355,7 @@ fn GroupRows(
     rsx! {
         tr {
             td { style: TD,
-                code { style: "font-size: 11px; overflow-wrap: anywhere;", title: "{group.signature}",
+                code { style: "font-size: var(--x-text-xs); overflow-wrap: anywhere;", title: "{group.signature}",
                     "{group.signature}"
                 }
                 div { style: HELP_TEXT, "{group.sample_message}" }
@@ -403,7 +403,7 @@ fn GroupRows(
                                     span { style: HELP_TEXT,
                                         " node {inst.node_index} · {inst.source} · {inst.stage} · {inst.captured_at}"
                                     }
-                                    div { style: "font-size: 12px;", "{inst.message}" }
+                                    div { style: "font-size: var(--x-text-xs);", "{inst.message}" }
                                 }
                             }
                         }

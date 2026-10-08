@@ -23,8 +23,8 @@ pub fn AdminFailureDetailPage(op_id: String) -> Element {
         Title { "Admin: failure {op_id}" }
         AdminGuard {
             AdminShell {
-                title: "Failure tree".to_string(),
-                breadcrumb: format!("Failures / {op_id}"),
+                title: format!("Failure tree of {op_id}"),
+                breadcrumb: "Failures".to_string(),
                 active: "failures".to_string(),
                 SuspendWrapper { FailureDetailContent { op_id } }
             }
@@ -114,7 +114,7 @@ fn FailureDetailContent(op_id: String) -> Element {
             h2 { style: MODULE_CAPTION, "Scrubbed copy" }
             div { style: MODULE_BODY,
                 p { style: HELP_TEXT,
-                    "The scrubbed copy is for handing a failure to a language model that must not read the corpus. Dataset-mount paths become a basename hash. Any value over 512 characters is replaced with its length. The stored record stays raw."
+                    "The scrubbed copy replaces dataset paths with hashes and long values with their lengths."
                 }
                 button {
                     id: "x-failures-copy-scrubbed",
@@ -127,7 +127,7 @@ fn FailureDetailContent(op_id: String) -> Element {
                 }
                 pre {
                     id: "x-failures-scrubbed-copy",
-                    style: "margin-top: 12px; max-height: 240px; overflow: auto; background: #f6f6f6; padding: 8px; font-size: 11px; white-space: pre-wrap;",
+                    style: "margin-top: 12px; max-height: 240px; overflow: auto; background: var(--x-surface-muted); padding: 8px; font-size: var(--x-text-xs); white-space: pre-wrap;",
                     "{tree.scrubbed_copy}"
                 }
             }
@@ -160,7 +160,7 @@ fn TreeNode(node: FailureNode) -> Element {
     rsx! {
         div {
             id: "x-failures-node-{node.node_index}",
-            style: "margin-left: {indent}px; margin-bottom: 16px; padding: 8px; border-left: 3px solid #79aec8;",
+            style: "margin-left: {indent}px; margin-bottom: 16px; padding: 8px; border-left: 3px solid var(--x-link);",
             p { style: "margin: 0 0 4px; font-weight: 600;",
                 if is_root { "Root · " }
                 "{node.error_class}"
@@ -174,12 +174,12 @@ fn TreeNode(node: FailureNode) -> Element {
                 "workflow {node.workflow_id} · run {node.run_id} · activity {node.activity_id} · attempt {node.attempt}"
             }
             if node.nodes_dropped > 0 {
-                p { style: "color: #ba2121; font-size: 12px;",
+                p { style: "color: var(--x-danger); font-size: var(--x-text-xs);",
                     "{node.nodes_dropped} node(s) dropped at this capture"
                 }
             }
             if !node.details_json.is_empty() {
-                pre { style: "font-size: 11px; background: #f6f6f6; padding: 8px; overflow: auto; max-height: 160px;",
+                pre { style: "font-size: var(--x-text-xs); background: var(--x-surface-muted); padding: 8px; overflow: auto; max-height: 160px;",
                     "{node.details_json}"
                 }
             }
@@ -189,7 +189,7 @@ fn TreeNode(node: FailureNode) -> Element {
                 }
                 pre {
                     class: "x-failures-stack",
-                    style: "font-size: 11px; background: #f6f6f6; padding: 8px; overflow: auto; max-height: 240px; white-space: pre-wrap;",
+                    style: "font-size: var(--x-text-xs); background: var(--x-surface-muted); padding: 8px; overflow: auto; max-height: 240px; white-space: pre-wrap;",
                     "{node.stack_trace}"
                 }
             }

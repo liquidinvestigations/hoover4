@@ -32,14 +32,14 @@ pub fn ChatComposer(
 
     rsx! {
         div {
-            style: "background: white; border: 1px solid #E5E7EB; border-radius: 16px; \
+            style: "background: white; border: 1px solid var(--x-border); border-radius: 16px; \
                     padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; \
                     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);",
             textarea {
                 "data-chat-composer": "true",
                 style: "width: 100%; resize: none; border: none; outline: none; \
-                        font-size: 15px; font-family: inherit; min-height: 56px; \
-                        line-height: 1.5; color: #0F172A; background: transparent;",
+                        font-size: var(--x-text-md); font-family: inherit; min-height: 56px; \
+                        line-height: 1.5; color: var(--x-ink-strong); background: transparent;",
                 rows: 2,
                 maxlength: MAX_MESSAGE_CHARS as i64,
                 placeholder: "Write a query to send commands to the AI",
@@ -63,8 +63,8 @@ pub fn ChatComposer(
                 style: "display: flex; align-items: center; gap: 16px; flex-wrap: wrap;",
                 if !locked {
                     label {
-                        style: "display: flex; align-items: center; gap: 6px; font-size: 13px; \
-                                color: #475569; cursor: pointer; user-select: none;",
+                        style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); \
+                                color: var(--x-ink); cursor: pointer; user-select: none;",
                         input {
                             r#type: "checkbox",
                             checked: options.read().internet_tools,
@@ -81,7 +81,7 @@ pub fn ChatComposer(
                 div { style: "flex: 1;" }
                 if let Some(secs) = *retry_after_seconds.read() {
                     span {
-                        style: "font-size: 13px; color: #B45309;",
+                        style: "font-size: var(--x-text-sm); color: var(--x-warning);",
                         "Try again in {secs} s"
                     }
                 }
@@ -95,7 +95,7 @@ pub fn ChatComposer(
                         // composer's own indigo instead of the alert red.
                         button {
                             style: "width: 40px; height: 40px; border-radius: 999px; border: none; \
-                                    background: #4F46E5; color: white; cursor: pointer; \
+                                    background: var(--x-link); color: white; cursor: pointer; \
                                     display: flex; align-items: center; justify-content: center;",
                             // Says what a stop does, not what it might have done. The
                             // agent writes `chat_messages` only when its run finishes, so
@@ -118,7 +118,7 @@ pub fn ChatComposer(
                         span {
                             title: "Starting the conversation\u{2026}",
                             style: "width: 40px; height: 40px; border-radius: 999px; \
-                                    background: #E2E8F0; color: #94A3B8; font-size: 14px; \
+                                    background: #E2E8F0; color: var(--x-ink-faint); font-size: var(--x-text-md); \
                                     display: flex; align-items: center; justify-content: center;",
                             "\u{22EF}"
                         }
@@ -127,11 +127,11 @@ pub fn ChatComposer(
                     button {
                         style: {
                             let ready = !draft.read().trim().is_empty() && !disabled;
-                            let bg = if ready { "#4F46E5" } else { "#E2E8F0" };
-                            let color = if ready { "white" } else { "#94A3B8" };
+                            let bg = if ready { "var(--x-link)" } else { "#E2E8F0" };
+                            let color = if ready { "white" } else { "var(--x-ink-faint)" };
                             format!(
                                 "width: 40px; height: 40px; border-radius: 999px; border: none; \
-                                 background: {bg}; color: {color}; cursor: {}; font-size: 18px; \
+                                 background: {bg}; color: {color}; cursor: {}; font-size: var(--x-text-xl); \
                                  display: flex; align-items: center; justify-content: center;",
                                 if ready { "pointer" } else { "default" }
                             )
