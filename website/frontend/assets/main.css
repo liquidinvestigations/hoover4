@@ -262,3 +262,76 @@ html, body, #main {
     padding: 8px 0;
     cursor: pointer;
 }
+
+/* Suggested follow-up questions under a chat answer. Each one is a button that fills
+   the composer, so the group aligns right like the person's own message. */
+.x-chat-follow-ups {
+    position: relative;
+    width: fit-content;
+    max-width: clamp(280px, 50%, 100%);
+    margin: 4px 0 8px auto;
+    padding: 10px 0 10px 52px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+}
+.x-chat-follow-ups-mark {
+    position: absolute;
+    top: 6px;
+    left: 0;
+    color: var(--x-ink-faint);
+    opacity: 0.35;
+    pointer-events: none;
+}
+.x-chat-follow-ups-mark svg {
+    fill: currentColor;
+}
+.x-chat-follow-up {
+    max-width: 100%;
+    padding: 8px 14px;
+    border: 1px solid;
+    border-color: var(--x-link);
+    border-radius: 14px;
+    background-color: white;
+    color: var(--x-link);
+    font: inherit;
+    font-size: var(--x-text-md);
+    line-height: 1.45;
+    text-align: left;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+    transition: background-color 120ms ease-out;
+}
+.x-chat-follow-up:hover {
+    background-color: var(--x-surface-muted);
+}
+.x-chat-follow-up:active {
+    background-color: var(--x-selected);
+}
+.x-chat-follow-up:focus-visible {
+    outline: 2px solid var(--x-link);
+    outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+    .x-chat-follow-up {
+        transition: none;
+    }
+}
+
+/* Administration pages: a rule between two sections, none above the first one. */
+.x-admin-module + .x-admin-module {
+    border-top: 1px solid;
+    border-top-color: var(--x-border);
+    padding-top: 20px;
+}
+
+/* Rail hints. The card is level with its icon, as tall as the icon row, and as wide as
+   its text. The trigger is a flex box so its height is the icon height. */
+#x-nav-sidebar .hover-card-trigger { display: flex; }
+/* The card starts at the icon's right edge, which is 21 px inside the rail edge. */
+#x-nav-sidebar .hover-card-content { min-width: 0; padding: 0; white-space: nowrap; margin-left: 27px; }
+.x-rail-hint {
+    display: flex; align-items: center; height: 30px; padding: 0 12px;
+    font-family: var(--x-font); font-size: var(--x-text-md); color: var(--x-ink-strong);
+}

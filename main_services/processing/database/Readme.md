@@ -78,6 +78,7 @@ admitted, when an operation reaches a terminal state, and during the ETA collect
 while a collection has a live operation. A dataset is `processing` while a live operation
 other than `export_collection` holds it under the operation lock rule, and `done`
 otherwise. A failed or errored operation is not live, so its dataset shows as `done`.
+The error count counts distinct document and task pairs, because a task that failed in several runs wrote one row for each run.
 Each statistics query stops after 30 seconds. A refresh that stops leaves the row in
 `processing`, and the next collector pass writes the row again.
 

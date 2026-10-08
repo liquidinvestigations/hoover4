@@ -1,35 +1,60 @@
-//! Grouped list of captured operation failures at `/admin/failures`.
+//! The Errors/Failures page at `/admin/failures`, in two sections.
 //!
-//! Rows are grouped by the stored `signature` so identical failures collapse to one
-//! line with a count. Filters, sort and page are read inside the resource: a prop is
-//! not reactive, and a value captured outside the resource never updates the list.
+//! Operational failures: captured operation failures, grouped by the stored `signature`
+//! so identical failures collapse to one line with a count. Document errors: the newest
+//! error of each document and task from `processing_errors`, with statistics over the
+//! filters and pages. The document error filters and page are in the address.
+//! Filters, sort and page are read inside the resources: a prop is not reactive, and a
+//! value captured outside the resource never updates the list.
 
 use common::failure_types::{
     FailureGroupRow, FailureInstanceRow, FailureListFilter, FailureListSort,
 };
 use dioxus::prelude::*;
 
-use crate::api::admin_api::{admin_list_failure_instances, admin_list_operation_failures};
+use common::processing_types::{DocumentErrorFilter, DOCUMENT_ERRORS_PAGE_SIZE};
+
+use crate::api::admin_api::{
+    admin_list_document_errors, admin_list_failure_instances, admin_list_operation_failures,
+};
 use crate::api::error_util::user_facing_message;
 use crate::components::admin_components::{
     AdminGuard, AdminShell, ErrorBar, BTN_SMALL, HELP_TEXT, INPUT, LABEL, LINK, MODULE,
-    MODULE_BODY, MODULE_CAPTION, SELECT, TABLE, TD, TH,
+    MODULE_BODY, MODULE_CAPTION, SELECT, SUBHEADING, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
 
 const PAGE_SIZES: [u32; 4] = [1, 10, 25, 50];
 
+/// The id of the document error section. A dataset's error count links to it.
+pub const DOCUMENT_ERRORS_SECTION_ID: &str = "document-errors";
+
+/// The Errors/Failures page with its document errors filtered to a collection and a
+/// dataset. Empty strings select every collection or dataset.
+pub fn failures_route(collection: &str, dataset: &str) -> Route {
+    Route::AdminFailuresPage {
+        collection: collection.to_string(),
+        dataset: dataset.to_string(),
+        task: String::new(),
+        search: String::new(),
+        page: 1,
+    }
+}
+
 #[component]
-pub fn AdminFailuresPage() -> Element {
+pub fn AdminFailuresPage(collection: String, dataset: String, task: String, search: String, page: u32) -> Element {
     rsx! {
-        Title { "Admin: failures" }
+        Title { "Admin: errors and failures" }
         AdminGuard {
             AdminShell {
-                title: "Failures".to_string(),
+                title: "Errors/Failures".to_string(),
                 breadcrumb: String::new(),
                 active: "failures".to_string(),
-                SuspendWrapper { FailuresContent {} }
+                SuspendWrapper {
+                    FailuresContent {}
+                    DocumentErrorsSection { collection, dataset, task, search, page }
+                }
             }
         }
     }
@@ -125,10 +150,22 @@ fn FailuresContent() -> Element {
     let current_sort = sort_column();
     let current_desc = sort_desc();
 
+    let filtered = !collection_filter().is_empty() || !dataset_filter().is_empty()
+        || !task_filter().is_empty() || !class_filter().is_empty() || !kind_filter().is_empty()
+        || !from_filter().is_empty() || !to_filter().is_empty();
+    if data.groups.is_empty() && !filtered && current_page == 0 {
+        return rsx! {
+            section { class: "x-admin-module", style: MODULE,
+                h2 { style: MODULE_CAPTION, "Operational failures" }
+                p { id: "x-failures-none", style: HELP_TEXT, "No operational failures at this time." }
+            }
+        };
+    }
+
     rsx! {
-        div { style: MODULE,
-            h2 { style: MODULE_CAPTION, "Filters" }
-            div { style: "{MODULE_BODY} display: flex; gap: 16px; flex-wrap: wrap; align-items: center;",
+        section { class: "x-admin-module", style: MODULE,
+            h2 { style: MODULE_CAPTION, "Operational failures" }
+            div { style: "{MODULE_BODY} display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;",
                 FilterSelect {
                     id: "x-failures-filter-collection",
                     label: "Collection",
@@ -190,10 +227,6 @@ fn FailuresContent() -> Element {
                     }
                 }
             }
-        }
-
-        div { style: MODULE,
-            h2 { style: MODULE_CAPTION, "Failures, grouped by signature" }
             div { style: MODULE_BODY,
                 if data.groups.is_empty() {
                     p { style: HELP_TEXT, "No captured failures match these filters." }
@@ -306,9 +339,11 @@ fn FilterSelect(
                 style: SELECT,
                 value: "{value}",
                 onchange: move |e| onchange.call(e.value()),
-                option { value: "", "{empty_label}" }
+                // `selected` on each option, because the options can arrive after the
+                // value, and a `value` set before its option exists selects nothing.
+                option { value: "", selected: value.is_empty(), "{empty_label}" }
                 for opt in options.iter() {
-                    option { value: "{opt}", "{opt}" }
+                    option { value: "{opt}", selected: *opt == value, "{opt}" }
                 }
             }
         }
@@ -412,4 +447,245 @@ fn GroupRows(
             }
         }
     }
+}
+
+/// The document error section. The filters and the page are props from the address,
+/// copied into signals that the resource reads.
+#[component]
+fn DocumentErrorsSection(collection: String, dataset: String, task: String, search: String, page: u32) -> Element {
+    let page = page.max(1);
+    let filter = DocumentErrorFilter {
+        collectionname: collection.clone(),
+        collection_dataset: dataset.clone(),
+        task_name: task.clone(),
+        search: search.clone(),
+    };
+    let mut query = use_signal(|| (filter.clone(), page));
+    if *query.peek() != (filter.clone(), page) {
+        query.set((filter.clone(), page));
+    }
+    let collections_res = use_resource(crate::api::admin_api::admin_list_collections);
+    let errors_res = use_resource(move || {
+        let (filter, page) = query();
+        async move { admin_list_document_errors(filter, page).await }
+    });
+    let mut search_draft = use_signal(|| search.clone());
+    let nav = navigator();
+    // A link from an error count carries the section id. The section loads after the
+    // page, so the browser's own scroll finds no target.
+    use_effect(move || {
+        if errors_res.read().is_some() {
+            document::eval(&format!(
+                "if (location.hash === '#{DOCUMENT_ERRORS_SECTION_ID}') document.getElementById('{DOCUMENT_ERRORS_SECTION_ID}')?.scrollIntoView();"
+            ));
+        }
+    });
+
+    let go = move |filter: DocumentErrorFilter, page: u32| {
+        nav.push(Route::AdminFailuresPage {
+            collection: filter.collectionname,
+            dataset: filter.collection_dataset,
+            task: filter.task_name,
+            search: filter.search,
+            page: page.max(1),
+        });
+    };
+    let collection_choices: Vec<String> = collections_res
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .map(|cols| cols.iter().map(|c| c.collectionname.clone()).collect())
+        .unwrap_or_default();
+
+    rsx! {
+        section { id: DOCUMENT_ERRORS_SECTION_ID, class: "x-admin-module", style: MODULE,
+            h2 { style: MODULE_CAPTION, "Document errors" }
+            div { style: "{MODULE_BODY} display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;",
+                FilterSelect {
+                    id: "x-doc-errors-collection",
+                    label: "Collection",
+                    value: filter.collectionname.clone(),
+                    empty_label: "All collections",
+                    options: collection_choices,
+                    onchange: {
+                        let filter = filter.clone();
+                        move |v: String| go(DocumentErrorFilter { collectionname: v, collection_dataset: String::new(), ..filter.clone() }, 1)
+                    },
+                }
+                FilterSelect {
+                    id: "x-doc-errors-dataset",
+                    label: "Dataset",
+                    value: filter.collection_dataset.clone(),
+                    empty_label: "All datasets",
+                    options: errors_res.read().as_ref().and_then(|r| r.as_ref().ok()).map(|d| d.dataset_choices.clone()).unwrap_or_default(),
+                    onchange: {
+                        let filter = filter.clone();
+                        move |v: String| go(DocumentErrorFilter { collection_dataset: v, ..filter.clone() }, 1)
+                    },
+                }
+                FilterSelect {
+                    id: "x-doc-errors-task",
+                    label: "Task",
+                    value: filter.task_name.clone(),
+                    empty_label: "All tasks",
+                    options: errors_res.read().as_ref().and_then(|r| r.as_ref().ok()).map(|d| d.task_choices.clone()).unwrap_or_default(),
+                    onchange: {
+                        let filter = filter.clone();
+                        move |v: String| go(DocumentErrorFilter { task_name: v, ..filter.clone() }, 1)
+                    },
+                }
+                label { style: LABEL,
+                    "Error text"
+                    input {
+                        id: "x-doc-errors-search",
+                        style: INPUT,
+                        value: "{search_draft}",
+                        oninput: move |e| search_draft.set(e.value()),
+                        onkeydown: {
+                            let filter = filter.clone();
+                            move |e: KeyboardEvent| {
+                                if e.key() == Key::Enter {
+                                    go(DocumentErrorFilter { search: search_draft(), ..filter.clone() }, 1);
+                                }
+                            }
+                        },
+                    }
+                }
+            }
+            match &*errors_res.read() {
+                None => rsx! { p { style: HELP_TEXT, "Loading document errors\u{2026}" } },
+                Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
+                Some(Ok(data)) if data.total == 0 => rsx! {
+                    p { id: "x-doc-errors-none", style: HELP_TEXT, "No document errors match these filters." }
+                },
+                Some(Ok(data)) => {
+                    let pages = data.total.div_ceil(u64::from(DOCUMENT_ERRORS_PAGE_SIZE)).max(1);
+                    let documents: u64 = data.stats.iter().map(|s| s.documents).sum();
+                    rsx! {
+                        h3 { style: SUBHEADING, "Errors by dataset and task" }
+                        table { id: "x-doc-errors-stats", style: TABLE,
+                            thead {
+                                tr {
+                                    th { style: TH, "Dataset" }
+                                    th { style: TH, "Task" }
+                                    th { style: "{TH} text-align: right;", "Documents" }
+                                    th { style: TH, "Last seen" }
+                                }
+                            }
+                            tbody {
+                                for stat in data.stats.iter() {
+                                    tr { key: "{stat.collection_dataset}/{stat.task_name}",
+                                        td { style: TD, "{stat.collection_dataset}" }
+                                        td { style: TD,
+                                            button {
+                                                style: "background: none; border: none; padding: 0; cursor: pointer; font: inherit; color: var(--x-link);",
+                                                title: "Show only this dataset and task",
+                                                onclick: {
+                                                    let filter = filter.clone();
+                                                    let ds = stat.collection_dataset.clone();
+                                                    let task = stat.task_name.clone();
+                                                    move |_| go(DocumentErrorFilter { collection_dataset: ds.clone(), task_name: task.clone(), ..filter.clone() }, 1)
+                                                },
+                                                "{stat.task_name}"
+                                            }
+                                        }
+                                        td { style: "{TD} text-align: right;", "{stat.documents}" }
+                                        td { style: "{TD} white-space: nowrap;", "{short_time(&stat.last_seen)}" }
+                                    }
+                                }
+                                tr {
+                                    td { style: "{TD} font-weight: 600;", colspan: 2, "Total" }
+                                    td { style: "{TD} text-align: right; font-weight: 600;", "{documents}" }
+                                    td { style: TD, "" }
+                                }
+                            }
+                        }
+                        h3 { style: SUBHEADING, "Errors" }
+                        table { id: "x-doc-errors-table", style: TABLE,
+                            thead {
+                                tr {
+                                    th { style: TH, "Last seen" }
+                                    th { style: TH, "Dataset" }
+                                    th { style: TH, "Document" }
+                                    th { style: TH, "Task" }
+                                    th { style: "{TH} text-align: right;", "Runs" }
+                                    th { style: TH, "Error" }
+                                }
+                            }
+                            tbody {
+                                for row in data.rows.iter() {
+                                    tr { key: "{row.collection_dataset}/{row.hash}/{row.task_name}", class: "x-doc-errors-row",
+                                        td { style: "{TD} white-space: nowrap;", "{short_time(&row.last_seen)}" }
+                                        td { style: TD, "{row.collection_dataset}" }
+                                        td { style: "{TD} word-break: break-all;",
+                                            if row.hash.is_empty() {
+                                                span { style: HELP_TEXT, "Dataset step" }
+                                            } else {
+                                                a {
+                                                    href: "{document_href(&row.collection_dataset, &row.hash)}",
+                                                    target: "_blank",
+                                                    rel: "noopener",
+                                                    style: LINK,
+                                                    title: "{row.hash}",
+                                                    {row.path.clone().unwrap_or_else(|| row.hash.chars().take(16).collect())}
+                                                }
+                                            }
+                                        }
+                                        td { style: TD, "{row.task_name}" }
+                                        td { style: "{TD} text-align: right;", "{row.runs}" }
+                                        td { style: "{TD} font-family: ui-monospace, monospace; font-size: var(--x-text-xs); word-break: break-word;", "{row.error}" }
+                                    }
+                                }
+                            }
+                        }
+                        div { style: "display: flex; gap: 12px; align-items: center; margin-top: 10px;",
+                            button {
+                                id: "x-doc-errors-previous",
+                                style: BTN_SMALL,
+                                disabled: page <= 1,
+                                onclick: {
+                                    let filter = filter.clone();
+                                    move |_| go(filter.clone(), page - 1)
+                                },
+                                "Previous page"
+                            }
+                            span { id: "x-doc-errors-page", style: HELP_TEXT,
+                                if data.total == 1 { "Page {page} of {pages}, 1 error" } else { "Page {page} of {pages}, {data.total} errors" }
+                            }
+                            button {
+                                id: "x-doc-errors-next",
+                                style: BTN_SMALL,
+                                disabled: u64::from(page) >= pages,
+                                onclick: {
+                                    let filter = filter.clone();
+                                    move |_| go(filter.clone(), page + 1)
+                                },
+                                "Next page"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// `YYYY-MM-DD HH:MM` of an RFC 3339 timestamp.
+fn short_time(rfc3339: &str) -> String {
+    let (date, rest) = rfc3339.split_once('T').unwrap_or((rfc3339, ""));
+    format!("{date} {}", rest.get(..5).unwrap_or(rest)).trim().to_string()
+}
+
+/// The document view of one blob, in a new tab.
+fn document_href(collection_dataset: &str, hash: &str) -> String {
+    let id = common::search_result::DocumentIdentifier {
+        collection_dataset: collection_dataset.to_string(),
+        file_hash: hash.to_string(),
+    };
+    Route::ViewDocumentPage {
+        document_identifier: id.into(),
+        doc_viewer_state: None.into(),
+        viewer_right_tab_state: crate::data_definitions::doc_viewer_state::ViewerRightTabState::default().into(),
+    }
+    .to_string()
 }

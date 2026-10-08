@@ -90,7 +90,7 @@ fn UserDetailContent(username: String) -> Element {
         if let Some(err) = error_msg.read().clone() {
             ErrorBar { message: err }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "User" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",
@@ -143,7 +143,7 @@ fn UserDetailContent(username: String) -> Element {
                 }
             }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Groups" }
             div { style: MODULE_BODY,
                 table { style: TABLE,
@@ -243,7 +243,7 @@ fn UserDetailContent(username: String) -> Element {
                 }
             }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", "Danger zone" }
             div { style: MODULE_BODY,
                 button {

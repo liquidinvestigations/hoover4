@@ -52,7 +52,7 @@ pub fn LiveChatsPanel() -> Element {
         .cloned();
 
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Live LLM chats" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",

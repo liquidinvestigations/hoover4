@@ -275,19 +275,22 @@ fn AiChatSessionRoot(
             style: "height: 100%; width: 100%; display: flex; flex-direction: row; \
                     background: #F5F6F8; overflow: hidden;",
             ChatConversationPanel { session_id, detail, messages, gate, choices }
+            // The web page and document panes share one divider and one remembered width.
             if let Some(artifact_id) = doc_viewer_state.read().as_ref().and_then(|state| state.web_artifact_id.clone()) {
-                div { style: "height: 100%; width: 40%; min-width: 300px;",
+                ChatSidePane {
                     WebPagePreview { artifact_id, find: doc_viewer_state.read().as_ref().map(|state| state.find_query.clone()).unwrap_or_default() }
                 }
             } else if selected_result_hash.read().is_some() {
-                div {
-                    "data-chat-document-pane": "true",
-                    style: "height: 100%; width: 40%; min-width: 300px;",
-                    SuspendWrapper {
-                        DocumentPreviewForSearchRoot {
-                            query: preview_query,
-                            selected_result_hash,
-                            show_finder: true,
+                ChatSidePane {
+                    div {
+                        "data-chat-document-pane": "true",
+                        style: "height: 100%; width: 100%; min-width: 0;",
+                        SuspendWrapper {
+                            DocumentPreviewForSearchRoot {
+                                query: preview_query,
+                                selected_result_hash,
+                                show_finder: true,
+                            }
                         }
                     }
                 }
@@ -604,7 +607,7 @@ fn ChatConversationPanel(
                     flex-direction: column; background: #ECEEF2; border-right: 1px solid #D1D5DB;",
             div {
                 style: "padding: 10px 14px; display: flex; align-items: center; gap: 12px; \
-                        background: white; border-bottom: 1px solid var(--x-border); flex-shrink: 0;",
+                        background: white; border-bottom: 1px solid; border-bottom-color: var(--x-border); flex-shrink: 0;",
                 Link {
                     to: Route::AiChatPage {},
                     style: "color: var(--x-link); text-decoration: none; font-size: var(--x-text-sm); \
@@ -761,5 +764,22 @@ mod turn_state_tests {
         assert_eq!(turn_state(true, "", false), "active");
         assert_eq!(turn_state(true, "model", true), "interrupted");
         assert_eq!(turn_state(false, "", false), "idle");
+    }
+}
+
+/// The resizable pane right of the conversation, for a web page or a document.
+#[component]
+fn ChatSidePane(children: Element) -> Element {
+    rsx! {
+        crate::components::resizable_sidebar::ResizablePane {
+            storage_key: "hoover4.chat-document-width-css-px",
+            default_px: 640,
+            min_px: 300,
+            max_px: 1400,
+            side: crate::components::resizable_sidebar::PaneSide::Right,
+            handle_id: "x-chat-document-resize",
+            max_share: "65%",
+            {children}
+        }
     }
 }

@@ -151,40 +151,29 @@ fn IconLink<T: IconShape + Clone + PartialEq + 'static>(
     label: String,
 ) -> Element {
     rsx! {
-        HoverCard {
-            HoverCardTrigger {
+        RailHint {
+            label,
+            Link {
+                to: to,
+                style: "color: white; display: flex;",
+                Icon { icon: icon, style: "width: 26px; height: 26px;" }
+            }
+        }
+    }
+}
 
-                Link {
-                    to: to,
-                    span {
-                        style: "color:white;",
-                        Icon { icon: icon, style: "width: 26px; height: 26px;" }
-                        // "{label}"
-                    }
-                }
-            },
+/// A rail control with its name in a card to the right, level with the icon.
+/// `main.css` sizes the card under `#x-nav-sidebar`.
+#[component]
+pub fn RailHint(label: String, children: Element) -> Element {
+    rsx! {
+        HoverCard {
+            HoverCardTrigger { {children} }
             HoverCardContent {
                 side: ContentSide::Right,
-                align: ContentAlign::Start,
-                div {
-                    style: "
-                        display: flex;
-                        flex-direction: row;
-                        align-items: center;
-                        justify-content: center;
-                        text-align:center;
-                        color:black;
-                        background-color:white;
-                        padding:10px;
-                        width: 100%;
-                        font-size: 21px;
-                    ",
-                    div {style:"flex-grow: 1;"}
-                    "{label}",
-                    div {style:"flex-grow: 1;"}
-                }
+                align: ContentAlign::Center,
+                div { class: "x-rail-hint", "{label}" }
             }
-
         }
     }
 }

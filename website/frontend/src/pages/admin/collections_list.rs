@@ -61,7 +61,7 @@ fn CollectionsListContent() -> Element {
         if let Some(err) = error_msg.read().clone() {
             ErrorBar { message: err }
         }
-        section { style: MODULE,
+        section { class: "x-admin-module", style: MODULE,
             match &*cols_res.read() {
                 Some(Ok(cols)) => rsx! { CollectionsTable { cols: cols.clone() } },
                 Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
@@ -70,7 +70,7 @@ fn CollectionsListContent() -> Element {
         }
         section {
             id: DATASETS_SECTION_ID,
-            style: MODULE,
+            class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Datasets" }
             match &*datasets_res.read() {
                 Some(Ok(datasets)) => rsx! { DatasetsTable { datasets: datasets.clone() } },
@@ -78,7 +78,7 @@ fn CollectionsListContent() -> Element {
                 None => rsx! { p { style: HELP_TEXT, "Loading datasets\u{2026}" } },
             }
         }
-        section { style: MODULE,
+        section { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Add a collection" }
             div { style: "{MODULE_BODY} display: flex; gap: 8px; flex-wrap: wrap; align-items: center;",
                 input { style: INPUT, placeholder: "Name, for example enron", value: "{collectionname}", oninput: move |e| collectionname.set(e.value()) }
@@ -119,6 +119,7 @@ fn CollectionsTable(cols: Vec<AdminCollectionItem>) -> Element {
                     th { style: "{TH} text-align: right;", "Datasets" }
                     th { style: "{TH} text-align: right;", "Documents" }
                     th { style: "{TH} text-align: right;", "Size" }
+                    th { style: "{TH} text-align: right;", "Errors" }
                     th { style: TH, "State" }
                     th { style: TH, "Access" }
                 }
@@ -134,6 +135,11 @@ fn CollectionsTable(cols: Vec<AdminCollectionItem>) -> Element {
                         }
                         td { style: "{TD} {NUM_TD}", "{c.dataset_count}" }
                         CollectionStatCells { stats: c.stats.clone() }
+                        if c.stats.counted_dataset_count == 0 {
+                            td { style: "{TD} {NUM_TD}", "" }
+                        } else {
+                            ErrorCountCell { collectionname: c.collectionname.clone(), collection_dataset: String::new(), count: c.stats.error_count }
+                        }
                         td { style: TD,
                             if !c.db_ready {
                                 span { style: "color: var(--x-danger);", "Database not ready" }
@@ -224,7 +230,7 @@ fn DatasetsTable(datasets: Vec<AdminDatasetListItem>) -> Element {
                         td { style: TD,
                             Link { to: Route::AdminCollectionPage { collection_id: d.collectionname.clone() }, style: LINK, "{d.collectionname}" }
                         }
-                        DatasetStatCells { stats: d.stats.clone() }
+                        DatasetStatCells { collectionname: d.collectionname.clone(), stats: d.stats.clone() }
                         td { style: TD, StateText { stats_known: d.stats.is_some(), processing: d.stats.as_ref().is_some_and(|s| s.processing) } }
                         td { style: "{TD} white-space: nowrap;", "{short_date(&d.date_created)}" }
                     }
@@ -234,20 +240,20 @@ fn DatasetsTable(datasets: Vec<AdminDatasetListItem>) -> Element {
     }
 }
 
-/// The statistics cells of one dataset row. Shared with the collection page.
+/// The statistics cells of one dataset row. Shared with the collection page. A non-zero
+/// error count links to the dataset's document errors.
 #[component]
-pub fn DatasetStatCells(stats: Option<DatasetAggregates>) -> Element {
+pub fn DatasetStatCells(collectionname: String, stats: Option<DatasetAggregates>) -> Element {
     match stats {
         None => rsx! {
             td { style: "{TD} {NUM_TD} {HELP_TEXT}", colspan: 4, "Not counted yet" }
         },
         Some(s) => {
-            let error_colour = if s.error_count > 0 { "color: var(--x-warning);" } else { "" };
             rsx! {
                 td { style: "{TD} {NUM_TD}", "{s.document_count}" }
                 td { style: "{TD} {NUM_TD}", "{format_size(s.total_size_bytes)}" }
                 td { style: "{TD} {NUM_TD}", "{s.indexed_count}" }
-                td { style: "{TD} {NUM_TD} {error_colour}", "{s.error_count}" }
+                ErrorCountCell { collectionname, collection_dataset: s.collection_dataset.clone(), count: s.error_count }
             }
         }
     }
@@ -263,5 +269,23 @@ pub fn short_date(rfc3339: &str) -> &str {
 pub fn DatasetStateCell(stats: Option<DatasetAggregates>) -> Element {
     rsx! {
         td { style: TD, StateText { stats_known: stats.is_some(), processing: stats.as_ref().is_some_and(|s| s.processing) } }
+    }
+}
+
+/// An error count. A non-zero count links to the matching document errors.
+#[component]
+fn ErrorCountCell(collectionname: String, collection_dataset: String, count: u64) -> Element {
+    if count == 0 {
+        return rsx! { td { style: "{TD} {NUM_TD}", "0" } };
+    }
+    let to = format!(
+        "{}#{}",
+        crate::pages::admin::failures::failures_route(&collectionname, &collection_dataset),
+        crate::pages::admin::failures::DOCUMENT_ERRORS_SECTION_ID
+    );
+    rsx! {
+        td { style: "{TD} {NUM_TD}",
+            a { class: "x-admin-error-count", href: "{to}", style: "color: var(--x-warning); font-weight: 600;", "{count}" }
+        }
     }
 }

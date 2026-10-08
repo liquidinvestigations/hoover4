@@ -1,4 +1,7 @@
-//! A left pane the user can drag wider, whose width outlives the session.
+//! Panes the user can drag wider or narrower, whose widths outlive the session.
+//!
+//! [`ResizablePane`] is the general pane. Each use has its own storage key and limits.
+//! [`ResizableSidebar`] is the storage pane of the file browser, the first use.
 //!
 //! **The unit is CSS pixels**, stored as a plain integer. The alternatives were considered
 //! and are worse here: a percentage or `vw` re-scales the pane every time the window
@@ -60,25 +63,26 @@ pub fn parse_sidebar_px(raw: &str) -> Option<u32> {
         .map(clamp_sidebar_px)
 }
 
-/// The pane width in CSS pixels for a drag that started at `start_px`.
+/// The storage pane width in CSS pixels for a drag that started at `start_px`.
 ///
 /// `delta_client_px` is the cursor's movement in the same CSS pixels.
 pub fn dragged_sidebar_px(start_px: u32, delta_client_px: f64) -> u32 {
-    let next = f64::from(start_px) + delta_client_px;
-    if !next.is_finite() {
-        return clamp_sidebar_px(start_px);
-    }
-    clamp_sidebar_px(next.round().max(0.0).min(f64::from(u32::MAX)) as u32)
+    dragged_px(start_px, delta_client_px, MIN_SIDEBAR_PX, MAX_SIDEBAR_PX)
 }
 
-fn read_stored_px() -> Option<u32> {
+fn read_stored_px(key: &str, min_px: u32, max_px: u32) -> Option<u32> {
     let storage = web_sys::window()?.local_storage().ok()??;
-    parse_sidebar_px(&storage.get_item(WIDTH_KEY).ok()??)
+    let raw = storage.get_item(key).ok()??;
+    raw.trim()
+        .parse::<u32>()
+        .ok()
+        .filter(|px| *px > 0)
+        .map(|px| px.clamp(min_px, max_px))
 }
 
-fn write_stored_px(px: u32) {
+fn write_stored_px(key: &str, px: u32) {
     if let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
-        let _ = storage.set_item(WIDTH_KEY, &px.to_string());
+        let _ = storage.set_item(key, &px.to_string());
     }
 }
 
@@ -130,15 +134,75 @@ fn now_ms() -> f64 {
         .unwrap_or(0.0)
 }
 
-/// The pane, its remembered width, and the handle that changes it.
+/// The drawn width of the pane that holds the handle `handle_id`, in CSS pixels.
+fn rendered_px(handle_id: &str) -> Option<u32> {
+    let pane = web_sys::window()?
+        .document()?
+        .get_element_by_id(handle_id)?
+        .parent_element()?;
+    let px = pane.get_bounding_client_rect().width();
+    (px.is_finite() && px > 0.0).then(|| px.round() as u32)
+}
+
+/// The width in CSS pixels for a drag that started at `start_px`, clamped to the limits.
+/// `delta_px` is the movement that widens the pane: the cursor's movement for a left
+/// pane, and its negation for a right pane.
+pub fn dragged_px(start_px: u32, delta_px: f64, min_px: u32, max_px: u32) -> u32 {
+    let next = f64::from(start_px) + delta_px;
+    if !next.is_finite() {
+        return start_px.clamp(min_px, max_px);
+    }
+    (next.round().max(0.0).min(f64::from(u32::MAX)) as u32).clamp(min_px, max_px)
+}
+
+/// Which edge of its row the pane sits on. The handle is on the pane's inner edge.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum PaneSide {
+    Left,
+    Right,
+}
+
+/// The storage pane of the file browser, with its own key, limits and handle id.
+#[component]
+pub fn ResizableSidebar(children: Element) -> Element {
+    rsx! {
+        ResizablePane {
+            storage_key: WIDTH_KEY,
+            default_px: DEFAULT_SIDEBAR_PX,
+            min_px: MIN_SIDEBAR_PX,
+            max_px: MAX_SIDEBAR_PX,
+            side: PaneSide::Left,
+            handle_id: "x-sidebar-resize",
+            max_share: "50%",
+            {children}
+        }
+    }
+}
+
+/// A pane the user can drag wider or narrower, whose width outlives the session.
 ///
+/// Each use names its own `storage_key`, so every divider remembers its own position.
 /// The moving half of the drag lives on a full-screen overlay that only exists while the
 /// button is down. That is not decoration: a `mousemove` handler on the 6 px handle stops
 /// firing the moment the cursor outruns it, which is most of a fast drag, and the overlay
 /// also stops the pointer selecting text or hovering rows underneath while the edge moves.
+/// `max_share` caps the pane as a share of its row, so a remembered width stays on screen
+/// in a narrow window.
 #[component]
-pub fn ResizableSidebar(children: Element) -> Element {
-    let mut width = use_signal(|| DEFAULT_SIDEBAR_PX);
+pub fn ResizablePane(
+    storage_key: &'static str,
+    default_px: u32,
+    min_px: u32,
+    max_px: u32,
+    side: PaneSide,
+    handle_id: &'static str,
+    max_share: &'static str,
+    /// Extra style for the pane's content box, such as a background.
+    #[props(default)]
+    pane_style: String,
+    children: Element,
+) -> Element {
+    let mut width = use_signal(|| default_px);
     let mut drag = use_signal(|| None::<Drag>);
     // `(timestamp_ms, client_x)` of the last press on the handle. See [`is_double_press`].
     let mut last_press = use_signal(|| None::<(f64, f64)>);
@@ -146,7 +210,7 @@ pub fn ResizableSidebar(children: Element) -> Element {
     // Reads nothing reactive, so it runs once, on the client. The server render has no
     // local storage and shows the default.
     use_effect(move || {
-        if let Some(px) = read_stored_px() {
+        if let Some(px) = read_stored_px(storage_key, min_px, max_px) {
             width.set(px);
         }
     });
@@ -160,7 +224,7 @@ pub fn ResizableSidebar(children: Element) -> Element {
     let end_drag = Callback::new(move |_: ()| {
         let was_dragging = drag.write().take().is_some();
         if was_dragging {
-            write_stored_px(*width.peek());
+            write_stored_px(storage_key, *width.peek());
         }
     });
 
@@ -168,15 +232,55 @@ pub fn ResizableSidebar(children: Element) -> Element {
     // from a real mouse. See [`is_double_press`].
     let reset_width = Callback::new(move |_: ()| {
         drag.set(None);
-        width.set(DEFAULT_SIDEBAR_PX);
-        write_stored_px(DEFAULT_SIDEBAR_PX);
+        width.set(default_px);
+        write_stored_px(storage_key, default_px);
     });
+
+    let handle = rsx! {
+        div {
+            // Named so a script can drive exactly this, and so the pane's width is
+            // reachable without guessing at a layout.
+            id: handle_id,
+            class: "x-pane-resize",
+            style: "
+                flex: 0 0 6px;
+                cursor: col-resize;
+                background-color: {handle_background};
+                border-left: 1px solid #E5E7EB;
+                border-right: 1px solid #E5E7EB;
+                box-sizing: border-box;
+            ",
+            title: "Drag to resize, double-click to reset",
+            onmousedown: move |event: Event<MouseData>| {
+                event.prevent_default();
+                let client_x = event.client_coordinates().x;
+                if is_double_press(*last_press.peek(), now_ms(), client_x) {
+                    last_press.set(None);
+                    reset_width.call(());
+                    return;
+                }
+                last_press.set(Some((now_ms(), client_x)));
+                // The drag starts from the width on the screen. `max_share` can draw the
+                // pane narrower than the remembered width, and a drag from the
+                // remembered width would then move nothing at first.
+                let start_px = rendered_px(handle_id)
+                    .unwrap_or(*width.peek())
+                    .clamp(min_px, max_px);
+                drag.set(Some(Drag { client_x, start_px }));
+            },
+            // Kept as well as the press-pair above: a synthetic `dblclick` (an
+            // accessibility tool, a script) does reach the handle, and this is the
+            // shorter path for it.
+            ondoubleclick: move |_| reset_width.call(()),
+        }
+    };
 
     rsx! {
         div {
             style: "
                 width: {current}px;
-                max-width: 50%;
+                max-width: {max_share};
+                height: 100%;
                 flex: 0 0 auto;
                 display: flex;
                 flex-direction: row;
@@ -184,50 +288,21 @@ pub fn ResizableSidebar(children: Element) -> Element {
                 overflow: hidden;
                 transition: {transition};
             ",
+            if side == PaneSide::Right { {handle.clone()} }
             div {
-                style: "flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; overflow: hidden;",
+                style: "flex: 1 1 auto; min-width: 0; height: 100%; display: flex; flex-direction: column; overflow: hidden; {pane_style}",
                 {children}
             }
-            div {
-                // Named so a script can drive exactly this, and so the pane's width is
-                // reachable without guessing at a layout.
-                id: "x-sidebar-resize",
-                style: "
-                    flex: 0 0 6px;
-                    cursor: col-resize;
-                    background: {handle_background};
-                    border-left: 1px solid #E5E7EB;
-                    border-right: 1px solid #E5E7EB;
-                    box-sizing: border-box;
-                ",
-                title: "Drag to resize the sidebar, double-click to reset it",
-                onmousedown: move |event: Event<MouseData>| {
-                    event.prevent_default();
-                    let client_x = event.client_coordinates().x;
-                    if is_double_press(*last_press.peek(), now_ms(), client_x) {
-                        last_press.set(None);
-                        reset_width.call(());
-                        return;
-                    }
-                    last_press.set(Some((now_ms(), client_x)));
-                    drag.set(Some(Drag {
-                        client_x,
-                        start_px: *width.peek(),
-                    }));
-                },
-                // Kept as well as the press-pair above: a synthetic `dblclick` (an
-                // accessibility tool, a script) does reach the handle, and this is the
-                // shorter path for it.
-                ondoubleclick: move |_| reset_width.call(()),
-            }
+            if side == PaneSide::Left { {handle} }
         }
         if dragging {
             div {
                 style: "position: fixed; inset: 0; z-index: 3000; cursor: col-resize; user-select: none;",
                 onmousemove: move |event: Event<MouseData>| {
                     let Some(origin) = *drag.peek() else { return };
-                    let delta = event.client_coordinates().x - origin.client_x;
-                    width.set(dragged_sidebar_px(origin.start_px, delta));
+                    let moved = event.client_coordinates().x - origin.client_x;
+                    let delta = if side == PaneSide::Left { moved } else { -moved };
+                    width.set(dragged_px(origin.start_px, delta, min_px, max_px));
                 },
                 onmouseup: move |_| end_drag.call(()),
                 // The cursor leaving the overlay means it left the window: without this
@@ -309,5 +384,18 @@ mod tests {
         for delta in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
             assert_eq!(dragged_sidebar_px(400, delta), 400);
         }
+    }
+}
+
+#[cfg(test)]
+mod pane_tests {
+    use super::*;
+
+    #[test]
+    fn a_right_pane_widens_when_the_cursor_moves_left() {
+        // The caller negates the cursor movement for a right pane.
+        assert_eq!(dragged_px(500, -(-120.0), 300, 900), 620);
+        assert_eq!(dragged_px(500, -(200.0), 300, 900), 300);
+        assert_eq!(dragged_px(500, 10_000.0, 300, 900), 900);
     }
 }

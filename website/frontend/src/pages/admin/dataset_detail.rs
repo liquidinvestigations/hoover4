@@ -83,7 +83,7 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
         if let Some(err) = error_msg.read().clone() {
             ErrorBar { message: err }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Metadata" }
             div { style: "{MODULE_BODY} display: flex; flex-direction: column; gap: 10px; max-width: 640px;",
                 label { style: LABEL,
@@ -140,7 +140,7 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                 }
             }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Statistics" }
             div { style: "{MODULE_BODY} display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px;",
                 match detail.aggregates.clone() {
@@ -159,7 +159,7 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
             }
         }
         DatasetOcrSettingsPanel { collection_dataset: dataset_id.clone() }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Processing" }
             div { style: MODULE_BODY,
                 div { style: "display: flex; gap: 8px; flex-wrap: wrap;",
@@ -173,7 +173,7 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                 }
             }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", "Danger zone" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 8px;", "This deletes the dataset and all data extracted from it. You cannot undo it." }
@@ -205,7 +205,7 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
 #[component]
 fn StatCard(label: String, value: String) -> Element {
     rsx! {
-        div { style: "padding: 12px 14px; border: 1px solid var(--x-border); border-radius: var(--x-radius);",
+        div { style: "padding: 12px 14px; border: 1px solid; border-color: var(--x-border); border-radius: var(--x-radius);",
             div { style: "color: var(--x-ink-muted); font-size: var(--x-text-sm);", "{label}" }
             div { style: "font-size: var(--x-text-xl); font-weight: 500; color: var(--x-ink-strong); margin-top: 2px;", "{value}" }
         }

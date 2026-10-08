@@ -44,7 +44,7 @@ pub fn AiChatHistoryPage() -> Element {
                         for s in list.clone() {
                             div {
                                 key: "{s.session_id}",
-                                style: "background: white; border: 1px solid var(--x-border); border-radius: 12px; \
+                                style: "background: white; border: 1px solid; border-color: var(--x-border); border-radius: 12px; \
                                         padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start;",
                                 Link {
                                     to: Route::ai_chat_session(s.session_id.clone(), None, None),

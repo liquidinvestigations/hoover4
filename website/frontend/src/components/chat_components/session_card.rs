@@ -25,7 +25,7 @@ pub fn ChatSessionCard(session: ChatSessionItem) -> Element {
             to: Route::ai_chat_session(session.session_id.clone(), None, None),
             style: "text-decoration: none; color: inherit; display: block;",
             div {
-                style: "background: white; border: 1px solid var(--x-border); border-radius: var(--x-radius); \
+                style: "background: white; border: 1px solid; border-color: var(--x-border); border-radius: var(--x-radius); \
                         padding: 18px 20px; display: flex; gap: 14px; align-items: flex-start; \
                         min-height: 88px; box-sizing: border-box; transition: border-color 0.15s;",
                 div {

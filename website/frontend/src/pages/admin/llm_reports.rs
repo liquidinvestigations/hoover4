@@ -108,7 +108,7 @@ fn ErrorCountsReport() -> Element {
     let current: ReportState<ErrorCountRow> = state.read().clone();
     let at = current.as_ref().and_then(|r| r.as_ref().ok()).map(|(_, t)| t.clone()).unwrap_or_default();
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Errors" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 8px;",
@@ -166,7 +166,7 @@ fn ErrorLogReport() -> Element {
     let current: ReportState<ErrorLogRow> = state.read().clone();
     let at = current.as_ref().and_then(|r| r.as_ref().ok()).map(|(_, t)| t.clone()).unwrap_or_default();
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Recent errors" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 8px;",
@@ -231,7 +231,7 @@ fn ToolTableReport() -> Element {
     let current: ReportState<ToolTableRow> = state.read().clone();
     let at = current.as_ref().and_then(|r| r.as_ref().ok()).map(|(_, t)| t.clone()).unwrap_or_default();
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Tool calls" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 8px;",
@@ -301,7 +301,7 @@ fn TopUsersReport() -> Element {
     let current: ReportState<TopUserRow> = state.read().clone();
     let at = current.as_ref().and_then(|r| r.as_ref().ok()).map(|(_, t)| t.clone()).unwrap_or_default();
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Top users" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 8px;",

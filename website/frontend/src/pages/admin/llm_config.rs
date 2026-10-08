@@ -98,7 +98,7 @@ fn LlmContent() -> Element {
 fn ProviderPanel(page: LlmPageData, mut reload: Signal<u32>, mut flash: Signal<Option<Result<String, String>>>) -> Element {
     let mut busy = use_signal(|| false);
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Providers" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",
@@ -163,7 +163,7 @@ fn DefaultsPanel(
     mut reload: Signal<u32>,
 ) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Default models" }
             div { style: MODULE_BODY,
                 label { style: "display: flex; gap: 8px; align-items: center; font-weight: 600; margin-bottom: 4px;",
@@ -353,7 +353,7 @@ fn CatalogPanel(
         })
         .collect();
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Catalog allowlist" }
             div { style: MODULE_BODY,
                 div { style: "margin-bottom: 12px; display: flex; gap: 12px; align-items: center;",

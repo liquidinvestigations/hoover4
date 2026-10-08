@@ -140,3 +140,4 @@ pub async fn admin_dashboard_counts() -> Result<(u32, u32, u32, u32), ServerFnEr
 admin_server_fn!(admin_list_feedback, backend::api::feedback::admin_list_feedback, (search: String, status: FeedbackStatusFilter, page: u32) -> FeedbackPage);
 admin_server_fn!(admin_get_feedback, backend::api::feedback::admin_get_feedback, (report_id: String) -> FeedbackListRow);
 admin_server_fn!(admin_set_feedback_flags, backend::api::feedback::admin_set_feedback_flags, (report_id: String, is_read: bool, is_archived: bool));
+admin_server_fn!(admin_list_document_errors, backend::api::admin::document_errors::admin_list_document_errors, (filter: DocumentErrorFilter, page: u32) -> DocumentErrorsPage);

@@ -129,8 +129,10 @@ pub enum Route {
         events_page: u32,
     },
 
-    #[route("/admin/failures")]
-    AdminFailuresPage {},
+    // The document error filters and page are in the address, so a dataset's error count
+    // links to its errors. A link without them opens every error.
+    #[route("/admin/failures?:collection&:dataset&:task&:search&:page")]
+    AdminFailuresPage { collection: String, dataset: String, task: String, search: String, page: u32 },
 
     #[route("/admin/failures/:op_id")]
     AdminFailureDetailPage { op_id: String },

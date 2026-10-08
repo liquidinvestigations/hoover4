@@ -252,7 +252,7 @@ fn FeedbackDetail(row: FeedbackListRow) -> Element {
                 img {
                     src: "{image_url}",
                     alt: "Page image of the report",
-                    style: "display: block; max-width: 100%; max-height: 480px; border: 1px solid var(--x-border);",
+                    style: "display: block; max-width: 100%; max-height: 480px; border: 1px solid; border-color: var(--x-border);",
                 }
             }
             h3 { style: SUBHEADING, "Debug context and browser log" }
@@ -260,7 +260,7 @@ fn FeedbackDetail(row: FeedbackListRow) -> Element {
                 None => rsx! { p { style: HELP_TEXT, "Loading\u{2026}" } },
                 Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
                 Some(Ok(detail)) => rsx! {
-                    pre { style: "font-size: var(--x-text-xs); max-height: 360px; overflow: auto; background: var(--x-surface-muted); padding: 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-word;",
+                    pre { style: "font-size: var(--x-text-xs); max-height: 360px; overflow: auto; background-color: var(--x-surface-muted); padding: 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-word;",
                         "{pretty_json(&detail.context_json)}"
                     }
                 },

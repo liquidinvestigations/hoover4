@@ -105,13 +105,15 @@ pub fn FeedbackRailButton() -> Element {
     let phase = (state.phase)();
     let colour = if phase == FeedbackPhase::Idle { "white" } else { "#ff1f1f" };
     rsx! {
-        button {
-            id: "x-feedback-button",
-            title: "Report a bug or send feedback",
-            "aria-label": "Report a bug or send feedback",
-            style: "background: none; border: none; padding: 0; cursor: pointer; color: {colour}; display: flex;",
-            onclick: move |_| state.start(),
-            Icon { icon: MdBugReport, style: "width: 26px; height: 26px;" }
+        crate::components::navbar::RailHint {
+            label: "Bug Report & Feedback Form",
+            button {
+                id: "x-feedback-button",
+                "aria-label": "Bug Report & Feedback Form",
+                style: "background: none; border: none; padding: 0; cursor: pointer; color: {colour}; display: flex;",
+                onclick: move |_| state.start(),
+                Icon { icon: MdBugReport, style: "width: 26px; height: 26px;" }
+            }
         }
         match phase {
             FeedbackPhase::Open(capture) => rsx! { FeedbackOverlay { capture } },
@@ -125,9 +127,9 @@ const OVERLAY: &str = "position: fixed; inset: 0; z-index: 2000; background: whi
 const COLUMN: &str = "flex: 1; min-width: 0; overflow-y: auto; padding: 20px 28px;";
 const H2: &str = "margin: 0 0 10px; font-size: var(--x-text-lg); font-weight: 600; color: var(--x-ink-strong);";
 const FIELD_LABEL: &str = "display: block; margin: 14px 0 6px; font-weight: 600; color: var(--x-ink-strong);";
-const INPUT: &str = "width: 100%; box-sizing: border-box; border: 1px solid var(--x-border-strong); border-radius: 6px; padding: 8px 10px; font: inherit; color: var(--x-ink-strong);";
-const BTN: &str = "background: white; color: var(--x-ink-strong); border: 1px solid var(--x-border-strong); padding: 7px 16px; border-radius: 16px; cursor: pointer; font: inherit; font-weight: 500;";
-const BTN_PRIMARY: &str = "background: var(--x-link); color: white; border: 1px solid var(--x-link); padding: 7px 16px; border-radius: 16px; cursor: pointer; font: inherit; font-weight: 500;";
+const INPUT: &str = "width: 100%; box-sizing: border-box; border: 1px solid; border-color: var(--x-border-strong); border-radius: 6px; padding: 8px 10px; font: inherit; color: var(--x-ink-strong);";
+const BTN: &str = "background: white; color: var(--x-ink-strong); border: 1px solid; border-color: var(--x-border-strong); padding: 7px 16px; border-radius: 16px; cursor: pointer; font: inherit; font-weight: 500;";
+const BTN_PRIMARY: &str = "background-color: var(--x-link); color: white; border: 1px solid; border-color: var(--x-link); padding: 7px 16px; border-radius: 16px; cursor: pointer; font: inherit; font-weight: 500;";
 const MUTED: &str = "color: var(--x-ink-muted); font-size: var(--x-text-sm);";
 
 /// Size in KB with one decimal.
@@ -226,7 +228,7 @@ fn FeedbackOverlay(capture: Capture) -> Element {
                     state.close();
                 }
             },
-            div { style: "display: flex; align-items: center; gap: 12px; padding: 14px 28px; border-bottom: 1px solid var(--x-border);",
+            div { style: "display: flex; align-items: center; gap: 12px; padding: 14px 28px; border-bottom: 1px solid; border-bottom-color: var(--x-border);",
                 h1 { style: "margin: 0; flex: 1; font-size: var(--x-text-2xl); font-weight: 600; color: var(--x-ink-strong);",
                     "Report a bug or send feedback"
                 }
@@ -235,7 +237,7 @@ fn FeedbackOverlay(capture: Capture) -> Element {
                 }
             }
             div { style: "flex: 1; min-height: 0; display: flex;",
-                div { style: "{COLUMN} border-right: 1px solid var(--x-border);",
+                div { style: "{COLUMN} border-right: 1px solid; border-right-color: var(--x-border);",
                     if send_state() == SendState::Sent {
                         p { id: "x-feedback-sent", style: "color: var(--x-ok); font-weight: 600;", "The report was sent. Thank you." }
                     } else {
@@ -286,7 +288,7 @@ fn FeedbackOverlay(capture: Capture) -> Element {
                             id: "x-feedback-image",
                             src: "{capture.png_data_url}",
                             alt: "Image of the page when the report started",
-                            style: "display: block; max-width: 100%; margin-top: 8px; border: 1px solid var(--x-border);",
+                            style: "display: block; max-width: 100%; margin-top: 8px; border: 1px solid; border-color: var(--x-border);",
                         }
                     }
                 }
@@ -306,9 +308,9 @@ fn FeedbackOverlay(capture: Capture) -> Element {
                     if capture.logs.is_empty() {
                         p { style: MUTED, "The page wrote no log entries since it loaded." }
                     } else {
-                        div { id: "x-feedback-log", style: "font-family: ui-monospace, monospace; font-size: var(--x-text-xs); border: 1px solid var(--x-border); border-radius: 6px;",
+                        div { id: "x-feedback-log", style: "font-family: ui-monospace, monospace; font-size: var(--x-text-xs); border: 1px solid; border-color: var(--x-border); border-radius: 6px;",
                             for (i, entry) in capture.logs.iter().enumerate() {
-                                div { key: "{i}", style: "padding: 4px 8px; border-bottom: 1px solid var(--x-border); white-space: pre-wrap; word-break: break-word; color: {level_colour(&entry.level)};",
+                                div { key: "{i}", style: "padding: 4px 8px; border-bottom: 1px solid; border-bottom-color: var(--x-border); white-space: pre-wrap; word-break: break-word; color: {level_colour(&entry.level)};",
                                     "{entry.time} {entry.level} {entry.source}: {entry.message}"
                                 }
                             }

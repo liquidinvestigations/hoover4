@@ -19,7 +19,7 @@ use crate::components::document_view_components::doc_preview_for_search::doc_pre
 use crate::components::document_view_components::doc_preview_for_search::doc_preview_source_selector::{DocumentPreviewSourceSelectorDropdown, search_document_item_hit_counts};
 use crate::components::document_view_components::doc_title_bar::DocTitleBar;
 use crate::components::document_view_components::doc_preview_shared::{
-    DocSourceDispatch, PreviewExtraSections, ProvidePreviewExtraSections
+    DocSourceDispatch, PreviewExtraSections, ProvidePreviewExtraSections, SourceLoadNotice,
 };
 use crate::components::suspend_boundary::LoadingIndicator;
 use crate::pages::search_page::DocViewerStateControl;
@@ -140,8 +140,7 @@ fn DocumentPreviewForSearchContent(
 
     let source_notice = rsx! {
         if let Some(error) = source_error() {
-            div { role: "alert", "Could not load all document sources: {error}" }
-            button { onclick: move |_| source_request.restart(), "Retry" }
+            SourceLoadNotice { error, on_retry: move |_| source_request.restart() }
         }
     };
 
@@ -209,19 +208,20 @@ pub async fn get_document_sources(
 
 fn _make_preview_wrapper(controls: Element, page: Element) -> Element {
     let sections = use_context::<PreviewExtraSections>();
+    // One column under the 54 px title bar. The bar is one row, and the page takes the
+    // height that is left.
     rsx! {
-        PreviewSubtitleBar {
-            find_query_input_box: sections.find_query.read().clone(),
-            preview_selector: sections.preview_selector.read().clone(),
-            control: controls,
-        }
         div {
-            style: "
-                width: 100%;
-                height: calc(100% - 110px);
-                padding: 10px;
-            ",
-            {page}
+            style: "display: flex; flex-direction: column; width: 100%; height: calc(100% - 54px); min-height: 0;",
+            PreviewSubtitleBar {
+                find_query_input_box: sections.find_query.read().clone(),
+                preview_selector: sections.preview_selector.read().clone(),
+                control: controls,
+            }
+            div {
+                style: "flex: 1 1 auto; min-height: 0; width: 100%; padding: 10px; box-sizing: border-box;",
+                {page}
+            }
         }
     }
 }
@@ -234,33 +234,35 @@ fn PreviewSubtitleBar(
 ) -> Element {
     rsx! {
         div {
+            class: "x-preview-subtitle-bar",
             style: "
                 display: flex;
                 flex-direction: row;
+                flex-wrap: nowrap;
                 gap: 12px;
                 align-items: center;
-                justify-content: space-between;
-                height: 48px;
+                min-height: 48px;
+                padding: 4px 8px;
+                box-sizing: border-box;
                 width: 100%;
-                background-color:rgba(0, 0, 0, 0.04);
-                flex-shrink: 0;
-                flex-grow: 0;
+                background-color: rgba(0, 0, 0, 0.04);
+                flex: 0 0 auto;
                 border: 1px solid rgba(0, 0, 0, 0.3); border-top: none;
             ",
-            {find_query_input_box}
-            div { style:"flex-grow: 1;" }
+            // The find box takes every pixel the other two parts leave. The controls
+            // and the selector keep their natural width and cut long names short.
+            div { style: "flex: 1 1 0; min-width: 160px;", {find_query_input_box} }
             div {
-                style:"flex-grow: 13; flex-shrink: 1; height: 90%;
+                style: "flex: 0 1 auto; min-width: 0;
                 display: flex;
                 flex-direction: row;
+                flex-wrap: nowrap;
                 align-items: center;
-                justify-content: center;
-                gap: 4px;
+                gap: 6px;
                 ",
                 {control}
             }
-            div { style:"flex-grow: 1;" }
-            {preview_selector}
+            div { style: "flex: 0 1 auto; min-width: 0;", {preview_selector} }
         }
     }
 }

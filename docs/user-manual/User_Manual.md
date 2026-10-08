@@ -52,6 +52,13 @@ Every page shares the dark rail down the left edge. From the top:
 | bug (bottom) | report a bug or send feedback |
 | person (bottom) | administration, for administrators only |
 
+Hold the pointer over an icon to show its name beside it.
+
+Some pages have a divider between two panes: search results and the preview, the storage
+listing and the preview, the three panes of a document tab, and a conversation and its side
+pane. Drag a divider to change the width of a pane, and double-click it to put it back. Each
+width is remembered on this browser.
+
 ![Home page](img/home.png)
 
 ---
@@ -453,6 +460,14 @@ languages in use. **Run missing OCR** produces the OCR results that the current 
 for and that do not exist yet. **Run all OCR again** also produces the existing results again.
 
 ![Admin, one dataset](img/admin-dataset.png)
+
+### Errors and failures
+
+The Errors/Failures page has two sections. Operational failures lists failed operations, grouped by
+their error. Document errors lists the newest error of each document and task in every collection.
+Filter by collection, dataset, task and error text. A table above the list counts the documents of
+each dataset and task. On the Collections page, an error count opens the errors of its collection or
+dataset.
 
 ### Feedback
 

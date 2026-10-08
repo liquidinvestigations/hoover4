@@ -218,7 +218,7 @@ fn BlockView(
                     }
                 }
                 pre {
-                    style: "margin: 0; background: #F1F5F9; border: 1px solid var(--x-border); \
+                    style: "margin: 0; background: #F1F5F9; border: 1px solid; border-color: var(--x-border); \
                             border-radius: 8px; padding: 10px 12px; overflow-x: auto; \
                             font-family: ui-monospace, SFMono-Regular, Menlo, monospace; \
                             font-size: var(--x-text-sm); line-height: 1.5; white-space: pre;",
@@ -271,7 +271,7 @@ fn BlockView(
                                 for (c, cell) in row.into_iter().enumerate() {
                                     td {
                                         key: "{c}",
-                                        style: "padding: 6px 10px; border-bottom: 1px solid var(--x-border); \
+                                        style: "padding: 6px 10px; border-bottom: 1px solid; border-bottom-color: var(--x-border); \
                                                 vertical-align: top;",
                                         InlineSpans { spans: cell }
                                     }
@@ -291,7 +291,7 @@ fn BlockView(
             }
         }},
         Block::Rule => rsx! {
-            hr { style: "border: none; border-top: 1px solid var(--x-border); margin: 14px 0;" }
+            hr { style: "border: none; border-top: 1px solid; border-top-color: var(--x-border); margin: 14px 0;" }
         },
     }
 }
@@ -332,7 +332,7 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                     Span::Code(t) => rsx! {
                         code {
                             key: "{i}",
-                            style: "background: #F1F5F9; border: 1px solid var(--x-border); \
+                            style: "background: #F1F5F9; border: 1px solid; border-color: var(--x-border); \
                                     border-radius: 4px; padding: 0 4px; \
                                     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; \
                                     font-size: 0.88em;",
@@ -343,7 +343,7 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                         button {
                             key: "{i}",
                             style: "
-                                display: inline; border: 1px solid var(--x-border);
+                                display: inline; border: 1px solid; border-color: var(--x-border);
                                 background: #F8FAFC; color: var(--x-ink); border-radius: 5px;
                                 padding: 0 4px; margin: 0 1px; font-size: 0.82em;
                                 font-weight: 400; cursor: pointer; vertical-align: baseline;

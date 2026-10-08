@@ -118,7 +118,7 @@ pub fn SearchCard(tool_name: String, tool_input: String, tool_output: String, ru
             if key != "source" { div { style: "font-size: var(--x-text-xs);", "{key}: {value}" } }
         }
         for (index, row) in rows.into_iter().enumerate() {
-            div { key: "{index}", style: "border-top: 1px solid var(--x-border); padding-top: 6px;",
+            div { key: "{index}", style: "border-top: 1px solid; border-top-color: var(--x-border); padding-top: 6px;",
                 for (key, value) in row.as_object().into_iter().flat_map(|row| row.iter()) {
                     if key != "snippet" && key != "file_hash" { div { style: "font-size: var(--x-text-xs);", "{key}: {value}" } }
                 }
@@ -155,7 +155,7 @@ fn ReadRow(row: serde_json::Value, refs: Vec<ChatDocRef>) -> Element {
     let excerpt: String = text.chars().take(400).collect();
     let cut = text.chars().count() > 400;
     rsx! {
-        div { style: "border-top: 1px solid var(--x-border); padding-top: 6px; white-space: pre-wrap;",
+        div { style: "border-top: 1px solid; border-top-color: var(--x-border); padding-top: 6px; white-space: pre-wrap;",
             for (key, value) in row.as_object().into_iter().flat_map(|row| row.iter()) {
                 if key != "text" && key != "file_hash" { div { style: "font-size: var(--x-text-xs);", "{key}: {value}" } }
             }
@@ -197,7 +197,7 @@ pub fn CiteCard(tool_input: String, tool_output: String, running: bool, doc_refs
                 let reason = json_str(&citation, "quote_reason");
                 let check = if citation.get("quote_verified").and_then(|value| value.as_bool()) == Some(true) { "Quote found" } else if !reason.is_empty() { "Quote not found" } else { "Quote not checked" };
                 rsx! {
-            div { key: "{index}", style: "border-top: 1px solid var(--x-border); padding-top: 6px; white-space: pre-wrap;",
+            div { key: "{index}", style: "border-top: 1px solid; border-top-color: var(--x-border); padding-top: 6px; white-space: pre-wrap;",
                 div { "{check}" }
                 if !quote.is_empty() { div { "Quote: {quote}" } }
                 if !why.is_empty() { div { "Reason: {why}" } }
@@ -235,7 +235,7 @@ fn QuestionOption(answer: String, draft: Option<Signal<String>>) -> Element {
     let chosen = answer.clone();
     rsx! {
         button {
-            style: "border: 1px solid var(--x-border); background: white; border-radius: 6px; padding: 6px; cursor: pointer;",
+            style: "border: 1px solid; border-color: var(--x-border); background: white; border-radius: 6px; padding: 6px; cursor: pointer;",
             onclick: move |_| { if let Some(mut draft) = draft { draft.set(chosen.clone()); } },
             "{answer}"
         }

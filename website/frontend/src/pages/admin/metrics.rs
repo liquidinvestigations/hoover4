@@ -71,7 +71,7 @@ fn ManticorePanel() -> Element {
     let state = load_res.read().as_ref().map(|r| r.clone().map_err(|e| e.to_string()));
 
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Manticore load (now)" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",
@@ -152,7 +152,7 @@ fn ManticoreLoadTables(load: ManticoreLoad) -> Element {
 fn UsagePanel(usage: UsageMetrics) -> Element {
     let max_series = usage.series.iter().map(|p| p.count).max().unwrap_or(1).max(1);
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Usage (last 24 h)" }
             div { style: MODULE_BODY,
                 h3 { style: SUBHEADING, "Events by type" }
@@ -380,7 +380,7 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
 #[component]
 fn ApiPanel(api: Vec<ApiFunctionStats>) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "API calls (last 24 h)" }
             div { style: MODULE_BODY,
                 if api.is_empty() {

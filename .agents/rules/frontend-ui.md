@@ -52,3 +52,10 @@ rest, including the two input traps that make typing into this frontend silently
 Edit its row in `docs/technical-specification/interface/` in the **same patch**. A control
 with no row was never agreed; a row with no control is false. Layout, wording, colour and
 ordering are not specified there, only what a user can ask for.
+
+**A style that changes at runtime takes `var()` only in longhand properties.** When a
+`style` string changes, the Dioxus interpreter keeps every old longhand that the new value
+seems to lack. A shorthand such as `background: var(--x-link)` reports its longhands as
+empty until computation, so the old `background-color` returns and a selected button can
+show white text on white. Write `background-color: var(…)` and
+`border: 1px solid; border-color: var(…)`.

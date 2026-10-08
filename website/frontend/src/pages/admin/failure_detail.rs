@@ -69,7 +69,7 @@ fn FailureDetailContent(op_id: String) -> Element {
 
     rsx! {
         p { style: HELP_TEXT,
-            Link { to: Route::AdminFailuresPage {}, style: LINK, "Back to failures" }
+            Link { to: crate::pages::admin::failures::failures_route("", ""), style: LINK, "Back to errors and failures" }
             " · "
             Link { to: Route::AdminOperationsPage {}, style: LINK, "Operations" }
         }
@@ -86,7 +86,7 @@ fn FailureDetailContent(op_id: String) -> Element {
             p { style: HELP_TEXT, "No captured nodes for this operation." }
         }
 
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Operation" }
             div { style: MODULE_BODY,
                 p { id: "x-failures-detail-op",
@@ -110,7 +110,7 @@ fn FailureDetailContent(op_id: String) -> Element {
             }
         }
 
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Scrubbed copy" }
             div { style: MODULE_BODY,
                 p { style: HELP_TEXT,
@@ -127,13 +127,13 @@ fn FailureDetailContent(op_id: String) -> Element {
                 }
                 pre {
                     id: "x-failures-scrubbed-copy",
-                    style: "margin-top: 12px; max-height: 240px; overflow: auto; background: var(--x-surface-muted); padding: 8px; font-size: var(--x-text-xs); white-space: pre-wrap;",
+                    style: "margin-top: 12px; max-height: 240px; overflow: auto; background-color: var(--x-surface-muted); padding: 8px; font-size: var(--x-text-xs); white-space: pre-wrap;",
                     "{tree.scrubbed_copy}"
                 }
             }
         }
 
-        div { id: "x-failures-tree", style: MODULE,
+        div { id: "x-failures-tree", class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Tree" }
             div { style: MODULE_BODY,
                 for node in tree.nodes.iter() {
@@ -160,7 +160,7 @@ fn TreeNode(node: FailureNode) -> Element {
     rsx! {
         div {
             id: "x-failures-node-{node.node_index}",
-            style: "margin-left: {indent}px; margin-bottom: 16px; padding: 8px; border-left: 3px solid var(--x-link);",
+            style: "margin-left: {indent}px; margin-bottom: 16px; padding: 8px; border-left: 3px solid; border-left-color: var(--x-link);",
             p { style: "margin: 0 0 4px; font-weight: 600;",
                 if is_root { "Root · " }
                 "{node.error_class}"
@@ -179,7 +179,7 @@ fn TreeNode(node: FailureNode) -> Element {
                 }
             }
             if !node.details_json.is_empty() {
-                pre { style: "font-size: var(--x-text-xs); background: var(--x-surface-muted); padding: 8px; overflow: auto; max-height: 160px;",
+                pre { style: "font-size: var(--x-text-xs); background-color: var(--x-surface-muted); padding: 8px; overflow: auto; max-height: 160px;",
                     "{node.details_json}"
                 }
             }
@@ -189,7 +189,7 @@ fn TreeNode(node: FailureNode) -> Element {
                 }
                 pre {
                     class: "x-failures-stack",
-                    style: "font-size: var(--x-text-xs); background: var(--x-surface-muted); padding: 8px; overflow: auto; max-height: 240px; white-space: pre-wrap;",
+                    style: "font-size: var(--x-text-xs); background-color: var(--x-surface-muted); padding: 8px; overflow: auto; max-height: 240px; white-space: pre-wrap;",
                     "{node.stack_trace}"
                 }
             }

@@ -191,7 +191,11 @@
           // An image that cannot be fetched is drawn as this empty image, so one
           // failed image does not stop the whole drawing.
           imagePlaceholder: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
-          filter: function (node) { return !(node.id && node.id === "x-feedback-overlay"); },
+          // The overlay and the rail hint under the pointer are not part of the page.
+          filter: function (node) {
+            if (node.id === "x-feedback-overlay") return false;
+            return !(node.querySelector && node.classList.contains("hover-card-content") && node.querySelector(".x-rail-hint"));
+          },
         });
       } catch (e) {
         notes.push("The page image failed: " + describe(e));

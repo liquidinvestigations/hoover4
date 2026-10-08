@@ -94,7 +94,7 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
     };
 
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Add a dataset" }
             div { style: "{MODULE_BODY} display: flex; flex-direction: column; gap: 12px; max-width: 640px;",
                 if let Some(m) = msg.read().clone() { SuccessBar { message: m } }

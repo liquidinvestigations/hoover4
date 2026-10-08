@@ -222,7 +222,7 @@ fn ObjectRowsTable(rows: Vec<serde_json::Value>) -> Element {
                     for (index, row) in rows.into_iter().take(20).enumerate() {
                         tr { key: "{index}",
                             for column in columns.iter() {
-                                td { style: "padding: 4px; vertical-align: top; border-top: 1px solid var(--x-border);",
+                                td { style: "padding: 4px; vertical-align: top; border-top: 1px solid; border-top-color: var(--x-border);",
                                     "{row.get(column).map(summarise_value).unwrap_or_default()}"
                                 }
                             }

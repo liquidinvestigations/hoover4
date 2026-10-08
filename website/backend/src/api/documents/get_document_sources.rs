@@ -244,7 +244,11 @@ async fn get_video_sources(
     let Some(obj) = meta.first() else {
         return Ok(None);
     };
-    let obj = obj.as_object().context("Invalid video metadata")?;
+    // The reader puts the parsed JSON column under its own name, beside `processed_at`.
+    let obj = obj
+        .get("video_metadata_json")
+        .and_then(|v| v.as_object())
+        .context("Invalid video metadata")?;
     let duration = obj
         .get("duration_seconds")
         .and_then(|v| v.as_f64())
@@ -257,6 +261,11 @@ async fn get_video_sources(
         .get("height")
         .and_then(|v| v.as_u64())
         .context("No height found")?;
+    // A still image in a video container, such as HEIC, probes as one frame with no
+    // duration. The image source shows it, and a video player cannot.
+    if duration <= 0.0 {
+        return Ok(None);
+    }
     Ok(Some(DocumentVideoSourceItem {
         width: width as u32,
         height: height as u32,
@@ -277,7 +286,10 @@ async fn get_audio_sources(
     let Some(obj) = meta.first() else {
         return Ok(None);
     };
-    let obj = obj.as_object().context("Invalid audio metadata")?;
+    let obj = obj
+        .get("audio_metadata_json")
+        .and_then(|v| v.as_object())
+        .context("Invalid audio metadata")?;
     let duration = obj
         .get("duration_seconds")
         .and_then(|v| v.as_f64())

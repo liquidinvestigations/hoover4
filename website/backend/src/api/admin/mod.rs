@@ -4,6 +4,7 @@ pub mod ai_status;
 pub mod collections;
 pub mod dataset_ocr;
 pub mod datasets;
+pub mod document_errors;
 pub mod failures;
 pub mod groups;
 pub mod llm;

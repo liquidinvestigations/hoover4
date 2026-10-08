@@ -281,3 +281,54 @@ pub struct DocumentFailure {
     /// Full error text of the most recent failure.
     pub last_error: String,
 }
+
+/// Document errors on one page of the Errors/Failures page.
+pub const DOCUMENT_ERRORS_PAGE_SIZE: u32 = 50;
+
+/// Filters for the document error section. An empty string means no constraint.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
+pub struct DocumentErrorFilter {
+    pub collectionname: String,
+    pub collection_dataset: String,
+    pub task_name: String,
+    /// Text that the error message must contain, without regard to case.
+    pub search: String,
+}
+
+/// One row of the statistics table: the errors of one task in one dataset.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DocumentErrorStat {
+    pub collection_dataset: String,
+    pub task_name: String,
+    /// Distinct documents with an error of this task. A dataset step error has no
+    /// document and counts as one.
+    pub documents: u64,
+    pub last_seen: String,
+}
+
+/// The newest error of one task for one document.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DocumentErrorRow {
+    pub collection_dataset: String,
+    /// Empty for an error of a dataset step.
+    pub hash: String,
+    pub path: Option<String>,
+    pub task_name: String,
+    /// Stored error rows for this document and task, one for each run that failed.
+    pub runs: u64,
+    pub last_seen: String,
+    /// First line of the newest error.
+    pub error: String,
+}
+
+/// The document error section: statistics, one page of rows, and the filter choices.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Default)]
+pub struct DocumentErrorsPage {
+    pub stats: Vec<DocumentErrorStat>,
+    /// Document and task pairs that match the filters, the row count over all pages.
+    pub total: u64,
+    pub rows: Vec<DocumentErrorRow>,
+    /// Datasets and tasks with errors in the selected collection, for the filter lists.
+    pub dataset_choices: Vec<String>,
+    pub task_choices: Vec<String>,
+}

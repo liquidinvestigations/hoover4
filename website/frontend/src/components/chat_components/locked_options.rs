@@ -14,7 +14,7 @@ pub fn LockedOptionsBar(options: ChatOptions) -> Element {
     rsx! {
         div {
             style: "display: flex; align-items: center; gap: 16px; flex-wrap: wrap; \
-                    padding: 8px 14px; background: #F8FAFC; border-bottom: 1px solid var(--x-border); \
+                    padding: 8px 14px; background: #F8FAFC; border-bottom: 1px solid; border-bottom-color: var(--x-border); \
                     flex-shrink: 0;",
             LockedFlag { label: "Internet tools", on: options.internet_tools }
             div { style: "flex: 1;" }

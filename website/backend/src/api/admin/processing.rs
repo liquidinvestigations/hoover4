@@ -909,7 +909,7 @@ struct TaskFailureRow {
     sample_error: String,
 }
 
-fn format_ts(unix_seconds: i64) -> String {
+pub(crate) fn format_ts(unix_seconds: i64) -> String {
     time::OffsetDateTime::from_unix_timestamp(unix_seconds)
         .ok()
         .and_then(|dt| dt.format(&Rfc3339).ok())
@@ -918,7 +918,7 @@ fn format_ts(unix_seconds: i64) -> String {
 
 /// Truncate an error blob to a single readable line for list views. Stack traces run to
 /// kilobytes and would otherwise be shipped to the browser in full for every row.
-fn first_line(error: &str, max: usize) -> String {
+pub(crate) fn first_line(error: &str, max: usize) -> String {
     let line = error.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
     if line.chars().count() > max {
         format!("{}\u{2026}", line.chars().take(max).collect::<String>())

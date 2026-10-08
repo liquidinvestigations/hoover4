@@ -66,7 +66,7 @@ fn FingerprintPanel(status: AdminAiStatus) -> Element {
         "not deployed".to_string()
     };
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Config fingerprint" }
             div { style: MODULE_BODY,
                 table { style: TABLE,
@@ -103,7 +103,7 @@ fn FingerprintPanel(status: AdminAiStatus) -> Element {
 #[component]
 fn CapabilitiesPanel(status: AdminAiStatus) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Capabilities" }
             div { style: MODULE_BODY,
                 table { style: TABLE,
@@ -138,7 +138,7 @@ fn CapabilitiesPanel(status: AdminAiStatus) -> Element {
 #[component]
 fn ShardPanel(status: AdminAiStatus) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Vector shard dims vs probe" }
             div { style: MODULE_BODY,
                 if status.shard_dims.is_empty() {
@@ -173,7 +173,7 @@ fn ShardPanel(status: AdminAiStatus) -> Element {
 #[component]
 fn BrowserPanel(status: AdminAiStatus) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Browser router" }
             div { style: MODULE_BODY,
                 p {
@@ -188,7 +188,7 @@ fn BrowserPanel(status: AdminAiStatus) -> Element {
 #[component]
 fn TrafficPanel(status: AdminAiStatus) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Recent LLM traffic (24 h)" }
             div { style: MODULE_BODY,
                 if status.recent_traffic.is_empty() {
@@ -223,7 +223,7 @@ fn TrafficPanel(status: AdminAiStatus) -> Element {
 #[component]
 fn UsePanel(status: AdminAiStatus) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Service use% (24 h)" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",

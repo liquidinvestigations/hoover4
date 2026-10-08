@@ -88,7 +88,7 @@ fn GroupDetailContent(groupname: String) -> Element {
         if let Some(err) = error_msg.read().clone() {
             ErrorBar { message: err }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Group" }
             div { style: "{MODULE_BODY} display: flex; gap: 8px; flex-wrap: wrap; align-items: center;",
                 label { style: LABEL,
@@ -119,7 +119,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                 }
             }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Members" }
             div { style: MODULE_BODY,
                 table { style: TABLE,
@@ -216,7 +216,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                 }
             }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Collection access" }
             div { style: MODULE_BODY,
                 if granted_collections.is_empty() {
@@ -226,7 +226,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                     for c in granted_collections {
                         li {
                             key: "{c}",
-                            style: "display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--x-border); font-size: var(--x-text-sm);",
+                            style: "display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid; border-bottom-color: var(--x-border); font-size: var(--x-text-sm);",
                             span { style: "flex: 1;", "{c}" }
                             button {
                                 style: BTN_SMALL_DANGER,
@@ -286,7 +286,7 @@ fn GroupDetailContent(groupname: String) -> Element {
             }
         }
         if !is_reserved {
-            div { style: MODULE,
+            div { class: "x-admin-module", style: MODULE,
                 h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", "Danger zone" }
                 div { style: MODULE_BODY,
                     button {

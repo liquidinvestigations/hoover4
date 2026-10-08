@@ -41,7 +41,7 @@ fn GroupsListContent() -> Element {
         if let Some(err) = error_msg.read().clone() {
             ErrorBar { message: err }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Add group" }
             div { style: "{MODULE_BODY} display: flex; gap: 8px; flex-wrap: wrap; align-items: center;",
                 input { style: INPUT, placeholder: "groupname", value: "{groupname}", oninput: move |e| groupname.set(e.value()) }

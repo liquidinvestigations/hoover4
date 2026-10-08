@@ -198,7 +198,7 @@ fn DocumentEntityRow(
 
     rsx! {
         div {
-            style: "background: white; border: 1px solid var(--x-border); border-radius: 8px; \
+            style: "background: white; border: 1px solid; border-color: var(--x-border); border-radius: 8px; \
                     padding: 7px 9px;",
             div {
                 style: "font-size: var(--x-text-xs); font-family: ui-monospace, monospace; \
@@ -220,7 +220,7 @@ fn DocumentEntityRow(
                                 key: "s{value}",
                                 to: Route::entity_card(identifier, value.clone()),
                                 title: "Open the card for this value ({rule_id})",
-                                style: "border: 1px solid var(--x-border); background: #F8FAFC; \
+                                style: "border: 1px solid; border-color: var(--x-border); background: #F8FAFC; \
                                         border-radius: 999px; padding: 1px 9px; \
                                         font-size: var(--x-text-xs); color: var(--x-ink); \
                                         text-decoration: none; word-break: break-all;",
@@ -230,7 +230,7 @@ fn DocumentEntityRow(
                             span {
                                 key: "s{value}",
                                 title: "{rule_id}",
-                                style: "border: 1px solid var(--x-border); background: #F8FAFC; \
+                                style: "border: 1px solid; border-color: var(--x-border); background: #F8FAFC; \
                                         border-radius: 999px; padding: 1px 9px; \
                                         font-size: var(--x-text-xs); color: var(--x-ink-muted); \
                                         word-break: break-all;",
@@ -253,7 +253,7 @@ fn DocumentEntityRow(
                     for value in document.model_found.iter().take(MODEL_VALUES_SHOWN).cloned() {
                         span {
                             key: "m{value}",
-                            style: "border: 1px solid var(--x-border); background: #F8FAFC; \
+                            style: "border: 1px solid; border-color: var(--x-border); background: #F8FAFC; \
                                     border-radius: 999px; padding: 1px 9px; font-size: var(--x-text-xs); \
                                     color: var(--x-ink-muted); word-break: break-all;",
                             "{value}"

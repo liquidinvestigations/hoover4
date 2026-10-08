@@ -65,7 +65,7 @@ fn UserLlmContent(username: String) -> Element {
 #[component]
 fn SummaryPanel(metrics: AdminUserLlmMetrics) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Totals (all time)" }
             div { style: MODULE_BODY,
                 table { style: TABLE,
@@ -99,7 +99,7 @@ fn SummaryPanel(metrics: AdminUserLlmMetrics) -> Element {
 #[component]
 fn LimitsPanel(metrics: AdminUserLlmMetrics) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Rate-limit usage (current windows)" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
@@ -150,7 +150,7 @@ fn WindowTable(usage: Vec<RateWindowUsage>) -> Element {
 #[component]
 fn SessionsPanel(metrics: AdminUserLlmMetrics) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Chat sessions" }
             div { style: MODULE_BODY,
                 if metrics.sessions.is_empty() {

@@ -35,7 +35,7 @@ use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
     icons::{
-        md_action_icons::{MdDateRange, MdSearch, MdViewColumn},
+        md_action_icons::{MdDateRange, MdViewColumn},
         md_content_icons::{MdContentCopy, MdFilterList, MdLink, MdSort},
         md_editor_icons::MdTableChart,
         md_navigation_icons::{MdArrowDownward, MdArrowUpward, MdChevronLeft, MdChevronRight},
@@ -57,6 +57,7 @@ const CELL_PREVIEW_CHARS: usize = 120;
 enum TableColumnModal {
     Picker,
     Filter(TableColumnInfo),
+    Sheets,
 }
 
 #[component]
@@ -97,13 +98,34 @@ pub fn DocumentPreviewForTable(
     });
     let overview_value = overview.read().clone().flatten();
 
+    // Matching rows per sheet for the find box. The grid searches one sheet, so without
+    // these counts a match on another sheet reads as "no rows match".
+    let hits_query = find_query.clone();
+    let sheet_hits_resource: Resource<Vec<(u16, u64)>> =
+        use_resource(use_reactive!(|document_identifier_value, hits_query| {
+            async move {
+                if table_find_text(&hits_query).is_empty() {
+                    return Vec::new();
+                }
+                get_table_sheet_hits(document_identifier_value, hits_query)
+                    .await
+                    .unwrap_or_default()
+            }
+        }));
+    let sheet_hits: Vec<(u16, u64)> = sheet_hits_resource.read().clone().unwrap_or_default();
+
     // The sheet the grid is on. The state names an ordinal, not an index, and a sheet
     // that produced no cells is absent, so a state naming a sheet this document
     // does not have falls back to the first one the manifest lists rather than to an
     // empty grid that reads as "this sheet is empty".
+    // With a search and no chosen sheet, the grid opens on the first sheet that matches.
+    let first_hit_sheet = sheet_hits.first().map(|(id, _)| *id);
     let sheet_id = match (&overview_value, table_state.sheet_id) {
         (Some(overview), Some(wanted)) if overview.sheet(wanted).is_some() => wanted,
-        (Some(overview), _) => overview.first_sheet_id(),
+        (Some(overview), None) => first_hit_sheet
+            .filter(|id| overview.sheet(*id).is_some())
+            .unwrap_or_else(|| overview.first_sheet_id()),
+        (Some(overview), Some(_)) => overview.first_sheet_id(),
         (None, wanted) => wanted.unwrap_or(0),
     };
     use_effect(move || {
@@ -191,17 +213,18 @@ pub fn DocumentPreviewForTable(
     let active_filters = table_state.filters.len();
     let banner = overview.truncation_banner();
     let clamp_note = page_value.as_ref().and_then(|p| p.clamps.message());
-    let source_value = source();
+    let _ = source;
 
     let controls = rsx! {
         div {
-            style: "display: flex; flex-direction: row; align-items: center; gap: 8px; flex-wrap: wrap;",
-            Icon { icon: MdTableChart, style: "width: 20px; height: 20px;" }
+            style: "display: flex; flex-direction: row; align-items: center; gap: 8px; flex-wrap: nowrap; min-width: 0;",
+            Icon { icon: MdTableChart, style: "width: 20px; height: 20px; flex-shrink: 0;" }
             SheetPicker {
                 overview: overview.clone(),
                 sheet_id,
-                table_state: table_state.clone(),
-                set_table_state,
+                sheet_hits: sheet_hits.clone(),
+                column_modal,
+                modal_opener,
             }
             ColumnPicker {
                 columns: sheet_columns.clone(),
@@ -226,17 +249,6 @@ pub fn DocumentPreviewForTable(
                     // A filter you cannot see is how people conclude the data is missing.
                     "{active_filters} filter(s) \u{00b7} clear"
                 }
-            }
-            if !find_query.is_empty() {
-                span {
-                    style: "display: inline-flex; align-items: center; gap: 4px; color: rgba(0,0,0,0.6); font-size: 13px;",
-                    Icon { icon: MdSearch, style: "width: 16px; height: 16px;" }
-                    "matching \u{201c}{find_query}\u{201d}"
-                }
-            }
-            span {
-                style: "color: rgba(0,0,0,0.5); font-size: 13px;",
-                "{source_value.label()}"
             }
         }
     };
@@ -321,6 +333,9 @@ pub fn DocumentPreviewForTable(
                 document_identifier: document_identifier_value,
                 sheet_id,
                 column_modal,
+                overview,
+                sheet_hits,
+                searching: !table_find_text(&find_query).is_empty(),
             }
         }
     }
@@ -347,61 +362,108 @@ const FILTER_CHIP_STYLE: &str = "
 const CONTROL_BUTTON_STYLE: &str = "
     display: inline-flex; align-items: center; gap: 6px;
     padding: 3px 10px; border-radius: 14px; cursor: pointer;
-    border: 1px solid #ccc; background: white; font-size: 14px;
+    border: 1px solid #ccc; background: white; font-size: 14px; white-space: nowrap;
 ";
 
-/// The sheet dropdown, built from the manifest's rows.
-///
-/// Never from a range: `sheet_id` is the workbook's own ordinal and a sheet that produced
-/// no cells is absent, so a two-sheet workbook really can have sheets 0 and 2.
+/// The button that opens the sheet chooser. A workbook with one sheet shows its name only.
 #[component]
 fn SheetPicker(
     overview: TableOverview,
     sheet_id: u16,
-    table_state: DocTableState,
-    set_table_state: Callback<DocTableState>,
+    sheet_hits: Vec<(u16, u64)>,
+    column_modal: Signal<Option<TableColumnModal>>,
+    modal_opener: FocusHandle,
 ) -> Element {
-    let mut open = use_signal(|| false);
+    let mut trigger: FocusHandle = use_signal(|| None);
     let current = overview
         .sheet(sheet_id)
         .map(|s| format!("{} ({} \u{00d7} {})", s.label(), s.row_count, s.column_count))
         .unwrap_or_else(|| "Sheet".to_string());
     if overview.sheets.len() == 1 {
         return rsx! {
-            span { style: "color: rgba(0,0,0,0.7); font-size: 14px;", "{current}" }
+            span { style: "color: var(--x-ink); font-size: var(--x-text-md); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", title: "{current}", "{current}" }
         };
     }
+    let other_hits: u64 = sheet_hits.iter().filter(|(id, _)| *id != sheet_id).map(|(_, n)| *n).sum();
     rsx! {
-        PopoverRoot {
-            open: open(),
-            on_open_change: move |value: bool| open.set(value),
-            PopoverTrigger {
-                span { style: CONTROL_BUTTON_STYLE, "{current}" }
+        button {
+            r#type: "button",
+            class: "x-table-sheet-button",
+            style: "{CONTROL_BUTTON_STYLE} max-width: 180px; min-width: 0;",
+            title: "{current}",
+            "aria-label": "Choose a sheet, current sheet {current}",
+            "aria-haspopup": "dialog",
+            onmounted: move |e| trigger.set(Some(e.data())),
+            onclick: move |_| {
+                modal_opener.set(trigger());
+                column_modal.set(Some(TableColumnModal::Sheets));
+            },
+            span { style: "overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;", "{current}" }
+            if other_hits > 0 {
+                span {
+                    style: "font-weight: 600; color: var(--x-link);",
+                    title: "Matching rows on other sheets",
+                    "+{other_hits}"
+                }
             }
-            PopoverContent {
-                ul {
-                    style: "min-width: 240px; max-height: 320px; overflow-y: auto;",
-                    for sheet in overview.sheets.iter().cloned() {
-                        li {
+        }
+    }
+}
+
+/// The sheet chooser. Each row names a sheet with its size, and with its matching rows
+/// while the find box holds a search.
+#[component]
+fn SheetChooserDialog(
+    overview: TableOverview,
+    sheet_id: u16,
+    sheet_hits: Vec<(u16, u64)>,
+    searching: bool,
+    table_state: DocTableState,
+    set_table_state: Callback<DocTableState>,
+    column_modal: Signal<Option<TableColumnModal>>,
+) -> Element {
+    rsx! {
+        div { role: "listbox", "aria-label": "Sheets",
+            for sheet in overview.sheets.iter().cloned() {
+                {
+                    let selected = sheet.sheet_id == sheet_id;
+                    let hits = sheet_hits.iter().find(|(id, _)| *id == sheet.sheet_id).map(|(_, n)| *n).unwrap_or(0);
+                    let weight = if selected { "600" } else { "400" };
+                    let background = if selected { "var(--x-selected)" } else { "transparent" };
+                    let hit_colour = if hits > 0 { "var(--x-link)" } else { "var(--x-ink-faint)" };
+                    let table_state = table_state.clone();
+                    rsx! {
+                        button {
                             key: "{sheet.sheet_id}",
-                            style: if sheet.sheet_id == sheet_id { "padding: 4px 10px; cursor: pointer; font-weight: 600;" } else { "padding: 4px 10px; cursor: pointer;" },
-                            onclick: {
-                                let table_state = table_state.clone();
-                                move |_| {
-                                    let mut next = table_state.clone();
-                                    next.sheet_id = Some(sheet.sheet_id);
-                                    // A column ordinal, a sort and a filter all name
-                                    // columns of the sheet they were set on; carrying them
-                                    // to another sheet silently filters on a different
-                                    // column of the same number.
-                                    next.hidden_columns.clear();
-                                    next.sort = None;
-                                    next.filters.clear();
-                                    set_table_state.call(next.reset_page());
-                                    open.set(false);
-                                }
+                            r#type: "button",
+                            role: "option",
+                            class: "x-table-sheet-option",
+                            "aria-selected": "{selected}",
+                            style: "display: flex; align-items: baseline; gap: 12px; width: 100%; padding: 8px 10px; border: none; border-radius: 6px; cursor: pointer; text-align: left; font: inherit; font-weight: {weight}; background-color: {background}; color: var(--x-ink-strong);",
+                            onclick: move |_| {
+                                let mut next = table_state.clone();
+                                next.sheet_id = Some(sheet.sheet_id);
+                                // A column ordinal, a sort and a filter all name columns
+                                // of the sheet they were set on. Carried to another sheet
+                                // they would filter on a different column of the same number.
+                                next.hidden_columns.clear();
+                                next.sort = None;
+                                next.filters.clear();
+                                set_table_state.call(next.reset_page());
+                                column_modal.set(None);
                             },
-                            "{sheet.label()} \u{00b7} {sheet.row_count} \u{00d7} {sheet.column_count}"
+                            span { style: "flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", "{sheet.label()}" }
+                            span { style: "color: var(--x-ink-muted); font-size: var(--x-text-sm); font-weight: 400; white-space: nowrap;",
+                                "{sheet.row_count} \u{00d7} {sheet.column_count}"
+                            }
+                            if searching {
+                                span {
+                                    class: "x-table-sheet-hits",
+                                    style: "min-width: 3ch; text-align: right; font-weight: 600; color: {hit_colour};",
+                                    title: "Matching rows",
+                                    "{hits}"
+                                }
+                            }
                         }
                     }
                 }
@@ -448,6 +510,9 @@ fn TableColumnModalDialog(
     document_identifier: DocumentIdentifier,
     sheet_id: u16,
     column_modal: Signal<Option<TableColumnModal>>,
+    overview: TableOverview,
+    sheet_hits: Vec<(u16, u64)>,
+    searching: bool,
 ) -> Element {
     let on_close = move |_| {
         column_modal.set(None);
@@ -455,10 +520,14 @@ fn TableColumnModalDialog(
     let label = match &modal {
         TableColumnModal::Picker => "Choose visible columns".to_string(),
         TableColumnModal::Filter(column) => format!("Filter {}", column.label()),
+        TableColumnModal::Sheets => "Choose a sheet".to_string(),
     };
     let body = match modal {
         TableColumnModal::Picker => rsx! {
             ColumnPickerDialog { columns, table_state, set_table_state }
+        },
+        TableColumnModal::Sheets => rsx! {
+            SheetChooserDialog { overview, sheet_id, sheet_hits, searching, table_state, set_table_state, column_modal }
         },
         TableColumnModal::Filter(column) => rsx! {
             ColumnFilterPopover {
@@ -1105,6 +1174,17 @@ pub async fn get_table_page(
 ) -> Result<TablePage, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::documents::table_browse::get_table_page(&user, document_identifier, query)
+        .await
+        .map_err(crate::api::error_util::to_server_fn_error)
+}
+
+#[server]
+pub async fn get_table_sheet_hits(
+    document_identifier: DocumentIdentifier,
+    search: String,
+) -> Result<Vec<(u16, u64)>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::documents::table_browse::get_table_sheet_hits(&user, document_identifier, search)
         .await
         .map_err(crate::api::error_util::to_server_fn_error)
 }

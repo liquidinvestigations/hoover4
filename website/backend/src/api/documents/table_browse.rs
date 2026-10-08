@@ -753,6 +753,39 @@ fn build_constraints(
     }
 }
 
+/// How many data rows of each sheet contain `search`, as `(sheet_id, rows)`, for the
+/// sheet chooser. A sheet with no match is absent. The count is the one the grid shows
+/// for the same search on that sheet, so it excludes the header row.
+pub async fn get_table_sheet_hits(
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier,
+    search: String,
+) -> anyhow::Result<Vec<(u16, u64)>> {
+    let search = table_find_text(&search);
+    if search.is_empty() {
+        return Ok(Vec::new());
+    }
+    let _manifest = require_table_manifest(user, &document_identifier).await?;
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+    Ok(client
+        .query(
+            "SELECT c.sheet_id, uniqExact(c.row_id) FROM table_cells AS c FINAL \
+             LEFT JOIN (SELECT sheet_id, header_row FROM table_sheets FINAL \
+                        WHERE collection_dataset = ? AND hash = ?) AS s \
+             ON s.sheet_id = c.sheet_id \
+             WHERE c.file_hash = ? AND c.row_id > s.header_row \
+             AND positionCaseInsensitiveUTF8(c.cell_text, ?) > 0 \
+             GROUP BY c.sheet_id ORDER BY c.sheet_id",
+        )
+        .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
+        .bind(&document_identifier.collection_dataset)
+        .bind(&document_identifier.file_hash)
+        .bind(&document_identifier.file_hash)
+        .bind(search)
+        .fetch_all()
+        .await?)
+}
+
 /// The distinct values of one column, most frequent first, for the filter popover's list.
 pub async fn get_table_column_values(
     user: &CurrentUser,

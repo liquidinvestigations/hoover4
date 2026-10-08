@@ -15,7 +15,7 @@ pub fn ConversationFindBar(
     rsx! {
         div {
             style: "display: flex; align-items: center; gap: 8px; padding: 10px 14px; \
-                    border-bottom: 1px solid var(--x-border); background: #F8FCFF; flex-shrink: 0;",
+                    border-bottom: 1px solid; border-bottom-color: var(--x-border); background: #F8FCFF; flex-shrink: 0;",
             input {
                 r#type: "text",
                 placeholder: "Search in conversation",
@@ -32,7 +32,7 @@ pub fn ConversationFindBar(
                 "{display_idx}/{count}"
             }
             button {
-                style: "border: 1px solid var(--x-border); background: white; border-radius: 6px; \
+                style: "border: 1px solid; border-color: var(--x-border); background: white; border-radius: 6px; \
                         width: 28px; height: 28px; cursor: pointer;",
                 title: "Previous match",
                 disabled: count == 0,
@@ -46,7 +46,7 @@ pub fn ConversationFindBar(
                 "\u{25b2}"
             }
             button {
-                style: "border: 1px solid var(--x-border); background: white; border-radius: 6px; \
+                style: "border: 1px solid; border-color: var(--x-border); background: white; border-radius: 6px; \
                         width: 28px; height: 28px; cursor: pointer;",
                 title: "Next match",
                 disabled: count == 0,

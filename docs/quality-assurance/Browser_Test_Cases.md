@@ -114,6 +114,8 @@ Search results, filter panes, sort menus, and query chips.
 | `134-filter-pane-language` | Verifies language labels and applies the English filter. | `any` | `--names filter-pane-language` |
 | `135-filter-pane-red-flags` | Applies a scored red flag category from the Entities filter. | `any` | `--names filter-pane-red-flags` |
 | `137-filter-pane-text-source` | Verifies text source labels and applies the Raw file text filter. | `any` | `--names filter-pane-text-source` |
+| `138-search-table-sheet-hits` | Opens a workbook match on its sheet and counts matches per sheet in the chooser. | `testdata_polpro` | `--names search-table-sheet-hits` |
+| `139-search-preview-divider` | Drags the divider between results and preview and restores its width after a reload. | none named | `--names search-preview-divider` |
 
 ## Document view
 
@@ -141,6 +143,8 @@ PDF, image, email, text, metadata, file locations, and entity cards.
 | `219-view-doc-empty-archive` | Verifies the completed state of a document without text sources. | `testdata_manualqa` | `--names view-doc-empty-archive` |
 | `220-view-doc-email-long-details` | Verifies wheel scrolling through a long recipient list into the email body. | `enron_kaminski` | `--names view-doc-email-long-details` |
 | `221-view-doc-pdf-feedback-capture` | Opens the report overlay on a PDF document and shows the drawn image with its notes. | `testdata_testfiles` | `--names view-doc-pdf-feedback-capture` |
+| `222-view-doc-dividers` | Drags both dividers of the document view and restores their widths after a reload. | `testdata_testfiles` | `--names view-doc-dividers` |
+| `223-view-doc-heic-image` | Opens a HEIC image without a source error and checks the rail hints beside their icons. | `testdata_diskfiles` | `--names view-doc-heic-image` |
 
 ## Storage and folder tree
 
@@ -174,6 +178,7 @@ Collection storage, archives, breadcrumbs, and landing pages.
 | `324-storage-collection-landing-other` | Exercises the storage collection landing other case. | none named | `--names storage-collection-landing-other` |
 | `325-storage-dataset-landing` | Exercises the storage dataset landing case. | `testdata_zips` | `--names storage-dataset-landing` |
 | `326-storage-collection-by-click` | Exercises the storage collection by click case. | `testdata_shapes` | `--names storage-collection-by-click` |
+| `327-storage-preview-divider` | Drags the divider between the folder listing and the preview and restores its width after a reload. | `testdata_shapes` | `--names storage-preview-divider` |
 
 ## Table viewer
 
@@ -217,6 +222,8 @@ A case that opens the newest conversation needs that conversation in the named s
 | `518-ai-chat-web-search` | Selects the named web chat and checks slim form fields and the detail control. | none named | `--names ai-chat-web-search` |
 | `520-ai-chat-compaction-line` | Selects the named compaction chat and opens its visible record. | none named | `--names ai-chat-compaction-line` |
 | `521-ai-chat-question-card` | Selects the named question chat and checks an option fills the reply box. | none named | `--names ai-chat-question-card` |
+| `524-ai-chat-pane-divider` | Drags the divider of the chat side pane and restores its width when the pane opens again. | none named | `--names ai-chat-pane-divider` |
+| `525-ai-chat-follow-ups` | Verifies the suggested question buttons and that a click fills the composer. | none named | `--names ai-chat-follow-ups` |
 
 ## Admin
 
@@ -260,6 +267,7 @@ Admin dashboard, collections, users, groups, settings, metrics, and operations.
 | `634-admin-metrics-live-runs` | Shows the live chats panel while a delegated turn runs, with one row for each open run. | none named | `--names admin-metrics-live-runs` |
 | `635-admin-datasets-section` | Verifies the dashboard link to the Datasets section and its columns. | `any` | `--names admin-datasets-section` |
 | `636-admin-feedback` | Finds a sent report, opens it, and marks it read. Incomplete when `004-feedback-report` sent no report. | none named | `--names admin-feedback` |
+| `637-admin-document-errors` | Follows a dataset error count to its document errors and compares the counts. | none named | `--names admin-document-errors` |
 
 ## Manual QA procedures
 

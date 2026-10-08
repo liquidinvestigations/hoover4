@@ -8,6 +8,7 @@ The numbers use the storage card definitions. ``document_count`` counts distinct
 hashes, extracted files included. ``total_size_bytes`` adds one size for each distinct
 blob hash, because ``blobs`` is a ReplacingMergeTree and an unmerged duplicate row would
 count twice. ``indexed_count`` counts distinct file hashes in ``index_state``.
+``error_count`` counts distinct document and task pairs in ``processing_errors``.
 
 A dataset is ``processing`` while a live operation holds it under the lock rule of
 ``operations.lock_clause``: a dataset operation on the dataset, or a collection
@@ -95,9 +96,11 @@ def compute_collection_stats(collectionname: str) -> list[dict]:
             "SELECT collection_dataset, uniqExact(file_hash) FROM index_state "
             "GROUP BY collection_dataset",
         )
+        # One error for each document and task. A task that failed in several runs
+        # wrote one row for each run, and the Errors/Failures page shows it once.
         errors = _grouped(
             client,
-            "SELECT collection_dataset, count() FROM processing_errors FINAL "
+            "SELECT collection_dataset, uniqExact(hash, task_name) FROM processing_errors FINAL "
             "GROUP BY collection_dataset",
         )
 

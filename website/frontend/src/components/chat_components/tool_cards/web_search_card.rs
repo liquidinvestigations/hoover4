@@ -247,7 +247,7 @@ fn PendingSearch(query: String, sources: Vec<String>, elapsed_ms: Option<u32>) -
     rsx! {
         div {
             style: "align-self: flex-start; max-width: 92%; background: #FFFFFF; \
-                    border: 1px solid var(--x-border); border-radius: 10px; padding: 8px 12px; \
+                    border: 1px solid; border-color: var(--x-border); border-radius: 10px; padding: 8px 12px; \
                     font-size: var(--x-text-sm); color: var(--x-ink-strong); display: flex; align-items: center; \
                     gap: 10px; flex-wrap: wrap;",
             span {
@@ -405,7 +405,7 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
                 );
                 rsx! {
                     div {
-                        style: "padding: 12px 16px; border-bottom: 1px solid var(--x-border); \
+                        style: "padding: 12px 16px; border-bottom: 1px solid; border-bottom-color: var(--x-border); \
                                 font-size: var(--x-text-xs); color: var(--x-ink); line-height: 1.7;",
                         div { "The tool returned selected results to the model." }
                         div { "{dedupe}" }
@@ -452,7 +452,7 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
             header: rsx! {
                 div {
                     style: "display: flex; align-items: center; justify-content: space-between; \
-                            padding: 12px 16px; border-bottom: 1px solid var(--x-border);",
+                            padding: 12px 16px; border-bottom: 1px solid; border-bottom-color: var(--x-border);",
                     strong { style: "font-size: var(--x-text-md);", "Search detail" }
                     ModalCloseButton { on_close }
                 }
@@ -493,7 +493,7 @@ fn SourceTimings(latency: serde_json::Value, counts: serde_json::Value) -> Eleme
 fn RankColumn(heading: String, rows: Vec<Row>, show_source_ranks: bool) -> Element {
     rsx! {
         div {
-            style: "flex: 1; min-width: 0; border-right: 1px solid var(--x-border); overflow-y: auto; \
+            style: "flex: 1; min-width: 0; border-right: 1px solid; border-right-color: var(--x-border); overflow-y: auto; \
                     padding: 10px 14px;",
             div {
                 style: "font-size: var(--x-text-xs); font-weight: 600; text-transform: uppercase; \

@@ -352,14 +352,32 @@ fn citation_placements(messages: &[ChatMessageItem], docs: &[ChatDocRef], pages:
     result
 }
 
+/// The three suggested follow-up questions under an answer. Each one is a button that
+/// fills the composer, so the group aligns right like the person's own message. The
+/// question mark is decorative, so the group needs no heading. The styles are in
+/// `main.css`, because an inline style cannot express hover and focus states.
 #[component]
 fn FollowUpSuggestions(prompts: Vec<String>, mut draft: Signal<String>) -> Element {
     rsx! {
         if prompts.len() == 3 {
-            div { class: "x-chat-follow-ups", style: "background: #E5E7EB; border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 4px;",
+            div {
+                class: "x-chat-follow-ups",
+                role: "group",
+                "aria-label": "Suggested questions",
+                span {
+                    class: "x-chat-follow-ups-mark",
+                    "aria-hidden": "true",
+                    dioxus_free_icons::Icon { icon: dioxus_free_icons::icons::md_action_icons::MdHelpOutline, width: 44, height: 44 }
+                }
                 for (index, prompt) in prompts.into_iter().enumerate() {
-                    button { key: "{index}", r#type: "button", style: "text-align: left; background: transparent; color: #333; border: 0; border-radius: 4px; padding: 10px; cursor: pointer; font: inherit;",
-                        onclick: move |_| { draft.set(prompt.clone()); document::eval("document.querySelector('[data-chat-composer]')?.focus();"); },
+                    button {
+                        key: "{index}",
+                        r#type: "button",
+                        class: "x-chat-follow-up",
+                        onclick: move |_| {
+                            draft.set(prompt.clone());
+                            document::eval("document.querySelector('[data-chat-composer]')?.focus();");
+                        },
                         "{prompt}"
                     }
                 }
@@ -466,7 +484,7 @@ fn ToolRunGroup(
                 class: "x-chat-tool-run-toggle",
                 "aria-expanded": "{shown}",
                 style: "align-self: flex-start; display: flex; gap: 8px; align-items: baseline; \
-                        background: #F8FAFC; border: 1px solid var(--x-border); border-radius: 8px; \
+                        background: #F8FAFC; border: 1px solid; border-color: var(--x-border); border-radius: 8px; \
                         padding: 5px 10px; cursor: pointer; font-size: var(--x-text-sm); color: var(--x-ink); \
                         text-align: left;",
                 onclick: move |_| {
@@ -1174,7 +1192,7 @@ pub(super) fn DocumentCitationCards(
         .filter(|doc| seen.insert(doc.file_hash.clone())).collect::<Vec<_>>();
     rsx! {
         div {
-            style: "margin-top: 10px; border-top: 1px solid var(--x-border); padding-top: 8px;",
+            style: "margin-top: 10px; border-top: 1px solid; border-top-color: var(--x-border); padding-top: 8px;",
             div {
                 style: "display: flex; flex-direction: column; gap: 8px;",
                 for (index, doc) in grouped.into_iter().enumerate() {
@@ -1190,7 +1208,7 @@ pub(super) fn DocumentCitationCards(
                                 style: "
                                     flex-shrink: 0; font-size: var(--x-text-xs); font-weight: 600;
                                     color: var(--x-ink); background: #F8FAFC;
-                                    border: 1px solid var(--x-border); border-radius: 5px;
+                                    border: 1px solid; border-color: var(--x-border); border-radius: 5px;
                                     padding: 1px 5px; margin-top: 10px;
                                 ",
                                 "{doc.handle}"

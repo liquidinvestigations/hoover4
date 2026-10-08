@@ -19,7 +19,7 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 | `.table.columns` | visible-column control | opens the column visibility list | it opens one centred modal with a closing backdrop |
 | `.table.column_filter` | column filter control | opens typed filter controls for one column | it opens one centred modal with a closing backdrop |
 | `.table.sort` | column sort control | cycles ascending, descending and no order | the changed order resets the result page |
-| `.table.sheet` | sheet selector | selects a workbook sheet | it clears sheet-specific columns, sorting and filters |
+| `.table.sheet` | sheet chooser dialog | selects a workbook sheet, and shows the matching rows of each sheet while the find box holds a search | it clears sheet-specific columns, sorting and filters. With a search and no chosen sheet, the viewer opens on the first sheet with matches |
 | `.source.dropdown` | source selector | selects a stored document source | it appears in the search preview; the full viewer uses the source list; a change resets the selected page |
 | `.find.clear` | clear search button | clears the in-document query | the main search, document find, and folder search share the input control |
 | `.table.clear_filters` | clear filters button | clears the document query and column filters | it appears when filters return zero rows |

@@ -89,7 +89,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
         if let Some(err) = error_msg.read().clone() {
             ErrorBar { message: err }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Datasets" }
             div { style: MODULE_BODY,
                 table { style: TABLE,
@@ -120,7 +120,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                         div { style: HELP_TEXT, "{ds.dataset_display_name}" }
                                     }
                                 }
-                                DatasetStatCells { stats: ds.stats.clone() }
+                                DatasetStatCells { collectionname: collection_id.clone(), stats: ds.stats.clone() }
                                 DatasetStateCell { stats: ds.stats.clone() }
                                 td { style: "{TD} white-space: nowrap;", "{short_date(&ds.date_created)}" }
                             }
@@ -129,7 +129,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                 }
             }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Settings" }
             div { style: MODULE_BODY,
                 if !detail.collection.db_ready {
@@ -174,7 +174,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
             collectionname: collection_id.clone(),
             on_created: move |_| detail_res.restart(),
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Access" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
@@ -216,7 +216,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                 }
             }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Group permissions" }
             div { style: MODULE_BODY,
                 if groups_with_access.is_empty() {
@@ -226,7 +226,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                     for g in groups_with_access {
                         li {
                             key: "{g}",
-                            style: "display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--x-border); font-size: var(--x-text-sm);",
+                            style: "display: flex; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid; border-bottom-color: var(--x-border); font-size: var(--x-text-sm);",
                             Link {
                                 to: Route::AdminGroupPage { groupname: g.clone() },
                                 style: "{LINK} flex: 1;",
@@ -290,7 +290,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
             }
         }
         CollectionOperationsPanel { collectionname: cname.clone() }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", "Danger zone" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 8px;", "A collection can only be deleted while it has no datasets." }

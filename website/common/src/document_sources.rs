@@ -213,16 +213,16 @@ mod tests {
     }
 
     #[test]
-    fn a_table_source_names_its_format_and_its_sheets() {
+    fn a_table_source_names_its_sheets_and_not_its_format() {
         let one = DocumentTableSourceItem {
             sheet_count: 1,
             row_count: 6,
             column_count: 300,
             table_format: "csv".into(),
         };
-        assert_eq!(one.label(), "Table \u{b7} csv");
+        assert_eq!(one.label(), "Table");
         let two = DocumentTableSourceItem { sheet_count: 2, table_format: "xlsx".into(), ..one };
-        assert_eq!(two.label(), "Table \u{b7} xlsx \u{b7} 2 sheets");
+        assert_eq!(two.label(), "Table (2 sheets)");
     }
 
     /// Viewer state is URL-encoded and outlives the build that wrote it, so every field
@@ -424,16 +424,14 @@ pub struct DocumentTableSourceItem {
 }
 
 impl DocumentTableSourceItem {
-    /// The label in the source selector: `Table · xlsx · 2 sheets`.
+    /// The label in the source selector: `Table (2 sheets)`. The file format is not in
+    /// it, because the file name already shows the extension.
     pub fn label(&self) -> String {
-        let mut label = "Table".to_string();
-        if !self.table_format.is_empty() {
-            label.push_str(&format!(" \u{b7} {}", self.table_format));
-        }
         if self.sheet_count > 1 {
-            label.push_str(&format!(" \u{b7} {} sheets", self.sheet_count));
+            format!("Table ({} sheets)", self.sheet_count)
+        } else {
+            "Table".to_string()
         }
-        label
     }
 }
 

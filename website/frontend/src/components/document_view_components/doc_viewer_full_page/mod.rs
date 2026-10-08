@@ -32,7 +32,7 @@ use crate::pages::search_page::DocViewerStateControl;
 use crate::{
     components::document_view_components::doc_preview_for_search::get_document_sources,
     components::document_view_components::doc_preview_shared::{
-        DocSourceDispatch, PreviewWrapper, ProvidePreviewExtraSections,
+        DocSourceDispatch, PreviewWrapper, ProvidePreviewExtraSections, SourceLoadNotice,
     },
     data_definitions::doc_viewer_state::DocViewerState,
 };
@@ -179,16 +179,23 @@ pub fn DocViewerRoot(
     // Provide the same context that search-preview provides, but the triptych renders these
     // controls vertically in the left column; so we pass empty elements here to satisfy
     // `PreviewControlsSection` without duplicating UI.
+    // The notice sits above the viewer in the same column, so the row layout beside the
+    // details pane does not change.
     let content_view = rsx! {
-        if let Some(error) = source_error() {
-            div { role: "alert", "Could not load all document sources: {error}" }
-            button { onclick: move |_| source_request.restart(), "Retry" }
-        }
-        ProvidePreviewExtraSections {
-            find_query_input_box: rsx! { div {} },
-            preview_selector: rsx! { div {} },
-            children: content_view_inner,
-            wrapper_fn: _make_view_wrapper,
+        div {
+            style: "flex: 1 1 auto; min-width: 0; height: 100%; display: flex; flex-direction: column; overflow: hidden;",
+            if let Some(error) = source_error() {
+                SourceLoadNotice { error, on_retry: move |_| source_request.restart() }
+            }
+            div {
+                style: "flex: 1 1 auto; min-height: 0; display: flex; flex-direction: row; overflow: hidden;",
+                ProvidePreviewExtraSections {
+                    find_query_input_box: rsx! { div {} },
+                    preview_selector: rsx! { div {} },
+                    children: content_view_inner,
+                    wrapper_fn: _make_view_wrapper,
+                }
+            }
         }
     };
 
@@ -202,14 +209,15 @@ pub fn DocViewerRoot(
                 overflow: hidden;
             ",
             {content_view}
-            div {
-                style: "
-                    width: clamp(320px, 30%, 575px);
-                    flex: 0 0 auto;
-                    height: 100%;
-                    overflow: hidden;
-                    background: white;
-                ",
+            crate::components::resizable_sidebar::ResizablePane {
+                storage_key: "hoover4.document-details-width-css-px",
+                default_px: 460,
+                min_px: 300,
+                max_px: 900,
+                side: crate::components::resizable_sidebar::PaneSide::Right,
+                handle_id: "x-document-details-resize",
+                max_share: "45%",
+                pane_style: "background: white;".to_string(),
                 RightPanel { document_identifier }
             }
         }
@@ -380,15 +388,15 @@ fn _make_view_wrapper(controls: Element, page: Element) -> Element {
                     flex-direction: row;
                     overflow: hidden;
                 ",
-                div {
-                    style: "
-                        width: clamp(220px, 20%, 340px);
-                        flex: 0 0 auto;
-                        height: 100%;
-                        overflow: hidden;
-                        border-right: 1px solid rgba(0,0,0,0.15);
-                        background: rgba(0,0,0,0.02);
-                    ",
+                crate::components::resizable_sidebar::ResizablePane {
+                    storage_key: "hoover4.document-sources-width-css-px",
+                    default_px: 280,
+                    min_px: 200,
+                    max_px: 560,
+                    side: crate::components::resizable_sidebar::PaneSide::Left,
+                    handle_id: "x-document-sources-resize",
+                    max_share: "35%",
+                    pane_style: "background: rgba(0,0,0,0.02);".to_string(),
                     LeftControls {
                         sources: sources,
                         selected_source: selected_source,

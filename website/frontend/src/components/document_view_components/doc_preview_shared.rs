@@ -66,13 +66,7 @@ pub fn DocSourceDispatch(
         DocumentSourceItem::Image(image) => rsx! {
             PreviewWrapper {
                 controls: rsx! {"Image; {image.width}x{image.height}"},
-                page: rsx! {
-                    img {
-                        src: "{document_identifier().get_absolute_url_path()}",
-                        style: "max-width: 100%; max-height: 100%;",
-                        alt: "image preview"
-                    }
-                }
+                page: rsx! { ImagePreview { url: document_identifier().get_absolute_url_path() } }
             },
         },
         DocumentSourceItem::Audio(audio) => rsx! {
@@ -114,5 +108,49 @@ pub fn DocSourceDispatch(
                 }
             },
         },
+    }
+}
+
+/// The original image file. Some formats, such as HEIC, have no decoder in most
+/// browsers, so a failed load shows a note and a download link in place of the alt text.
+#[component]
+fn ImagePreview(url: String) -> Element {
+    let mut failed = use_signal(|| false);
+    if failed() {
+        return rsx! {
+            p {
+                id: "x-image-preview-failed",
+                style: "margin: 0; padding: 12px; color: var(--x-ink-muted);",
+                "This browser cannot show this image format. "
+                a { href: "{url}", download: "", "Download the file" }
+            }
+        };
+    }
+    rsx! {
+        img {
+            src: "{url}",
+            style: "max-width: 100%; max-height: 100%;",
+            alt: "image preview",
+            onerror: move |_| failed.set(true),
+        }
+    }
+}
+
+/// One row above the viewer when a source query failed. The sources that loaded still
+/// show below it.
+#[component]
+pub fn SourceLoadNotice(error: String, on_retry: Callback<()>) -> Element {
+    rsx! {
+        div {
+            id: "x-source-load-notice",
+            role: "alert",
+            style: "flex: 0 0 auto; display: flex; align-items: center; gap: 12px; padding: 6px 12px; border-bottom: 1px solid; border-bottom-color: var(--x-border); color: var(--x-danger); font-size: var(--x-text-sm);",
+            span { style: "flex: 1 1 auto; min-width: 0;", "Could not load all document sources: {error}" }
+            button {
+                style: "flex: 0 0 auto; background-color: white; color: var(--x-ink-strong); border: 1px solid; border-color: var(--x-border-strong); border-radius: 16px; padding: 3px 12px; cursor: pointer; font: inherit;",
+                onclick: move |_| on_retry.call(()),
+                "Retry"
+            }
+        }
     }
 }

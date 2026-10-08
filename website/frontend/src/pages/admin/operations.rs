@@ -87,7 +87,7 @@ fn OperationsContent() -> Element {
         if let Some(e) = error_msg() {
             ErrorBar { message: e }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Filters" }
             div { style: "{MODULE_BODY} display: flex; gap: 16px; flex-wrap: wrap; align-items: center;",
                 label { style: LABEL,
@@ -136,7 +136,7 @@ fn OperationsContent() -> Element {
             collectionname: collection_filter(),
         }
 
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Operations, newest first" }
             div { style: MODULE_BODY,
                 OperationsTable {
@@ -181,7 +181,7 @@ fn TaskErrorRatePanel(
     }
     let above: Vec<&TaskErrorRate> = rates.iter().filter(|r| r.above_threshold).collect();
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Failure rate by task type ({collectionname})" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
@@ -591,7 +591,7 @@ pub fn CollectionOperationsPanel(collectionname: String) -> Element {
         .cloned();
 
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Operations" }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",

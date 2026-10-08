@@ -86,7 +86,7 @@ fn OperationDetailBody(data: OperationDetail, plans_page: u32, events_page: u32)
         p { style: HELP_TEXT,
             Link { to: Route::AdminOperationsPage {}, style: LINK, "Back to operations" }
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Operation" }
             div { style: MODULE_BODY,
                 p { code { "{row.op_id}" } }
@@ -155,7 +155,7 @@ fn PlanList(
     let next_navigator = navigator;
 
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Plans" }
             div { id: "x-op-detail-plans", style: MODULE_BODY,
                 p { style: HELP_TEXT, "{data.plans_total} plan(s), page {page + 1}" }
@@ -230,7 +230,7 @@ fn EventList(
     let next_navigator = navigator;
 
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Error events" }
             div { id: "x-op-detail-events", style: MODULE_BODY,
                 p { style: HELP_TEXT, "{data.events_total} Error event(s), page {page + 1}" }

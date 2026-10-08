@@ -57,7 +57,7 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
         };
         return rsx! {
             div {
-                style: "margin: 8px 0; padding: 12px 16px; border: 1px solid var(--x-border); \
+                style: "margin: 8px 0; padding: 12px 16px; border: 1px solid; border-color: var(--x-border); \
                         border-radius: 8px; background: white; font-size: var(--x-text-md); color: var(--x-ink-muted);",
                 "{doc.display_title()}"
                 if !doc.collectionname.is_empty() {
@@ -162,7 +162,7 @@ pub fn ChatDocRefRow(doc: ChatDocRef) -> Element {
         div {
             class: "x-chat-docref-row",
             style: "display: flex; align-items: baseline; gap: 10px; font-size: var(--x-text-sm); \
-                    padding: 4px 8px; background: white; border: 1px solid var(--x-border); \
+                    padding: 4px 8px; background: white; border: 1px solid; border-color: var(--x-border); \
                     border-radius: 6px;",
             span { style: "flex: 1; min-width: 0; word-break: break-all; color: var(--x-ink-strong);", "{label}" }
             if !doc.collectionname.is_empty() {

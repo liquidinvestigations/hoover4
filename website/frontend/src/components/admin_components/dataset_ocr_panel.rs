@@ -279,7 +279,7 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
 
     let Some(panel) = panel else {
         return rsx! {
-            div { style: MODULE,
+            div { class: "x-admin-module", style: MODULE,
                 h2 { style: MODULE_CAPTION, "OCR languages" }
                 div { style: MODULE_BODY,
                     if load_failed {
@@ -308,7 +308,7 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
             collection_dataset: dataset_for_strip,
             on_change: move |_| panel_res.restart(),
         }
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "OCR languages" }
             div { style: "{MODULE_BODY} display: flex; flex-direction: column; gap: 16px;",
                 if let Some(m) = msg.read().clone() { SuccessBar { message: m } }
@@ -368,7 +368,7 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                             for variant in panel.text_variants.iter() {
                                 span {
                                     key: "{variant.extracted_by}",
-                                    style: "background: var(--x-surface-muted); border: 1px solid var(--x-border); border-radius: 999px; \
+                                    style: "background-color: var(--x-surface-muted); border: 1px solid; border-color: var(--x-border); border-radius: 999px; \
                                             padding: 2px 10px; font-size: var(--x-text-xs);",
                                     "{common::document_sources::text_source_label(&variant.extracted_by)} \u{b7} {variant.page_count} pages"
                                 }
@@ -389,7 +389,7 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                             for variant in panel.pdf_variants.iter() {
                                 span {
                                     key: "{variant.engine}-{variant.languages}",
-                                    style: "background: var(--x-surface-muted); border: 1px solid var(--x-border); border-radius: 999px; \
+                                    style: "background-color: var(--x-surface-muted); border: 1px solid; border-color: var(--x-border); border-radius: 999px; \
                                             padding: 2px 10px; font-size: var(--x-text-xs);",
                                     "{variant.engine} \u{b7} {variant.languages} \u{b7} {variant.pdf_count} files \u{b7} {variant.total_bytes / 1024 / 1024} MB"
                                 }

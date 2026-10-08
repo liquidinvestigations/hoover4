@@ -199,7 +199,7 @@ fn ProcessingContent(collection_id: String) -> Element {
 #[component]
 fn StagesPanel(status: Load<CollectionProcessingStatus>, eta_samples: Option<Vec<EtaSamplePoint>>) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Processing stages" }
             div { style: MODULE_BODY,
                 match status {
@@ -336,7 +336,7 @@ fn EtaSection(samples: Vec<EtaSamplePoint>) -> Element {
         .max_by_key(|s| s.deadline_unix);
 
     rsx! {
-        div { style: "margin: 8px 0 4px; padding: 10px; background: var(--x-surface-muted); border: 1px solid var(--x-border); border-radius: 4px;",
+        div { style: "margin: 8px 0 4px; padding: 10px; background-color: var(--x-surface-muted); border: 1px solid; border-color: var(--x-border); border-radius: 4px;",
             div { style: "font-size: var(--x-text-sm); color: var(--x-ink); margin-bottom: 6px;",
                 match current {
                     Some(c) => rsx! {
@@ -418,7 +418,7 @@ fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
             width: "100%",
             height: "{H}",
             "viewBox": "0 0 {W} {H}",
-            style: "background: white; border: 1px solid var(--x-border); max-width: 720px; display: block;",
+            style: "background: white; border: 1px solid; border-color: var(--x-border); max-width: 720px; display: block;",
 
             // Keyed by position on the axis, never by the label: two ticks can carry the
             // same text, and duplicate keys among siblings are a dioxus-core assertion on
@@ -535,7 +535,7 @@ fn ShareBar(percent: f64, color: String) -> Element {
 #[component]
 fn TaskTimePanel(breakdown: Load<TaskTimeBreakdown>) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Where processing time goes" }
             div { style: MODULE_BODY,
                 match breakdown {
@@ -661,7 +661,7 @@ fn LiveActivityPanel(collection_id: String) -> Element {
     });
 
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Live activity" }
             div { style: MODULE_BODY,
                 match load_state(live_res) {
@@ -760,7 +760,7 @@ fn LiveActivityBody(live: LiveTaskActivity) -> Element {
 #[component]
 fn WorkflowsPanel(workflows: Load<Vec<WorkflowSummary>>, filter: Signal<WorkflowFilter>) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Temporal workflows" }
             div { style: MODULE_BODY,
                 div { style: "display: flex; gap: 8px; margin-bottom: 12px;",
@@ -768,9 +768,9 @@ fn WorkflowsPanel(workflows: Load<Vec<WorkflowSummary>>, filter: Signal<Workflow
                         button {
                             key: "{label}",
                             style: if *filter.read() == value {
-                                "background: var(--x-link); color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: var(--x-text-xs);"
+                                "background-color: var(--x-link); color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: var(--x-text-xs);"
                             } else {
-                                "background: white; color: var(--x-link); border: 1px solid var(--x-link); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: var(--x-text-xs);"
+                                "background: white; color: var(--x-link); border: 1px solid; border-color: var(--x-link); padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: var(--x-text-xs);"
                             },
                             onclick: move |_| filter.set(value),
                             "{label}"
@@ -840,7 +840,7 @@ fn TaskFailuresPanel(
     on_retry: EventHandler<()>,
 ) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Failed tasks" }
             div { style: MODULE_BODY,
                 match failures {
@@ -919,7 +919,7 @@ fn DocumentFailuresPanel(
     on_retry: EventHandler<()>,
 ) -> Element {
     rsx! {
-        div { style: MODULE,
+        div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Failures per document" }
             div { style: MODULE_BODY,
                 match failures {

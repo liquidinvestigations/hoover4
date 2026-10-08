@@ -96,15 +96,8 @@ const TABLE_SCROLL_STYLE: &str = "
     overflow: auto;
 ";
 
-const PREVIEW_PANE_STYLE: &str = "
-    flex: 1 1 50%;
-    min-width: 0;
-    border-left: 1px solid #E5E7EB;
-    background: #FFFFFF;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-";
+/// The content box of the resizable preview pane. Its width belongs to the pane.
+const PREVIEW_PANE_STYLE: &str = "background: #FFFFFF;";
 
 const BREADCRUMB_BAR_STYLE: &str = "
     display: flex;
@@ -314,7 +307,7 @@ const CARD_GRID_STYLE: &str = "
 const CARD_STYLE: &str = "
     display: flex; flex-direction: column; gap: 10px;
     padding: 16px 18px; min-width: 0;
-    border: 1px solid var(--x-border); border-radius: var(--x-radius); background: white;
+    border: 1px solid; border-color: var(--x-border); border-radius: var(--x-radius); background: white;
     cursor: pointer; text-decoration: none; color: var(--x-ink);
 ";
 
@@ -328,7 +321,7 @@ const CARD_VALUE_STYLE: &str = "color: var(--x-ink-strong); font-weight: 500;";
 const CARD_BADGE_STYLE: &str = "
     flex-shrink: 0; padding: 1px 8px; border-radius: 10px;
     font-size: var(--x-text-xs); font-weight: 500;
-    color: var(--x-link); border: 1px solid var(--x-link);
+    color: var(--x-link); border: 1px solid; border-color: var(--x-link);
 ";
 
 /// One storage card: a collection on the root page, or a dataset on a collection page.
@@ -653,8 +646,15 @@ fn FileBrowserContent(
                         }
                     }
                 }
-                div {
-                    style: PREVIEW_PANE_STYLE,
+                crate::components::resizable_sidebar::ResizablePane {
+                    storage_key: "hoover4.storage-preview-width-css-px",
+                    default_px: 640,
+                    min_px: 300,
+                    max_px: 1400,
+                    side: crate::components::resizable_sidebar::PaneSide::Right,
+                    handle_id: "x-storage-preview-resize",
+                    max_share: "65%",
+                    pane_style: PREVIEW_PANE_STYLE.to_string(),
                     PreviewPane { selected_file: selected_value }
                 }
             }

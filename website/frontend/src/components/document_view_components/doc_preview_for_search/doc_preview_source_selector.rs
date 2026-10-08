@@ -11,7 +11,7 @@ use dioxus_free_icons::{
         md_editor_icons::MdTableChart,
         md_file_icons::MdTextSnippet,
         md_image_icons::{MdAudiotrack, MdImage, MdPictureAsPdf, MdSwitchVideo},
-        md_navigation_icons::MdCheck,
+        md_navigation_icons::{MdArrowDropDown, MdCheck},
         md_toggle_icons::MdRadioButtonUnchecked,
     },
 };
@@ -142,6 +142,7 @@ fn SelectedItemList(
                         SourceItemRow {
                             source: source.clone(),
                             selected: source == selected_source.read().clone(),
+                            in_trigger: false,
                             item_hit_counts: item_hit_counts,
                         }
                     }
@@ -170,16 +171,17 @@ fn SelectedItemDropdownDisplay(
             font-size: 16px;
             line-height: 24px;
             font-weight: 400;
-            width: 250px;
-            margin-right: 10px;
+            max-width: 200px;
+            min-width: 0;
             ",
 
             SourceItemRow {
                 source: selected_item.clone(),
                 selected: false,
+                in_trigger: true,
                 item_hit_counts: item_hit_counts,
             }
-            span { style: "color: #666; margin-left: 4px; font-size: 12px;", "▼" }
+            dioxus_free_icons::Icon { icon: MdArrowDropDown, style: "width: 20px; height: 20px; color: var(--x-ink-muted); flex-shrink: 0;" }
 
         }
     }
@@ -189,6 +191,8 @@ fn SelectedItemDropdownDisplay(
 fn SourceItemRow(
     source: ReadSignal<DocumentSourceItem>,
     selected: bool,
+    /// The closed selector shows the chosen source without the selection mark.
+    in_trigger: bool,
     item_hit_counts: ReadSignal<ItemHitCounts>,
 ) -> Element {
     let source = source.read().clone();
@@ -233,10 +237,12 @@ fn SourceItemRow(
     };
 
     rsx! {
-        div { style: "color: #666; font-size: 16px !important; line-height: 24px; width: 24px;", {dot_icon} }
-        div { style: "font-size: 16px; line-height: 24px; width: 24px;", {icon} }
-        div { "data-source-label": "{label}", style: "flex-grow: 1; flex-shrink: 1; font-weight: 400; color: {text_color}; font-size: 16px; line-height: 24px;", "{label}" }
-        div { style: "flex-shrink: 0;color: #333; font-weight: 400; font-size: 20px; line-height: 24px; margin-left: 4px;", "{count}" }
+        if !in_trigger {
+            div { style: "color: #666; font-size: 16px !important; line-height: 24px; width: 24px; flex-shrink: 0;", {dot_icon} }
+        }
+        div { style: "font-size: 16px; line-height: 24px; width: 24px; flex-shrink: 0;", {icon} }
+        div { "data-source-label": "{label}", title: "{label}", style: "flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; color: {text_color}; font-size: 16px; line-height: 24px;", "{label}" }
+        div { style: "flex-shrink: 0; color: var(--x-link); font-weight: 600; font-size: 16px; line-height: 24px; margin-left: 4px;", "{count}" }
     }
 }
 

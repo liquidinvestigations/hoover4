@@ -2,6 +2,14 @@
 
 use dioxus::prelude::*;
 
+use dioxus_free_icons::icons::{
+    md_action_icons::{MdBugReport, MdDashboard, MdDns, MdHistory, MdQuestionAnswer, MdReportProblem, MdSettings},
+    md_device_icons::MdStorage,
+    md_editor_icons::MdInsertChart,
+    md_social_icons::{MdGroup, MdPerson},
+};
+use dioxus_free_icons::{Icon, IconShape};
+
 use crate::components::admin_components::{FONT, PAGE_TITLE};
 use crate::routes::Route;
 
@@ -22,22 +30,24 @@ pub fn AdminShell(
             style: "display: flex; width: 100%; height: 100%; background: white; {FONT}",
             nav {
                 "aria-label": "Administration",
-                style: "width: 200px; flex-shrink: 0; height: 100%; overflow-y: auto; padding: 16px 0; background: var(--x-surface-muted); border-right: 1px solid var(--x-border);",
-                NavLink { to: Route::AdminDashboardPage {}, label: "Dashboard", selected: active == "dashboard" }
-                NavLink { to: Route::AdminCollectionsPage {}, label: "Collections", selected: active == "collections" }
-                NavLink { to: Route::AdminOperationsPage {}, label: "Operations", selected: active == "operations" }
-                NavLink { to: Route::AdminFailuresPage {}, label: "Failures", selected: active == "failures" }
+                // As wide as its longest label, so the page keeps the rest of the width.
+                style: "width: max-content; flex-shrink: 0; height: 100%; overflow-y: auto; padding: 16px 0; background-color: var(--x-surface-muted); border-right: 1px solid; border-right-color: var(--x-border);",
+                NavLink { to: Route::AdminDashboardPage {}, icon: MdDashboard, label: "Dashboard", selected: active == "dashboard" }
+                NavLink { to: Route::AdminCollectionsPage {}, icon: MdStorage, label: "Collections", selected: active == "collections" }
+                NavLink { to: Route::AdminOperationsPage {}, icon: MdHistory, label: "Operations", selected: active == "operations" }
+                NavLink { to: crate::pages::admin::failures::failures_route("", ""), icon: MdReportProblem, label: "Errors/Failures", selected: active == "failures" }
                 NavLink {
                     to: Route::AdminFeedbackPage { search: String::new(), status: String::new(), page: 1 },
+                    icon: MdBugReport,
                     label: "Feedback",
                     selected: active == "feedback",
                 }
-                NavLink { to: Route::AdminUsersPage {}, label: "Users", selected: active == "users" }
-                NavLink { to: Route::AdminGroupsPage {}, label: "Groups", selected: active == "groups" }
-                NavLink { to: Route::AdminSettingsPage {}, label: "Settings", selected: active == "settings" }
-                NavLink { to: Route::AdminLlmPage {}, label: "LLM", selected: active == "llm" }
-                NavLink { to: Route::AdminAiStatusPage {}, label: "AI status", selected: active == "ai_status" }
-                NavLink { to: Route::AdminMetricsPage {}, label: "Metrics", selected: active == "metrics" }
+                NavLink { to: Route::AdminUsersPage {}, icon: MdPerson, label: "Users", selected: active == "users" }
+                NavLink { to: Route::AdminGroupsPage {}, icon: MdGroup, label: "Groups", selected: active == "groups" }
+                NavLink { to: Route::AdminSettingsPage {}, icon: MdSettings, label: "Settings", selected: active == "settings" }
+                NavLink { to: Route::AdminLlmPage {}, icon: MdQuestionAnswer, label: "LLM", selected: active == "llm" }
+                NavLink { to: Route::AdminAiStatusPage {}, icon: MdDns, label: "AI status", selected: active == "ai_status" }
+                NavLink { to: Route::AdminMetricsPage {}, icon: MdInsertChart, label: "Metrics", selected: active == "metrics" }
             }
             main {
                 style: "flex: 1; min-width: 0; height: 100%; overflow: auto; padding: 16px 32px 32px;",
@@ -60,13 +70,21 @@ pub fn AdminShell(
 }
 
 #[component]
-fn NavLink(to: Route, label: String, selected: bool) -> Element {
+fn NavLink<T: IconShape + Clone + PartialEq + 'static>(
+    to: Route,
+    icon: T,
+    label: String,
+    selected: bool,
+) -> Element {
     let row_style = if selected {
-        "display: block; padding: 8px 20px; color: var(--x-ink-strong); background: var(--x-selected); font-size: var(--x-text-md); font-weight: 600; text-decoration: none;"
+        "display: flex; align-items: center; gap: 10px; padding: 8px 20px 8px 16px; color: var(--x-ink-strong); background-color: var(--x-selected); font-size: var(--x-text-md); font-weight: 600; text-decoration: none; white-space: nowrap;"
     } else {
-        "display: block; padding: 8px 20px; color: var(--x-ink); font-size: var(--x-text-md); text-decoration: none;"
+        "display: flex; align-items: center; gap: 10px; padding: 8px 20px 8px 16px; color: var(--x-ink); background-color: transparent; font-size: var(--x-text-md); font-weight: 400; text-decoration: none; white-space: nowrap;"
     };
     rsx! {
-        Link { to: to, style: row_style, "{label}" }
+        Link { to: to, style: row_style,
+            Icon { icon: icon, style: "width: 20px; height: 20px; flex-shrink: 0; color: var(--x-ink-muted);" }
+            "{label}"
+        }
     }
 }

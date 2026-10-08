@@ -134,22 +134,25 @@ fn SearchPageRootComponent(
                     style: "
                         height: 100%;
                         background-color: #ECEEF2;
-                        flex-grow: 1;
+                        flex: 1 1 auto;
                         min-width: 400px;
-                        max-width: 3800px;
-                        width: 60%;
                     ",
                     SuspendWrapper{SearchPanelLeftView {query, current_search_result_page, selected_result_hash}}
                 }
-                div {
-                    id: "x-search-results-right-panel",
-                    style: "
-                        height: 100%;
-                        min-width: 300px;
-                        width: 40%;
-                    ",
-                    SuspendWrapper{DocumentPreviewForSearchRoot {query, selected_result_hash, show_finder: true}}
-
+                // The preview pane is resizable, and its width is remembered.
+                crate::components::resizable_sidebar::ResizablePane {
+                    storage_key: "hoover4.search-preview-width-css-px",
+                    default_px: 720,
+                    min_px: 360,
+                    max_px: 1600,
+                    side: crate::components::resizable_sidebar::PaneSide::Right,
+                    handle_id: "x-search-preview-resize",
+                    max_share: "70%",
+                    div {
+                        id: "x-search-results-right-panel",
+                        style: "height: 100%; width: 100%; min-width: 0;",
+                        SuspendWrapper{DocumentPreviewForSearchRoot {query, selected_result_hash, show_finder: true}}
+                    }
                 }
             }
         }

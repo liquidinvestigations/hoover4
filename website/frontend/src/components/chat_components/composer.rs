@@ -32,7 +32,7 @@ pub fn ChatComposer(
 
     rsx! {
         div {
-            style: "background: white; border: 1px solid var(--x-border); border-radius: 16px; \
+            style: "background: white; border: 1px solid; border-color: var(--x-border); border-radius: 16px; \
                     padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; \
                     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);",
             textarea {
@@ -95,7 +95,7 @@ pub fn ChatComposer(
                         // composer's own indigo instead of the alert red.
                         button {
                             style: "width: 40px; height: 40px; border-radius: 999px; border: none; \
-                                    background: var(--x-link); color: white; cursor: pointer; \
+                                    background-color: var(--x-link); color: white; cursor: pointer; \
                                     display: flex; align-items: center; justify-content: center;",
                             // Says what a stop does, not what it might have done. The
                             // agent writes `chat_messages` only when its run finishes, so

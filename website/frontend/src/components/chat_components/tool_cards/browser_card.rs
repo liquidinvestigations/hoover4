@@ -148,7 +148,7 @@ pub fn BrowserCard(
         return rsx! {
             div {
                 style: "align-self: flex-start; max-width: 92%; background: #FFFFFF; \
-                        border: 1px solid var(--x-border); border-radius: 10px; padding: 8px 12px; \
+                        border: 1px solid; border-color: var(--x-border); border-radius: 10px; padding: 8px 12px; \
                         font-size: var(--x-text-sm); color: var(--x-ink-strong); display: flex; align-items: center; \
                         gap: 10px; flex-wrap: wrap;",
                 span {
@@ -207,7 +207,7 @@ pub fn BrowserCard(
                         on_open: move |e| popup.set(Some(e)),
                         img_style: "height: 40px; width: 71px; object-fit: cover; \
                                     border-radius: 3px; display: block;".to_string(),
-                        button_style: "padding: 0; border: 1px solid var(--x-border); background: none; \
+                        button_style: "padding: 0; border: 1px solid; border-color: var(--x-border); background: none; \
                                        border-radius: 4px; cursor: pointer; flex-shrink: 0; \
                                        line-height: 0;".to_string(),
                     }
@@ -311,7 +311,7 @@ fn CaptureBlock(
                 opener,
                 on_open,
                 img_style: "max-width: 100%; border-radius: 5px; display: block;".to_string(),
-                button_style: "padding: 0; border: 1px solid var(--x-border); background: none; \
+                button_style: "padding: 0; border: 1px solid; border-color: var(--x-border); background: none; \
                                border-radius: 6px; cursor: pointer; line-height: 0; \
                                max-width: 100%;".to_string(),
             }
@@ -450,7 +450,7 @@ fn ArchivedPagePopup(artifact: ArtifactRef, on_close: EventHandler<()>) -> Eleme
             header: rsx! {
                 div {
                     style: "display: flex; align-items: center; gap: 12px; padding: 10px 14px; \
-                            border-bottom: 1px solid var(--x-border); font-size: var(--x-text-xs);",
+                            border-bottom: 1px solid; border-bottom-color: var(--x-border); font-size: var(--x-text-xs);",
                     strong { style: "flex-shrink: 0;", "Archived page" }
                     if let Some(href) = link.clone() {
                         a {
