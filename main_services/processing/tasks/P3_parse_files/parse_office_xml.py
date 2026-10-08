@@ -50,6 +50,7 @@ from tasks.P3_parse_files.batch_runner import (
     BatchFile, BatchResult, StageBatchParams, run_batch, try_budget_seconds,
 )
 from tasks.P3_parse_files.symbol_encoding import SYMBOL_TO_UNICODE
+from tasks.task_timing import SkippedOutcome
 
 log = logging.getLogger(__name__)
 
@@ -520,7 +521,7 @@ def _record_skip(params: ParseOfficeXmlParams, run_time_ms: int, reason: str) ->
 
 @activity.defn
 @with_heartbeat
-def parse_office_xml_and_store(params: ParseOfficeXmlParams) -> Dict[str, Any]:
+def parse_office_xml_and_store(params: ParseOfficeXmlParams) -> Dict[str, Any] | SkippedOutcome:
     """Store a zip-based office document's own XML text as a second `text_content` variant.
 
     Runs alongside Extractous rather than after it, for the same reason a PDF gets both
@@ -545,6 +546,10 @@ def parse_office_xml_and_store(params: ParseOfficeXmlParams) -> Dict[str, Any]:
     for reason in result.dropped:
         log.warning("[P3] office_xml dropped for %s: %s", params.file_hash, reason)
 
+    if not result.ok and not result.dropped and result.kind:
+        # Every part was read and none holds text: a blank document. That is a correct
+        # input, so it is a skipped outcome on `processing_task_runs` and not an Error.
+        return SkippedOutcome("office_xml_empty_document")
     if not result.ok:
         why = result.dropped[0] if result.dropped else "produced no text"
         _record_skip(params, run_time_ms, f"office_xml_no_text ({result.kind or 'unknown'}) {why}")
@@ -571,7 +576,7 @@ def parse_office_xml_and_store(params: ParseOfficeXmlParams) -> Dict[str, Any]:
 @with_heartbeat
 def parse_office_xml_batch(params: StageBatchParams) -> BatchResult:
     """The office XML text of each file of a group, one `parse_office_xml_and_store` call a file."""
-    def step(file: BatchFile) -> Dict[str, Any]:
+    def step(file: BatchFile) -> Dict[str, Any] | SkippedOutcome:
         return parse_office_xml_and_store(ParseOfficeXmlParams(
             collectionname=params.collectionname,
             collection_dataset=params.collection_dataset,

@@ -1,6 +1,6 @@
 """Select email body alternatives and identify attachment MIME parts."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from email import policy
 from email.message import Message
 from email.parser import BytesParser
@@ -10,6 +10,9 @@ import re
 import subprocess
 
 log = logging.getLogger(__name__)
+
+#: The defect of a signed body part whose signed content could not be read.
+UNREADABLE_SIGNED_BODY = "UnreadableSignedBody"
 
 _SIGNED_DATA_OID = bytes.fromhex("2a864886f70d010702")
 _MAX_SIGNED_BYTES = 16 * 1024 * 1024
@@ -282,13 +285,15 @@ def mail_parts(message: Message) -> list[MailPart]:
                 try:
                     inner = _signed_cms_message(part)
                 except ValueError:
-                    # A certificate-only `.p7c` attachment has no content to read.
-                    # It stays an attachment. An unreadable signed body still fails,
-                    # also at the message root, where `smime.p7m` has a filename.
+                    # A certificate-only `.p7c` attachment has no content to read, and it
+                    # stays an attachment. An unreadable signed body becomes an
+                    # attachment too, so its bytes are kept and the headers and the other
+                    # parts are still read. The marker lets the attachment stage report
+                    # the lost body as a partial failure.
                     if not attachment or path == "1":
-                        raise
-                    log.warning("[P3] signed CMS attachment at part %s has no readable content",
-                                path)
+                        result[-1] = replace(result[-1], attachment=True,
+                                             defects=result[-1].defects + (UNREADABLE_SIGNED_BODY,))
+                    log.warning("[P3] signed CMS content at part %s could not be read", path)
             elif ctype == "application/pgp":
                 inner = _clear_signed_message(part)
             if inner is not None:

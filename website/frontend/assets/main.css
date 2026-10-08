@@ -332,6 +332,6 @@ html, body, #main {
 /* The card starts at the icon's right edge, which is 21 px inside the rail edge. */
 #x-nav-sidebar .hover-card-content { min-width: 0; padding: 0; white-space: nowrap; margin-left: 27px; }
 .x-rail-hint {
-    display: flex; align-items: center; height: 30px; padding: 0 12px;
-    font-family: var(--x-font); font-size: var(--x-text-md); color: var(--x-ink-strong);
+    display: flex; align-items: center; height: 30px; padding: 0 10px;
+    font-size: 21px; color: black; background-color: white; border-radius: 0.5rem;
 }

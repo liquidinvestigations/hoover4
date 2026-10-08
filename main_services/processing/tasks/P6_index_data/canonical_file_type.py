@@ -11,7 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type, is_zip_based_document_mime
-from tasks.P3_parse_files.content_types import AUTHORITATIVE_SNIFF_MIMES, AUTHORITATIVE_ALIASES
+from tasks.P3_parse_files.content_types import (
+    AUTHORITATIVE_ALIASES, AUTHORITATIVE_SNIFF_MIMES, BINARY_MAIL_CONTAINER_MIMES,
+)
 from tasks.P3_parse_files.table_formats import BINARY_TABLE_MIMES
 
 #: Most specific first. A document that is both an email and text is an email, an image
@@ -22,7 +24,8 @@ from tasks.P3_parse_files.table_formats import BINARY_TABLE_MIMES
 #: sits below `email` and `pdf`, the two it can never collide with. A spreadsheet we could
 #: read therefore leaves the `xls` bucket of the file-type facet, and a CSV we could read
 #: leaves `text` -- which is the point: those buckets now hold exactly the spreadsheets
-#: and the text files that are NOT browsable as tables.
+#: and the text files that are NOT browsable as tables. A spreadsheet that no reader
+#: read is `other`, see `_unread_spreadsheet_is_other`.
 SPECIFICITY = (
     "email", "pdf", "table", "doc", "xls", "ppt", "image", "video", "audio",
     "archive", "html", "text", "other",
@@ -109,6 +112,19 @@ def _most_specific_mime(detections: dict[str, list[str]]) -> str:
     return min(ranked)[3]
 
 
+def _unread_spreadsheet_is_other(winner: str, decided_by: str, evidence: set[str]) -> tuple[str, str]:
+    """`other` for a spreadsheet that no reader read.
+
+    A workbook that the table reader read is `table`, and one that the office reader
+    read is `xls`. A detector guess alone, for example an extension or a Magika result,
+    names no type the viewer can show, so the facet puts it under `other`. The MIME type
+    keeps the guess, so the metadata tab still shows it.
+    """
+    if winner == "xls" and "xls" not in evidence:
+        return "other", f"{decided_by}+unread_spreadsheet"
+    return winner, decided_by
+
+
 def resolve_canonical(
     detections: dict[str, list[str]],
     parsed: set[str],
@@ -127,7 +143,8 @@ def resolve_canonical(
     content_text = bool(file_types and file_types[0].startswith("text/"))
     detections = {name: [m for m in values if name == "content_sniff" or (
         m not in AUTHORITATIVE_ALIASES
-        and not (name == "extension" and content_text and m in BINARY_TABLE_MIMES))]
+        and not (name == "extension" and content_text
+                 and (m in BINARY_TABLE_MIMES or m in BINARY_MAIL_CONTAINER_MIMES)))]
         for name, values in detections.items()}
     other_types = {m for name, values in detections.items() if name != "magika" for m in values}
     detections["magika"] = [m for m in detections.get("magika", [])
@@ -152,8 +169,10 @@ def resolve_canonical(
         decided_by = "parse_succeeded"
     elif authoritative:
         mime = authoritative[0]
-        return Canonical(mime_type=mime, file_type=coarse_file_type(mime),
-                         decided_by="content_sniff_type", losers=[m for m in all_mimes if m != mime])
+        file_type, decided_by = _unread_spreadsheet_is_other(
+            coarse_file_type(mime), "content_sniff_type", evidence)
+        return Canonical(mime_type=mime, file_type=file_type,
+                         decided_by=decided_by, losers=[m for m in all_mimes if m != mime])
     elif any(is_zip_based_document_mime(m) for m in all_mimes):
         winner = _most_specific(
             coarse_file_type(m) for m in all_mimes if is_zip_based_document_mime(m)
@@ -181,6 +200,7 @@ def resolve_canonical(
 
     if empty_archive and winner != "archive" and decided_by != "empty_archive_demoted":
         decided_by = f"{decided_by}+empty_archive_demoted"
+    winner, decided_by = _unread_spreadsheet_is_other(winner, decided_by, evidence)
 
     mime_type = _pick_mime(detections, winner)
     losers = sorted(

@@ -14,6 +14,9 @@ from tasks.P3_parse_files.batch_runner import BatchFile, BatchResult, StageBatch
 
 log = logging.getLogger(__name__)
 
+#: The error type of a file that 7-Zip cannot open as any archive.
+ARCHIVE_NOT_OPENED = "ArchiveNotOpened"
+
 @dataclass
 class ExtractArchiveParams:
     collectionname: str
@@ -124,6 +127,7 @@ def extract_archive_to_temp(params: ExtractArchiveParams) -> Dict[str, Any]:
             from temporalio.exceptions import ApplicationError
             raise ApplicationError(
                 f"7z extraction failed for {params.archive_path}: {res.stderr[:200]}\n{res.stdout[:200]}",
+                type=ARCHIVE_NOT_OPENED,
                 non_retryable=True,
             )
         raise RuntimeError(f"7z extraction failed for {params.archive_path}: {res.stderr[:200]}\n{res.stdout[:200]}")

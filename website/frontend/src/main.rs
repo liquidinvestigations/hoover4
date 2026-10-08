@@ -66,6 +66,13 @@ fn main() {
                     "/_download_ocr_pdf/{collection_dataset}/{pdf_hash}/{engine}/{languages}",
                     axum::routing::get(backend::server_extra::download_ocr_pdf::download_ocr_pdf),
                 )
+                // The JPEG preview of an image the browser cannot show, or of a video's
+                // first frame. `image_previews` is its only index, and it is ACL'd on
+                // the source document's dataset.
+                .route(
+                    "/_image_preview/{collection_dataset}/{file_hash}",
+                    axum::routing::get(backend::server_extra::image_preview::image_preview),
+                )
                 // Chat tool artifacts: thumb.webp, page.html, detail.json. The handler
                 // resolves the id to its owner and enforces owner-or-admin, the id
                 // itself comes from an LLM-driven tool payload and is only a lookup key.

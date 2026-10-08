@@ -17,6 +17,7 @@ from tasks.P3_parse_files.batch_runner import (
     BatchFile, BatchResult, FILE_BYTES_PER_SECOND, StageBatchParams, run_batch,
     try_budget_seconds,
 )
+from tasks.task_timing import SkippedOutcome
 
 log = logging.getLogger(__name__)
 TIKA_PARSE_FAILED = "TikaParseFailed"
@@ -194,7 +195,11 @@ def run_tika_and_store(params: RunTikaParams) -> dict:
 @with_heartbeat
 def tika_text_batch(params: StageBatchParams) -> BatchResult:
     """Parse text and metadata for each file of a group."""
-    def step(file: BatchFile) -> dict:
+    def step(file: BatchFile) -> dict | SkippedOutcome:
+        # A zero-byte file has no text, and Tika refuses it. A missing copy goes on to
+        # the missing-copy error of `run_tika_and_store`.
+        if os.path.isfile(file.file_path) and os.path.getsize(file.file_path) == 0:
+            return SkippedOutcome("tika_skipped_empty_file")
         return run_tika_and_store(RunTikaParams(
             collectionname=params.collectionname, collection_dataset=params.collection_dataset,
             file_hash=file.item_hash, file_path=file.file_path,

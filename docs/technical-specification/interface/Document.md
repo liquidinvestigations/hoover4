@@ -33,7 +33,9 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 | no visible columns | every sheet column is hidden | a message that directs the reader to the visible-column control |
 | column modal | a visibility or filter control is open | one named modal above the grid, with keyboard focus inside it |
 | email without body | the email parser stores no readable body | the envelope, attachments, and source selector remain available |
-| source failure | the source request fails | an error and retry button appear |
+| source failure | the source request fails | one row above the viewer holds the error and the retry button, and the sources that loaded stay available |
+| image preview | the image format has a stored JPEG preview | the viewer shows the preview |
+| image not shown | the browser cannot show the image and no preview exists | a note and a link that downloads the file |
 | processing pending | no operation has reached the document | the page states that processing has not reached this document |
 | processing active | its unfinished plan belongs to an active operation | the page states that processing runs |
 | processing failure | its current operation recorded a file error | the page names the failed tasks |

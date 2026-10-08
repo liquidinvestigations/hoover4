@@ -177,3 +177,14 @@ def test_tika_text_batch_fails_a_missing_copy_after_one_try(tmp_path, monkeypatc
     [only] = result.results
     assert (only.status, only.error_type, only.attempts) == ("failed", TEMP_COPY_MISSING, 1)
     assert only.task_name == "run_tika_and_store"
+
+
+def test_tika_text_batch_skips_a_zero_byte_file(tmp_path, monkeypatch):
+    empty = tmp_path / "empty"
+    empty.write_bytes(b"")
+    monkeypatch.setattr(parse_tika, "run_tika_and_store",
+                        lambda p: pytest.fail("Tika must not read a zero-byte file"))
+    result = _run(parse_tika.tika_text_batch,
+                  _params([BatchFile(item_hash="e", file_path=str(empty))]))
+    [only] = result.results
+    assert only.status == "skipped"

@@ -66,7 +66,15 @@ pub fn DocSourceDispatch(
         DocumentSourceItem::Image(image) => rsx! {
             PreviewWrapper {
                 controls: rsx! {"Image; {image.width}x{image.height}"},
-                page: rsx! { ImagePreview { url: document_identifier().get_absolute_url_path() } }
+                page: rsx! {
+                    ImagePreview {
+                        url: if image.preview {
+                            image_preview_url(&document_identifier())
+                        } else {
+                            document_identifier().get_absolute_url_path()
+                        },
+                    }
+                }
             },
         },
         DocumentSourceItem::Audio(audio) => rsx! {
@@ -87,6 +95,7 @@ pub fn DocSourceDispatch(
                 page: rsx! {
                     video {
                         src: "{document_identifier().get_absolute_url_path()}",
+                        poster: if video.preview { image_preview_url(&document_identifier()) },
                         alt: "video preview",
                         controls: true,
                         style: "max-width: 100%; max-height: 100%;",
@@ -111,12 +120,22 @@ pub fn DocSourceDispatch(
     }
 }
 
-/// The original image file. Some formats, such as HEIC, have no decoder in most
-/// browsers, so a failed load shows a note and a download link in place of the alt text.
+/// The JPEG preview that the worker stored for an image or a video.
+fn image_preview_url(document_identifier: &DocumentIdentifier) -> String {
+    format!(
+        "/_image_preview/{}/{}",
+        document_identifier.collection_dataset, document_identifier.file_hash
+    )
+}
+
+/// The image, or its JPEG preview. A format that the browser cannot show and that has no
+/// stored preview fails to load. The page then shows a note and a download link in place
+/// of the alt text. The failure is kept for its URL, because the search preview reuses
+/// this component for the next image result.
 #[component]
 fn ImagePreview(url: String) -> Element {
-    let mut failed = use_signal(|| false);
-    if failed() {
+    let mut failed_url = use_signal(|| None::<String>);
+    if failed_url.read().as_deref() == Some(url.as_str()) {
         return rsx! {
             p {
                 id: "x-image-preview-failed",
@@ -126,12 +145,13 @@ fn ImagePreview(url: String) -> Element {
             }
         };
     }
+    let failed = url.clone();
     rsx! {
         img {
             src: "{url}",
             style: "max-width: 100%; max-height: 100%;",
             alt: "image preview",
-            onerror: move |_| failed.set(true),
+            onerror: move |_| failed_url.set(Some(failed.clone())),
         }
     }
 }

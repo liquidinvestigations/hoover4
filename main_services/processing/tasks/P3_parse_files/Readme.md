@@ -95,6 +95,21 @@ that no `blobs` row references the prefix.
 The object is written before the row, always: an object with no row is found by a prefix
 scan, a row with no object is a broken link nothing can repair.
 
+## Image previews are a derived object too
+
+`image_preview.py` writes one JPEG for each image that is not JPEG, PNG, BMP or WebP, and
+for the first frame of each video, to the collection bucket under `derived/image-preview/`.
+`image_previews` is its only index, and it gets no `blobs` row, for the reason above. The
+image keeps its own resolution. An SVG is drawn by `rsvg-convert` to fit 480 by 480 pixels.
+A file with both an image and a video route, such as a HEIC image, gets only the image
+preview.
+
+The image OCR stages run after the image preview stage and read the preview when its row
+exists. A preview that cannot be made is a skipped outcome, and OCR then reads the original
+file. Each conversion runs in an empty folder: `rsvg-convert` reads files only beside the
+SVG, and `magick` gets a policy that refuses every other path. Without that, an SVG could
+draw any image on the worker into its preview, including another collection's files.
+
 ## Technical Details
 
 `email_headers.raw_headers_json` stores a **list of `[name, value]` pairs in header order**,
@@ -258,6 +273,7 @@ input order. The rows of each file carry the per-file function name.
 | `parse_office_xml_batch` | `parse_office_xml_and_store` | common | the same |
 | `parse_table_batch` | `parse_table_and_store` | common | the same |
 | `parse_image_metadata_batch` | `parse_image_metadata_and_store` | common | the same |
+| `make_image_preview_batch` | `make_image_preview` | common | none, a failed preview is a skipped outcome |
 | `run_ocr_batch` | `run_ocr_and_store`, once for each engine | OCR | `run_ocr_and_store[<engine>]` |
 | `parse_audio_metadata_batch` | `parse_audio_metadata_and_store` | common | the same |
 | `parse_email_headers_batch` | `parse_email_extract_text_headers` | common | `email_scan` |

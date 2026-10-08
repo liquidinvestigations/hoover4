@@ -10,6 +10,15 @@ AUTHORITATIVE_ALIASES = AUTHORITATIVE_SNIFF_MIMES | {
     "text/x-vcard", "text/directory", "application/x-sqlite3",
 }
 
+#: Binary mail containers. A text file with a `.msg` name is not an Outlook message, so
+#: when `file` reads the content as text, these types from the extension are dropped
+#: and the content detectors choose the route. `application/mbox` is a text format and
+#: is not in the set.
+BINARY_MAIL_CONTAINER_MIMES = frozenset({
+    "application/vnd.ms-outlook", "application/vnd.ms-outlook-pst",
+    "application/x-hoover-pst", "application/ms-tnef", "application/vnd.ms-tnef",
+})
+
 
 def sniff_authoritative(path: str, names: list[str]) -> str:
     """Read content before the email and delimited-text sniffs."""

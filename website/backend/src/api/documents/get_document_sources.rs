@@ -195,6 +195,36 @@ pub async fn get_image_sources(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<Option<DocumentImageSourceItem>> {
+    let preview = crate::server_extra::image_preview::stored_preview(
+        &document_identifier.collection_dataset,
+        &document_identifier.file_hash,
+    )
+    .await?;
+    let probed = probed_image_size(user, document_identifier).await;
+    match (probed, preview) {
+        (Ok(Some((width, height))), preview) => Ok(Some(DocumentImageSourceItem {
+            width,
+            height,
+            preview: preview.is_some(),
+        })),
+        // ffprobe could not read the format, but the worker made a preview of it. The
+        // preview is the image the viewer shows, so its size is the size to state.
+        (_, Some(preview)) => Ok(Some(DocumentImageSourceItem {
+            width: preview.width,
+            height: preview.height,
+            preview: true,
+        })),
+        (probed, None) => probed.map(|size| {
+            size.map(|(width, height)| DocumentImageSourceItem { width, height, preview: false })
+        }),
+    }
+}
+
+/// The size from the stored ffprobe output, or `None` for a document with no `image` row.
+async fn probed_image_size(
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier,
+) -> anyhow::Result<Option<(u32, u32)>> {
     let meta = get_raw_metadata(
         user,
         document_identifier,
@@ -225,10 +255,7 @@ pub async fn get_image_sources(
         .get("height")
         .and_then(|v| v.as_u64())
         .context("No height found")?;
-    return Ok(Some(DocumentImageSourceItem {
-        width: width as u32,
-        height: height as u32,
-    }));
+    Ok(Some((width as u32, height as u32)))
 }
 
 async fn get_video_sources(
@@ -237,7 +264,7 @@ async fn get_video_sources(
 ) -> anyhow::Result<Option<DocumentVideoSourceItem>> {
     let meta = get_raw_metadata(
         user,
-        document_identifier,
+        document_identifier.clone(),
         DocumentMetadataTableInfo::new3("video_metadata", "hash", vec!["video_metadata_json"]),
     )
     .await?;
@@ -266,10 +293,17 @@ async fn get_video_sources(
     if duration <= 0.0 {
         return Ok(None);
     }
+    let preview = crate::server_extra::image_preview::stored_preview(
+        &document_identifier.collection_dataset,
+        &document_identifier.file_hash,
+    )
+    .await?
+    .is_some();
     Ok(Some(DocumentVideoSourceItem {
         width: width as u32,
         height: height as u32,
         duration_seconds: duration as f32,
+        preview,
     }))
 }
 

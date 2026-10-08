@@ -278,6 +278,7 @@ async def run_common_worker():
     from .P3_parse_files.parse_mime import detect_mime_batch
     from .P3_parse_files.parse_pdf import pdf_metadata_batch, pdf_extract_batch
     from .P3_parse_files.parse_image import parse_image_metadata_batch
+    from .P3_parse_files.image_preview import make_image_preview_batch
     from .P3_parse_files.parse_audio import parse_audio_metadata_batch
     from .P3_parse_files.parse_video import video_batch
     from .P3_parse_files.member_scan import scan_container_folders
@@ -410,6 +411,7 @@ async def run_common_worker():
             parse_office_xml_batch,
             parse_table_batch,
             parse_image_metadata_batch,
+            make_image_preview_batch,
             parse_audio_metadata_batch,
             parse_email_headers_batch,
             extract_email_attachments_batch,

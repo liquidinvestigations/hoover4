@@ -145,6 +145,7 @@ PDF, image, email, text, metadata, file locations, and entity cards.
 | `221-view-doc-pdf-feedback-capture` | Opens the report overlay on a PDF document and shows the drawn image with its notes. | `testdata_testfiles` | `--names view-doc-pdf-feedback-capture` |
 | `222-view-doc-dividers` | Drags both dividers of the document view and restores their widths after a reload. | `testdata_testfiles` | `--names view-doc-dividers` |
 | `223-view-doc-heic-image` | Opens a HEIC image without a source error and checks the rail hints beside their icons. | `testdata_diskfiles` | `--names view-doc-heic-image` |
+| `224-view-doc-image-previews` | Shows the JPEG previews of a HEIC image and an SVG, and the poster frame of a video. | `testdata_previews` | `--names view-doc-image-previews` |
 
 ## Storage and folder tree
 

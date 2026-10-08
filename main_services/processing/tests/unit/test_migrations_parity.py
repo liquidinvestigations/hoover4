@@ -85,6 +85,8 @@ EXPECTED_COLLECTION_TABLES = {
     "file_type_canonical",
     "file_types",
     "image",
+    "image_previews",
+    "image_previews_ready",
     "index_state",
     "manticore_shard_assignments",
     "manticore_shards",

@@ -266,7 +266,7 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
 
     msg = BytesParser(policy=policy.default).parsebytes(_message_bytes(params.file_path))
 
-    from tasks.P3_parse_files.email_parts import mail_parts
+    from tasks.P3_parse_files.email_parts import UNREADABLE_SIGNED_BODY, mail_parts
 
     from tasks.P3_parse_files.result_samples import short_name
     import shutil
@@ -277,9 +277,12 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
     used_names: set[str] = set()
     missing_attachment_count = 0
     missing_attachments: list[dict[str, str]] = []
+    unreadable_signed_parts: list[str] = []
     for item in mail_parts(msg):
         if not item.attachment:
             continue
+        if UNREADABLE_SIGNED_BODY in item.defects and len(unreadable_signed_parts) < 20:
+            unreadable_signed_parts.append(short_name(item.path))
         part = item.message
         if item.nested_message:
             nested = part.get_payload()
@@ -330,7 +333,8 @@ def extract_email_attachments_to_temp(params: ExtractEmailAttachmentsParams) -> 
         except OSError:
             pass
     return {"out_dir": out_dir, "attachment_count": written,
-            "missing_attachments": missing_attachments, "missing_attachment_count": missing_attachment_count}
+            "missing_attachments": missing_attachments, "missing_attachment_count": missing_attachment_count,
+            "unreadable_signed_parts": unreadable_signed_parts}
 
 
 @activity.defn

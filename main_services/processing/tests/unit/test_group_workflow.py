@@ -148,6 +148,7 @@ def test_three_files_schedule_each_stage_once_with_its_files_and_queue(monkeypat
         "tika_text_batch": ["e", "p", "i"],
         "extract_plaintext_batch": ["e"],
         "parse_image_metadata_batch": ["i"],
+        "make_image_preview_batch": ["i"],
         "parse_email_headers_batch": ["e"],
         "extract_email_attachments_batch": ["e"],
         "pdf_metadata_batch": ["p"],
@@ -160,6 +161,11 @@ def test_three_files_schedule_each_stage_once_with_its_files_and_queue(monkeypat
         assert group.hashes("run_ocr_batch", engine) == ["i"]
         assert group.hashes("run_ocr_pdf_batch", engine) == ["p"]
     assert len(group.calls) == len(expected) + 2 * len(OCR_ENGINES)
+    # OCR reads the preview of an uncommon image format, so the preview comes first.
+    names = [name for name, _, _ in group.calls]
+    assert names.index("make_image_preview_batch") < names.index("run_ocr_batch")
+    [preview] = group.scheduled("make_image_preview_batch")
+    assert preview.files[0].routes == ["image"]
 
     for name, arg, options in group.calls:
         assert options["task_queue"] == br.STAGE_QUEUES[name]
@@ -372,3 +378,32 @@ def test_qpdf_page_count_failure_records_one_document_error(monkeypatch):
     group.overrides["tika_text_batch"] = lambda f: _failed(f, "TikaParseFailed", "java parse error")
     group.run(["f"])
     assert group.rows() == [("f", "pdf_process")]
+
+
+def test_an_archive_7zip_cannot_open_records_one_document_error(monkeypatch):
+    group = _Group(monkeypatch, {"a": ARCHIVE})
+    group.overrides["extract_archive_batch"] = lambda f: _failed(
+        f, "ArchiveNotOpened", "7z extraction failed: Cannot open the file as archive")
+    group.overrides["tika_text_batch"] = lambda f: _failed(f, "TikaParseFailed", "java parse error")
+    group.run(["a"])
+    assert group.rows() == [("a", "archive_scan")]
+
+
+def test_an_unreadable_signed_body_records_a_partial_failure(monkeypatch):
+    group = _Group(monkeypatch, {"m": EMAIL})
+    group.overrides["extract_email_attachments_batch"] = lambda f: _ok(
+        f, {"out_dir": "/tmp/email_m", "attachment_count": 1,
+            "unreadable_signed_parts": ["1"]})
+    group.run(["m"])
+    assert group.rows() == [("m", "email_scan")]
+    [[row]] = group.records
+    assert "Signed content could not be read" in row["error_logs"]
+
+
+def test_a_file_with_image_and_video_routes_gets_only_the_image_preview(monkeypatch):
+    group = _Group(monkeypatch, {"h": (["image", "video"], ["image/heic", "video/quicktime"]),
+                                 "v": VIDEO})
+    group.run(["h", "v"])
+    previews = sorted((f.item_hash, tuple(f.routes))
+                      for arg in group.scheduled("make_image_preview_batch") for f in arg.files)
+    assert previews == [("h", ("image",)), ("v", ("video",))]

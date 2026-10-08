@@ -11,7 +11,8 @@ RUN pip install uv
 # `extractous`, where no per-dataset language setting can reach it. OCR is an HTTP
 # service (main_services/ocr_tesseract, ai_services/easyocr_server) and every OCR
 # variant is attributed to the engine and languages that produced it.
-RUN  apt-get update -yy && apt-get install -yy sed &&  sed -i 's/^Components: main$/& contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources && apt-get update -yy &&  apt-get install -yy p7zip-full p7zip-rar qpdf poppler-utils ffmpeg curl wget file build-essential pst-utils=0.6.76-1.2 libreoffice-writer-nogui openssl
+RUN  apt-get update -yy && apt-get install -yy sed &&  sed -i 's/^Components: main$/& contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources && apt-get update -yy &&  apt-get install -yy p7zip-full p7zip-rar qpdf poppler-utils ffmpeg curl wget file build-essential pst-utils=0.6.76-1.2 libreoffice-writer-nogui openssl imagemagick librsvg2-bin
+# imagemagick and librsvg2-bin (`rsvg-convert`) make the JPEG image previews.
 # Keep dependencies outside the shared source mount so worker startup cannot replace another container's environment.
 ENV UV_PROJECT_ENVIRONMENT=/opt/pysetup/.venv
 WORKDIR /app

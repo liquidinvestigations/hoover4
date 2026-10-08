@@ -71,6 +71,26 @@ def test_csv_named_xls_uses_delimited_reader():
     assert table_reader_for(combined["mime_types"], "input.xls", content_type="text/plain") == "csv"
 
 
+def test_text_message_named_msg_takes_the_email_route():
+    combined = combine_detector_results([
+        result(["text/plain"], ["text"]), result(["message/rfc822"], ["email"]),
+        result(["application/vnd.ms-outlook"], ["email"]), result([]),
+    ])
+    assert "application/vnd.ms-outlook" not in combined["mime_types"]
+    assert route_stages(combined) == ["email", "text"]
+    canonical = resolve_canonical({"file": ["text/plain"], "magika": ["message/rfc822"],
+                                   "extension": ["application/vnd.ms-outlook"]}, {"email"})
+    assert canonical.mime_type == "message/rfc822"
+
+
+def test_binary_msg_keeps_the_mail_container_route():
+    combined = combine_detector_results([
+        result(["application/vnd.ms-outlook"], ["email"]), result(["application/vnd.ms-outlook"], ["email"]),
+        result(["application/vnd.ms-outlook"], ["email"]), result([]),
+    ])
+    assert route_stages(combined) == ["archive"]
+
+
 @pytest.mark.parametrize("stem", ['a', '"', '\\', 'é', '文', '😀', '\x01', '\n'])
 def test_named_plan_payloads_keep_the_guard_limits(stem):
     names = bounded_file_names([stem * 255 + extension for extension in ['.eml', '.vcf', '.txt', '.csv']])

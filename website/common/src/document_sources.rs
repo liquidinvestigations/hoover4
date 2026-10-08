@@ -390,6 +390,10 @@ impl DocumentEmailSourceItem {
 pub struct DocumentImageSourceItem {
     pub width: u32,
     pub height: u32,
+    /// The worker stored a JPEG preview, which the viewer shows in place of the file.
+    /// An older link has no such field and decodes as `false`.
+    #[serde(default)]
+    pub preview: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
@@ -397,6 +401,9 @@ pub struct DocumentVideoSourceItem {
     pub width: u32,
     pub height: u32,
     pub duration_seconds: f32,
+    /// The worker stored the first frame as a JPEG, which the player shows as its poster.
+    #[serde(default)]
+    pub preview: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]

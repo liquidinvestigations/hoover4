@@ -26,7 +26,8 @@ the vectors daemon through `MANTICORE_VECTORS_URL` and show its tables separatel
 Every route requires an already-resolved identity except `/favicon.ico`, including the app
 shell, `/assets/…` and the wasm bundle. The policy is one file,
 `website/backend/src/auth/route_policy.rs`, and its tests enumerate the custom routes
-(`/_download_document/…`, `/_download_ocr_pdf/…`, `/_chat_artifact/…`) literally, so a
+(`/_download_document/…`, `/_download_ocr_pdf/…`, `/_image_preview/…`, `/_chat_artifact/…`,
+`/_feedback/…`) literally, so a
 route added to `main.rs` and forgotten there fails a test rather than shipping open.
 
 An identity comes from one of two places. An `X-Forwarded-User` header, which the reverse
@@ -144,6 +145,7 @@ searches by text; only the in-page highlight overlay is unavailable.
 
 The selected PDF source determines which bytes the server reads.
 Original PDFs use the document blob. OCR PDFs use their stored engine and language row in `pdf_ocr_results`.
+Image previews use their row in `image_previews`, and `/_image_preview/…` serves only a key under `derived/image-preview/` in the document's own collection bucket.
 The server verifies document access before reading either source.
 An OCR read also limits the received body, so an incorrect recorded size cannot exceed the search limit.
 The source picker requests a separate hit count for each PDF source.

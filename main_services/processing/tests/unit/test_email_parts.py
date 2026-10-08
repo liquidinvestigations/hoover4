@@ -1,5 +1,7 @@
 """MIME body and attachment decisions for email extraction."""
 
+import pytest
+
 from email import policy
 from email.parser import BytesParser
 
@@ -188,3 +190,35 @@ Readable text
 -----BEGIN PGP SIGNATURE-----
 """)
     assert body_alternatives(message) == {}
+
+
+def _unreadable_signed(root: bool) -> bytes:
+    import base64
+
+    # A ContentInfo with the SignedData identifier and no content openssl can read.
+    payload = base64.b64encode(bytes.fromhex("300b06092a864886f70d010702")).decode()
+    signed = ("Content-Type: application/pkcs7-mime; smime-type=signed-data\n"
+              "Content-Transfer-Encoding: base64\n\n" + payload + "\n")
+    if root:
+        # At the root the body part usually names `smime.p7m` as an attachment.
+        return ("Subject: signed\nMIME-Version: 1.0\n"
+                "Content-Disposition: attachment; filename=smime.p7m\n" + signed).encode()
+    return ("Subject: signed\nMIME-Version: 1.0\n"
+            "Content-Type: multipart/mixed; boundary=b\n\n"
+            "--b\nContent-Type: text/plain\n\nvisible text\n"
+            "--b\n" + signed + "--b--\n").encode()
+
+
+@pytest.mark.parametrize("root", [True, False])
+def test_unreadable_signed_body_is_kept_as_a_marked_attachment(root):
+    from tasks.P3_parse_files.email_parts import UNREADABLE_SIGNED_BODY
+
+    parts = mail_parts(parse(_unreadable_signed(root)))
+    signed = [p for p in parts if p.content_type == "application/pkcs7-mime"]
+    assert len(signed) == 1
+    assert signed[0].attachment
+    assert UNREADABLE_SIGNED_BODY in signed[0].defects
+
+
+def test_unreadable_signed_part_keeps_the_readable_body():
+    assert "visible text" in body_alternatives(parse(_unreadable_signed(False)))["plain"]

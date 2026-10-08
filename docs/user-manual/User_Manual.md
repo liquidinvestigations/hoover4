@@ -276,7 +276,10 @@ A PDF gets the full viewer, page navigation, zoom, and the page counter at the b
 ![A PDF in the viewer](img/document-pdf.png)
 
 An image shows its dimensions next to the source, and the OCR variant shows what was read out
-of it:
+of it. A browser shows only some image formats. For the others, such as HEIC, TIFF and SVG,
+the pipeline stores a JPEG copy, and the viewer and the text recognition use that copy. A
+video shows its first frame before you start it. When an image has no such copy and the
+browser cannot show it, the viewer gives a link that downloads the file.
 
 ![A scanned image and its OCR](img/document-image-ocr.png)
 

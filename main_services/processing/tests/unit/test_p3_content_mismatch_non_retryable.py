@@ -118,6 +118,7 @@ def _run_ocr_activity(monkeypatch, tmp_path, http_error):
     image_path.write_bytes(b"not actually an image, just some bytes")
 
     monkeypatch.setattr(parse_ocr, "_passes_for", lambda engine, ds: ["eng"])
+    monkeypatch.setattr(parse_ocr, "read_preview_bytes", lambda *a: None)
 
     class _FakeClient:
         def query(self, *a, **k):

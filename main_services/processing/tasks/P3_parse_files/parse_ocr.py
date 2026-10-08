@@ -31,6 +31,7 @@ from temporalio import activity
 
 from tasks.heartbeat import HeartbeatClock, with_heartbeat
 from tasks.P3_parse_files.image_loader import image_dimensions
+from tasks.P3_parse_files.image_preview import read_preview_bytes
 from tasks.task_timing import SkippedOutcome
 from tasks.P3_parse_files.batch_runner import (
     BatchFile, BatchResult, StageBatchParams, run_batch, try_budget_seconds,
@@ -159,13 +160,17 @@ def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
 
             if image_bytes is None:
                 # Read once, reuse across passes. Deferred until a pass actually needs
-                # it so a fully watermarked file costs no disk read at all.
-                try:
-                    with open(params.file_path, "rb") as handle:
-                        image_bytes = handle.read()
-                except OSError as exc:
-                    _record_skip(params, 0, f"ocr_skipped_unreadable: {exc}")
-                    return "ocr_skipped_unreadable"
+                # it so a fully watermarked file costs no disk read at all. The JPEG
+                # preview of an uncommon format takes the place of the original.
+                image_bytes = read_preview_bytes(client, params.collection_dataset,
+                                                 params.file_hash)
+                if image_bytes is None:
+                    try:
+                        with open(params.file_path, "rb") as handle:
+                            image_bytes = handle.read()
+                    except OSError as exc:
+                        _record_skip(params, 0, f"ocr_skipped_unreadable: {exc}")
+                        return "ocr_skipped_unreadable"
                 if not image_bytes:
                     return SkippedOutcome("ocr_skipped_empty")
 

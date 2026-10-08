@@ -308,3 +308,31 @@ def test_progress_callback_sees_every_part_it_reads(tmp_path):
     })
     extract_office_xml_text(path, on_progress=seen.append)
     assert seen == ["ppt/slides/slide1.xml", "ppt/slides/slide2.xml", "ppt/slides/slide3.xml"]
+
+
+# ------------------------------------------------------------------- the activity outcome
+
+
+def _activity_outcome(monkeypatch, path):
+    from tasks.P3_parse_files import parse_office_xml as pox
+
+    recorded = []
+    monkeypatch.setattr(pox, "_record_skip", lambda params, ms, reason: recorded.append(reason))
+    params = pox.ParseOfficeXmlParams(collectionname="c", collection_dataset="c_d",
+                                      file_hash="h", file_path=path, timeout_seconds=30)
+    return pox.parse_office_xml_and_store(params), recorded
+
+
+def test_a_blank_document_is_a_skipped_outcome_and_not_an_error(tmp_path, monkeypatch):
+    from tasks.task_timing import SkippedOutcome
+
+    outcome, recorded = _activity_outcome(monkeypatch, docx(tmp_path / "blank.docx", "<w:p/>"))
+    assert isinstance(outcome, SkippedOutcome)
+    assert recorded == []
+
+
+def test_a_docx_that_is_not_a_zip_stays_an_error(tmp_path, monkeypatch):
+    path = tmp_path / "not.docx"
+    path.write_bytes(b"%PDF-1.4 this is not a zip at all")
+    _, recorded = _activity_outcome(monkeypatch, str(path))
+    assert recorded and "not a readable zip" in recorded[0]

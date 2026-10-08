@@ -13,10 +13,11 @@ from temporalio import workflow
 with workflow.unsafe.imports_passed_through():
     from tasks.P3_parse_files.batch_runner import FileResult, file_error
     from tasks.P3_parse_files.parse_tika import TIKA_PARSE_FAILED
+    from tasks.P3_parse_files.parse_archives import ARCHIVE_NOT_OPENED
     from tasks.P3_parse_files.temp_dirs import has_application_error_type, is_temp_copy_missing
     from tasks.P3_parse_files.parse_mime import LOCAL_DETECTORS
     from tasks.P3_parse_files.table_formats import is_table_mime, BINARY_TABLE_MIMES, DELIMITED_TABLE_MIMES, DELIMITED_EXTENSIONS
-    from tasks.P3_parse_files.content_types import AUTHORITATIVE_SNIFF_MIMES, AUTHORITATIVE_ALIASES
+    from tasks.P3_parse_files.content_types import AUTHORITATIVE_SNIFF_MIMES, AUTHORITATIVE_ALIASES, BINARY_MAIL_CONTAINER_MIMES
     from tasks.P0_scan_disk.mime_type_mapper import is_zip_based_document_mime, should_expand_as_archive
 
 
@@ -74,11 +75,16 @@ def parser_results_for_error_capture(names: List[str], results: List[Any]) -> Li
         and not isinstance(result, BaseException)
         for name, result in zip(names, results)
     )
-    qpdf_failed = any(name == "pdf_process" and isinstance(result, BaseException)
-                      and _is_qpdf_page_count_failure(result)
-                      for name, result in zip(names, results))
+    # When qpdf or 7-Zip cannot open the file, Tika fails on the same bytes for the same
+    # cause, and its row would only repeat the first one.
+    reader_refused = any(name == "pdf_process" and isinstance(result, BaseException)
+                         and _is_qpdf_page_count_failure(result)
+                         for name, result in zip(names, results)) or any(
+        name == "archive_scan" and isinstance(result, BaseException)
+        and has_application_error_type(result, ARCHIVE_NOT_OPENED)
+        for name, result in zip(names, results))
     failures = ("TikaParseFailed", "TikaServiceFailed", "TikaOutputTooLarge")
-    return [None if (name == "tika_text_batch" and (covered or qpdf_failed)
+    return [None if (name == "tika_text_batch" and (covered or reader_refused)
                      and isinstance(result, BaseException)
                      and any(has_application_error_type(result, t) for t in failures))
             else result for name, result in zip(names, results)]
@@ -175,7 +181,8 @@ def combine_detector_results(detector_results: List[Any]) -> Dict[str, List[str]
         original_mimes = list(mimes)
         if name != "content_sniff":
             mimes = [m for m in mimes if m not in AUTHORITATIVE_ALIASES
-                     and not (name == "extension" and content_text and m in BINARY_TABLE_MIMES)]
+                     and not (name == "extension" and content_text
+                              and (m in BINARY_TABLE_MIMES or m in BINARY_MAIL_CONTAINER_MIMES))]
         all_mime += mimes
         all_enc += _as_list(result, "mime_encodings")
         if name in ("content_sniff", "file", "extension"):

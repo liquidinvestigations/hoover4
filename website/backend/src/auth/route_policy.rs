@@ -16,11 +16,12 @@
 /// exists to make visible: `every_custom_route_requires_a_session` in the tests below
 /// enumerates it, and `server_extra::private_routes` reads the same list for its CORS
 /// decision, so the two cannot drift.
-pub const CUSTOM_ROUTE_PREFIXES: [&str; 4] = [
+pub const CUSTOM_ROUTE_PREFIXES: [&str; 5] = [
     "/_chat_artifact/",
     "/_download_document/",
     "/_download_ocr_pdf/",
     "/_feedback/",
+    "/_image_preview/",
 ];
 
 /// The one path a caller with no identity may still reach.

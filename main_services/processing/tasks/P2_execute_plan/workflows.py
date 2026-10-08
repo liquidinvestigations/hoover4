@@ -711,13 +711,20 @@ class ProcessItemsBatched:
                 result = entries[i].get("email_scan")
                 value = result.value if result and isinstance(result.value, dict) else {}
                 missing = value.get("missing_attachments") or []
-                if missing and result.status != "failed":
+                unreadable = value.get("unreadable_signed_parts") or []
+                if (missing or unreadable) and result.status != "failed":
                     details = [f"part {part['part_path']}: {part['filename']} "
                                f"({part['declared_length']} declared bytes)"
                                for part in missing]
+                    reasons = []
+                    if details:
+                        reasons.append("Detached attachment missing: " + "; ".join(details))
+                    if unreadable:
+                        reasons.append("Signed content could not be read, kept as an attachment: "
+                                       + "; ".join(f"part {path}" for path in unreadable))
                     entries[i]["email_scan"] = dataclasses.replace(
                         result, status="failed", error_type="MailPartialFailure",
-                        error_message="Detached attachment missing: " + "; ".join(details)[:3900],
+                        error_message=". ".join(reasons)[:3900],
                     )
             for i in with_route("archive"):
                 result = entries[i].get("archive_scan")
@@ -737,6 +744,22 @@ class ProcessItemsBatched:
             for i, result in enumerate(await run_stage("tika_text_batch", items)):
                 put(i, "tika_text_batch", result, ("tika_text_batch", ""))
 
+        async def preview_stage(route: str) -> None:
+            # A failed preview is a skipped outcome and has no Error name. The OCR
+            # stages then read the original file. A file with both routes, such as a
+            # HEIC image that ffprobe reads as one frame, gets only the image preview.
+            skip = set(with_route("image")) if route == "video" else set()
+            await run_stage("make_image_preview_batch", [
+                batch_file(i, mime_types=combined[i]["mime_types"], routes=[route])
+                for i in with_route(route) if i not in skip])
+
+        async def image_chain() -> None:
+            # OCR reads the preview of an uncommon image format, so it waits for it.
+            await preview_stage("image")
+            await asyncio.gather(*[
+                single("run_ocr_batch", "image", ocr_error_name(engine), engine=engine)
+                for engine in OCR_ENGINES])
+
         # Stage 2: every chain at once.
         stage_two = [
             tika_stage(),
@@ -744,9 +767,9 @@ class ProcessItemsBatched:
             single("parse_office_xml_batch", "office_xml", "parse_office_xml_and_store"),
             single("parse_table_batch", "table", "parse_table_and_store", with_types=True),
             single("parse_image_metadata_batch", "image", "parse_image_metadata_and_store"),
+            image_chain(),
+            preview_stage("video"),
         ]
-        stage_two += [single("run_ocr_batch", "image", ocr_error_name(engine), engine=engine)
-                      for engine in OCR_ENGINES]
         stage_two += [single("parse_audio_metadata_batch", "audio",
                              "parse_audio_metadata_and_store"), containers()]
         await asyncio.gather(*stage_two)
