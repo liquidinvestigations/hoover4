@@ -415,7 +415,7 @@ class PagedTool:
     columns_key: str | None = None
     max_rows: int | None = None
 
-    def window(self, result: dict[str, Any]) -> Window:
+    def window(self, result: dict[str, Any], request: BaseModel | None = None) -> Window:
         """The route paging policy. The units are the list under `item_key`, the rest of
         the response is the page fields, and the route's `next_position` and `total`
         decide what follows."""
@@ -475,7 +475,7 @@ class PagedTool:
         result = result.model_dump(mode="json", by_alias=True)
         if source and result.get("source", "") != source:
             return canonical_json({"success": False, "error": "source_changed", "message": "the source changed after the prior page"})
-        prepared = self.window(result)
+        prepared = self.window(result, request)
         values = _input(request)
         has_content = bool(prepared.items) and (self.tool_name != "table_cell" or bool(result.get("text")))
         if self.tool_name in ("table_page", "table_cell") and has_content and values.get("file_hash"):

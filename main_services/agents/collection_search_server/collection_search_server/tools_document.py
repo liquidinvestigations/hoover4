@@ -78,13 +78,25 @@ class EmailTool(PagedTool):
         return paging._stored_page(self, request, after(0), paging._memory_reader(data))
 
 
+class DocumentSearchTool(PagedTool):
+    """Record the resolved document when its query has keyword matches."""
+
+    def window(self, result: dict[str, Any], request: BaseModel | None = None) -> paging.Window:
+        window = super().window(result, request)
+        collection = getattr(request, "collectionname", "")
+        file_hash = getattr(request, "file_hash", "")
+        if result.get("hit_count", 0) > 0 and collection and file_hash and getattr(request, "query", ""):
+            window.fields["keyword_sources"] = [f"{collection}/{paging.hash_start(file_hash)}"]
+        return window
+
+
 READ_DOCUMENTS = ReadDocumentsTool(DocumentsReadRequest, "documents/read", "read_documents", "rows", "documents")
-DOC_SEARCH_TEXT = PagedTool(DocumentsSearchTextRequest, "documents/search_text", "doc_search_text", "rows", "hits")
+DOC_SEARCH_TEXT = DocumentSearchTool(DocumentsSearchTextRequest, "documents/search_text", "doc_search_text", "rows", "hits")
 DOC_SOURCES = PagedTool(DocumentsSourcesRequest, "documents/sources", "doc_sources", "rows", "sources")
 DOC_METADATA = PagedTool(DocumentsMetadataRequest, "documents/metadata", "doc_metadata", "rows", "__metadata_entries")
 DOC_EMAIL = EmailTool(DocumentsEmailRequest, "documents/email", "doc_email", "rows", "__email_entries")
 DOC_DIFF_SOURCES = PagedTool(DocumentsDiffSourcesRequest, "documents/diff_sources", "doc_diff_sources", "blob", "unified_diff")
-PDF_SEARCH = PagedTool(DocumentsPdfSearchRequest, "documents/pdf_search", "pdf_search", "rows", "hit_positions")
+PDF_SEARCH = DocumentSearchTool(DocumentsPdfSearchRequest, "documents/pdf_search", "pdf_search", "rows", "hit_positions")
 LIST_DOCUMENT_ENTITIES = LocalPagedTool(DocumentEntitiesRequest, "list_document_entities", "documents", _document_entities)
 PAGED_TOOLS = {
     "read_documents": READ_DOCUMENTS, "doc_search_text": DOC_SEARCH_TEXT, "doc_sources": DOC_SOURCES,

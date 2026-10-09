@@ -855,6 +855,24 @@ def test_progress_escalation_resets_units_and_ends_after_six_steps():
     assert [a.kind for a in result.actions] == ["end_turn"]
 
 
+@pytest.mark.parametrize("name", ["doc_search_text", "pdf_search"])
+def test_document_keyword_match_resets_progress_once(name):
+    from tasks.P_agent.control.facts import result_facts
+    from tasks.P_agent.control.handlers.progress import Handler
+    from tasks.P_agent.control.model import ControlEvent, plain
+    args = {"collectionname": "c", "file_hash": "a" * 16, "query": "needle"}
+    messages = [_ai(1, [("s", name, args)]), _tool(2, "s", name,
+                {"items": [{"page": 1}], "hit_count": 913, "keyword_sources": ["c/" + "a" * 16]})]
+    facts = result_facts(messages)
+    event = ControlEvent("batch", "tool_batch_completed", 1, "model")
+    previous = {"level": 1, "units": 2}
+    result = asyncio.run(Handler().evaluate(event, _progress_context(previous, facts, 2), {"signals": False}, object()))
+    assert result.facts["units"] == 0 and result.facts["level"] == 1
+    again = asyncio.run(Handler().evaluate(event, _progress_context(plain(result.facts), facts, 3), {"signals": False}, object()))
+    assert len(again.facts["sources"]) == 1
+    assert again.facts["units"] == 1
+
+
 def test_signal_streak_requires_two_scores_and_resets_on_failure():
     from tasks.P_agent.control.handlers.progress import Handler
     from tasks.P_agent.control.model import ClassifierResult, ControlEvent, plain

@@ -373,6 +373,7 @@ Name lookups use the collections of earlier tool calls, or the collections expli
 Without either scope, they use all permitted collections. A string collection argument remains one collection name.
 Code also retains names after "folder called", "folder named", "collection called" and "collection named" when the classifier omits them.
 A progress decision records distinct keyword sources, empty results, repeated calls, refusals, todo churn and word counts.
+Document-text and PDF searches include their resolved document identity when the query has matches. Continuation pages retain that identity.
 Three units raise the note level. A new keyword source resets the current units. The level does not decrease.
 The third level requires an answer. Six further model steps end the turn through `write_incomplete` with the search summary.
 Classifier signals require measured score thresholds. A failed request supplies no signal.
