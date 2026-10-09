@@ -71,13 +71,17 @@ fn keyword_counts(words: &[String], rows: &[ManticoreRawRow]) -> Vec<WordCount> 
     counts
 }
 
-fn merge_counts(words: &[String], rows: Vec<Vec<ManticoreRawRow>>) -> Vec<WordCount> {
+/// Omit unverified zeros when some tables fail. Positive counts remain lower bounds.
+fn merge_counts(words: &[String], rows: Vec<Vec<ManticoreRawRow>>, complete: bool) -> Vec<WordCount> {
     let mut counts: Vec<_> = words.iter().map(|w| WordCount { word: w.clone(), folded: w.clone(), documents: 0 }).collect();
     for table in rows {
         for (count, entry) in counts.iter_mut().zip(keyword_counts(words, &table)) {
             count.documents += entry.documents;
             count.folded = entry.folded;
         }
+    }
+    if !complete {
+        counts.retain(|count| count.documents > 0);
     }
     counts
 }
@@ -149,7 +153,10 @@ pub async fn indexed_suggestions(collections: &[String], query: &str, kind: Tabl
     let joined = quote(&words.join(" "));
     let (rows, failed) = call_tables(&tables, |table| format!("CALL KEYWORDS({joined}, {}, 1 AS stats)", quote(table))).await;
     partial |= failed;
-    let counts = merge_counts(&words, rows);
+    let counts = merge_counts(&words, rows, !partial);
+    if partial {
+        return SearchSuggestions { word_counts: counts, partial: true, ..Default::default() };
+    }
     let mut suggestions = Vec::new();
     for count in counts.iter().filter(|count| count.documents <= 5) {
         let (rows, failed) = call_tables(&tables, |table| format!("CALL QSUGGEST({}, {}, 10 AS limit)", quote(&count.folded), quote(table))).await;
@@ -168,7 +175,7 @@ pub async fn indexed_suggestions(collections: &[String], query: &str, kind: Tabl
         let candidate_text = quote(&candidate_words.join(" "));
         let (rows, failed) = call_tables(&tables, |table| format!("CALL KEYWORDS({candidate_text}, {}, 1 AS stats)", quote(table))).await;
         partial |= failed;
-        let checked = merge_counts(&candidate_words, rows);
+        let checked = merge_counts(&candidate_words, rows, !failed);
         let candidates = ranked_candidates(count, distances, &checked, gate);
         if !candidates.is_empty() {
             suggestions.push(WordSuggestions { word: count.word.clone(), candidates });
@@ -255,10 +262,21 @@ mod tests {
                         json!({"qpos":"1","normalized":"koszonom","docs":"3"}),
                         json!({"qpos":0,"normalized":"invalid","docs":999})];
         let rows = rows.into_iter().map(|r| serde_json::from_value(r).unwrap()).collect::<Vec<_>>();
-        let counts = merge_counts(&words, vec![rows.clone(), rows]);
+        let counts = merge_counts(&words, vec![rows.clone(), rows], true);
         assert_eq!(counts[0].folded, "koszonom");
         assert_eq!(counts[0].documents, 6);
         assert_eq!(counts[1].documents, 8);
+    }
+
+    #[test]
+    fn incomplete_tables_cannot_establish_zero_counts() {
+        let words = vec!["research".into(), "kaminsjy".into()];
+        let rows = vec![serde_json::from_value(json!({"qpos":1,"normalized":"research","docs":12})).unwrap()];
+        let partial = merge_counts(&words, vec![rows.clone()], false);
+        assert_eq!(partial, vec![count("research", 12)]);
+        let complete = merge_counts(&words, vec![rows], true);
+        assert_eq!(complete, vec![count("research", 12), count("kaminsjy", 0)]);
+        assert!(merge_counts(&words, vec![], false).is_empty());
     }
 
     #[test]

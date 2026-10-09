@@ -261,3 +261,22 @@ def test_a_file_name_in_file_hash_reads_the_one_document_with_that_name(monkeypa
         "epstein", ["HOUSE_OVERSIGHT_031227.txt", "copy.txt", MEANT])
     assert hashes == [GOOD, MEANT]
     assert "is a file name" in notes[0] and "no single document" in notes[1]
+
+
+@pytest.mark.parametrize("partial", [False, True])
+def test_partial_dictionary_counts_do_not_claim_absence(monkeypatch, partial):
+    from collection_search_server.backend_client import SearchResultsResponse
+
+    result = SearchResultsResponse.model_validate({
+        "documents": [], "total_count": 1805 if partial else 0,
+        "facet_counts": {}, "page": 0, "has_more": False, "source": "s",
+        "word_counts": [{"word": "research", "folded": "research", "documents": 0}],
+        "suggestions_partial": partial,
+    })
+    monkeypatch.setattr(tools_search.BackendClient, "post", lambda *args: result)
+    response = tools_search._search_forms(tools_search.SearchCollectionsRequest(query="research"))
+    assert response["suggestions_partial"] == partial
+    absence_notes = [note for note in response["query_notes"] if "No document contains" in note]
+    assert bool(absence_notes) == (not partial)
+    if partial:
+        assert not any("report that the collections do not hold it" in note for note in response["query_notes"])

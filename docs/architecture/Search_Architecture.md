@@ -412,6 +412,8 @@ Candidates need distance one or two. A rare word needs a candidate with twenty t
 The agent permits any positive candidate count. The search page requires ten documents and seven letters for distance two.
 The response ranks four candidates per word by distance and checked count.
 Each dictionary call has a 200 ms limit. Failed tables cause a partial response.
+An incomplete word-count lookup omits zero counts and spelling candidates. Positive counts remain lower bounds.
+The agent emits no absence instruction from partial dictionary results.
 Dictionary responses use the search cache with the collection shard generation.
 The search page verifies at most six candidate queries with unchanged filters within two seconds.
 Suggestions never change the original query automatically.

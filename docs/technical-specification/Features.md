@@ -62,7 +62,7 @@ languages.
 | `F-search-12` | Carry the whole query (words, filters, sort, page, selection, viewer arrangement) in the URL | `website/frontend/src/data_definitions/url_param.rs` |
 | `F-search-13` | Cache search responses, invalidated by a collection's shard generation and by a manual epoch | the search cache table |
 | `F-search-14` | Offer checked spelling queries after a complete zero result. Preserve filters and show partial suggestions. | `api/search/suggestions.rs`, `search_suggestions` |
-| `F-search-15` | Return indexed word counts and checked spelling candidates for each agent search form. Respect collection permissions and shard generations. | `api/agent/search.rs`, `collection_search_server/tools_search.py` |
+| `F-search-15` | Return indexed word counts and checked spelling candidates for each agent search form. Respect collection permissions and shard generations. Omit unverified zero counts when dictionary tables fail. Partial dictionary results make no absence claim. | `api/agent/search.rs`, `collection_search_server/tools_search.py` |
 
 ## Reading a document
 

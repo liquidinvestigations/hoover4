@@ -216,12 +216,11 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
         query_forms.append({"query": form, "total_count": result.total_count,
                             "word_counts": [w.model_dump() for w in result.word_counts]})
         for word in result.word_counts:
-            if word.documents != 0:
+            if word.documents != 0 or result.suggestions_partial:
                 continue
             group = next((g for g in result.suggestions if g.word == word.word), None)
             nearby = ", ".join(f"`{c.word}` ({c.documents} documents)" for c in group.candidates) if group else "none"
-            prefix = (f"The available tables returned no document containing `{word.word}`. "
-                      if result.suggestions_partial else f"No document contains `{word.word}`. ")
+            prefix = f"No document contains `{word.word}`. "
             notes.append(f"The query {form!r}: " + prefix + f"Indexed words close to it: {nearby}. "
                          "Search one of them only if it is the name you mean. "
                          "Otherwise report that the collections do not hold it, or ask the person.")
