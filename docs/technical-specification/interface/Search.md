@@ -76,6 +76,8 @@ A selected value with no matching document stays in its list with count 0, so it
 The backend refuses pages beyond the first 1,000 results.
 The page count uses ceiling division.
 Grouped snippets prefer parsed body text, other text, raw text, then the filename.
+A result card shows at most three complete lines of text, with an ellipsis when text is omitted, and does not scroll.
+A filename-only match shares those lines between its notice and the matching path.
 Folder disclosure appears only when a node has child folders or containers.
 The folder icon remains the same after expansion.
 The folder page opens Search in a new tab and retains the folder view.

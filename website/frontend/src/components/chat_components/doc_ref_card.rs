@@ -131,9 +131,25 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
                 citation_handle: doc.handle.clone(),
                 children: Some(rsx! {
                     for (index, passage) in passages.into_iter().enumerate() {
-                        button { key: "{index}", r#type: "button", style: "border: 0; background: transparent; color: inherit; text-align: left; padding: 6px 0; font: inherit; cursor: pointer;",
-                            onclick: move |event| { event.stop_propagation(); if let Some(open) = chat_open { open.open.call((passage.document_identifier(), passage.find_query.clone())); } },
-                            "{passage.quote}"
+                        {
+                            let target = (passage.document_identifier(), passage.find_query.clone());
+                            let key_target = target.clone();
+                            rsx! {
+                                // A `div`, not a `button`: the card's three-line limit does
+                                // not count the lines inside a button. No vertical padding,
+                                // because the limit does not count padding either.
+                                div { key: "{index}", role: "button", tabindex: "0", style: "cursor: pointer;",
+                                    onclick: move |event| { event.stop_propagation(); if let Some(open) = chat_open { open.open.call(target.clone()); } },
+                                    onkeydown: move |event: Event<KeyboardData>| {
+                                        if event.key() == Key::Enter || event.key() == Key::Character(" ".to_string()) {
+                                            event.prevent_default();
+                                            event.stop_propagation();
+                                            if let Some(open) = chat_open { open.open.call(key_target.clone()); }
+                                        }
+                                    },
+                                    "{passage.quote}"
+                                }
+                            }
                         }
                     }
                 }),

@@ -119,8 +119,25 @@ pub fn SearchResultItemCard(
                     padding: 2px;
                     border: 2px;
                 ",
+                // One three-line limit for all the card text: the snippet, the filename
+                // notice and path, and the passages a citation card adds. A line clamp
+                // counts only lines in plain block and inline children, so no child is
+                // a flex box, a nested clamp, or a button, and no child has vertical
+                // padding.
                 div {
-                    style: "flex: 1; min-width: 0; min-height: 0; max-height: 100%; overflow-y: auto;",
+                    class: "x-card-text",
+                    style: "
+                        flex: 1;
+                        min-width: 0;
+                        min-height: 0;
+                        max-height: 100%;
+                        font-size: 16px;
+                        line-height: 23px;
+                        overflow: hidden;
+                        display: -webkit-box;
+                        -webkit-line-clamp: 3;
+                        -webkit-box-orient: vertical;
+                    ",
                     HighlightTextSnippetSection {highlight_text_spans, matched_by_filename}
                     {children}
                 }
@@ -257,9 +274,8 @@ fn ComponentNameSection(collection_dataset: String) -> Element {
 /// The snippet for such a hit is `HIGHLIGHT()` over the synthetic filename row, so on its
 /// own it renders the title a second time (`easychair.docx` → `easychair docx`) in the
 /// place a reader takes for "here is the sentence that matched". The note says what
-/// happened, and the highlighted path below it says *where*. The note is clamped to three lines so
-/// the hit keeps one line of context above and below it and a deep path cannot grow the
-/// card.
+/// happened, and the highlighted path below it says *where*. The card text wrapper limits
+/// the note and the path together to three lines, so a deep path cannot grow the card.
 #[component]
 fn HighlightTextSnippetSection(
     highlight_text_spans: Vec<HighlightTextSpan>,
@@ -269,13 +285,7 @@ fn HighlightTextSnippetSection(
         let has_spans = !highlight_text_spans.is_empty();
         return rsx! {
             div {
-                style: "
-                    display: flex;
-                    flex-direction: column;
-                    align-items: stretch;
-                    flex: 1;
-                    min-width: 0;
-                ",
+                style: "min-width: 0;",
                 div {
                     class: "x-matched-by-filename",
                     style: "
@@ -301,13 +311,8 @@ fn HighlightTextSnippetSection(
                             color: rgba(0, 0, 0, 0.7);
                             background: rgba(0, 0, 0, 0.03);
                             border-left: 2px solid rgba(235, 62, 1, 0.35);
-                            padding: 4px 8px;
-                            margin-top: 4px;
+                            padding: 0 8px;
                             border-radius: 0 6px 6px 0;
-                            overflow: hidden;
-                            display: -webkit-box;
-                            -webkit-line-clamp: 3;
-                            -webkit-box-orient: vertical;
                             overflow-wrap: anywhere;
                             min-width: 0;
                         ",
@@ -325,11 +330,6 @@ fn HighlightTextSnippetSection(
                 line-height: 23px;
                 font-weight: 400;
                 color: rgb(0, 0, 0);
-                overflow: hidden;
-                display: -webkit-box;
-                -webkit-line-clamp: 4;
-                -webkit-box-orient: vertical;
-                flex: 1;
                 min-width: 0;
                 letter-spacing: 0.0em;
             ",

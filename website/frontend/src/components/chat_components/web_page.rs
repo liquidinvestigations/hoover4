@@ -56,19 +56,39 @@ pub fn WebPageCard(page: ChatPageRef, #[props(default)] passages: Vec<ChatPageRe
                         "{title}"
                     }
                 } else { div { style: "font-size: 20px; line-height: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;", "{title}" } }
+                // The domain shares the title row, so the quotes keep room for three lines.
+                span { style: "color: #16713C; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", "{domain}" }
             }
-            div { style: "color: #16713C; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", "{domain}" }
+            // One three-line limit for all quotes. A line clamp counts only lines in plain
+            // block and inline children, so each quote is a `div` without vertical margin.
+            // The box takes its content height and does not grow: a taller box would show
+            // part of a fourth line below the clamp.
             div {
-                style: "flex: 1; min-height: 0; overflow-y: auto; overflow-wrap: anywhere;",
+                class: "x-card-text",
+                style: "flex: 0 1 auto; min-height: 0; overflow: hidden; overflow-wrap: anywhere; line-height: 23px; \
+                        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;",
                 for (source, quote, find) in quotes {
-                    button { r#type: "button", style: "display: block; text-align: left; font: inherit; border: 0; padding: 0; background: transparent; margin-top: 5px; color: #111827; white-space: pre-wrap; cursor: pointer;",
-                        onclick: move |event| {
-                            event.stop_propagation();
-                            if let Some(open) = open { open.open.call((source.artifact_id.clone(), find.clone())); }
-                        },
-                        for (text, marked) in common::chat_pages::exact_quote_parts(&quote, &source.terms) {
-                            if marked { mark { style: "background: #EB3E014D; color: inherit;", "{text}" } }
-                            else { span { "{text}" } }
+                    {
+                        let target = (source.artifact_id.clone(), find.clone());
+                        let key_target = target.clone();
+                        rsx! {
+                            div { role: "button", tabindex: "0", style: "color: #111827; white-space: pre-wrap; cursor: pointer;",
+                                onclick: move |event| {
+                                    event.stop_propagation();
+                                    if let Some(open) = open { open.open.call(target.clone()); }
+                                },
+                                onkeydown: move |event: Event<KeyboardData>| {
+                                    if event.key() == Key::Enter || event.key() == Key::Character(" ".to_string()) {
+                                        event.prevent_default();
+                                        event.stop_propagation();
+                                        if let Some(open) = open { open.open.call(key_target.clone()); }
+                                    }
+                                },
+                                for (text, marked) in common::chat_pages::exact_quote_parts(&quote, &source.terms) {
+                                    if marked { mark { style: "background: #EB3E014D; color: inherit;", "{text}" } }
+                                    else { span { "{text}" } }
+                                }
+                            }
                         }
                     }
                 }
