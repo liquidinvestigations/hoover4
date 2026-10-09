@@ -342,3 +342,53 @@ html, body, #main {
     display: flex; align-items: center; height: 30px; padding: 0 10px;
     font-size: 21px; color: black; background-color: white; border-radius: 0.5rem;
 }
+
+/* Table grid cells. The text is an excerpt of at most five lines of at most 80 columns,
+   in a monospaced font, so the browser breaks lines where the excerpt engine breaks them.
+   The line limit here is a fallback for a font whose glyph widths differ. The popup
+   trigger is a button, so it is reset to read as plain text. */
+.x-table-cell .popover {
+    display: block;
+}
+.x-table-cell .popover-trigger {
+    display: block;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: inherit;
+}
+.x-table-cell-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    max-width: 80ch;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 18px;
+}
+.x-table-cell-expand {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    background: white;
+    color: rgba(0, 0, 0, 0.65);
+    cursor: pointer;
+}
+.x-table-cell-expand:hover {
+    background: rgba(0, 0, 0, 0.06);
+}

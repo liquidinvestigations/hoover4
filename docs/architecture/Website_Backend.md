@@ -223,8 +223,8 @@ Three more rules those functions share:
 full-cell view and the agent routes read it. The website's page route also calls
 `fill_cell_previews`, which sets `TableCell.preview` from
 `common::table_cell_preview::cell_preview`. That excerpt has at most five lines of at most
-80 display columns, around the first match of the find text, with a wide character counted
-as two columns. The shared `get_table_page` leaves `preview` empty, so the agent routes do
+80 display columns. The lines centre on the first match of the find text. A wide character
+counts as two columns. The shared `get_table_page` leaves `preview` empty, so the agent routes do
 no excerpt work.
 
 Sorting is two phases. Phase 1 orders one contiguous primary-key range (the sort column

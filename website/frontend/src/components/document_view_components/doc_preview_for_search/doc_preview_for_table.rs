@@ -31,11 +31,12 @@ use common::document_tables::{
     TablePage, TableSort, TableViewQuery, table_find_text,
 };
 use common::search_result::DocumentIdentifier;
+use common::table_cell_preview::cell_preview;
 use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
     icons::{
-        md_action_icons::{MdDateRange, MdViewColumn},
+        md_action_icons::{MdDateRange, MdOpenInFull, MdViewColumn},
         md_content_icons::{MdContentCopy, MdFilterList, MdLink, MdSort},
         md_editor_icons::MdTableChart,
         md_navigation_icons::{MdArrowDownward, MdArrowUpward, MdChevronLeft, MdChevronRight},
@@ -49,16 +50,33 @@ use crate::components::suspend_boundary::LoadingIndicator;
 use crate::data_definitions::doc_viewer_state::DocTableState;
 use crate::pages::search_page::DocViewerStateControl;
 
-/// Characters of a cell drawn inline before it is cut. The whole value is one click away.
-const CELL_PREVIEW_CHARS: usize = 120;
-
-/// The one table-level column control that can cover the grid.
+/// The one table-level control that can cover the grid.
 #[derive(Clone, PartialEq)]
 enum TableColumnModal {
     Picker,
     Filter(TableColumnInfo),
     Sheets,
+    /// The full-screen view of one cell. Held here, not in the cell, so a page reload
+    /// that remounts the cells does not close it, and focus still returns to its opener.
+    Cell(Box<CellDetails>),
 }
+
+/// Everything the full-cell view shows about one cell.
+#[derive(Clone, PartialEq)]
+struct CellDetails {
+    cell: TableCell,
+    column: TableColumnInfo,
+    source_row: u64,
+    sheet_label: String,
+    document: DocumentIdentifier,
+}
+
+/// What one accepted movement request is for: the document, the shown sheet, the find
+/// text and the count of pager clicks. A render with the same identity moves nothing.
+type MovementIdentity = (DocumentIdentifier, u16, String, u64);
+
+/// Gives each grid an element id of its own, for the movement script to find.
+static NEXT_GRID_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 #[component]
 pub fn DocumentPreviewForTable(
@@ -101,18 +119,24 @@ pub fn DocumentPreviewForTable(
     // Matching rows per sheet for the find box. The grid searches one sheet, so without
     // these counts a match on another sheet reads as "no rows match".
     let hits_query = find_query.clone();
-    let sheet_hits_resource: Resource<Vec<(u16, u64)>> =
+    // The hits come back with the find text they answer. A restarted resource keeps its
+    // previous value, so only hits for the current text say which sheet is settled.
+    let sheet_hits_resource: Resource<(String, Vec<(u16, u64)>)> =
         use_resource(use_reactive!(|document_identifier_value, hits_query| {
             async move {
                 if table_find_text(&hits_query).is_empty() {
-                    return Vec::new();
+                    return (hits_query, Vec::new());
                 }
-                get_table_sheet_hits(document_identifier_value, hits_query)
+                let hits = get_table_sheet_hits(document_identifier_value, hits_query.clone())
                     .await
-                    .unwrap_or_default()
+                    .unwrap_or_default();
+                (hits_query, hits)
             }
         }));
-    let sheet_hits: Vec<(u16, u64)> = sheet_hits_resource.read().clone().unwrap_or_default();
+    let (hits_for, sheet_hits): (Option<String>, Vec<(u16, u64)>) = match sheet_hits_resource.read().clone() {
+        Some((query, hits)) => (Some(query), hits),
+        None => (None, Vec::new()),
+    };
 
     // The sheet the grid is on. The state names an ordinal, not an index, and a sheet
     // that produced no cells is absent, so a state naming a sheet this document
@@ -128,19 +152,18 @@ pub fn DocumentPreviewForTable(
         (Some(overview), Some(_)) => overview.first_sheet_id(),
         (None, wanted) => wanted.unwrap_or(0),
     };
-    use_effect(move || {
-        let state = control.doc_viewer_state.read().clone();
-        let next = (
-            document_identifier(),
-            state.unwrap_or_default().table_state().sheet_id.unwrap_or(0),
-        );
-        if modal_identity() != Some(next.clone()) {
-            if modal_identity().is_some() {
+    // Keyed on the SHOWN sheet. With a search and no chosen sheet the state names no
+    // sheet, and the shown one changes when the hits arrive.
+    let modal_document = document_identifier_value.clone();
+    use_effect(use_reactive!(|modal_document, sheet_id| {
+        let next = (modal_document, sheet_id);
+        if modal_identity.peek().as_ref() != Some(&next) {
+            if modal_identity.peek().is_some() {
                 column_modal.set(None);
             }
             modal_identity.set(Some(next));
         }
-    });
+    }));
 
     let sheet_columns: Vec<TableColumnInfo> = overview_value
         .as_ref()
@@ -167,7 +190,9 @@ pub fn DocumentPreviewForTable(
     };
     let has_columns = !visible_columns.is_empty();
     let query_key = table_query.clone();
-    let page: Resource<Option<TablePage>> =
+    // The page comes back with the query it answers. A restarted resource keeps the
+    // previous page on screen, and only a page for the current query may move the grid.
+    let page: Resource<Option<(TableViewQuery, TablePage)>> =
         use_resource(use_reactive!(|document_identifier_value, query_key| {
             async move {
                 // The condition is INSIDE the closure. A resource declared behind an `if`
@@ -175,10 +200,47 @@ pub fn DocumentPreviewForTable(
                 if query_key.visible_columns.is_empty() {
                     return None;
                 }
-                get_table_page(document_identifier_value, query_key).await.ok()
+                let page = get_table_page(document_identifier_value, query_key.clone()).await.ok()?;
+                Some((query_key, page))
             }
         }));
-    let page_value = page.read().clone().flatten();
+    let (page_query, page_value) = match page.read().clone().flatten() {
+        Some((answered, page)) => (Some(answered), Some(page)),
+        None => (None, None),
+    };
+
+    // ---- the one movement to the first match ----------------------------------------
+    // Opening the table, a new find text, another sheet and a pager click each request
+    // one movement. It waits until the shown sheet is settled and the rendered page
+    // answers the current query, then records the request BEFORE it runs, so a page
+    // without a rendered match cannot request it again.
+    let grid_id = use_hook(|| {
+        format!("x-table-grid-{}", NEXT_GRID_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    });
+    let pager_moves = use_signal(|| 0u64);
+    let mut consumed_movement = use_signal(|| None::<MovementIdentity>);
+    let find_text = table_find_text(&find_query);
+    let sheet_settled = table_state.sheet_id.is_some()
+        || find_text.is_empty()
+        || hits_for.as_deref() == Some(find_query.as_str());
+    let page_current = page_query.as_ref() == Some(&table_query);
+    let movement: Option<MovementIdentity> = (sheet_settled && page_current).then(|| {
+        (document_identifier_value.clone(), sheet_id, find_text.clone(), pager_moves())
+    });
+    let movement_grid = grid_id.clone();
+    use_effect(use_reactive!(|movement| {
+        let Some(identity) = movement else {
+            return;
+        };
+        if consumed_movement.peek().as_ref() == Some(&identity) {
+            return;
+        }
+        let searching = !identity.2.is_empty();
+        consumed_movement.set(Some(identity));
+        if searching {
+            reveal_first_match(&movement_grid);
+        }
+    }));
 
     // ---- state updates --------------------------------------------------------------
     let set_table_state = Callback::new(move |next: DocTableState| {
@@ -296,6 +358,8 @@ pub fn DocumentPreviewForTable(
                     },
                     Some(page_value) => rsx! {
                         TableGrid {
+                            grid_id: grid_id.clone(),
+                            sheet_label: overview.sheet(sheet_id).map(|s| s.label()).unwrap_or_default(),
                             columns: sheet_columns.clone(),
                             // The SERVER's applied list, not the requested one: the whole
                             // set is sent so the clamp is reported rather than applied
@@ -315,6 +379,7 @@ pub fn DocumentPreviewForTable(
                             page: page_value,
                             table_state: table_state.clone(),
                             set_table_state,
+                            pager_moves,
                         }
                     },
                 }
@@ -521,6 +586,22 @@ fn TableColumnModalDialog(
         TableColumnModal::Picker => "Choose visible columns".to_string(),
         TableColumnModal::Filter(column) => format!("Filter {}", column.label()),
         TableColumnModal::Sheets => "Choose a sheet".to_string(),
+        TableColumnModal::Cell(details) => format!(
+            "Cell {}{} in {}",
+            details.column.letter,
+            details.source_row,
+            details.column.label()
+        ),
+    };
+    let (pane_size, body_style) = match &modal {
+        TableColumnModal::Cell(_) => (
+            "width: calc(100vw - 48px); height: calc(100vh - 48px);",
+            "flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 12px 16px;",
+        ),
+        _ => (
+            "width: min(440px, calc(100vw - 48px)); max-height: calc(100vh - 48px);",
+            "overflow-y: auto; padding: 12px 16px;",
+        ),
     };
     let body = match modal {
         TableColumnModal::Picker => rsx! {
@@ -528,6 +609,9 @@ fn TableColumnModalDialog(
         },
         TableColumnModal::Sheets => rsx! {
             SheetChooserDialog { overview, sheet_id, sheet_hits, searching, table_state, set_table_state, column_modal }
+        },
+        TableColumnModal::Cell(details) => rsx! {
+            CellDetailsDialog { details: *details }
         },
         TableColumnModal::Filter(column) => rsx! {
             ColumnFilterPopover {
@@ -551,8 +635,8 @@ fn TableColumnModalDialog(
                     ModalCloseButton { on_close }
                 }
             },
-            pane_size: "width: min(440px, calc(100vw - 48px)); max-height: calc(100vh - 48px);",
-            div { style: "overflow-y: auto; padding: 12px 16px;", {body} }
+            pane_size: pane_size.to_string(),
+            div { style: "{body_style}", {body} }
         }
     }
 }
@@ -644,6 +728,8 @@ fn ColumnPickerDialog(
 /// own container and never on the page.
 #[component]
 fn TableGrid(
+    grid_id: String,
+    sheet_label: String,
     columns: Vec<TableColumnInfo>,
     visible_columns: Vec<u32>,
     page: TablePage,
@@ -657,6 +743,7 @@ fn TableGrid(
 ) -> Element {
     rsx! {
         div {
+            id: "{grid_id}",
             style: "
                 flex: 1 1 auto;
                 min-height: 0;
@@ -698,23 +785,28 @@ fn TableGrid(
                         tr {
                             key: "{row.row_id}",
                             td {
-                                style: "position: sticky; left: 0; z-index: 1; background: #fafafa; border-right: 1px solid rgba(0,0,0,0.12); border-bottom: 1px solid rgba(0,0,0,0.06); padding: 2px 8px; text-align: right; color: rgba(0,0,0,0.45); font-variant-numeric: tabular-nums;",
+                                style: "position: sticky; left: 0; z-index: 1; background: #fafafa; border-right: 1px solid rgba(0,0,0,0.12); border-bottom: 1px solid rgba(0,0,0,0.06); padding: 2px 8px; text-align: right; vertical-align: top; color: rgba(0,0,0,0.45); font-variant-numeric: tabular-nums;",
                                 "{row.source_row}"
                             }
                             for column_id in visible_columns.iter().copied() {
                                 {
                                     let cell = row.cell(column_id).cloned();
-                                    let class = columns
+                                    let column = columns
                                         .iter()
                                         .find(|c| c.column_id == column_id)
-                                        .map(|c| c.class())
-                                        .unwrap_or(TableColumnClass::Text);
+                                        .cloned()
+                                        .unwrap_or_default();
                                     rsx! {
                                         GridCell {
                                             key: "{row.row_id}-{column_id}",
                                             cell,
-                                            class,
+                                            column,
+                                            source_row: row.source_row,
+                                            sheet_label: sheet_label.clone(),
+                                            document_identifier: document_identifier.clone(),
                                             find_query: find_query.clone(),
+                                            column_modal,
+                                            modal_opener,
                                         }
                                     }
                                 }
@@ -1025,29 +1117,70 @@ fn ColumnFilterPopover(
     }
 }
 
-/// One cell: cut for the grid, whole in a popover, with the find query marked.
+/// One cell. The grid shows its excerpt with the find matches marked, the popup shows the
+/// whole value, and a long value also gets the full-cell control.
 #[component]
-fn GridCell(cell: Option<TableCell>, class: TableColumnClass, find_query: String) -> Element {
+fn GridCell(
+    cell: Option<TableCell>,
+    column: TableColumnInfo,
+    source_row: u64,
+    sheet_label: String,
+    document_identifier: DocumentIdentifier,
+    find_query: String,
+    column_modal: Signal<Option<TableColumnModal>>,
+    modal_opener: FocusHandle,
+) -> Element {
+    let mut open = use_signal(|| false);
+    let mut expand_button: FocusHandle = use_signal(|| None);
+    let class = column.class();
     let Some(cell) = cell else {
         return rsx! {
-            td { style: "{cell_style(class)}" }
+            td { class: "x-table-cell", style: "{cell_style(class, false)}" }
         };
     };
+    // The website route always sends the excerpt. Building it here is the fallback for a
+    // response that has none, with the same engine.
+    let preview = cell
+        .preview
+        .clone()
+        .unwrap_or_else(|| cell_preview(&cell.text, &table_find_text(&find_query)));
+    let expandable = preview.offers_full_view();
+    let mut pieces: Vec<(String, bool)> = Vec::new();
+    for (index, line) in preview.lines.into_iter().enumerate() {
+        if index > 0 {
+            pieces.push(("\n".to_string(), false));
+        }
+        pieces.extend(line);
+    }
+    let details = CellDetails {
+        cell: cell.clone(),
+        column,
+        source_row,
+        sheet_label,
+        document: document_identifier,
+    };
     let full = cell.text.clone();
-    let cut: String = full.chars().take(CELL_PREVIEW_CHARS).collect();
-    let is_cut = cut.chars().count() < full.chars().count();
-    let mut open = use_signal(|| false);
     rsx! {
         td {
-            style: "{cell_style(class)}",
+            class: "x-table-cell",
+            style: "{cell_style(class, expandable)}",
             title: "{full}",
             PopoverRoot {
                 open: open(),
                 on_open_change: move |value: bool| open.set(value),
                 PopoverTrigger {
                     span {
-                        style: "cursor: pointer;",
-                        HighlightedText { text: if is_cut { format!("{cut}\u{2026}") } else { cut.clone() }, needle: find_query }
+                        class: "x-table-cell-text",
+                        for (index, (piece, marked)) in pieces.into_iter().enumerate() {
+                            span {
+                                key: "{index}",
+                                // The movement script reveals the first element with this
+                                // attribute, in row and then column order.
+                                "data-table-match": marked.then_some("true"),
+                                style: if marked { "background: rgba(255, 220, 0, 0.5);" } else { "" },
+                                "{piece}"
+                            }
+                        }
                     }
                 }
                 PopoverContent {
@@ -1083,33 +1216,115 @@ fn GridCell(cell: Option<TableCell>, class: TableColumnClass, find_query: String
                     }
                 }
             }
-        }
-    }
-}
-
-fn cell_style(class: TableColumnClass) -> String {
-    let align = if class == TableColumnClass::Number { "right" } else { "left" };
-    format!(
-        "padding: 2px 8px; border-bottom: 1px solid rgba(0,0,0,0.06); text-align: {align}; \
-         max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; \
-         font-variant-numeric: tabular-nums;"
-    )
-}
-
-/// The find query marked inside a cell, with the same accent the search snippets use.
-#[component]
-fn HighlightedText(text: String, needle: String) -> Element {
-    let needle = table_find_text(&needle);
-    let pieces = common::text_highlight::case_insensitive_parts(&text, &needle);
-    rsx! {
-        for (index, (piece, marked)) in pieces.into_iter().enumerate() {
-            span {
-                key: "{index}",
-                style: if marked { "background: rgba(255, 220, 0, 0.5);" } else { "" },
-                "{piece}"
+            if expandable {
+                button {
+                    r#type: "button",
+                    class: "x-table-cell-expand",
+                    title: "Open full cell",
+                    "aria-label": "Open full cell",
+                    onmounted: move |e| expand_button.set(Some(e.data())),
+                    onclick: move |event: Event<MouseData>| {
+                        // The popup opens from the text. This control opens only the modal.
+                        event.stop_propagation();
+                        modal_opener.set(expand_button());
+                        column_modal.set(Some(TableColumnModal::Cell(Box::new(details.clone()))));
+                    },
+                    Icon { icon: MdOpenInFull, style: "width: 14px; height: 14px;" }
+                }
             }
         }
     }
+}
+
+/// A cell keeps the height its excerpt needs. `vertical-align: top` keeps a one-line
+/// cell at the top of a row that a taller cell makes higher. The right padding reserves
+/// the corner for the full-cell control, so it covers no text.
+fn cell_style(class: TableColumnClass, expandable: bool) -> String {
+    let align = if class == TableColumnClass::Number { "right" } else { "left" };
+    let right = if expandable { 26 } else { 8 };
+    format!(
+        "padding: 2px {right}px 2px 8px; border-bottom: 1px solid rgba(0,0,0,0.06); text-align: {align}; \
+         vertical-align: top; position: relative; font-variant-numeric: tabular-nums;"
+    )
+}
+
+/// The full-screen view of one cell: the raw value, scrolling, and every detail the
+/// reader stored for it.
+#[component]
+fn CellDetailsDialog(details: CellDetails) -> Element {
+    let CellDetails { cell, column, source_row, sheet_label, document } = details;
+    let mut rows: Vec<(&'static str, String)> = vec![
+        ("Column", format!("{} ({})", column.label(), column.letter)),
+        ("Row", source_row.to_string()),
+    ];
+    if !sheet_label.is_empty() {
+        rows.push(("Sheet", sheet_label));
+    }
+    rows.push(("Type", cell.kind.clone()));
+    if let Some(exact) = cell.int_value {
+        rows.push(("Exact integer", exact.to_string()));
+    }
+    if !cell.formula.is_empty() {
+        rows.push(("Formula", format!("= {}", cell.formula)));
+    }
+    rows.push(("Dataset", document.collection_dataset.clone()));
+    rows.push(("Document hash", document.file_hash.clone()));
+    rsx! {
+        dl {
+            style: "display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 12px 0; font-size: 13px; flex: 0 0 auto;",
+            for (label, value) in rows {
+                div {
+                    key: "{label}",
+                    style: "display: contents;",
+                    dt { style: "color: rgba(0,0,0,0.55);", "{label}" }
+                    dd { style: "margin: 0; overflow-wrap: anywhere;", "{value}" }
+                }
+            }
+            if !cell.link.is_empty() {
+                dt { style: "color: rgba(0,0,0,0.55);", "Link" }
+                dd {
+                    style: "margin: 0; overflow-wrap: anywhere;",
+                    a { href: "{cell.link}", target: "_blank", rel: "noopener noreferrer", "{cell.link}" }
+                }
+            }
+        }
+        pre {
+            "data-full-cell-text": "true",
+            style: "flex: 1 1 auto; min-height: 0; overflow: auto; margin: 0; padding: 12px; \
+                    white-space: pre-wrap; overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; \
+                    font-size: 13px; line-height: 18px; background: #fafafa; border: 1px solid rgba(0,0,0,0.12); border-radius: 6px;",
+            "{cell.text}"
+        }
+    }
+}
+
+/// Move the grid once so its first rendered match is visible.
+///
+/// The grid container scrolls, never `scrollIntoView`, which would also scroll every
+/// pane around the grid. The sticky header row and row-number column cover the edge of
+/// the container, so the target goes past them, and an axis on which the target is
+/// already visible keeps its position.
+fn reveal_first_match(grid_id: &str) {
+    let id = serde_json::to_string(grid_id).unwrap_or_else(|_| "\"\"".to_string());
+    document::eval(&format!(
+        r#"requestAnimationFrame(() => {{
+  const grid = document.getElementById({id});
+  const target = grid && grid.querySelector('[data-table-match]');
+  if (!target) return;
+  const head = grid.querySelector('thead');
+  const corner = grid.querySelector('thead th');
+  const box = grid.getBoundingClientRect();
+  const found = target.getBoundingClientRect();
+  const left = box.left + grid.clientLeft + (corner ? corner.getBoundingClientRect().width : 0);
+  const top = box.top + grid.clientTop + (head ? head.getBoundingClientRect().height : 0);
+  const right = box.left + grid.clientLeft + grid.clientWidth;
+  const bottom = box.top + grid.clientTop + grid.clientHeight;
+  let x = grid.scrollLeft, y = grid.scrollTop;
+  if (found.left < left || found.right > right) x = Math.max(0, grid.scrollLeft + found.left - left - 8);
+  if (found.top < top || found.bottom > bottom) y = Math.max(0, grid.scrollTop + found.top - top - 8);
+  if (x !== grid.scrollLeft || y !== grid.scrollTop) grid.scrollTo({{ left: x, top: y, behavior: 'smooth' }});
+}});"#
+    ));
 }
 
 /// Server-side paging, 50 rows at a time. Not a virtualised grid: the app already has a
@@ -1120,6 +1335,9 @@ fn TablePager(
     page: TablePage,
     table_state: DocTableState,
     set_table_state: Callback<DocTableState>,
+    /// Counts Previous and Next clicks. Each click requests one movement to the first
+    /// match of the new page. A page reset by a sort or filter change does not.
+    mut pager_moves: Signal<u64>,
 ) -> Element {
     let per_page = page.limit.max(1) as u64;
     let current = table_state.page;
@@ -1129,6 +1347,7 @@ fn TablePager(
     let go = Callback::new(move |target: u64| {
         let mut next = table_state.clone();
         next.page = target;
+        pager_moves += 1;
         set_table_state.call(next);
     });
     rsx! {

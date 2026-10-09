@@ -20,6 +20,8 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 | `.table.column_filter` | column filter control | opens typed filter controls for one column | it opens one centred modal with a closing backdrop |
 | `.table.sort` | column sort control | cycles ascending, descending and no order | the changed order resets the result page |
 | `.table.sheet` | sheet chooser dialog | selects a workbook sheet, and shows the matching rows of each sheet while the find box holds a search | it clears sheet-specific columns, sorting and filters. With a search and no chosen sheet, the viewer opens on the first sheet with matches |
+| `.table.cell` | table cell text | opens a popup with the whole value | each cell shows an excerpt of at most five lines in a monospaced font |
+| `.table.cell_full` | `Open full cell` control | opens a full-screen modal with the raw value and the cell details | it appears on a cell whose value uses three or more lines; it does not open the popup |
 | `.source.dropdown` | source selector | selects a stored document source | it appears in the search preview; the full viewer uses the source list; a change resets the selected page |
 | `.find.clear` | clear search button | clears the in-document query | the main search, document find, and folder search share the input control |
 | `.table.clear_filters` | clear filters button | clears the document query and column filters | it appears when filters return zero rows |
@@ -32,6 +34,7 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 | table loading | the table overview or page request is pending | a loading indicator |
 | no visible columns | every sheet column is hidden | a message that directs the reader to the visible-column control |
 | column modal | a visibility or filter control is open | one named modal above the grid, with keyboard focus inside it |
+| full-cell modal | the full-cell control is open | the raw value in a scrolling area, with column, row, sheet, type, exact integer, formula, link, dataset and document hash; empty values are omitted |
 | email without body | the email parser stores no readable body | the envelope, attachments, and source selector remain available |
 | source failure | the source request fails | one row above the viewer holds the error and the retry button, and the sources that loaded stay available |
 | image preview | the image format has a stored JPEG preview | the viewer shows the preview |
@@ -77,3 +80,12 @@ A filename-only search match opens the table without a row filter.
 Table find removes double-quote phrase delimiters before literal cell matching.
 Match counts, row filters, and cell highlights use the same normalized text.
 Unicode case folding preserves the original text offsets during highlighting.
+A table cell excerpt has at most five lines of at most 80 display columns.
+A wide character uses two columns.
+The excerpt centres on the first match in the cell, and an ellipsis marks omitted text.
+Explicit line breaks in the value stay in the excerpt.
+A cell keeps its natural height when its value needs fewer than five lines.
+
+The grid moves its first rendered match into view with one smooth scroll of the grid.
+Opening a searched table, a new find text, a sheet choice and a pager click each request this movement.
+Repeated renders, manual scrolling, sort changes and filter changes do not move the grid.
