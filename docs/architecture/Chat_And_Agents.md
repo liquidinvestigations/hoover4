@@ -369,6 +369,8 @@ change the shape, change both.
 
 The turn pins capabilities from callable tools and permitted collections. Rules skip when their required tools are unavailable.
 Preparation classifies effort and names. It verifies absent names with indexed counts and suggests a clarification through `ask_user`.
+Name lookups use the collections of earlier tool calls, or the collections explicitly named in the request before those calls.
+Without either scope, they use all permitted collections. A string collection argument remains one collection name.
 Code also retains names after "folder called", "folder named", "collection called" and "collection named" when the classifier omits them.
 A progress decision records distinct keyword sources, empty results, repeated calls, refusals, todo churn and word counts.
 Three units raise the note level. A new keyword source resets the current units. The level does not decrease.

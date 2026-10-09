@@ -10,26 +10,34 @@ from tasks.P_agent.control.model import Action, freeze, plain
 ABSENCE_OPTION = "None of these: report that the collections do not hold it"
 
 
+def _collection_named(name, request):
+    return re.search(r"\b(?:collection|dataset)\s+[\"']?" + re.escape(name)
+                     + r"\b|\b" + re.escape(name) + r"[\"']?\s+(?:collection|files|documents|dataset)",
+                     request, re.I)
+
+
 async def check_names(names, context, services):
     """Return verified absence records. A partial lookup establishes no absence."""
     records = []
+    scopes = set()
+    for fact in context.results:
+        values = fact.args.get("collectionname", [])
+        values = [values] if isinstance(values, str) else values or []
+        scopes.update(value for value in values if value in context.collections)
+    selected = [name for name in context.collections if _collection_named(name, context.request)]
+    scopes = sorted(scopes) or selected or list(context.collections)
     for name in dict.fromkeys(names):
         if not name or len(name) > 150:
             continue
         lower = name.casefold()
         if lower in {c.casefold() for c in context.collections}:
             continue
-        collection_named = re.search(r"(?:collection|dataset)\s+[\"']?" + re.escape(name)
-                                     + r"\b|\b" + re.escape(name) + r"[\"']?\s+(?:collection|files|documents|dataset)",
-                                     context.request, re.I)
-        if collection_named:
+        if _collection_named(name, context.request):
             candidates = difflib.get_close_matches(lower, list(context.collections), n=4, cutoff=0.6)
             records.append({"name": name, "kind": "collection", "options": candidates})
             continue
         if not context.collections or "search_collections" not in context.callable_tools:
             continue
-        scopes = sorted({c for f in context.results for c in f.args.get("collectionname", [])})
-        scopes = scopes or list(context.collections)
         replies = await asyncio.gather(*(services.suggestions([name], kind, scopes)
                                          for kind in ("pages", "entities", "folders")))
         if any(reply.get("partial") for reply in replies):

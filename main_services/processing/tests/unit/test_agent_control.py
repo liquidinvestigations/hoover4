@@ -887,6 +887,45 @@ def test_absence_uses_counts_across_table_kinds():
     assert "Call ask_user now with these options" in note_action(records, context)[0].arguments["text"]
 
 
+@pytest.mark.parametrize("request_text,expected", [
+    ("Find Vince Kaminsjy in the enron collection.", ["enron"]),
+    ("Search collection enron and the tables dataset.", ["enron", "tables"]),
+    ("Find Vince Kaminsjy in my documents.", ["enron", "tables", "testdata"]),
+])
+def test_name_lookup_uses_explicit_collection_scope(request_text, expected):
+    from tasks.P_agent.control.handlers.absence import check_names
+    class Suggestions:
+        calls = []
+        async def suggestions(self, names, kind, collections):
+            self.calls.append((kind, collections))
+            return {"word_counts": [{"word": "kaminsjy", "documents": 0}]}
+    services = Suggestions()
+    context = replace(_progress_context(), request=request_text,
+                      collections=("enron", "tables", "testdata"))
+    records = asyncio.run(check_names(["Vince Kaminsjy"], context, services))
+    assert records[0]["name"] == "Vince Kaminsjy"
+    assert services.calls == [(kind, expected) for kind in ("pages", "entities", "folders")]
+
+
+@pytest.mark.parametrize("scope,expected", [
+    ("enron", ["enron"]), (["enron"], ["enron"]),
+    (None, ["enron", "tables"]), ([], ["enron", "tables"]),
+])
+def test_name_lookup_keeps_collection_arguments_whole(scope, expected):
+    from tasks.P_agent.control.facts import ResultFact
+    from tasks.P_agent.control.handlers.absence import check_names
+    class Suggestions:
+        calls = []
+        async def suggestions(self, names, kind, collections):
+            self.calls.append(collections)
+            return {"word_counts": [{"word": "kaminsjy", "documents": 0}]}
+    fact = ResultFact("read", "read_documents", 1, 2, "model", "ok", {"collectionname": scope})
+    context = replace(_progress_context(), collections=("enron", "tables"), results=(fact,))
+    services = Suggestions()
+    asyncio.run(check_names(["Vince Kaminsjy"], context, services))
+    assert services.calls == [expected] * 3
+
+
 def test_classifier_events_keep_chunk_metadata_without_text():
     client = C.Classifier(C.Deadline(2), base_url="http://route.invalid", api_key="k", model="m", post=_Route())
     questions = {f"q{n}=": {"type": "noul", "instructions": "private question"} for n in range(65)}
