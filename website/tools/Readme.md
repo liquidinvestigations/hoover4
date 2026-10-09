@@ -139,6 +139,7 @@ A page script or capture of the turn that takes more than 60 s skips its interva
 When every page call fails for 300 s, the observation ends with an unknown outcome.
 The observation of one turn ends after 4 hours at most. `AgentRun` sets no time limit on a run, so this ceiling bounds the observer only.
 The completion captures, the document preview and the history check have limits of 120 s, 60 s and 180 s.
+The observer selects document cards from citation entries through the shared result-card class.
 Run the observer tests in the browser container.
 
 ```sh

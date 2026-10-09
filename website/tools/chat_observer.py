@@ -300,9 +300,8 @@ SEND_BUTTON_SEL = "button[title='Send']"
 # `transcript.rs` gives the transcript pane this id and the `data-chat-turn` state.
 TRANSCRIPT_SEL = "#x-chat-transcript"
 DOCREFS_TOGGLE_SEL = ".x-chat-docrefs-toggle"
-# `search_result_item_card.rs` has no id or class either; matched on its distinguishing
-# inline style (a fixed 148px card height is unique to this card on the chat page).
-DOC_CARD_SEL = "div[style*='height: 148px']"
+# Document citation entries contain result cards with their shared CSS class.
+DOC_CARD_SEL = ".x-source-entry .x-result-item-card"
 
 # ---------------------------------------------------------------------------------
 # Item 3: the polling allowance. `HOOVER4_RATE_CHAT_POLL_PER_MINUTE` defaults to 1800,
