@@ -364,6 +364,27 @@ def test_every_stage_activity_is_registered_on_the_worker_of_its_queue():
         assert name in workers[queue][1], f"{name} is not registered on {queue}"
 
 
+def test_searchable_pdf_batches_are_registered_on_both_ocr_queues():
+    """The PDF queue carries only searchable-PDF batches. The image queue keeps them for
+    the batches that groups scheduled there before the PDF queue existed."""
+    workers = _workers()
+    assert br.STAGE_QUEUES["run_ocr_pdf_batch"] == "processing-ocr-pdf-queue"
+    assert "run_ocr_pdf_batch" in workers["processing-ocr-queue"][1]
+    assert workers["processing-ocr-pdf-queue"] == (set(), {"run_ocr_pdf_batch"})
+
+
+def test_a_group_from_before_the_pdf_queue_keeps_the_earlier_queue(monkeypatch):
+    group = _Group(monkeypatch, {"p": PDF, "i": IMAGE})
+    monkeypatch.setattr(plan_workflows.workflow, "patched",
+                        lambda name: name != br.OCR_PDF_QUEUE_PATCH)
+    group.run(["p", "i"])
+    queues = {(name, options["task_queue"]) for name, _, options in group.calls}
+    assert ("run_ocr_pdf_batch", "processing-ocr-queue") in queues
+    for name, _, options in group.calls:
+        if name != "run_ocr_pdf_batch":
+            assert options["task_queue"] == br.STAGE_QUEUES[name]
+
+
 def test_no_removed_workflow_type_is_registered_and_handle_folders_stays():
     workers = _workers()
     registered = set().union(*(flows for flows, _ in workers.values()))

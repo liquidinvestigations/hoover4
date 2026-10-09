@@ -104,6 +104,7 @@ KNOWN_TASK_QUEUES: Tuple[str, ...] = (
     "processing-common-queue",
     "processing-tika-queue",
     "processing-ocr-queue",
+    "processing-ocr-pdf-queue",
     "processing-nlp-queue",
     "processing-embed-queue",
     "processing-indexing-queue",

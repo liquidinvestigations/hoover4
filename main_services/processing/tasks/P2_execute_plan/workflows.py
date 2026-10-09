@@ -35,6 +35,8 @@ with workflow.unsafe.imports_passed_through():
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.P3_parse_files.batch_runner import (
         FILE_BASE_SECONDS,
+        OCR_PDF_QUEUE_PATCH,
+        OCR_QUEUE,
         STAGE_QUEUES,
         BatchFile,
         BatchResult,
@@ -574,6 +576,11 @@ class ProcessItemsBatched:
                 )
                 keys = [file.item_hash for file in items]
                 timeout = stage_timeout_seconds(name, [file.file_size_bytes for file in items])
+            queue = STAGE_QUEUES[name]
+            if name == "run_ocr_pdf_batch" and not workflow.patched(OCR_PDF_QUEUE_PATCH):
+                # A group that scheduled this stage before it got its own queue replays it
+                # on the earlier queue.
+                queue = OCR_QUEUE
             try:
                 batch = await workflow.execute_activity(
                     name,
@@ -584,7 +591,7 @@ class ProcessItemsBatched:
                     # No attempt limit. The runner fails the stage after consecutive
                     # attempts that finish no new file.
                     retry_policy=RetryPolicy(maximum_attempts=0),
-                    task_queue=STAGE_QUEUES[name],
+                    task_queue=queue,
                 )
                 return batch.results
             except ActivityError as exc:

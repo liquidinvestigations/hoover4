@@ -144,6 +144,10 @@ def worker_concurrency(name: str, default: int) -> int:
     a remote GPU that has its own admission control -- more slots there only deepen a
     queue somebody else is already bounding.
 
+    The `ocr_pdf` tier sizes `processing-ocr-pdf-queue`. Each of its slots is one request to
+    hoover4-ocr-pdf, and deploy.py renders it from the same key as the builder's own slots,
+    so the worker never sends the builder more requests than it runs.
+
     The common tier is the one to be careful with. Its slots multiply by the process
     count, and each slot's work is not one thread: a single detection forks several
     `file` processes and runs an ONNX model. Measured on a sixteen-core host, 4 processes
@@ -495,24 +499,30 @@ async def run_tika_worker():
 
 
 async def run_ocr_worker():
-    # Localized import for the OCR worker. The queue is engine-neutral
-    # (`processing-ocr-queue`, not `processing-easyocr-queue`) because OCR is becoming
-    # several engines behind one HTTP contract, and a queue named after one of them
-    # would have to be renamed again -- which costs a full reset every time.
+    # Localized import for the OCR worker. The queues are engine-neutral
+    # (`processing-ocr-queue`, not `processing-easyocr-queue`) because OCR is several
+    # engines behind one HTTP contract, and a queue named after one of them would have to
+    # be renamed again, which costs a full reset every time.
+    #
+    # Image OCR and searchable-PDF assembly are one OCR tier on two queues, served by two
+    # Worker objects in this process. A PDF batch holds its slot for every file of its
+    # group, and each file is one request to hoover4-ocr-pdf. On one shared queue, PDF
+    # batches that waited for the builder kept image OCR from starting. The PDF queue has
+    # as many slots as the builder, so the worker never sends it more requests than it
+    # runs. The image slots and the builder slots together must stay under the Tesseract
+    # admission, which deploy.py checks.
     from .P3_parse_files.parse_ocr import run_ocr_batch
-    # Searchable-PDF assembly shares this queue rather than getting one of its own: it is
-    # one OCR call per page, so it must be bounded by the same tier that bounds image OCR.
-    # A queue of its own would let a 500-page scan and every image in the corpus compete
-    # for the OCR service from two directions at once.
     from .P3_parse_files.parse_ocr_pdf import run_ocr_pdf_batch
     from .visibility import ensure_search_attributes
 
     log.info("Starting OCR worker...")
     client = await Client.connect("temporal:7233")
     await ensure_search_attributes(client)
-    CONCURRENCY = worker_concurrency("ocr", 4)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
-        worker = Worker(
+    image_slots = worker_concurrency("ocr", 4)
+    pdf_slots = worker_concurrency("ocr_pdf", 2)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=image_slots) as image_executor, \
+            concurrent.futures.ThreadPoolExecutor(max_workers=pdf_slots) as pdf_executor:
+        image_worker = Worker(
           client,
           interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
           workflow_runner=sandboxed_runner(),
@@ -520,15 +530,33 @@ async def run_ocr_worker():
           graceful_shutdown_timeout=graceful_shutdown_timeout(),
           workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
           workflows=[],
+          # run_ocr_pdf_batch stays on this queue for the batches that groups scheduled
+          # here before the PDF queue existed, and for their retries.
           activities=[run_ocr_batch, run_ocr_pdf_batch],
-          activity_executor=activity_executor,
-          max_concurrent_activities=CONCURRENCY,
-          max_concurrent_workflow_tasks=CONCURRENCY*2,
-          max_concurrent_local_activities=CONCURRENCY*2,
-          max_concurrent_activity_task_polls=CONCURRENCY*2,
-          max_concurrent_workflow_task_polls=CONCURRENCY*2,
+          activity_executor=image_executor,
+          max_concurrent_activities=image_slots,
+          max_concurrent_workflow_tasks=image_slots*2,
+          max_concurrent_local_activities=image_slots*2,
+          max_concurrent_activity_task_polls=image_slots*2,
+          max_concurrent_workflow_task_polls=image_slots*2,
         )
-        await run_until_signalled(worker)
+        pdf_worker = Worker(
+          client,
+          interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
+          workflow_runner=sandboxed_runner(),
+          task_queue="processing-ocr-pdf-queue",
+          graceful_shutdown_timeout=graceful_shutdown_timeout(),
+          workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
+          workflows=[],
+          activities=[run_ocr_pdf_batch],
+          activity_executor=pdf_executor,
+          max_concurrent_activities=pdf_slots,
+          max_concurrent_workflow_tasks=pdf_slots*2,
+          max_concurrent_local_activities=pdf_slots*2,
+          max_concurrent_activity_task_polls=pdf_slots*2,
+          max_concurrent_workflow_task_polls=pdf_slots*2,
+        )
+        await run_until_signalled(image_worker, pdf_worker)
 
 
 async def run_nlp_worker():

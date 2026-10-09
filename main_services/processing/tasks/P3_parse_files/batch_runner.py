@@ -87,6 +87,11 @@ MEMBER_SCAN_RANGE_ENTRIES = 500
 COMMON_QUEUE = "processing-common-queue"
 TIKA_QUEUE = "processing-tika-queue"
 OCR_QUEUE = "processing-ocr-queue"
+#: Searchable-PDF batches. One slot of this queue is one request to hoover4-ocr-pdf, so
+#: the worker gives it as many slots as the builder runs.
+OCR_PDF_QUEUE = "processing-ocr-pdf-queue"
+#: The patch id of the move of run_ocr_pdf_batch from OCR_QUEUE to OCR_PDF_QUEUE.
+OCR_PDF_QUEUE_PATCH = "ocr-pdf-own-queue"
 
 #: Every stage activity, by its registered name, and the queue it runs on.
 STAGE_QUEUES: Dict[str, str] = {
@@ -103,7 +108,7 @@ STAGE_QUEUES: Dict[str, str] = {
     "extract_email_attachments_batch": COMMON_QUEUE,
     "extract_archive_batch": COMMON_QUEUE,
     "pdf_metadata_batch": COMMON_QUEUE,
-    "run_ocr_pdf_batch": OCR_QUEUE,
+    "run_ocr_pdf_batch": OCR_PDF_QUEUE,
     "pdf_extract_batch": COMMON_QUEUE,
     "video_batch": COMMON_QUEUE,
     "scan_container_folders": COMMON_QUEUE,

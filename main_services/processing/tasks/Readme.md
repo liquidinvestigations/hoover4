@@ -359,7 +359,10 @@ Workers are split into dedicated queues to control throughput and resource usage
 
 - `processing-common-queue`, all workflows plus the common activities.
 - `processing-tika-queue`, Tika parsing.
-- `processing-ocr-queue`, OCR.
+- `processing-ocr-queue`, image OCR.
+- `processing-ocr-pdf-queue`, searchable-PDF batches (`run_ocr_pdf_batch`). The OCR
+  worker process polls it with `ocr_pdf_concurrency` slots, the same number as the
+  builder's request slots.
 - `processing-nlp-queue`, P4 entity extraction against the remote NER service
   (`main.py worker nlp`, concurrency 4).
 - `processing-embed-queue`, P5 chunk+embed against the remote embeddings service
