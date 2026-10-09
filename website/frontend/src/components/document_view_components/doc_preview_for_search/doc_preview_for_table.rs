@@ -1173,9 +1173,12 @@ pub async fn get_table_page(
     query: TableViewQuery,
 ) -> Result<TablePage, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::documents::table_browse::get_table_page(&user, document_identifier, query)
+    let search = query.search.clone();
+    let mut page = backend::api::documents::table_browse::get_table_page(&user, document_identifier, query)
         .await
-        .map_err(crate::api::error_util::to_server_fn_error)
+        .map_err(crate::api::error_util::to_server_fn_error)?;
+    backend::api::documents::table_browse::fill_cell_previews(&mut page, &search);
+    Ok(page)
 }
 
 #[server]

@@ -9,10 +9,13 @@ pub struct HighlightTextSpan {
     pub index: u64,
 }
 
-/// Match literal text without using folded UTF-8 offsets to slice the source.
-pub fn case_insensitive_parts(text: &str, needle: &str) -> Vec<(String, bool)> {
+/// Byte ranges of the literal, case-insensitive matches of `needle` in `text`.
+///
+/// The ranges index `text` itself, never the folded copy: folding can change a
+/// character's UTF-8 length, so a folded offset used on the source cuts the wrong bytes.
+pub fn case_insensitive_ranges(text: &str, needle: &str) -> Vec<std::ops::Range<usize>> {
     if needle.is_empty() {
-        return vec![(text.to_string(), false)];
+        return Vec::new();
     }
     let mut folded = String::new();
     let mut original = Vec::new();
@@ -22,7 +25,7 @@ pub fn case_insensitive_parts(text: &str, needle: &str) -> Vec<(String, bool)> {
         folded.push_str(&lower);
     }
     let needle = needle.to_lowercase();
-    let mut parts = Vec::new();
+    let mut ranges = Vec::new();
     let mut cursor = 0;
     for (offset, _) in folded.match_indices(&needle) {
         let start = original[offset].0;
@@ -30,11 +33,25 @@ pub fn case_insensitive_parts(text: &str, needle: &str) -> Vec<(String, bool)> {
         if start < cursor {
             continue;
         }
-        if start > cursor {
-            parts.push((text[cursor..start].to_string(), false));
-        }
-        parts.push((text[start..end].to_string(), true));
+        ranges.push(start..end);
         cursor = end;
+    }
+    ranges
+}
+
+/// Match literal text without using folded UTF-8 offsets to slice the source.
+pub fn case_insensitive_parts(text: &str, needle: &str) -> Vec<(String, bool)> {
+    if needle.is_empty() {
+        return vec![(text.to_string(), false)];
+    }
+    let mut parts = Vec::new();
+    let mut cursor = 0;
+    for range in case_insensitive_ranges(text, needle) {
+        if range.start > cursor {
+            parts.push((text[cursor..range.start].to_string(), false));
+        }
+        parts.push((text[range.clone()].to_string(), true));
+        cursor = range.end;
     }
     if cursor < text.len() {
         parts.push((text[cursor..].to_string(), false));

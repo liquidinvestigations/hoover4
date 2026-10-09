@@ -219,6 +219,14 @@ Three more rules those functions share:
   `website/backend/src/db_utils/manticore_match.rs`'s escaping exists because Manticore has nothing to bind,
   and copying it here would be a second, worse escaping layer.
 
+`TableCell.text` is always the raw stored value. Row selection, sorting, filters, the
+full-cell view and the agent routes read it. The website's page route also calls
+`fill_cell_previews`, which sets `TableCell.preview` from
+`common::table_cell_preview::cell_preview`. That excerpt has at most five lines of at most
+80 display columns, around the first match of the find text, with a wide character counted
+as two columns. The shared `get_table_page` leaves `preview` empty, so the agent routes do
+no excerpt work.
+
 Sorting is two phases. Phase 1 orders one contiguous primary-key range (the sort column
 of one sheet) and returns `row_id`s; phase 2 fetches those rows' cells by `row_id IN (…)`
 and re-orders them into phase 1's order in Rust, so the two phases cannot disagree about

@@ -61,6 +61,7 @@ use common::document_tables::{
     clamp_table_visible_columns, table_find_text,
 };
 use common::search_result::DocumentIdentifier;
+use common::table_cell_preview::cell_preview;
 
 use crate::auth::guard::NOT_FOUND;
 use crate::auth::permissions;
@@ -671,6 +672,7 @@ pub async fn get_table_page(
             link: cell.cell_link,
             formula: cell.cell_formula,
             int_value: cell.cell_int,
+            preview: None,
         });
     }
     let rows: Vec<TableRow> = window_rows
@@ -701,6 +703,19 @@ pub async fn get_table_page(
         limit,
         clamps,
     })
+}
+
+/// Fill the inline excerpt of every cell of a page for the website grid.
+///
+/// The website route calls this after [`get_table_page`]. The agent route does not, so it
+/// keeps reading the raw `text` and pays nothing for an excerpt it does not show.
+pub fn fill_cell_previews(page: &mut TablePage, search: &str) {
+    let needle = table_find_text(search);
+    for row in &mut page.rows {
+        for cell in &mut row.cells {
+            cell.preview = Some(cell_preview(&cell.text, &needle));
+        }
+    }
 }
 
 /// Build the `AND row_id IN (…)` clauses and push their binds, in textual order.
@@ -900,6 +915,35 @@ pub async fn count_table_cell_matches(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The excerpt is added beside the raw value. Text, row order and totals stay as the
+    /// reader returned them, because sorting, filters and the full-cell view read those.
+    #[test]
+    fn previews_leave_the_raw_page_unchanged() {
+        let raw = format!("{} \"Jenalynn Weed\" {}", "a ".repeat(200), "b ".repeat(200));
+        let cell = |column_id, text: &str| TableCell { column_id, text: text.to_string(), ..Default::default() };
+        let mut page = TablePage {
+            rows: vec![
+                TableRow { row_id: 9, source_row: 10, cells: vec![cell(1, &raw), cell(2, "short")] },
+                TableRow { row_id: 3, source_row: 4, cells: vec![cell(1, "weed")] },
+            ],
+            total_rows: 2,
+            ..Default::default()
+        };
+        let before = page.clone();
+        fill_cell_previews(&mut page, "\"weed\"");
+        assert_eq!(page.total_rows, before.total_rows);
+        let ids: Vec<u64> = page.rows.iter().map(|r| r.row_id).collect();
+        assert_eq!(ids, vec![9, 3]);
+        for (row, old) in page.rows.iter().zip(&before.rows) {
+            for (cell, old_cell) in row.cells.iter().zip(&old.cells) {
+                assert_eq!(cell.text, old_cell.text);
+                assert!(cell.preview.is_some());
+            }
+        }
+        let long = page.rows[0].cells[0].preview.as_ref().unwrap();
+        assert!(long.lines.iter().flatten().any(|(t, m)| *m && t == "Weed"));
+    }
 
     #[test]
     fn every_column_class_sorts_its_blanks_last_in_both_directions() {

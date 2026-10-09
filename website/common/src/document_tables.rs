@@ -384,6 +384,10 @@ pub struct TableCell {
     /// The exact integer, when the cell holds one. The value to copy above 2^53, where
     /// the float is approximate.
     pub int_value: Option<i64>,
+    /// The inline excerpt the grid draws. Only the website's page route fills it. The
+    /// shared page reader and the agent routes leave it empty and read [`Self::text`].
+    #[serde(default)]
+    pub preview: Option<crate::table_cell_preview::TableCellPreview>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
