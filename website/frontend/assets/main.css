@@ -392,3 +392,9 @@ html, body, #main {
 .x-table-cell-expand:hover {
     background: rgba(0, 0, 0, 0.06);
 }
+
+/* Filter chips that do not fit in the toolbar. Only the chip overflow script in
+   `filter_modal.rs` sets this attribute. */
+[data-chip-omitted] {
+    display: none !important;
+}

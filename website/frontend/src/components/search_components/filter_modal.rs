@@ -207,7 +207,73 @@ fn term_field_prop(facet_field: &str) -> Option<String> {
     term_field_of(facet_field).map(str::to_string)
 }
 
-/// The chip row under the search box: one chip per active category.
+/// Hides the chips that need more than one row after the row of the Sort control, and
+/// sends the count of hidden chips.
+///
+/// It runs whenever the chips change and whenever the toolbar row changes size. In one
+/// synchronous step it shows every chip, reads their positions, and marks the first chip
+/// below the second row and every chip after it with `data-chip-omitted`. It marks one
+/// more chip while the count slot would start a third row. A chip before the first marked
+/// chip does not move, so a second pass gives the same result. A CSS rule hides the marked
+/// chips. Only this script sets the attribute.
+const CHIP_OVERFLOW_SCRIPT: &str = r#"
+(() => {
+  (window.__h4ChipObservers || []).forEach(observer => observer.disconnect());
+  let sent = -1;
+  const measure = () => {
+    const wrap = document.getElementById('x-filter-chips');
+    let omitted = 0;
+    if (wrap) {
+      const chips = [...wrap.querySelectorAll('[data-chip]')];
+      const slot = wrap.querySelector('.x-filter-chips-slot');
+      chips.forEach(chip => chip.removeAttribute('data-chip-omitted'));
+      const before = wrap.previousElementSibling;
+      const firstRowEnd = before ? before.getBoundingClientRect().bottom : -Infinity;
+      const items = slot ? [...chips, slot] : chips;
+      const second = items.find(item => item.getBoundingClientRect().top >= firstRowEnd - 1);
+      if (second) {
+        const limit = second.getBoundingClientRect().bottom;
+        const below = item => item.getBoundingClientRect().top >= limit - 1;
+        let shown = chips.findIndex(below);
+        if (shown < 0) shown = chips.length;
+        chips.slice(shown).forEach(chip => chip.setAttribute('data-chip-omitted', ''));
+        while (slot && shown > 0 && below(slot)) {
+          shown -= 1;
+          chips[shown].setAttribute('data-chip-omitted', '');
+        }
+        omitted = chips.length - shown;
+      }
+    }
+    if (omitted !== sent) {
+      sent = omitted;
+      dioxus.send(omitted);
+    }
+  };
+  const start = () => {
+    const row = document.getElementById('x-search-toolbar-row');
+    if (!row) {
+      requestAnimationFrame(start);
+      return;
+    }
+    // Attributes are not observed, so the marks this script sets do not start it again.
+    const resize = new ResizeObserver(measure);
+    resize.observe(row);
+    const change = new MutationObserver(measure);
+    change.observe(row, { childList: true, subtree: true, characterData: true });
+    window.__h4ChipObservers = [resize, change];
+    measure();
+  };
+  start();
+})();
+"#;
+
+/// The chips after the Sort control: one chip per active category.
+///
+/// The chips share the toolbar row with the controls, so the wrapper uses
+/// `display: contents`. They use at most one row more than the row of the Sort control.
+/// The chips that do not fit are hidden, and a count control in a fixed slot at the end
+/// says how many are hidden and opens the filter popup at the first of them. The slot
+/// always reserves its width, so the count control does not move a chip.
 #[component]
 pub fn FilterChips(
     query: Signal<SearchQuery>,
@@ -233,19 +299,39 @@ pub fn FilterChips(
         let texts = texts.read().clone();
         build_chips(&query.read(), texts.as_ref())
     });
+    // The count of hidden chips, from the overflow script. A resize changes only this
+    // count, never the selection or the URL.
+    let mut omitted = use_signal(|| 0usize);
+    use_future(move || async move {
+        let mut script = document::eval(CHIP_OVERFLOW_SCRIPT);
+        while let Ok(count) = script.recv::<usize>().await {
+            if *omitted.peek() != count {
+                omitted.set(count);
+            }
+        }
+    });
     if chips().is_empty() {
         return rsx! {};
     }
+    let all_chips = chips();
+    let hidden = omitted().min(all_chips.len());
+    let first_hidden = all_chips.len().checked_sub(hidden).and_then(|index| all_chips.get(index)).map(|chip| chip.category);
+    let more_visibility = if hidden > 0 { "visible" } else { "hidden" };
     rsx! {
         div {
             id: "x-filter-chips",
-            style: "display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px;",
-            for chip in chips() {
+            style: "display: contents;",
+            div {
+                class: "x-filter-chips-separator",
+                style: "width: 1px; height: 24px; background: rgba(0,0,0,0.25); margin: 0 2px;",
+            }
+            for chip in all_chips {
                 {
                     let category = chip.category;
                     rsx! {
                         div {
                             key: "{chip.label}",
+                            "data-chip": "true",
                             // The width budget. `min(320px, 28ch)`, the character half
                             // is applied to the text by the summariser, this is the
                             // pixel half.
@@ -285,17 +371,37 @@ pub fn FilterChips(
                     }
                 }
             }
-            button {
-                style: "border: none; background: none; cursor: pointer; text-decoration: underline; font-size: 14px; color: rgba(0,0,0,0.7);",
-                onclick: move |_| {
-                    {
-                        let mut q = query.write();
-                        q.facet_filters.clear();
-                        q.range_filters.clear();
-                    }
-                    on_commit.call(());
-                },
-                "Clear all"
+            div {
+                class: "x-filter-chips-slot",
+                style: "display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0;",
+                // Hidden, not removed, when no chip is hidden, so the slot keeps its width.
+                button {
+                    class: "x-filter-chips-more",
+                    style: "
+                        visibility: {more_visibility}; min-width: 74px;
+                        border: 1px solid rgba(0,0,0,0.35); border-radius: 100px; background: white;
+                        padding: 3px 10px; font-size: 14px; line-height: 20px; cursor: pointer;
+                    ",
+                    title: "Open the filters that are not shown here",
+                    onclick: move |_| {
+                        if let Some(category) = first_hidden {
+                            on_open.call(category);
+                        }
+                    },
+                    "{hidden} more"
+                }
+                button {
+                    style: "border: none; background: none; cursor: pointer; text-decoration: underline; font-size: 14px; color: rgba(0,0,0,0.7);",
+                    onclick: move |_| {
+                        {
+                            let mut q = query.write();
+                            q.facet_filters.clear();
+                            q.range_filters.clear();
+                        }
+                        on_commit.call(());
+                    },
+                    "Clear all"
+                }
             }
         }
     }

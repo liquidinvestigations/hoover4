@@ -1,8 +1,8 @@
 //! Search input and controls in the top bar.
 //!
 //! The pill strip is gone: one **Filter** button opens a modal holding every category,
-//! one **Sort** control sets the order, and the chip row underneath says what is
-//! currently narrowing the results. See `filter_modal.rs` for why.
+//! one **Sort** control sets the order, and the chips after Sort say what is currently
+//! narrowing the results. See `filter_modal.rs` for why.
 
 use crate::{
     components::search_components::{
@@ -69,66 +69,68 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
     });
 
     rsx! {
+        // One wrapping row for the controls and the chips, so the chips follow Sort and
+        // wrap under the controls. `FilterChips` limits them to one row more than the
+        // controls use. The row does not clip its overflow, because the Sort menu is
+        // positioned inside it.
         div {
-            style: "display: flex; flex-direction: column; width: 100%; min-width: 0;",
+            id: "x-search-toolbar-row",
+            style: "display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; width: 100%; min-width: 0;",
 
             div {
-                style: "display: flex; align-items: center; flex-wrap: wrap; gap: 10px; width: 100%; min-width: 0;",
-
-                div {
-                    id: "x-search-input-search-box",
-                    style: "width: 500px; max-width: 100%; margin-left: 16px;",
-                    crate::components::search_input::SearchInput {
-                        value: input_value,
-                        placeholder: "Search in knowledgebase",
-                        on_change: move |value: String| modified_search_query.write().query_string = value,
-                        on_submit: move |_| trigger_search(()),
-                    }
-                }
-
-                // Enabled only when something is pending: the whole toolbar edits a
-                // pending query, so this is the one place that says whether anything is
-                // waiting to be applied.
-                button {
-                    style: "
-                        font-size: 15px; font-weight: 700; font-family: Roboto, sans-serif;
-                        background-color: {search_button_background()};
-                        color:white; border: none;
-                        border-radius:100px; height: 42px; padding: 0 16px;
-                        cursor: {search_button_cursor()};
-                        opacity: {search_button_opacity()};
-                    ",
-                    disabled: !query_has_changed(),
-                    title: if query_has_changed() { "Search with the pending changes" } else { "Nothing new to search for" },
-                    onclick: move |event: Event<MouseData>| {
-                        event.prevent_default();
-                        event.stop_propagation();
-                        trigger_search(());
-                    },
-                    "Search"
-                }
-
-                button {
-                    id: "x-search-open-filters",
-                    style: "{CONTROL_BUTTON_STYLE}",
-                    class: "hoover4-hover-shadow-background",
-                    title: "Open all filters",
-                    onclick: move |_| open_category.set(Some(FilterCategory::Collections)),
-                    Icon { icon: MdFilterList, style: "width: 20px; height: 20px; color: rgba(0,0,0,0.8);" }
-                    if active_filter_count() > 0 {
-                        "Filter ({active_filter_count()})"
-                    } else {
-                        "Filter"
-                    }
-                }
-
-                SortControl {
-                    original_query,
-                    query: modified_search_query,
-                    on_commit: Callback::new(move |_| trigger_search(())),
+                id: "x-search-input-search-box",
+                style: "width: 500px; max-width: 100%; margin-left: 16px;",
+                crate::components::search_input::SearchInput {
+                    value: input_value,
+                    placeholder: "Search in knowledgebase",
+                    on_change: move |value: String| modified_search_query.write().query_string = value,
+                    on_submit: move |_| trigger_search(()),
                 }
             }
 
+            // Enabled only when something is pending: the whole toolbar edits a
+            // pending query, so this is the one place that says whether anything is
+            // waiting to be applied.
+            button {
+                style: "
+                    font-size: 15px; font-weight: 700; font-family: Roboto, sans-serif;
+                    background-color: {search_button_background()};
+                    color:white; border: none;
+                    border-radius:100px; height: 42px; padding: 0 16px;
+                    cursor: {search_button_cursor()};
+                    opacity: {search_button_opacity()};
+                ",
+                disabled: !query_has_changed(),
+                title: if query_has_changed() { "Search with the pending changes" } else { "Nothing new to search for" },
+                onclick: move |event: Event<MouseData>| {
+                    event.prevent_default();
+                    event.stop_propagation();
+                    trigger_search(());
+                },
+                "Search"
+            }
+
+            button {
+                id: "x-search-open-filters",
+                style: "{CONTROL_BUTTON_STYLE}",
+                class: "hoover4-hover-shadow-background",
+                title: "Open all filters",
+                onclick: move |_| open_category.set(Some(FilterCategory::Collections)),
+                Icon { icon: MdFilterList, style: "width: 20px; height: 20px; color: rgba(0,0,0,0.8);" }
+                if active_filter_count() > 0 {
+                    "Filter ({active_filter_count()})"
+                } else {
+                    "Filter"
+                }
+            }
+
+            SortControl {
+                original_query,
+                query: modified_search_query,
+                on_commit: Callback::new(move |_| trigger_search(())),
+            }
+
+            // Directly after Sort: the chip row measures the row of the element before it.
             FilterChips {
                 query: modified_search_query,
                 on_open: Callback::new(move |category: FilterCategory| {
