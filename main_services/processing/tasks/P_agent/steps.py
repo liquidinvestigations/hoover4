@@ -629,11 +629,13 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
                 "conflicting_label": "It uses a label for more than one document.",
                 "page_zero": "It names page 0 instead of the verified page.",
             }[problem]
-            answer = ("The citation reply could not replace the earlier answer. "
-                      + detail + "\n\n" + row.result
-                      if (row.result or "").strip() else
-                      "The citation reply could not be used. " + detail
-                      + " No earlier answer is available.")
+            notice = "The citation reply could not replace the earlier answer. " + detail
+            if (row.result or "").strip():
+                answer = (row.result if row.result.startswith(notice + "\n\n")
+                          else notice + "\n\n" + row.result)
+            else:
+                answer = ("The citation reply could not be used. " + detail
+                          + " No earlier answer is available.")
     from tasks.P_agent.stream_writer import starts_round
 
     start = 0

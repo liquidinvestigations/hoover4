@@ -446,6 +446,19 @@ def test_an_invalid_citation_reply_keeps_the_prior_answer(store, monkeypatch, re
     assert store["run"][-1]["result"] == answer
 
 
+def test_repeated_invalid_citation_replies_keep_one_notice(store, monkeypatch):
+    _citation_round(store, marked=True)
+    notice = ("The citation reply could not replace the earlier answer. "
+              "It uses a label that no successful citation gives.")
+    prior = notice + "\n\nThe memo sets the budget [D1]."
+    store["row"] = _row(next_seq=8, model_steps=1, result=prior)
+    _serve(monkeypatch, store, _frames(text="The memo sets the budget [D9]."))
+    assert _step(step_no=2).outcome == "answered"
+    [answer] = [r["content"] for r in store["chat"] if r["role"] == "assistant"]
+    assert answer == prior
+    assert store["run"][-1]["result"] == prior
+
+
 def test_a_no_label_correction_is_shown_with_its_status(store, monkeypatch):
     _citation_round(store, marked=True)
     _serve(monkeypatch, store, _frames(text="I cannot verify the budget from these records."))

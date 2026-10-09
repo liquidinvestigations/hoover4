@@ -95,10 +95,11 @@ answer does not name the file. A question without a citation label gets no citat
 A verified absence answer needs no source handle. The worker checks the revised answer before it replaces
 the earlier answer. It retains the earlier answer with a notice when the reply contains
 raw call text or a label that does not resolve.
+The worker does not repeat an identical notice after another invalid reply.
 Each answer stores citation status in its usage metadata.
 The interface omits redundant status prose.
 A turn gets at most two repair rounds after its first draft.
-The answer of the last round is published without a notice when findings remain.
+The answer of the last round is published when other findings remain.
 
 The citation check uses tool evidence from the current and earlier turns.
 It excludes earlier repair notes.

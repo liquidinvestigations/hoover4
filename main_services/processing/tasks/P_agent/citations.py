@@ -12,6 +12,7 @@ rules ask for citations. They do not show that the claims of the answer are supp
 The note of the round asks for the citations and the whole answer again. A reply with
 no text keeps the earlier answer. A reply with invalid labels or raw call text keeps
 that answer with a notice. A reply without labels shows its citation status.
+Another invalid reply does not repeat an identical notice.
 
 The note of a round is stored with its marker (`REPAIR_MARKER_KEY` in its usage), and
 `is_citation_note` reads this marker. The policy coordinator (`control.coordinator`) runs this
