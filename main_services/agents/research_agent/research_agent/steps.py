@@ -739,6 +739,28 @@ async def run_tool_call(agent: Any, request: ToolCallRequest) -> Dict[str, Any]:
                                     _listed_skill_names(context))
 
 
+def _failed_result(body: Any) -> bool:
+    """Identify an error envelope or a batch with only failed document reads."""
+    if not isinstance(body, dict):
+        return False
+    if body.get("success") is False or body.get("error"):
+        return True
+    documents = body.get("documents")
+    return (isinstance(documents, list) and bool(documents)
+            and all(isinstance(item, dict) and _failed_result(item.get("result"))
+                    for item in documents))
+
+
+def _successful_repeat_result(message: RunMessage) -> bool:
+    """Exclude failed tool results from repeat pointers and search refusals."""
+    if message.status == "error":
+        return False
+    try:
+        return not _failed_result(json.loads(message.content))
+    except (TypeError, ValueError):
+        return True
+
+
 async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, Any]:
     snapshot = context.snapshot
     name = request.call.name
@@ -797,7 +819,8 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
                     "search_facet_values", "search_histogram", "search_entity_explainer",
                     "doc_search_text", "pdf_search"}
     if name in search_tools:
-        completed = {m.tool_call_id for m in request.messages if m.role == "tool"}
+        completed = {m.tool_call_id for m in request.messages
+                     if m.role == "tool" and _successful_repeat_result(m)}
         previous = [c for m in request.messages if m.role == "ai" for c in m.tool_calls
                     if c.name == name and c.id in completed and c.id != request.call.id
                     and normalize_arguments(c.args, schema).args == args]
@@ -825,7 +848,8 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     citation_call = name in ("cite_documents", "cite_pages")
     if citation_call or name in search_tools or name.startswith(("search_", "read_documents", "doc_", "table_", "folder_", "list_document_")):
         rows, visible = model_input_rows(request.earlier, request.messages)
-        whole = {(m.thread_id, m.idx) for m in visible if m.role == "tool" and m.status == "ok"
+        whole = {(m.thread_id, m.idx) for m in visible
+                 if m.role == "tool" and m.status == "ok" and _successful_repeat_result(m)
                  and any(r.thread_id == m.thread_id and r.idx == m.idx and r.content == m.content
                          for r in rows)}
         answers = {m.tool_call_id: m for m in rows if m.role == "tool"

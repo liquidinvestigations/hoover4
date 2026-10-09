@@ -305,6 +305,7 @@ field and gives the agent `reasoning_content`.
 
 The model decides when it is finished: a reply with no call is the answer. The worker adds
 no todo round. The service skips a repeated successful search or read while its complete result remains in model input.
+Failed results do not create repeat pointers or search refusals. A batch with only failed document reads can run again.
 It also reuses an identical complete verified citation until another source read occurs.
 Different passages, partial failures, and reduced results remain executable.
 Its limits are the step limit of the run and one retry

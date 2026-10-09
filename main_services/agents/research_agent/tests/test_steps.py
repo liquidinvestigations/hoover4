@@ -968,6 +968,30 @@ async def test_repeated_read_runs_again_after_its_result_is_reduced(model):
     assert len(seen) == 1
 
 
+@pytest.mark.parametrize("name", ["search_collections", "doc_email"])
+@pytest.mark.parametrize("failed,status", [
+    ({"success": False, "error": "budget_exhausted"}, "ok"),
+    ({"documents": [{"result": {"error": "budget_exhausted"}}]}, "ok"),
+    ({"items": []}, "error"),
+])
+async def test_failed_searches_and_reads_run_again(name, failed, status):
+    seen = []
+    agent = FakeAgent([dict_tool(name, LIST_SCHEMA, seen)], {name})
+    messages = [{"role": "human", "content": "question", "thread_id": "t", "idx": 0}]
+    for n in range(2):
+        messages.extend([
+            {"role": "ai", "content": "", "tool_calls": [{"id": f"old{n}", "name": name,
+                "args": {"query": "x"}}], "thread_id": "t", "idx": n * 2 + 1},
+            {"role": "tool", "content": json.dumps(failed), "tool_call_id": f"old{n}",
+                "name": name, "status": status, "thread_id": "t", "idx": n * 2 + 2},
+        ])
+    request = tool_request(name, {"query": "x"}).model_copy(update={
+        "messages": [steps.RunMessage(**message) for message in messages]})
+    response = await steps.run_tool_call(agent, request)
+    assert response["status"] == "ok"
+    assert len(seen) == 1
+
+
 @pytest.mark.parametrize("name,handle", [("cite_pages", "[W1]"), ("cite_documents", "[D1]")])
 @pytest.mark.parametrize("changed", [None, "terms", "read", "reduced", "failed", "partial"])
 async def test_only_complete_unchanged_verified_citations_skip_reexecution(name, handle, changed):
