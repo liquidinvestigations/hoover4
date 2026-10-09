@@ -123,19 +123,21 @@ pub fn SearchPanelLeftView(
                 display: flex;
                 flex-direction: column;
                 gap: 1px;
-                margin: 1px;
+                margin: 0;
                 padding: 7px;
                 padding-top: 0px;
                 height: 100%;
+                min-height: 0;
                 width: 100%;
             ",
             SearchResultListControls {}
 
             div {
                 style: "
-                flex-grow: 1;
+                flex: 1 1 auto;
+                min-height: 0;
+                overflow: hidden;
                 width: 100%;
-                max-height: calc(100% - 56px);
                 ",
                 SuspendWrapper {
                     SearchResultsView { }
@@ -183,46 +185,48 @@ fn SearchResultsView() -> Element {
         .unwrap_or(false);
 
     rsx! {
-        if let Some(notice) = common::search_query::short_infix_notice(&search_result.query.query_string) {
-            div { role: "status", style: "padding: 8px 12px;", "{notice}" }
-        }
-        // Partial-results notice: one or more shards could not be searched (see the
-        // backend fan-out partial-failure policy). The list and the hit count may
-        // be incomplete.
-        if search_result.partial || hit_count_partial {
-            div {
+        div {
+            id: "x-search-results-scroll",
+            style: "height: 100%; width: 100%; overflow-y: auto;",
+            if let Some(notice) = common::search_query::short_infix_notice(&search_result.query.query_string) {
+                div { role: "status", style: "padding: 8px 12px;", "{notice}" }
+            }
+            // Partial-results notice: one or more shards could not be searched (see the
+            // backend fan-out partial-failure policy). The list and the hit count may
+            // be incomplete.
+            if search_result.partial || hit_count_partial {
+                div {
+                    style: "
+                        width: 100%;
+                        padding: 8px 12px;
+                        margin-bottom: 4px;
+                        border: 1px solid rgba(200, 120, 0, 0.6);
+                        border-radius: 6px;
+                        background-color: rgba(255, 180, 60, 0.15);
+                        color: rgb(120, 70, 0);
+                        font-size: 14px;
+                    ",
+                    "Some collections could not be searched, so results may be incomplete."
+                }
+            }
+            if result_list.is_empty() && !search_result.query.query_string.trim().is_empty()
+                && !search_result.partial && !hit_count_partial
+                && search_result.query == *search_results_state.query.read()
+                && search_results_state.hit_count.read().as_ref().is_some_and(|r| r.as_ref().is_ok_and(|h| h.total == 0)) {
+                NoResults { query: search_results_state.query }
+            }
+            ul {
+                id: "x-search-panel-results-wrapper",
                 style: "
                     width: 100%;
-                    padding: 8px 12px;
-                    margin-bottom: 4px;
-                    border: 1px solid rgba(200, 120, 0, 0.6);
-                    border-radius: 6px;
-                    background-color: rgba(255, 180, 60, 0.15);
-                    color: rgb(120, 70, 0);
-                    font-size: 14px;
                 ",
-                "Some collections could not be searched, so results may be incomplete."
-            }
-        }
-        if result_list.is_empty() && !search_result.query.query_string.trim().is_empty()
-            && !search_result.partial && !hit_count_partial
-            && search_result.query == *search_results_state.query.read()
-            && search_results_state.hit_count.read().as_ref().is_some_and(|r| r.as_ref().is_ok_and(|h| h.total == 0)) {
-            NoResults { query: search_results_state.query }
-        }
-        ul {
-            id: "x-search-panel-results-wrapper",
-            style: "
-                width: 100%;
-                height: 100%;
-                overflow-y: auto;
-            ",
-            for result in result_list.iter().cloned() {
-                li {
-                    key: "{result.collection_dataset}-{result.file_hash}-{result.result_index_in_page}",
-                    SearchResultItemCard {result: result.clone(), onmounted: move |_e| {
-                        result_mounted_thing.write().insert(result.document_identifier(), _e);
-                    }}
+                for result in result_list.iter().cloned() {
+                    li {
+                        key: "{result.collection_dataset}-{result.file_hash}-{result.result_index_in_page}",
+                        SearchResultItemCard {result: result.clone(), onmounted: move |_e| {
+                            result_mounted_thing.write().insert(result.document_identifier(), _e);
+                        }}
+                    }
                 }
             }
         }

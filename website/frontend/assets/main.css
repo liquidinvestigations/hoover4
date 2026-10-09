@@ -27,6 +27,13 @@ html, body, #main {
 	color-scheme: light;
 }
 
+/* Search results and citation cards use the same bounded height. */
+.x-result-item-card {
+    height: 148px;
+    min-height: 148px;
+    box-sizing: border-box;
+}
+
 /* Reference type and colour values, taken from the search and document pages. Every
    other page reads these properties, so the application has one type scale and one
    palette. One property has one meaning: a label is always --x-ink-muted. */

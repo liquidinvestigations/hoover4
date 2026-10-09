@@ -19,6 +19,8 @@ pub fn SearchResultItemCard(
     #[props(default)]
     citation_excerpt: bool,
     #[props(default)]
+    citation_handle: String,
+    #[props(default)]
     children: Option<Element>,
 ) -> Element {
     let search_results_state = use_context::<SearchResultsState>();
@@ -50,10 +52,11 @@ pub fn SearchResultItemCard(
         "rgba(255,255,255,1.0)"
     };
 
-    let height = if children.is_some() { "auto" } else { "148px" };
+    let label = if citation_handle.is_empty() { item_index.to_string() } else { citation_handle };
     rsx! {
         div {
             "data-citation-search-snippet": citation_excerpt.then_some("true"),
+            class: "x-result-item-card",
             style: "
                 display: flex;
                 flex-direction: column;
@@ -64,8 +67,6 @@ pub fn SearchResultItemCard(
                 border-radius: 8px;
                 padding: 12px 16px;
                 margin: 8px 8px;
-                height: {height};
-                min-height: 148px;
                 width: calc(100% - 16px);
                 box-sizing: border-box;
             ",
@@ -86,10 +87,7 @@ pub fn SearchResultItemCard(
                     padding: 1px;
                     border: 1px;
                 ",
-                span {
-                    style: "font-size: 20px; font-weight: 200; color: rgba(0, 0, 0, 0.5); padding: 1px 4px; border-radius: 4px; margin: -4px",
-                    "{item_index}."
-                }
+                ResultCardLabel { label }
                 // ICON FOR TITLE
                 FileTypeIcon { file_type: result().file_type.clone() }
                 // TITLE
@@ -121,7 +119,11 @@ pub fn SearchResultItemCard(
                     padding: 2px;
                     border: 2px;
                 ",
-                HighlightTextSnippetSection {highlight_text_spans, matched_by_filename}
+                div {
+                    style: "flex: 1; min-width: 0; min-height: 0; max-height: 100%; overflow-y: auto;",
+                    HighlightTextSnippetSection {highlight_text_spans, matched_by_filename}
+                    {children}
+                }
                 div {
                     style: "
                         display: flex;
@@ -137,7 +139,18 @@ pub fn SearchResultItemCard(
                     }
                 }
             }
-            {children}
+        }
+    }
+}
+
+/// Show the result number or citation handle in the card header.
+#[component]
+pub fn ResultCardLabel(label: String) -> Element {
+    rsx! {
+        span {
+            "data-result-card-label": "{label}",
+            style: "font-size: 20px; font-weight: 200; color: rgba(0, 0, 0, 0.5); padding: 1px 4px; border-radius: 4px; margin: -4px; flex-shrink: 0;",
+            "{label}."
         }
     }
 }

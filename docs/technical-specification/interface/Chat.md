@@ -28,6 +28,9 @@ A comma-separated citation group renders and verifies each handle.
 Tables show a source card after the first row that cites it.
 Document cards contain the matching source excerpt.
 Web cards show a linked title, domain, and verified source excerpt.
+Document and web cards show their citation handle in the card header.
+They use the same height as search result cards.
+Long verified excerpts scroll inside the card.
 The todo card shows the current bold goal and an unnumbered task list.
 It uses white text on black and strikes through completed tasks.
 Failed document quotes allocate no new handles.

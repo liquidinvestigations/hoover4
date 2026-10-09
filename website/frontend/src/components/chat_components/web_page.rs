@@ -7,6 +7,7 @@ use super::markdown_text::MarkdownishText;
 use super::tool_cards::http_link;
 use crate::api::chat_api::chat_artifact_detail;
 use crate::data_definitions::doc_viewer_state::DocViewerStateControl;
+use crate::components::search_components::search_result_item_card::ResultCardLabel;
 
 #[derive(Clone, Copy)]
 pub struct ChatWebOpen {
@@ -40,26 +41,35 @@ pub fn WebPageCard(page: ChatPageRef, #[props(default)] passages: Vec<ChatPageRe
             "data-web-citation": "{page.handle}",
             "data-citation-select": "true",
             "data-selected": "{selected}",
-            style: "background: {background}; border: 3px solid {border}; border-radius: 8px; \
+            class: "x-result-item-card",
+            style: "background-color: {background}; border: 3px solid; border-color: {border}; border-radius: 8px; \
+                    display: flex; flex-direction: column; gap: 7px; width: calc(100% - 16px); \
                     padding: 12px 16px; margin: 8px; font-size: var(--x-text-md); cursor: pointer;",
             onclick: move |_| { if let Some(open) = open { open.open.call(target.clone()); } },
-            if let Some(href) = href {
-                a { href, target: "_blank", rel: "noopener noreferrer nofollow",
-                    style: "color: #0000EE; font-size: var(--x-text-xl); text-decoration: none;",
-                    onclick: move |event| event.stop_propagation(),
-                    "{title}"
-                }
-            } else { div { "{title}" } }
-            div { style: "color: #16713C; margin: 3px 0 8px;", "{domain}" }
-            for (source, quote, find) in quotes {
-                button { r#type: "button", style: "display: block; text-align: left; font: inherit; border: 0; padding: 0; background: transparent; margin-top: 5px; color: #111827; white-space: pre-wrap; cursor: pointer;",
-                    onclick: move |event| {
-                        event.stop_propagation();
-                        if let Some(open) = open { open.open.call((source.artifact_id.clone(), find.clone())); }
-                    },
-                    for (text, marked) in common::chat_pages::exact_quote_parts(&quote, &source.terms) {
-                        if marked { mark { style: "background: #EB3E014D; color: inherit;", "{text}" } }
-                        else { span { "{text}" } }
+            div {
+                style: "display: flex; align-items: center; gap: 12px; min-width: 0; flex-shrink: 0;",
+                ResultCardLabel { label: page.handle.clone() }
+                if let Some(href) = href {
+                    a { href, target: "_blank", rel: "noopener noreferrer nofollow",
+                        style: "color: #0000EE; font-size: 20px; line-height: 28px; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;",
+                        onclick: move |event| event.stop_propagation(),
+                        "{title}"
+                    }
+                } else { div { style: "font-size: 20px; line-height: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;", "{title}" } }
+            }
+            div { style: "color: #16713C; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", "{domain}" }
+            div {
+                style: "flex: 1; min-height: 0; overflow-y: auto; overflow-wrap: anywhere;",
+                for (source, quote, find) in quotes {
+                    button { r#type: "button", style: "display: block; text-align: left; font: inherit; border: 0; padding: 0; background: transparent; margin-top: 5px; color: #111827; white-space: pre-wrap; cursor: pointer;",
+                        onclick: move |event| {
+                            event.stop_propagation();
+                            if let Some(open) = open { open.open.call((source.artifact_id.clone(), find.clone())); }
+                        },
+                        for (text, marked) in common::chat_pages::exact_quote_parts(&quote, &source.terms) {
+                            if marked { mark { style: "background: #EB3E014D; color: inherit;", "{text}" } }
+                            else { span { "{text}" } }
+                        }
                     }
                 }
             }

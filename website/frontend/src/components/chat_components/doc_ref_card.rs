@@ -128,6 +128,7 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
                 result,
                 onmounted: |_| {},
                 citation_excerpt: !doc.search_snippet.is_empty(),
+                citation_handle: doc.handle.clone(),
                 children: Some(rsx! {
                     for (index, passage) in passages.into_iter().enumerate() {
                         button { key: "{index}", r#type: "button", style: "border: 0; background: transparent; color: inherit; text-align: left; padding: 6px 0; font: inherit; cursor: pointer;",

@@ -1206,17 +1206,6 @@ pub(super) fn DocumentCitationCards(
                         "data-conflicting-handle": conflicting.contains(&doc.handle).to_string(),
                         class: "x-source-entry",
                         style: "display: flex; gap: 8px; align-items: flex-start;",
-                        if !doc.handle.is_empty() {
-                            div {
-                                style: "
-                                    flex-shrink: 0; font-size: var(--x-text-xs); font-weight: 600;
-                                    color: var(--x-ink); background: #F8FAFC;
-                                    border: 1px solid; border-color: var(--x-border); border-radius: 5px;
-                                    padding: 1px 5px; margin-top: 10px;
-                                ",
-                                "{doc.handle}"
-                            }
-                        }
                         div {
                             style: "flex: 1 1 auto; min-width: 0;",
                             if !doc.why.is_empty() { div { style: "font-size: var(--x-text-sm); color: var(--x-ink); padding: 0 8px;", "{doc.why}" } }
