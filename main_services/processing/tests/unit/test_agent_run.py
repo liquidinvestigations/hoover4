@@ -431,6 +431,8 @@ def test_a_citation_round_reply_with_no_text_keeps_the_answer(store, monkeypatch
 
 @pytest.mark.parametrize("reply", [
     "The memo sets the budget [D9].",
+    "The memo sets the budget [D1-D4].",
+    "The memo sets the budget [newspaste].",
     "The memo sets the budget on page 0 [D2].",
     'The memo [cite_documents(citations=[{"file_hash":"a"}])] sets the budget [D2].',
 ])
@@ -457,6 +459,19 @@ def test_repeated_invalid_citation_replies_keep_one_notice(store, monkeypatch):
     [answer] = [r["content"] for r in store["chat"] if r["role"] == "assistant"]
     assert answer == prior
     assert store["run"][-1]["result"] == prior
+
+
+@pytest.mark.parametrize("reply", [
+    "The memo sets the budget [D2]. [sic]",
+    "The memo sets the budget [D2]. [1]",
+    "The memo sets the budget [D2]. [Source](https://example.invalid/memo)",
+])
+def test_citation_reply_preserves_ordinary_brackets(store, monkeypatch, reply):
+    _citation_round(store, marked=True)
+    store["session_citations"] = [_citation_result(3, "[D2]", "a" * 64)]
+    _serve(monkeypatch, store, _frames(text=reply))
+    assert _step(step_no=2).outcome == "answered"
+    assert store["run"][-1]["result"] == reply
 
 
 def test_a_no_label_correction_is_shown_with_its_status(store, monkeypatch):

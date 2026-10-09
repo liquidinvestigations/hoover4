@@ -293,13 +293,14 @@ def answer_metadata(answer: str, messages, session_entries, internet_tools: bool
 def repair_reply_problem(answer: str, session_entries) -> str:
     """The structural problem in a citation reply, or empty when it can be shown."""
     from tasks.P_agent import reports, thread_facts
+    from tasks.P_agent.control.handlers.answer_review import unissued_markers
 
     if (thread_facts.RAW_CITATION_CALL.search(answer)
             or "<|tool_call>" in answer or "<|\"|>" in answer):
         return "raw_call"
     check = reports.check_labels(answer, reports.label_bindings(session_entries),
                                  session_entries)
-    if check["unresolved"]:
+    if check["unresolved"] or unissued_markers(answer):
         return "unresolved_label"
     if check["conflicting"]:
         return "conflicting_label"

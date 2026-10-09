@@ -94,7 +94,7 @@ An unlabeled answer also gets that round after a successful document read, even 
 answer does not name the file. A question without a citation label gets no citation repair.
 A verified absence answer needs no source handle. The worker checks the revised answer before it replaces
 the earlier answer. It retains the earlier answer with a notice when the reply contains
-raw call text or a label that does not resolve.
+raw call text, a label that does not resolve, or an unissued bracketed source name.
 The worker does not repeat an identical notice after another invalid reply.
 Each answer stores citation status in its usage metadata.
 The interface omits redundant status prose.
