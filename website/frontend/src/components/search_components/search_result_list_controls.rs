@@ -24,14 +24,14 @@ pub fn SearchResultListControls() -> Element {
             style: "
                 display: flex;
                 flex-direction: row;
-                gap: 6px;
-                padding: 7px;
+                gap: 4px;
+                padding: 4px 8px;
                 margin: 1px;
-                height: 56px;
+                height: 42px;
                 width: 100%;
             ",
             h1 {
-                style: "font-size: 20px; font-weight: 300; color:rgb(75, 87, 112);  border-bottom: 1px solid rgb(75, 87, 112);",
+                style: "font-size: var(--x-text-detail); line-height: var(--x-line-detail); font-weight: 300; color:rgb(75, 87, 112);  border-bottom: 1px solid rgb(75, 87, 112);",
                 SearchForResultsHitCountString { }
             }
             PaginationCapNotice {}
@@ -76,7 +76,7 @@ fn PaginationCapNotice() -> Element {
                 HoverCardTrigger {
                     div {
                         style: "display: flex; align-items: center; cursor: help; color: rgb(75, 87, 112);",
-                        Icon { icon: MdInfoOutline, style: "width: 20px; height: 20px;" }
+                        Icon { icon: MdInfoOutline, style: "width: 19px; height: 19px;" }
                     }
                 }
                 HoverCardContent {
@@ -84,8 +84,8 @@ fn PaginationCapNotice() -> Element {
                     align: ContentAlign::Center,
                     div {
                         style: "
-                            background-color: white; padding: 12px 14px; width: 320px;
-                            font-size: 15px; line-height: 21px; color: rgb(30, 35, 45);
+                            background-color: white; padding: 11px 15px; width: 320px;
+                            font-size: var(--x-text-body); line-height: var(--x-line-body); color: rgb(30, 35, 45);
                         ",
                         div { style: "font-weight: 600; margin-bottom: 4px;", "Only the first {MAX_PAGINATION_DOCUMENT_LIMIT} results can be opened" }
                         "The count beside this icon is the whole match; the pager stops at "
@@ -107,7 +107,7 @@ fn PaginationControls() -> Element {
                 flex-direction: row;
                 align-items: center;
                 justify-content: center;
-                gap: 16px;
+                gap: 8px;
             ",
 
             ControlNextPrevDocument {}
@@ -247,8 +247,8 @@ fn ControlNextPrevDocument() -> Element {
         // current result counter
         div {
             style: "
-                font-size: 20px;
-                line-height: 28px;
+                font-size: var(--x-text-body);
+                line-height: var(--x-line-body);
                 font-weight: 400;
             ",
             "{total_result_index_txt()} / {*hit_count.read()}"
@@ -309,7 +309,7 @@ fn ControlNextPrevPage() -> Element {
                     justify-items: center;
                 border-radius: 12px;
                 gap: 4px;
-                height: 32px;
+                height: 30px;
 
                     margin-top: -2px;
 
@@ -328,15 +328,15 @@ fn ControlNextPrevPage() -> Element {
             div {
                 "data-result-page-counter": "true",
                 style: "
-                    font-size: 20px;
-                    line-height: 28px;
+                    font-size: var(--x-text-body);
+                    line-height: 24px;
                     font-weight: 400;
                     align-items: center;
                     align-content: center;
-                    height:31px;
+                    height: 26px;
                     border: 1px solid rgba(128,128,128,0.5);
                     border-radius: 6px;
-                    padding: 0 6px;
+                    padding: 0 4px;
                     flex-shrink: 0;
                     width: fit-content;
                 ",
@@ -396,8 +396,8 @@ pub fn NavigationButton<I: dioxus_free_icons::IconShape + Clone + PartialEq + 's
                     aria_label: "{label}",
                     disabled: *disabled.read(),
                     style: "
-                        width: 32px;
-                        height: 32px;
+                        width: 30px;
+                        height: 30px;
                         background: white;
                         border-radius: 8px;
                         padding: 4px;
@@ -409,7 +409,7 @@ pub fn NavigationButton<I: dioxus_free_icons::IconShape + Clone + PartialEq + 's
                             onclick(());
                         }
                     },
-                    Icon { icon: icon, style: "width: 26px; height: 26px; color: {btn_color};" }
+                    Icon { icon: icon, style: "width: 19px; height: 19px; color: {btn_color};" }
                 },
 
             },
@@ -425,11 +425,11 @@ pub fn NavigationButton<I: dioxus_free_icons::IconShape + Clone + PartialEq + 's
                         text-align:center;
                         color:{tooltip_color};
                         background-color:white;
-                        padding:10px;
+                        padding:8px;
                         // border-radius:5px;
                         // border: 1px solid black;
                         width: 100%;
-                        font-size: 21px;
+                        font-size: 15px;
                     ",
 
                     div {style:"flex-grow: 1;"}
@@ -476,8 +476,8 @@ pub fn NavigationButton2<I: dioxus_free_icons::IconShape + Clone + PartialEq + '
                     aria_label: "{label}",
                     disabled: *disabled.read(),
                     style: "
-                        width: 32px;
-                        height: 32px;
+                        width: 30px;
+                        height: 30px;
                         background: transparent;
                         padding: 4px;
                         cursor: {btn_cursor};
@@ -487,7 +487,7 @@ pub fn NavigationButton2<I: dioxus_free_icons::IconShape + Clone + PartialEq + '
                             onclick(());
                         }
                     },
-                    Icon { icon: icon, style: "width: 26px; height: 26px; color: {btn_color};" }
+                    Icon { icon: icon, style: "width: 19px; height: 19px; color: {btn_color};" }
                 },
 
             },
@@ -503,9 +503,9 @@ pub fn NavigationButton2<I: dioxus_free_icons::IconShape + Clone + PartialEq + '
                         text-align:center;
                         color:{tooltip_color};
                         background-color:white;
-                        padding:10px;
+                        padding:8px;
                         width: 100%;
-                        font-size: 21px;
+                        font-size: 15px;
                     ",
 
                     div {style:"flex-grow: 1;"}

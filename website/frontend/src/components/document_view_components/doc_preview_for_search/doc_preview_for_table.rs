@@ -425,9 +425,10 @@ const FILTER_CHIP_STYLE: &str = "
 ";
 
 const CONTROL_BUTTON_STYLE: &str = "
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 3px 10px; border-radius: 14px; cursor: pointer;
-    border: 1px solid #ccc; background: white; font-size: 14px; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 8px; border-radius: 14px; cursor: pointer;
+    border: 1px solid #ccc; background: white; font-size: var(--x-text-detail);
+    line-height: var(--x-line-detail); white-space: nowrap;
 ";
 
 /// The button that opens the sheet chooser. A workbook with one sheet shows its name only.
@@ -446,7 +447,7 @@ fn SheetPicker(
         .unwrap_or_else(|| "Sheet".to_string());
     if overview.sheets.len() == 1 {
         return rsx! {
-            span { style: "color: var(--x-ink); font-size: var(--x-text-md); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", title: "{current}", "{current}" }
+            span { style: "color: var(--x-ink); font-size: var(--x-text-md); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", title: "{current}", "{current}" }
         };
     }
     let other_hits: u64 = sheet_hits.iter().filter(|(id, _)| *id != sheet_id).map(|(_, n)| *n).sum();
@@ -454,7 +455,7 @@ fn SheetPicker(
         button {
             r#type: "button",
             class: "x-table-sheet-button",
-            style: "{CONTROL_BUTTON_STYLE} max-width: 180px; min-width: 0;",
+            style: "{CONTROL_BUTTON_STYLE} max-width: 160px; min-width: 0;",
             title: "{current}",
             "aria-label": "Choose a sheet, current sheet {current}",
             "aria-haspopup": "dialog",

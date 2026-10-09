@@ -239,9 +239,9 @@ fn PreviewSubtitleBar(
                 display: flex;
                 flex-direction: row;
                 flex-wrap: nowrap;
-                gap: 12px;
+                gap: 8px;
                 align-items: center;
-                min-height: 48px;
+                min-height: 42px;
                 padding: 4px 8px;
                 box-sizing: border-box;
                 width: 100%;
@@ -249,8 +249,9 @@ fn PreviewSubtitleBar(
                 flex: 0 0 auto;
                 border: 1px solid rgba(0, 0, 0, 0.3); border-top: none;
             ",
-            // The find box takes every pixel the other two parts leave. The controls
-            // and the selector keep their natural width and cut long names short.
+            // The find box takes every pixel the other two parts leave. The selector keeps
+            // its natural width, which its own 160 px limit bounds. The controls shrink
+            // when the pane is narrow and cut long sheet names short.
             div { style: "flex: 1 1 0; min-width: 160px;", {find_query_input_box} }
             div {
                 style: "flex: 0 1 auto; min-width: 0;
@@ -258,11 +259,11 @@ fn PreviewSubtitleBar(
                 flex-direction: row;
                 flex-wrap: nowrap;
                 align-items: center;
-                gap: 6px;
+                gap: 4px;
                 ",
                 {control}
             }
-            div { style: "flex: 0 1 auto; min-width: 0;", {preview_selector} }
+            div { style: "flex: 0 0 auto; min-width: 0;", {preview_selector} }
         }
     }
 }

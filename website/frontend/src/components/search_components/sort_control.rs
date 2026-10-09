@@ -35,7 +35,7 @@ const ACCENT: &str = "rgba(243,140,104,0.95)";
 
 const MENU_STYLE: &str = "
     position: absolute;
-    top: 46px;
+    top: 38px;
     right: 0px;
     min-width: 220px;
     background: white;
@@ -50,9 +50,9 @@ const MENU_ITEM_STYLE: &str = "
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 14px;
-    font-size: 16px;
-    line-height: 22px;
+    padding: 8px 15px;
+    font-size: var(--x-text-body);
+    line-height: var(--x-line-body);
     cursor: pointer;
     width: 100%;
     border: none;
@@ -63,14 +63,14 @@ const MENU_ITEM_STYLE: &str = "
 const BUTTON_STYLE: &str = "
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    height: 42px;
-    padding: 0 12px;
+    gap: 4px;
+    height: var(--x-control-height);
+    padding: 0 11px;
     border-radius: 100px;
     background: white;
     cursor: pointer;
-    font-size: 15px;
-    line-height: 22px;
+    font-size: var(--x-text-body);
+    line-height: var(--x-line-body);
     white-space: nowrap;
 ";
 
@@ -168,7 +168,7 @@ pub fn SortControl(
                     let open = *menu_open.read();
                     menu_open.set(!open);
                 },
-                Icon { icon: MdSort, style: "width: 20px; height: 20px; color: rgba(0,0,0,0.8);" }
+                Icon { icon: MdSort, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.8);" }
                 "{label()}"
                 // The unapplied choice, drawn as the transition it is. Absent while the
                 // control and the result list agree, so the button only grows when there

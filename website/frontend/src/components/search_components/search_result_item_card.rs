@@ -61,12 +61,13 @@ pub fn SearchResultItemCard(
                 display: flex;
                 flex-direction: column;
                 align-items: stretch;
-                gap: 7px;
+                gap: 4px;
                 background: {background_color};
-                border: 3px solid {border_color};
+                border: 2px solid;
+                border-color: {border_color};
                 border-radius: 8px;
-                padding: 12px 16px;
-                margin: 8px 8px;
+                padding: 8px 11px;
+                margin: 4px 8px;
                 width: calc(100% - 16px);
                 box-sizing: border-box;
             ",
@@ -82,7 +83,7 @@ pub fn SearchResultItemCard(
                     display: flex;
                     flex-direction: row;
                     align-items: center;
-                    gap: 12px;
+                    gap: 8px;
                     width: 100%;
                     padding: 1px;
                     border: 1px;
@@ -112,7 +113,7 @@ pub fn SearchResultItemCard(
                     flex-direction: row;
                     align-items: flex-start;
                     justify-content: space-between;
-                    gap: 12px;
+                    gap: 8px;
                     width: 100%;
                     flex: 1;
                     min-height: 0;
@@ -131,7 +132,7 @@ pub fn SearchResultItemCard(
                         min-width: 0;
                         min-height: 0;
                         max-height: 100%;
-                        font-size: 16px;
+                        font-size: 15px;
                         line-height: 23px;
                         overflow: hidden;
                         display: -webkit-box;
@@ -146,7 +147,7 @@ pub fn SearchResultItemCard(
                         display: flex;
                         flex-direction: row;
                         align-items: center;
-                        gap: 8px;
+                        gap: 4px;
                         flex-shrink: 0;
                     ",
                     DocCardActionButtonOpenNewTab {document_identifier: result().document_identifier()}
@@ -166,7 +167,7 @@ pub fn ResultCardLabel(label: String) -> Element {
     rsx! {
         span {
             "data-result-card-label": "{label}",
-            style: "font-size: 20px; font-weight: 200; color: rgba(0, 0, 0, 0.5); padding: 1px 4px; border-radius: 4px; margin: -4px; flex-shrink: 0;",
+            style: "font-size: var(--x-text-detail); line-height: var(--x-line-detail); font-weight: 200; color: rgba(0, 0, 0, 0.5); padding: 1px 4px; border-radius: 4px; margin: -4px; flex-shrink: 0;",
             "{label}."
         }
     }
@@ -181,19 +182,18 @@ fn FileTypeIcon(file_type: String) -> Element {
     rsx! {
         div {
             style: "
-                width: 24px;
-                height: 24px;
+                width: 19px;
+                height: 19px;
                 background: transparent;
                 color: rgba(0, 0, 0, 0.5);
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 16px;
                 font-weight: 600;
                 border-radius: 4px;
                 flex-shrink: 0;
             ",
-            crate::components::file_type_icon::FileTypeGlyphIcon { file_type, size: 18 }
+            crate::components::file_type_icon::FileTypeGlyphIcon { file_type, size: 15 }
         }
     }
 }
@@ -203,8 +203,8 @@ fn CardTitleSection(highlight_filenames_spans: Vec<HighlightTextSpan>) -> Elemen
     rsx! {
         div {
             style: "
-                font-size: 20px;
-                line-height: 28px;
+                font-size: var(--x-text-body);
+                line-height: var(--x-line-body);
                 font-weight: 400;
                 color: rgb(0, 0, 0);
                 overflow: hidden;
@@ -222,20 +222,19 @@ fn CollectionIcon() -> Element {
     rsx! {
         div {
             style: "
-                width: 21px;
-                height: 21px;
+                width: 19px;
+                height: 19px;
                 background: transparent;
                 color: rgba(0, 0, 0, 0.5);
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 16px;
                 border-radius: 4px;
                 flex-shrink: 0;
             ",
             Icon {
                 icon: GoDatabase,
-                style: "width: 18px; height: 18px;"
+                style: "width: 15px; height: 15px;"
             }
         }
     }
@@ -245,13 +244,13 @@ fn CollectionIcon() -> Element {
 fn ComponentNameSection(collection_dataset: String) -> Element {
     rsx! {
         // Bounded, like the title beside it. A chat card can name several datasets for
-        // one document, and at 20px italic an unbounded comma-joined list pushes the
+        // one document, and an unbounded comma-joined list pushes the
         // card's header out of shape; the full value stays in `title`, which is the only
         // place a truncated label can be read whole.
         span {
             style: "
-                font-size: 20px;
-                line-height: 28px;
+                font-size: var(--x-text-detail);
+                line-height: var(--x-line-detail);
                 font-weight: 300;
                 color: rgba(0, 0, 0, 0.5);
                 font-family: Roboto, sans-serif;
@@ -289,8 +288,8 @@ fn HighlightTextSnippetSection(
                 div {
                     class: "x-matched-by-filename",
                     style: "
-                        font-size: 15px;
-                        line-height: 23px;
+                        font-size: var(--x-text-body);
+                        line-height: var(--x-line-body);
                         font-weight: 400;
                         font-style: italic;
                         color: rgba(0, 0, 0, 0.55);
@@ -305,8 +304,8 @@ fn HighlightTextSnippetSection(
                         // anywhere` is what keeps a long unbroken path segment from
                         // widening the card instead of wrapping inside it.
                         style: "
-                            font-size: 14px;
-                            line-height: 20px;
+                            font-size: var(--x-text-detail);
+                            line-height: var(--x-line-detail);
                             font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
                             color: rgba(0, 0, 0, 0.7);
                             background: rgba(0, 0, 0, 0.03);
@@ -326,8 +325,8 @@ fn HighlightTextSnippetSection(
         div {
             // TEXT SNIPPET
             style: "
-                font-size: 16px;
-                line-height: 23px;
+                font-size: var(--x-text-body);
+                line-height: var(--x-line-body);
                 font-weight: 400;
                 color: rgb(0, 0, 0);
                 min-width: 0;

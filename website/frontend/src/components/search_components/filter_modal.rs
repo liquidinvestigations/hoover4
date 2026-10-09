@@ -336,11 +336,11 @@ pub fn FilterChips(
                             // is applied to the text by the summariser, this is the
                             // pixel half.
                             style: "
-                                display: inline-flex; align-items: center; gap: 6px;
+                                display: inline-flex; align-items: center; gap: 4px;
                                 max-width: min(320px, 28ch);
                                 border: 1px solid {ACCENT}; border-radius: 100px;
                                 background: rgba(243,140,104,0.10);
-                                padding: 3px 6px 3px 10px; font-size: 14px; line-height: 20px;
+                                padding: 4px 4px 4px 8px; font-size: 13px; line-height: 19px;
                                 cursor: pointer;
                             ",
                             // The full selection, always. The summary is lossy by design.
@@ -373,14 +373,14 @@ pub fn FilterChips(
             }
             div {
                 class: "x-filter-chips-slot",
-                style: "display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0;",
+                style: "display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;",
                 // Hidden, not removed, when no chip is hidden, so the slot keeps its width.
                 button {
                     class: "x-filter-chips-more",
                     style: "
                         visibility: {more_visibility}; min-width: 74px;
                         border: 1px solid rgba(0,0,0,0.35); border-radius: 100px; background: white;
-                        padding: 3px 10px; font-size: 14px; line-height: 20px; cursor: pointer;
+                        padding: 4px 8px; font-size: 13px; line-height: 19px; cursor: pointer;
                     ",
                     title: "Open the filters that are not shown here",
                     onclick: move |_| {
@@ -391,7 +391,7 @@ pub fn FilterChips(
                     "{hidden} more"
                 }
                 button {
-                    style: "border: none; background: none; cursor: pointer; text-decoration: underline; font-size: 14px; color: rgba(0,0,0,0.7);",
+                    style: "border: none; background: none; cursor: pointer; text-decoration: underline; font-size: 13px; color: rgba(0,0,0,0.7);",
                     onclick: move |_| {
                         {
                             let mut q = query.write();

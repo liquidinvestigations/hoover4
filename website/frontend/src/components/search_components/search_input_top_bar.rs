@@ -19,11 +19,11 @@ use dioxus_free_icons::{
 };
 
 const CONTROL_BUTTON_STYLE: &str = "
-    display: inline-flex; align-items: center; gap: 6px;
-    height: 42px; padding: 0 14px;
+    display: inline-flex; align-items: center; gap: 4px;
+    height: var(--x-control-height); padding: 0 11px;
     border: 1px solid rgba(0,0,0,0.35); border-radius: 100px;
     background: white; cursor: pointer;
-    font-size: 15px; line-height: 22px; white-space: nowrap;
+    font-size: var(--x-text-body); line-height: var(--x-line-body); white-space: nowrap;
 ";
 
 #[component]
@@ -93,10 +93,10 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
             // waiting to be applied.
             button {
                 style: "
-                    font-size: 15px; font-weight: 700; font-family: Roboto, sans-serif;
+                    font-size: 15px; line-height: 23px; font-weight: 700; font-family: Roboto, sans-serif;
                     background-color: {search_button_background()};
                     color:white; border: none;
-                    border-radius:100px; height: 42px; padding: 0 16px;
+                    border-radius:100px; height: 34px; padding: 0 15px;
                     cursor: {search_button_cursor()};
                     opacity: {search_button_opacity()};
                 ",
@@ -116,7 +116,7 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
                 class: "hoover4-hover-shadow-background",
                 title: "Open all filters",
                 onclick: move |_| open_category.set(Some(FilterCategory::Collections)),
-                Icon { icon: MdFilterList, style: "width: 20px; height: 20px; color: rgba(0,0,0,0.8);" }
+                Icon { icon: MdFilterList, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.8);" }
                 if active_filter_count() > 0 {
                     "Filter ({active_filter_count()})"
                 } else {

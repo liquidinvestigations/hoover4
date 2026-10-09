@@ -130,7 +130,7 @@ fn SelectedItemList(
                         display: inline-flex;
                         align-items: center;
                         gap: 8px;
-                        padding: 4px 12px;
+                        padding: 4px 8px;
                         background: white;
                         cursor: pointer;
                         width: 100%;
@@ -162,16 +162,16 @@ fn SelectedItemDropdownDisplay(
             style: "
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            padding: 4px 12px;
+            gap: 4px;
+            padding: 4px 8px;
             border: 1px solid #ccc;
             border-radius: 20px;
             background: white;
             cursor: pointer;
-            font-size: 16px;
-            line-height: 24px;
+            font-size: var(--x-text-body);
+            line-height: var(--x-line-body);
             font-weight: 400;
-            max-width: 200px;
+            max-width: 160px;
             min-width: 0;
             ",
 
@@ -181,7 +181,7 @@ fn SelectedItemDropdownDisplay(
                 in_trigger: true,
                 item_hit_counts: item_hit_counts,
             }
-            dioxus_free_icons::Icon { icon: MdArrowDropDown, style: "width: 20px; height: 20px; color: var(--x-ink-muted); flex-shrink: 0;" }
+            dioxus_free_icons::Icon { icon: MdArrowDropDown, style: "width: 19px; height: 19px; color: var(--x-ink-muted); flex-shrink: 0;" }
 
         }
     }
@@ -224,6 +224,13 @@ fn SourceItemRow(
         _ => (_item_icon_rsx(MdQuestionAnswer), "Other".to_string()),
     };
     let text_color = if selected { "#111" } else { "#333" };
+    // The closed selector is a main control and takes body text. The rows in the open list
+    // take detail text.
+    let text_role = if in_trigger {
+        "font-size: var(--x-text-body); line-height: var(--x-line-body);"
+    } else {
+        "font-size: var(--x-text-detail); line-height: var(--x-line-detail);"
+    };
     let dot_icon = if selected {
         _item_icon_rsx(MdCheck)
     } else {
@@ -238,11 +245,11 @@ fn SourceItemRow(
 
     rsx! {
         if !in_trigger {
-            div { style: "color: #666; font-size: 16px !important; line-height: 24px; width: 24px; flex-shrink: 0;", {dot_icon} }
+            div { style: "color: #666; width: 19px; flex-shrink: 0;", {dot_icon} }
         }
-        div { style: "font-size: 16px; line-height: 24px; width: 24px; flex-shrink: 0;", {icon} }
-        div { "data-source-label": "{label}", title: "{label}", style: "flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; color: {text_color}; font-size: 16px; line-height: 24px;", "{label}" }
-        div { style: "flex-shrink: 0; color: var(--x-link); font-weight: 600; font-size: 16px; line-height: 24px; margin-left: 4px;", "{count}" }
+        div { style: "width: 19px; flex-shrink: 0;", {icon} }
+        div { "data-source-label": "{label}", title: "{label}", style: "flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; color: {text_color}; {text_role}", "{label}" }
+        div { style: "flex-shrink: 0; color: var(--x-link); font-weight: 600; {text_role} margin-left: 4px;", "{count}" }
     }
 }
 
@@ -250,9 +257,9 @@ fn _item_icon_rsx<T: IconShape + Clone + PartialEq + 'static>(icon: T) -> Elemen
     rsx! {
         dioxus_free_icons::Icon {
             icon: icon,
-            style: "width: 24px; height: 24px;",
-            width: 24,
-            height: 24,
+            style: "width: 19px; height: 19px;",
+            width: 19,
+            height: 19,
         }
     }
 }

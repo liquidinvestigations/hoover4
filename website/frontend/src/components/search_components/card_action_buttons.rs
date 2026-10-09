@@ -22,8 +22,8 @@ pub fn DocCardActionButtonOpenNewTab(
     rsx! {
         a {
             style: "
-                width: 40px;
-                height: 40px;
+                width: var(--x-card-action-size);
+                height: var(--x-card-action-size);
                 cursor: pointer;
                 border: 1px solid #000;
                 border-radius: 8px;
@@ -32,7 +32,6 @@ pub fn DocCardActionButtonOpenNewTab(
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 24px;
                 padding: 1px;
                 margin: 1px;
             ",
@@ -42,7 +41,7 @@ pub fn DocCardActionButtonOpenNewTab(
             onclick: move |event| event.stop_propagation(),
             Icon {
                 icon: MdOpenInNew,
-                style: "width: 24px; height: 24px;"
+                style: "width: 19px; height: 19px;"
             }
         }
     }
@@ -118,8 +117,8 @@ pub fn DocCardActionButtonMore(
 
             button {
                 style: "
-                    width: 40px;
-                    height: 40px;
+                    width: var(--x-card-action-size);
+                    height: var(--x-card-action-size);
                     cursor: pointer;
                     border: 1px solid #000;
                     border-radius: 8px;
@@ -128,7 +127,6 @@ pub fn DocCardActionButtonMore(
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    font-size: 24px;
                     padding: 1px;
                     margin: 1px;
                 ",
@@ -140,7 +138,7 @@ pub fn DocCardActionButtonMore(
                 },
                 Icon {
                     icon: MdMoreVert,
-                    style: "width: 24px; height: 24px;"
+                    style: "width: 19px; height: 19px;"
                 }
             }
 
@@ -192,8 +190,8 @@ pub fn DocCardActionButtonMore(
                         z-index: 1001;
                         flex-direction: column;
                         display: flex;
-                        font-size: 20px;
-                        line-height: 28px;
+                        font-size: var(--x-text-body);
+                        line-height: var(--x-line-body);
                         ",
                         onscroll: move |_e| {
                             _e.prevent_default();
@@ -202,15 +200,15 @@ pub fn DocCardActionButtonMore(
 
                         div {
                             style: "
-                            padding: 2px;
-                            padding-left: 10px;
-                            margin: 2px;
+                            padding: 4px;
+                            padding-left: 8px;
+                            margin: 0;
                             cursor: pointer;
                             display: flex;
                             flex-direction: row;
                             // justify-content: center;
                             align-items: center;
-                            gap: 10px;
+                            gap: 8px;
                             ",
                             class: "hoover4-hover-shadow-background",
                             onclick: move |_e| {
@@ -222,7 +220,7 @@ pub fn DocCardActionButtonMore(
 
                             Icon {
                                 icon: MdInsertLink,
-                                style: "width: 20px; height: 20px;"
+                                style: "width: 19px; height: 19px;"
                             },
                             "Copy Document Link"
                         },
@@ -231,15 +229,15 @@ pub fn DocCardActionButtonMore(
                         }
                         a {
                             style: "
-                            padding: 2px;
-                            padding-left: 10px;
-                            margin: 2px;
+                            padding: 4px;
+                            padding-left: 8px;
+                            margin: 0;
                             cursor: pointer;
                             display: flex;
                             flex-direction: row;
                             // justify-content: center;
                             align-items: center;
-                            gap: 10px;
+                            gap: 8px;
                             text-decoration: none;
                             color: black;
                             ",
@@ -256,7 +254,7 @@ pub fn DocCardActionButtonMore(
 
                             Icon {
                                 icon: MdFileDownload,
-                                style: "width: 20px; height: 20px;"
+                                style: "width: 19px; height: 19px;"
                             },
                             "Download Document"
                         },
@@ -267,14 +265,14 @@ pub fn DocCardActionButtonMore(
                             }
                             div {
                                 style: "
-                                padding: 2px;
-                                padding-left: 10px;
-                                margin: 2px;
+                                padding: 4px;
+                                padding-left: 8px;
+                                margin: 0;
                                 cursor: pointer;
                                 display: flex;
                                 flex-direction: row;
                                 align-items: center;
-                                gap: 10px;
+                                gap: 8px;
                                 ",
                                 class: "hoover4-hover-shadow-background",
                                 onclick: move |_e| {
@@ -286,9 +284,8 @@ pub fn DocCardActionButtonMore(
 
                                 span {
                                     style: "
-                                        font-size: 18px;
-                                        width: 20px;
-                                        height: 20px;
+                                        width: 19px;
+                                        height: 19px;
                                         display: inline-flex;
                                         align-items: center;
                                         justify-content: center;
@@ -311,7 +308,7 @@ fn folder_icon() -> Element {
     rsx! {
         Icon {
             icon: MdFolder,
-            style: "width: 20px; height: 20px;"
+            style: "width: 19px; height: 19px;"
         }
     }
 }

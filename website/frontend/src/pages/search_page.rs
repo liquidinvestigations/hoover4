@@ -96,7 +96,7 @@ fn SearchPageRootComponent(
                 id: "x-search-input-top-bar",
                 // `min-height`, never `height`. The bar holds one wrapping row of controls
                 // and, once a filter is active, chips after Sort that can wrap to one more
-                // row, so its content can exceed the 76px box. A fixed height plus
+                // row, so its content can exceed the 53px box. A fixed height plus
                 // `align-items: center` does not clip the
                 // overflow at the bottom; it splits it, so the search box and the
                 // Filter/Sort buttons were pushed to a negative `y` and lost their tops.
@@ -107,8 +107,8 @@ fn SearchPageRootComponent(
                     display: flex;
                     flex-direction: row;
                     align-items: center;
-                    min-height: 76px;
-                    padding: 6px 0;
+                    min-height: 53px;
+                    padding: 4px 0;
                     box-sizing: border-box;
                     width: 100%;
                 ",
@@ -143,7 +143,7 @@ fn SearchPageRootComponent(
                 // The preview pane is resizable, and its width is remembered.
                 crate::components::resizable_sidebar::ResizablePane {
                     storage_key: "hoover4.search-preview-width-css-px",
-                    default_px: 720,
+                    default_px: 560,
                     min_px: 360,
                     max_px: 1600,
                     side: crate::components::resizable_sidebar::PaneSide::Right,

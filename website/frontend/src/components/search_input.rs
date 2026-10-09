@@ -13,16 +13,16 @@ pub fn SearchInput(
     rsx! {
         div {
             class: "x-search-input",
-            style: "display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: 42px; padding: 6px 12px; border: 1px solid #888; border-radius: 24px; background: white;",
+            style: "display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; height: var(--x-control-height); padding: 4px 11px; border: 1px solid #888; border-radius: 24px; background: white;",
             button {
                 r#type: "button", aria_label: "Submit search", title: "Submit search",
                 style: "background: none; cursor: pointer; flex-shrink: 0;",
                 onclick: move |_| on_submit.call(()),
-                Icon { icon: MdSearch, style: "width: 20px; height: 20px;" }
+                Icon { icon: MdSearch, style: "width: 19px; height: 19px;" }
             }
             input {
                 r#type: "text", placeholder,
-                style: "flex: 1; min-width: 0; outline: none; background: transparent; font-size: 16px;",
+                style: "flex: 1; min-width: 0; outline: none; background: transparent; font-size: var(--x-text-body); line-height: var(--x-line-body);",
                 value: "{value}",
                 oninput: move |event| on_change.call(event.value()),
                 onkeydown: move |event| {
