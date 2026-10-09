@@ -74,5 +74,7 @@ def note_action(records, context):
         if "web" in context.capabilities:
             choices.append("Search the web for this name")
         lines.append(f"The selected collections have no indexed match for {record['name']!r}. "
-                     f"Call ask_user now with these options: {choices!r}.")
+                     f"Call ask_user now with these options: {choices!r}. "
+                     "Wait for the person's choice before searching a suggested spelling. "
+                     "A suggestion does not establish which name the person means.")
     return (Action("append_note", "absent-names", freeze({"text": "\n".join(lines)})),)

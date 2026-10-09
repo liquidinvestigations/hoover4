@@ -182,6 +182,8 @@ The built-in definition has these rules:
   requirements, which are recorded. All findings that start a round go into one correction note. The semantic
   checks do not start a round.
 
+An absent-name note requires the person's choice before the agent searches a suggested spelling.
+
 ## Streaming a turn
 
 **Every turn is a Temporal workflow, and the website holds nothing open.** `send_message`
