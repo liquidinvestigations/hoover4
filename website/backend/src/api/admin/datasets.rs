@@ -170,6 +170,22 @@ pub async fn admin_delete_dataset(
     Ok(())
 }
 
+/// The operation kind and the operation detail of each button kind of the dataset page.
+///
+/// The button's name and the operation kind differ because the buttons predate the
+/// operations log: this is the one place the two vocabularies are mapped. "Run OCR" is
+/// the kind `rerun_ocr`, the stored name of that operation.
+fn operation_for_button(kind: &str) -> anyhow::Result<(&'static str, &'static str)> {
+    Ok(match kind {
+        "ingest_and_process" => ("add_dataset", ""),
+        "rescan" => ("rescan_dataset", ""),
+        "compute_plans" => ("compute_plans", ""),
+        "execute_plans" => ("execute_plans", ""),
+        "rerun_ocr" => ("rerun_ocr", ""),
+        other => anyhow::bail!("unknown workflow kind: {other}"),
+    })
+}
+
 /// Start one of the per-dataset pipeline runs from the admin UI.
 ///
 /// Every kind is dispatched as an **operation** rather than as a bare workflow, so a
@@ -177,24 +193,13 @@ pub async fn admin_delete_dataset(
 /// terminal, takes the same lock, and gets a workflow id unique to its dispatch. Before
 /// that they started `ingest-and-process-<dataset>`, a fixed id, which meant a second
 /// click resolved to the first click's execution instead of running again.
-///
-/// The button's name and the operation kind differ because the buttons predate the
-/// operations log: this is the one place the two vocabularies are mapped.
 pub async fn admin_trigger_workflow(
     user: &CurrentUser,
     collection_dataset: String,
     kind: String,
 ) -> anyhow::Result<String> {
     guard::require_admin(user)?;
-    let (operation_kind, detail) = match kind.as_str() {
-        "ingest_and_process" => ("add_dataset", ""),
-        "rescan" => ("rescan_dataset", ""),
-        "compute_plans" => ("compute_plans", ""),
-        "execute_plans" => ("execute_plans", ""),
-        "rerun_ocr" => ("rerun_ocr", r#"{"replace_existing":false}"#),
-        "rerun_ocr_replace" => ("rerun_ocr", r#"{"replace_existing":true}"#),
-        other => anyhow::bail!("unknown workflow kind: {other}"),
-    };
+    let (operation_kind, detail) = operation_for_button(&kind)?;
     let Some(row) = get_dataset_row(&collection_dataset).await? else {
         anyhow::bail!("dataset not found");
     };
@@ -207,4 +212,16 @@ pub async fn admin_trigger_workflow(
         detail,
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn run_ocr_is_one_kind_with_no_input() {
+        assert_eq!(operation_for_button("rerun_ocr").unwrap(), ("rerun_ocr", ""));
+        let refused = operation_for_button("rerun_ocr_replace").unwrap_err();
+        assert_eq!(refused.to_string(), "unknown workflow kind: rerun_ocr_replace");
+    }
 }

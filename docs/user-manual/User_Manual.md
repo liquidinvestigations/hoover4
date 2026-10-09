@@ -473,8 +473,18 @@ now, and a table of where the processing time actually goes.
 
 A dataset's page shows its type and source path, when it was created, and its statistics:
 state, documents, size, indexed documents, errors, and finished plans. It also shows the OCR
-languages in use. **Run missing OCR** produces the OCR results that the current settings ask
-for and that do not exist yet. **Run all OCR again** also produces the existing results again.
+languages in use.
+
+**Run OCR** brings the dataset's OCR to the state that its current settings ask for. It first
+finishes the processing that a cancelled or failed ingestion left, with every stage. Then it
+runs OCR for each image and searchable PDF that has no result, and indexes OCR text that
+search does not have yet. It skips an image that is too small or empty, and a file whose OCR
+failed under the current languages. **Retry** on the processing page repeats failed files.
+
+The progress bar counts plans while unfinished processing runs, then OCR and indexing
+targets. New OCR text adds indexing targets, so the total can increase during the run. A
+second **Run OCR** on a finished dataset sends no OCR request. A cancelled run loses no
+completed work, and the next **Run OCR** continues from it.
 
 ![Admin, one dataset](img/admin-dataset.png)
 

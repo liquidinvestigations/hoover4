@@ -168,8 +168,7 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                     }
                     WorkflowButton { label: "Compute plans", kind: "compute_plans", dataset_id: dataset_id.clone(), pending, msg, error_msg }
                     WorkflowButton { label: "Execute plans", kind: "execute_plans", dataset_id: dataset_id.clone(), pending, msg, error_msg }
-                    WorkflowButton { label: "Run missing OCR", kind: "rerun_ocr", dataset_id: dataset_id.clone(), pending, msg, error_msg }
-                    WorkflowButton { label: "Run all OCR again", kind: "rerun_ocr_replace", dataset_id: dataset_id.clone(), pending, msg, error_msg }
+                    WorkflowButton { label: "Run OCR", kind: "rerun_ocr", dataset_id: dataset_id.clone(), pending, msg, error_msg }
                 }
             }
         }

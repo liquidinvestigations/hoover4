@@ -80,7 +80,6 @@ const INPUT_KEYS: &[(&str, &[&str])] = &[
     ("add_dataset", &["dataset_path"]),
     ("rescan_dataset", &["dataset_path"]),
     ("change_ocr_languages", &["tesseract_languages", "easyocr_languages"]),
-    ("rerun_ocr", &["replace_existing"]),
     ("retry_failed_files", &["task_name", "hash"]),
     ("refresh_document_locations", &["item_hashes"]),
     ("export_collection", &["destination"]),
@@ -1127,6 +1126,10 @@ mod tests {
         assert_eq!(
             project_inputs("export_collection", r#"{"stores":{},"phase":"x"}"#, None)
                 .unwrap(),
+            serde_json::json!({}),
+        );
+        assert_eq!(
+            project_inputs("rerun_ocr", r#"{"replace_existing":true}"#, None).unwrap(),
             serde_json::json!({}),
         );
     }
