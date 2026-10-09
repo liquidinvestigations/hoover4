@@ -263,7 +263,7 @@ def _pin(row, messages, params) -> dict:
 
 
 def _conversation(row) -> list[dict]:
-    """Return bounded context from the last two completed turns of this session."""
+    """Return bounded context from the last two ended turns of this session."""
     from database import agent_runs
 
     out = []

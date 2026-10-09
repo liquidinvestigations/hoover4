@@ -167,7 +167,7 @@ The built-in definition has these rules:
 
 - At the turn start, the preparation check classes the request sources. It scores the
   listed skills and the request constraints, and loads at most three skills in 15 seconds.
-  It uses bounded context from the last two completed turns to resolve references in a follow-up request.
+  It uses bounded context from the last two ended turns to resolve references in a follow-up request.
 - After a tool batch, a result that needs the table, email or citation method loads that
   skill. A skill text that is still visible to the model is not loaded again.
 - After a web search batch of the model, the worker reads the unread result addresses in
