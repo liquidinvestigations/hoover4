@@ -54,7 +54,7 @@ use crate::{
         error_boundary::ServerErrorDisplay,
         search_components::{
             collections_facet_pane::CollectionsFacetPane,
-            search_facets::{FacetCheckbox, FacetSelectorList},
+            search_facets::{FacetCheckbox, FacetSelectorList, STALE_OPACITY, request_in_flight},
             storage_tree::{StorageRow, StorageTree, node_keys_from_terms},
             vfs_tree::TreeSkin,
         },
@@ -535,18 +535,60 @@ const INPUT_STYLE: &str = "
     padding: 5px 8px; font-size: 15px; min-width: 0;
 ";
 
-/// The "All filters" modal. Edits a PENDING copy of the query; nothing reaches the URL
-/// until `Show N results`.
+/// The "All filters" modal. It mounts its dialog only while a category is open.
+///
+/// The dialog is a component of its own because it owns hooks, and a hook after the
+/// early return below would change the hook order when the modal opens.
 #[component]
 pub fn FilterModal(
-    original_query: ReadSignal<SearchQuery>,
     pending: Signal<SearchQuery>,
     open_category: Signal<Option<FilterCategory>>,
     on_apply: Callback<()>,
 ) -> Element {
-    let Some(active) = *open_category.read() else {
+    if open_category.read().is_none() {
         return rsx! {};
-    };
+    }
+    // No `key`: a category change must keep the same dialog, and with it the draft.
+    rsx! {
+        FilterModalDialog { toolbar_query: pending, open_category, on_apply }
+    }
+}
+
+/// The open modal. It edits a DRAFT, copied once from the toolbar query when the modal
+/// opens. `Show N results` copies the draft into the toolbar query and applies it once.
+/// Cancel, the close button and the backdrop only close the modal, so the chips, the
+/// results and the URL do not change until Show.
+///
+/// Closing unmounts this component. Dioxus then cancels the tasks of the dialog and its
+/// panes, so a response that arrives after Cancel cannot write anything.
+#[component]
+fn FilterModalDialog(
+    toolbar_query: Signal<SearchQuery>,
+    open_category: Signal<Option<FilterCategory>>,
+    on_apply: Callback<()>,
+) -> Element {
+    let draft = use_signal(|| toolbar_query.peek().clone());
+    // The query every count request reads: the draft after 300 ms without an edit.
+    // Ticking through a list would otherwise send one fan-out per click. Selection
+    // marks read the draft itself, so they change at once.
+    let mut debounced = use_signal(|| toolbar_query.peek().clone());
+    use_effect(move || {
+        let q = draft.read().clone();
+        spawn(async move {
+            // `n0_future::time::sleep`, never `gloo_timers`: gloo's futures feature is
+            // wasm-only and this component also compiles into the server binary.
+            n0_future::time::sleep(std::time::Duration::from_millis(300)).await;
+            // An equal value is not written, because a write restarts every request
+            // that reads this signal.
+            if *draft.peek() == q && *debounced.peek() != q {
+                debounced.set(q);
+            }
+        });
+    });
+    let count_query = ReadSignal::from(debounced);
+    // The panes edit the draft through their `pending` prop.
+    let pending = draft;
+    let active = open_category().unwrap_or(FilterCategory::Collections);
 
     rsx! {
         div {
@@ -619,11 +661,11 @@ pub fn FilterModal(
                         style: "{PANE_STYLE}",
                         match active {
                             FilterCategory::Collections => rsx! {
-                                CollectionsFacetPane { original_query, pending }
+                                CollectionsFacetPane { count_query, pending }
                             },
                             FilterCategory::FileTypes => rsx! {
                                 SearchableFacetPane {
-                                    original_query, pending,
+                                    count_query, pending,
                                     field: "file_types".to_string(),
                                     map_string_terms: term_field_prop("file_types"),
                                     placeholder: "Search file types…".to_string(),
@@ -635,14 +677,14 @@ pub fn FilterModal(
                             },
                             FilterCategory::Language => rsx! {
                                 SearchableFacetPane {
-                                    original_query, pending, field: "language".to_string(),
+                                    count_query, pending, field: "language".to_string(),
                                     map_string_terms: term_field_prop("language"),
                                     placeholder: "Search languages…".to_string(),
                                 }
                             },
                             FilterCategory::TextSource => rsx! {
                                 SearchableFacetPane {
-                                    original_query, pending, field: "extracted_by".to_string(),
+                                    count_query, pending, field: "extracted_by".to_string(),
                                     map_string_terms: None,
                                     placeholder: "Search text sources…".to_string(),
                                     // A few sources per corpus, all on screen.
@@ -650,25 +692,25 @@ pub fn FilterModal(
                                 }
                             },
                             FilterCategory::FileSize => rsx! {
-                                FileSizePane { original_query, pending }
+                                FileSizePane { count_query, pending }
                             },
                             FilterCategory::FileLocation => rsx! {
                                 FileLocationPane { pending }
                             },
                             FilterCategory::Dates => rsx! {
-                                DatePane { original_query, pending }
+                                DatePane { count_query, pending }
                             },
                             FilterCategory::Email => rsx! {
-                                EmailPane { original_query, pending }
+                                EmailPane { count_query, pending }
                             },
                             FilterCategory::Entities => rsx! {
-                                EntitiesPane { original_query, pending }
+                                EntitiesPane { count_query, pending }
                             },
                         }
                     }
                 }
 
-                FilterModalFooter { pending, open_category, on_apply }
+                FilterModalFooter { toolbar_query, draft, count_query, open_category, on_apply }
             }
         }
     }
@@ -692,39 +734,26 @@ fn CategoryIcon(category: FilterCategory) -> Element {
 
 /// `Clear all` / `Cancel` / `Show N results`.
 ///
-/// The count is the PENDING query's hit count, debounced, and the button never blocks on
-/// it: a filter modal that goes unresponsive while it counts is worse than one that
-/// shows a slightly stale number. The previous value stays on screen, greyed, while a
-/// new one is in flight.
+/// The count is the debounced draft's hit count, and the button never blocks on it: a
+/// filter modal that goes unresponsive while it counts is worse than one that shows a
+/// slightly stale number. The previous value stays on screen, greyed, while a new one is
+/// in flight.
 #[component]
 fn FilterModalFooter(
-    pending: Signal<SearchQuery>,
+    toolbar_query: Signal<SearchQuery>,
+    draft: Signal<SearchQuery>,
+    count_query: ReadSignal<SearchQuery>,
     open_category: Signal<Option<FilterCategory>>,
     on_apply: Callback<()>,
 ) -> Element {
-    let mut debounced = use_signal(|| pending.read().clone());
     let mut last_count = use_signal(|| None::<u64>);
 
-    // 300 ms of quiet before asking the server. Ticking through a list of file types
-    // would otherwise fire one fan-out per click.
-    use_effect(move || {
-        let q = pending.read().clone();
-        spawn(async move {
-            // `n0_future::time::sleep`, never `gloo_timers`: gloo's futures feature is
-            // wasm-only and this component also compiles into the server binary.
-            n0_future::time::sleep(std::time::Duration::from_millis(300)).await;
-            if *pending.peek() == q {
-                debounced.set(q);
-            }
-        });
-    });
-
     let count = use_resource(move || {
-        let q = debounced.read().clone();
+        let q = count_query.read().clone();
         search_for_results_hit_count(q)
     });
 
-    let in_flight = count.read().is_none();
+    let in_flight = request_in_flight(&count);
     if let Some(Ok(value)) = count.read().as_ref() {
         let total = value.total;
         if last_count.peek().as_ref() != Some(&total) {
@@ -743,7 +772,7 @@ fn FilterModalFooter(
             button {
                 style: "border: none; background: none; cursor: pointer; text-decoration: underline; font-size: 15px;",
                 onclick: move |_| {
-                    let mut q = pending.write();
+                    let mut q = draft.write();
                     q.facet_filters.clear();
                     q.range_filters.clear();
                 },
@@ -764,6 +793,10 @@ fn FilterModalFooter(
                     opacity: {count_opacity};
                 ",
                 onclick: move |_| {
+                    // The toolbar query takes the draft first, because the search that
+                    // `on_apply` starts reads it.
+                    let applied = draft.peek().clone();
+                    toolbar_query.set(applied);
                     open_category.set(None);
                     on_apply.call(());
                 },
@@ -791,7 +824,7 @@ fn FilterModalFooter(
 /// each row's reason for being there.
 #[component]
 fn SearchableFacetPane(
-    original_query: ReadSignal<SearchQuery>,
+    count_query: ReadSignal<SearchQuery>,
     pending: Signal<SearchQuery>,
     /// A SIGNAL rather than a `String`, and the difference decides correctness. The Entities rail renders one
     /// instance of this pane for each value child, so switching child hands
@@ -824,7 +857,7 @@ fn SearchableFacetPane(
         Some(shared) => shared,
         None => ReadSignal::from(own_needle),
     };
-    let hits = use_entity_term_search(original_query, needle, move || vec![field.read().clone()],
+    let hits = use_entity_term_search(count_query, needle, move || vec![field.read().clone()],
                                       server_side);
     let restrict_to_ids = use_memo(move || hits.read().as_ref().map(EntityTermHits::term_ids));
     let match_reasons = use_memo(move || match_reason_map(hits.read().as_ref()));
@@ -851,7 +884,7 @@ fn SearchableFacetPane(
         }
         SuspendWrapper {
             FacetSelectorList {
-                original_query,
+                count_query,
                 modified_search_query: pending,
                 facet_field_name: field,
                 map_string_terms,
@@ -870,7 +903,7 @@ fn SearchableFacetPane(
 /// the box is empty, and the difference is carried all the way down: `None` means
 /// "show the whole facet", `Some([])` means "the needle matched nothing".
 fn use_entity_term_search(
-    original_query: ReadSignal<SearchQuery>,
+    count_query: ReadSignal<SearchQuery>,
     needle: ReadSignal<String>,
     columns: impl Fn() -> Vec<String> + Clone + 'static,
     server_side: bool,
@@ -886,7 +919,7 @@ fn use_entity_term_search(
         });
     });
     let resource = use_resource(move || {
-        let query = original_query.read().clone();
+        let query = count_query.read().clone();
         let text = debounced.read().clone();
         let columns = columns();
         async move {
@@ -908,9 +941,16 @@ fn match_reason_map(hits: Option<&EntityTermHits>) -> HashMap<u64, EntityTermHit
 }
 
 #[component]
-fn FileSizePane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuery>) -> Element {
+fn FileSizePane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuery>) -> Element {
+    // Without the pane's own range, which the backend also removes before it counts. A
+    // size selection then does not restart this request.
+    let request_query = use_memo(move || {
+        let mut q = count_query.read().clone();
+        q.range_filters.remove("file_size_bytes");
+        q
+    });
     let buckets = use_resource(move || {
-        let q = original_query.read().clone();
+        let q = request_query.read().clone();
         search_numeric_facet(q)
     });
 
@@ -1064,7 +1104,7 @@ fn bucket_range(bucket: usize) -> (Option<i64>, Option<i64>) {
 /// for "everything after 2016" was to know that leaving a box blank meant that.
 #[component]
 fn DatePane(
-    original_query: ReadSignal<SearchQuery>,
+    count_query: ReadSignal<SearchQuery>,
     pending: Signal<SearchQuery>,
     /// Which range filter this pane edits: `dates` for the document's own dates,
     /// `mentioned_dates` for the days its text names.
@@ -1094,21 +1134,11 @@ fn DatePane(
     let mut sticky = use_signal(|| None::<DateMode>);
     let mode = use_memo(move || date_mode(&current(), sticky()));
 
-    // The histogram's bin edges depend on the cutoffs, so it is the pending query that
-    // goes over the wire. Debounced for the same reason the footer count is, or dragging
-    // a date field fires one fan-out per keystroke.
-    let mut debounced = use_signal(move || pending.peek().clone());
-    use_effect(move || {
-        let q = pending.read().clone();
-        spawn(async move {
-            n0_future::time::sleep(std::time::Duration::from_millis(300)).await;
-            if *pending.peek() == q {
-                debounced.set(q);
-            }
-        });
-    });
+    // The histogram's bin edges depend on the cutoffs, so the request keeps this pane's
+    // own range. `count_query` is the debounced draft, so dragging a date field does not
+    // send one fan-out per keystroke.
     let histogram = use_resource(move || {
-        let q = debounced.read().clone();
+        let q = count_query.read().clone();
         async move {
             if mentions {
                 search_mentioned_date_histogram(q).await
@@ -1553,7 +1583,7 @@ fn FileLocationPane(pending: Signal<SearchQuery>) -> Element {
 }
 
 #[component]
-fn EmailPane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuery>) -> Element {
+fn EmailPane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuery>) -> Element {
     let has_attachments = use_memo(move || {
         pending
             .read()
@@ -1591,7 +1621,7 @@ fn EmailPane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
                 style: "flex: 1 1 260px; min-width: 0;",
                 div { style: "font-weight: 600; margin-bottom: 4px;", "Sender" }
                 SearchableFacetPane {
-                    original_query, pending,
+                    count_query, pending,
                     field: "email_from".to_string(),
                     map_string_terms: term_field_prop("email_from"),
                     placeholder: "Search senders…".to_string(),
@@ -1601,7 +1631,7 @@ fn EmailPane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
                 style: "flex: 1 1 260px; min-width: 0;",
                 div { style: "font-weight: 600; margin-bottom: 4px;", "Receiver" }
                 SearchableFacetPane {
-                    original_query, pending,
+                    count_query, pending,
                     field: "email_to".to_string(),
                     map_string_terms: term_field_prop("email_to"),
                     placeholder: "Search receivers…".to_string(),
@@ -1732,7 +1762,7 @@ fn EntitySubIcon(sub: EntitySub, style: String) -> Element {
 }
 
 #[component]
-fn EntitiesPane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuery>) -> Element {
+fn EntitiesPane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuery>) -> Element {
     let mut open_sub = use_signal(|| EntitySub::All);
     let active = open_sub();
     rsx! {
@@ -1784,10 +1814,10 @@ fn EntitiesPane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQ
             div {
                 style: "flex: 1 1 auto; min-width: 0; overflow-y: auto;",
                 match active {
-                    EntitySub::All => rsx! { EntitiesAllPane { original_query, pending } },
+                    EntitySub::All => rsx! { EntitiesAllPane { count_query, pending } },
                     EntitySub::MentionedDate => rsx! {
                         DatePane {
-                            original_query, pending,
+                            count_query, pending,
                             field: "mentioned_dates".to_string(),
                         }
                     },
@@ -1795,7 +1825,7 @@ fn EntitiesPane(original_query: ReadSignal<SearchQuery>, pending: Signal<SearchQ
                         let field = other.field().expect("every other child names a facet");
                         rsx! {
                             SearchableFacetPane {
-                                original_query, pending,
+                                count_query, pending,
                                 field: field.to_string(),
                                 map_string_terms: term_field_prop(field),
                                 placeholder: format!("Search {}…", other.label().to_lowercase()),
@@ -1839,12 +1869,12 @@ fn entity_sub_is_active(sub: EntitySub, query: &SearchQuery) -> bool {
 /// between All and a child is not eleven fresh fan-outs.
 #[component]
 fn EntitiesAllPane(
-    original_query: ReadSignal<SearchQuery>,
+    count_query: ReadSignal<SearchQuery>,
     pending: Signal<SearchQuery>,
 ) -> Element {
     let mut needle = use_signal(String::new);
     let hits = use_entity_term_search(
-        original_query,
+        count_query,
         ReadSignal::from(needle),
         || EntitySub::VALUE_FIELDS.iter().map(|f| f.to_string()).collect(),
         true,
@@ -1852,14 +1882,18 @@ fn EntitiesAllPane(
     let restrict_to_ids = use_memo(move || hits.read().as_ref().map(EntityTermHits::term_ids));
 
     let lists = use_resource(move || {
-        let query = original_query.read().clone();
+        let query = count_query.read().clone();
         let restrict = restrict_to_ids.read().clone();
         async move {
             let mut rows: Vec<(&'static str, SearchResultFacetItem)> = Vec::new();
             let mut partial = false;
             for field in EntitySub::VALUE_FIELDS {
+                // Each list leaves out its own selection, as its sub-list does, so the
+                // request is the sub-list's own and hits the same cache entry.
+                let mut list_query = query.clone();
+                list_query.facet_filters.remove(field);
                 let result = search_string_facet(
-                    query.clone(),
+                    list_query,
                     field.to_string(),
                     term_field_prop(field),
                     restrict.clone(),
@@ -1868,10 +1902,13 @@ fn EntitiesAllPane(
                 partial = partial || result.partial;
                 rows.extend(result.facet_values.into_iter().map(|item| (field, item)));
             }
+            // Sorted again after each response, so a selection that changes the counts
+            // also changes the order.
             rows.sort_by_key(|(_, item)| (u64::MAX - item.count, item.display_string.clone()));
             Ok::<_, ServerFnError>((rows, partial))
         }
     });
+    let list_opacity = if request_in_flight(&lists) { STALE_OPACITY } else { "1" };
 
     rsx! {
         div {
@@ -1901,28 +1938,31 @@ fn EntitiesAllPane(
                         "No entities match."
                     }
                 }
-                for (field, item) in rows.clone() {
-                    {
-                        let sub = EntitySub::of_field(field).unwrap_or(EntitySub::Misc);
-                        rsx! {
-                            div {
-                                key: "{field}-{item.original_value:?}",
-                                style: "display: flex; align-items: center; gap: 4px;",
+                div {
+                    style: "opacity: {list_opacity};",
+                    for (field, item) in rows.clone() {
+                        {
+                            let sub = EntitySub::of_field(field).unwrap_or(EntitySub::Misc);
+                            rsx! {
                                 div {
-                                    style: "flex: 1 1 auto; min-width: 0;",
-                                    FacetCheckbox {
-                                        query: pending,
-                                        facet_name: field.to_string(),
-                                        facet_value: item.original_value.clone(),
-                                        result_count: item.count,
-                                        result_display_string: item.display_string.clone(),
+                                    key: "{field}-{item.original_value:?}",
+                                    style: "display: flex; align-items: center; gap: 4px;",
+                                    div {
+                                        style: "flex: 1 1 auto; min-width: 0;",
+                                        FacetCheckbox {
+                                            query: pending,
+                                            facet_name: field.to_string(),
+                                            facet_value: item.original_value.clone(),
+                                            result_count: item.count,
+                                            result_display_string: item.display_string.clone(),
+                                        }
                                     }
                                 }
-                            }
-                            div {
-                                style: "display: flex; align-items: center; gap: 5px; padding: 0 0 4px 40px; font-size: 12px; color: rgba(0,0,0,0.55);",
-                                EntitySubIcon { sub, style: "width: 13px; height: 13px;".to_string() }
-                                "{sub.label()}"
+                                div {
+                                    style: "display: flex; align-items: center; gap: 5px; padding: 0 0 4px 40px; font-size: 12px; color: rgba(0,0,0,0.55);",
+                                    EntitySubIcon { sub, style: "width: 13px; height: 13px;".to_string() }
+                                    "{sub.label()}"
+                                }
                             }
                         }
                     }

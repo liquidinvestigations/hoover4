@@ -31,6 +31,7 @@ use dioxus_free_icons::{
 use crate::api::search_api::search_string_facet;
 use crate::api::storage_api::list_storage_tree;
 use crate::components::error_boundary::ServerErrorDisplay;
+use crate::components::search_components::search_facets::{STALE_OPACITY, request_in_flight};
 use crate::components::search_components::vfs_tree::{TriState, tri_state_icon};
 use crate::components::suspend_boundary::LoadingIndicator;
 
@@ -216,7 +217,7 @@ fn set_selection(query: &mut SearchQuery, ids: &[String], select: bool) {
 
 #[component]
 pub fn CollectionsFacetPane(
-    original_query: ReadSignal<SearchQuery>,
+    count_query: ReadSignal<SearchQuery>,
     pending: Signal<SearchQuery>,
 ) -> Element {
     let mut needle = use_signal(String::new);
@@ -224,8 +225,17 @@ pub fn CollectionsFacetPane(
     // name, so a toggle re-renders one row and never this component.
     let expanded = use_signal(BTreeSet::<String>::new);
 
+    // Without the pane's own selection, which the backend also removes before it
+    // counts, so a tick does not restart this request. The backend removes it after the
+    // permission check, so the answer differs only when every selected dataset is
+    // unreadable.
+    let request_query = use_memo(move || {
+        let mut q = count_query.read().clone();
+        q.facet_filters.remove(FACET_FIELD);
+        q
+    });
     let mut facets = use_resource(move || {
-        let q = original_query.read().clone();
+        let q = request_query.read().clone();
         search_string_facet(q, FACET_FIELD.to_string(), None, None)
     });
     // One call for the whole registry, on mount, exactly as the storage tree does it.
@@ -262,6 +272,7 @@ pub fn CollectionsFacetPane(
         }
     };
 
+    let list_opacity = if request_in_flight(&facets) { STALE_OPACITY } else { "1" };
     let selected = selected_ids(&pending.read());
     let groups = group_buckets(&facets_value.facet_values, &tree_value, &selected);
     let partial = facets_value.partial;
@@ -320,7 +331,7 @@ pub fn CollectionsFacetPane(
             }
         }
         ul {
-            style: "list-style: none; margin: 0; padding: 0;",
+            style: "list-style: none; margin: 0; padding: 0; opacity: {list_opacity};",
             for (group , force_open) in visible {
                 li {
                     key: "{group.collectionname}",

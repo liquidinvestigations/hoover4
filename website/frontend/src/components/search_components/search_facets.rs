@@ -20,14 +20,26 @@ use dioxus_free_icons::{
 
 use crate::{
     api::search_api::{fetch_db_terms_for_ints, search_string_facet},
-    components::error_boundary::ServerErrorDisplay,
+    components::{error_boundary::ServerErrorDisplay, suspend_boundary::LoadingIndicator},
 };
 use common::entity_cards::EntityTermHit;
 use std::collections::HashMap;
 
+/// Whether a resource has a request running. Reading it subscribes, so a restart
+/// re-renders the reader. A reader that shows the previous value greyed uses it.
+pub fn request_in_flight<T>(resource: &Resource<T>) -> bool {
+    matches!(*resource.state().read(), UseResourceState::Pending)
+}
+
+/// The opacity of a list that shows its previous value while a new request runs. The
+/// filter modal footer uses the same value for its count.
+pub const STALE_OPACITY: &str = "0.75";
+
 #[component]
 pub fn FacetSelectorList(
-    original_query: ReadSignal<SearchQuery>,
+    /// The debounced draft of the filter modal. The counts read it.
+    count_query: ReadSignal<SearchQuery>,
+    /// The draft itself. The selection marks and the missing selections read it.
     modified_search_query: Signal<SearchQuery>,
     facet_field_name: ReadSignal<String>,
     map_string_terms: ReadSignal<Option<String>>,
@@ -51,8 +63,16 @@ pub fn FacetSelectorList(
     #[props(default)]
     match_reasons: ReadSignal<HashMap<u64, EntityTermHit>>,
 ) -> Element {
+    // The request leaves out this facet's own selection. The backend removes the same
+    // key before it counts, so the counts are equal, and a selection in this list does
+    // not restart this list's request. The memo only notifies on a changed query.
+    let request_query = use_memo(move || {
+        let mut q = count_query.read().clone();
+        q.facet_filters.remove(&*facet_field_name.read());
+        q
+    });
     let mut facet_request = use_resource(move || {
-        let q = original_query.read().clone();
+        let q = request_query.read().clone();
         search_string_facet(
             q,
             facet_field_name.read().clone(),
@@ -60,7 +80,12 @@ pub fn FacetSelectorList(
             restrict_to_ids.read().clone(),
         )
     });
-    let search_result = facet_request.suspend()?.cloned();
+    // `read`, not `suspend`: a restarted resource keeps its previous value, and
+    // `suspend` would replace the list with the loading box during every request.
+    let in_flight = request_in_flight(&facet_request);
+    let Some(search_result) = facet_request.read().clone() else {
+        return rsx! { LoadingIndicator {} };
+    };
     let search_result = match search_result {
         // The retry is a BUTTON and never automatic. This pane is one of four rendered
         // at once, and the failure it is most likely to show is the search running out
@@ -86,12 +111,15 @@ pub fn FacetSelectorList(
         }
         Ok(s) => s,
     };
-    let originally_filtered_values = original_query
+    let list_opacity = if in_flight { STALE_OPACITY } else { "1" };
+    // Missing selections come from the draft, so a value selected in this opening that
+    // has no bucket stays on screen and can be removed.
+    let selected_values = modified_search_query
         .read()
         .facet_filters
         .get(&facet_field_name.read().clone())
-        .unwrap_or(&BTreeSet::new())
-        .clone();
+        .cloned()
+        .unwrap_or_default();
     let returned_values = search_result
         .facet_values
         .iter()
@@ -116,7 +144,7 @@ pub fn FacetSelectorList(
     let searched_server_side = restrict_to_ids.read().is_some();
     let no_matches =
         visible_values.is_empty() && (!needle_text.is_empty() || searched_server_side);
-    let missing_values = originally_filtered_values
+    let missing_values = selected_values
         .difference(&returned_values)
         .cloned()
         .collect::<Vec<_>>();
@@ -146,6 +174,7 @@ pub fn FacetSelectorList(
             }
         }
         ul {
+            style: "opacity: {list_opacity};",
             for result in visible_values {
                 li {
                     key: "{result.display_string}-{result.count}-{result.original_value:?}",
@@ -249,7 +278,8 @@ pub fn ResolveMissingItems(
         }
     });
 
-    if missing_values.read().is_empty() || ints().is_empty() {
+    // A missing string value renders as it is. Only integer term ids need the lookup.
+    if missing_values.read().is_empty() {
         return rsx! {};
     }
     let map = map().unwrap_or_default();
@@ -268,6 +298,10 @@ pub fn ResolveMissingItems(
                         // `Missing2: Int(123)` was a debug print that shipped.
                         format!("#{i}")
                     }
+                }
+                // The same label the backend gives a text source bucket.
+                FacetOriginalValue::String(s) if *facet_field_name.read() == "extracted_by" => {
+                    common::document_sources::text_source_label(s)
                 }
                 FacetOriginalValue::String(s) => s.clone(),
             },

@@ -25,7 +25,7 @@ The remembered query is specific to the dataset, container, and folder path.
 | `.facet.<name>` | facet chips, collections, file types, file location, entities, email attachments, language, text source, red flags | narrow by an indexed value; each carries a live count | a chip commits on click; counts are the count *within the rest of the query*, not the corpus |
 | `.range.dates` | date filter, before, after, between, no confirmed date | narrow by the document's date interval | a document with no confirmed date matches only through "no confirmed date": it can never fall inside a range |
 | `.range.file_size_bytes` | file size filter | narrow by size | Unknown size is excluded from every range. Reopening the filter restores its applied bounds, including after reload. |
-| `.filters_modal` | "All filters", clear all, cancel, show results | edits every filter at once, pending until `.search_button` commits them | edits are pending until committed; cancel discards them; the button names how many results committing would show |
+| `.filters_modal` | "All filters", clear all, cancel, close, show results | edits every filter at once in a draft, and show results applies the draft once | each opening copies the toolbar query into a new draft; cancel, close and the backdrop discard it; the chips, the results and the URL do not change while it is open; the button names how many results the draft would show |
 | `.sort` | sort menu (Relevance, Date, File size, Name) plus a direction toggle | the order of the result list | Relevance sorts descending for empty and non-empty queries. Its direction control is disabled. Date, File size, and Name support both directions. |
 | `.search_button` | Search button | commits the pending query, filters and sort into the applied query and runs the search | disabled while the pending query matches the applied one; the magnifier icon beside the query input runs the same action |
 | `.pager` | previous/next page | walks the result list | 20 results a page, and the pager stops at 1000 documents however large the match is; the page says so beside the count instead of pretending the rest are reachable |
@@ -69,6 +69,9 @@ Text source values show the source labels of the document viewer and omit the fi
 A text source filter matches a document through its text from a selected source.
 The Red flags child of Entities shows category titles from the scanner catalog.
 Counts retain the other active filters.
+In the filters modal, each count applies every other draft filter and excludes its own selection.
+A list keeps its previous values while its counts reload.
+A selected value with no matching document stays in its list with count 0, so it can be removed.
 
 The backend refuses pages beyond the first 1,000 results.
 The page count uses ceiling division.

@@ -139,7 +139,6 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
         }
 
         FilterModal {
-            original_query,
             pending: modified_search_query,
             open_category,
             on_apply: Callback::new(move |_| trigger_search(())),
