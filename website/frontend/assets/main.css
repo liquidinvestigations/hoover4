@@ -3,6 +3,8 @@
 *,::after,::before,::backdrop,::file-selector-button {  margin: 0;  padding: 0;}
 *,::after,::before,::backdrop,::file-selector-button {  box-sizing: border-box;  border: 0 solid;}
 h1,h2,h3,h4,h5,h6 {  font-size: inherit;  font-weight: inherit;}
+/* Native controls take the text role of their parent. A component role still overrides it. */
+button,input,select,textarea {  font-size: inherit;  line-height: inherit;}
 ol,ul,menu {  list-style: none;}
 img,svg,video,canvas,audio,iframe,embed,object {  display: block;  /*vertical-align: middle;*/}
 img,video {  max-width: 100%;  height: auto;}
@@ -20,6 +22,8 @@ html, body, #main {
     top: 0px; left: 0px;
     overflow: hidden;
     font-family: var(--x-font);
+    font-size: var(--x-text-body);
+    line-height: var(--x-line-ratio);
     background-color: rgba(255,255,255,1.0);
     color: var(--x-ink);
 }
@@ -34,17 +38,42 @@ html, body, #main {
     box-sizing: border-box;
 }
 
-/* Reference type and colour values, taken from the search and document pages. Every
-   other page reads these properties, so the application has one type scale and one
-   palette. One property has one meaning: a label is always --x-ink-muted. */
+/* Reference type, spacing and colour values. Every page reads these properties, so the
+   application has one type scale and one palette. One property has one meaning: a label
+   is always --x-ink-muted.
+   Text has four roles. Detail is metadata, counts, table cells and small controls. Body
+   is reading text, snippets, filenames and main controls. Section is a section or dialog
+   heading. Page is a page title or a primary empty-state heading. The six older size
+   names give the same four values until each consumer names its role.
+   The root line height is a ratio, so it gives 23 px for body text and keeps that
+   proportion for text in another role that sets no line height of its own.
+   Spacing uses the five --x-space values. Touch targets stay 44 px and resize handles
+   stay 6 px, because those sizes come from the input device. */
 :root {
     --x-font: "Roboto", sans-serif;
-    --x-text-xs: 12px;
-    --x-text-sm: 13px;
-    --x-text-md: 14px;
-    --x-text-lg: 16px;
-    --x-text-xl: 18px;
-    --x-text-2xl: 20px;
+    --x-text-detail: 13px;
+    --x-text-body: 15px;
+    --x-text-section: 17px;
+    --x-text-page: 19px;
+    --x-line-detail: 19px;
+    --x-line-body: 23px;
+    --x-line-section: 23px;
+    --x-line-page: 27px;
+    --x-line-ratio: calc(23 / 15);
+    --x-text-xs: var(--x-text-detail);
+    --x-text-sm: var(--x-text-detail);
+    --x-text-md: var(--x-text-detail);
+    --x-text-lg: var(--x-text-body);
+    --x-text-xl: var(--x-text-section);
+    --x-text-2xl: var(--x-text-page);
+    --x-space-1: 4px;
+    --x-space-2: 8px;
+    --x-space-3: 11px;
+    --x-space-4: 15px;
+    --x-space-5: 23px;
+    --x-control-height: 34px;
+    --x-card-action-size: 30px;
+    --x-result-card-height: 124px;
     --x-ink: rgba(0,0,0,0.75);
     --x-ink-strong: rgba(0,0,0,0.87);
     --x-ink-muted: rgba(0,0,0,0.6);
