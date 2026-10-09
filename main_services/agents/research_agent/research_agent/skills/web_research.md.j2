@@ -42,3 +42,62 @@ Before you answer, verify each item's distinguishing facts and every constraint 
 Keep an item that fails a constraint outside the matching list, and name its failed constraint.
 Read every page that you cite, including a replacement source found after a blocked page.
 When a page read fails, use another readable source or omit its claims and address.
+
+{% if has('web_search') %}
+{{ tool('web_search') }} accepts queries as a list or one string, and query as an additional single query.
+Give at least one query. Omit sources to search all available sources.
+max_results defaults to 15. timelimit is d, w, m or y and applies only to supported news sources.
+The result returns ranked URLs, titles, snippets and matched query forms. Read selected URLs before relying on their claims.
+```json
+{"queries":["transfer approval"]}
+```
+```json
+{"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"}
+```
+{% endif %}
+{% if has('list_search_sources') %}
+{{ tool('list_search_sources') }} takes no arguments. It returns available source names and descriptions.
+```json
+{}
+```
+{% endif %}
+{% if has('read_page') %}
+{{ tool('read_page') }} requires urls, a list of up to six HTTP or HTTPS addresses.
+goal optionally records the question. It does not select matching text.
+find optionally selects literal text matches without case restrictions.
+offset is a zero-based character position. Omission starts at zero.
+version selects the captured text version. Copy it from a prior read to continue the same text.
+links defaults to true and includes link destinations in the text.
+A cut result gives the next offset and version. Copy both values to continue.
+A find result gives match offsets and surrounding text. Copy its next offset with the same find and version.
+Repeating the first call reads the first text again.
+```json
+{"urls":["COPY_SEARCH_RESULT_URL"]}
+```
+```json
+{"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
+```
+{% endif %}
+{% if has('whois_lookup') %}
+{{ tool('whois_lookup') }} accepts domains as a list and domain as one domain.
+Give domain names without a URL path. The result reports each domain separately.
+A null registrant means the registry did not publish that value. The registrar sells the domain registration.
+```json
+{"domains":["example.org"]}
+```
+```json
+{"domains":["example.org","example.com"],"domain":"example.net"}
+```
+{% endif %}
+{% if has('cite_pages') %}
+{{ tool('cite_pages') }} accepts url and terms for one page, or pages for up to twelve page objects.
+Each page requires url and terms. terms contains up to eight exact phrases, each at most 200 characters.
+version optionally selects a captured version. why optionally states the supported claim, in at most 300 characters.
+The result gives verified quotes and a stable web handle. A failed page gives an error without a handle.
+```json
+{"url":"COPY_READ_URL","terms":["COPY_EXACT_SOURCE_PHRASE"]}
+```
+```json
+{"pages":[{"url":"COPY_READ_URL","terms":["COPY_EXACT_SOURCE_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"This passage gives the approval date."}]}
+```
+{% endif %}

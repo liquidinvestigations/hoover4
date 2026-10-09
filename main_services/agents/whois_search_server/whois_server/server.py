@@ -6,7 +6,7 @@ A modern MCP server using FastMCP for WHOIS domain lookup functionality.
 import asyncio
 import logging
 import os
-from typing import Dict, Any, Optional, List
+from typing import Annotated, Dict, Any, Optional, List
 from datetime import datetime
 from contextlib import asynccontextmanager
 
@@ -188,7 +188,8 @@ Args:
     structured_output=True,
 )
 async def whois_lookup(
-    domains: Optional[Any] = None, domain: Optional[Any] = None
+    domains: Annotated[list[str] | str | None, Field(description="Domain names as a list or one string. Names must omit URL paths.")] = None,
+    domain: Annotated[str | None, Field(description="Optional additional domain name. It joins the domains batch.")] = None
 ) -> WhoisBatchResponse:
     """Look up a batch of domains, de-duplicated and capped.
 

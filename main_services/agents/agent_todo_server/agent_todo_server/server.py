@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Literal, NoReturn, Optional
+from typing import Annotated, Any, Literal, NoReturn, Optional
 
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
@@ -193,7 +193,7 @@ def read_todo() -> TodoResponse:
         "to do them. The server numbers the steps 1, 2, 3, and each step starts as pending."
     ),
 )
-def write_todo(goal: str, steps: list[str]) -> TodoResponse:
+def write_todo(goal: Annotated[str, Field(description='The task goal in one or two sentences.')], steps: Annotated[list[str], Field(description='The complete ordered list of step sentences.')]) -> TodoResponse:
     try:
         caller = _caller()
     except CallerUnknown as exc:
@@ -223,7 +223,7 @@ def write_todo(goal: str, steps: list[str]) -> TodoResponse:
         "mark_todo."
     ),
 )
-def edit_todo(steps: list[str]) -> TodoResponse:
+def edit_todo(steps: Annotated[list[str], Field(description='Replace steps with this complete list. Matching text retains its identity and status.')]) -> TodoResponse:
     try:
         caller = _caller()
     except CallerUnknown as exc:
@@ -257,9 +257,9 @@ def edit_todo(steps: list[str]) -> TodoResponse:
     ),
 )
 def mark_todo(
-    ids: list[str],
-    status: Literal["pending", "in_progress", "done", "cancelled"],
-    note: str = "",
+    ids: Annotated[list[str], Field(description='Copy returned step identifiers as a list of strings.')],
+    status: Annotated[Literal["pending", "in_progress", "done", "cancelled"], Field(description='One status for every selected step. Cancellation requires a note.')],
+    note: Annotated[str, Field(description='Optional explanation. Required when status is cancelled.')] = "",
 ) -> TodoResponse:
     try:
         caller = _caller()

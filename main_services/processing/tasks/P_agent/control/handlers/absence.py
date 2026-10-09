@@ -21,7 +21,7 @@ async def check_names(names, context, services):
     records = []
     scopes = set()
     for fact in context.results:
-        values = fact.args.get("collectionname", [])
+        values = fact.args.get("collection", [])
         values = [values] if isinstance(values, str) else values or []
         scopes.update(value for value in values if value in context.collections)
     selected = [name for name in context.collections if _collection_named(name, context.request)]

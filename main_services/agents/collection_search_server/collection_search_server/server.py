@@ -27,11 +27,11 @@ import json
 import logging
 import os
 import re
-from typing import Any, Sequence
+from typing import Annotated, Any, Sequence
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
-from pydantic import BaseModel, Field, model_serializer
+from pydantic import ConfigDict, BaseModel, Field, model_serializer
 
 from agent_common import batching, retired
 from agent_common import embeddings as embeddings_client
@@ -1164,17 +1164,12 @@ def _read_document_text(collectionname: str, file_hash: str) -> DocumentText:
 
 #: The tool description that `tools_document` registers `list_document_entities` with.
 LIST_DOCUMENT_ENTITIES_DESCRIPTION = (
-        "List what the pipeline extracted from several documents at once, in two tiers. "
-        "Each entry names its collection and the file_hash a search returned. Pass them "
-        "as `[{\"collectionname\": \"...\", \"file_hash\": \"...\"}, ...]`, or as two "
-        "parallel lists in `collectionname` and `file_hash`. `entities` is a language "
-        "model's reading of the prose: people, organisations, locations. `structured` is "
-        "what a rule's validator accepted: checksum-validated identifiers, normalised "
-        "dates, money with an ISO 4217 code. Treat the two differently, because a name is a "
-        "judgement, an IBAN either has a valid check digit or it does not. Ask about "
-        "every promising document in one call: this is how you find the names and "
-        "identifiers to search for next."
-    )
+    "List extracted entities from several documents. Give documents as objects with collection and file_hash. "
+    "Alternatively, give collection and file_hash as equal-length lists, or one collection with several hashes. "
+    "entities contains model-extracted names. structured contains rule-validated values and dates. "
+    "Use exact value text for later searches. Numeric rule identifiers identify the extraction method. "
+    "Use read_more for continued results."
+)
 
 
 def list_document_entities(
@@ -1415,19 +1410,21 @@ def _structured_entities(
 class Citation(BaseModel):
     """One document the agent is putting forward as evidence for one point."""
 
-    collectionname: str
-    file_hash: str
+    model_config = ConfigDict(extra="forbid")
+
+    collection: str = Field(description="Copy the collection from the document result.")
+    file_hash: str = Field(description="Copy the hash from the same document result.")
     #: A span copied from the document, checked against its text before a handle is
     #: issued. Not a paraphrase: the check is what makes the difference between a
     #: citation and a claim.
-    quote: str = ""
+    quote: str = Field(default="", description="Copy exact source wording of at least twelve characters.")
     #: A short exact phrase of the quote. The card opens the document at this phrase.
     #: Empty means the whole quote.
-    find: str = ""
+    find: str = Field(default="", description="Optional exact phrase inside quote to highlight.")
     #: The search term that led to this document.
-    term: str | None = None
+    term: str | None = Field(default=None, description="Optional query that found the document.")
     #: What this document supports, in the agent's own words. Shown on the card.
-    why: str = ""
+    why: str = Field(default="", description="State the claim that this quote supports.")
 
 
 class CitationResult(BaseModel):
@@ -1525,7 +1522,7 @@ def _session_id() -> str:
         "Cite each document used as evidence."
     ),
 )
-def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
+def cite_documents(citations: Annotated[list[Citation] | str, Field(description="Document references and exact supporting quotes. One call accepts up to twelve entries.")]) -> CitationsResponse:
     """Verify each quote, allocate a session handle, and return the cards to render."""
     try:
         acl = _caller()
@@ -1536,7 +1533,7 @@ def cite_documents(citations: list[Citation] | str) -> CitationsResponse:
     if parsed is None:
         return CitationsResponse(
             success=False,
-            error="citations must be a list of {collectionname, file_hash, quote, find, term, why}",
+            error="citations must be a list of {collection, file_hash, quote, find, term, why}",
         )
     if not parsed:
         return CitationsResponse(success=False, error="no citations were given")
@@ -1688,7 +1685,7 @@ def _first_and_rest(pages):
 
 def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResult:
     result = CitationResult(
-        collectionname=citation.collectionname,
+        collectionname=citation.collection,
         file_hash=citation.file_hash,
         quote=citation.quote,
         why=citation.why,
@@ -1696,12 +1693,12 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
         term=citation.term or "",
     )
     try:
-        acl.check([citation.collectionname])
+        acl.check([citation.collection])
     except AccessDenied as exc:
         result.error = str(exc)
         return result
     try:
-        whole = full_hash(citation.collectionname, citation.file_hash)
+        whole = full_hash(citation.collection, citation.file_hash)
     except HashPrefixError as exc:
         result.error = str(exc)
         return result
@@ -1718,7 +1715,7 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
     matched_page = {}
 
     def page_texts():
-        for source, page, text in _extracted_page_rows(citation.collectionname, citation.file_hash, dataset):
+        for source, page, text in _extracted_page_rows(citation.collection, citation.file_hash, dataset):
             matched_page.update(source=source, page=max(1, page))
             yield text
 
@@ -1726,7 +1723,7 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
         path_rows = clickhouse_query(
             "SELECT any(path) AS path, any(collection_dataset) AS collection_dataset "
             "FROM vfs_files WHERE hash = {hash:String} AND is_deleted = 0",
-            database=collection_db(citation.collectionname),
+            database=collection_db(citation.collection),
             params={"hash": citation.file_hash},
         )
         dataset = (path_rows[0].get("collection_dataset") or "") if path_rows else ""
@@ -1757,7 +1754,7 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
     if match == QUOTE_REASON_ABSENT:
         try:
             result.candidate = candidate_passage(citation.quote, _extracted_page_rows(
-                citation.collectionname, citation.file_hash, dataset))
+                citation.collection, citation.file_hash, dataset))
         except Exception as exc:  # noqa: BLE001, the candidate is optional
             log.warning("no candidate passage for %s: %s", citation.file_hash, exc)
     if not result.quote_verified:
@@ -1766,7 +1763,7 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
     owner = {k.lower(): v for k, v in get_http_headers().items()}.get("x-hoover4-user", "")
     try:
         result.handle = _HANDLES.handle_for(
-            session, citation.collectionname, citation.file_hash, owner=owner
+            session, citation.collection, citation.file_hash, owner=owner
         )
     except CitationNotStored as exc:
         log.warning("citation handle of %s not stored: %s", citation.file_hash, exc)

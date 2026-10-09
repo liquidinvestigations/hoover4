@@ -60,12 +60,12 @@ import re
 import uuid
 from collections import OrderedDict
 from dataclasses import asdict, dataclass, replace
-from typing import Any, Callable
+from typing import Annotated, Any, Callable
 
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.server.middleware import Middleware, MiddlewareContext
 from mcp.types import EmbeddedResource, TextResourceContents
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from agent_common import artifacts
 from agent_common.result_pages import (
@@ -114,7 +114,7 @@ RESPONSE_MODELS: dict[str, type[AgentModel]] = {
 #: The fields of a unit that the broker never moves out of a stored unit, as JSON
 #: pointers. A row without them cannot be read on or cited, so a cut row keeps them and
 #: loses its snippet or its text.
-IDENTITY_FIELDS = frozenset({"/file_hash", "/path", "/collectionname", "/dataset", "/collection_dataset"})
+IDENTITY_FIELDS = frozenset({"/file_hash", "/path", "/collectionname", "/collection", "/dataset", "/collection_dataset"})
 #: The keys a route tool's continuation position may hold.
 POSITION_KEYS = frozenset({"window", "next", "artifact", "head", "start", "stop", "total", "cut", "blob", "part"})
 
@@ -134,7 +134,7 @@ HASH_START = 16
 #: The key under which a local tool's result carries the doc refs of its rows.
 REFS_KEY = "__refs"
 #: The row keys of `read_documents` that a page does not show.
-READ_DROPPED_KEYS = frozenset({"collection_dataset", "title", "source_used", "count_state", "next_position"})
+READ_DROPPED_KEYS = frozenset({"collection_dataset", "title", "count_state", "next_position"})
 #: The namespace of the artifact ids of stored continuations.
 MORE_NAMESPACE = uuid.UUID("5f0c8a4e-2b7d-4c61-9e3a-7d1f0b6c2a95")
 _HANDLE_RE = re.compile(r"^[0-9a-f]{12}$")
@@ -172,13 +172,13 @@ def slim_items(tool_name: str, items: list[Any]) -> tuple[list[Any], list[dict[s
     refs: list[dict[str, Any]] = []
     for item in items:
         if tool_name == "list_collections" and isinstance(item, dict):
-            out.append({"collectionname": item.get("collectionname") or "",
+            out.append({"collection": item.get("collectionname") or "",
                         "documents": item.get("document_count") or 0,
                         "datasets": {row.get("name") or "": row.get("document_count") or 0
                                      for row in item.get("datasets") or []}})
             continue
         if not isinstance(item, dict) or not isinstance(item.get("file_hash"), str):
-            out.append(item)
+            out.append({("collection" if k == "collectionname" else k): v for k, v in item.items()} if isinstance(item, dict) else item)
             continue
         ref = doc_ref(item)
         if tool_name == "read_documents":
@@ -187,7 +187,9 @@ def slim_items(tool_name: str, items: list[Any]) -> tuple[list[Any], list[dict[s
         slim = {**item, "file_hash": hash_start(item["file_hash"])}
         if tool_name == "read_documents":
             slim = {key: value for key, value in slim.items()
-                    if key not in READ_DROPPED_KEYS and (key == "text" or value not in (None, False, "", [], {}))}
+                    if key not in READ_DROPPED_KEYS and (key in ("text", "page_complete") or value not in (None, False, "", [], {}))}
+        if "collectionname" in slim:
+            slim["collection"] = slim.pop("collectionname")
         out.append(slim)
     return out, refs
 
@@ -227,7 +229,7 @@ def page_doc_refs(text: str, refs: list[dict[str, Any]]) -> list[dict[str, Any]]
     out = []
     for item in items:
         if isinstance(item, dict) and isinstance(item.get("file_hash"), str):
-            ref = by_start.get((item.get("collectionname") or "", item["file_hash"]))
+            ref = by_start.get((item.get("collection") or "", item["file_hash"]))
             if ref is not None:
                 out.append(ref)
     return out
@@ -306,6 +308,13 @@ _CALL_MEASURES: contextvars.ContextVar[list[PageMeasure] | None] = contextvars.C
 
 def _build(p: PageInput, limit: ByteLimit) -> tuple[str, PageMeasure]:
     """`build_page`, with the measure kept for the call measure of the current call."""
+    def model_fields(value):
+        if isinstance(value, list):
+            return [model_fields(item) for item in value]
+        if isinstance(value, dict):
+            return {("collection" if key == "collectionname" else key): item for key, item in value.items()}
+        return value
+    p = replace(p, items=model_fields(p.items), fields=model_fields(p.fields))
     text, measure = build_page(p, limit)
     if measure.continuation_token is not None:
         _TOKENS[continuation_handle(measure.continuation_token)] = measure.continuation_token
@@ -596,7 +605,7 @@ def render_document_reads(tool: PagedTool, request: BaseModel) -> str:
     result = BackendClient().post(tool.route, request, RESPONSE_MODELS[tool.route])
     if isinstance(result, AgentError):
         return error_text(result)
-    window = tool.window(result.model_dump(mode="json", by_alias=True))
+    window = tool.window(result.model_dump(mode="json", by_alias=True), request)
     n = len(window.items)
     if n == 0:
         return _live_page(tool, request, None, window)
@@ -1119,7 +1128,7 @@ def _one_character_damage(value: str, candidate: str) -> bool:
 
 
 @mcp.tool(name="read_more", description=READ_MORE_TEXT)
-def read_more(continuation: str) -> str:
+def read_more(continuation: Annotated[str, Field(description="Copy the more handle returned by a collection tool. The handle belongs to this user, chat and run.")]) -> str:
     """Read only a continuation issued by this server, given as its `more` handle or as the
     encoded continuation of a page stored before the handles."""
     value = (continuation or "").strip()

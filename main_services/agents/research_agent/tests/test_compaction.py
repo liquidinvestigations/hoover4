@@ -254,7 +254,7 @@ EMAIL_HASH = "a6a5a71a8b2e5512" + "c" * 48
 
 def _quote_thread():
     """A thread whose prefix reads one email and one page. The page holds the clause."""
-    email = json.dumps({"items": [{"collectionname": "enron", "file_hash": EMAIL_HASH,
+    email = json.dumps({"items": [{"collection": "enron", "file_hash": EMAIL_HASH,
                                    "path": "/_sent_mail/114.", "page": 1,
                                    "text": "Message-ID: <1>\nFrom: vince@enron.com\n\nThe\n"
                                            "meeting moved to Friday."}]})

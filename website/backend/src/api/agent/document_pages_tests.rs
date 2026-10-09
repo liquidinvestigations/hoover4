@@ -201,3 +201,67 @@ fn a_source_count_names_its_state() {
     assert_eq!(source_count_state(SourceCount::TimedOut), (None, "timed_out"));
     assert_eq!(source_count_state(SourceCount::Failed), (None, "failed"), "a failed count is not a count of 0");
 }
+
+
+struct LongTextPage;
+
+impl TextPages for LongTextPage {
+    async fn extent(&self, _: &str) -> Result<(u64, u32), AgentError> { Ok((1, 7)) }
+    async fn page_text(&self, _: &str, _: u32) -> Result<Option<String>, AgentError> {
+        Ok(Some(format!("{}needle{}", "é".repeat(50_000), "z".repeat(10_000))))
+    }
+    async fn page_after(&self, _: &str, _: u32) -> Result<Option<u32>, AgentError> { Ok(None) }
+    async fn page_hits(&self, _: &str, _: u32, _: &str) -> Result<Vec<HighlightTextSpan>, AgentError> {
+        Ok(vec![span(&"é".repeat(50_000), false), span("needle", true), span(&"z".repeat(10_000), false)])
+    }
+}
+
+#[tokio::test]
+async fn a_query_opens_a_late_passage_with_explicit_character_continuation() {
+    let first = read_text_range(&LongTextPage, "raw_text", 7, Some("needle"), None, 6_000).await.ok().expect("the character range must read");
+    assert!(first.0.contains("needle"));
+    assert_eq!((first.1, first.2, first.3), (49_000, 55_000, 60_006));
+    let again = read_text_range(&LongTextPage, "raw_text", 7, Some("needle"), None, 6_000).await.ok().expect("the character range must read");
+    assert_eq!(first.0, again.0);
+    let Some(AgentPosition::TextPage { source, page_id, offset: Some(offset) }) = first.4 else {
+        panic!("the passage must provide its next character position");
+    };
+    let next = read_text_range(&LongTextPage, &source, page_id, Some("needle"), Some(offset), 6_000).await.ok().expect("the character range must read");
+    assert_eq!((next.1, next.2, next.3), (55_000, 60_006, 60_006));
+    assert_eq!(next.0, "z".repeat(5_006));
+    assert!(next.4.is_none());
+    let before = read_text_range(&LongTextPage, "raw_text", 7, None, Some(43_000), 6_000).await.ok().expect("the character range must read");
+    assert_eq!((before.1, before.2), (43_000, 49_000));
+}
+
+#[test]
+fn text_ranges_use_characters_and_reject_offsets_beyond_the_page() {
+    assert_eq!(text_range("é中x", 1, 2).ok().expect("the character range must read"), ("中x".into(), 1, 3, 3));
+    assert!(text_range("é中x", 4, 2).is_err());
+    assert_eq!(text_range("é中x", 3, 2).ok().expect("the character range must read"), (String::new(), 3, 3, 3));
+}
+
+#[test]
+fn a_targeted_passage_prefers_distinct_words_together() {
+    let spans = vec![span("promising", true), span(&"x".repeat(50_000), false),
+                     span("highly", true), span(" ", false), span("promising", true),
+                     span(" ", false), span("species", true)];
+    assert_eq!(matching_passage(&spans, 6_000), Some((50_009, 50_033)));
+    assert_eq!(matching_passage(&spans, 10), Some((0, 9)));
+}
+
+#[test]
+fn a_single_match_keeps_the_first_passage_and_no_matches_select_no_range() {
+    let spans = vec![span("needle", true), span(" gap ", false), span("needle", true)];
+    assert_eq!(matching_passage(&spans, 6_000), Some((0, 6)));
+    assert_eq!(matching_passage(&[span("unmatched", false)], 6_000), None);
+}
+
+
+#[tokio::test]
+async fn a_short_requested_range_still_contains_the_query_hit() {
+    let result = read_text_range(&LongTextPage, "raw_text", 7, Some("needle"), None, 10)
+        .await.ok().expect("the matching range must read");
+    assert!(result.0.contains("needle"));
+    assert_eq!((result.1, result.2), (49_996, 50_006));
+}

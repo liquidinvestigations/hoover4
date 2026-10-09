@@ -10,7 +10,7 @@ Naming a document
 
 A document hash has 64 hexadecimal characters. The document tools also accept a unique start of at least 12 characters.
 
-1. Copy the file_hash and the collectionname of the same result row. Never write a hash yourself.
+1. Copy the file_hash and the collection of the same result row. Never write a hash yourself.
 2. {% if has('read_documents') %}{{ tool('read_documents') }} can also resolve a file name or path when it names one document.{% endif %} Other document tools use the hash.
 3. To find the file_hash of a file by its name, search for the name with {{ tool('search_collections') }}{% if has('folder_search') %} or {{ tool('folder_search') }}{% endif %}, and copy the file_hash of the row.
 {% if has('read_more') %}

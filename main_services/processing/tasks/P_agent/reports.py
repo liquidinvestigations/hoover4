@@ -71,7 +71,7 @@ def _doc_reference(ref: dict, item: Optional[dict] = None) -> dict:
     ref = ref or {}
     item = item or {}
     return {
-        "collectionname": str(ref.get("collectionname") or item.get("collectionname") or ""),
+        "collectionname": str(ref.get("collectionname") or item.get("collection") or ""),
         "collection_dataset": str(ref.get("collection_dataset")
                                   or item.get("collection_dataset") or ""),
         "file_hash": str(ref.get("file_hash") or item.get("file_hash") or ""),
@@ -107,7 +107,7 @@ def _entry(kind: str, status: str, reference: dict, key: str, range_: Optional[d
 
 
 def _read_documents(parsed: Any, args: dict, doc_refs: Any, error: str) -> list[dict]:
-    collection = str(args.get("collectionname") or "")
+    collection = str(args.get("collection") or "")
     if error:
         requested = _requested_hashes(args) or [""]
         return [_entry(KIND_READ, STATUS_ERROR,
@@ -119,12 +119,16 @@ def _read_documents(parsed: Any, args: dict, doc_refs: Any, error: str) -> list[
     for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict):
             continue
-        ref = refs.get((str(item.get("collectionname") or collection),
+        ref = refs.get((str(item.get("collection") or collection),
                         _hash_start(item.get("file_hash"))), {})
         reference = _doc_reference(ref, item)
         page = item.get("page")
         range_: dict[str, Any] = {"page": page} if isinstance(page, int) else {}
-        status = STATUS_OK
+        text_range = item.get("text_range") or {}
+        if text_range:
+            range_.update(start_char=text_range.get("start"), end_char=text_range.get("end"),
+                          total_chars=text_range.get("total"))
+        status = STATUS_PARTIAL if text_range and item.get("page_complete") is False else STATUS_OK
         cut = _CUT_TEXT.match(str(item.get("cut") or ""))
         if item.get("error"):
             status = STATUS_ERROR
@@ -134,7 +138,7 @@ def _read_documents(parsed: Any, args: dict, doc_refs: Any, error: str) -> list[
                 range_.update(start_bytes=0, end_bytes=int(cut.group(1)),
                               total_bytes=int(cut.group(2)))
         out.append(_entry(KIND_READ, status, reference,
-                          f"read:{_hash_start(reference['file_hash'])}:{page}", range_,
+                          f"read:{_hash_start(reference['file_hash'])}:{page}:{text_range.get('start', 0)}", range_,
                           error=str(item.get("error") or "")))
     notes = parsed.get("file_hash_notes") if isinstance(parsed, dict) else None
     for i, note in enumerate(notes if isinstance(notes, list) else []):
@@ -188,7 +192,7 @@ def _table_content(tool_name: str, parsed: Any, args: dict, error: str) -> list[
             return []
         range_ = {"sheet": args.get("sheet"), "row": args.get("row"),
                   "column": args.get("column"), "offset": parsed.get("offset")}
-    reference = {"collectionname": str(args.get("collectionname") or ""),
+    reference = {"collectionname": str(args.get("collection") or ""),
                  "file_hash": str(args["file_hash"]), "path": ""}
     location = (f"{range_.get('row_start')}" if tool_name == "table_page"
                 else f"{range_.get('row')}:{range_.get('column')}:{range_.get('offset')}")

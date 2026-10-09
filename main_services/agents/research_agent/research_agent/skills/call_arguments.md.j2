@@ -20,3 +20,50 @@ When you are not sure of the arguments of a tool, call {{ tool('read_tool') }} w
 6. Keep each value inside the limits of its tool, such as the most items of a list.
 
 When a call is refused, the error names the argument and what is wrong with it. Correct that argument, and then send the call.
+
+{% if has('search_agent_tools') %}
+{{ tool('search_agent_tools') }} requires query, a task description of up to 160 characters.
+It returns relevant tool names and descriptions. Read a tool before using unfamiliar arguments.
+```json
+{"query":"Find a passage late in one long document."}
+```
+{% endif %}
+{% if has('read_tool') %}
+{{ tool('read_tool') }} requires name, the exact name of one available tool.
+It returns the description and full input schema, including allowed values, defaults and required fields.
+```json
+{"name":"read_documents"}
+```
+{% endif %}
+{% if has('search_skills') %}
+{{ tool('search_skills') }} accepts query, up to 160 characters. Omission or empty text lists every available skill.
+It returns method names and descriptions.
+```json
+{}
+```
+```json
+{"query":"Read a long document and continue its matching passage."}
+```
+{% endif %}
+{% if has('read_skill') %}
+{{ tool('read_skill') }} requires name, the exact name returned by skill discovery.
+It returns the method instructions, tool arguments and examples.
+```json
+{"name":"passages"}
+```
+{% endif %}
+{% if has('write_note') %}
+{{ tool('write_note') }} requires text, with 1 to 2,000 characters. It saves evidence and unresolved questions for later context.
+Include source identities and the next useful call when that context must survive compaction.
+```json
+{"text":"The approval passage is in the returned document range. Verify its original writer before attributing it."}
+```
+{% endif %}
+{% if has('ask_user') %}
+{{ tool('ask_user') }} requires question, with 1 to 500 characters.
+options optionally supplies up to six answers, each with 1 to 80 characters. Ask for a missing task choice that the sources cannot resolve.
+It pauses the conversation until the person replies.
+```json
+{"question":"Which collection should supply the requested report?","options":["alpha","beta"]}
+```
+{% endif %}

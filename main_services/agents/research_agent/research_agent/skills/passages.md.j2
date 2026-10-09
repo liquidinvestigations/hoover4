@@ -2,7 +2,7 @@
 name: passages
 group: technique
 description: how to find the exact passages or pages that answer a question with search_passages, inside many documents or one
-tools: search_passages, doc_search_text, pdf_search
+tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
 terms: Words for it: passage, paragraph, sentence, quote, excerpt, page, section, where it says, the part that mentions, exact wording, line. Applies to long text documents: PDF, Word files, e-mails, reports and transcripts.
 not_for: Not needed for counts, file lists or metadata.
 ---
@@ -11,7 +11,7 @@ not_for: Not needed for counts, file lists or metadata.
 Finding passages and pages
 
 {% if has('search_passages') %}
-To search many documents, use {{ tool('search_passages') }}. It searches the text passages by keywords and by meaning together. Use it for a question in plain words, when the words that the documents use are not clear. Give up to 8 queries in one call, each a different form of the question. Each hit names the queries that found it. For an exact name, an address or a phrase, use {{ tool('search_collections') }}.
+To search many documents, use {{ tool('search_passages') }}. It searches the text passages by keywords and by meaning together. Use it for a question in plain words, when the words that the documents use are not clear. Give up to 12 queries in one call, each a different form of the question. Each hit names the queries that found it. For an exact name, an address or a phrase, use {{ tool('search_collections') }}.
 
 {% endif %}
 {% if has('doc_search_text') or has('pdf_search') %}
@@ -30,3 +30,101 @@ to support the claim. Give its page, or give the query to open the page with the
 {% endif %}
 
 Give the document and page when a passage supports the answer.
+
+{% if has('read_documents') %}
+{{ tool('read_documents') }} requires collection and file_hash.
+collection is one name. file_hash is a list of 1 to 20 hashes from that collection.
+For documents in different collections, make a separate batch per collection.
+Copy identities from results. A unique file name or path can also resolve a document.
+source optionally selects an extracted source. Omission uses the preferred source.
+page optionally selects a stored page identifier. Page identifiers can have gaps.
+Omit page or give zero to select the page with most query hits, or the first stored page without a query.
+query opens text around nearby distinct matched words on that page.
+For exact wording, quote the phrase inside the query. A single matched value opens its first occurrence.
+offset overrides the passage start. It counts Unicode characters from zero within that page.
+length is a positive character count. Omission uses 6,000 characters.
+source_version optionally verifies the returned source fingerprint. Copy it for a range reread.
+
+The result returns text_range with start, exclusive end, total page characters and unit.
+page_complete means that the range covers the whole page.
+A cut marker means the tool delivered only part of the range. It does not mean the page ends there.
+Use an item's more to continue that document. Use the top-level more to continue the remaining page or later pages.
+Copy the returned handle exactly into {{ tool('read_more') }} as continuation.
+Copy read_before or read_after as read_documents arguments for surrounding text. No offset calculation is required.
+A repeated initial call returns the same text. Use continuation when more text is needed.
+Stop reading when the passage provides enough evidence for the requested claim.
+
+This minimal call opens the first stored page.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]}
+```
+This call opens a targeted passage.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"}
+```
+This call opens a returned range in a selected source and page.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"}
+```
+This continuation reads the next returned range. Use the actual issued handle.
+```json
+{"continuation":"COPY_RETURNED_MORE"}
+```
+{% endif %}
+{% if has('doc_search_text') %}
+{{ tool('doc_search_text') }} requires collection, file_hash and query. source optionally selects one extraction.
+It returns page, ordinal, start, end and snippet for each hit. Offsets count characters within that page.
+Copy a hit page and start into read_documents when the snippet needs more context.
+Use read_more to retrieve remaining hits.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"}
+```
+{% endif %}
+{% if has('doc_sources') %}
+{{ tool('doc_sources') }} requires collection and file_hash. query optionally counts matching hits in each extraction.
+It returns source names and stored page ranges. Copy a source name when selecting a particular extraction.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+{% endif %}
+{% if has('doc_diff_sources') %}
+{{ tool('doc_diff_sources') }} requires collection, file_hash, source_a and source_b.
+page_a and page_b optionally select pages. Omission selects the first stored page of each source.
+The result is a unified text diff. Use read_more when it continues.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7}
+```
+{% endif %}
+{% if has('pdf_search') %}
+{{ tool('pdf_search') }} requires collection, file_hash and query.
+source optionally selects a PDF extraction. page_from and page_to optionally restrict the inclusive PDF page range.
+Copy returned page positions. Use read_more for continued hits.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12}
+```
+{% endif %}
+{% if has('search_passages') %}
+{{ tool('search_passages') }} accepts queries as one string or a list of up to 12 forms.
+collection accepts one name or a list. Omission searches every permitted collection.
+max_results selects the hit count within the served schema limit. Omission uses 15.
+The result gives collection, file_hash, page and snippet. q records the zero-based query indexes.
+Read supporting text when the passage does not answer the question.
+```json
+{"queries":"approval of the transfer"}
+```
+```json
+{"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5}
+```
+{% endif %}

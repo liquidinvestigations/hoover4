@@ -18,6 +18,47 @@ A spreadsheet, a CSV file or a table in a document is a table document. Name it 
 3. {{ tool('table_column_values') }} lists values in one column and their counts.
 4. To find a value in a sheet, call {{ tool('table_search_cells') }}. Read surrounding rows
 with {{ tool('table_page') }} when the match needs context.
-5. When {{ tool('table_page') }} cuts a long cell, read it whole with {{ tool('table_cell') }}. Give the row_id of the row and the column id.
+5. When {{ tool('table_page') }} cuts a long cell, read it whole with {{ tool('table_cell') }}. Give row with the returned row_id, and column with the returned column id.
 
 Give a sheet, row and column when the reader needs to find a value again.
+
+Every table call requires collection and file_hash from the same document result.
+{{ tool('table_overview') }} returns sheet and column identifiers.
+The other table tools require sheet. Copy its identifier from the overview.
+{{ tool('table_page') }} optionally accepts sort, filters, columns, search and row_start.
+sort requires column and direction, asc or desc. Omission uses the stored row order.
+filters is a list of column predicates. Each predicate uses one test type.
+A numeric or date range can include both lower and upper bounds.
+Tests are contains, equals, starts_with, is_empty, number_min, number_max, date_min and date_max.
+Text tests use strings. Number tests use numbers. Date bounds use YYYY-MM-DD strings.
+columns selects column identifiers. One returned window contains at most 60 selected columns.
+search optionally keeps rows containing its text. row_start is a zero-based position in the requested row order.
+The result contains column metadata and rows. row_id is the stored row identity, including after sorting.
+
+{{ tool('table_column_values') }} also requires column. search optionally filters value text.
+It returns values and counts for that column.
+{{ tool('table_search_cells') }} requires query. It returns matching sheet, row and column identities with text.
+{{ tool('table_cell') }} requires row and column. Pass the returned row_id under the argument name row.
+It returns 2,000-character slices. Use read_more for the remaining cell text.
+Use read_more for continued table pages, values and search hits.
+
+This minimal overview opens the table structure.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+This page call uses copied sheet and column identifiers.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50}
+```
+This values call narrows one column.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"}
+```
+This cell search locates a requested value.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"}
+```
+This cell call reads row_id 71, even when that row appeared first in a sorted result.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2}
+```

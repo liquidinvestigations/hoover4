@@ -22,3 +22,43 @@ interactive elements matter.
 When a result starts with "### Error", read the error text. A stale element reference means that the page changed. Take a new snapshot and use the new reference. An empty reference or selector means that you gave no element.
 
 Say in your answer which address you opened and what the page showed.
+
+{{ tool('browser_navigate') }} requires url. {{ tool('browser_snapshot') }} takes no arguments.
+```json
+{"url":"COPY_SEARCH_RESULT_URL"}
+```
+```json
+{}
+```
+{{ tool('browser_click') }} requires target. Copy a returned element reference or use a unique selector.
+element optionally describes the target. button defaults to left and can be right or middle.
+doubleClick optionally selects a double click. modifiers optionally holds Alt, Control, ControlOrMeta, Meta or Shift.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]}
+```
+{{ tool('browser_type') }} requires target and text. element optionally describes the target.
+submit optionally presses Enter after typing. slowly optionally types individual characters to trigger key handlers.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true}
+```
+{{ tool('browser_select_option') }} requires target and values, a list of option values. element optionally describes the target.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]}
+```
+{{ tool('browser_press_key') }} requires key, such as Enter or Control+ArrowRight.
+```json
+{"key":"Enter"}
+```
+```json
+{"key":"Control+ArrowRight"}
+```
+Each action returns its status or an error. Read a new snapshot after a page-changing action.

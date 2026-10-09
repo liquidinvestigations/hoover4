@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Any
+from typing import Annotated, Any
 
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
@@ -241,11 +241,11 @@ MAX_QUERIES = int(os.getenv("METASEARCH_MAX_QUERIES", "5"))
     ),
 )
 async def web_search(
-    queries: list[str] | str | None = None,
-    query: str | None = None,
-    sources: list[str] | None = None,
-    max_results: int = DEFAULT_MAX_RESULTS,
-    timelimit: str | None = None,
+    queries: Annotated[list[str] | str | None, Field(description='Batch query forms as a list or one string. Supply at least one query.')] = None,
+    query: Annotated[str | None, Field(description='Optional additional query, merged with queries.')] = None,
+    sources: Annotated[list[str] | None, Field(description='Optional source names from list_search_sources. Omission uses all available sources.')] = None,
+    max_results: Annotated[int, Field(description='Maximum results to return. Omission uses 15. The configured limit applies.')] = DEFAULT_MAX_RESULTS,
+    timelimit: Annotated[str | None, Field(description='Use d, w, m or y for supported sources. Omission applies no time filter.')] = None,
 ) -> WebSearchResponse:
     """Search every source for every query, and rank the merged pool once.
 

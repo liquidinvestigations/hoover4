@@ -8,13 +8,13 @@ tools: list_collections, search_collections
    or a collection that the chat cannot read. #}
 Naming a collection
 
-1. Leave out collectionname to search every collection of this chat. That is correct for most questions.
-2. When you must give a collection, copy its name exactly from {{ tool('list_collections') }}, or from the collectionname of a result row.
+1. Leave out collection to search every collection of this chat. That is correct for most questions.
+2. When you must give a collection, copy its name exactly from {{ tool('list_collections') }}, or from the collection of a result row.
 3. A dataset is not a collection. The dataset tables/ehudx is in the collection tables. Give tables.
 4. Do not change a name. Do not add a space, change a capital letter or translate it.
 5. When a call says that a collection is outside the permitted collections, this chat cannot read it. Do not send the call again. Use the collections of this chat.
 
-To read a document, give the collectionname of the same result row as its file_hash.
+To read a document, give the collection of the same result row as its file_hash.
 
 When a name occurs nowhere, read the indexed spelling suggestions and their checked counts.
 Offer the found forms to the person with ask_user before substituting a name.

@@ -7,7 +7,7 @@ import hashlib
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Annotated, Any, Callable
+from typing import Annotated, Any, Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -16,7 +16,7 @@ from agent_common.result_pages import canonical_json
 from collection_search_server.backend_client import (
     AgentError, AgentSort, BackendClient, CollectionsListRequest, CollectionsListResponse,
     SearchDateHistogramRequest,
-    SearchEntityExplainerRequest, SearchFacetValuesRequest, SearchResultsRequest,
+    SearchEntityExplainerRequest, SearchFacetValuesRequest, SearchFacetValuesResponse, SearchResultsRequest,
     SearchResultsResponse,
 )
 from collection_search_server import paging
@@ -55,11 +55,12 @@ class LocalPagedTool:
         digest = hashlib.sha256(canonical_json(result).encode("utf-8")).hexdigest()[:32]
         if source and source != digest:
             return canonical_json({"success": False, "error": "source_changed", "message": "the source changed after the prior page"})
+        columns = result.pop("columns", None)
         items = list(result.get(self.item_key) or [])
         if refs is None:
             items, refs = paging.slim_items(self.tool_name, items)
         fields = {**{key: value for key, value in result.items() if key != self.item_key}, "source": digest}
-        return paging._live_page(self, request, None, paging.Window(items, fields, None, following, len(items), refs))
+        return paging._live_page(self, request, None, paging.Window(items, fields, columns, following, len(items), refs))
 
 
 class SearchPassagesRequest(BaseModel):
@@ -85,7 +86,7 @@ def _search_passages(request: SearchPassagesRequest) -> dict[str, Any]:
     refs: list[dict[str, Any]] = []
     for hit in response.results:
         forms = [response.queries.index(q) for q in hit.matched_queries if q in response.queries]
-        row = {"file_hash": paging.hash_start(hit.file_hash), "collectionname": hit.collectionname,
+        row = {"file_hash": paging.hash_start(hit.file_hash), "collection": hit.collectionname,
                "path": hit.path or None, "page": hit.page_id, "q": forms if several else None,
                "snippet": hit.snippet}
         rows.append({key: value for key, value in row.items() if value not in (None, "", [])} | {"snippet": hit.snippet})
@@ -134,7 +135,7 @@ def collections_for(names: list[str] | None) -> tuple[list[str] | None, list[str
             target = owner[name]
             notes.append(
                 f"{name!r} is a dataset of the collection {target!r}, not a collection, so this "
-                f"search covers the collection {target!r}. Give collectionname {target!r}."
+                f"search covers the collection {target!r}. Give collection {target!r}."
             )
         if target not in resolved:
             resolved.append(target)
@@ -169,7 +170,7 @@ def search_row(document: dict[str, Any], forms: list[int] | None, words: list[st
     path = document.get("path") or ""
     row = {
         "file_hash": paging.hash_start(document.get("file_hash") or ""),
-        "collectionname": document.get("collectionname") or "",
+        "collection": document.get("collectionname") or "",
         "path": path,
         "title": title if title and title not in path else None,
         "type": document.get("canonical_file_type") or None,
@@ -325,9 +326,58 @@ class SearchCollectionsTool(PagedTool):
         return SEARCH_FORMS.render(request, position, source)
 
 
+FacetName = Literal[
+    "file_types", "file_paths", "email_from", "email_to", "struct_flags",
+    "ner_per", "ner_org", "ner_loc", "ner_misc", "re_email", "language", "red_flags",
+    "re_phone", "re_bank_account", "re_company_id", "re_money", "re_crypto_wallet",
+]
+
+
+class FacetMatrixRequest(BaseModel):
+    """The model-facing selection for a per-collection facet matrix."""
+
+    model_config = ConfigDict(extra="forbid")
+    collection: list[str] = Field(default_factory=list)
+    facets: list[FacetName] = Field(default_factory=lambda: ["file_types", "language"], min_length=1)
+    query: str | None = None
+    ids: list[int] | None = None
+
+
+def _facet_matrix(request: FacetMatrixRequest) -> dict[str, Any]:
+    """Read each requested facet within each permitted collection."""
+    listing = BackendClient().post("collections/list", CollectionsListRequest(), CollectionsListResponse)
+    if isinstance(listing, AgentError):
+        return {"success": False, "error": listing.error, "message": listing.message}
+    permitted = {c.collectionname for c in listing.collections}
+    names = list(dict.fromkeys(request.collection or [c.collectionname for c in listing.collections]))
+    facets = list(dict.fromkeys(request.facets))
+    rows, errors = [], []
+    for name in names:
+        if name not in permitted:
+            errors.append({"collection": name, "error": "forbidden", "message": "This collection is not permitted."})
+            rows.append([name, *[None for _ in facets]])
+            continue
+        cells = []
+        for facet in facets:
+            response = BackendClient().post("search/facet_values", SearchFacetValuesRequest(
+                collectionname=[name], facet=facet, query=request.query, ids=request.ids), SearchFacetValuesResponse)
+            if isinstance(response, AgentError):
+                cells.append(None)
+                errors.append({"collection": name, "facet": facet, "error": response.error, "message": response.message})
+                continue
+            cells.append([[term.text, term.count] for term in response.terms])
+            known = {term.text for term in response.terms}
+            cells[-1].extend([text, None] for text in dict.fromkeys(response.resolved.values()) if text not in known)
+        rows.append([name, *cells])
+    return {"columns": ["collection", *facets], "rows": rows,
+            "count_basis": "Indexed document matches per value. A document can have several values.",
+            "value_scope": "Available facet values. Use query to find values outside the default list.",
+            **({"errors": errors} if errors else {})}
+
+
 LIST_COLLECTIONS = PagedTool(CollectionsListRequest, "collections/list", "list_collections", "rows", "collections")
 SEARCH_COLLECTIONS = SearchCollectionsTool(SearchCollectionsRequest, "search/results", "search_collections", "rows", "documents", max_rows=server.ROWS_PER_FORM)
-SEARCH_FACET_VALUES = PagedTool(SearchFacetValuesRequest, "search/facet_values", "search_facet_values", "rows", "terms")
+SEARCH_FACET_VALUES = LocalPagedTool(FacetMatrixRequest, "search_facet_values", "rows", _facet_matrix, shape="table")
 SEARCH_HISTOGRAM = PagedTool(SearchDateHistogramRequest, "search/histogram", "search_histogram", "rows", "buckets")
 SEARCH_ENTITY_EXPLAINER = PagedTool(SearchEntityExplainerRequest, "search/entity_explainer", "search_entity_explainer", "rows", "documents")
 SEARCH_PASSAGES = LocalPagedTool(SearchPassagesRequest, "search_passages", "results", _search_passages)
@@ -347,11 +397,11 @@ def _render(tool: PagedTool | LocalPagedTool, values: dict[str, Any]) -> str:
 
 LIST_COLLECTIONS_TEXT = (
     "List the collections of this chat and the datasets in each. You do not need it before a "
-    "search, because a search with no collectionname covers every collection. A dataset name, "
+    "search, because a search with no collection covers every collection. A dataset name, "
     "for example tables/ehudx, is not a collection name. Give the collection name, tables."
 )
 
-SEARCH_COLLECTIONS_TEXT = r"""Search the user's documents. Leave out collectionname to search every collection of this chat. That is the default, and it is correct for most questions. Give collectionname only to narrow a search, with names from list_collections. A dataset is not a collection.
+SEARCH_COLLECTIONS_TEXT = r"""Search the user's documents. Leave out collection to search every collection of this chat. That is the default, and it is correct for most questions. Give collection only to narrow a search, with names from list_collections. A dataset is not a collection.
 
 Give queries as a list of up to 12 forms of what you look for, for example the email address, the name in double quotes and the name with the surname first. Each row names the forms that found it in q, by number from 0. Do not make one call for each form.
 Example: queries ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]
@@ -375,14 +425,14 @@ Query rules:
 - word_counts gives the folded word and its checked document count over the searched tables.
 - suggestions gives indexed close words with checked counts. Use one only for the intended name.
 
-Each row gives file_hash, path, collectionname and known size in bytes. Copy file_hash from a row to read_documents. Never write a hash yourself. When the result has more, give that value to read_more to get the other rows.
+Each row gives file_hash, path, collection and known size in bytes. Copy file_hash from a row to read_documents. Never write a hash yourself. When the result has more, give that value to read_more to get the other rows.
 
 Use facet_filters with value text or term ids. An empty query lists every filter match. The result reports each applied filter and unknown value. Dates are epoch seconds. size_min and size_max are in bytes. For PDFs by size, use file_types: ["pdf"] and sort by file_size. For email between two people, use email_from and email_to with their addresses. For a location, use ner_loc: ["Chicago"]. language accepts a code or English name. red_flags accepts a category identifier or title."""
 
 SEARCH_PASSAGES_TEXT = (
     "Search the text passages of the user's documents by keywords and by meaning together. Use "
     "it for a question in plain words, when you do not know the words that the documents use. "
-    "Leave out collectionname to search every collection of this chat. Give up to 12 queries in "
+    "Leave out collection to search every collection of this chat. Give up to 12 queries in "
     "one call. Each row names the forms that found it in q, by number from 0. Copy file_hash "
     "from a row to read_documents. For an exact name, address or phrase, "
     "use search_collections."
@@ -399,29 +449,34 @@ def _filters(values: dict[str, Any]) -> dict[str, Any]:
 
 
 @mcp.tool(name="search_collections", description=SEARCH_COLLECTIONS_TEXT)
-def search_collections(collectionname: list[str] | None = None, queries: Annotated[list[str] | None, Field(max_length=server.MAX_QUERIES_PER_CALL)] = None, query: str = "", sort: AgentSort | None = None, date_after: int | None = None, date_before: int | None = None, date_unknown_only: bool | None = None, mentioned_date_after: int | None = None, mentioned_date_before: int | None = None, size_min: int | None = None, size_max: int | None = None, folder_term_id: int | None = None, filename_only: bool | None = None, facet_filters: dict[str, list[str]] | None = None) -> str:
-    collectionname, collection_notes = collections_for(collectionname)
-    return _render(SEARCH_COLLECTIONS, _filters({"collectionname": collectionname, "collection_notes": collection_notes, "queries": queries or [], "query": query, "sort": sort, "date_after": date_after, "date_before": date_before, "date_unknown_only": date_unknown_only, "mentioned_date_after": mentioned_date_after, "mentioned_date_before": mentioned_date_before, "size_min": size_min, "size_max": size_max, "folder_term_id": folder_term_id, "filename_only": filename_only, "facet_filters": facet_filters}))
+def search_collections(collection: Annotated[list[str] | str | None, Field(description="One collection name or a list. Omission or an empty list searches all permitted collections.")] = None, queries: Annotated[list[str] | None, Field(max_length=server.MAX_QUERIES_PER_CALL, description="Batch up to twelve query forms. Each result q value refers to a zero-based query index.")] = None, query: Annotated[str, Field(description='Text or query syntax to match. An empty search_collections query lists filter matches.')] = "", sort: Annotated[AgentSort | None, Field(description='Sort field and direction. Omission uses the backend default order.')] = None, date_after: Annotated[int | None, Field(description='Inclusive document date lower bound in UTC epoch seconds.')] = None, date_before: Annotated[int | None, Field(description='Inclusive document date upper bound in UTC epoch seconds.')] = None, date_unknown_only: Annotated[bool | None, Field(description='True selects documents without a known document date.')] = None, mentioned_date_after: Annotated[int | None, Field(description='Inclusive mentioned date lower bound in UTC epoch seconds.')] = None, mentioned_date_before: Annotated[int | None, Field(description='Inclusive mentioned date upper bound in UTC epoch seconds.')] = None, size_min: Annotated[int | None, Field(description='Inclusive minimum file size in bytes.')] = None, size_max: Annotated[int | None, Field(description='Inclusive maximum file size in bytes.')] = None, folder_term_id: Annotated[int | None, Field(description='Copy a folder term identifier from a folder result to restrict the search.')] = None, filename_only: Annotated[bool | None, Field(description='True searches file names and paths. False searches document contents.')] = None, facet_filters: Annotated[dict[str, list[str]] | None, Field(description='Map facet names to lists of value text. Copy values from search_facet_values.')] = None) -> str:
+    collection, collection_notes = collections_for(server._as_collection_list(collection))
+    return _render(SEARCH_COLLECTIONS, _filters({"collectionname": collection, "collection_notes": collection_notes, "queries": queries or [], "query": query, "sort": sort, "date_after": date_after, "date_before": date_before, "date_unknown_only": date_unknown_only, "mentioned_date_after": mentioned_date_after, "mentioned_date_before": mentioned_date_before, "size_min": size_min, "size_max": size_max, "folder_term_id": folder_term_id, "filename_only": filename_only, "facet_filters": facet_filters}))
 
 
-@mcp.tool(name="search_facet_values", description="Find facet values in permitted collections. Use it to choose values for a collection search filter.")
-def search_facet_values(collectionname: list[str] | None = None, facet: str = "", query: str | None = None, ids: list[int] | None = None) -> str:
-    return _render(SEARCH_FACET_VALUES, {"collectionname": collectionname or [], "facet": facet, "query": query, "ids": ids})
+@mcp.tool(name="search_facet_values", description="Return a facet matrix with collections as rows and requested facets as columns. Each cell contains [value text, document count] pairs. Omit collection to cover all permitted collections. Omit facets for file_types and language. Copy value text into search_collections facet_filters. A document can have several values. Use query to find values in a large facet. Use read_more when the result has more.")
+def search_facet_values(
+    collection: Annotated[list[str] | str | None, Field(description="One collection name or a list. Omission or an empty list selects all permitted collections.")] = None,
+    facets: Annotated[list[FacetName], Field(min_length=1, description="Facet columns to return. Use file_types for document formats and language for languages.")] = ["file_types", "language"],
+    query: Annotated[str | None, Field(description="Optional text to find within facet values. This does not search document contents.")] = None,
+    ids: Annotated[list[int] | None, Field(description="Optional known term identifiers to resolve to text. Ordinary searches use returned text values.")] = None,
+) -> str:
+    return _render(SEARCH_FACET_VALUES, {"collection": server._as_collection_list(collection) or [], "facets": facets, "query": query, "ids": ids})
 
 
 @mcp.tool(name="search_histogram", description="Return the buckets of a collection search by document date, mentioned date or file size. Use it to choose a date or size range before filtering. field is date, mentioned_date or size.")
-def search_histogram(collectionname: list[str] | None = None, query: str = "", field: str = "date", date_after: int | None = None, date_before: int | None = None, date_unknown_only: bool | None = None, mentioned_date_after: int | None = None, mentioned_date_before: int | None = None, size_min: int | None = None, size_max: int | None = None, folder_term_id: int | None = None, filename_only: bool | None = None, facet_filters: dict[str, list[str]] | None = None) -> str:
-    return _render(SEARCH_HISTOGRAM, _filters({"collectionname": collectionname, "query": query, "date_field": field, "date_after": date_after, "date_before": date_before, "date_unknown_only": date_unknown_only, "mentioned_date_after": mentioned_date_after, "mentioned_date_before": mentioned_date_before, "size_min": size_min, "size_max": size_max, "folder_term_id": folder_term_id, "filename_only": filename_only, "facet_filters": facet_filters}))
+def search_histogram(collection: Annotated[list[str] | str | None, Field(description="One collection name or a list. Omission searches all permitted collections.")] = None, query: Annotated[str, Field(description='Optional document keyword query. Omission counts all filter matches.')] = "", field: Annotated[Literal["date", "mentioned_date", "size"], Field(description='Use date, mentioned_date or size to choose the histogram axis.')] = "date", date_after: Annotated[int | None, Field(description='Inclusive document date lower bound in UTC epoch seconds.')] = None, date_before: Annotated[int | None, Field(description='Inclusive document date upper bound in UTC epoch seconds.')] = None, date_unknown_only: Annotated[bool | None, Field(description='True selects documents without a known document date.')] = None, mentioned_date_after: Annotated[int | None, Field(description='Inclusive mentioned date lower bound in UTC epoch seconds.')] = None, mentioned_date_before: Annotated[int | None, Field(description='Inclusive mentioned date upper bound in UTC epoch seconds.')] = None, size_min: Annotated[int | None, Field(description='Inclusive minimum file size in bytes.')] = None, size_max: Annotated[int | None, Field(description='Inclusive maximum file size in bytes.')] = None, folder_term_id: Annotated[int | None, Field(description='Copy a folder term identifier from a folder result to restrict the search.')] = None, filename_only: Annotated[bool | None, Field(description='True searches file names and paths. False searches document contents.')] = None, facet_filters: Annotated[dict[str, list[str]] | None, Field(description='Map facet names to lists of value text. Copy values from search_facet_values.')] = None) -> str:
+    return _render(SEARCH_HISTOGRAM, _filters({"collectionname": server._as_collection_list(collection), "query": query, "date_field": field, "date_after": date_after, "date_before": date_before, "date_unknown_only": date_unknown_only, "mentioned_date_after": mentioned_date_after, "mentioned_date_before": mentioned_date_before, "size_min": size_min, "size_max": size_max, "folder_term_id": folder_term_id, "filename_only": filename_only, "facet_filters": facet_filters}))
 
 
 @mcp.tool(name="search_entity_explainer", description="Explain one extracted entity value. Use it when a result names a rule and value that need context.")
-def search_entity_explainer(collectionname: str, entity_type: str, entity_value: str) -> str:
-    return _render(SEARCH_ENTITY_EXPLAINER, {"collectionname": collectionname, "entity_type": entity_type, "entity_value": entity_value})
+def search_entity_explainer(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], entity_type: Annotated[str, Field(description='Copy the extracted entity rule type from a result.')], entity_value: Annotated[str, Field(description='Copy the extracted entity value from a result.')]) -> str:
+    return _render(SEARCH_ENTITY_EXPLAINER, {"collectionname": collection, "entity_type": entity_type, "entity_value": entity_value})
 
 
 @mcp.tool(name="search_passages", description=SEARCH_PASSAGES_TEXT)
-def search_passages(queries: list[str] | str, collectionname: list[str] | str | None = None, max_results: int = server.DEFAULT_MAX_RESULTS) -> str:
+def search_passages(queries: Annotated[list[str] | str, Field(description='Batch up to 12 query forms. Each result q value refers to a zero-based query index.')], collection: Annotated[list[str] | str | None, Field(description='One collection name or a list. Omission or an empty list searches all permitted collections.')] = None, max_results: Annotated[int, Field(ge=1, le=server.MAX_ALLOWED_RESULTS, description='Maximum passage hits per call. Omission uses 15. The schema gives the configured maximum.')] = server.DEFAULT_MAX_RESULTS) -> str:
     if isinstance(queries, str):
         queries = server._as_collection_list(queries) if queries.strip().startswith("[") else [queries]
-    collections = server._as_collection_list(collectionname) or []
+    collections = server._as_collection_list(collection) or []
     return _render(SEARCH_PASSAGES, {"queries": queries, "collectionname": collections, "max_results": max_results})

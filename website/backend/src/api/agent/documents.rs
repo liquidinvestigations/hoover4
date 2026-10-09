@@ -273,9 +273,13 @@ async fn documents_read_body(
             "file_hash takes 1 to {MAX_READ_DOCUMENTS} hashes"
         )));
     }
-    let (wanted_source, wanted_page) = match body.position.clone() {
-        None => (body.source.clone(), requested_page(body.page)),
-        Some(AgentPosition::TextPage { source, page_id }) => (Some(source), Some(page_id)),
+    if body.length == Some(0) {
+        return Err(AgentError::invalid_argument("length must be a positive character count"));
+    }
+    let length = body.length.unwrap_or(6_000);
+    let (wanted_source, wanted_page, wanted_offset) = match body.position.clone() {
+        None => (body.source.clone(), requested_page(body.page), body.offset),
+        Some(AgentPosition::TextPage { source, page_id, offset }) => (Some(source), Some(page_id), offset),
         Some(other) => return Err(wrong_position_kind("documents/read", &other, "TextPage")),
     };
     let query = body.query.clone().filter(|query| !query.is_empty());
@@ -318,7 +322,7 @@ async fn documents_read_body(
     let mut documents = Vec::with_capacity(planned.len());
     let mut partial = false;
     for plan in &planned {
-        let read = read_one_document(user, &body.collectionname, plan, query.as_deref(), wanted_page, deadline);
+        let read = read_one_document(user, &body.collectionname, plan, query.as_deref(), wanted_page, wanted_offset, length, deadline);
         match tokio::time::timeout_at(deadline.0, read).await {
             Ok(result) => {
                 let (document, stopped) = result?;
@@ -338,6 +342,7 @@ async fn documents_read_body(
                     min_page: plan.chosen.as_ref().map(|c| c.min_page),
                     max_page: plan.chosen.as_ref().map(|c| c.max_page),
                     text: String::new(),
+                    text_start: 0, text_end: 0, text_length: 0, source_version: String::new(),
                     hit_count: 0,
                     hit_pages: Vec::new(),
                     count_state: "timed_out".to_string(),
@@ -361,6 +366,8 @@ async fn read_one_document(
     plan: &PlannedRead,
     query: Option<&str>,
     wanted_page: Option<u32>,
+    wanted_offset: Option<u32>,
+    length: u32,
     deadline: Deadline,
 ) -> Result<(AgentDocumentText, bool), AgentError> {
     let path = get_file_path::get_file_path(user, plan.identifier.clone())
@@ -381,6 +388,7 @@ async fn read_one_document(
                 min_page: None,
                 max_page: None,
                 text: String::new(),
+                text_start: 0, text_end: 0, text_length: 0, source_version: String::new(),
                 hit_count: 0,
                 hit_pages: Vec::new(),
                 count_state: "no_text".to_string(),
@@ -395,7 +403,8 @@ async fn read_one_document(
     };
     let page_id = chosen_page(wanted_page, &counts, chosen.min_page);
     let pages = StoredTextPages { user, identifier: &plan.identifier, collectionname, deadline };
-    let (text, next) = read_text_page(&pages, &chosen.extracted_by, page_id).await?;
+    let (text, text_start, text_end, text_length, next_position) =
+        read_text_range(&pages, &chosen.extracted_by, page_id, query, wanted_offset, length).await?;
     Ok((
         AgentDocumentText {
             collectionname: collectionname.to_string(),
@@ -407,14 +416,84 @@ async fn read_one_document(
             page: Some(page_id),
             min_page: Some(chosen.min_page),
             max_page: Some(chosen.max_page),
-            text,
+            text, text_start, text_end, text_length,
+            source_version: text_source_fingerprint(&plan.file_hash, &chosen.extracted_by, plan.extent),
             hit_count: counts.iter().map(|(_, count)| count).sum(),
             hit_pages: counts.iter().take(MAX_HIT_PAGES).map(|(page, _)| *page).collect(),
             count_state: "read".to_string(),
-            next_position: next.map(|page_id| AgentPosition::TextPage { source: chosen.extracted_by.clone(), page_id }),
+            next_position,
         },
         stopped,
     ))
+}
+
+/// Opens a matching passage or explicit character range within one stored page.
+async fn read_text_range<P: TextPages>(
+    pages: &P,
+    extracted_by: &str,
+    page_id: u32,
+    query: Option<&str>,
+    wanted_offset: Option<u32>,
+    length: u32,
+) -> Result<(String, u32, u32, u32, Option<AgentPosition>), AgentError> {
+    let (whole, next) = read_text_page(pages, extracted_by, page_id).await?;
+    let offset = match (wanted_offset, query) {
+        (Some(offset), _) => offset,
+        (None, Some(query)) => {
+            let spans = pages.page_hits(extracted_by, page_id, query).await?;
+            matching_passage(&spans, length).map(|(start, end)| {
+                let before = 1_000.min(length.saturating_sub(end - start));
+                start.saturating_sub(before)
+            }).unwrap_or(0)
+        }
+        _ => 0,
+    };
+    let (text, text_start, text_end, text_length) = text_range(&whole, offset, length)?;
+    let next_position = if text_end < text_length {
+        Some(AgentPosition::TextPage { source: extracted_by.to_string(), page_id, offset: Some(text_end) })
+    } else {
+        next.map(|page_id| AgentPosition::TextPage { source: extracted_by.to_string(), page_id, offset: Some(0) })
+    };
+    Ok((text, text_start, text_end, text_length, next_position))
+}
+
+/// Selects nearby distinct highlighted values before an isolated word match.
+fn matching_passage(spans: &[HighlightTextSpan], length: u32) -> Option<(u32, u32)> {
+    let mut hits = Vec::new();
+    let mut offset = 0;
+    for span in spans {
+        let end = offset + span.text.chars().count() as u32;
+        if span.is_highlighted {
+            hits.push((offset, end, span.text.to_lowercase()));
+        }
+        offset = end;
+    }
+    let mut best = None;
+    let mut distinct = 0;
+    for (index, (start, _, _)) in hits.iter().enumerate() {
+        let mut values = std::collections::BTreeSet::new();
+        for (_, end, text) in &hits[index..] {
+            if end - start > length.min(1_000) && !values.is_empty() { break; }
+            values.insert(text);
+            let narrower = best.is_some_and(|(a, b)| end - start < b - a);
+            if values.len() > distinct || (values.len() == distinct && distinct > 1 && narrower) {
+                best = Some((*start, *end));
+                distinct = values.len();
+            }
+        }
+    }
+    best
+}
+
+/// Reads a repeatable range with Unicode character offsets and an exclusive end.
+fn text_range(text: &str, offset: u32, length: u32) -> Result<(String, u32, u32, u32), AgentError> {
+    let chars: Vec<char> = text.chars().collect();
+    let total = chars.len() as u32;
+    if offset > total {
+        return Err(AgentError::invalid_argument(format!("offset {offset} exceeds the page length {total}")));
+    }
+    let end = offset.saturating_add(length).min(total);
+    Ok((chars[offset as usize..end as usize].iter().collect(), offset, end, total))
 }
 
 // ===================================================================================

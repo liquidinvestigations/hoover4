@@ -27,32 +27,32 @@ def sent(monkeypatch):
 
 
 def test_read_documents_sends_the_page_id(sent):
-    tools_document.read_documents.fn(collectionname="c", file_hash=["h"], query="q", page=7)
+    tools_document.read_documents.fn(collection="c", file_hash=["h"], query="q", page=7)
     assert sent == [("documents/read", {"collectionname": "c", "file_hash": ["h"], "query": "q", "page": 7})]
 
 
 def test_read_documents_refuses_more_than_twenty_hashes(sent):
-    page = json.loads(tools_document.read_documents.fn(collectionname="c", file_hash=[str(n) for n in range(21)]))
+    page = json.loads(tools_document.read_documents.fn(collection="c", file_hash=[str(n) for n in range(21)]))
     assert page["error"] == "invalid_argument" and sent == []
 
 
 def test_doc_search_text_calls_its_route(sent):
-    tools_document.doc_search_text.fn(collectionname="c", file_hash="h", query="needle", source="raw_text")
+    tools_document.doc_search_text.fn(collection="c", file_hash="h", query="needle", source="raw_text")
     assert sent == [("documents/search_text", {"collectionname": "c", "file_hash": "h", "query": "needle", "source": "raw_text"})]
 
 
 def test_doc_email_sends_the_graph_centre(sent):
-    tools_document.doc_email.fn(collectionname="c", file_hash="h", node="other")
+    tools_document.doc_email.fn(collection="c", file_hash="h", node="other")
     assert sent == [("documents/email", {"collectionname": "c", "file_hash": "h", "node": "other"})]
 
 
 def test_doc_diff_sources_sends_the_pages(sent):
-    tools_document.doc_diff_sources.fn(collectionname="c", file_hash="h", source_a="a", source_b="b", page_a=2, page_b=3)
+    tools_document.doc_diff_sources.fn(collection="c", file_hash="h", source_a="a", source_b="b", page_a=2, page_b=3)
     assert sent[0][1]["page_a"] == 2 and sent[0][1]["page_b"] == 3
 
 
 def test_pdf_search_sends_the_page_range(sent):
-    tools_document.pdf_search.fn(collectionname="c", file_hash="h", query="q", page_from=2, page_to=4)
+    tools_document.pdf_search.fn(collection="c", file_hash="h", query="q", page_from=2, page_to=4)
     assert sent[0] == ("documents/pdf_search", {"collectionname": "c", "file_hash": "h", "query": "q", "source": "", "page_from": 2, "page_to": 4})
 
 
@@ -60,7 +60,7 @@ def test_search_histogram_takes_the_field_and_no_confirmed_date_flag(sent):
     parameters = inspect.signature(tools_search.search_histogram.fn).parameters
     assert "date_confirmed_only" not in parameters
     assert "date_confirmed_only" not in inspect.signature(tools_search.search_collections.fn).parameters
-    tools_search.search_histogram.fn(collectionname=["c"], field="size", date_unknown_only=True, mentioned_date_after=5)
+    tools_search.search_histogram.fn(collection=["c"], field="size", date_unknown_only=True, mentioned_date_after=5)
     route, body = sent[0]
     assert route == "search/histogram"
     assert body["date_field"] == "size" and body["date_unknown_only"] is True and body["mentioned_date_after"] == 5
@@ -94,7 +94,7 @@ def test_search_passages_pages_its_hits_through_the_broker(monkeypatch):
 
     monkeypatch.setattr(server, "search_passages", fake_search)
     store = Store(monkeypatch)
-    page = json.loads(tools_search.search_passages.fn(queries='["q", "r"]', collectionname="c", max_results=15))
+    page = json.loads(tools_search.search_passages.fn(queries='["q", "r"]', collection="c", max_results=15))
     assert asked[0] == (["q", "r"], ["c"], 15)
     assert 0 < len(page["items"]) < 120
     seen = [item["file_hash"] for item in page["items"]]
@@ -127,7 +127,7 @@ def test_list_document_entities_pages_documents_through_the_broker(monkeypatch):
         )
 
     monkeypatch.setattr(server, "list_document_entities", fake_entities)
-    page = json.loads(tools_document.list_document_entities.fn(documents=[{"collectionname": "c", "file_hash": "0" * 64}]))
+    page = json.loads(tools_document.list_document_entities.fn(documents=[tools_document.DocumentReference(collection="c", file_hash="0" * 64)]))
     assert [item["file_hash"] for item in page["items"]] == [f"{n:016x}" for n in range(3)]
     assert page["note"] == "three documents"
 
@@ -171,13 +171,13 @@ def test_a_dataset_name_in_a_document_tool_reads_its_collection(monkeypatch):
     calls = _listing(monkeypatch)
     for name in ("consulate_files", "files", "consulate/files"):
         calls.clear()
-        tools_document.read_documents.fn(collectionname=name, file_hash=["h"])
+        tools_document.read_documents.fn(collection=name, file_hash=["h"])
         assert calls == [("collections/list", None), ("documents/read", "consulate")], name
 
 
 def test_a_readable_collection_costs_no_listing(monkeypatch):
     calls = _listing(monkeypatch)
-    tools_document.doc_metadata.fn(collectionname="consulate", file_hash="h")
+    tools_document.doc_metadata.fn(collection="consulate", file_hash="h")
     assert calls == [("documents/metadata", "consulate")]
 
 
@@ -235,7 +235,7 @@ def test_a_hash_that_matches_nothing_is_left_out_and_the_others_are_read(monkeyp
 
 def test_read_documents_with_only_unknown_hashes_is_refused_with_the_notes(monkeypatch, sent):
     _collection_of(monkeypatch, [GOOD])
-    body = json.loads(tools_document.read_documents.fn(collectionname="epstein", file_hash=["f" * 64]))
+    body = json.loads(tools_document.read_documents.fn(collection="epstein", file_hash=["f" * 64]))
     assert body["error"] == "not_found" and "leaves it out" in body["message"]
     assert sent == []
 
@@ -280,3 +280,28 @@ def test_partial_dictionary_counts_do_not_claim_absence(monkeypatch, partial):
     assert bool(absence_notes) == (not partial)
     if partial:
         assert not any("report that the collections do not hold it" in note for note in response["query_notes"])
+
+
+def test_read_documents_exposes_matching_ranges_and_ready_calls(monkeypatch):
+    from collection_search_server.backend_client import DocumentsReadRequest
+    from test_paging import SAMPLES
+
+    body = {**SAMPLES["read_documents"], "documents": [{
+        **SAMPLES["read_documents"]["documents"][0], "file_hash": "a" * 64,
+        "text": "needle passage", "text_start": 49000, "text_end": 55000,
+        "text_length": 60006, "source_version": "version", "source_used": "raw_text"}]}
+    request = DocumentsReadRequest(collectionname="c", file_hash=["a" * 64], query="needle")
+    row = tools_document.READ_DOCUMENTS.window(body, request).items[0]
+    assert row["text_range"] == {"start": 49000, "end": 55000, "total": 60006, "unit": "characters"}
+    assert row["page_complete"] is False
+    assert row["read_before"]["offset"] == 43000
+    assert row["read_after"]["offset"] == 55000
+    assert row["read_after"]["collection"] == "c"
+    assert row["read_after"]["source_version"] == "version"
+
+
+def test_read_documents_sends_an_explicit_character_range(sent):
+    tools_document.read_documents.fn(collection="c", file_hash=["h"], page=7,
+                                     offset=50000, length=4000, source_version="version")
+    assert sent[0][1]["offset"] == 50000 and sent[0][1]["length"] == 4000
+    assert sent[0][1]["expected_source"] == "version"

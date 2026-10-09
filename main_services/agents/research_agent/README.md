@@ -452,8 +452,8 @@ nothing.
    around a one-word value. The repair removes a delimiter at the start or the end of a key
    or value, the quotes of a key, and that one layer, and keeps the quotes of `query`,
    `queries`, `quote` and `find`, because a phrase search needs them.
-2. `rename_aliases` renames a key that the model wrote under another name, such as
-   `collection` for `collectionname`, when the tool's schema has that name.
+2. `rename_aliases` retains repairs for unchanged file-hash arguments.
+   Changed collection arguments use `collection` and have no compatibility aliases.
 3. `decode_string_arguments` reads the parameter's JSON schema, following `anyOf`, `oneOf`,
    `$ref` and `type` lists. A string that parses as JSON becomes the parsed value, if that
    value has an allowed type. For a boolean, `true` and `false` in any case become the
@@ -684,3 +684,8 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Support
 
 For questions, issues, or contributions, please open an issue on the GitHub repository.
+
+Method skills describe related tools within a task workflow.
+They include argument defaults, required values, result interpretation and complete call examples.
+Document-reading methods distinguish selected character ranges from partial result delivery.
+The retained reading index records ranges and issued continuation handles after compaction.

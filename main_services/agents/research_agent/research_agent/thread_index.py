@@ -161,11 +161,19 @@ def documents_read(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:
         for item in body.get("items") or []:
             if not isinstance(item, dict) or not item.get("file_hash"):
                 continue
-            key = (str(item.get("collectionname") or "?"), str(item["file_hash"]))
+            key = (str(item.get("collection") or "?"), str(item["file_hash"]))
             path, pages = docs.pop(key, (str(item.get("path") or ""), []))
             page = item.get("page")
-            if page is not None and str(page) not in pages:
-                pages.append(str(page))
+            range_ = item.get("text_range") or {}
+            label = str(page) if page is not None else "unknown"
+            if range_:
+                label += f" characters {range_.get('start')}..{range_.get('end')} of {range_.get('total')}"
+            if item.get("cut") or item.get("more"):
+                label += " (partial delivery)"
+            if item.get("more"):
+                label += f" more={item['more']}"
+            if label not in pages:
+                pages.append(label)
             docs[key] = (path, pages)
     lines = []
     for (collection, file_hash), (path, pages) in docs.items():

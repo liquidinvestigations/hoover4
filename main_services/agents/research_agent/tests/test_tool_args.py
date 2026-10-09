@@ -30,7 +30,7 @@ from research_agent.tool_args import (
 SEARCH_SCHEMA = {
     "type": "object",
     "properties": {
-        "collectionname": {
+        "collection": {
             "anyOf": [{"items": {"type": "string"}, "type": "array"}, {"type": "null"}],
             "default": None,
         },
@@ -57,23 +57,23 @@ SEARCH_SCHEMA = {
 
 
 def test_list_sent_as_json_string_is_decoded():
-    out = decode_string_arguments({"collectionname": '["testdata"]'}, SEARCH_SCHEMA)
-    assert out == {"collectionname": ["testdata"]}
+    out = decode_string_arguments({"collection": '["testdata"]'}, SEARCH_SCHEMA)
+    assert out == {"collection": ["testdata"]}
 
 
 def test_bare_string_for_array_of_strings_is_wrapped():
-    out = decode_string_arguments({"collectionname": "testdata"}, SEARCH_SCHEMA)
-    assert out == {"collectionname": ["testdata"]}
+    out = decode_string_arguments({"collection": "testdata"}, SEARCH_SCHEMA)
+    assert out == {"collection": ["testdata"]}
 
 
 def test_number_text_for_array_of_strings_is_wrapped():
-    out = decode_string_arguments({"collectionname": "2024"}, SEARCH_SCHEMA)
-    assert out == {"collectionname": ["2024"]}
+    out = decode_string_arguments({"collection": "2024"}, SEARCH_SCHEMA)
+    assert out == {"collection": ["2024"]}
 
 
 def test_boolean_text_for_array_of_strings_is_wrapped():
-    out = decode_string_arguments({"collectionname": "true"}, SEARCH_SCHEMA)
-    assert out == {"collectionname": ["true"]}
+    out = decode_string_arguments({"collection": "true"}, SEARCH_SCHEMA)
+    assert out == {"collection": ["true"]}
 
 
 def test_boolean_words_are_decoded_in_any_case():
@@ -132,7 +132,7 @@ def test_value_that_does_not_decode_stays_unchanged():
 
 
 def test_unknown_parameter_and_non_string_values_stay_unchanged():
-    args = {"other": "[1]", "collectionname": ["a"], "size_min": 3}
+    args = {"other": "[1]", "collection": ["a"], "size_min": 3}
     assert decode_string_arguments(args, SEARCH_SCHEMA) == args
 
 
@@ -164,10 +164,10 @@ async def test_wrapped_tool_receives_decoded_live_model_arguments():
     wrapped = with_decoded_arguments(tool)
 
     # The exact argument dict the live model sent.
-    live = {"collectionname": "testdata", "query": "stanley.ec02.pdf", "filename_only": "True"}
+    live = {"collection": "testdata", "query": "stanley.ec02.pdf", "filename_only": "True"}
     assert await wrapped.ainvoke(live) == "ok"
     assert received == {
-        "collectionname": ["testdata"],
+        "collection": ["testdata"],
         "query": "stanley.ec02.pdf",
         "filename_only": True,
     }
@@ -194,11 +194,11 @@ def test_the_keys_of_a_todo_step_lose_their_quotes_and_the_values_one_layer():
 
 
 def test_quoted_keys_and_values_of_a_document_list_are_repaired():
-    args = {"documents": [{'"collectionname"': '"textfiles"',
+    args = {"documents": [{'"collection"': '"textfiles"',
                            '"file_hash"': '"fa098b7d7a24880b2be0e2e595eb1c941808f19888afe576e8facdeb93e315d3"'}]}
     fixed, _ = repair_arguments(args)
     assert fixed == {"documents": [{
-        "collectionname": "textfiles",
+        "collection": "textfiles",
         "file_hash": "fa098b7d7a24880b2be0e2e595eb1c941808f19888afe576e8facdeb93e315d3"}]}
 
 
@@ -218,7 +218,7 @@ def test_a_query_keeps_its_phrase_quotes_and_loses_the_quote_token():
 
 def test_a_key_that_holds_the_token_inside_it_is_damage_and_is_not_rebuilt():
     """The parser put an email address and the next key into one key."""
-    args = {"citations": [{"collectionname": "tables", "quote": 'a quote<|"|>',
+    args = {"citations": [{"collection": "tables", "quote": 'a quote<|"|>',
                            'JoeBWilkinson@cs.com<|"|>,why': "his address"}]}
     with pytest.raises(DamagedArguments, match=r"holds a string delimiter at citations\[0\]\."):
         repair_arguments(args)
@@ -240,25 +240,25 @@ def test_repaired_keys_with_the_same_value_give_one_key():
     assert repairs[-1] == "key 'id\"' repeated 'id' with the same value"
 
 
-def test_an_alias_key_becomes_the_schema_name():
-    schema = {"properties": {"collectionname": {"type": "string"}, "file_hash": {"type": "array"}}}
-    fixed, repairs = rename_aliases({"collection": "testdata", "file_hash": ["h"]}, schema)
-    assert fixed == {"collectionname": "testdata", "file_hash": ["h"]}
-    assert repairs == ["key 'collection' became 'collectionname'"]
+def test_changed_collection_names_have_no_compatibility_alias():
+    schema = {"properties": {"collection": {"type": "string"}}}
+    for name in ("collectionname", "collection_name"):
+        args = {name: "testdata"}
+        assert rename_aliases(args, schema) == (args, [])
 
 
-def test_an_alias_stays_when_the_schema_has_it():
-    schema = {"properties": {"collection": {"type": "string"}, "collectionname": {"type": "string"}}}
-    args = {"collection": "a"}
-    assert rename_aliases(args, schema) == (args, [])
+def test_an_unchanged_hash_alias_becomes_the_schema_name():
+    schema = {"properties": {"file_hash": {"type": "string"}}}
+    fixed, repairs = rename_aliases({"hash": "h"}, schema)
+    assert fixed == {"file_hash": "h"}
+    assert repairs == ["key 'hash' became 'file_hash'"]
 
 
-def test_an_alias_beside_its_name_is_refused_with_another_value_and_removed_with_the_same():
-    schema = {"properties": {"collectionname": {"type": "string"}}}
-    with pytest.raises(DamagedArguments, match="'collection' and 'collectionname'"):
-        rename_aliases({"collection": "a", "collectionname": "b"}, schema)
-    assert rename_aliases({"collection": "a", "collectionname": "a"}, schema)[0] == {
-        "collectionname": "a"}
+def test_conflicting_hash_aliases_are_refused():
+    schema = {"properties": {"file_hash": {"type": "string"}}}
+    with pytest.raises(DamagedArguments, match="different values"):
+        rename_aliases({"hash": "a", "file_hash": "b"}, schema)
+    assert rename_aliases({"hash": "a", "file_hash": "a"}, schema)[0] == {"file_hash": "a"}
 
 
 # ------------------------------------------------------------------ scalars and lists
@@ -303,12 +303,12 @@ def test_a_single_object_for_a_list_of_objects_becomes_one_item():
 def test_a_second_normalization_changes_nothing_and_names_no_repair():
     args = {"collection": "testdata", "ids": '"3"', "query": '"LJM"<|"|>',
             "steps": ['a step<|"|>']}
-    schema = {"properties": {"collectionname": {"type": "string"}, "query": {"type": "string"},
+    schema = {"properties": {"collection": {"type": "string"}, "query": {"type": "string"},
                              "ids": IDS_SCHEMA["properties"]["ids"],
                              "steps": {"type": "array", "items": {"type": "string"}}}}
     first = normalize_arguments(args, schema)
     assert first.problem == ""
-    assert first.args == {"collectionname": "testdata", "ids": [3], "query": '"LJM"',
+    assert first.args == {"collection": "testdata", "ids": [3], "query": '"LJM"',
                           "steps": ["a step"]}
     second = normalize_arguments(first.args, schema)
     assert second == (first.args, [], "")
@@ -333,11 +333,11 @@ CITE_SCHEMA = {
     "properties": {"citations": {"anyOf": [
         {"type": "array", "items": {
             "type": "object",
-            "properties": {"collectionname": {"type": "string"}, "file_hash": {"type": "string"},
+            "properties": {"collection": {"type": "string"}, "file_hash": {"type": "string"},
                            "quote": {"default": "", "type": "string"},
                            "find": {"default": "", "type": "string"},
                            "why": {"default": "", "type": "string"}},
-            "required": ["collectionname", "file_hash"]}},
+            "required": ["collection", "file_hash"]}},
         {"type": "string"}]}},
     "required": ["citations"],
 }
@@ -372,9 +372,9 @@ def test_invented_citation_keys_get_an_error_that_names_the_schema_fields():
     out = normalize_arguments(parsed, CITE_SCHEMA)
     assert out.problem == ""
     problem = validation_error(out.args, CITE_SCHEMA)
-    assert "citations/0: 'collectionname' is a required property." in problem
+    assert "citations/0: 'collection' is a required property." in problem
     assert "'document_id'" in problem and "'find_phrase'" in problem
-    assert "The schema names collectionname, file_hash, quote, find, why." in problem
+    assert "The schema names collection, file_hash, quote, find, why." in problem
     assert "not valid under any of the given schemas" not in problem
 
 
@@ -396,13 +396,13 @@ def test_the_shown_schema_has_one_type_for_each_parameter():
     shown = model_schema(CITE_SCHEMA)
     citations = shown["properties"]["citations"]
     assert citations["type"] == "array"
-    assert citations["items"]["required"] == ["collectionname", "file_hash"]
-    assert list(citations["items"]["properties"]) == ["collectionname", "file_hash", "quote",
+    assert citations["items"]["required"] == ["collection", "file_hash"]
+    assert list(citations["items"]["properties"]) == ["collection", "file_hash", "quote",
                                                       "find", "why"]
     shown = model_schema(SEARCH_SCHEMA)
-    for name in ("collectionname", "filename_only", "size_min", "sort"):
+    for name in ("collection", "filename_only", "size_min", "sort"):
         assert "anyOf" not in shown["properties"][name], name
-    assert shown["properties"]["collectionname"] == {
+    assert shown["properties"]["collection"] == {
         "items": {"type": "string"}, "type": "array", "default": None}
     assert shown["properties"]["sort"]["type"] == "object"
     assert shown["properties"]["anything"] == {"default": None}
@@ -455,15 +455,15 @@ def test_unrepairable_json_names_the_damage_position():
 
 
 def test_captured_collection_list_contains_other_named_arguments():
-    args = {"collectionname": ["epstein", "filename_only:true", 'queries:[<|"|>.pdf<|"|>']}
+    args = {"collection": ["epstein", "filename_only:true", 'queries:[<|"|>.pdf<|"|>']}
     schema = {**SEARCH_SCHEMA, "properties": {**SEARCH_SCHEMA["properties"], "queries": {"type": "array", "items": {"type": "string"}}}}
     out = normalize_arguments(args, schema)
     assert out.problem == ""
-    assert out.args == {"collectionname": ["epstein"], "filename_only": True, "queries": [".pdf"]}
+    assert out.args == {"collection": ["epstein"], "filename_only": True, "queries": [".pdf"]}
 
 
 def test_captured_structural_key_prefixes_are_removed():
-    args = {"collectionname": "enron", "],queries": ['"franznp"']}
+    args = {"collection": "enron", "],queries": ['"franznp"']}
     out = normalize_arguments(args, SEARCH_SCHEMA)
     assert out.problem == "" and out.args["queries"] == ['"franznp"']
     nested = {"children": [{"{children": [{"text": "Read documents"}]}]}

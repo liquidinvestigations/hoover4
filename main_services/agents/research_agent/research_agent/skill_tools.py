@@ -40,7 +40,7 @@ NO_SKILL_TEXT = "No skill matches this request."
 
 DESCRIPTIONS = {
     SEARCH_SKILLS: "Find skills by a few words. An empty query lists every skill of this run.",
-    READ_SKILL: "Read one skill, a short text that describes one method.",
+    READ_SKILL: "Read one method skill with tool arguments, defaults and call examples.",
     READ_TOOL: (
         "Read the full text and the arguments of one tool."
     ),

@@ -4,9 +4,9 @@ this server reads from ClickHouse and pages through the same broker."""
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from agent_common.result_pages import canonical_json
 from agent_common.result_pages import PageInput
@@ -20,6 +20,14 @@ from collection_search_server import paging
 from collection_search_server.paging import PagedTool
 from collection_search_server.server import mcp
 from collection_search_server.tools_search import LocalPagedTool, collections_for
+
+
+class DocumentReference(BaseModel):
+    """One explicit document identity supplied by the model."""
+
+    model_config = ConfigDict(extra="forbid")
+    collection: str = Field(description="Copy the collection of this document from a result.")
+    file_hash: str = Field(description="Copy the document hash from the same result.")
 
 
 class DocumentEntitiesRequest(BaseModel):
@@ -46,6 +54,28 @@ class ReadDocumentsTool(PagedTool):
         if position:
             return super().render(request, position, source)
         return paging.render_document_reads(self, request)
+
+    def window(self, result: dict[str, Any], request: BaseModel | None = None) -> paging.Window:
+        result = {**result, "documents": [dict(row) for row in result.get("documents", [])]}
+        for row in result.get("documents", []):
+            if row.get("page") is None:
+                row["error"] = ("The document read timed out." if row.get("count_state") == "timed_out"
+                                else "The document has no extracted text.")
+                continue
+            start, end, total = row["text_start"], row["text_end"], row["text_length"]
+            length = getattr(request, "length", None) or 6_000
+            base = {"collection": row["collectionname"], "file_hash": [paging.hash_start(row["file_hash"])],
+                    "source": row["source_used"], "page": row["page"], "length": length,
+                    "source_version": row["source_version"]}
+            row["text_range"] = {"start": start, "end": end, "total": total, "unit": "characters"}
+            if start:
+                row["read_before"] = {**base, "offset": max(0, start - length), "length": min(length, start)}
+            if end < total:
+                row["read_after"] = {**base, "offset": end}
+            row["page_complete"] = start == 0 and end == total
+            for key in ("text_start", "text_end", "text_length"):
+                row.pop(key)
+        return super().window(result, request)
 
 
 class EmailTool(PagedTool):
@@ -188,9 +218,9 @@ def _render(tool: PagedTool | LocalPagedTool, values: dict[str, Any], resolve: b
         return canonical_json({"success": False, "error": "invalid_argument", "message": str(exc)})
 
 
-@mcp.tool(name="read_documents", description="Read one text page of each of up to 20 documents in one collection. A document can be named by its hash, or by a file name or path that resolves to one document. With a query and no page, the tool opens the page with the most hits. Give page to read another page id, and use min_page, max_page and hit_pages to choose it. Page 0 counts as no page. With no page and no query, the tool opens the first stored page, which can be above 1.")
-def read_documents(collectionname: str, file_hash: list[str], source: str | None = None, query: str | None = None, page: int | None = None) -> str:
-    values: dict[str, Any] = {"collectionname": collectionname, "file_hash": file_hash, "source": source, "query": query, "page": page}
+@mcp.tool(name="read_documents", description="Read one text page of each of up to 20 documents in one collection. A document can be named by its hash, or by a file name or path that resolves to one document. With a query, the tool opens text around the first hit on the selected page. With no page, it selects the page with the most hits. Give page to read another page id, and use min_page, max_page and hit_pages to choose it. offset uses Unicode character positions within a page. length defaults to 6,000 characters. Copy read_before or read_after arguments to inspect surrounding text. Copy more into read_more to continue. Page 0 counts as no page. With no page and no query, the tool opens the first stored page, which can be above 1.")
+def read_documents(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[list[str], Field(min_length=1, max_length=20, description="Copy 1 to 20 document hashes from results in this collection.")], source: Annotated[str | None, Field(description='Copy a text source from doc_sources. Omission selects the preferred text source.')] = None, query: Annotated[str | None, Field(description='Optional keyword query. Omission reads from the start. A query opens the best matching page around nearby distinct matched words.')] = None, page: Annotated[int | None, Field(description='Stored page identifier. Copy a returned page. Omission or zero selects the first or best matching page.')] = None, offset: Annotated[int | None, Field(ge=0, description="Character offset within the selected page. Omission opens around a query hit or starts at zero.")] = None, length: Annotated[int | None, Field(ge=1, description="Maximum characters to read. Omission uses 6,000.")] = None, source_version: Annotated[str | None, Field(description="Copy the returned source_version for a targeted reread. A changed source is refused.")] = None) -> str:
+    values: dict[str, Any] = {"collectionname": collection, "file_hash": file_hash, "source": source, "query": query, "page": page, "offset": offset, "length": length, "expected_source": source_version}
     notes = _map_collections(values)
     hash_notes: list[str] = []
     try:
@@ -205,13 +235,13 @@ def read_documents(collectionname: str, file_hash: list[str], source: str | None
 
 
 @mcp.tool(name="doc_search_text", description="List the hits of a query in one document text source, in page order, with the page, the offsets and a snippet of each hit. Use it to find the pages of a long document to read.")
-def doc_search_text(collectionname: str, file_hash: str, query: str, source: str | None = None) -> str:
-    return _render(DOC_SEARCH_TEXT, {"collectionname": collectionname, "file_hash": file_hash, "query": query, "source": source})
+def doc_search_text(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str, Field(description='Copy the document hash from a result in this collection.')], query: Annotated[str, Field(description='Keyword query to match within this document.')], source: Annotated[str | None, Field(description='Copy a text source from doc_sources. Omission selects the preferred text source.')] = None) -> str:
+    return _render(DOC_SEARCH_TEXT, {"collectionname": collection, "file_hash": file_hash, "query": query, "source": source})
 
 
 @mcp.tool(name="doc_sources", description="List every source of one document: text, PDF, email, table, image, audio and video, with the page range of each text source. With a query, give the hit count of each source. Use it to select a source before reading or comparing text.")
-def doc_sources(collectionname: str, file_hash: str, query: str | None = None) -> str:
-    return _render(DOC_SOURCES, {"collectionname": collectionname, "file_hash": file_hash, "query": query})
+def doc_sources(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str, Field(description='Copy the document hash from a result in this collection.')], query: Annotated[str | None, Field(description='Optional keyword query to count hits in each extraction. Omission lists sources without matching a query.')] = None) -> str:
+    return _render(DOC_SOURCES, {"collectionname": collection, "file_hash": file_hash, "query": query})
 
 
 def _render_batch(tool: PagedTool, collectionname: str, file_hash: str | list[str], **values) -> str:
@@ -234,29 +264,30 @@ def _render_batch(tool: PagedTool, collectionname: str, file_hash: str | list[st
 
 
 @mcp.tool(name="doc_metadata", description="Return metadata, dates, locations, and download links for one document or up to ten hashes. Each document gets an equal page share. Use read_more for each continuation.")
-def doc_metadata(collectionname: str, file_hash: str | list[str]) -> str:
-    return _render_batch(DOC_METADATA, collectionname, file_hash)
+def doc_metadata(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str | list[str], Field(description='Copy the document hash from a result in this collection.')]) -> str:
+    return _render_batch(DOC_METADATA, collection, file_hash)
 
 
 @mcp.tool(name="doc_email", description="Return email fields, attachments, and graph counts for one document or up to ten hashes. Each document gets an equal page share. Use read_more for graph nodes and edges. Give node to centre the graph on another message.")
-def doc_email(collectionname: str, file_hash: str | list[str], node: str | None = None) -> str:
-    return _render_batch(DOC_EMAIL, collectionname, file_hash, node=node)
+def doc_email(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str | list[str], Field(description='Copy the document hash from a result in this collection.')], node: Annotated[str | None, Field(description='Copy another message file_hash from the graph to centre the email graph there.')] = None) -> str:
+    return _render_batch(DOC_EMAIL, collection, file_hash, node=node)
 
 
 @mcp.tool(name="doc_diff_sources", description="Return a unified diff between one page of two extracted document sources. Use it to compare parser or OCR output. page_a and page_b default to the first page of each source.")
-def doc_diff_sources(collectionname: str, file_hash: str, source_a: str, source_b: str, page_a: int | None = None, page_b: int | None = None) -> str:
-    return _render(DOC_DIFF_SOURCES, {"collectionname": collectionname, "file_hash": file_hash, "source_a": source_a, "source_b": source_b, "page_a": page_a, "page_b": page_b})
+def doc_diff_sources(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str, Field(description='Copy the document hash from a result in this collection.')], source_a: Annotated[str, Field(description='First extracted source name from doc_sources.')], source_b: Annotated[str, Field(description='Second extracted source name from doc_sources.')], page_a: Annotated[int | None, Field(description='Page identifier in source_a. Omission selects its first stored page.')] = None, page_b: Annotated[int | None, Field(description='Page identifier in source_b. Omission selects its first stored page.')] = None) -> str:
+    return _render(DOC_DIFF_SOURCES, {"collectionname": collection, "file_hash": file_hash, "source_a": source_a, "source_b": source_b, "page_a": page_a, "page_b": page_b})
 
 
 @mcp.tool(name="pdf_search", description="Find matching text positions in a PDF source. Use it to locate a query on PDF pages. page_from and page_to limit the hits to a range of PDF pages.")
-def pdf_search(collectionname: str, file_hash: str, query: str, source: str = "", page_from: int | None = None, page_to: int | None = None) -> str:
-    return _render(PDF_SEARCH, {"collectionname": collectionname, "file_hash": file_hash, "query": query, "source": source, "page_from": page_from, "page_to": page_to})
+def pdf_search(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str, Field(description='Copy the document hash from a result in this collection.')], query: Annotated[str, Field(description='Keyword query to match on PDF pages.')], source: Annotated[str, Field(description='Copy a text source from doc_sources. Omission selects the preferred text source.')] = "", page_from: Annotated[int | None, Field(description='Inclusive first PDF page to search. Omission searches from its first page.')] = None, page_to: Annotated[int | None, Field(description='Inclusive last PDF page to search. Omission searches through its last page.')] = None) -> str:
+    return _render(PDF_SEARCH, {"collectionname": collection, "file_hash": file_hash, "query": query, "source": source, "page_from": page_from, "page_to": page_to})
 
 
 @mcp.tool(name="list_document_entities", description=server.LIST_DOCUMENT_ENTITIES_DESCRIPTION)
 def list_document_entities(
-    documents: list[dict] | str | None = None,
-    collectionname: list[str] | str | None = None,
-    file_hash: list[str] | str | None = None,
+    documents: Annotated[list[DocumentReference] | None, Field(description='Explicit document references. Each entry requires collection and file_hash.')] = None,
+    collection: Annotated[list[str] | str | None, Field(description='Copy the collection name from a result. A document call requires one collection.')] = None,
+    file_hash: Annotated[list[str] | str | None, Field(description='Copy the document hash from a result in this collection.')] = None,
 ) -> str:
-    return _render(LIST_DOCUMENT_ENTITIES, {"documents": documents, "collectionname": collectionname, "file_hash": file_hash}, resolve=False)
+    entries = [{"collectionname": d.collection, "file_hash": d.file_hash} for d in documents] if documents else None
+    return _render(LIST_DOCUMENT_ENTITIES, {"documents": entries, "collectionname": collection, "file_hash": file_hash}, resolve=False)

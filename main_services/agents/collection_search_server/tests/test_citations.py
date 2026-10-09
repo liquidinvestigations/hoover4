@@ -134,7 +134,7 @@ class TestCiteOne:
         self._stub_pages(monkeypatch, ["The board approved the transfer on 3 March."])
         monkeypatch.setattr(srv._HANDLES, "handle_for", lambda *a, **k: pytest.fail("Allocated an invalid citation"))
         result = _cite_one(_acl(), "missing-quote", Citation(
-            collectionname="testdata", file_hash=HASH, find="approved the transfer"))
+            collection="testdata", file_hash=HASH, find="approved the transfer"))
         assert result.error and not result.handle and not result.quote_verified
 
     def test_a_quote_past_the_excerpt_is_verified(self, monkeypatch):
@@ -145,7 +145,7 @@ class TestCiteOne:
             _acl(),
             "s1",
             Citation(
-                collectionname="testdata",
+                collection="testdata",
                 file_hash=HASH,
                 quote=quote,
                 why="names the ending",
@@ -162,7 +162,7 @@ class TestCiteOne:
         quote = "Your notes look great.  Best of luck today with the Hearings."
         self._stub_pages(monkeypatch, [quote])
         result = _cite_one(_acl(), "s1", Citation(
-            collectionname="testdata", file_hash=HASH, quote=quote, find="Your notes look great"))
+            collection="testdata", file_hash=HASH, quote=quote, find="Your notes look great"))
         assert result.quote_verified
         assert result.find_query == '"Your notes look great"'
 
@@ -170,7 +170,7 @@ class TestCiteOne:
         quote = "The board approved the transfer on 3 March."
         self._stub_pages(monkeypatch, [quote])
         result = _cite_one(_acl(), "s1", Citation(
-            collectionname="testdata", file_hash=HASH, quote=quote, term="board transfer"))
+            collection="testdata", file_hash=HASH, quote=quote, term="board transfer"))
         assert result.term == "board transfer"
         assert result.find_query == '"The board approved the transfer on 3 March."'
 
@@ -178,7 +178,7 @@ class TestCiteOne:
         quote = "Meadow\tTraining contact\tActive"
         self._stub_pages(monkeypatch, [quote], path="/contacts.csv")
         result = _cite_one(_acl(), "s1", Citation(
-            collectionname="testdata", file_hash=HASH, quote=quote, find="Meadow"))
+            collection="testdata", file_hash=HASH, quote=quote, find="Meadow"))
         assert result.quote_verified
         assert result.quote == quote and result.quote_reason == ""
         assert result.find_query == '"Meadow"'
@@ -190,14 +190,14 @@ class TestCiteOne:
         quote = "Your notes look great. Best of luck today."
         self._stub_pages(monkeypatch, [quote])
         result = _cite_one(_acl(), "s1", Citation(
-            collectionname="testdata", file_hash=HASH, quote=quote, find="Something else entirely"))
+            collection="testdata", file_hash=HASH, quote=quote, find="Something else entirely"))
         assert result.find_query == '"Your notes look great. Best of luck today."'
 
     def test_no_find_phrase_opens_at_the_quote(self, monkeypatch):
         quote = 'He wrote "approved" on the draft of the talking points.'
         self._stub_pages(monkeypatch, [quote])
         result = _cite_one(_acl(), "s1", Citation(
-            collectionname="testdata", file_hash=HASH, quote=quote))
+            collection="testdata", file_hash=HASH, quote=quote))
         # A double quote inside the text would end the phrase early.
         assert result.find_query == '"He wrote approved on the draft of the talking points."'
 
@@ -206,7 +206,7 @@ class TestCiteOne:
         result = _cite_one(
             _acl(),
             "s1",
-            Citation(collectionname="testdata", file_hash=HASH, quote="the", why=""),
+            Citation(collection="testdata", file_hash=HASH, quote="the", why=""),
         )
         assert not result.quote_verified
         assert result.quote_reason == QUOTE_REASON_SHORT
@@ -218,7 +218,7 @@ class TestCiteOne:
             _acl(),
             "s1",
             Citation(
-                collectionname="testdata",
+                collection="testdata",
                 file_hash=HASH,
                 quote="the committee rejected the plan",
                 why="",
@@ -234,7 +234,7 @@ class TestCiteOne:
             _acl(),
             "s1",
             Citation(
-                collectionname="testdata",
+                collection="testdata",
                 file_hash=HASH,
                 quote="approved the transfer",
                 why="",
@@ -256,7 +256,7 @@ class TestCiteOne:
             _acl(),
             "s1",
             Citation(
-                collectionname="testdata",
+                collection="testdata",
                 file_hash=HASH,
                 quote="approved the transfer",
                 why="",
@@ -277,7 +277,7 @@ class TestCiteOne:
             _acl(),
             "s1",
             Citation(
-                collectionname="testdata",
+                collection="testdata",
                 file_hash=HASH,
                 quote="approved the transfer on 3 March",
                 why="",
@@ -376,7 +376,7 @@ class TestHashStart:
     def test_a_unique_start_cites_the_whole_hash(self, monkeypatch):
         asked = self._stub(monkeypatch, [self.FULL, "b" * 64])
         result = _cite_one(_acl(), "s-start", Citation(
-            collectionname="testdata", file_hash=self.FULL[:12],
+            collection="testdata", file_hash=self.FULL[:12],
             quote="the cited sentence of the memo"))
         assert asked == [self.FULL[:12]]
         assert (result.error, result.file_hash, result.handle) == (None, self.FULL, "[D1]")
@@ -385,7 +385,7 @@ class TestHashStart:
         other = self.FULL[:12] + "6" * 52
         self._stub(monkeypatch, [self.FULL, other])
         result = _cite_one(_acl(), "s-start", Citation(
-            collectionname="testdata", file_hash=self.FULL[:12], quote="the cited sentence"))
+            collection="testdata", file_hash=self.FULL[:12], quote="the cited sentence"))
         assert result.handle == ""
         assert self.FULL in result.error and other in result.error
         assert "start of more than one document" in result.error
@@ -393,7 +393,7 @@ class TestHashStart:
     def test_a_start_shorter_than_12_is_not_looked_up(self, monkeypatch):
         asked = self._stub(monkeypatch, [self.FULL])
         result = _cite_one(_acl(), "s-start", Citation(
-            collectionname="testdata", file_hash=self.FULL[:11], quote="the cited sentence"))
+            collection="testdata", file_hash=self.FULL[:11], quote="the cited sentence"))
         assert asked == []
         assert result.error == "file_hash must be a content hash from search_collections"
 
@@ -409,14 +409,14 @@ class TestHashStart:
         monkeypatch.setattr(tools_document, "_render",
                             lambda tool, values, **kwargs: sent.append(values) or "{}")
         result = json.loads(tools_document.read_documents.fn(
-            collectionname="testdata", file_hash=[self.FULL[:12], "c" * 64]))
+            collection="testdata", file_hash=[self.FULL[:12], "c" * 64]))
         # A whole hash that no document has is left out, and the result says so.
         assert sent[0]["file_hash"] == [self.FULL]
         assert "c" * 64 in result["file_hash_notes"][0]
         other = self.FULL[:12] + "6" * 52
         self._stub(monkeypatch, [self.FULL, other])
         refused = json.loads(tools_document.read_documents.fn(
-            collectionname="testdata", file_hash=[self.FULL[:12]]))
+            collection="testdata", file_hash=[self.FULL[:12]]))
         assert refused["error"] == "invalid_argument" and other in refused["message"]
 
     def test_read_documents_looks_up_no_start_in_a_collection_the_caller_cannot_read(
@@ -540,7 +540,7 @@ class TestDurableHandles:
         monkeypatch.setattr(srv, "get_http_headers", lambda: {"x-hoover4-user": "ann"})
         TestCiteOne()._stub_pages(monkeypatch, ["The board approved the transfer on 3 March."])
         result = _cite_one(_acl(), "s1", Citation(
-            collectionname="testdata", file_hash=HASH, quote="approved the transfer on 3 March"))
+            collection="testdata", file_hash=HASH, quote="approved the transfer on 3 March"))
         assert result.handle == ""
         assert result.quote_verified
         assert "not stored" in result.error
@@ -628,7 +628,7 @@ class TestCandidatePassage:
         TestCiteOne()._stub_pages(monkeypatch, [self.PAGE])
         quote = "The board approved the transfer of the property on 3 March 2019"
         result = _cite_one(_acl(), "s-candidate", Citation(
-            collectionname="testdata", file_hash=HASH, quote=quote))
+            collection="testdata", file_hash=HASH, quote=quote))
         assert not result.quote_verified
         assert result.quote_reason == QUOTE_REASON_ABSENT
         assert result.quote == quote
@@ -636,5 +636,5 @@ class TestCandidatePassage:
         assert result.candidate["page_id"] == 1
         # The candidate verifies when it is cited as the quote.
         again = _cite_one(_acl(), "s-candidate", Citation(
-            collectionname="testdata", file_hash=HASH, quote=result.candidate["text"]))
+            collection="testdata", file_hash=HASH, quote=result.candidate["text"]))
         assert again.quote_verified and again.candidate is None

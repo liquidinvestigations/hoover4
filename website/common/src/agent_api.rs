@@ -30,8 +30,8 @@ pub struct AgentErrorBody {
 pub enum AgentPosition {
     /// Names a search result page of `search_const::PAGE_SIZE` results.
     Page { page: u32 },
-    /// Names a stored text page of one document source.
-    TextPage { source: String, page_id: u32 },
+    /// Names a stored text page and optional character offset in one document source.
+    TextPage { source: String, page_id: u32, #[serde(default)] offset: Option<u32> },
     /// Starts an unsorted, unfiltered table window.
     Rows { row_start: u64 },
     /// Starts a sorted or filtered table window, or a folder search page.
@@ -378,6 +378,12 @@ pub struct DocumentsReadRequest {
     /// with the most query hits, else the first stored page.
     #[serde(default)]
     pub page: Option<u32>,
+    /// Starts at this character offset within the selected page.
+    #[serde(default)]
+    pub offset: Option<u32>,
+    /// Limits the character range. Omission uses 6,000 characters.
+    #[serde(default)]
+    pub length: Option<u32>,
     /// Holds a `TextPage` position. It selects the source and the page, and it takes
     /// precedence over `source` and `page`.
     #[serde(default)]
@@ -402,6 +408,12 @@ pub struct AgentDocumentText {
     pub min_page: Option<u32>,
     pub max_page: Option<u32>,
     pub text: String,
+    /// Gives the returned character range and the full page length.
+    pub text_start: u32,
+    pub text_end: u32,
+    pub text_length: u32,
+    /// Binds explicit range reads to the selected text source.
+    pub source_version: String,
     /// Counts the query hits in the source, over at most 1,000 pages.
     pub hit_count: u64,
     /// Holds the first [`MAX_HIT_PAGES`] page ids with hits, ascending.
@@ -409,8 +421,8 @@ pub struct AgentDocumentText {
     /// `read`, `no_text` when the document has no text source, or `timed_out` when the
     /// route deadline stopped this document.
     pub count_state: String,
-    /// Holds the `TextPage` position of the next stored page of this source. It is
-    /// absent on the last page.
+    /// Continues the character range, then advances to the next stored page.
+    /// It is absent after the final character of the final page.
     pub next_position: Option<AgentPosition>,
 }
 

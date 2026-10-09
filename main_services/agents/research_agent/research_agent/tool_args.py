@@ -13,11 +13,10 @@ it.
    It separates merged query values at paired delimiter tokens.
    It refuses conflicting duplicate keys and damaged argument names.
    Raw JSON repair adds missing key quotes outside string contents.
-2. `rename_aliases`. The model writes some arguments under another name, such as
-   `collection` for `collectionname`. The key gets the schema's name when the schema has
-   that name. An alias and its name with different values are refused.
+2. `rename_aliases` retains repairs for unchanged file-hash arguments.
+   Changed collection argument names have no compatibility aliases.
 3. `decode_string_arguments`. The model often writes a non-string argument as a string: it
-   sends `"collectionname": "[\\"testdata\\"]"` or `"collectionname": "testdata"` for a
+   sends `"collection": "[\\"testdata\\"]"` or `"collection": "testdata"` for a
    list of strings, and `"filename_only": "True"` for a boolean. The MCP servers validate the
    arguments with pydantic in lax mode, which refuses a string for a list or an object. A
    value changes only when the parameter's schema does not allow it as it is. A string
@@ -365,8 +364,6 @@ def repair_arguments(args: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
 
 #: Argument names that the served model writes in place of the name in the tool's schema.
 KEY_ALIASES = {
-    "collection": "collectionname",
-    "collection_name": "collectionname",
     "file_hashes": "file_hash",
     "hash": "file_hash",
 }
@@ -415,13 +412,13 @@ class Normalized(NamedTuple):
 def _embedded_collection_arguments(args: dict, schema: Optional[dict]) -> Tuple[dict, List[str]]:
     """Recover named arguments that the parser placed in the collection list."""
     properties = (schema or {}).get("properties", {})
-    values = args.get("collectionname")
+    values = args.get("collection")
     if not isinstance(values, list):
         return args, []
     result, kept, repairs = dict(args), [], []
     for item in values:
         match = re.fullmatch(r"([A-Za-z_][A-Za-z_0-9]*):(.*)", item, re.DOTALL) if isinstance(item, str) else None
-        if match is None or match[1] not in properties or match[1] == "collectionname":
+        if match is None or match[1] not in properties or match[1] == "collection":
             kept.append(item)
             continue
         key, raw = match[1], match[2].strip()
@@ -437,7 +434,7 @@ def _embedded_collection_arguments(args: dict, schema: Optional[dict]) -> Tuple[
             raise DamagedArguments(f"The argument {key!r} has conflicting values.")
         result[key] = value
         repairs.append(f"The argument {key!r} moved out of the collection list.")
-    result["collectionname"] = kept
+    result["collection"] = kept
     return result, repairs
 
 

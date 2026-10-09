@@ -10,6 +10,8 @@ from tasks.P_agent.control.model import API_VERSION, Action, CheckResult, Policy
 
 SEARCH_TOOLS = {"search_collections", "search_passages", "web_search", "folder_search",
                 "search_facet_values", "search_histogram", "search_entity_explainer", "doc_search_text", "pdf_search", "table_search_cells"}
+METADATA_TOOLS = {"list_collections", "search_facet_values", "search_histogram", "folder_overview"}
+
 SIGNALS = {
     "stuck": ("stuck_w3=", 0.9, 2, "In `steps`, do the searches return no results, or the same results again, step after step?"),
     "answered": ("answered_w4=", 0.3, 1, "Does a result in `steps` give the fact, the list or the count that `request` asks for, even if the agent has not written its answer yet?"),
@@ -100,11 +102,21 @@ class Handler:
         churn = sum(f.name == "write_todo" and bool(previous.get("todo_goal"))
                     and f.todo_goal == previous.get("todo_goal", "")
                     and f.todo_closed <= previous.get("todo_closed", 0) for f in todo)
-        gained = 0 if new else 1 + refused + churn + int(signals["stuck"]["fired"])
-        units = 0 if new else units + gained
+        progress_seen = set(previous.get("progress_seen", []))
+        useful = {json.dumps([f.name, plain(f.args)], sort_keys=True) for f in context.batch
+                  if (f.status == "ok" and ((f.name in METADATA_TOOLS and (f.item_count or 0) > 0)
+                                            or any(status in ("ok", "partial") for _, status in f.reads)))
+                  or f.verified_citations > 0}
+        gained_results = useful - progress_seen
+        progress_seen.update(gained_results)
+        made_progress = bool(new or gained_results)
+        gained = 0 if made_progress else 1 + refused + churn + int(signals["stuck"]["fired"])
+        units = 0 if made_progress else units + gained
+        if made_progress:
+            level = 0
         seen.update(new)
         actions = []
-        over_budget = len([f for f in context.results if f.origin == "model"]) > int((context.turn.get("preparation") or {}).get("call_budget", 40))
+        over_budget = not made_progress and len([f for f in context.results if f.origin == "model"]) > int((context.turn.get("preparation") or {}).get("call_budget", 40))
         budget_raised = bool(previous.get("budget_raised"))
         raised = units >= parameters.get("units_per_level", 3) or (over_budget and not budget_raised)
         if raised and level < 3:
@@ -123,7 +135,7 @@ class Handler:
                 text += " A result already gives what the request asks for. Write the answer."
             actions.append(Action("append_note", f"progress-{level}", freeze({"text": text, "level": level})))
         model_steps = context.counters.get("model_steps", 0)
-        strongest = previous.get("strongest_step")
+        strongest = None if made_progress else previous.get("strongest_step")
         if level == 3 and strongest is None:
             strongest = model_steps
         if level == 3 and strongest is not None and model_steps - strongest >= parameters.get("steps_after_strongest", 6):
@@ -137,7 +149,7 @@ class Handler:
             absence_records = await check_names(names, context, services)
             actions.extend(note_action(absence_records, context))
             absent_checked = True
-        ledger = {"level": level, "units": units, "sources": sorted(seen), "searches": searches,
+        ledger = {"progress_seen": sorted(progress_seen), "level": level, "units": units, "sources": sorted(seen), "searches": searches,
                   "repeats": previous.get("repeats", 0) + repeats,
                   "empty_results": previous.get("empty_results", 0) + sum(f.item_count == 0 for f in context.batch),
                   "refused_repeats": previous.get("refused_repeats", 0) + refused,

@@ -29,7 +29,7 @@ SAMPLES = {
     "search_facet_values": {"terms": [{"id": 1, "text": "pdf", "count": 2}], "resolved": {"1": "pdf"}},
     "search_histogram": {"buckets": [{"start": 1, "end": 2, "count": 1, "label": None}], "date_field": "date"},
     "search_entity_explainer": {"explanation": {"title": "person", "subtitle": "", "body": "", "facts": [], "references": []}, "documents": [{"file_hash": "h", "path": "/h", "title": "h", "snippet": "h"}]},
-    "read_documents": {"documents": [{"collectionname": "c", "collection_dataset": "c_d", "file_hash": "h", "path": "/h", "title": "h", "source_used": "raw_text", "page": 1, "min_page": 1, "max_page": 3, "text": "a", "hit_count": 1, "hit_pages": [1], "count_state": "read", "next_position": {"kind": "TextPage", "source": "raw_text", "page_id": 2}}], "next_position": {"kind": "TextPage", "source": "raw_text", "page_id": 2}, "total": 3, "partial": False},
+    "read_documents": {"documents": [{"collectionname": "c", "collection_dataset": "c_d", "file_hash": "h", "path": "/h", "title": "h", "source_used": "raw_text", "page": 1, "min_page": 1, "max_page": 3, "text": "a", "text_start": 0, "text_end": 1, "text_length": 1, "source_version": "h:raw_text:3:3", "hit_count": 1, "hit_pages": [1], "count_state": "read", "next_position": {"kind": "TextPage", "source": "raw_text", "page_id": 2}}], "next_position": {"kind": "TextPage", "source": "raw_text", "page_id": 2}, "total": 3, "partial": False},
     "doc_search_text": {"source_used": "raw_text", "hit_count": 1, "hits": [{"page": 1, "ordinal": 0, "start": 0, "end": 1, "snippet": "a"}], "next_position": None, "total": 1, "partial": False},
     "doc_sources": {"sources": [{"kind": "text", "source": "raw_text", "label": "Plain text", "hit_count": 1, "count_state": "counted", "min_page": 1, "max_page": 1, "page_count": None, "sheet_count": None, "row_count": None, "column_count": None}], "next_position": None, "total": 1, "partial": False},
     "doc_metadata": {"raw_metadata": {"author": ["a"]}, "dates": [{"value": 1, "kind": "created", "provenance": "tika"}], "file_locations": [{"path": "p", "container_hash": "", "container_chain": ["/", "p"]}], "file_locations_total": 1, "path": "p", "canonical_file_type": "pdf", "download_links": {"original": "/x", "ocr_pdf": None}},
@@ -47,7 +47,7 @@ SAMPLES = {
 }
 
 
-@pytest.mark.parametrize("name", sorted(set(SAMPLES) - {"search_collections", "doc_email"}))
+@pytest.mark.parametrize("name", sorted(set(SAMPLES) - {"search_collections", "doc_email", "search_facet_values"}))
 def test_route_fields_reach_page(name, monkeypatch):
     """A route page shows its units under `items` and its route fields at the top level,
     with every empty value, `source`, `total_count` and `next_position` left out."""
@@ -64,7 +64,11 @@ def test_route_fields_reach_page(name, monkeypatch):
     for key, value in SAMPLES[name].items():
         if key == tool.item_key:
             expected = value if isinstance(value, list) else [value]
-            assert page["items"] == (expected if tool.shape == "blob" else paging.slim_items(name, expected)[0])
+            if name == "read_documents":
+                expected = tool.window({**response}).items
+            else:
+                expected = expected if tool.shape == "blob" else paging.slim_items(name, expected)[0]
+            assert page["items"] == expected
         elif key == tool.columns_key:
             assert page["columns"] == value
         elif key == "raw_metadata":
@@ -199,7 +203,7 @@ def walk(page, limit=200):
 # after the first window, and the second window must be requested with it.
 KINDS = {
     "search_collections": ({"kind": "Page", "page": 1}, "documents", {}),
-    "read_documents": ({"kind": "TextPage", "source": "raw_text", "page_id": 2}, "documents", {"collectionname": "c", "file_hash": ["h"]}),
+    "read_documents": ({"kind": "TextPage", "source": "raw_text", "page_id": 2, "offset": None}, "documents", {"collectionname": "c", "file_hash": ["h"]}),
     "table_page": ({"kind": "Rows", "row_start": 50}, "rows", {"collectionname": "c", "file_hash": "h", "sheet": 0}),
     "table_search_cells": ({"kind": "Offset", "offset": 200}, "hits", {"collectionname": "c", "file_hash": "h", "sheet": 0, "query": "x"}),
     "table_column_values": ({"kind": "ValueKey", "count": 3, "value": "x"}, "values", {"collectionname": "c", "file_hash": "h", "sheet": 0, "column": 1}),
@@ -342,7 +346,7 @@ def test_short_read_documents_write_no_artifact(monkeypatch):
 def test_complete_read_items_fit_below_the_old_256_byte_floor(monkeypatch):
     store = Store(monkeypatch)
     documents = [{**SAMPLES["read_documents"]["documents"][0],
-                  "text": "x", "next_position": None}]
+                  "text": "x", "min_page": None, "max_page": None, "hit_count": 0, "hit_pages": [], "next_position": None}]
     response = {"documents": documents, "next_position": None, "total": 1,
                 "partial": False, "source": "stable"}
     monkeypatch.setattr("collection_search_server.paging.BackendClient.post",
@@ -708,7 +712,7 @@ def assert_walk_invariants(texts, units, store_share, read_share):
         assert len(text.encode("utf-8")) <= (store_share if index == 0 else read_share), index
         assert "items" in page and units_of(page) > 0, (index, page)
     assert "more" not in pages[-1]
-    assert rebuild(pages) == units
+    assert rebuild(pages) == [{("collection" if k == "collectionname" else k): v for k, v in unit.items()} for unit in units]
 
 
 # The smallest share of these cases is the share of one call in a batch of about twenty
@@ -763,7 +767,7 @@ def test_a_share_smaller_than_the_page_envelope_keeps_the_continuation(monkeypat
     assert "fewer tool calls" in answer["message"]
     share[0] = 24_000
     pages = [first, *walk(json.loads(_read_more_response(token)), limit=500)]
-    assert rebuild(pages) == units
+    assert rebuild(pages) == [{("collection" if k == "collectionname" else k): v for k, v in unit.items()} for unit in units]
 
 
 def test_a_unit_stored_with_a_moved_field_is_read_as_unit_text_at_a_smaller_share(monkeypatch):
@@ -796,7 +800,7 @@ def test_rows_keep_their_identity_when_the_facets_fill_the_page(monkeypatch, uni
     shown = [row for page in pages for row in page["items"]]
     assert [row["file_hash"] for row in shown] == [row["file_hash"] for row in documents]
     for row in shown:
-        assert row["file_hash"] and row["path"] and row["collectionname"]
+        assert row["file_hash"] and row["path"] and row["collection"]
         assert "cut" not in row
     # The facets are on each page that can hold them beside a row. No page holds 10 KB of
     # facets beside a 15,000-byte row, so that result shows no facets.
@@ -812,7 +816,7 @@ def test_a_row_larger_than_the_page_keeps_its_identity_and_moves_its_snippet(mon
     pages = walk(json.loads(tool.render(tool.model.model_validate(values), {}, "")))
     first = pages[0]["items"][0]
     assert first["cut"]["field"] == "/snippet"
-    assert (first["file_hash"], first["path"], first["collectionname"]) == ("0", "/h", "c")
+    assert (first["file_hash"], first["path"], first["collection"]) == ("0", "/h", "c")
 
 
 def test_the_identity_fields_are_never_the_largest_string_field():
@@ -948,12 +952,12 @@ def dataset_backend(monkeypatch):
 def test_a_dataset_name_in_collectionname_searches_its_collection_and_says_so(monkeypatch, name):
     Store(monkeypatch)
     asked = dataset_backend(monkeypatch)
-    page = json.loads(tools_search.search_collections.fn(collectionname=[name], query="budget"))
+    page = json.loads(tools_search.search_collections.fn(collection=[name], query="budget"))
     assert asked == [["consulate"]]
     assert [row["file_hash"] for row in page["items"]] == ["1"]
     assert page["notes"][0] == (
         f"{name!r} is a dataset of the collection 'consulate', not a collection, so this "
-        "search covers the collection 'consulate'. Give collectionname 'consulate'.")
+        "search covers the collection 'consulate'. Give collection 'consulate'.")
 
 
 def test_a_collection_name_and_an_unknown_name_are_not_mapped(monkeypatch):

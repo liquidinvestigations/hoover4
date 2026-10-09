@@ -491,7 +491,7 @@ def read_sources(msgs: Sequence[RunMessage], prefix: Sequence[int]) -> List[Read
                 if not isinstance(item, dict) or not item.get("file_hash") or not item.get("text"):
                     continue
                 start = str(item["file_hash"])[:16]
-                label = ", ".join(x for x in (str(item.get("collectionname") or ""), start,
+                label = ", ".join(x for x in (str(item.get("collection") or ""), start,
                                               str(item.get("path") or "")) if x)
                 out.append(ReadSource(label, (start.lower(),), _flat(str(item["text"]))))
         elif name == thread_index.READ_PAGE and isinstance(m.content, str):

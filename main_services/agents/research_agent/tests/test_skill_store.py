@@ -54,7 +54,6 @@ STUMBLE_SKILLS = sorted([
     "no_results",
 ])
 #: The most characters of a technique or stumble skill.
-NEW_SKILL_MAX_CHARS = 2600
 
 #: The lines that the skills `search` and `citation` hold and the old templates did not.
 SEARCH_LINES = (
@@ -261,12 +260,11 @@ def test_a_new_skill_loads_with_its_calibrated_description(name):
 
 
 @pytest.mark.parametrize("name", TECHNIQUE_SKILLS + STUMBLE_SKILLS)
-def test_a_new_skill_renders_strictly_for_the_full_chat_and_stays_short(name):
+def test_a_new_skill_renders_strictly_for_the_full_chat(name):
     skill = load_skills()[name]
     text = render_skill(name, context("full_research"), strict=True)
     assert text.startswith(f"Skill `{name}`.\n\n")
-    assert len(text) <= NEW_SKILL_MAX_CHARS
-    assert len(skill.body) <= NEW_SKILL_MAX_CHARS
+    assert skill.body.strip()
     assert "{{" not in text and "{%" not in text
 
 

@@ -850,9 +850,9 @@ def test_progress_escalation_resets_units_and_ends_after_six_steps():
         previous = plain(result.facts)
     assert previous["level"] == 3 and previous["strongest_step"] == 8
     result = asyncio.run(handler.evaluate(event, _progress_context(previous, (replace(fact, keyword_sources=("new",)),), 9), {"signals": False}, object()))
-    assert result.facts["units"] == 0 and result.facts["level"] == 3
+    assert result.facts["units"] == 0 and result.facts["level"] == 0
     result = asyncio.run(handler.evaluate(event, _progress_context(plain(result.facts), (fact,), 14), {"signals": False}, object()))
-    assert [a.kind for a in result.actions] == ["end_turn"]
+    assert [a.kind for a in result.actions] == []
 
 
 @pytest.mark.parametrize("name", ["doc_search_text", "pdf_search", "table_search_cells"])
@@ -860,14 +860,14 @@ def test_document_keyword_match_resets_progress_once(name):
     from tasks.P_agent.control.facts import result_facts
     from tasks.P_agent.control.handlers.progress import Handler
     from tasks.P_agent.control.model import ControlEvent, plain
-    args = {"collectionname": "c", "file_hash": "a" * 16, "query": "needle"}
+    args = {"collection": "c", "file_hash": "a" * 16, "query": "needle"}
     messages = [_ai(1, [("s", name, args)]), _tool(2, "s", name,
                 {"items": [{"page": 1}], "hit_count": 913, "keyword_sources": ["c/" + "a" * 16]})]
     facts = result_facts(messages)
     event = ControlEvent("batch", "tool_batch_completed", 1, "model")
     previous = {"level": 1, "units": 2}
     result = asyncio.run(Handler().evaluate(event, _progress_context(previous, facts, 2), {"signals": False}, object()))
-    assert result.facts["units"] == 0 and result.facts["level"] == 1
+    assert result.facts["units"] == 0 and result.facts["level"] == 0
     again = asyncio.run(Handler().evaluate(event, _progress_context(plain(result.facts), facts, 3), {"signals": False}, object()))
     assert len(again.facts["sources"]) == 1
     assert again.facts["searches"][-1]["name"] == name
@@ -938,7 +938,7 @@ def test_name_lookup_keeps_collection_arguments_whole(scope, expected):
         async def suggestions(self, names, kind, collections):
             self.calls.append(collections)
             return {"word_counts": [{"word": "kaminsjy", "documents": 0}]}
-    fact = ResultFact("read", "read_documents", 1, 2, "model", "ok", {"collectionname": scope})
+    fact = ResultFact("read", "read_documents", 1, 2, "model", "ok", {"collection": scope})
     context = replace(_progress_context(), collections=("enron", "tables"), results=(fact,))
     services = Suggestions()
     asyncio.run(check_names(["Vince Kaminsjy"], context, services))
@@ -969,6 +969,16 @@ def test_all_default_handlers_run_without_web_tools():
                 assert record["status"] == "skipped"
             for action in result.actions if result else ():
                 assert action.arguments.get("name") not in ("web_research", "browser_use")
+
+
+def test_skipped_rule_keeps_control_event_successful(store, route, monkeypatch, step_events):
+    rule = {**PREPARE, "requires_tools": ["unavailable_tool"]}
+    _pin(store, monkeypatch, _definition([rule]))
+    _hook("turn_started")
+    events = [event for event in step_events if event.step == "control"]
+    assert len(events) == 1
+    assert events[0].ok
+    assert events[0].error_class == ""
 
 
 def test_empty_collection_scope_stays_empty_during_preparation(store, route):
@@ -1088,3 +1098,67 @@ def test_unavailable_public_sources_do_not_request_document_searches(score):
         assert result.facts["sources"]["choice"] == "documents"
         assert "Search the permitted document collections" in text
         assert "web" not in text
+
+
+@pytest.mark.parametrize("name", ["list_collections", "search_facet_values", "search_histogram", "folder_overview"])
+def test_metadata_results_reset_progress_without_keyword_sources(name):
+    from tasks.P_agent.control.facts import ResultFact
+    from tasks.P_agent.control.handlers.progress import Handler
+    from tasks.P_agent.control.model import ControlEvent, plain
+
+    fact = ResultFact("m", name, 1, 2, "model", "ok", {"collection": "testdata"}, item_count=1)
+    context = _progress_context({"level": 3, "units": 2, "strongest_step": 0}, (fact,), 20)
+    event = ControlEvent("batch", "tool_batch_completed", 1, "model")
+    result = asyncio.run(Handler().evaluate(event, context, {"signals": False}, object()))
+    assert result.facts["level"] == 0 and result.facts["units"] == 0
+    assert result.facts["strongest_step"] is None and not result.actions
+    again = asyncio.run(Handler().evaluate(event, _progress_context(plain(result.facts), (fact,), 21),
+                                         {"signals": False}, object()))
+    assert again.facts["units"] == 1
+
+
+def test_invalid_tool_reply_counts_as_a_refused_call():
+    from tasks.P_agent.control.facts import result_facts
+
+    args = {"facets": ["file_type"]}
+    messages = [_ai(1, [("bad", "search_facet_values", args)]),
+                _tool(2, "bad", "search_facet_values", {"success": False, "error": "invalid_argument"})]
+    fact = result_facts(messages)[0]
+    assert fact.status == "refused" and fact.repeated
+
+
+@pytest.mark.parametrize("name,args", [("read_documents", {"collection": "c", "offset": 49000}),
+                                     ("read_more", {"continuation": "returned"})])
+def test_a_new_successful_read_range_resets_search_escalation(name, args):
+    from tasks.P_agent.control.facts import ResultFact
+    from tasks.P_agent.control.handlers.progress import Handler
+    from tasks.P_agent.control.model import ControlEvent, plain
+
+    fact = ResultFact("read", name, 1, 2, "model", "ok", args, reads=(("hash", "partial"),))
+    context = _progress_context({"level": 3, "units": 2, "strongest_step": 0}, (fact,), 20)
+    event = ControlEvent("batch", "tool_batch_completed", 1, "model")
+    result = asyncio.run(Handler().evaluate(event, context, {"signals": False}, object()))
+    assert result.facts["level"] == 0 and result.facts["units"] == 0 and not result.actions
+    again = asyncio.run(Handler().evaluate(event, _progress_context(plain(result.facts), (fact,), 21),
+                                         {"signals": False}, object()))
+    assert again.facts["units"] == 1
+
+
+def test_verified_citations_reset_progress_in_a_partly_failed_batch():
+    from tasks.P_agent.control.facts import result_facts
+    from tasks.P_agent.control.handlers.progress import Handler
+    from tasks.P_agent.control.model import ControlEvent, plain
+
+    messages = [_ai(1, [("cite", "cite_documents", {"citations": [{"collection": "c"}]})]),
+                _tool(2, "cite", "cite_documents", {"success": False},
+                      evidence=[{"kind": "citation", "status": "ok"},
+                                {"kind": "citation", "status": "error"}])]
+    fact = result_facts(messages)[0]
+    assert fact.verified_citations == 1
+    event = ControlEvent("batch", "tool_batch_completed", 1, "model")
+    context = _progress_context({"level": 3, "units": 2, "strongest_step": 0}, (fact,), 20)
+    result = asyncio.run(Handler().evaluate(event, context, {"signals": False}, object()))
+    assert result.facts["level"] == 0 and result.facts["units"] == 0 and not result.actions
+    again = asyncio.run(Handler().evaluate(event, _progress_context(plain(result.facts), (fact,), 21),
+                                         {"signals": False}, object()))
+    assert again.facts["units"] == 1

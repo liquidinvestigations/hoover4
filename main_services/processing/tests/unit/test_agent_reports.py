@@ -40,7 +40,7 @@ def _read_page(*items, notes=None):
 
 
 def _item(file_hash, page=1, text="x", **extra):
-    return {"collectionname": "c", "file_hash": file_hash[:16], "page": page, "text": text,
+    return {"collection": "c", "file_hash": file_hash[:16], "page": page, "text": text,
             **extra}
 
 
@@ -90,7 +90,7 @@ def test_several_items_of_one_message_have_distinct_stable_keys():
 def test_a_batch_keeps_a_successful_read_and_a_failed_read_apart():
     content = _read_page(_item(HASH_A),
                          notes=["no document of collection c matches 'missing.txt'"])
-    entries = reports.normalize("read_documents", {"collectionname": "c"}, content, "ok", None)
+    entries = reports.normalize("read_documents", {"collection": "c"}, content, "ok", None)
     assert [(e["kind"], e["status"]) for e in entries] == [
         ("document_read", "ok"), ("document_read", "error")]
     assert "missing.txt" in entries[1]["error"]
@@ -100,7 +100,7 @@ def test_a_failed_batch_marks_each_requested_document_failed_with_status_ok():
     """A result can carry `success: false` while the call status is `ok`."""
     content = json.dumps({"success": False, "error": "unauthenticated", "message": "unknown user"})
     entries = reports.normalize("read_documents",
-                                {"collectionname": "c", "file_hash": [HASH_A[:16], HASH_B[:16]]},
+                                {"collection": "c", "file_hash": [HASH_A[:16], HASH_B[:16]]},
                                 content, "ok")
     assert [e["status"] for e in entries] == ["error", "error"]
     assert all(e["error"] == "unknown user" for e in entries)
@@ -218,7 +218,7 @@ def test_a_find_in_a_page_is_a_partial_read_with_the_spans_it_shows():
 
 
 def test_table_rows_and_cells_count_as_document_content_reads():
-    args = {"collectionname": "c", "file_hash": HASH_A, "sheet": 0}
+    args = {"collection": "c", "file_hash": HASH_A, "sheet": 0}
     rows = json.dumps({"items": [{"row_id": 2, "cells": {"name": "A"}}], "row_start": 0})
     [entry] = reports.normalize("table_page", args, rows, "ok")
     assert entry["kind"] == "document_read" and entry["reference"]["file_hash"] == HASH_A
@@ -278,7 +278,7 @@ def test_invalid_evidence_does_not_reconstruct_tool_content():
     assert reports.message_evidence(message) == []
 
 
-@pytest.mark.parametrize("items", [[{"collectionname": "c", "file_hash": HASH_A[:16], "text": "The budget is 5."}], ["continued table text"]])
+@pytest.mark.parametrize("items", [[{"collection": "c", "file_hash": HASH_A[:16], "text": "The budget is 5."}], ["continued table text"]])
 def test_document_continuations_keep_the_full_document_reference(items):
     refs = [{"collectionname": "c", "file_hash": HASH_A, "evidence_kind": "document_read"}]
     entries = reports.normalize("read_more", {"continuation": "abc"},
@@ -293,3 +293,13 @@ def test_search_continuation_references_do_not_establish_a_document_read():
         json.dumps({"items": [{"file_hash": HASH_A[:16], "snippet": "5"}]}), "ok",
         [{"collectionname": "c", "file_hash": HASH_A}])
     assert not any(entry.get("reference", {}).get("file_hash") for entry in entries)
+
+
+def test_targeted_reads_keep_partial_ranges_and_distinct_locations():
+    content = _read_page(_item(HASH_A, text="The approval is recorded.", page_complete=False,
+                               text_range={"start": 49000, "end": 55000, "total": 60006}))
+    [entry] = reports.normalize("read_documents", {"collection": "c"}, content, "ok")
+    assert entry["status"] == "partial"
+    assert entry["range"]["start_char"] == 49000
+    assert entry["range"]["end_char"] == 55000
+    assert entry["item_key"].endswith(":49000")

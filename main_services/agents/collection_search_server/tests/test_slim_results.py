@@ -136,7 +136,7 @@ def test_a_search_row_has_the_slim_keys(monkeypatch):
     route(monkeypatch, lambda form: [row], lambda form: 40)
     text = tools_search.search_collections.fn(query="Raptor")
     page = json.loads(text)
-    assert page == {"items": [{"collectionname": "c", "date": "2001-05-14", "file_hash": row["file_hash"][:16],
+    assert page == {"items": [{"collection": "c", "date": "2001-05-14", "file_hash": row["file_hash"][:16],
                                "path": "/maildir/kean-s/sent/12.", "snippet": "…the **Raptor** approval…",
                                "title": "Raptor approval", "type": "email", "size": 1}],
                     "notes": ["'Raptor': 40 found, first 15 shown"],
@@ -199,7 +199,7 @@ def test_a_start_that_names_two_documents_is_refused_naming_both(monkeypatch):
     monkeypatch.setattr(server, "_caller", lambda: Acl())
     monkeypatch.setattr(server, "clickhouse_query", lambda *a, **k: [{"hash": one}, {"hash": two}])
     monkeypatch.setattr(tools_document, "_readable", lambda names: True)
-    answer = json.loads(tools_document.doc_metadata.fn(collectionname="c", file_hash="abcdef0123456789"))
+    answer = json.loads(tools_document.doc_metadata.fn(collection="c", file_hash="abcdef0123456789"))
     assert answer["error"] == "invalid_argument"
     assert one in answer["message"] and two in answer["message"]
 

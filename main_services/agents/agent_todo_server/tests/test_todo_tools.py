@@ -302,7 +302,11 @@ def test_the_served_schema_of_a_todo_tool_is_the_designed_one(name):
     want = EXPECTED_SCHEMAS[name]
     assert got["type"] == "object"
     assert sorted(got.get("required", [])) == sorted(want["required"])
-    assert got["properties"] == want["properties"]
+    properties = {}
+    for argument, schema in got["properties"].items():
+        assert schema.get("description"), argument
+        properties[argument] = {key: value for key, value in schema.items() if key != "description"}
+    assert properties == want["properties"]
 
 
 def test_no_todo_tool_text_holds_a_json_example():

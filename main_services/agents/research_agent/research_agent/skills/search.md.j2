@@ -10,11 +10,11 @@ tools: search_collections
 Searching the user's documents
 
 1. Search documents when their contents can answer the question.
-2. Use collectionname when the request targets one collection. Leave it out to search
+2. Use collection when the request targets one collection. Leave it out to search
 across the collections this chat can read.
 3. {{ tool('search_collections') }} accepts several queries. Use relevant forms of a name or address. Put an exact phrase in double quotes.
 4. OR, AND and NOT are ordinary words in a query. Use | for either and -word to exclude a word.
-5. Copy file_hash and collectionname from a result row. Never write a hash yourself.{% if has('read_more') %} If a row has no file_hash, call {{ tool('read_more') }}.{% endif +%}
+5. Copy file_hash and collection from a result row. Never write a hash yourself.{% if has('read_more') %} If a row has no file_hash, call {{ tool('read_more') }}.{% endif +%}
 6. Set a date or size filter when it helps answer the question.
 7. When you report that a search found no document, give its query, collections and count.
 8. One call takes at most 12 queries. Split a longer list into two calls.
@@ -43,3 +43,41 @@ For authors and affiliations, read the original document's title and author sect
 {% if has('doc_search_text') %}Use {{ tool('doc_search_text') }} for relevant text in a document.{% endif %}
 {% if has('web_search') %}7. Search the web only when the request allows it.{% endif %}
 {% if has('read_page') %}Read the best web pages with {{ tool('read_page') }}.{% endif %}
+
+{% if has('search_collections') %}
+The complete search arguments are collection, queries, query, sort, date_after, date_before,
+date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max,
+folder_term_id, filename_only and facet_filters.
+collection accepts a name or list. Omission or [] searches every permitted collection.
+query defaults to empty text. queries optionally adds up to 12 forms. Duplicate forms run once.
+An empty query browses all filter matches. Search forms merge matching document identities.
+sort contains field and direction. field is relevance, date, file_size or name. direction is asc or desc.
+Omission uses the default relevance order.
+date_after and date_before use inclusive UTC epoch seconds for the document date.
+mentioned_date_after and mentioned_date_before use inclusive UTC epoch seconds for dates extracted from text.
+date_unknown_only=true selects documents with no known document date. Do not combine it with a known-date range.
+size_min and size_max are inclusive byte limits. folder_term_id selects a returned folder term.
+filename_only=true restricts the query to names and paths. False uses document contents.
+facet_filters maps valid facet names to lists of returned value text. Omission applies no facet filter.
+Values within one facet are alternatives. Different facet filters must all match.
+
+Each result includes collection, file_hash, path, snippet and available type, date and size.
+q lists the zero-based forms that found the row. query_forms reports each form's count.
+word_counts verifies indexed words. suggestions lists nearby indexed spellings with counts.
+Read query_notes for repaired syntax, unknown filters, partial results and failures.
+more continues the result. Copy it into read_more. An empty first page needs no repeated identical call.
+
+This minimal call searches all permitted collections.
+```json
+{"query":"\"Joe Wilkinson\""}
+```
+This advanced call combines query forms, collection scope, sort, dates, size and facet filters.
+```json
+{"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}}
+```
+This separate call finds files without a known document date.
+```json
+{"query":"report","filename_only":true,"date_unknown_only":true}
+```
+Replace collection, folder and facet values with values returned for the current chat.
+{% endif %}

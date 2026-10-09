@@ -495,7 +495,7 @@ def _decide(row, params, messages, control, anchor, samples) -> dict:
     with _step_event(row, "control", params.hook, mode=definition.id) as step:
         evaluated = asyncio.run(evaluate(definition, event, context, Services(classifier, messages, row, params),
                                          deadline))
-        step.ok = all(record.get("status") == "ok" for _, _, record in evaluated)
+        step.ok = all(record.get("status") in ("ok", "skipped") for _, _, record in evaluated)
         step.error_class = "" if step.ok else "rule_error"
     _raise_if_cancelled()
     loads = any(a.kind == "load_skill" for _, r, _ in evaluated if r for a in r.actions)

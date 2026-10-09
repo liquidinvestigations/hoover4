@@ -14,6 +14,14 @@ After each result, do one of these things.
 3. The result is an error. Read the error text, correct the argument that it names, and then send the call.
 4. You have enough to answer. Write the answer.
 
-A result stays in your context. Use it when it answers the current question.
+Use visible results when they answer the current question.
+After context compaction, use the retained index and notes to identify earlier results.
+Refresh a required passage explicitly when its text is no longer visible.
 
 When a search returns no useful result, change the query or use another source.
+
+{% if has('read_more') %}
+A more value means additional result text is available.
+Call {{ tool('read_more') }} with continuation set to the returned value.
+Repeating the original call returns the original range.
+{% endif %}

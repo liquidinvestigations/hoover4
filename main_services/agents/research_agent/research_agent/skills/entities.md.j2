@@ -27,3 +27,33 @@ A name that the pipeline extracted is not proof that the document is about that 
 When a name occurs nowhere, read the indexed spelling suggestions and their checked counts.
 Offer the found forms to the person with ask_user before substituting a name.
 Include an option to report that the collections do not hold the requested name.
+
+{% if has('list_document_entities') %}
+{{ tool('list_document_entities') }} accepts documents as a list of collection and file_hash objects.
+This form preserves mixed-collection identities without pairing unrelated lists.
+Alternatively, collection and file_hash accept matching lists, or one collection with several hashes.
+The result groups extracted values by document. Use read_more when it continues.
+```json
+{"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]}
+```
+```json
+{"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]}
+```
+{% endif %}
+{% if has('search_entity_explainer') %}
+{{ tool('search_entity_explainer') }} requires collection, entity_type and entity_value from an extracted entity result.
+It returns the extraction rule's description and matching documents.
+```json
+{"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"}
+```
+{% endif %}
+{% if has('search_facet_values') %}
+For entity distributions, call {{ tool('search_facet_values') }} with facets and optional collection and query.
+The result matrix has [text, count] pairs in each facet cell.
+```json
+{"facets":["ner_per","ner_org","ner_loc"]}
+```
+```json
+{"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"}
+```
+{% endif %}

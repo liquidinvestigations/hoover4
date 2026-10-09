@@ -10,8 +10,17 @@ not_for: Not needed when the request asks only about the content of documents.
    names a tool renders only when the run has it. #}
 Folders and files
 
+{% if has('list_collections') and has('search_facet_values') %}
+For a collection overview, call {{ tool('list_collections') }} with {}.
+Then call {{ tool('search_facet_values') }} with {} once for every permitted collection's file types and languages.
+The default matrix already contains both facets. No separate call per collection or facet is needed.
+{% endif %}
+
 {% if has('list_collections') %}
-{{ tool('list_collections') }} gives the collections of this chat and the datasets in each.
+{{ tool('list_collections') }} takes no arguments. It gives collection names, document counts and dataset counts.
+```json
+{}
+```
 
 {% endif %}
 {% if has('folder_overview') %}
@@ -35,3 +44,76 @@ To find a file by name in every collection, call {{ tool('search_collections') }
 {% endif %}
 
 A file name or path can identify one document. A result row's `file_hash` identifies it directly.
+
+Use metadata tools for an inventory request. Their counts can answer the request directly.
+Content searches are useful only when the person asks what the documents say.
+
+{% if has('search_facet_values') %}
+Call {{ tool('search_facet_values') }} once for several collections and facets.
+The arguments are collection, facets, query and ids.
+Omit collection or give [] for every permitted collection. Give one name or a list to narrow the selection.
+Omit facets for ["file_types", "language"]. Give a list of exact facet names for other distributions.
+Use file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc,
+re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money or re_crypto_wallet.
+file_type is invalid. Use file_types.
+query finds text within facet values. It does not search document content.
+ids optionally resolves known term identifiers. Ordinary searches use value text and need no identifiers.
+
+The result has columns and items. Each row begins with its collection.
+Each facet cell contains [text, count] pairs. Copy text into facet_filters for a later content search.
+A null cell has a reported error. An empty cell has no returned values.
+Counts refer to indexed document matches per value. Several values can apply to one document.
+Do not add facet counts to claim a distinct total. Inventory totals come from list_collections.
+The default facet list can omit uncommon values. Use query to find a specific value.
+Use more with read_more when the result continues.
+
+This minimal call inventories file formats and languages across permitted collections.
+```json
+{}
+```
+This call compares two selected collections and searches their email-address values.
+```json
+{"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"}
+```
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} requires collection. dataset optionally selects one dataset.
+This call reads all dataset storage counts within one collection.
+```json
+{"collection":"alpha"}
+```
+This call selects one dataset.
+```json
+{"collection":"alpha","dataset":"files"}
+```
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} requires collection and dataset. node_id optionally selects a returned folder node.
+Omit node_id to read the dataset root. Copy child node identifiers into later calls.
+```json
+{"collection":"alpha","dataset":"files"}
+```
+```json
+{"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"}
+```
+{% endif %}
+{% if has('folder_search') %}
+{{ tool('folder_search') }} requires collection, dataset and query. node_id optionally limits the search to one folder.
+```json
+{"collection":"alpha","dataset":"files","query":"report"}
+```
+```json
+{"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"}
+```
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} accepts the same filters as search_collections, except sort and queries.
+field is date, mentioned_date or size. It defaults to date. query defaults to an empty query.
+Omitted collection covers every permitted collection. The result returns buckets and the selected field.
+```json
+{}
+```
+```json
+{"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}}
+```
+{% endif %}

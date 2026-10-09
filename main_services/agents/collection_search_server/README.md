@@ -1,7 +1,6 @@
 # Collection search MCP server
 
-ACL-bounded search and document reads for the user's permitted collections. Port `21930`,
-container `hoover4-mcp-collections`. Both agents use this server.
+The server searches and reads the user's permitted collections. Both agents use this server.
 
 Keyword search uses the text Manticore service. Vector ranking uses the separate vectors
 Manticore service. The pipeline stores extracted text in ClickHouse.
@@ -16,7 +15,7 @@ Web search and browser tools do not call the reranker.
 |---|---|
 | `list_collections` | collection names and dataset counts this user may read |
 | `search_collections` | documents from selected permitted collections, for one query or up to 12 query forms in one call |
-| `read_documents` | one text page of each selected document, with its page range and the pages with hits |
+| `read_documents` | targeted character ranges from selected documents, with explicit navigation |
 | `search_passages` | passages from keyword and vector ranking together, for several queries in one call |
 | `list_document_entities` | what the pipeline found in several documents, in two tiers, sharing one budget |
 | `cite_documents` | put documents forward as evidence, with a verified quote and a `[Dn]` handle |
@@ -67,7 +66,7 @@ page with the columns and a continuation that holds the largest position values.
 window fields are not in that envelope, so a page that cannot hold the fields and one unit
 leaves the fields for a later page before a unit is cut. A unit larger than that target is
 stored with string fields moved out, largest first, until the rest fits. The fields
-`file_hash`, `path`, `collectionname`, `dataset` and `collection_dataset` never move, so a
+`file_hash`, `path`, `collection`, `dataset` and `collection_dataset` never move, so a
 cut search row keeps them and loses its snippet first. Its page is cut inside the first moved field and carries
 `{"cut": {"field", "returned_bytes", "total_bytes", "next_fields"}}`. `next_fields` lists the
 other moved fields. The continuations read the rest of each moved field in that order, and
@@ -83,7 +82,7 @@ a `504` whose body is the route's own `timed_out` answer.
 | Tool | Purpose |
 |---|---|
 | `read_more` | read the next page from a result page continuation |
-| `search_facet_values` | find values for a search facet |
+| `search_facet_values` | return per-collection facet columns with text and counts |
 | `search_histogram` | return document date, mentioned date or file size buckets |
 | `search_entity_explainer` | explain one extracted entity value |
 | `doc_sources` | list every source of a document, with hit counts for a query |
@@ -101,6 +100,41 @@ a `504` whose body is the route's own `timed_out` answer.
 | `folder_list` | return a folder breadcrumb, children, and files |
 | `folder_search` | find folders and files by name |
 
+## Collection arguments and facet results
+
+Model-facing tools use `collection`. Changed argument names have no compatibility aliases.
+Backend wire requests and stored document identities retain their internal `collectionname` field.
+Search tools accept one collection name or a list.
+Omission or an empty selection covers every collection permitted to the caller.
+Document, table and folder tools require the collection of the selected item.
+
+`search_facet_values` accepts `facets`, a list of schema-defined values.
+Omission selects `file_types` and `language`.
+The result has `columns` and `items`, with collections as rows.
+Each facet cell contains `[text, count]` pairs. Numeric term identifiers remain internal.
+`query` searches facet value text. `ids` optionally resolves known term identifiers to text.
+A null cell has a reported error. An empty cell has no returned values.
+Counts represent indexed matches for each value. A document can have several values.
+Default facet values can omit uncommon values. A value query can retrieve those values.
+The existing result broker continues large matrices through `read_more`.
+
+## Document ranges and continuation
+
+`read_documents` accepts one collection and a list of 1 to 20 document hashes.
+A query selects the page with most hits and opens text around nearby distinct matched words.
+A single matched value opens its first occurrence.
+An explicit page selects that stored page. Page identifiers can have gaps.
+`offset` selects a zero-based Unicode character position within that page.
+`length` selects a positive character count and defaults to 6,000.
+The result gives `text_range`, with an exclusive end and the complete page length.
+`source_version` identifies the existing source fingerprint used for subsequent verification.
+`read_before` and `read_after` give ready arguments for surrounding text.
+`page_complete` states whether the selected range covers the whole page.
+A delivery cut can still require `read_more` to read the rest of that range.
+A continuation finishes the range before advancing through later stored pages.
+Repeated calls return the same range. They do not advance an implicit cursor.
+Document references remain in structured result metadata for source cards.
+
 ## Two tiers of entity, and why they are not merged
 
 `list_document_entities` answers with `entities` (an NER model's reading of the prose)
@@ -109,9 +143,9 @@ money. They stay in separate blocks because the confidence behind them is not co
 a name is a judgement, an IBAN either has a valid check digit or it does not. Merging them
 would tell the model the two are the same kind of fact.
 
-It takes the same three argument shapes as `read_documents` (a list of objects, two
-parallel lists, and a bare pair of strings, which is the single-document call it replaced)
-and shares one character budget across the batch. **The rule-scanner tier is filled first
+It accepts explicit `documents` references with `collection` and `file_hash`.
+It also accepts parallel `collection` and `file_hash` lists, or one collection with several hashes.
+It shares one character budget across the batch. **The rule-scanner tier is filled first
 and the NER tier takes what is left**: when only one of the two fits, it is the
 checksum-validated evidence that survives and the model's guess at a span of prose that
 goes. A document that was cut says so in `truncated`, and the batch's `note` names them.

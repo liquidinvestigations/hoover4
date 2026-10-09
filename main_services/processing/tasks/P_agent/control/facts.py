@@ -46,6 +46,7 @@ class ResultFact:
     repeated: bool = False
     todo_closed: int = 0
     todo_goal: str = ""
+    verified_citations: int = 0
 
 
 def _parse(content: str) -> Any:
@@ -108,11 +109,11 @@ def result_facts(messages: Iterable) -> list[ResultFact]:
                      if isinstance(parsed, dict) and isinstance(parsed.get(k), list)), [])
         sources = list(field("keyword_sources", []))
         if name == "search_collections" and not sources and (args.get("query") or args.get("queries")):
-            sources = [f"{r.get('collectionname', '')}/{r['file_hash']}" for r in rows
+            sources = [f"{r.get('collection', '')}/{r['file_hash']}" for r in rows
                        if isinstance(r, dict) and r.get("file_hash")]
         if name == "web_search":
             sources = urls
-        refused = field("status") == "refused"
+        refused = field("status") == "refused" or (failed and field("error") in ("invalid_argument", "forbidden"))
         todo_items = field("todos", field("items", []))
         todo_items = todo_items if isinstance(todo_items, list) else []
         todo_closed = sum(1 for t in todo_items if isinstance(t, dict) and t.get("status") in ("completed", "done", "cancelled"))
@@ -131,7 +132,8 @@ def result_facts(messages: Iterable) -> list[ResultFact]:
             item_count=len(rows) if isinstance(parsed, dict) and any(k in parsed for k in ("items", "results", "documents")) else None,
             keyword_sources=tuple(sources), word_counts=tuple(field("word_counts", [])),
             repeated=refused or (isinstance(m.content, str) and m.content.startswith("This call repeats call ")),
-            todo_closed=todo_closed, todo_goal=str(args.get("goal") or field("goal", ""))))
+            todo_closed=todo_closed, todo_goal=str(args.get("goal") or field("goal", "")),
+            verified_citations=sum(e.get("kind") == "citation" and e.get("status") == "ok" for e in evidence)))
     return out
 
 

@@ -25,3 +25,33 @@ Find e-mails with {{ tool('search_collections') }}. Put every form of an address
 {% endif %}
 
 A copy of the same message can be in more than one mailbox. Compare its fields when a count depends on distinct messages.
+
+{% if has('doc_email') %}
+{{ tool('doc_email') }} requires collection and file_hash.
+collection is one name. file_hash accepts one hash or a list of up to ten hashes from that collection.
+node optionally centres the graph on a returned message hash. Omission centres it on the requested email.
+Use more with read_more to inspect remaining attachments and graph entries.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"}
+```
+{% endif %}
+{% if has('doc_metadata') %}
+{{ tool('doc_metadata') }} requires collection and file_hash. It accepts one hash or a list of up to ten hashes.
+It returns stored metadata, dates, locations and download links. Use read_more for remaining metadata fields.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]}
+```
+{% endif %}
+Read the requested passage before assigning its writer, recipients or date.
+The outer email envelope belongs to the outer message.
+A forwarded or quoted passage can have a different writer, recipients and date.
+Use that passage's own headers to identify who wrote it.
+A person who forwarded a message did not necessarily write its quoted statement.
+When attribution remains unknown, state that limit.
+Read passages for targeted ranges and continuation instructions. Do not repeat the initial read to request later text.

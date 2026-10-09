@@ -94,10 +94,10 @@ def _index_thread():
               TODAY_EMPTY))
     t.step(ok("search_passages", {"query": "LJM2 board"}, SLIM_EMPTY))
     t.step(ok("search_passages", {"queries": ["Fastow memo"]}, SLIM_FULL))
-    t.step(ok("read_documents", {"collectionname": "enron", "file_hash": ["5e8b"]},
-              {"items": [{"collectionname": "enron", "file_hash": "5e8bb0ff3822761c",
+    t.step(ok("read_documents", {"collection": "enron", "file_hash": ["5e8b"]},
+              {"items": [{"collection": "enron", "file_hash": "5e8bb0ff3822761c",
                           "path": "/maildir/kean-s/sent/12", "page": 1},
-                         {"collectionname": "enron", "file_hash": "5e8bb0ff3822761c",
+                         {"collection": "enron", "file_hash": "5e8bb0ff3822761c",
                           "path": "/maildir/kean-s/sent/12", "page": 2}]}))
     t.step(ok("cite_documents", {"citations": [{"file_hash": "5e8b"}]},
               {"citations": [{"file_hash": "5e8bb0ff3822761c", "handle": "[D1]"},

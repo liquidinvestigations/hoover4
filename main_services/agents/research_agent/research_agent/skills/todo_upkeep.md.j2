@@ -20,3 +20,25 @@ Keeping the todo list
 This is an example. Items 1 and 2 are pending. The search for item 1 found what you need. Your next reply calls {{ tool('mark_todo') }} with ids ["1"] and status done, and the search for item 2 in the same reply.
 
 Keep the list current when it helps the person follow the work.
+
+{{ tool('write_todo') }} requires goal and steps, a list of plain sentences.
+{{ tool('edit_todo') }} requires steps. It replaces the steps and retains the goal.
+{{ tool('read_todo') }} takes no arguments and returns step identities and statuses.
+{{ tool('mark_todo') }} requires ids and status. ids is a list of returned string identities.
+status is pending, in_progress, done or cancelled. note defaults to empty text. Cancellation requires a reason in note.
+Each change returns the current plan or a refusal. Correct the named field before retrying.
+```json
+{"goal":"Find the approval date.","steps":["Find the message.","Read the supporting passage."]}
+```
+```json
+{"steps":["Find the message.","Read the supporting passage.","Verify the original writer."]}
+```
+```json
+{}
+```
+```json
+{"ids":["1","2"],"status":"done","note":"The message and passage establish the date."}
+```
+```json
+{"ids":["3"],"status":"cancelled","note":"The source does not identify the original writer."}
+```

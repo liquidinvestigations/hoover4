@@ -93,6 +93,7 @@ class TextPagePosition(AgentRequest):
     kind: Literal["TextPage"] = "TextPage"
     source: str
     page_id: int = Field(ge=0)
+    offset: int | None = Field(default=None, ge=0)
 
 
 class RowsPosition(AgentRequest):
@@ -214,6 +215,8 @@ class DocumentsReadRequest(AgentRequest):
     source: str | None = None
     query: str | None = None
     page: int | None = Field(default=None, ge=0)
+    offset: int | None = Field(default=None, ge=0)
+    length: int | None = Field(default=None, ge=1)
     position: AgentPosition | None = None
 
 
@@ -395,6 +398,10 @@ class DocumentText(AgentModel):
     min_page: int | None
     max_page: int | None
     text: str
+    text_start: int
+    text_end: int
+    text_length: int
+    source_version: str
     hit_count: int
     hit_pages: list[int]
     count_state: str

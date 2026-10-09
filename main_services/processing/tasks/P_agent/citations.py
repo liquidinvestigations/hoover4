@@ -141,7 +141,7 @@ def repair_note(check: dict) -> str:
                         + " for more than one document.")
     if check.get("unsupported_paragraphs") and (check.get("documents_read") or
             (not check.get("web_used") and not check.get("web_missing"))):
-        problems.append('Call cite_documents with {"citations":[{"collectionname":"COPY_COLLECTION","file_hash":"COPY_HASH","quote":"COPY_EXACT_SOURCE_SENTENCE","why":"What it supports"}]}. The quote field is required. Find is an optional part of quote.')
+        problems.append('Call cite_documents with {"citations":[{"collection":"COPY_COLLECTION","file_hash":"COPY_HASH","quote":"COPY_EXACT_SOURCE_SENTENCE","why":"What it supports"}]}. The quote field is required. Find is an optional part of quote.')
     if not problems:
         return CITATION_NOTE
     return " ".join(problems) + " Write the complete answer again with the sources that support its claims."
