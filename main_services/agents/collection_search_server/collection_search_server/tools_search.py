@@ -475,7 +475,7 @@ def search_entity_explainer(collection: Annotated[str, Field(description='Copy t
 
 
 @mcp.tool(name="search_passages", description=SEARCH_PASSAGES_TEXT)
-def search_passages(queries: Annotated[list[str] | str, Field(description='Batch up to 12 query forms. Each result q value refers to a zero-based query index.')], collection: Annotated[list[str] | str | None, Field(description='One collection name or a list. Omission or an empty list searches all permitted collections.')] = None, max_results: Annotated[int, Field(ge=1, le=server.MAX_ALLOWED_RESULTS, description='Maximum passage hits per call. Omission uses 15. The schema gives the configured maximum.')] = server.DEFAULT_MAX_RESULTS) -> str:
+def search_passages(queries: Annotated[list[str] | str, Field(description='Batch up to 12 query forms. Each result q value refers to a zero-based query index.')], collection: Annotated[list[str] | str | None, Field(description='One collection name or a list. Omission or an empty list searches all permitted collections.')] = None, max_results: Annotated[int, Field(ge=1, le=server.MAX_ALLOWED_RESULTS, description='Maximum passage hits per query form. Omission uses 15. The schema gives the configured maximum.')] = server.DEFAULT_MAX_RESULTS) -> str:
     if isinstance(queries, str):
         queries = server._as_collection_list(queries) if queries.strip().startswith("[") else [queries]
     collections = server._as_collection_list(collection) or []

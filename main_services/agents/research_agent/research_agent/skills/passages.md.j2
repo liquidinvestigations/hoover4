@@ -118,7 +118,7 @@ Copy returned page positions. Use read_more for continued hits.
 {% if has('search_passages') %}
 {{ tool('search_passages') }} accepts queries as one string or a list of up to 12 forms.
 collection accepts one name or a list. Omission searches every permitted collection.
-max_results selects the hit count within the served schema limit. Omission uses 15.
+max_results selects the hit count per query form within the served schema limit. Omission uses 15.
 The result gives collection, file_hash, page and snippet. q records the zero-based query indexes.
 Read supporting text when the passage does not answer the question.
 ```json
