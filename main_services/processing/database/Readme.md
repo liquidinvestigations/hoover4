@@ -82,6 +82,19 @@ The error count counts distinct document and task pairs, because a task that fai
 Each statistics query stops after 30 seconds. A refresh that stops leaves the row in
 `processing`, and the next collector pass writes the row again.
 
+`dataset_settings` orders the writes of a key by `setting_version_us`, in microseconds.
+A reader takes the newest row of each key with `argMax` over that version. A writer gives
+a changed value a version above the newest one, so two writes in one second keep their
+order. An unchanged value writes no row and keeps its version. A row copied from the
+earlier whole-second column has the second as its version and `version_is_precise = 0`.
+"Run OCR" then counts an OCR error in the same second as such a setting as current. A
+backup row without a version gets the same whole-second version on restore.
+
+"Run OCR" stores its state in three collection tables. `ocr_skips` holds the OCR targets
+that a stage decided to skip. `ocr_run_targets` holds the open targets of each operation
+and whether each one settled. `ocr_indexed_text` holds the exact OCR text versions that
+a committed index write read. A language purge removes the receipts of the dropped variants.
+
 The global `operations` table uses `ReplacingMergeTree(row_version)`. Open rows use rank
 zero. Finished and errored rows use rank one. Cancelled rows use rank two. Each row keeps
 its `started_at` sort key and raises the microsecond part of `row_version`. A late open

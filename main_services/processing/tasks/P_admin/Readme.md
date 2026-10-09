@@ -20,9 +20,8 @@ singleton, rather than as part of ingestion.
   settings, reopen the plans holding OCR candidates, re-run them, then purge the variants
   the change dropped, from ClickHouse, then Manticore, then Garage. The order is the
   point; `ocr_languages.py`'s module docstring says why each step cannot move.
-- Run OCR again with unchanged settings (`RerunOcr`): reopen the plans holding images and
-  PDFs and run them. Missing results are produced. With `replace_existing`, existing
-  results are produced again (`ocr_rerun.py`).
+- Bring every OCR target of a dataset to done with unchanged settings (`RerunOcr`, the
+  "Run OCR" button). See "Run OCR" below.
 
 The website backend never owns migration SQL; it triggers these workflows so the schema has
 exactly one source of truth in Python.
@@ -30,10 +29,14 @@ exactly one source of truth in Python.
 ## Entry Points
 
 - Workflows: `EnsureCollectionDatabase`, `DropCollectionDatabase`, `PurgeDataset`,
-  `ChangeOcrLanguages`, `RerunOcr`, `CollectEtaSamples` in `workflows.py`
+  `ChangeOcrLanguages`, `RerunOcr`, `OcrRunPlan`, `CollectEtaSamples` in `workflows.py`
 - Activities: `ensure_collection_database`, `drop_collection_database`,
   `purge_dataset_from_manticore`, `purge_dataset_from_clickhouse`,
   `recompute_shard_ledger_activity`, `collect_eta_samples` in `activities.py`
+- Run OCR: `ocr_rerun.py` (the activities `record_ocr_run_targets`,
+  `list_ocr_run_plans`, `load_ocr_run_plan`, `settle_ocr_run_targets`,
+  `ocr_text_pending_index` and `verify_ocr_run_completion`), the `OcrRunPlan` workflow in
+  `workflows.py`, and the target rule in `tasks/ocr_targets.py`
 - OCR languages: `ocr_languages.py` (the variant diff, the purge, and the stage reports
   it merges into the operation row the admin form polls)
 - ETA logic: `eta_collector.py` (SQL, rates and throttle, documented in its module docstring)
@@ -51,6 +54,35 @@ exactly one source of truth in Python.
   under `change_ocr_languages`, `RerunOcr` under `rerun_ocr`. Each run therefore carries the operation's timestamped id,
   which is what makes a second click run again: a reused id makes it a no-op, and two
   language changes are two different runs with two different before/after states.
+
+## Run OCR
+
+`RerunOcr` makes no OCR request for a target that is already done. `tasks/ocr_targets.py`
+defines the targets and the done rule. A run has these steps.
+
+1. It runs the unfinished plans and the blobs without a plan through `ExecutePlans`, with
+   every stage. A file in such a plan gets its OCR there.
+2. `record_ocr_run_targets` writes each open target to `ocr_run_targets` under the
+   operation id. From this point the operation's progress counts these rows.
+3. `list_ocr_run_plans` reads the plans with an open target, in pages of 1,000. The run
+   continues as new after each full page.
+4. One `OcrRunPlan` child runs for each plan, at most 16 at a time. It downloads only the
+   files with an open target and runs the preview, image OCR and PDF stages on them. Then
+   it runs P4, P5 and P6 for the files whose new OCR text needs indexing, and settles the
+   targets.
+5. After the last page, the run refreshes the entity terms and compacts the shards.
+6. `verify_ocr_run_completion` fails the run with `OcrRunIncomplete` while a target stays
+   open. The error names at most five open targets.
+
+New OCR text adds index targets during the run, so the progress total can increase. A
+second press records the targets again and finds only the open ones. A cancelled run
+leaves its stored results, and the next run continues from them. An OCR error newer than
+the language setting settles its target. "Retry" on the processing page repeats those
+files. A setting version copied from the earlier whole-second
+column has no finer order. An error in the same second as such a setting counts as current.
+
+An execution that started before the `run-ocr-targets` patch replays the earlier commands,
+which reopen the plans and run `ExecutePlans`.
 
 ## One run per dataset
 

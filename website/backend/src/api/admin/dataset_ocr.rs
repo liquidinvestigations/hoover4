@@ -131,21 +131,48 @@ pub async fn latest_operation(
     }))
 }
 
-async fn read_setting(collection_dataset: &str, key: &str) -> anyhow::Result<Option<String>> {
+/// The latest stored row of one setting key, as `tasks/dataset_config.py` reads it. The
+/// value, the deletion flag and the version come from one write, chosen by
+/// `setting_version_us`.
+#[derive(clickhouse::Row, serde::Deserialize)]
+struct LatestSetting {
+    value: String,
+    is_deleted: u8,
+    setting_version_us: u64,
+}
+
+async fn latest_setting(collection_dataset: &str, key: &str) -> anyhow::Result<Option<LatestSetting>> {
     let client = get_global_client();
     let rows = client
         .query(
-            "SELECT argMax(value, updated_at) FROM dataset_settings \
-             WHERE collection_dataset = ? AND key = ? \
-             GROUP BY key HAVING argMax(is_deleted, updated_at) = 0",
+            "SELECT latest.1 AS value, latest.2 AS is_deleted, latest.3 AS setting_version_us \
+             FROM (SELECT argMax((value, is_deleted, setting_version_us), setting_version_us) \
+                   AS latest FROM dataset_settings \
+                   WHERE collection_dataset = ? AND key = ? GROUP BY key)",
         )
         .bind(collection_dataset)
         .bind(key)
-        .fetch_all::<String>()
+        .fetch_all::<LatestSetting>()
         .await?;
     Ok(rows.into_iter().next())
 }
 
+async fn read_setting(collection_dataset: &str, key: &str) -> anyhow::Result<Option<String>> {
+    Ok(latest_setting(collection_dataset, key)
+        .await?
+        .filter(|row| row.is_deleted == 0)
+        .map(|row| row.value))
+}
+
+/// The version of a new or changed setting value: the current time in microseconds, and
+/// above the version of the row it replaces.
+fn next_setting_version(now_us: u64, latest_version_us: Option<u64>) -> u64 {
+    latest_version_us.map_or(now_us, |latest| now_us.max(latest + 1))
+}
+
+/// Write one setting. An unchanged live value writes nothing, so the setting keeps its
+/// version, as `set_dataset_setting` in `tasks/dataset_config.py` does. The client waits
+/// for the insert to reach storage.
 async fn write_setting(collection_dataset: &str, key: &str, value: &str) -> anyhow::Result<()> {
     #[derive(clickhouse::Row, serde::Serialize)]
     struct SettingRow<'a> {
@@ -155,7 +182,18 @@ async fn write_setting(collection_dataset: &str, key: &str, value: &str) -> anyh
         #[serde(with = "clickhouse::serde::time::datetime")]
         updated_at: time::OffsetDateTime,
         is_deleted: u8,
+        setting_version_us: u64,
+        version_is_precise: u8,
     }
+    let latest = latest_setting(collection_dataset, key).await?;
+    if latest
+        .as_ref()
+        .is_some_and(|row| row.is_deleted == 0 && row.value == value)
+    {
+        return Ok(());
+    }
+    let now = time::OffsetDateTime::now_utc();
+    let now_us = u64::try_from(now.unix_timestamp_nanos() / 1_000)?;
     let client = get_global_client();
     let mut insert = client.insert::<SettingRow>("dataset_settings").await?;
     insert
@@ -163,8 +201,13 @@ async fn write_setting(collection_dataset: &str, key: &str, value: &str) -> anyh
             collection_dataset,
             key,
             value,
-            updated_at: time::OffsetDateTime::now_utc(),
+            updated_at: now,
             is_deleted: 0,
+            setting_version_us: next_setting_version(
+                now_us,
+                latest.map(|row| row.setting_version_us),
+            ),
+            version_is_precise: 1,
         })
         .await?;
     insert.end().await?;
@@ -620,6 +663,16 @@ pub async fn admin_create_dataset(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_setting_version_is_above_the_row_it_replaces() {
+        assert_eq!(next_setting_version(1_000_000, None), 1_000_000);
+        assert_eq!(next_setting_version(1_000_000, Some(999_999)), 1_000_000);
+        // A row written later in the same second by another clock, or copied from a
+        // whole-second time that rounds up past the writer's clock.
+        assert_eq!(next_setting_version(1_000_000, Some(1_000_000)), 1_000_001);
+        assert_eq!(next_setting_version(1_000_000, Some(2_000_000)), 2_000_001);
+    }
 
     #[test]
     fn languages_keep_their_order_and_lose_duplicates() {

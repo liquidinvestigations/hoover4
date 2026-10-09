@@ -1,6 +1,7 @@
 """Dataclasses for the chunk+embed (P5) stage."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import List
 
 
 @dataclass
@@ -9,6 +10,8 @@ class ChunkEmbedForPlanParams:
     collection_dataset: str
     plan_hash: str
     op_id: str = ""
+    #: The files to read. Empty reads every file of the plan, through `fetch_plan_hashes`.
+    item_hashes: List[str] = field(default_factory=list)
 
 
 @dataclass

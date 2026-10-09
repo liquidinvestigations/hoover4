@@ -1,6 +1,7 @@
 """Dataclasses for indexing workflow parameters."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import List
 
 @dataclass
 class IndexDatasetPlanParams:
@@ -9,6 +10,8 @@ class IndexDatasetPlanParams:
     plan_hash: str
     op_id: str = ""
     vectors_only: bool = False
+    #: The files to read. Empty reads every file of the plan, through `fetch_plan_hashes`.
+    item_hashes: List[str] = field(default_factory=list)
 
 @dataclass
 class PlanShardsParams:
@@ -61,6 +64,24 @@ class CompactCollectionShardsParams:
     closed_only: bool
     op_id: str = ""
 
+#: One OCR text segment that a text-page writer read and committed:
+#: `(file_hash, extracted_by, page_id, text_version)`.
+OcrTextReceipt = tuple[str, str, int, int]
+
+
+@dataclass
+class IndexedTextResult:
+    """What one text-page writer committed.
+
+    `committed_hashes` are the documents whose rows were written or removed.
+    `ocr_text_versions` holds one receipt for each OCR segment that the writer read, with
+    the version it read, for the committed documents only.
+    """
+
+    committed_hashes: list[str] = field(default_factory=list)
+    ocr_text_versions: list[OcrTextReceipt] = field(default_factory=list)
+
+
 @dataclass
 class RecordIndexedParams:
     collectionname: str
@@ -69,6 +90,8 @@ class RecordIndexedParams:
     # (shard_name, file_hash) pairs whose writers committed; collection_dataset
     # is uniform for the whole batch.
     entries: list[tuple[str, str]]
+    #: The OCR segment versions that the committed writers read. Empty writes no receipt.
+    ocr_text_versions: list[OcrTextReceipt] = field(default_factory=list)
 
 
 @dataclass

@@ -20,7 +20,7 @@ The planner groups text segment versions before it counts rows and bytes.
 ## Entry Points
 
 - Workflows: `IndexDatasetPlan`, `RefreshDocumentLocations` in `workflows.py`
-- Activities: `index_text_pages`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `index_entity_terms`, `build_email_graph`, `compact_collection_shards`, `refresh_stale_document_locations` in `activities.py`
+- Activities: `index_text_pages`, `index_text_pages_with_versions`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `index_entity_terms`, `build_email_graph`, `compact_collection_shards`, `refresh_stale_document_locations` in `activities.py`
 - Helpers: `email_graph.py` (the pure edge rules), `document_metadata` (the per-document read half of the writer), `location_refresh.py` (stale folder-closure selection), `string_term_encodings.py`; `fetch_plan_hashes` and `clean_text` are shared and live in `tasks/plan_utils.py`
 
 `build_vfs_nodes` runs once per `ExecutePlans` batch before the per-plan children;
@@ -193,6 +193,20 @@ of its detections and logs a WARNING naming the hashes. The union is the pre-can
 behaviour and puts a document under every type a detector claimed, which is worse than one
 definitive answer and far better than a document with no type, no MIME and no extensions.
 A fallback nobody can see is a bug that hides, which is why it is loud.
+
+## OCR index receipts
+
+`index_text_pages_with_versions` runs the same text writer as `index_text_pages`. It also
+returns, for each committed file, the `text_content.version` of each OCR segment that it
+read and indexed. `record_indexed` writes these receipts to `ocr_indexed_text` after the
+`index_state` rows. "Run OCR" counts an index target as done only when each current OCR
+segment of the file has a receipt of its current version. Text written after the writer
+read its rows therefore stays open. A failed writer returns no receipt.
+
+`IndexDatasetPlan` calls the new activity behind the `index-ocr-text-versions` patch. An
+execution that started before the patch replays the call to `index_text_pages` and records
+no receipt. The ForPlan parameters of P4, P5 and P6 take an optional `item_hashes` list.
+"Run OCR" sets it to the files with new OCR text, and an empty list reads all plan items.
 
 ## Indexed text and compaction
 

@@ -329,7 +329,7 @@ async def _cancel_target_operation(op_id: str) -> dict:
 def sample_dataset_progress(params: DatasetProgressParams) -> dict:
     """Return bounded plan and failure evidence, and update a running operation."""
     from database.clickhouse import get_collection_client
-    from database.operation_ledger import run_plan_counts
+    from database.operation_ledger import ocr_run_target_counts, run_plan_counts
     from database.operations import get_operation, update_operation, TERMINAL_STATES, _now
 
     row = get_operation(params.op_id)
@@ -342,9 +342,18 @@ def sample_dataset_progress(params: DatasetProgressParams) -> dict:
                     failed_documents=int(detail.get("failed_documents", 0)),
                     failed_tasks=int(detail.get("failed_tasks", 0)),
                     plan_samples=detail.get("plan_samples", []), step_samples=detail.get("step_samples", []))
-    done, total = run_plan_counts(params.collectionname, params.op_id, params.collection_dataset) if params.op_id else (0, 0)
+    plan_done, plan_total = run_plan_counts(params.collectionname, params.op_id, params.collection_dataset) if params.op_id else (0, 0)
+    done, total = plan_done, plan_total
+    if row.get("kind") == "rerun_ocr" and params.op_id:
+        # "Run OCR" counts plans while it runs unfinished plans, then OCR and index
+        # targets once it has recorded them. New OCR text adds index targets, so the
+        # total can grow.
+        targets_done, targets_total = ocr_run_target_counts(
+            params.collectionname, params.op_id, params.collection_dataset)
+        if targets_total:
+            done, total = targets_done, targets_total
     # Only the final verification can classify an unfinished plan as failed.
-    failed_plans = max(0, total - done) if params.verify_plan_completion else 0
+    failed_plans = max(0, plan_total - plan_done) if params.verify_plan_completion else 0
     result = dict(done=done, total=total, failed_plans=failed_plans,
                   failed_documents=0, failed_tasks=0, failed_dataset_steps=0,
                   plan_samples=[], step_samples=[])

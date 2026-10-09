@@ -19,7 +19,15 @@ already running (`tasks/dataset_config.py`), and a workflow argument would freez
 value at schedule time.
 
 Retries are cheap by construction: every pass checks the `raw_ocr_results` watermark for
-its own `(image, engine, languages)` before spending anything.
+its own `(image, engine, languages)` before spending anything. A pass with a watermark
+writes the text that its stored result holds and `text_content` lacks, with no OCR
+request. The text of a new result is queued before its watermark, and the insert buffer
+writes `raw_ocr_results` after the text tables, so a watermark is never stored before
+its text.
+
+An image under the size floor or an empty input is a decision, not a failure. The
+activity stores it in `ocr_skips` for each pass that has no result, so "Run OCR" does not
+select the image again.
 """
 
 import logging
@@ -87,14 +95,7 @@ def _already_done(client, params: RunOcrParams, languages: str) -> bool:
     The watermark is checked before the image is even read: OCR is the most expensive
     thing in the pipeline per byte, and a retry that re-OCRs what it already produced is
     the difference between a cheap retry and a doubled bill.
-
-    An operation `rerun_ocr` with `replace_existing` skips nothing, so each of its passes
-    writes a new result.
     """
-    from tasks.P_admin.ocr_rerun import replaces_existing
-
-    if replaces_existing(params.op_id):
-        return False
     try:
         rows = client.query(
             "SELECT count() FROM raw_ocr_results "
@@ -130,6 +131,7 @@ def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
 
     from database.clickhouse import get_collection_client, insert_parser_arrow
     from tasks.ocr_client import engine_configured, run_ocr
+    from tasks.ocr_targets import STAGE_IMAGE, record_ocr_skips, recover_ocr_text
     from tasks.P3_parse_files.parse_common import insert_text_chunks
 
     started_all = time.time()
@@ -155,8 +157,20 @@ def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
             if _already_done(client, params, languages):
                 log.info("[P3] OCR already done for %s %s/%s",
                          params.file_hash, params.engine, languages)
+                recover_ocr_text(client, params.collectionname, params.collection_dataset,
+                                 [params.file_hash], [(params.engine, languages)])
                 done += 1
                 continue
+
+            def skip(reason: str) -> SkippedOutcome:
+                # This pass and each later pass without a result take the decision.
+                open_passes = [languages] + [
+                    later for later in passes[index + 1:]
+                    if not _already_done(client, params, later)]
+                record_ocr_skips(client, params.collection_dataset, params.file_hash,
+                                 STAGE_IMAGE, params.engine, open_passes, reason,
+                                 params.op_id)
+                return SkippedOutcome(reason)
 
             if image_bytes is None:
                 # Read once, reuse across passes. Deferred until a pass actually needs
@@ -172,7 +186,7 @@ def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
                         _record_skip(params, 0, f"ocr_skipped_unreadable: {exc}")
                         return "ocr_skipped_unreadable"
                 if not image_bytes:
-                    return SkippedOutcome("ocr_skipped_empty")
+                    return skip("ocr_skipped_empty")
 
                 # The size gate. An image whose shorter edge is under
                 # MIN_OCR_IMAGE_PX is an icon, a bullet, a rule or a signature scrap --
@@ -191,7 +205,7 @@ def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
                         "[P3] OCR skip for %s: %dx%d is under %dpx",
                         params.file_hash, size[0], size[1], MIN_OCR_IMAGE_PX,
                     )
-                    return SkippedOutcome("ocr_skipped_too_small")
+                    return skip("ocr_skipped_too_small")
 
             started = time.time()
             try:
@@ -215,6 +229,13 @@ def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
 
             extracted_by = ocr_extracted_by(outcome.engine, outcome.languages)
 
+            if outcome.text.strip():
+                # An image is one page. insert_text_chunks numbers from 1 and segments
+                # only if the text is enormous, which OCR output never is.
+                insert_text_chunks(params.collectionname, params.collection_dataset,
+                                   params.file_hash, extracted_by, outcome.text)
+            # The watermark follows its text: the insert buffer writes it after the text
+            # tables, and not at all when the text of this file failed to store.
             insert_parser_arrow(client, "raw_ocr_results", pa.table({
                 "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
                 "image_hash": pa.array([params.file_hash], type=pa.string()),
@@ -225,12 +246,6 @@ def run_ocr_and_store(params: RunOcrParams) -> str | SkippedOutcome:
                 "result_hash": pa.array([""], type=pa.string()),
                 "raw_json": pa.array([outcome.raw_json], type=pa.string()),
             }))
-
-            if outcome.text.strip():
-                # An image is one page. insert_text_chunks numbers from 1 and segments
-                # only if the text is enormous, which OCR output never is.
-                insert_text_chunks(params.collectionname, params.collection_dataset,
-                                   params.file_hash, extracted_by, outcome.text)
             done += 1
             log.info("[P3] OCR %s in %d ms, %d chars, confidence %.1f (%s)",
                      extracted_by, run_time_ms, len(outcome.text), outcome.confidence,

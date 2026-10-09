@@ -44,13 +44,14 @@ from .params import (
     BuildEmailGraphParams,
     BuildVfsNodesParams,
     IndexShardParams,
+    IndexedTextResult,
     CompactCollectionShardsParams,
     RefreshDocumentLocationsParams,
     RefreshDocumentLocationsResult,
     ResolveCanonicalFileTypeParams,
 )
 from tasks.heartbeat import with_heartbeat
-from tasks.text_sources import fetch_text_batch, plan_text_batches
+from tasks.text_sources import OCR_PREFIX, fetch_text_batch, plan_text_batches
 from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
 from tasks.regex_entities import (
     FACET_BY_ENTITY_TYPE,
@@ -412,6 +413,27 @@ def write_page_batches(client, table: str, collection_dataset: str,
 @activity.defn
 @with_heartbeat
 def index_text_pages(params: IndexShardParams) -> list[str]:
+    """Index the chunk's documents and return the committed hashes.
+
+    The text writer of `IndexDatasetPlan` executions that scheduled it before
+    :func:`index_text_pages_with_versions` existed. See :func:`write_text_pages`.
+    """
+    return write_text_pages(params).committed_hashes
+
+
+@activity.defn
+@with_heartbeat
+def index_text_pages_with_versions(params: IndexShardParams) -> IndexedTextResult:
+    """Index the chunk's documents and return the OCR text versions that it read.
+
+    ``IndexDatasetPlan`` stores the versions as index receipts in ``ocr_indexed_text``,
+    and an OCR index target is complete when each current OCR segment has one. See
+    :func:`write_text_pages`.
+    """
+    return write_text_pages(params)
+
+
+def write_text_pages(params: IndexShardParams) -> IndexedTextResult:
     """Index the chunk's documents into the shard's table: text rows and filename rows.
 
     Every row carries its document's metadata (:func:`document_metadata`), so the
@@ -428,6 +450,11 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     Returns hashes whose rows were written or removed after successful commits.
     ``IndexDatasetPlan`` records these in ``index_state``. A failed writer must
     never be counted by the shard ledger.
+
+    The result also holds one receipt for each OCR segment of those hashes, with the
+    text version that `fetch_text_batch` returned and the writer indexed. A version
+    read again after the commit could be newer than the indexed text, so none is read.
+    A writer that fails returns nothing, so it records no receipt.
     """
     collection_dataset: str = params.collection_dataset
     item_hashes: list[str] = params.hashes
@@ -517,6 +544,7 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
     ])
     written_hashes = set()
     filename_hashes = set()
+    receipts = set()
     expected_ids = {
         pages_row_id(collection_dataset, row['file_hash'], row['extracted_by'], row['page_id'])
         for row in text_segments
@@ -561,6 +589,9 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
         clusters = []
         for row in text_content:
             file_hash = row['file_hash']
+            if row['extracted_by'].startswith(OCR_PREFIX):
+                receipts.add((file_hash, row['extracted_by'], int(row['page_id']),
+                              int(row['text_version'])))
             if file_hash not in filename_hashes:
                 document = metadata.get(file_hash)
                 if document and document['basenames']:
@@ -634,7 +665,10 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
         collection_dataset, plan_hash, missing_watermarks, len(text_segments),
     )
 
-    return sorted(written_hashes)
+    return IndexedTextResult(
+        committed_hashes=sorted(written_hashes),
+        ocr_text_versions=sorted(r for r in receipts if r[0] in written_hashes),
+    )
 
 
 @activity.defn

@@ -553,7 +553,8 @@ def _restore_configuration(collectionname: str, configuration: dict) -> dict[str
     with the versions they were taken with. The one exception is the collection row when
     the target already had one: that row is the only thing a restore can land on top of,
     and the restore is the newer writer, so it is stamped as such rather than left to
-    lose to whatever was there.
+    lose to whatever was there. A setting row of a backup that predates
+    `setting_version_us` gets its version from `updated_at`, see `_setting_with_version`.
     """
     from datetime import datetime, timedelta, timezone
 
@@ -561,7 +562,7 @@ def _restore_configuration(collectionname: str, configuration: dict) -> dict[str
 
     written: dict[str, int] = {}
     versions = {"collections": "updated_at", "collection_group_permissions": "updated_at",
-                "dataset": "date_modified", "dataset_settings": "updated_at"}
+                "dataset": "date_modified", "dataset_settings": "setting_version_us"}
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     with get_global_client() as client:
         existing, latest = client.query(
@@ -578,11 +579,30 @@ def _restore_configuration(collectionname: str, configuration: dict) -> dict[str
                 prior = latest.replace(tzinfo=None)
                 version = max(now, prior + timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
                 rows = [{**row, version_column: version} for row in rows]
+            if table == "dataset_settings":
+                rows = [_setting_with_version(row) for row in rows]
             block = "\n".join(json.dumps(row, default=str) for row in rows)
             client.raw_insert(table, insert_block=block.encode("utf-8"),
                               fmt="JSONEachRow")
             written[table] = len(rows)
     return written
+
+
+def _setting_with_version(row: dict) -> dict:
+    """A `dataset_settings` row of a backup, with its version fields.
+
+    A backup taken before the table had `setting_version_us` holds `updated_at` only. Its
+    version is that second, marked as not precise, so the restored setting keeps its
+    place in time. The column default would date it at the restore instead, and an OCR
+    error written under that setting would no longer count as current.
+    """
+    if "setting_version_us" in row:
+        return row
+    from datetime import datetime, timezone
+
+    written = datetime.fromisoformat(str(row["updated_at"])).replace(tzinfo=timezone.utc)
+    return {**row, "setting_version_us": int(written.timestamp()) * 1_000_000,
+            "version_is_precise": 0}
 
 
 @activity.defn

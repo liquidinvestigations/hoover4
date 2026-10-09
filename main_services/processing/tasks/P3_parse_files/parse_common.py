@@ -77,6 +77,33 @@ def split_text_segments(text_or_bytes: Any,
     return _split_utf8_bytes_to_chunks(data, max_bytes)
 
 
+def text_chunk_pages(text_or_bytes: Any, *, start_page_id: int = 1,
+                     max_bytes: int = DEFAULT_TEXT_SEGMENT_BYTES) -> List[tuple]:
+    """The `(page_id, segment)` pairs of unpaged text, as :func:`insert_text_chunks` numbers them."""
+    if isinstance(text_or_bytes, bytes):
+        data = text_or_bytes
+    else:
+        data = (text_or_bytes or "").encode("utf-8", errors="ignore")
+    data = data.strip()
+    chunks = _split_utf8_bytes_to_chunks(data, max_bytes) if len(data) >= 2 else []
+    return [(start_page_id + i, c) for i, c in enumerate(chunks)]
+
+
+def stored_page_bodies(pages: Sequence[tuple], *, min_chars: int = 2) -> List[tuple]:
+    """The `(page_id, body)` pairs that a complete source stores in `text_content`.
+
+    Each body is the page text without surrounding white space. A page with fewer than
+    `min_chars` characters is absent.
+    """
+    rows = []
+    for page_id, text in pages:
+        page_id = int(page_id)
+        body = (text or "").strip()
+        if len(body) >= min_chars:
+            rows.append((page_id, body))
+    return rows
+
+
 def _existing_page_ids(client: Any, collection_dataset: str, file_hash: str,
                        extracted_by: str) -> tuple[set[int], int]:
     """Read this source's current page identities before a successful replacement."""
@@ -152,13 +179,11 @@ def insert_text_sources(collectionname: str, collection_dataset: str, file_hash:
                  for source, pages in sources.items()}
     rows = []
     for source, pages in sources.items():
-        for page_id, text in pages:
-            page_id = int(page_id)
-            if page_id < 1:
+        for page_id, _ in pages:
+            if int(page_id) < 1:
                 raise ValueError(f"page_id must be 1-based and never 0, got {page_id} for {file_hash}")
-            body = (text or "").strip()
-            if len(body) >= min_chars:
-                rows.append((source, page_id, body, len(body.encode("utf-8"))))
+        for page_id, body in stored_page_bodies(pages, min_chars=min_chars):
+            rows.append((source, page_id, body, len(body.encode("utf-8"))))
 
     with get_collection_client(collectionname) as client:
         previous = {source: (set(), 0) for source in sources}
@@ -227,16 +252,9 @@ def insert_text_chunks(
     function is for formats that genuinely have no pages. Successful empty text clears
     the prior source pages.
     """
-    if isinstance(text_or_bytes, bytes):
-        data = text_or_bytes
-    else:
-        data = (text_or_bytes or "").encode("utf-8", errors="ignore")
-    data = data.strip()
-    chunks = _split_utf8_bytes_to_chunks(data, max_bytes) if len(data) >= 2 else []
-
     return insert_text_pages(
         collectionname, collection_dataset, file_hash, extracted_by,
-        [(start_page_id + i, c) for i, c in enumerate(chunks)],
+        text_chunk_pages(text_or_bytes, start_page_id=start_page_id, max_bytes=max_bytes),
     )
 
 

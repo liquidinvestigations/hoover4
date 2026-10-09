@@ -118,7 +118,9 @@ message, and it is the delivery path, and a name-keyed object keeps only the las
 Readers go through `parse_email.header_pairs_from_json`, which also accepts the older
 object shape, because a document only gets the list shape when it is re-parsed.
 
-Parsing uses type-based routing derived from detector results. Archives, PDFs, emails, and videos can spawn child scans by writing extracted content to temp directories and invoking P0 workflows with container hashes. OCR runs on a dedicated queue (`processing-ocr-queue`) and Tika runs on `processing-tika-queue` to isolate heavy dependencies.
+Parsing uses type-based routing derived from detector results. Archives, PDFs, emails, and videos can spawn child scans by writing extracted content to temp directories and invoking P0 workflows with container hashes. Image OCR runs on `processing-ocr-queue`, searchable-PDF batches run on `processing-ocr-pdf-queue`, and Tika runs on `processing-tika-queue`. These queues keep heavy dependencies apart, and a PDF batch does not wait behind image OCR slots. A group workflow that started before the PDF queue existed keeps sending its PDF batches to `processing-ocr-queue`, which still registers that activity.
+
+The OCR stages write an `ocr_skips` row for each open language pass of an image under the size floor and of an empty input. That row settles the OCR target, so "Run OCR" sends no request for the file again. A stage that finds a stored `raw_ocr_results` row without its text restores the text from that row and sends no OCR request. The parser insert buffer writes `text_content` before `raw_ocr_results`, so a stored result always has its text.
 
 ## Mail containers
 

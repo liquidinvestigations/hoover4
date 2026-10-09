@@ -51,7 +51,7 @@ import logging
 
 from temporalio import activity
 
-from database.clickhouse import get_collection_client
+from database.clickhouse import get_collection_client, insert_durable
 from database.manticore import (
     create_entities_table,
     create_shard_tables,
@@ -464,6 +464,10 @@ def record_indexed(params: RecordIndexedParams) -> str:
     ReplacingMergeTree keyed on ``(collection_dataset, file_hash)``, so a retried
     call just replaces the row. Runs on the planner queue so it cannot race a
     concurrent ``plan_shards``.
+
+    After the index rows it writes the OCR receipts of ``ocr_text_versions`` to
+    ``ocr_indexed_text`` and waits for storage. An OCR index target of "Run OCR" is
+    complete only with a receipt of each current OCR segment.
     """
     if not params.entries:
         return "ok"
@@ -474,8 +478,22 @@ def record_indexed(params: RecordIndexedParams) -> str:
              for shard_name, file_hash in params.entries],
             column_names=['collection_dataset', 'file_hash', 'shard_name'],
         )
+        if params.ocr_text_versions:
+            # The receipts follow the index rows. A retry writes both again, and a
+            # receipt of the same segment replaces the earlier one.
+            insert_durable(
+                client,
+                'ocr_indexed_text',
+                [[params.collection_dataset, file_hash, extracted_by, int(page_id),
+                  int(text_version)]
+                 for file_hash, extracted_by, page_id, text_version
+                 in params.ocr_text_versions],
+                column_names=['collection_dataset', 'file_hash', 'extracted_by',
+                              'page_id', 'text_version'],
+            )
     log.info(
-        "[P6] record_indexed %s (plan %s): %d documents recorded",
+        "[P6] record_indexed %s (plan %s): %d documents and %d OCR receipts recorded",
         params.collection_dataset, params.plan_hash[:8], len(params.entries),
+        len(params.ocr_text_versions),
     )
     return "ok"

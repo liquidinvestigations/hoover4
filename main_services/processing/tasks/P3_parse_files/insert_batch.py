@@ -71,7 +71,10 @@ class ParserInsertBatch:
 
         pending, self.rows = self.rows, {}
         self.bytes = 0
-        priorities = {'blob_values': 0, 'blobs': 1, 'vfs_files': 2, 'table_documents': 4}
+        # An OCR watermark goes last, so it reaches storage only after its text, and a
+        # file whose text failed to store gets no watermark.
+        priorities = {'blob_values': 0, 'blobs': 1, 'vfs_files': 2, 'table_documents': 4,
+                      'raw_ocr_results': 5}
         ordered = sorted(pending.values(), key=lambda entry: priorities.get(entry[1], 3))
         for client, table, kwargs, pieces in ordered:
             stop_if_worker_is_stopping()

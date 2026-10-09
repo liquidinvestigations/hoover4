@@ -10,6 +10,8 @@ together. The same AST walk pins the dataset-scoped VFS activities on ExecutePla
 
 import ast
 
+import pytest
+
 import tasks.P2_execute_plan.workflows as p2_workflows
 
 
@@ -325,3 +327,61 @@ def test_execute_plans_builds_the_email_graph_last_on_its_own_queue():
 
     from tasks.P6_index_data.workflows import EMAIL_GRAPH_TASK_QUEUE, INDEXING_TASK_QUEUE
     assert EMAIL_GRAPH_TASK_QUEUE != INDEXING_TASK_QUEUE
+
+
+def _downstream_cases():
+    from tasks.P4_extract_entities import workflows as p4
+    from tasks.P5_chunk_embed import workflows as p5
+    from tasks.P6_index_data import workflows as p6
+
+    return [
+        (p4, p4.ExtractEntitiesForPlan, p4.ExtractEntitiesForPlanParams),
+        (p4, p4.ScanRegexEntitiesForPlan, p4.ScanRegexEntitiesForPlanParams),
+        (p5, p5.ChunkEmbedForPlan, p5.ChunkEmbedForPlanParams),
+        (p6, p6.IndexDatasetPlan, p6.IndexDatasetPlanParams),
+    ]
+
+
+@pytest.mark.parametrize("case", range(4))
+@pytest.mark.parametrize("item_hashes", [[], ["h2", "h1", "h2"]])
+def test_downstream_workflows_read_the_plan_hashes_only_without_an_item_list(
+        monkeypatch, case, item_hashes):
+    """An empty `item_hashes` schedules the commands of a plan run, so running histories
+    replay unchanged. A set list replaces the plan's hashes."""
+    import asyncio
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    module, workflow_type, params_type = _downstream_cases()[case]
+    names = []
+    hashes_seen = []
+
+    def execute_activity(fn, params, **_kwargs):
+        async def result():
+            names.append(fn.__name__)
+            if fn.__name__ == "fetch_plan_hashes":
+                return ["p1"]
+            if fn.__name__ == "plan_shards":
+                hashes_seen.append(params.hashes)
+                return []
+            hashes_seen.append(getattr(params, "hashes", None))
+            return None
+        return result()
+
+    async def no_errors(*_args, **_kwargs):
+        return 0
+
+    monkeypatch.setattr(module.workflow, "execute_activity", execute_activity)
+    monkeypatch.setattr(module.workflow, "now", lambda: datetime(2026, 1, 1, tzinfo=timezone.utc))
+    monkeypatch.setattr(module.workflow, "info", lambda: SimpleNamespace(run_id="run"))
+    monkeypatch.setattr(module.workflow, "patched", lambda _name: True)
+    monkeypatch.setattr(module, "record_errors_from_results", no_errors)
+    asyncio.run(workflow_type().run(params_type(
+        collectionname="c", collection_dataset="c_ds", plan_hash="plan", op_id="op",
+        item_hashes=item_hashes)))
+    if item_hashes:
+        assert "fetch_plan_hashes" not in names
+        assert hashes_seen[0] == ["h1", "h2"]
+    else:
+        assert names[0] == "fetch_plan_hashes"
+        assert hashes_seen[0] == ["p1"]

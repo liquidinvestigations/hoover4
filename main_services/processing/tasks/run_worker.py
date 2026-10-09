@@ -316,9 +316,18 @@ async def run_common_worker():
         reopen_plans_for_ocr_change,
         report_ocr_language_progress,
     )
-    from .P_admin.ocr_rerun import reopen_plans_for_ocr_rerun
+    from .P_admin.ocr_rerun import (
+        list_ocr_run_plans,
+        load_ocr_run_plan,
+        ocr_text_pending_index,
+        record_ocr_run_targets,
+        reopen_plans_for_ocr_rerun,
+        settle_ocr_run_targets,
+        verify_ocr_run_completion,
+    )
     from .P_admin.workflows import (
         ChangeOcrLanguages,
+        OcrRunPlan,
         RerunOcr,
         CollectEtaSamples,
         DropCollectionDatabase,
@@ -389,6 +398,7 @@ async def run_common_worker():
             PurgeDataset,
             ChangeOcrLanguages,
             RerunOcr,
+            OcrRunPlan,
             CollectEtaSamples,
             SweepChatArtifacts,
           ],
@@ -451,6 +461,12 @@ async def run_common_worker():
 
             # P_admin rerun_ocr
             reopen_plans_for_ocr_rerun,
+            record_ocr_run_targets,
+            list_ocr_run_plans,
+            load_ocr_run_plan,
+            settle_ocr_run_targets,
+            ocr_text_pending_index,
+            verify_ocr_run_completion,
 
             select_historical_errors,
             reconcile_selected_errors,
@@ -617,7 +633,7 @@ async def run_embed_worker():
 
 async def run_indexing_worker():
   from .P6_index_data.activities import (
-      build_vfs_nodes, index_text_pages, index_vectors,
+      build_vfs_nodes, index_text_pages, index_text_pages_with_versions, index_vectors,
       index_entity_terms, index_vfs_structure, compact_collection_shards,
       refresh_stale_document_locations, resolve_canonical_file_type,
   )
@@ -638,8 +654,10 @@ async def run_indexing_worker():
       graceful_shutdown_timeout=graceful_shutdown_timeout(),
       workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
       workflows=[],
-      activities=[index_text_pages, index_vectors, build_vfs_nodes,
-                  index_vfs_structure, compact_collection_shards,
+      # index_text_pages stays for IndexDatasetPlan executions that scheduled it before
+      # the text writer returned its OCR text versions.
+      activities=[index_text_pages, index_text_pages_with_versions, index_vectors,
+                  build_vfs_nodes, index_vfs_structure, compact_collection_shards,
                   resolve_canonical_file_type, index_entity_terms,
                   refresh_stale_document_locations],
       activity_executor=activity_executor,

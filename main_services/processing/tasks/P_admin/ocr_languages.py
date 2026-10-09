@@ -74,6 +74,7 @@ EXTRACTED_BY_TABLES = (
     "signal_cluster",
     "text_chunks",
     "text_chunk_vectors",
+    "ocr_indexed_text",
 )
 
 #: Manticore shard tables carry `extracted_by` on the pages and vectors tables. `meta` is

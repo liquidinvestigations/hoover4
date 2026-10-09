@@ -89,6 +89,20 @@ One filename row per document is written into the search index with a sentinel p
 synthetic extractor key. It is **not a page**: every query over a page table must exclude it,
 and a test greps for readers that forget.
 
+## OCR targets, skips and the "Run OCR" ledger
+
+An OCR target is one unit of OCR work under the current settings. An image or PDF target
+is one pass of one engine and one language group over one file. An index target is the
+index work of a file that has OCR text. `tasks/ocr_targets.py` holds the one rule that says
+when a target is done. An image or PDF target is done when its result is stored. An
+`ocr_skips` row of its key, or an error newer than the language setting of its engine, also
+settles it. The OCR stages write `ocr_skips` for an image under the size floor and for an
+empty input. A later run sends no request for these files. An index target is done when
+each current OCR segment of the file has a receipt of its text version in
+`ocr_indexed_text`. The P6 text writer stores those receipts from the rows that it indexed.
+"Run OCR" records its open targets in `ocr_run_targets`, one row per target and operation.
+It marks a target done when the target settles. Its progress counts those rows.
+
 ## Dates come from the document, never from ingestion
 
 There is no upload date and no index date anywhere in the schema, by decision. Every date the

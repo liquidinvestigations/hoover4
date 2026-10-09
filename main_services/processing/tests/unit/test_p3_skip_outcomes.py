@@ -28,8 +28,14 @@ class _Client:
 
 
 class _NoRowsClient(_Client):
+    def __init__(self):
+        self.inserted = []
+
     def query(self, *_args, **_kwargs):
         return SimpleNamespace(result_rows=[])
+
+    def insert_arrow(self, table, rows, **_kwargs):
+        self.inserted.append((table, rows.to_pylist()))
 
 
 class _CommandClient(_NoRowsClient):
@@ -97,13 +103,18 @@ def test_ocr_empty_input_is_skipped(monkeypatch, tmp_path):
     monkeypatch.setattr(parse_ocr, "_record_skip", lambda *args: calls.append(args))
     monkeypatch.setattr("tasks.ocr_client.engine_configured", lambda _engine: True)
     monkeypatch.setattr(parse_ocr, "_passes_for", lambda _engine, _dataset: ["eng"])
-    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: _NoRowsClient())
+    client = _NoRowsClient()
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
 
     result = parse_ocr.run_ocr_and_store(_ocr_params(str(image_path)))
 
     assert isinstance(result, SkippedOutcome)
     assert result.value == "ocr_skipped_empty"
     assert calls == []
+    # The decision is stored, so "Run OCR" does not select the image again.
+    assert [(table, [(r["stage"], r["engine"], r["languages"], r["reason"]) for r in rows])
+            for table, rows in client.inserted] == [
+        ("ocr_skips", [("image", "easyocr", "eng", "ocr_skipped_empty")])]
 
 
 def test_ocr_unreadable_input_records_bracketed_error(monkeypatch):

@@ -184,6 +184,25 @@ def run_plan_counts(
     return int(plans_done), int(plans_total)
 
 
+def ocr_run_target_counts(
+    collectionname: str,
+    op_id: str,
+    collection_dataset: str,
+) -> tuple[int, int]:
+    """Return settled and recorded OCR target counts of one `rerun_ocr` operation."""
+    from .clickhouse import get_collection_client
+
+    with get_collection_client(collectionname) as client:
+        row = client.query(
+            "SELECT count() AS targets_total, sum(done) AS targets_done "
+            "FROM ocr_run_targets FINAL "
+            "WHERE op_id = {op:String} AND collection_dataset = {ds:String}",
+            parameters={"op": op_id, "ds": collection_dataset},
+        ).result_rows[0]
+    targets_total, targets_done = row
+    return int(targets_done or 0), int(targets_total)
+
+
 def delete_error_pairs(
     collectionname: str,
     collection_dataset: str,

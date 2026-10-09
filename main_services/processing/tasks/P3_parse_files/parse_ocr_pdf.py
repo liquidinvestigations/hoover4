@@ -94,14 +94,7 @@ def _already_done(client, params: RunOcrPdfParams, languages: str) -> bool:
 
     `argMax(is_deleted)` rather than a plain count: the purge in `change_ocr_languages`
     tombstones rows, and a tombstoned variant must be re-derivable.
-
-    An operation `rerun_ocr` with `replace_existing` skips nothing, so each of its passes
-    writes a new result.
     """
-    from tasks.P_admin.ocr_rerun import replaces_existing
-
-    if replaces_existing(params.op_id):
-        return False
     try:
         # `count()` alongside the tombstone read, and not only for tidiness: an aggregate
         # with no GROUP BY over an empty match still returns ONE row, with argMax's
@@ -171,6 +164,7 @@ def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str | SkippedOutcome:
 
     from database.clickhouse import get_collection_client, insert_parser_arrow
     from tasks.ocr_pdf_client import build_ocr_pdf, engines_for_provider, service_configured
+    from tasks.ocr_targets import STAGE_PDF, record_ocr_skips
 
     started_all = time.time()
 
@@ -218,6 +212,14 @@ def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str | SkippedOutcome:
                     _record_skip(params, 0, f"ocr_pdf_skipped_unreadable: {exc}")
                     return "ocr_pdf_skipped_unreadable"
                 if not raw:
+                    # A decision, stored for this pass and each later pass without a
+                    # variant, so "Run OCR" does not select the file again.
+                    record_ocr_skips(
+                        client, params.collection_dataset, params.pdf_hash, STAGE_PDF,
+                        params.engine,
+                        [languages] + [later for later in passes[index + 1:]
+                                       if not _already_done(client, params, later)],
+                        "ocr_pdf_skipped_empty", params.op_id)
                     return SkippedOutcome("ocr_pdf_skipped_empty")
                 if len(raw) > MAX_INLINE_PDF_BYTES:
                     _record_skip(

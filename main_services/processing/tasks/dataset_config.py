@@ -14,7 +14,9 @@ import logging
 import os
 import threading
 import time
-from typing import Dict, List
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Dict, List, Sequence
 
 from tasks.text_sources import ENGINE_EASYOCR, ENGINE_TESSERACT, easyocr_language_groups
 
@@ -48,18 +50,59 @@ _lock = threading.Lock()
 _cache: Dict[str, tuple] = {}
 
 
+@dataclass(frozen=True)
+class SettingRow:
+    """The latest stored row of one setting key."""
+
+    value: str
+    is_deleted: bool
+    #: Microseconds since the epoch, the order of the rows of one key.
+    version_us: int
+    #: False when the version was copied from the earlier whole-second time.
+    is_precise: bool
+
+
+#: The latest complete row of each key. The value, the deletion flag and the version come
+#: from one write, chosen by `setting_version_us`.
+_LATEST_ROWS_SQL = (
+    "SELECT key, argMax((value, is_deleted, setting_version_us, version_is_precise), "
+    "setting_version_us) FROM dataset_settings "
+    "WHERE collection_dataset = {cd:String} {keys}GROUP BY key"
+)
+
+
+def _latest_rows(client, collection_dataset: str,
+                 keys: Sequence[str] = ()) -> Dict[str, SettingRow]:
+    parameters = {"cd": collection_dataset}
+    clause = ""
+    if keys:
+        clause = "AND key IN {keys:Array(String)} "
+        parameters["keys"] = list(keys)
+    rows = client.query(_LATEST_ROWS_SQL.replace("{keys}", clause),
+                        parameters=parameters).result_rows
+    return {key: SettingRow(str(value), bool(deleted), int(version), bool(precise))
+            for key, (value, deleted, version, precise) in rows}
+
+
+def latest_setting_rows(collection_dataset: str, keys: Sequence[str]) -> Dict[str, SettingRow]:
+    """The latest row of each of `keys`, read now and not from the cache.
+
+    For a reader that needs a value together with its version. Raises when the table
+    cannot be read.
+    """
+    from database.clickhouse import get_global_client
+
+    with get_global_client() as client:
+        return _latest_rows(client, collection_dataset, keys)
+
+
 def _load(collection_dataset: str) -> Dict[str, str]:
     from database.clickhouse import get_global_client
 
     values = dict(DEFAULTS)
     try:
         with get_global_client() as client:
-            rows = client.query(
-                "SELECT key, argMax(value, updated_at) FROM dataset_settings "
-                "WHERE collection_dataset = {cd:String} "
-                "GROUP BY key HAVING argMax(is_deleted, updated_at) = 0",
-                parameters={"cd": collection_dataset},
-            ).result_rows
+            rows = _latest_rows(client, collection_dataset)
     except Exception:
         # A settings read must never fail an activity: the defaults are the documented
         # behaviour, and failing here would turn a missing table into a failed dataset.
@@ -67,8 +110,9 @@ def _load(collection_dataset: str) -> Dict[str, str]:
                     collection_dataset, exc_info=True)
         return values
 
-    for key, value in rows:
-        values[key] = value
+    for key, row in rows.items():
+        if not row.is_deleted:
+            values[key] = row.value
     return values
 
 
@@ -105,15 +149,32 @@ def invalidate(collection_dataset: str = "") -> None:
 
 
 def set_dataset_setting(collection_dataset: str, key: str, value: str) -> None:
-    """Write one setting and drop this process's cache entry for the dataset."""
-    from database.clickhouse import get_global_client
+    """Write one setting and drop this process's cache entry for the dataset.
+
+    An unchanged live value writes nothing, so the setting keeps its version, and an OCR
+    error written under it stays current. A new or changed value gets a version above the
+    version of the row it replaces, in microseconds. The write waits for storage.
+    """
+    from database.clickhouse import get_global_client, insert_arrow_durable
     import pyarrow as pa
 
     with get_global_client() as client:
-        client.insert_arrow("dataset_settings", pa.table({
+        latest = _latest_rows(client, collection_dataset, [key]).get(key)
+        if latest is not None and not latest.is_deleted and latest.value == value:
+            invalidate(collection_dataset)
+            return
+        now = datetime.now(timezone.utc)
+        version = int(now.timestamp() * 1_000_000)
+        if latest is not None:
+            version = max(version, latest.version_us + 1)
+        insert_arrow_durable(client, "dataset_settings", pa.table({
             "collection_dataset": pa.array([collection_dataset], type=pa.string()),
             "key": pa.array([key], type=pa.string()),
             "value": pa.array([value], type=pa.string()),
+            "updated_at": pa.array([now.replace(tzinfo=None, microsecond=0)],
+                                   type=pa.timestamp("s")),
+            "setting_version_us": pa.array([version], type=pa.uint64()),
+            "version_is_precise": pa.array([1], type=pa.uint8()),
         }))
     invalidate(collection_dataset)
 

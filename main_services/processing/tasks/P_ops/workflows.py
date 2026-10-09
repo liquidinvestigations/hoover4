@@ -593,10 +593,10 @@ class Operation:
         return f"Updated OCR languages. The operation kept {progress['failed_documents']} document failures."
 
     async def _rerun_ocr(self, params: OperationParams) -> str:
-        """Run OCR again for a dataset with its current settings.
+        """Bring every OCR target of a dataset to done: the "Run OCR" action.
 
-        `replace_existing` travels in the row's `detail`, where the OCR stages read it.
-        Progress is the dataset's plans, as for `change_ocr_languages`.
+        Progress counts the dataset's plans while unfinished plans run, then the OCR and
+        index targets that `RerunOcr` recorded.
         """
         result = await workflow.execute_child_workflow(
             "RerunOcr",
@@ -610,7 +610,7 @@ class Operation:
             search_attributes=dataset_search_attributes(params.collection_dataset),
         )
         progress = await self._sample_selector_counts(params, {}, result.get("execution_counts", {}))
-        return (f"Ran OCR again for {result.get('plans', 0)} plans. "
+        return (f"Ran OCR over {result.get('plans', 0)} plans. "
                 f"The operation kept {progress['failed_documents']} document failures.")
 
     async def _collection_database(self, params: OperationParams) -> str:

@@ -130,6 +130,10 @@ EXPECTED_COLLECTION_TABLES = {
     "vfs_nodes",
     "video_metadata",
     "ocr_pdf_version_ready",
+    "ocr_skips",
+    "ocr_run_targets",
+    "ocr_indexed_text",
+    "ocr_run_targets_ready",
 }
 
 
@@ -261,11 +265,26 @@ def test_no_comment_only_statement_fragment(path):
 def test_global_tables_match_expected():
     created = set(_table_names(GLOBAL_MIGRATIONS_PATH))
     dropped = _dropped_table_names(GLOBAL_MIGRATIONS_PATH)
-    assert created - {"operations_row_version"} - dropped == EXPECTED_GLOBAL_TABLES
+    assert (created - {"operations_row_version", "dataset_settings_versions"} - dropped
+            == EXPECTED_GLOBAL_TABLES)
     migration = Path(GLOBAL_MIGRATIONS_PATH, "00030_operations_row_version.sql").read_text()
     assert "FROM operations FINAL" in migration
     assert "operations_row_version TO operations" in migration
     assert "DROP TABLE operations_updated_at" in migration
+
+
+def test_setting_versions_keep_every_row_and_the_timestamp_type():
+    """The replacement copies every row, tombstones included, so it reads no FINAL. It
+    keeps `updated_at` a whole-second DateTime, the type the existing writers send, and
+    marks each copied version as whole-second."""
+    migration = Path(GLOBAL_MIGRATIONS_PATH,
+                     "00042_dataset_settings_versions.sql").read_text()
+    assert "updated_at         DateTime DEFAULT now()" in migration
+    assert "ReplacingMergeTree(setting_version_us, is_deleted)" in migration
+    assert "FROM dataset_settings;" in migration
+    assert "FINAL" not in migration.split("INSERT INTO", 1)[1]
+    assert "toUInt64(toUnixTimestamp(updated_at)) * 1000000, 0" in migration
+    assert "dataset_settings_versions TO dataset_settings" in migration
 
 
 def test_collection_tables_match_expected():

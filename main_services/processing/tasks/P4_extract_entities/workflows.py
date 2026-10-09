@@ -45,19 +45,22 @@ class ScheduledChunk:
 
 @workflow.defn
 class ExtractEntitiesForPlan:
-    """Extract named entities for all text content of one processing plan."""
+    """Extract named entities for the text of one plan, or of its `item_hashes` when set."""
     @workflow.run
     async def run(self, params: ExtractEntitiesForPlanParams) -> str:
         NLP_CHUNK_SIZE = 100
         NLP_TIMEOUT = timedelta(minutes=30)
 
-        plan_hashes = await workflow.execute_activity(
-            fetch_plan_hashes,
-            FetchPlanHashesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
-            start_to_close_timeout=timedelta(minutes=10),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-        )
+        if params.item_hashes:
+            plan_hashes = sorted(set(params.item_hashes))
+        else:
+            plan_hashes = await workflow.execute_activity(
+                fetch_plan_hashes,
+                FetchPlanHashesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+                start_to_close_timeout=timedelta(minutes=10),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=2),
+            )
         chunks: list[ScheduledChunk] = []
         for chunk_start in range(0, len(plan_hashes), NLP_CHUNK_SIZE):
             chunk_hashes = plan_hashes[chunk_start:chunk_start+NLP_CHUNK_SIZE]
@@ -110,7 +113,7 @@ class ExtractEntitiesForPlan:
 
 @workflow.defn
 class ScanRegexEntitiesForPlan:
-    """Scan every text segment of one processing plan for regex entities and signals.
+    """Scan the text of one plan, or of its `item_hashes`, for regex entities and signals.
 
     A sibling of `ExtractEntitiesForPlan`, not a successor: it writes tables no other
     stage touches, so the two run concurrently and neither waits on the other.
@@ -121,17 +124,20 @@ class ScanRegexEntitiesForPlan:
         SCAN_CHUNK_SIZE = 100
         SCAN_TIMEOUT = timedelta(minutes=30)
 
-        plan_hashes = await workflow.execute_activity(
-            fetch_plan_hashes,
-            FetchPlanHashesParams(
-                collectionname=params.collectionname,
-                collection_dataset=params.collection_dataset,
-                plan_hash=params.plan_hash,
-            ),
-            start_to_close_timeout=timedelta(minutes=10),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-        )
+        if params.item_hashes:
+            plan_hashes = sorted(set(params.item_hashes))
+        else:
+            plan_hashes = await workflow.execute_activity(
+                fetch_plan_hashes,
+                FetchPlanHashesParams(
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                    plan_hash=params.plan_hash,
+                ),
+                start_to_close_timeout=timedelta(minutes=10),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=2),
+            )
         chunks: list[ScheduledChunk] = []
         for chunk_start in range(0, len(plan_hashes), SCAN_CHUNK_SIZE):
             chunk_hashes = plan_hashes[chunk_start:chunk_start + SCAN_CHUNK_SIZE]

@@ -111,6 +111,55 @@ with workflow.unsafe.imports_passed_through():
     from tasks.visibility import dataset_search_attributes
 
 
+async def execute_dataset_step(activity_fn, step_params, minutes: int, collectionname: str,
+                               collection_dataset: str, op_id: str,
+                               queue: str = INDEXING_TASK_QUEUE) -> int:
+    """Run one dataset step and return 1 when it failed after its retries, else 0.
+
+    A failed step becomes the dataset Error row `dataset_step:<activity>` and does not
+    stop the caller. A cancellation propagates.
+    """
+    started = workflow.now()
+    try:
+        await workflow.execute_activity(
+            activity_fn, step_params,
+            start_to_close_timeout=timedelta(minutes=minutes),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(
+                maximum_attempts=6, initial_interval=timedelta(seconds=30),
+                backoff_coefficient=2, maximum_interval=timedelta(minutes=10),
+            ),
+            task_queue=queue,
+        )
+        return 0
+    except Exception as exc:
+        if is_cancellation(exc):
+            raise
+        task_name = f"dataset_step:{activity_fn.__name__}"
+        run_id = workflow.info().run_id
+        source_id = source_execution_id(run_id, task_name, 0)
+        try:
+            await workflow.execute_activity(
+                record_processing_errors,
+                RecordProcessingErrorsParams(collectionname, [{
+                    "collection_dataset": collection_dataset,
+                    "hash": "", "task_name": task_name, "op_id": op_id,
+                    "error_logs": failure_message(exc),
+                    "run_time_ms": int((workflow.now() - started).total_seconds() * 1000),
+                    "workflow_run_id": run_id,
+                    "error_identity": error_identity(source_id, task_name, collection_dataset, ""),
+                }]),
+                start_to_close_timeout=timedelta(minutes=5),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            )
+        except Exception as record_exc:
+            if is_cancellation(record_exc):
+                raise
+            workflow.logger.error("Failed to store %s: %s", task_name, failure_message(record_exc))
+        return 1
+
+
 @dataclass
 class ExecutePlansParams:
     collectionname: str
@@ -183,44 +232,9 @@ class ExecutePlans:
                     counts["failed_plans"] += 1
 
         async def run_dataset_step(activity_fn, step_params, minutes, queue=INDEXING_TASK_QUEUE):
-            started = workflow.now()
-            try:
-                await workflow.execute_activity(
-                    activity_fn, step_params,
-                    start_to_close_timeout=timedelta(minutes=minutes),
-                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(
-                        maximum_attempts=6, initial_interval=timedelta(seconds=30),
-                        backoff_coefficient=2, maximum_interval=timedelta(minutes=10),
-                    ),
-                    task_queue=queue,
-                )
-            except Exception as exc:
-                if is_cancellation(exc):
-                    raise
-                counts["failed_dataset_steps"] += 1
-                task_name = f"dataset_step:{activity_fn.__name__}"
-                run_id = workflow.info().run_id
-                source_id = source_execution_id(run_id, task_name, 0)
-                try:
-                    await workflow.execute_activity(
-                        record_processing_errors,
-                        RecordProcessingErrorsParams(params.collectionname, [{
-                            "collection_dataset": params.collection_dataset,
-                            "hash": "", "task_name": task_name, "op_id": params.op_id,
-                            "error_logs": failure_message(exc),
-                            "run_time_ms": int((workflow.now() - started).total_seconds() * 1000),
-                            "workflow_run_id": run_id,
-                            "error_identity": error_identity(source_id, task_name, params.collection_dataset, ""),
-                        }]),
-                        start_to_close_timeout=timedelta(minutes=5),
-                        heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                        retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-                    )
-                except Exception as record_exc:
-                    if is_cancellation(record_exc):
-                        raise
-                    workflow.logger.error("Failed to store %s: %s", task_name, failure_message(record_exc))
+            counts["failed_dataset_steps"] += await execute_dataset_step(
+                activity_fn, step_params, minutes, params.collectionname,
+                params.collection_dataset, params.op_id, queue)
 
         # Refresh dataset indexes before a continuation or restart begins.
         await run_dataset_step(build_vfs_nodes, vfs_params, 30)

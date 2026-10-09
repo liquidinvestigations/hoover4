@@ -20,6 +20,7 @@ with workflow.unsafe.imports_passed_through():
         BuildVfsNodesParams,
         FinalizeIndexBatchParams,
         IndexDatasetPlanParams,
+        IndexedTextResult,
         IndexShardParams,
         PlanShardsParams,
         RecordIndexedParams,
@@ -29,6 +30,7 @@ with workflow.unsafe.imports_passed_through():
         build_vfs_nodes,
         index_entity_terms,
         index_text_pages,
+        index_text_pages_with_versions,
         index_vectors,
         index_vfs_structure,
         refresh_stale_document_locations,
@@ -49,6 +51,9 @@ MANTICORE_RETRY = RetryPolicy(
     backoff_coefficient=2,
     maximum_interval=timedelta(seconds=300),
 )
+# The patch id of the text writer that returns the OCR text versions it read, which
+# record_indexed stores as index receipts in ocr_indexed_text.
+OCR_TEXT_VERSIONS_PATCH = "index-ocr-text-versions"
 # build_email_graph deletes the rows of its collection that are older than its own
 # start, so two runs on one collection can delete each other's rows. This queue is
 # served by exactly one process with one slot for the whole deployment.
@@ -71,19 +76,26 @@ class ScheduledChunk:
 
 @workflow.defn
 class IndexDatasetPlan:
-    """Workflow that indexes a dataset plan into per-collection Manticore shards."""
+    """Index one plan, or its `item_hashes` when set, into the collection's Manticore shards.
+
+    Behind the `index-ocr-text-versions` patch, the text writer returns the OCR text
+    versions that it indexed, and `record_indexed` stores them as receipts.
+    """
     @workflow.run
     async def run(self, params: IndexDatasetPlanParams) -> str:
         INDEXING_CHUNK_SIZE = 100
         INDEXING_TIMEOUT = timedelta(minutes=45)
 
-        plan_hashes = await workflow.execute_activity(
-            fetch_plan_hashes,
-                FetchPlanHashesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
-            start_to_close_timeout=timedelta(minutes=10),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-        )
+        if params.item_hashes:
+            plan_hashes = sorted(set(params.item_hashes))
+        else:
+            plan_hashes = await workflow.execute_activity(
+                fetch_plan_hashes,
+                    FetchPlanHashesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+                start_to_close_timeout=timedelta(minutes=10),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=2),
+            )
 
         # ClickHouse vfs_nodes and the canonical file type are built once per
         # ExecutePlans batch, before these per-plan children run. Manticore vfs is
@@ -101,6 +113,11 @@ class IndexDatasetPlan:
             task_queue=PLANNER_TASK_QUEUE,
         )
 
+        # The text writer that returns the OCR text versions it read. An execution that
+        # scheduled the earlier writer replays it, and records no receipt.
+        with_receipts = (not params.vectors_only
+                         and workflow.patched(OCR_TEXT_VERSIONS_PATCH))
+        text_writer = index_text_pages_with_versions if with_receipts else index_text_pages
         chunks: list[ScheduledChunk] = []
         for assignment in assignments:
             for chunk_start in range(0, len(assignment.hashes), INDEXING_CHUNK_SIZE):
@@ -119,7 +136,7 @@ class IndexDatasetPlan:
                     ordinal=len(chunks),
                     started=workflow.now(),
                     pages_future=None if params.vectors_only else workflow.execute_activity(
-                        index_text_pages, shard_params, start_to_close_timeout=INDEXING_TIMEOUT,
+                        text_writer, shard_params, start_to_close_timeout=INDEXING_TIMEOUT,
                         heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=MANTICORE_RETRY,
                         task_queue=INDEXING_TASK_QUEUE),
                     vectors_future=workflow.execute_activity(
@@ -146,6 +163,7 @@ class IndexDatasetPlan:
         # index_state tracks the text shard. A vector result cannot confirm that
         # the page transaction committed.
         indexed_entries: set[tuple[str, str]] = set()
+        receipts: set[tuple[str, str, int, int]] = set()
         # Old histories used the union. Keep their command sequence on replay.
         text_only_ledger = workflow.patched("index-state-text-commits")
         for index, chunk in enumerate(chunks):
@@ -164,6 +182,9 @@ class IndexDatasetPlan:
                             "P6.text" if task_id == "P6_IndexTextPages" else "P6.vectors",
                             chunk.ordinal))
                 elif task_id == "P6_IndexTextPages" or not text_only_ledger:
+                    if isinstance(res, IndexedTextResult):
+                        receipts.update(tuple(receipt) for receipt in res.ocr_text_versions)
+                        res = res.committed_hashes
                     for item_hash in res:
                         indexed_entries.add((chunk.shard_name, item_hash))
         await record_errors_from_results(
@@ -188,6 +209,7 @@ class IndexDatasetPlan:
                     collection_dataset=params.collection_dataset,
                     plan_hash=params.plan_hash,
                     entries=sorted(indexed_entries),
+                    ocr_text_versions=sorted(receipts),
                 ),
                 start_to_close_timeout=timedelta(minutes=10),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,

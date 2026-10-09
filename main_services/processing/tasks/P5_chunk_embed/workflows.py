@@ -41,19 +41,22 @@ class ScheduledChunk:
 
 @workflow.defn
 class ChunkEmbedForPlan:
-    """Chunk and embed all text content of one processing plan."""
+    """Chunk and embed the text of one plan, or of its `item_hashes` when set."""
     @workflow.run
     async def run(self, params: ChunkEmbedForPlanParams) -> str:
         EMBED_CHUNK_SIZE = 100
         EMBED_TIMEOUT = timedelta(minutes=45)
 
-        plan_hashes = await workflow.execute_activity(
-            fetch_plan_hashes,
-            FetchPlanHashesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
-            start_to_close_timeout=timedelta(minutes=10),
-            heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=2),
-        )
+        if params.item_hashes:
+            plan_hashes = sorted(set(params.item_hashes))
+        else:
+            plan_hashes = await workflow.execute_activity(
+                fetch_plan_hashes,
+                FetchPlanHashesParams(collectionname=params.collectionname, collection_dataset=params.collection_dataset, plan_hash=params.plan_hash),
+                start_to_close_timeout=timedelta(minutes=10),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=2),
+            )
         chunks: list[ScheduledChunk] = []
         for chunk_start in range(0, len(plan_hashes), EMBED_CHUNK_SIZE):
             chunk_hashes = plan_hashes[chunk_start:chunk_start+EMBED_CHUNK_SIZE]
