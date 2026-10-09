@@ -143,7 +143,7 @@ def token_of(page):
     return paging._TOKENS.get(page.get("more")) if page.get("more") else None
 
 
-@pytest.mark.parametrize("name", ["doc_search_text", "pdf_search"])
+@pytest.mark.parametrize("name", ["doc_search_text", "pdf_search", "table_search_cells"])
 @pytest.mark.parametrize("count", [0, 3])
 def test_document_search_records_its_resolved_keyword_source(name, count, monkeypatch):
     tool = TOOLS[name]
@@ -152,12 +152,13 @@ def test_document_search_records_its_resolved_keyword_source(name, count, monkey
     monkeypatch.setattr("collection_search_server.paging.BackendClient.post",
                         lambda self, route, request, response_model, expected_source=None:
                         response_model.model_validate(response))
-    request = tool.model.model_validate({"collectionname": "c", "file_hash": "a" * 64, "query": "needle"})
+    request = tool.model.model_validate({"collectionname": "c", "file_hash": "a" * 64, "query": "needle",
+                                        **({"sheet": 0} if name == "table_search_cells" else {})})
     page = json.loads(tool.render(request, {}, ""))
     assert page.get("keyword_sources", []) == (["c/" + "a" * 16] if count else [])
 
 
-@pytest.mark.parametrize("name", ["doc_search_text", "pdf_search"])
+@pytest.mark.parametrize("name", ["doc_search_text", "pdf_search", "table_search_cells"])
 def test_document_search_keeps_one_source_through_continuation(name, monkeypatch):
     tool = TOOLS[name]
     response = {**deepcopy(SAMPLES[name]), "source": "fingerprint", "hit_count": 120, "total": 120}
@@ -167,7 +168,8 @@ def test_document_search_keeps_one_source_through_continuation(name, monkeypatch
     monkeypatch.setattr("collection_search_server.paging.BackendClient.post",
                         lambda self, route, request, response_model, expected_source=None:
                         response_model.model_validate(response))
-    request = tool.model.model_validate({"collectionname": "c", "file_hash": "a" * 64, "query": "needle"})
+    request = tool.model.model_validate({"collectionname": "c", "file_hash": "a" * 64, "query": "needle",
+                                        **({"sheet": 0} if name == "table_search_cells" else {})})
     pages = walk(json.loads(tool.render(request, {}, "")))
     assert len(pages) > 1
     assert sum(len(page.get("items", [])) for page in pages) == 120

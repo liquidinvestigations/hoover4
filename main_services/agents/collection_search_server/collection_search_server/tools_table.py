@@ -10,6 +10,7 @@ from agent_common.result_pages import canonical_json
 from collection_search_server.backend_client import AgentTableFilter, AgentTableSort, TablesCellRequest, TablesColumnValuesRequest, TablesOverviewRequest, TablesPageRequest, TablesSearchCellsRequest
 from collection_search_server import server
 from collection_search_server.paging import PagedTool
+from collection_search_server.tools_document import DocumentSearchTool
 from collection_search_server.server import mcp
 
 
@@ -17,7 +18,7 @@ TABLE_OVERVIEW = PagedTool(TablesOverviewRequest, "tables/overview", "table_over
 TABLE_PAGE = PagedTool(TablesPageRequest, "tables/page", "table_page", "table", "rows", "columns")
 TABLE_CELL = PagedTool(TablesCellRequest, "tables/cell", "table_cell", "blob", "text")
 TABLE_COLUMN_VALUES = PagedTool(TablesColumnValuesRequest, "tables/column_values", "table_column_values", "rows", "values")
-TABLE_SEARCH_CELLS = PagedTool(TablesSearchCellsRequest, "tables/search_cells", "table_search_cells", "rows", "hits")
+TABLE_SEARCH_CELLS = DocumentSearchTool(TablesSearchCellsRequest, "tables/search_cells", "table_search_cells", "rows", "hits")
 PAGED_TOOLS = {"table_overview": TABLE_OVERVIEW, "table_page": TABLE_PAGE, "table_cell": TABLE_CELL, "table_column_values": TABLE_COLUMN_VALUES, "table_search_cells": TABLE_SEARCH_CELLS}
 
 

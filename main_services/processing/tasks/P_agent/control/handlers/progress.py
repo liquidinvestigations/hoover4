@@ -9,7 +9,7 @@ from tasks.P_agent.control.handlers.absence import check_names, note_action
 from tasks.P_agent.control.model import API_VERSION, Action, CheckResult, PolicyResult, freeze, noul, plain
 
 SEARCH_TOOLS = {"search_collections", "search_passages", "web_search", "folder_search",
-                "search_facet_values", "search_histogram", "search_entity_explainer", "doc_search_text", "pdf_search"}
+                "search_facet_values", "search_histogram", "search_entity_explainer", "doc_search_text", "pdf_search", "table_search_cells"}
 SIGNALS = {
     "stuck": ("stuck_w3=", 0.9, 2, "In `steps`, do the searches return no results, or the same results again, step after step?"),
     "answered": ("answered_w4=", 0.3, 1, "Does a result in `steps` give the fact, the list or the count that `request` asks for, even if the agent has not written its answer yet?"),

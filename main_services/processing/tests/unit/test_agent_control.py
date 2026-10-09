@@ -855,7 +855,7 @@ def test_progress_escalation_resets_units_and_ends_after_six_steps():
     assert [a.kind for a in result.actions] == ["end_turn"]
 
 
-@pytest.mark.parametrize("name", ["doc_search_text", "pdf_search"])
+@pytest.mark.parametrize("name", ["doc_search_text", "pdf_search", "table_search_cells"])
 def test_document_keyword_match_resets_progress_once(name):
     from tasks.P_agent.control.facts import result_facts
     from tasks.P_agent.control.handlers.progress import Handler
@@ -870,6 +870,7 @@ def test_document_keyword_match_resets_progress_once(name):
     assert result.facts["units"] == 0 and result.facts["level"] == 1
     again = asyncio.run(Handler().evaluate(event, _progress_context(plain(result.facts), facts, 3), {"signals": False}, object()))
     assert len(again.facts["sources"]) == 1
+    assert again.facts["searches"][-1]["name"] == name
     assert again.facts["units"] == 1
 
 
