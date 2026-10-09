@@ -1003,3 +1003,30 @@ def test_empty_pinned_collections_do_not_restore_the_requested_scope(store, monk
                                    event, store["messages"][0])
     assert pinned["collections"] == []
     assert context.collections == ()
+
+
+@pytest.mark.parametrize("score", [0.1, 0.95])
+def test_unavailable_public_sources_do_not_request_document_searches(score):
+    from tasks.P_agent.control.handlers.preparation import Handler
+    from tasks.P_agent.control.model import ClassifierResult, ControlEvent
+    class Answers:
+        async def ask(self, state, questions, instructions=""):
+            return ClassifierResult("ok", freeze({"sources=": {
+                "choice": "documents", "probabilities": {"documents": 1.0}},
+                "web_only=": {"noul": score}}))
+        async def complete(self, prompt, max_tokens):
+            return ClassifierResult("unavailable")
+    result = asyncio.run(Handler().evaluate(
+        ControlEvent("start", "turn_started", 0, "runtime"), _progress_context(), {}, Answers()))
+    text = " ".join(a.arguments.get("text", "") for a in result.actions)
+    assert result.facts["requested_web_score"] == score
+    assert next(c for c in result.checks if c.target_id == "web_only").score == score
+    if score >= 0.9:
+        assert result.facts["sources"]["choice"] == "none"
+        assert "This deployment has no web access" in text
+        assert "Search the permitted document collections" not in text
+        assert "at least 4 distinct searches" not in text
+    else:
+        assert result.facts["sources"]["choice"] == "documents"
+        assert "Search the permitted document collections" in text
+        assert "web" not in text

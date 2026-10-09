@@ -183,6 +183,8 @@ The built-in definition has these rules:
   checks do not start a round.
 
 An absent-name note requires the person's choice before the agent searches a suggested spelling.
+Without web tools, preparation records whether the request asks for public sources, including past events.
+A public-source request gets the unavailable-access note without document-search guidance.
 
 ## Streaming a turn
 

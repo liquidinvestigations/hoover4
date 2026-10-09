@@ -122,7 +122,7 @@ class Handler:
             "instructions": "What type of work does the request need?"}
         if "web" not in context.capabilities:
             questions["web_only="] = {"type": "noul", "instructions":
-                "Does the request require only current public web information or opening a public website?"}
+                "Does the request ask for public information or a public website, without asking about stored documents? Include past events and public court decisions."}
         candidates = {}
         for name, setting in (parameters.get("skills") or {}).items():
             skill = context.listed_skills.get(name)
@@ -178,25 +178,30 @@ class Handler:
             effort = (asked.answers.get("effort=") or {}).get("choice", "research")
             facts["effort"] = effort
             facts["call_budget"] = {"fact": 10, "list": 20, "research": 40}.get(effort, 40)
+            web_only = noul(asked, "web_only=")
+            if "web_only=" in questions:
+                facts["requested_web_score"] = web_only
+                checks.append(CheckResult(event.id, "web_only", "pass" if web_only is not None else "unknown",
+                                          web_only, (), asked.status))
+            if "web" not in context.capabilities and web_only is not None and web_only >= 0.9:
+                facts["web_unavailable"] = True
+                facts["sources"] = {"choice": "none", "probabilities": {"none": 1.0}}
+                actions.append(Action("append_note", "web-unavailable", freeze({"text":
+                    "This deployment has no web access. Tell the person that this request needs web access."})))
             choice = (facts["sources"] or {}).get("choice")
             source_note = ""
             if choice in ("documents", "both"):
                 source_note = "Search the permitted document collections first. Read their relevant documents. "
                 if "web" in context.capabilities:
                     source_note += "Read those documents before using the web. "
-            actions.append(Action("append_note", "effort", freeze({"text":
-                source_note +
-                f"Use 3 to 10 calls for a fact, 10 to 20 for a list, count or comparison, and 20 to 40 for research. "
-                f"This request is classed as {effort}, with guidance of {facts['call_budget']} calls. "
-                "Cite at least 3 sources when available, or 1 for a single fact. Cite at most 10 sources. "
-                "Before an absence answer, run at least 4 distinct searches with 2 tools. "
-                "Search each name as a phrase, then as words and variants. Run one search without filters."})))
-            web_only = noul(asked, "web_only=")
-            if "web" not in context.capabilities and web_only is not None and web_only >= 0.9:
-                facts["web_unavailable"] = True
-                facts["sources"] = {"choice": "none", "probabilities": {"none": 1.0}}
-                actions.append(Action("append_note", "web-unavailable", freeze({"text":
-                    "This deployment has no web access. Tell the person that this request needs web access."})))
+            if not facts.get("web_unavailable"):
+                actions.append(Action("append_note", "effort", freeze({"text":
+                    source_note +
+                    f"Use 3 to 10 calls for a fact, 10 to 20 for a list, count or comparison, and 20 to 40 for research. "
+                    f"This request is classed as {effort}, with guidance of {facts['call_budget']} calls. "
+                    "Cite at least 3 sources when available, or 1 for a single fact. Cite at most 10 sources. "
+                    "Before an absence answer, run at least 4 distinct searches with 2 tools. "
+                    "Search each name as a phrase, then as words and variants. Run one search without filters."})))
             choice = (facts["sources"] or {}).get("choice")
             gates = parameters.get("source_skills") or {}
             picks = []
