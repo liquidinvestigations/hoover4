@@ -1037,6 +1037,52 @@ def test_a_cloud_provider_sends_temperature():
     assert env["LLM_SEND_TEMPERATURE"] == "true"
 
 
+def test_the_chat_classifier_is_the_structured_server_of_the_selfhosted_provider():
+    cfg = _config("llm-selfhosted-tier.ini")
+    cfg.values["ai_services"]["vllm_structured_port"] = "4321"
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        env = deploy.render_main_env(cfg)
+    assert env["CHAT_CLASSIFIER_URL"] == "http://127.0.0.1:4321"
+    cfg.values["llm_provider.selfhosted"]["base_url"] = "http://gpu.example.test:9/v1"
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        env = deploy.render_main_env(cfg)
+    assert env["CHAT_CLASSIFIER_URL"] == "http://gpu.example.test:4321"
+
+
+@pytest.mark.parametrize("fixture_name", ["llm-cloud.ini", "llm-selfhosted.ini", "provider-off.ini"])
+def test_no_hosted_or_absent_provider_gets_a_chat_classifier(fixture_name):
+    assert _env(fixture_name)["CHAT_CLASSIFIER_URL"] == ""
+
+
+def test_the_chat_control_folder_is_rendered_only_when_set(tmp_path):
+    env = _env("settings-defaults.ini")
+    assert "HOOVER4_CHAT_CONTROL_DIR" not in env and "HOOVER4_CHAT_CONTROL_DIR_HOST" not in env
+    cfg = _config("settings-defaults.ini")
+    cfg.values["main_services"]["chat_control_dir"] = str(tmp_path)
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        env = deploy.render_main_env(cfg)
+    assert env["HOOVER4_CHAT_CONTROL_DIR_HOST"] == str(tmp_path)
+    assert env["HOOVER4_CHAT_CONTROL_DIR"] == "/control"
+
+
+@pytest.mark.parametrize("value", ["relative/folder", "/no/such/folder"])
+def test_a_chat_control_folder_that_is_not_an_absolute_folder_is_refused(value):
+    cfg = _config("settings-defaults.ini")
+    cfg.values["main_services"]["chat_control_dir"] = value
+    with mock.patch.object(deploy, "fail", side_effect=SystemExit) as fail, \
+            mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        with pytest.raises(SystemExit):
+            deploy.render_main_env(cfg)
+    assert "chat_control_dir" in fail.call_args.args[0]
+
+
+def test_the_worker_receives_the_chat_classifier_and_the_control_folder():
+    worker = dict(_compose_documents())["docker-compose.yaml"]["services"]["hoover4-worker"]
+    assert "CHAT_CLASSIFIER_URL=${CHAT_CLASSIFIER_URL:-}" in worker["environment"]
+    assert "HOOVER4_CHAT_CONTROL_DIR=${HOOVER4_CHAT_CONTROL_DIR:-}" in worker["environment"]
+    assert "${HOOVER4_CHAT_CONTROL_DIR_HOST:-/dev/null}:/control:ro" in worker["volumes"]
+
+
 @pytest.mark.parametrize("template_name", ["hoover4.ini.development", "hoover4.ini.release"])
 def test_the_templates_carry_the_slots_and_the_provider_temperature_rule(template_name):
     cfg = deploy.Config(REPO_ROOT / template_name)

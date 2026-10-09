@@ -570,6 +570,7 @@ pub fn router() -> axum::Router {
     axum::Router::new()
         .route("/api/agent/v1/collections/list", axum::routing::post(collections_list))
         .route("/api/agent/v1/search/results", axum::routing::post(search_results))
+        .route("/api/agent/v1/search/suggestions", axum::routing::post(search_suggestions_handler))
         .route("/api/agent/v1/search/facet_values", axum::routing::post(search_facet_values))
         .route("/api/agent/v1/search/histogram", axum::routing::post(search_date_histogram_handler))
         .route(

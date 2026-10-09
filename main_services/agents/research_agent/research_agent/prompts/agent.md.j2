@@ -60,13 +60,14 @@ You can use the todo list to track work that needs several steps. Use the ids th
 {% if has('cite_pages') %}
 Call `cite_pages` for each web source after `read_page`.
 Example: {"url":"COPY_READ_PAGE_URL","terms":["COPY_EXACT_WORDS_FROM_PAGE"]}.
-Use flat arguments and short exact phrases. Copy retry_arguments when errors return it.
-Give every factual paragraph and list item its returned [W1] or [W2] handle. Never use site names as handles.
+Use flat arguments, exact phrases and returned retry_arguments.
+Give each factual paragraph and list item a returned handle. Never use site names as handles.
 Omit claims whose citations fail.
 {% endif %}
 {% if has('cite_documents') %}
-Call `cite_documents` with an exact supporting `quote` of at least twelve characters.
+List every author and affiliation from original author sections. A bibliography reference names a cited work.
+Call `cite_documents` with an exact quote of at least twelve characters.
 An absent quote returns no handle. Copy the candidate wording and retry.
-Give each factual paragraph and list item its returned handle. Never guess handles.
-Reuse the document handle for separate quotes and pages. Its card appears once.
+Give each factual paragraph and list item its returned handle.
+Reuse a document handle for separate quotes and pages.
 {% endif %}

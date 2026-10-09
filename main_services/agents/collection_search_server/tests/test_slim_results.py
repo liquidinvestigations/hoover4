@@ -125,7 +125,8 @@ def test_an_empty_query_alone_is_one_route_search(monkeypatch):
 def test_an_empty_search_is_an_empty_items_list(monkeypatch):
     Store(monkeypatch)
     route(monkeypatch, lambda form: [])
-    assert tools_search.search_collections.fn(query="Raptor") == '{"items":[]}'
+    assert json.loads(tools_search.search_collections.fn(query="Raptor")) == {
+        "items": [], "query_forms": [{"query": "Raptor", "total_count": 0, "word_counts": []}]}
 
 
 def test_a_search_row_has_the_slim_keys(monkeypatch):
@@ -137,8 +138,10 @@ def test_a_search_row_has_the_slim_keys(monkeypatch):
     page = json.loads(text)
     assert page == {"items": [{"collectionname": "c", "date": "2001-05-14", "file_hash": row["file_hash"][:16],
                                "path": "/maildir/kean-s/sent/12.", "snippet": "…the **Raptor** approval…",
-                               "title": "Raptor approval", "type": "email"}],
-                    "notes": ["'Raptor': 40 found, first 15 shown"]}
+                               "title": "Raptor approval", "type": "email", "size": 1}],
+                    "notes": ["'Raptor': 40 found, first 15 shown"],
+                    "keyword_sources": ["c/" + row["file_hash"][:16]],
+                    "query_forms": [{"query": "Raptor", "total_count": 40, "word_counts": []}]}
     assert is_canonical_page(text)
 
 
@@ -148,6 +151,15 @@ def test_a_page_with_no_next_page_has_no_more_and_writes_nothing(monkeypatch):
     text = tools_search.search_collections.fn(query="x")
     assert "more" not in json.loads(paging.finish(text))
     assert store.bodies == {}
+
+
+@pytest.mark.parametrize("size", [0, 2681358, None])
+def test_search_rows_preserve_known_sizes_and_omit_unknown_sizes(monkeypatch, size):
+    Store(monkeypatch)
+    route(monkeypatch, lambda form: [document(0, size=size)])
+    row = json.loads(tools_search.search_collections.fn(query="pdf"))["items"][0]
+    assert row.get("size") == size
+    assert ("size" in row) is (size is not None)
 
 
 def test_a_handle_reads_the_next_page(monkeypatch):

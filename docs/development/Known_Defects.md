@@ -204,3 +204,11 @@ No code is involved. Recorded here so the fact is not rediscovered.
 
 The ceiling itself is a decision. The missing offset under it, which stops a caller from
 reaching results past the first batch, is tracked above under Search and interface.
+
+## Full-text operator limitations
+
+`REGEX(...)` loses its slashes during query preparation. `SENTENCE` and `PARAGRAPH` run as ordinary AND searches.
+`ZONE` returns no matches. `ZONESPAN` requires the same absent zone setting, but its behavior has not been measured.
+`=word` has no effect without indexed word forms. Every product `@` is escaped, so field operators are unavailable.
+CJK text is not indexed. Addresses split into words. The product does not use automatic fuzzy search.
+Spelling suggestions require explicit selection and retain the original search filters.

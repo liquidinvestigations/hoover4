@@ -109,9 +109,11 @@ impl ChatRole {
     }
 }
 
-/// The `tool_name` of the `Nag` row of a citation repair round. The worker writes it as
-/// `CITATION_NOTE_NAME` in `main_services/processing/tasks/P_agent/steps.py`. An answer
-/// before this row is replaced when the round writes a later answer with text.
+/// The `tool_name` of the `Nag` row of a repair round of an answer draft. The row holds the
+/// one correction note of the round: citation findings and the findings of the answer
+/// checks. The worker writes it as `CITATION_NOTE_NAME` in
+/// `main_services/processing/tasks/P_agent/steps.py`. An answer before this row is replaced
+/// when the round writes a later answer with text.
 pub const CITATION_NOTE_NAME: &str = "citation_check";
 
 /// One document a tool step surfaced. Enough to render a search-result card and open
@@ -320,6 +322,23 @@ impl ChatMessageItem {
         let prompts = value.get("follow_up_prompts").and_then(|value| value.as_array())
             .map(|items| items.iter().filter_map(|item| item.as_str().map(str::to_string)).collect::<Vec<_>>()).unwrap_or_default();
         if prompts.len() == 3 && prompts.iter().all(|prompt| !prompt.trim().is_empty()) { prompts } else { Vec::new() }
+    }
+
+    /// The label of a tool row that the model did not request in its own reply: a call that a
+    /// chat check started (`origin` `policy`), or a call that repeats an identical call of
+    /// the same reply and shows that call's result (`shared_from`).
+    pub fn call_origin_label(&self) -> Option<&'static str> {
+        if self.role != ChatRole::Tool {
+            return None;
+        }
+        let usage: serde_json::Value = serde_json::from_str(&self.usage_json).ok()?;
+        if usage.get("origin").and_then(|v| v.as_str()) == Some("policy") {
+            Some("A chat check started this call.")
+        } else if usage.get("shared_from").and_then(|v| v.as_str()).is_some_and(|v| !v.is_empty()) {
+            Some("This call repeats an identical call of the same step and shows its result.")
+        } else {
+            None
+        }
     }
 
     /// Return the stored citation status and available tools below an answer.
@@ -1236,6 +1255,19 @@ mod tests {
         row.streaming = false;
         row.role = ChatRole::Tool;
         assert!(row.answer_status_line().is_none());
+    }
+
+    #[test]
+    fn a_policy_call_and_a_shared_call_get_an_origin_label() {
+        let mut row = counted(0, 0, 0);
+        row.role = ChatRole::Tool;
+        assert!(row.call_origin_label().is_none());
+        row.usage_json = r#"{"origin":"policy"}"#.into();
+        assert_eq!(row.call_origin_label(), Some("A chat check started this call."));
+        row.usage_json = r#"{"origin":"model","shared_from":"call-1-0"}"#.into();
+        assert!(row.call_origin_label().unwrap().starts_with("This call repeats"));
+        row.role = ChatRole::Assistant;
+        assert!(row.call_origin_label().is_none());
     }
 
     #[test]

@@ -40,6 +40,7 @@ The lookup uses the caller, chat session, and run.
 The internal `_page_tool_result` tool stores complete runtime results under stable run and call identities.
 The agent excludes this tool from its model catalogue.
 Verified citations name their text source and 1-based page.
+Search rows give known file size in bytes. An unknown size is absent.
 Search pages hold at most 15 rows per query form. `read_more` reads the next 15 rows of a form.
 The page also carries document references for the transcript.
 Row and tree pages keep other response fields in `fields`. Folder items carry their

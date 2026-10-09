@@ -64,3 +64,25 @@ def test_every_text_shape_stores_and_reads_back_unchanged(probe_table):
 
     for row_id, name in ids.items():
         assert stored.get(row_id) == CASES[name], name
+
+
+@pytest.mark.parametrize("expression", [
+    '"(test | sample) document"',
+    '"(test | sample) document"~10',
+    'test NOTNEAR/5 zzzzzzzzz',
+])
+def test_testdata_supports_repaired_match_operators(expression):
+    with get_manticore_client() as cnx:
+        cursor = cnx.cursor()
+        cursor.execute("SELECT COUNT(*) FROM testdata_1_pages WHERE MATCH(%s)", (expression,))
+        assert cursor.fetchone()[0] > 0
+
+
+def test_testdata_dictionary_counts_check_suggestions():
+    with get_manticore_client() as cnx:
+        cursor = cnx.cursor(dictionary=True)
+        cursor.execute("CALL QSUGGEST('documemt', 'testdata_1_pages', 10 AS limit)")
+        candidates = {row["suggest"] for row in cursor.fetchall() if int(row["distance"]) <= 2}
+        assert "document" in candidates
+        cursor.execute("CALL KEYWORDS('document', 'testdata_1_pages', 1 AS stats)")
+        assert int(cursor.fetchone()["docs"]) > 0

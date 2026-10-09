@@ -250,6 +250,39 @@ def web_citations(name: str, username: str, shared_versions: bool = False) -> di
     ], "artifacts": stored}
 
 
+def policy(_name: str, _username: str) -> dict:
+    """A turn with the rows that the worker's chat checks write: a skill read and a page read
+    that a check started, a search that repeats an identical search of the same reply, and
+    the note of a check. The two kinds of row carry `origin` and `shared_from` in
+    `usage_json`, as `steps._write_tool_result` writes them."""
+    queries = ["ADB-BUTINACA court case Germany"]
+    results = {"success": True, "queries": queries, "results": [
+        {"title": "Court ruling on synthetic cannabinoids", "q": [0],
+         "url": "https://example.org/ruling", "display_url": "example.org/ruling",
+         "snippet": "The regional court ruled on the trade in ADB-BUTINACA.",
+         "sources": ["brave"]}], "error": None}
+    read = {"pages": [{"url": "https://example.org/ruling", "status": "ok",
+                       "title": "Court ruling on synthetic cannabinoids",
+                       "text": "The regional court ruled on the trade in ADB-BUTINACA."}]}
+    skill_row = tool("read_skill", {"name": "web_research"}, "Skill `web_research`.\n\nThe method.")
+    skill_row["usage_json"] = {"origin": "policy"}
+    shared_row = tool("web_search", {"queries": queries},
+                      "This call repeats call call-1-0 of the same reply. Its result is above.")
+    shared_row["usage_json"] = {"origin": "model", "shared_from": "call-1-0"}
+    page_row = tool("read_page", {"urls": ["https://example.org/ruling"]}, read)
+    page_row["usage_json"] = {"origin": "policy"}
+    return {"title": "Browser fixture: chat checks", "internet": True, "rows": [
+        user("List court cases in Germany about ADB-BUTINACA."),
+        skill_row,
+        tool("web_search", {"queries": queries}, results),
+        shared_row,
+        page_row,
+        {"role": "nag", "tool_name": "control_note",
+         "content": "You read one page while other search results are unread."},
+        answer("One regional court ruled on the trade in ADB-BUTINACA."),
+    ]}
+
+
 def compaction(_name: str, _username: str) -> dict:
     record = ("[Summary of earlier steps. Code wrote the lists of searches, documents, pages, "
               "continuations and citation labels. A model wrote the rest from the steps it "
@@ -296,6 +329,7 @@ FIXTURES = {
     "web_versions": lambda name, username: web_citations(name, username, shared_versions=True),
     "compaction": compaction,
     "question": question,
+    "policy": policy,
 }
 
 
@@ -321,7 +355,7 @@ def write_fixture(client, name: str, username: str, now: datetime) -> str:
             row.get("usage", {}).get("context_window", 0),
             json.dumps({"citation_status": "cited" if any(handle in row.get("content", "") for handle in ("[D1]", "[W1]")) else "none",
                         "tool_scope": "documents_and_web" if spec.get("internet") else "documents_only", **row.get("usage", {})})
-            if row["role"] == "assistant" else "{}",
+            if row["role"] == "assistant" else json.dumps(row.get("usage_json") or {}),
         ])
     insert_durable(client, "chat_messages", rows, column_names=[
         "session_id", "username", "seq", "role", "content", "tool_name", "tool_input",

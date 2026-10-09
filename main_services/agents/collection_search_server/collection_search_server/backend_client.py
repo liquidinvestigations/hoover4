@@ -591,7 +591,27 @@ class CollectionsListResponse(AgentModel):
     source: str
 
 
+class WordCount(AgentModel):
+    word: str
+    folded: str
+    documents: int
+
+
+class SpellingCandidate(AgentModel):
+    word: str
+    distance: int
+    documents: int
+
+
+class WordSuggestions(AgentModel):
+    word: str
+    candidates: list[SpellingCandidate]
+
+
 class SearchResultsResponse(AgentModel):
+    word_counts: list[WordCount] = Field(default_factory=list)
+    suggestions: list[WordSuggestions] = Field(default_factory=list)
+    suggestions_partial: bool = False
     documents: list[SearchDocument]
     total_count: int
     facet_counts: dict[str, list[FacetCount]]

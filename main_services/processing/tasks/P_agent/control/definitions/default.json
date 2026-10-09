@@ -1,0 +1,184 @@
+{
+  "id": "chat-default",
+  "schema_version": 1,
+  "profile": "*",
+  "description": "Preparation, result-triggered skills, discovery notes, automatic web reads, capture checks and the combined answer review.",
+  "limits": {
+    "repair_rounds": 2,
+    "preparation_seconds": 15,
+    "batch_seconds": 10,
+    "answer_seconds": 60,
+    "preparation_skill_loads": 3,
+    "discovery_notes": 1
+  },
+  "rules": [
+    {
+      "id": "prepare",
+      "hook": "turn_started",
+      "handler": "preparation",
+      "priority": 10,
+      "frequency": "turn",
+      "parameters": {
+        "max_loads": 3,
+        "skills": {
+          "web_research": {
+            "threshold": 0.5
+          },
+          "browser_use": {
+            "threshold": 0.5
+          },
+          "emails": {
+            "threshold": 0.5
+          },
+          "spreadsheets": {
+            "threshold": 0.9
+          },
+          "folders_and_files": {
+            "threshold": 0.9
+          },
+          "passages": {
+            "threshold": 0.9
+          },
+          "entities": {
+            "threshold": 0.9
+          }
+        },
+        "source_skills": {
+          "web_research": [
+            "web",
+            "both"
+          ],
+          "browser_use": [
+            "browser",
+            "web",
+            "both"
+          ]
+        },
+        "flags": {
+          "count": "Does the request ask for a specific number of items, such as 5 cases or the 10 largest?",
+          "ranking": "Does the request ask for the biggest, largest, most important or another superlative?",
+          "period": "Does the request restrict the answer to a date, a year or a period?",
+          "source_restriction": "Does the request restrict which collection, address or kind of source the agent may use?",
+          "quote": "Does the request ask for quotes, citations, or to see the documents themselves?",
+          "sort": "Does the request ask for the items in a specific order?",
+          "compare": "Does the request ask to compare sources, drafts or accounts?"
+        },
+        "requirements": true
+      }
+    },
+    {
+      "id": "result-skills",
+      "hook": "tool_batch_completed",
+      "handler": "result_skills",
+      "priority": 20,
+      "frequency": "visible_revision",
+      "parameters": {
+        "objects": {
+          "spreadsheets": [
+            "table"
+          ],
+          "emails": [
+            "email"
+          ]
+        },
+        "events": {
+          "citation": "first_read"
+        }
+      }
+    },
+    {
+      "id": "web-reads",
+      "hook": "tool_batch_completed",
+      "handler": "web_reads",
+      "priority": 30,
+      "frequency": "event",
+      "parameters": {
+        "mode": "rank",
+        "max_urls": 6,
+        "pool": 10
+      },
+      "requires_tools": [
+        "read_page"
+      ]
+    },
+    {
+      "id": "capture",
+      "hook": "tool_batch_completed",
+      "handler": "capture_check",
+      "priority": 40,
+      "frequency": "event",
+      "parameters": {
+        "max_body_chars": 2500,
+        "facts_below": 0.05,
+        "boilerplate_above": 0.95,
+        "not_found_above": 0.95
+      },
+      "requires_tools": [
+        "read_page"
+      ]
+    },
+    {
+      "id": "l4",
+      "hook": "tool_batch_completed",
+      "handler": "discovery",
+      "priority": 50,
+      "frequency": "turn",
+      "parameters": {
+        "min_unread": 2
+      },
+      "requires_tools": [
+        "read_page"
+      ]
+    },
+    {
+      "id": "l3",
+      "hook": "answer_drafted",
+      "handler": "discovery",
+      "priority": 10,
+      "frequency": "turn",
+      "parameters": {
+        "requires_reads": [
+          "documents",
+          "web",
+          "both"
+        ]
+      }
+    },
+    {
+      "id": "review",
+      "hook": "answer_drafted",
+      "handler": "answer_review",
+      "priority": 20,
+      "frequency": "event",
+      "parameters": {
+        "markers": {
+          "enabled": true,
+          "repair": true
+        },
+        "supported": {
+          "threshold": 0.05,
+          "repair": false
+        },
+        "names": {
+          "repair": false
+        },
+        "requirements": {
+          "threshold": 0.05,
+          "repair": false
+        }
+      }
+    },
+    {
+      "id": "progress",
+      "hook": "tool_batch_completed",
+      "handler": "progress",
+      "priority": 60,
+      "frequency": "event",
+      "parameters": {
+        "units_per_level": 3,
+        "steps_after_strongest": 6,
+        "signals": true
+      }
+    }
+  ]
+}

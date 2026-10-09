@@ -10,6 +10,10 @@ Each skill is one file, `skills/<name>.md.j2`. The file starts with front matter
 * `tools` is a comma list of tool names that a pack of `agent_common.tool_packs` holds, or
   empty. A skill is listed in a run when the list is empty or one of its names is a tool of
   the run.
+* `terms` and `not_for` are optional. `terms` lists the words that requests use for the
+  method, and `not_for` names the requests that look similar and do not need it. The
+  worker's preparation question reads them with the description. The system prompt lists
+  the description only.
 
 The role skill of a profile is not listed. The system prompt holds its text
 (`role_method`), so every run of the profile reads it before its first call, and no run reads
@@ -71,6 +75,8 @@ class Skill:
     description: str
     tools: Tuple[str, ...]
     body: str  # the Jinja source after the front matter
+    terms: str = ""
+    not_for: str = ""
 
 
 @dataclass(frozen=True)
@@ -114,7 +120,8 @@ def _parse(path: Path) -> Skill:
     unknown = [t for t in tools if pack_of(t) is None]
     if unknown:
         raise UnboundToolError(f"{path.name}: no pack holds the tools {unknown}")
-    return Skill(name, group, description, tools, "\n".join(lines[end + 1:]))
+    return Skill(name, group, description, tools, "\n".join(lines[end + 1:]),
+                 terms=fields.get("terms", ""), not_for=fields.get("not_for", ""))
 
 
 def load_skills(directory: Path = SKILL_DIR) -> Dict[str, Skill]:

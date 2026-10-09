@@ -272,6 +272,25 @@ pub async fn manticore_raw_sql(base: &str, sql: &str) -> anyhow::Result<Vec<Mant
         .map_err(|e| e.context(format!("Manticore answered {status} to {sql:?}")))
 }
 
+/// Cache dictionary calls under the collection's shard generation and a short deadline.
+pub async fn manticore_dictionary_sql(sql: String, salt: &str) -> anyhow::Result<Vec<ManticoreRawRow>> {
+    tokio::time::timeout(Duration::from_millis(200), async {
+        let hash = sha256::digest(format!("dictionary-v1:{salt}\n{sql}"));
+        if let Ok(cached) = get_cached_response(&hash, &sql).await {
+            if let Ok(rows) = serde_json::from_str(&cached) {
+                return Ok(rows);
+            }
+        }
+        let base = std::env::var("MANTICORE_URL")?;
+        let rows = manticore_raw_sql(&base, &sql).await?;
+        let body = serde_json::to_string(&rows)?;
+        let _ = get_global_client().with_option("async_insert", "0")
+            .query("INSERT INTO search_manticore_cache (query_hash, query_string, result_json, duration_ms) VALUES (?, ?, ?, 0)")
+            .bind(&hash).bind(&sql).bind(&body).execute().await;
+        Ok(rows)
+    }).await.map_err(|_| anyhow::anyhow!("The dictionary call exceeded its time limit."))?
+}
+
 /// The rows of the first result of a raw-mode body, or its error.
 ///
 /// Manticore answers a refused statement with one object, `{"error": "..."}`, and a

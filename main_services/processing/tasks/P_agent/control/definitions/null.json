@@ -1,0 +1,7 @@
+{
+  "id": "chat-null",
+  "schema_version": 1,
+  "profile": "*",
+  "description": "No rule. A run keeps the loop and the citation rounds, and records its snapshot and decisions.",
+  "rules": []
+}

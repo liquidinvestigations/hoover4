@@ -711,7 +711,7 @@ async def run_chat_worker():
   stay separate so a long model call cannot hold a write slot or a tool slot.
 
   `chat-queue` carries `AgentRun` and its short activities (open, ending, step failure,
-  citation check, notes, title).
+  policy hooks, notes, title).
   `chat-model-queue` carries `model_step` and follow-up generation.
   `agent-tool-queue` carries `tool_call` for every run. A slot is one model call or one
   tool call in flight, not one agent run.
@@ -726,9 +726,10 @@ async def run_chat_worker():
       summarize_if_first_turn,
       write_ending,
   )
+  from .P_agent.control import registry as control_registry
+  from .P_agent.control_steps import control_event
   from .P_agent.followups import write_followups
   from .P_agent.steps import (
-      check_citations,
       model_step,
       record_step_failure,
       tool_call,
@@ -744,6 +745,8 @@ async def run_chat_worker():
   )
   from .visibility import ensure_search_attributes
   log.info("Starting Chat worker...")
+  # A missing or invalid policy handler stops the worker here, before it takes a turn.
+  log.info("chat control handlers: %s", ", ".join(sorted(control_registry.load())))
   client = await Client.connect("temporal:7233")
   await ensure_search_attributes(client)
   # An empty key yields 3, 8 and 16. The ini sets 3, 4 and 16.
@@ -763,7 +766,7 @@ async def run_chat_worker():
         workflows=[AgentRun],
         activities=[
             open_run, write_ending, summarize_if_first_turn,
-            record_step_failure, check_citations,
+            record_step_failure, control_event,
             write_empty_note, write_asked_answer, write_incomplete,
         ],
         activity_executor=activity_executor,

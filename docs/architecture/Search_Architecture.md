@@ -394,3 +394,24 @@ An infix query with fewer than three characters receives an explanation.
 Grouped results use the greatest matching page score for relevance order.
 The selected snippet can come from another matching page with a preferred parsed source.
 The shard query and cross-shard merge use the same document score.
+
+## Text settings and spelling suggestions
+
+Page tables set `min_infix_len` to 3. Morphology, sentence indexing, zones, blended characters and CJK tokenization remain unset.
+Word forms therefore require explicit alternatives. Sentence and paragraph operators provide no sentence boundary restriction.
+Zones cannot match, and CJK text is not indexed. Addresses split into words.
+Changing these settings requires rebuilding all affected text indexes from stored page text.
+The Rust and Python query builders preserve balanced alternatives inside phrases, proximity and quorum expressions.
+They preserve `NOTNEAR` distances and repair stray slash and tilde characters. Address escaping keeps its existing behavior.
+
+Suggestions extract positive alphabetic words with at least three letters. They omit operators, exclusions, digits and wildcard terms.
+One `CALL KEYWORDS` request per table maps query positions to folded words and document counts.
+Words with at most five documents get one `CALL QSUGGEST` request per table.
+Candidate counts come from another `CALL KEYWORDS` request. `QSUGGEST` counts are unreliable and are never used.
+Candidates need distance one or two. A rare word needs a candidate with twenty times its count.
+The agent permits any positive candidate count. The search page requires ten documents and seven letters for distance two.
+The response ranks four candidates per word by distance and checked count.
+Each dictionary call has a 200 ms limit. Failed tables cause a partial response.
+Dictionary responses use the search cache with the collection shard generation.
+The search page verifies at most six candidate queries with unchanged filters within two seconds.
+Suggestions never change the original query automatically.

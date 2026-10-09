@@ -273,6 +273,14 @@ refuse when the key is off.
 provider is enabled (see [`[llm_provider.*]`](#llm_provider)). With no provider, `deploy.py`
 selects no research-agent overlay and removes the agent containers of an earlier deploy.
 
+The chat policy checks of the worker ask the structured server of the selfhosted provider,
+at the host of its `base_url` and `[ai_services] vllm_structured_port`. `deploy.py` renders
+`CHAT_CLASSIFIER_URL` only when the selfhosted provider is active. With another provider the
+value is empty, every check question is unavailable, and the turns run without the answers.
+`chat_control_dir` names an absolute host folder with custom policy handlers and
+definitions. The worker mounts it read-only. Empty means the built-in handlers and
+definitions only.
+
 **More workers is rarely the answer to a slow pipeline.** The workflow engine serialises
 decisions within one execution, so a fan-out driven from a single parent is a latency ceiling
 that no fleet size moves: `.agents/skills/tuning-the-pipeline/` has the measurement that
@@ -443,7 +451,7 @@ is the map back to the group above that explains it.
 - `gpu_fallback`, `gpu_connect_timeout_ms`, `gpu_circuit_break_seconds`, `serena_enabled`
 - `serena_port`, `development_auth_backdoor_enabled`, `proxy_username`, `proxy_groups`
 - `testdata_dir`, `datasets_mount_path`
-- `mcp_shared_secret_file`, `website_bind_ip`, `infra_bind_ip`, `clickhouse_http_port`
+- `mcp_shared_secret_file`, `chat_control_dir`, `website_bind_ip`, `infra_bind_ip`, `clickhouse_http_port`
 - `clickhouse_native_port`, `manticore_sql_port`, `manticore_http_port`, `manticore_vectors_sql_port`, `manticore_vectors_http_port`, `garage_s3_port`
 - `garage_admin_port`, `redis_port`, `temporal_grpc_port`, `temporal_http_port`
 - `temporal_ui_port`, `clickhouse_monitoring_port`, `ch_ui_port`, `cassandra_port`

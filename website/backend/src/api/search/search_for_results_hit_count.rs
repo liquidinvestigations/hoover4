@@ -23,6 +23,11 @@ pub struct SearchForResultsHitCountResponse {
 /// bound instead.
 pub async fn search_for_results_hit_count(user: &CurrentUser, query: SearchQuery) -> anyhow::Result<SearchResultHitCount> {
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_SEARCH, "");
+    search_hit_count(user, query).await
+}
+
+/// Read a count without adding another user-search event.
+pub(crate) async fn search_hit_count(user: &CurrentUser, query: SearchQuery) -> anyhow::Result<SearchResultHitCount> {
     let perms = permissions::resolve_permissions(user).await?;
     let Some(query) = permissions::sanitize_query(query, &perms) else {
         return Ok(SearchResultHitCount { total: 0, partial: false });

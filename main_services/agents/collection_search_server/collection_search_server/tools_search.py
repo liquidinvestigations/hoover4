@@ -90,7 +90,10 @@ def _search_passages(request: SearchPassagesRequest) -> dict[str, Any]:
                "snippet": hit.snippet}
         rows.append({key: value for key, value in row.items() if value not in (None, "", [])} | {"snippet": hit.snippet})
         refs.append(paging.doc_ref(hit.model_dump(mode="json"), page_id=hit.page_id, snippet=hit.snippet))
-    return {"results": rows, "notes": [response.note] if response.note else [], paging.REFS_KEY: refs}
+    keyword_sources = [f"{h.collectionname}/{paging.hash_start(h.file_hash)}" for h in response.results
+                       if "keyword" in h.match_sources]
+    return {"results": rows, "keyword_sources": keyword_sources,
+            "notes": [response.note] if response.note else [], paging.REFS_KEY: refs}
 
 
 class SearchCollectionsRequest(SearchResultsRequest):
@@ -170,6 +173,7 @@ def search_row(document: dict[str, Any], forms: list[int] | None, words: list[st
         "path": path,
         "title": title if title and title not in path else None,
         "type": document.get("canonical_file_type") or None,
+        "size": document.get("size"),
         "date": _search_date(document.get("document_date")),
         "q": forms or None,
         "snippet": server.centred_snippet(document.get("snippet") or "", server.SNIPPET_CHARS, words),
@@ -196,6 +200,9 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
     found: dict[tuple[str, str], tuple[dict[str, Any], list[int]]] = {}
     partial = False
     succeeded = 0
+    word_counts, suggestions, query_forms = [], [], []
+    keyword_sources = set()
+    suggestions_partial = False
     following: list[dict[str, Any]] = []
     for number, form in enumerate(forms):
         result = BackendClient().post("search/results", _route_request(request, form), SearchResultsResponse)
@@ -203,6 +210,21 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
             notes.append(f"the query {form!r} failed: {result.message}")
             continue
         succeeded += 1
+        suggestions_partial |= result.suggestions_partial
+        word_counts.extend({**w.model_dump(), "query": form} for w in result.word_counts)
+        suggestions.extend({**g.model_dump(), "query": form} for g in result.suggestions)
+        query_forms.append({"query": form, "total_count": result.total_count,
+                            "word_counts": [w.model_dump() for w in result.word_counts]})
+        for word in result.word_counts:
+            if word.documents != 0:
+                continue
+            group = next((g for g in result.suggestions if g.word == word.word), None)
+            nearby = ", ".join(f"`{c.word}` ({c.documents} documents)" for c in group.candidates) if group else "none"
+            prefix = (f"The available tables returned no document containing `{word.word}`. "
+                      if result.suggestions_partial else f"No document contains `{word.word}`. ")
+            notes.append(f"The query {form!r}: " + prefix + f"Indexed words close to it: {nearby}. "
+                         "Search one of them only if it is the name you mean. "
+                         "Otherwise report that the collections do not hold it, or ask the person.")
         partial |= result.partial
         notes.extend(f"the query {form!r}: {note}" for note in result.query_notes)
         if len(result.documents) > server.ROWS_PER_FORM:
@@ -215,6 +237,8 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
             notes.append(f"{form!r}: {result.total_count} found, first {server.ROWS_PER_FORM} shown")
         for document in result.documents[:server.ROWS_PER_FORM]:
             key = (document.collectionname, document.file_hash)
+            if form.strip():
+                keyword_sources.add(f"{document.collectionname}/{paging.hash_start(document.file_hash)}")
             _, numbers = found.setdefault(key, (document.model_dump(mode="json"), []))
             numbers.append(number)
     if not succeeded:
@@ -228,6 +252,9 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
         rows.append(row)
         refs.append(paging.doc_ref(document, snippet=row["snippet"]))
     return {"documents": rows, "query_notes": notes, "partial": partial,
+            "word_counts": word_counts, "suggestions": suggestions,
+            "suggestions_partial": suggestions_partial, "query_forms": query_forms,
+            "keyword_sources": sorted(keyword_sources),
             "__following": {"_forms": following} if following else None, paging.REFS_KEY: refs}
 
 
@@ -338,8 +365,18 @@ Query rules:
 - OR, AND and NOT are ordinary words. Use | and -word. The search reads OR as | and NOT x as -x, and says so in query_notes.
 - from: and to: are not fields. The search drops them, keeps the word after them, and says so in query_notes.
 - An email address works as typed.
+- Proximity finds nearby words: "water pollution"~10
+- Quorum requires some words: "water pollution plant"/2
+- An alternative works inside a phrase, proximity or quorum: "(water | sewage) plant"
+- NOTNEAR excludes nearby words: water NOTNEAR/5 testing
+- ? matches one character: dasovi?h
+- % matches zero or one character: dasovic%
+- << requires word order: skilling << resigned
+- Word forms do not match automatically. Use contract | contracts or contract*.
+- word_counts gives the folded word and its checked document count over the searched tables.
+- suggestions gives indexed close words with checked counts. Use one only for the intended name.
 
-Each row gives file_hash, path and collectionname. Copy file_hash from a row to read_documents. Never write a hash yourself. When the result has more, give that value to read_more to get the other rows.
+Each row gives file_hash, path, collectionname and known size in bytes. Copy file_hash from a row to read_documents. Never write a hash yourself. When the result has more, give that value to read_more to get the other rows.
 
 Use facet_filters with value text or term ids. An empty query lists every filter match. The result reports each applied filter and unknown value. Dates are epoch seconds. size_min and size_max are in bytes. For PDFs by size, use file_types: ["pdf"] and sort by file_size. For email between two people, use email_from and email_to with their addresses. For a location, use ner_loc: ["Chicago"]. language accepts a code or English name. red_flags accepts a category identifier or title."""
 

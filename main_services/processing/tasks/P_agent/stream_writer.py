@@ -485,11 +485,20 @@ class ToolCallWriter(ResearchStreamWriter):
                          tool_call_index=self.index)
 
 
+def starts_round(message) -> bool:
+    """Whether a thread message starts a round: a `human` message other than a note that
+    a policy hook wrote between two model steps of one round."""
+    control = message.usage.get("control") if message.role == "human" else None
+    return message.role == "human" and not (isinstance(control, dict)
+                                            and control.get("kind") == "batch_note")
+
+
 def round_view(messages) -> tuple[str, str, bool]:
     """The plan-first prose, the reasoning and the opening state of the current round.
 
-    The round starts after the last `human` message. No step keeps state, so each step derives these from the stored `ai` messages
-    of the round:
+    The round starts after the last `human` message that starts a round (`starts_round`).
+    No step keeps state, so each step derives these from the stored `ai` messages of the
+    round. A policy batch is not a reply of the model, so it changes none of them:
 
     * the opening holds while every call so far is in `PLAN_FIRST_TOOLS`, and only in the
       round that the first `human` message of the thread opens. A round that a note opens
@@ -500,11 +509,11 @@ def round_view(messages) -> tuple[str, str, bool]:
 
     Returns `(plan_prose, reasoning, in_opening)`.
     """
-    humans = [i for i, m in enumerate(messages) if m.role == "human"]
+    humans = [i for i, m in enumerate(messages) if starts_round(m)]
     start = humans[-1] + 1 if humans else 0
     plan, reasoning, in_opening = [], [], len(humans) <= 1
     for message in messages[start:]:
-        if message.role != "ai":
+        if message.role != "ai" or message.usage.get("origin") == "policy":
             continue
         if (message.reasoning or "").strip():
             reasoning.append(message.reasoning.strip())

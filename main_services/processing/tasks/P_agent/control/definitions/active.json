@@ -1,0 +1,6 @@
+{
+  "*": "chat-default",
+  "full_research:documents": "chat-default",
+  "full_research:web": "chat-default",
+  "internal_search:documents": "chat-default"
+}

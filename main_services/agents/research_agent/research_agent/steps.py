@@ -35,6 +35,7 @@ sentence that names the skill of the fix (`stumbles.py`).
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -58,6 +59,7 @@ from research_agent.run_messages import (
 )
 from research_agent import thinking
 from research_agent.tool_args import DamagedArguments, model_schema, normalize_arguments, repair_json_arguments
+from research_agent.skill_tools import READ_SKILL
 from research_agent.tool_catalogue import SEARCH_TOOL, tool_schema
 
 log = logging.getLogger(__name__)
@@ -98,6 +100,16 @@ def llm_streaming_enabled() -> bool:
 # ----------------------------------------------------------------------- request types
 
 
+class ControlAssets(BaseModel):
+    """The assets that the worker pinned for the turn (`/control_snapshot`): the rendered
+    system prompt and the text of each listed skill. A request without them uses the
+    current defaults of this service."""
+
+    revision: str = ""
+    system_prompt: str = ""
+    skills: Dict[str, str] = Field(default_factory=dict)
+
+
 class StepRun(BaseModel):
     """The fields of every step request. The worker sends them from the run row."""
 
@@ -106,6 +118,7 @@ class StepRun(BaseModel):
     session_id: str
     allowed_collections: List[str] = Field(default_factory=list)
     llm_model: Optional[str] = None
+    control: Optional[ControlAssets] = None
 
 
 class ModelStepRequest(StepRun):
@@ -131,6 +144,18 @@ class ToolCallRequest(StepRun):
     idempotency_key: str
     messages: List[RunMessage] = Field(default_factory=list)
     earlier: List[RunMessage] = Field(default_factory=list)
+
+
+class ControlSnapshotRequest(StepRun):
+    #: True to return the visible skills only.
+    visibility_only: bool = False
+    messages: List[RunMessage] = Field(default_factory=list)
+    earlier: List[RunMessage] = Field(default_factory=list)
+
+
+class PolicyCallsRequest(StepRun):
+    #: The calls of a policy action: `id`, `name` and `args` of each.
+    calls: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class CallEntry(BaseModel):
@@ -310,9 +335,10 @@ def _callbacks_config(agent: Any, request: StepRun) -> Dict[str, Any]:
 
 
 async def _context(agent: Any, request: StepRun) -> Any:
+    revision = request.control.revision if request.control is not None else ""
     return await agent.context_for(
         request.username, request.allowed_collections, request.session_id,
-        request.llm_model, request.run_id,
+        request.llm_model, request.run_id, revision=revision,
     )
 
 
@@ -482,7 +508,8 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
     thread = [m for m in list(request.earlier) + list(request.messages)
               if m.role != "compaction"]
     names = snapshot.callable_names()
-    system_text = context.system_text_for(names)
+    pinned = request.control.system_prompt if request.control is not None else ""
+    system_text = pinned or context.system_text_for(names)
     bound_tools = snapshot.tools_for()
     shown_tools = [shown_tool(t) for t in bound_tools]
     schemas_json = json.dumps([t["function"]["parameters"] for t in shown_tools], default=str)
@@ -756,8 +783,47 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
             _with_repairs(None, repairs),
         )
 
+    if name == READ_SKILL and request.control is not None and request.control.skills:
+        # The run reads the skill text that its turn pinned.
+        skill = str(args.get("name") or "")
+        if skill in request.control.skills:
+            return _tool_response(request, request.control.skills[skill])
+        return _tool_response(request, json.dumps({
+            "success": False, "error": "unknown_skill",
+            "message": f"No skill is named {skill!r}. The skills are "
+                       f"{', '.join(sorted(request.control.skills))}."}), "error", "tool_error")
+
+    search_tools = {"search_collections", "search_passages", "web_search", "folder_search",
+                    "search_facet_values", "search_histogram", "search_entity_explainer",
+                    "doc_search_text", "pdf_search"}
+    if name in search_tools:
+        completed = {m.tool_call_id for m in request.messages if m.role == "tool"}
+        previous = [c for m in request.messages if m.role == "ai" for c in m.tool_calls
+                    if c.name == name and c.id in completed and c.id != request.call.id
+                    and normalize_arguments(c.args, schema).args == args]
+        if len(previous) >= 2:
+            earlier = next((m for m in request.messages if m.role == "tool"
+                            and m.tool_call_id == previous[0].id), None)
+            try:
+                body = json.loads(earlier.content) if earlier else {}
+            except (TypeError, ValueError):
+                body = {}
+            fields = body.get("fields", {}) if isinstance(body, dict) else {}
+            items = next((body[k] for k in ("items", "documents", "results")
+                          if isinstance(body, dict) and isinstance(body.get(k), list)), [])
+            matched = body.get("keyword_sources", fields.get("keyword_sources", [])) if isinstance(body, dict) else []
+            count = len(items)
+            legacy = isinstance(body, dict) and "query_forms" not in body and "keyword_sources" not in body
+            keyword_count = len(matched) if matched else count if name == "search_collections" and legacy else 0
+            return _tool_response(request, json.dumps({
+                "status": "refused", "repeated_call": previous[0].id,
+                "item_count": count, "keyword_match_count": keyword_count,
+                "message": f"This search repeats call {previous[0].id} a second time. "
+                           f"It returned {count} items with {keyword_count} keyword matches. "
+                           "Run a different search or write the answer."}))
+
     citation_call = name in ("cite_documents", "cite_pages")
-    if citation_call or name.startswith(("search_", "read_documents", "doc_", "table_", "folder_", "list_document_")):
+    if citation_call or name in search_tools or name.startswith(("search_", "read_documents", "doc_", "table_", "folder_", "list_document_")):
         rows, visible = model_input_rows(request.earlier, request.messages)
         whole = {(m.thread_id, m.idx) for m in visible if m.role == "tool" and m.status == "ok"
                  and any(r.thread_id == m.thread_id and r.idx == m.idx and r.content == m.content
@@ -825,6 +891,74 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     )
 
 
+# ----------------------------------------------------------------- policy support
+
+
+def skill_digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def visible_skills(applied: Sequence[RunMessage]) -> List[str]:
+    """The skills whose `read_skill` result is still whole in the model input after every
+    stored compaction."""
+    out: List[str] = []
+    for message in applied:
+        if message.role != "tool" or (message.name or "") != READ_SKILL or message.status == "error":
+            continue
+        match = re.match(r"Skill `([a-z_]+)`\.", message.content or "")
+        if match and match.group(1) not in out:
+            out.append(match.group(1))
+    return out
+
+
+async def control_snapshot(agent: Any, request: ControlSnapshotRequest) -> Dict[str, Any]:
+    """The assets of the caller's run and profile: the rendered system prompt (the
+    `SYSTEM_PROMPT` override when it is set), the rendered text and the selection metadata
+    of each listed skill, and the callable tool names. With a thread, also the skills that
+    are visible in its model input. No credential and no connection header is returned."""
+    context = await _context(agent, request)
+    out: Dict[str, Any] = {}
+    if request.messages or request.earlier:
+        _, applied = model_input_rows(request.earlier, request.messages)
+        out["visible_skills"] = visible_skills(applied)
+    if request.visibility_only:
+        return out
+    snapshot = context.snapshot
+    names = list(snapshot.callable_names())
+    system_text = context.system_text_for(tuple(names))
+    ctx = context.skill_context
+    skills: Dict[str, Any] = {}
+    for skill in (skill_store.listed_skills(ctx) if ctx is not None else []):
+        text = skill_store.render_skill(skill.name, ctx)
+        skills[skill.name] = {"text": text, "digest": skill_digest(text),
+                              "description": skill.description, "group": skill.group,
+                              "tools": list(skill.tools), "terms": skill.terms,
+                              "not_for": skill.not_for}
+    prompt_digest = skill_digest(system_text)
+    out.update({
+        "profile": getattr(agent, "profile", ""),
+        "system_prompt": system_text, "system_prompt_digest": prompt_digest,
+        "prompt_override": bool(getattr(agent, "system_prompt_override", "")),
+        "skills": skills, "callable_tools": names, "catalogue_version": snapshot.version,
+        "revision": skill_digest(json.dumps([prompt_digest, snapshot.version,
+                                             sorted((n, s["digest"]) for n, s in skills.items())])),
+    })
+    return out
+
+
+async def policy_calls(agent: Any, request: PolicyCallsRequest) -> Dict[str, Any]:
+    """The calls of a policy action as `/model_step` classifies a reply's calls: normalized
+    arguments, kind, retry and page share (`classify_calls`). A call to a tool that the run
+    does not hold is refused and left out."""
+    context = await _context(agent, request)
+    snapshot = context.snapshot
+    names = snapshot.callable_names()
+    calls = [c for c in request.calls if c.get("name") in names]
+    entries = await asyncio.to_thread(classify_calls, snapshot, names, calls, 0, [])
+    return {"entries": [e.model_dump() for e in entries],
+            "refused": [c.get("name") for c in request.calls if c.get("name") not in names]}
+
+
 #: The measure key that lists the argument changes that `/tool_call` made
 #: (`tool_args.normalize_arguments`). A call that `/model_step` normalized holds its changes
 #: in its stored call entry (`CallEntry.argument_repairs`), and `/tool_call` finds none.
@@ -840,8 +974,9 @@ def _with_repairs(measure: Optional[Dict[str, Any]], repairs: List[str]) -> Opti
 
 
 __all__ = [
-    "BROWSER_READS", "CallEntry", "KEEPALIVE_LINE", "KEEPALIVE_SECONDS", "ModelStepRequest",
-    "StepRun", "ToolCallRequest",
+    "BROWSER_READS", "CallEntry", "ControlAssets", "ControlSnapshotRequest", "KEEPALIVE_LINE",
+    "KEEPALIVE_SECONDS", "ModelStepRequest", "PolicyCallsRequest", "StepRun", "ToolCallRequest",
+    "control_snapshot", "policy_calls", "visible_skills",
     "build_model_input", "call_ids", "classify_calls", "compaction_frame",
     "compaction_record", "model_input_rows",
     "classify_error", "llm_streaming_enabled", "retries", "run_model_step", "run_tool_call",

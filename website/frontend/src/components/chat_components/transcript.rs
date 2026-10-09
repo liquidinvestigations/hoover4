@@ -931,6 +931,9 @@ fn MessageEntry(
             let refs = message.parsed_doc_refs();
             rsx! {
                 div { "data-todo-change": if is_todo_write(&message) { "true" } else { "false" }, style: "display: flex; flex-direction: column; gap: 8px; {ring}",
+                    if let Some(label) = message.call_origin_label() {
+                        div { class: "x-chat-call-origin", style: "font-size: 12px; color: #475569;", "{label}" }
+                    }
                     ToolCard {
                         tool_name: message.tool_name.clone(),
                         tool_input: message.tool_input.clone(),
@@ -1189,7 +1192,7 @@ pub(super) fn DocumentCitationCards(
 ) -> Element {
     let mut seen = HashSet::new();
     let grouped = merge_citations(sources.clone()).into_iter()
-        .filter(|doc| seen.insert(doc.file_hash.clone())).collect::<Vec<_>>();
+        .filter(|doc| seen.insert(doc.file_hash.clone())).take(15).collect::<Vec<_>>();
     rsx! {
         div {
             style: "margin-top: 10px; border-top: 1px solid; border-top-color: var(--x-border); padding-top: 8px;",

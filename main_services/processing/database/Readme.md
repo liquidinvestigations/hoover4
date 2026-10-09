@@ -347,3 +347,11 @@ Collection deletion needs none of this: `drop_collection_db` drops the whole dat
 ## Navigation
 
 -  [Go Back](../Readme.md)
+
+## Page-table text settings
+
+Page tables set `min_infix_len='3'`. They do not set morphology, `index_sp`, zone indexing, `blend_chars`, CJK tokenization or fuzzy search.
+Word forms require explicit alternatives. Sentence and paragraph searches cannot restrict sentence boundaries. Zone searches cannot match.
+Addresses split into words, and CJK text is not indexed.
+Changing these settings requires rebuilding each affected page table from stored page text.
+That operation reads the full collection text and replaces its text index. This change does not alter table settings.

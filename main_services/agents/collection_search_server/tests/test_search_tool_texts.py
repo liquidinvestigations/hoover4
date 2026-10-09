@@ -20,8 +20,18 @@ Query rules:
 - OR, AND and NOT are ordinary words. Use | and -word. The search reads OR as | and NOT x as -x, and says so in query_notes.
 - from: and to: are not fields. The search drops them, keeps the word after them, and says so in query_notes.
 - An email address works as typed.
+- Proximity finds nearby words: "water pollution"~10
+- Quorum requires some words: "water pollution plant"/2
+- An alternative works inside a phrase, proximity or quorum: "(water | sewage) plant"
+- NOTNEAR excludes nearby words: water NOTNEAR/5 testing
+- ? matches one character: dasovi?h
+- % matches zero or one character: dasovic%
+- << requires word order: skilling << resigned
+- Word forms do not match automatically. Use contract | contracts or contract*.
+- word_counts gives the folded word and its checked document count over the searched tables.
+- suggestions gives indexed close words with checked counts. Use one only for the intended name.
 
-Each row gives file_hash, path and collectionname. Copy file_hash from a row to read_documents. Never write a hash yourself. When the result has more, give that value to read_more to get the other rows.
+Each row gives file_hash, path, collectionname and known size in bytes. Copy file_hash from a row to read_documents. Never write a hash yourself. When the result has more, give that value to read_more to get the other rows.
 
 Use facet_filters with value text or term ids. An empty query lists every filter match. The result reports each applied filter and unknown value. Dates are epoch seconds. size_min and size_max are in bytes. For PDFs by size, use file_types: ["pdf"] and sort by file_size. For email between two people, use email_from and email_to with their addresses. For a location, use ner_loc: ["Chicago"]. language accepts a code or English name. red_flags accepts a category identifier or title."""
 

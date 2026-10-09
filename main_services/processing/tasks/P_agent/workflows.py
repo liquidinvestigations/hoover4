@@ -44,12 +44,18 @@ with workflow.unsafe.imports_passed_through():
         summarize_if_first_turn,
         write_ending,
     )
+    from tasks.P_agent.control_steps import (
+        CONTROL_HEARTBEAT_SECONDS,
+        HOOK_MARGIN_SECONDS,
+        HOOK_SECONDS,
+        ControlOutcome,
+        ControlParams,
+        control_event,
+    )
     from tasks.P_agent.steps import (
         EMPTY_RESPONSE,
         STEP_BUDGET,
         AskedAnswerParams,
-        CitationCheckParams,
-        CitationRepair,
         EmptyNoteParams,
         IncompleteParams,
         ModelStepParams,
@@ -57,7 +63,6 @@ with workflow.unsafe.imports_passed_through():
         StepFailure,
         StepRef,
         ToolCallParams,
-        check_citations,
         model_step,
         record_step_failure,
         runs_in_browser,
@@ -166,12 +171,24 @@ class AgentRun:
     `ActivityError` that wraps it, and both write the `cancelled` ending. A workflow that
     starts after a stop closes in `open_run`.
 
-    **After an answer.** The answer or the question of every run kind whose model had
-    `cite_documents` gets the citation check (`_finish_citations`). An unresolved or a
-    conflicting label, or a document name with no label, gets one repair round per logical
-    thread, whose reply replaces the answer when it has text. The reply of a round after a
-    question is the question the person reads. A run that ended at a limit gets no repair
-    round. An open todo item does not start a round.
+    **The policy hooks.** `control_event` runs at three points of the loop
+    (`control_steps.py`). `turn_started` follows `open_run`, and its skill loads run as a
+    policy batch before the first model step. `tool_batch_completed` follows every batch,
+    and its follow-on calls run as one more batch before the next model step. Automatic
+    reads follow a model batch only, so after a policy batch the hook can load skills and
+    no more.
+    `answer_drafted` follows an answer or a question. It writes one combined note when
+    the draft has a finding that asks for a round, and the loop runs one more round. A turn
+    gets at most two repair rounds after its first draft, counted from the stored notes, and
+    a discovery note counts separately. A run that ended at a limit gets no review, and a
+    run at the step limit gets no further round. The reply of a round after a question is
+    the question that the person reads.
+
+    **Shared calls.** Two parallel calls of one batch with the same `share_key` share one
+    execution: the later call waits for the first, and `tool_call` stores a pointer to the
+    first result when that result is complete. Otherwise the later call runs. Two
+    `read_page` calls of the browser chain share a result the same way, unless the batch
+    holds a browser call that can change the page.
     """
 
     def __init__(self) -> None:
@@ -248,21 +265,28 @@ class AgentRun:
     # ------------------------------------------------------------------------ the loop
 
     async def _agent_loop(self, inp: AgentRunInput, opened: OpenedRun,
-                          first: bool) -> RunSummary:
+                          pending: list[CallRef]) -> RunSummary:
         """One round: run the unanswered calls, then model steps until a reply has no call.
 
         The first round of a workflow run starts with the unanswered calls that `open_run`
-        found. A later round starts after a note, with no call left.
+        found and the calls of the turn's preparation. A later round starts after a note.
+        After each batch, `tool_batch_completed` can give a policy batch, which runs before
+        the next model step.
         """
-        pending: list[CallRef] = []
-        if first:
-            pending = list(opened.pending)
         while True:
             if pending:
                 asked = await self._run_calls(inp, pending)
                 if asked is not None:
                     return asked
-                pending = []
+                after = await self._control(inp, "tool_batch_completed",
+                                            anchor_idx=pending[0].ai_idx)
+                if after.closed:
+                    return RunSummary(outcome="closed", next_seq=after.next_seq)
+                if after.end_turn:
+                    return await self._incomplete(inp, "no_progress")
+                pending = after.calls
+                if pending:
+                    continue
             if (self._steps_here >= CONTINUE_AS_NEW_STEPS
                     or workflow.info().get_current_history_length() > HISTORY_EVENTS_PER_RUN):
                 workflow.continue_as_new(inp)
@@ -282,6 +306,25 @@ class AgentRun:
                 return RunSummary(outcome="answered", next_seq=result.next_seq,
                                   next_idx=result.next_idx)
             pending = result.calls
+
+    async def _control(self, inp: AgentRunInput, hook: str, anchor_idx: int = -1,
+                       draft_kind: str = "") -> ControlOutcome:
+        """One policy hook (`control_steps.control_event`). The activity timeout comes from
+        the hook deadline. A failed hook raises like any short activity."""
+        seconds = HOOK_SECONDS[hook]
+        outcome: ControlOutcome = await workflow.execute_activity(
+            control_event,
+            ControlParams(**self._ref_fields(inp), hook=hook, anchor_idx=anchor_idx,
+                          deadline_seconds=seconds, draft_kind=draft_kind,
+                          model_limit_reached=self._steps >= RUN_MODEL_STEPS),
+            start_to_close_timeout=timedelta(seconds=seconds + HOOK_MARGIN_SECONDS),
+            heartbeat_timeout=timedelta(seconds=CONTROL_HEARTBEAT_SECONDS * 5),
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            task_queue=CHAT_TASK_QUEUE,
+            cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+        )
+        self._raise_if_stopped()
+        return outcome
 
     async def _incomplete(self, inp: AgentRunInput, reason: str) -> RunSummary:
         """End the model steps of a run that stopped before an answer, with the result that
@@ -341,18 +384,41 @@ class AgentRun:
         None."""
         ordered = sorted((c for c in pending if runs_in_order(c)), key=lambda c: c.position)
         browser = sorted((c for c in pending if runs_in_browser(c)), key=lambda c: c.position)
-        parallel = [c for c in pending if not runs_in_order(c) and not runs_in_browser(c)]
+        parallel = sorted((c for c in pending if not runs_in_order(c) and not runs_in_browser(c)),
+                          key=lambda c: c.position)
+        # A browser call with one attempt only can change the page, so no read shares.
+        page_changes = any(not c.retry for c in browser)
 
-        async def in_order(chain: list[CallRef]) -> list[tuple[CallRef, str]]:
+        async def in_order(chain: list[CallRef], share: bool) -> list[tuple[CallRef, str]]:
             # The todo calls, and the browser calls, keep the order of the reply within
             # their chain.
             statuses = []
+            first: dict[str, CallRef] = {}
             for call in chain:
-                statuses.append((call, await self._tool_call(inp, call)))
+                leader = first.get(call.share_key) if share and call.share_key else None
+                statuses.append((call, await self._tool_call(inp, call, leader)))
+                if share and call.share_key:
+                    first.setdefault(call.share_key, call)
             return statuses
 
-        results = await asyncio.gather(in_order(ordered), in_order(browser),
-                                       *(self._tool_call(inp, c) for c in parallel))
+        leaders: dict[str, CallRef] = {}
+        tasks: dict[str, asyncio.Task] = {}
+
+        async def shared(call: CallRef, leader: CallRef) -> str:
+            await tasks[leader.call_id]
+            return await self._tool_call(inp, call, leader)
+
+        for call in parallel:
+            leader = leaders.get(call.share_key) if call.share_key else None
+            if leader is None:
+                if call.share_key:
+                    leaders[call.share_key] = call
+                tasks[call.call_id] = asyncio.ensure_future(self._tool_call(inp, call))
+            else:
+                tasks[call.call_id] = asyncio.ensure_future(shared(call, leader))
+        results = await asyncio.gather(in_order(ordered, False),
+                                       in_order(browser, not page_changes),
+                                       *(tasks[c.call_id] for c in parallel))
         statuses = results[0] + results[1] + list(zip(parallel, results[2:]))
         asked = next((call for call, status in sorted(statuses, key=lambda pair: pair[0].position)
                       if call.name == "ask_user" and status == "ok"), None)
@@ -367,15 +433,17 @@ class AgentRun:
             return RunSummary(outcome="answered", next_seq=next_seq, asked=True)
         return None
 
-    async def _tool_call(self, inp: AgentRunInput, call: CallRef) -> str:
+    async def _tool_call(self, inp: AgentRunInput, call: CallRef,
+                         shared_from: CallRef | None = None) -> str:
         """One tool call, and the status of its result. A failure after the last attempt
         stores a `tool_unavailable` result, gives `error`, and the loop goes on. Only a stop
-        ends the run here."""
+        ends the run here. `shared_from` is the earlier call of the batch with the same
+        `share_key`, whose complete result the call can share."""
         status = "error"
         try:
             result = await workflow.execute_activity(
                 tool_call,
-                ToolCallParams(**self._ref_fields(inp), call=call),
+                ToolCallParams(**self._ref_fields(inp), call=call, shared_from=shared_from),
                 start_to_close_timeout=TOOL_CALL_TIMEOUT,
                 heartbeat_timeout=STEP_HEARTBEAT_TIMEOUT,
                 schedule_to_start_timeout=TIMEOUTS.queue_wait,
@@ -418,43 +486,23 @@ class AgentRun:
     # ------------------------------------------------------------------------ the rounds
 
     async def _rounds(self, inp: AgentRunInput, opened: OpenedRun) -> RunSummary:
-        summary = await self._agent_loop(inp, opened, first=True)
-        repaired = False
-        # True when the repair round follows a question, so the reply of that round is the
-        # question the person reads.
+        prepared = await self._control(inp, "turn_started", anchor_idx=0)
+        if prepared.closed:
+            return RunSummary(outcome="closed", next_seq=prepared.next_seq)
+        pending = list(prepared.calls) + [c for c in opened.pending
+                                          if c.call_id not in {p.call_id for p in prepared.calls}]
+        summary = await self._agent_loop(inp, opened, pending)
+        # True when a round follows a question, so the reply of that round is the question
+        # the person reads.
         after_question = False
-        while summary.outcome == "answered":
-            if summary.asked or after_question:
-                if not repaired and not summary.end_reason and await self._finish_citations(
-                        inp, summary):
-                    repaired = after_question = True
-                    summary = await self._agent_loop(inp, opened, first=False)
-                    continue
+        while summary.outcome == "answered" and not summary.end_reason:
+            kind = "question" if summary.asked or after_question else "answer"
+            review = await self._control(inp, "answer_drafted", draft_kind=kind)
+            if review.closed or not review.round:
                 break
-            if summary.end_reason:
-                break
-            if not repaired and await self._finish_citations(inp, summary):
-                repaired = True
-                summary = await self._agent_loop(inp, opened, first=False)
-                continue
-            break
+            after_question = kind == "question"
+            summary = await self._agent_loop(inp, opened, [])
         return summary
-
-    async def _finish_citations(self, inp: AgentRunInput, summary: RunSummary) -> bool:
-        """The citation check of an answer or a question (`steps.check_citations`). When
-        the check asks for the repair round, the activity writes its note, and this returns
-        true, so the loop runs one more round. The note in the thread is the marker, so a
-        logical thread gets one round."""
-        repair: CitationRepair = await workflow.execute_activity(
-            check_citations,
-            CitationCheckParams(**self._ref_fields(inp), seq=summary.next_seq),
-            start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-            task_queue=CHAT_TASK_QUEUE,
-        )
-        if repair.needed:
-            self._raise_if_stopped()
-        return repair.needed
 
     async def _finish(self, inp: AgentRunInput, state: str, error: str = "") -> None:
         await workflow.execute_activity(

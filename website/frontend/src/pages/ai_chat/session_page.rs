@@ -154,6 +154,7 @@ fn AiChatSessionRoot(
     let hit_count = use_signal(|| None::<Result<SearchResultHitCount, ServerFnError>>);
     let search_result = use_signal(|| None::<Result<SearchResultDocuments, ServerFnError>>);
     let current_page = use_signal(|| 0_u64);
+    let search_query = use_signal(common::search_query::SearchQuery::default);
     let set_selected = Callback::new(move |id: Option<DocumentIdentifier>| {
         navigator().push(Route::ai_chat_session(
             session_id.read().clone(),
@@ -162,6 +163,7 @@ fn AiChatSessionRoot(
         ));
     });
     use_context_provider(move || SearchResultsState {
+        query: search_query.into(),
         hit_count: hit_count.into(),
         search_result: search_result.into(),
         current_search_result_page: current_page.into(),

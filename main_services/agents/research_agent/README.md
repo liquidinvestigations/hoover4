@@ -68,6 +68,9 @@ the run.
 
 The method text is in `research_agent/skills/`.
 Each skill has a Jinja body and front matter with its name, group, description, and tools.
+A skill can also name `terms` and `not_for`: the words that requests use for the method, and
+the similar requests that do not need it. The worker's turn-start check reads them with the
+description. The system prompt lists the description only.
 The role skills are `method_chat_full` and `method_chat_internal`.
 They define the role's sources and evidence requirements.
 The full chat role verifies every constraint for each listed item before an optional skill read.
@@ -141,6 +144,28 @@ keeps no state of a run between two requests. Every request carries the run fiel
 `StepRun` (`steps.py`): `run_id`, `kind`, `depth`, the caller's identity and
 collections, and `llm_model`. The worker sends the plan's frozen model for every run of a
 plan.
+
+A chat turn also sends `control`: the assets that the worker stored when the turn started.
+`control.system_prompt` replaces the rendered system prompt, `control.skills` holds the text
+that `read_skill` returns for each listed skill, and `control.revision` is part of the step
+context key. `read_skill` with a name outside `control.skills` returns `unknown_skill`. A
+request without `control` uses the current prompt and skill texts of the service.
+
+### `POST /control_snapshot`
+
+The worker calls it when a turn starts. The response holds the rendered system prompt, which
+is the `SYSTEM_PROMPT` override when it is set. It holds the text, digest, description,
+`terms` and `not_for` of each listed skill. It also holds the callable tool names, the
+catalogue version and one revision digest of these values. No credential and no connection header is in it. With
+`messages` and `earlier`, the response also has `visible_skills`: the skills whose
+successful `read_skill` result is still in the model input after every stored compaction.
+`visibility_only` returns that list only.
+
+### `POST /policy_calls`
+
+It classifies the calls of a policy action the way `/model_step` classifies the calls of a
+reply (`classify_calls`): normalized arguments, kind, retry and page share. A call to a tool
+that the run does not hold is left out and named in `refused`.
 
 ### `POST /model_step`
 

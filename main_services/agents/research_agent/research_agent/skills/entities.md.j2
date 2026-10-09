@@ -3,6 +3,8 @@ name: entities
 group: technique
 description: how to list the people, organisations, places, e-mail addresses and amounts that documents name
 tools: list_document_entities, search_entity_explainer, search_facet_values
+terms: Words for it: people, persons, names, organisations, companies, institutions, places, locations, cities, countries, e-mail addresses, phone numbers, amounts, money, identifiers, account numbers, key players, who is mentioned.
+not_for: Not needed when the request names one person and asks what the documents say about that person.
 ---
 {# How to list what the pipeline extracted from documents, and how to treat its two tiers.
    Each sentence that names a tool renders only when the run has it. #}
@@ -21,3 +23,7 @@ Listing what documents name
 {% endif %}
 
 A name that the pipeline extracted is not proof that the document is about that person. Read the text around it.
+
+When a name occurs nowhere, read the indexed spelling suggestions and their checked counts.
+Offer the found forms to the person with ask_user before substituting a name.
+Include an option to report that the collections do not hold the requested name.

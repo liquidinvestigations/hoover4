@@ -313,3 +313,11 @@ Switching PDF sources in the full viewer and in the preview.
 | `804-qa-viewer-regressions` | Verifies viewer controls, filename matches, hit navigation, and folder disclosure. | none named | `--names qa-viewer-regressions` |
 | `805-qa-pdf-pointer-selection` | Measures PDF drag coordinates at four heights in two documents and two viewport widths. | none named | `--names qa-pdf-pointer-selection` |
 | `806-qa-search-page-limit` | Verifies that a page beyond the first 1,000 results is refused. | none named | `--names qa-search-page-limit` |
+
+## Search suggestions and chat control
+
+Verify a zero-result typo with a checked suggestion button. Select it and verify the query and filters.
+Verify a zero-result word without candidates. Verify the no-similar-words message.
+Verify that a normal query and an empty query show no suggestion section.
+Verify policy-origin rows with case 526. Verify that a session without internet tools offers no web option.
+Run the System one checks report after a chat. Verify hook counts and the Recent failures view.

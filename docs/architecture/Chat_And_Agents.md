@@ -11,6 +11,7 @@ durable research path is `main_services/processing/tasks/P_agent/`.
 - [The internet option stays fixed](#the-internet-option-stays-fixed)
 - [Reaching the agents](#reaching-the-agents)
 - [Citations, and why they are not the search cards](#citations-and-why-they-are-not-the-search-cards)
+- [Chat checks](#chat-checks)
 - [Streaming a turn](#streaming-a-turn)
 - [Timeouts and retries](#timeouts-and-retries)
 - [Naming a conversation](#naming-a-conversation)
@@ -87,19 +88,20 @@ collection-search MCP server, so a handle from the first turn still resolves in 
 The server stores each new handle as an artifact before it returns it, so a restart of the
 server keeps the numbering. When an answer or a question uses a label that no successful
 citation result of the session gives, or a label that results give for two documents, the
-worker asks the model once for the citations and the answer again. A quote that is not in
+worker asks the model for the citations and the answer again. A quote that is not in
 the text stays unverified, and the result gives an exact passage of the text near it.
 An unlabeled answer also gets that round after a successful document read, even if the
-answer does not name the file. The worker checks the revised answer before it replaces
+answer does not name the file. A question without a citation label gets no citation repair.
+A verified absence answer needs no source handle. The worker checks the revised answer before it replaces
 the earlier answer. It retains the earlier answer with a notice when the reply contains
 raw call text or a label that does not resolve.
 Each answer stores citation status in its usage metadata.
 The interface omits redundant status prose.
-The round does not repeat.
+A turn gets at most two repair rounds after its first draft.
+The answer of the last round is published without a notice when findings remain.
 
 The citation check uses tool evidence from the current and earlier turns.
 It excludes earlier repair notes.
-Each turn can get one repair round.
 The web repair requires search discovery, successful page reads, and `cite_pages` references.
 It identifies bare source URLs, unread pages, and undiscovered pages.
 It requires verified item identities and each requested constraint.
@@ -134,6 +136,51 @@ is a worse outcome than a citation the reader can see is unverified.
 De-duplication of document cards is **within a group and never across one**. A search card
 and a citation card for the same document are two different statements about it, and
 collapsing them would hide that the agent chose one of the things it found.
+
+## Chat checks
+
+The worker runs chat checks at three events of a turn: the turn start, each completed tool
+batch, and each answer draft. The `control_event` activity runs them. `AgentRun` keeps the
+order of model steps, tool calls and checks.
+
+A definition lists the rules of a profile. Each rule names a handler, an event, a frequency
+and its parameters. Handlers are trusted Python modules. The folder
+`tasks/P_agent/control/handlers/` holds the built-in handlers. The `chat_control_dir` key of
+`[main_services]` can add a read-only folder with more handlers and definitions. When a turn
+starts, the worker stores a copy of its assets on the opening row of the run. The copy holds
+the definition, the digest of each handler file, the rendered system prompt and the skill
+texts. The turn uses that copy until it ends, so a later change affects new turns only.
+
+For each event the worker stores one decision before it writes any row of it. A retry reads
+the stored decision and writes the same rows at the same keys. An action is a note, a skill
+load or a tool call. Skill loads and tool calls run as a policy batch before the next model
+step. The batch uses the normal tool path and the permissions of the run. The transcript
+labels each row of a policy batch.
+
+The checks ask the structured server of the selfhosted model (`CHAT_CLASSIFIER_URL`).
+No other route receives chat content. A failed or absent route makes the answers unknown,
+and the turn continues as it would without the check. Scores are recorded at full
+precision. They are not calibrated probabilities.
+Cancellation preserves completed request samples without applying policy actions.
+
+The built-in definition has these rules:
+
+- At the turn start, the preparation check classes the request sources. It scores the
+  listed skills and the request constraints, and loads at most three skills in 15 seconds.
+  It uses bounded context from the last two completed turns to resolve references in a follow-up request.
+- After a tool batch, a result that needs the table, email or citation method loads that
+  skill. A skill text that is still visible to the model is not loaded again.
+- After a web search batch of the model, the worker reads the unread result addresses in
+  search-rank order. It uses one `read_page` call of at most six addresses.
+- A short page capture with no article text gets a note that names the page.
+- A reply that reads one page while two or more search results stay unread gets one note.
+- An answer drafted before any source read, in a turn that needs documents or web sources,
+  gets one note that asks for reads first.
+  A verified citation from an earlier turn also meets this read condition.
+- Each answer draft gets the citation check and a check for bracketed source names that
+  no citation returned. It also gets semantic checks of support, names and explicit
+  requirements, which are recorded. All findings that start a round go into one correction note. The semantic
+  checks do not start a round.
 
 ## Streaming a turn
 
@@ -292,6 +339,11 @@ and the arguments as `{"name": "…", "input": {…}}`. `tool_call` writes the f
 document references, and marks the live row final. The name is in the stored call entry,
 so a card is labelled while its call still runs.
 
+A row of a policy batch has `origin` `policy` in its `usage_json`. A call that repeats an
+identical search or read call of the same reply waits for that call and shows its result.
+Its row has `shared_from` with the id of the first call. The transcript shows one label
+line above each such row (`ChatMessageItem::call_origin_label`).
+
 `search_collections` hits carry `collection_dataset` + `file_hash` (the
 `DocumentIdentifier` key used by the document-preview stack).
 
@@ -304,3 +356,15 @@ written into the transcript. A parser that writes the raw event as the message b
 hardcodes the tool name and populates none of the payload columns produces a transcript
 that renders as a wall of JSON in a card whose expand panel opens onto nothing. If you
 change the shape, change both.
+
+### Search progress and classifier traffic
+
+The turn pins capabilities from callable tools and permitted collections. Rules skip when their required tools are unavailable.
+Preparation classifies effort and names. It verifies absent names with indexed counts and suggests a clarification through `ask_user`.
+Code also retains names after "folder called", "folder named", "collection called" and "collection named" when the classifier omits them.
+A progress decision records distinct keyword sources, empty results, repeated calls, refusals, todo churn and word counts.
+Three units raise the note level. A new keyword source resets the current units. The level does not decrease.
+The third level requires an answer. Six further model steps end the turn through `write_incomplete` with the search summary.
+Classifier signals require measured score thresholds. A failed request supplies no signal.
+Each classifier request writes metadata to `systemone_call_events` and traffic to `ai_service_telemetry`.
+The admin report reads these rows only when an administrator selects Run report.

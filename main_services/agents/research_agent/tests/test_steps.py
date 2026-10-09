@@ -998,3 +998,26 @@ async def test_only_complete_unchanged_verified_citations_skip_reexecution(name,
         assert seen == [] and f"Use its verified handles {handle}" in response["content"]
     else:
         assert len(seen) == 1
+
+
+@pytest.mark.parametrize("first,expected", [
+    ({"items": [{"file_hash": "a"}], "keyword_sources": ["a"]}, 1),
+    ({"items": [{"file_hash": "a"}], "query_forms": [{"query": "", "total_count": 1}]}, 0),
+    ({"items": [{"file_hash": "a"}]}, 1),
+])
+async def test_search_second_completed_repeat_is_refused(model, first, expected):
+    seen = []
+    agent = FakeAgent([dict_tool("search_collections", LIST_SCHEMA, seen)], {"search_collections"})
+    messages = [{"role": "human", "content": "question", "thread_id": "t", "idx": 0}]
+    for n in range(2):
+        messages.extend([
+            {"role": "ai", "content": "", "tool_calls": [{"id": f"old{n}", "name": "search_collections", "args": {"query": "x"}}], "thread_id": "t", "idx": n*2+1},
+            {"role": "tool", "content": json.dumps(first) if n == 0 else "This call repeats call old0. Its result is above.", "tool_call_id": f"old{n}", "name": "search_collections", "status": "ok", "thread_id": "t", "idx": n*2+2}])
+    request = tool_request("search_collections", {"query": "x"}).model_copy(update={"messages": [steps.RunMessage(**m) for m in messages]})
+    result = await steps.run_tool_call(agent, request)
+    content = json.loads(result["content"])
+    assert content["status"] == "refused" and content["item_count"] == 1 and content["keyword_match_count"] == expected
+    assert seen == []
+    request.messages = [m for m in request.messages if m.role != "tool"]
+    assert (await steps.run_tool_call(agent, request))["status"] == "ok"
+    assert len(seen) == 1

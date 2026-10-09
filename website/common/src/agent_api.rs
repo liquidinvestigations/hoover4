@@ -200,6 +200,12 @@ pub struct AgentFacetCount {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResultsResponse {
+    #[serde(default)]
+    pub word_counts: Vec<crate::search_suggestions::WordCount>,
+    #[serde(default)]
+    pub suggestions: Vec<crate::search_suggestions::WordSuggestions>,
+    #[serde(default)]
+    pub suggestions_partial: bool,
     pub documents: Vec<AgentSearchDocument>,
     pub total_count: u64,
     /// Every facet the search page's filter modal lists that has at least one value, each
@@ -1128,3 +1134,15 @@ pub struct FoldersSearchResponse {
     #[serde(flatten)]
     pub page_info: AgentPageInfo,
 }
+
+/// The worker requests dictionary evidence under the run's collection permissions.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SearchSuggestionsRequest {
+    #[serde(default)]
+    pub collectionname: Vec<String>,
+    pub words: Vec<String>,
+    #[serde(default = "default_suggestion_kind")]
+    pub kind: String,
+}
+
+fn default_suggestion_kind() -> String { "pages".to_string() }

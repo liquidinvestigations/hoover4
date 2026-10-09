@@ -191,3 +191,34 @@ pub struct TopUserRow {
     pub tokens_in: u64,
     pub tokens_out: u64,
 }
+
+/// Aggregated classifier requests for one hook and rule.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SystemOneRow {
+    pub hook: String,
+    pub rule_id: String,
+    pub requests_24h: u64,
+    pub requests_7d: u64,
+    pub requests_30d: u64,
+    pub questions: u64,
+    pub median_ms: f64,
+    pub p95_ms: f64,
+    pub error_pct: f64,
+    pub positive_pct: f64,
+    pub actions: u64,
+}
+
+/// A failed classifier request contains no request or source text.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SystemOneFailure {
+    pub time_ms: i64,
+    pub hook: String,
+    pub rule_id: String,
+    pub outcome: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SystemOneReport {
+    pub rows: Vec<SystemOneRow>,
+    pub failures: Vec<SystemOneFailure>,
+}

@@ -6,6 +6,7 @@
 # Usage: ./observe-chat.sh [--target URL] [--out DIR] [--remote-target]
 #                           [--login-env FILE] [--resolutions LIST] [--prompts LIST]
 #                           [--conversations N] [--no-followup] [--continue PATH]
+#                           [--prompt-file FILE]
 # Credentials come from HOOVER4_TEST_USERNAME/HOOVER4_TEST_PASSWORD or --login-env.
 # Credential values are not accepted as wrapper arguments and are not placed in
 # Docker or Python argument lists.
@@ -75,6 +76,7 @@ CONVERSATIONS_ARG=""
 NO_FOLLOWUP_ARG=""
 HISTORY_ONLY_ARG=""
 CONTINUE_ARG=""
+PROMPT_FILE_ARG=""
 REMOTE_TARGET=0
 
 while [ $# -gt 0 ]; do
@@ -88,6 +90,7 @@ while [ $# -gt 0 ]; do
         --remote-target) REMOTE_TARGET=1; shift ;;
         --resolutions) RESOLUTIONS_ARG="${2:?--resolutions needs a value}"; shift 2 ;;
         --prompts) PROMPTS_ARG="${2:?--prompts needs a value}"; shift 2 ;;
+        --prompt-file) PROMPT_FILE_ARG="${2:?--prompt-file needs a value}"; shift 2 ;;
         --conversations) CONVERSATIONS_ARG="${2:?--conversations needs a value}"; shift 2 ;;
         --no-followup) NO_FOLLOWUP_ARG="1"; shift 1 ;;
         --history-only) HISTORY_ONLY_ARG="${2:?--history-only needs a value}"; shift 2 ;;
@@ -224,6 +227,9 @@ docker cp tools/capture_screenshots.py "$BROWSER_CONTAINER:$REMOTE_DIR/capture_s
 docker cp tools/capture_credentials.py "$BROWSER_CONTAINER:$REMOTE_DIR/capture_credentials.py"
 docker cp tools/browser_lifecycle.py "$BROWSER_CONTAINER:$REMOTE_DIR/browser_lifecycle.py"
 docker cp tools/console_whitelist.txt "$BROWSER_CONTAINER:$REMOTE_DIR/console_whitelist.txt"
+if [ -n "$PROMPT_FILE_ARG" ]; then
+    docker cp "$PROMPT_FILE_ARG" "$BROWSER_CONTAINER:$REMOTE_DIR/custom-prompt.json"
+fi
 
 echo "== observing a conversation against $SITE_URL =="
 set +e
@@ -239,6 +245,7 @@ CHAT_ARGS=(
 [ -n "$NO_FOLLOWUP_ARG" ] && CHAT_ARGS+=(--no-followup)
 [ -n "$HISTORY_ONLY_ARG" ] && CHAT_ARGS+=(--history-only "$HISTORY_ONLY_ARG")
 [ -n "$CONTINUE_ARG" ] && CHAT_ARGS+=(--continue "$CONTINUE_ARG")
+[ -n "$PROMPT_FILE_ARG" ] && CHAT_ARGS+=(--prompt-file "$REMOTE_DIR/custom-prompt.json")
 # Names only: docker reads values from this process environment.
 CHAT_ENV=(-e HOOVER4_TEST_USERNAME -e HOOVER4_TEST_PASSWORD)
 [ -n "${HOOVER4_CAPTURE_REVISION:-}" ] && CHAT_ENV+=(-e HOOVER4_CAPTURE_REVISION)

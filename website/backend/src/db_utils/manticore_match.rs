@@ -38,7 +38,7 @@ pub fn quoted_manticore_string(value: &str) -> String {
 /// count when deciding whether a query has anything positive to match on, and a `/`
 /// directly after one is that operator's distance argument rather than a stray slash.
 const MATCH_KEYWORDS: &[&str] =
-    &["AND", "OR", "NOT", "MAYBE", "NEAR", "SENTENCE", "PARAGRAPH", "ZONE", "ZONESPAN"];
+    &["AND", "OR", "NOT", "MAYBE", "NEAR", "NOTNEAR", "SENTENCE", "PARAGRAPH", "ZONE", "ZONESPAN"];
 
 /// A `MATCH()` expression that cannot be repaired into something searchable.
 ///
@@ -239,8 +239,8 @@ fn balance_quotes(query: &str) -> (String, Vec<String>) {
 /// thought with a typo in it and `(test | document)` is what was meant. A surplus `)`
 /// has no such reading and is removed.
 ///
-/// Parens **inside a phrase are not counted here**: they are operators there too, and
-/// [`neutralise_stray_operators`] removes them. Counting them instead would put the
+/// Parens inside a phrase are not counted here. The next pass keeps balanced groups
+/// and removes unmatched brackets. Counting them instead would put the
 /// repair outside the quotes it was trying to fix. An entity value like `Rule 20.4(c`
 /// is searched for as the phrase `"Rule 20.4(c"`, and closing that `(` appends the `)`
 /// after the closing quote, a syntax error built by the code meant to prevent one. This
@@ -279,29 +279,33 @@ fn balance_parens(query: &str) -> (String, Vec<String>) {
     (out, repairs)
 }
 
-/// Neutralise the operator characters that cannot stand where they are.
+/// Keep balanced groups inside a phrase and remove stray operator characters.
 ///
-/// **Outside a phrase**, `/` and `~` are suffix operators on a phrase or a keyword:
-/// `"a b"~3` is proximity, `"a b c"/2` is quorum, `NEAR/3` carries its distance the same
-/// way. Standing alone between two words they are neither: `3/4` and `a~2` are
-/// `P08: syntax error` from the parser, not a zero-result search.
-///
-/// **Inside a phrase**, quoting does NOT make the contents inert, measured against a
-/// live Manticore rather than assumed. `"Rule 20.4(c"`, `"a) b"` and `"File | New"` are each a
-/// `P08: syntax error`, while the same phrases with those characters removed match. So
-/// `(`, `)` and `|` keep their meaning between quotes and are neutralised there, and `\`
-/// still escapes the character after it. A value ending in one escapes the phrase's own
-/// closing quote and the query runs off the end (`unexpected $end`).
-///
-/// This is why parens inside a phrase are removed here rather than balanced: a phrase is
-/// how the entities panel searches for a value, corpus entity values are full of
-/// unmatched parens and menu pipes, and closing one would append the `)` outside the
-/// quote it was meant to fix.
-///
-/// Every replacement is a word separator rather than a deletion, because Manticore
-/// tokenises on non-alphanumerics anyway: the repaired query searches for what was typed.
+/// A pipe inside a balanced group remains an OR operator. An unmatched bracket or
+/// a pipe outside a group becomes a word separator. Backslash handling stays unchanged.
+/// Outside a phrase, `/` and `~` remain only after a phrase or a distance keyword.
 fn neutralise_stray_operators(query: &str) -> (String, Vec<String>) {
     let chars: Vec<char> = query.chars().collect();
+    let mut allowed = std::collections::HashSet::new();
+    let mut stack = Vec::new();
+    for (i, &c) in chars.iter().enumerate() {
+        match c {
+            '"' => stack.clear(),
+            '(' => stack.push(i),
+            ')' => {
+                if let Some(start) = stack.pop() {
+                    allowed.insert(start);
+                    allowed.insert(i);
+                    for j in start + 1..i {
+                        if chars[j] == '|' {
+                            allowed.insert(j);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
     let mut out = String::with_capacity(query.len());
     let mut in_phrase = false;
     let mut word = String::new();
@@ -315,7 +319,7 @@ fn neutralise_stray_operators(query: &str) -> (String, Vec<String>) {
         }
         if in_phrase {
             match c {
-                '|' | '(' | ')' => {
+                '|' | '(' | ')' if !allowed.contains(&i) => {
                     stray += 1;
                     out.push(' ');
                 }
@@ -483,6 +487,21 @@ mod tests {
 
     /// The whole reason this module exists: Manticore rejects the SQL-standard doubling
     /// that `format_sql_query::QuotedData` emits.
+    #[test]
+    fn alternatives_and_notnear_keep_their_syntax() {
+        for query in [r#""(test | sample) document""#, r#""(test | sample) document"~10"#,
+                      r#""(test | sample) document"/2"#, "test NOTNEAR/5 document",
+                      "dasovi?h", "dasovic%", "skilling << resigned"] {
+            assert_eq!(prepared(query), query);
+        }
+        let raw = prepare_match_query(r"jeff.dasovich\@enron.com").unwrap();
+        assert_eq!(raw.expr, r"jeff.dasovich\\@enron.com");
+        assert!(raw.repairs.is_empty());
+        let phrase = prepare_match_query(r#""jeff.dasovich\@enron.com""#).unwrap();
+        assert_eq!(phrase.expr, r#""jeff.dasovich@enron.com""#);
+        assert_eq!(phrase.repairs, ["neutralised 1 operator character that cannot stand where it was"]);
+    }
+
     #[test]
     fn a_quote_is_escaped_with_a_backslash_never_by_doubling() {
         assert_eq!(escape_manticore_string("it's"), r"it\'s");

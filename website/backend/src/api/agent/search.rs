@@ -334,12 +334,15 @@ async fn search_results_body(
     let permitted = permitted_collectionnames(user, &header).await?;
     let sort = sort_spec_from_agent(body.sort.as_ref())?;
     let (query, filter_notes) = build_search_query(user, &permitted, &body.collectionname, &body.query, &body.filters, sort).await?;
-    let (_, source) = search_source(user, &query, body.expected_source.as_deref()).await?;
+    let (collections, source) = search_source(user, &query, body.expected_source.as_deref()).await?;
 
-    let (results, hit_count, (facet_counts, facets_partial)) = tokio::try_join!(
+    let (results, hit_count, (facet_counts, facets_partial), suggestions) = tokio::try_join!(
         async { search_for_results(user, query.clone(), page).await.map_err(AgentError::from_anyhow) },
         async { search_for_results_hit_count(user, query.clone()).await.map_err(AgentError::from_anyhow) },
         search_facet_counts(user, &query),
+        async { Ok::<_, AgentError>(crate::api::search::suggestions::indexed_suggestions(
+            &collections, &body.query, crate::api::search::suggestions::TableKind::Pages,
+            crate::api::search::suggestions::Gate::Agent).await) },
     )?;
 
     // collection_dataset -> (collectionname, dataset_name), for the two fields the
@@ -379,6 +382,9 @@ async fn search_results_body(
     let next_position = (results.next_hash.is_some() && page + 1 < MAX_SEARCH_PAGES)
         .then(|| AgentPosition::Page { page: (page + 1) as u32 });
     Ok(SearchResultsResponse {
+        word_counts: suggestions.word_counts,
+        suggestions: suggestions.suggestions,
+        suggestions_partial: suggestions.partial,
         documents,
         total_count: hit_count.total,
         facet_counts,
@@ -655,4 +661,31 @@ mod filter_tests {
             .await
             .unwrap();
     }
+}
+
+/// Return word evidence from the run's selected, permitted collections.
+pub async fn search_suggestions_handler(
+    Extension(user): Extension<CurrentUser>, headers: HeaderMap,
+    AgentJson(body): AgentJson<SearchSuggestionsRequest>,
+) -> AgentResult<common::search_suggestions::SearchSuggestions> {
+    Deadline::start().run(async {
+        let kind = match body.kind.as_str() {
+            "pages" => crate::api::search::suggestions::TableKind::Pages,
+            "entities" => crate::api::search::suggestions::TableKind::Entities,
+            "folders" => crate::api::search::suggestions::TableKind::Folders,
+            _ => return Err(AgentError::invalid_argument("kind must be pages, entities or folders")),
+        };
+        for word in &body.words { validate_plain_text(word)?; }
+        let header = requested_collections_header(&headers);
+        let permitted = permitted_collectionnames(&user, &header).await?;
+        let selected = if body.collectionname.is_empty() {
+            match &permitted {
+                PermissionSet::All => list_permitted_collections(&user).await.map_err(AgentError::from_anyhow)?,
+                PermissionSet::Some(names) => names.iter().cloned().collect(),
+            }
+        } else { body.collectionname };
+        for name in &selected { require_collection(&permitted, name)?; }
+        Ok(crate::api::search::suggestions::indexed_suggestions(&selected, &body.words.join(" "), kind,
+            crate::api::search::suggestions::Gate::Agent).await)
+    }).await.map(Json)
 }

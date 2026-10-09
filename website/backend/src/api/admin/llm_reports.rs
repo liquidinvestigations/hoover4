@@ -217,3 +217,58 @@ pub async fn admin_llm_top_users(
         })
         .collect())
 }
+
+const SYSTEMONE_SQL: &str = "\
+SELECT toString(hook) AS hook, toString(rule_id) AS rule_id, \
+       countIf(event_time >= now() - INTERVAL 1 DAY) AS requests_24h, \
+       countIf(event_time >= now() - INTERVAL 7 DAY) AS requests_7d, \
+       count() AS requests_30d, toUInt64(sum(length(question_ids))) AS questions, \
+       quantile(0.5)(latency_ms) AS median_ms, quantile(0.95)(latency_ms) AS p95_ms, \
+       ifNotFinite(100 * avg(outcome != 'ok'), 0) AS error_pct, \
+       ifNotFinite(100 * sum(positive_answers) / sum(scored_answers), 0) AS positive_pct, \
+       toUInt64(sum(actions)) AS actions \
+FROM (SELECT * FROM systemone_call_events \
+      WHERE event_time >= now() - INTERVAL 30 DAY \
+      ORDER BY event_time DESC LIMIT 1 BY request_id) \
+GROUP BY hook, rule_id ORDER BY hook, rule_id";
+
+const SYSTEMONE_FAILURES_SQL: &str = "\
+SELECT toUnixTimestamp64Milli(event_time) AS time_ms, toString(hook) AS hook, \
+       toString(rule_id) AS rule_id, toString(outcome) AS outcome \
+FROM (SELECT * FROM systemone_call_events \
+      WHERE event_time >= now() - INTERVAL 30 DAY \
+      ORDER BY event_time DESC LIMIT 1 BY request_id) \
+WHERE outcome != 'ok' ORDER BY event_time DESC LIMIT 100";
+
+#[derive(Debug, clickhouse::Row, serde::Deserialize)]
+struct SystemOneDbRow {
+    hook: String, rule_id: String,
+    requests_24h: u64, requests_7d: u64, requests_30d: u64, questions: u64,
+    median_ms: f64, p95_ms: f64, error_pct: f64, positive_pct: f64, actions: u64,
+}
+
+#[derive(Debug, clickhouse::Row, serde::Deserialize)]
+struct SystemOneFailureDbRow {
+    time_ms: i64, hook: String, rule_id: String, outcome: String,
+}
+
+/// Read classifier counts and recent failures only when the administrator runs the report.
+pub async fn admin_llm_systemone(user: &CurrentUser) -> anyhow::Result<common::llm_types::SystemOneReport> {
+    guard::require_admin(user)?;
+    let client = get_global_client();
+    let (rows, failures) = tokio::try_join!(
+        client.query(SYSTEMONE_SQL).fetch_all::<SystemOneDbRow>(),
+        client.query(SYSTEMONE_FAILURES_SQL).fetch_all::<SystemOneFailureDbRow>(),
+    )?;
+    Ok(common::llm_types::SystemOneReport {
+        rows: rows.into_iter().map(|r| common::llm_types::SystemOneRow {
+            hook: r.hook, rule_id: r.rule_id, requests_24h: r.requests_24h,
+            requests_7d: r.requests_7d, requests_30d: r.requests_30d,
+            questions: r.questions, median_ms: r.median_ms, p95_ms: r.p95_ms,
+            error_pct: r.error_pct, positive_pct: r.positive_pct, actions: r.actions,
+        }).collect(),
+        failures: failures.into_iter().map(|r| common::llm_types::SystemOneFailure {
+            time_ms: r.time_ms, hook: r.hook, rule_id: r.rule_id, outcome: r.outcome,
+        }).collect(),
+    })
+}

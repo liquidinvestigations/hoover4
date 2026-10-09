@@ -80,7 +80,7 @@ def test_short_agent_activities_go_to_the_low_latency_queue():
     for activity in ("open_run", "write_ending",
                      "summarize_if_first_turn",
                      "record_step_failure",
-                     "check_citations", "write_empty_note", "write_incomplete"):
+                     "control_event", "write_empty_note", "write_incomplete"):
         queues = [
             _name(_kwarg(call, "task_queue"))
             for call in _iter_execute_activity()

@@ -273,3 +273,18 @@ class TestHashValidation:
 
         for bad in ["", "short", "A" * 64, "'; DROP --", "a" * 129, "abc','xyz"]:
             assert not _is_hash(bad), f"should reject {bad!r}"
+
+
+@pytest.mark.parametrize("query,expected", [
+    ('"(test | sample) document"', '"(test | sample) document"'),
+    ('"(test | sample) document"~10', '"(test | sample) document"~10'),
+    ('"(test | sample) document"/2', '"(test | sample) document"/2'),
+    ('test NOTNEAR/5 document', 'test NOTNEAR/5 document'),
+    ('"File | New"', '"File New"'),
+    ('"Rule 20.4(c"', '"Rule 20.4 c"'),
+    ('path/to/file', 'path to file'),
+    ('dasovi?h', 'dasovi?h'), ('dasovic%', 'dasovic%'),
+    ('skilling << resigned', 'skilling << resigned'),
+])
+def test_operator_repairs_match_rust(query, expected):
+    assert sanitize_match_query(query) == expected

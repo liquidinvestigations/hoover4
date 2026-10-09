@@ -265,6 +265,25 @@ def register_story_prompts(root: Path) -> None:
         if len(turns) == 2:
             FOLLOW_UPS[name] = turns[1]
 
+
+def register_custom_prompt(path: Path) -> str:
+    """Read a custom smoke prompt, its internet setting and an optional follow-up."""
+    value = json.loads(path.read_text())
+    name = value.get("name", "custom")
+    profile = value.get("profile", "chat_local")
+    text = value.get("text")
+    if not isinstance(name, str) or not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
+        raise ValueError("The custom prompt name is invalid.")
+    if profile not in ("chat", "chat_local") or not isinstance(text, str) or not text.strip():
+        raise ValueError("The custom prompt needs text and a chat or chat_local profile.")
+    followup = value.get("followup")
+    if followup is not None and (not isinstance(followup, str) or not followup.strip()):
+        raise ValueError("The custom follow-up needs text.")
+    PROMPTS_BY_NAME[name] = (name, profile, text)
+    if followup is not None:
+        FOLLOW_UPS[name] = followup
+    return name
+
 # The longest observation of one turn. The observer stops earlier when the page shows
 # the turn as ended. `AgentRun` sets no time limit on a run: `RUN_MODEL_STEPS` in
 # `main_services/processing/tasks/P_agent/model_timeouts.py` bounds its steps, and each
@@ -672,6 +691,8 @@ async def submit_and_observe(
             return result
         result.session_url = route
         result.submission_ok = True
+        session_id = route.split("/ai_chat/c/", 1)[1].split("/", 1)[0]
+        print(f"The submitted session is {session_id}.", flush=True)
         # Published now, so the `join` tab observes the same live turn.
         page_probe.url = route
     elif mode == "join":
@@ -696,6 +717,8 @@ async def submit_and_observe(
             result.observations.append((INCOMPLETE_EXECUTION, problem))
             return result
         result.submission_ok = True
+        session_id = result.session_url.split("/ai_chat/c/", 1)[1].split("/", 1)[0]
+        print(f"The submitted session is {session_id}.", flush=True)
     else:
         raise ValueError(f"unknown observation mode {mode!r}")
 
@@ -1267,6 +1290,7 @@ def main() -> int:
     )
     parser.add_argument("--no-followup", action="store_true")
     parser.add_argument("--history-only", default="")
+    parser.add_argument("--prompt-file", default="")
     parser.add_argument(
         "--continue", dest="continue_path", default="",
         help="a saved conversation path; the one selected prompt is sent once as its next turn",
@@ -1285,7 +1309,13 @@ def main() -> int:
         sys.stderr.write(f"error: {error}\n")
         return 2
 
-    if args.prompts.strip() == "all":
+    if args.prompt_file:
+        try:
+            names = [register_custom_prompt(Path(args.prompt_file))]
+        except (OSError, ValueError, TypeError, AttributeError) as error:
+            sys.stderr.write(f"error: {error}\n")
+            return 2
+    elif args.prompts.strip() == "all":
         names = [n for n, _, _ in PROMPTS]
     else:
         names = [n.strip() for n in args.prompts.split(",") if n.strip()]

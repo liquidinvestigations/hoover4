@@ -29,6 +29,7 @@ pub mod processing_types;
 pub mod search_const;
 pub mod search_query;
 pub mod search_result;
+pub mod search_suggestions;
 pub mod storage_tree;
 pub mod text_highlight;
 pub mod vfs;

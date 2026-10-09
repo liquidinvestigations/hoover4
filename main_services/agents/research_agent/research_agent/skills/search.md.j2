@@ -23,3 +23,23 @@ across the collections this chat can read.
 
 Example. The user asks for all data on JoeBWilkinson@cs.com. Make one call to {{ tool('search_collections') }} with queries ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Read a document when its result row does not provide enough evidence for the claim.
 {% endif %}
+
+Follow these search steps when earlier searches do not answer the question.
+{% if has('search_collections') %}
+1. Search each name as a quoted phrase.
+2. Search unquoted words, initials, e-mail addresses and names in the document language.
+Read word_counts and spelling suggestions. Use a suggestion only for the intended name.
+Use dasovi?h for one varying letter and dasovic% for an optional final letter.
+Use skilling << resigned when word order matters.
+3. Remove filters one at a time. Run a search without filters.
+{% endif %}
+{% if has('search_facet_values') %}Verify filter values with {{ tool('search_facet_values') }}.{% endif %}
+{% if has('search_histogram') %}Verify dates with {{ tool('search_histogram') }}.{% endif %}
+{% if has('search_passages') %}4. Search a description of the content with {{ tool('search_passages') }}.{% endif %}
+{% if has('folder_search') %}5. Use {{ tool('folder_search') }} when the request names a folder, path or file.{% endif %}
+{% if has('folder_list') %}Use {{ tool('folder_list') }} for that folder.{% endif %}
+{% if has('read_documents') %}6. Read the best 1 to 3 hits with {{ tool('read_documents') }}.{% endif %}
+For authors and affiliations, read the original document's title and author section. List every author and affiliation. A bibliography reference names a cited work.
+{% if has('doc_search_text') %}Use {{ tool('doc_search_text') }} for relevant text in a document.{% endif %}
+{% if has('web_search') %}7. Search the web only when the request allows it.{% endif %}
+{% if has('read_page') %}Read the best web pages with {{ tool('read_page') }}.{% endif %}

@@ -147,7 +147,7 @@ FULLTEXT_FIELDS = frozenset({"page_text"})
 #: Manticore's boolean/proximity keywords. They are not search terms, so they do not
 #: count when deciding whether a query has anything positive to match on.
 _MATCH_KEYWORDS = frozenset(
-    {"AND", "OR", "NOT", "MAYBE", "NEAR", "SENTENCE", "PARAGRAPH", "ZONE", "ZONESPAN"}
+    {"AND", "OR", "NOT", "MAYBE", "NEAR", "NOTNEAR", "SENTENCE", "PARAGRAPH", "ZONE", "ZONESPAN"}
 )
 
 #: `@field`, `@!field`, `@(a,b)` or `@*`, the field-prefix operator in all its spellings.
@@ -357,7 +357,13 @@ def _balance_parens(query: str) -> tuple[str, list[str]]:
     out: list[str] = []
     depth = 0
     dropped = 0
+    in_phrase = False
     for char in query:
+        if char == '"':
+            in_phrase = not in_phrase
+        if in_phrase:
+            out.append(char)
+            continue
         if char == "(":
             depth += 1
         elif char == ")":
@@ -373,6 +379,45 @@ def _balance_parens(query: str) -> tuple[str, list[str]]:
     if depth:
         repairs.append(f"added {depth} missing ')' to close the grouping")
     return "".join(out) + ")" * depth, repairs
+
+
+def _neutralise_stray_operators(query: str) -> tuple[str, list[str]]:
+    """Keep balanced phrase groups and replace stray operators with word separators."""
+    allowed, stack = set(), []
+    for i, char in enumerate(query):
+        if char == '"':
+            stack.clear()
+        elif char == "(":
+            stack.append(i)
+        elif char == ")" and stack:
+            start = stack.pop()
+            allowed.update((start, i))
+            allowed.update(j for j in range(start + 1, i) if query[j] == "|")
+    out, word = [], ""
+    in_phrase, stray = False, 0
+    for i, char in enumerate(query):
+        if char == '"':
+            in_phrase = not in_phrase
+            word = ""
+            out.append(char)
+        elif in_phrase:
+            if char in "|()" and i not in allowed:
+                out.append(" ")
+                stray += 1
+            elif char == "\\":
+                stray += 1
+            else:
+                out.append(char)
+        elif char in "/~":
+            attached = query[:i].rstrip().endswith('"') or (char == "/" and word.upper() in _MATCH_KEYWORDS)
+            out.append(char if attached else " ")
+            stray += int(not attached)
+            word = ""
+        else:
+            word = "" if char.isspace() else word + char
+            out.append(char)
+    repairs = [f"neutralised {stray} operator character that cannot stand where it was"] if stray else []
+    return "".join(out), repairs
 
 
 def _has_positive_term(query: str) -> bool:
@@ -431,10 +476,12 @@ def prepare_match_query(query: str) -> PreparedMatch:
     cleaned, repairs = _rewrite_boolean_words(query)
     if re.search(r"(?<![\w*])\*[^\W_]{1,2}\*(?![\w*])", query):
         repairs.append("Infix searches require at least three characters between the asterisks.")
-    cleaned, field_repairs = _rewrite_field_operators(cleaned)
     cleaned, quote_repairs = _balance_quotes(cleaned)
     cleaned, paren_repairs = _balance_parens(cleaned)
-    repairs = repairs + field_repairs + quote_repairs + paren_repairs
+    cleaned, operator_repairs = _neutralise_stray_operators(cleaned)
+    # Field escaping follows phrase repair so the existing address escape stays unchanged.
+    cleaned, field_repairs = _rewrite_field_operators(cleaned)
+    repairs = repairs + field_repairs + quote_repairs + paren_repairs + operator_repairs
 
     cleaned = " ".join(cleaned.split())
     if not cleaned:

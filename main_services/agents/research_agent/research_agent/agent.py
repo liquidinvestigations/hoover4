@@ -217,6 +217,7 @@ class MCPGatewayAgent:
         llm_model: Optional[str] = None,
         run_id: Optional[str] = None,
         kind: str = "chat",
+        revision: str = "",
     ) -> str:
         # Sorted so that ["a","b"] and ["b","a"] share one cached context.
         #
@@ -231,9 +232,12 @@ class MCPGatewayAgent:
         # `llm_model` is part of the key because the model client arguments hold a fixed
         # model id, so reusing a context across model choices would answer every later
         # step with the first model that was cached.
+        #
+        # `revision` is the revision of the definition and assets that the turn pinned, so
+        # a later activation never reuses a context of an earlier one.
         acl = f"{username or ''}|{','.join(sorted(allowed_collections or []))}"
         return (
-            f"{acl}|{session_id or ''}|{llm_model or ''}|{run_id or ''}|{kind}"
+            f"{acl}|{session_id or ''}|{llm_model or ''}|{run_id or ''}|{kind}|{revision}"
         )
 
     def _resolve_model(self, llm_model: Optional[str] = None) -> str:
@@ -254,10 +258,12 @@ class MCPGatewayAgent:
         llm_model: Optional[str] = None,
         run_id: Optional[str] = None,
         kind: str = "chat",
+        revision: str = "",
     ) -> AgentContext:
         """Return the cached context of one run, or build it."""
         model = self._resolve_model(llm_model)
-        key = self._acl_key(username, allowed_collections, session_id, model, run_id, kind)
+        key = self._acl_key(username, allowed_collections, session_id, model, run_id, kind,
+                            revision)
         if key in self._contexts:
             self._contexts.move_to_end(key)
             return self._contexts[key]

@@ -67,5 +67,6 @@ def test_naming_an_unregistered_tool_is_an_error_under_strict_rendering():
 
 def test_the_match_syntax_stands_alone():
     """It is handed back verbatim when a query fails to parse, so it has to read alone."""
-    assert "page_text` is the ONLY searchable field" in prompts.MATCH_SYNTAX
+    assert "NOTNEAR/5" in prompts.MATCH_SYNTAX
+    assert "@page_text" not in prompts.MATCH_SYNTAX
     assert prompts.MATCH_SYNTAX in prompts.SERVER_INSTRUCTIONS

@@ -140,3 +140,10 @@ pub async fn search_date_histogram(input: SearchQuery) -> Result<DateHistogram, 
         .await
         .map_err(to_server_fn_error)
 }
+
+/// Find spelling candidates only for a search that returned no results.
+#[server]
+pub async fn search_suggestions(query: SearchQuery) -> Result<common::search_suggestions::SearchSuggestions, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::search::search_suggestions(&user, query).await.map_err(to_server_fn_error)
+}

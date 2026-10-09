@@ -255,3 +255,15 @@ attachment cards and the preview source selector. `SearchResultDocumentItem.file
 `VfsFileEntry.file_type` are filled from `file_type_canonical` (one ClickHouse read per
 dataset on the page) rather than decoded from Manticore's `file_types` term ids, because
 the viewer draws its glyph from that same table and a symbol must not disagree with itself.
+
+## Indexed spelling suggestions
+
+`search_suggestions(query: SearchQuery)` runs after a complete zero result. It preserves all filters when it verifies replacement queries.
+The agent route `POST /api/agent/v1/search/suggestions` accepts collections, words and the pages, entities or folders table kind.
+Both entry points use collection permissions and shard resolution. Agent routes have fixed telemetry names.
+`SearchResultsResponse` includes `word_counts`, `suggestions` and `suggestions_partial`.
+Each word count contains the input word, folded word and checked document count. Each candidate contains its word, distance and checked count.
+Dictionary requests use generation-aware caching and a 200 ms deadline. Suggestion failures do not fail the search.
+
+The builders preserve alternatives inside phrases, quorum and proximity searches. They preserve `NOTNEAR`, `?`, `%` and strict order `<<`.
+The product escapes every `@` before Rust query preparation. Field operators are therefore unavailable, while address queries retain their existing expressions.

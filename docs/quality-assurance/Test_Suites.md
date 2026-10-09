@@ -97,3 +97,15 @@ Those wrappers capture a remote site. They do not ingest.
 
 `verify-stack.sh` and the Rust stack suite refuse a non-local target.
 The host rules are [Running the checks](Running_Checks.md#remote-targets).
+
+## Chat progress and indexed suggestions
+
+Worker tests verify capability selection, deadline failures, progress levels, signal streaks, absence options and classifier request metadata.
+Research-agent tests verify that repeated searches count completed calls and preserve simultaneous call execution.
+Rust tests verify word extraction, positional folding, merged counts, candidate gates, replacement queries and telemetry names.
+The stack integration cases verify phrase alternatives, proximity alternatives, `NOTNEAR` and indexed spelling candidates on testdata.
+Browser cases verify typo suggestions, no close form, normal results, policy rows and the systemone report.
+
+`website/observe-chat.sh --prompt-file` accepts a JSON smoke prompt with `name`, `profile` and `text`.
+An optional `followup` string supplies the next turn after the first answer.
+The profile is `chat` or `chat_local`. The observer prints the submitted session id for an external scenario timer.

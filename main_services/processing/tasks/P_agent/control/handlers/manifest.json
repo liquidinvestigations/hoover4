@@ -1,0 +1,46 @@
+{
+  "handlers": [
+    {
+      "name": "preparation",
+      "module": "preparation.py",
+      "factory": "Handler",
+      "api_version": 1
+    },
+    {
+      "name": "result_skills",
+      "module": "result_skills.py",
+      "factory": "Handler",
+      "api_version": 1
+    },
+    {
+      "name": "discovery",
+      "module": "discovery.py",
+      "factory": "Handler",
+      "api_version": 1
+    },
+    {
+      "name": "web_reads",
+      "module": "web_reads.py",
+      "factory": "Handler",
+      "api_version": 1
+    },
+    {
+      "name": "capture_check",
+      "module": "capture_check.py",
+      "factory": "Handler",
+      "api_version": 1
+    },
+    {
+      "name": "answer_review",
+      "module": "answer_review.py",
+      "factory": "Handler",
+      "api_version": 1
+    },
+    {
+      "name": "progress",
+      "module": "progress.py",
+      "factory": "Handler",
+      "api_version": 1
+    }
+  ]
+}

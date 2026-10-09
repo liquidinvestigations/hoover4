@@ -1,46 +1,32 @@
-{# The one thing that is deployment-specific and most often got wrong: there is exactly
-   one full-text field. `@title`, `@path`, `@filename` and friends are 500s, not misses.
-
-   Also handed back verbatim when a query fails to parse, so it has to read as a complete
-   reference on its own.
-#}
 Search syntax for {{ tool('search_collections') }}
 
-The query is a Manticore full-text expression. Plain words work and are the right
-default: several descriptive words beat one keyword. These operators are available when
-you need them:
+Plain words must all occur. These operators are available.
 
-  water testing          both words must appear (words are ANDed)
-  water | sewage         either word
-  water -draft           has "water", excludes "draft" (needs a positive word too)
-  "public water supply"  exact phrase, in this order
-  "public water"~5       the words within 5 positions of each other
-  "one two three"/2      any 2 of the 3 words
-  water NEAR/3 testing   within 3 words, either order
-  water SENTENCE testing in the same sentence (also PARAGRAPH)
-  water MAYBE sewage     "water", ranking pages that also mention sewage higher
-  (water | sewage) plant grouping
-  water^3 testing        boost "water" three-fold in the ranking
-  =testing               that exact word form, no stemming
-  ^Dear                  the field must start with this word
+  water testing                  both words
+  water | sewage                 either word
+  water -draft                   exclude draft
+  "public water supply"          exact phrase
+  "public water"~5               proximity within 5 positions
+  "one two three"/2               any 2 words
+  water NEAR/3 testing           proximity in either order
+  water NOTNEAR/5 testing        exclude nearby testing
+  "(water | sewage) plant"        either phrase
+  "(water | sewage) plant"~10     either word near plant
+  "(water | sewage) plant"/2      quorum with an alternative
+  skilling << resigned           strict word order
+  (water | sewage) plant         grouping
+  water MAYBE sewage             optional ranking word
+  water^3 testing                ranking boost
+  ^Dear                          start of text
+  contract*                      words with this prefix
+  *ollution*                     words containing this text
+  dasovi?h                       one varying character
+  dasovic%                       zero or one character
 
-`OR`, `AND` and `NOT` are ordinary words. Use `|` for either and `-word` to exclude a word.
+Use at least 3 letters between infix wildcards. Word forms do not match automatically.
+Search contract | contracts or contract* to include both forms.
 
-Wildcards work and are how you search fuzzily:
-
-  contract*              contract, contracts, contractual, contractor
-  *ollution*             pollution, and anything else containing "ollution"
-
-Use them when you are unsure of a word's ending or spelling — but they are broad and
-cost more to run, so prefer a real word when you know it.
-
-Two rules specific to this deployment:
-
-  * `page_text` is the ONLY searchable field. `@page_text water` is valid; `@title`,
-    `@filename`, `@path` and anything else do not exist and will fail. To narrow by
-    dataset, file type or path, do not put it in the query — read the hits and filter.
-  * A bare `@` in ordinary prose is read as a field prefix. Write `who paid acme`, not
-    `who paid @acme`.
-
-If a search returns an error, the `error` field says what was wrong with the query —
-read it and retry with corrected syntax rather than giving up on the search.
+OR, AND and NOT are ordinary words. Use | and -word.
+Read word_counts before changing a name. Suggestions give indexed words and checked document counts.
+Use a suggestion only when it is the intended name. Otherwise ask the person or report the absence.
+Read an error and retry with corrected syntax.

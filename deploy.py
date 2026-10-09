@@ -24,6 +24,7 @@ import stat
 import subprocess
 import sys
 import time
+import urllib.parse
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.resolve()
@@ -336,6 +337,9 @@ DEFAULTS = {
         "datasets_mount_path": "/testdata",
         # shared bearer token between the research agents and the MCP servers
         "mcp_shared_secret_file": "",
+        # An absolute host folder with custom chat policy handlers and definitions,
+        # mounted read-only in the worker. Empty: the worker uses its built-in ones.
+        "chat_control_dir": "",
         # Interfaces the published ports bind to. Loopback by default, because the
         # website accepts X-Forwarded-User from whoever connects and the infrastructure
         # ports carry no authentication at all. A deployment that needs another machine
@@ -1479,6 +1483,20 @@ def render_main_env(cfg):
         env["LLM_MODEL"] = ""
         env["LLM_PROVIDER_NAME"] = ""
         env["LLM_SEND_TEMPERATURE"] = "true"
+    # The structured server of the selfhosted model, which the chat policy checks ask.
+    # It is rendered only for that provider, so chat content never goes to a hosted
+    # classifier. Empty: every policy question is unavailable and the turn goes on.
+    env["CHAT_CLASSIFIER_URL"] = ""
+    if env["LLM_PROVIDER_NAME"] == "selfhosted":
+        host = urllib.parse.urlsplit(env["LLM_BASE_URL"]).hostname or cfg.get("ai_services", "host")
+        env["CHAT_CLASSIFIER_URL"] = "http://%s:%s" % (
+            host, cfg.get("ai_services", "vllm_structured_port"))
+    control_dir = cfg.get(m, "chat_control_dir").strip()
+    if control_dir:
+        if not os.path.isabs(control_dir) or not os.path.isdir(control_dir):
+            fail("[main_services] chat_control_dir must be an absolute path of an existing folder")
+        env["HOOVER4_CHAT_CONTROL_DIR_HOST"] = control_dir
+        env["HOOVER4_CHAT_CONTROL_DIR"] = "/control"
     env["TEMPORAL_UI_URL"] = "http://localhost:%s" % cfg.get(m, "temporal_ui_port")
     env["EXTERNAL_CLICKHOUSE_URL"] = "http://localhost:%s" % cfg.get(m, "clickhouse_http_port")
     # The identity hoover4-development-auth-backdoor asserts on every request it

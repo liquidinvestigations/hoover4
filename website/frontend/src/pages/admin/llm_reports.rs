@@ -71,6 +71,7 @@ pub fn LlmReports() -> Element {
         ErrorLogReport {}
         ToolTableReport {}
         TopUsersReport {}
+        SystemOneReport {}
     }
 }
 
@@ -372,5 +373,66 @@ mod tests {
         assert_eq!(format_utc_ms(0), "1970-01-01 00:00:00 UTC");
         assert_eq!(format_utc_ms(951_782_400_000), "2000-02-29 00:00:00 UTC");
         assert_eq!(format_utc_ms(1_790_000_000_123), "2026-09-21 14:13:20 UTC");
+    }
+}
+
+#[component]
+fn SystemOneReport() -> Element {
+    let mut state = use_signal(|| None::<Result<(common::llm_types::SystemOneReport, String), String>>);
+    let mut busy = use_signal(|| false);
+    let mut failures = use_signal(|| false);
+    let run = move |_| {
+        busy.set(true);
+        spawn(async move {
+            let response = crate::api::admin_api::admin_llm_systemone().await;
+            state.set(Some(response.map(|report| (report, read_at())).map_err(|e| user_facing_message(&e))));
+            busy.set(false);
+        });
+    };
+    let current = state.read().clone();
+    let at = current.as_ref().and_then(|r| r.as_ref().ok()).map(|(_, t)| t.clone()).unwrap_or_default();
+    rsx! {
+        div { class: "x-admin-module", style: MODULE,
+            h2 { style: MODULE_CAPTION, "System one checks" }
+            div { style: MODULE_BODY,
+                p { style: HELP_TEXT, "Requests are grouped by hook and rule. Latencies are in milliseconds. Shares use requests from the last 30 days." }
+                RunBar { id: "x-admin-llm-run-systemone", busy: busy(), read_at: at, onclick: run }
+                button { style: BTN, onclick: move |_| failures.set(false), "Counts" }
+                button { style: BTN, onclick: move |_| failures.set(true), "Recent failures" }
+                match current {
+                    None => rsx! { p { style: HELP_TEXT, "Select Run report to read the statistics." } },
+                    Some(Err(error)) => rsx! { ErrorBar { message: error } },
+                    Some(Ok((report, _))) => rsx! {
+                        if failures() {
+                            table { id: "x-admin-llm-systemone-failures", style: TABLE,
+                                thead { tr { th { style: TH, "Time" } th { style: TH, "Hook" } th { style: TH, "Rule" } th { style: TH, "Outcome" } } }
+                                tbody { for (index, row) in report.failures.iter().enumerate() {
+                                    tr { key: "{index}",
+                                        td { style: TD, "{format_utc_ms(row.time_ms)}" }
+                                        td { style: TD, "{row.hook}" } td { style: TD, "{row.rule_id}" } td { style: TD, "{row.outcome}" }
+                                    }
+                                } }
+                            }
+                        } else {
+                            table { id: "x-admin-llm-systemone", style: TABLE,
+                                thead { tr {
+                                    for title in ["Hook", "Rule", "24h", "7d", "30d", "Questions", "Median ms", "95th percentile ms", "Error %", "Positive %", "Actions"] {
+                                        th { key: "{title}", style: TH, "{title}" }
+                                    }
+                                } }
+                                tbody { for row in report.rows {
+                                    tr { key: "{row.hook}-{row.rule_id}",
+                                        td { style: TD, "{row.hook}" } td { style: TD, "{row.rule_id}" }
+                                        td { style: TD, "{row.requests_24h}" } td { style: TD, "{row.requests_7d}" } td { style: TD, "{row.requests_30d}" }
+                                        td { style: TD, "{row.questions}" } td { style: TD, "{row.median_ms:.0}" } td { style: TD, "{row.p95_ms:.0}" }
+                                        td { style: TD, "{row.error_pct:.1}" } td { style: TD, "{row.positive_pct:.1}" } td { style: TD, "{row.actions}" }
+                                    }
+                                } }
+                            }
+                        }
+                    },
+                }
+            }
+        }
     }
 }

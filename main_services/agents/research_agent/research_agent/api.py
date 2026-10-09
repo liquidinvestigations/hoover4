@@ -9,7 +9,9 @@ from research_agent import steps
 from research_agent.agent import build_agent
 from research_agent.prompts import active_profile, system_prompt_override
 from research_agent.run_messages import to_langchain
-from research_agent.steps import ModelStepRequest, ToolCallRequest
+from research_agent.steps import (
+    ControlSnapshotRequest, ModelStepRequest, PolicyCallsRequest, ToolCallRequest,
+)
 
 
 class MessageFeedBackRequest(BaseModel):
@@ -163,6 +165,19 @@ async def tool_call(request: ToolCallRequest) -> Dict[str, Any]:
     return await steps.run_tool_call(_agent(), request)
 
 
+@app.post("/control_snapshot")
+async def control_snapshot(request: ControlSnapshotRequest) -> Dict[str, Any]:
+    """The pinned assets of a turn: the system prompt, the listed skills and the callable
+    tools of the caller's run, and with a thread, the skills visible in its model input."""
+    return await steps.control_snapshot(_agent(), request)
+
+
+@app.post("/policy_calls")
+async def policy_calls(request: PolicyCallsRequest) -> Dict[str, Any]:
+    """Normalize and classify the calls of a policy action like the calls of a reply."""
+    return await steps.policy_calls(_agent(), request)
+
+
 def _require_langfuse(agent):
     """Return the Langfuse client, or 503 if tracing/feedback is not configured."""
     handler = getattr(agent, "langfuse_handler", None)
@@ -274,6 +289,8 @@ async def root():
             "health": "/health",
             "model_step": "/model_step",
             "tool_call": "/tool_call",
+            "control_snapshot": "/control_snapshot",
+            "policy_calls": "/policy_calls",
             "feedback_message": "/feedback/message",
             "feedback_session": "/feedback/session",
             "feedback_delete": "/feedback/{score_id}"

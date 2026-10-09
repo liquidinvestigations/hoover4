@@ -23,7 +23,7 @@ use common::{
 };
 #[derive(Copy, Clone)]
 pub struct SearchResultsState {
-    // pub query: ReadSignal<SearchQuery>,
+    pub query: ReadSignal<SearchQuery>,
     pub hit_count: ReadSignal<Option<Result<SearchResultHitCount, ServerFnError>>>,
     pub search_result: ReadSignal<Option<Result<SearchResultDocuments, ServerFnError>>>,
     pub current_search_result_page: ReadSignal<u64>,
@@ -106,6 +106,7 @@ pub fn SearchPanelLeftView(
             navigator().push(route);
         });
     use_context_provider(move || SearchResultsState {
+        query,
         hit_count: hit_count.into(),
         search_result: search_result.into(),
         current_search_result_page,
@@ -146,6 +147,22 @@ pub fn SearchPanelLeftView(
 #[component]
 fn SearchResultsView() -> Element {
     let search_results_state = use_context::<SearchResultsState>();
+    let mut result_mounted_thing =
+        use_signal(move || BTreeMap::<DocumentIdentifier, Event<MountedData>>::new());
+    use_effect(move || {
+        let selected = search_results_state.selected_result_hash.read().clone();
+        if let Some(selected) = selected {
+            if let Some(mounted_data) = result_mounted_thing.read().get(&selected) {
+                let _x = mounted_data.scroll_to_with_options(ScrollToOptions {
+                    behavior: ScrollBehavior::Smooth,
+                    vertical: ScrollLogicalPosition::Center,
+                    horizontal: ScrollLogicalPosition::Center,
+                });
+                // if let Err(e) = _x {dioxus::logger::tracing::error!("Error scrolling to selected result: {e}");}
+            }
+        }
+    });
+
     let search_result = search_results_state.search_result;
     // .suspend()?.cloned();
     let search_result = search_result.read();
@@ -164,21 +181,6 @@ fn SearchResultsView() -> Element {
         .and_then(|r| r.as_ref().ok())
         .map(|h| h.partial)
         .unwrap_or(false);
-    let mut result_mounted_thing =
-        use_signal(move || BTreeMap::<DocumentIdentifier, Event<MountedData>>::new());
-    use_effect(move || {
-        let selected = search_results_state.selected_result_hash.read().clone();
-        if let Some(selected) = selected {
-            if let Some(mounted_data) = result_mounted_thing.read().get(&selected) {
-                let _x = mounted_data.scroll_to_with_options(ScrollToOptions {
-                    behavior: ScrollBehavior::Smooth,
-                    vertical: ScrollLogicalPosition::Center,
-                    horizontal: ScrollLogicalPosition::Center,
-                });
-                // if let Err(e) = _x {dioxus::logger::tracing::error!("Error scrolling to selected result: {e}");}
-            }
-        }
-    });
 
     rsx! {
         if let Some(notice) = common::search_query::short_infix_notice(&search_result.query.query_string) {
@@ -202,6 +204,12 @@ fn SearchResultsView() -> Element {
                 "Some collections could not be searched, so results may be incomplete."
             }
         }
+        if result_list.is_empty() && !search_result.query.query_string.trim().is_empty()
+            && !search_result.partial && !hit_count_partial
+            && search_result.query == *search_results_state.query.read()
+            && search_results_state.hit_count.read().as_ref().is_some_and(|r| r.as_ref().is_ok_and(|h| h.total == 0)) {
+            NoResults { query: search_results_state.query }
+        }
         ul {
             id: "x-search-panel-results-wrapper",
             style: "
@@ -216,6 +224,52 @@ fn SearchResultsView() -> Element {
                         result_mounted_thing.write().insert(result.document_identifier(), _e);
                     }}
                 }
+            }
+        }
+    }
+}
+
+/// Offer checked query variants under the same filters after a zero-result search.
+#[component]
+fn NoResults(query: ReadSignal<SearchQuery>) -> Element {
+    let suggestions = use_resource(move || {
+        let current = query.read().clone();
+        crate::api::search_api::search_suggestions(current)
+    });
+    let current = suggestions.read().clone();
+    rsx! {
+        section { id: "x-search-no-results", style: "padding: 24px 12px;",
+            h2 { style: "font-size: 26px; margin-bottom: 8px;", "No results" }
+            p { "The query was {query.read().query_string}." }
+            match current {
+                None => rsx! { p { role: "status", "Loading similar words." } },
+                Some(Err(error)) => rsx! { ServerErrorDisplay { error } },
+                Some(Ok(found)) => rsx! {
+                    if found.partial {
+                        p { role: "status", "Some collections could not be searched, so suggestions may be incomplete." }
+                    }
+                    if found.queries.is_empty() {
+                        p { "No similar words were found in the selected collections." }
+                    } else {
+                        p { "Search for a similar word:" }
+                        for suggestion in found.queries {
+                            button {
+                                key: "{suggestion.query}",
+                                class: "x-search-suggestion",
+                                style: "padding: 8px 12px; margin: 4px; border: 1px solid; border-color: var(--x-link); border-radius: 6px;",
+                                onclick: move |_| {
+                                    let mut corrected = query.read().clone();
+                                    corrected.query_string = suggestion.query.clone();
+                                    navigator().push(Route::SearchPage {
+                                        query: corrected.into(), current_search_result_page: 0,
+                                        selected_result_hash: None.into(), doc_viewer_state: None.into(),
+                                    });
+                                },
+                                "{suggestion.query} ({suggestion.count})"
+                            }
+                        }
+                    }
+                },
             }
         }
     }

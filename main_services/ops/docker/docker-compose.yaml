@@ -487,6 +487,10 @@ services:
       # source, and the container reads the file. No key value ever enters a .env, a
       # compose file, a log line or a command line. /dev/null when no provider is set.
       - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
+      # The custom chat policy handlers and definitions ([main_services]
+      # chat_control_dir), read-only. /dev/null when the key is empty, and then
+      # HOOVER4_CHAT_CONTROL_DIR is empty and the worker reads no folder there.
+      - ${HOOVER4_CHAT_CONTROL_DIR_HOST:-/dev/null}:/control:ro
       # The Rust copy of the Temporal readiness gate, read by the unit test that
       # compares its constants with tasks/temporal_readiness.py. A directory, because
       # a single-file bind mount keeps the inode of a file an editor has replaced.
@@ -584,6 +588,10 @@ services:
       - "LLM_API_KEY_FILE=/run/secrets/llm_api_key"
       # false when the active provider rejects `temperature`: the title request leaves it out.
       - "LLM_SEND_TEMPERATURE=${LLM_SEND_TEMPERATURE:-true}"
+      # The structured server of the selfhosted model for the chat policy checks, and
+      # the folder of custom policy handlers. Both are empty unless deploy.py renders them.
+      - "CHAT_CLASSIFIER_URL=${CHAT_CLASSIFIER_URL:-}"
+      - "HOOVER4_CHAT_CONTROL_DIR=${HOOVER4_CHAT_CONTROL_DIR:-}"
       # The agent step limits of tasks/P_agent/model_timeouts.py. Empty keeps the code
       # defaults: no queue-wait limit, a 3,600 s model step and a 30 s title request.
       - "HOOVER4_AGENT_QUEUE_WAIT_SECONDS=${HOOVER4_AGENT_QUEUE_WAIT_SECONDS:-}"

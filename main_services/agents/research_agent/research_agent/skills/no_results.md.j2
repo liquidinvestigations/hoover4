@@ -4,18 +4,30 @@ group: stumble
 description: what to do when a search finds nothing: remove filters, split a phrase, try other forms of a name, then say what is missing
 tools: search_collections, search_passages, web_search
 ---
-{# What to do after a search that found nothing. The runs that stopped after an empty search
-   sent no later search with a changed query. #}
 When a search finds nothing
 
-An identical search gives the same result. If another search could help, change its terms or scope.
+Read word_counts first. Use a suggested word only when it is the intended name.
+Ask the person before substituting another name.
 
-1. Remove each filter: the date, the size, the file type and the collection.
-2. Split a long phrase into its names and words. Remove the double quotes from a phrase.
-3. Try other forms of a name in one call: the full name, the family name alone, "Last, First", the initials, and an e-mail address.
-4. Try other words for the same thing, such as contract and agreement.
-{% if has('search_passages') %}
-5. For a question in plain words, call {{ tool('search_passages') }}. It finds a passage by its meaning.
+Follow these search steps when earlier searches do not answer the question.
+{% if has('search_collections') %}
+1. Search each name as a quoted phrase.
+2. Search unquoted words, initials, e-mail addresses and names in the document language.
+Read word_counts and spelling suggestions. Use a suggestion only for the intended name.
+Use dasovi?h for one varying letter and dasovic% for an optional final letter.
+Use skilling << resigned when word order matters.
+3. Remove filters one at a time. Run a search without filters.
 {% endif %}
+{% if has('search_facet_values') %}Verify filter values with {{ tool('search_facet_values') }}.{% endif %}
+{% if has('search_histogram') %}Verify dates with {{ tool('search_histogram') }}.{% endif %}
+{% if has('search_passages') %}4. Search a description of the content with {{ tool('search_passages') }}.{% endif %}
+{% if has('folder_search') %}5. Use {{ tool('folder_search') }} when the request names a folder, path or file.{% endif %}
+{% if has('folder_list') %}Use {{ tool('folder_list') }} for that folder.{% endif %}
+{% if has('read_documents') %}6. Read the best 1 to 3 hits with {{ tool('read_documents') }}.{% endif %}
+{% if has('doc_search_text') %}Use {{ tool('doc_search_text') }} for relevant text in a document.{% endif %}
+{% if has('web_search') %}7. Search the web only when the request allows it.{% endif %}
+{% if has('read_page') %}Read the best web pages with {{ tool('read_page') }}.{% endif %}
 
-State the searches and their scope when an empty result affects the answer.
+After the available steps find no keyword match, answer with the absence and the searches.
+Before an absence answer, run at least 4 distinct searches with at least 2 available search tools.
+Do not repeat an identical search. State the searched collections and missing facts.

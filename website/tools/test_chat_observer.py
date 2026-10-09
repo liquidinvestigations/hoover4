@@ -244,5 +244,26 @@ class FollowUpDriverTests(unittest.IsolatedAsyncioTestCase):
         self.preview_screenshot.assert_awaited_once()
 
 
+
+
+class CustomPromptTests(unittest.TestCase):
+    def test_custom_prompt_keeps_text_and_internet_setting(self):
+        import json
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "prompt.json"
+            path.write_text(json.dumps({"name": "L4", "profile": "chat_local", "text": "Find Vince Kaminsjy.",
+                                        "followup": "Use Vince Kaminski."}))
+            with patch.dict(observer.PROMPTS_BY_NAME), patch.dict(observer.FOLLOW_UPS):
+                self.assertEqual(observer.register_custom_prompt(path), "L4")
+                self.assertEqual(observer.PROMPTS_BY_NAME["L4"], ("L4", "chat_local", "Find Vince Kaminsjy."))
+                self.assertEqual(observer.FOLLOW_UPS["L4"], "Use Vince Kaminski.")
+            path.write_text(json.dumps({"text": "", "profile": "chat"}))
+            with self.assertRaises(ValueError):
+                observer.register_custom_prompt(path)
+            path.write_text(json.dumps({"text": "Find a document.", "followup": []}))
+            with self.assertRaises(ValueError):
+                observer.register_custom_prompt(path)
+
+
 if __name__ == "__main__":
     unittest.main()

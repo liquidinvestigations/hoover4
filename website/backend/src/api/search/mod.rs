@@ -27,5 +27,8 @@ pub use search_range_facets::{
     SIZE_BUCKET_LABELS, search_numeric_facet, size_bucket_range,
 };
 
+pub mod suggestions;
+pub use suggestions::search_suggestions;
+
 pub mod fanout;
 pub mod search_sql;

@@ -109,25 +109,39 @@ Clicking anywhere else on the card selects it and loads it into the preview pane
 
 ### What you can type
 
-The query goes to a full-text engine, so more than plain words is available:
+The query accepts these full-text operators.
 
-| you type | it means |
+| You type | The search does this. |
 |---|---|
-| `contract draft` | documents containing both words |
-| `"exact phrase"` | those words, adjacent, in that order |
-| `contract -draft` | contains `contract`, does not contain `draft` |
-| `power \| energy` | either word |
-| `comput*` | prefix wildcard |
+| `contract draft` | It requires both words. |
+| `"exact phrase"` | It requires adjacent words in this order. |
+| `contract -draft` | It excludes documents with `draft`. |
+| `power \| energy` | It requires either word. |
+| `comput*` | It matches this prefix. |
+| `*pollut*` | It matches words containing at least three specified letters. |
+| `dasovi?h` | It matches one varying character. |
+| `dasovic%` | It matches zero or one character. |
+| `"water pollution"~10` | It matches words within ten positions. |
+| `"water pollution plant"/2` | It requires any two words. |
+| `water NEAR/5 pollution` | It matches nearby words in either order. |
+| `water NOTNEAR/5 pollution` | It excludes nearby occurrences of the second word. |
+| `skilling << resigned` | It requires this word order. |
+| `"(water \| sewage) plant"` | It accepts either word inside the phrase. |
+| `"(water \| sewage) plant"~10` | It accepts either word inside the proximity search. |
+| `"(water \| sewage) plant"/2` | It accepts an alternative inside the quorum search. |
 
-Punctuation inside a query is handled for you: `it's`, `3/4`, `say"hi` and `"Rule 20.4(c"` are
-all accepted and searched literally rather than rejected.
+Word forms do not match automatically. Search `contract \| contracts` or `contract*` to include both forms.
+The search repairs unmatched quotes, brackets and stray operator characters. Its note explains each repair.
+A query needs at least one positive word. Use `contract -draft` when you need an exclusion.
 
-One shape cannot be answered: a query made **only** of exclusions. `-draft` on its own, or
-`!a`, has nothing to match before it starts removing things, and the page says so.
+### When no result is found
 
-![The message shown for a query that only excludes terms](img/search-query-refused.png)
-
-Add at least one word to search *for*: `contract -draft` rather than `-draft`.
+The result area shows **No results** and the query.
+A loading line appears while the search verifies similar indexed words.
+When similar words have matches under your filters, buttons show their queries and document counts.
+Select a button to search that query with the same filters.
+When no suggestion exists, the page says that no similar words were found in the selected collections.
+A partial notice identifies incomplete suggestions or search results. An empty query shows no suggestion section.
 
 ### Result actions
 

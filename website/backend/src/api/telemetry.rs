@@ -206,6 +206,7 @@ async fn flush() {
 
 /// Server-function names that count as `user_search`.
 const SEARCH_FUNCTIONS: &[&str] = &[
+    "search_suggestions",
     "search_date_histogram",
     "search_for_results",
     "search_for_results_hit_count",
@@ -238,6 +239,7 @@ const DOCUMENT_FUNCTIONS: &[&str] = &[
 /// somebody counts. Every `#[server]` function in the frontend belongs in exactly one of
 /// these three lists. The two above only if its own handler records the event.
 const KNOWN_FUNCTIONS: &[&str] = &[
+    "admin_llm_systemone",
     "admin_add_member",
     "admin_cancel_operation",
     "admin_collection_processing",
@@ -353,7 +355,34 @@ fn match_function<'a>(segment: &str, allowlist: &[&'a str]) -> Option<&'a str> {
 /// It is never a free-form slice of the URL: an unmatched path yields the
 /// constant `other_server_fn`, so this cannot become a URL log by another
 /// route.
+const AGENT_FUNCTIONS: &[(&str, &str)] = &[
+    ("/api/agent/v1/collections/list", "agent_collections_list"),
+    ("/api/agent/v1/search/results", "agent_search_results"),
+    ("/api/agent/v1/search/suggestions", "agent_search_suggestions"),
+    ("/api/agent/v1/search/facet_values", "agent_search_facet_values"),
+    ("/api/agent/v1/search/histogram", "agent_search_histogram"),
+    ("/api/agent/v1/search/entity_explainer", "agent_search_entity_explainer"),
+    ("/api/agent/v1/documents/read", "agent_documents_read"),
+    ("/api/agent/v1/documents/search_text", "agent_documents_search_text"),
+    ("/api/agent/v1/documents/sources", "agent_documents_sources"),
+    ("/api/agent/v1/documents/metadata", "agent_documents_metadata"),
+    ("/api/agent/v1/documents/email", "agent_documents_email"),
+    ("/api/agent/v1/documents/diff_sources", "agent_documents_diff_sources"),
+    ("/api/agent/v1/documents/pdf_search", "agent_documents_pdf_search"),
+    ("/api/agent/v1/tables/overview", "agent_tables_overview"),
+    ("/api/agent/v1/tables/page", "agent_tables_page"),
+    ("/api/agent/v1/tables/cell", "agent_tables_cell"),
+    ("/api/agent/v1/tables/column_values", "agent_tables_column_values"),
+    ("/api/agent/v1/tables/search_cells", "agent_tables_search_cells"),
+    ("/api/agent/v1/folders/overview", "agent_folders_overview"),
+    ("/api/agent/v1/folders/list", "agent_folders_list"),
+    ("/api/agent/v1/folders/search", "agent_folders_search"),
+];
+
 pub fn classify_path(path: &str) -> (RouteClass, Option<&'static str>) {
+    if let Some((_, name)) = AGENT_FUNCTIONS.iter().find(|(known, _)| *known == path.split('?').next().unwrap_or(path)) {
+        return (RouteClass::Search, Some(*name));
+    }
     if let Some(rest) = path.strip_prefix("/api/") {
         let name = rest.split(['/', '?']).next().unwrap_or("");
         if let Some(known) = match_function(name, SEARCH_FUNCTIONS) {
@@ -399,6 +428,9 @@ mod tests {
 
     #[test]
     fn classifies_search_document_other() {
+        assert_eq!(classify_path("/api/search_suggestions123"), (RouteClass::Search, Some("search_suggestions")));
+        assert_eq!(classify_path("/api/agent/v1/search/results"), (RouteClass::Search, Some("agent_search_results")));
+        assert_eq!(classify_path("/api/agent/v1/search/suggestions"), (RouteClass::Search, Some("agent_search_suggestions")));
         assert_eq!(classify_path("/api/search_for_results").0, RouteClass::Search);
         assert_eq!(
             classify_path("/api/search_document_pdf").0,

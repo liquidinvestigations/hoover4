@@ -365,6 +365,9 @@ class CallRef:
     seq: int
     #: False for a call that gets one attempt only, such as a browser action.
     retry: bool = True
+    #: The digest of the tool name and the normalized arguments of a call that another
+    #: identical call of its batch can share (`steps.SHARED_TOOLS`), else empty.
+    share_key: str = ""
 
 
 def call_refs(message) -> list[CallRef]:
@@ -376,6 +379,7 @@ def call_refs(message) -> list[CallRef]:
             call_id=str(entry.get("id") or ""), name=str(entry.get("name") or ""),
             kind=str(entry.get("kind") or "parallel"), seq=int(entry.get("seq") or 0),
             retry=bool(entry.get("retry", True)),
+            share_key=str(entry.get("share_key") or ""),
         ))
     return out
 

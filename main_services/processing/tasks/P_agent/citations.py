@@ -1,4 +1,4 @@
-"""The citation check of an answer, and the note of its one repair round.
+"""The citation check of an answer, and the text of its repair note.
 
 `reports.check_labels` compares the `[Dn]` labels of an answer with the successful
 `cite_documents` results of the whole chat session. A label that no successful result gives
@@ -6,17 +6,18 @@ is unresolved. A label that results give for more than one document conflicts. A
 failed gives no label, so a failed call does not satisfy the check, and a call that exists
 does not stop it.
 
-An answer gets one repair round (`needs_repair`) when it has an unresolved or a conflicting
+An answer needs a repair round (`needs_repair`) when it has an unresolved or a conflicting
 label, or when it has no label and names a document or follows a document read. These
 rules ask for citations. They do not show that the claims of the answer are supported.
 The note of the round asks for the citations and the whole answer again. A reply with
 no text keeps the earlier answer. A reply with invalid labels or raw call text keeps
 that answer with a notice. A reply without labels shows its citation status.
 
-A logical thread gets one repair round at most. The note in the thread is the stored marker
-(`REPAIR_MARKER_KEY` in its usage). `is_citation_note` reads this marker.
-`steps.check_citations` uses stored read evidence after each answer or question.
-The evidence includes earlier turns' tool reads, without their repair notes.
+The note of a round is stored with its marker (`REPAIR_MARKER_KEY` in its usage), and
+`is_citation_note` reads this marker. The policy coordinator (`control.coordinator`) runs this
+check after each answer or question, counts the rounds of the turn from the stored notes, and
+combines these findings with the other checks in one note. The evidence includes earlier
+turns' tool reads, without their repair notes.
 A web check compares every answer link with readable page evidence and names each unread link.
 A stopped run and a run that ended at a limit get no round. The rules here are pure.
 """
@@ -127,7 +128,10 @@ def repair_note(check: dict) -> str:
                     if "item" in paragraph else f"Paragraph {paragraph['number']}")
         problems.append(f"{location} has a name or number without a source: {paragraph['text']} Add its citation or remove the claim.")
     if check.get("unsupported_paragraphs"):
-        problems.append("Give every factual paragraph and list item a verified source handle, including items beyond these examples. Retry each failed citation entry before answering. After another read_page call, call cite_pages again. Remove claims that have no verified source.")
+        problems.append("Give every factual paragraph and list item a verified source handle, including items beyond these examples. Retry each failed citation entry before answering.")
+        if check.get("web_used") or check.get("web_missing"):
+            problems.append("After another read_page call, call cite_pages again.")
+        problems.append("Remove claims that have no verified source.")
     if check.get("unresolved"):
         problems.append("No successful citation result gives "
                         + ", ".join(check["unresolved"]) + ".")
@@ -230,7 +234,8 @@ def needs_repair(answer: str, messages, session_entries) -> tuple[bool, dict]:
     """Whether an answer gets the repair round, and its citation check.
 
     `messages` is the thread, and `session_entries` the citation evidence of the session.
-    A thread that holds the note already gets no second round.
+    The policy coordinator counts the rounds of a turn (`control.coordinator`), so a thread
+    that holds a note is checked like any other.
     """
     from tasks.P_agent import reports
 
@@ -258,7 +263,7 @@ def needs_repair(answer: str, messages, session_entries) -> tuple[bool, dict]:
                                          or bool(check["web_undiscovered"]) or bool(answer_urls))
     check["unsupported_paragraphs"] = unsupported_paragraphs(answer) if documents_read or web_used else []
     check["read_page_urls"] = list(dict.fromkeys(urls))[:12]
-    if not answer.strip() or any(is_citation_note(m) for m in messages):
+    if not answer.strip():
         return False, check
     if (check["unresolved"] or check["conflicting"] or check["page_zero"]
             or check["web_missing"] or check["unsupported_paragraphs"]):

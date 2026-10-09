@@ -147,6 +147,8 @@ A call with a stored result runs no tool again.
 
 Todo calls run in reply order. Browser calls run in a separate ordered sequence.
 Other calls can run concurrently.
+An identical search or read call of the same reply waits for the first call (`steps.SHARED_TOOLS`).
+It stores a pointer to that result when the result is complete, and it runs on its own otherwise.
 Browser calls that change a page get one attempt.
 The workflow continues as new after 250 model steps or 30,000 history events.
 After 600 model steps, it writes an incomplete result from stored evidence.
@@ -156,14 +158,19 @@ The agent service compacts the model thread when it exceeds its size threshold.
 The worker stores the compaction status in the transcript.
 Request preparation failures end the run and preserve the stored thread.
 An answer ends the run with its todo list unchanged.
-The worker requests one citation repair round from stored read evidence.
-The note combines invalid labels, missing read-page addresses, and paragraphs with uncited names or numbers.
+The worker requests citation repair from stored read evidence, at most two rounds after the first draft.
+The note of a round combines invalid labels, missing read-page addresses, paragraphs with uncited names or numbers, and the other findings of the answer checks.
 Document reads through continuation pages also count.
 Search results and failed reads do not count as document reads.
 The answer stores citation status and tool scope in `usage_json`.
 The transcript shows this metadata below the answer.
 The worker stores typed evidence beside each tool result.
 Evidence identifies document reads, discovery, citations, notes, artifacts, spans, and errors.
+
+The `control_event` activity runs the chat checks of `P_agent/control/` at the turn start, after each tool batch, and at each answer draft.
+`control/coordinator.py` describes the stored decision of each event and the rows it writes.
+A policy batch runs through `tool_call` before the next model step.
+The checks ask the selfhosted structured server at `CHAT_CLASSIFIER_URL` and continue without answers when it fails.
 
 Each model, tool, and title attempt records an `agent_step_events` row.
 The row records queue wait, duration, status, error class, and token counts.

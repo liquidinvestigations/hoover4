@@ -60,7 +60,7 @@ def test_agent_run_and_its_activities_are_registered_on_their_queues():
     assert chat_workflows == ["AgentRun"]
     for name in ("open_run", "write_ending", "summarize_if_first_turn",
                  "record_step_failure",
-                 "check_citations", "write_empty_note", "write_incomplete"):
+                 "control_event", "write_empty_note", "write_incomplete"):
         assert name in chat_acts, name
     for removed in ("read_chat_todo", "preload_reads", "write_repeat_note",
                     "write_found_documents", "delegate_step"):
@@ -498,11 +498,44 @@ def citations_store(store, monkeypatch):
     return store
 
 
-def _check(store, seq=9):
-    from tasks.P_agent.steps import CitationCheckParams
+def pin_definition(store, raw=None):
+    """Store a resolved definition on the opening row, as `turn_started` does. With no
+    `raw`, a definition with no rule: the answer hook then runs the citation check only."""
+    from dataclasses import replace
+    from tasks.P_agent.control import definitions
 
-    return ActivityEnvironment().run(steps.check_citations, CitationCheckParams(
-        run_id=RUN_ID, username="u", session_id="s", seq=seq))
+    definition = definitions.validate(raw or {"id": "test-null", "schema_version": 1,
+                                              "rules": []})
+    opening = store["messages"][0]
+    usage = {**opening.usage, "control": {"definition": definition.record(),
+                                          "assets": {"skills": {}, "callable_tools": []},
+                                          "decisions": {}}}
+    store["messages"][0] = replace(opening, usage_json=json.dumps(usage))
+
+
+def _check(store, seq=9):
+    """The `answer_drafted` hook of the newest answer, with the transcript at `seq`."""
+    from dataclasses import replace
+    from types import SimpleNamespace
+    from tasks.P_agent import control_steps
+
+    if not store["messages"][0].usage.get("control"):
+        pin_definition(store)
+    store["row"] = replace(store["row"], next_seq=seq)
+    outcome = ActivityEnvironment().run(control_steps.control_event, control_steps.ControlParams(
+        run_id=RUN_ID, username="u", session_id="s", hook="answer_drafted",
+        draft_kind="answer", deadline_seconds=5))
+    return SimpleNamespace(needed=outcome.round, next_seq=outcome.next_seq)
+
+
+def _next_answer(store, text):
+    """A new draft after the newest message, as the next round's reply writes it."""
+    from dataclasses import replace
+
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=max(m.idx for m in store["messages"]) + 1, role="ai", run_id=RUN_ID, content=text,
+        usage_json=json.dumps({"step_no": 2})))
+    store["row"] = replace(store["row"], result=text)
 
 
 def _answer_with_tool(store, text, citation_tool=True, **changes):
@@ -579,7 +612,7 @@ def test_a_document_name_with_no_label_still_gets_the_round_after_a_citation_cal
 def test_a_read_result_without_a_named_file_starts_one_citation_round(
         citations_store, reader):
     citations_store["messages"].append(agent_runs.RunMessageRow(
-        idx=1, role="tool", tool_name=reader, tool_call_id="r",
+        idx=2, role="tool", tool_name=reader, tool_call_id="r",
         content=json.dumps({"items": [{"file_hash": "a" * 16,
                                         "collectionname": "c", "text": "The budget is 5."}]}),
         usage_json=json.dumps({"status": "ok", "evidence": [
@@ -1036,8 +1069,12 @@ def test_read_evidence_starts_repair_without_a_citation_tool(citations_store, re
         assert note.usage["citation_check"]["web_missing"]
     else:
         assert note.usage["citation_check"]["unsupported_paragraphs"][0]["number"] == 1
-    _answer_with_tool(citations_store, "The budget is 5.", citation_tool=False)
+    # D5: the repaired draft gets a second round, and the draft after it none.
+    _next_answer(citations_store, "The budget is 5.")
+    assert _check(citations_store).needed
+    _next_answer(citations_store, "The budget is 5.")
     assert not _check(citations_store).needed
+    assert sum(citations.is_citation_note(m) for m in citations_store["messages"]) == 2
 
 
 def test_document_and_web_findings_share_one_repair_note(citations_store):
@@ -1059,6 +1096,13 @@ def test_document_and_web_findings_share_one_repair_note(citations_store):
 def test_a_cited_paragraph_does_not_cover_the_next_claim():
     findings = citations.unsupported_paragraphs("The budget is 5 [D1].\n\nȘtefan receives 12 payments.")
     assert findings == [{"number": 2, "text": "Ștefan receives 12 payments."}]
+
+
+def test_document_only_citation_repairs_do_not_request_web_tools():
+    note = citations.repair_note({"documents_read": True, "unsupported_paragraphs": [
+        {"number": 1, "text": "Ștefan receives 12 payments."}]})
+    assert "cite_documents" in note
+    assert "read_page" not in note and "cite_pages" not in note
 
 
 @pytest.mark.parametrize("marker", ["-", "*", "+", "1.", "2)"])
@@ -1111,8 +1155,10 @@ def test_a_followup_gets_its_own_repair_for_earlier_read_evidence(
     _answer_with_tool(citations_store, "The budget is 5.", citation_tool=False)
     assert _check(citations_store).needed
     assert sum(citations.is_citation_note(m) for m in citations_store["messages"]) == 1
-    citations_store["messages"].append(agent_runs.RunMessageRow(
-        idx=citations_store["messages"][-1].idx + 1, role="ai", content="The budget is 5."))
+    # The earlier turn's note is not a round of this turn. D5 allows a second round here.
+    _next_answer(citations_store, "The budget is 5.")
+    assert _check(citations_store).needed
+    _next_answer(citations_store, "The budget is 5.")
     assert not _check(citations_store).needed
 
 
@@ -1161,7 +1207,8 @@ def test_one_read_web_link_does_not_cover_an_unread_link(citations_store, unread
     assert note.usage["citation_check"]["web_unread"] == ["https://example.invalid/unread"]
     assert "The answer links an unread page: https://example.invalid/unread." in note.content
     assert citations.answer_metadata(answer, citations_store["messages"], [], True)["citation_status"] == "missing"
-    assert not citations.needs_repair(answer, citations_store["messages"], [])[0]
+    # The check is pure. The coordinator counts the rounds of the turn.
+    assert citations.needs_repair(answer, citations_store["messages"], [])[0]
 
 
 @pytest.mark.parametrize("page", ["read", "report_(court)"])
@@ -1241,3 +1288,16 @@ def test_one_web_handle_does_not_cover_an_uncited_paragraph():
     assert "Call cite_documents" not in citations.repair_note(check)
     assert "every factual paragraph and list item" in citations.repair_note(check)
     assert citations.answer_metadata(answer, messages, entries, True)["citation_status"] == "missing"
+
+
+def test_no_progress_ending_reads_text_from_the_stored_decision(store):
+    ending = "The requested name was absent. Searches run: quoted name and name variants."
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=20, role="ai", content="", run_id=RUN_ID,
+        usage_json=json.dumps({"control": {"decisions": {"tool_batch_completed": {"end_turn": ending}}}})))
+    params = steps.IncompleteParams(run_id=RUN_ID, username="u", session_id="s", reason="no_progress")
+    ActivityEnvironment().run(steps.write_incomplete, params)
+    assert store["chat"][-1]["content"] == ending
+    from tasks.P_agent.control_steps import ControlOutcome
+    assert _payload_bytes(ControlOutcome(end_turn=True)) < 1024
+    assert "text" not in {f.name for f in fields(steps.IncompleteParams)}

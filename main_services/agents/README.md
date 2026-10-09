@@ -208,47 +208,34 @@ podman volume rm milvus_etcd milvus_minio milvus_standalone
 
 ## Manticore `MATCH()` syntax
 
-Verified against the live `testdata_1_pages` shard, not taken from documentation.
-Several documented spellings are a hard 500 on this deployment.
+The product prepares the query before Manticore reads it. These operators pass through that preparation.
 
-| Syntax | Result | Notes |
-|---|---|---|
-| `test document` | works | implicit AND |
-| `test \| zzz` | works | OR |
-| `test -zzz` | works | NOT, **only with a positive term** |
-| `-zzz` alone | 500 | `query is non-computable (single NOT operator)` |
-| `"test document"` | works | exact phrase |
-| `"test document"~5` | works | proximity |
-| `"one two three"/2` | works | quorum |
-| `test NEAR/3 document` | works | |
-| `test SENTENCE document`, `… PARAGRAPH …` | works | |
-| `test MAYBE document` | works | |
-| `@page_text test` | works | the only valid field |
-| `@title test` | 500 | `no field 'title' found in schema` |
-| `who paid @acme` | 500 | a bare `@word` in prose reads as a field operator |
-| `test^3` | works | boost |
-| `(test \| document) the` | works | grouping |
-| `@page_text ^test` | works | field-start |
-| `=test` | works | exact form |
-| `"test` / `(test` | 500 | `syntax error, unexpected $end` |
-| `""` (empty) | works, **matches every row** | dangerous default |
-| `docum*`, `*ocument*` | **works now** | see below, was silently wrong |
+| Syntax | The search does this. |
+|---|---|
+| `test document` | It requires both words. |
+| `test \| sample` | It accepts either word. |
+| `test -draft` | It excludes draft with a positive term. |
+| `"test document"` | It matches a phrase. |
+| `"test document"~5` | It matches proximity. |
+| `"one two three"/2` | It matches quorum. |
+| `test NEAR/3 document` | It matches nearby words. |
+| `test NOTNEAR/5 document` | It excludes nearby words. |
+| `"(test \| sample) document"` | It accepts OR inside a phrase. |
+| `"(test \| sample) document"~10` | It accepts OR inside proximity. |
+| `"(test \| sample) document"/2` | It accepts OR inside quorum. |
+| `dasovi?h`, `dasovic%` | It matches one character, or zero to one character. |
+| `skilling << resigned` | It requires word order. |
+| `test MAYBE document`, `test^3` | It adjusts ranking. |
+| `(test \| document) sample` | It groups alternatives. |
+| `^test` | It requires the start of text. |
+| `docum*`, `*ocument*` | It matches prefixes and infixes. |
 
-Two facts worth keeping:
-
-* **`page_text` is the only full-text field.** Everything else in the shard schema
-  (`collection_dataset`, `file_hash`, `extracted_by`, `page_id`, `ner_*`) is an attribute
-  and belongs in `WHERE`, not `MATCH()`.
-* **Wildcards fail silently without infix indexing.** The star is dropped during
-  tokenisation and the query becomes an exact search for a truncated word: `doc*` returns
-  **7** where `document` returns 16. Not zero. Wrong. This is why `min_infix_len` is set
-  on the shard DDLs, and why removing it breaks search without breaking any query.
-
-`sanitize_match_query` does not strip operators. It passes them through and repairs only
-the shapes that 500 (unbalanced quote or paren, NOT-only, bare `@word`, empty), reporting
-what it repaired in the response's `note` and returning Manticore's own error text in
-`error` so the model can correct itself. The escaping of `\` and `'` is unchanged and is
-the injection barrier.
+Word forms do not match automatically. Use alternatives or a wildcard for inflections.
+The page tables use infix indexing with three letters. Other text settings keep engine defaults.
+`REGEX(...)`, `SENTENCE`, `PARAGRAPH`, `ZONE`, `ZONESPAN` and `=word` do not provide their documented behavior here.
+Every product `@` is escaped, so field operators are unavailable. Addresses retain their existing escape and word splitting.
+The builders repair unmatched quotes, brackets and stray operators. They refuse empty and exclusion-only expressions.
+The response reports repairs. SQL literal escaping preserves the query boundary.
 
 ### Infix indexing: what it cost
 

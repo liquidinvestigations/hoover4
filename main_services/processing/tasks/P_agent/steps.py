@@ -12,8 +12,8 @@ and result hold ids, counts and tool names.
 * `tool_call` sends `POST /tool_call` for one stored call and writes its `tool` message and
   its finished tool row.
 * `record_step_failure` stores a `tool_unavailable` result for a tool step that failed.
-* `check_citations` checks the citation labels of an answer or a question, and writes the
-  note of its one repair round when the check asks for one.
+* The policy hooks of the run, which check answers and write their notes, are in
+  `control_steps.py`.
 * `write_empty_note` writes the note after the first reply with no text and no call. The
   note is the stored marker of the one retry of a thread.
 * `write_incomplete` ends a run that stopped before an answer, at the step limit or after a
@@ -82,6 +82,26 @@ CITATION_NOTE_NAME = "citation_check"
 STATE_TOOLS = frozenset({
     "write_todo", "edit_todo", "mark_todo", "read_todo",
 })
+
+
+#: The tools whose identical calls in one batch share one execution (`share_key`). Each is a
+#: repeatable search or read whose result depends on its arguments and the caller's scope.
+#: State-changing tools stay outside, and so do the todo tools.
+SHARED_TOOLS = frozenset({
+    "web_search", "search_collections", "search_passages", "read_documents", "doc_metadata",
+    "doc_email", "read_page",
+})
+
+
+def share_key(name: str, args: Any) -> str:
+    """The key of a call that an identical call of its batch can share, else empty. The
+    arguments are the normalized arguments that the agent service stored with the call."""
+    if name not in SHARED_TOOLS or not isinstance(args, dict):
+        return ""
+    import hashlib
+
+    text = json.dumps([name, args], sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
 #: The browser server's own tool, and the name prefix of every tool it routes to the
@@ -173,6 +193,8 @@ class ModelStepResult:
 @dataclass
 class ToolCallParams(StepRef):
     call: Optional[CallRef] = None
+    #: An earlier call of the same batch with the same `share_key`.
+    shared_from: Optional[CallRef] = None
 
 
 @dataclass
@@ -331,13 +353,16 @@ def _chat_row(row):
 
 
 def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, status: str,
-                       measure: Any = None, error_class: str = "", doc_refs: Any = None) -> None:
+                       measure: Any = None, error_class: str = "", doc_refs: Any = None,
+                       shared_from: str = "") -> None:
     """The `tool` message of one call, and for a run that writes the transcript, its
     finished tool row at the call's seq and the final stream row. `doc_refs` is the list
     that the `/tool_call` response carried beside the result, or None.
 
     The usage of the message holds the typed evidence of the result (`reports.normalize`)
-    at every run depth. The evidence is metadata: the model reads the content only."""
+    at every run depth. The evidence is metadata: the model reads the content only. A call
+    of a policy batch gets `origin` in the usage of its transcript row, and a shared result
+    names the call whose result it shares."""
     from database import agent_runs
     from tasks.P_agent import reports
     from tasks.P_agent.stream_writer import ToolCallWriter, tool_row_fields
@@ -347,17 +372,39 @@ def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, sta
     evidence = reports.with_source(
         reports.normalize(call.name, entry.get("args"), content, status, doc_refs),
         row.thread_id, idx)
+    usage = {"chat_seq": call.seq, "status": status, "measure": measure,
+             "error_class": error_class, "evidence": evidence, "doc_refs": doc_refs or []}
+    if shared_from:
+        usage["shared_from"] = shared_from
     agent_runs.write_message(
         row.username, row.session_id, row.thread_id, row.run_id,
         agent_runs.RunMessageRow(
             idx=idx, role="tool", content=content,
             tool_call_id=call.call_id, tool_name=call.name, run_id=row.run_id,
-            usage_json=json.dumps({"chat_seq": call.seq, "status": status, "measure": measure,
-                                   "error_class": error_class, "evidence": evidence, "doc_refs": doc_refs or []},
-                                  default=str)))
-    if True:
-        _chat_row(row)(call.seq, "tool", **tool_row_fields(call.name, entry.get("args"), content, doc_refs))
-        ToolCallWriter(row, turn_uuid, call.seq, call.name, entry.get("args")).finish()
+            usage_json=json.dumps(usage, default=str)))
+    origin = {}
+    if ai.usage.get("origin") == "policy" or shared_from:
+        origin = {"usage_json": json.dumps({k: v for k, v in (
+            ("origin", ai.usage.get("origin") or "model"), ("shared_from", shared_from)) if v})}
+    _chat_row(row)(call.seq, "tool", **tool_row_fields(call.name, entry.get("args"), content, doc_refs),
+                   **origin)
+    ToolCallWriter(row, turn_uuid, call.seq, call.name, entry.get("args")).finish()
+
+
+def pinned_control(messages) -> Optional[dict]:
+    """The pinned assets of the turn for a step request, from the opening row: the system
+    prompt, the text of each listed skill, and their revision. None for a turn that has none,
+    and the agent service then renders its current defaults."""
+    if not messages:
+        return None
+    control = messages[0].usage.get("control") if messages[0].role == "human" else None
+    assets = (control or {}).get("assets") if isinstance(control, dict) else None
+    if not isinstance(assets, dict) or not assets.get("system_prompt"):
+        return None
+    return {"revision": str(control.get("revision") or assets.get("revision") or ""),
+            "system_prompt": assets["system_prompt"],
+            "skills": {name: (skill or {}).get("text") or ""
+                       for name, skill in (assets.get("skills") or {}).items()}}
 
 
 def _read_thread(row):
@@ -587,11 +634,14 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
                       if (row.result or "").strip() else
                       "The citation reply could not be used. " + detail
                       + " No earlier answer is available.")
+    from tasks.P_agent.stream_writer import starts_round
+
     start = 0
     for i, m in enumerate(earlier):
-        if m.role == "human":
+        if starts_round(m):
             start = i
-    round_ai = [m for m in earlier[start:] if m.role == "ai"] + [ai]
+    round_ai = [m for m in earlier[start:] if m.role == "ai"
+                and m.usage.get("origin") != "policy"] + [ai]
     from database import agent_runs
 
     entries = reports.session_citation_entries(row.username, row.session_id)
@@ -639,6 +689,9 @@ def _store_reply(row, params: ModelStepParams, turn: dict, idx: int, model: str,
     for position, raw in enumerate(turn.get("tool_calls") or []):
         entry = dict(raw)
         entry["position"] = position
+        key = share_key(str(entry.get("name") or ""), entry.get("args"))
+        if key and not entry.get("argument_error"):
+            entry["share_key"] = key
         entries.append(entry)
     seq = row.next_seq if seq0 is None else seq0
     for entry in entries:
@@ -763,6 +816,7 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
             "thinking": thinking_setting(),
             "messages": [run_message(m, row.thread_id) for m in messages],
             "earlier": earlier_turns,
+            "control": pinned_control(messages),
         }
         stream = ModelStepWriter(row, params.turn_uuid, row.next_seq, next_idx, plan_prose,
                                  round_reasoning)
@@ -846,6 +900,27 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
 # ---------------------------------------------------------------------------- tool_call
 
 
+#: The `mode` of the `agent_step_events` row of a call that shared an earlier result.
+SHARED_MODE = "shared"
+#: The result of a call that shares the result of an identical earlier call of its batch.
+SHARED_TEXT = "This call repeats call {call_id} of the same reply. Its result is above."
+
+
+def complete_result(message) -> bool:
+    """Whether a stored result can be shared: a successful result whose evidence holds no
+    failed or partial entry."""
+    if message.usage.get("status") != "ok" or message.usage.get("shared_from"):
+        return False
+    try:
+        parsed = json.loads(message.content or "")
+    except ValueError:
+        parsed = None
+    if isinstance(parsed, dict) and (parsed.get("success") is False or parsed.get("error")):
+        return False
+    return not any(isinstance(e, dict) and e.get("status") in ("error", "partial")
+                   for e in message.usage.get("evidence") or [])
+
+
 @activity.defn
 @with_heartbeat(interval_seconds=STEP_HEARTBEAT_SECONDS)
 def tool_call(params: ToolCallParams) -> ToolCallResult:
@@ -872,6 +947,16 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
     if done is not None:
         return ToolCallResult(status=str(done.usage.get("status") or "ok"))
     entry = ai.tool_calls[call.position]
+    if params.shared_from is not None:
+        leader = _answer_of(messages, params.shared_from.call_id)
+        if leader is not None and complete_result(leader):
+            with _step_event(row, "tool", call.name, mode=SHARED_MODE,
+                             tool_call_id=call.call_id) as event:
+                _write_tool_result(row, params.turn_uuid, ai, call,
+                                   SHARED_TEXT.format(call_id=params.shared_from.call_id), "ok",
+                                   shared_from=params.shared_from.call_id)
+                event.ok = True
+            return ToolCallResult(status="ok")
     key = str(uuid.uuid5(agent_runs.RUN_ID_NAMESPACE,
                          f"tool:{row.thread_id}:{call.ai_idx}:{call.position}"))
     body = {
@@ -885,6 +970,7 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
         "idempotency_key": key,
         "messages": [run_message(m, row.thread_id) for m in messages],
         "earlier": _earlier_turns(row),
+        "control": pinned_control(messages),
     }
     live = ToolCallWriter(row, params.turn_uuid, call.seq, call.name, entry.get("args"))
     with _step_event(row, "tool", call.name, tool_call_id=call.call_id) as event:
@@ -1011,73 +1097,6 @@ def record_step_failure(params: StepFailure) -> None:
 
 
 @dataclass
-class CitationCheckParams(StepRef):
-    """The input of `check_citations`: the transcript seq of the note of the repair round.
-    The note takes the thread index after the newest message."""
-
-    seq: int = 0
-
-
-@dataclass
-class CitationRepair:
-    #: True when the note of the repair round is the newest message of the thread.
-    needed: bool = False
-    next_seq: int = 0
-
-
-@activity.defn
-@with_heartbeat
-def check_citations(params: CitationCheckParams) -> CitationRepair:
-    """The citation check of the run's answer or question, and the note of its one repair
-    round (`citations.needs_repair`).
-
-    The check reads the successful `cite_documents` results of the whole session. A run
-    that is terminal or that ended at a limit gets no round.
-    The note follows the newest message and stores its marker and check in usage.
-    The transcript also stores the note at `seq`.
-    A retry finds the newest marker and repeats the same writes without a second check.
-    """
-    from database import agent_runs
-    from tasks.P_agent import citations, reports
-
-    row = _read_row(params)
-    if agent_runs.is_terminal(row) or row.end_reason:
-        return CitationRepair(next_seq=params.seq)
-    messages = _read_thread(row)
-    transcript = True
-    if messages and citations.is_citation_note(messages[-1]):
-        # A retry after the note: the chat row and the run row get the same writes again,
-        # because the first attempt can have stopped before them.
-        if transcript:
-            _insert_chat_row(row.username, row.session_id, params.seq, NOTE_ROLE,
-                             content=messages[-1].content or "",
-                             tool_name=CITATION_NOTE_NAME)
-            agent_runs.write_run(row, next_seq=params.seq + 1)
-        return CitationRepair(needed=True, next_seq=params.seq + int(transcript))
-    entries = reports.session_citation_entries(row.username, row.session_id)
-    needed, check = citations.needs_repair(row.result or "",
-                                          _citation_messages(row, messages), entries)
-    if not needed:
-        return CitationRepair(next_seq=params.seq)
-    text = citations.repair_note(check)
-    agent_runs.write_message(
-        row.username, row.session_id, row.thread_id, row.run_id,
-        agent_runs.RunMessageRow(
-            idx=messages[-1].idx + 1 if messages else 0, role="human", content=text,
-            run_id=row.run_id,
-            usage_json=json.dumps({citations.REPAIR_MARKER_KEY: citations.REPAIR_MARKER,
-                                   "citation_check": check}, default=str)))
-    if not transcript:
-        return CitationRepair(needed=True, next_seq=params.seq)
-    _insert_chat_row(row.username, row.session_id, params.seq, NOTE_ROLE, content=text,
-                     tool_name=CITATION_NOTE_NAME)
-    agent_runs.write_run(row, next_seq=params.seq + 1)
-    log.info("[P_agent] run %s: the citation check asks for one repair round: %s",
-             row.run_id, check)
-    return CitationRepair(needed=True, next_seq=params.seq + 1)
-
-
-@dataclass
 class EmptyNoteParams(StepRef):
     """The input of `write_empty_note`: the keys of its rows."""
 
@@ -1112,12 +1131,12 @@ def write_empty_note(params: EmptyNoteParams) -> int:
 #: The `end_reason` values of a run that stopped before an answer.
 STEP_BUDGET = "step_budget"
 EMPTY_RESPONSE = "empty_response"
-INCOMPLETE_REASONS = (STEP_BUDGET, EMPTY_RESPONSE)
+INCOMPLETE_REASONS = (STEP_BUDGET, EMPTY_RESPONSE, "no_progress")
 
 
 @dataclass
 class IncompleteParams(StepRef):
-    #: `step_budget` or `empty_response`.
+    #: `step_budget`, `empty_response` or `no_progress`.
     reason: str = ""
     #: The step limit of the workflow, which the text of `step_budget` names.
     limit: int = 0
@@ -1139,7 +1158,10 @@ def write_incomplete(params: IncompleteParams) -> int:
     if agent_runs.is_terminal(row) or row.end_reason == params.reason:
         return row.next_seq
     messages = _read_thread(row)
-    text = thread_facts.incomplete_text(messages, params.reason, params.limit)
+    ending = next((decision.get("end_turn") for message in reversed(messages)
+                   for decision in (message.usage.get("control", {}).get("decisions") or {}).values()
+                   if decision.get("end_turn")), "") if params.reason == "no_progress" else ""
+    text = ending or thread_facts.incomplete_text(messages, params.reason, params.limit)
     seq = row.next_seq
     if True:
         last = _last_ai(messages)
@@ -1157,8 +1179,8 @@ __all__ = [
     "BROWSER_READ_TOOL", "BROWSER_TOOL_PREFIX", "EMPTY_REPLY_TEXT", "EMPTY_RESPONSE", "EmptyNoteParams",
     "INCOMPLETE_REASONS", "IncompleteParams", "ModelRequestRejected", "ModelStepParams",
     "CITATION_NOTE_NAME", "ModelStepResult", "NOTE_ROLE", "STEP_BUDGET", "StepFailure", "StepRef",
-    "ToolCallParams", "ToolCallResult", "check_citations",
-    "CitationCheckParams", "CitationRepair",
+    "SHARED_MODE", "SHARED_TOOLS", "SHARED_TEXT", "ToolCallParams", "ToolCallResult",
+    "complete_result", "pinned_control", "share_key",
     "is_browser_tool", "is_retry_marker", "model_step", "record_step_failure", "runs_in_browser", "runs_in_order",
     "tool_call", "tool_idx", "write_asked_answer", "write_empty_note", "write_incomplete",
 ]
