@@ -62,8 +62,8 @@ KNOWN_NAMES = {
 # in the worker source, so a queue added later is also described.
 BASE_QUEUES = [
     "processing-common-queue", "processing-tika-queue", "processing-ocr-queue",
-    "processing-nlp-queue", "processing-embed-queue", "processing-indexing-queue",
-    "processing-index-planner-queue", "operations-queue",
+    "processing-ocr-pdf-queue", "processing-nlp-queue", "processing-embed-queue",
+    "processing-indexing-queue", "processing-index-planner-queue", "operations-queue",
 ]
 
 TEMPORAL_ADDR = "temporal:7233"
@@ -136,6 +136,11 @@ FIX_MARKERS = [
     ("1bit vector tables", "main_services/processing/database/manticore.py", "1bit"),
     ("separate vectors container", "main_services/ops/docker/docker-compose.yaml",
      "manticore-vectors"),
+    ("ocr-pdf slots from the ini", "deploy.py", "ocr_pdf_concurrency"),
+    ("ocr-pdf own queue", "main_services/processing/tasks/P3_parse_files/batch_runner.py",
+     "processing-ocr-pdf-queue"),
+    ("target-based OCR run", "main_services/processing/tasks/P_admin/workflows.py",
+     "class OcrRunPlan"),
 ]
 
 # The two Manticore containers. `manticore` holds the pages, vfs and entities tables, and
