@@ -193,6 +193,8 @@ website counts as started. The model call runs on `chat-model-queue`.
 Each tool call runs on `agent-tool-queue`.
 The worker stores the model thread and transcript rows in ClickHouse.
 The page reads persisted rows through `chat_poll`.
+When a turn ends, the page refreshes all its rows once.
+This receives earlier tool results and citation metadata that incremental polling can miss.
 The agent run sweep closes running rows whose workflows have ended.
 
 

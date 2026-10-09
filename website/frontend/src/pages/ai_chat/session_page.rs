@@ -65,12 +65,15 @@ fn is_running_compaction(message: &ChatMessageItem) -> bool {
             .unwrap_or(false)
 }
 
-/// Re-read a running compaction line or the latest answer to receive metadata updates.
-fn poll_after_seq(messages: &[ChatMessageItem]) -> Option<u32> {
+/// Re-read the current turn when it ends. Otherwise, refresh a running compaction or the latest answer.
+fn poll_after_seq(messages: &[ChatMessageItem], finishing: bool) -> Option<u32> {
     let turn_start = messages
         .iter()
         .rposition(|m| m.role == ChatRole::User)
         .unwrap_or(0);
+    if finishing {
+        return messages.get(turn_start).and_then(|message| message.seq.checked_sub(1));
+    }
     match messages[turn_start..].iter().find(|m| is_running_compaction(m)) {
         Some(line) => line.seq.checked_sub(1),
         None => messages[turn_start..].iter().rfind(|message| message.role == ChatRole::Assistant)
@@ -399,13 +402,17 @@ fn ChatConversationPanel(
         spawn(async move {
             let mut sig = String::new();
             let mut failures = 0_u32;
+            let mut finishing = false;
             loop {
                 if *poll_gen.read() != generation {
                     return;
                 }
-                let after_seq = poll_after_seq(&messages.read());
+                let after_seq = poll_after_seq(&messages.read(), finishing);
                 match chat_poll(poll_sid.clone(), after_seq, sig.clone()).await {
                     Ok(result) => {
+                        if *poll_gen.read() != generation {
+                            return;
+                        }
                         failures = 0;
                         sig = result.sig;
                         if !result.messages.is_empty() {
@@ -444,9 +451,17 @@ fn ChatConversationPanel(
                         // stopping on an absent stream would abandon every turn during
                         // the model's first few seconds.
                         if result.interrupted || !result.active {
+                            // Earlier tool rows can finish after a later row reaches the page.
+                            // Read the whole turn once before polling stops.
+                            if !finishing {
+                                finishing = true;
+                                sig.clear();
+                                continue;
+                            }
                             sending.set(false);
                             return;
                         }
+                        finishing = false;
                     }
                     Err(e) => {
                         // A rate limit is not lost contact. It is the server answering,
@@ -735,14 +750,34 @@ mod poll_rows_tests {
         let done = r#"{"state":"done","tokens_before":9,"tokens_after":4}"#;
         let mut rows = vec![row(3, ChatRole::User, "q"), row(4, ChatRole::Compaction, running),
                             row(5, ChatRole::Tool, "")];
-        assert_eq!(poll_after_seq(&rows), Some(3));
+        assert_eq!(poll_after_seq(&rows, false), Some(3));
         assert!(merge_rows(&mut rows, vec![row(4, ChatRole::Compaction, done),
                                            row(5, ChatRole::Tool, ""),
                                            row(6, ChatRole::Assistant, "a")]));
         assert_eq!(rows.iter().map(|m| m.seq).collect::<Vec<_>>(), vec![3, 4, 5, 6]);
         assert_eq!(rows[1].content, done);
-        assert_eq!(poll_after_seq(&rows), Some(5));
+        assert_eq!(poll_after_seq(&rows, false), Some(5));
         assert!(!merge_rows(&mut rows, vec![row(6, ChatRole::Assistant, "a")]));
+    }
+
+    #[test]
+    fn the_final_refresh_recovers_an_earlier_tool_result() {
+        let mut rows = vec![row(1, ChatRole::User, "old"),
+                            row(2, ChatRole::Assistant, "old answer"),
+                            row(3, ChatRole::User, "new"),
+                            row(5, ChatRole::Tool, "later result"),
+                            row(6, ChatRole::Assistant, "answer [D1]")];
+        assert_eq!(poll_after_seq(&rows, false), Some(5));
+        let after_seq = poll_after_seq(&rows, true).unwrap();
+        assert_eq!(after_seq, 2);
+        let stored = vec![row(3, ChatRole::User, "new"),
+                          row(4, ChatRole::Tool, "verified citation [D1]"),
+                          row(5, ChatRole::Tool, "later result"),
+                          row(6, ChatRole::Assistant, "answer [D1]")];
+        assert!(merge_rows(&mut rows, stored.into_iter().filter(|row| row.seq > after_seq).collect()));
+        assert_eq!(rows[3].content, "verified citation [D1]");
+        assert!(!merge_rows(&mut rows, vec![row(4, ChatRole::Tool, "verified citation [D1]")]));
+        assert_eq!(poll_after_seq(&[], true), None);
     }
 
     #[test]
@@ -750,8 +785,8 @@ mod poll_rows_tests {
         let running = r#"{"state":"running"}"#;
         let rows = vec![row(1, ChatRole::User, "q"), row(2, ChatRole::Compaction, running),
                         row(3, ChatRole::Assistant, "a"), row(4, ChatRole::User, "q2")];
-        assert_eq!(poll_after_seq(&rows), Some(4));
-        assert_eq!(poll_after_seq(&[]), None);
+        assert_eq!(poll_after_seq(&rows, false), Some(4));
+        assert_eq!(poll_after_seq(&[], false), None);
     }
 }
 
