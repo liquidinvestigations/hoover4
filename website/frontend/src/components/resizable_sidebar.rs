@@ -31,10 +31,11 @@ use dioxus::prelude::*;
 /// different unit must not be readable as this one.
 const WIDTH_KEY: &str = "hoover4.sidebar-width-css-px";
 
-/// Default pane width: 40 % wider than the 240 px the tree's row budget is drawn against,
-/// because a deep row spends most of a 240 px pane on indent, chevron, icon and depth
-/// badge and leaves the name with nothing.
-pub const DEFAULT_SIDEBAR_PX: u32 = 336;
+/// Default pane width: 280 px, one sixth wider than the 240 px the tree's row budget is
+/// drawn against. A deep row spends most of a 240 px pane on indent, chevron, icon and
+/// depth badge and leaves the name with nothing. The default stays near that floor so the
+/// file list beside the tree keeps its width at 1280 px.
+pub const DEFAULT_SIDEBAR_PX: u32 = 280;
 
 /// The narrowest the pane may be dragged. 240 px is the width every row in the tree is
 /// sized against, so the floor is "no worse than the layout was designed for" rather than
@@ -319,10 +320,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_default_is_forty_percent_wider_than_the_floor() {
-        // The floor is the width the tree's rows are drawn against; the default is the
+    fn the_default_is_one_sixth_wider_than_the_floor() {
+        // The floor is the width the tree's rows are drawn against. The default is the
         // decided step up from it.
-        assert_eq!(DEFAULT_SIDEBAR_PX, MIN_SIDEBAR_PX * 14 / 10);
+        assert_eq!(DEFAULT_SIDEBAR_PX, MIN_SIDEBAR_PX * 7 / 6);
         assert_eq!(clamp_sidebar_px(DEFAULT_SIDEBAR_PX), DEFAULT_SIDEBAR_PX);
     }
 

@@ -120,6 +120,7 @@ fn SelectedItemList(
             "data-source-list": "true",
             style: "
             width: 300px;
+            max-width: 100%;
             height: fit-content;
             position: relative; top: 0px; left: 0px;",
 

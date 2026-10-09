@@ -208,11 +208,11 @@ pub async fn get_document_sources(
 
 fn _make_preview_wrapper(controls: Element, page: Element) -> Element {
     let sections = use_context::<PreviewExtraSections>();
-    // One column under the 54 px title bar. The bar is one row, and the page takes the
-    // height that is left.
+    // One column under the title bar, which is `--x-doc-title-height` high. The bar is
+    // one row, and the page takes the height that is left.
     rsx! {
         div {
-            style: "display: flex; flex-direction: column; width: 100%; height: calc(100% - 54px); min-height: 0;",
+            style: "display: flex; flex-direction: column; width: 100%; height: calc(100% - var(--x-doc-title-height)); min-height: 0;",
             PreviewSubtitleBar {
                 find_query_input_box: sections.find_query.read().clone(),
                 preview_selector: sections.preview_selector.read().clone(),

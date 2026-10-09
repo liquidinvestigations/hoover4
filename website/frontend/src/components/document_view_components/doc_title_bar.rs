@@ -23,12 +23,12 @@ pub fn DocTitleBar(
             style: "
                 display: flex;
                 flex-direction: row;
-                gap: 12px;
-                padding-right: 6px;
+                gap: 8px;
+                padding-right: 4px;
                 padding-left: 0px;
                 align-items: center;
                 justify-content: space-between;
-                height: 54px;
+                height: var(--x-doc-title-height);
                 width: 100%;
                 background-color:#F8FCFF;
                 flex-shrink: 0;
@@ -47,7 +47,7 @@ pub fn DocTitleBar(
                 style: "
                     display: flex;
                     flex-direction: row;
-                    gap: 6px;
+                    gap: 4px;
                     align-items: center;
                     justify-content: center;
                 ",
@@ -73,15 +73,16 @@ fn CollectionAndFilenameSection(document_identifier: ReadSignal<DocumentIdentifi
                 display: flex;
                 flex-direction: row;
                 align-items: center;
-                gap: 12px;
-                padding-left: 12px;
-                font-size: 20px;
+                gap: 8px;
+                padding-left: 11px;
+                font-size: var(--x-text-body);
+                line-height: var(--x-line-body);
                 font-weight: 400;
             ",
 
             CollectionIcon {  }
             div {
-                style: "color: rgba(0, 0, 0, 0.8); font-style: italic;",
+                style: "color: rgba(0, 0, 0, 0.8); font-style: italic; font-size: var(--x-text-detail); line-height: var(--x-line-detail);",
                 "{collection_dataset}"
             }
             div {
@@ -98,20 +99,19 @@ fn CollectionIcon() -> Element {
     rsx! {
         div {
             style: "
-                width: 21px;
-                height: 21px;
+                width: 19px;
+                height: 19px;
                 background: transparent;
                 color: rgba(0, 0, 0, 0.8);
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 16px;
                 border-radius: 4px;
                 flex-shrink: 0;
             ",
             Icon {
                 icon: GoDatabase,
-                style: "width: 18px; height: 18px;"
+                style: "width: 15px; height: 15px;"
             }
         }
     }
@@ -174,19 +174,18 @@ fn FileTypeIcon(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
     rsx! {
         div {
             style: "
-                width: 24px;
-                height: 24px;
+                width: 19px;
+                height: 19px;
                 background: transparent;
                 color: rgba(0, 0, 0, 0.9);
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 16px;
                 font-weight: 600;
                 border-radius: 4px;
                 flex-shrink: 0;
             ",
-            crate::components::file_type_icon::FileTypeGlyphIcon { file_type, size: 18 }
+            crate::components::file_type_icon::FileTypeGlyphIcon { file_type, size: 15 }
         }
     }
 }

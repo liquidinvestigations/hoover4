@@ -211,7 +211,7 @@ pub fn DocViewerRoot(
             {content_view}
             crate::components::resizable_sidebar::ResizablePane {
                 storage_key: "hoover4.document-details-width-css-px",
-                default_px: 460,
+                default_px: 360,
                 min_px: 300,
                 max_px: 900,
                 side: crate::components::resizable_sidebar::PaneSide::Right,
@@ -247,11 +247,12 @@ fn RightTabButton(
         button {
             style: "
                 cursor: pointer;
-                padding: 8px 12px;
+                padding: 4px 11px;
                 border-radius: 10px;
                 border: {border};
                 background: {bg};
-                font-size: 14px;
+                font-size: 13px;
+                line-height: 19px;
                 font-weight: 600;
             ",
             onclick: move |_e| {
@@ -284,9 +285,9 @@ fn RightPanel(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
                     flex-shrink: 0;
                     display: flex;
                     flex-direction: row;
-                    gap: 10px;
+                    gap: 8px;
                     align-items: center;
-                    padding: 10px;
+                    padding: 8px;
                     border-bottom: 1px solid rgba(0,0,0,0.15);
                     background: rgba(0,0,0,0.02);
                 ",
@@ -320,8 +321,8 @@ fn LeftControls(
             style: "
                 display: flex;
                 flex-direction: column;
-                gap: 12px;
-                padding: 12px;
+                gap: 8px;
+                padding: 8px;
                 height: 100%;
                 overflow: hidden;
             ",
@@ -390,7 +391,7 @@ fn _make_view_wrapper(controls: Element, page: Element) -> Element {
                 ",
                 crate::components::resizable_sidebar::ResizablePane {
                     storage_key: "hoover4.document-sources-width-css-px",
-                    default_px: 280,
+                    default_px: 224,
                     min_px: 200,
                     max_px: 560,
                     side: crate::components::resizable_sidebar::PaneSide::Left,
@@ -416,7 +417,7 @@ fn _make_view_wrapper(controls: Element, page: Element) -> Element {
 
                     DocTitleBar { document_identifier, show_new_tab_button: false, show_finder: true }
                     div {
-                        style: "width: 100%; height: calc(100% - 54px); border: 1px solid transparent; padding: 8px;",
+                        style: "width: 100%; height: calc(100% - var(--x-doc-title-height)); border: 1px solid transparent; padding: 8px;",
                         {page}
                     }
                 }

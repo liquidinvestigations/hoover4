@@ -121,35 +121,44 @@ const TABLE_STYLE: &str = "
     width: 100%;
     border-collapse: collapse;
     background: #FFFFFF;
-    font-size: var(--x-text-md);
+    font-size: var(--x-text-body);
 ";
 
 const TH_NAME_STYLE: &str = "
     text-align: left;
-    padding: 12px 20px;
+    padding: 8px 11px;
     background: #F3F4F6;
     color: var(--x-ink-muted);
     font-weight: 500;
     font-size: var(--x-text-sm);
     border-bottom: 1px solid #E5E7EB;
+";
+
+/// The header over the `View Details` column. It has no label, and it gives the column
+/// the same width as its cells.
+const TH_DETAILS_STYLE: &str = "
+    padding: 8px 8px;
+    background: #F3F4F6;
+    border-bottom: 1px solid #E5E7EB;
+    width: 96px;
 ";
 
 const TH_SIZE_STYLE: &str = "
     text-align: left;
-    padding: 12px 20px;
+    padding: 8px 8px;
     background: #F3F4F6;
     color: var(--x-ink-muted);
     font-weight: 500;
     font-size: var(--x-text-sm);
     border-bottom: 1px solid #E5E7EB;
-    width: 130px;
+    width: 80px;
 ";
 
 const TH_ACTIONS_STYLE: &str = "
-    padding: 12px 20px;
+    padding: 8px 8px;
     background: #F3F4F6;
     border-bottom: 1px solid #E5E7EB;
-    width: 110px;
+    width: 88px;
 ";
 
 const ROW_CLICKABLE_STYLE: &str = "background: #FFFFFF; cursor: pointer;";
@@ -157,14 +166,14 @@ const ROW_SELECTED_STYLE: &str = "background: #EEF2FF; cursor: pointer;";
 const ROW_HOVER_CLASS: &str = "hoover4-hover-shadow-background";
 
 const TD_NAME_STYLE: &str = "
-    padding: 14px 20px;
+    padding: 8px 11px;
     border-bottom: 1px solid #E5E7EB;
     color: var(--x-ink-strong);
     vertical-align: middle;
 ";
 
 const TD_SIZE_STYLE: &str = "
-    padding: 14px 20px;
+    padding: 8px 8px;
     border-bottom: 1px solid #E5E7EB;
     color: var(--x-ink-muted);
     font-size: var(--x-text-sm);
@@ -176,12 +185,13 @@ const TD_SIZE_STYLE: &str = "
 /// cell punches a hole in it, and under the last row of a listing the remaining segments
 /// read as the top edge of an empty row that is not there.
 const TD_DETAILS_STYLE: &str = "
+    width: 96px;
     border-bottom: 1px solid #E5E7EB;
     vertical-align: middle;
 ";
 
 const TD_ACTIONS_STYLE: &str = "
-    padding: 10px 20px;
+    padding: 8px 8px;
     border-bottom: 1px solid #E5E7EB;
     text-align: right;
     white-space: nowrap;
@@ -192,12 +202,12 @@ const NAME_INNER_STYLE: &str = "
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
 ";
 
 const ICON_STYLE: &str = "
     font-size: var(--x-text-xl);
-    width: 22px;
+    width: 19px;
     text-align: center;
     flex-shrink: 0;
     color: var(--x-ink);
@@ -648,7 +658,7 @@ fn FileBrowserContent(
                 }
                 crate::components::resizable_sidebar::ResizablePane {
                     storage_key: "hoover4.storage-preview-width-css-px",
-                    default_px: 640,
+                    default_px: 480,
                     min_px: 300,
                     max_px: 1400,
                     side: crate::components::resizable_sidebar::PaneSide::Right,
@@ -958,7 +968,7 @@ fn ListingTable(
             thead {
                 tr {
                     th { style: TH_NAME_STYLE, "Name" }
-                    th { style: TH_NAME_STYLE, "" }
+                    th { style: TH_DETAILS_STYLE, "" }
                     th { style: TH_SIZE_STYLE, "Size" }
                     th { style: TH_ACTIONS_STYLE, "" }
                 }
@@ -1028,7 +1038,7 @@ fn folder_icon() -> Element {
     rsx! {
         Icon {
             icon: MdFolder,
-            style: "width: 20px; height: 20px;"
+            style: "width: 19px; height: 19px;"
         }
     }
 }
@@ -1038,7 +1048,7 @@ fn container_icon() -> Element {
     rsx! {
         Icon {
             icon: GoFileZip,
-            style: "width: 20px; height: 20px;"
+            style: "width: 19px; height: 19px;"
         }
     }
 }
@@ -1047,7 +1057,7 @@ fn container_icon() -> Element {
 /// `container_icon` and `folder_icon` beside it are.
 fn file_icon(file_type: String) -> Element {
     rsx! {
-        crate::components::file_type_icon::FileTypeGlyphIcon { file_type, size: 20 }
+        crate::components::file_type_icon::FileTypeGlyphIcon { file_type, size: 19 }
     }
 }
 
@@ -1148,7 +1158,7 @@ fn ViewDetailsButton(
     rsx! {
         button {
             style: "
-                padding: 4px 10px; border: 1px solid rgba(0,0,0,0.4); border-radius: 16px;
+                padding: 4px 8px; border: 1px solid rgba(0,0,0,0.4); border-radius: 16px;
                 background: white; cursor: pointer; font-size: var(--x-text-sm);
                 white-space: nowrap; display: inline-flex; align-items: center;
             ",

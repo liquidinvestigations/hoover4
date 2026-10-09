@@ -74,6 +74,8 @@ html, body, #main {
     --x-control-height: 34px;
     --x-card-action-size: 30px;
     --x-result-card-height: 124px;
+    /* The document title bar. The reader and the preview below it subtract this height. */
+    --x-doc-title-height: 42px;
     --x-ink: rgba(0,0,0,0.75);
     --x-ink-strong: rgba(0,0,0,0.87);
     --x-ink-muted: rgba(0,0,0,0.6);
