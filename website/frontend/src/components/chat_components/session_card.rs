@@ -26,22 +26,22 @@ pub fn ChatSessionCard(session: ChatSessionItem) -> Element {
             style: "text-decoration: none; color: inherit; display: block;",
             div {
                 style: "background: white; border: 1px solid; border-color: var(--x-border); border-radius: var(--x-radius); \
-                        padding: 18px 20px; display: flex; gap: 14px; align-items: flex-start; \
+                        padding: 11px 15px; display: flex; gap: 11px; align-items: flex-start; \
                         min-height: 88px; box-sizing: border-box; transition: border-color 0.15s;",
                 div {
                     style: "width: 40px; height: 40px; border-radius: 999px; background: #EEF2FF; \
                             color: var(--x-link); display: flex; align-items: center; justify-content: center; \
                             flex-shrink: 0; font-size: var(--x-text-xl);",
-                    Icon { icon: MdChat, style: "width: 20px; height: 20px;" }
+                    Icon { icon: MdChat, style: "width: 19px; height: 19px;" }
                 }
                 div { style: "min-width: 0; flex: 1;",
                     div {
-                        style: "font-size: var(--x-text-md); font-weight: 600; color: var(--x-ink-strong); \
+                        style: "font-size: var(--x-text-body); line-height: var(--x-line-body); font-weight: 600; color: var(--x-ink-strong); \
                                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis;",
                         "{title}"
                     }
                     div {
-                        style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px; line-height: 1.45; \
+                        style: "font-size: var(--x-text-detail); color: var(--x-ink-muted); margin-top: 4px; line-height: var(--x-line-detail); \
                                 display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; \
                                 overflow: hidden;",
                         "{summary}"

@@ -50,7 +50,7 @@ pub fn AdminShell(
                 NavLink { to: Route::AdminMetricsPage {}, icon: MdInsertChart, label: "Metrics", selected: active == "metrics" }
             }
             main {
-                style: "flex: 1; min-width: 0; height: 100%; overflow: auto; padding: 16px 32px 32px;",
+                style: "flex: 1; min-width: 0; height: 100%; overflow: auto; padding: 15px 23px 23px;",
                 div {
                     style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-bottom: 8px;",
                     Link {

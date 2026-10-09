@@ -33,7 +33,7 @@ const LINK_STYLE: &str = "
     border: 1px solid #2563EB;
     color: #2563EB;
     text-decoration: none;
-    font-size: 16px;
+    font-size: var(--x-text-body);
     font-weight: 500;
 ";
 
@@ -61,11 +61,11 @@ pub fn NotFoundPage(segments: Vec<String>) -> Element {
             div {
                 style: CARD_STYLE,
                 h1 {
-                    style: "font-size: 34px; font-weight: 600; color: #111827; margin: 0;",
+                    style: "font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 600; color: #111827; margin: 0;",
                     "Page not found"
                 }
                 p {
-                    style: "font-size: 16px; line-height: 24px; color: #4B5563; margin: 0;",
+                    style: "font-size: var(--x-text-body); line-height: var(--x-line-body); color: #4B5563; margin: 0;",
                     "Nothing here answers to"
                 }
                 code {

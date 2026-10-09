@@ -32,7 +32,7 @@ fn UsersListContent() -> Element {
 
     rsx! {
         div { style: "display: flex; gap: 8px; margin-bottom: 16px; align-items: center;",
-            span { style: "color: var(--x-ink-muted); font-size: 16px;", "\u{1F50D}" }
+            span { style: "color: var(--x-ink-muted); font-size: 15px;", "\u{1F50D}" }
             input {
                 style: "{INPUT} flex: 0 1 320px;",
                 placeholder: "Search users",

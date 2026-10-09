@@ -303,7 +303,7 @@ fn EmailGraphCanvas(
 fn GraphLegend() -> Element {
     rsx! {
         div {
-            style: "display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: rgba(0,0,0,0.65);",
+            style: "display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; color: rgba(0,0,0,0.65);",
             for (label, dashed) in [
                 ("identity", false), ("reply", false), ("forward", false),
                 ("attachment", false), ("reference", false), ("inferred", true),

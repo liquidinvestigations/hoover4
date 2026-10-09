@@ -624,21 +624,21 @@ const DIALOG_STYLE: &str = "
 
 const CATEGORY_LIST_STYLE: &str = "
     width: 210px; flex-shrink: 0; border-right: 1px solid rgba(0,0,0,0.12);
-    overflow-y: auto; padding: 6px 0;
+    overflow-y: auto; padding: 4px 0;
 ";
 
 const PANE_STYLE: &str = "
-    flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 12px 16px;
+    flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 8px 11px;
 ";
 
 const FOOTER_STYLE: &str = "
-    display: flex; align-items: center; gap: 12px;
-    border-top: 1px solid rgba(0,0,0,0.12); padding: 10px 16px;
+    display: flex; align-items: center; gap: 11px;
+    border-top: 1px solid rgba(0,0,0,0.12); padding: 8px 11px;
 ";
 
 const INPUT_STYLE: &str = "
     border: 1px solid rgba(0,0,0,0.3); border-radius: 6px;
-    padding: 5px 8px; font-size: 15px; min-width: 0;
+    padding: 4px 8px; font-size: 15px; min-width: 0;
 ";
 
 /// The "All filters" modal. It mounts its dialog only while a category is open.
@@ -711,15 +711,15 @@ fn FilterModalDialog(
                 onclick: move |event: Event<MouseData>| event.stop_propagation(),
 
                 div {
-                    style: "display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid rgba(0,0,0,0.12);",
-                    Icon { icon: MdFilterList, style: "width: 22px; height: 22px; color: rgba(0,0,0,0.8);" }
-                    div { style: "font-size: 18px; font-weight: 600; flex: 1 1 auto;", "All filters" }
+                    style: "display: flex; align-items: center; gap: 8px; padding: 8px 11px; border-bottom: 1px solid rgba(0,0,0,0.12);",
+                    Icon { icon: MdFilterList, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.8);" }
+                    div { style: "font-size: var(--x-text-section); line-height: var(--x-line-section); font-weight: 600; flex: 1 1 auto;", "All filters" }
                     button {
                         style: "border: none; background: none; cursor: pointer; display: flex;",
                         class: "x-hover-color-red",
                         title: "Close without applying",
                         onclick: move |_| open_category.set(None),
-                        Icon { icon: MdClose, style: "width: 22px; height: 22px;" }
+                        Icon { icon: MdClose, style: "width: 19px; height: 19px;" }
                     }
                 }
 
@@ -743,7 +743,7 @@ fn FilterModalDialog(
                                         style: "
                                             display: flex; align-items: center; gap: 8px;
                                             width: 100%; border: none; text-align: left;
-                                            padding: 8px 12px; font-size: 15px; cursor: pointer;
+                                            padding: 4px 11px; font-size: 15px; cursor: pointer;
                                             background: {selected_background};
                                         ",
                                         onclick: move |_| open_category.set(Some(category)),
@@ -824,7 +824,7 @@ fn FilterModalDialog(
 
 #[component]
 fn CategoryIcon(category: FilterCategory) -> Element {
-    let style = "width: 18px; height: 18px; color: rgba(0,0,0,0.65); flex-shrink: 0;";
+    let style = "width: 19px; height: 19px; color: rgba(0,0,0,0.65); flex-shrink: 0;";
     match category {
         FilterCategory::Collections => rsx! { Icon { icon: GoDatabase, style } },
         FilterCategory::FileTypes => rsx! { Icon { icon: MdInsertDriveFile, style } },
@@ -886,7 +886,7 @@ fn FilterModalFooter(
             }
             div { style: "flex: 1 1 auto;" }
             button {
-                style: "border: 1px solid rgba(0,0,0,0.3); background: white; border-radius: 100px; padding: 8px 18px; cursor: pointer; font-size: 15px;",
+                style: "border: 1px solid rgba(0,0,0,0.3); background: white; border-radius: 100px; padding: 4px 15px; cursor: pointer; font-size: 15px;",
                 class: "hoover4-hover-shadow-background",
                 onclick: move |_| open_category.set(None),
                 "Cancel"
@@ -894,7 +894,7 @@ fn FilterModalFooter(
             button {
                 style: "
                     border: none; background: rgba(0,0,255,1.0); color: white;
-                    border-radius: 100px; padding: 8px 18px; cursor: pointer;
+                    border-radius: 100px; padding: 4px 15px; cursor: pointer;
                     font-size: 15px; font-weight: 600;
                     opacity: {count_opacity};
                 ",
@@ -978,7 +978,7 @@ fn SearchableFacetPane(
         if owns_box {
             div {
                 style: "display: flex; align-items: center; gap: 6px; margin-bottom: 8px;",
-                Icon { icon: MdSearch, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.5);" }
+                Icon { icon: MdSearch, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.5);" }
                 input {
                     r#type: "text",
                     style: "{INPUT_STYLE} flex: 1 1 auto;",
@@ -1123,7 +1123,7 @@ fn FileSizePane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
                                 div {
                                     key: "{item.display_string}",
                                     class: "x-facet-list-item",
-                                    style: "display: flex; align-items: center; gap: 10px; padding: 5px 4px; cursor: pointer;",
+                                    style: "display: flex; align-items: center; gap: 8px; padding: 4px; cursor: pointer;",
                                     onclick: move |_| {
                                         let mut q = pending.write();
                                         if selected {
@@ -1138,12 +1138,12 @@ fn FileSizePane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
                                         max_mb.set(String::new());
                                     },
                                     if selected {
-                                        Icon { icon: MdCheckBox, style: "width: 22px; height: 22px; color: rgb(28,33,45);" }
+                                        Icon { icon: MdCheckBox, style: "width: 19px; height: 19px; color: rgb(28,33,45);" }
                                     } else {
-                                        Icon { icon: MdCheckBoxOutlineBlank, style: "width: 22px; height: 22px; color: rgba(0,0,0,0.6);" }
+                                        Icon { icon: MdCheckBoxOutlineBlank, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
                                     }
                                     div { style: "flex: 1 1 auto;", "{item.display_string}" }
-                                    div { style: "color: rgba(0,0,0,0.6);", "{item.count}" }
+                                    div { style: "color: rgba(0,0,0,0.6); font-size: 13px;", "{item.count}" }
                                 }
                             }
                         }
@@ -1160,7 +1160,7 @@ fn FileSizePane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
 
             div {
                 style: "display: flex; align-items: center; gap: 8px; flex-wrap: wrap;",
-                span { style: "font-size: 14px;", "Between" }
+                span { style: "font-size: 13px;", "Between" }
                 input {
                     r#type: "number", min: "0", step: "0.1",
                     style: "{INPUT_STYLE} width: 90px;",
@@ -1169,7 +1169,7 @@ fn FileSizePane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
                     oninput: move |event| min_mb.set(event.value()),
                     onchange: apply_custom,
                 }
-                span { style: "font-size: 14px;", "and" }
+                span { style: "font-size: 13px;", "and" }
                 input {
                     r#type: "number", min: "0", step: "0.1",
                     style: "{INPUT_STYLE} width: 90px;",
@@ -1178,7 +1178,7 @@ fn FileSizePane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
                     oninput: move |event| max_mb.set(event.value()),
                     onchange: apply_custom,
                 }
-                span { style: "font-size: 14px;", "MB" }
+                span { style: "font-size: 13px;", "MB" }
             }
             if inverted() {
                 div {
@@ -1321,12 +1321,12 @@ fn DatePane(
                 div {
                     key: "{label}",
                     class: "x-facet-list-item",
-                    style: "display: flex; align-items: center; gap: 10px; padding: 5px 4px; cursor: pointer;",
+                    style: "display: flex; align-items: center; gap: 8px; padding: 4px; cursor: pointer;",
                     onclick: move |_| set_mode(target),
                     if mode() == target {
-                        Icon { icon: MdRadioButtonChecked, style: "width: 20px; height: 20px; color: rgb(28,33,45);" }
+                        Icon { icon: MdRadioButtonChecked, style: "width: 19px; height: 19px; color: rgb(28,33,45);" }
                     } else {
-                        Icon { icon: MdRadioButtonUnchecked, style: "width: 20px; height: 20px; color: rgba(0,0,0,0.6);" }
+                        Icon { icon: MdRadioButtonUnchecked, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
                     }
                     "{label}"
                 }
@@ -1338,7 +1338,7 @@ fn DatePane(
                 div {
                     style: "display: flex; align-items: center; gap: 8px; padding: 6px 0 0 30px; flex-wrap: wrap;",
                     if mode().shows_min() {
-                        span { style: "font-size: 14px;", "From" }
+                        span { style: "font-size: 13px;", "From" }
                         input {
                             r#type: "date",
                             style: "{INPUT_STYLE}",
@@ -1347,7 +1347,7 @@ fn DatePane(
                         }
                     }
                     if mode().shows_max() {
-                        span { style: "font-size: 14px;", if mode() == DateMode::Between { "to" } else { "Before" } }
+                        span { style: "font-size: 13px;", if mode() == DateMode::Between { "to" } else { "Before" } }
                         input {
                             r#type: "date",
                             style: "{INPUT_STYLE}",
@@ -1430,15 +1430,15 @@ fn DateHistogramChart(
                 title: "Click to show only the documents with no date of this kind",
                 onclick: move |_| on_unknown.call(()),
                 if unknown_selected {
-                    Icon { icon: MdCheckBox, style: "width: 18px; height: 18px; color: rgb(28,33,45);" }
+                    Icon { icon: MdCheckBox, style: "width: 19px; height: 19px; color: rgb(28,33,45);" }
                 } else {
-                    Icon { icon: MdCheckBoxOutlineBlank, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
+                    Icon { icon: MdCheckBoxOutlineBlank, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
                 }
                 div {
                     style: "flex: 1 1 auto;",
                     if histogram.counts_mentions { "Mentions no date" } else { "No confirmed date" }
                 }
-                div { style: "color: rgba(0,0,0,0.6);", "{histogram.unknown_count}" }
+                div { style: "color: rgba(0,0,0,0.6); font-size: 13px;", "{histogram.unknown_count}" }
             }
         }
     };
@@ -1453,7 +1453,7 @@ fn DateHistogramChart(
             "No dated documents match."
         };
         return rsx! {
-            div { style: "color: rgba(0,0,0,0.5); font-size: 14px;", "{nothing}" }
+            div { style: "color: rgba(0,0,0,0.5); font-size: 13px;", "{nothing}" }
             {unknown_row}
         };
     }
@@ -1507,7 +1507,7 @@ fn DateHistogramChart(
             }
         }
         div {
-            style: "display: flex; justify-content: space-between; font-size: 12px; color: rgba(0,0,0,0.55); margin-top: 3px;",
+            style: "display: flex; justify-content: space-between; font-size: 13px; color: rgba(0,0,0,0.55); margin-top: 3px;",
             span { "{epoch_to_iso_date(first)}" }
             span { "{epoch_to_iso_date(last)}" }
         }
@@ -1701,7 +1701,7 @@ fn EmailPane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuery>)
     rsx! {
         div {
             class: "x-facet-list-item",
-            style: "display: flex; align-items: center; gap: 10px; padding: 5px 4px; cursor: pointer; margin-bottom: 8px;",
+            style: "display: flex; align-items: center; gap: 8px; padding: 4px; cursor: pointer; margin-bottom: 8px;",
             onclick: move |_| {
                 let mut q = pending.write();
                 if has_attachments() {
@@ -1714,9 +1714,9 @@ fn EmailPane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuery>)
                 }
             },
             if has_attachments() {
-                Icon { icon: MdCheckBox, style: "width: 22px; height: 22px; color: rgb(28,33,45);" }
+                Icon { icon: MdCheckBox, style: "width: 19px; height: 19px; color: rgb(28,33,45);" }
             } else {
-                Icon { icon: MdCheckBoxOutlineBlank, style: "width: 22px; height: 22px; color: rgba(0,0,0,0.6);" }
+                Icon { icon: MdCheckBoxOutlineBlank, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
             }
             "Email has attachments"
         }
@@ -1896,7 +1896,7 @@ fn EntitiesPane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
                                 style: "
                                     display: flex; align-items: center; gap: 7px; width: 100%;
                                     border: none; text-align: left; padding: 6px 8px;
-                                    font-size: 14px; font-weight: {weight}; cursor: pointer;
+                                    font-size: 13px; font-weight: {weight}; cursor: pointer;
                                     background: {background}; border-radius: 6px;
                                 ",
                                 onclick: move |_| open_sub.set(sub),
@@ -2019,7 +2019,7 @@ fn EntitiesAllPane(
     rsx! {
         div {
             style: "display: flex; align-items: center; gap: 6px; margin-bottom: 8px;",
-            Icon { icon: MdSearch, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.5);" }
+            Icon { icon: MdSearch, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.5);" }
             input {
                 r#type: "text",
                 style: "{INPUT_STYLE} flex: 1 1 auto;",
@@ -2040,7 +2040,7 @@ fn EntitiesAllPane(
                 }
                 if rows.is_empty() {
                     div {
-                        style: "padding: 8px 10px; font-size: 14px; color: rgba(0,0,0,0.55);",
+                        style: "padding: 8px 10px; font-size: 13px; color: rgba(0,0,0,0.55);",
                         "No entities match."
                     }
                 }
@@ -2065,7 +2065,7 @@ fn EntitiesAllPane(
                                     }
                                 }
                                 div {
-                                    style: "display: flex; align-items: center; gap: 5px; padding: 0 0 4px 40px; font-size: 12px; color: rgba(0,0,0,0.55);",
+                                    style: "display: flex; align-items: center; gap: 5px; padding: 0 0 4px 40px; font-size: 13px; color: rgba(0,0,0,0.55);",
                                     EntitySubIcon { sub, style: "width: 13px; height: 13px;".to_string() }
                                     "{sub.label()}"
                                 }

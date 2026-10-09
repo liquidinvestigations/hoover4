@@ -63,7 +63,7 @@ fn seconds(ms: u64) -> String {
 #[component]
 pub fn LlmReports() -> Element {
     rsx! {
-        h2 { style: "font-size: 18px; margin: 24px 0 8px;", "Reports" }
+        h2 { style: "font-size: var(--x-text-section); line-height: var(--x-line-section); margin: 23px 0 8px;", "Reports" }
         p { style: "{HELP_TEXT} margin: 0 0 12px;",
             "Each report runs when you select its button."
         }

@@ -34,7 +34,7 @@ const BANNER_STYLE: &str = "
     margin-bottom: 10px;
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.04);
-    font-size: 14px;
+    font-size: 13px;
 ";
 
 const LINK_ROW_STYLE: &str = "
@@ -42,7 +42,7 @@ const LINK_ROW_STYLE: &str = "
     align-items: center;
     gap: 6px;
     margin-top: 2px;
-    font-size: 14px;
+    font-size: 13px;
     color: #1a73e8;
     cursor: pointer;
     user-select: none;
@@ -99,9 +99,9 @@ pub fn DocumentPreviewForEmail(
         None => rsx! {
             div {
                 style: CARD_STYLE,
-                div { style: "font-size: 18px; font-weight: 600; margin-bottom: 6px;", "{source.read().subject}" }
+                div { style: "font-size: var(--x-text-section); line-height: var(--x-line-section); font-weight: 600; margin-bottom: 4px;", "{source.read().subject}" }
                 div {
-                    style: "font-size: 14px; color: rgba(0, 0, 0, 0.75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;",
+                    style: "font-size: 13px; color: rgba(0, 0, 0, 0.75); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;",
                     "{source.read().addresses}"
                 }
             }
@@ -128,7 +128,7 @@ pub fn DocumentPreviewForEmail(
                         style: "padding: 10px; overflow: auto; height: 100%;",
                         {preamble}
                         div {
-                            style: "font-size: 14px; color: rgba(0, 0, 0, 0.6); font-style: italic; padding: 8px 2px;",
+                            style: "font-size: 13px; color: rgba(0, 0, 0, 0.6); font-style: italic; padding: 8px 2px;",
                             "No readable body is available. Select another text source to read its extracted content."
                         }
                     }
@@ -206,7 +206,7 @@ fn EmailEnvelopeCard(
                                 // inferred relation is stated as a sentence, and a
                                 // sentence without a hedge reads as a fact.
                                 span {
-                                    style: "margin-left: 6px; font-size: 12px; color: rgba(0,0,0,0.55);",
+                                    style: "margin-left: 6px; font-size: 13px; color: rgba(0,0,0,0.55);",
                                     "(inferred)"
                                 }
                             }
@@ -241,15 +241,15 @@ fn EmailEnvelopeCard(
                     {email_header_text(&value.subject, &value)}
                 }
                 if let Some(date) = date_label.clone() {
-                    div { style: "flex: 0 0 auto; font-size: 14px; color: rgba(0,0,0,0.75);", {email_header_text(&date, &value)} }
+                    div { style: "flex: 0 0 auto; font-size: 13px; color: rgba(0,0,0,0.75);", {email_header_text(&date, &value)} }
                 }
             }
 
             if !from_line.is_empty() {
-                div { style: "margin-top: 8px; font-size: 14px; overflow-wrap: anywhere;", {email_header_text(&from_line, &value)} }
+                div { style: "margin-top: 8px; font-size: 13px; overflow-wrap: anywhere;", {email_header_text(&from_line, &value)} }
             }
             if let Some(line) = recipients {
-                div { style: "font-size: 14px; color: rgba(0,0,0,0.85); overflow-wrap: anywhere;", "to " {email_header_text(&line, &value)} }
+                div { style: "font-size: 13px; color: rgba(0,0,0,0.85); overflow-wrap: anywhere;", "to " {email_header_text(&line, &value)} }
             }
 
             div {
@@ -276,7 +276,7 @@ fn EmailEnvelopeCard(
                             selected: None.into(),
                             doc_viewer_state: None.into(),
                         },
-                        style: "font-size: 14px; color: #1a73e8; text-decoration: none;",
+                        style: "font-size: 13px; color: #1a73e8; text-decoration: none;",
                         "Open Connected Emails ({value.cluster_size})"
                     }
                 }
@@ -310,11 +310,11 @@ fn EmailEnvelopeCard(
                             div {
                                 style: "flex: 1 1 auto; min-width: 0;",
                                 div {
-                                    style: "font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+                                    style: "font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
                                     title: "{attachment.file_name}",
                                     "{attachment.file_name}"
                                 }
-                                div { style: "font-size: 12px; color: rgba(0,0,0,0.5);", "{attachment.size_label()}" }
+                                div { style: "font-size: 13px; color: rgba(0,0,0,0.5);", "{attachment.size_label()}" }
                             }
                             Icon { icon: MdOpenInNew, style: "width: 15px; height: 15px; flex: 0 0 auto; align-self: flex-start;" }
                         }
@@ -323,7 +323,7 @@ fn EmailEnvelopeCard(
             }
 
             div {
-                style: "margin-top: 14px; font-size: 14px; color: rgba(0,0,0,0.6);",
+                style: "margin-top: 14px; font-size: 13px; color: rgba(0,0,0,0.6);",
                 "Email text Message"
             }
         }
@@ -363,7 +363,7 @@ fn EmailDetailsPanel(envelope: ReadSignal<EmailEnvelope>) -> Element {
                 padding: 10px 12px;
                 border-radius: 8px;
                 background: rgba(0, 0, 0, 0.04);
-                font-size: 14px;
+                font-size: 13px;
             ",
             table {
                 style: "border-collapse: collapse;",

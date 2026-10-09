@@ -201,12 +201,12 @@ html, body, #main {
     padding: 24px;
 }
 .x-signal-terms h1 {
-    font-size: 1.5rem;
+    font-size: var(--x-text-page);
     font-weight: 600;
     margin-bottom: 12px;
 }
 .x-signal-terms h2 {
-    font-size: 1.125rem;
+    font-size: var(--x-text-section);
     font-weight: 600;
     margin-bottom: 8px;
 }
@@ -249,13 +249,15 @@ html, body, #main {
 }
 
 .x-document-red-flags {
-    margin: 10px 0;
+    margin: 11px 0;
     border-top: 1px solid rgba(0,0,0,0.1);
-    padding-top: 10px;
-    font-size: 14px;
+    padding-top: 11px;
+    font-size: var(--x-text-body);
 }
 .x-document-red-flags h3 {
     margin: 0 0 8px 2px;
+    font-size: var(--x-text-section);
+    line-height: var(--x-line-section);
     font-weight: 700;
 }
 .x-document-red-flags h3 a {
@@ -269,27 +271,27 @@ html, body, #main {
     text-decoration: underline;
 }
 .x-red-flag-passage {
-    margin-bottom: 12px;
-    padding: 12px;
+    margin-bottom: 11px;
+    padding: 11px;
     border: 1px solid rgba(0,0,0,0.2);
     border-radius: 6px;
     background: white;
 }
 .x-red-flag-passage h4 {
-    margin-bottom: 6px;
-    font-size: 14px;
+    margin-bottom: 4px;
+    font-size: var(--x-text-body);
     font-weight: 700;
 }
 .x-red-flag-passage h5 {
-    margin-bottom: 10px;
-    font-size: 13px;
+    margin-bottom: 8px;
+    font-size: var(--x-text-detail);
     font-weight: 400;
 }
 .x-red-flag-passage strong {
     font-weight: 700;
 }
 .x-red-flag-excerpt {
-    padding: 10px 12px;
+    padding: 8px 11px;
     border-left: 2px solid #cbd5e1;
     background: #f5f5f5;
     line-height: 1.5;
@@ -327,15 +329,15 @@ html, body, #main {
 }
 .x-chat-follow-up {
     max-width: 100%;
-    padding: 8px 14px;
+    padding: 8px 15px;
     border: 1px solid;
     border-color: var(--x-link);
     border-radius: 14px;
     background-color: white;
     color: var(--x-link);
     font: inherit;
-    font-size: var(--x-text-md);
-    line-height: 1.45;
+    font-size: var(--x-text-body);
+    line-height: var(--x-line-body);
     text-align: left;
     overflow-wrap: anywhere;
     cursor: pointer;
@@ -361,7 +363,7 @@ html, body, #main {
 .x-admin-module + .x-admin-module {
     border-top: 1px solid;
     border-top-color: var(--x-border);
-    padding-top: 20px;
+    padding-top: 23px;
 }
 
 /* Rail hints. The card is level with its icon, as tall as the icon row, and as wide as
@@ -370,8 +372,8 @@ html, body, #main {
 /* The card starts at the icon's right edge, which is 21 px inside the rail edge. */
 #x-nav-sidebar .hover-card-content { min-width: 0; padding: 0; white-space: nowrap; margin-left: 27px; }
 .x-rail-hint {
-    display: flex; align-items: center; height: 30px; padding: 0 10px;
-    font-size: 21px; color: black; background-color: white; border-radius: 0.5rem;
+    display: flex; align-items: center; height: 30px; padding: 0 8px;
+    font-size: var(--x-text-body); color: black; background-color: white; border-radius: 0.5rem;
 }
 
 /* Table grid cells. The text is an excerpt of at most five lines of at most 80 columns,

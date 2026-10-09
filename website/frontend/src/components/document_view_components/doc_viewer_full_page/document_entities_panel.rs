@@ -162,7 +162,7 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
                 overflow: hidden;
             ",
             div {
-                style: "padding: 10px 12px; flex-shrink: 0;",
+                style: "padding: 8px 11px; flex-shrink: 0;",
                 if let Some(value) = selected_entity.clone() {
                     SelectedEntityBanner { value, missing: missing_entity }
                 }
@@ -173,8 +173,8 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
                         width: 100%;
                         border: 1px solid rgba(0,0,0,0.35);
                         border-radius: 10px;
-                        padding: 8px 10px;
-                        font-size: 14px;
+                        padding: 4px 8px;
+                        font-size: var(--x-text-body);
                         outline: none;
                     ",
                     value: "{filter_value()}",
@@ -187,11 +187,11 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
                 if multi_provider {
                     div {
                         style: "display: flex; align-items: center; gap: 6px; margin-top: 8px; \
-                                font-size: 12px; color: rgba(0,0,0,0.65);",
+                                font-size: 13px; color: rgba(0,0,0,0.65);",
                         span { "Found by" }
                         select {
                             style: "border: 1px solid rgba(0,0,0,0.35); border-radius: 8px; \
-                                    padding: 4px 6px; font-size: 12px;",
+                                    padding: 4px 6px; font-size: 13px;",
                             value: "{provider_filter()}",
                             onchange: move |e| provider_filter.set(e.value()),
                             option { value: "", "any model" }
@@ -249,7 +249,7 @@ fn SelectedEntityBanner(value: String, missing: bool) -> Element {
         div {
             style: "margin-bottom: 8px; padding: 7px 10px; background: {background}; \
                     border: 1px solid {border}; border-radius: 8px; color: {ink}; \
-                    font-size: 12px; display: flex; align-items: baseline; gap: 8px;",
+                    font-size: 13px; display: flex; align-items: baseline; gap: 8px;",
             div {
                 style: "flex: 1; min-width: 0; word-break: break-all;",
                 if missing {
@@ -260,7 +260,7 @@ fn SelectedEntityBanner(value: String, missing: bool) -> Element {
             }
             button {
                 style: "flex-shrink: 0; background: none; border: none; padding: 0; \
-                        color: {ink}; cursor: pointer; font-size: 12px; \
+                        color: {ink}; cursor: pointer; font-size: 13px; \
                         text-decoration: underline;",
                 onclick: clear,
                 "Show all entities"
@@ -362,15 +362,15 @@ fn EntityGroup(
                     style: "width: 16px; height: 16px; color: rgba(0,0,0,0.7); flex-shrink: 0;".to_string(),
                 }
                 div {
-                    style: "font-size: 14px; font-weight: 700; color: rgba(0,0,0,0.75); flex: 1 1 auto;",
+                    style: "font-size: var(--x-text-section); line-height: var(--x-line-section); font-weight: 700; color: rgba(0,0,0,0.75); flex: 1 1 auto;",
                     "{entity_type.label()}"
                 }
-                div { style: "font-size: 12px; color: rgba(0,0,0,0.5);", "{total}" }
+                div { style: "font-size: 13px; color: rgba(0,0,0,0.5);", "{total}" }
                 if has_details && !force_expanded {
                     button {
                         style: "
                             border: 1px solid rgba(0,0,0,0.25); background: white;
-                            border-radius: 999px; padding: 2px 9px; font-size: 12px;
+                            border-radius: 999px; padding: 2px 9px; font-size: 13px;
                             cursor: pointer; display: inline-flex; align-items: center; gap: 3px;
                         ",
                         class: "hoover4-hover-shadow-background",
@@ -422,7 +422,7 @@ fn EntityGroup(
 
             if pages > 1 {
                 div {
-                    style: "display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px;",
+                    style: "display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px;",
                     button {
                         style: "border: 1px solid rgba(0,0,0,0.25); background: white; border-radius: 6px; padding: 2px 8px; cursor: pointer;",
                         disabled: current == 0,
@@ -520,11 +520,11 @@ fn EntityCard(
         div {
             style: "
                 border: 1px solid rgba(0,0,0,0.18); border-radius: 10px;
-                padding: 10px 12px; background: white;
+                padding: 8px 11px; background: white;
             ",
             if !bucket_line.is_empty() {
                 div {
-                    style: "font-size: 12px; color: rgba(0,0,0,0.55);",
+                    style: "font-size: 13px; color: rgba(0,0,0,0.55);",
                     "({bucket_line})"
                 }
             }
@@ -534,11 +534,11 @@ fn EntityCard(
                 },
                 Some(None) => rsx! {
                     div {
-                        style: "font-weight: 600; font-size: 14px;",
+                        style: "font-weight: 600; font-size: var(--x-text-body);",
                         "{item.value}"
                     }
                     div {
-                        style: "font-size: 12px; color: rgba(0,0,0,0.55); margin-top: 2px;",
+                        style: "font-size: 13px; color: rgba(0,0,0,0.55); margin-top: 2px;",
                         "No details available for this value."
                     }
                 },
@@ -550,7 +550,7 @@ fn EntityCard(
                 div {
                     style: "margin-top: 8px;",
                     button {
-                        style: "border: none; background: none; padding: 0; font-size: 12px; \
+                        style: "border: none; background: none; padding: 0; font-size: 13px; \
                                 color: rgba(0,0,0,0.65); cursor: pointer; text-decoration: underline;",
                         onclick: move |_| show_amounts.toggle(),
                         if show_amounts() {
@@ -567,7 +567,7 @@ fn EntityCard(
                                     key: "{amount.value}",
                                     style: "
                                         border: 1px solid rgba(0,0,0,0.2); border-radius: 999px;
-                                        background: white; padding: 2px 9px; font-size: 12px;
+                                        background: white; padding: 2px 9px; font-size: 13px;
                                         cursor: pointer;
                                     ",
                                     class: "x-entity-chip",
@@ -592,16 +592,16 @@ fn EntityCardBody(explanation: EntityExplanation, value: String) -> Element {
     rsx! {
         div {
             "data-entity-card-value": "true",
-            style: "font-size: 16px; word-break: break-all; color: rgba(0,0,0,0.8);",
+            style: "font-size: var(--x-text-body); word-break: break-all; color: rgba(0,0,0,0.8);",
             "{value}"
         }
         div {
-            style: "font-weight: 700; font-size: 14px; margin-top: 6px;",
+            style: "font-weight: 700; font-size: 13px; margin-top: 6px;",
             "{explanation.title}"
         }
         if !explanation.subtitle.is_empty() {
             div {
-                style: "font-size: 12px; color: rgba(0,0,0,0.6); margin-top: 1px;",
+                style: "font-size: 13px; color: rgba(0,0,0,0.6); margin-top: 1px;",
                 "{explanation.subtitle}"
             }
         }
@@ -614,7 +614,7 @@ fn EntityCardBody(explanation: EntityExplanation, value: String) -> Element {
         if !explanation.facts.is_empty() {
             div {
                 style: "display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; \
-                        margin-top: 8px; font-size: 12px;",
+                        margin-top: 8px; font-size: 13px;",
                 for fact in explanation.facts.clone() {
                     div {
                         key: "l{fact.label}",
@@ -635,7 +635,7 @@ fn EntityCardBody(explanation: EntityExplanation, value: String) -> Element {
                         target: "_blank",
                         rel: "noopener noreferrer",
                         title: "{link.note}",
-                        style: "font-size: 12px; color: rgb(20,80,180);",
+                        style: "font-size: 13px; color: rgb(20,80,180);",
                         "{link.title}"
                     }
                 }
@@ -698,7 +698,7 @@ fn EntityChip(item: DocumentEntityItem, show_provider: bool) -> Element {
                 div {
                     title: "{provider_badge}",
                     style: "
-                        font-size: 11px;
+                        font-size: 13px;
                         color: rgba(0,0,0,0.55);
                         background: rgba(0,0,0,0.06);
                         border-radius: 999px;

@@ -13,16 +13,16 @@ pub fn AiChatHistoryPage() -> Element {
         Title { "Hoover Search - Chat history" }
         div {
             style: "width: 100%; height: 100%; background: #F5F6F8; box-sizing: border-box; \
-                    padding: 32px 28px; overflow: auto;",
+                    padding: 23px; overflow: auto;",
             div {
-                style: "display: flex; align-items: center; gap: 16px; margin-bottom: 20px;",
+                style: "display: flex; align-items: center; gap: 15px; margin-bottom: 15px;",
                 Link {
                     to: Route::AiChatPage {},
                     style: "color: var(--x-link); text-decoration: none; font-size: var(--x-text-md);",
                     "\u{2190} Back"
                 }
                 h1 {
-                    style: "margin: 0; font-size: 24px; font-weight: 600; color: var(--x-ink-strong);",
+                    style: "margin: 0; font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 600; color: var(--x-ink-strong);",
                     "Conversation history"
                 }
             }

@@ -33,13 +33,13 @@ pub fn ChatComposer(
     rsx! {
         div {
             style: "background: white; border: 1px solid; border-color: var(--x-border); border-radius: 16px; \
-                    padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; \
+                    padding: 11px 15px; display: flex; flex-direction: column; gap: 8px; \
                     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);",
             textarea {
                 "data-chat-composer": "true",
                 style: "width: 100%; resize: none; border: none; outline: none; \
-                        font-size: var(--x-text-md); font-family: inherit; min-height: 56px; \
-                        line-height: 1.5; color: var(--x-ink-strong); background: transparent;",
+                        font-size: var(--x-text-body); font-family: inherit; min-height: 56px; \
+                        line-height: var(--x-line-body); color: var(--x-ink-strong); background: transparent;",
                 rows: 2,
                 maxlength: MAX_MESSAGE_CHARS as i64,
                 placeholder: "Write a query to send commands to the AI",
@@ -60,7 +60,7 @@ pub fn ChatComposer(
                 },
             }
             div {
-                style: "display: flex; align-items: center; gap: 16px; flex-wrap: wrap;",
+                style: "display: flex; align-items: center; gap: 15px; flex-wrap: wrap;",
                 if !locked {
                     label {
                         style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); \

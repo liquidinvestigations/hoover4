@@ -25,18 +25,18 @@ pub fn NoDocumentSelected() -> Element {
                     align-items: center;
                     justify-content: center;
                     text-align: center;
-                    gap: 12px;
+                    gap: 11px;
                 ",
                 Icon {
                     icon: MdSearchOff,
-                    style: "width: 180px; height: 180px; color:rgba(0, 0, 0, 0.5);",
+                    style: "width: 96px; height: 96px; color:rgba(0, 0, 0, 0.5);",
                 }
                 div {
-                    style: "font-size: 30px; font-weight: 500; color:rgb(0, 0, 0);",
+                    style: "font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 500; color:rgb(0, 0, 0);",
                     "No document selected"
                 }
                 div {
-                    style: "font-size: 20px; font-weight: 400; color:rgba(0, 0, 0, 0.5);",
+                    style: "font-size: var(--x-text-body); line-height: var(--x-line-body); font-weight: 400; color:rgba(0, 0, 0, 0.5);",
                     "Please select a document from the list to display its preview here."
                 }
             }

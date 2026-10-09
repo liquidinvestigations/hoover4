@@ -38,22 +38,22 @@ use crate::components::suspend_boundary::LoadingIndicator;
 pub const FACET_FIELD: &str = "collection_dataset";
 
 const INPUT_STYLE: &str = "
-    padding: 6px 10px; border: 1px solid rgba(0,0,0,0.25); border-radius: 8px;
+    padding: 4px 8px; border: 1px solid rgba(0,0,0,0.25); border-radius: 8px;
     font-size: 15px; background: white; color: black; min-width: 0;
 ";
 
 const ROW_STYLE: &str = "
-    display: flex; flex-direction: row; align-items: center; gap: 10px;
+    display: flex; flex-direction: row; align-items: center; gap: 8px;
     cursor: pointer; padding: 4px; margin: 2px 4px; accent-color: #ffffff;
 ";
 
 const LABEL_STYLE: &str = "
-    flex: 1 1 auto; min-width: 0; font-size: 20px; line-height: 28px;
+    flex: 1 1 auto; min-width: 0; font-size: var(--x-text-body); line-height: var(--x-line-body);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 ";
 
 const COUNT_STYLE: &str = "
-    flex-shrink: 0; font-size: 20px; line-height: 28px;
+    flex-shrink: 0; font-size: var(--x-text-detail); line-height: var(--x-line-detail);
     color: rgba(28, 33, 45, 0.7); white-space: nowrap;
 ";
 
@@ -304,7 +304,7 @@ pub fn CollectionsFacetPane(
     rsx! {
         div {
             style: "display: flex; align-items: center; gap: 6px; margin-bottom: 8px;",
-            Icon { icon: MdSearch, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.5);" }
+            Icon { icon: MdSearch, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.5);" }
             input {
                 r#type: "text",
                 style: "{INPUT_STYLE} flex: 1 1 auto;",
@@ -326,7 +326,7 @@ pub fn CollectionsFacetPane(
         }
         if no_matches {
             div {
-                style: "padding: 8px 10px; font-size: 14px; color: rgba(0,0,0,0.55);",
+                style: "padding: 8px; font-size: 13px; color: rgba(0,0,0,0.55);",
                 "Nothing here matches \"{needle_text}\"."
             }
         }
@@ -406,12 +406,12 @@ fn CollectionFacetRow(
                 title: if open { "Collapse" } else { "Expand" },
                 onclick: toggle_open,
                 if open {
-                    Icon { icon: MdExpandMore, style: "width: 22px; height: 22px; color: rgba(0,0,0,0.6);" }
+                    Icon { icon: MdExpandMore, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
                 } else {
-                    Icon { icon: MdChevronRight, style: "width: 22px; height: 22px; color: rgba(0,0,0,0.6);" }
+                    Icon { icon: MdChevronRight, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
                 }
             }
-            Icon { icon: GoDatabase, style: "width: 20px; height: 20px; flex-shrink: 0; color: rgb(28,33,45);" }
+            Icon { icon: GoDatabase, style: "width: 19px; height: 19px; flex-shrink: 0; color: rgb(28,33,45);" }
             div { style: LABEL_STYLE, title: "{group.collectionname}", "{group.collectionname}" }
             div { style: COUNT_STYLE, "{group.count}" }
         }

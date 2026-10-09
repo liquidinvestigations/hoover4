@@ -14,16 +14,16 @@ pub fn GlobalErrorBoundary(boundary_name: ReadSignal<String>, children: Element)
                 rsx! {
                     h1 {
                         class: "x-error-display",
-                        style: "color:red; font-size: 54px; border: 1px solid red; padding: 10px; border-radius: 5px; margin: 15px;",
+                        style: "color:red; font-size: var(--x-text-page); border: 1px solid red; padding: 10px; border-radius: 5px; margin: 15px;",
                         "Error",
                     }
                     p {
-                        style: "color:darkred; font-size: 26px; border: 1px solid red; padding: 10px; border-radius: 5px; margin: 15px;",
+                        style: "color:darkred; font-size: var(--x-text-section); border: 1px solid red; padding: 10px; border-radius: 5px; margin: 15px;",
                         "Boundary: {boundary_name}"
                     }
                     a {
                         href: "/",
-                        style: "color:blue; font-size: 26px; border: 1px solid blue; padding: 10px; border-radius: 5px; margin: 15px;",
+                        style: "color:blue; font-size: var(--x-text-section); border: 1px solid blue; padding: 10px; border-radius: 5px; margin: 15px;",
                         "Return to Home Page"
                     }
                     pre {
@@ -52,7 +52,7 @@ pub fn ComponentErrorBoundary(children: Element) -> Element {
                     ComponentErrorDisplay {
                         error_txt,
                         button {
-                            style: "color:blue; font-size: 26px; border: 1px solid blue; padding: 10px; border-radius: 5px; margin: 15px;",
+                            style: "color:blue; font-size: var(--x-text-section); border: 1px solid blue; padding: 10px; border-radius: 5px; margin: 15px;",
                             onclick: move |_| {
                                 _err.clear_errors();
                             },
@@ -90,7 +90,7 @@ pub fn ComponentErrorDisplay(error_txt: String, children: Element) -> Element {
             justify_content: "center",
 
             h1 {
-                style: "color:red; font-size: 34px; border: 1px solid red; padding: 10px; border-radius: 5px; margin: 5px;",
+                style: "color:red; font-size: var(--x-text-page); border: 1px solid red; padding: 10px; border-radius: 5px; margin: 5px;",
                 "Component Error",
             }
 
@@ -133,9 +133,9 @@ pub fn ServerErrorDisplay(error: ServerFnError) -> Element {
         "Component Error"
     };
     let heading_style = if user_input {
-        "font-size: 20px; font-weight: 600; color: rgba(0, 0, 0, 0.8);"
+        "font-size: var(--x-text-section); font-weight: 600; color: rgba(0, 0, 0, 0.8);"
     } else {
-        "color:red; font-size: 34px; border: 1px solid red; padding: 10px; border-radius: 5px; margin: 5px;"
+        "color:red; font-size: var(--x-text-page); border: 1px solid red; padding: 10px; border-radius: 5px; margin: 5px;"
     };
     let message_style = if user_input {
         "font-size: 15px; color: rgba(0, 0, 0, 0.7); max-width: 560px; text-align: center;"

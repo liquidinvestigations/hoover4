@@ -860,7 +860,7 @@ fn MessageEntry(
                             }
                             if let Some(footer) = context_footer.as_ref() {
                                 div {
-                                    style: "margin-top: 6px; font-size: 0.78em; color: #6B7280; \
+                                    style: "margin-top: 4px; font-size: var(--x-text-detail); color: #6B7280; \
                                             font-variant-numeric: tabular-nums;",
                                     "{footer}"
                                 }
@@ -917,7 +917,7 @@ fn MessageEntry(
                     if let Some(footer) = context_footer.filter(|_| !replaced) {
                         div {
                             class: "x-chat-turn-footer",
-                            style: "margin-top: 6px; padding-bottom: 12px; border-bottom: 1px solid #80808033; text-align: center; font-size: 0.78em; color: #6B7280; font-variant-numeric: tabular-nums;",
+                            style: "margin-top: 6px; padding-bottom: 11px; border-bottom: 1px solid #80808033; text-align: center; font-size: var(--x-text-detail); color: #6B7280; font-variant-numeric: tabular-nums;",
                             title: "Tokens the conversation carries, the largest single \
                                     context this turn was billed for, and how much of \
                                     the model's window that used",
@@ -932,7 +932,7 @@ fn MessageEntry(
             rsx! {
                 div { "data-todo-change": if is_todo_write(&message) { "true" } else { "false" }, style: "display: flex; flex-direction: column; gap: 8px; {ring}",
                     if let Some(label) = message.call_origin_label() {
-                        div { class: "x-chat-call-origin", style: "font-size: 12px; color: #475569;", "{label}" }
+                        div { class: "x-chat-call-origin", style: "font-size: var(--x-text-detail); color: #475569;", "{label}" }
                     }
                     ToolCard {
                         tool_name: message.tool_name.clone(),
@@ -962,7 +962,7 @@ fn MessageEntry(
                 class: "x-chat-nag",
                 style: "align-self: flex-start; max-width: 88%; background: white; \
                         color: var(--x-ink); border-left: 3px solid #AAAAAA33; padding: 6px 12px; \
-                        border-radius: 0 8px 8px 0; font-size: 0.9em; {ring}",
+                        border-radius: 0 8px 8px 0; font-size: var(--x-text-detail); {ring}",
                 summary { style: "cursor: pointer; font-weight: 600;", "Instruction to the agent" }
                 div {
                     style: "margin-top: 4px; white-space: pre-wrap; word-break: break-word;",

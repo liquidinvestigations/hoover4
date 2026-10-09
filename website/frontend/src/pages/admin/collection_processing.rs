@@ -626,7 +626,7 @@ fn Metric(label: String, value: String, note: String) -> Element {
     rsx! {
         div {
             div { style: "font-size: var(--x-text-xs); letter-spacing: 0.04em; color: #888;", "{label}" }
-            div { style: "font-size: 20px; font-weight: 700; color: var(--x-ink);", "{value}" }
+            div { style: "font-size: var(--x-text-section); line-height: var(--x-line-section); font-weight: 700; color: var(--x-ink);", "{value}" }
             div { style: HELP_TEXT, "{note}" }
         }
     }

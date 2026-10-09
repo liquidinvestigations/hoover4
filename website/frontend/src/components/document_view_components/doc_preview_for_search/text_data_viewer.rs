@@ -100,8 +100,8 @@ fn TextDataInner() -> Element {
             pre {
                 style: "
                     white-space: pre-wrap; word-wrap: break-word;
-                    font-size: 16px;
-                    line-height: 23px;
+                    font-size: var(--x-text-body);
+                    line-height: var(--x-line-body);
                     font-weight: 400;
                     color: rgb(0, 0, 0);
                 ",
@@ -165,8 +165,8 @@ fn TextDataFallback(
             pre {
                 style: "
                     white-space: pre-wrap; word-wrap: break-word;
-                    font-size: 16px;
-                    line-height: 23px;
+                    font-size: var(--x-text-body);
+                    line-height: var(--x-line-body);
                     font-weight: 400;
                     color: rgb(0, 0, 0);
                 ",

@@ -133,9 +133,9 @@ pub fn AiChatPage() -> Element {
         div {
             style: "width: 100%; height: 100%; background: #F5F6F8; box-sizing: border-box; \
                     display: flex; flex-direction: column; align-items: center; \
-                    padding: 48px 24px 32px; overflow: auto;",
+                    padding: 23px; overflow: auto;",
             h1 {
-                style: "margin: 0 0 28px; font-size: 32px; font-weight: 600; color: var(--x-ink-strong); \
+                style: "margin: 0 0 23px; font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 600; color: var(--x-ink-strong); \
                         text-align: center;",
                 "What are you researching?"
             }
@@ -143,13 +143,13 @@ pub fn AiChatPage() -> Element {
             if !cards.is_empty() {
                 div {
                     style: "display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); \
-                            gap: 14px; width: 100%; max-width: 920px; margin-bottom: 28px;",
+                            gap: 11px; width: 100%; max-width: 920px; margin-bottom: 23px;",
                     for s in cards {
                         ChatSessionCard { key: "{s.session_id}", session: s }
                     }
                 }
                 div {
-                    style: "margin-bottom: 20px;",
+                    style: "margin-bottom: 15px;",
                     Link {
                         to: Route::AiChatHistoryPage {},
                         style: "font-size: var(--x-text-sm); color: var(--x-link); text-decoration: none;",

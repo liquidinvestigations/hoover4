@@ -31,7 +31,7 @@ pub fn SuspendWrapper(children: Element) -> Element {
 pub fn LoadingIndicator() -> Element {
     rsx! {
         div {
-            style: "color:black; font-size: 26px; border: 1px solid black; padding: 10px; border-radius: 5px; margin: 15px;",
+            style: "color:black; font-size: var(--x-text-section); border: 1px solid black; padding: 10px; border-radius: 5px; margin: 15px;",
             "Loading..."
         }
     }

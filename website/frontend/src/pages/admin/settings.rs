@@ -149,7 +149,7 @@ fn SettingsContent() -> Element {
 
         if let Some(Ok(deployment)) = deployment_res.read().as_ref() {
             if !deployment.is_empty() {
-                h2 { style: "margin: 24px 0 8px; color: var(--x-ink-muted); font-size: 16px; font-weight: 400;",
+                h2 { style: "margin: 23px 0 8px; color: var(--x-ink-muted); font-size: var(--x-text-section); line-height: var(--x-line-section); font-weight: 400;",
                     "Deployment configuration (read-only)"
                 }
                 table { style: TABLE,

@@ -23,7 +23,7 @@ use common::chat_types::ChatDocRef;
 use super::transcript::DocumentCitationCards;
 use super::web_page::WebPageCard;
 
-/// Body size for assistant prose. Heading sizes are derived from it.
+/// Body size for assistant prose. It equals the body text role, `--x-text-body`.
 const BODY_PX: f32 = 15.0;
 
 /// The text of a handle that no citation of the conversation gave.
@@ -67,7 +67,7 @@ pub fn MarkdownishText(
     let blocks = unique_card_blocks(blocks, card_handles.as_deref());
     rsx! {
         div {
-            style: "font-size: {BODY_PX}px; line-height: 1.65; color: var(--x-ink-strong); \
+            style: "font-size: {BODY_PX}px; line-height: var(--x-line-body); color: var(--x-ink-strong); \
                     word-break: break-word; overflow-wrap: anywhere;",
             for (i, block) in blocks.into_iter().enumerate() {
                 CitationBlock { key: "{i}", block, sources: sources.clone(), pages: pages.clone(), conflicting: conflicting_handles.clone() }
@@ -183,16 +183,18 @@ fn BlockView(
     match block {
         Block::Heading { level, spans } => {
             let (size, weight, top) = heading_style(level);
+            // The page role has a 27 px line. The section and body roles have a 23 px line.
+            let line = if size >= 19.0 { 27 } else { 23 };
             rsx! {
                 div {
-                    style: "font-size: {size}px; font-weight: {weight}; margin: {top}px 0 6px 0; \
-                            line-height: 1.35; color: var(--x-ink-strong);",
+                    style: "font-size: {size}px; font-weight: {weight}; margin: {top}px 0 4px 0; \
+                            line-height: {line}px; color: var(--x-ink-strong);",
                     InlineSpans { spans }
                 }
             }
         }
         Block::Paragraph(spans) => rsx! {
-            p { style: "margin: 0 0 10px 0;", InlineSpans { spans } }
+            p { style: "margin: 0 0 11px 0;", InlineSpans { spans } }
         },
         Block::Bullets(items) => rsx! {
             ul { style: "margin: 0 0 10px 0; padding-left: 22px;",
@@ -302,14 +304,16 @@ fn table_row_handles(row: &[Vec<Span>]) -> Vec<String> {
 
 /// `(font-size px, weight, margin-top px)` for a heading level.
 ///
-/// Levels 4-6 all land on body size and are distinguished by weight alone, the model
-/// reaches for `####` freely and three more distinct sizes would be noise.
+/// Each size is one of the text roles in `main.css`. Level 1 takes the page role (19 px),
+/// levels 2 and 3 take the section role (17 px), and levels 4-6 take the body role. Levels
+/// 4-6 differ from body text by weight alone, because the model writes `####` often and
+/// more distinct sizes do not help the reader.
 fn heading_style(level: u8) -> (f32, u16, f32) {
     match level {
-        1 => (BODY_PX + 3.0, 700, 16.0),
-        2 => (BODY_PX + 2.0, 700, 14.0),
-        3 => (BODY_PX + 1.0, 650, 12.0),
-        _ => (BODY_PX, 650, 10.0),
+        1 => (19.0, 700, 15.0),
+        2 => (17.0, 700, 11.0),
+        3 => (17.0, 650, 11.0),
+        _ => (BODY_PX, 650, 8.0),
     }
 }
 
@@ -335,7 +339,7 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                             style: "background: #F1F5F9; border: 1px solid; border-color: var(--x-border); \
                                     border-radius: 4px; padding: 0 4px; \
                                     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; \
-                                    font-size: 0.88em;",
+                                    font-size: var(--x-text-detail);",
                             "{t}"
                         }
                     },
@@ -345,7 +349,7 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                             style: "
                                 display: inline; border: 1px solid; border-color: var(--x-border);
                                 background: #F8FAFC; color: var(--x-ink); border-radius: 5px;
-                                padding: 0 4px; margin: 0 1px; font-size: 0.82em;
+                                padding: 0 4px; margin: 0 1px; font-size: var(--x-text-detail);
                                 font-weight: 400; cursor: pointer; vertical-align: baseline;
                             ",
                             title: "Show the cited source",
@@ -880,11 +884,19 @@ mod tests {
     #[test]
     fn heading_sizes_stay_close_to_body_text() {
         // The bug this guards: a browser-default h1 is 2em and dwarfs the conversation.
+        // Every heading uses the body (15), section (17) or page (19) text role.
         for level in 1..=6u8 {
             let (size, _, _) = heading_style(level);
             assert!(
-                size >= BODY_PX && size <= BODY_PX + 3.0,
-                "level {level} is {size}px, outside the chat scale"
+                [BODY_PX, 17.0, 19.0].contains(&size),
+                "level {level} is {size}px, which is not a body, section or page role"
+            );
+        }
+        for level in 1..6u8 {
+            assert!(
+                heading_style(level).0 >= heading_style(level + 1).0,
+                "level {level} is smaller than level {}",
+                level + 1
             );
         }
         assert!(heading_style(1).0 > heading_style(3).0, "h1 must outrank h3");

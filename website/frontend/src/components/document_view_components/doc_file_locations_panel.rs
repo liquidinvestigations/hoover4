@@ -27,26 +27,27 @@ const PANEL_STYLE: &str = "
     gap: 2px;
     height: 100%;
     overflow-y: auto;
-    padding: 12px;
+    padding: 11px;
 ";
 
 const HEADER_STYLE: &str = "
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 17px;
+    font-size: var(--x-text-section);
+    line-height: var(--x-line-section);
     font-weight: 700;
-    padding: 4px 2px 10px 2px;
+    padding: 4px 2px 8px 2px;
 ";
 
 const LOCATION_ROW_STYLE: &str = "
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 10px;
-    padding: 10px 2px;
-    font-size: 15px;
-    line-height: 22px;
+    gap: 8px;
+    padding: 8px 2px;
+    font-size: var(--x-text-body);
+    line-height: var(--x-line-body);
 ";
 
 /// The path itself. `overflow-wrap: anywhere` rather than a scrollbar: a path with no
@@ -126,7 +127,7 @@ pub fn DocumentFileLocationsPanel(
             class: "x-file-locations-panel",
             div {
                 style: HEADER_STYLE,
-                Icon { icon: MdFolderOpen, style: "width: 22px; height: 22px;" }
+                Icon { icon: MdFolderOpen, style: "width: 19px; height: 19px;" }
                 "Document locations"
             }
             if value.locations.is_empty() {
@@ -149,7 +150,7 @@ pub fn DocumentFileLocationsPanel(
             }
             if hidden > 0 {
                 div {
-                    style: "padding: 8px 2px; color: rgba(0,0,0,0.6); font-size: 14px;",
+                    style: "padding: 8px 2px; color: rgba(0,0,0,0.6); font-size: 13px;",
                     "…and {hidden} more. Use Storage to browse the rest."
                 }
             }
@@ -219,7 +220,7 @@ fn LocationRow(location: VfsFileLocation, document_identifier: DocumentIdentifie
                 href: "{browse_href}",
                 target: "_blank",
                 title: "Open the containing folder in the file browser",
-                Icon { icon: MdFolderOpen, style: "width: 22px; height: 22px;" }
+                Icon { icon: MdFolderOpen, style: "width: 19px; height: 19px;" }
             }
             button {
                 style: ICON_BUTTON_STYLE,

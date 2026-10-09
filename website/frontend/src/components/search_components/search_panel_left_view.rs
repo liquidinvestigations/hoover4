@@ -198,13 +198,13 @@ fn SearchResultsView() -> Element {
                 div {
                     style: "
                         width: 100%;
-                        padding: 8px 12px;
+                        padding: 8px 11px;
                         margin-bottom: 4px;
                         border: 1px solid rgba(200, 120, 0, 0.6);
                         border-radius: 6px;
                         background-color: rgba(255, 180, 60, 0.15);
                         color: rgb(120, 70, 0);
-                        font-size: 14px;
+                        font-size: 13px;
                     ",
                     "Some collections could not be searched, so results may be incomplete."
                 }
@@ -243,7 +243,7 @@ fn NoResults(query: ReadSignal<SearchQuery>) -> Element {
     let current = suggestions.read().clone();
     rsx! {
         section { id: "x-search-no-results", style: "padding: 24px 12px;",
-            h2 { style: "font-size: 26px; margin-bottom: 8px;", "No results" }
+            h2 { style: "font-size: var(--x-text-page); line-height: var(--x-line-page); margin-bottom: 8px;", "No results" }
             p { "The query was {query.read().query_string}." }
             match current {
                 None => rsx! { p { role: "status", "Loading similar words." } },

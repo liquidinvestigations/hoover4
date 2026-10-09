@@ -87,8 +87,8 @@ async def run(r):
         await r.check("return document.querySelector('.x-entity-chip[title=\"+24762889\"]').innerText.includes('mentions in all sources');")
         await r.action("click_css", 'div:has(> div > .x-entity-chip[title="+24762889"]) > div > button')
         await r.action("wait_css", '[data-entity-card-value="true"]')
-        return await r.check("const value=[...document.querySelectorAll('[data-entity-card-value=true]')].find(e=>e.textContent==='+24762889');return {ok:!!value&&parseFloat(getComputedStyle(value).fontSize)===16,value:value?.textContent};")
-    await r.phase("entity-value-and-count", "The entity value appears first at 16 pixels. The count names all sources.", entity)
+        return await r.check("const value=[...document.querySelectorAll('[data-entity-card-value=true]')].find(e=>e.textContent==='+24762889');return {ok:!!value&&parseFloat(getComputedStyle(value).fontSize)===15,value:value?.textContent};")
+    await r.phase("entity-value-and-count", "The entity value appears first at 15 pixels. The count names all sources.", entity)
 
     async def pages():
         await r.search("", ["testdata_manualqa"])

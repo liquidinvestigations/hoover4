@@ -165,7 +165,7 @@
 
 .toast-description {
   color: var(--secondary-color-3);
-  font-size: 0.875rem;
+  font-size: var(--x-text-detail);
 }
 
 .toast-close {
@@ -176,7 +176,7 @@
   background: none;
   color: var(--secondary-color-3);
   cursor: pointer;
-  font-size: 18px;
+  font-size: 19px;
   line-height: 1;
 }
 

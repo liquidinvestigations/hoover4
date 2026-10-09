@@ -138,8 +138,8 @@ pub fn PdfControllerButtons2(controller: PdfViewerControllerDx) -> Element {
             div {
                 style: "
                     min-width: 60px;
-                    font-size: 20px;
-                    line-height: 28px;
+                    font-size: var(--x-text-body);
+                    line-height: var(--x-line-body);
                     text-align:center;
                 ",
                 if search_hit_count() == 0 {
@@ -189,7 +189,7 @@ fn PdfControllerOverlay2(controller: PdfViewerControllerDx) -> Element {
                 ",
 
                 div {
-                    style: "font-size: 14px; font-weight: bold; margin-bottom: 4px; padding: 4px; border-bottom: 1px solid #eee; width: 100%; text-align: center;",
+                    style: "font-size: 13px; font-weight: bold; margin-bottom: 4px; padding: 4px; border-bottom: 1px solid #eee; width: 100%; text-align: center;",
                     input {
                         style: "width: 100%; text-align: center;",
                         r#type: "text",
@@ -211,12 +211,12 @@ fn PdfControllerOverlay2(controller: PdfViewerControllerDx) -> Element {
                 }
 
                 div {
-                    style: "font-size: 14px; color: #666; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #eee; width: 100%; text-align: center;",
+                    style: "font-size: 13px; color: #666; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid #eee; width: 100%; text-align: center;",
                     "{total_pages()}"
                 }
 
                 button {
-                    style: "background: none; border: none; cursor: pointer; font-size: 20px; padding: 4px; margin: 2px 0;",
+                    style: "background: none; border: none; cursor: pointer; font-size: 19px; padding: 4px; margin: 2px 0;",
                     onclick: move |_| {
                         set_page.call(current_page() - 1);
                     },
@@ -225,7 +225,7 @@ fn PdfControllerOverlay2(controller: PdfViewerControllerDx) -> Element {
                 }
 
                 button {
-                    style: "background: none; border: none; cursor: pointer; font-size: 20px; padding: 4px; margin: 2px 0;",
+                    style: "background: none; border: none; cursor: pointer; font-size: 19px; padding: 4px; margin: 2px 0;",
                     onclick: move |_| {
                         set_page.call(current_page() + 1);
                     },
@@ -234,7 +234,7 @@ fn PdfControllerOverlay2(controller: PdfViewerControllerDx) -> Element {
                 }
 
                 button {
-                    style: "background: none; border: none; cursor: default; font-size: 20px; padding: 4px; margin: 2px 0; opacity: 0.3;",
+                    style: "background: none; border: none; cursor: default; font-size: 19px; padding: 4px; margin: 2px 0; opacity: 0.3;",
                     onclick: move |_| {
                         zoom_in.call(());
                     },
@@ -243,13 +243,13 @@ fn PdfControllerOverlay2(controller: PdfViewerControllerDx) -> Element {
                 div {
                     style: "width: 100%; container-type:size; height: 28px; text-align: center;",
                     div {
-                        style: "font-size: 14px; min-height: 28px; text-align: center; line-height: 28px;",
+                        style: "font-size: 13px; min-height: 28px; text-align: center; line-height: 28px;",
                         "{zoom_state()}"
                     }
                 }
 
                 button {
-                    style: "background: none; border: none; cursor: default; font-size: 20px; padding: 4px; margin: 2px 0; opacity: 0.3;",
+                    style: "background: none; border: none; cursor: default; font-size: 19px; padding: 4px; margin: 2px 0; opacity: 0.3;",
                     onclick: move |_| {
                         zoom_out.call(());
                     },

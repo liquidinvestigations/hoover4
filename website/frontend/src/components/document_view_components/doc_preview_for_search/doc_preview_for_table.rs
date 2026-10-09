@@ -597,11 +597,11 @@ fn TableColumnModalDialog(
     let (pane_size, body_style) = match &modal {
         TableColumnModal::Cell(_) => (
             "width: calc(100vw - 48px); height: calc(100vh - 48px);",
-            "flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 12px 16px;",
+            "flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 8px 11px;",
         ),
         _ => (
             "width: min(440px, calc(100vw - 48px)); max-height: calc(100vh - 48px);",
-            "overflow-y: auto; padding: 12px 16px;",
+            "overflow-y: auto; padding: 8px 11px;",
         ),
     };
     let body = match modal {
@@ -631,8 +631,8 @@ fn TableColumnModalDialog(
             on_close,
             header: rsx! {
                 div {
-                    style: "display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid #d0d0d0;",
-                    h2 { style: "margin: 0; font-size: 18px;", "{label}" }
+                    style: "display: flex; align-items: center; justify-content: space-between; gap: 11px; padding: 8px 11px; border-bottom: 1px solid #d0d0d0;",
+                    h2 { style: "margin: 0; font-size: var(--x-text-section); line-height: var(--x-line-section);", "{label}" }
                     ModalCloseButton { on_close }
                 }
             },
@@ -717,7 +717,7 @@ fn ColumnPickerDialog(
                         }
                         span { style: "color: rgba(0,0,0,0.45); width: 28px;", "{column.letter}" }
                         span { "{column.label()}" }
-                        span { style: "color: rgba(0,0,0,0.4); font-size: 12px;", "{column.column_type}" }
+                        span { style: "color: rgba(0,0,0,0.4); font-size: 13px;", "{column.column_type}" }
                     }
                 }
             }
@@ -754,7 +754,7 @@ fn TableGrid(
                 background: white;
             ",
             table {
-                style: "border-collapse: separate; border-spacing: 0; font-size: 13px; width: max-content; min-width: 100%;",
+                style: "border-collapse: separate; border-spacing: 0; font-size: var(--x-text-detail); line-height: 18px; width: max-content; min-width: 100%;",
                 thead {
                     tr {
                         th {
@@ -881,10 +881,10 @@ fn ColumnHeader(
                     onclick: on_sort,
                     match sorted {
                         Some(TableSort { desc: false, .. }) => rsx! {
-                            Icon { icon: MdArrowUpward, style: "width: 14px; height: 14px;" }
+                            Icon { icon: MdArrowUpward, style: "width: 15px; height: 15px;" }
                         },
                         Some(TableSort { desc: true, .. }) => rsx! {
-                            Icon { icon: MdArrowDownward, style: "width: 14px; height: 14px;" }
+                            Icon { icon: MdArrowDownward, style: "width: 15px; height: 15px;" }
                         },
                         None => rsx! {
                             Icon { icon: MdSort, style: "width: 14px; height: 14px; opacity: 0.35;" }
@@ -926,7 +926,7 @@ fn ColumnFilterTrigger(
             },
             span {
                 title: "Filter this column",
-                Icon { icon: MdFilterList, style: "width: 14px; height: 14px;" }
+                Icon { icon: MdFilterList, style: "width: 15px; height: 15px;" }
             }
         }
     }
@@ -992,7 +992,7 @@ fn ColumnFilterPopover(
         div {
                     style: "min-width: 260px; max-width: 320px; max-height: 380px; overflow-y: auto; padding: 8px; font-weight: 400; text-align: left;",
                     div {
-                        style: "font-size: 12px; color: rgba(0,0,0,0.55); margin-bottom: 6px;",
+                        style: "font-size: 13px; color: rgba(0,0,0,0.55); margin-bottom: 6px;",
                         "{column.column_type} \u{00b7} {column.distinct_count} distinct \u{00b7} {column.min_value} \u{2013} {column.max_value}"
                     }
                     match class {
@@ -1065,9 +1065,9 @@ fn ColumnFilterPopover(
                             div {
                                 style: "margin-top: 8px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 6px;",
                                 match values.read().clone() {
-                                    None => rsx! { div { style: "font-size: 12px; color: rgba(0,0,0,0.5);", "Loading values\u{2026}" } },
+                                    None => rsx! { div { style: "font-size: 13px; color: rgba(0,0,0,0.5);", "Loading values\u{2026}" } },
                                     Some(values) if values.is_empty() => rsx! {
-                                        div { style: "font-size: 12px; color: rgba(0,0,0,0.5);", "No values match." }
+                                        div { style: "font-size: 13px; color: rgba(0,0,0,0.5);", "No values match." }
                                     },
                                     Some(values) => rsx! {
                                         for value in values {
@@ -1205,13 +1205,13 @@ fn GridCell(
                                 style: "margin-top: 6px; display: inline-flex; align-items: center; gap: 4px;",
                                 href: "{cell.link}",
                                 target: "_blank",
-                                Icon { icon: MdLink, style: "width: 14px; height: 14px;" }
+                                Icon { icon: MdLink, style: "width: 15px; height: 15px;" }
                                 "{cell.link}"
                             }
                         }
                         div {
-                            style: "margin-top: 8px; display: flex; align-items: center; gap: 6px; color: rgba(0,0,0,0.5); font-size: 12px;",
-                            Icon { icon: MdContentCopy, style: "width: 14px; height: 14px;" }
+                            style: "margin-top: 8px; display: flex; align-items: center; gap: 6px; color: rgba(0,0,0,0.5); font-size: 13px;",
+                            Icon { icon: MdContentCopy, style: "width: 15px; height: 15px;" }
                             "{cell.kind}"
                         }
                     }
@@ -1230,7 +1230,7 @@ fn GridCell(
                         modal_opener.set(expand_button());
                         column_modal.set(Some(TableColumnModal::Cell(Box::new(details.clone()))));
                     },
-                    Icon { icon: MdOpenInFull, style: "width: 14px; height: 14px;" }
+                    Icon { icon: MdOpenInFull, style: "width: 15px; height: 15px;" }
                 }
             }
         }

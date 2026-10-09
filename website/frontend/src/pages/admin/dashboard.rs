@@ -54,7 +54,7 @@ fn DashboardCard(label: String, count: u32, href: String) -> Element {
             href: "{href}",
             style: "display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; border: 1px solid; border-color: var(--x-border); border-radius: var(--x-radius); text-decoration: none; background: white;",
             span { style: "font-size: var(--x-text-lg); font-weight: 600; color: var(--x-ink-strong);", "{label}" }
-            span { style: "font-size: 28px; font-weight: 500; color: var(--x-ink-strong);", "{count}" }
+            span { style: "font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 500; color: var(--x-ink-strong);", "{count}" }
         }
     }
 }

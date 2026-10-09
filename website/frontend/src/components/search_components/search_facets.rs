@@ -169,7 +169,7 @@ pub fn FacetSelectorList(
         }
         if no_matches {
             div {
-                style: "padding: 8px 10px; font-size: 14px; color: rgba(0,0,0,0.55);",
+                style: "padding: 8px; font-size: 13px; color: rgba(0,0,0,0.55);",
                 "Nothing in this collection matches."
             }
         }
@@ -225,7 +225,7 @@ fn MatchReason(
     }
     rsx! {
         div {
-            style: "font-size: 12px; color: rgba(0,0,0,0.55); padding: 0 0 4px 30px;",
+            style: "font-size: 13px; color: rgba(0,0,0,0.55); padding: 0 0 4px 30px;",
             for span in hit.highlight.clone() {
                 if span.is_highlighted {
                     mark {
@@ -350,7 +350,7 @@ pub fn FacetCheckbox(
             style: "
                 display: flex;
                 flex-direction: row;
-                gap: 10px;
+                gap: 8px;
                 cursor: pointer;
                 padding: 4px;
                 margin: 4px;
@@ -376,15 +376,15 @@ pub fn FacetCheckbox(
 
             // FACET CHECKBOX
             if is_checked() {
-                Icon { icon: MdCheckBox, style: "width: 26px; height: 26px; color: rgb(28, 33, 45); flex-shrink: 0;" }
+                Icon { icon: MdCheckBox, style: "width: 19px; height: 19px; color: rgb(28, 33, 45); flex-shrink: 0;" }
             } else {
-                Icon { icon: MdCheckBoxOutlineBlank, style: "width: 26px; height: 26px; color: black; flex-shrink: 0;" }
+                Icon { icon: MdCheckBoxOutlineBlank, style: "width: 19px; height: 19px; color: black; flex-shrink: 0;" }
             }
             // FACET NAME
             div {
                 style: "
-                    font-size: 20px;
-                    line-height: 28px;
+                    font-size: var(--x-text-body);
+                    line-height: var(--x-line-body);
                     font-weight: 400;
                     color: rgb(0, 0, 0);
                     overflow: hidden;
@@ -401,8 +401,8 @@ pub fn FacetCheckbox(
             // FACET COUNT
             div {
                 style: "
-                    font-size: 20px;
-                    line-height: 28px;
+                    font-size: var(--x-text-detail);
+                    line-height: var(--x-line-detail);
                     font-weight: 400;
                     color: rgba(28, 33, 45, 0.7);
                     overflow: hidden;

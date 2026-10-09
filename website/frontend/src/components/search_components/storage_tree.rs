@@ -216,17 +216,17 @@ pub fn StorageTree(
 
     let body = match tree.read().clone() {
         None => rsx! {
-            div { style: "padding: 8px 10px; font-size: 14px; color: rgba(0,0,0,0.5);", "Loading…" }
+            div { style: "padding: 8px 10px; font-size: 13px; color: rgba(0,0,0,0.5);", "Loading…" }
         },
         Some(Err(error)) => rsx! {
             div {
                 class: "x-error-display",
-                style: "padding: 8px 10px; font-size: 14px; color: rgb(160,30,30);",
+                style: "padding: 8px 10px; font-size: 13px; color: rgb(160,30,30);",
                 "Could not load the collections: {error}"
             }
         },
         Some(Ok(nodes)) if nodes.is_empty() => rsx! {
-            div { style: "padding: 8px 10px; font-size: 14px; color: rgba(0,0,0,0.5);", "No collections." }
+            div { style: "padding: 8px 10px; font-size: 13px; color: rgba(0,0,0,0.5);", "No collections." }
         },
         Some(Ok(nodes)) => {
             let focus = current_dataset();
@@ -530,9 +530,9 @@ fn SyntheticRow(
                     style: "border: none; background: none; cursor: pointer; padding: 0; display: flex; align-items: center; flex-shrink: 0;",
                     onclick: toggle,
                     if is_expanded {
-                        Icon { icon: MdExpandMore, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
+                        Icon { icon: MdExpandMore, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
                     } else {
-                        Icon { icon: MdChevronRight, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
+                        Icon { icon: MdChevronRight, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
                     }
                 }
             } else {
@@ -550,10 +550,10 @@ fn SyntheticRow(
                 style: "display: flex; align-items: center; flex-shrink: 0;",
                 match icon {
                     SyntheticIcon::Collection => rsx! {
-                        Icon { icon: MdStorage, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.7);" }
+                        Icon { icon: MdStorage, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.7);" }
                     },
                     SyntheticIcon::Dataset => rsx! {
-                        Icon { icon: GoDatabase, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.7);" }
+                        Icon { icon: GoDatabase, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.7);" }
                     },
                 }
             }
@@ -585,7 +585,7 @@ fn MoreRow(
             class: "x-facet-list-item",
             title: "Show all {label} here",
             onclick: move |_| { unfolded_set.write().insert(unfold_key.clone()); },
-            Icon { icon: MdMoreHoriz, style: "width: 18px; height: 18px; flex-shrink: 0;" }
+            Icon { icon: MdMoreHoriz, style: "width: 19px; height: 19px; flex-shrink: 0;" }
             div { style: "{LABEL_STYLE}", "{hidden} more {label} {direction}…" }
         }
     }

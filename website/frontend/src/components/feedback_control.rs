@@ -125,7 +125,7 @@ pub fn FeedbackRailButton() -> Element {
 
 const OVERLAY: &str = "position: fixed; inset: 0; z-index: 2000; background: white; display: flex; flex-direction: column; font-family: var(--x-font); color: var(--x-ink); font-size: var(--x-text-md);";
 const COLUMN: &str = "flex: 1; min-width: 0; overflow-y: auto; padding: 20px 28px;";
-const H2: &str = "margin: 0 0 10px; font-size: var(--x-text-lg); font-weight: 600; color: var(--x-ink-strong);";
+const H2: &str = "margin: 0 0 11px; font-size: var(--x-text-section); line-height: var(--x-line-section); font-weight: 600; color: var(--x-ink-strong);";
 const FIELD_LABEL: &str = "display: block; margin: 14px 0 6px; font-weight: 600; color: var(--x-ink-strong);";
 const INPUT: &str = "width: 100%; box-sizing: border-box; border: 1px solid; border-color: var(--x-border-strong); border-radius: 6px; padding: 8px 10px; font: inherit; color: var(--x-ink-strong);";
 const BTN: &str = "background: white; color: var(--x-ink-strong); border: 1px solid; border-color: var(--x-border-strong); padding: 7px 16px; border-radius: 16px; cursor: pointer; font: inherit; font-weight: 500;";

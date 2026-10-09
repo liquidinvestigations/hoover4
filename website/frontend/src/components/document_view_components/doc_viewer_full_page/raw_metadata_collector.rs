@@ -86,7 +86,7 @@ pub fn RawMetadataCollector(document_identifier: ReadSignal<DocumentIdentifier>)
             style: "
                 display: flex;
                 flex-direction: column;
-                gap: 10px;
+                gap: 15px;
                 overflow-y: scroll;
                 max-height: 100%;
             ",
@@ -113,14 +113,15 @@ fn RawMetadataCollectorSection(
             style: "
                 border: 1px solid black;
                 border-radius: 20px;
-                padding: 20px;
-                margin: 15px 30px;
+                padding: 11px;
+                margin: 0 11px;
+                font-size: var(--x-text-detail);
             ",
             h1 {
-                style: "font-size: 28px; display: flex; flex-direction: row; gap: 10px;",
+                style: "font-size: var(--x-text-section); line-height: var(--x-line-section); display: flex; flex-direction: row; gap: 8px;",
                 "{table_info().table_name}",
                 span {
-                    style: "font-size: 14px;",
+                    style: "font-size: 13px;",
                     "{table_info().hash_column_name}"
                 }
             }
@@ -140,8 +141,8 @@ fn RawMetadataTable(value: serde_json::Value) -> Element {
                 width: 100%;
                 border-collapse: separate;
                 border-spacing: 0;
-                margin-top: 6px;
-                font-size: 14px;
+                margin-top: 4px;
+                font-size: 13px;
             ",
             tbody {
                 for (k, v) in rows.into_iter().take(100) {
@@ -312,16 +313,17 @@ async fn get_raw_metadata_tables(
 const SECTION_STYLE: &str = "
     border: 1px solid black;
     border-radius: 20px;
-    padding: 20px;
-    margin: 15px 30px;
+    padding: 11px;
+    margin: 0 11px;
+    font-size: var(--x-text-detail);
 ";
 
 const SECTION_HEADER_STYLE: &str = "
-    font-size: 28px;
+    font-size: var(--x-text-section); line-height: var(--x-line-section);
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
 ";
 
 /// Every date the indexer confirmed, with the metadata key it came from.
@@ -369,7 +371,7 @@ fn DatesSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
                                 "{format_epoch_utc(date.epoch_seconds)}"
                             }
                             td {
-                                style: "padding: 4px 0; color: rgba(0,0,0,0.65); font-size: 14px;",
+                                style: "padding: 4px 0; color: rgba(0,0,0,0.65); font-size: 13px;",
                                 "{date.source}"
                             }
                         }
@@ -384,7 +386,7 @@ fn DatesSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
             style: SECTION_STYLE,
             h1 {
                 style: SECTION_HEADER_STYLE,
-                Icon { icon: MdDateRange, style: "width: 26px; height: 26px;" }
+                Icon { icon: MdDateRange, style: "width: 19px; height: 19px;" }
                 "Dates"
             }
             {body}
@@ -411,7 +413,7 @@ fn EmailSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
                     style: SECTION_STYLE,
                     h1 {
                         style: SECTION_HEADER_STYLE,
-                        Icon { icon: MdEmail, style: "width: 26px; height: 26px;" }
+                        Icon { icon: MdEmail, style: "width: 19px; height: 19px;" }
                         "Email"
                     }
                     div {
@@ -431,7 +433,7 @@ fn EmailSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
             style: SECTION_STYLE,
             h1 {
                 style: SECTION_HEADER_STYLE,
-                Icon { icon: MdEmail, style: "width: 26px; height: 26px;" }
+                Icon { icon: MdEmail, style: "width: 19px; height: 19px;" }
                 "Email"
             }
             table {
@@ -476,7 +478,7 @@ fn EmailSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
             if value.attachment_count > 0 {
                 div {
                     style: "display: flex; align-items: center; gap: 6px; margin-top: 10px; color: rgba(0,0,0,0.7);",
-                    Icon { icon: MdAttachment, style: "width: 20px; height: 20px;" }
+                    Icon { icon: MdAttachment, style: "width: 19px; height: 19px;" }
                     "{value.attachment_count} attachment(s). Browse them by opening this email in Storage."
                 }
             }
@@ -525,7 +527,7 @@ fn TableSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
                     style: SECTION_STYLE,
                     h1 {
                         style: SECTION_HEADER_STYLE,
-                        Icon { icon: MdTableChart, style: "width: 26px; height: 26px;" }
+                        Icon { icon: MdTableChart, style: "width: 19px; height: 19px;" }
                         "Table"
                     }
                     div {
@@ -553,7 +555,7 @@ fn TableSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
             style: SECTION_STYLE,
             h1 {
                 style: SECTION_HEADER_STYLE,
-                Icon { icon: MdTableChart, style: "width: 26px; height: 26px;" }
+                Icon { icon: MdTableChart, style: "width: 19px; height: 19px;" }
                 "Table"
             }
             table {
@@ -583,7 +585,7 @@ fn TableSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
             }
             if let Some(banner) = banner {
                 div {
-                    style: "margin-top: 8px; padding: 6px 10px; background: rgba(220,160,0,0.12); border-radius: 6px; font-size: 14px;",
+                    style: "margin-top: 8px; padding: 6px 10px; background: rgba(220,160,0,0.12); border-radius: 6px; font-size: 13px;",
                     "{banner}"
                 }
             }
@@ -596,7 +598,7 @@ fn TableSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
                             style: "margin-top: 10px;",
                             div { style: "font-weight: 600;", "{sheet.label()}" }
                             div {
-                                style: "color: rgba(0,0,0,0.7); font-size: 14px;",
+                                style: "color: rgba(0,0,0,0.7); font-size: 13px;",
                                 for column in columns {
                                     div {
                                         key: "{column.column_id}",

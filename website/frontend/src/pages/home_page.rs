@@ -18,10 +18,10 @@ pub fn HomePage() -> Element {
             style: "
                 display:flex;
                 flex-direction: column;
-                gap: 20px;
+                gap: 15px;
                 width: 100%;
                 height: 100%;
-                padding: 36px 40px;
+                padding: 23px;
                 background: #F5F6F8;
                 box-sizing: border-box;
                 overflow: auto;
@@ -35,10 +35,10 @@ pub fn HomePage() -> Element {
                 style: "
                     display:flex;
                     flex-direction: row;
-                    gap: 20px;
+                    gap: 15px;
                     flex-wrap: wrap;
                     align-items: stretch;
-                    margin-top: 10px;
+                    margin-top: 0;
                 ",
                 TextSearchCard {}
                 AiChatCard {}
@@ -49,7 +49,7 @@ pub fn HomePage() -> Element {
                 style: "
                     display:flex;
                     flex-direction: row;
-                    gap: 20px;
+                    gap: 15px;
                 ",
                 FeedbackCard {}
             }
@@ -66,14 +66,14 @@ fn MainTitle() -> Element {
                 align-items: center;
                 gap: 8px;
                 color: #0F172A;
-                font-size: 46px;
+                font-size: var(--x-text-page); line-height: var(--x-line-page);
                 font-weight: 500;
                 letter-spacing: -0.02em;
             ",
             img {
                 src: asset!("/assets/favicon-transparent.png"),
                 alt: "Hoover Logo",
-                style: "width: 46px; height: 46px;",
+                style: "width: 27px; height: 27px;",
             },
             span { "Welcome to" }
             span { style: "color:#4F46E5;", "Hoover!" }
@@ -87,8 +87,8 @@ fn SubText() -> Element {
         div {
             style: "
                 color: #111827;
-                font-size: 30px;
-                line-height: 1.6;
+                font-size: var(--x-text-body);
+                line-height: var(--x-line-body);
                 max-width: 620px;
                 font-weight: 500;
             ",
@@ -105,11 +105,11 @@ fn TextSearchCard() -> Element {
             style: "
                 display:flex;
                 flex-direction: column;
-                gap: 14px;
+                gap: 11px;
                 width: 520px;
                 min-height: 280px;
                 border-radius: 22px;
-                padding: 22px 22px 26px 22px;
+                padding: 15px;
                 background: linear-gradient(135deg, #2D208A 0%, #5B3DF5 100%);
                 color: white;
                 box-shadow: 0 8px 24px rgba(0,0,0,0.12);
@@ -118,7 +118,7 @@ fn TextSearchCard() -> Element {
             // Title
             div {
                 style: "
-                    font-size: 30px;
+                    font-size: var(--x-text-section); line-height: var(--x-line-section);
                     font-weight: 500;
                 ",
                 "Text Search"
@@ -127,9 +127,9 @@ fn TextSearchCard() -> Element {
             // Description
             div {
                 style: "
-                    font-size: 20px;
+                    font-size: var(--x-text-body);
                     font-weight: 500;
-                    line-height: 1.5;
+                    line-height: var(--x-line-body);
                     color: rgba(255,255,255,0.92);
                 ",
                 "Instantly find keywords or phrases across all uploaded reports, articles and documents. Perfect for tracing facts or following leads fast."
@@ -140,7 +140,7 @@ fn TextSearchCard() -> Element {
 
             div {
                 style: "
-                    font-size: 16px;
+                    font-size: var(--x-text-detail);
                     color: rgba(255,255,255,0.9);
                     width: 100%;
                 ",
@@ -160,14 +160,14 @@ fn SearchCardInput() -> Element {
             style: "
                 display:flex;
                 align-items:center;
-                gap: 10px;
+                gap: 8px;
                 background-color: white;
                 border-radius: 9999px;
-                padding: 10px 14px;
-                height: 42px;
+                padding: 4px 11px;
+                height: var(--x-control-height);
                 color: #111827;
             ",
-            Icon { icon: MdSearch, style: "width: 20px; height: 20px; color:#6B7280;" }
+            Icon { icon: MdSearch, style: "width: 19px; height: 19px; color:#6B7280;" }
             input {
                 r#type: "text",
                 placeholder: "Search in knowledgebase",
@@ -177,7 +177,7 @@ fn SearchCardInput() -> Element {
                     outline: none;
                     background: transparent;
                     color: #111827;
-                    font-size: 14px;
+                    font-size: var(--x-text-body);
                 ",
                 oninput: move |e| {
                     *search_q.write() = e.value();
@@ -205,11 +205,11 @@ fn AiChatCard() -> Element {
                 style: "
                     display:flex;
                     flex-direction: column;
-                    gap: 12px;
+                    gap: 11px;
                     width: 520px;
                     min-height: 280px;
                     border-radius: 22px;
-                    padding: 22px 22px 26px 22px;
+                    padding: 15px;
                     background: linear-gradient(135deg, #0B7A2B 0%, #23A340 60%, #178E35 100%);
                     color: white;
                     box-shadow: 0 8px 24px rgba(0,0,0,0.12);
@@ -218,7 +218,7 @@ fn AiChatCard() -> Element {
 
                 div {
                     style: "
-                        font-size: 30px;
+                        font-size: var(--x-text-section); line-height: var(--x-line-section);
                         font-weight: 500;
                     ",
                     "AI Chat"
@@ -226,9 +226,9 @@ fn AiChatCard() -> Element {
 
                 div {
                     style: "
-                        font-size: 20px;
+                        font-size: var(--x-text-body);
                         font-weight: 500;
-                        line-height: 1.6;
+                        line-height: var(--x-line-body);
                         color: rgba(255,255,255,0.96);
                         max-width: 510px;
                     ",
@@ -242,10 +242,10 @@ fn AiChatCard() -> Element {
                         display: flex;
                         align-items: center;
                         gap: 8px;
-                        font-size: 16px;
+                        font-size: var(--x-text-body);
                         color: rgba(255,255,255,0.92);
                     ",
-                    Icon { icon: MdChat, style: "width: 20px; height: 20px;" }
+                    Icon { icon: MdChat, style: "width: 19px; height: 19px;" }
                     "Start a new chat or pick up an earlier one \u{2192}"
                 }
             }
@@ -263,11 +263,11 @@ fn FeedbackCard() -> Element {
                 display:flex;
                 flex-direction: row;
                 align-items: flex-start;
-                gap: 14px;
+                gap: 11px;
                 width: 520px;
                 min-height: 140px;
                 border-radius: 16px;
-                padding: 18px;
+                padding: 15px;
                 background: white;
                 color: #111827;
                 border: 1px solid #E5E7EB;
@@ -287,7 +287,7 @@ fn FeedbackCard() -> Element {
                     border: 1px solid #C7D2FE;
                     color: #4F46E5;
                 ",
-                Icon { icon: MdChat, style: "width: 20px; height: 20px;" }
+                Icon { icon: MdChat, style: "width: 19px; height: 19px;" }
             }
 
             // Text and button
@@ -295,9 +295,9 @@ fn FeedbackCard() -> Element {
                 style: "
                     display:flex;
                     flex-direction: column;
-                    gap: 16px;
+                    gap: 15px;
                 ",
-                div { style: "font-size: 20px; font-weight: 500;", "Send us an idea, or report a problem. The bug icon at the bottom of the left rail opens the same form." }
+                div { style: "font-size: var(--x-text-body); line-height: var(--x-line-body); font-weight: 500;", "Send us an idea, or report a problem. The bug icon at the bottom of the left rail opens the same form." }
 
                 div {
                     style: "display:flex; flex-direction:row;",
@@ -306,8 +306,8 @@ fn FeedbackCard() -> Element {
                         onclick: move |_| feedback.start(),
                         style: "
                             height: 34px;
-                            padding: 0 12px;
-                            font-size: 14px;
+                            padding: 0 11px;
+                            font-size: var(--x-text-detail);
                             border-radius: 8px;
                             background: white;
                             color: #111827;

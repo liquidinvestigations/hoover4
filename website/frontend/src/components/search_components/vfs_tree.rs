@@ -185,7 +185,7 @@ pub(crate) const LABEL_STYLE: &str = "
 
 /// The shared look of every "there is more here" row: the elision rows and the fetch row.
 pub(crate) const MORE_ROW_STYLE: &str = "
-    border: none; background: none; color: rgba(0,0,0,0.6); font-size: 14px;
+    border: none; background: none; color: rgba(0,0,0,0.6); font-size: 13px;
     text-align: left;
 ";
 
@@ -813,7 +813,7 @@ fn VisibleTreeRow(item: VisibleItem) -> Element {
                     class: "x-facet-list-item",
                     title: "Show the {hidden} folder levels between here and the one you are in",
                     onclick: move |_| { unfolded_set.write().insert(unfold_key.clone()); },
-                    Icon { icon: MdMoreHoriz, style: "width: 18px; height: 18px; flex-shrink: 0;" }
+                    Icon { icon: MdMoreHoriz, style: "width: 19px; height: 19px; flex-shrink: 0;" }
                     div { style: "{LABEL_STYLE}", "{hidden} more levels…" }
                 }
             }
@@ -828,7 +828,7 @@ fn VisibleTreeRow(item: VisibleItem) -> Element {
                     class: "x-facet-list-item",
                     title: "Show all {fetched} folders here",
                     onclick: move |_| { unfolded_set.write().insert(unfold_key.clone()); },
-                    Icon { icon: MdMoreHoriz, style: "width: 18px; height: 18px; flex-shrink: 0;" }
+                    Icon { icon: MdMoreHoriz, style: "width: 19px; height: 19px; flex-shrink: 0;" }
                     div { style: "{LABEL_STYLE}", "{hidden} more {direction}…" }
                 }
             }
@@ -851,7 +851,7 @@ fn VisibleTreeRow(item: VisibleItem) -> Element {
             let pad = indent_style(rung);
             rsx! {
                 div {
-                    style: "padding: 4px 8px; padding-left: {pad}; font-size: 14px; color: rgba(0,0,0,0.5);",
+                    style: "padding: 4px 8px; padding-left: {pad}; font-size: 13px; color: rgba(0,0,0,0.5);",
                     "Loading…"
                 }
             }
@@ -861,14 +861,14 @@ fn VisibleTreeRow(item: VisibleItem) -> Element {
             rsx! {
                 div {
                     class: "x-error-display",
-                    style: "padding: 4px 8px; padding-left: {pad}; font-size: 14px; color: rgb(160,30,30);",
+                    style: "padding: 4px 8px; padding-left: {pad}; font-size: 13px; color: rgb(160,30,30);",
                     "Could not load this folder: {message}"
                 }
             }
         }
         VisibleItem::EmptyRoot => rsx! {
             div {
-                style: "padding: 6px 8px; font-size: 14px; color: rgba(0,0,0,0.5);",
+                style: "padding: 6px 8px; font-size: 13px; color: rgba(0,0,0,0.5);",
                 "No folders in this dataset."
             }
         },
@@ -1060,9 +1060,9 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool) -
                     "aria-expanded": if is_expanded { "true" } else { "false" },
                     onclick: toggle,
                     if is_expanded {
-                        Icon { icon: MdExpandMore, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
+                        Icon { icon: MdExpandMore, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
                     } else {
-                        Icon { icon: MdChevronRight, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.6);" }
+                        Icon { icon: MdChevronRight, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
                     }
                 }
             } else {
@@ -1079,9 +1079,9 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool) -
             div {
                 style: "display: flex; align-items: center; flex-shrink: 0;",
                 if node.kind == VfsNodeKind::Container {
-                    Icon { icon: GoFileZip, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.7);" }
+                    Icon { icon: GoFileZip, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.7);" }
                 } else {
-                    Icon { icon: MdFolder, style: "width: 18px; height: 18px; color: rgba(0,0,0,0.7);" }
+                    Icon { icon: MdFolder, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.7);" }
                 }
             }
 
@@ -1094,7 +1094,7 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool) -
             // starts at the collection, so it counts the synthetic levels too.
             if tree_depth > FULL_STEP_RUNGS {
                 div {
-                    style: "flex-shrink: 0; font-size: 11px; color: rgba(0,0,0,0.45); border: 1px solid rgba(0,0,0,0.2); border-radius: 8px; padding: 0 5px;",
+                    style: "flex-shrink: 0; font-size: 13px; color: rgba(0,0,0,0.45); border: 1px solid rgba(0,0,0,0.2); border-radius: 8px; padding: 0 5px;",
                     "depth {tree_depth}"
                 }
             }
@@ -1197,13 +1197,13 @@ pub enum TriState {
 pub fn tri_state_icon(state: TriState) -> Element {
     match state {
         TriState::Checked => rsx! {
-            Icon { icon: MdCheckBox, style: "width: 20px; height: 20px; color: rgb(28,33,45);" }
+            Icon { icon: MdCheckBox, style: "width: 19px; height: 19px; color: rgb(28,33,45);" }
         },
         TriState::Partial => rsx! {
-            Icon { icon: MdIndeterminateCheckBox, style: "width: 20px; height: 20px; color: rgb(28,33,45);" }
+            Icon { icon: MdIndeterminateCheckBox, style: "width: 19px; height: 19px; color: rgb(28,33,45);" }
         },
         TriState::Unchecked => rsx! {
-            Icon { icon: MdCheckBoxOutlineBlank, style: "width: 20px; height: 20px; color: rgba(0,0,0,0.6);" }
+            Icon { icon: MdCheckBoxOutlineBlank, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
         },
     }
 }
