@@ -49,7 +49,7 @@ class ReadDocumentsTool(PagedTool):
 
 
 class EmailTool(PagedTool):
-    """Keep graph rows behind the first email page."""
+    """Return email fields and at least one available row before graph continuation."""
 
     def render(self, request: BaseModel, position: dict[str, Any], source: str) -> str:
         if position:
@@ -63,10 +63,14 @@ class EmailTool(PagedTool):
         if count == len(window.items):
             return paging._live_page(self, request, None, window)
         artifact_id, data, head, ends = paging._store_window(self, window, paging._input(request), None)
-        after = lambda n: {"artifact": artifact_id, "head": head,
-                           "start": ends[n - 1] if n else head, "total": window.total,
-                           **({"next": window.next} if window.next else {})}
-        text, _ = paging._build(PageInput(self.tool_name, "rows", window.items[:count], None,
+
+        def after(n: int) -> dict[str, Any] | None:
+            if n == len(window.items) and not window.next:
+                return None
+            return {"artifact": artifact_id, "head": head,
+                    "start": ends[n - 1] if n else head, "total": window.total,
+                    **({"next": window.next} if window.next else {})}
+        text, _ = paging._build(PageInput(self.tool_name, "rows", window.items[:max(count, 1)], None,
             window.total, {}, window.fields.get("source", ""), paging._input(request), artifact_id,
             after, window.fields), paging._page_limit())
         if len(text.encode("utf-8")) <= paging.page_share():

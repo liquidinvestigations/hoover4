@@ -34,6 +34,7 @@ The backend resolves text in the selected collections and reports applied filter
 An empty query lists filter matches.
 `doc_metadata` and `doc_email` accept one hash or up to ten hashes with equal page shares.
 The first email page gives the envelope, attachments, and graph counts.
+Without attachments, it includes the first graph row to provide a content page.
 Graph nodes and edges continue through `read_more`.
 An unknown continuation repairs one changed character or one adjacent swap only when one issued handle matches.
 The lookup uses the caller, chat session, and run.

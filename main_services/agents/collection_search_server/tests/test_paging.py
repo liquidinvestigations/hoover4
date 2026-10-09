@@ -944,6 +944,24 @@ def test_email_first_page_defers_graph_rows(monkeypatch):
     assert len(canonical_json(following).encode()) <= paging.page_share()
 
 
+@pytest.mark.parametrize("node_count", [1, 400])
+def test_email_without_attachments_returns_fields_and_graph_rows(monkeypatch, node_count):
+    Store(monkeypatch)
+    response = {**deepcopy(SAMPLES["doc_email"]), "source": "email-stable"}
+    response["attachments"] = []
+    response["graph"]["nodes"] *= node_count
+    monkeypatch.setattr(paging.BackendClient, "post", lambda self, route, request, model, **kw: model.model_validate(response))
+    request = tools_document.DOC_EMAIL.model.model_validate({"collectionname": "c", "file_hash": "h"})
+    pages = [json.loads(paging.finish(tools_document.DOC_EMAIL.render(request, {}, "")))]
+    assert "error" not in pages[0]
+    assert pages[0]["envelope"]["subject"] == "s"
+    assert pages[0]["graph_counts"]["nodes"] == node_count
+    while pages[-1].get("more"):
+        pages.append(json.loads(paging.finish(paging.read_more.fn(pages[-1]["more"]))))
+    assert sum(len(page["items"]) for page in pages) == node_count
+    assert all(len(canonical_json(page).encode()) <= paging.page_share() for page in pages)
+
+
 def test_runtime_reduction_recovers_all_utf8_bytes_after_retry(monkeypatch):
     store = Store(monkeypatch)
     headers = {"x-hoover4-chat-session": "one", "x-hoover4-user": "alice", "x-hoover4-agent-run": "run"}
