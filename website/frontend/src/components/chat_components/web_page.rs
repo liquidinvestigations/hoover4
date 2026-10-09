@@ -46,26 +46,35 @@ pub fn WebPageCard(page: ChatPageRef, #[props(default)] passages: Vec<ChatPageRe
                     display: flex; flex-direction: column; gap: 7px; width: calc(100% - 16px); \
                     padding: 12px 16px; margin: 8px; font-size: var(--x-text-md); cursor: pointer;",
             onclick: move |_| { if let Some(open) = open { open.open.call(target.clone()); } },
+            // The title row, and the domain on its own line under it, so neither cuts the
+            // other short.
             div {
-                style: "display: flex; align-items: center; gap: 12px; min-width: 0; flex-shrink: 0;",
-                ResultCardLabel { label: page.handle.clone() }
-                if let Some(href) = href {
-                    a { href, target: "_blank", rel: "noopener noreferrer nofollow",
-                        style: "color: #0000EE; font-size: 20px; line-height: 28px; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;",
-                        onclick: move |event| event.stop_propagation(),
-                        "{title}"
-                    }
-                } else { div { style: "font-size: 20px; line-height: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;", "{title}" } }
-                // The domain shares the title row, so the quotes keep room for three lines.
-                span { style: "color: #16713C; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", "{domain}" }
+                style: "display: flex; flex-direction: column; min-width: 0; flex-shrink: 0;",
+                div {
+                    style: "display: flex; align-items: center; gap: 12px; min-width: 0;",
+                    ResultCardLabel { label: page.handle.clone() }
+                    if let Some(href) = href {
+                        a { href, target: "_blank", rel: "noopener noreferrer nofollow",
+                            style: "color: #0000EE; font-size: 20px; line-height: 28px; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;",
+                            onclick: move |event| event.stop_propagation(),
+                            "{title}"
+                        }
+                    } else { div { style: "font-size: 20px; line-height: 28px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;", "{title}" } }
+                }
+                div {
+                    "data-web-citation-domain": "true",
+                    style: "color: #16713C; font-size: 13px; line-height: 18px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+                    "{domain}"
+                }
             }
             // One three-line limit for all quotes. A line clamp counts only lines in plain
             // block and inline children, so each quote is a `div` without vertical margin.
             // The box takes its content height and does not grow: a taller box would show
-            // part of a fourth line below the clamp.
+            // part of a fourth line below the clamp. Three 20 px lines fit under the title
+            // and domain lines in the 148 px card.
             div {
                 class: "x-card-text",
-                style: "flex: 0 1 auto; min-height: 0; overflow: hidden; overflow-wrap: anywhere; line-height: 23px; \
+                style: "flex: 0 1 auto; min-height: 0; overflow: hidden; overflow-wrap: anywhere; line-height: 20px; \
                         display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;",
                 for (source, quote, find) in quotes {
                     {

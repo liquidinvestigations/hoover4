@@ -27,7 +27,7 @@ Bold and italic citation handles keep their source controls and validation.
 A comma-separated citation group renders and verifies each handle.
 Tables show a source card after the first row that cites it.
 Document cards contain the matching source excerpt.
-Web cards show a linked title and its domain on one row, and the verified source excerpt below them.
+Web cards show a linked title, its domain on the line under the title, and the verified source excerpt below them.
 Document and web cards show their citation handle in the card header.
 They use the same height as search result cards.
 The card text shows at most three complete lines, with an ellipsis when text is omitted, and does not scroll.
