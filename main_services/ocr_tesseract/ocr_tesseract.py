@@ -43,8 +43,10 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from typing import List
 
+import anyio.to_thread
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 from PIL import Image
@@ -67,9 +69,22 @@ OCR_QUEUE_DEPTH = int(os.getenv("OCR_QUEUE_DEPTH", "8"))
 #: an HTTP boundary does not fix by itself.
 OCR_SUBPROCESS_TIMEOUT_S = float(os.getenv("OCR_SUBPROCESS_TIMEOUT_S", "300"))
 
+#: Threads for `def` handlers. A request holds one thread from its admission check to its
+#: answer, so the limit covers every admitted request and leaves 4 for other handlers.
+#: AnyIO's default is 40, below the admission of a large deployment.
+HTTP_THREADS = OCR_CONCURRENCY + OCR_QUEUE_DEPTH + 4
+
 CONFIG_FINGERPRINT = os.getenv("HOOVER4_CONFIG_FINGERPRINT", "")
 
-app = FastAPI(title="hoover4 tesseract OCR", version="1.0")
+
+@asynccontextmanager
+async def lifespan(_app):
+    """Raise the thread limit of `def` handlers to the admission of this service."""
+    anyio.to_thread.current_default_thread_limiter().total_tokens = HTTP_THREADS
+    yield
+
+
+app = FastAPI(title="hoover4 tesseract OCR", version="1.0", lifespan=lifespan)
 
 _pool = ThreadPoolExecutor(max_workers=OCR_CONCURRENCY, thread_name_prefix="ocr")
 _inflight = threading.Semaphore(OCR_CONCURRENCY + OCR_QUEUE_DEPTH)
@@ -190,8 +205,11 @@ def _run_tesseract(image_bytes: bytes, languages: str, psm: int) -> tuple:
 
 
 @app.get("/health")
-def health():
+async def health():
     """Reports what this instance can actually do, not what it was asked to do.
+
+    An `async` handler, so it answers while every handler thread serves an admitted
+    request.
 
     `languages_available` is read from tesseract itself: a dataset configured for a
     language whose traineddata is not installed fails per file, and this is the only
@@ -203,6 +221,7 @@ def health():
         "languages_available": _LANGUAGES,
         "concurrency": OCR_CONCURRENCY,
         "queue_depth": OCR_QUEUE_DEPTH,
+        "http_threads": HTTP_THREADS,
         "max_image_bytes": OCR_MAX_IMAGE_BYTES,
         "config_fingerprint": CONFIG_FINGERPRINT,
     }

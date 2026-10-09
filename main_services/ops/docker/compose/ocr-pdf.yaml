@@ -42,6 +42,8 @@ services:
       - "S3_SYSTEM_BUCKET=${S3_SYSTEM_BUCKET:-hoover4-system}"
       - "S3_COLLECTION_BUCKET_PREFIX=${S3_COLLECTION_BUCKET_PREFIX:-hoover4-c-}"
       - OCR_PDF_DPI=${OCR_PDF_DPI:-200}
+      # deploy.py renders these two from ocr_pdf_concurrency and ocr_pdf_queue_depth in
+      # hoover4.ini. The fallbacks serve a run outside deploy.py.
       - OCR_PDF_CONCURRENCY=${OCR_PDF_CONCURRENCY:-2}
       - OCR_PDF_QUEUE_DEPTH=${OCR_PDF_QUEUE_DEPTH:-4}
       - OCR_PDF_MAX_PAGES=${OCR_PDF_MAX_PAGES:-2000}

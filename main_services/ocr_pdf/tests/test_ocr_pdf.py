@@ -6,6 +6,7 @@ layer. A text layer that is off by a page height is invisible in both senses, an
 integration test would notice because the PDF still opens.
 """
 
+import asyncio
 import io
 import sys
 from pathlib import Path
@@ -134,13 +135,26 @@ class TestHealth:
         """The version came off a module attribute that pypdfium2 5.x removed, so
         `/health` said `unavailable` on a perfectly working renderer, which is a health check
         reporting on its own guess rather than on the thing it checks."""
-        body = ocr_pdf.health()
+        body = asyncio.run(ocr_pdf.health())
         assert body["status"] == "healthy"
         assert body["renderer"].startswith("pypdfium2 ")
         assert body["renderer"] != "pypdfium2 "
         # Configured, not reachable: an unreachable tier changes between two health
         # checks and would make this service's health flap with someone else's.
         assert set(body["engines"]) == {"tesseract", "easyocr"}
+        assert body["http_threads"] == ocr_pdf.HTTP_THREADS
+
+    def test_handler_threads_cover_the_admission(self):
+        """FastAPI runs a `def` handler on AnyIO's thread limiter, 40 by default. Above
+        that, admitted requests waited for a thread with no answer, and `/health` with them."""
+        import anyio.to_thread
+
+        async def limit_inside_lifespan():
+            async with ocr_pdf.lifespan(ocr_pdf.app):
+                return anyio.to_thread.current_default_thread_limiter().total_tokens
+
+        assert asyncio.run(limit_inside_lifespan()) == (
+            ocr_pdf.OCR_PDF_CONCURRENCY + ocr_pdf.OCR_PDF_QUEUE_DEPTH + 4)
 
 
 class TestBuildSearchablePdf:

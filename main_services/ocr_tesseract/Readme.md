@@ -49,6 +49,9 @@ An undecodable image keeps its original failure.
   beyond that the service answers `503` with `Retry-After`. The client maps that to a
   *retryable* Temporal error, so a busy OCR tier slows the pipeline rather than filling
   `processing_errors`.
+- The thread limit of the `def` handlers is `OCR_CONCURRENCY + OCR_QUEUE_DEPTH + 4`, so
+  an admitted request never waits for a handler thread. `/health` runs on the event loop,
+  so it answers while every thread is busy. It reports the limit as `http_threads`.
 - **The subprocess timeout stays.** An HTTP boundary does not fix a wedged child: the
   request is bounded, the `tesseract` process it spawned is not. Do not remove
   `OCR_SUBPROCESS_TIMEOUT_S` on the grounds that the service is bounded.

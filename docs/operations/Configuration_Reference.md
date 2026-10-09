@@ -122,6 +122,25 @@ CPU count of the host. `deploy.py` prints a
 warning when `ocr_concurrency` is lower than `tesseract_cpu_concurrency`, because the
 worker then leaves Tesseract slots idle.
 
+`ocr_pdf_concurrency` is the number of searchable PDFs that `hoover4-ocr-pdf` builds at
+once, one render process each. Empty follows `tesseract_cpu_concurrency`, or gives 2 when
+`tesseract_cpu_enabled` is false. The same value sizes the worker queue of searchable-PDF
+batches, so the worker never sends the builder more requests than it runs. The pages of
+one PDF go to the OCR service one after the other. `ocr_pdf_queue_depth` is the number of
+requests that wait for a builder slot, and empty follows `ocr_pdf_concurrency`.
+`ocr_pdf_mem_limit` is the builder's memory limit. Empty is the larger of 8000M and 2048M
+plus 512M for each builder slot. A set value replaces the formula.
+
+`deploy.py` prints two more warnings. One names an `ocr_pdf_mem_limit` below that formula.
+The other names an `ocr_concurrency` plus `ocr_pdf_concurrency` above 5 times
+`tesseract_cpu_concurrency`. Tesseract admits that many requests, its slots and its
+queue. Above it, Tesseract answers 503, and the builder fails the whole PDF with 503.
+An empty `ocr_concurrency` counts as its default of 4 in that sum.
+
+Both OCR services raise the thread limit of their request handlers to their admission
+plus 4, so every admitted request has a thread. Their `/health` answers report
+`concurrency`, `queue_depth` and `http_threads`.
+
 ### Scanner and ClickHouse settings
 
 `regex_scanner_mem_limit` defaults to `4G`. Deployment refuses values below 4 GiB.
@@ -175,10 +194,12 @@ The entity expansion count and external entity restrictions remain active.
 ### Worker fleet and concurrency
 
 `common_workers`, `worker_mem_limit`, and the per-queue concurrency keys
-(`common_concurrency`, `tika_concurrency`, `ocr_concurrency`, `nlp_concurrency`,
-`embed_concurrency`, `indexing_concurrency`, `chat_model_concurrency`,
+(`common_concurrency`, `tika_concurrency`, `ocr_concurrency`, `ocr_pdf_concurrency`,
+`nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`, `chat_model_concurrency`,
 `chat_low_latency_concurrency`, `agent_tool_concurrency`). Empty
-means the default, except the three agent keys, which are set. A slot of
+means the default, except the three agent keys, which are set. `ocr_concurrency` sizes
+image OCR on `processing-ocr-queue`. `ocr_pdf_concurrency` sizes the builder and the
+worker slots of `processing-ocr-pdf-queue` together. A slot of
 `chat_model_concurrency` is one model call in flight, and a slot
 of `agent_tool_concurrency` is one tool call in flight. The templates set 3, 4 and 16.
 An empty key gives 3 for `chat_model_concurrency` and 8 for
@@ -434,6 +455,7 @@ is the map back to the group above that explains it.
 - `ner_provider`, `ner_spacy_enabled`, `embeddings_provider`, `pdf_ocr_provider`
 - `tesseract_cpu_enabled`, `tesseract_languages`, `ocr_pdf_enabled`, `regex_scanner_threads`
 - `manticore_mem_limit`, `manticore_vectors_mem_limit` (required), `clickhouse_mem_limit`, `ocr_pdf_mem_limit`
+- `ocr_pdf_concurrency`, `ocr_pdf_queue_depth`
 - `tesseract_cpu_concurrency`, `tesseract_threads_per_page`, `tesseract_cpu_cpus`, `tesseract_cpu_mem_limit`
 - `regex_scanner_queue_depth`, `website_release_mode`, `search_max_parallelism`, `search_timeout_seconds`, `manticore_expansion_limit`
 - `common_workers`, `common_concurrency`, `common_max_cached_workflows`, `worker_mem_limit`, `tika_concurrency`

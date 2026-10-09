@@ -78,6 +78,11 @@ order is a defect even though the PDF still opens.
 * The parent process starts one renderer child per request. The thread pool limits child
   processes to `OCR_PDF_CONCURRENCY`. `OCR_PDF_MAX_PAGE_PIXELS` limits one raster to
   40,000,000 pixels. A renderer crash returns one failed request and keeps the service up.
+* The service admits `OCR_PDF_CONCURRENCY + OCR_PDF_QUEUE_DEPTH` requests. The thread
+  limit of its `def` handlers is that number plus 4, so an admitted request never waits
+  for a handler thread. `/health` runs on the event loop, so it answers while every
+  thread is busy. It reports the limit as `http_threads`. `deploy.py` sets both numbers from `ocr_pdf_concurrency` and
+  `ocr_pdf_queue_depth`.
 * `/health` reports which engines are **configured**, not which are reachable: an
   unreachable tier changes between two health checks, and reporting it here would make
   this service's health flap with someone else's.

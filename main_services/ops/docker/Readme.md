@@ -40,7 +40,9 @@ Temporal readiness gate read the other runtime's copy of its constants there.
 file**. The next deploy overwrites it, and until then the change looks like it worked.
 
 `manticore_mem_limit` and `manticore_vectors_mem_limit` are required `[main_services]`
-keys. `clickhouse_mem_limit` and `ocr_pdf_mem_limit` set their container limits. ClickHouse
+keys. `clickhouse_mem_limit` and `ocr_pdf_mem_limit` set their container limits. An empty
+`ocr_pdf_mem_limit` is derived from the builder slots (`ocr_pdf_concurrency`), with a
+floor of 8000M. ClickHouse
 uses 80 percent of its container limit as the server cap.
 
 Relative paths resolve against the **project directory** (the first compose file's

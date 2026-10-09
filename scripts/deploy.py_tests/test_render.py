@@ -450,6 +450,76 @@ def _settings(**main_values):
     return cfg
 
 
+def _ocr_pdf(**main_values):
+    cfg = _config("ocr-pdf-slots.ini")
+    cfg.values["main_services"].update(main_values)
+    return cfg
+
+
+def _ocr_pdf_env(**main_values):
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda host: host):
+        return deploy.render_main_env(_ocr_pdf(**main_values))
+
+
+def test_empty_builder_keys_follow_the_tesseract_concurrency():
+    env = _ocr_pdf_env()
+
+    assert env["OCR_PDF_CONCURRENCY"] == "24"
+    assert env["OCR_PDF_QUEUE_DEPTH"] == "24"
+    assert env["HOOVER4_OCR_PDF_CONCURRENCY"] == "24"
+    assert env["OCR_PDF_MEM_LIMIT"] == "14336M"
+    assert deploy.ocr_concurrency_warning(_ocr_pdf()) is None
+
+
+def test_set_builder_keys_win():
+    env = _ocr_pdf_env(ocr_pdf_concurrency="6", ocr_pdf_queue_depth="3")
+
+    assert env["OCR_PDF_CONCURRENCY"] == "6"
+    assert env["OCR_PDF_QUEUE_DEPTH"] == "3"
+    assert env["HOOVER4_OCR_PDF_CONCURRENCY"] == "6"
+    assert env["OCR_PDF_MEM_LIMIT"] == "8000M"
+
+
+def test_builder_has_two_slots_without_tesseract():
+    env = _ocr_pdf_env(tesseract_cpu_enabled="false")
+
+    assert env["OCR_PDF_CONCURRENCY"] == "2"
+    assert env["OCR_PDF_QUEUE_DEPTH"] == "2"
+    assert env["HOOVER4_OCR_PDF_CONCURRENCY"] == "2"
+    assert env["OCR_PDF_MEM_LIMIT"] == "8000M"
+
+
+def test_set_builder_memory_limit_wins_and_warns_below_the_formula():
+    env = _ocr_pdf_env(ocr_pdf_mem_limit="9000M")
+
+    assert env["OCR_PDF_MEM_LIMIT"] == "9000M"
+    warning = deploy.ocr_concurrency_warning(_ocr_pdf(ocr_pdf_mem_limit="9000M"))
+    assert warning is not None
+    assert "ocr_pdf_mem_limit = 9000M is below 14336M" in warning
+
+
+def test_builder_slots_above_the_tesseract_admission_warn():
+    warning = deploy.ocr_concurrency_warning(_ocr_pdf(ocr_concurrency="100"))
+
+    assert warning is not None
+    assert "ocr_concurrency + ocr_pdf_concurrency = 124 is above the 120 requests" in warning
+
+
+def test_zero_builder_slots_are_refused():
+    with pytest.raises(deploy.DeployError) as refused:
+        _ocr_pdf_env(ocr_pdf_concurrency="0")
+    assert "ocr_pdf_concurrency must be at least 1" in str(refused.value)
+
+
+def test_compose_maps_the_builder_variables():
+    builder = (REPO_ROOT / "main_services/ops/docker/compose/ocr-pdf.yaml").read_text()
+    worker = (REPO_ROOT / "main_services/ops/docker/docker-compose.yaml").read_text()
+
+    assert "OCR_PDF_CONCURRENCY=${OCR_PDF_CONCURRENCY:-2}" in builder
+    assert "OCR_PDF_QUEUE_DEPTH=${OCR_PDF_QUEUE_DEPTH:-4}" in builder
+    assert '"HOOVER4_OCR_PDF_CONCURRENCY=${HOOVER4_OCR_PDF_CONCURRENCY:-}"' in worker
+
+
 def test_empty_tesseract_memory_limit_follows_the_concurrency():
     cfg = _settings(tesseract_cpu_mem_limit="", tesseract_cpu_concurrency="3")
 
@@ -569,6 +639,8 @@ def test_templates_render_the_new_settings(template_name):
     assert env["CASSANDRA_HEAP_NEW"] == "800M"
     assert env["DEFAULT_NAMESPACE_RETENTION"] == "168h"
     assert env["TESSERACT_CPU_MEM_LIMIT"] == "6144M"
+    assert env["OCR_PDF_CONCURRENCY"] == "2"
+    assert env["OCR_PDF_MEM_LIMIT"] == "8000M"
     assert [env[key] for key in PACK_KEYS] == PACK_DEFAULTS
     assert deploy.temporal_retention_command(cfg)[-3:] == [
         "168h", "--address", "temporal:7233"]

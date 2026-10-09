@@ -1,5 +1,7 @@
-"""Verify JPEG recovery and the original Tesseract execution limit."""
+"""Verify JPEG recovery, the Tesseract execution limit and the handler threads."""
 
+import asyncio
+import inspect
 import io
 import subprocess
 from pathlib import Path
@@ -88,3 +90,24 @@ def test_a_retry_cannot_start_after_the_execution_limit(monkeypatch):
     with pytest.raises(subprocess.TimeoutExpired):
         service._run_tesseract(jpeg_bytes(), "eng", 6)
     assert len(calls) == 1
+
+
+def test_handler_threads_cover_the_admission():
+    """FastAPI runs a `def` handler on AnyIO's thread limiter, 40 by default. Above that,
+    admitted requests waited for a thread with no answer, and `/health` with them."""
+    import anyio.to_thread
+
+    async def limit_inside_lifespan():
+        async with service.lifespan(service.app):
+            return anyio.to_thread.current_default_thread_limiter().total_tokens
+
+    assert asyncio.run(limit_inside_lifespan()) == (
+        service.OCR_CONCURRENCY + service.OCR_QUEUE_DEPTH + 4)
+
+
+def test_health_answers_without_a_handler_thread():
+    assert inspect.iscoroutinefunction(service.health)
+    body = asyncio.run(service.health())
+    assert body["concurrency"] == service.OCR_CONCURRENCY
+    assert body["queue_depth"] == service.OCR_QUEUE_DEPTH
+    assert body["http_threads"] == service.HTTP_THREADS

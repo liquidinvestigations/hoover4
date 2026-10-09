@@ -216,7 +216,14 @@ DEFAULTS = {
         "clickhouse_server_memory_ratio": "0.7",
         "clickhouse_ui_mem_limit": "6000M",
         "clickhouse_monitoring_mem_limit": "6000M",
-        "ocr_pdf_mem_limit": "8000M",
+        # The searchable-PDF builder. Empty ocr_pdf_concurrency follows
+        # tesseract_cpu_concurrency, or 2 without Tesseract, and also sizes the worker
+        # queue of searchable-PDF batches. Empty ocr_pdf_queue_depth follows
+        # ocr_pdf_concurrency. Empty ocr_pdf_mem_limit is the larger of 8000M and 2048M
+        # plus 512M for each builder slot.
+        "ocr_pdf_concurrency": "",
+        "ocr_pdf_queue_depth": "",
+        "ocr_pdf_mem_limit": "",
         # Worker fleet. Empty = the worker's own default, except the three chat keys,
         # which the ini sets because a slot is one turn in flight.
         "common_workers": "",
@@ -1270,17 +1277,88 @@ def render_tesseract_env(cfg):
     return env
 
 
+#: The memory limit of hoover4-ocr-pdf when ocr_pdf_mem_limit is empty. The floor keeps
+#: the earlier fixed default for small deployments. Each slot holds one render process
+#: and the source PDF of one request.
+OCR_PDF_MIN_MEM_MB = 8000
+OCR_PDF_BASE_MEM_MB = 2048
+OCR_PDF_MEM_PER_SLOT_MB = 512
+
+#: The image OCR slots of the worker when ocr_concurrency is empty, the default of
+#: worker_concurrency("ocr", 4) in tasks/run_worker.py.
+OCR_DEFAULT_SLOTS = 4
+
+
+def ocr_pdf_slots(cfg):
+    """The builder slots, which are also the worker slots of processing-ocr-pdf-queue."""
+    m = "main_services"
+    if cfg.get(m, "ocr_pdf_concurrency").strip():
+        return whole_number(cfg, "ocr_pdf_concurrency")
+    if cfg.get_bool(m, "tesseract_cpu_enabled"):
+        return whole_number(cfg, "tesseract_cpu_concurrency")
+    return 2
+
+
+def ocr_pdf_formula_mb(slots):
+    """The builder memory limit in MB for `slots` builder slots."""
+    return max(OCR_PDF_MIN_MEM_MB, OCR_PDF_BASE_MEM_MB + OCR_PDF_MEM_PER_SLOT_MB * slots)
+
+
+def render_ocr_pdf_env(cfg):
+    """The hoover4-ocr-pdf variables and the worker slots of its queue.
+
+    One key sizes the builder and the worker queue together, so the worker never sends
+    more searchable-PDF requests than the builder runs.
+    """
+    m = "main_services"
+    slots = ocr_pdf_slots(cfg)
+    depth = (whole_number(cfg, "ocr_pdf_queue_depth")
+             if cfg.get(m, "ocr_pdf_queue_depth").strip() else slots)
+    env = {
+        "OCR_PDF_CONCURRENCY": str(slots),
+        "OCR_PDF_QUEUE_DEPTH": str(depth),
+        "HOOVER4_OCR_PDF_CONCURRENCY": str(slots),
+    }
+    if cfg.get(m, "ocr_pdf_mem_limit").strip():
+        size_bytes(cfg, "ocr_pdf_mem_limit")
+        env["OCR_PDF_MEM_LIMIT"] = cfg.get(m, "ocr_pdf_mem_limit").strip()
+    else:
+        env["OCR_PDF_MEM_LIMIT"] = "%dM" % ocr_pdf_formula_mb(slots)
+    return env
+
+
 def ocr_concurrency_warning(cfg):
-    """A warning when the worker sends fewer OCR requests than Tesseract can serve."""
-    ocr = cfg.get("main_services", "ocr_concurrency").strip()
-    if not ocr or not cfg.get_bool("main_services", "tesseract_cpu_enabled"):
-        return None
-    tesseract = cfg.get("main_services", "tesseract_cpu_concurrency").strip()
-    if ocr.isdigit() and tesseract.isdigit() and int(ocr) < int(tesseract):
-        return ("warning: [main_services] ocr_concurrency = %s is lower than "
-                "tesseract_cpu_concurrency = %s, so Tesseract slots stay idle"
-                % (ocr, tesseract))
-    return None
+    """Warnings about OCR slots that stay idle or that Tesseract cannot admit.
+
+    Tesseract admits 5 times its concurrency: its slots and a queue of 4 times as many.
+    The worker image OCR slots and the builder slots both send requests to it.
+    """
+    m = "main_services"
+    warnings = []
+    ocr = cfg.get(m, "ocr_concurrency").strip()
+    tesseract_on = cfg.get_bool(m, "tesseract_cpu_enabled")
+    tesseract = cfg.get(m, "tesseract_cpu_concurrency").strip()
+    if (ocr and tesseract_on and ocr.isdigit() and tesseract.isdigit()
+            and int(ocr) < int(tesseract)):
+        warnings.append("warning: [main_services] ocr_concurrency = %s is lower than "
+                        "tesseract_cpu_concurrency = %s, so Tesseract slots stay idle"
+                        % (ocr, tesseract))
+    pdf_slots = ocr_pdf_slots(cfg)
+    if tesseract_on:
+        admission = 5 * whole_number(cfg, "tesseract_cpu_concurrency")
+        image_slots = int(ocr) if ocr.isdigit() else OCR_DEFAULT_SLOTS
+        if image_slots + pdf_slots > admission:
+            warnings.append(
+                "warning: [main_services] ocr_concurrency + ocr_pdf_concurrency = %d is "
+                "above the %d requests hoover4-tesseract-cpu admits, so it answers 503"
+                % (image_slots + pdf_slots, admission))
+    limit = cfg.get(m, "ocr_pdf_mem_limit").strip()
+    formula_mb = ocr_pdf_formula_mb(pdf_slots)
+    if limit and size_bytes(cfg, "ocr_pdf_mem_limit") < formula_mb * 2**20:
+        warnings.append(
+            "warning: [main_services] ocr_pdf_mem_limit = %s is below %dM, the memory of "
+            "%d builder slots" % (limit, formula_mb, pdf_slots))
+    return "\n".join(warnings) or None
 
 
 def render_clickhouse_config(cfg):
@@ -1379,9 +1457,8 @@ def render_main_env(cfg):
     env["MANTICORE_VECTORS_MEM_LIMIT"] = cfg.get(m, "manticore_vectors_mem_limit")
     env["MANTICORE_VECTORS_MEM_LIMIT_BYTES"] = str(manticore_vectors_mem_limit_bytes)
     env["CLICKHOUSE_MEM_LIMIT"] = cfg.get(m, "clickhouse_mem_limit")
-    env["OCR_PDF_MEM_LIMIT"] = cfg.get(m, "ocr_pdf_mem_limit")
     size_bytes(cfg, "clickhouse_mem_limit")
-    size_bytes(cfg, "ocr_pdf_mem_limit")
+    env.update(render_ocr_pdf_env(cfg))
 
     # Log rotation, read by the x-logging field of every compose file.
     env["CONTAINER_LOG_MAX_SIZE"] = cfg.get(m, "container_log_max_size")

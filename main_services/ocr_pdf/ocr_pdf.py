@@ -56,8 +56,10 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from typing import Dict, Optional
 
+import anyio.to_thread
 import requests
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
@@ -83,11 +85,18 @@ MAX_PAGES = int(os.getenv("OCR_PDF_MAX_PAGES", "2000"))
 #: does not change what Tesseract already read off the pre-compression raster.
 JPEG_QUALITY = int(os.getenv("OCR_PDF_JPEG_QUALITY", "75"))
 
-#: One PDF at a time per slot, and a short queue. Each in-flight request holds a whole
-#: rendered page in memory and keeps an OCR slot busy, so this is deliberately smaller
-#: than the OCR tier's own concurrency.
+#: PDFs at once, one render process each, and the requests that may wait for a slot.
+#: deploy.py renders both from `ocr_pdf_concurrency` and `ocr_pdf_queue_depth` in
+#: hoover4.ini, and gives the worker queue of searchable-PDF batches as many slots as
+#: this service runs, so the worker sends at most that many requests. The pages of one
+#: PDF go to the OCR tier one after the other.
 OCR_PDF_CONCURRENCY = int(os.getenv("OCR_PDF_CONCURRENCY", "2"))
 OCR_PDF_QUEUE_DEPTH = int(os.getenv("OCR_PDF_QUEUE_DEPTH", "4"))
+
+#: Threads for `def` handlers. A request holds one thread from its admission check to its
+#: answer, so the limit covers every admitted request and leaves 4 for other handlers.
+#: AnyIO's default is 40.
+HTTP_THREADS = OCR_PDF_CONCURRENCY + OCR_PDF_QUEUE_DEPTH + 4
 
 #: Per-page OCR wait. The OCR service's own subprocess timeout is the real guard against
 #: a wedged child; this bounds the wait for a healthy but busy one.
@@ -113,7 +122,14 @@ OCR_ENDPOINTS: Dict[str, str] = {
     "easyocr": (os.getenv("OCR_EASYOCR_URL") or "").strip(),
 }
 
-app = FastAPI(title="hoover4 OCR'd PDF", version="1.0")
+@asynccontextmanager
+async def lifespan(_app):
+    """Raise the thread limit of `def` handlers to the admission of this service."""
+    anyio.to_thread.current_default_thread_limiter().total_tokens = HTTP_THREADS
+    yield
+
+
+app = FastAPI(title="hoover4 OCR'd PDF", version="1.0", lifespan=lifespan)
 
 _pool = ThreadPoolExecutor(max_workers=OCR_PDF_CONCURRENCY, thread_name_prefix="ocrpdf")
 _inflight = threading.Semaphore(OCR_PDF_CONCURRENCY + OCR_PDF_QUEUE_DEPTH)
@@ -206,8 +222,11 @@ def run_renderer(pdf_bytes: bytes, engine: str, languages: str, dpi: int) -> tup
 
 
 @app.get("/health")
-def health():
+async def health():
     """What this instance can actually do, engines included.
+
+    An `async` handler, so it answers while every handler thread serves an admitted
+    request.
 
     `engines` reports *configured*, not *reachable*: an unreachable OCR tier is a
     transient fact that changes between two health checks, and reporting it here would
@@ -240,6 +259,7 @@ def health():
         "max_pages": MAX_PAGES,
         "concurrency": OCR_PDF_CONCURRENCY,
         "queue_depth": OCR_PDF_QUEUE_DEPTH,
+        "http_threads": HTTP_THREADS,
         "config_fingerprint": CONFIG_FINGERPRINT,
     }
 

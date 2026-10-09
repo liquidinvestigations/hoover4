@@ -28,6 +28,7 @@ The retained `../writing-tests/scripts/gate-map.sh` routes paths to candidate ch
 | Research-agent behavior changes. | Run `scripts/pytest-research-agent.sh [path]`. |
 | MCP or shared agent code changes. | Run `scripts/pytest-agents.sh [path]` against the affected images. |
 | OCR-PDF behavior changes. | Run `scripts/pytest-ocr-pdf.sh [path]`. |
+| Tesseract OCR service behavior changes. | Run `scripts/pytest-ocr-tesseract.sh [path]`. |
 | Test reachability changes. | Run `scripts/test-reachability.sh`. |
 | Website backend contracts change. | Run the relevant cases in `website/run-stack-tests.sh`. |
 | Ingestion and storage contracts change. | Use `main_services/verify-stack.sh` for the affected end-to-end claim. |
