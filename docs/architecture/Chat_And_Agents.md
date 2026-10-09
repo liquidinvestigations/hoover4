@@ -185,6 +185,7 @@ The built-in definition has these rules:
 An absent-name note requires the person's choice before the agent searches a suggested spelling.
 Without web tools, preparation records whether the request asks for public sources, including past events.
 A public-source request gets the unavailable-access note without document-search guidance.
+The chat system prompt requires the name choice before candidate searches and the capability explanation before the answer.
 
 ## Streaming a turn
 
