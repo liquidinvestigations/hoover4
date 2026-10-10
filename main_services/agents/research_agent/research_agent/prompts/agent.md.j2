@@ -11,6 +11,8 @@
    The role text asks for the two closing statements of a comparison, and the chat rules
    after the tool list name their two lines. The served model wrote them only with both
    texts. Other answers do not get the lines. The todo text, when the run has it, follows.
+   The citation text gives the order of the work once. The `citation` skill holds the
+   arguments of each citation tool and the examples of failed calls.
 #}
 {{ role_line }}
 
@@ -53,23 +55,22 @@ end without these two lines.
 
 Your todo list
 
-You can track work with several steps in the todo list. Use ids from `read_todo`.
-Give a reason for cancelled items. Open items do not stop answers.
+Use a todo list for work with several steps. A quick reply needs no list.
+Keep a step pending until its work ends. Then mark it done with a short reason, such as found or not found.
+Done steps stay in the list. Use `edit_todo` with a replacement entry when a new step replaces an old step.
+Open items do not stop answers.
 {% endif %}
 
-{% if has('cite_pages') %}
-Call `cite_pages` for each web source after `read_page`.
-Example: {"url":"COPY_READ_PAGE_URL","terms":["COPY_EXACT_WORDS_FROM_PAGE"]}.
-Use flat arguments, exact text and returned retry_arguments.
-Never use site names as handles.
-Omit claims whose citations fail.
+{% if has('cite_pages') or has('cite_documents') %}
+When the answer relies on sources, work in this order.
+1. Read the source passage before you use its claims.
+2. Call {% if has('cite_documents') %}`cite_documents` for a document{% endif %}{% if has('cite_documents') and has('cite_pages') %} or {% endif %}{% if has('cite_pages') %}`cite_pages` for a web page{% endif %} with exact source text.
+3. Copy the returned handle beside each supported claim.
+4. Write the answer after the needed citation calls succeed.
+5. State any requested part that the sources do not establish.
+
+Give each factual paragraph and list item its returned handle. Omit claims whose citations fail.
 {% endif %}
 {% if has('cite_documents') %}
 List every author and affiliation from original author sections. A bibliography reference names a cited work.
-Call `cite_documents` with an exact quote of at least twelve characters.
-An absent quote has no handle. Retry with exact candidate text.
-Reuse document handles across quotes and pages.
-{% endif %}
-{% if has('cite_pages') or has('cite_documents') %}
-Give each factual paragraph and list item its returned handle.
 {% endif %}

@@ -242,43 +242,106 @@ fn QuestionOption(answer: String, draft: Option<Signal<String>>) -> Element {
     }
 }
 
+/// The stored arguments of a call, indented, or the stored text when it is not JSON.
+fn pretty_arguments(tool_input: &str) -> String {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(tool_input) else {
+        return tool_input.to_string();
+    };
+    let value = value.get("input").cloned().unwrap_or(value);
+    serde_json::to_string_pretty(&value).unwrap_or_else(|_| tool_input.to_string())
+}
+
+/// One todo tool call, inside its group: the stored arguments, the result, the failure,
+/// and the list that the call left. Every todo call renders this card, whether it changed
+/// the list or not. A streamed row has only a summary until its stored row arrives, so the
+/// label shows that summary and the card offers no arguments yet. The task summary that a
+/// visible change shows is [`TodoSummary`].
 #[component]
 pub fn TodoCard(tool_name: String, tool_input: String, tool_output: String, running: bool,
+                #[props(default)] content_summary: String,
                 todo_versions: Vec<common::chat_types::TodoSnapshot>) -> Element {
     let mut expanded = use_signal(|| false);
     let value = tool_content(&tool_output).unwrap_or_default();
     let failure = tool_failure(&value);
     let version = value.get("version").and_then(|value| value.as_u64()).map(|version| version as u32);
+    let unchanged = value.get("unchanged").and_then(|value| value.as_bool()) == Some(true);
     let current = version.and_then(|version| todo_versions.iter().find(|snapshot| snapshot.version == version)).cloned();
     let previous = version.and_then(|version| version.checked_sub(1))
         .and_then(|version| todo_versions.iter().find(|snapshot| snapshot.version == version)).cloned();
-    let label = version.map(|version| format!("{tool_name} · version {version}"))
-        .unwrap_or_else(|| tool_name.clone());
-    rsx! { CardShell { chip: "Todo", label, running, expanded, failure, raw_output: tool_output.clone(),
+    let label = match version {
+        _ if running && !content_summary.is_empty() => format!("{tool_name} · {content_summary}"),
+        Some(version) if unchanged => format!("{tool_name} · version {version} · unchanged"),
+        Some(version) => format!("{tool_name} · version {version}"),
+        None => tool_name.clone(),
+    };
+    let arguments = pretty_arguments(&tool_input);
+    rsx! { CardShell { chip: "Todo", label, running, expanded, failure: failure.clone(), raw_output: tool_output.clone(),
         badges: rsx! {},
+        div { "data-todo-arguments": "true",
+            div { style: "font-weight: 600;", "Arguments" }
+            pre { style: "margin: 2px 0 0 0; white-space: pre-wrap; word-break: break-word;", "{arguments}" }
+        }
+        if let Some(failure) = failure {
+            div { role: "alert", style: "white-space: pre-wrap; word-break: break-word;", "{failure.message}" }
+        }
         if let Some(snapshot) = current {
-            div { style: "font-weight: 600;", "{snapshot.goal}" }
+            div { style: "font-weight: 600;", "List after the call: {snapshot.goal}" }
             for item in snapshot.items.iter() {
                 {
                     let before = previous.as_ref().and_then(|old| old.items.iter().find(|old| old.id == item.id));
                     let changed = before.is_none_or(|old| old != item);
-                    let old_status = before.map(|old| old.status.clone());
+                    let status = common::chat_todos::display_status(&item.status).to_string();
+                    let old_status = before.map(|old| common::chat_todos::display_status(&old.status).to_string())
+                        .filter(|old| *old != status);
                     rsx! {
                         div { style: if changed { "font-weight: 700;" } else { "" },
                             if let Some(old_status) = old_status {
-                                if changed { s { "{old_status}" } " → " }
+                                s { "{old_status}" } " → "
                             }
-                            "{item.id} {item.status}: {item.text}"
+                            "{item.id} {status}: {item.text}"
                             if !item.note.is_empty() { " ({item.note})" }
+                            if !item.replaces_id.is_empty() { " · replaces {item.replaces_id}" }
                         }
                     }
                 }
             }
-        } else {
-            div { style: "white-space: pre-wrap;", "{tool_input}" }
-            if !running { div { "The list at this version is not stored." } }
+        } else if !running {
+            div { "The list at this version is not stored." }
         }
     }}
+}
+
+/// The task list after a call that changed what a reader sees, from
+/// `common::chat_todos::todo_summaries`. A done item is struck through and followed by
+/// the first words of its reason in bold. The whole reason is the title of those words,
+/// and the call card above holds the stored call.
+#[component]
+pub fn TodoSummary(snapshot: common::chat_types::TodoSnapshot) -> Element {
+    let items: Vec<common::chat_todos::VisibleItem> =
+        snapshot.items.iter().map(common::chat_todos::VisibleItem::of).collect();
+    rsx! {
+        div { class: "x-chat-todo-list",
+            span { class: "x-chat-todo-list-icon", "aria-hidden": "true",
+                dioxus_free_icons::Icon { icon: dioxus_free_icons::icons::md_action_icons::MdFactCheck, width: 20, height: 20 }
+            }
+            div { class: "x-chat-todo-list-goal", "{snapshot.goal}" }
+            ul { class: "x-chat-todo-list-items",
+                for item in items {
+                    li { key: "{item.id}", "data-todo-item": "{item.id}", "data-todo-done": "{item.done}",
+                        if item.done {
+                            s { "{item.text}" }
+                            if !item.reason.is_empty() {
+                                " "
+                                strong { title: "{item.full_reason}", "{item.reason}" }
+                            }
+                        } else {
+                            span { "{item.text}" }
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -319,35 +382,4 @@ mod tests {
             .contains("part 2 of read_documents #4"));
     }
 
-}
-
-#[component]
-pub fn TodoChanges(tool_output: String, running: bool, todo_versions: Vec<common::chat_types::TodoSnapshot>) -> Element {
-    let value = tool_content(&tool_output).unwrap_or_default();
-    let failure = tool_failure(&value);
-    let version = value.get("version").and_then(|value| value.as_u64()).map(|version| version as u32);
-    let current = version.and_then(|version| todo_versions.iter().find(|snapshot| snapshot.version == version));
-    rsx! {
-        div {
-            class: "x-chat-todo-list",
-            style: "background: #000; color: #fff; border-radius: 6px; padding: 14px 18px; font-size: var(--x-text-md);",
-            if let Some(failure) = failure {
-                div { role: "alert", "{failure.message}" }
-            } else if let Some(current) = current {
-                div { style: "font-size: var(--x-text-lg); font-weight: 700; margin-bottom: 8px;", "{current.goal}" }
-                ul { style: "margin: 0; padding-left: 20px; list-style: disc;",
-                    for item in current.items.clone() {
-                        li { key: "{item.id}",
-                            if item.status == "done" { s { "{item.text}" } }
-                            else { span { "{item.text}" } }
-                        }
-                    }
-                }
-            } else if running {
-                div { role: "status", "Updating tasks." }
-            } else {
-                div { "The task list is unavailable." }
-            }
-        }
-    }
 }

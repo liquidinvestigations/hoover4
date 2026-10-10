@@ -123,11 +123,8 @@ pub fn ToolCard(
         "ask_user" => rsx! {
             result_cards::QuestionCard { tool_input, tool_output, running, draft }
         },
-        "write_todo" | "edit_todo" | "mark_todo" => rsx! {
-            result_cards::TodoChanges { tool_output, running, todo_versions }
-        },
-        "read_todo" => rsx! {
-            result_cards::TodoCard { tool_name, tool_input, tool_output, running, todo_versions }
+        "read_todo" | "write_todo" | "edit_todo" | "mark_todo" => rsx! {
+            result_cards::TodoCard { tool_name, tool_input, tool_output, running, content_summary, todo_versions }
         },
         "list_document_entities" => rsx! {
             entities_card::EntitiesCard {

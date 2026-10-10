@@ -588,7 +588,10 @@ pub struct TodoSnapshot {
     pub items: Vec<TodoItemView>,
 }
 
-/// One todo item as the transcript renders it.
+/// One todo item as the transcript renders it. `status` is the stored status, and
+/// [`crate::chat_todos::display_status`] reads it as pending or done. `note` is the
+/// completion reason of a done item. `replaces_id` names the item that this item
+/// replaces, and an older snapshot has none.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TodoItemView {
     pub id: String,
@@ -596,6 +599,8 @@ pub struct TodoItemView {
     pub status: String,
     #[serde(default)]
     pub note: String,
+    #[serde(default)]
+    pub replaces_id: String,
 }
 
 /// Maximum length of one user message. Guards the agent's context window and keeps a

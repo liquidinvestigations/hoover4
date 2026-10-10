@@ -1144,6 +1144,28 @@ def test_a_cited_list_item_does_not_cover_its_uncited_sibling(marker):
     assert "Francesca Albanese" in note
 
 
+@pytest.mark.parametrize("heading", ["### **Key Findings**", "## Results", "# Summary of 2001"])
+def test_a_standalone_heading_gives_no_finding(heading):
+    answer = f"{heading}\n\nThe budget is 5 [D1]."
+    assert citations.unsupported_paragraphs(answer) == []
+
+
+@pytest.mark.parametrize("gap", ["\n\n", "\n"])
+def test_a_heading_does_not_hide_an_uncited_paragraph_under_it(gap):
+    answer = f"### **Key Findings**{gap}Ștefan receives 12 payments."
+    findings = citations.unsupported_paragraphs(answer)
+    assert [f["text"] for f in findings] == ["Ștefan receives 12 payments."]
+    assert findings[0]["number"] == (2 if gap == "\n\n" else 1)
+    cited = f"### **Key Findings**{gap}Ștefan receives 12 payments [D1]."
+    assert citations.unsupported_paragraphs(cited) == []
+
+
+def test_a_heading_above_a_numbered_list_keeps_the_item_numbers():
+    answer = "## Payments\n1. Enron paid 5 million [D1].\n2. Dynegy paid 3 million."
+    findings = citations.unsupported_paragraphs(answer)
+    assert findings == [{"number": 1, "item": 2, "text": "2. Dynegy paid 3 million."}]
+
+
 def test_nested_claims_keep_their_own_citations_and_wrapped_text():
     answer = ("### **Israel**\n* **Accused by:**\n"
               "    * **South Africa:** Filed a case.\n      [W2]\n"

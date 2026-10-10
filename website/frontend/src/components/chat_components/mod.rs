@@ -2,6 +2,7 @@
 //! Document cards include citation and search context.
 //! The session page opens a document preview after selection.
 
+pub mod activity;
 pub mod composer;
 pub mod conversation_find;
 pub mod doc_ref_card;
@@ -16,6 +17,7 @@ pub mod tool_run_summary;
 pub mod transcript;
 pub mod web_page;
 
+pub use activity::ChatActivity;
 pub use composer::ChatComposer;
 pub use conversation_find::ConversationFindBar;
 pub use gate_overlay::ChatGateOverlay;

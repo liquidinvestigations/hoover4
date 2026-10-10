@@ -10,7 +10,8 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `session_card.rs` | Homepage / history card showing title + summary. |
 | `transcript.rs` | User bubbles, assistant markdown, tool disclosures, inline doc cards, the retry-attempt disclosure, and the token footer under an answer. |
 | `tool_cards/mod.rs` | The card registry dispatches on tool name and provides card chrome, elapsed counters, and JSON helpers. |
-| `tool_cards/result_cards.rs` | Result-page, read, citation, todo, plan, and question cards. |
+| `activity.rs` | The activity line of a turn in progress. |
+| `tool_cards/result_cards.rs` | Result-page, read, citation, todo call, task summary, plan, and question cards. |
 | `tool_cards/web_search_card.rs` | `web_search`: pending → collapsed → expanded result list → the before/after reranking popup. |
 | `tool_cards/browser_card.rs` | Every `browser_*` tool: action label, capture thumbnails, page text, and the archived page in a sandboxed iframe. |
 | `tool_cards/entities_card.rs` | `list_document_entities`: the two tiers apart, each rule-validated value a link to its explainer card in the document viewer. |
@@ -31,8 +32,24 @@ A web source without a title uses its URL as the linked title.
 Opening any captured version selects the shared page card. Each quote opens a search term present in that quote.
 Preview find accounts for the display scale when scrolling a match into view.
 Three generated follow-up buttons fill the composer without submitting.
-The todo card shows the current goal and bullet list in white on black.
-Completed tasks use strikethrough.
+Every todo call is a tool card inside its group, with its stored arguments, result,
+failure, origin label and the list after the call. A task summary shows after the group
+of a successful todo call that changed what a reader sees: the goal, the item order and
+text, which items are done, their reasons, and replacements. `common::chat_todos` decides
+which calls show one. A failed call, a read, a call whose stored list has not arrived and
+an identical call show none. A summary ends its group, and later calls start another.
+The summary is as wide as its text, at most 80% of the transcript, on the neutral surface
+colour, with the task icon in its upper-right corner. A done item is struck through and
+followed by the first three words of its reason in bold. The whole reason is the title of
+those words and is in the call card.
+The reasoning of an answer renders once, inside the group of tool rows directly before
+the answer, because stored reasoning covers a repair round and names no tool. An answer
+with no group before it keeps its reasoning beside it. A superseded answer keeps its
+reasoning inside its round's group. The live reasoning follows the group of the live
+tool rows, or the stored group that the live answer follows.
+The session page shows one activity line, a rotating icon and `The bot is working...`,
+while its turn is active and not interrupted. A queued turn adds the slot it waits for
+under that line. `activity.rs` holds it.
 The transcript root carries `data-chat-turn`, the state of the newest turn: `active`, `queued-model`, `queued-tool`, `interrupted` or `idle`.
 A browser test reads the end of a turn from it and from the user message seq (`data-chat-user`).
 

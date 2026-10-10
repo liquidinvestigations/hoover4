@@ -9,6 +9,8 @@ tools: cite_documents, cite_pages
    `citation_artefact` names what the model writes, for example an answer or a report.
    `citation_resolver` says who turns a handle back into a document. A worker runs on the
    lead's chat session, so its handles are the lead's handles, and its text names the lead.
+   The system prompt gives the order of the work. This skill gives the arguments, one
+   example for each citation tool, and what to do after a failed entry.
 #}
 {% if has('cite_documents') %}
 When your {{ citation_artefact }} relies on an {% if web_enabled %}internal {% endif %}document, call {{ tool('cite_documents') }}.
@@ -42,7 +44,19 @@ The lead researcher resolves them, so a handle you never allocated is no use to 
 {% if has('cite_pages') %}
 Search for each web source and read its supporting passage with {{ tool('read_page') }}.
 Call {{ tool('cite_pages') }} with the read URL and exact source wording in `terms`.
-One call accepts at most twelve pages. Split longer source lists into separate calls.
+
+Example. {{ tool('read_page') }} read the URL https://example.org/report. Its text says
+"The plant closed in March 2019." Call {{ tool('cite_pages') }} with flat arguments for one page:
+url, copied from the read result, terms with the exact phrase, and why.
+```json
+{"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"The report gives the closing date."}
+```
+Then write "The plant closed in March 2019 [W1]." with the handle that the call returned.
+Give at most eight terms for one page, each at most 200 characters. Case must match.
+One call accepts at most twelve pages in `pages`. Split longer source lists into separate calls.
+```json
+{"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"]}]}
+```
 Copy the returned web handle, for example `[W1]`, beside the claim it supports.
 Keep each handle with the URL and quotes from its returned citation object.
 An error does not allocate a handle. Omit that source's claims until its citation succeeds.
@@ -50,7 +64,6 @@ For absent wording, copy exact text from the returned candidate and call the too
 The handle opens the captured page text and its verified quotes.
 Use a web citation handle in place of a bare source URL.
 Use one page per call if a batch arrives damaged.
-Example: {"url":"COPY_READ_URL","terms":["COPY_EXACT_SOURCE_PHRASE"]}.
 An unread, blocked, or unverified page cannot support a claim.
 {% endif %}
 

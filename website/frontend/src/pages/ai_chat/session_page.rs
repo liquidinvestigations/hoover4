@@ -15,7 +15,7 @@ use crate::api::chat_api::{
     chat_stop,
 };
 use crate::components::chat_components::{
-    ChatComposer, ChatGateOverlay, ChatTranscript, ConversationFindBar, LockedOptionsBar, ModelSelector,
+    ChatActivity, ChatComposer, ChatGateOverlay, ChatTranscript, ConversationFindBar, LockedOptionsBar, ModelSelector,
 };
 use crate::components::chat_components::doc_ref_card::ChatDocOpen;
 use crate::components::chat_components::web_page::{ChatWebOpen, WebPagePreview};
@@ -666,7 +666,6 @@ fn ChatConversationPanel(
                 match_count,
                 stream: stream_turn.read().clone(),
                 stream_live: !*interrupted.read(),
-                queued_for: queued_for.read().clone(),
                 run_cited_handles: run_cited_handles.read().clone(),
                 run_cited_refs: run_cited_refs.read().clone(),
                 todo_versions: todo_versions.read().clone(),
@@ -689,11 +688,10 @@ fn ChatConversationPanel(
                     }
                 }
             }
-            if *sending.read() && stream_turn.read().is_none() {
-                div {
-                    style: "padding: 0 18px 8px; color: var(--x-ink-muted); font-size: var(--x-text-sm); font-style: italic;",
-                    "The assistant is searching your collections\u{2026}"
-                }
+            // One activity line for the whole active turn, from the request to its end.
+            // An interrupted turn shows its banner above instead.
+            if *sending.read() && !*interrupted.read() {
+                ChatActivity { queued_for: queued_for.read().clone() }
             }
             if let Some(e) = error.read().clone() {
                 div {

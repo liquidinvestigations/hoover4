@@ -28,6 +28,8 @@ from __future__ import annotations
 import json
 import re
 
+from tasks.P_agent.control.handlers_common import HEADING
+
 #: The note of the repair round of an answer that names a document with no label.
 CITATION_NOTE = (
     "Your answer names documents, but it has no citation handle, so the reader sees no "
@@ -162,16 +164,21 @@ def page_address(url: str) -> str:
 
 
 def unsupported_paragraphs(answer: str) -> list[dict]:
-    """Identify uncited names or numbers in each paragraph or list item."""
+    """Identify uncited names or numbers in each paragraph or list item.
+
+    A Markdown heading line states no claim, as in `answer_blocks`. A part that holds
+    only headings gives no finding, and the heading lines of any other part are left out
+    of its text. The paragraph and item numbers count every part, headings included."""
     findings = []
     for number, paragraph in enumerate(re.split(r"\n\s*\n", answer), 1):
         parts = re.split(r"\n(?=[ \t]*(?:[-+*]|\d+[.)])\s+)", paragraph)
-        for position, part in enumerate(parts):
+        for position, raw in enumerate(parts):
+            lines = [line for line in raw.splitlines() if line.strip()]
+            if all(HEADING.match(line) for line in lines):
+                continue
+            part = "\n".join(line for line in lines if not HEADING.match(line))
             item = LIST_ITEM_PATTERN.match(part)
             text = part[item.start(2):] if item else part
-            if len(parts) > 1 and not item and all(
-                    line.lstrip().startswith("#") for line in text.splitlines() if line.strip()):
-                continue
             following = LIST_ITEM_PATTERN.match(parts[position + 1]) if position + 1 < len(parts) else None
             if (item and following and len(following[1]) > len(item[1])
                     and text.rstrip(" *_`").endswith(":")):

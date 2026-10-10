@@ -398,8 +398,8 @@ Start a new conversation to change it.
 ### While it works
 
 The assistant announces each tool it uses as it goes (`list_collections`,
-`search_collections`, `web_search`, `browser_navigate`), and shows *The assistant is working…*
-with a **■** stop button until the answer arrives.
+`search_collections`, `web_search`, `browser_navigate`), and shows a turning icon and
+*The bot is working...* with a **■** stop button until the answer arrives.
 
 ![A chat in progress](img/chat-working.png)
 

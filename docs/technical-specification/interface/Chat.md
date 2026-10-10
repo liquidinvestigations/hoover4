@@ -14,7 +14,9 @@
 | Close preview | Close the captured page pane. | The conversation stays open. |
 | Search in conversation | Find messages containing the entered text and move between matches. | The count updates while typing. |
 | Follow-up suggestion | Fill and focus the composer with the selected prompt. | The user edits or sends it explicitly. |
-| Tool group | Show or hide the tools, instructions, and superseded answers. | Completed groups start closed. |
+| Tool group | Show or hide the tools, instructions, superseded answers, and the reasoning of the round. | Completed groups start closed. |
+| Todo call card | Expand the stored arguments, the result or failure, and the list after the call. | Every todo call has one card inside its group. |
+| Reasoning | Show or hide the model's reasoning for the answer. | It is inside the group before the answer, or beside an answer that has no group. |
 
 ## States
 
@@ -32,8 +34,14 @@ Document and web cards show their citation handle in the card header.
 They use the same height as search result cards.
 The card text shows at most three complete lines, with an ellipsis when text is omitted, and does not scroll.
 Each passage in the card text opens its source on click, Enter, or Space.
-The todo card shows the current bold goal and an unnumbered task list.
-It uses white text on black and strikes through completed tasks.
+A task summary follows the group of a todo call that changed the visible task state.
+It shows the bold goal and an unnumbered task list, with the task icon in its upper-right corner.
+It uses the neutral surface colour, fits its text, and takes at most 80% of the transcript width.
+A done task is struck through and followed by the first three words of its reason in bold.
+A replaced task stays struck through directly above the task that replaces it.
+A failed, unchanged, or unstored todo call shows no new summary.
+An active turn shows one line with a turning icon and the text "The bot is working...".
+A queued turn adds the slot that it waits for under that line.
 Failed document quotes allocate no new handles.
 Finished answers show three generated follow-up prompts when generation succeeds.
 The centered token footer has a faint separator beneath it.

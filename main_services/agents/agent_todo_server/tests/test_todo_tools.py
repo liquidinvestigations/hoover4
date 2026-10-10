@@ -141,8 +141,10 @@ class TestWriteAndRead:
         assert set(written.model_dump()) == {"version", "ids", "summary"}
         read = call(server.read_todo)
         assert set(read.model_dump()) == {"goal", "items", "version", "summary"}
-        marked = call(server.mark_todo, ids=["1"], status="done")
+        marked = call(server.mark_todo, ids=["1"], status="done", note="found")
         assert set(marked.model_dump()) == {"version", "summary", "open"}
+        again = call(server.mark_todo, ids=["1"], status="done", note="found")
+        assert set(again.model_dump()) == {"version", "summary", "open", "unchanged"}
 
     def test_an_empty_list_asks_for_a_plan(self):
         result = call(server.read_todo)
@@ -160,11 +162,13 @@ class TestWriteAndRead:
         assert read.needs_plan is False
         assert read.version == 1
 
-    def test_the_same_write_twice_gives_the_same_items_one_version_higher(self):
+    def test_the_same_write_twice_keeps_the_items_and_the_version(self, store):
         first = call(server.write_todo, goal="Find X", steps=["a", "b"])
         second = call(server.write_todo, goal="Find X", steps=["a", "b"])
         assert second.items == first.items
-        assert second.version == first.version + 1
+        assert (second.version, second.unchanged) == (first.version, True)
+        assert second.model_dump() == {"version": 1, "ids": ["1", "2"], "summary": "0/2 items resolved",
+                                       "unchanged": True}
 
     def test_an_empty_goal_is_refused(self):
         result = call(server.write_todo, goal="  ", steps=["a"])
@@ -180,7 +184,7 @@ class TestWriteAndRead:
 
     def test_a_fully_resolved_plan_asks_for_a_new_one(self):
         call(server.write_todo, goal="g", steps=["x"])
-        result = call(server.mark_todo, ids=["1"], status="done")
+        result = call(server.mark_todo, ids=["1"], status="done", note="found")
         assert result.needs_plan is True
         assert result.summary == "1/1 items resolved"
 
@@ -188,17 +192,49 @@ class TestWriteAndRead:
 class TestEdit:
     def test_a_kept_step_keeps_its_id_and_status_and_a_new_step_gets_the_next_id(self):
         call(server.write_todo, goal="keep me", steps=["a", "b"])
-        call(server.mark_todo, ids=["1"], status="done")
+        call(server.mark_todo, ids=["1"], status="done", note="found")
         result = call(server.edit_todo, steps=["a", "c"])
         assert result.goal == "keep me"
-        assert [(i.id, i.text, i.status) for i in result.items] == [
-            ("1", "a", "done"), ("3", "c", "pending")]
+        assert [(i.id, i.text, i.status, i.note) for i in result.items] == [
+            ("1", "a", "done", "found"), ("2", "b", "done", "removed from plan"),
+            ("3", "c", "pending", "")]
+        assert result.model_dump()["open"] == [{"id": "3", "text": "c", "status": "pending"}]
 
     def test_whitespace_does_not_change_which_step_is_kept(self):
         call(server.write_todo, goal="g", steps=["read  the file"])
-        call(server.mark_todo, ids=["1"], status="in_progress")
+        call(server.mark_todo, ids=["1"], status="done", note="read")
         result = call(server.edit_todo, steps=[" read the file "])
-        assert [(i.id, i.status) for i in result.items] == [("1", "in_progress")]
+        assert [(i.id, i.status) for i in result.items] == [("1", "done")]
+        assert result.unchanged is True
+
+    def test_a_replacement_keeps_the_old_step_above_the_new_one(self):
+        call(server.write_todo, goal="g", steps=["search the web", "write"])
+        entry = server.Replacement(id="1", text="search two news sites", note="too broad")
+        result = call(server.edit_todo, steps=["search two news sites", "write"], replacements=[entry])
+        assert [(i.id, i.status, i.note, i.replaces_id) for i in result.items] == [
+            ("1", "done", "too broad", ""), ("3", "pending", "", "1"), ("2", "pending", "", "")]
+        again = call(server.edit_todo, steps=["search two news sites", "write"], replacements=[entry])
+        assert (again.version, again.unchanged) == (result.version, True)
+
+    def test_a_bad_replacement_is_refused_with_the_unchanged_list(self):
+        call(server.write_todo, goal="g", steps=["a"])
+        entry = server.Replacement(id="7", text="b", note="why")
+        result = call(server.edit_todo, steps=["b"], replacements=[entry])
+        assert result.success is False
+        assert "does not exist" in result.error
+        assert (result.version, [i.text for i in result.items]) == (1, ["a"])
+
+    def test_a_read_shows_legacy_statuses_as_pending_and_done(self, store):
+        store[("ann", "s1")] = {"session_id": "s1", "username": "ann", "version": 3, "goal": "g",
+                               "items": [{"id": "1", "text": "a", "status": "in_progress", "note": ""},
+                                         {"id": "2", "text": "b", "status": "cancelled", "note": "gone"},
+                                         {"id": "3", "text": "c", "status": "done", "note": ""}],
+                               "updated_at": None}
+        read = call(server.read_todo).model_dump()
+        assert read["items"] == [{"id": "1", "text": "a", "status": "pending"},
+                                 {"id": "2", "text": "b", "status": "done", "note": "gone"},
+                                 {"id": "3", "text": "c", "status": "done"}]
+        assert store[("ann", "s1")]["items"][0]["status"] == "in_progress"
 
     def test_an_empty_step_list_is_refused(self):
         call(server.write_todo, goal="g", steps=["a"])
@@ -208,29 +244,29 @@ class TestEdit:
 
 
 class TestRefusalsReachTheModel:
-    def test_cancelling_without_a_note_is_refused_through_the_tool(self):
+    def test_done_without_a_note_is_refused_through_the_tool(self):
         call(server.write_todo, goal="g", steps=["x"])
-        result = call(server.mark_todo, ids=["1"], status="cancelled")
+        result = call(server.mark_todo, ids=["1"], status="done")
         assert result.success is False
-        assert "note" in result.error
+        assert "short reason" in result.error
         # The plan is returned unchanged, so the model sees what it still has.
         assert result.items[0].status == "pending"
         assert result.version == 1
 
-    def test_cancelling_with_a_note_is_accepted(self):
+    def test_done_with_a_note_is_accepted(self):
         call(server.write_todo, goal="g", steps=["x"])
-        result = call(server.mark_todo, ids=["1"], status="cancelled", note="the file is gone")
+        result = call(server.mark_todo, ids=["1"], status="done", note="not found")
         assert result.success is True
-        assert (result.items[0].status, result.items[0].note) == ("cancelled", "the file is gone")
+        assert (result.items[0].status, result.items[0].note) == ("done", "not found")
 
     def test_several_steps_are_marked_in_one_call(self):
         call(server.write_todo, goal="g", steps=["x", "y", "z"])
-        result = call(server.mark_todo, ids=["1", "3"], status="done")
+        result = call(server.mark_todo, ids=["1", "3"], status="done", note="found")
         assert [i.status for i in result.items] == ["done", "pending", "done"]
 
     def test_marking_an_id_that_is_not_in_the_plan_names_the_real_ids(self):
         call(server.write_todo, goal="g", steps=["x", "y"])
-        result = call(server.mark_todo, ids=["9"], status="done")
+        result = call(server.mark_todo, ids=["9"], status="done", note="found")
         assert result.success is False
         assert result.error == "step '9' does not exist. The steps are 1, 2."
 
@@ -252,7 +288,7 @@ class TestRefusalsReachTheModel:
         assert store == {}
 
     def test_marking_before_any_plan_exists_is_refused(self):
-        result = call(server.mark_todo, ids=["1"], status="done")
+        result = call(server.mark_todo, ids=["1"], status="done", note="found")
         assert result.success is False
         assert "write_todo" in result.error
 
@@ -262,9 +298,11 @@ class TestMaterialChange:
 
     def test_a_bare_status_flip_is_not_a_change(self, store):
         call(server.write_todo, goal="g", steps=["x"])
+        call(server.mark_todo, ids=["1"], status="done", note="found")
         before = dict(store[("ann", "s1")])
-        call(server.mark_todo, ids=["1"], status="in_progress")
+        call(server.mark_todo, ids=["1"], status="pending", note="found")
         after = store[("ann", "s1")]
+        assert after["version"] == before["version"] + 1
         assert chat_todos.is_material_change(before, after) is False
 
     def test_adding_a_step_is_a_change(self, store):
@@ -274,19 +312,31 @@ class TestMaterialChange:
         assert chat_todos.is_material_change(before, store[("ann", "s1")]) is True
 
 
-#: The schemas of the todo tools. No schema holds a JSON object. FastMCP leaves the
-#: pydantic `title` of each property out of the schema it serves.
+#: The schemas of the todo tools. The only object is the replacement entry of edit_todo.
+#: FastMCP leaves the pydantic `title` of each property out of the schema it serves.
 EXPECTED_SCHEMAS = {
     "write_todo": {"type": "object", "required": ["goal", "steps"], "properties": {
         "goal": {"type": "string"},
         "steps": {"type": "array", "items": {"type": "string"}}}},
     "edit_todo": {"type": "object", "required": ["steps"], "properties": {
-        "steps": {"type": "array", "items": {"type": "string"}}}},
+        "steps": {"type": "array", "items": {"type": "string"}},
+        "replacements": {"type": "array", "default": [], "items": {
+            "type": "object", "required": ["id", "text", "note"], "properties": {
+                "id": {"type": "string"}, "text": {"type": "string"}, "note": {"type": "string"}}}}}},
     "mark_todo": {"type": "object", "required": ["ids", "status"], "properties": {
         "ids": {"type": "array", "items": {"type": "string"}},
-        "status": {"type": "string", "enum": ["pending", "in_progress", "done", "cancelled"]},
+        "status": {"type": "string", "enum": ["pending", "done"]},
         "note": {"type": "string", "default": ""}}},
 }
+
+
+def _without_descriptions(schema):
+    """`schema` with every description removed, after checking that each property has one."""
+    if isinstance(schema, dict):
+        for name, value in (schema.get("properties") or {}).items():
+            assert value.get("description"), name
+        return {key: _without_descriptions(value) for key, value in schema.items() if key != "description"}
+    return schema
 
 
 def served_schemas() -> dict:
@@ -302,11 +352,7 @@ def test_the_served_schema_of_a_todo_tool_is_the_designed_one(name):
     want = EXPECTED_SCHEMAS[name]
     assert got["type"] == "object"
     assert sorted(got.get("required", [])) == sorted(want["required"])
-    properties = {}
-    for argument, schema in got["properties"].items():
-        assert schema.get("description"), argument
-        properties[argument] = {key: value for key, value in schema.items() if key != "description"}
-    assert properties == want["properties"]
+    assert _without_descriptions(got)["properties"] == want["properties"]
 
 
 def test_no_todo_tool_text_holds_a_json_example():
@@ -321,7 +367,7 @@ def test_edit_todo_and_mark_todo_name_their_own_arguments_and_leave_goal_to_writ
     `write_todo`. Each text names its own arguments and says that `goal` is not one."""
     tools = __import__("asyncio").run(server.mcp.get_tools())
     edit, mark = tools["edit_todo"].description, tools["mark_todo"].description
-    assert "one argument, steps" in edit and "takes no goal" in edit
+    assert "takes steps and an optional replacements argument" in edit and "takes no goal" in edit
     for argument in ("ids is", "status is", "note is"):
         assert argument in mark, argument
     assert "takes no goal and no steps" in mark

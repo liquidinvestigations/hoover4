@@ -2,12 +2,12 @@
 
 Tools:
     ``read_todo``   the whole list, cheap, callable any time
-    ``write_todo``  replaces the goal and the steps, the plan-first call
-    ``edit_todo``   replaces the steps and keeps the goal
-    ``mark_todo``   one status for a list of step ids
+    ``write_todo``  sets the goal and the steps, the plan-first call
+    ``edit_todo``   revises the steps and keeps the goal and the done steps
+    ``mark_todo``   pending, or done with a reason, for a list of step ids
 
-**This server holds no rules of its own.** Every shape, every limit and both of the
-rules that stop the plan protocol being gamed live in `database.chat_todos`, which the
+**This server holds no rules of its own.** Every shape, every limit and every rule
+about statuses, reasons and identities lives in `database.chat_todos`, which the
 chat workflow reads directly. A check re-implemented here would be a second copy that
 drifts, and the disagreement would surface as a model told its write was accepted while
 the workflow reads a list that never changed. What this module adds is exactly three
@@ -15,9 +15,10 @@ things: the caller's identity out of the request headers, typed arguments, and a
 refusal the model can read.
 
 Four tools rather than one dispatch tool with a `mode` argument. Each has a different
-argument shape (no arguments, a goal and a list of step strings, a list of step strings,
-a list of step ids with one status), and a typed schema is what makes a model call it
-correctly the first time. No argument is a JSON object, so the store gives every id.
+argument shape (no arguments, a goal and a list of step strings, a list of step strings
+with optional replacement entries, a list of step ids with one status and a reason), and
+a typed schema is what makes a model call it correctly the first time. The store gives
+every id. The only object argument is the optional replacement entry of `edit_todo`.
 """
 
 from __future__ import annotations
@@ -48,22 +49,32 @@ SERVER_INSTRUCTIONS = (
     "Keep the plan for this conversation. Call `read_todo` to see it. The call is cheap "
     "and you can make it at any point. When `needs_plan` is true there is no live plan, "
     "so write one with `write_todo`: a goal of one or two sentences and `steps`, a list "
-    "of the steps you intend to take. The server gives each step its id. As you work, "
-    "call `mark_todo` with the step `ids`, first with in_progress and then with done. "
-    "When a step becomes unnecessary or a new one appears, call `edit_todo` with the full "
-    "list of `steps`. When the goal changes, call `write_todo` again. A step you abandon "
-    "is `cancelled` and needs a note that says why, because a cancelled step counts as "
-    "settled and the note is the only record of the decision."
+    "of the steps you intend to take. The server gives each step its id. A step is "
+    "pending until its work ends. Then call `mark_todo` with its `ids`, status done and "
+    "a short reason in `note`, such as found, not found or replaced. Done steps stay in "
+    "the list. To revise the steps for the same goal, call `edit_todo` with the full "
+    "list of `steps`. When a new step replaces an old one, add a replacement entry with "
+    "the old id, the new text and the reason. When the goal changes, call `write_todo` "
+    "again."
 )
 
 
 class TodoItem(BaseModel):
-    """One row of the plan, exactly as it is stored."""
+    """One row of the plan, with the status a reader sees."""
 
     id: str = Field(description="Short stable identifier, unique within the list")
     text: str = Field(description="What this step is")
-    status: str = Field(description="pending, in_progress, done or cancelled")
-    note: str = Field(default="", description="Why, for a cancelled or surprising item")
+    status: str = Field(description="pending or done")
+    note: str = Field(default="", description="Why a done step ended")
+    replaces_id: str = Field(default="", description="The id of the step this step replaces")
+
+
+class Replacement(BaseModel):
+    """One replacement entry of `edit_todo`."""
+
+    id: str = Field(description="The id of the step that the new step replaces.")
+    text: str = Field(description="The new step text. It must also be in steps.")
+    note: str = Field(description="Why the old step ended, such as replaced by a narrower search.")
 
 
 class TodoResponse(BaseModel):
@@ -85,6 +96,7 @@ class TodoResponse(BaseModel):
         description="True when there is no plan yet or every item is settled",
     )
     summary: str = Field(default="", description="How much of the plan is resolved")
+    unchanged: bool = Field(default=False, description="True when the call changed nothing")
     error: Optional[str] = Field(
         default=None, description="Why the call was refused, in words to act on"
     )
@@ -96,12 +108,17 @@ class TodoResponse(BaseModel):
         if not self.success:
             return {"success": False, "error": self.error, "version": self.version, "items": items}
         if self._result_kind == "write":
-            return {"version": self.version, "ids": [item.id for item in self.items],
-                    "summary": self.summary}
+            out = {"version": self.version, "ids": [item.id for item in self.items],
+                   "summary": self.summary}
+            if self.unchanged:
+                out["unchanged"] = True
+            return out
         if self._result_kind in ("edit", "mark"):
             opened = [{"id": item.id, "text": item.text, "status": item.status}
-                      for item in self.items if item.status not in ("done", "cancelled")]
+                      for item in self.items if item.status != "done"]
             out = {"version": self.version, "summary": self.summary, "open": opened}
+            if self.unchanged:
+                out["unchanged"] = True
             if self.needs_plan:
                 out["needs_plan"] = True
             return out
@@ -124,14 +141,19 @@ def _caller() -> Caller:
 
 
 def _response(todo: dict, error: str | None = None, kind: str = "read") -> TodoResponse:
-    """One snapshot rendered for the model, with the two derived facts it acts on."""
+    """One snapshot rendered for the model, with the derived facts it acts on.
+
+    The items carry display statuses, so a legacy `in_progress` reads as pending and a
+    legacy `cancelled` as done with its note. The stored row is unchanged.
+    """
     response = TodoResponse(
         success=error is None,
         goal=todo.get("goal", ""),
-        items=[TodoItem(**item) for item in todo.get("items", [])],
+        items=[TodoItem(**item) for item in chat_todos.display_items(todo.get("items", []))],
         version=int(todo.get("version", 0)),
         needs_plan=chat_todos.needs_plan(todo),
         summary=chat_todos.summarise(todo),
+        unchanged=bool(todo.get("unchanged")),
         error=error,
     )
     response._result_kind = kind
@@ -190,7 +212,9 @@ def read_todo() -> TodoResponse:
         "Write the plan for this conversation, as a goal and a list of steps. Call it at "
         "the start of a piece of work, and again when the goal changes. Give goal as one "
         "or two sentences. Give steps as a list of short sentences, in the order you mean "
-        "to do them. The server numbers the steps 1, 2, 3, and each step starts as pending."
+        "to do them. A new goal starts a new list: the server numbers the steps 1, 2, 3, "
+        "and each step starts as pending. The same goal again keeps the done steps, as "
+        "edit_todo does."
     ),
 )
 def write_todo(goal: Annotated[str, Field(description='The task goal in one or two sentences.')], steps: Annotated[list[str], Field(description='The complete ordered list of step sentences.')]) -> TodoResponse:
@@ -215,15 +239,22 @@ def write_todo(goal: Annotated[str, Field(description='The task goal in one or t
 @mcp.tool(
     name="edit_todo",
     description=(
-        "Replace the steps of the plan and keep the goal. This tool takes one argument, "
-        "steps: a list of short sentences, the full list of steps you want, in order. "
-        "Each step is a plain sentence, with no id and no status. A step with the same "
-        "text as before keeps its id and its status. A step you leave out is removed. "
-        "This tool takes no goal. Only write_todo takes a goal. To set a status, use "
-        "mark_todo."
+        "Revise the steps of the plan and keep the goal. This tool takes steps and an "
+        "optional replacements argument. steps is a list of short sentences, the full list "
+        "of steps you want, in order. Each step is a plain sentence, with no id and no "
+        "status. A step with the same text as before keeps its id and its status. Done "
+        "steps stay in the list. An open step you leave out becomes done with the reason "
+        "removed from plan. When a new step replaces an old one, give a replacements "
+        "entry with id, the old step id, text, the new step text from steps, and note, "
+        "why the old step ended. The old step becomes done and stays directly above the "
+        "new one. This tool takes no goal. Only write_todo takes a goal. To set a status, "
+        "use mark_todo."
     ),
 )
-def edit_todo(steps: Annotated[list[str], Field(description='Replace steps with this complete list. Matching text retains its identity and status.')]) -> TodoResponse:
+def edit_todo(
+    steps: Annotated[list[str], Field(description='The complete ordered list of current step sentences. Matching text retains its identity and status.')],
+    replacements: Annotated[list[Replacement], Field(description='Optional. One entry for each old step that a new step replaces.')] = [],
+) -> TodoResponse:
     try:
         caller = _caller()
     except CallerUnknown as exc:
@@ -231,7 +262,8 @@ def edit_todo(steps: Annotated[list[str], Field(description='Replace steps with 
     if not chat_todos.read_todo(caller.username, caller.session_id).get("version"):
         return _refused(caller, NO_PLAN_ERROR)
     try:
-        todo = chat_todos.edit_steps(caller.username, caller.session_id, steps)
+        todo = chat_todos.edit_steps(caller.username, caller.session_id, steps,
+                                     [entry.model_dump() for entry in replacements])
     except chat_todos.TodoError as exc:
         return _refused(caller, str(exc))
     log.info(
@@ -249,17 +281,17 @@ def edit_todo(steps: Annotated[list[str], Field(description='Replace steps with 
     description=(
         "Set the status of one or more steps in one call. This tool takes three "
         "arguments. ids is a list of step ids from the plan, such as 1 and 2. status is "
-        "one status for all of them: pending, in_progress, done or cancelled. note is "
-        "optional text. A cancelled step needs a note that says why, and the call is "
-        "refused without it. This tool takes no goal and no steps. Only write_todo takes "
-        "a goal, and only write_todo and edit_todo take steps. Mark a step when you start "
-        "it and when you finish it."
+        "one status for all of them: pending or done. note is a short reason, such as "
+        "found, not found or replaced. A done step needs a note, and the call is refused "
+        "without it. This tool takes no goal and no steps. Only write_todo takes a goal, "
+        "and only write_todo and edit_todo take steps. Mark a step done when its work "
+        "ends."
     ),
 )
 def mark_todo(
     ids: Annotated[list[str], Field(description='Copy returned step identifiers as a list of strings.')],
-    status: Annotated[Literal["pending", "in_progress", "done", "cancelled"], Field(description='One status for every selected step. Cancellation requires a note.')],
-    note: Annotated[str, Field(description='Optional explanation. Required when status is cancelled.')] = "",
+    status: Annotated[Literal["pending", "done"], Field(description='One status for every selected step. Done requires a note.')],
+    note: Annotated[str, Field(description='A short reason, such as found or not found. Required when status is done.')] = "",
 ) -> TodoResponse:
     try:
         caller = _caller()

@@ -2,6 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use common::chat_todos::todo_summaries;
 use common::chat_types::{
     CITATION_NOTE_NAME, ChatDocRef, ChatMessageItem, ChatRole, StreamTurn, merge_citations,
 };
@@ -12,7 +13,7 @@ use crate::components::chat_components::{
     doc_ref_card::{ChatDocRefCard, ChatDocRefRow},
     markdown_text::{MarkdownishText, referenced_handles},
     web_page::WebPageCard,
-    tool_cards::{ElapsedCounter, ToolCard},
+    tool_cards::{ElapsedCounter, ToolCard, result_cards::TodoSummary},
     tool_run_summary::{run_duration_ms, timestamp_ms, tool_run_summary},
 };
 
@@ -28,11 +29,6 @@ pub fn ChatTranscript(
     /// False when `stream` is the leftovers of an interrupted turn rather than one that
     /// is still being produced. The content is the same; the promise it makes is not.
     stream_live: Option<bool>,
-    /// What a step of the in-flight turn waits for: `model` for a free model slot, `tool`
-    /// for a free tool slot, or empty. A non-empty value shows a waiting line at the end
-    /// of the turn, under its tool rows too.
-    #[props(default)]
-    queued_for: String,
     /// The handles that the `cite_documents` results of every run of the session issued,
     /// Stored citation handles stay available across conversation turns.
     #[props(default)]
@@ -48,11 +44,6 @@ pub fn ChatTranscript(
     turn: String,
 ) -> Element {
     let stream_live = stream_live.unwrap_or(true);
-    let waiting_line = match queued_for.as_str() {
-        "model" => "The turn waits for a free model slot.",
-        "tool" => "The turn waits for a free tool slot.",
-        _ => "",
-    };
     let q = find_query.read().clone().to_lowercase();
     let matches: Vec<usize> = if q.is_empty() {
         Vec::new()
@@ -98,6 +89,12 @@ pub fn ChatTranscript(
     all_sources.extend(run_cited_refs.clone());
     all_sources.retain(|source| !source.handle.is_empty());
     let placements = citation_placements(&messages, &all_sources, &web_pages);
+    // The todo calls that show a task summary after their group, by row index.
+    let summaries = todo_summaries(&messages, &todo_versions);
+    // Runs of tool and instruction rows, and every other row on its own, as index ranges.
+    let segments = tool_run_segments(&messages, &summaries);
+    // The answer whose reasoning each group shows, by group start.
+    let group_reasoning = reasoning_groups(&messages, &segments);
     // One row as `MessageEntry`. A run of tool rows renders the same entries inside its
     // group when the group is open.
     let entry = |i: usize| -> Element {
@@ -117,6 +114,7 @@ pub fn ChatTranscript(
         let repeat_question = m.role == ChatRole::Assistant
             && asked_question(&messages[..i]) == m.content
             && !m.content.is_empty();
+        let reasoning_in_group = group_reasoning.values().any(|answer| *answer == i);
         rsx! {
             div { "data-chat-message": "{m.seq}", style: "display: contents;",
             MessageEntry {
@@ -135,23 +133,32 @@ pub fn ChatTranscript(
                 read_more_source,
                 repeat_question,
                 replaced,
+                reasoning_in_group,
                 draft,
             }
             }
         }
     };
-    // Runs of tool and instruction rows, and every other row on its own, as index ranges.
-    let segments = tool_run_segments(&messages, true);
     let live_tools = stream
         .as_ref()
         .map(|turn| turn.tool_rows.clone())
         .unwrap_or_default();
-    let live_segments = live_tool_segments(&live_tools, true);
-    let can_join = live_segments.first().is_some_and(|(_, _, todo)| !todo);
-    let live_group_start = live_group_start(&messages, &segments, true, can_join);
-    let joined_live_end = if live_group_start.is_some() {
-        live_segments.first().map(|(_, end, _)| *end).unwrap_or(0)
-    } else { 0 };
+    let live_group_start = live_group_start(&messages, &segments, &summaries, !live_tools.is_empty());
+    let joined_live_end = if live_group_start.is_some() { live_tools.len() } else { 0 };
+    // The group that shows the reasoning of the live answer: the group of the live tool
+    // rows, or the stored group that the answer follows. `None` keeps it beside the answer.
+    let live_reasoning = stream.as_ref().is_some_and(|turn| !turn.reasoning.is_empty());
+    let live_reasoning_group = if !live_reasoning {
+        None
+    } else if live_tools.is_empty() {
+        segments.last().copied()
+            .filter(|(start, end)| *end == messages.len() && is_group(&messages, *start, *end))
+            .map(|(start, _)| ReasoningPlace::Stored(start))
+    } else if let Some(start) = live_group_start {
+        Some(ReasoningPlace::Stored(start))
+    } else {
+        Some(ReasoningPlace::Live)
+    };
     let live_elapsed = stream.as_ref().and_then(|turn| {
         let before = live_group_start
             .and_then(|start| start.checked_sub(1).and_then(|index| messages.get(index)))
@@ -173,12 +180,7 @@ pub fn ChatTranscript(
                 }
             }
             for (start, end) in segments.iter().copied() {
-                if end - start == 1
-                    && messages[start].role != ChatRole::Tool
-                    && !messages[start].role.is_instruction()
-                    && !answer_replaced(&messages, start)
-                    || end - start == 1 && (is_todo_write(&messages[start]) || is_question(&messages[start]))
-                {
+                if !is_group(&messages, start, end) {
                     {entry(start)}
                 } else {
                     ToolRunGroup {
@@ -222,51 +224,62 @@ pub fn ChatTranscript(
                                 }
                             }
                         }
-                    }
-                }
-            }
-            if let Some(turn) = stream {
-                for (start, end, todo) in live_segments.clone() {
-                    if start >= joined_live_end {
-                        if todo {
-                            div { "data-todo-change": "true", style: "align-self: stretch;",
-                                ToolCard {
-                                    tool_name: turn.tool_rows[start].tool_name.clone(),
-                                    tool_input: turn.tool_rows[start].summary.clone(),
-                                    tool_output: String::new(),
-                                    content_summary: turn.tool_rows[start].summary.clone(),
-                                    running: !turn.tool_rows[start].done,
-                                    elapsed_ms: turn.tool_rows[start].elapsed_ms,
-                                    datasets: datasets.clone(),
-                                }
+                        if let Some(answer) = group_reasoning.get(&start).copied() {
+                            ReasoningDisclosure {
+                                key: "reasoning-{messages[answer].seq}",
+                                reasoning: messages[answer].reasoning.clone(),
                             }
-                        } else {
-                            ToolRunGroup {
-                                key: "tools-{turn.tool_rows[start].seq}",
-                                summary: format!("{} running tool {}", end - start, if end - start == 1 { "call" } else { "calls" }),
-                                force_open: true,
-                                live: true,
-                                elapsed_ms: live_elapsed,
-                                for tool in turn.tool_rows[start..end].to_vec() {
-                                    ToolCard {
-                                        tool_name: tool.tool_name.clone(),
-                                        tool_input: tool.summary.clone(),
-                                        tool_output: String::new(),
-                                        content_summary: tool.summary.clone(),
-                                        running: !tool.done,
-                                        elapsed_ms: tool.elapsed_ms,
-                                        datasets: datasets.clone(),
-                                    }
+                        }
+                        if live_reasoning_group == Some(ReasoningPlace::Stored(start)) {
+                            if let Some(turn) = stream.as_ref() {
+                                ReasoningDisclosure {
+                                    key: "reasoning-{turn.answer_seq}",
+                                    reasoning: turn.reasoning.clone(),
                                 }
                             }
                         }
                     }
+                    if let Some(snapshot) = summaries.get(&(end - 1)).cloned() {
+                        div { key: "todo-summary-{messages[end - 1].seq}", "data-todo-change": "true",
+                            "data-todo-version": "{snapshot.version}",
+                            TodoSummary { snapshot: snapshot.clone() }
+                        }
+                    }
                 }
-                if !turn.reasoning.is_empty() {
+            }
+            if let Some(turn) = stream.as_ref() {
+                if joined_live_end == 0 && !turn.tool_rows.is_empty() {
+                    ToolRunGroup {
+                        key: "tools-{turn.tool_rows[0].seq}",
+                        summary: format!("{} running tool {}", turn.tool_rows.len(), if turn.tool_rows.len() == 1 { "call" } else { "calls" }),
+                        force_open: true,
+                        live: true,
+                        elapsed_ms: live_elapsed,
+                        for tool in turn.tool_rows.clone() {
+                            ToolCard {
+                                key: "stream-tool-{tool.seq}",
+                                tool_name: tool.tool_name.clone(),
+                                tool_input: tool.summary.clone(),
+                                tool_output: String::new(),
+                                content_summary: tool.summary.clone(),
+                                running: !tool.done,
+                                elapsed_ms: tool.elapsed_ms,
+                                datasets: datasets.clone(),
+                            }
+                        }
+                        if live_reasoning_group == Some(ReasoningPlace::Live) {
+                            ReasoningDisclosure {
+                                key: "reasoning-{turn.answer_seq}",
+                                reasoning: turn.reasoning.clone(),
+                            }
+                        }
+                    }
+                }
+                if live_reasoning_group.is_none() && !turn.reasoning.is_empty() {
                     div {
                         key: "stream-reasoning-{turn.answer_seq}",
                         style: "align-self: stretch; max-width: 96%; padding: 4px 2px 0;",
-                        ReasoningDisclosure { reasoning: turn.reasoning.clone() }
+                        ReasoningDisclosure { key: "reasoning-{turn.answer_seq}", reasoning: turn.reasoning.clone() }
                     }
                 }
                 if !turn.content.is_empty() {
@@ -281,17 +294,6 @@ pub fn ChatTranscript(
                         if stream_live {
                             span { style: "color: var(--x-link);", "\u{258D}" }
                         }
-                    }
-                }
-                if stream_live && !waiting_line.is_empty() {
-                    div {
-                        style: "color: var(--x-ink-muted); font-size: var(--x-text-sm); font-style: italic;",
-                        "{waiting_line}"
-                    }
-                } else if turn.content.is_empty() && turn.tool_rows.is_empty() && stream_live {
-                    div {
-                        style: "color: var(--x-ink-muted); font-size: var(--x-text-sm); font-style: italic;",
-                        "The assistant is working\u{2026}"
                     }
                 }
             }
@@ -386,35 +388,27 @@ fn FollowUpSuggestions(prompts: Vec<String>, mut draft: Signal<String>) -> Eleme
     }
 }
 
-/// The rows of `messages` as index ranges: each run of consecutive tool rows is one range,
-/// and each other row is a range of its own.
-fn is_todo_write(message: &ChatMessageItem) -> bool {
-    matches!(message.tool_name.as_str(), "write_todo" | "edit_todo" | "mark_todo")
-}
-
 fn is_question(message: &ChatMessageItem) -> bool {
     message.role == ChatRole::Tool && message.tool_name == "ask_user"
 }
 
-fn live_tool_segments(rows: &[common::chat_types::StreamToolRow], split_todo: bool) -> Vec<(usize, usize, bool)> {
-    let mut segments = Vec::new();
-    for (index, row) in rows.iter().enumerate() {
-        let todo = split_todo && matches!(row.tool_name.as_str(), "write_todo" | "edit_todo" | "mark_todo");
-        if todo {
-            segments.push((index, index + 1, true));
-        } else if let Some((_, end, false)) = segments.last_mut() {
-            *end = index + 1;
-        } else {
-            segments.push((index, index + 1, false));
-        }
-    }
-    segments
+/// Whether the range renders as a collapsible group. A lone answer, user message or other
+/// row renders on its own, and so does a question, which is a top-level interaction.
+fn is_group(messages: &[ChatMessageItem], start: usize, end: usize) -> bool {
+    let first = &messages[start];
+    !(end - start == 1
+        && (first.role != ChatRole::Tool && !first.role.is_instruction() && !answer_replaced(messages, start)
+            || is_question(first)))
 }
 
-fn tool_run_segments(messages: &[ChatMessageItem], split_todo: bool) -> Vec<(usize, usize)> {
+/// The rows of `messages` as index ranges: each run of consecutive tool and instruction
+/// rows is one range, and each other row is a range of its own. A todo call that shows a
+/// task summary (`summaries`) ends its range, so the summary follows the group and later
+/// calls start another group. A todo call without a summary stays inside its group.
+fn tool_run_segments(messages: &[ChatMessageItem], summaries: &HashMap<usize, common::chat_types::TodoSnapshot>) -> Vec<(usize, usize)> {
     let mut out: Vec<(usize, usize)> = Vec::new();
     for (i, m) in messages.iter().enumerate() {
-        if is_question(m) || split_todo && is_todo_write(m) {
+        if is_question(m) {
             out.push((i, i + 1));
             continue;
         }
@@ -424,7 +418,7 @@ fn tool_run_segments(messages: &[ChatMessageItem], split_todo: bool) -> Vec<(usi
                     && (messages[*start].role == ChatRole::Tool
                         || messages[*start].role.is_instruction() || answer_replaced(messages, *start))
                     && !is_question(&messages[*start])
-                    && !(split_todo && is_todo_write(&messages[*start])) =>
+                    && !summaries.contains_key(&(*end - 1)) =>
             {
                 *end = i + 1;
             }
@@ -434,11 +428,12 @@ fn tool_run_segments(messages: &[ChatMessageItem], split_todo: bool) -> Vec<(usi
     out
 }
 
-/// The final stored tool group keeps its identity while stream rows extend it.
+/// The final stored tool group keeps its identity while stream rows extend it. A group
+/// that ends with a task summary is closed, so live rows start a group of their own.
 fn live_group_start(
     messages: &[ChatMessageItem],
     segments: &[(usize, usize)],
-    split_todo: bool,
+    summaries: &HashMap<usize, common::chat_types::TodoSnapshot>,
     has_live_tools: bool,
 ) -> Option<usize> {
     if !has_live_tools {
@@ -448,12 +443,41 @@ fn live_group_start(
     let first = &messages[start];
     if end == messages.len()
         && (first.role == ChatRole::Tool || first.role.is_instruction())
-        && !(split_todo && is_todo_write(first))
+        && !is_question(first)
+        && !summaries.contains_key(&(end - 1))
     {
         Some(start)
     } else {
         None
     }
+}
+
+/// Where the live answer's reasoning renders: inside the stored group that starts at the
+/// index, or inside the group of the live tool rows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReasoningPlace {
+    Stored(usize),
+    Live,
+}
+
+/// The answer whose reasoning each group shows, by group start.
+///
+/// Stored reasoning covers a whole repair round and names no tool, so it belongs to the
+/// group of that round's tool rows: the group directly before the answer. An answer
+/// with no group before it keeps its reasoning beside it, and so does an answer that a
+/// later answer replaces, which renders inside its round's group already. A question row
+/// is no group, so it never receives reasoning.
+fn reasoning_groups(messages: &[ChatMessageItem], segments: &[(usize, usize)]) -> HashMap<usize, usize> {
+    let mut out = HashMap::new();
+    for (start, end) in segments.iter().copied() {
+        let Some(answer) = messages.get(end) else { continue };
+        if answer.role == ChatRole::Assistant && !answer.reasoning.is_empty()
+            && !answer_replaced(messages, end) && is_group(messages, start, end)
+        {
+            out.insert(start, end);
+        }
+    }
+    out
 }
 
 /// A run of tool rows, collapsed behind its summary line. The line expands to the cards.
@@ -812,6 +836,9 @@ fn MessageEntry(
     /// True when a later answer of the turn replaces this one (`answer_replaced`).
     #[props(default)]
     replaced: bool,
+    /// True when the group before this answer shows its reasoning (`reasoning_groups`).
+    #[props(default)]
+    reasoning_in_group: bool,
 ) -> Element {
     let ring = if highlight {
         "outline: 2px solid #F59E0B; outline-offset: 2px;"
@@ -838,8 +865,8 @@ fn MessageEntry(
             rsx! {
                 div {
                     style: "align-self: stretch; max-width: 96%; padding: 4px 2px; {ring}",
-                    if !message.reasoning.is_empty() {
-                        ReasoningDisclosure { reasoning: message.reasoning.clone() }
+                    if !message.reasoning.is_empty() && !reasoning_in_group {
+                        ReasoningDisclosure { key: "reasoning-{message.seq}", reasoning: message.reasoning.clone() }
                     }
                     if replaced {
                         // Collapsed, and not marked as an answer: the answer after the
@@ -930,7 +957,8 @@ fn MessageEntry(
         ChatRole::Tool => {
             let refs = message.parsed_doc_refs();
             rsx! {
-                div { "data-todo-change": if is_todo_write(&message) { "true" } else { "false" }, style: "display: flex; flex-direction: column; gap: 8px; {ring}",
+                div { "data-todo-call": if common::chat_todos::TODO_MUTATIONS.contains(&message.tool_name.as_str()) || message.tool_name == "read_todo" { "true" } else { "false" },
+                    style: "display: flex; flex-direction: column; gap: 8px; {ring}",
                     if let Some(label) = message.call_origin_label() {
                         div { class: "x-chat-call-origin", style: "font-size: var(--x-text-detail); color: #475569;", "{label}" }
                     }
@@ -1047,13 +1075,16 @@ fn CompactionLine(content: String, ring: String) -> Element {
 }
 
 /// The model's reasoning trace, collapsed by default. It narrates how the answer was
-/// produced and is never part of the answer body.
+/// produced and is never part of the answer body. It renders inside the group of the
+/// round's tool rows (`reasoning_groups`), or beside an answer that has no such group.
 #[component]
 fn ReasoningDisclosure(reasoning: String) -> Element {
     let mut open = use_signal(|| false);
+    let shown = *open.read();
     rsx! {
-        div { style: "margin-bottom: 6px;",
+        div { class: "x-chat-reasoning", style: "margin-bottom: 6px;",
             button {
+                "aria-expanded": "{shown}",
                 style: "background: none; border: none; padding: 0; cursor: pointer; \
                         font-size: var(--x-text-xs); color: var(--x-ink-muted); text-decoration: underline;",
                 onclick: move |_| {
@@ -1450,33 +1481,122 @@ mod tests {
         assert!(!answer_replaced(&messages, 5));
     }
 
+    fn snapshot(version: u32, texts: &[&str], first: &str) -> common::chat_types::TodoSnapshot {
+        common::chat_types::TodoSnapshot { version, goal: "g".into(), items: texts.iter().enumerate().map(|(i, text)| {
+            common::chat_types::TodoItemView { id: (i + 1).to_string(), text: text.to_string(),
+                status: if i == 0 { first.to_string() } else { "pending".into() }, note: String::new(),
+                replaces_id: String::new() }
+        }).collect() }
+    }
+
+    fn todo_row(seq: u32, tool: &str, version: u32) -> ChatMessageItem {
+        let mut message = row(seq, ChatRole::Tool, tool, "", "");
+        message.tool_output = format!(r#"{{"version": {version}}}"#);
+        message
+    }
+
+    /// The reported session: two writes, each followed by a mark that only set item 1 to
+    /// in progress. Two summaries, four inspectable mutation rows, all inside groups.
+    fn reported_session() -> (Vec<ChatMessageItem>, Vec<common::chat_types::TodoSnapshot>) {
+        let messages = vec![
+            row(0, ChatRole::User, "", "", "question"),
+            todo_row(1, "write_todo", 1),
+            todo_row(2, "mark_todo", 2),
+            row(3, ChatRole::Tool, "web_search", "", ""),
+            todo_row(4, "write_todo", 3),
+            todo_row(5, "mark_todo", 4),
+            row(6, ChatRole::Assistant, "", "", "answer"),
+        ];
+        let snapshots = vec![snapshot(1, &["a", "b"], "pending"), snapshot(2, &["a", "b"], "in_progress"),
+                             snapshot(3, &["a2", "b"], "pending"), snapshot(4, &["a2", "b"], "in_progress")];
+        (messages, snapshots)
+    }
+
     #[test]
-    fn tool_and_instruction_rows_share_a_group_and_plain_todos_split_it() {
+    fn todo_calls_stay_in_groups_and_a_summary_ends_its_group() {
+        let (messages, snapshots) = reported_session();
+        let summaries = todo_summaries(&messages, &snapshots);
+        let mut shown: Vec<usize> = summaries.keys().copied().collect();
+        shown.sort();
+        assert_eq!(shown, vec![1, 4]);
+        let segments = tool_run_segments(&messages, &summaries);
+        assert_eq!(segments, vec![(0, 1), (1, 2), (2, 5), (5, 6), (6, 7)]);
+        let grouped: usize = segments.iter().filter(|(start, end)| is_group(&messages, *start, *end))
+            .map(|(start, end)| messages[*start..*end].iter().filter(|m| common::chat_todos::is_todo_mutation(m)).count())
+            .sum();
+        assert_eq!(grouped, 4);
+    }
+
+    #[test]
+    fn tool_and_instruction_rows_share_a_group() {
         let messages = vec![
             row(1, ChatRole::Tool, "search_collections", "", ""),
             row(2, ChatRole::Nag, "", "", "continue"),
             row(3, ChatRole::Tool, "mark_todo", "", ""),
             row(4, ChatRole::Tool, "read_documents", "", ""),
         ];
-        assert_eq!(tool_run_segments(&messages, true), vec![(0, 2), (2, 3), (3, 4)]);
-        assert_eq!(tool_run_segments(&messages, false), vec![(0, 4)]);
+        assert_eq!(tool_run_segments(&messages, &HashMap::new()), vec![(0, 4)]);
     }
 
     #[test]
-    fn live_tools_join_the_final_stored_tool_group() {
+    fn live_tools_join_the_final_stored_tool_group_unless_a_summary_closed_it() {
         let tools = vec![
             row(1, ChatRole::Tool, "search_collections", "", ""),
             row(2, ChatRole::Nag, "", "", "continue"),
         ];
-        let segments = tool_run_segments(&tools, true);
-        assert_eq!(live_group_start(&tools, &segments, true, true), Some(0));
+        let none = HashMap::new();
+        let segments = tool_run_segments(&tools, &none);
+        assert_eq!(live_group_start(&tools, &segments, &none, true), Some(0));
 
         let closed = vec![
             row(1, ChatRole::Tool, "search_collections", "", ""),
             row(2, ChatRole::Assistant, "", "", "answer"),
         ];
-        let segments = tool_run_segments(&closed, true);
-        assert_eq!(live_group_start(&closed, &segments, true, true), None);
+        let segments = tool_run_segments(&closed, &none);
+        assert_eq!(live_group_start(&closed, &segments, &none, true), None);
+
+        let written = vec![row(1, ChatRole::Tool, "search_collections", "", ""), todo_row(2, "write_todo", 1)];
+        let summaries = todo_summaries(&written, &[snapshot(1, &["a"], "pending")]);
+        let segments = tool_run_segments(&written, &summaries);
+        assert_eq!(live_group_start(&written, &segments, &summaries, true), None);
+    }
+
+    #[test]
+    fn reasoning_belongs_to_the_group_before_its_answer() {
+        let mut answer = row(3, ChatRole::Assistant, "", "", "answer");
+        answer.reasoning = "thought".into();
+        let messages = vec![row(1, ChatRole::User, "", "", "q"), row(2, ChatRole::Tool, "search_collections", "", ""), answer.clone()];
+        let segments = tool_run_segments(&messages, &HashMap::new());
+        assert_eq!(reasoning_groups(&messages, &segments), HashMap::from([(1, 2)]));
+
+        let quick = vec![row(1, ChatRole::User, "", "", "q"), answer.clone()];
+        let segments = tool_run_segments(&quick, &HashMap::new());
+        assert!(reasoning_groups(&quick, &segments).is_empty());
+
+        let mut question = row(2, ChatRole::Tool, "ask_user", "", "");
+        question.tool_input = r#"{"question":"Which?"}"#.into();
+        let asked = vec![row(1, ChatRole::User, "", "", "q"), question, answer.clone()];
+        let segments = tool_run_segments(&asked, &HashMap::new());
+        assert!(reasoning_groups(&asked, &segments).is_empty());
+    }
+
+    #[test]
+    fn a_replaced_answer_keeps_its_reasoning_in_its_round_and_the_final_answer_gets_the_group() {
+        let mut first = row(3, ChatRole::Assistant, "", "", "draft");
+        first.reasoning = "first round".into();
+        let mut last = row(6, ChatRole::Assistant, "", "", "final");
+        last.reasoning = "second round".into();
+        let messages = vec![
+            row(1, ChatRole::User, "", "", "q"),
+            row(2, ChatRole::Tool, "search_collections", "", ""),
+            first,
+            citation_note(4),
+            row(5, ChatRole::Tool, "cite_documents", "", ""),
+            last,
+        ];
+        let segments = tool_run_segments(&messages, &HashMap::new());
+        assert_eq!(segments, vec![(0, 1), (1, 5), (5, 6)]);
+        assert_eq!(reasoning_groups(&messages, &segments), HashMap::from([(1, 5)]));
     }
 
     #[test]
@@ -1494,22 +1614,8 @@ mod tests {
         let mut second = row(3, ChatRole::Tool, "ask_user", "", "");
         second.tool_input = r#"{"input":{"question":"Second?"}}"#.to_string();
         let messages = vec![tool, first, second];
-        assert_eq!(tool_run_segments(&messages, true), vec![(0, 1), (1, 2), (2, 3)]);
+        assert_eq!(tool_run_segments(&messages, &HashMap::new()), vec![(0, 1), (1, 2), (2, 3)]);
         assert_eq!(asked_question(&messages), "First?");
-    }
-
-    #[test]
-    fn a_live_todo_splits_the_tool_groups() {
-        let names = ["read_documents", "mark_todo", "search_collections"];
-        let rows: Vec<common::chat_types::StreamToolRow> = names.iter().enumerate().map(|(i, name)| {
-            common::chat_types::StreamToolRow {
-                seq: i as u32 + 1, tool_call_index: i as u32,
-                tool_name: (*name).to_string(), summary: String::new(), done: false,
-                elapsed_ms: 0,
-            }
-        }).collect();
-        assert_eq!(live_tool_segments(&rows, true), vec![(0, 1, false), (1, 2, true), (2, 3, false)]);
-        assert_eq!(live_tool_segments(&rows, false), vec![(0, 3, false)]);
     }
 
     #[test]

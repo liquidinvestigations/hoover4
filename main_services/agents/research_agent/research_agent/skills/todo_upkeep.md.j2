@@ -5,28 +5,31 @@ description: how to change a todo list with item ids and statuses
 tools: read_todo, write_todo, edit_todo, mark_todo
 ---
 {# How to keep a todo list that exists correct. The failed todo calls give an id or a status
-   inside extra quotes, and the lists left open have items that nobody marked. #}
+   inside extra quotes, send a goal to edit_todo, and leave items that nobody marked.
+   A step has two statuses, pending and done, and done needs a short reason. #}
 Keeping the todo list
 
-{{ tool('read_todo') }} shows each item with its id, such as 1 or 2, and its status.
+{{ tool('read_todo') }} shows each step with its id, such as 1 or 2, its status, and the reason of a done step.
 
 1. Give each id as the number that {{ tool('read_todo') }} shows, with no quotes inside the value. Write ids ["1", "2"]. Do not write ids ["\"1\""].
-2. Give one status in each {{ tool('mark_todo') }} call: pending, in_progress, done or cancelled. Write status done. Do not write status "\"done\"". To give two items two statuses, make two calls.
-3. Change an item's status when its work changes.
-4. When you stop an item, mark it cancelled and give a note with the reason. A cancelled item with no note is refused.
-5. To change the steps and keep the goal, call {{ tool('edit_todo') }} with the full list of steps as plain sentences, with no id and no status. A step that you leave out is removed.
-6. {{ tool('write_todo') }} starts a list with text for each step.
+2. Give one status in each {{ tool('mark_todo') }} call: pending or done. Write status done. Do not write status "\"done\"". To give two steps two statuses, make two calls.
+3. A step is pending until its work ends. Mark it done after you verify its result, with a short reason in note, such as found, not found or replaced. A done step with no note is refused.
+4. A search that ended without a result is done with the reason not found. A search that has not ended stays pending.
+5. Done steps stay in the list. The ids never change, and a new step gets a new id.
+6. To change the steps and keep the goal, call {{ tool('edit_todo') }} with the full list of current steps as plain sentences, with no id and no status. An open step that you leave out becomes done with the reason removed from plan.
+7. When a new step replaces an old step, put the new text in steps and give a replacements entry with the old id, the new text and the reason. The old step stays done, directly above the new step.
+8. {{ tool('write_todo') }} starts a list for a new goal. The same goal again keeps the done steps.
 
-This is an example. Items 1 and 2 are pending. The search for item 1 found what you need. Your next reply calls {{ tool('mark_todo') }} with ids ["1"] and status done, and the search for item 2 in the same reply.
+This is an example. Steps 1 and 2 are pending. The search for step 1 found what you need. Your next reply calls {{ tool('mark_todo') }} with ids ["1"], status done and note found, and the search for step 2 in the same reply.
 
 Keep the list current when it helps the person follow the work.
 
 {{ tool('write_todo') }} requires goal and steps, a list of plain sentences.
-{{ tool('edit_todo') }} requires steps. It replaces the steps and retains the goal.
-{{ tool('read_todo') }} takes no arguments and returns step identities and statuses.
-{{ tool('mark_todo') }} requires ids and status. ids is a list of returned string identities.
-status is pending, in_progress, done or cancelled. note defaults to empty text. Cancellation requires a reason in note.
-Each change returns the current plan or a refusal. Correct the named field before retrying.
+{{ tool('edit_todo') }} requires steps and takes no goal. replacements is optional. Each entry has id, text and note.
+{{ tool('read_todo') }} takes no arguments and returns step ids, statuses and reasons.
+{{ tool('mark_todo') }} requires ids and status. ids is a list of returned string ids.
+status is pending or done. note is the reason. A done status requires a note.
+Each change returns the current plan or a refusal. A change that changes nothing returns unchanged. Correct the named field before retrying.
 ```json
 {"goal":"Find the approval date.","steps":["Find the message.","Read the supporting passage."]}
 ```
@@ -34,11 +37,14 @@ Each change returns the current plan or a refusal. Correct the named field befor
 {"steps":["Find the message.","Read the supporting passage.","Verify the original writer."]}
 ```
 ```json
+{"steps":["Find the message in the 2001 folder.","Read the supporting passage."],"replacements":[{"id":"1","text":"Find the message in the 2001 folder.","note":"replaced by a narrower search"}]}
+```
+```json
 {}
 ```
 ```json
-{"ids":["1","2"],"status":"done","note":"The message and passage establish the date."}
+{"ids":["1","2"],"status":"done","note":"found"}
 ```
 ```json
-{"ids":["3"],"status":"cancelled","note":"The source does not identify the original writer."}
+{"ids":["3"],"status":"done","note":"not found"}
 ```

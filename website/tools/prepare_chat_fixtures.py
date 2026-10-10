@@ -76,8 +76,8 @@ def user(text: str) -> dict:
     return {"role": "user", "content": text}
 
 
-def answer(text: str) -> dict:
-    return {"role": "assistant", "content": text}
+def answer(text: str, reasoning: str = "") -> dict:
+    return {"role": "assistant", "content": text, "reasoning": reasoning}
 
 
 def search_row() -> dict:
@@ -158,7 +158,7 @@ def todo(name: str, username: str) -> dict:
     steps = ["Find the sample document.", "Read its unit table.", "Write the summary."]
     items_v1 = [{"id": str(i + 1), "text": s, "status": "pending", "note": ""}
                 for i, s in enumerate(steps)]
-    items_v2 = [dict(item, status="done" if item["id"] == "1" else item["status"])
+    items_v2 = [dict(item, status="done", note="found the sample document") if item["id"] == "1" else item
                 for item in items_v1]
     open_v2 = [{"id": i["id"], "text": i["text"], "status": i["status"]}
                for i in items_v2 if i["status"] != "done"]
@@ -167,10 +167,63 @@ def todo(name: str, username: str) -> dict:
         tool("write_todo", {"goal": goal, "steps": steps},
              {"version": 1, "ids": ["1", "2", "3"], "summary": "0/3 items resolved"}),
         search_row(),
-        tool("mark_todo", {"ids": ["1"], "status": "done"},
+        tool("mark_todo", {"ids": ["1"], "status": "done", "note": "found the sample document"},
              {"version": 2, "summary": "1/3 items resolved", "open": open_v2}),
-        answer("I found the sample document. The two other items are still open."),
+        answer("I found the sample document. The two other items are still open.",
+               "The search found the sample document, so step 1 is done."),
     ], "todos": [(1, goal, items_v1), (2, goal, items_v2)]}
+
+
+def todo_history(name: str, username: str) -> dict:
+    """The reported duplicate lists and the revised task contract in one conversation.
+
+    Versions 1 to 4 repeat the reported session: two writes, each followed by a legacy
+    `in_progress` mark. Then an identical write, a refused mark, an explicit replacement,
+    a completion with a long reason, and a mark whose version is not stored. Summaries
+    show for versions 1, 3, 5 and 6. Every one of the nine todo calls is a call card."""
+    goal = "Find what the sample document says about energy density."
+    def items(texts, statuses=None):
+        return [{"id": str(i + 1), "text": text, "status": (statuses or {}).get(i + 1, "pending"), "note": ""}
+                for i, text in enumerate(texts)]
+    first = ["Search the collection for energy density.", "Read the unit table.", "Write the answer."]
+    second = ["Search testdata for energy density units.", "Read the unit table.", "Write the answer."]
+    v1 = items(first)
+    v2 = items(first, {1: "in_progress"})
+    v3 = items(second)
+    v4 = items(second, {1: "in_progress"})
+    v5 = [dict(v4[0], status="done", note="replaced by a narrower search"),
+          {"id": "4", "text": "Search the sample document for erg/cm3.", "status": "pending", "note": "",
+           "replaces_id": "1"}, v4[1], v4[2]]
+    long_reason = "found the conversion in the unit table of the sample document"
+    v6 = [v5[0], dict(v5[1], status="done", note=long_reason), v5[2], v5[3]]
+    replacement = {"id": "1", "text": "Search the sample document for erg/cm3.", "note": "replaced by a narrower search"}
+    def opened(snapshot):
+        return [{"id": i["id"], "text": i["text"], "status": "pending"} for i in snapshot if i["status"] != "done"]
+    return {"title": "Browser fixture: todo history", "rows": [
+        user("Plan the work, then find what the sample document says about energy density."),
+        tool("write_todo", {"goal": goal, "steps": first},
+             {"version": 1, "ids": ["1", "2", "3"], "summary": "0/3 items resolved"}),
+        tool("mark_todo", {"ids": ["1"], "status": "in_progress"},
+             {"version": 2, "summary": "0/3 items resolved", "open": opened(v2)}),
+        search_row(),
+        tool("write_todo", {"goal": goal, "steps": second},
+             {"version": 3, "ids": ["1", "2", "3"], "summary": "0/3 items resolved"}),
+        tool("mark_todo", {"ids": ["1"], "status": "in_progress"},
+             {"version": 4, "summary": "0/3 items resolved", "open": opened(v4)}),
+        tool("write_todo", {"goal": goal, "steps": second},
+             {"version": 4, "ids": ["1", "2", "3"], "summary": "0/3 items resolved", "unchanged": True}),
+        tool("mark_todo", {"ids": ["2"], "status": "done"},
+             {"success": False, "error": "a done step needs a short reason in note, such as found, not found or replaced.",
+              "version": 4, "items": v4}),
+        tool("edit_todo", {"steps": [replacement["text"], second[1], second[2]], "replacements": [replacement]},
+             {"version": 5, "summary": "1/4 items resolved", "open": opened(v5)}),
+        tool("mark_todo", {"ids": ["4"], "status": "done", "note": long_reason},
+             {"version": 6, "summary": "2/4 items resolved", "open": opened(v6)}),
+        tool("mark_todo", {"ids": ["2"], "status": "done", "note": "read"},
+             {"version": 7, "summary": "3/4 items resolved", "open": opened(v6)[1:]}),
+        answer("The unit table gives energy density as 1 erg/cm3 = 10^-1 J/m3.",
+               "The unit table holds the conversion, so the answer can be written now."),
+    ], "todos": [(1, goal, v1), (2, goal, v2), (3, goal, v3), (4, goal, v4), (5, goal, v5), (6, goal, v6)]}
 
 
 def web(name: str, username: str) -> dict:
@@ -324,6 +377,7 @@ FIXTURES = {
     "entities": entities,
     "read_more": read_more,
     "todo": todo,
+    "todo_history": todo_history,
     "web": web,
     "web_citations": web_citations,
     "web_versions": lambda name, username: web_citations(name, username, shared_versions=True),
@@ -352,14 +406,14 @@ def write_fixture(client, name: str, username: str, now: datetime) -> str:
             row.get("tool_input", ""), row.get("tool_output", ""), row.get("doc_refs", ""),
             now, now, now, turn,
             row.get("usage", {}).get("context_tokens", 0), row.get("usage", {}).get("peak_context_tokens", 0),
-            row.get("usage", {}).get("context_window", 0),
+            row.get("usage", {}).get("context_window", 0), row.get("reasoning", ""),
             json.dumps({"citation_status": "cited" if any(handle in row.get("content", "") for handle in ("[D1]", "[W1]")) else "none",
                         "tool_scope": "documents_and_web" if spec.get("internet") else "documents_only", **row.get("usage", {})})
             if row["role"] == "assistant" else json.dumps(row.get("usage_json") or {}),
         ])
     insert_durable(client, "chat_messages", rows, column_names=[
         "session_id", "username", "seq", "role", "content", "tool_name", "tool_input",
-        "tool_output", "doc_refs", "created_ms", "created_at", "updated_at", "message_uuid", "context_tokens", "peak_context_tokens", "context_window", "usage_json"])
+        "tool_output", "doc_refs", "created_ms", "created_at", "updated_at", "message_uuid", "context_tokens", "peak_context_tokens", "context_window", "reasoning", "usage_json"])
     for version, goal, items in spec.get("todos", []):
         insert_durable(client, "chat_todos", [[sid, username, version, goal, json.dumps(items), now]],
                        column_names=["session_id", "username", "version", "goal", "items",

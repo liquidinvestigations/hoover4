@@ -61,7 +61,14 @@ chat asks for the same two statements. The served model wrote the lines only whe
 texts asked for them. The initial web role names `read_page` and its `find` field for supporting passages. It requires `cite_pages` after each source read. The returned web handles identify captured source versions. Bare source URLs require citation repair.
 It requires comparative evidence for a size ranking. The todo text
 follows when the run has the four todo tools. It says
-that the list is optional and that an open item does not stop an answer. The summary of a
+that the list is optional, that a step stays pending until its work ends and is then done
+with a short reason, that done steps stay in the list, that a new step that replaces an
+old one gets a replacement entry, and that an open item does not stop an answer. When the
+run has a citation tool, the citation text gives the order of the work once: read the
+passage, call the citation tool with exact text, copy the returned handle beside the
+claim, write the answer after the needed calls succeed, and state the requested parts
+that the sources do not establish. The `citation` skill holds the arguments of each
+citation tool, one example for each, and the batch form. The summary of a
 tool is the first sentence of its description, at most 160 characters. `_create_context`
 renders the prompt once for each step context. The prompt cache holds the system text for
 the run.
