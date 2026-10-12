@@ -50,6 +50,11 @@ pub fn to_server_fn_error(e: anyhow::Error) -> dioxus::prelude::ServerFnError {
     } else {
         500
     };
+    // A 500 is a defect, and the reader cannot report what the page does not show in
+    // full. The log keeps the whole error chain.
+    if code == 500 {
+        dioxus::logger::tracing::error!("server function failed: {e:#}");
+    }
     ServerFnError::ServerError {
         message: e.to_string(),
         code,

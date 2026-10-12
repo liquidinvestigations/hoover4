@@ -77,9 +77,8 @@ database, deleting one (only allowed when it has no datasets) drops it.
 That builder is `website/backend/src/db_utils/manticore_match.rs`.
 
 Manticore has no parameter binding over its HTTP SQL endpoint, so a `MATCH()` argument
-crosses two language boundaries at once and each has its own rule. `format_sql_query::
-QuotedData` gets both wrong for this database and **must never be used to build a
-`MATCH()` argument**:
+crosses two language boundaries at once and each has its own rule. Generic SQL quoting
+gets both of them wrong for this database:
 
 - It escapes `'` by SQL-standard **doubling**. Manticore's parser wants a backslash and
   rejects the doubled form outright: `MATCH('it''s')` is `P01: syntax error`, while
@@ -103,8 +102,12 @@ doubled form, so it passed while every search containing an apostrophe failed. T
 this helper assert against the character set measured to break a live Manticore, and a
 change here is not verified until the query has run against a real one.
 
-Non-`MATCH()` uses of `QuotedData` (attribute comparisons against hashes, dataset ids
-and facet values) carry the same wrong quoting rule and are not yet converted.
+Every other string literal in a Manticore statement goes through
+`quoted_manticore_string`. These literals include hashes, dataset ids, facet values, tree
+node keys and email header values. A node key contains a file path, and a header value
+contains corpus text, so an apostrophe in either is ordinary input. A raw NUL byte is a
+syntax error in Manticore, so the escape writes it as `\0`. The backend has no generic SQL
+quoting library, and the collection-search server applies the same escape in Python.
 
 ## Showing a failed server call
 
@@ -119,6 +122,10 @@ The status picks the presentation: a **4xx** is something the caller can fix and
 as a plain message, anything else is a failure of ours and is shown as the red component
 error. Both carry `x-error-display`, which is how `website/tools/capture_screenshots.py` finds a
 surfaced error structurally rather than by matching words.
+
+`api::error_util::to_server_fn_error` writes each 500 to the website log with its full
+error chain. The email card shows its headers without highlights when the header
+highlight fails, and the log keeps that error.
 
 A slot with no value has no error to report either: the hit-count position renders nothing
 when the search failed, because the results panel below it already shows the message and

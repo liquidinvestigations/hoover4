@@ -95,6 +95,9 @@ class TestManticoreEscaping:
         assert escape_manticore_string("a\\b") == "a\\\\b"
         assert escape_manticore_string("a\\'b") == "a\\\\\\'b"
 
+    def test_a_nul_byte_travels_as_an_escape(self):
+        assert escape_manticore_string("a\0b") == "a\\0b"
+
     def test_injection_attempt_cannot_close_the_literal(self):
         """The escaping is the injection barrier.
 

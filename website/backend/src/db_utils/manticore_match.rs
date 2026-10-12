@@ -11,10 +11,11 @@
 //!    from the parser rather than an empty result set. Quoting a phrase does not make
 //!    its contents inert: `|` and `\` keep their meaning inside one.
 //!
-//! `format_sql_query::QuotedData` handles neither: it doubles the quote, which
-//! Manticore's parser rejects outright (`P01: syntax error`). **Never build a
-//! `MATCH()` argument with it.** Everything goes through [`prepare_match_query`] or,
-//! for text that is already known to carry no query syntax, [`quoted_manticore_string`].
+//! Every string literal in a Manticore statement comes from this module: a `MATCH()`
+//! argument from [`prepare_match_query`], and any other value from
+//! [`quoted_manticore_string`]. The SQL-standard quote doubling that ClickHouse and
+//! generic SQL libraries use is a syntax error in Manticore (`P01`), so a value with an
+//! apostrophe fails the whole statement.
 //!
 //! The same rules are implemented in Python for the collection-search MCP server
 //! (`collection_search_server/backends.py`). Both runtimes talk to the same Manticore
@@ -22,10 +23,11 @@
 
 /// Escape a value for a single-quoted Manticore SQL string literal.
 ///
-/// Backslash first, then the quote, reversing the order would double-escape the
-/// backslashes introduced by the quote pass.
+/// Backslash first, then the quote and the NUL byte. The other order would escape the
+/// backslashes that the later passes add. A raw NUL byte is a syntax error in Manticore,
+/// and `\0` is accepted.
 pub fn escape_manticore_string(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('\'', "\\'")
+    value.replace('\\', "\\\\").replace('\'', "\\'").replace('\0', "\\0")
 }
 
 /// [`escape_manticore_string`] wrapped in the single quotes it is escaped for, ready to
@@ -486,7 +488,7 @@ mod tests {
     use super::*;
 
     /// The whole reason this module exists: Manticore rejects the SQL-standard doubling
-    /// that `format_sql_query::QuotedData` emits.
+    /// that generic SQL quoting emits.
     #[test]
     fn alternatives_and_notnear_keep_their_syntax() {
         for query in [r#""(test | sample) document""#, r#""(test | sample) document"~10"#,
@@ -515,6 +517,12 @@ mod tests {
         // quote would arrive at Manticore unescaped.
         assert_eq!(escape_manticore_string(r"a\b"), r"a\\b");
         assert_eq!(escape_manticore_string(r"a\'b"), r"a\\\'b");
+    }
+
+    #[test]
+    fn a_nul_byte_travels_as_an_escape() {
+        assert_eq!(escape_manticore_string("a\0b"), r"a\0b");
+        assert_eq!(escape_manticore_string("a\\\0b"), r"a\\\0b");
     }
 
     fn prepared(query: &str) -> String {

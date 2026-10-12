@@ -412,9 +412,16 @@ async fn get_email_envelope(
     let mut envelope = backend::api::documents::get_email_graph::get_email_envelope(&user, document_identifier.clone())
         .await.map_err(crate::api::error_util::to_server_fn_error)?;
     if let Some(value) = &mut envelope {
-        value.header_highlights = backend::api::documents::search_document_text::highlight_email_headers(
+        // The headers do not depend on their highlights. A failed highlight shows the
+        // card without them, and the log keeps the error.
+        match backend::api::documents::search_document_text::highlight_email_headers(
             &user, &document_identifier, &find_query, value,
-        ).await.map_err(crate::api::error_util::to_server_fn_error)?;
+        ).await {
+            Ok(highlights) => value.header_highlights = highlights,
+            Err(e) => dioxus::logger::tracing::error!(
+                "email header highlight failed for {}: {e:#}", document_identifier.file_hash
+            ),
+        }
     }
     Ok(envelope)
 }

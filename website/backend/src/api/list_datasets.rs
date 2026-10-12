@@ -10,6 +10,7 @@ use common::vfs::dataset_root_key;
 
 use crate::auth::permissions::{self, PermissionSet};
 use crate::db_utils::clickhouse_utils::{collection_db_name, get_global_client};
+use crate::db_utils::manticore_match::quoted_manticore_string;
 use crate::db_utils::manticore_utils::manticore_search_sql_uncached;
 
 pub async fn list_dataset_ids() -> anyhow::Result<Vec<String>> {
@@ -83,7 +84,7 @@ pub async fn list_permitted_collection_tree(
         let table = format!("{}_vfs", collection.collectionname);
         let response = manticore_search_sql_uncached::<FolderPresenceRow>(format!(
             "SELECT collection_dataset FROM {table} WHERE parent_key IN ({}) AND kind != 1 GROUP BY collection_dataset LIMIT {} {} ;",
-            collection.datasets.iter().map(|dataset| format_sql_query::QuotedData(&dataset_root_key(&dataset.collection_dataset)).to_string()).collect::<Vec<_>>().join(", "),
+            collection.datasets.iter().map(|dataset| quoted_manticore_string(&dataset_root_key(&dataset.collection_dataset))).collect::<Vec<_>>().join(", "),
             collection.datasets.len(),
             crate::api::search::search_sql::sql_options_clause(crate::api::search::search_sql::QueryTable::Structure, collection.datasets.len() as u64),
         ))

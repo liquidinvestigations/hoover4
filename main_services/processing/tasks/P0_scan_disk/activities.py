@@ -209,6 +209,22 @@ def _range_entries(params: ListDiskFolderParams, until_name: str = "") -> List[T
     return result
 
 
+def _path_table(paths: List[str]):
+    """``paths`` as the external table ``lookup_paths``, one ``path String`` column.
+
+    A path is corpus content, so it never goes into the SQL text. The paths travel as
+    JSON rows in the request body. A query parameter cannot carry them: ClickHouse
+    refuses a parameter value above 128 KiB (``http_max_field_value_size``), and 500
+    folder paths of 300 bytes are more than that.
+    """
+    import json
+    from clickhouse_connect.driver.external import ExternalData
+
+    data = "\n".join(json.dumps([p], ensure_ascii=False) for p in paths).encode("utf-8")
+    return ExternalData(file_name="lookup_paths", data=data, fmt="JSONCompactEachRow",
+                        structure="path String")
+
+
 def _batch_files_by_size(
     files: List[Dict[str, Any]], max_count: int, max_bytes: int,
 ) -> List[List[Dict[str, Any]]]:
@@ -355,22 +371,18 @@ def insert_vfs_directories(params: InsertVfsDirectoriesParams) -> int:
     if not dir_paths:
         return 0
 
-    def _escape(v: str) -> str:
-        return v.replace("'", "''")
-
     # Deduplicate against existing. FINAL: vfs_directories is a ReplacingMergeTree and an
     # unmerged part would hide a row from this read, so the path is inserted a second time.
     existing_paths: Set[str] = set()
     with get_collection_client(params.collectionname) as client:
-        in_list = ",".join([f"'{_escape(p)}'" for p in dir_paths])
-        sql = f"""
+        tbl = client.query_arrow("""
             SELECT path
             FROM vfs_directories FINAL
-            WHERE collection_dataset = '{_escape(collection_dataset)}'
-              AND container_hash = '{_escape(container_hash)}'
-              AND path IN ({in_list})
-        """
-        tbl = client.query_arrow(sql)
+            WHERE collection_dataset = {cd:String}
+              AND container_hash = {container:String}
+              AND path IN (SELECT path FROM lookup_paths)
+        """, {"cd": collection_dataset, "container": container_hash},
+            external_data=_path_table(dir_paths))
         if tbl and tbl.num_rows:
             col = tbl.column("path")
             for i in range(tbl.num_rows):
@@ -483,9 +495,6 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
     file_mtimes_by_path: Dict[str, Any] = dict(zip(file_paths, list(params.file_mtimes or [])))
     file_sizes_by_path: Dict[str, Any] = dict(zip(file_paths, list(params.file_sizes or [])))
 
-    def _escape(v: str) -> str:
-        return v.replace("'", "''")
-
     # 1) Decide, per path, whether there is anything to do.
     #
     # Comparing paths alone is what a rescan used to do, and it is wrong in the direction
@@ -508,17 +517,17 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
     known: Dict[str, Dict[str, Any]] = {}
     if file_paths:
         with get_collection_client(params.collectionname) as client:
-            in_list = ",".join([f"'{_escape(_prefixed(p))}'" for p in file_paths])
-            sql = f"""
+            rows = client.query_arrow("""
                 SELECT path, hash, file_size_bytes, mtime_source,
                        toUnixTimestamp(mtime) AS mtime
                 FROM vfs_files FINAL
-                WHERE collection_dataset = '{_escape(collection_dataset)}'
-                  AND container_hash = '{_escape(container_hash)}'
-                  AND path IN ({in_list})
+                WHERE collection_dataset = {cd:String}
+                  AND container_hash = {container:String}
+                  AND path IN (SELECT path FROM lookup_paths)
                   AND is_deleted = 0
-            """
-            for row in client.query_arrow(sql).to_pylist():
+            """, {"cd": collection_dataset, "container": container_hash},
+                external_data=_path_table([_prefixed(p) for p in file_paths])).to_pylist()
+            for row in rows:
                 known[row["path"]] = row
 
     # A path whose size AND mtime both match its row is unchanged: no read, no hash.
@@ -643,15 +652,16 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
     existing_blob_values: Set[str] = set()
     with get_collection_client(params.collectionname) as client:
         if unique_hashes:
-            in_hashes = ",".join([f"'{_escape(h)}'" for h in unique_hashes])
             # Existing blobs for this dataset
-            sql_blobs = f"""
+            # At most FILE_BATCH_MAX_COUNT hashes of 64 characters, far below the
+            # parameter value limit.
+            hash_parameters = {"cd": collection_dataset, "hashes": unique_hashes}
+            tbl_b = client.query_arrow("""
                 SELECT blob_hash, stored_in_clickhouse, s3_path
                 FROM blobs
-                WHERE collection_dataset = '{_escape(collection_dataset)}'
-                  AND blob_hash IN ({in_hashes})
-            """
-            tbl_b = client.query_arrow(sql_blobs)
+                WHERE collection_dataset = {cd:String}
+                  AND blob_hash IN {hashes:Array(String)}
+            """, hash_parameters)
             existing_blob_meta: Dict[str, Dict[str, Any]] = {}
             if tbl_b and tbl_b.num_rows:
                 hh = tbl_b.column("blob_hash")
@@ -667,13 +677,12 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
                     }
 
             # Existing blob_values for this dataset
-            sql_bv = f"""
+            tbl_v = client.query_arrow("""
                 SELECT blob_hash
                 FROM blob_values
-                WHERE collection_dataset = '{_escape(collection_dataset)}'
-                  AND blob_hash IN ({in_hashes})
-            """
-            tbl_v = client.query_arrow(sql_bv)
+                WHERE collection_dataset = {cd:String}
+                  AND blob_hash IN {hashes:Array(String)}
+            """, hash_parameters)
             if tbl_v and tbl_v.num_rows:
                 col = tbl_v.column("blob_hash")
                 for i in range(tbl_v.num_rows):

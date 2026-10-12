@@ -2793,3 +2793,64 @@ async fn the_node_budget_is_clamped_server_side() {
 
     clear_graph_fixture().await;
 }
+
+const MAILFORMATS: &str = "testdata_mailformats";
+
+/// A tree node whose path holds an apostrophe. The node key contains the path, and the
+/// tree once quoted keys by doubling the apostrophe, which Manticore reads as a syntax
+/// error. The breadcrumb and the page after the node both failed.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn a_tree_node_with_an_apostrophe_resolves_and_pages() {
+    skip_unless_dataset!(MAILFORMATS);
+    let _budget = Budget::start("a_tree_node_with_an_apostrophe_resolves_and_pages");
+    use common::vfs::make_node_key;
+
+    let file = make_node_key(
+        MAILFORMATS,
+        "4c19e4767b307c459aa67a7c595eb4751cbebfbe68b58d27e9af31caea5d2fde",
+        "/folder-00000122-unnamed/folder-000020a2-Root - Mailbox/folder-00002142-IPM_SUBTREE/\
+         folder-00008182-Calendar/folder-000081c2-United States holidays/item-00200264-Father's Day.json",
+    );
+    let chain = backend::api::vfs::vfs_tree_path_to(&admin_user(), MAILFORMATS.to_string(), file.clone())
+        .await
+        .unwrap();
+    let node = chain.last().expect("the breadcrumb ends at the node");
+    assert_eq!(node.node_key, file);
+
+    let page = backend::api::vfs::vfs_tree_children_after(
+        &admin_user(), MAILFORMATS.to_string(), node.parent_key.clone(), file.clone(), 50,
+    )
+    .await
+    .unwrap();
+    assert!(page.nodes.iter().all(|n| n.node_key != file), "the page starts after the node");
+}
+
+/// Email headers with an apostrophe highlight. The header values are SQL string literals
+/// in the highlight statement, and a doubled apostrophe failed the whole email card.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn email_headers_with_an_apostrophe_highlight() {
+    skip_unless_dataset!(MAILFORMATS);
+    let _budget = Budget::start("email_headers_with_an_apostrophe_highlight");
+    let identifier = common::search_result::DocumentIdentifier {
+        collection_dataset: MAILFORMATS.to_string(),
+        file_hash: "083e0ccf2902ec147dcf1e7a274b96f1602c0210a570b604fd1a687584676035".to_string(),
+    };
+    let envelope = backend::api::documents::get_email_graph::get_email_envelope(&admin_user(), identifier.clone())
+        .await
+        .unwrap()
+        .expect("the fixture email has headers");
+    assert_eq!(envelope.subject, "New OBA's");
+
+    let highlights = backend::api::documents::search_document_text::highlight_email_headers(
+        &admin_user(), &identifier, "OBA's", &envelope,
+    )
+    .await
+    .unwrap();
+    let subject = highlights.get(&envelope.subject).expect("the subject has a highlight row");
+    assert!(
+        subject.iter().any(|span| span.is_highlighted && span.text.contains("OBA")),
+        "the subject highlights the find query: {subject:?}"
+    );
+}

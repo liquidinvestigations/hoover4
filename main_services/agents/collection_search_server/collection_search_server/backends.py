@@ -132,10 +132,11 @@ def escape_manticore_string(value: str) -> str:
     """Escape a value for a single-quoted Manticore SQL string literal.
 
     Manticore has no parameter binding over the HTTP SQL endpoint, so this is the only
-    barrier between user text and the query. Backslash first, then the quote, reversing
-    the order would double-escape the backslashes introduced by the quote pass.
+    barrier between user text and the query. Backslash first, then the quote and the
+    NUL byte. The other order would escape the backslashes that the later passes add. A
+    raw NUL byte is a syntax error in Manticore, and ``\\0`` is accepted.
     """
-    return value.replace("\\", "\\\\").replace("'", "\\'")
+    return value.replace("\\", "\\\\").replace("'", "\\'").replace("\0", "\\0")
 
 
 #: The only full-text field in a shard pages table. Everything else in the schema

@@ -15,10 +15,6 @@ import pyarrow.compute as pc
 log = logging.getLogger(__name__)
 
 
-def _escape(v: str) -> str:
-    return v.replace("'", "''")
-
-
 @dataclass
 class ListPendingPlansParams:
     collectionname: str
@@ -37,20 +33,23 @@ def list_pending_plans(params: ListPendingPlansParams) -> List[str]:
     collection_dataset: str = params.collection_dataset
     starting_plan_hash: str = params.starting_plan_hash or ""
 
-    cond_start = (
-        f" AND p.plan_hash >= '{_escape(starting_plan_hash)}'" if starting_plan_hash else ""
-    )
+    parameters = {"cd": collection_dataset}
+    cond_start = ""
+    if starting_plan_hash:
+        cond_start = " AND p.plan_hash >= {start:String}"
+        parameters["start"] = starting_plan_hash
     cond_failed = ""
     if params.exclude_failed_of_op and params.op_id:
-        cond_failed = f""" AND NOT EXISTS (
+        cond_failed = """ AND NOT EXISTS (
             SELECT 1 FROM operation_plans o
             WHERE o.collection_dataset = p.collection_dataset
-              AND o.plan_hash = p.plan_hash AND o.op_id = '{_escape(params.op_id)}'
+              AND o.plan_hash = p.plan_hash AND o.op_id = {op:String}
         )"""
+        parameters["op"] = params.op_id
     sql = f"""
         SELECT p.plan_hash
         FROM processing_plans p
-        WHERE p.collection_dataset = '{_escape(collection_dataset)}'
+        WHERE p.collection_dataset = {{cd:String}}
           AND NOT EXISTS (
             SELECT 1 FROM processing_plan_finished f
             WHERE f.collection_dataset = p.collection_dataset AND f.plan_hash = p.plan_hash
@@ -61,7 +60,7 @@ def list_pending_plans(params: ListPendingPlansParams) -> List[str]:
         LIMIT 1001
     """
     with get_collection_client(params.collectionname) as client:
-        tbl = client.query_arrow(sql)
+        tbl = client.query_arrow(sql, parameters)
         results: List[str] = []
         if tbl and tbl.num_rows:
             col = tbl.column(0)
@@ -101,7 +100,7 @@ def get_plan_items_metadata(params: GetPlanItemsMetadataParams) -> List[Dict[str
     # one would remove the folder under the other. Ordering by size descending first
     # keeps the row that actually carries blob metadata when one of the duplicates
     # joined nothing.
-    sql = f"""
+    sql = """
         SELECT h.item_hash,
                b.blob_size_bytes,
                b.s3_path,
@@ -112,21 +111,21 @@ def get_plan_items_metadata(params: GetPlanItemsMetadataParams) -> List[Dict[str
         LEFT JOIN (
             SELECT hash, groupUniqArray(splitByChar('/', path)[-1]) AS names
             FROM vfs_files
-            PREWHERE collection_dataset = '{_escape(collection_dataset)}'
+            PREWHERE collection_dataset = {cd:String}
                 AND hash IN (SELECT item_hash FROM processing_plan_hits
-                    WHERE collection_dataset = '{_escape(collection_dataset)}'
-                      AND plan_hash = '{_escape(plan_hash)}')
+                    WHERE collection_dataset = {cd:String}
+                      AND plan_hash = {plan:String})
             WHERE is_deleted = 0
             GROUP BY hash
         ) n ON n.hash = h.item_hash
-        WHERE h.collection_dataset = '{_escape(collection_dataset)}'
-          AND h.plan_hash = '{_escape(plan_hash)}'
+        WHERE h.collection_dataset = {cd:String}
+          AND h.plan_hash = {plan:String}
         ORDER BY h.item_hash ASC, b.blob_size_bytes DESC NULLS LAST
         LIMIT 1 BY h.item_hash
     """
 
     with get_collection_client(params.collectionname) as client:
-        tbl = client.query_arrow(sql)
+        tbl = client.query_arrow(sql, {"cd": collection_dataset, "plan": plan_hash})
         results: List[Dict[str, Any]] = []
         if not tbl or tbl.num_rows == 0:
             return results
@@ -227,15 +226,13 @@ def download_plan_files(params: DownloadPlanFilesParams) -> Dict[str, Any]:
         batch = ch_hashes[i:i + BATCH_SIZE]
         if not batch:
             continue
-        in_list = ",".join([f"'{_escape(h)}'" for h in batch])
-        sql = f"""
-            SELECT blob_hash, blob_value
-            FROM blob_values
-            WHERE collection_dataset = '{_escape(collection_dataset)}'
-              AND blob_hash IN ({in_list})
-        """
         with get_collection_client(params.collectionname) as client:
-            tbl = client.query_arrow(sql)
+            tbl = client.query_arrow("""
+                SELECT blob_hash, blob_value
+                FROM blob_values
+                WHERE collection_dataset = {cd:String}
+                  AND blob_hash IN {hashes:Array(String)}
+            """, {"cd": collection_dataset, "hashes": batch})
             if not tbl or tbl.num_rows == 0:
                 continue
             col_hash = tbl.column("blob_hash").combine_chunks()

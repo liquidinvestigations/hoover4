@@ -21,13 +21,17 @@ def _plan_items_sql() -> str:
     for node in ast.walk(tree):
         if isinstance(node, ast.FunctionDef) and node.name == "get_plan_items_metadata":
             for sub in ast.walk(node):
-                if isinstance(sub, ast.JoinedStr):
+                if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                    text = sub.value
+                elif isinstance(sub, ast.JoinedStr):
                     text = "".join(
                         part.value for part in sub.values if isinstance(part, ast.Constant)
                     )
-                    if "processing_plan_hits" in text:
-                        return text
-    raise AssertionError("the plan-items query is no longer an f-string in that function")
+                else:
+                    continue
+                if "processing_plan_hits" in text:
+                    return text
+    raise AssertionError("the plan-items query is no longer a string literal in that function")
 
 
 def test_the_plan_items_query_collapses_duplicate_hashes():

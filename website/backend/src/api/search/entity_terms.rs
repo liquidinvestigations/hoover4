@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::search::fanout::{self, FanoutTarget};
 use crate::api::search::search_sql::{search_field_name, sql_options_clause};
 use crate::auth::permissions;
-use crate::db_utils::manticore_match::prepare_match_query;
+use crate::db_utils::manticore_match::{prepare_match_query, quoted_manticore_string};
 use crate::db_utils::manticore_utils::manticore_search_sql_uncached;
 
 /// Rows returned per collection, and the `max_matches` the query is given.
@@ -92,7 +92,7 @@ fn entities_table(collectionname: &str) -> anyhow::Result<String> {
 /// Terms matching `needle` in any of `columns`, across every collection the query reaches.
 ///
 /// The needle is wrapped in stars for infix matching and goes through
-/// [`prepare_match_query`], never `QuotedData`: a facet search box is a full-text query
+/// [`prepare_match_query`]: a facet search box is a full-text query
 /// against `term_text`, and the shapes the parser rejects (a lone quote, a stray `~`)
 /// are shapes people type. Repairing them is what keeps a keystroke from reading as the
 /// site falling over.
@@ -146,7 +146,7 @@ pub async fn search_entity_terms(
         };
         if values.is_empty() { return Ok(EntityTermHits::default()); }
         format!("term_display IN ({})", values.into_iter()
-            .map(|value| format_sql_query::QuotedData(&value).to_string()).collect::<Vec<_>>().join(","))
+            .map(|value| quoted_manticore_string(&value)).collect::<Vec<_>>().join(","))
     } else {
         format!("MATCH({})", prepare_match_query(&format!("*{needle}*"))
             .map_err(anyhow::Error::from)?.quoted())

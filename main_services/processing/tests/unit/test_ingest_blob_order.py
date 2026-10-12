@@ -15,7 +15,7 @@ class Client:
         self.inserts = []
         self.fail_table = fail_table
 
-    def query_arrow(self, query):
+    def query_arrow(self, query, parameters=None, **_options):
         if "FROM blob_values" in query:
             return pa.table({"blob_hash": list(self.rows["blob_values"])})
         if "FROM blobs" in query:

@@ -29,7 +29,7 @@ use common::{
 };
 
 use crate::api::admin::collections::collectionname_valid;
-use crate::db_utils::manticore_match::prepare_match_query;
+use crate::db_utils::manticore_match::{prepare_match_query, quoted_manticore_string};
 use crate::db_utils::manticore_utils::search_timeout_ms;
 
 /// `extracted_by` of the synthetic pages row that carries a document's filenames.
@@ -298,7 +298,7 @@ pub fn build_sql_where_clause(query: &SearchQuery, pages_table: &str) -> anyhow:
         let values_str = values
             .iter()
             .map(|value| match value {
-                FacetOriginalValue::String(s) => format_sql_query::QuotedData(s).to_string(),
+                FacetOriginalValue::String(s) => quoted_manticore_string(s),
                 FacetOriginalValue::Int(i) => i.to_string(),
             })
             .collect::<Vec<String>>()

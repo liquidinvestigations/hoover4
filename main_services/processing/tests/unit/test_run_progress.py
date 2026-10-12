@@ -20,7 +20,7 @@ class _Client:
     def __exit__(self, *_args):
         return False
 
-    def query_arrow(self, _query):
+    def query_arrow(self, _query, _parameters=None, **_options):
         return pa.table({"plan_hash": ["plan-a", "plan-b"]})
 
     def query(self, query, parameters):

@@ -19,7 +19,8 @@ use crate::db_utils::clickhouse_utils::{
 };
 use crate::api::search::search_sql::{shard_table_name, sql_options_clause};
 use crate::db_utils::{
-    decompose_spans::decompose_text_into_spans, manticore_match::prepare_match_query,
+    decompose_spans::decompose_text_into_spans,
+    manticore_match::{prepare_match_query, quoted_manticore_string},
     manticore_utils::manticore_search_sql,
 };
 
@@ -90,12 +91,12 @@ pub async fn highlight_email_headers(
     for batch in values.chunks(50) {
         let columns = batch.iter().enumerate().map(|(index, text)| format!(
             "HIGHLIGHT({{limit=0, force_all_words=1, html_strip_mode=retain, around=0, before_match='<hoover4_strong>', after_match='</hoover4_strong>', force_snippets=1}}, TO_STRING({}), {argument}) AS h{index}",
-            format_sql_query::QuotedData(text)
+            quoted_manticore_string(text)
         )).collect::<Vec<_>>().join(", ");
         let options = sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, 1);
         let sql = format!("SELECT {columns} FROM {table} WHERE file_hash={} AND collection_dataset={} LIMIT 1 {options}",
-            format_sql_query::QuotedData(&identifier.file_hash),
-            format_sql_query::QuotedData(&identifier.collection_dataset));
+            quoted_manticore_string(&identifier.file_hash),
+            quoted_manticore_string(&identifier.collection_dataset));
         let response = manticore_search_sql::<std::collections::BTreeMap<String, String>>(sql, &salt).await?;
         if let Some(hit) = response.hits.hits.into_iter().next() {
             for (index, text) in batch.iter().enumerate() {
@@ -145,9 +146,9 @@ pub async fn search_document_text_for_hits(
             LIMIT 1000
             {options_clause}
         "#,
-        format_sql_query::QuotedData(&document_identifier.file_hash),
-        format_sql_query::QuotedData(&document_identifier.collection_dataset),
-        format_sql_query::QuotedData(&extracted_by),
+        quoted_manticore_string(&document_identifier.file_hash),
+        quoted_manticore_string(&document_identifier.collection_dataset),
+        quoted_manticore_string(&extracted_by),
         page_id,
     );
     let response = manticore_search_sql::<DocumentHits>(sql, &salt).await?;
@@ -210,8 +211,8 @@ pub async fn search_document_text_all_hits(
         LIMIT {DOCUMENT_HIT_ROW_LIMIT}
         {options_clause}
     "#,
-        format_sql_query::QuotedData(&document_identifier.file_hash),
-        format_sql_query::QuotedData(&document_identifier.collection_dataset),
+        quoted_manticore_string(&document_identifier.file_hash),
+        quoted_manticore_string(&document_identifier.collection_dataset),
     );
     let response = manticore_search_sql::<DocumentHits>(sql, &salt).await?;
     let hits = response.hits.hits;
