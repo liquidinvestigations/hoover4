@@ -37,7 +37,7 @@ use dioxus_free_icons::{
     Icon,
     icons::{
         md_action_icons::{MdDateRange, MdOpenInFull, MdViewColumn},
-        md_content_icons::{MdContentCopy, MdFilterList, MdLink, MdSort},
+        md_content_icons::{MdFilterList, MdSort},
         md_editor_icons::MdTableChart,
         md_navigation_icons::{MdArrowDownward, MdArrowUpward, MdChevronLeft, MdChevronRight},
     },
@@ -45,7 +45,6 @@ use dioxus_free_icons::{
 
 use crate::components::document_view_components::doc_preview_shared::PreviewWrapper;
 use crate::components::chat_components::tool_cards::{focus, FocusHandle, ModalCloseButton, ModalShell};
-use crate::components::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
 use crate::components::suspend_boundary::LoadingIndicator;
 use crate::data_definitions::doc_viewer_state::DocTableState;
 use crate::pages::search_page::DocViewerStateControl;
@@ -1118,8 +1117,7 @@ fn ColumnFilterPopover(
     }
 }
 
-/// One cell. The grid shows its excerpt with the find matches marked, the popup shows the
-/// whole value, and a long value also gets the full-cell control.
+/// A cell shows its excerpt with find matches marked. A long value also has the full-cell control.
 #[component]
 fn GridCell(
     cell: Option<TableCell>,
@@ -1131,7 +1129,6 @@ fn GridCell(
     column_modal: Signal<Option<TableColumnModal>>,
     modal_opener: FocusHandle,
 ) -> Element {
-    let mut open = use_signal(|| false);
     let mut expand_button: FocusHandle = use_signal(|| None);
     let class = column.class();
     let Some(cell) = cell else {
@@ -1166,54 +1163,16 @@ fn GridCell(
             class: "x-table-cell",
             style: "{cell_style(class, expandable)}",
             title: "{full}",
-            PopoverRoot {
-                open: open(),
-                on_open_change: move |value: bool| open.set(value),
-                PopoverTrigger {
+            span {
+                class: "x-table-cell-text",
+                for (index, (piece, marked)) in pieces.into_iter().enumerate() {
                     span {
-                        class: "x-table-cell-text",
-                        for (index, (piece, marked)) in pieces.into_iter().enumerate() {
-                            span {
-                                key: "{index}",
-                                // The movement script reveals the first element with this
-                                // attribute, in row and then column order.
-                                "data-table-match": marked.then_some("true"),
-                                style: if marked { "background: rgba(255, 220, 0, 0.5);" } else { "" },
-                                "{piece}"
-                            }
-                        }
-                    }
-                }
-                PopoverContent {
-                    div {
-                        // `overflow-wrap: anywhere`, never a horizontally scrolling card:
-                        // a 4 000-character cell must read, not slide.
-                        style: "max-width: 480px; max-height: 320px; overflow-y: auto; overflow-wrap: anywhere; padding: 8px; font-size: 13px;",
-                        div { style: "white-space: pre-wrap;", "{full}" }
-                        if let Some(exact) = cell.int_value {
-                            // The exact integer, which is the one to copy above 2^53
-                            // where the float the sort uses is approximate.
-                            div { style: "margin-top: 6px; color: rgba(0,0,0,0.55);", "exact: {exact}" }
-                        }
-                        if !cell.formula.is_empty() {
-                            div { style: "margin-top: 6px; font-family: monospace; color: rgba(0,0,0,0.6);", "= {cell.formula}" }
-                        }
-                        // Only ODS carries a cell link; for every other reader its
-                        // absence is normal, so there is no empty link affordance.
-                        if !cell.link.is_empty() {
-                            a {
-                                style: "margin-top: 6px; display: inline-flex; align-items: center; gap: 4px;",
-                                href: "{cell.link}",
-                                target: "_blank",
-                                Icon { icon: MdLink, style: "width: 15px; height: 15px;" }
-                                "{cell.link}"
-                            }
-                        }
-                        div {
-                            style: "margin-top: 8px; display: flex; align-items: center; gap: 6px; color: rgba(0,0,0,0.5); font-size: 13px;",
-                            Icon { icon: MdContentCopy, style: "width: 15px; height: 15px;" }
-                            "{cell.kind}"
-                        }
+                        key: "{index}",
+                        // The movement script reveals the first element with this
+                        // attribute, in row and then column order.
+                        "data-table-match": marked.then_some("true"),
+                        style: if marked { "background: rgba(255, 220, 0, 0.5);" } else { "" },
+                        "{piece}"
                     }
                 }
             }
@@ -1225,7 +1184,6 @@ fn GridCell(
                     "aria-label": "Open full cell",
                     onmounted: move |e| expand_button.set(Some(e.data())),
                     onclick: move |event: Event<MouseData>| {
-                        // The popup opens from the text. This control opens only the modal.
                         event.stop_propagation();
                         modal_opener.set(expand_button());
                         column_modal.set(Some(TableColumnModal::Cell(Box::new(details.clone()))));

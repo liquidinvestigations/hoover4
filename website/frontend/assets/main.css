@@ -442,24 +442,8 @@ html, body, #main {
     font-size: var(--x-text-body); color: black; background-color: white; border-radius: 0.5rem;
 }
 
-/* Table grid cells. The text is an excerpt of at most five lines of at most 80 columns,
-   in a monospaced font, so the browser breaks lines where the excerpt engine breaks them.
-   The line limit here is a fallback for a font whose glyph widths differ. The popup
-   trigger is a button, so it is reset to read as plain text. */
-.x-table-cell .popover {
-    display: block;
-}
-.x-table-cell .popover-trigger {
-    display: block;
-    max-width: 100%;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    text-align: inherit;
-}
+/* Table cell text uses a monospaced font with at most five lines of at most 80 columns.
+   The line limit handles differences in glyph widths. */
 .x-table-cell-text {
     display: -webkit-box;
     -webkit-line-clamp: 5;
