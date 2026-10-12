@@ -22,5 +22,8 @@ WORKDIR /app
 # the source tree that names the project itself.
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project
+# libreoffice-impress-nogui converts PowerPoint and OpenDocument presentations to PDF.
+# This line stays above `ADD . .`, so a source change does not run it again.
+RUN apt-get update -yy && apt-get install -yy libreoffice-impress-nogui
 ADD . .
 RUN uv run main.py version
