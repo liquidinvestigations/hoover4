@@ -116,12 +116,10 @@ html, body, #main {
     width:46px;
     flex-shrink:0;
     height:100%;
-    border-right:1px solid black;
     padding:var(--x-nav-padding);
 }
 #x-page-container {
     height:100%;
-    border-left:1px solid black;
     flex:1;
     /* padding:1rem; */
 }
@@ -314,31 +312,38 @@ html, body, #main {
     cursor: pointer;
 }
 
-/* Suggested follow-up questions under a chat answer. Each one is a button that fills
-   the composer, so the group aligns right like the person's own message. */
+/* Each suggestion fills the composer when selected. */
 .x-chat-follow-ups {
-    position: relative;
-    width: fit-content;
-    max-width: clamp(280px, 50%, 100%);
-    margin: 4px 0 8px auto;
-    padding: 10px 0 10px 52px;
+    width: 100%;
+    margin: 4px 0 8px;
+    padding: 12px;
+    border: 1px solid var(--x-border);
+    border-radius: 14px;
+    background-color: var(--x-surface-muted);
+}
+.x-chat-follow-ups-heading {
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    color: var(--x-ink-faint);
+    font-size: var(--x-text-sm);
+    line-height: var(--x-line-detail);
+}
+.x-chat-follow-ups-cards {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
 }
 .x-chat-follow-ups-mark {
-    position: absolute;
-    top: 6px;
-    left: 0;
-    color: var(--x-ink-faint);
-    opacity: 0.35;
+    display: inline-flex;
     pointer-events: none;
 }
 .x-chat-follow-ups-mark svg {
     fill: currentColor;
 }
 .x-chat-follow-up {
+    min-width: 0;
     max-width: 100%;
     padding: 8px 15px;
     border: 1px solid;
@@ -495,4 +500,50 @@ html, body, #main {
    `filter_modal.rs` sets this attribute. */
 [data-chip-omitted] {
     display: none !important;
+}
+
+.x-navigation-button:not(:disabled):hover {
+    background-color: var(--x-surface-muted) !important;
+}
+.x-navigation-button:not(:disabled):active {
+    background-color: var(--x-selected) !important;
+}
+.x-navigation-button:focus-visible {
+    outline: 2px solid var(--x-link);
+    outline-offset: 2px;
+}
+
+#x-search-toolbar-row > * {
+    flex-shrink: 0;
+}
+#x-search-toolbar-row > #x-search-input-search-box {
+    flex: 0 1 375px;
+    min-width: 120px;
+}
+#x-search-toolbar-row > #x-filter-chips {
+    flex: 1 1 0;
+    min-width: 164px;
+}
+#x-filter-chips {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-right: 8px;
+}
+.x-filter-chips-items {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+}
+[data-chip] {
+    flex-shrink: 0;
+}
+.x-filter-chips-separator {
+    flex-shrink: 0;
+}
+#x-filter-chips[data-chip-overflow="false"] .x-filter-chips-more {
+    display: none;
 }

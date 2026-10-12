@@ -69,13 +69,11 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
     });
 
     rsx! {
-        // One wrapping row for the controls and the chips, so the chips follow Sort and
-        // wrap under the controls. `FilterChips` limits them to one row more than the
-        // controls use. The row does not clip its overflow, because the Sort menu is
-        // positioned inside it.
+        // The chip group measures the width left by these controls.
+        // Keep overflow visible so the Sort menu can open below the toolbar.
         div {
             id: "x-search-toolbar-row",
-            style: "display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; width: 100%; min-width: 0;",
+            style: "display: flex; align-items: center; flex-wrap: nowrap; gap: 10px; width: 100%; min-width: 0;",
 
             div {
                 id: "x-search-input-search-box",
@@ -130,7 +128,6 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
                 on_commit: Callback::new(move |_| trigger_search(())),
             }
 
-            // Directly after Sort: the chip row measures the row of the element before it.
             FilterChips {
                 query: modified_search_query,
                 on_open: Callback::new(move |category: FilterCategory| {

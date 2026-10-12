@@ -32,6 +32,8 @@ A web source without a title uses its URL as the linked title.
 Opening any captured version selects the shared page card. Each quote opens a search term present in that quote.
 Preview find accounts for the display scale when scrolling a match into view.
 Three generated follow-up buttons fill the composer without submitting.
+The buttons share one row inside a card headed "Suggested next...", beside a small question icon.
+Send uses the shared navigation arrow button, including its disabled state and tooltip.
 Every todo call is a tool card inside its group, with its stored arguments, result,
 failure, origin label and the list after the call. A task summary shows after the group
 of a successful todo call that changed what a reader sees: the goal, the item order and

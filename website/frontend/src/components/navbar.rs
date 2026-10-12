@@ -52,7 +52,6 @@ pub fn Navbar() -> Element {
                     gap: 40px;
                     height: 100%;
                     background-color: #1C212D;
-                    border: 1px solid #000000;
                 ",
 
                 // top part
@@ -87,7 +86,7 @@ fn NavbarTopLogo() -> Element {
     rsx! {
         Link {
             to: Route::HomePage { },
-            img { src: asset!("assets/favicon-filled.png"), style: "width: 100%; height: auto;" }
+            img { src: asset!("assets/nav-logo.svg"), alt: "Hoover", style: "width: 100%; height: auto;" }
         }
     }
 }

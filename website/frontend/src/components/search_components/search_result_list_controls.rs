@@ -24,6 +24,7 @@ pub fn SearchResultListControls() -> Element {
             style: "
                 display: flex;
                 flex-direction: row;
+                align-items: center;
                 gap: 4px;
                 padding: 4px 8px;
                 margin: 1px;
@@ -31,7 +32,7 @@ pub fn SearchResultListControls() -> Element {
                 width: 100%;
             ",
             h1 {
-                style: "font-size: var(--x-text-detail); line-height: var(--x-line-detail); font-weight: 300; color:rgb(75, 87, 112);  border-bottom: 1px solid rgb(75, 87, 112);",
+                style: "font-size: var(--x-text-detail); line-height: var(--x-line-detail); font-weight: 300; color:rgb(75, 87, 112); border-bottom: 1px solid rgb(75, 87, 112); padding-bottom: 2px;",
                 SearchForResultsHitCountString { }
             }
             PaginationCapNotice {}
@@ -395,12 +396,16 @@ pub fn NavigationButton<I: dioxus_free_icons::IconShape + Clone + PartialEq + 's
                 button {
                     aria_label: "{label}",
                     disabled: *disabled.read(),
+                    class: "x-navigation-button",
                     style: "
                         width: 30px;
                         height: 30px;
                         background: white;
                         border-radius: 8px;
-                        padding: 4px;
+                        padding: 0;
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
                         box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.16);
                         cursor: {btn_cursor};
                     ",
@@ -479,7 +484,10 @@ pub fn NavigationButton2<I: dioxus_free_icons::IconShape + Clone + PartialEq + '
                         width: 30px;
                         height: 30px;
                         background: transparent;
-                        padding: 4px;
+                        padding: 0;
+                        display: inline-flex;
+                        align-items: center;
+                        justify-content: center;
                         cursor: {btn_cursor};
                     ",
                     onclick: move |_| {

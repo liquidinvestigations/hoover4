@@ -208,13 +208,13 @@ fn SearchHitSelector() -> Element {
                 flex-direction: row;
                 align-items: center;
                 justify-content: center;
-                gap: 12px;
-                padding: 12px;
+                gap: 4px;
+                padding: 0;
             ",
             NavigationButton { icon: MdArrowUpward, label: "Previous Hit", disabled: disable_previous, onclick: move |_| {
                 *current_highlighted_word_index.write() -= 1;
             } }
-            div { style: "min-width: 60px; font-size: var(--x-text-body); line-height: var(--x-line-body); text-align:center;", "{hit_string()}" }
+            div { style: "min-width: 40px; font-size: var(--x-text-body); line-height: var(--x-line-body); text-align:center;", "{hit_string()}" }
             NavigationButton { icon: MdArrowDownward, label: "Next Hit", disabled: disable_next, onclick: move |_| {
                 *current_highlighted_word_index.write() += 1;
             } }

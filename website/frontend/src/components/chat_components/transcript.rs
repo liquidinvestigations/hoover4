@@ -354,10 +354,7 @@ fn citation_placements(messages: &[ChatMessageItem], docs: &[ChatDocRef], pages:
     result
 }
 
-/// The three suggested follow-up questions under an answer. Each one is a button that
-/// fills the composer, so the group aligns right like the person's own message. The
-/// question mark is decorative, so the group needs no heading. The styles are in
-/// `main.css`, because an inline style cannot express hover and focus states.
+/// Three suggestion cards fill and focus the composer when selected.
 #[component]
 fn FollowUpSuggestions(prompts: Vec<String>, mut draft: Signal<String>) -> Element {
     rsx! {
@@ -366,21 +363,28 @@ fn FollowUpSuggestions(prompts: Vec<String>, mut draft: Signal<String>) -> Eleme
                 class: "x-chat-follow-ups",
                 role: "group",
                 "aria-label": "Suggested questions",
-                span {
-                    class: "x-chat-follow-ups-mark",
-                    "aria-hidden": "true",
-                    dioxus_free_icons::Icon { icon: dioxus_free_icons::icons::md_action_icons::MdHelpOutline, width: 44, height: 44 }
+                div {
+                    class: "x-chat-follow-ups-heading",
+                    span {
+                        class: "x-chat-follow-ups-mark",
+                        "aria-hidden": "true",
+                        dioxus_free_icons::Icon { icon: dioxus_free_icons::icons::md_action_icons::MdHelpOutline, width: 13, height: 13 }
+                    }
+                    "Suggested next..."
                 }
-                for (index, prompt) in prompts.into_iter().enumerate() {
-                    button {
-                        key: "{index}",
-                        r#type: "button",
-                        class: "x-chat-follow-up",
-                        onclick: move |_| {
-                            draft.set(prompt.clone());
-                            document::eval("document.querySelector('[data-chat-composer]')?.focus();");
-                        },
-                        "{prompt}"
+                div {
+                    class: "x-chat-follow-ups-cards",
+                    for (index, prompt) in prompts.into_iter().enumerate() {
+                        button {
+                            key: "{index}",
+                            r#type: "button",
+                            class: "x-chat-follow-up",
+                            onclick: move |_| {
+                                draft.set(prompt.clone());
+                                document::eval("document.querySelector('[data-chat-composer]')?.focus();");
+                            },
+                            "{prompt}"
+                        }
                     }
                 }
             }

@@ -94,12 +94,6 @@ fn SearchPageRootComponent(
             "#,
             div {
                 id: "x-search-input-top-bar",
-                // `min-height`, never `height`. The bar holds one wrapping row of controls
-                // and, once a filter is active, chips after Sort that can wrap to one more
-                // row, so its content can exceed the 53px box. A fixed height plus
-                // `align-items: center` does not clip the
-                // overflow at the bottom; it splits it, so the search box and the
-                // Filter/Sort buttons were pushed to a negative `y` and lost their tops.
                 style: "
                     border-bottom: 1px solid rgb(164, 164, 164);
                     background-color: #F8FCFF;
@@ -107,7 +101,7 @@ fn SearchPageRootComponent(
                     display: flex;
                     flex-direction: row;
                     align-items: center;
-                    min-height: 53px;
+                    height: 53px;
                     padding: 4px 0;
                     box-sizing: border-box;
                     width: 100%;
@@ -118,11 +112,8 @@ fn SearchPageRootComponent(
 
             div {
                 id: "x-search-results-bottom-space",
-                // Sized by the flex column, not by subtracting the bar's height. The old
-                // `calc(100% - 76px)` restated the bar's height as a literal, so the two
-                // had to be edited together and a bar that grows by a chip row would have
-                // overlapped this pane. `min-height: 0` is what actually lets a flex child
-                // shrink below its content and scroll internally.
+                // The flex column assigns the height left by the toolbar.
+                // `min-height: 0` permits internal scrolling when content exceeds that height.
                 style: r#"
                     width: 100%;
                     display: flex;

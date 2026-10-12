@@ -241,7 +241,7 @@ fn PreviewSubtitleBar(
                 flex-wrap: nowrap;
                 gap: 8px;
                 align-items: center;
-                min-height: 42px;
+                min-height: var(--x-doc-title-height);
                 padding: 4px 8px;
                 box-sizing: border-box;
                 width: 100%;

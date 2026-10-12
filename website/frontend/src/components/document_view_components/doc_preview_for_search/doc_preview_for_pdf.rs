@@ -121,8 +121,8 @@ pub fn PdfControllerButtons2(controller: PdfViewerControllerDx) -> Element {
                 flex-direction: row;
                 align-items: center;
                 justify-content: center;
-                gap: 12px;
-                padding: 12px;
+                gap: 4px;
+                padding: 0;
             ",
 
 
@@ -137,7 +137,7 @@ pub fn PdfControllerButtons2(controller: PdfViewerControllerDx) -> Element {
 
             div {
                 style: "
-                    min-width: 60px;
+                    min-width: 40px;
                     font-size: var(--x-text-body);
                     line-height: var(--x-line-body);
                     text-align:center;

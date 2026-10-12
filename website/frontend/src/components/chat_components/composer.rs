@@ -10,7 +10,9 @@
 
 use common::chat_types::{ChatOptions, MAX_MESSAGE_CHARS};
 use dioxus::prelude::*;
-use dioxus_free_icons::{Icon, icons::md_av_icons::MdStop};
+use dioxus_free_icons::{Icon, icons::{md_av_icons::MdStop, md_navigation_icons::MdArrowUpward}};
+
+use crate::components::search_components::search_result_list_controls::NavigationButton;
 
 #[component]
 pub fn ChatComposer(
@@ -29,6 +31,9 @@ pub fn ChatComposer(
     // the user can already draft the next message (the server serialises turns per session).
     let disabled = retry_after_seconds.read().is_some() || blocked;
     let locked = options.read().locked;
+    let send_disabled = use_memo(use_reactive!(|blocked| {
+        retry_after_seconds.read().is_some() || blocked || draft.read().trim().is_empty()
+    }));
 
     rsx! {
         div {
@@ -124,22 +129,11 @@ pub fn ChatComposer(
                         }
                     }
                 } else {
-                    button {
-                        style: {
-                            let ready = !draft.read().trim().is_empty() && !disabled;
-                            let bg = if ready { "var(--x-link)" } else { "#E2E8F0" };
-                            let color = if ready { "white" } else { "var(--x-ink-faint)" };
-                            format!(
-                                "width: 40px; height: 40px; border-radius: 999px; border: none; \
-                                 background: {bg}; color: {color}; cursor: {}; font-size: var(--x-text-xl); \
-                                 display: flex; align-items: center; justify-content: center;",
-                                if ready { "pointer" } else { "default" }
-                            )
-                        },
-                        disabled: disabled || draft.read().trim().is_empty(),
-                        title: "Send",
+                    NavigationButton {
+                        icon: MdArrowUpward,
+                        label: "Send",
+                        disabled: send_disabled,
                         onclick: move |_| on_submit.call(()),
-                        "\u{2191}"
                     }
                 }
             }

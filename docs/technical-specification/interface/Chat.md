@@ -14,6 +14,7 @@
 | Close preview | Close the captured page pane. | The conversation stays open. |
 | Search in conversation | Find messages containing the entered text and move between matches. | The count updates while typing. |
 | Follow-up suggestion | Fill and focus the composer with the selected prompt. | The user edits or sends it explicitly. |
+| Send | Submit the composer text. | Empty text and a closed chat gate disable Send. The navigation arrow button includes a Send tooltip. |
 | Tool group | Show or hide the tools, instructions, superseded answers, and the reasoning of the round. | Completed groups start closed. |
 | Todo call card | Expand the stored arguments, the result or failure, and the list after the call. | Every todo call has one card inside its group. |
 | Reasoning | Show or hide the model's reasoning for the answer. | It is inside the group before the answer, or beside an answer that has no group. |
@@ -44,6 +45,7 @@ An active turn shows one line with a turning icon and the text "The bot is worki
 A queued turn adds the slot that it waits for under that line.
 Failed document quotes allocate no new handles.
 Finished answers show three generated follow-up prompts when generation succeeds.
+The prompts occupy three columns inside a card with a question icon and the heading "Suggested next...".
 The centered token footer has a faint separator beneath it.
 An unavailable captured page shows a loading failure.
 Exact find shows the current match and total count.
