@@ -47,7 +47,7 @@ pub fn ChatComposer(
                         line-height: var(--x-line-body); color: var(--x-ink-strong); background: transparent;",
                 rows: 2,
                 maxlength: MAX_MESSAGE_CHARS as i64,
-                placeholder: "Write a query to send commands to the AI",
+                placeholder: "Ask the bot...",
                 value: "{draft}",
                 disabled: disabled,
                 oninput: move |e| draft.set(e.value()),

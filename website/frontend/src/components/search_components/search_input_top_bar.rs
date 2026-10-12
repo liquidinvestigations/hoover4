@@ -80,7 +80,7 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
                 style: "width: 375px; max-width: 100%; margin-left: 16px;",
                 crate::components::search_input::SearchInput {
                     value: input_value,
-                    placeholder: "Search in knowledgebase",
+                    placeholder: "Search collections...",
                     on_change: move |value: String| modified_search_query.write().query_string = value,
                     on_submit: move |_| trigger_search(()),
                 }

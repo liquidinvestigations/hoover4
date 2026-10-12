@@ -170,7 +170,7 @@ fn SearchCardInput() -> Element {
             Icon { icon: MdSearch, style: "width: 19px; height: 19px; color:#6B7280;" }
             input {
                 r#type: "text",
-                placeholder: "Search in knowledgebase",
+                placeholder: "Search collections...",
                 style: "
                     flex:1;
                     border: none;

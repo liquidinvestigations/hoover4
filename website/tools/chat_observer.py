@@ -295,7 +295,7 @@ CAPTURE_INTERVAL_S = 5.0
 
 # Selectors against the real markup in `frontend/src/components/chat_components/`.
 # `composer.rs`: the textarea has this placeholder and the send button this title.
-TEXTAREA_SEL = "textarea[placeholder='Write a query to send commands to the AI']"
+TEXTAREA_SEL = "textarea[placeholder='Ask the bot...']"
 SEND_BUTTON_SEL = "button[title='Send']"
 # `transcript.rs` gives the transcript pane this id and the `data-chat-turn` state.
 TRANSCRIPT_SEL = "#x-chat-transcript"
