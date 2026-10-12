@@ -45,7 +45,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use common::vfs::{VfsNodeKind, VfsTreeChildren, VfsTreeNode, dataset_root_key};
+use common::storage_tree::format_size;
+use common::vfs::{SubtreeStats, VfsNodeKind, VfsTreeChildren, VfsTreeNode, dataset_root_key};
 use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
@@ -57,7 +58,7 @@ use dioxus_free_icons::{
     },
 };
 
-use crate::api::vfs_api::{vfs_tree_children, vfs_tree_path_to};
+use crate::api::vfs_api::{vfs_subtree_stats, vfs_tree_children, vfs_tree_path_to};
 
 /// Children fetched per request. Past this the tree shows a "N more…" row rather than
 /// rendering forty thousand siblings and freezing the tab; clicking it fetches the next
@@ -229,6 +230,9 @@ pub struct TreeContext {
     page_offsets: Signal<BTreeMap<String, u64>>,
     /// Fetch errors keyed by parent, so a failed page stays a row rather than a blank.
     fetch_errors: Signal<BTreeMap<String, String>>,
+    /// File and byte counts below each node, by node key. Filled for the `Picker` skin
+    /// only, once for each page of children fetched from the server.
+    subtree_stats: Signal<BTreeMap<String, SubtreeStats>>,
 }
 
 /// The tree rooted at one dataset.
@@ -258,6 +262,7 @@ pub fn VfsTree(
     let child_pages = use_signal(BTreeMap::<(String, u64), CachedChildren>::new);
     let page_offsets = use_signal(BTreeMap::<String, u64>::new);
     let fetch_errors = use_signal(BTreeMap::<String, String>::new);
+    let subtree_stats = use_signal(BTreeMap::<String, SubtreeStats>::new);
     use_context_provider({
         let collection_dataset = collection_dataset.clone();
         move || TreeContext {
@@ -272,6 +277,7 @@ pub fn VfsTree(
             child_pages,
             page_offsets,
             fetch_errors,
+            subtree_stats,
         }
     });
     let expanded = use_signal(|| initially_expanded.iter().cloned().collect::<BTreeSet<String>>());
@@ -762,10 +768,33 @@ fn VfsTreeLevelFetch(parent_key: String) -> Element {
 
     let mut child_pages_signal = context.child_pages;
     let mut fetch_errors = context.fetch_errors;
+    let mut subtree_stats = context.subtree_stats;
+    let skin = context.skin;
+    let stats_dataset = context.collection_dataset.clone();
     use_effect(move || {
         match children.read().clone() {
             Some(Ok(result)) => {
                 let page = result.page.clone();
+                // The picker shows the file and byte counts of each row. One request for
+                // the whole page, and only for a page the server just answered: a cached
+                // page already has its values in the map.
+                if skin == TreeSkin::Picker && !result.from_cache && !page.nodes.is_empty() {
+                    let dataset = stats_dataset.clone();
+                    let nodes: Vec<(String, String)> = page
+                        .nodes
+                        .iter()
+                        .map(|node| {
+                            let hash = if node.kind == VfsNodeKind::Container { node.file_hash.clone() } else { String::new() };
+                            (node.node_key.clone(), hash)
+                        })
+                        .collect();
+                    spawn(async move {
+                        if let Ok(values) = vfs_subtree_stats(dataset, nodes).await {
+                            record_tree_query("subtree_stats", false, values.datastore_queries, values.took_ms);
+                            subtree_stats.write().extend(values.stats);
+                        }
+                    });
+                }
                 let asked_parent = parent();
                 let asked_offset = context.page_offsets.peek().get(&asked_parent).copied().unwrap_or(0);
                 if page.parent_key != asked_parent || result.offset != asked_offset {
@@ -1098,6 +1127,35 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool) -
                     "depth {tree_depth}"
                 }
             }
+
+            if skin == TreeSkin::Picker {
+                SubtreeStatsCells { stats: context.subtree_stats.read().get(&node_key).copied() }
+            }
+        }
+    }
+}
+
+/// The size and file count cells at the end of a picker row: the size centred, the count
+/// right-aligned. Unknown values leave both cells empty, with their width kept so the
+/// columns of the rows stay aligned.
+#[component]
+pub(crate) fn SubtreeStatsCells(stats: Option<SubtreeStats>) -> Element {
+    let (size, files) = match stats {
+        Some(stats) => (format_size(stats.size_bytes), stats.file_count.to_string()),
+        None => (String::new(), String::new()),
+    };
+    rsx! {
+        div {
+            class: "x-subtree-size",
+            style: "flex: 0 0 72px; text-align: center; font-size: 13px; color: rgba(0,0,0,0.55); white-space: nowrap;",
+            title: "Stored size of the files below. Files inside archives and emails do not add their size again.",
+            "{size}"
+        }
+        div {
+            class: "x-subtree-files",
+            style: "flex: 0 0 56px; text-align: right; font-size: 13px; color: rgba(0,0,0,0.55); white-space: nowrap;",
+            title: "Files below, with the files inside archives and emails",
+            "{files}"
         }
     }
 }

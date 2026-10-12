@@ -359,7 +359,9 @@ pane still addresses that level as the descriptor `container_hash + "/"`. A desc
 and a tree node are different things. Past
 `MAX_CRUMBS_SHOWN` (3) the leading crumbs collapse into a `…` chip whose popup lists them.
 
-Every tree endpoint reads through `manticore_search_sql_uncached`.
+Every tree endpoint reads through `manticore_search_sql_uncached`. The file and byte counts
+of the file location picker and the folder listing come from ClickHouse `vfs_nodes`, also
+without a cache (`api/vfs/stats.rs`).
 The mounted dataset tree retains child pages and resolved paths for five seconds.
 Navigation or remount refreshes expired entries while existing rows remain visible.
 Successful path results retain their original fetch time, and failed requests remain errors.

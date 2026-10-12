@@ -3,7 +3,7 @@
 use common::search_query::SearchQuery;
 use common::search_result::DocumentIdentifier;
 use common::storage_tree::{DatasetAggregates, format_size};
-use common::vfs::{PathDescriptor, VfsFileEntry, VfsListing};
+use common::vfs::{PathDescriptor, SubtreeStats, VfsFileEntry, VfsListing};
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::go_icons::GoDatabase;
@@ -969,6 +969,7 @@ fn ListingTable(
                 tr {
                     th { style: TH_NAME_STYLE, "Name" }
                     th { style: TH_DETAILS_STYLE, "" }
+                    th { style: TH_SIZE_STYLE, "Files" }
                     th { style: TH_SIZE_STYLE, "Size" }
                     th { style: TH_ACTIONS_STYLE, "" }
                 }
@@ -980,6 +981,7 @@ fn ListingTable(
                         collection: collection.clone(),
                         name: dir.name.clone(),
                         path: dir.path.clone(),
+                        stats: dir.stats,
                     }
                 }
                 for file in listing.files.iter() {
@@ -1001,7 +1003,12 @@ fn ListingTable(
 }
 
 #[component]
-fn DirRow(collection: String, name: String, path: PathDescriptor) -> Element {
+fn DirRow(collection: String, name: String, path: PathDescriptor, stats: Option<SubtreeStats>) -> Element {
+    // Unknown values leave both cells empty.
+    let (files, size) = match stats {
+        Some(stats) => (stats.file_count.to_string(), format_size(stats.size_bytes)),
+        None => (String::new(), String::new()),
+    };
     let target_path = path.clone();
     let target_collection = collection.clone();
     rsx! {
@@ -1027,7 +1034,16 @@ fn DirRow(collection: String, name: String, path: PathDescriptor) -> Element {
                 // no container for dir
                 style: TD_DETAILS_STYLE,
             }
-            td { style: TD_SIZE_STYLE, "" }
+            td {
+                style: TD_SIZE_STYLE,
+                title: "Files below this folder, with the files inside archives and emails",
+                "{files}"
+            }
+            td {
+                style: TD_SIZE_STYLE,
+                title: "Stored size of the files below this folder. Files inside archives and emails do not add their size again.",
+                "{size}"
+            }
             td { style: TD_ACTIONS_STYLE, "" }
         }
     }
@@ -1086,6 +1102,8 @@ fn FileRow(
         path: "/".to_string(),
     };
     let enter_collection = collection.clone();
+    // 0 for a plain file. An unknown container value leaves the cell empty.
+    let file_count = file.file_count.map(|count| count.to_string()).unwrap_or_default();
     rsx! {
         tr {
             onmounted: move |_d| onmounted.call((click_doc_id.read().clone(), _d)),
@@ -1123,6 +1141,11 @@ fn FileRow(
                         on_file_click,
                     }
                 }
+            }
+            td {
+                style: TD_SIZE_STYLE,
+                title: if is_container { "Files inside this archive or email, at every level" } else { "" },
+                "{file_count}"
             }
             td { style: TD_SIZE_STYLE, "{format_size(file.file_size_bytes)}" }
             td {

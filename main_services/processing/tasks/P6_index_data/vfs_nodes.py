@@ -199,6 +199,9 @@ class VfsNode:
     file_size_bytes: int
     depth: int
     subfolder_count: int = 0
+    #: See :func:`compute_subtree_stats`. -1 until it runs.
+    subtree_file_count: int = -1
+    subtree_size_bytes: int = -1
 
     @property
     def name(self) -> str:
@@ -326,6 +329,7 @@ def build_node_rows(
     for node in nodes.values():
         if node.kind != KIND_FILE and node.parent_key in nodes and node.parent_key != node.node_key:
             nodes[node.parent_key].subfolder_count += 1
+    compute_subtree_stats(nodes.values())
 
     if rejected:
         log.warning(
@@ -333,6 +337,104 @@ def build_node_rows(
             "tree: %s", collection_dataset, len(rejected), rejected[:10],
         )
     return sorted(nodes.values(), key=lambda n: n.node_key)
+
+
+def compute_subtree_stats(nodes) -> None:
+    """Set ``subtree_file_count`` and ``subtree_size_bytes`` on every node.
+
+    The file count of a folder is the number of file and container nodes below it, with
+    every container opened at every level. A container that lives at two paths adds its
+    members under both, so the count is what a person sees after opening every folder.
+    A container counts 1 in its parent folders, and its own row counts its members.
+
+    The size of a folder is the sum of the stored file sizes below it at its own
+    container level. A container file adds its own size once, and its members do not add
+    theirs again. The size of a container row is the sum of the sizes directly inside it.
+    A plain file reads 0 for both.
+
+    The cycle rule. A walk never opens a container whose hash is already open on it. The
+    container that holds the start node starts open, and so does a container start node
+    itself. A container that is not opened still counts as one file. The website's
+    read-time fallback (`website/backend/src/api/vfs/stats.rs`) implements the same rule,
+    and the two must give the same numbers.
+    """
+    nodes = list(nodes)
+    if not nodes:
+        return
+    # One container level: files directly in it, their sizes, and the containers among them.
+    level_files: dict[str, int] = {}
+    level_bytes: dict[str, int] = {}
+    level_inner: dict[str, list[str]] = {}
+    for node in nodes:
+        node.subtree_file_count = 0
+        node.subtree_size_bytes = 0
+        if node.kind == KIND_DIR or not node.container_hash:
+            continue
+        h = node.container_hash
+        level_files[h] = level_files.get(h, 0) + 1
+        level_bytes[h] = level_bytes.get(h, 0) + max(node.file_size_bytes, 0)
+        if node.kind == KIND_CONTAINER:
+            level_inner.setdefault(h, []).append(node.file_hash)
+
+    # A result that no cycle cut does not depend on what was open when it was computed,
+    # so only those are kept.
+    memo: dict[str, int] = {}
+
+    def count_members(start: str, opened: frozenset) -> int:
+        """Files inside container ``start``, opening inner containers. Iterative, so a
+        long nesting chain cannot exhaust the interpreter stack."""
+        if start in memo:
+            return memo[start]
+        # [hash, open set, next inner index, running total, cut]
+        frames = [[start, opened, 0, level_files.get(start, 0), False]]
+        total = 0
+        while frames:
+            frame = frames[-1]
+            h, open_set, index, _, _ = frame
+            inner = level_inner.get(h, ())
+            if index < len(inner):
+                frame[2] += 1
+                child = inner[index]
+                if child in open_set:
+                    frame[4] = True
+                elif child in memo:
+                    frame[3] += memo[child]
+                else:
+                    frames.append([child, open_set | {child}, 0, level_files.get(child, 0), False])
+                continue
+            frames.pop()
+            _, _, _, total, cut = frame
+            if not cut:
+                memo[h] = total
+            if frames:
+                frames[-1][3] += total
+                frames[-1][4] = frames[-1][4] or cut
+        return total
+
+    by_key = {node.node_key: node for node in nodes}
+    dataset = nodes[0].node_key.split(UNIT_SEP, 1)[0]
+    for node in nodes:
+        if node.kind == KIND_DIR:
+            continue
+        files = 1
+        if node.kind == KIND_CONTAINER:
+            holder = {node.container_hash} if node.container_hash else set()
+            members = count_members(node.file_hash, frozenset(holder | {node.file_hash}))
+            node.subtree_file_count = members
+            node.subtree_size_bytes = level_bytes.get(node.file_hash, 0)
+            if node.file_hash != node.container_hash:
+                # For the folders above it the holder is already open, so a container
+                # that holds a copy of itself counts there as one file.
+                files += members
+        size = max(node.file_size_bytes, 0)
+        for ancestor in path_ancestors(node.path):
+            if node.container_hash and ancestor == "/":
+                # The top of a container is the container node itself.
+                continue
+            folder = by_key.get(make_node_key(dataset, node.container_hash, ancestor))
+            if folder is not None:
+                folder.subtree_file_count += files
+                folder.subtree_size_bytes += size
 
 
 def _assign_depths(nodes: dict[str, VfsNode], root_key: str) -> None:

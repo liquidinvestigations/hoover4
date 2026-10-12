@@ -21,10 +21,13 @@ with workflow.unsafe.imports_passed_through():
         ensure_collection_database,
         purge_dataset_from_clickhouse,
         purge_dataset_from_manticore,
+        find_dataset_without_subtree_stats,
         recompute_shard_ledger_activity,
         sweep_chat_artifacts,
         sweep_orphan_table_cells,
     )
+    from tasks.P6_index_data.activities import build_vfs_nodes
+    from tasks.P6_index_data.workflows import INDEXING_TASK_QUEUE
     from tasks.P_ops.activities import supervise_operations
     from tasks.P_agent.supervise import supervise_agent_runs
     from tasks.P_admin.ocr_languages import (
@@ -845,3 +848,52 @@ class SweepChatArtifacts:
             workflow.logger.info("chat artifact sweep: %s", last)
         workflow.continue_as_new()
         return last
+
+
+#: Sleep between passes of ``FillVfsSubtreeStats`` when no dataset needs a fill.
+SUBTREE_FILL_IDLE = timedelta(minutes=10)
+
+
+@workflow.defn
+class FillVfsSubtreeStats:
+    """Writes the subtree file and byte counts of datasets that do not have them.
+
+    ``build_vfs_nodes`` writes the values on every processing run. A dataset processed
+    before the columns existed keeps -1 until its next run, so this singleton rebuilds
+    such datasets one at a time, through the same activity and the same stale sweep. It
+    runs apart from ``CollectEtaSamples``: a build of a large dataset takes minutes, and
+    that loop also supervises operations and agent runs.
+
+    Started once at worker bootstrap with ``USE_EXISTING``, like ``CollectEtaSamples``.
+    """
+
+    @workflow.run
+    async def run(self) -> str:
+        filled = 0
+        # Bounded history: continue_as_new after this many passes.
+        for _ in range(200):
+            try:
+                target = await workflow.execute_activity(
+                    find_dataset_without_subtree_stats,
+                    start_to_close_timeout=timedelta(minutes=5),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=2),
+                )
+                if target is not None:
+                    await workflow.execute_activity(
+                        build_vfs_nodes, target,
+                        start_to_close_timeout=timedelta(minutes=30),
+                        heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                        retry_policy=RetryPolicy(maximum_attempts=2),
+                        task_queue=INDEXING_TASK_QUEUE,
+                    )
+                    filled += 1
+                    workflow.logger.info("subtree values written for %s", target.collection_dataset)
+                    continue
+            except ActivityError as exc:
+                if _is_cancellation(exc):
+                    raise
+                workflow.logger.warning("Subtree value fill failed: %s", exc)
+            await workflow.sleep(SUBTREE_FILL_IDLE)
+        workflow.continue_as_new()
+        return f"{filled} datasets filled"

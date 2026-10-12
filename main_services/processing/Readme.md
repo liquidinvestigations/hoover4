@@ -93,6 +93,9 @@ each date came from. `parse_email` writes structured `email_addresses` rows and 
   there is no `/` node in between. `ExecutePlans` runs it once per batch, before the
   per-plan writers, and again after them. An invocation that finds no pending
   plans still rebuilds it, so a rescan of known bytes updates the tree.
+  Every row also gets `subtree_file_count` and `subtree_size_bytes`, the file count
+  and byte count below the node (`compute_subtree_stats`). The `FillVfsSubtreeStats`
+  singleton reruns the build for an idle dataset whose root row still reads -1.
 * `index_vfs_structure`, copies it into the collection's `<name>_vfs` Manticore table
   with multi-row REPLACE, then deletes Manticore rows whose `node_key` is not in the
   current ClickHouse tree. It runs once per `ExecutePlans` invocation.

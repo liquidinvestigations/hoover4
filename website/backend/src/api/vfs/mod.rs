@@ -1,6 +1,8 @@
 //! Virtual file system browsing endpoints.
 
+pub mod stats;
 pub mod tree;
+pub use stats::{vfs_dataset_subtree_stats, vfs_subtree_stats};
 pub use tree::{
     vfs_search_in_folder, vfs_tree_children, vfs_tree_children_after, vfs_tree_container_node,
     vfs_tree_path_to, vfs_tree_path_with_stats,
@@ -10,7 +12,7 @@ use std::collections::BTreeSet;
 
 use common::current_user::CurrentUser;
 use common::search_result::DocumentIdentifier;
-use common::vfs::{PathDescriptor, VfsDirectoryEntry, VfsFileEntry, VfsListing};
+use common::vfs::{PathDescriptor, VfsDirectoryEntry, VfsFileEntry, VfsListing, make_node_key};
 
 use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils::get_client_for_dataset;
@@ -114,12 +116,47 @@ pub async fn list_folder_children(
         .fetch_all()
         .await?;
 
+    let file_hashes = BTreeSet::from_iter(file_rows.iter().map(|(_, hash, _)| hash.clone()));
+    let container_hashes = _get_container_hashes(&client, collection_dataset.clone(), file_hashes)
+        .await
+        .unwrap_or_default();
+
+    // The file and byte counts below each folder and container in this listing. The
+    // keys are built from the raw paths, which `build_node_rows` normalises: a path that
+    // is not normalised misses its row and gets the `vfs_files` fallback. A failure
+    // leaves the cells empty and does not fail the listing.
+    let node_key = |child: &str| make_node_key(&collection_dataset, &path.container_hash, child);
+    let targets: Vec<stats::StatsTarget> = dir_paths
+        .iter()
+        .map(|child| (child, None))
+        .chain(
+            file_rows
+                .iter()
+                .filter(|(_, hash, _)| container_hashes.contains(hash))
+                .map(|(child, hash, _)| (child, Some(hash.clone()))),
+        )
+        .map(|(child, container_file_hash)| stats::StatsTarget {
+            node_key: node_key(child),
+            container_hash: path.container_hash.clone(),
+            path: child.clone(),
+            container_file_hash,
+        })
+        .collect();
+    let subtree = match stats::stats_for_targets(&client, &collection_dataset, &targets).await {
+        Ok((values, _)) => values,
+        Err(error) => {
+            tracing::warn!("subtree values for {collection_dataset} {path} failed: {error:#}");
+            Default::default()
+        }
+    };
+
     let directories = dir_paths
         .into_iter()
         .map(|full_path| {
             let name = full_path[prefix.len()..].to_string();
             VfsDirectoryEntry {
                 name,
+                stats: subtree.get(&node_key(&full_path)).copied(),
                 path: PathDescriptor {
                     container_hash: path.container_hash.clone(),
                     path: full_path,
@@ -127,11 +164,6 @@ pub async fn list_folder_children(
             }
         })
         .collect();
-
-    let file_hashes = BTreeSet::from_iter(file_rows.iter().map(|(_, hash, _)| hash.clone()));
-    let container_hashes = _get_container_hashes(&client, collection_dataset.clone(), file_hashes)
-        .await
-        .unwrap_or_default();
 
     // The row's glyph, from the same table the search card and the viewer read. One
     // query, for this one dataset. A file with no row yet gets the generic icon.
@@ -147,6 +179,12 @@ pub async fn list_folder_children(
         .into_iter()
         .map(|(full_path, hash, file_size_bytes)| {
             let name = full_path[prefix.len()..].to_string();
+            let is_container = container_hashes.contains(&hash);
+            let file_count = if is_container {
+                subtree.get(&node_key(&full_path)).map(|value| value.file_count)
+            } else {
+                Some(0)
+            };
             VfsFileEntry {
                 name,
                 path: PathDescriptor {
@@ -159,7 +197,8 @@ pub async fn list_folder_children(
                     .unwrap_or_default(),
                 hash: hash.clone(),
                 file_size_bytes,
-                is_container: container_hashes.contains(&hash),
+                is_container,
+                file_count,
             }
         })
         .collect();

@@ -57,7 +57,7 @@ languages.
 | `F-search-07` | Filter by file size, with unknown size distinct from zero | `website/backend/src/api/search/search_sql.rs` |
 | `F-search-08` | Sort by the greatest matching page score across shards. Sort date, file size, or name in either direction. Keep score independent of snippet selection. | `api/search/`, `website/common/src/search_query.rs` |
 | `F-search-09` | Find a document by filename. A filename-only match does not seed the viewer row filter. | the synthetic filename row |
-| `F-search-10` | Narrow to a folder, including through containers, from the tree or the filter pane | `api/vfs/` |
+| `F-search-10` | Narrow to a folder, including through containers, from the tree or the filter pane. The filter pane's file location tree shows the byte count and the file count of each collection, dataset, folder and container row. | `api/vfs/` |
 | `F-search-11` | Report a partial result when some collections could not be searched, and offer a retry | `website/backend/src/api/search/fanout.rs` |
 | `F-search-12` | Carry the whole query (words, filters, sort, page, selection, viewer arrangement) in the URL | `website/frontend/src/data_definitions/url_param.rs` |
 | `F-search-13` | Cache search responses, invalidated by a collection's shard generation and by a manual epoch | the search cache table |
@@ -89,6 +89,9 @@ languages.
 | `F-store-03` | Resize the storage sidebar, the storage preview, the search preview, both side panes of the document view and the chat side pane by dragging their dividers. Remember each width in local storage, restore it on the next load, and reset it on a double-click | `website/frontend/src/components/resizable_sidebar.rs` |
 | `F-store-04` | Navigate by breadcrumb across container boundaries | `website/backend/src/api/vfs/tree.rs` |
 | `F-store-05` | Read each tree endpoint request without the search cache, revalidate expired browser entries on navigation or remount, and report datastore query count and duration on each structure response | `website/backend/src/api/vfs/tree.rs` |
+| `F-store-07` | Store the file count and the byte count below every VFS node in `vfs_nodes`. Count every file below, with archive and email members at every level, once for each location of a container. Sum the stored sizes at the node's own container level. Write both on every tree build, and rebuild an idle dataset whose values are missing. | `main_services/processing/tasks/P6_index_data/vfs_nodes.py`, `FillVfsSubtreeStats` |
+| `F-store-08` | Read the file count and byte count of the nodes on screen with one `vfs_nodes` multi-get. Compute missing values from prefix sums over `vfs_nodes`, or over `vfs_files` for a node without a row. Show nothing for a value that is still unknown. | `website/backend/src/api/vfs/stats.rs` |
+| `F-store-09` | Show a Files column before the Size column of the folder listing. A folder shows its file count and byte count. A file shows 0, or the number of files inside it for an archive or an email. | `website/frontend/src/pages/file_browser_page.rs` |
 | `F-store-06` | Show the storage root as one card for each readable collection, with its dataset count and the summed documents, size, indexed documents and processing errors of its readable datasets. Show each collection's datasets as cards with the same statistics. Read both from the cached `dataset_stats` table. Mark a processing collection or dataset, and say when a dataset is not counted yet. | `website/backend/src/api/list_datasets.rs`, `website/frontend/src/pages/file_browser_page.rs` |
 
 ## Browser verification

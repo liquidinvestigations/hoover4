@@ -60,6 +60,34 @@ impl std::fmt::Display for PathDescriptor {
 pub struct VfsDirectoryEntry {
     pub name: String,
     pub path: PathDescriptor,
+    /// The files and bytes below this folder. `None` when the values are not known, and
+    /// the listing then shows nothing in those cells.
+    #[serde(default)]
+    pub stats: Option<SubtreeStats>,
+}
+
+/// The file count and byte count below one VFS node.
+///
+/// `file_count` counts every file below the node, with archive and email members opened
+/// at every level, once for each location of a container. `size_bytes` sums the stored
+/// sizes of the files below the node at the node's own container level, so the bytes of
+/// an archive count once and its members do not add theirs again. The pipeline writes
+/// both into `vfs_nodes` in `build_vfs_nodes`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct SubtreeStats {
+    pub file_count: u64,
+    pub size_bytes: u64,
+}
+
+/// [`SubtreeStats`] for a set of node keys, and the query cost of reading them. A key
+/// without known values is absent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct VfsSubtreeStats {
+    pub stats: std::collections::BTreeMap<String, SubtreeStats>,
+    #[serde(default)]
+    pub datastore_queries: u64,
+    #[serde(default)]
+    pub took_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -69,6 +97,10 @@ pub struct VfsFileEntry {
     pub hash: String,
     pub file_size_bytes: u64,
     pub is_container: bool,
+    /// Files inside this file: 0 for a plain file, every member at every level for an
+    /// archive or an email. `None` when the value of a container is not known.
+    #[serde(default)]
+    pub file_count: Option<u64>,
     /// The canonical file type (`table`, `pdf`, `email`, …), for the row's glyph. Same
     /// source as the search card's and the viewer's, so one document is one symbol
     /// everywhere. Empty for a file the type resolver has not reached.

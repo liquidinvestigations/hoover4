@@ -297,6 +297,7 @@ async def run_common_worker():
         ensure_collection_database,
         purge_dataset_from_clickhouse,
         purge_dataset_from_manticore,
+        find_dataset_without_subtree_stats,
         recompute_shard_ledger_activity,
         sweep_chat_artifacts,
         sweep_orphan_table_cells,
@@ -331,6 +332,7 @@ async def run_common_worker():
         RerunOcr,
         CollectEtaSamples,
         DropCollectionDatabase,
+        FillVfsSubtreeStats,
         EnsureCollectionDatabase,
         PurgeDataset,
         SweepChatArtifacts,
@@ -370,6 +372,19 @@ async def run_common_worker():
     except temporalio.exceptions.WorkflowAlreadyStartedError:
         pass
 
+    # Subtree value fill for datasets built before the columns existed. Same singleton
+    # pattern as the two above.
+    try:
+        await client.start_workflow(
+            FillVfsSubtreeStats.run,
+            id="fill-vfs-subtree-stats",
+            task_queue="processing-common-queue",
+            id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+            id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
+        )
+    except temporalio.exceptions.WorkflowAlreadyStartedError:
+        pass
+
     CONCURRENCY = worker_concurrency("common", 3)
     with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
         worker = Worker(
@@ -401,6 +416,7 @@ async def run_common_worker():
             OcrRunPlan,
             CollectEtaSamples,
             SweepChatArtifacts,
+            FillVfsSubtreeStats,
           ],
           activities=[
             plan_folder_ranges,
@@ -451,6 +467,7 @@ async def run_common_worker():
             sweep_orphan_table_cells,
             collect_eta_samples,
             sweep_chat_artifacts,
+            find_dataset_without_subtree_stats,
 
             # P_admin change_ocr_languages apply job
             begin_ocr_language_job,

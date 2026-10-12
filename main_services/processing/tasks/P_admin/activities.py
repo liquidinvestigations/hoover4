@@ -11,6 +11,7 @@ import logging
 from temporalio import activity
 
 from tasks.P_admin.eta_collector import CollectEtaSamplesParams, CollectEtaSamplesResult
+from tasks.P6_index_data.params import BuildVfsNodesParams
 from tasks.heartbeat import with_heartbeat
 
 log = logging.getLogger(__name__)
@@ -290,3 +291,44 @@ def sweep_chat_artifacts() -> str:
     from tasks.P_admin.artifact_sweeper import sweep_json
 
     return sweep_json()
+
+
+@activity.defn
+@with_heartbeat
+def find_dataset_without_subtree_stats() -> BuildVfsNodesParams | None:
+    """One dataset whose ``vfs_nodes`` rows still read -1 for the subtree values, or None.
+
+    The test reads only the dataset root rows, by primary key. ``build_vfs_nodes``
+    writes every row of a dataset at once, so a root with values means the whole tree
+    has them. A dataset with no root row has never been built and is left to its own
+    processing run. A dataset that a live operation holds is skipped, because that
+    operation runs the build itself and two builds would race their sweeps.
+    """
+    from database.clickhouse import get_collection_client, get_global_client, list_collections
+    from database.dataset_stats import DONE, dataset_state
+    from database.operations import open_operations_for_collection
+    from tasks.P6_index_data.vfs_nodes import dataset_root_key
+
+    for collectionname in list_collections():
+        with get_global_client() as client:
+            datasets = [row[0] for row in client.query(
+                "SELECT collection_dataset FROM dataset FINAL "
+                "WHERE collectionname = {c:String} AND is_deleted = 0",
+                parameters={"c": collectionname},
+            ).result_rows]
+        if not datasets:
+            continue
+        with get_collection_client(collectionname) as client:
+            missing = [row[0] for row in client.query(
+                "SELECT collection_dataset FROM vfs_nodes FINAL "
+                "WHERE (collection_dataset, node_key) IN {keys:Array(Tuple(String, String))} "
+                "AND subtree_file_count < 0 ORDER BY collection_dataset",
+                parameters={"keys": [(d, dataset_root_key(d)) for d in datasets]},
+            ).result_rows]
+        if not missing:
+            continue
+        live = open_operations_for_collection(collectionname)
+        for collection_dataset in missing:
+            if dataset_state(collection_dataset, live) == DONE:
+                return BuildVfsNodesParams(collectionname, collection_dataset)
+    return None

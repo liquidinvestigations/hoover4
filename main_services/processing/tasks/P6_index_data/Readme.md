@@ -31,6 +31,11 @@ once, on `processing-email-graph-queue`. A batch that ran no plan, for example a
 known bytes, skips the graph, because the graph reads the whole collection and nothing it
 reads has changed. `IndexDatasetPlan` itself writes shards only.
 Its finalizer has six attempts, with delays from 30 seconds up to 10 minutes.
+`build_vfs_nodes` also writes `subtree_file_count` and `subtree_size_bytes` on every
+row. `compute_subtree_stats` in `vfs_nodes.py` defines them, including the cycle rule
+that the website's read-time fallback repeats. The `FillVfsSubtreeStats` singleton in
+`tasks/P_admin/workflows.py` reruns `build_vfs_nodes` for one idle dataset at a time whose
+root row still reads -1, which is the state of a dataset built before the columns existed.
 `RefreshDocumentLocations` rebuilds the tree and rewrites page-row folder attributes
 for a dataset whose indexed locations lag `vfs_files`. It does not extract, OCR, or
 embed, and it is not started at deployment. It reads indexed `file_paths` from the

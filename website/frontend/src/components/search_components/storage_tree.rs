@@ -19,7 +19,7 @@
 use std::collections::BTreeSet;
 
 use common::storage_tree::CollectionNode;
-use common::vfs::{VfsTreeNode, dataset_root_key, node_key_is_in_dataset};
+use common::vfs::{SubtreeStats, VfsTreeNode, dataset_root_key, node_key_is_in_dataset};
 use dioxus::prelude::*;
 use dioxus_free_icons::{
     Icon,
@@ -31,9 +31,11 @@ use dioxus_free_icons::{
 };
 
 use crate::api::storage_api::list_storage_tree;
+use crate::api::vfs_api::vfs_dataset_subtree_stats;
 use crate::components::search_components::vfs_tree::{
-    LABEL_STYLE, MORE_ROW_STYLE, ROW_STYLE, SiblingWindow, TREE_QUERY_LOG, TreeSkin, TriState,
-    VfsTree, indent_style, tree_query_log_json, tri_state_icon, window_siblings,
+    LABEL_STYLE, MORE_ROW_STYLE, ROW_STYLE, SiblingWindow, SubtreeStatsCells, TREE_QUERY_LOG, TreeSkin,
+    TriState, VfsTree, indent_style, record_tree_query, tree_query_log_json, tri_state_icon,
+    window_siblings,
 };
 
 /// Rows above a folder: the collection and the dataset. Folders indent from here.
@@ -180,6 +182,27 @@ pub fn StorageTree(
     // One request for every collection and dataset the user may read. Nothing below is
     // fetched until a dataset row is expanded.
     let tree = use_resource(move || async move { list_storage_tree().await });
+    // The picker's dataset and collection rows show the file and byte counts of each
+    // dataset root, in one request once the datasets are known. The sidebar asks nothing.
+    let root_stats = use_resource(move || {
+        let datasets: Vec<String> = match &*tree.read() {
+            Some(Ok(nodes)) if skin == TreeSkin::Picker => nodes.iter().flat_map(|n| n.dataset_ids()).collect(),
+            _ => Vec::new(),
+        };
+        async move {
+            if datasets.is_empty() {
+                return std::collections::BTreeMap::new();
+            }
+            match vfs_dataset_subtree_stats(datasets).await {
+                Ok(values) => {
+                    record_tree_query("subtree_stats", false, values.datastore_queries, values.took_ms);
+                    values.stats
+                }
+                Err(_) => std::collections::BTreeMap::new(),
+            }
+        }
+    });
+    let root_stats = root_stats.read().clone().unwrap_or_default();
     let mut expanded = use_signal(BTreeSet::<String>::new);
     let unfolded = use_signal(BTreeSet::<String>::new);
 
@@ -246,6 +269,7 @@ pub fn StorageTree(
                 for node in level.items {
                     CollectionBranch {
                         key: "{node.collectionname}",
+                        root_stats: root_stats.clone(),
                         node: node.clone(),
                         skin,
                         selected,
@@ -297,6 +321,8 @@ fn TreeQueryLogProbe() -> Element {
 
 #[component]
 fn CollectionBranch(
+    /// Dataset root values by root node key. Empty outside the picker.
+    root_stats: std::collections::BTreeMap<String, SubtreeStats>,
     node: CollectionNode,
     skin: TreeSkin,
     selected: Signal<BTreeSet<String>>,
@@ -325,10 +351,22 @@ fn CollectionBranch(
         )
     };
     let unfold_key = expansion_key.clone();
+    // The sum over the collection's datasets, shown only when every dataset has values.
+    let collection_stats = dataset_ids
+        .iter()
+        .map(|dataset| root_stats.get(&dataset_root_key(dataset)).copied())
+        .try_fold(SubtreeStats::default(), |sum, value| {
+            value.map(|v| SubtreeStats {
+                file_count: sum.file_count + v.file_count,
+                size_bytes: sum.size_bytes + v.size_bytes,
+            })
+        })
+        .filter(|_| !dataset_ids.is_empty());
 
     rsx! {
         SyntheticRow {
             depth: 0,
+            stats: collection_stats,
             label: name.clone(),
             title: name.clone(),
             skin,
@@ -362,6 +400,7 @@ fn CollectionBranch(
             for dataset in level.items {
                 DatasetBranch {
                     key: "{dataset.collection_dataset}",
+                    stats: root_stats.get(&dataset_root_key(&dataset.collection_dataset)).copied(),
                     collection_dataset: dataset.collection_dataset.clone(),
                     label: dataset.label().to_string(),
                     has_folder_children: dataset.has_folder_children,
@@ -387,6 +426,7 @@ fn CollectionBranch(
 
 #[component]
 fn DatasetBranch(
+    stats: Option<SubtreeStats>,
     collection_dataset: String,
     label: String,
     has_folder_children: bool,
@@ -422,6 +462,7 @@ fn DatasetBranch(
     rsx! {
         SyntheticRow {
             depth: 1,
+            stats,
             label: label.clone(),
             title: collection_dataset.clone(),
             skin,
@@ -476,6 +517,8 @@ enum SyntheticIcon {
 #[component]
 fn SyntheticRow(
     depth: usize,
+    /// The file and byte counts, shown by the picker only.
+    stats: Option<SubtreeStats>,
     label: String,
     title: String,
     skin: TreeSkin,
@@ -559,6 +602,10 @@ fn SyntheticRow(
             }
 
             div { style: "{LABEL_STYLE} font-weight: {weight};", "{label}" }
+
+            if skin == TreeSkin::Picker {
+                SubtreeStatsCells { stats }
+            }
         }
     }
 }

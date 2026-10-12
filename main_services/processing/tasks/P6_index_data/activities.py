@@ -1143,6 +1143,8 @@ def build_vfs_nodes(params: BuildVfsNodesParams) -> str:
 
     Runs before the per-shard writers: `document_metadata` reads this table to build
     each document's ancestor closure, and `index_vfs_structure` copies it into Manticore.
+    Every row also carries its subtree file count and byte count, which the website reads
+    from this table directly.
     """
     import pyarrow as pa
 
@@ -1202,6 +1204,8 @@ def build_vfs_nodes(params: BuildVfsNodesParams) -> str:
             "file_size_bytes": pa.array([n.file_size_bytes for n in nodes], type=pa.int64()),
             "depth": pa.array([n.depth for n in nodes], type=pa.uint16()),
             "subfolder_count": pa.array([n.subfolder_count for n in nodes], type=pa.uint32()),
+            "subtree_file_count": pa.array([n.subtree_file_count for n in nodes], type=pa.int64()),
+            "subtree_size_bytes": pa.array([n.subtree_size_bytes for n in nodes], type=pa.int64()),
         }))
         client.command(
             "DELETE FROM vfs_nodes WHERE collection_dataset = {cd:String} "

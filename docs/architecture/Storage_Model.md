@@ -77,6 +77,14 @@ is wrong.
 Removing a document from the index is driven by **reachability from live paths**, not by
 walking tombstones: a blob still reachable through another path stays indexed.
 
+The materialised tree `vfs_nodes` stores two values on every node: the number of files below
+it and their stored size. The file count opens every archive and email below the node, and
+it counts a container's members once for each path at which the container lives. The size
+counts the bytes at the node's own container level, so an archive adds its own size once
+and its members do not add theirs again. A row reads -1 for both until a tree build writes
+them. Readers that find -1, or no row, compute the values from the other rows by path
+prefix.
+
 ## The object store: a bucket per collection
 
 Buckets are named for the collection they hold, alongside one system bucket for everything

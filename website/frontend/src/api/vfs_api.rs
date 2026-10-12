@@ -1,11 +1,12 @@
 //! Client API calls for the VFS structure index.
 //!
 //! These back the tree sidebar, the filter pane's folder picker, and in-folder search.
-//! Every one of them is answered from the collection's `<name>_vfs` Manticore table
+//! The tree calls are answered from the collection's `<name>_vfs` Manticore table
 //! through the NON-caching primitive: the tree changes while ingestion runs, and a
-//! stale tree is worse than a slow one.
+//! stale tree is worse than a slow one. The file and byte counts come from ClickHouse
+//! `vfs_nodes`, also without a cache.
 
-use common::vfs::{VfsTreeChildren, VfsTreeNode, VfsTreePath};
+use common::vfs::{VfsSubtreeStats, VfsTreeChildren, VfsTreeNode, VfsTreePath};
 use dioxus::prelude::*;
 
 /// The file browser shares its resolved path between the tree and breadcrumbs.
@@ -101,6 +102,32 @@ pub async fn vfs_node_term_id(
         .await
         .map_err(to_server_fn_error)?;
     backend::api::vfs::tree::node_term_id(&collection_dataset, &node_key)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+/// The file and byte counts below nodes of one dataset, for the file location picker.
+///
+/// `nodes` are `(node_key, container_file_hash)` pairs, where the hash is empty for a
+/// folder. Read from ClickHouse `vfs_nodes` without a cache. A node without known values
+/// is absent from the result.
+#[server]
+pub async fn vfs_subtree_stats(
+    collection_dataset: String,
+    nodes: Vec<(String, String)>,
+) -> Result<VfsSubtreeStats, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::vfs::vfs_subtree_stats(&user, collection_dataset, nodes)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+/// The file and byte counts below each dataset root, keyed by the root node key, for the
+/// picker's dataset and collection rows.
+#[server]
+pub async fn vfs_dataset_subtree_stats(datasets: Vec<String>) -> Result<VfsSubtreeStats, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::vfs::vfs_dataset_subtree_stats(&user, datasets)
         .await
         .map_err(to_server_fn_error)
 }

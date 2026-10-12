@@ -118,3 +118,14 @@ def test_vfs_subfolder_count_preserves_existing_nodes(storage):
     client.command("ALTER TABLE vfs_nodes UPDATE subfolder_count=2 WHERE node_key='root' SETTINGS mutations_sync=2")
     migrate(client, cluster, folder)
     assert client.query("SELECT node_key, subfolder_count FROM vfs_nodes FINAL").result_rows == [("root", 2)]
+
+
+def test_vfs_subtree_stats_read_minus_one_on_existing_nodes(storage):
+    _collection, client, cluster, folder = storage
+    client.insert("vfs_nodes", [["dataset", "", "/", "root", "", "dir", "", -1, 0]],
+                  column_names=["collection_dataset", "container_hash", "path", "node_key",
+                                "parent_key", "kind", "file_hash", "file_size_bytes", "depth"])
+    migrate(client, cluster, folder)
+    assert client.query(
+        "SELECT node_key, subtree_file_count, subtree_size_bytes FROM vfs_nodes FINAL"
+    ).result_rows == [("root", -1, -1)]
