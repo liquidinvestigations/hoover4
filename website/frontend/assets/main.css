@@ -31,11 +31,20 @@ html, body, #main {
 	color-scheme: light;
 }
 
-/* Search results and citation cards use the same bounded height. */
+/* Result and citation cards have bounded heights. */
 .x-result-item-card {
     height: var(--x-result-card-height);
     min-height: var(--x-result-card-height);
     box-sizing: border-box;
+}
+
+/* Search cards reserve three snippet lines and 55px for the header, controls, and padding. */
+#x-search-page-root-component {
+    --x-result-card-height: calc(55px + 3 * var(--x-line-detail));
+}
+#x-search-page-root-component .x-card-text {
+    --x-text-body: var(--x-text-detail);
+    --x-line-body: var(--x-line-detail);
 }
 
 /* Reference type, spacing and colour values. Every page reads these properties, so the
@@ -103,10 +112,12 @@ html, body, #main {
 }
 
 #x-nav-sidebar {
-    width:15rem;
+    --x-nav-padding: 4px;
+    width:46px;
+    flex-shrink:0;
     height:100%;
     border-right:1px solid black;
-    padding:1rem;
+    padding:var(--x-nav-padding);
 }
 #x-page-container {
     height:100%;
@@ -432,11 +443,15 @@ html, body, #main {
     padding-top: 23px;
 }
 
-/* Rail hints. The card is level with its icon, as tall as the icon row, and as wide as
-   its text. The trigger is a flex box so its height is the icon height. */
-#x-nav-sidebar .hover-card-trigger { display: flex; }
-/* The card starts at the icon's right edge, which is 21 px inside the rail edge. */
-#x-nav-sidebar .hover-card-content { min-width: 0; padding: 0; white-space: nowrap; margin-left: 27px; }
+/* Each hint starts at the bar edge and stays level with its icon. */
+#x-nav-sidebar .hover-card { display: block; width: 100%; }
+#x-nav-sidebar .hover-card-trigger { display: flex; justify-content: center; }
+#x-nav-sidebar .hover-card-content {
+    min-width: 0;
+    padding: 0;
+    white-space: nowrap;
+    margin-left: calc(var(--x-nav-padding) + 1px);
+}
 .x-rail-hint {
     display: flex; align-items: center; height: 30px; padding: 0 8px;
     font-size: var(--x-text-body); color: black; background-color: white; border-radius: 0.5rem;

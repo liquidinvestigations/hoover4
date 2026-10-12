@@ -132,8 +132,8 @@ pub fn SearchResultItemCard(
                         min-width: 0;
                         min-height: 0;
                         max-height: 100%;
-                        font-size: 15px;
-                        line-height: 23px;
+                        font-size: var(--x-text-body);
+                        line-height: var(--x-line-body);
                         overflow: hidden;
                         display: -webkit-box;
                         -webkit-line-clamp: 3;

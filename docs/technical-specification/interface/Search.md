@@ -35,6 +35,7 @@ The remembered query is specific to the dataset, container, and folder path.
 | `.card_actions` | per-result actions, open the document page, open its folder | leave the search for another page | opens in the same tab: an action that silently opens a background tab reads as an action that did nothing |
 | `.tree` | folder tree | narrows to a path within a collection | Each endpoint request is uncached. Navigation or remount revalidates browser entries older than five seconds while retaining current rows. A shared keyed visible-row sequence keeps common folder rows mounted when the elision resume parent changes. Each visible row is a keyed element sibling. |
 | `.preview` | preview pane, source selector, in-document search, page navigation | reads the selected document without leaving the page | the pane's arrangement is part of the URL. A source change retains the find query and invalidates prior PDF controller work. |
+| `.preview.divider` | results and preview divider | it changes the preview width and retains the selected width after reload | the preview leaves at least 400px for results and stays within the page at 720p |
 
 ## States
 
@@ -78,6 +79,8 @@ The backend refuses pages beyond the first 1,000 results.
 The page count uses ceiling division.
 Grouped snippets prefer parsed body text, other text, raw text, then the filename.
 A result card shows at most three complete lines of text, with an ellipsis when text is omitted, and does not scroll.
+A search card uses 13px snippet text with a 19px line height and a 112px card height.
+The search field width is 375px when space permits.
 A filename-only match shares those lines between its notice and the matching path.
 Folder disclosure appears only when a node has child folders or containers.
 The folder icon remains the same after expansion.

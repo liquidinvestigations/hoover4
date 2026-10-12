@@ -50,11 +50,9 @@ pub fn Navbar() -> Element {
                     display:flex;
                     flex-direction: column;
                     gap: 40px;
-                    width: 70px;
                     height: 100%;
                     background-color: #1C212D;
                     border: 1px solid #000000;
-                    padding: 16px;
                 ",
 
                 // top part
@@ -89,7 +87,7 @@ fn NavbarTopLogo() -> Element {
     rsx! {
         Link {
             to: Route::HomePage { },
-            img { src: asset!("assets/favicon-filled.png"), style: "width: 38px; height: 38px;" }
+            img { src: asset!("assets/favicon-filled.png"), style: "width: 100%; height: auto;" }
         }
     }
 }
@@ -102,7 +100,7 @@ fn NavbarTopIconLinks() -> Element {
                 display:flex;
                 flex-direction: column;
                 gap: 24px;
-                width: 38px;
+                width: 100%;
                 align-items: center;
                 justify-content: center;
             ",
@@ -131,7 +129,7 @@ fn NavbarBottomIconLinks() -> Element {
                 display:flex;
                 flex-direction: column;
                 gap: 24px;
-                width: 38px;
+                width: 100%;
                 align-items: center;
                 justify-content: center;
             ",

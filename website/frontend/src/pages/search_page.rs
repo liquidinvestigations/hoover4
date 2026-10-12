@@ -148,7 +148,7 @@ fn SearchPageRootComponent(
                     max_px: 1600,
                     side: crate::components::resizable_sidebar::PaneSide::Right,
                     handle_id: "x-search-preview-resize",
-                    max_share: "70%",
+                    max_share: "min(70%, calc(100% - 400px))",
                     div {
                         id: "x-search-results-right-panel",
                         style: "height: 100%; width: 100%; min-width: 0;",
