@@ -96,7 +96,7 @@ fn scroll_to_page_options(page: i32, coord_x: f64, coord_y: f64, align_y: f64) -
     }
     let options = PdfScrollToPageOptions {
         pageNumber: page,
-        behavior: "smooth".to_string(),
+        behavior: "auto".to_string(),
         pageCoordinates: PdfScrollToPageOptionsPoint {
             x: coord_x,
             y: coord_y,
