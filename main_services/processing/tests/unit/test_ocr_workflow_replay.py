@@ -37,7 +37,10 @@ def test_a_recorded_history_replays_on_the_current_code(entry):
     from temporalio.client import WorkflowHistory
     from temporalio.worker import Replayer
 
-    from tasks.P_admin.workflows import OcrRunPlan, RerunOcr
+    from tasks.P_admin.workflows import OcrRunPlan, RerunOcr, ChangeOcrLanguages
+    from tasks.P_ops.workflows import Operation
+    from tasks.P0_scan_disk.workflows import IngestAndProcessDataset, IngestDiskDataset
+    from tasks.P1_compute_plans.workflows import ComputePlans
     from tasks.P2_execute_plan.workflows import ExecutePlans, ExecuteSinglePlan, ProcessItemsBatched
     from tasks.P4_extract_entities.workflows import ExtractEntitiesForPlan, ScanRegexEntitiesForPlan
     from tasks.P5_chunk_embed.workflows import ChunkEmbedForPlan
@@ -45,7 +48,7 @@ def test_a_recorded_history_replays_on_the_current_code(entry):
     from tasks.run_worker import sandboxed_runner
 
     replayer = Replayer(
-        workflows=[RerunOcr, OcrRunPlan, ExecutePlans, ExecuteSinglePlan, ProcessItemsBatched,
+        workflows=[RerunOcr, OcrRunPlan, ChangeOcrLanguages, Operation, IngestAndProcessDataset, IngestDiskDataset, ComputePlans, ExecutePlans, ExecuteSinglePlan, ProcessItemsBatched,
                    ExtractEntitiesForPlan, ScanRegexEntitiesForPlan, ChunkEmbedForPlan,
                    IndexDatasetPlan],
         workflow_runner=sandboxed_runner(),

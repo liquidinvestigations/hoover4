@@ -9,9 +9,9 @@ targets and the rule that says when one is done. The run has two phases.
    or failed ingestion and creates the member files of containers that were never
    extracted. Progress counts plans in this phase.
 2. **Open targets.** `record_ocr_run_targets` writes one `ocr_run_targets` row for each
-   target that is not done. `OcrRunPlan` then runs only the preview and OCR stages for the
-   open image and PDF targets of one plan, and P4, P5 and P6 only for the files whose OCR
-   text is not indexed. New OCR text adds an index target, so the total of the progress
+   target that is not done. `OcrRunPlan` runs preview and OCR stages for one plan's open
+   image and PDF targets. It runs P4, P5 and P6 for files with unindexed native PDF or OCR
+   text. New text adds an index target, so the total of the progress
    can increase. `settle_ocr_run_targets` is the only writer of `done = 1`. A plan whose
    final settlement leaves a target open fails, and `verify_ocr_run_completion` fails the
    operation while any target of it is open.
@@ -61,6 +61,7 @@ class RerunOcrParams:
     failed_dataset_steps: int = 0
     #: Plans that `ExecutePlans` ran in the first phase.
     phase_one_plans: int = 0
+    parts_version: bool = False
 
 
 @dataclass
@@ -77,6 +78,7 @@ class OcrRunPlanParams:
     collection_dataset: str
     op_id: str
     plan_hash: str
+    parts_version: bool = False
 
 
 @dataclass
@@ -91,6 +93,11 @@ class OcrRunFile:
     image_engines: List[str] = field(default_factory=list)
     #: Engines with an open searchable-PDF target for this file.
     pdf_engines: List[str] = field(default_factory=list)
+    image_pdf_engines: List[str] = field(default_factory=list)
+    preview: bool = False
+    prepare: bool = False
+    source_kind: str = "original"
+    file_names: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -108,6 +115,7 @@ class SettleOcrRunTargetsParams:
     plan_hash: str
     #: The files to settle. Empty means every open target of the plan.
     hashes: List[str] = field(default_factory=list)
+    parts_version: bool = False
 
 
 @dataclass
@@ -170,9 +178,9 @@ def reopen_plans_for_ocr_rerun(params: RerunOcrParams) -> int:
 
 _PLAN_ITEMS_SQL = (
     "SELECT plan_hash, groupArray(item_hash) FROM processing_plan_hits FINAL "
-    "WHERE collection_dataset = {cd:String} {plan} AND item_hash IN ("
-    " SELECT DISTINCT hash FROM file_types WHERE collection_dataset = {cd:String} "
-    " AND hasAny(file_type, ['image', 'pdf'])) "
+    "WHERE collection_dataset = {cd:String} {plan} "
+    "AND item_hash IN (SELECT hash FROM vfs_files FINAL "
+    "WHERE collection_dataset = {cd:String} AND is_deleted = 0) "
     "GROUP BY plan_hash ORDER BY plan_hash"
 )
 
@@ -192,7 +200,51 @@ def _image_items(routes, items: Sequence[str]) -> List[str]:
     return [h for h in items if h in routes and "image" in routes[h].routes]
 
 
-def _plan_targets(client, collectionname: str, collection_dataset: str,
+def _current_plan_targets(client, collectionname: str, collection_dataset: str,
+                  items: Sequence[str], pairs) -> Tuple[Dict, List[str]]:
+    """The targets of one plan's items, after the text of stored results is written.
+
+    Returns the targets with their setting versions, and the files whose text was written.
+    """
+    from tasks.ocr_targets import (
+        STAGE_IMAGE, STAGE_INDEX, STAGE_PDF, STAGE_PDF_PREPARE, STAGE_PREVIEW,
+        STAGE_IMAGE_PDF, SettingVersion, Target, chunked, recover_ocr_text, stored_routes,
+    )
+    from tasks.P3_parse_files.pdf_parts import live_hashes
+    from tasks.ocr_pdf_client import service_configured
+    items = sorted(live_hashes(client, collection_dataset, list(items)))
+    routes = stored_routes(client, collection_dataset, items)
+    images = _image_items(routes, items)
+    recovered = recover_ocr_text(client, collectionname, collection_dataset, images,
+                                 [(engine, languages) for engine, languages, _ in pairs.image])
+    with_text = set()
+    targets = {}
+    for chunk in chunked(items):
+        with_text.update(row[0] for row in client.query(
+            "SELECT DISTINCT file_hash FROM text_content WHERE collection_dataset = {cd:String} "
+            "AND file_hash IN {h:Array(String)} AND (startsWith(extracted_by, 'ocr_') "
+            "OR startsWith(extracted_by, 'pdfocr_') OR extracted_by = 'pdftotext')",
+            parameters={"cd": collection_dataset, "h": chunk}).result_rows)
+    for h in images:
+        direct = {"image/jpeg", "image/png", "image/bmp", "image/webp", "image/x-ms-bmp"}
+        if not set(routes[h].mime_types) & direct:
+            targets[Target(h, STAGE_PREVIEW)] = SettingVersion()
+        for engine, languages, version in pairs.image:
+            targets[Target(h, STAGE_IMAGE, engine, languages)] = version
+            if service_configured():
+                targets[Target(h, STAGE_IMAGE_PDF, engine, languages)] = version
+    for h, route in routes.items():
+        if "pdf" in route.routes or "office_preview" in route.routes:
+            targets[Target(h, STAGE_PDF_PREPARE)] = SettingVersion()
+            for engine, languages, version in pairs.pdf:
+                targets[Target(h, STAGE_PDF, engine, languages)] = version
+    for h in with_text:
+        targets[Target(h, STAGE_INDEX)] = SettingVersion()
+
+    return targets, recovered
+
+
+def _legacy_plan_targets(client, collectionname: str, collection_dataset: str,
                   items: Sequence[str], pairs) -> Tuple[Dict, List[str]]:
     """The targets of one plan's items, after the text of stored results is written.
 
@@ -230,6 +282,13 @@ def _plan_targets(client, collectionname: str, collection_dataset: str,
     for file_hash in sorted(with_text):
         targets[Target(file_hash, STAGE_INDEX)] = SettingVersion()
     return targets, recovered
+
+
+def _plan_targets(client, collectionname: str, collection_dataset: str,
+                  items: Sequence[str], pairs, parts_version: bool = False):
+    """Select the target contract requested by the workflow activity version."""
+    return (_current_plan_targets if parts_version else _legacy_plan_targets)(
+        client, collectionname, collection_dataset, items, pairs)
 
 
 def _insert_targets(client, op_id: str, collection_dataset: str, plan_hash: str,
@@ -279,11 +338,11 @@ def _open_targets(client, op_id: str, collection_dataset: str, plan_hash: str,
 
 
 def _settle(client, params: SettleOcrRunTargetsParams) -> SettleOcrRunTargetsResult:
-    from tasks.ocr_targets import settled
+    from tasks.ocr_targets import settled, legacy_settled
 
     open_targets = _open_targets(client, params.op_id, params.collection_dataset,
                                  params.plan_hash, params.hashes)
-    done = settled(client, params.collection_dataset, open_targets)
+    done = settled(client, params.collection_dataset, open_targets, parts_version=params.parts_version)
     _insert_targets(client, params.op_id, params.collection_dataset, params.plan_hash,
                     [(target, open_targets[target]) for target in sorted(
                         done, key=lambda t: (t.file_hash, t.stage, t.engine, t.languages))], 1)
@@ -306,7 +365,7 @@ def record_ocr_run_targets(params: RerunOcrParams) -> int:
     the same rows, and a row of the same key replaces the earlier one.
     """
     from database.clickhouse import get_collection_client
-    from tasks.ocr_targets import current_pairs, language_settings, settled
+    from tasks.ocr_targets import current_pairs, language_settings, settled, legacy_settled
 
     pairs = current_pairs(language_settings(params.collection_dataset))
     heartbeat = HeartbeatClock()
@@ -314,9 +373,9 @@ def record_ocr_run_targets(params: RerunOcrParams) -> int:
     with get_collection_client(params.collectionname) as client:
         plans = _plan_items(client, params.collection_dataset)
         for index, (plan_hash, items) in enumerate(plans):
-            targets, _ = _plan_targets(client, params.collectionname,
+            targets, _ = (_current_plan_targets if params.parts_version else _legacy_plan_targets)(client, params.collectionname,
                                        params.collection_dataset, items, pairs)
-            done = settled(client, params.collection_dataset, targets)
+            done = settled(client, params.collection_dataset, targets, parts_version=params.parts_version)
             open_rows = [(target, targets[target]) for target in sorted(
                 set(targets) - done, key=lambda t: (t.file_hash, t.stage, t.engine, t.languages))]
             _insert_targets(client, params.op_id, params.collection_dataset, plan_hash,
@@ -356,7 +415,7 @@ def load_ocr_run_plan(params: OcrRunPlanParams) -> OcrRunPlanWork:
     """
     from database.clickhouse import get_collection_client
     from tasks.ocr_targets import (
-        STAGE_IMAGE, STAGE_INDEX, current_pairs, language_settings, recover_ocr_text,
+        STAGE_IMAGE, STAGE_INDEX, STAGE_PREVIEW, STAGE_PDF_PREPARE, STAGE_IMAGE_PDF, current_pairs, language_settings, recover_ocr_text,
         stored_routes,
     )
     from tasks.P2_execute_plan.activities import GetPlanItemsMetadataParams, get_plan_items_metadata
@@ -365,23 +424,42 @@ def load_ocr_run_plan(params: OcrRunPlanParams) -> OcrRunPlanWork:
     with get_collection_client(params.collectionname) as client:
         recovered: List[str] = []
         for _, items in _plan_items(client, params.collection_dataset, params.plan_hash):
+            changed = []
+            if params.parts_version:
+                fresh, changed = _current_plan_targets(client, params.collectionname, params.collection_dataset, items, pairs)
+                from tasks.ocr_targets import settled
+                done = settled(client, params.collection_dataset, fresh, parts_version=True)
+                _insert_targets(client, params.op_id, params.collection_dataset, params.plan_hash,
+                                [(target, fresh[target]) for target in fresh if target not in done], 0)
             routes = stored_routes(client, params.collection_dataset, items)
+            recovered.extend(changed)
             recovered.extend(recover_ocr_text(
                 client, params.collectionname, params.collection_dataset,
                 _image_items(routes, items),
                 [(engine, languages) for engine, languages, _ in pairs.image]))
         _settle(client, SettleOcrRunTargetsParams(
-            params.collectionname, params.collection_dataset, params.op_id, params.plan_hash))
+            params.collectionname, params.collection_dataset, params.op_id, params.plan_hash, parts_version=params.parts_version))
         open_targets = _open_targets(client, params.op_id, params.collection_dataset,
                                      params.plan_hash)
         engines: Dict[str, Tuple[set, set]] = {}
+        extra = {}
         index_hashes = set(recovered)
         for target in open_targets:
             if target.stage == STAGE_INDEX:
                 index_hashes.add(target.file_hash)
                 continue
             image, pdf = engines.setdefault(target.file_hash, (set(), set()))
-            (image if target.stage == STAGE_IMAGE else pdf).add(target.engine)
+            details = extra.setdefault(target.file_hash, {"preview": False, "prepare": False, "image_pdf_engines": []})
+            if target.stage == STAGE_IMAGE:
+                image.add(target.engine)
+            elif target.stage == STAGE_PREVIEW:
+                details["preview"] = True
+            elif target.stage == STAGE_PDF_PREPARE:
+                details["prepare"] = True
+            elif target.stage == STAGE_IMAGE_PDF:
+                details["image_pdf_engines"].append(target.engine)
+            else:
+                pdf.add(target.engine)
         routes = stored_routes(client, params.collection_dataset, sorted(engines))
 
     files = []
@@ -402,6 +480,9 @@ def load_ocr_run_plan(params: OcrRunPlanParams) -> OcrRunPlanWork:
                 mime_types=list(route.mime_types) if route else [],
                 image_engines=sorted(image),
                 pdf_engines=sorted(pdf),
+                source_kind="preview" if route and "office_preview" in route.routes else "original",
+                file_names=list(item.get("file_names") or []),
+                **extra[file_hash],
             ))
     return OcrRunPlanWork(files=files, index_hashes=sorted(index_hashes))
 
@@ -475,3 +556,31 @@ def verify_ocr_run_completion(params: VerifyOcrRunParams) -> int:
         type=OCR_RUN_INCOMPLETE,
         non_retryable=True,
     )
+
+
+@activity.defn
+@with_heartbeat
+def remove_pdf_members(params: RerunOcrParams) -> dict:
+    """Remove PDF member paths and archive rows, then rebuild the current folder index."""
+    from database.clickhouse import get_collection_client
+    from tasks.P0_scan_disk.activities import _tombstone_paths, _now_naive_utc, deindex_unreachable
+    from tasks.P6_index_data.activities import build_vfs_nodes, index_vfs_structure
+    from tasks.P6_index_data.params import BuildVfsNodesParams
+    p = {"cd": params.collection_dataset}
+    containers = "(SELECT pdf_hash FROM pdfs WHERE collection_dataset = {cd:String})"
+    with get_collection_client(params.collectionname) as client:
+        gone = client.query_arrow(
+            "SELECT container_hash, path, hash, file_size_bytes, mtime_source, toUnixTimestamp(mtime) AS mtime "
+            "FROM vfs_files FINAL WHERE collection_dataset = {cd:String} AND is_deleted = 0 "
+            "AND container_hash IN " + containers, p).to_pylist()
+        if gone:
+            _tombstone_paths(client, params.collection_dataset, gone, _now_naive_utc())
+        client.command("ALTER TABLE vfs_directories DELETE WHERE collection_dataset = {cd:String} "
+                       "AND container_hash IN " + containers + " SETTINGS mutations_sync = 2", parameters=p)
+        client.command("ALTER TABLE archives DELETE WHERE collection_dataset = {cd:String} "
+                       "AND archive_type = 'pdf' SETTINGS mutations_sync = 2", parameters=p)
+    removed = deindex_unreachable(params.collectionname, params.collection_dataset)
+    scope = BuildVfsNodesParams(params.collectionname, params.collection_dataset)
+    build_vfs_nodes(scope)
+    index_vfs_structure(scope)
+    return {"paths": len(gone), "deindexed": removed}

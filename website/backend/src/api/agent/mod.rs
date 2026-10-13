@@ -33,7 +33,7 @@ use axum::{
 use common::agent_api::*;
 use common::current_user::CurrentUser;
 use common::document_metadata::DocumentMetadataTableInfo;
-use common::document_sources::{DocumentPdfSourceItem, DocumentSourceItem, TextSource};
+use common::document_sources::DocumentSourceItem;
 use common::pdf_search_results::PdfSearchResults;
 use common::text_highlight::HighlightTextSpan;
 use common::document_tables::{TableColumnFilter, TableFilterKind, TableSort as CoreTableSort, TableViewQuery};

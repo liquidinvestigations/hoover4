@@ -219,6 +219,7 @@ def test_stored_routes_equal_the_routes_of_the_group_workflow(store, detectors):
     detect = FileResult(item_hash="f", task_name="detect_mime_all", status="ok",
                         value={"detectors": detectors, "errors": {}})
     combined = combine_detector_results(detector_results_for_file(detect))
+    store.live.add("f")
     stored = ocr_targets.stored_routes(store, CD, ["f"])["f"]
     assert stored.routes == tuple(route_stages(combined))
     assert stored.mime_types == tuple(combined["mime_types"])

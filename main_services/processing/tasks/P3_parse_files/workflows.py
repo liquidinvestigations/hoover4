@@ -142,6 +142,7 @@ ROUTE_ERROR_NAMES: Dict[str, str] = {
     "office_xml": "parse_office_xml_and_store",
     "table": "parse_table_and_store",
     "pdf": "pdf_process",
+    "office_preview": "make_pdf_preview",
     "image": "parse_image_metadata_and_store",
     "audio": "parse_audio_metadata_and_store",
     "video": "video_process",
@@ -220,12 +221,29 @@ def detector_results_for_file(detect_result: FileResult) -> List[Any]:
     return results
 
 
-def route_stages(combined: Dict[str, List[str]]) -> List[str]:
+def excluded_name_kind(names: List[str], size: int) -> str:
+    """Identify system files and small Office lock files from all stored names."""
+    if not names:
+        return ""
+    if all(name.lower() == "thumbs.db" for name in names):
+        return "thumbs"
+    if all(name.startswith("._") for name in names):
+        return "appledouble"
+    if size < 1024 and all(name.startswith("~$") for name in names):
+        return "office_lock"
+    return ""
+
+
+def route_stages(combined: Dict[str, List[str]], version: bool = False,
+                 names: List[str] | None = None, size: int = 0) -> List[str]:
     """The routes of one file, in the order of ROUTE_ERROR_NAMES.
 
     Mail containers take only the archive route.
     Other files take each applicable route from their detected types.
     """
+    exclusion = excluded_name_kind(names or [], size) if version else ""
+    if exclusion == "office_lock":
+        return []
     authoritative = combined.get("authoritative_types") or []
     if authoritative:
         return ["text"] if authoritative[0] == "text/vcard" else ["table"]
@@ -262,10 +280,14 @@ def route_stages(combined: Dict[str, List[str]]) -> List[str]:
         routes.append("pdf")
     # An image also runs one OCR stage for each engine of OCR_ENGINES. Each OCR call
     # reads its languages from the dataset settings when it runs.
-    if "image" in coarse_types:
+    if "image" in coarse_types and exclusion not in ("thumbs", "appledouble"):
         routes.append("image")
     if "audio" in coarse_types:
         routes.append("audio")
     if "video" in coarse_types:
         routes.append("video")
+    if version:
+        from tasks.P3_parse_files.pdf_preview import OFFICE_PREVIEW_MIMES
+        if {mime.lower() for mime in mime_types} & OFFICE_PREVIEW_MIMES:
+            routes.append("office_preview")
     return routes

@@ -273,14 +273,11 @@ def reopen_plans_for_ocr_change(params: ReopenParams) -> int:
         return 0
 
     with get_collection_client(params.collectionname) as client:
-        hashes = [row[0] for row in client.query(
-            "SELECT DISTINCT image_hash FROM raw_ocr_results "
-            "WHERE collection_dataset = {cd:String} "
-            "UNION DISTINCT "
-            "SELECT DISTINCT pdf_hash FROM pdfs "
-            "WHERE collection_dataset = {cd:String}",
-            parameters={"cd": params.collection_dataset},
-        ).result_rows if row and row[0]]
+        from tasks.P_admin.ocr_rerun import _plan_items
+        from tasks.ocr_targets import stored_routes
+        candidates = sorted({h for _, items in _plan_items(client, params.collection_dataset) for h in items})
+        routes = stored_routes(client, params.collection_dataset, candidates)
+        hashes = [h for h, route in routes.items() if set(route.routes) & {"image", "pdf", "office_preview"}]
 
         if not hashes:
             log.info("[P_admin] %s has no OCR candidates, nothing to reopen",
@@ -320,6 +317,13 @@ def purge_dropped_ocr_variants(params: PurgeVariantsParams) -> Dict[str, int]:
     from database.clickhouse import get_collection_client
     from database.manticore import client_for_table, list_shard_tables
 
+    from tasks.text_sources import pdf_ocr_extracted_by
+    expanded = list(params.variants)
+    for engine, languages in params.removed_pairs:
+        for variant in (ocr_extracted_by(engine, languages), pdf_ocr_extracted_by(engine, languages)):
+            if variant not in expanded:
+                expanded.append(variant)
+    params.variants = expanded
     if not params.variants:
         return {"clickhouse_tables": 0, "manticore_tables": 0, "pdf_rows": 0}
 
@@ -426,17 +430,23 @@ def delete_orphaned_derived_pdfs(params: PurgeVariantsParams) -> int:
 
             s3 = get_s3_client()
             bucket = collection_bucket(params.collectionname)
-            for pdf_hash, blob_key in rows:
+            part_rows = client.query(
+                "SELECT blob_key FROM pdf_ocr_parts FINAL WHERE collection_dataset = {cd:String} "
+                "AND engine = {en:String} AND languages = {la:String} AND borrows_source = 0",
+                parameters={"cd": params.collection_dataset, "en": engine, "la": languages}).result_rows
+            keys = {key for _, key in rows if key} | {row[0] for row in part_rows if row[0]}
+            for blob_key in sorted(keys):
                 heartbeat.beat(f"delete {engine}+{languages}")
-                if blob_key:
-                    try:
-                        s3.remove_object(bucket, blob_key)
-                    except Exception:
-                        # An object that is already gone is the crash-in-between case and
-                        # must not stop the pass; anything else is logged and retried by
-                        # the next run of this job.
-                        log.warning("[P_admin] could not remove %s", blob_key, exc_info=True)
+                try:
+                    s3.remove_object(bucket, blob_key)
+                except Exception as exc:
+                    if getattr(exc, "code", "") != "NoSuchKey":
+                        raise
                 removed += 1
+            client.command(
+                "ALTER TABLE pdf_ocr_parts DELETE WHERE collection_dataset = {cd:String} "
+                "AND engine = {en:String} AND languages = {la:String} SETTINGS mutations_sync = 2",
+                parameters={"cd": params.collection_dataset, "en": engine, "la": languages})
 
             client.command(
                 "ALTER TABLE pdf_ocr_results DELETE WHERE collection_dataset = {cd:String} "

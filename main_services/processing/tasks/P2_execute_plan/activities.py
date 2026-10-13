@@ -110,7 +110,7 @@ def get_plan_items_metadata(params: GetPlanItemsMetadataParams) -> List[Dict[str
           ON b.collection_dataset = h.collection_dataset AND b.blob_hash = h.item_hash
         LEFT JOIN (
             SELECT hash, groupUniqArray(splitByChar('/', path)[-1]) AS names
-            FROM vfs_files
+            FROM vfs_files FINAL
             PREWHERE collection_dataset = {cd:String}
                 AND hash IN (SELECT item_hash FROM processing_plan_hits
                     WHERE collection_dataset = {cd:String}
@@ -120,6 +120,8 @@ def get_plan_items_metadata(params: GetPlanItemsMetadataParams) -> List[Dict[str
         ) n ON n.hash = h.item_hash
         WHERE h.collection_dataset = {cd:String}
           AND h.plan_hash = {plan:String}
+          AND h.item_hash IN (SELECT hash FROM vfs_files FINAL
+              WHERE collection_dataset = {cd:String} AND is_deleted = 0)
         ORDER BY h.item_hash ASC, b.blob_size_bytes DESC NULLS LAST
         LIMIT 1 BY h.item_hash
     """

@@ -1,6 +1,7 @@
 //! Endpoint for fetching document text sources.
 
 use anyhow::Context;
+
 use common::{
     current_user::CurrentUser,
     document_sources::{
@@ -68,51 +69,29 @@ async fn get_pdf_sources_with_status(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
 ) -> anyhow::Result<(Vec<DocumentPdfSourceItem>, Option<anyhow::Error>)> {
-    let meta = get_raw_metadata(
-        user,
-        document_identifier.clone(),
-        DocumentMetadataTableInfo::new("pdfs", "pdf_hash"),
-    )
-    .await?;
-    let Some(obj) = meta.first() else {
-        return Ok((Vec::new(), None));
+    permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
+    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+    let mut sources = Vec::new();
+    let originals = client.query("SELECT page_count FROM pdfs WHERE collection_dataset = ? AND pdf_hash = ? LIMIT 1")
+        .bind(&document_identifier.collection_dataset).bind(&document_identifier.file_hash).fetch_all::<u32>().await?;
+    if let Some(page_count) = originals.first() { sources.push(DocumentPdfSourceItem {page_count:*page_count,..Default::default()}); }
+    let previews = client.query("SELECT page_count FROM pdf_previews FINAL WHERE collection_dataset = ? AND hash = ? LIMIT 1")
+        .bind(&document_identifier.collection_dataset).bind(&document_identifier.file_hash).fetch_all::<u32>().await?;
+    if let Some(page_count) = previews.first() { sources.push(DocumentPdfSourceItem {page_count:*page_count,source_kind:"preview".into(),..Default::default()}); }
+    let variants = client.query("SELECT engine,languages,page_count,source_kind FROM pdf_ocr_results FINAL WHERE collection_dataset = ? AND pdf_hash = ? AND is_deleted = 0 ORDER BY engine,languages")
+        .bind(&document_identifier.collection_dataset).bind(&document_identifier.file_hash).fetch_all::<(String,String,u32,String)>().await;
+    let mut error = match variants {
+        Ok(rows) => { for (engine,languages,page_count,source_kind) in rows {sources.push(DocumentPdfSourceItem {engine,languages,page_count,source_kind,..Default::default()});} None },
+        Err(error) => Some(anyhow::Error::from(error)),
     };
-    let page_count = obj
-        .get("page_count")
-        .and_then(|v| v.as_u64())
-        .context("No page count found")? as u32;
-
-    // The original first, always: it is the file the investigation actually holds, and an
-    // OCR'd rendering of it is an aid, not a replacement.
-    let sources = vec![DocumentPdfSourceItem {
-        page_count,
-        engine: String::new(),
-        languages: String::new(),
-    }];
-
-    // One entry per live `pdf_ocr_results` row. `page_count` comes from the derived PDF's
-    // own row rather than the source's: the two agree today (the assembler emits one page
-    // per input page, deliberately, so page numbers keep matching the viewer) and if they
-    // ever stop agreeing the selector must report what the file it is about to serve
-    // actually contains.
-    let variants: anyhow::Result<Vec<(String, String, u32)>> = async {
-        let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
-        let rows = client
-        .query(
-            "SELECT engine, languages, argMax(page_count, updated_at) \
-             FROM pdf_ocr_results \
-             WHERE collection_dataset = ? AND pdf_hash = ? \
-             GROUP BY engine, languages \
-             HAVING argMax(is_deleted, updated_at) = 0 \
-             ORDER BY engine, languages",
-        )
-        .bind(&document_identifier.collection_dataset)
-        .bind(&document_identifier.file_hash)
-        .fetch_all::<(String, String, u32)>()
-        .await?;
-        Ok(rows)
-    }.await;
-    Ok(append_pdf_variants(sources, page_count, variants))
+    let mut available = Vec::new();
+    for mut source in sources {
+        match crate::server_extra::pdf_parts::source_parts(user,&document_identifier,&source).await {
+            Ok(parts) => { source.parts = parts.into_iter().map(|part|part.range).collect(); available.push(source); }
+            Err(part_error) => { tracing::warn!(%part_error,"PDF source manifest failed"); if error.is_none() {error=Some(part_error);} }
+        }
+    }
+    Ok((available,error))
 }
 
 fn append_pdf_variants(
@@ -133,6 +112,7 @@ fn append_pdf_variants(
             },
             engine,
             languages,
+            ..Default::default()
         });
     }
     (sources, None)
@@ -562,8 +542,7 @@ mod tests {
         let original = DocumentPdfSourceItem {
             page_count: 4,
             engine: String::new(),
-            languages: String::new(),
-        };
+            languages: String::new(), ..Default::default() };
         let (sources, error) = append_pdf_variants(
             vec![original.clone()], 4, Err(anyhow::anyhow!("OCR query failed")),
         );

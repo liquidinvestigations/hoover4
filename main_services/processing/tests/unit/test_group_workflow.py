@@ -49,7 +49,7 @@ def _activity_error(cause):
 class _Group:
     """A fake stage fleet for one group, with the types that each file's detectors find."""
 
-    def __init__(self, monkeypatch, types, run_id="group-run"):
+    def __init__(self, monkeypatch, types, run_id="group-run", parts=False):
         self.types = types
         self.calls = []
         self.records = []
@@ -58,7 +58,7 @@ class _Group:
         monkeypatch.setattr(plan_workflows.workflow, "execute_child_workflow",
                             lambda *a, **k: pytest.fail("the group started a child workflow"))
         monkeypatch.setattr(plan_workflows.workflow, "now", lambda: NOW)
-        monkeypatch.setattr(plan_workflows.workflow, "patched", lambda _name: True)
+        monkeypatch.setattr(plan_workflows.workflow, "patched", lambda name: parts if name == "pdf-parts" else True)
         monkeypatch.setattr(plan_workflows.workflow, "info",
                             lambda: SimpleNamespace(run_id=run_id))
 
@@ -269,7 +269,7 @@ def test_a_failed_stage_keeps_the_files_that_its_last_detail_lists_as_finished(m
 def test_an_error_in_chain_code_fails_the_group_without_error_rows(monkeypatch):
     group = _Group(monkeypatch, {"t": TEXT})
 
-    def broken(_types):
+    def broken(_types, *args):
         raise KeyError("coarse_types")
 
     monkeypatch.setattr(plan_workflows, "route_stages", broken)
@@ -370,13 +370,14 @@ def test_searchable_pdf_batches_are_registered_on_both_ocr_queues():
     workers = _workers()
     assert br.STAGE_QUEUES["run_ocr_pdf_batch"] == "processing-ocr-pdf-queue"
     assert "run_ocr_pdf_batch" in workers["processing-ocr-queue"][1]
-    assert workers["processing-ocr-pdf-queue"] == (set(), {"run_ocr_pdf_batch"})
+    assert workers["processing-ocr-pdf-queue"] == (set(), {"run_ocr_pdf_batch", "run_ocr_pdf_parts_batch", "make_image_pdf_batch"})
+    assert workers["processing-preview-queue"] == (set(), {"make_pdf_preview_batch"})
 
 
 def test_a_group_from_before_the_pdf_queue_keeps_the_earlier_queue(monkeypatch):
     group = _Group(monkeypatch, {"p": PDF, "i": IMAGE})
     monkeypatch.setattr(plan_workflows.workflow, "patched",
-                        lambda name: name != br.OCR_PDF_QUEUE_PATCH)
+                        lambda name: name not in (br.OCR_PDF_QUEUE_PATCH, "pdf-parts"))
     group.run(["p", "i"])
     queues = {(name, options["task_queue"]) for name, _, options in group.calls}
     assert ("run_ocr_pdf_batch", "processing-ocr-queue") in queues
@@ -428,3 +429,16 @@ def test_a_file_with_image_and_video_routes_gets_only_the_image_preview(monkeypa
     previews = sorted((f.item_hash, tuple(f.routes))
                       for arg in group.scheduled("make_image_preview_batch") for f in arg.files)
     assert previews == [("h", ("image",)), ("v", ("video",))]
+
+
+def test_current_pdf_part_failures_record_parent_engine_errors_and_skip_finalization(monkeypatch):
+    group=_Group(monkeypatch,{"p":PDF},parts=True)
+    group.overrides["pdf_prepare_batch"]=lambda file:_ok(file,{
+        "parts":[dict(part_index=1,first_page=1,last_page=3,part_key="",ocr_pages=[1])],
+        "has_ocr_pages":True,"saved_engines":[]})
+    group.overrides["run_ocr_pdf_parts_batch"]=lambda file:_failed(file)
+    group.run(["p"])
+    errors=[row for batch in group.records for row in batch]
+    assert [(row["hash"],row["task_name"]) for row in errors]==[
+        ("p",f"run_ocr_pdf_and_store[{engine}]") for engine in OCR_ENGINES]
+    assert not group.scheduled("pdf_ocr_finalize_batch")

@@ -134,6 +134,11 @@ EXPECTED_COLLECTION_TABLES = {
     "ocr_run_targets",
     "ocr_indexed_text",
     "ocr_run_targets_ready",
+    "pdf_parts",
+    "pdf_previews",
+    "ocr_page_needs",
+    "pdf_ocr_parts",
+    "pdf_parts_ready",
 }
 
 

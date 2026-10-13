@@ -92,6 +92,7 @@ OCR_QUEUE = "processing-ocr-queue"
 OCR_PDF_QUEUE = "processing-ocr-pdf-queue"
 #: The patch id of the move of run_ocr_pdf_batch from OCR_QUEUE to OCR_PDF_QUEUE.
 OCR_PDF_QUEUE_PATCH = "ocr-pdf-own-queue"
+PREVIEW_QUEUE = "processing-preview-queue"
 
 #: Every stage activity, by its registered name, and the queue it runs on.
 STAGE_QUEUES: Dict[str, str] = {
@@ -110,6 +111,11 @@ STAGE_QUEUES: Dict[str, str] = {
     "pdf_metadata_batch": COMMON_QUEUE,
     "run_ocr_pdf_batch": OCR_PDF_QUEUE,
     "pdf_extract_batch": COMMON_QUEUE,
+    "pdf_prepare_batch": COMMON_QUEUE,
+    "make_pdf_preview_batch": PREVIEW_QUEUE,
+    "run_ocr_pdf_parts_batch": OCR_PDF_QUEUE,
+    "pdf_ocr_finalize_batch": COMMON_QUEUE,
+    "make_image_pdf_batch": OCR_PDF_QUEUE,
     "video_batch": COMMON_QUEUE,
     "scan_container_folders": COMMON_QUEUE,
 }
@@ -133,6 +139,11 @@ STAGE_BUDGETS: Dict[str, Tuple[int, int, int]] = {
     "pdf_metadata_batch": (1, 0, 0),
     "run_ocr_pdf_batch": (1, 0, 3600),
     "pdf_extract_batch": (1, 600, 0),
+    "pdf_prepare_batch": (1, 1800, 0),
+    "make_pdf_preview_batch": (1, 1800, 0),
+    "run_ocr_pdf_parts_batch": (1, 0, 3600),
+    "pdf_ocr_finalize_batch": (1, 1800, 0),
+    "make_image_pdf_batch": (1, 0, 3600),
     "video_batch": (2, 300, 0),
     "scan_container_folders": (1, 0, 0),   # plus member_scan_seconds, see below
 }
@@ -153,6 +164,12 @@ class BatchFile:
     file_mime_type: str = ""
     file_names: List[str] = field(default_factory=list)
     routes: List[str] = field(default_factory=list)
+    source_kind: str = "original"
+    part_index: int = 0
+    first_page: int = 0
+    last_page: int = 0
+    part_key: str = ""
+    ocr_pages: List[int] = field(default_factory=list)
 
 
 @dataclass

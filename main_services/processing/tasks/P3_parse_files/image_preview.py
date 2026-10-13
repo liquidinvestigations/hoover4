@@ -194,6 +194,10 @@ def make_image_preview(params: ImagePreviewParams) -> str | SkippedOutcome:
         # an image without the binary does not read as a file without a preview.
         except (RuntimeError, subprocess.TimeoutExpired, UnidentifiedImageError) as exc:
             log.info("[P3] no %s preview for %s: %s", kind, params.file_hash, exc)
+            from tasks.ocr_targets import record_ocr_skips
+            with get_collection_client(params.collectionname) as client:
+                record_ocr_skips(client, params.collection_dataset, params.file_hash,
+                                 "preview", "", [""], f"preview_failed_{kind}")
             return SkippedOutcome(f"preview_failed_{kind}")
         size_bytes = os.path.getsize(out_path)
         bucket = collection_bucket(params.collectionname)

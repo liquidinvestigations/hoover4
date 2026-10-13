@@ -158,6 +158,29 @@ def purge_dataset_from_clickhouse(params: PurgeDatasetParams) -> str:
 
     with get_collection_client(params.collectionname) as client:
         tables = [row[0] for row in client.query("SHOW TABLES").result_rows]
+        from tasks.P3_parse_files.pdf_parts import stored_path
+        from database.s3 import get_s3_client, collection_bucket
+        owned = set()
+        for table in ("pdf_parts", "pdf_previews"):
+            if table in tables:
+                for path, in client.query(
+                    f"SELECT s3_path FROM {table} FINAL WHERE collection_dataset = {{cd:String}}",
+                    parameters={"cd": params.collection_dataset}).result_rows:
+                    bucket, key = stored_path(path)
+                    if key.startswith(("derived/pdf-parts/", "derived/pdf-preview/")):
+                        owned.add((bucket, key))
+        if "pdf_ocr_parts" in tables:
+            for key, in client.query(
+                "SELECT blob_key FROM pdf_ocr_parts FINAL WHERE collection_dataset = {cd:String} "
+                "AND borrows_source = 0", parameters={"cd": params.collection_dataset}).result_rows:
+                if key:
+                    owned.add((collection_bucket(params.collectionname), key))
+        for bucket, key in sorted(owned):
+            try:
+                get_s3_client().remove_object(bucket, key)
+            except Exception as exc:
+                if getattr(exc, "code", "") != "NoSuchKey":
+                    raise
         # Remove path and blob headers before their stored values.
         tables.sort(key=lambda name: ({"vfs_files": 0, "blobs": 1, "blob_values": 3}.get(name, 2), name))
         purged = []

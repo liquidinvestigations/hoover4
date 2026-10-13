@@ -40,3 +40,19 @@ An unfinished plan shows running only while its operation remains active.
 An ended operation gives stopped and its recorded state.
 A query failure remains an error beside any sources that loaded.
 Table value and match queries exclude cells outside the current sheet dimensions.
+
+## PDF source reading
+
+PDF sources carry document page ranges from the current manifest.
+The viewer requests one part through an access-checked route.
+Borrowed OCR ranges resolve through the source manifest and its stored bucket.
+Inline original ranges use `blob_values`.
+PDF search reads each part and returns document page positions.
+A partial source manifest uses the original or Office preview until all ranges exist.
+A failed OCR manifest leaves other sources available and reports its error.
+
+Complete multipart downloads use temporary files and qpdf with two concurrent assembly slots.
+Cancellation stops qpdf and removes temporary files.
+The response keeps temporary files until streaming ends or the client disconnects.
+No complete multipart object is stored.
+Retained direct OCR objects remain available for complete downloads.

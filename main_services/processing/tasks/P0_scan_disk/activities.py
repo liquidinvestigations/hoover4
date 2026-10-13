@@ -873,7 +873,7 @@ def _tombstone_paths(client, collection_dataset: str, gone: list, now) -> None:
     """
     insert_parser_arrow(client, "vfs_files", pa.table({
         "collection_dataset": pa.array([collection_dataset] * len(gone), type=pa.string()),
-        "container_hash": pa.array([""] * len(gone), type=pa.string()),
+        "container_hash": pa.array([r.get("container_hash", "") for r in gone], type=pa.string()),
         "path": pa.array([r["path"] for r in gone], type=pa.string()),
         "hash": pa.array([r["hash"] for r in gone], type=pa.string()),
         "user_id": pa.array(["system"] * len(gone), type=pa.string()),
@@ -883,6 +883,49 @@ def _tombstone_paths(client, collection_dataset: str, gone: list, now) -> None:
         "updated_at": pa.array([now] * len(gone), type=pa.timestamp("s")),
         "is_deleted": pa.array([1] * len(gone), type=pa.uint8()),
     }))
+
+
+def deindex_unreachable(collectionname: str, collection_dataset: str) -> int:
+    """Remove index rows for hashes that no current path reaches."""
+    from database.manticore import client_for_table, list_shard_tables, vfs_table_name
+    with get_collection_client(collectionname) as client:
+        orphaned = [row[0] for row in client.query("""
+            SELECT DISTINCT file_hash FROM index_state
+            WHERE collection_dataset = {cd:String}
+            AND file_hash NOT IN (
+                SELECT DISTINCT hash FROM vfs_files FINAL
+                WHERE collection_dataset = {cd:String} AND is_deleted = 0
+            )
+        """, {"cd": collection_dataset}).result_rows]
+
+    deindexed = 0
+    if orphaned:
+        # The shard tables and the VFS tree, which are the tables keyed by file_hash. The
+        # facet-term index is not: it holds one row per term, and a term stops being
+        # searchable when its own reconciliation pass finds it gone from ClickHouse.
+        tables = list_shard_tables(collectionname) + [vfs_table_name(collectionname)]
+        for table in tables:
+            with client_for_table(table) as cnx:
+                cursor = cnx.cursor()
+                for chunk_start in range(0, len(orphaned), DEINDEX_HASH_BATCH):
+                    chunk = orphaned[chunk_start:chunk_start + DEINDEX_HASH_BATCH]
+                    placeholders = ",".join(["%s"] * len(chunk))
+                    # The table helpers validate identifiers. Bind only the values.
+                    cursor.execute(
+                        f"DELETE FROM {table} WHERE collection_dataset = %s "
+                        f"AND file_hash IN ({placeholders})",
+                        (collection_dataset, *chunk),
+                    )
+                cnx.commit()
+        with get_collection_client(collectionname) as client:
+            client.command(
+                "DELETE FROM index_state WHERE collection_dataset = {cd:String} "
+                "AND file_hash IN {hashes:Array(String)}",
+                parameters={"cd": collection_dataset, "hashes": orphaned},
+            )
+        deindexed = len(orphaned)
+
+    return deindexed
 
 
 @activity.defn
@@ -932,52 +975,7 @@ def reconcile_deleted_files(params: ReconcileDeletedFilesParams) -> ReconcileDel
         if gone:
             _tombstone_paths(client, params.collection_dataset, gone, now)
 
-        # **Everything indexed that no live path reaches**, which is a wider question
-        # than "what did this scan stop finding". A deleted file leaves an orphaned
-        # hash; so does an EDITED one, whose path now carries a new hash while the old
-        # one is still in the shard tables: and an edit tombstones no path at all, so a
-        # sweep driven by the tombstones alone leaves the previous version of every
-        # edited document searchable for ever.
-        #
-        # `index_state` is the list of what has been indexed, so the difference between
-        # it and the live paths is exactly the set to remove. Newly ingested files are
-        # not in it yet: this runs at the end of the walk, before P2-P6 index anything,
-        # so nothing in flight is caught by it.
-        orphaned = [row[0] for row in client.query("""
-            SELECT DISTINCT file_hash FROM index_state
-            WHERE collection_dataset = {cd:String}
-            AND file_hash NOT IN (
-                SELECT DISTINCT hash FROM vfs_files FINAL
-                WHERE collection_dataset = {cd:String} AND is_deleted = 0
-            )
-        """, {"cd": params.collection_dataset}).result_rows]
-
-    deindexed = 0
-    if orphaned:
-        # The shard tables and the VFS tree, which are the tables keyed by file_hash. The
-        # facet-term index is not: it holds one row per term, and a term stops being
-        # searchable when its own reconciliation pass finds it gone from ClickHouse.
-        tables = list_shard_tables(params.collectionname) + [vfs_table_name(params.collectionname)]
-        for table in tables:
-            with client_for_table(table) as cnx:
-                cursor = cnx.cursor()
-                for chunk_start in range(0, len(orphaned), DEINDEX_HASH_BATCH):
-                    chunk = orphaned[chunk_start:chunk_start + DEINDEX_HASH_BATCH]
-                    placeholders = ",".join(["%s"] * len(chunk))
-                    # The table helpers validate identifiers. Bind only the values.
-                    cursor.execute(
-                        f"DELETE FROM {table} WHERE collection_dataset = %s "
-                        f"AND file_hash IN ({placeholders})",
-                        (params.collection_dataset, *chunk),
-                    )
-                cnx.commit()
-        with get_collection_client(params.collectionname) as client:
-            client.command(
-                "DELETE FROM index_state WHERE collection_dataset = {cd:String} "
-                "AND file_hash IN {hashes:Array(String)}",
-                parameters={"cd": params.collection_dataset, "hashes": orphaned},
-            )
-        deindexed = len(orphaned)
+    deindexed = deindex_unreachable(params.collectionname, params.collection_dataset)
 
     log.info(
         "[P0] %s: %d paths gone, %d documents de-indexed",

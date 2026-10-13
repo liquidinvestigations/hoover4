@@ -1,6 +1,7 @@
 """PDF parsing activities for metadata, text, and images, and their stage activities."""
 
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
 import os
@@ -210,10 +211,18 @@ def pdf_get_metadata_and_store(params: PdfMetaParams) -> Dict[str, Any]:
 
     # Two blocking qpdf calls with no loop of their own -> pump.
     with heartbeat_pump(f"qpdf meta {pdf_hash[:8]}"):
-        page_count = _qpdf_show_npages(file_path, pdf_hash)
+        defect = None
+        try:
+            page_count = _qpdf_show_npages(file_path, pdf_hash)
+        except ApplicationError as exc:
+            if "can't find PDF header" in str(exc):
+                raise
+            password = _run_qpdf(["--requires-password", file_path])
+            defect = "passworded" if password.returncode == 0 else "damaged"
+            page_count = 0
         meta = {}
         try:
-            meta = _qpdf_json(file_path)
+            meta = _qpdf_json(file_path) if not defect else {}
         except Exception:
             meta = {}
 
@@ -258,6 +267,7 @@ def pdf_get_metadata_and_store(params: PdfMetaParams) -> Dict[str, Any]:
             "collection_dataset": pa.array([collection_dataset], type=pa.string()),
             "pdf_hash": pa.array([pdf_hash], type=pa.string()),
             "page_count": pa.array([page_count], type=pa.uint32()),
+            "defect": pa.array([defect], type=pa.string()),
             "word_count": pa.array([0], type=pa.uint32()),
             "author_metadata": pa.array([author_metadata], type=pa.string()),
             "date_created": pa.array([date_created_dt], type=pa.timestamp("s")),
@@ -269,11 +279,12 @@ def pdf_get_metadata_and_store(params: PdfMetaParams) -> Dict[str, Any]:
             "collection_dataset": pa.array([collection_dataset], type=pa.string()),
             "hash": pa.array([pdf_hash], type=pa.string()),
             "pdf_metadata_json": pa.array([json.dumps(meta)], type=pa.string()),
+            "defect": pa.array([defect], type=pa.string()),
             "processed_at": pa.array([processed_at], type=pa.timestamp("s")),
         })
         insert_parser_arrow(client, "pdf_metadata", tbl_meta)
 
-    return {"page_count": page_count, "size_bytes": size_bytes}
+    return {"page_count": page_count, "size_bytes": size_bytes, "defect": defect}
 
 
 @dataclass
@@ -479,7 +490,13 @@ def pdf_extract_batch(params: StageBatchParams) -> BatchResult:
     of a file is the dictionary of the call it took, with `member_count` added. A file
     whose extraction fails gets no archive row.
     """
-    def step(file: BatchFile) -> Dict[str, Any]:
+    def step(file: BatchFile) -> Any:
+        from database.clickhouse import get_collection_client
+        from tasks.P3_parse_files.pdf_parts import live_hashes
+        from tasks.task_timing import SkippedOutcome
+        with get_collection_client(params.collectionname) as client:
+            if file.item_hash not in live_hashes(client, params.collection_dataset, [file.item_hash]):
+                return SkippedOutcome("pdf_source_removed")
         if pdf_takes_small_path(file):
             value = pdf_small_extract_text_and_images(PdfSmallParams(
                 collectionname=params.collectionname,

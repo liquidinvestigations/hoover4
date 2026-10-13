@@ -1522,3 +1522,18 @@ def test_web_configuration_and_private_tor_compose():
     service = compose["services"]["hoover4-web-tor"]
     assert not service.get("ports") and service.get("network_mode") != "host"
     assert service["read_only"] is True and service["init"] is True
+
+
+def test_pdf_part_lists_and_office_preview_slots_have_independent_defaults():
+    env = _ocr_pdf_env()
+    assert env["HOOVER4_OCR_PDF_FILES_PER_BATCH"] == "4"
+    assert env["HOOVER4_PDF_PREVIEW_CONCURRENCY"] == "2"
+    changed = _ocr_pdf_env(ocr_pdf_files_per_batch="7", pdf_preview_concurrency="3")
+    assert changed["HOOVER4_OCR_PDF_FILES_PER_BATCH"] == "7"
+    assert changed["HOOVER4_PDF_PREVIEW_CONCURRENCY"] == "3"
+
+
+@pytest.mark.parametrize("key", ["ocr_pdf_files_per_batch", "pdf_preview_concurrency"])
+def test_pdf_activity_limits_refuse_zero(key):
+    with pytest.raises(deploy.DeployError):
+        _ocr_pdf_env(**{key: "0"})

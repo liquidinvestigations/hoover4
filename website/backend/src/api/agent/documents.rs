@@ -579,9 +579,10 @@ fn describe_source(source: &DocumentSourceItem) -> Option<AgentDocumentSource> {
         },
         DocumentSourceItem::Pdf(pdf) => AgentDocumentSource {
             kind: "pdf".into(),
-            source: if pdf.is_ocr() { format!("ocr_{}_{}", pdf.engine, pdf.languages) } else { String::new() },
+            source: pdf.source_name(),
             label: pdf.label(),
             page_count: Some(pdf.page_count),
+            parts: pdf.parts.clone(),
             ..Default::default()
         },
         DocumentSourceItem::Email(email) => AgentDocumentSource {
@@ -800,7 +801,10 @@ async fn documents_metadata_body(
         .iter()
         .find(|s| s.is_ocr())
         .map(|s| s.url(&identifier.collection_dataset, &identifier.file_hash));
-    let download_links = AgentDownloadLinks { original: identifier.get_absolute_url_path(), ocr_pdf };
+    let download_links = AgentDownloadLinks { original: identifier.get_absolute_url_path(), ocr_pdf,
+        pdf_sources: pdf_sources.iter().map(|source|common::agent_api::AgentPdfDownloadLink {
+            source:source.source_name(),label:source.label(),url:source.url(&identifier.collection_dataset,&identifier.file_hash)
+        }).collect() };
 
     Ok(DocumentsMetadataResponse {
         raw_metadata,
@@ -1085,6 +1089,14 @@ pub async fn documents_pdf_search(
     deadline.run(documents_pdf_search_body(&user, &headers, body, deadline)).await.map(Json)
 }
 
+fn select_pdf_source(available: &[common::document_sources::DocumentPdfSourceItem], name: &str) -> Option<common::document_sources::DocumentPdfSourceItem> {
+    if name.is_empty() {
+        available.iter().find(|source|!source.is_ocr()).or_else(||available.first()).cloned()
+    } else {
+        available.iter().find(|source|source.source_name() == name || (source.is_ocr() && format!("ocr_{}_{}",source.engine,source.languages) == name)).cloned()
+    }
+}
+
 async fn documents_pdf_search_body(
     user: &CurrentUser,
     headers: &HeaderMap,
@@ -1105,10 +1117,9 @@ async fn documents_pdf_search_body(
     let source = format!("{}:pdf:{}", body.file_hash, body.source);
     verify_expected_source(body.expected_source.as_deref(), &source)?;
 
-    let source_item = match TextSource::parse(&body.source) {
-        TextSource::Ocr { engine, languages } => Some(DocumentPdfSourceItem { page_count: 0, engine, languages }),
-        TextSource::Native { .. } => None,
-    };
+    let available = get_document_sources::get_pdf_sources(user,identifier.clone()).await.map_err(AgentError::from_anyhow)?;
+    let source_item = select_pdf_source(&available,&body.source);
+    if source_item.is_none() { return Err(AgentError::invalid_argument("PDF source not found")); }
     let pdf_url = source_item
         .as_ref()
         .map(|s| s.url(&identifier.collection_dataset, &identifier.file_hash))

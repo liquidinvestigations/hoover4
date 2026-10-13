@@ -1,34 +1,18 @@
-"""OCR targets of a dataset and the rule that says when one is done.
+"""Select OCR work and verify its completion under current dataset settings.
 
-A target is one unit of OCR work under the current settings.
+Current targets include image preview, image OCR, image PDF, PDF preparation,
+PDF variant completion, and indexing. Preparation includes Office conversion.
+PDF completion requires durable text processing, including successful empty text.
+Index receipts cover current image OCR, PDF OCR, and original native PDF text.
+Recorded skips, current errors, prerequisite failures, and source removal can settle targets.
 
-| Stage | Key | Exists for |
-|---|---|---|
-| `image` | file, engine, languages | a file with the route `image`, for each configured engine and each pass of its languages |
-| `pdf` | file, engine, languages | a file with the route `pdf` and a `pdfs` row, for each engine of `pdf_ocr_provider` and each pass, when the builder is configured |
-| `index` | file | a file with OCR text in `text_content` |
+Legacy activity arguments retain the earlier result-existence completion contract.
+Versioned arguments select the current completion contract.
+Both use stored detector rows and the group workflow's route rules.
 
-The routes come from the stored detector rows, through the same `combine_detector_results`
-and `route_stages` that the group workflow calls.
-
-A target is done when one condition of its stage holds.
-
-* `image`: a `raw_ocr_results` row of the key exists, or an `ocr_skips` row of the key
-  exists, or a current error of `run_ocr_and_store[<engine>]` exists for the file.
-* `pdf`: a live `pdf_ocr_results` row of the key exists, or an `ocr_skips` row of the key
-  exists, or a current error of `run_ocr_pdf_and_store[<engine>]` exists for the file.
-* `index`: the file has no OCR text, or its `index_state` row exists and every current OCR
-  segment has a receipt of its exact text version in `ocr_indexed_text`, or a
-  `P6_IndexTextPages` error is newer than the newest OCR text of the file.
-
-An OCR error is current when it is newer than the language setting of its engine. A
-setting written by the current writers has a version in microseconds, and the error
-`write_version` is in microseconds too. A setting copied from the earlier whole-second
-column has no finer order, so an error in the same second or a later second is current.
-A dataset with no setting row has its version at the epoch, so any error is current.
-
-"Run OCR" records the targets that are not done, works on them, and settles them with
-this rule. `settled` and `text_pending_index` are the only places that read it.
+Engine error versions are compared with their language setting versions.
+Current writers use microseconds. Earlier whole-second settings include errors from the same second.
+An absent setting uses the epoch, so any recorded error is current.
 """
 
 import json
@@ -47,6 +31,9 @@ from tasks.text_sources import (
 
 log = logging.getLogger(__name__)
 
+STAGE_PREVIEW = "preview"
+STAGE_IMAGE_PDF = "image_pdf"
+STAGE_PDF_PREPARE = "pdf_prepare"
 STAGE_IMAGE = "image"
 STAGE_PDF = "pdf"
 STAGE_INDEX = "index"
@@ -92,6 +79,12 @@ def error_task(target: Target) -> str:
         return ocr_error_name(target.engine)
     if target.stage == STAGE_PDF:
         return ocr_pdf_error_name(target.engine)
+    if target.stage == STAGE_PDF_PREPARE:
+        return "pdf_process"
+    if target.stage == STAGE_IMAGE_PDF:
+        return f"make_image_pdf[{target.engine}]"
+    if target.stage == STAGE_PREVIEW:
+        return "make_image_preview"
     return INDEX_ERROR_TASK
 
 
@@ -196,10 +189,23 @@ def stored_routes(client, collection_dataset: str, hashes: Sequence[str]) -> Dic
                 "mime_types": list(mimes), "mime_encodings": list(encodings),
                 "coarse_types": list(coarse), "extensions": list(extensions),
             }
+    from tasks.P3_parse_files.pdf_parts import live_hashes
+    live = live_hashes(client, collection_dataset, list(hashes))
+    names = {}
+    for chunk in chunked(live):
+        for file_hash, filenames, size in client.query(
+            "SELECT hash, groupUniqArray(splitByChar('/', path)[-1]), max(file_size_bytes) "
+            "FROM vfs_files FINAL WHERE collection_dataset = {cd:String} "
+            "AND hash IN {h:Array(String)} AND is_deleted = 0 GROUP BY hash",
+            parameters={"cd": collection_dataset, "h": chunk},
+        ).result_rows:
+            names[file_hash] = (list(filenames), int(size))
     routes = {}
     for file_hash, per in detectors.items():
+        if file_hash not in live:
+            continue
         combined = combine_detector_results([per.get(name) for name in LOCAL_DETECTORS])
-        routes[file_hash] = StoredRoute(tuple(route_stages(combined)),
+        routes[file_hash] = StoredRoute(tuple(route_stages(combined, True, *names.get(file_hash, ([], 0)))),
                                         tuple(combined["mime_types"]))
     return routes
 
@@ -379,7 +385,7 @@ def _index_states(client, collection_dataset: str,
         for file_hash, extracted_by, page_id, version in client.query(
                 "SELECT file_hash, extracted_by, page_id, max(version) FROM text_content "
                 "WHERE collection_dataset = {cd:String} AND file_hash IN {h:Array(String)} "
-                "AND startsWith(extracted_by, {p:String}) "
+                "AND (startsWith(extracted_by, {p:String}) OR startsWith(extracted_by, 'pdfocr_') OR extracted_by = 'pdftotext') "
                 "GROUP BY file_hash, extracted_by, page_id",
                 parameters=parameters).result_rows:
             states[file_hash].segments[extracted_by, int(page_id)] = int(version)
@@ -406,7 +412,120 @@ def _index_states(client, collection_dataset: str,
     return states
 
 
-def settled(client, collection_dataset: str,
+def _current_settled(client, collection_dataset: str,
+            targets: Dict[Target, SettingVersion]) -> Set[Target]:
+    """Settle current targets by durable completion, skips, errors, or source removal."""
+    from tasks.P3_parse_files.pdf_parts import live_hashes
+    from tasks.text_sources import PDF_SEGMENTATION_VERSION, OCR_PAGE_RULE_VERSION
+    hashes = sorted({target.file_hash for target in targets})
+    live = live_hashes(client, collection_dataset, hashes)
+    done = {target for target in targets if target.file_hash not in live}
+    results, skips, prepared, defective, no_pages = set(), set(), set(), set(), set()
+    for values in chunked(live):
+        p = {"cd": collection_dataset, "h": values, "s": PDF_SEGMENTATION_VERSION, "r": OCR_PAGE_RULE_VERSION}
+        results.update((h, STAGE_IMAGE, e, l) for h, e, l in client.query(
+            "SELECT DISTINCT image_hash, engine, languages FROM raw_ocr_results "
+            "WHERE collection_dataset = {cd:String} AND image_hash IN {h:Array(String)}", parameters=p).result_rows)
+        results.update((h, STAGE_IMAGE_PDF if kind == "image" else STAGE_PDF, e, l)
+                       for h, e, l, kind in client.query(
+            "SELECT pdf_hash, engine, languages, source_kind FROM pdf_ocr_results FINAL "
+            "WHERE collection_dataset = {cd:String} AND pdf_hash IN {h:Array(String)} "
+            "AND is_deleted = 0 AND text_complete = 1", parameters=p).result_rows)
+        skips.update(tuple(row) for row in client.query(
+            "SELECT DISTINCT file_hash, stage, engine, languages FROM ocr_skips "
+            "WHERE collection_dataset = {cd:String} AND file_hash IN {h:Array(String)}", parameters=p).result_rows)
+        for h, count, pages in client.query(
+            "SELECT hash, page_count, ocr_pages FROM ocr_page_needs FINAL "
+            "WHERE collection_dataset = {cd:String} AND hash IN {h:Array(String)} "
+            "AND rule_version = {r:UInt16}", parameters=p).result_rows:
+            ranges = client.query(
+                "SELECT first_page, last_page FROM pdf_parts FINAL "
+                "WHERE collection_dataset = {cd:String} AND hash = {hash:String} "
+                "AND segmentation = {s:UInt16} ORDER BY part_index",
+                parameters={**p, "hash": h}).result_rows
+            expected = 1
+            for first, last in ranges:
+                if first != expected:
+                    break
+                expected = last + 1
+            else:
+                if ranges and expected == count + 1:
+                    prepared.add(h)
+                    if not pages:
+                        no_pages.add(h)
+        defective.update(h for h, in client.query(
+            "SELECT DISTINCT pdf_hash FROM pdfs FINAL WHERE collection_dataset = {cd:String} "
+            "AND pdf_hash IN {h:Array(String)} AND defect IS NOT NULL", parameters=p).result_rows)
+        results.update((h, STAGE_PREVIEW, "", "") for h, in client.query(
+            "SELECT DISTINCT hash FROM image_previews WHERE collection_dataset = {cd:String} "
+            "AND hash IN {h:Array(String)}", parameters=p).result_rows)
+    tasks = sorted({error_task(t) for t in targets} | {"pdf_process", "make_pdf_preview", "make_image_preview"} | {f"run_ocr_and_store[{engine}]" for engine in OCR_ENGINES})
+    errors = _error_times(client, collection_dataset, list(live), tasks)
+    index_targets = [t for t in targets if t.stage == STAGE_INDEX and t.file_hash in live]
+    states = _index_states(client, collection_dataset, sorted({t.file_hash for t in index_targets})) if index_targets else {}
+    for target, version in targets.items():
+        h = target.file_hash
+        if h not in live:
+            continue
+        key = (h, target.stage, target.engine, target.languages)
+        prerequisite_failed = (target.stage in (STAGE_PDF, STAGE_PDF_PREPARE)
+                               and (h in defective or (h, "pdf_preview", "", "") in skips
+                                    or errors.get((h, "pdf_process")) or errors.get((h, "make_pdf_preview"))))
+        if (key in results or key in skips or prerequisite_failed
+                or (target.stage == STAGE_PDF_PREPARE and h in prepared)
+                or error_is_current(errors.get((h, error_task(target))), version)
+                or (target.stage == STAGE_INDEX and states[h].done())):
+            done.add(target)
+        if target.stage == STAGE_PDF and h in no_pages:
+            existing = client.query(
+                "SELECT count() FROM pdf_ocr_results FINAL WHERE collection_dataset = {cd:String} "
+                "AND pdf_hash = {h:String} AND engine = {en:String} AND languages = {la:String} "
+                "AND is_deleted = 0", parameters={"cd": collection_dataset, "h": h,
+                                                "en": target.engine, "la": target.languages}).result_rows[0][0]
+            if not existing:
+                done.add(target)
+        if target.stage == STAGE_IMAGE_PDF and ((h, STAGE_IMAGE, target.engine, target.languages) in skips or error_is_current(errors.get((h, f"run_ocr_and_store[{target.engine}]")), version)):
+            done.add(target)
+    return done
+
+
+def text_pending_index(client, collection_dataset: str, hashes: Sequence[str]) -> List[str]:
+    """The files among `hashes` whose OCR text is not indexed by the index rule."""
+    from tasks.P3_parse_files.pdf_parts import live_hashes
+    states = _index_states(client, collection_dataset,
+                           sorted(live_hashes(client, collection_dataset, list(hashes))))
+    return sorted(h for h, state in states.items() if not state.done())
+
+
+# ---- skips ----------------------------------------------------------------------------------
+
+
+def record_ocr_skips(client, collection_dataset: str, file_hash: str, stage: str,
+                     engine: str, passes: Sequence[str], reason: str, op_id: str = "") -> None:
+    """Store the decision of an OCR stage to skip a file, one row for each pass.
+
+    Written through the parser insert buffer, so the rows join the insert batch of the
+    file. The row settles the target, so a later OCR run sends no request for it.
+    """
+    import pyarrow as pa
+
+    from database.clickhouse import insert_parser_arrow
+
+    if not passes:
+        return
+    count = len(passes)
+    insert_parser_arrow(client, "ocr_skips", pa.table({
+        "collection_dataset": pa.array([collection_dataset] * count, type=pa.string()),
+        "file_hash": pa.array([file_hash] * count, type=pa.string()),
+        "stage": pa.array([stage] * count, type=pa.string()),
+        "engine": pa.array([engine] * count, type=pa.string()),
+        "languages": pa.array(list(passes), type=pa.string()),
+        "reason": pa.array([reason] * count, type=pa.string()),
+        "op_id": pa.array([op_id] * count, type=pa.string()),
+    }))
+
+
+def legacy_settled(client, collection_dataset: str,
             targets: Dict[Target, SettingVersion]) -> Set[Target]:
     """The targets among `targets` that are done, each under its own setting version."""
     done: Set[Target] = set()
@@ -453,35 +572,8 @@ def settled(client, collection_dataset: str,
     return done
 
 
-def text_pending_index(client, collection_dataset: str, hashes: Sequence[str]) -> List[str]:
-    """The files among `hashes` whose OCR text is not indexed by the index rule."""
-    states = _index_states(client, collection_dataset, sorted(set(hashes)))
-    return sorted(h for h, state in states.items() if not state.done())
 
-
-# ---- skips ----------------------------------------------------------------------------------
-
-
-def record_ocr_skips(client, collection_dataset: str, file_hash: str, stage: str,
-                     engine: str, passes: Sequence[str], reason: str, op_id: str = "") -> None:
-    """Store the decision of an OCR stage to skip a file, one row for each pass.
-
-    Written through the parser insert buffer, so the rows join the insert batch of the
-    file. The row settles the target, so a later OCR run sends no request for it.
-    """
-    import pyarrow as pa
-
-    from database.clickhouse import insert_parser_arrow
-
-    if not passes:
-        return
-    count = len(passes)
-    insert_parser_arrow(client, "ocr_skips", pa.table({
-        "collection_dataset": pa.array([collection_dataset] * count, type=pa.string()),
-        "file_hash": pa.array([file_hash] * count, type=pa.string()),
-        "stage": pa.array([stage] * count, type=pa.string()),
-        "engine": pa.array([engine] * count, type=pa.string()),
-        "languages": pa.array(list(passes), type=pa.string()),
-        "reason": pa.array([reason] * count, type=pa.string()),
-        "op_id": pa.array([op_id] * count, type=pa.string()),
-    }))
+def settled(client, collection_dataset: str, targets: Dict[Target, SettingVersion],
+            parts_version: bool = False) -> Set[Target]:
+    """Use the completion contract of the activity arguments, including earlier workflows."""
+    return (_current_settled if parts_version else legacy_settled)(client, collection_dataset, targets)

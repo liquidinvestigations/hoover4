@@ -19,20 +19,6 @@ grep -rn "rejoin\|single.character run" --include="*.py" main_services/processin
 
 The search returns nothing. No extraction code rejoins the letters.
 
-### A scanned PDF goes through OCR twice when searchable PDFs are on
-
-PDF extraction writes the embedded images of a PDF to a folder. The container scan adds each
-image as a file, and image OCR stores its text. When `pdf_ocr_provider` names an engine,
-`hoover4-ocr-pdf` also renders every page and sends it to the same OCR tier. The words of
-that pass go into the searchable PDF only, and no text row receives them. Both passes stay
-by decision, and the cost of the second pass is not measured.
-
-```
-grep -n '_extract_images_with_qpdf(file_path' main_services/processing/tasks/P3_parse_files/parse_pdf.py
-grep -n 'add_folder(i, result, "pdf_process")' main_services/processing/tasks/P2_execute_plan/workflows.py
-grep -n '_ocr_page(engine, languages' main_services/ocr_pdf/render_worker.py
-```
-
 ## Search and interface
 
 ### The in-chat search tool has no offset, so only the nearest results are reachable

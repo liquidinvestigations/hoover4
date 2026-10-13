@@ -23,6 +23,10 @@ KNOWN_TASK_NAMES = frozenset(
         "parse_office_xml_and_store",
         "parse_table_and_store",
         "pdf_process",
+        "make_pdf_preview",
+        "make_image_preview",
+        "make_image_pdf[tesseract]",
+        "make_image_pdf[easyocr]",
         "parse_image_metadata_and_store",
         "run_ocr_and_store[tesseract]",
         "run_ocr_and_store[easyocr]",
@@ -66,6 +70,9 @@ def stage_is_off(task_name: str, collection_dataset: str) -> bool:
             engine, collection_dataset
         )
 
+    engine = _task_engine(task_name, "make_image_pdf[")
+    if engine in ("tesseract", "easyocr"):
+        return not service_configured() or not engine_configured(engine) or not _ocr_has_languages(engine, collection_dataset)
     engine = _task_engine(task_name, "run_ocr_pdf_and_store[")
     if engine in ("tesseract", "easyocr"):
         return (

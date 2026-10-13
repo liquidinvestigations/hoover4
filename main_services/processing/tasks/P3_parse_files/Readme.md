@@ -9,7 +9,7 @@ This stage parses downloaded files by type and writes structured content and met
 - Read tabular documents (CSV/TSV/PSV, XLSX/XLSM/XLTX, XLS/XLSB, ODS) into individual
   cells (`parse_table.py`), alongside the text extraction of the same file.
 - Run OCR for images and extract text for indexing.
-- Assemble a searchable PDF per engine for every PDF (`parse_ocr_pdf.py`), through the
+- Build searchable PDF parts per engine for selected PDF pages (`parse_ocr_pdf.py`), through the
   `hoover4-ocr-pdf` service.
 - Create temporary directories for extracted content and scan them as containers.
 
@@ -21,7 +21,7 @@ This stage parses downloaded files by type and writes structured content and met
 - Routing and error names: the pure functions of `workflows.py`
 - Activities: `parse_*` modules (e.g., `parse_pdf.py`, `parse_email.py`, `parse_image.py`)
 - OCR: `parse_ocr.py` (images -> `raw_ocr_results` + text) and `parse_ocr_pdf.py`
-  (PDFs -> a derived searchable PDF + a `pdf_ocr_results` row)
+  (PDF sources -> part manifests, OCR text, and durable variant completion)
 - Tables: `parse_table.py` (cells -> `table_cells` + `table_documents`/`table_sheets`/
   `table_columns`), with the format list in `table_formats.py`, the readers in
   `table_readers.py` and the delimited-text sniff in `sniff_table.py`
@@ -79,21 +79,46 @@ qpdf exit status 3 returns usable output with warnings. Page-count parsing accep
 logs the warning with the file hash. Metadata JSON parsing accepts it. A page-count error
 records after one attempt.
 
-## Searchable PDFs are a derived object, not a document
+## Searchable PDFs preserve source pages.
 
-`parse_ocr_pdf.py` produces a *file*, not rows of text: a PDF with the page images and an
-invisible OCR text layer, written to Garage under `derived/ocr-pdf/…` by the
-`hoover4-ocr-pdf` service. It gets **no `blobs` row and no `vfs_files` row**, the only
-index of its existence is `pdf_ocr_results`.
+PDF preparation stores native text on the parent document with its original page numbers.
+It chooses consecutive source ranges with at most 100 pages and an approximate 25,000,000-byte target.
+Every source and OCR variant uses those same ranges.
+One-part sources reference their existing object or `blob_values` bytes.
 
-That is not tidiness. If the ingest walker could see the object it would ingest it, OCR
-it, and produce another one, forever, billing a full OCR pass per lap. The guards are the
-`derived/` prefix (built by `ocr_pdf_client.derived_key`, re-checked by the service, which
-refuses anything else), the absence of those two rows, and the `verify-stack.sh` assertion
-that no `blobs` row references the prefix.
+The page rule selects a page when native text has fewer than 20 characters.
+It also selects a page when an image covers at least 10% of its area and has a 129-pixel minimum edge.
+The builder adds invisible OCR overlays to those pages.
+It preserves the source page content and geometry.
+Parts without selected pages borrow their source object.
+A source without selected pages creates no new searchable variant.
 
-The object is written before the row, always: an object with no row is found by a prefix
-scan, a row with no object is a broken link nothing can repair.
+Part text reaches durable storage before variant completion.
+Finalization writes one complete `pdfocr_<engine>_<languages>` source through `insert_text_pages`.
+The `text_complete` marker records successful empty text as well as stored text.
+Retries reuse saved part text and build missing parts only.
+Stored raster outputs receive parts and text from their saved PDF without another OCR request.
+
+Multipart results have an empty direct object key and a complete `pdf_ocr_parts` manifest.
+They have no stored joined PDF.
+Readers resolve borrowed objects through the matching `pdf_parts` row.
+A borrowed row with an empty source path reads the original `blob_values` bytes.
+Derived objects have no `blobs` or VFS row.
+Object deletion precedes manifest deletion and preserves borrowed source objects.
+
+Word, OpenDocument text, PowerPoint, and OpenDocument presentation files receive PDF previews.
+Office conversion runs on its own limited queue with a separate profile for each file.
+Preview preparation keeps the existing Office native text sources.
+Image Preview OCR uses saved word boxes and sends no new image OCR request.
+It requires at least five words with two letters or digits and a 129-pixel minimum image edge.
+Missing OCR results defer their image PDF variants without adding a dependent processing error or a permanent skip.
+Stored language variants can still complete. The target remains open unless its OCR prerequisite has a recorded error or skip.
+
+Known password and damage defects receive metadata and stop PDF work normally.
+New workflows create no PDF members.
+Earlier workflow branches and their activity inputs remain executable for retained histories.
+Run OCR removes earlier member paths after unfinished plan execution and before target selection.
+Selection and indexing require a current live path.
 
 ## Image previews are a derived object too
 
@@ -118,7 +143,7 @@ message, and it is the delivery path, and a name-keyed object keeps only the las
 Readers go through `parse_email.header_pairs_from_json`, which also accepts the older
 object shape, because a document only gets the list shape when it is re-parsed.
 
-Parsing uses type-based routing derived from detector results. Archives, PDFs, emails, and videos can spawn child scans by writing extracted content to temp directories and invoking P0 workflows with container hashes. Image OCR runs on `processing-ocr-queue`, searchable-PDF batches run on `processing-ocr-pdf-queue`, and Tika runs on `processing-tika-queue`. These queues keep heavy dependencies apart, and a PDF batch does not wait behind image OCR slots. A group workflow that started before the PDF queue existed keeps sending its PDF batches to `processing-ocr-queue`, which still registers that activity.
+Parsing uses type-based routing derived from detector results. Archives, emails, and videos can spawn child scans by writing extracted content to temp directories and invoking P0 workflows with container hashes. Image OCR runs on `processing-ocr-queue`, searchable-PDF batches run on `processing-ocr-pdf-queue`, and Tika runs on `processing-tika-queue`. These queues keep heavy dependencies apart, and a PDF batch does not wait behind image OCR slots. A group workflow that started before the PDF queue existed keeps sending its PDF batches to `processing-ocr-queue`, which still registers that activity.
 
 The OCR stages write an `ocr_skips` row for each open language pass of an image under the size floor and of an empty input. That row settles the OCR target, so "Run OCR" sends no request for the file again. A stage that finds a stored `raw_ocr_results` row without its text restores the text from that row and sends no OCR request. The parser insert buffer writes `text_content` before `raw_ocr_results`, so a stored result always has its text.
 
@@ -283,6 +308,11 @@ input order. The rows of each file carry the per-file function name.
 | `extract_archive_batch` | `extract_archive_to_temp`, then `record_archive_container` | common | `archive_scan` |
 | `pdf_metadata_batch` | `pdf_get_metadata_and_store` | common | `pdf_process` |
 | `run_ocr_pdf_batch` | `run_ocr_pdf_and_store`, once for each engine | OCR | `run_ocr_pdf_and_store[<engine>]` |
+| `pdf_prepare_batch` | `pdf_prepare` | common | `pdf_process` |
+| `run_ocr_pdf_parts_batch` | one searchable part | PDF OCR | `run_ocr_pdf_and_store[<engine>]` |
+| `pdf_ocr_finalize_batch` | durable variant completion | common | `run_ocr_pdf_and_store[<engine>]` |
+| `make_pdf_preview_batch` | `make_pdf_preview` | preview | `make_pdf_preview` |
+| `make_image_pdf_batch` | `make_image_pdf` | PDF OCR | `make_image_pdf[<engine>]` |
 | `pdf_extract_batch` | `pdf_small_extract_text_and_images` or `pdf_large_split_to_chunks`, then `record_archive_container` | common | `pdf_process` |
 | `video_batch` | `video_ffprobe_and_store`, `video_extract_frames_and_subtitles`, then `record_archive_container` | common | `video_process` |
 | `scan_container_folders` | `scan_folder_tree` for each folder, then `cleanup_temp_dir` | common | the Error name of the chain that extracted the folder |
@@ -294,7 +324,7 @@ extraction wrote into `out_dir`, at all levels. `scan_container_folders` uses it
 time limits. `member_scan_seconds` gives one try of a folder the budget of the source
 file plus 6 h for each started block of 500 members, and at least 6 h.
 `plan_folder_ranges` divides the scan of a folder into ranges, and it reads the folder
-listing. `pdf_extract_batch` takes the small path when the PDF is below
+listing. The retained legacy `pdf_extract_batch` takes the small path when the PDF is below
 `PDF_SMALL_BYTES` (64 MiB) or below `PDF_SMALL_PAGES` (1,000 pages). It takes the large
 path only when the PDF reaches both limits.
 
@@ -375,23 +405,6 @@ grid can say what was dropped. A cap that is invisible in the UI reads as "this 
 see it. A workbook with one blank sheet (a pivot-table template, entirely ordinary) is
 enough to trigger it. `parse_table.py` therefore catches `BaseException` and re-raises
 only the interpreter's own, and the calamine reader skips a sheet with no used range.
-
-## PDF images are children, and their text is indexed twice
-
-`pdf_small_extract_text_and_images` extracts page images into a temp directory that is
-then scanned as a container with the PDF as its `container_hash`, so every image is a
-real member of the PDF: it gets a `vfs_files` row, its own parse in a later group, its own
-MIME detection and its own OCR. The searchable-PDF assembly (`parse_ocr_pdf.py`) OCRs the
-same pages again for its own rendition.
-
-That double-indexing is intended. The image's own OCR text is what makes the image
-findable as a document, and the PDF's rendition is what makes the page findable in the
-PDF. They are the same characters under two `extracted_by` labels.
-
-Both paths sit behind the same size gate: an image whose shorter edge is under
-`MIN_OCR_IMAGE_PX` (`tasks/text_sources.py`) records `ocr_skipped_too_small` and is never
-sent to an engine. Icons, bullets, rules and signature scraps are most of the images in a
-PDF corpus and none of them carries text.
 
 ## Busy services
 

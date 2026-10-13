@@ -28,14 +28,7 @@ pub fn DocumentPreviewForPdf(
     let pdf_url = use_memo(move || {
         let document_identifier = document_identifier.read().clone();
         let source = source.read().clone();
-        if source.is_ocr() {
-            source.url(
-                &document_identifier.collection_dataset,
-                &document_identifier.file_hash,
-            )
-        } else {
-            document_identifier.get_absolute_url_path()
-        }
+        source.url(&document_identifier.collection_dataset,&document_identifier.file_hash)
     });
 
     let mut controller = use_signal(move || None);

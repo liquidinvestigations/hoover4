@@ -18,6 +18,8 @@ COLLECTION = "c"
 
 class FakeOcrStore:
     def __init__(self):
+        self.removed = set()
+        self.live = set()
         self.file_types = []    # (cd, hash, extracted_by, mimes, encodings, coarse, extensions)
         self.raw = []           # (cd, hash, engine, languages, raw_json)
         self.pdf_results = []   # (cd, hash, engine, languages, updated_at, is_deleted)
@@ -85,6 +87,13 @@ class FakeOcrStore:
         def chosen(h):
             return hashes is None or h in hashes
 
+        if sql.startswith("SELECT DISTINCT hash FROM vfs_files") or sql.startswith("SELECT hash, groupUniqArray") :
+            live = ({row[1] for row in self.plan_hits if row[0] == cd} | self.live) - self.removed
+            if "groupUniqArray" in sql:
+                return [(h, [h], 0) for h in sorted(live) if chosen(h)]
+            return [(h,) for h in sorted(live) if chosen(h)]
+        if "FROM pdf_parts FINAL" in sql or "FROM pdf_ocr_parts FINAL" in sql:
+            return []
         if "FROM image_previews" in sql:
             return []
         if sql.startswith("SELECT count() FROM raw_ocr_results"):
@@ -107,7 +116,7 @@ class FakeOcrStore:
                      if row[0] == cd and {"image", "pdf"} & set(row[5])}
             plans = {}
             for row_cd, item, plan in self.plan_hits:
-                if row_cd != cd or item not in typed:
+                if row_cd != cd or ("hasAny(file_type" in sql and item not in typed) or item in self.removed:
                     continue
                 if "ph" in p and plan != p["ph"]:
                     continue
@@ -153,12 +162,12 @@ class FakeOcrStore:
             out = []
             for h in sorted(hashes):
                 for (eb, page), (_, version) in self.current_text(h).items():
-                    if eb.startswith(p["p"]):
+                    if eb.startswith(p["p"]) or ("pdfocr_" in sql and (eb.startswith("pdfocr_") or eb == "pdftotext")):
                         out.append((h, eb, page, version))
             return out
         if "SELECT DISTINCT file_hash FROM text_content" in sql:
             return sorted({(r[1],) for r in self.text
-                           if r[0] == cd and chosen(r[1]) and r[2].startswith(p["p"])})
+                           if r[0] == cd and chosen(r[1]) and (r[2].startswith(p.get("p", "ocr_")) or ("pdfocr_" in sql and (r[2].startswith("pdfocr_") or r[2] == "pdftotext")))})
         if "SELECT page_id, max(version) FROM text_content" in sql:
             return [(page, version) for (eb, page), (_, version)
                     in self.current_text(p["fh"]).items() if eb == p["eb"]]

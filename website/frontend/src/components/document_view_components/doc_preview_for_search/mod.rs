@@ -74,7 +74,7 @@ fn DocumentPreviewForSearchContent(
         let sources = doc_sources.read().clone().unwrap_or_default();
         if let Some(state) = control.doc_viewer_state.read().clone() {
             if let Some(selected_source) = state.selected_source {
-                if let Some(source) = sources.iter().find(|s| *s == &selected_source) {
+                if let Some(source) = sources.iter().find(|s| s.same_source(&selected_source)) {
                     return Some(source.clone());
                 }
             }
@@ -85,7 +85,7 @@ fn DocumentPreviewForSearchContent(
 
     let on_source_selected = Callback::new(move |source: DocumentSourceItem| {
         let mut state = control.doc_viewer_state.read().clone().unwrap_or_default();
-        state.selected_source = Some(source);
+        state.selected_source = Some(source.route_identity());
         state.selected_source_page = None;
         control.set_doc_viewer_state.call(state);
     });

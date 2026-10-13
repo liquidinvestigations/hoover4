@@ -105,6 +105,7 @@ KNOWN_TASK_QUEUES: Tuple[str, ...] = (
     "processing-tika-queue",
     "processing-ocr-queue",
     "processing-ocr-pdf-queue",
+    "processing-preview-queue",
     "processing-nlp-queue",
     "processing-embed-queue",
     "processing-indexing-queue",
@@ -683,6 +684,10 @@ class SkippedOutcome:
 #: The `processing_errors` task name that a successful run of each task proves recovered.
 _OUTCOME_NAMES = {
     "run_tika_and_store": "tika_text_batch",
+    "pdf_prepare": "pdf_process",
+    "pdf_get_metadata_and_store": "pdf_process",
+    "make_pdf_preview": "make_pdf_preview",
+    "make_image_preview": "make_image_preview",
     "extract_plaintext_chunks": "extract_plaintext_chunks",
     "parse_office_xml_and_store": "parse_office_xml_and_store",
     "parse_table_and_store": "parse_table_and_store",
@@ -698,7 +703,7 @@ _OUTCOME_NAMES = {
 
 def _outcome_name(task_name: str, engine: str) -> str | None:
     """The error name that an `ok` or `skipped` run of `task_name` proves recovered."""
-    if task_name in ("run_ocr_and_store", "run_ocr_pdf_and_store"):
+    if task_name in ("run_ocr_and_store", "run_ocr_pdf_and_store", "make_image_pdf"):
         return f"{task_name}[{engine or ''}]"
     return _OUTCOME_NAMES.get(task_name)
 
@@ -762,7 +767,10 @@ def _batch_rows(batch: Any, stage_row: list, fields: _ActivityFields, op_id: str
         row[5] = started_at
         run_rows.append(row)
         error_name = _outcome_name(file.task_name, engine)
-        if op_id and outcome in ("ok", "skipped") and error_name and file.item_hash:
+        if (op_id and outcome in ("ok", "skipped") and error_name and file.item_hash
+                and fields.task_name != "run_ocr_pdf_parts_batch"
+                and (file.task_name != "pdf_get_metadata_and_store"
+                     or (isinstance(file.value, dict) and file.value.get("defect")))):
             outcomes.append([op_id, dataset, file.item_hash, error_name, file.task_name,
                              fields.workflow_run_id, fields.activity_id, attempt,
                              outcome, now])

@@ -91,17 +91,24 @@ and a test greps for readers that forget.
 
 ## OCR targets, skips and the "Run OCR" ledger
 
-An OCR target is one unit of OCR work under the current settings. An image or PDF target
-is one pass of one engine and one language group over one file. An index target is the
-index work of a file that has OCR text. `tasks/ocr_targets.py` holds the one rule that says
-when a target is done. An image or PDF target is done when its result is stored. An
-`ocr_skips` row of its key, or an error newer than the language setting of its engine, also
-settles it. The OCR stages write `ocr_skips` for an image under the size floor and for an
-empty input. A later run sends no request for these files. An index target is done when
-each current OCR segment of the file has a receipt of its text version in
-`ocr_indexed_text`. The P6 text writer stores those receipts from the rows that it indexed.
-"Run OCR" records its open targets in `ocr_run_targets`, one row per target and operation.
-It marks a target done when the target settles. Its progress counts those rows.
+Run OCR uses preparation, image preview, image OCR, image PDF, PDF variant, and index targets.
+Preparation includes Office conversion, source ranges, page selection, and original native PDF text.
+A PDF variant completes after every searchable part and its OCR text reach durable storage.
+Successful empty text has an explicit completion marker.
+A failed prerequisite settles dependent work with the same document outcome.
+Newly available targets run within the same operation.
+
+Index targets verify exact text-version receipts for `pdftotext`, `ocr_`, and `pdfocr_` sources.
+P4, P5, and P6 run for replacement native text even when OCR languages are empty.
+Historical raster results provide their stored text without another OCR request.
+Current errors settle targets, and the error-retry action repeats failed work.
+Run OCR records its targets in `ocr_run_targets` and fails while a target remains open.
+A repeated completed run sends no OCR request.
+
+PDF member cleanup follows unfinished plan execution and precedes new target selection.
+It removes index entries only when no live path reaches the hash.
+A duplicate hash with another live path remains searchable.
+Current target selection, error selection, language changes, and index execution require live paths.
 
 ## Dates come from the document, never from ingestion
 

@@ -39,5 +39,7 @@ def test_known_task_names_match_the_current_error_writers():
     assert '"parse_error_tika"' in p3
     writer_names.add("parse_error_tika")
     writer_names.add("tika_text_batch")
+    writer_names.add("make_image_preview")
+    writer_names.update(f"make_image_pdf[{engine}]" for engine in OCR_ENGINES)
 
     assert writer_names == KNOWN_TASK_NAMES

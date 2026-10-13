@@ -5,3 +5,5 @@ pub mod feedback;
 pub mod image_preview;
 pub mod private_routes;
 pub mod run_pdf_search_server;
+
+pub mod pdf_parts;

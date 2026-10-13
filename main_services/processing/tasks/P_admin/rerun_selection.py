@@ -47,6 +47,9 @@ def recovery_activity(task_name: str) -> str | None:
         "parse_office_xml_and_store": "parse_office_xml_and_store",
         "parse_table_and_store": "parse_table_and_store",
         "parse_image_metadata_and_store": "parse_image_metadata_and_store",
+        "pdf_process": "pdf_prepare",
+        "make_pdf_preview": "make_pdf_preview",
+        "make_image_preview": "make_image_preview",
         "parse_audio_metadata_and_store": "parse_audio_metadata_and_store",
         "P4_ExtractEntities": "extract_entities_for_hashes",
         "P4_ScanRegexEntities": "scan_regex_entities_for_hashes",
@@ -59,10 +62,19 @@ def recovery_activity(task_name: str) -> str | None:
     for prefix, activity_name in (
         ("run_ocr_and_store[", "run_ocr_and_store"),
         ("run_ocr_pdf_and_store[", "run_ocr_pdf_and_store"),
+        ("make_image_pdf[", "make_image_pdf"),
     ):
         if task_name.startswith(prefix) and task_name.endswith("]") and len(task_name) > len(prefix) + 1:
             return activity_name
     return None
+
+
+def recovery_activities(task_name: str) -> tuple[str, ...]:
+    """Accept PDF metadata as recovery when it identifies a known document defect."""
+    primary = recovery_activity(task_name)
+    if task_name == "pdf_process":
+        return ("pdf_prepare", "pdf_get_metadata_and_store")
+    return (primary,) if primary else ()
 
 
 def _candidate_pairs(params: SelectErrorsParams) -> list[tuple[str, str]]:
@@ -101,7 +113,9 @@ def _plan_hashes_by_hash(
             rows = client.query(
                 "SELECT DISTINCT item_hash, plan_hash FROM processing_plan_hits "
                 "WHERE collection_dataset = {ds:String} "
-                "AND item_hash IN {hashes:Array(String)}",
+                "AND item_hash IN {hashes:Array(String)} "
+                "AND item_hash IN (SELECT hash FROM vfs_files FINAL "
+                "WHERE collection_dataset = {ds:String} AND is_deleted = 0)",
                 parameters={"ds": collection_dataset, "hashes": values},
             ).result_rows
             for hash, plan_hash in rows:
@@ -226,7 +240,7 @@ def reconcile_selected_errors(params: ReconcileErrorsParams) -> dict:
             parameters={"op": params.op_id, "ds": params.collection_dataset},
         ).result_rows
     evidence = {(str(hash), str(task_name)) for hash, task_name, activity_name in rows
-                if recovery_activity(str(task_name)) == str(activity_name)}
+                if str(activity_name) in recovery_activities(str(task_name))}
     # A successful Tika task proves recovery for its current and historical Error names.
     evidence |= {(hash, alias) for hash, task_name in list(evidence)
                  for alias in _OUTCOME_NAME_ALIASES.get(task_name, ())}

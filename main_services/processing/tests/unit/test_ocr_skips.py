@@ -82,6 +82,7 @@ def test_an_empty_image_stores_its_skip(store, monkeypatch, tmp_path):
 
 
 def test_an_empty_pdf_stores_its_skip(store, monkeypatch, tmp_path):
+    store.live.add("doc")
     path = tmp_path / "doc"
     path.write_bytes(b"")
     monkeypatch.setattr(ocr_pdf_client, "service_configured", lambda: True)

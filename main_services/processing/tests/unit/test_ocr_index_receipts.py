@@ -37,6 +37,11 @@ class _Arrow:
 
 
 class _Collection:
+    def query(self, sql, parameters=None):
+        from types import SimpleNamespace
+        assert "FROM vfs_files FINAL" in sql
+        return SimpleNamespace(result_rows=[(h,) for h in parameters["h"]])
+
     def query_arrow(self, sql, _params):
         if "argMax(text_bytes, version)" in sql:
             return _Arrow([{"file_hash": h, "extracted_by": e, "page_id": p, "text_bytes": 10}

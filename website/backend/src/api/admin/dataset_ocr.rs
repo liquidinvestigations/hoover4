@@ -281,7 +281,7 @@ pub async fn admin_get_dataset_ocr(
                  FROM pdf_ocr_results \
                  WHERE collection_dataset = ? \
                  GROUP BY engine, languages, pdf_hash \
-                 HAVING argMax(is_deleted, updated_at) = 0 \
+                 HAVING argMax(is_deleted, updated_at) = 0 AND argMax(source_kind, updated_at) != 'image' \
              ) GROUP BY engine, languages ORDER BY engine, languages",
         )
         .bind(&collection_dataset)

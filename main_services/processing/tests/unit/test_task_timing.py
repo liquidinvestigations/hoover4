@@ -564,3 +564,51 @@ def test_observations_accumulate_until_the_minute_write(recorder, monkeypatch):
     recorder._run()
     assert [(table, len(rows)) for _, table, _, rows in recorder.inserts] == [
         ('processing_task_inflight', 2), ('processing_queue_backlog', 2)]
+
+
+def test_part_batch_adapter_keeps_parent_hash_and_existing_engine_error_identity(monkeypatch):
+    from tasks.P3_parse_files import pdf_parts
+    from tasks.P3_parse_files.batch_runner import BatchFile,StageBatchParams,BatchResult,FileResult
+    params=StageBatchParams("c","c_ds","plan",[BatchFile("parent","source.pdf",first_page=1,last_page=100)],"op","easyocr")
+    def run(stage,files,**kwargs):
+        assert kwargs["key"](files[0])=="parent:1-100"
+        assert kwargs["task_name"]=="run_ocr_pdf_and_store"
+        return BatchResult(stage,[FileResult("parent:1-100",kwargs["task_name"],"ok")])
+    monkeypatch.setattr(pdf_parts,"run_batch",run)
+    result=pdf_parts.run_ocr_pdf_parts_batch(params)
+    assert result.results[0].item_hash=="parent"
+    calls=[]
+    monkeypatch.setattr(task_timing,"_write_operation_result",lambda collection,rows,outcomes:calls.append((rows,outcomes)))
+    asyncio.run(_TimingActivityInbound(_FakeNext(result=result)).execute_activity(
+        _input("run_ocr_pdf_parts_batch",params)))
+    assert calls[0][1] == []
+    assert calls[0][0][0][1:3] == ["run_ocr_pdf_and_store", "parent"]
+
+
+def test_late_successful_part_cannot_recover_a_failed_parent_before_finalization(monkeypatch):
+    from tasks.P3_parse_files.batch_runner import BatchResult,FileResult
+    calls=[]
+    monkeypatch.setattr(task_timing,"_write_operation_result",lambda collection,rows,outcomes:calls.append((rows,outcomes)))
+    params=_StageParams(op_id="op",engine="tesseract")
+    for status in ("failed","ok"):
+        batch=BatchResult("run_ocr_pdf_parts_batch",[FileResult("parent","run_ocr_pdf_and_store",status)])
+        asyncio.run(_TimingActivityInbound(_FakeNext(result=batch)).execute_activity(
+            _input("run_ocr_pdf_parts_batch",params)))
+    assert all(not outcomes for rows,outcomes in calls)
+    final=BatchResult("pdf_ocr_finalize_batch",[FileResult("parent","run_ocr_pdf_and_store","ok")])
+    asyncio.run(_TimingActivityInbound(_FakeNext(result=final)).execute_activity(
+        _input("pdf_ocr_finalize_batch",params)))
+    assert calls[-1][1][0][2:5]==["parent","run_ocr_pdf_and_store[tesseract]","run_ocr_pdf_and_store"]
+
+
+@pytest.mark.parametrize("defect",[None,"passworded","damaged"])
+def test_only_known_pdf_metadata_defects_prove_preparation_error_recovery(monkeypatch,defect):
+    from tasks.P3_parse_files.batch_runner import BatchResult,FileResult
+    from tasks.P_admin.rerun_selection import recovery_activities
+    calls=[]
+    monkeypatch.setattr(task_timing,"_write_operation_result",lambda collection,rows,outcomes:calls.append(outcomes))
+    batch=BatchResult("pdf_metadata_batch",[FileResult("parent","pdf_get_metadata_and_store","ok",{"defect":defect})])
+    asyncio.run(_TimingActivityInbound(_FakeNext(result=batch)).execute_activity(
+        _input("pdf_metadata_batch",_StageParams(op_id="op"))))
+    assert bool(calls[0]) == bool(defect)
+    assert "pdf_get_metadata_and_store" in recovery_activities("pdf_process")

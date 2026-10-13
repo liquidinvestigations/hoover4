@@ -122,12 +122,22 @@ CPU count of the host. `deploy.py` prints a
 warning when `ocr_concurrency` is lower than `tesseract_cpu_concurrency`, because the
 worker then leaves Tesseract slots idle.
 
+`ocr_pdf_files_per_batch` defaults to `4`.
+It limits separate part activity lists for each engine and file group.
+Each list sends its requests sequentially.
+The builder slot limit still controls simultaneous requests.
+`pdf_preview_concurrency` defaults to `2` and limits Office PDF conversions on the preview queue.
+
 `ocr_pdf_concurrency` is the number of searchable PDFs that `hoover4-ocr-pdf` builds at
 once, one render process each. Empty follows `tesseract_cpu_concurrency`, or gives 2 when
 `tesseract_cpu_enabled` is false. The same value sizes the worker queue of searchable-PDF
 batches, so the worker never sends the builder more requests than it runs. The pages of
 one PDF go to the OCR service one after the other. `ocr_pdf_queue_depth` is the number of
 requests that wait for a builder slot, and empty follows `ocr_pdf_concurrency`.
+The builder preserves source PDF pages and adds invisible OCR overlays to selected pages.
+It streams source and output objects through temporary files.
+The source split target adds no builder byte cutoff.
+Its input, page, and raster pixel budgets remain independent.
 `ocr_pdf_mem_limit` is the builder's memory limit. Empty is the larger of 8000M and 2048M
 plus 512M for each builder slot. A set value replaces the formula.
 

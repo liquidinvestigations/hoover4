@@ -1,24 +1,12 @@
-//! Serve a derived searchable PDF, ACL'd exactly like the original document.
-//!
-//! Separate from `download_document` because the two resolve the object completely
-//! differently. A document is a `blobs` row (sometimes with its bytes in ClickHouse); a
-//! derived PDF has **no** `blobs` row at all: `pdf_ocr_results` is the sole index of its
-//! existence, by design, because a `blobs` row under `derived/` is what would let the
-//! ingest walker find the object and start the re-derive loop.
-//!
-//! What the two do share is the permission check, and that is deliberate: an OCR'd PDF is
-//! a rendering of the source document, so being allowed to read one is exactly being
-//! allowed to read the other. The check is on the *source* document's dataset, before any
-//! lookup.
+//! Serve complete searchable PDFs after dataset access verification.
+//! Retained whole objects stream directly. Multipart overlays use temporary assembly.
 
-use anyhow::Context;
 use axum::{
     body::Body,
     extract::{Extension, Path},
     response::{IntoResponse, Response},
 };
 use common::{current_user::CurrentUser, document_sources::DocumentPdfSourceItem, search_result::DocumentIdentifier};
-use futures::TryStreamExt;
 use reqwest::StatusCode;
 
 use crate::{
@@ -123,46 +111,12 @@ async fn _download_ocr_pdf(
 ) -> anyhow::Result<impl IntoResponse> {
     permissions::assert_can_read(user, &collection_dataset).await?;
 
-    let (blob_key, size_bytes) =
-        lookup_blob_key(&collection_dataset, &pdf_hash, &engine, &languages).await?;
+    let id = DocumentIdentifier { collection_dataset, file_hash: pdf_hash };
+    let sources = crate::api::documents::get_document_sources::get_pdf_sources(user,id.clone()).await?;
+    let source = sources.into_iter().find(|source|source.engine == engine && source.languages == languages)
+        .ok_or_else(||anyhow::anyhow!("PDF source not found"))?;
+    crate::server_extra::pdf_parts::complete_response(user,&id,&source).await
 
-    // The derived object is in the collection's own bucket, beside the source PDF it was
-    // built from, not in a single shared one, which would make one collection's derived
-    // material reachable while reading another's.
-    let collectionname = crate::db_utils::collectionname_of_dataset(&collection_dataset).await?;
-    let bucket = crate::db_utils::collection_bucket(&collectionname);
-    let client = crate::db_utils::s3_client().await?;
-    let object = client
-        .get_object()
-        .bucket(&bucket)
-        .key(&blob_key)
-        .send()
-        .await
-        .with_context(|| format!("Failed to get {blob_key}"))?;
-    let object_size = object.content_length().unwrap_or_default() as usize;
-    // `ByteStream` has a `Stream` impl only through a `futures-core` version that is not
-    // the one this workspace's `futures` resolves to, so `TryStreamExt` does not reach
-    // it. Reading it as an `AsyncBufRead` and framing that back into chunks is the
-    // conversion that does not depend on which `futures` won, and it still streams --
-    // nothing here buffers the object.
-    let stream = tokio_util::io::ReaderStream::new(object.body.into_async_read())
-        .map_err(anyhow::Error::from);
-
-
-    // `inline`, not `attachment`: this is the source the PDF viewer swaps to, so it has to
-    // render in place rather than start a download.
-    let headers: [(String, String); 3] = [
-        ("Content-Type".to_string(), "application/pdf".to_string()),
-        (
-            "Content-Disposition".to_string(),
-            format!("inline; filename=\"{pdf_hash}.{engine}.{languages}.pdf\""),
-        ),
-        (
-            "Content-Length".to_string(),
-            format!("{}", if object_size > 0 { object_size } else { size_bytes as usize }),
-        ),
-    ];
-    Ok((headers, Body::from_stream(stream)).into_response())
 }
 
 pub async fn download_ocr_pdf(

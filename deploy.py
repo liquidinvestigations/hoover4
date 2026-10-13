@@ -223,6 +223,8 @@ DEFAULTS = {
         # plus 512M for each builder slot.
         "ocr_pdf_concurrency": "",
         "ocr_pdf_queue_depth": "",
+        "ocr_pdf_files_per_batch": "4",
+        "pdf_preview_concurrency": "2",
         "ocr_pdf_mem_limit": "",
         # Worker fleet. Empty = the worker's own default, except the three chat keys,
         # which the ini sets because a slot is one turn in flight.
@@ -1318,6 +1320,8 @@ def render_ocr_pdf_env(cfg):
         "OCR_PDF_CONCURRENCY": str(slots),
         "OCR_PDF_QUEUE_DEPTH": str(depth),
         "HOOVER4_OCR_PDF_CONCURRENCY": str(slots),
+        "HOOVER4_OCR_PDF_FILES_PER_BATCH": str(whole_number(cfg, "ocr_pdf_files_per_batch")),
+        "HOOVER4_PDF_PREVIEW_CONCURRENCY": str(whole_number(cfg, "pdf_preview_concurrency")),
     }
     if cfg.get(m, "ocr_pdf_mem_limit").strip():
         size_bytes(cfg, "ocr_pdf_mem_limit")

@@ -439,7 +439,7 @@ def test_two_files_of_one_stage_activity_each_prove_their_own_recovery(monkeypat
     from tasks import task_timing
     from tasks.P3_parse_files.batch_runner import BatchResult, FileResult
 
-    fields = SimpleNamespace(workflow_run_id="run", activity_id="3", attempt=1)
+    fields = SimpleNamespace(workflow_run_id="run", activity_id="3", attempt=1, task_name="extract_plaintext_batch")
     stage_row = [None] * len(task_timing._RUNS_COLUMNS)
     columns = list(task_timing._RUNS_COLUMNS)
     for name, value in (("collection_dataset", "dataset"), ("op_id", "op"),

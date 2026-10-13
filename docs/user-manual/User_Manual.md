@@ -281,6 +281,10 @@ One file can be readable in several ways, and each way is a source you can switc
 | **PDF** | the real PDF, rendered page by page |
 | **PDF · OCR · Tesseract · eng** | the same PDF after optical character recognition |
 | **PDF text** | the text layer, without the page images |
+| **PDF OCR · Tesseract · eng** | OCR text from selected PDF pages |
+| **PDF preview** | a PDF preview of a supported Office document |
+| **PDF preview · OCR · Tesseract · eng** | a searchable Office preview |
+| **Preview OCR · Tesseract · eng** | a searchable image preview |
 | **Office XML** | a `.docx` / `.odt` rendered from its XML |
 | **Image** / **OCR · Tesseract · eng** | the picture, and the text read out of it |
 | **File locations** | every path in the corpus where this exact file appears |
@@ -288,6 +292,10 @@ One file can be readable in several ways, and each way is a source you can switc
 A PDF gets the full viewer, page navigation, zoom, and the page counter at the bottom right:
 
 ![A PDF in the viewer](img/document-pdf.png)
+
+PDF navigation uses document page numbers across all parts.
+The viewer loads the required part when you change pages.
+Complete PDF downloads include every part.
 
 An image shows its dimensions next to the source, and the OCR variant shows what was read out
 of it. A browser shows only some image formats. For the others, such as HEIC, TIFF and SVG,
@@ -322,6 +330,9 @@ filters the list.
 
 The **Metadata** tab holds everything the pipeline knows about the file: its dates and why they
 are trusted, email headers, blob hashes and size, and the detected file types.
+
+A PDF defect appears as `passworded` or `damaged` in its metadata.
+The pipeline retains that metadata and skips later PDF processing.
 
 ### Downloading
 
@@ -475,11 +486,14 @@ A dataset's page shows its type and source path, when it was created, and its st
 state, documents, size, indexed documents, errors, and finished plans. It also shows the OCR
 languages in use.
 
-**Run OCR** brings the dataset's OCR to the state that its current settings ask for. It first
-finishes the processing that a cancelled or failed ingestion left, with every stage. Then it
-runs OCR for each image and searchable PDF that has no result, and indexes OCR text that
-search does not have yet. It skips an image that is too small or empty, and a file whose OCR
-failed under the current languages. **Retry** on the processing page repeats failed files.
+**Run OCR** completes the work required by the dataset's current OCR settings.
+It first completes unfinished processing and removes earlier PDF member documents.
+It then prepares PDF sources, completes previews, runs missing OCR work, and indexes changed text.
+Saved OCR results provide their text without another OCR request.
+The operation also indexes replacement native PDF text when OCR languages are empty.
+It skips small or empty images and retains known PDF defects as metadata.
+Current processing errors settle the affected work.
+**Retry** on the processing page repeats failed files.
 
 The progress bar counts plans while unfinished processing runs, then OCR and indexing
 targets. New OCR text adds indexing targets, so the total can increase during the run. A

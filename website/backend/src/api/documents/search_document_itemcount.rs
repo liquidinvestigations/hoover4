@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn a_pdf_count_that_did_not_finish_is_timed_out() {
-        let pdf = DocumentPdfSourceItem { page_count: 3, engine: String::new(), languages: String::new() };
+        let pdf = DocumentPdfSourceItem { page_count: 3, engine: String::new(), languages: String::new(), ..Default::default() };
         let counts = assemble_counts(
             vec![DocumentSourceItem::Pdf(pdf.clone())],
             Some((&[], false)),

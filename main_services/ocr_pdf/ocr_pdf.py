@@ -1,51 +1,7 @@
-"""Searchable-PDF assembly over HTTP, renders, OCRs, and writes a text-layered PDF.
-
-What it does
-------------
-Given a PDF in the object store (or inline, for the small blobs that live in ClickHouse), it renders
-every page to a raster, sends each raster to the **existing** OCR tier
-(`hoover4-tesseract-cpu`), and assembles a new PDF: the page image with the recognised
-words drawn over it in invisible text. The result reads like a scan and selects, copies
-and searches like text.
-
-Why a separate service and not a worker activity
-------------------------------------------------
-The same two reasons OCR itself is a service (`main_services/ocr_tesseract`), plus one of
-its own:
-
-* **Rasterising is a native-library job.** pypdfium2 and Pillow in the worker image would
-  put a PDF renderer inside the process that also runs Temporal activities, archives,
-  email parsing and ClickHouse writes. The worker deliberately shells out to `qpdf` and
-  `pdftotext` instead of linking a PDF library, and this keeps that property.
-* **The page loop is unbounded work over one input.** A 500-page scan is 500 OCR calls.
-  Bounded concurrency and load-shedding belong on the thing doing them, not spread across
-  every caller.
-
-The derived-PDF trap
---------------------
-The output is a new PDF. If the ingest walker could see it, it would be ingested, OCR'd,
-and produce another PDF, forever, which is the most expensive defect this service can
-have. Three
-guards, of which this file owns the first two:
-
-1. `dest_key` **must** start with ``derived/``. A request that asks for anything else is
-   refused with 400, before a byte is written.
-2. Nothing here writes a `blobs` or `vfs_files` row. The only index of the object's
-   existence is `pdf_ocr_results`, written by the caller after this returns.
-3. `verify-stack.sh` asserts no `blobs` row references the derived prefix.
-
-Contract
---------
-``POST /ocr-pdf``  ``{"source_key"|"pdf_b64", "dest_key", "engine", "languages", "dpi"}``
-                   -> ``{"page_count", "pages_with_text", "size_bytes", "blob_hash",
-                         "engine", "languages", "dest_key", "run_time_ms"}``
-``GET  /health``   -> ``{"status", "engines", "renderer", "bucket", ...}``
-"""
-
+"""Build source-preserving PDF overlays in isolated child processes."""
 import base64
 import binascii
 import hashlib
-import io
 import json
 import logging
 import os
@@ -57,17 +13,16 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from typing import Dict, Optional
+from typing import Any, Dict, Literal, Optional
 
 import anyio.to_thread
-import requests
 from fastapi import FastAPI, HTTPException, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 log = logging.getLogger("ocr_pdf")
 
-#: The one prefix a derived object may be written under. See "The derived-PDF trap".
+#: Derived outputs remain outside source ingestion.
 DERIVED_PREFIX = "derived/"
 
 #: Render resolution. 200 dpi is the usual floor for reliable OCR of body text and keeps
@@ -79,11 +34,6 @@ MAX_DPI = int(os.getenv("OCR_PDF_MAX_DPI", "400"))
 #: of CPU or gigabytes of memory, and a bomb-shaped PDF is a real corpus artefact.
 MAX_PDF_BYTES = int(os.getenv("OCR_PDF_MAX_INPUT_BYTES", str(512 * 1024 * 1024)))
 MAX_PAGES = int(os.getenv("OCR_PDF_MAX_PAGES", "2000"))
-
-#: JPEG quality for the page images. The output is a scan of a scan either way, so the
-#: setting that changes the result is file size: quality 75 is roughly a third of the bytes of 95 and
-#: does not change what Tesseract already read off the pre-compression raster.
-JPEG_QUALITY = int(os.getenv("OCR_PDF_JPEG_QUALITY", "75"))
 
 #: PDFs at once, one render process each, and the requests that may wait for a slot.
 #: deploy.py renders both from `ocr_pdf_concurrency` and `ocr_pdf_queue_depth` in
@@ -138,15 +88,16 @@ RENDER_TIMEOUT_SECONDS = int(os.getenv("OCR_PDF_RENDER_TIMEOUT_SECONDS", "3600")
 
 
 class OcrPdfRequest(BaseModel):
-    #: The bucket both keys live in, which is the collection's own. Empty falls back to this
-    #: service's configured default, which exists only so that a probe can be made
-    #: without one.
-    bucket: str = Field("", description="Bucket holding the source and destination keys")
-    #: Object key of the source PDF, inside `bucket`. Either this or `pdf_b64`, blobs
-    #: under the small-file threshold live in ClickHouse and have no object at all, so
-    #: the caller sends those inline.
-    source_key: str = Field("", description="Object key of the source PDF")
-    pdf_b64: str = Field("", description="Inline source PDF, for blobs not stored in the object store")
+    #: Owned output uses the collection bucket. Empty uses the configured default.
+    bucket: str = Field("", description="Bucket holding the destination key")
+    source_bucket: str = Field("", description="Source bucket. Empty uses the destination bucket")
+    #: Small sources can use inline input when they have no object-store key.
+    source_key: str = Field("", description="Object key of the source PDF or image")
+    source_b64: str = Field("", description="Inline source PDF or image")
+    pdf_b64: str = Field("", description="Legacy inline source PDF")
+    mode: Literal["pdf", "image"] = "pdf"
+    ocr_pages: Optional[list[StrictInt]] = Field(None, description="Selected local pages, numbered from one. Omitted means all pages")
+    words: list[dict[str, Any]] = Field(default_factory=list, description="Stored OCR word boxes for image mode")
     dest_key: str = Field(..., description="Object key to write, must start with derived/")
     engine: str = Field("tesseract", description="OCR engine: tesseract | easyocr")
     languages: str = Field("eng", description="+-joined language codes for one pass")
@@ -162,6 +113,7 @@ class OcrPdfResponse(BaseModel):
     languages: str
     dest_key: str
     run_time_ms: int
+    pages: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def _s3():
@@ -176,12 +128,7 @@ def _s3():
 
 
 def validate_dest_key(dest_key: str) -> str:
-    """Refuse anything that is not under the derived prefix, and any traversal.
-
-    This is guard 1 of the derived-PDF trap and it runs before any work: a caller that
-    gets this wrong writes an object the ingest walker *can* see, and the loop it starts
-    is the most expensive bug in the system.
-    """
+    """Require a derived destination key without parent-directory traversal."""
     key = (dest_key or "").strip()
     if not key.startswith(DERIVED_PREFIX):
         raise ValueError(f"dest_key must start with {DERIVED_PREFIX!r}, got {key!r}")
@@ -190,35 +137,65 @@ def validate_dest_key(dest_key: str) -> str:
     return key
 
 
-def run_renderer(pdf_bytes: bytes, engine: str, languages: str, dpi: int) -> tuple:
-    """Run PDFium in one child process and return its output."""
-    with tempfile.TemporaryDirectory(prefix="ocr-pdf-") as folder:
-        source = os.path.join(folder, "source.pdf")
-        destination = os.path.join(folder, "result.pdf")
-        with open(source, "wb") as handle:
-            handle.write(pdf_bytes)
-        try:
-            result = subprocess.run(
-                list(RENDER_WORKER_COMMAND) + [source, destination, engine, languages, str(dpi)],
-                text=True, capture_output=True, timeout=RENDER_TIMEOUT_SECONDS, check=False,
-            )
-        except subprocess.TimeoutExpired:
-            raise HTTPException(504, "the renderer timed out on this PDF")
-        if result.returncode < 0:
-            name = signal.Signals(-result.returncode).name
-            raise HTTPException(422, "the renderer stopped with signal %s on this PDF" % name)
-        try:
-            body = json.loads(result.stdout.splitlines()[-1])
-        except (IndexError, json.JSONDecodeError):
-            raise HTTPException(500, "the renderer returned no result")
-        if not body.get("ok"):
-            raise HTTPException(body.get("status", 500), body.get("detail", "renderer failed"),
-                                headers=body.get("headers") or None)
-        try:
-            output = open(destination, "rb").read()
-        except OSError as exc:
-            raise HTTPException(500, "the renderer wrote no PDF: %s" % exc)
-        return output, int(body["page_count"]), int(body["pages_with_text"])
+def run_renderer(source: str, destination: str, engine: str, languages: str,
+                 dpi: int, mode="pdf", ocr_pages=None, words=None) -> dict:
+    """Run PDFium in one child process and return its page results."""
+    options_path = destination + ".request.json"
+    with open(options_path, "w") as handle:
+        json.dump({"mode": mode, "ocr_pages": ocr_pages, "words": words or []}, handle)
+    try:
+        result = subprocess.run(
+            list(RENDER_WORKER_COMMAND) + [source, destination, engine, languages, str(dpi), options_path],
+            text=True, capture_output=True, timeout=RENDER_TIMEOUT_SECONDS, check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(504, "the renderer timed out on this PDF")
+    finally:
+        os.unlink(options_path)
+    if result.returncode < 0:
+        name = signal.Signals(-result.returncode).name
+        raise HTTPException(422, "the renderer stopped with signal %s on this PDF" % name)
+    try:
+        body = json.loads(result.stdout.splitlines()[-1])
+    except (IndexError, json.JSONDecodeError):
+        raise HTTPException(500, "the renderer returned no result")
+    if not body.get("ok"):
+        raise HTTPException(body.get("status", 500), body.get("detail", "renderer failed"),
+                            headers=body.get("headers") or None)
+    if result.returncode != 0 or not os.path.isfile(destination):
+        raise HTTPException(500, "the renderer wrote no PDF")
+    return body
+
+
+def write_inline_source(encoded, destination, field):
+    """Decode inline input in bounded blocks and retain the input byte limit."""
+    size = 0
+    try:
+        with open(destination, "wb") as handle:
+            for offset in range(0, len(encoded), 65536):
+                block = base64.b64decode(encoded[offset:offset + 65536], validate=True)
+                # Padding is valid only at the end of the complete input.
+                if "=" in encoded[offset:offset + 65536] and offset + 65536 < len(encoded):
+                    raise ValueError("base64 padding precedes the end")
+                size += len(block)
+                if size > MAX_PDF_BYTES:
+                    raise HTTPException(413, "the source exceeds the input byte limit")
+                handle.write(block)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(400, "%s is not valid base64: %s" % (field, exc))
+
+
+def fetch_source(client, bucket, key, destination):
+    """Stream an object to disk after verifying its reported input size."""
+    try:
+        size = client.stat_object(bucket, key).size
+        if size > MAX_PDF_BYTES:
+            raise HTTPException(413, "the source exceeds the input byte limit")
+        client.fget_object(bucket, key, destination)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(404, "cannot read %r: %s" % (key, exc))
 
 
 @app.get("/health")
@@ -285,67 +262,46 @@ def ocr_pdf(request: OcrPdfRequest, response: Response):
         started = time.time()
         client = _s3()
 
-        if request.pdf_b64:
+        with tempfile.TemporaryDirectory(prefix="ocr-pdf-") as folder:
+            source = os.path.join(folder, "source")
+            destination = os.path.join(folder, "result.pdf")
+            if request.source_b64 or request.pdf_b64:
+                field = "source_b64" if request.source_b64 else "pdf_b64"
+                write_inline_source(request.source_b64 or request.pdf_b64, source, field)
+            elif request.source_key:
+                fetch_source(client, request.source_bucket.strip() or bucket, request.source_key, source)
+            else:
+                raise HTTPException(400, "one of source_key, source_b64 or pdf_b64 is required")
+            size = os.path.getsize(source)
+            if not size:
+                raise HTTPException(400, "the source is zero bytes")
+            if size > MAX_PDF_BYTES:
+                raise HTTPException(413, "the source exceeds the input byte limit")
             try:
-                pdf_bytes = base64.b64decode(request.pdf_b64, validate=True)
-            except (binascii.Error, ValueError) as exc:
-                raise HTTPException(status_code=400, detail=f"pdf_b64 is not valid base64: {exc}")
-        elif request.source_key:
-            try:
-                obj = client.get_object(bucket, request.source_key)
-                try:
-                    pdf_bytes = obj.read()
-                finally:
-                    obj.close()
-                    obj.release_conn()
+                result = _pool.submit(
+                    run_renderer, source, destination, request.engine, request.languages,
+                    request.dpi, request.mode, request.ocr_pages, request.words,
+                ).result()
+            except HTTPException:
+                raise
             except Exception as exc:
-                raise HTTPException(status_code=404,
-                                    detail=f"cannot read {request.source_key!r}: {exc}")
-        else:
-            raise HTTPException(status_code=400, detail="one of source_key or pdf_b64 is required")
-
-        if not pdf_bytes:
-            raise HTTPException(status_code=400, detail="the source PDF is zero bytes")
-        if len(pdf_bytes) > MAX_PDF_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail=f"the source PDF is {len(pdf_bytes)} bytes, limit is {MAX_PDF_BYTES}",
+                log.warning("[ocr-pdf] assembly failed for %s", dest_key, exc_info=True)
+                raise HTTPException(422, "could not assemble the PDF: %s" % exc)
+            digest = hashlib.sha3_256()
+            with open(destination, "rb") as handle:
+                for block in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(block)
+            size_bytes = os.path.getsize(destination)
+            # Upload the object before the caller records its result row.
+            client.fput_object(bucket, dest_key, destination, content_type="application/pdf")
+            run_time_ms = max(int((time.time() - started) * 1000), 0)
+            log.info("[ocr-pdf] %s: %d pages (%d with text), %d bytes in %d ms",
+                     dest_key, result["page_count"], result["pages_with_text"], size_bytes, run_time_ms)
+            return OcrPdfResponse(
+                page_count=result["page_count"], pages_with_text=result["pages_with_text"],
+                pages=result["pages"], size_bytes=size_bytes, blob_hash=digest.hexdigest(),
+                engine=request.engine, languages=request.languages, dest_key=dest_key,
+                run_time_ms=run_time_ms,
             )
-
-        try:
-            out_bytes, page_count, pages_with_text = _pool.submit(
-                run_renderer, pdf_bytes, request.engine, request.languages, request.dpi
-            ).result()
-        except HTTPException:
-            raise
-        except Exception as exc:
-            log.warning("[ocr-pdf] assembly failed for %s", dest_key, exc_info=True)
-            raise HTTPException(status_code=422, detail=f"could not assemble the PDF: {exc}")
-
-        blob_hash = hashlib.sha3_256(out_bytes).hexdigest()
-        # Bytes before the row, always: an object with no row is found by a prefix scan,
-        # a row with no object is a broken link nothing can repair. The
-        # `pdf_ocr_results` row is the caller's to write, after this returns.
-        client.put_object(
-            bucket,
-            dest_key,
-            io.BytesIO(out_bytes),
-            length=len(out_bytes),
-            content_type="application/pdf",
-        )
-
-        run_time_ms = max(int((time.time() - started) * 1000), 0)
-        log.info("[ocr-pdf] %s: %d pages (%d with text), %d bytes in %d ms",
-                 dest_key, page_count, pages_with_text, len(out_bytes), run_time_ms)
-        return OcrPdfResponse(
-            page_count=page_count,
-            pages_with_text=pages_with_text,
-            size_bytes=len(out_bytes),
-            blob_hash=blob_hash,
-            engine=request.engine,
-            languages=request.languages,
-            dest_key=dest_key,
-            run_time_ms=run_time_ms,
-        )
     finally:
         _inflight.release()

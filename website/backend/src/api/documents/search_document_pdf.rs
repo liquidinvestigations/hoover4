@@ -29,14 +29,6 @@ pub fn pdf_search_endpoint() -> String {
         .unwrap_or_else(|| "http://127.0.0.1:13500".to_string())
 }
 
-/// Ceiling on a document sent to the sidecar for highlighting.
-///
-/// The whole PDF is buffered three times over (here, on the wire, and inside pdfium's
-/// wasm heap), so this is a memory bound on the server, not a policy about documents.
-/// A document above it still opens, downloads and searches by text; only the in-page
-/// highlight overlay is unavailable, which is the right thing to lose.
-const MAX_PDF_SEARCH_BYTES: u64 = 128 * 1024 * 1024;
-
 /// Longest a single in-PDF search of the website may take. The sidecar parses and scans
 /// the whole document per keyword; without a bound, one pathological PDF holds a
 /// server-function slot open indefinitely. An agent route passes the time that remains of
@@ -74,7 +66,14 @@ pub async fn search_document_pdf_with_timeout(
 
     let mut keywords = HashSet::new();
 
-    for result in text_results {
+    let source = source.unwrap_or_default();
+    let text_source = source.text_source();
+    for result in text_results.into_iter().filter(|result| {
+        if source.kind() == "image" { return result.extracted_by == text_source; }
+        let native = if source.kind() == "preview" { !common::document_sources::TextSource::parse(&result.extracted_by).is_ocr() }
+            else { result.extracted_by == "pdftotext" };
+        native || (source.is_ocr() && result.extracted_by == text_source)
+    }) {
         for span in result.highlight_text_spans {
             if span.is_highlighted {
                 keywords.insert(span.text.to_lowercase());
@@ -94,18 +93,16 @@ pub async fn search_document_pdf_with_timeout(
     // HTTP port instead makes the server fetch a document it already knows how to read,
     // over a request that can carry no session, so requiring a session on the download
     // route silently kills in-document search.
-    let pdf_bytes = match source.filter(DocumentPdfSourceItem::is_ocr) {
-        Some(source) => crate::server_extra::download_ocr_pdf::read_ocr_pdf_bytes(
-            user, &document_identifier, &source, MAX_PDF_SEARCH_BYTES,
-        ).await?,
-        None => crate::api::documents::download_document::read_blob_bytes(
-            user, &document_identifier, MAX_PDF_SEARCH_BYTES,
-        ).await?,
-    };
-
+    let parts = crate::server_extra::pdf_parts::source_parts(user,&document_identifier,&source).await?;
+    let deadline = tokio::time::Instant::now() + timeout;
+    let mut pdf_results = Vec::new();
+    for part in parts {
+        let pdf_bytes = crate::server_extra::pdf_parts::read_part_bytes(&document_identifier,&part).await?;
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        anyhow::ensure!(!remaining.is_zero(), "PDF search timed out");
     let keywords_param = json!(keywords).to_string();
-    let pdf_results = reqwest::ClientBuilder::new()
-        .timeout(timeout)
+    let mut part_results = reqwest::ClientBuilder::new()
+        .timeout(remaining)
         .build()?
         .post(pdf_search_endpoint())
         .query(&[("keywords", keywords_param.as_str())])
@@ -116,6 +113,11 @@ pub async fn search_document_pdf_with_timeout(
         .error_for_status()?
         .json::<Vec<SearchPdfResultsSet>>()
         .await?;
+        for item in &mut part_results {
+            for hit in &mut item.result_set.results { hit.page_index += part.range.first_page as i32 - 1; }
+        }
+        pdf_results.extend(part_results);
+    }
 
     let mut final_results = PdfSearchResults {
         results: vec![],

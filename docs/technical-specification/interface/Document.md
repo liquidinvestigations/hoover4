@@ -22,7 +22,7 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 | `.table.sheet` | sheet chooser dialog | selects a workbook sheet, and shows the matching rows of each sheet while the find box holds a search | it clears sheet-specific columns, sorting and filters. With a search and no chosen sheet, the viewer opens on the first sheet with matches |
 | `.table.cell` | table cell text | it shows selectable text spans without a click action | each cell shows an excerpt of at most five lines in a monospaced font |
 | `.table.cell_full` | `Open full cell` control | opens a full-screen modal with the raw value and the cell details | it appears on a cell whose value uses three or more lines |
-| `.source.dropdown` | source selector | selects a stored document source | it appears in the search preview; the full viewer uses the source list; a change resets the selected page |
+| `.source.dropdown` | source selector | selects a stored document source | it appears in the search preview; the full viewer uses the source list; a change resets the selected page. PDF sources use stored document ranges and preserve their identity after manifest refresh. |
 | `.find.clear` | clear search button | clears the in-document query | the main search, document find, and folder search share the input control |
 | `.table.clear_filters` | clear filters button | clears the document query and column filters | it appears when filters return zero rows |
 | `.source.retry` | retry button | requests document sources again | it appears when the source request fails |
@@ -89,3 +89,10 @@ A cell keeps its natural height when its value needs fewer than five lines.
 The grid moves its first rendered match into view with one smooth scroll of the grid.
 Opening a searched table, a new find text, a sheet choice and a pager click each request this movement.
 Repeated renders, manual scrolling, sort changes and filter changes do not move the grid.
+
+PDF page input and arrows use document page numbers across source part boundaries.
+The viewer requests the required part and preserves zoom and selection coordinates.
+PDF search reads all relevant parts and maps each hit to its document page.
+Searchable sources include retained native text and their own OCR text.
+Image Preview OCR precedes the image source.
+Complete multipart downloads use temporary assembly with access verification and cancellation cleanup.

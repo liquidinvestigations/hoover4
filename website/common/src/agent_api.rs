@@ -493,9 +493,9 @@ pub struct DocumentsSourcesRequest {
 pub struct AgentDocumentSource {
     /// `text`, `pdf`, `email`, `table`, `image`, `video` or `audio`.
     pub kind: String,
-    /// Holds the name that the other document tools take. It is the `extracted_by`
-    /// value for a text source, empty or `ocr_<engine>_<languages>` for a PDF, and
-    /// `email_parser` for an email.
+    /// Text sources use their `extracted_by` identity.
+    /// PDF sources use the listed source name, including preview and OCR variants.
+    /// Email sources use `email_parser`.
     pub source: String,
     pub label: String,
     /// Counts the query hits in this source. It is absent with no query, and when the
@@ -510,6 +510,8 @@ pub struct AgentDocumentSource {
     pub max_page: Option<u32>,
     #[serde(default)]
     pub page_count: Option<u32>,
+    #[serde(default)]
+    pub parts: Vec<crate::document_sources::DocumentPdfPart>,
     #[serde(default)]
     pub sheet_count: Option<u16>,
     #[serde(default)]
@@ -551,6 +553,15 @@ pub struct AgentDownloadLinks {
     pub original: String,
     /// Absent when the document has no OCR'd PDF variant.
     pub ocr_pdf: Option<String>,
+    #[serde(default)]
+    pub pdf_sources: Vec<AgentPdfDownloadLink>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AgentPdfDownloadLink {
+    pub source: String,
+    pub label: String,
+    pub url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -725,7 +736,7 @@ pub struct DocumentsPdfSearchRequest {
     pub file_hash: String,
     pub query: String,
     /// The same `extracted_by`-shaped string used everywhere else: empty for the
-    /// original PDF, `ocr_<engine>_<languages>` for a derived one.
+    /// original PDF, `preview` for Office, or the PDF source name from `documents/sources`.
     #[serde(default)]
     pub source: String,
     /// Holds the lowest and the highest PDF page index to return, as `page` counts them.

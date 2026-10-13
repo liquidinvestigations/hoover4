@@ -215,6 +215,8 @@ class RerunOcr:
         if not workflow.patched(RUN_OCR_TARGETS_PATCH):
             return await self._whole_plans(params)
         if not params.listed:
+            if workflow.patched("ocr-run-pdf-members"):
+                params = dataclasses.replace(params, parts_version=True)
             params = await self._phase_one(params)
         page = await workflow.execute_activity(
             list_ocr_run_plans,
@@ -322,6 +324,12 @@ class RerunOcr:
                 task_queue="processing-common-queue",
                 search_attributes=dataset_search_attributes(params.collection_dataset),
             )
+        if params.parts_version:
+            await workflow.execute_activity(
+                "remove_pdf_members", params,
+                start_to_close_timeout=timedelta(minutes=120),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS))
         await workflow.execute_activity(
             record_ocr_run_targets,
             params,
@@ -342,7 +350,7 @@ class RerunOcr:
         return await workflow.execute_child_workflow(
             OcrRunPlan.run,
             OcrRunPlanParams(params.collectionname, params.collection_dataset,
-                             params.op_id, plan_hash),
+                             params.op_id, plan_hash, parts_version=params.parts_version),
             id=f"run-ocr-plan-{params.op_id}-{plan_hash}",
             task_queue="processing-common-queue",
             search_attributes=dataset_search_attributes(params.collection_dataset),
@@ -374,6 +382,9 @@ class OcrRunPlan:
 
     @workflow.run
     async def run(self, params: "OcrRunPlanParams") -> dict:
+        parts_version = workflow.patched("ocr-run-pdf-parts")
+        if parts_version:
+            params = dataclasses.replace(params, parts_version=True)
         work = await workflow.execute_activity(
             load_ocr_run_plan,
             params,
@@ -402,7 +413,7 @@ class OcrRunPlan:
             groups = [work.files[i:i + PLAN_GROUP_SIZE]
                       for i in range(0, len(work.files), PLAN_GROUP_SIZE)]
             results = await run_with_window(
-                [functools.partial(self._group, params, downloaded.get("out_dir"), index, group)
+                [functools.partial(self._group, params, downloaded.get("out_dir"), index, group, parts_version)
                  for index, group in enumerate(groups)],
                 MAX_PLAN_DRIVERS,
             )
@@ -410,7 +421,7 @@ class OcrRunPlan:
                 if isinstance(result, BaseException):
                     raise result
 
-        candidates = sorted({file.item_hash for file in work.files if file.image_engines}
+        candidates = sorted({file.item_hash for file in work.files if parts_version or file.image_engines}
                             | set(work.index_hashes))
         pending: list = []
         if candidates:
@@ -428,7 +439,7 @@ class OcrRunPlan:
         settlement = await workflow.execute_activity(
             settle_ocr_run_targets,
             SettleOcrRunTargetsParams(params.collectionname, params.collection_dataset,
-                                      params.op_id, params.plan_hash),
+                                      params.op_id, params.plan_hash, parts_version=parts_version),
             start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
@@ -453,7 +464,7 @@ class OcrRunPlan:
                 "settled": settlement.settled}
 
     async def _group(self, params: "OcrRunPlanParams", out_dir: str, index: int,
-                     files: list) -> None:
+                     files: list, parts_version: bool = False) -> None:
         """Preview and OCR of one group of files, its errors, and its settlement."""
         starts: dict = {}
 
@@ -492,19 +503,24 @@ class OcrRunPlan:
                     name, [file.item_hash for file in chosen], exc)))
 
         images = [file for file in files if file.image_engines]
+        preview_images = [file for file in files if file.preview or file.image_engines] if parts_version else images
         outcomes: dict = {}
 
         async def image_ocr() -> None:
             # OCR reads the preview of an uncommon image format, so it waits for it. A
             # failed preview has no error name, and the OCR stage reads the original.
-            await run_stage("make_image_preview_batch", images, [
+            outcomes["make_image_preview_batch", ""] = await run_stage("make_image_preview_batch", preview_images, [
                 batch_file(file, mime_types=list(file.mime_types), routes=["image"])
-                for file in images])
+                for file in preview_images])
 
             async def engine_ocr(engine: str) -> None:
                 chosen = [file for file in images if engine in file.image_engines]
                 outcomes["run_ocr_batch", engine] = await run_stage(
                     "run_ocr_batch", chosen, [batch_file(file) for file in chosen], engine)
+                if parts_version:
+                    pdf_images = [file for file in files if engine in file.image_pdf_engines or engine in file.image_engines]
+                    outcomes["make_image_pdf_batch", engine] = await run_stage(
+                        "make_image_pdf_batch", pdf_images, [batch_file(file) for file in pdf_images], engine)
 
             await asyncio.gather(*[engine_ocr(engine) for engine in OCR_ENGINES])
 
@@ -513,14 +529,47 @@ class OcrRunPlan:
             outcomes["run_ocr_pdf_batch", engine] = await run_stage(
                 "run_ocr_pdf_batch", chosen, [batch_file(file) for file in chosen], engine)
 
-        await asyncio.gather(image_ocr(), *[pdf_ocr(engine) for engine in OCR_ENGINES])
+        if parts_version:
+            from tasks.P3_parse_files.pdf_chain import run_pdf_chain
+            pdf_files = [file for file in files if file.prepare or file.pdf_engines]
+            sources = [batch_file(file, source_kind=file.source_kind, file_names=file.file_names)
+                       for file in pdf_files]
+            async def pdf_stages(name, items, engine=""):
+                chosen = [next(file for file in pdf_files if file.item_hash == item.item_hash) for item in items]
+                return [result for _, result in await run_stage(name, chosen, items, engine)]
+            async def new_pdf_chain():
+                preparation, variants = await run_pdf_chain(sources, pdf_stages)
+                outcomes["pdf_prepare_batch", ""] = [(file, preparation[file.item_hash])
+                                                      for file in pdf_files if file.item_hash in preparation]
+                for engine in OCR_ENGINES:
+                    outcomes["pdf_ocr_finalize_batch", engine] = [
+                        (file, variants[file.item_hash, engine]) for file in pdf_files
+                        if (file.item_hash, engine) in variants]
+            await asyncio.gather(image_ocr(), new_pdf_chain())
+        else:
+            await asyncio.gather(image_ocr(), *[pdf_ocr(engine) for engine in OCR_ENGINES])
 
         # One error row for each failed file of each stage, in a fixed order. The groups of
         # one plan share a run id, so the call site of each source id names the group.
         run_id = workflow.info().run_id
         errors, task_ids, error_starts, hashes = [], [], [], []
-        for name, error_name in (("run_ocr_batch", ocr_error_name),
-                                 ("run_ocr_pdf_batch", ocr_pdf_error_name)):
+        error_stages = [("run_ocr_batch", ocr_error_name), ("run_ocr_pdf_batch", ocr_pdf_error_name)]
+        if parts_version:
+            for file, result in outcomes.get(("make_image_preview_batch", ""), []):
+                if result.status == "failed":
+                    errors.append(file_error(result))
+                    task_ids.append("make_image_preview")
+                    error_starts.append(starts.get(("make_image_preview_batch", ""), workflow.now()))
+                    hashes.append(file.item_hash)
+            error_stages += [("make_image_pdf_batch", lambda engine: f"make_image_pdf[{engine}]"),
+                             ("pdf_ocr_finalize_batch", ocr_pdf_error_name)]
+            for file, result in outcomes.get(("pdf_prepare_batch", ""), []):
+                if result.status == "failed":
+                    errors.append(file_error(result))
+                    task_ids.append("make_pdf_preview" if file.source_kind == "preview" and result.task_name == "make_pdf_preview" else "pdf_process")
+                    error_starts.append(starts.get(("pdf_prepare_batch", ""), workflow.now()))
+                    hashes.append(file.item_hash)
+        for name, error_name in error_stages:
             for engine in OCR_ENGINES:
                 for file, result in outcomes.get((name, engine), []):
                     if result.status != "failed":
@@ -544,12 +593,12 @@ class OcrRunPlan:
 
         # New OCR text opens its index target before the OCR targets settle, so the
         # progress total grows before the progress can reach it.
-        if images:
+        if images or parts_version:
             await workflow.execute_activity(
                 ocr_text_pending_index,
                 OcrTextPendingParams(params.collectionname, params.collection_dataset,
                                      params.op_id, params.plan_hash,
-                                     [file.item_hash for file in images]),
+                                     [file.item_hash for file in (files if parts_version else images)]),
                 start_to_close_timeout=timedelta(minutes=30),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
@@ -558,7 +607,7 @@ class OcrRunPlan:
             settle_ocr_run_targets,
             SettleOcrRunTargetsParams(params.collectionname, params.collection_dataset,
                                       params.op_id, params.plan_hash,
-                                      [file.item_hash for file in files]),
+                                      [file.item_hash for file in files], parts_version=parts_version),
             start_to_close_timeout=timedelta(minutes=30),
             heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),

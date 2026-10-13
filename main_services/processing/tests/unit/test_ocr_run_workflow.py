@@ -38,7 +38,7 @@ class ContinuedAsNew(Exception):
 class Temporal:
     """A fake workflow environment that answers each command by its name."""
 
-    def __init__(self, monkeypatch, patched=True, answers=None):
+    def __init__(self, monkeypatch, patched=True, answers=None, parts=False):
         self.calls = []
         self.answers = dict(answers or {})
         self.patched = patched
@@ -47,7 +47,7 @@ class Temporal:
         monkeypatch.setattr(w, "execute_child_workflow", self.child)
         monkeypatch.setattr(w, "now", lambda: NOW)
         monkeypatch.setattr(w, "info", lambda: SimpleNamespace(run_id="run-1"))
-        monkeypatch.setattr(w, "patched", lambda _name: self.patched)
+        monkeypatch.setattr(w, "patched", lambda name: parts if name in ("ocr-run-pdf-parts", "ocr-run-pdf-members") else self.patched)
         monkeypatch.setattr(w, "continue_as_new", self.continue_as_new)
 
         async def wait(pending, **kwargs):
@@ -465,3 +465,15 @@ def test_verification_fails_with_bounded_samples_while_a_target_is_open(store):
     ocr_rerun.settle_ocr_run_targets(ocr_rerun.SettleOcrRunTargetsParams(COLLECTION, CD, OP, "p1"))
     assert ocr_rerun.verify_ocr_run_completion(
         ocr_rerun.VerifyOcrRunParams(COLLECTION, CD, OP)) == 8
+
+
+def test_member_cleanup_follows_legacy_phase_one_before_new_targets(monkeypatch):
+    env = Temporal(monkeypatch, parts=True, answers={
+        "list_pending_plans": ["legacy"], "count_new_blobs": 0,
+        "ExecutePlans": {"plans_run": 1}, "list_ocr_run_plans": [],
+        "verify_ocr_run_completion": 0})
+    asyncio.run(admin_workflows.RerunOcr().run(params()))
+    names = env.names()
+    assert names.index("ExecutePlans") < names.index("remove_pdf_members") < names.index("record_ocr_run_targets")
+    recorded = next(arg for kind, name, arg, options in env.calls if name == "record_ocr_run_targets")
+    assert recorded.parts_version

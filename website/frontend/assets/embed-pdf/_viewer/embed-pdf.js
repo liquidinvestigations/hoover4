@@ -1,6 +1,40 @@
 import EmbedPDF from './dist/embedpdf.js';
 const DOC_ID = "x-pdf-viewer-doc-id";
 const viewerDisposals = new WeakMap();
+const registryDisposals = new WeakMap();
+function reuseRegistryDisposal(registry) {
+  if (!registryDisposals.has(registry)) {
+    const destroy = registry.destroy.bind(registry);
+    const state = { started: false, promise: null };
+    registry.destroy = () => {
+      if (state.started) return Promise.resolve();
+      state.started = true;
+      state.promise = Promise.resolve().then(destroy);
+      return state.promise;
+    };
+    registryDisposals.set(registry, state);
+    const engine = registry.getPlugin('document-manager')?.engine;
+    if (engine?.destroy) {
+      const destroyEngine = engine.destroy.bind(engine);
+      let engineDisposal;
+      engine.destroy = () => {
+        if (!engineDisposal) {
+          registry.destroy();
+          engineDisposal = state.promise.then(destroyEngine, error => {
+            trace("registry-destroy-failed", { message: String(error && error.message || error) });
+            console.error("PDF viewer registry destroy failed", error);
+            return destroyEngine();
+          }).catch(error => {
+            trace("engine-destroy-failed", { message: String(error && error.message || error) });
+            console.error("PDF viewer engine destroy failed", error);
+          });
+        }
+        return engineDisposal;
+      };
+    }
+  }
+  return registry;
+}
 let pendingDisposal = Promise.resolve();
 
 function trace(event, extra) {
@@ -17,7 +51,10 @@ function trace(event, extra) {
 
 function destroyViewer(viewer) {
   if (!viewerDisposals.has(viewer)) {
-    viewerDisposals.set(viewer, Promise.resolve(viewer.registry).then(registry => registry.destroy()).catch(error => {
+    viewerDisposals.set(viewer, Promise.resolve(viewer.registry).then(registry => {
+      const requested = reuseRegistryDisposal(registry).destroy();
+      return registryDisposals.get(registry).promise || requested;
+    }).catch(error => {
       trace("registry-destroy-failed", { message: String(error && error.message || error) });
       console.error("PDF viewer registry destroy failed", error);
     }));
@@ -50,7 +87,7 @@ function bindScrollApi(scroll, documentId, generation, viewer) {
         return;
       }
       const id = docId || documentId;
-      trace("scroll-to-page", { requestedId: id });
+      trace("scroll-to-page", { requestedId: id, pageNumber: options.pageNumber });
       scroll.forDocument(id).scrollToPage(options);
     },
     onPageChange: scroll.onPageChange,
@@ -109,7 +146,7 @@ window.x_open_pdf_viewer = async function(pdf_url, callback_fn) {
   window.x_pdf_viewer = viewer;
   trace("open-init", { pdf_url });
 
-  const registry = await viewer.registry;
+  const registry = reuseRegistryDisposal(await viewer.registry);
   if (generation !== window.x_pdf_viewer_generation) {
     trace("open-cancelled-after-registry", {});
     await destroyViewer(viewer);
@@ -137,4 +174,101 @@ window.x_open_pdf_viewer = async function(pdf_url, callback_fn) {
     });
   trace("open-complete", { pdf_url });
   return true;
+};
+
+const openSinglePdf = window.x_open_pdf_viewer;
+const disposeSinglePdf = window.x_dispose_pdf_viewer;
+let multipartSource = null;
+window.x_dispose_pdf_viewer = async function(invalidate = true) {
+  if (invalidate && multipartSource) {
+    multipartSource.cancelled = true;
+    multipartSource = null;
+  }
+  return disposeSinglePdf(invalidate);
+};
+
+window.x_open_pdf_viewer = async function(pdfUrl, callback, manifest = null) {
+  if (!manifest || !manifest.parts || manifest.parts.length === 0) {
+    if (multipartSource) multipartSource.cancelled = true;
+    multipartSource = null;
+    return openSinglePdf(pdfUrl, callback);
+  }
+  if (multipartSource) multipartSource.cancelled = true;
+  const state = { cancelled: false, part: null, scroll: null, search: null, zoom: null,
+    results: { results: [], total: 0 }, pageListeners: [], ready: false, opening: null };
+  multipartSource = state;
+  const current = () => !state.cancelled && multipartSource === state;
+  function localResults() {
+    const offset = state.part.first_page - 1;
+    const results = state.results.results.filter(hit => hit.pageIndex >= offset && hit.pageIndex < state.part.last_page)
+      .map(hit => ({ ...hit, pageIndex: hit.pageIndex - offset }));
+    return { results, total: results.length };
+  }
+  function applyResults() {
+    if (state.search && state.part) {
+      state.search.startSearch(DOC_ID);
+      state.search.setExternalSearchResults(DOC_ID, localResults());
+    }
+  }
+  const virtualScroll = {
+    async scrollToPage(options, docId) {
+      if (!current()) return;
+      const page = Math.max(1, Math.min(manifest.page_count, options.pageNumber));
+      const part = manifest.parts.find(part => part.first_page <= page && page <= part.last_page);
+      if (!part) return;
+      await loadPart(part);
+      if (!current() || state.part !== part) return;
+      state.scroll.scrollToPage({ ...options, pageNumber: page - part.first_page + 1 }, docId);
+    },
+    onPageChange(listener) { state.pageListeners.push(listener); },
+  };
+  const virtualSearch = {
+    startSearch() { if (current() && state.search) state.search.startSearch(DOC_ID); },
+    setExternalSearchResults(docId, results) { if (current()) { state.results = results; applyResults(); } },
+    async goToResult(index) {
+      const hit = state.results.results[index];
+      if (!current() || !hit) return;
+      const part = manifest.parts.find(part => part.first_page <= hit.pageIndex + 1 && hit.pageIndex + 1 <= part.last_page);
+      await loadPart(part);
+      if (!current() || state.part !== part) return;
+      const localIndex = state.results.results.slice(0,index).filter(item => item.pageIndex >= part.first_page - 1 && item.pageIndex < part.last_page).length;
+      state.search.goToResult(localIndex, DOC_ID);
+    },
+  };
+  const zoomListeners = [];
+  const virtualZoom = {
+    zoomIn() { if (current() && state.zoom) state.zoom.zoomIn(); },
+    zoomOut() { if (current() && state.zoom) state.zoom.zoomOut(); },
+    getState() { return state.zoom.getState(); },
+    onZoomChange(listener) { zoomListeners.push(listener); },
+  };
+  async function loadPart(part) {
+    if (!current() || !part) return;
+    if (state.part && state.part.part_index === part.part_index) { if (state.opening) await state.opening; return; }
+    const previousZoom = state.zoom ? state.zoom.getState().currentZoomLevel : null;
+    state.part = part;
+    const url = `${manifest.route}/${part.part_index}`;
+    state.opening = new Promise((resolve, reject) => {
+      openSinglePdf(url, (loadedUrl, event, scroll, search, zoom) => {
+        if (!current() || state.part !== part) { resolve(); return; }
+        if (state.loadedPart === part) { resolve(); return; }
+        state.loadedPart = part;
+        state.scroll = scroll; state.search = search; state.zoom = zoom;
+        scroll.onPageChange(event => {
+          if (current() && state.part === part) state.pageListeners.forEach(listener => listener({ ...event, pageNumber: event.pageNumber + part.first_page - 1 }));
+        });
+        zoom.onZoomChange(event => { if (current()) zoomListeners.forEach(listener => listener(event)); });
+        state.pageListeners.forEach(listener => listener({ ...event, pageNumber: event.pageNumber + part.first_page - 1 }));
+        if (previousZoom !== null) zoom.requestZoom(previousZoom);
+        applyResults();
+        if (!state.ready) {
+          state.ready = true;
+          callback(pdfUrl, { ...event, totalPages: manifest.page_count, pageNumber: event.pageNumber + part.first_page - 1 }, virtualScroll, virtualSearch, virtualZoom);
+        }
+        resolve();
+      }).then(opened => { if (opened === false || opened === null) resolve(); }).catch(reject);
+    });
+    await state.opening;
+  }
+  return loadPart(manifest.parts[0]);
 };

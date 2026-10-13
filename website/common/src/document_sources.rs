@@ -12,6 +12,7 @@ use crate::text_highlight::HighlightTextSpan;
 
 /// Prefix marking an OCR variant. Native extractors carry no prefix.
 pub const OCR_PREFIX: &str = "ocr_";
+pub const PDF_OCR_PREFIX: &str = "pdfocr_";
 
 /// The `extracted_by` value under which an email's parsed body is stored.
 pub const EMAIL_TEXT_EXTRACTOR: &str = "email_parser";
@@ -34,6 +35,7 @@ pub enum TextSource {
     Native { extractor: String },
     /// An OCR pass, identified by the engine and the `+`-joined language set it ran with.
     Ocr { engine: String, languages: String },
+    PdfOcr { engine: String, languages: String },
 }
 
 impl TextSource {
@@ -41,13 +43,14 @@ impl TextSource {
     /// is treated as a native extractor rather than guessed at, a half-recognised label
     /// rendered as a broken OCR chip is worse than one rendered verbatim.
     pub fn parse(extracted_by: &str) -> Self {
-        if let Some(rest) = extracted_by.strip_prefix(OCR_PREFIX) {
+        if let Some(rest) = extracted_by.strip_prefix(PDF_OCR_PREFIX).or_else(|| extracted_by.strip_prefix(OCR_PREFIX)) {
             // Split once: the language field may contain `+` and must stay intact.
             if let Some((engine, languages)) = rest.split_once('_') {
                 if OCR_ENGINES.contains(&engine) && !languages.is_empty() {
-                    return TextSource::Ocr {
-                        engine: engine.to_string(),
-                        languages: languages.to_string(),
+                    return if extracted_by.starts_with(PDF_OCR_PREFIX) {
+                        TextSource::PdfOcr { engine: engine.to_string(), languages: languages.to_string() }
+                    } else {
+                        TextSource::Ocr { engine: engine.to_string(), languages: languages.to_string() }
                     };
                 }
             }
@@ -77,6 +80,7 @@ impl TextSource {
                 "raw_text" => "Raw file text".to_string(),
                 other => other.to_string(),
             },
+            TextSource::PdfOcr { engine, languages } => format!("PDF {}", TextSource::Ocr { engine: engine.clone(), languages: languages.clone() }.label()),
             TextSource::Ocr { engine, languages } => {
                 let engine = match engine.as_str() {
                     "tesseract" => "Tesseract",
@@ -89,7 +93,7 @@ impl TextSource {
     }
 
     pub fn is_ocr(&self) -> bool {
-        matches!(self, TextSource::Ocr { .. })
+        matches!(self, TextSource::Ocr { .. } | TextSource::PdfOcr { .. })
     }
 }
 
@@ -101,6 +105,26 @@ pub fn text_source_label(extracted_by: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pdf_manifest_refresh_preserves_identity_and_changes_value() {
+        let old: DocumentPdfSourceItem = serde_json::from_str(r#"{"page_count":1020,"engine":"tesseract","languages":"eng"}"#).unwrap();
+        assert_eq!(old.kind(),"original");
+        assert!(old.parts.is_empty());
+        let mut refreshed = old.clone();
+        refreshed.source_kind = "original".into();
+        refreshed.parts = vec![DocumentPdfPart {part_index:1,first_page:1,last_page:100,size_bytes:30_000_000}];
+        assert_ne!(old,refreshed);
+        assert!(DocumentSourceItem::Pdf(old).same_source(&DocumentSourceItem::Pdf(refreshed.clone())));
+        assert_eq!(refreshed.part_for_page(100).unwrap().part_index,1);
+        assert!(refreshed.part_for_page(101).is_none());
+        assert_eq!(refreshed.text_source(),"pdfocr_tesseract_eng");
+        assert_eq!(refreshed.label(),"PDF · OCR · Tesseract · eng");
+        let image = DocumentPdfSourceItem {source_kind:"image".into(),..refreshed};
+        assert_eq!(image.text_source(),"ocr_tesseract_eng");
+        assert_eq!(image.label(),"Preview OCR · Tesseract · eng");
+        assert_eq!(text_source_label("pdfocr_tesseract_eng+ron"),"PDF OCR · Tesseract · eng+ron");
+    }
 
     #[test]
     fn ocr_variants_parse_into_engine_and_languages() {
@@ -269,61 +293,69 @@ pub struct DocumentTextSourceHitCount {
     pub hit_count: u64,
 }
 
-/// One PDF the viewer can show for a document: the original, or a derived searchable one.
-///
-/// `engine` empty means the original file. A non-empty `engine`/`languages` pair names a
-/// row in `pdf_ocr_results`, and those two fields *are* the storage key, the same pair
-/// that keys the blob-store object and the `/_download_ocr_pdf/` route. They are carried here
-/// rather than a ready-made url so the selector can label the source properly and the
-/// viewer can build the url one way, in one place.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
+/// A PDF source with document page ranges.
+#[derive(Debug, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct DocumentPdfSourceItem {
     pub page_count: u32,
-    /// `""` for the original document, otherwise `tesseract` | `easyocr`.
     #[serde(default)]
     pub engine: String,
-    /// `+`-joined language codes the OCR pass ran with. Empty for the original.
     #[serde(default)]
     pub languages: String,
+    #[serde(default = "original_pdf_kind")]
+    pub source_kind: String,
+    #[serde(default)]
+    pub parts: Vec<DocumentPdfPart>,
+}
+
+impl Default for DocumentPdfSourceItem {
+    fn default() -> Self {
+        Self {page_count:0,engine:String::new(),languages:String::new(),source_kind:original_pdf_kind(),parts:Vec::new()}
+    }
+}
+
+fn original_pdf_kind() -> String { "original".into() }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
+pub struct DocumentPdfPart {
+    pub part_index: u16,
+    pub first_page: u32,
+    pub last_page: u32,
+    pub size_bytes: u64,
 }
 
 impl DocumentPdfSourceItem {
-    pub fn is_ocr(&self) -> bool {
-        !self.engine.is_empty()
+    pub fn identity(&self) -> (&str, &str, &str) { (self.kind(), &self.engine, &self.languages) }
+    pub fn kind(&self) -> &str { if self.source_kind.is_empty() { "original" } else { &self.source_kind } }
+    pub fn is_ocr(&self) -> bool { !self.engine.is_empty() }
+    pub fn text_source(&self) -> String {
+        if self.is_ocr() {
+            format!("{}_{}_{}", if self.kind() == "image" { "ocr" } else { "pdfocr" }, self.engine, self.languages)
+        } else { "pdftotext".into() }
     }
-
-    /// The label in the source selector: `PDF`, or `PDF · OCR · Tesseract · eng+ron`.
-    ///
-    /// Built from the same formatter the text selector uses, so a document whose text and
-    /// whose PDF both come from one OCR pass say the same thing about it in both places.
+    pub fn source_name(&self) -> String {
+        if self.is_ocr() { self.text_source() } else if self.kind() == "preview" { "preview".into() } else { String::new() }
+    }
     pub fn label(&self) -> String {
-        if self.is_ocr() {
-            format!(
-                "PDF \u{b7} {}",
-                TextSource::Ocr {
-                    engine: self.engine.clone(),
-                    languages: self.languages.clone(),
-                }
-                .label()
-            )
-        } else {
-            "PDF".to_string()
+        if self.kind() == "image" {
+            return format!("Preview {}",TextSource::Ocr {engine:self.engine.clone(),languages:self.languages.clone()}.label());
         }
+        let base = match self.kind() { "preview" => "PDF preview", _ => "PDF" };
+        if self.is_ocr() {
+            format!("{} · {}", base, TextSource::Ocr { engine: self.engine.clone(), languages: self.languages.clone() }.label())
+        } else { base.into() }
     }
-
-    /// Where the viewer fetches this source from.
-    ///
-    /// The original goes through the document route; a derived PDF has no `blobs` row by
-    /// design and goes through its own, keyed by the same four values as its row.
-    pub fn url(&self, collection_dataset: &str, file_hash: &str) -> String {
-        if self.is_ocr() {
-            format!(
-                "/_download_ocr_pdf/{collection_dataset}/{file_hash}/{}/{}",
-                self.engine, self.languages
-            )
-        } else {
-            format!("/_download_document/{collection_dataset}/{file_hash}")
-        }
+    pub fn url(&self, dataset: &str, hash: &str) -> String {
+        if self.is_ocr() { format!("/_download_ocr_pdf/{dataset}/{hash}/{}/{}", self.engine, self.languages) }
+        else if self.kind() == "preview" { format!("/_download_pdf/{dataset}/{hash}/preview") }
+        else { format!("/_download_document/{dataset}/{hash}") }
+    }
+    pub fn part_url(&self, dataset: &str, hash: &str, part_index: u16) -> String {
+        format!("/_download_pdf_part/{dataset}/{hash}/{}/{}/{}/{part_index}", self.kind(),
+            if self.engine.is_empty() { "-" } else { &self.engine },
+            if self.languages.is_empty() { "-" } else { &self.languages })
+    }
+    pub fn part_for_page(&self, page: u32) -> Option<&DocumentPdfPart> {
+        self.parts.iter().find(|part| part.first_page <= page && page <= part.last_page)
     }
 }
 
@@ -462,6 +494,21 @@ pub enum DocumentSourceItem {
     /// Not offered as a preview source. The viewer's Metadata tab is the metadata
     /// surface. Kept for the same reason as the variant above.
     Metadata,
+}
+
+impl DocumentSourceItem {
+    pub fn route_identity(&self) -> Self {
+        match self {
+            Self::Pdf(source) => Self::Pdf(DocumentPdfSourceItem {page_count:0,parts:Vec::new(),..source.clone()}),
+            _ => self.clone(),
+        }
+    }
+    pub fn same_source(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Pdf(a),Self::Pdf(b)) => a.identity() == b.identity(),
+            _ => self == other,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

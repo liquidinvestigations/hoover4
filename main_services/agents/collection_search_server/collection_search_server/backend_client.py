@@ -416,6 +416,13 @@ class TextHit(AgentModel):
     snippet: str
 
 
+class PdfPart(AgentModel):
+    part_index: int
+    first_page: int
+    last_page: int
+    size_bytes: int
+
+
 class DocumentSource(AgentModel):
     kind: str
     source: str
@@ -425,6 +432,7 @@ class DocumentSource(AgentModel):
     min_page: int | None = None
     max_page: int | None = None
     page_count: int | None = None
+    parts: list[PdfPart] = Field(default_factory=list)
     sheet_count: int | None = None
     row_count: int | None = None
     column_count: int | None = None
@@ -442,9 +450,16 @@ class DocumentDate(AgentModel):
     provenance: str
 
 
+class PdfDownloadLink(AgentModel):
+    source: str
+    label: str
+    url: str
+
+
 class DownloadLinks(AgentModel):
     original: str
     ocr_pdf: str | None
+    pdf_sources: list[PdfDownloadLink] = Field(default_factory=list)
 
 
 class EmailEnvelope(AgentModel):

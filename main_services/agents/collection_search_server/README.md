@@ -399,3 +399,14 @@ docker exec hoover4-mcp-collections python -m pytest tests/ -q
 Everything in `tests/test_acl.py` is pure (no database), because the ACL and the query
 sanitiser are the security-relevant parts. The operator table above is asserted case by
 case there.
+
+## PDF sources
+
+`doc_sources` lists original PDFs, Office PDF previews, and searchable PDF variants.
+PDF OCR source names use `pdfocr_<engine>_<languages>`.
+Image Preview OCR source names use `ocr_<engine>_<languages>`.
+PDF source rows include their document page ranges.
+`pdf_search` reads separate parts and returns positions in document page coordinates.
+`read_documents` reads the selected stored text page without downloading a complete PDF.
+Document metadata links include every available complete PDF source.
+Multipart downloads assemble temporary files without storing a joined object.

@@ -26,6 +26,8 @@ pub struct PdfViewerControllerJs {
 impl PartialEq for PdfViewerControllerJs {
     fn eq(&self, other: &Self) -> bool {
         self.inner.pdf_url == other.inner.pdf_url
+            && self.inner.source_generation == other.inner.source_generation
+            && Rc::ptr_eq(&self.inner.source_lifetime,&other.inner.source_lifetime)
             && self.inner.loaded_event == other.inner.loaded_event
     }
 }
@@ -43,6 +45,7 @@ struct PdfViewerControllerInnerJs {
 }
 
 impl PdfViewerControllerJs {
+    pub fn source_generation(&self) -> u64 { self.inner.source_generation }
     pub fn pdf_url(&self) -> String {
         self.inner.pdf_url.clone()
     }
@@ -104,11 +107,12 @@ fn scroll_to_page_options(page: i32, coord_x: f64, coord_y: f64, align_y: f64) -
 }
 
 pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControllerDx {
-    let controller = use_signal(move || controller);
+    let incoming_controller = controller.clone();
+    let mut controller = use_signal(move || controller);
 
     // =========== PAGE NAVIGATION ============
     let mut current_page = use_signal(move || controller().initial_page());
-    let total_pages = use_signal(move || controller().total_pages());
+    let mut total_pages = use_signal(move || controller().total_pages());
     let set_page = Callback::new(move |new_page: i32| {
         if !controller().is_active() {
             info!(
@@ -290,6 +294,16 @@ pub fn use_pdf_controller(controller: PdfViewerControllerJs) -> PdfViewerControl
     let on_zoom_change = on_zoom_change.into_js_value();
     controller().inner.zoom_api.onZoomChange(on_zoom_change);
 
+    use_effect(use_reactive!(|incoming_controller| {
+        if *controller.peek() != incoming_controller {
+            current_page.set(incoming_controller.initial_page());
+            total_pages.set(incoming_controller.total_pages());
+            zoom_state_jsvalue.set(incoming_controller.inner.zoom_api.getState());
+            controller.set(incoming_controller);
+            set_search_query.call(search_query());
+        }
+    }));
+
     PdfViewerControllerDx {
         _controller: controller,
         current_page: current_page.into(),
@@ -407,7 +421,11 @@ pub fn PdfViewer(
                 >);
         let cb = cb.into_js_value();
 
-        let promise = x_open_pdf_viewer(pdf_url.clone(), cb);
+        let selected_source = source();
+        let id = document_identifier();
+        let manifest = serde_json::json!({"parts": selected_source.parts, "page_count": selected_source.page_count,
+            "route": selected_source.part_url(&id.collection_dataset,&id.file_hash,0).rsplit_once('/').unwrap().0 });
+        let promise = x_open_pdf_viewer(pdf_url.clone(), cb, manifest.serialize(&serde_wasm_bindgen::Serializer::json_compatible()).unwrap());
         wasm_bindgen_futures::spawn_local(async move {
             // The browser task remains active after the component scope is removed.
             if let Err(error) = wasm_bindgen_futures::JsFuture::from(promise).await {
@@ -438,6 +456,7 @@ mod _js {
         pub fn x_open_pdf_viewer(
             pdf_url: String,
             callback_fn: JsValue,
+            manifest: JsValue,
         ) -> Promise;
 
         #[wasm_bindgen(js_namespace = window)]

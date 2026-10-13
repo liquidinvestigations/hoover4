@@ -561,6 +561,7 @@ class ProcessItemsBatched:
             )
             for it in params.items
         ]
+        parts_version = workflow.patched("pdf-parts")
         starts: Dict[Tuple[str, str], Any] = {}
 
         async def run_stage(name: str, items: List[Any], engine: str = "") -> List[FileResult]:
@@ -615,7 +616,8 @@ class ProcessItemsBatched:
         detect = await run_stage("detect_mime_batch", files)
         detector_results = [detector_results_for_file(d) for d in detect]
         combined = [combine_detector_results(results) for results in detector_results]
-        routes = [route_stages(types) for types in combined]
+        routes = [route_stages(types, parts_version, file.file_names, file.file_size_bytes)
+                  for types, file in zip(combined, files)]
 
         def with_route(route: str) -> List[int]:
             return [index for index, file_routes in enumerate(routes) if route in file_routes]
@@ -697,6 +699,22 @@ class ProcessItemsBatched:
                     into=ocr_pdf_entries)
 
         async def pdf_chain() -> None:
+            if parts_version:
+                from tasks.P3_parse_files.pdf_chain import run_pdf_chain
+                indexes = with_route("pdf") + with_route("office_preview")
+                sources = [batch_file(i, source_kind="preview" if "office_preview" in routes[i] else "original")
+                           for i in indexes]
+                preparation, variants = await run_pdf_chain(sources, run_stage)
+                for i in indexes:
+                    if files[i].item_hash in preparation:
+                        put(i, "make_pdf_preview" if preparation[files[i].item_hash].task_name == "make_pdf_preview" else "pdf_process",
+                            preparation[files[i].item_hash], ("pdf_prepare_batch", ""))
+                    for engine in OCR_ENGINES:
+                        result = variants.get((files[i].item_hash, engine))
+                        if result:
+                            put(i, ocr_pdf_error_name(engine), result,
+                                ("pdf_ocr_finalize_batch", engine), into=ocr_pdf_entries)
+                return
             indexes = with_route("pdf")
             meta = await run_stage("pdf_metadata_batch", [files[i] for i in indexes])
             passed: List[int] = []
@@ -762,7 +780,12 @@ class ProcessItemsBatched:
                                 file_mime_type=((detect[i].value.get("detectors", {}).get("file", {}).get("mime_types") or [""])[0]
                                                 if isinstance(detect[i].value, dict) else ""))
                      for i in range(len(files))]
-            for i, result in enumerate(await run_stage("tika_text_batch", items)):
+            indexes = list(range(len(files)))
+            if parts_version:
+                from tasks.P3_parse_files.workflows import excluded_name_kind
+                indexes = [i for i in indexes if excluded_name_kind(files[i].file_names, files[i].file_size_bytes) != "office_lock"]
+                items = [items[i] for i in indexes]
+            for i, result in zip(indexes, await run_stage("tika_text_batch", items)):
                 put(i, "tika_text_batch", result, ("tika_text_batch", ""))
 
         async def preview_stage(route: str) -> None:
@@ -777,9 +800,11 @@ class ProcessItemsBatched:
         async def image_chain() -> None:
             # OCR reads the preview of an uncommon image format, so it waits for it.
             await preview_stage("image")
-            await asyncio.gather(*[
-                single("run_ocr_batch", "image", ocr_error_name(engine), engine=engine)
-                for engine in OCR_ENGINES])
+            async def image_engine(engine):
+                await single("run_ocr_batch", "image", ocr_error_name(engine), engine=engine)
+                if parts_version:
+                    await single("make_image_pdf_batch", "image", f"make_image_pdf[{engine}]", engine=engine)
+            await asyncio.gather(*[image_engine(engine) for engine in OCR_ENGINES])
 
         # Stage 2: every chain at once.
         stage_two = [
@@ -805,8 +830,12 @@ class ProcessItemsBatched:
                      and detect[i].error_type == "TempCopyMissing") else [])
             for route in file_routes:
                 names.append(ROUTE_ERROR_NAMES[route])
+                if route == "office_preview" and "pdf_process" in entries[i]:
+                    names.append("pdf_process")
                 if route == "image":
                     names += [ocr_error_name(engine) for engine in OCR_ENGINES]
+                    if parts_version:
+                        names += [f"make_image_pdf[{engine}]" for engine in OCR_ENGINES]
             names = [name for name in names if name in entries[i]]
             parser_names.append(names)
             parser_results.append(parser_results_for_error_capture(

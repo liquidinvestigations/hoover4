@@ -14,7 +14,7 @@ nowhere is false; keep this the consumer.
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List
 
 from tasks.remote import RemoteUnavailable, post_json
@@ -43,6 +43,7 @@ class OcrPdfOutcome:
     languages: str
     run_time_ms: int
     provider: str
+    pages: list[dict] = field(default_factory=list)
 
 
 def _endpoints() -> List[tuple]:
@@ -94,6 +95,13 @@ def build_ocr_pdf(
     languages: str,
     source_key: str = "",
     pdf_b64: str = "",
+    source_b64: str = "",
+    dest_key: str = "",
+    bucket: str = "",
+    source_bucket: str = "",
+    mode: str = "pdf",
+    ocr_pages: list[int] | None = None,
+    words: list[dict] | None = None,
 ) -> OcrPdfOutcome:
     """Assemble one searchable PDF and return where it landed.
 
@@ -103,17 +111,24 @@ def build_ocr_pdf(
     """
     from database.s3 import collection_bucket
 
-    dest_key = derived_key(collection_dataset, pdf_hash, engine, languages)
+    dest_key = dest_key or derived_key(collection_dataset, pdf_hash, engine, languages)
     payload = {
-        # The collection's own bucket, named by the caller. The service has a fallback
-        # for a probe, and using it for real work would read one collection's source and
-        # write another collection's derived object.
-        "bucket": collection_bucket(collectionname),
+        # Owned outputs use the collection bucket. Source reads can use a stored bucket.
+        "bucket": bucket or collection_bucket(collectionname),
         "dest_key": dest_key,
         "engine": engine,
         "languages": languages,
     }
-    if source_key:
+    payload["mode"] = mode
+    if source_bucket:
+        payload["source_bucket"] = source_bucket
+    if ocr_pages is not None:
+        payload["ocr_pages"] = ocr_pages
+    if words is not None:
+        payload["words"] = words
+    if source_b64:
+        payload["source_b64"] = source_b64
+    elif source_key:
         payload["source_key"] = source_key
     else:
         payload["pdf_b64"] = pdf_b64
@@ -134,6 +149,7 @@ def build_ocr_pdf(
         languages=data.get("languages") or languages,
         run_time_ms=int(data.get("run_time_ms") or 0),
         provider=result.provider,
+        pages=data.get("pages") or [],
     )
 
 

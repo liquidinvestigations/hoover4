@@ -93,6 +93,34 @@ OCR_ENGINES = (ENGINE_TESSERACT, ENGINE_EASYOCR)
 
 #: Prefix marking an OCR variant. Native extractors have no prefix.
 OCR_PREFIX = "ocr_"
+PDF_OCR_PREFIX = "pdfocr_"
+OCR_PAGE_IMAGE_COVERAGE = 0.10
+OCR_PAGE_TEXT_FLOOR = 20
+OCR_PAGE_RULE_VERSION = 1
+PDF_SEGMENTATION_VERSION = 1
+
+
+def pdf_ocr_extracted_by(engine: str, languages: str) -> str:
+    """Return the storage identity of one searchable PDF text variant."""
+    return PDF_OCR_PREFIX + ocr_extracted_by(engine, languages)[len(OCR_PREFIX):]
+
+
+def parse_pdf_ocr_extracted_by(extracted_by: str):
+    """Read the engine and languages from a searchable PDF text identity."""
+    if not extracted_by.startswith(PDF_OCR_PREFIX):
+        return None
+    return parse_ocr_extracted_by(OCR_PREFIX + extracted_by[len(PDF_OCR_PREFIX):])
+
+
+def is_ocr_text(extracted_by: str) -> bool:
+    """Return whether the source has an image or PDF OCR identity."""
+    return parse_ocr_extracted_by(extracted_by) is not None or parse_pdf_ocr_extracted_by(extracted_by) is not None
+
+
+def indexed_preparation_text(extracted_by: str) -> bool:
+    """Return whether Run OCR verifies an exact index receipt for this source."""
+    return extracted_by == "pdftotext" or is_ocr_text(extracted_by)
+
 
 #: Smallest image edge worth sending to an OCR engine, in pixels.
 #:

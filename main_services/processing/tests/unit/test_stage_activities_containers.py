@@ -41,6 +41,22 @@ def temp_root(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.fixture
+def pdf_live_source(monkeypatch):
+    """Model a live source path for the retained PDF activity contract."""
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+    from database import clickhouse
+    class Client:
+        def query(self, sql, parameters=None):
+            assert "FROM vfs_files FINAL" in sql
+            return SimpleNamespace(result_rows=[(value,) for value in parameters["h"]])
+    @contextmanager
+    def collection(name):
+        yield Client()
+    monkeypatch.setattr(clickhouse, "get_collection_client", collection)
+
+
 def _eml(path, attachment: bool) -> str:
     msg = EmailMessage()
     msg["From"] = "a@example.com"
@@ -169,7 +185,7 @@ def test_archive_failure_records_nothing(monkeypatch):
     (64 * MIB, 999, True),
     (64 * MIB, 1000, False),
 ])
-def test_pdf_extract_chooses_the_path(tmp_path, monkeypatch, size, pages, small):
+def test_pdf_extract_chooses_the_path(tmp_path, monkeypatch, size, pages, small, pdf_live_source):
     calls = []
     out_dir = _folder_with(tmp_path / "pdf_p1", ["page-1.png", "page-2.png"])
     monkeypatch.setattr(parse_pdf, "pdf_small_extract_text_and_images",
@@ -193,7 +209,7 @@ def test_pdf_extract_chooses_the_path(tmp_path, monkeypatch, size, pages, small)
         assert result.value == {"out_dir": out_dir, "chunks": ["c1"], "member_count": 2}
 
 
-def test_pdf_extract_failure_records_nothing(monkeypatch):
+def test_pdf_extract_failure_records_nothing(monkeypatch, pdf_live_source):
     recorded = []
 
     def small(_p):
@@ -204,6 +220,7 @@ def test_pdf_extract_failure_records_nothing(monkeypatch):
     batch = parse_pdf.pdf_extract_batch(_params([BatchFile(item_hash="p2", file_path="/x")]))
 
     assert batch.results[0].status == "failed"
+    assert batch.results[0].error_message == "broken pdf"
     assert recorded == []
 
 

@@ -31,6 +31,11 @@ def test_page_rows_flush_before_the_next_text_batch(monkeypatch):
     commands = []
 
     class _Collection:
+        def query(self, sql, parameters=None):
+            from types import SimpleNamespace
+            assert "FROM vfs_files FINAL" in sql
+            return SimpleNamespace(result_rows=[(h,) for h in parameters["h"]])
+
         def query_arrow(self, sql, _parameters):
             if "FROM text_content" in sql:
                 return _Rows(segments)

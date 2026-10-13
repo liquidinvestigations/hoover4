@@ -1,21 +1,9 @@
-"""OCR'd-PDF activity: one engine, every language pass that engine needs for this dataset.
+"""Retain the whole-file searchable PDF activity contract for earlier workflow histories.
 
-Shaped exactly like `parse_ocr.py`, and for the same reasons, one activity per *engine*,
-languages read inside the activity so an apply job reaches work already in flight, and a
-watermark checked before anything is spent. What differs is what it produces: not text
-rows but a **derived object**, a searchable PDF written under `derived/` by
-`hoover4-ocr-pdf`, with `pdf_ocr_results` as the sole index of its existence.
-
-That last part is the whole risk of this stage. A derived PDF the ingest walker can see is
-ingested, OCR'd and re-derived forever, and each lap bills a full OCR pass over the
-document. Three guards stand between here and that loop:
-
-* the key is built by `ocr_pdf_client.derived_key`, always under `derived/ocr-pdf/`;
-* the service refuses any other prefix, so a caller bug cannot get past it;
-* `verify-stack.sh` asserts no `blobs` row references `derived/`.
-
-The row is written **after** the object, never before: an object with no row is found by a
-prefix scan, a row with no object is a broken link nothing can repair.
+The current builder returns preserved source pages and OCR-only page text.
+The adapter stores that text and current source ranges before completing the variant.
+Multipart compatibility outputs retain searchable parts and remove their temporary whole output.
+New workflow branches use the separate part activities in `pdf_parts.py`.
 """
 
 import base64
@@ -190,6 +178,9 @@ def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str | SkippedOutcome:
     done = 0
 
     with get_collection_client(params.collectionname) as client:
+        from tasks.P3_parse_files.pdf_parts import live_hashes
+        if params.pdf_hash not in live_hashes(client, params.collection_dataset, [params.pdf_hash]):
+            return SkippedOutcome("pdf_source_removed")
         source_key = _source_key(client, params.collection_dataset, params.pdf_hash) or ""
 
         for index, languages in enumerate(passes):
@@ -199,6 +190,11 @@ def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str | SkippedOutcome:
             if _already_done(client, params, languages):
                 log.info("[P3] OCR'd PDF already exists for %s %s/%s",
                          params.pdf_hash, params.engine, languages)
+                done += 1
+                continue
+
+            from tasks.P3_parse_files.pdf_parts import recover_legacy_variant
+            if recover_legacy_variant(client, params, languages):
                 done += 1
                 continue
 
@@ -240,19 +236,20 @@ def run_ocr_pdf_and_store(params: RunOcrPdfParams) -> str | SkippedOutcome:
             )
             run_time_ms = max(int((time.time() - started) * 1000), 0)
 
-            # Object first, row second, see the module docstring.
-            insert_parser_arrow(client, "pdf_ocr_results", pa.table({
-                "collection_dataset": pa.array([params.collection_dataset], type=pa.string()),
-                "pdf_hash": pa.array([params.pdf_hash], type=pa.string()),
-                "engine": pa.array([outcome.engine], type=pa.string()),
-                "languages": pa.array([outcome.languages], type=pa.string()),
-                "blob_key": pa.array([outcome.dest_key], type=pa.string()),
-                "blob_hash": pa.array([outcome.blob_hash], type=pa.string()),
-                "page_count": pa.array([outcome.page_count], type=pa.uint32()),
-                "size_bytes": pa.array([outcome.size_bytes], type=pa.uint64()),
-                "run_time_ms": pa.array([outcome.run_time_ms or run_time_ms],
-                                        type=pa.uint32()),
-            }))
+            from tasks.P3_parse_files.pdf_parts import prepare_pdf, backfill_saved_pdf
+            legacy_file = BatchFile(item_hash=params.pdf_hash, file_path=params.file_path,
+                                    file_size_bytes=os.path.getsize(params.file_path))
+            legacy_params = StageBatchParams(params.collectionname, params.collection_dataset,
+                                             "", [legacy_file], params.op_id, params.engine)
+            prepared = prepare_pdf(legacy_params, legacy_file)
+            if not isinstance(prepared, SkippedOutcome):
+                backfill_saved_pdf(client, legacy_params, legacy_file, languages, {
+                    "blob_key": outcome.dest_key, "blob_hash": outcome.blob_hash,
+                    "page_count": outcome.page_count, "size_bytes": outcome.size_bytes,
+                    "run_time_ms": outcome.run_time_ms or run_time_ms,
+                    "source_kind": "original", "form": "overlay", "part_count": 1,
+                    "text_complete": 0,
+                }, returned_pages=outcome.pages)
 
             done += 1
             log.info("[P3] OCR'd PDF %s: %d pages (%d with text), %d bytes in %d ms",

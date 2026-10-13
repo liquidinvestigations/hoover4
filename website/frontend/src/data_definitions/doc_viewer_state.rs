@@ -268,3 +268,19 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod pdf_identity_tests {
+    use super::*;
+    use crate::data_definitions::url_param::UrlParam;
+    use common::document_sources::{DocumentPdfSourceItem,DocumentPdfPart};
+    #[test]
+    fn pdf_route_identity_size_does_not_grow_with_manifest_size() {
+        let mut source=DocumentPdfSourceItem {engine:"tesseract".into(),languages:"eng".into(),..Default::default()};
+        let state=|source:DocumentPdfSourceItem|DocViewerState {selected_source:Some(DocumentSourceItem::Pdf(source).route_identity()),..Default::default()};
+        let compact=UrlParam(state(source.clone())).to_string();
+        source.parts=(1..=1000).map(|index|DocumentPdfPart {part_index:index,first_page:index as u32,last_page:index as u32,size_bytes:25_000_000}).collect();
+        source.page_count=1000;
+        assert_eq!(UrlParam(state(source)).to_string(),compact);
+    }
+}

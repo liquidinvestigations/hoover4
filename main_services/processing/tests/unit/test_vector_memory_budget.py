@@ -20,6 +20,11 @@ class _QueryResult:
 
 
 class _CollectionClient:
+    def query(self, sql, parameters=None):
+        from types import SimpleNamespace
+        assert "FROM vfs_files FINAL" in sql
+        return SimpleNamespace(result_rows=[(h,) for h in parameters["h"]])
+
     def __init__(self, rows):
         self.rows = rows
 

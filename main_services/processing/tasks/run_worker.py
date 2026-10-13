@@ -281,6 +281,7 @@ async def run_common_worker():
     from .P3_parse_files.parse_table import parse_table_batch
     from .P3_parse_files.parse_mime import detect_mime_batch
     from .P3_parse_files.parse_pdf import pdf_metadata_batch, pdf_extract_batch
+    from .P3_parse_files.pdf_parts import pdf_prepare_batch, pdf_ocr_finalize_batch
     from .P3_parse_files.parse_image import parse_image_metadata_batch
     from .P3_parse_files.image_preview import make_image_preview_batch
     from .P3_parse_files.parse_audio import parse_audio_metadata_batch
@@ -325,6 +326,7 @@ async def run_common_worker():
         reopen_plans_for_ocr_rerun,
         settle_ocr_run_targets,
         verify_ocr_run_completion,
+        remove_pdf_members,
     )
     from .P_admin.workflows import (
         ChangeOcrLanguages,
@@ -448,6 +450,8 @@ async def run_common_worker():
             extract_archive_batch,
             pdf_metadata_batch,
             pdf_extract_batch,
+            pdf_prepare_batch,
+            pdf_ocr_finalize_batch,
             video_batch,
             scan_container_folders,
 
@@ -484,6 +488,7 @@ async def run_common_worker():
             settle_ocr_run_targets,
             ocr_text_pending_index,
             verify_ocr_run_completion,
+            remove_pdf_members,
 
             select_historical_errors,
             reconcile_selected_errors,
@@ -546,6 +551,9 @@ async def run_ocr_worker():
     # admission, which deploy.py checks.
     from .P3_parse_files.parse_ocr import run_ocr_batch
     from .P3_parse_files.parse_ocr_pdf import run_ocr_pdf_batch
+    from .P3_parse_files.pdf_parts import run_ocr_pdf_parts_batch
+    from .P3_parse_files.image_pdf import make_image_pdf_batch
+    from .P3_parse_files.pdf_preview import make_pdf_preview_batch
     from .visibility import ensure_search_attributes
 
     log.info("Starting OCR worker...")
@@ -553,8 +561,10 @@ async def run_ocr_worker():
     await ensure_search_attributes(client)
     image_slots = worker_concurrency("ocr", 4)
     pdf_slots = worker_concurrency("ocr_pdf", 2)
+    preview_slots = worker_concurrency("pdf_preview", 2)
     with concurrent.futures.ThreadPoolExecutor(max_workers=image_slots) as image_executor, \
-            concurrent.futures.ThreadPoolExecutor(max_workers=pdf_slots) as pdf_executor:
+            concurrent.futures.ThreadPoolExecutor(max_workers=pdf_slots) as pdf_executor, \
+            concurrent.futures.ThreadPoolExecutor(max_workers=preview_slots) as preview_executor:
         image_worker = Worker(
           client,
           interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
@@ -581,7 +591,7 @@ async def run_ocr_worker():
           graceful_shutdown_timeout=graceful_shutdown_timeout(),
           workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
           workflows=[],
-          activities=[run_ocr_pdf_batch],
+          activities=[run_ocr_pdf_batch, run_ocr_pdf_parts_batch, make_image_pdf_batch],
           activity_executor=pdf_executor,
           max_concurrent_activities=pdf_slots,
           max_concurrent_workflow_tasks=pdf_slots*2,
@@ -589,7 +599,15 @@ async def run_ocr_worker():
           max_concurrent_activity_task_polls=pdf_slots*2,
           max_concurrent_workflow_task_polls=pdf_slots*2,
         )
-        await run_until_signalled(image_worker, pdf_worker)
+        preview_worker = Worker(
+            client, interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
+            workflow_runner=sandboxed_runner(), task_queue="processing-preview-queue",
+            graceful_shutdown_timeout=graceful_shutdown_timeout(),
+            workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
+            workflows=[], activities=[make_pdf_preview_batch], activity_executor=preview_executor,
+            max_concurrent_activities=preview_slots,
+        )
+        await run_until_signalled(image_worker, pdf_worker, preview_worker)
 
 
 async def run_nlp_worker():

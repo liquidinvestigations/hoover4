@@ -265,3 +265,15 @@ async fn a_short_requested_range_still_contains_the_query_hit() {
     assert!(result.0.contains("needle"));
     assert_eq!((result.1, result.2), (49_996, 50_006));
 }
+
+#[test]
+fn omitted_and_explicit_office_pdf_sources_select_the_preview() {
+    use common::document_sources::DocumentPdfSourceItem;
+    let preview=DocumentPdfSourceItem {source_kind:"preview".into(),page_count:2,..Default::default()};
+    let ocr=DocumentPdfSourceItem {engine:"tesseract".into(),languages:"eng".into(),..preview.clone()};
+    let available=[ocr.clone(),preview.clone()];
+    assert_eq!(select_pdf_source(&available,""),Some(preview.clone()));
+    assert_eq!(select_pdf_source(&available,"preview"),Some(preview));
+    assert_eq!(select_pdf_source(&available,"pdfocr_tesseract_eng"),Some(ocr));
+    assert!(select_pdf_source(&[],"").is_none());
+}

@@ -51,7 +51,7 @@ from .params import (
     ResolveCanonicalFileTypeParams,
 )
 from tasks.heartbeat import with_heartbeat
-from tasks.text_sources import OCR_PREFIX, fetch_text_batch, plan_text_batches
+from tasks.text_sources import OCR_PREFIX, fetch_text_batch, plan_text_batches, indexed_preparation_text
 from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
 from tasks.regex_entities import (
     FACET_BY_ENTITY_TYPE,
@@ -458,6 +458,14 @@ def write_text_pages(params: IndexShardParams) -> IndexedTextResult:
     """
     collection_dataset: str = params.collection_dataset
     item_hashes: list[str] = params.hashes
+    from tasks.P3_parse_files.pdf_parts import live_hashes
+    with get_collection_client(params.collectionname) as client:
+        item_hashes = sorted(live_hashes(client, collection_dataset, item_hashes))
+    if not item_hashes:
+        return IndexedTextResult()
+    import dataclasses
+    params = dataclasses.replace(params, hashes=item_hashes)
+
     plan_hash: str = params.plan_hash
     pages_table = shard_table_from_name(params.shard_name)
     from database.manticore import get_manticore_client
@@ -589,7 +597,7 @@ def write_text_pages(params: IndexShardParams) -> IndexedTextResult:
         clusters = []
         for row in text_content:
             file_hash = row['file_hash']
-            if row['extracted_by'].startswith(OCR_PREFIX):
+            if indexed_preparation_text(row['extracted_by']):
                 receipts.add((file_hash, row['extracted_by'], int(row['page_id']),
                               int(row['text_version'])))
             if file_hash not in filename_hashes:
@@ -1683,6 +1691,14 @@ def index_vectors(params: IndexShardParams) -> list[str]:
 
     collection_dataset: str = params.collection_dataset
     item_hashes: list[str] = params.hashes
+    from tasks.P3_parse_files.pdf_parts import live_hashes
+    with get_collection_client(params.collectionname) as client:
+        item_hashes = sorted(live_hashes(client, collection_dataset, item_hashes))
+    if not item_hashes:
+        return []
+    import dataclasses
+    params = dataclasses.replace(params, hashes=item_hashes)
+
     plan_hash: str = params.plan_hash
     vectors_table = vectors_table_from_name(params.shard_name)
 

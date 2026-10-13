@@ -1,90 +1,112 @@
-# ocr_pdf: searchable PDFs over HTTP
+# The PDF builder adds searchable text to source pages.
 
-Takes a PDF, renders every page, sends each render to the **existing** OCR tier, and
-writes back a PDF that looks identical and selects, copies and searches like text. It
-owns no OCR engine and no language data: `main_services/ocr_tesseract` does, and adding a
-language here would be false about what the stack can read.
+The service runs PDFium in a child process for each admitted request.
+It adds invisible OCR words to selected PDF pages and preserves their original content, geometry, and order.
+It saves the complete output once.
+The worker records the uploaded object after the response succeeds.
+The service does not write source, document, or text rows.
 
-## Contract
+## The request selects a source and local pages.
 
+`POST /ocr-pdf` accepts these fields.
+
+| Field | Contract |
+|---|---|
+| `bucket` | The destination key uses this bucket. Empty uses the configured default. |
+| `source_bucket` | The source key uses this bucket. Empty uses the destination bucket. |
+| `source_key` | The source PDF or image uses this object key. |
+| `source_b64` | Small sources can use base64 input instead of an object key. |
+| `pdf_b64` | Legacy callers can still send inline PDF input with this field. |
+| `dest_key` | The destination must start with `derived/`. Parent-directory traversal is refused. |
+| `mode` | `pdf` is the default. `image` uses stored OCR words without an OCR request. |
+| `engine` | `tesseract` or `easyocr` identifies the stored variant. |
+| `languages` | Nonempty, plus-separated language codes identify the stored variant. |
+| `dpi` | PDF render resolution defaults to 200. The accepted range starts at 72 and ends at `OCR_PDF_MAX_DPI`. |
+| `ocr_pages` | Local page numbers start at one. Omitted or null selects all pages. An empty list selects no pages. |
+| `words` | Image mode accepts stored word boxes with `text`, `left`, `top`, `width`, and `height`. Coordinates use source-image pixels. |
+
+`source_b64` takes precedence over `pdf_b64`, which takes precedence over `source_key`.
+Selected page numbers must be unique integers within the source page range.
+The builder processes them in source order.
+
+```json
+{
+  "bucket": "collection-example",
+  "source_key": "derived/pdf-parts/example/source/original/s1/101-200.pdf",
+  "dest_key": "derived/ocr-pdf/example/source/tesseract+eng/s1/101-200.pdf",
+  "engine": "tesseract",
+  "languages": "eng",
+  "mode": "pdf",
+  "ocr_pages": [2, 7]
+}
 ```
-GET  /health   -> {"status", "engines": {"tesseract": true, "easyocr": false},
-                   "renderer", "bucket", "derived_prefix", "max_pages", ...}
-POST /ocr-pdf  {"source_key"|"pdf_b64", "dest_key", "engine", "languages", "dpi"}
-               -> {"page_count", "pages_with_text", "size_bytes", "blob_hash",
-                   "engine", "languages", "dest_key", "run_time_ms"}
+
+The response retains `page_count`, `pages_with_text`, `size_bytes`, `blob_hash`, `engine`, `languages`, `dest_key`, and `run_time_ms`.
+`blob_hash` uses SHA3-256 over the uploaded PDF.
+`pages_with_text` counts pages with at least one valid overlay word.
+The response adds `pages`, with one entry per selected page, including successful empty OCR.
+
+```json
+{
+  "page_count": 100,
+  "pages_with_text": 1,
+  "pages": [
+    {"page": 2, "text": "Recognised", "words": [
+      {"text": "Recognised", "left": 10, "top": 20, "width": 100, "height": 25}
+    ], "confidence": 0.9},
+    {"page": 7, "text": "", "words": [], "confidence": null}
+  ]
+}
 ```
 
-* **`source_key` or `pdf_b64`.** Blobs above the small-file threshold live in the object store and
-  are read by key; the ones below it live in `blob_values` in ClickHouse and have no
-  object at all, so the caller sends those inline. Exactly one is required.
-* **`dest_key` must start with `derived/`**. See below. The service writes the object and
-  returns its hash; it writes **no** database row. `pdf_ocr_results` is the caller's, and
-  the ordering is deliberate: bytes before row.
-* **`languages` is part of the storage key**, not a hint. An empty value is a 400.
-* **`engine` not configured is a 501, not a 503.** "This deployment has no EasyOCR" is a
-  fact the caller must not retry; "the OCR tier did not answer" is one it must. Collapsing
-  them into one status is how a disabled engine turns into an infinite retry loop.
+The example shows the page fields. The complete response also contains the retained fields above.
+`text` is the OCR engine's page text. It excludes native source text.
+`words` retains the engine's complete word list. `confidence` retains its page confidence or null.
+Image mode returns the stored word text joined with spaces and null confidence.
+It works when the selected engine has no configured OCR endpoint.
 
-## The derived-PDF trap
+## The overlay preserves source content and geometry.
 
-The output is a new PDF. If the ingest walker could see it, it would be ingested, OCR'd
-and produce another PDF without end, burning OCR time on each lap. Three guards:
+The builder opens a PDF twice.
+It removes Unicode text from the temporary render by deactivating text objects through every nested form.
+Text objects without extractable Unicode stay active for OCR.
+Rendering disables interactive forms and annotations.
+Each selected page produces one temporary raster.
 
-1. **`validate_dest_key`** refuses any key not under `derived/`, plus traversal and
-   directory-shaped keys, *before* any work happens. Pinned by tests.
-2. **No `blobs` row and no `vfs_files` row** are ever written here. `pdf_ocr_results` is
-   the sole index of a derived PDF's existence, which also means deleting a row without
-   deleting the object orphans it permanently, and the purge order in the apply job
-   (`change_ocr_languages`) is objects-then-rows for that reason.
-3. **`verify-stack.sh`** asserts that no `blobs` row references `derived/`, which covers
-   this writer and the chat-artifact one with the same query.
+`FPDF_DeviceToPage` maps word boxes through CropBox offsets, page rotation, and MediaBox origins.
+A ReportLab page supplies invisible text in render mode 3.
+The builder inserts that page as a form into the unchanged output page.
+It uses a full save with PDFium flags zero.
+Unselected pages receive no overlay.
 
-## Why it is a service
+Image mode preserves the original JPEG data.
+Other image formats use the smaller encoding from PNG and JPEG at quality 85.
+The page uses the stored image resolution, or 150 dpi when no resolution exists.
+The text layer uses Helvetica. Its PDF character coverage has the existing Windows-1252 limit.
+Returned page text preserves the OCR engine's Unicode text.
 
-* **Rasterising is a native-library job.** The worker deliberately shells out to `qpdf`
-  and `pdftotext` rather than linking a PDF library into the process that also runs
-  Temporal activities, archive extraction and ClickHouse writes. pypdfium2 and Pillow
-  would undo that.
-* **The page loop is unbounded work over one input.** A 500-page scan is 500 OCR calls.
-  The bounded pool and the load shedding belong on the thing making them, not on each
-  caller.
+## Resource budgets remain independent.
 
-## The text layer
+Object input uses `stat_object` and `fget_object` into temporary storage.
+Object output uses `fput_object`. Output hashing reads bounded blocks.
+Inline input decodes in bounded blocks.
+Stored word options use a temporary JSON file, without a command argument size cutoff.
+Temporary storage is removed after success or failure.
 
-Each page becomes a JPEG at `dpi` (default 200) placed at the page's original size in
-points, with the OCR words drawn over it in **text render mode 3**, laid out, measured,
-selectable, and painting nothing.
+`OCR_PDF_MAX_INPUT_BYTES` defaults to 512 MiB. `OCR_PDF_MAX_PAGES` defaults to 2,000.
+`OCR_PDF_MAX_PAGE_PIXELS` defaults to 40,000,000 pixels for one render.
+The source segmentation size target adds no builder byte cutoff.
+The thread pool limits renderer children to `OCR_PDF_CONCURRENCY`.
+Admission includes `OCR_PDF_QUEUE_DEPTH` waiting requests.
+Handler threads cover admission plus four additional handlers.
 
-Two details that commonly go wrong in a way that is impossible to see afterwards:
+A full queue returns 503 with `Retry-After`.
+An OCR-tier connection failure returns 503. OCR-tier 503 responses preserve `Retry-After`.
+A renderer timeout kills and waits for its child, then returns 504.
+A native renderer signal fails one request and leaves the service process running.
+The synchronous handler has no HTTP disconnect cancellation hook.
 
-* **The origin flips.** The raster's boxes are top-left, the PDF's are bottom-left, so
-  the baseline is `page_height - top - height`, scaled.
-* **Each word is horizontally scaled to its own box.** Helvetica's metrics have nothing
-  to do with the scanned glyphs, so without `setHorizScale` a selection drifts further
-  from the ink with every word on the line.
-
-Page size in points is carried through unchanged. The viewer's page jump and the stored
-`text_content.page_id` rows are matched against this file, so a page that changes size or
-order is a defect even though the PDF still opens.
-
-## Operational notes
-
-* **Backpressure is passed up, not absorbed.** A `503` from the OCR tier becomes a `503`
-  here, with the tier's own `Retry-After`. The caller maps it to a retryable Temporal
-  error, so a busy OCR tier slows the pipeline instead of filling `processing_errors`.
-* `OCR_PDF_MAX_PAGES` (2000) and `OCR_PDF_MAX_INPUT_BYTES` (512 MB) bound one request. A
-  bomb-shaped PDF is a real corpus artefact, not a hypothetical.
-* The parent process starts one renderer child per request. The thread pool limits child
-  processes to `OCR_PDF_CONCURRENCY`. `OCR_PDF_MAX_PAGE_PIXELS` limits one raster to
-  40,000,000 pixels. A renderer crash returns one failed request and keeps the service up.
-* The service admits `OCR_PDF_CONCURRENCY + OCR_PDF_QUEUE_DEPTH` requests. The thread
-  limit of its `def` handlers is that number plus 4, so an admitted request never waits
-  for a handler thread. `/health` runs on the event loop, so it answers while every
-  thread is busy. It reports the limit as `http_threads`. `deploy.py` sets both numbers from `ocr_pdf_concurrency` and
-  `ocr_pdf_queue_depth`.
-* `/health` reports which engines are **configured**, not which are reachable: an
-  unreachable tier changes between two health checks, and reporting it here would make
-  this service's health flap with someone else's.
-* Run the tests with `.agents/skills/verifying-before-claiming/scripts/pytest-ocr-pdf.sh`, which
-  runs `docker exec hoover4-ocr-pdf python -m pytest tests/ -q`.
+`GET /health` verifies the renderer import and reports configured engines and admission limits.
+Run builder tests inside the builder image with the current source loaded.
+The repository verification script targets the running builder container.
+A controlled source mount in an isolated container can verify changes without restarting active ingestion.
