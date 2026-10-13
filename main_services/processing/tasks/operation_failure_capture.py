@@ -97,11 +97,12 @@ def capture_operation_failure(params: CaptureOperationFailureParams) -> str:
 def _capture_operation_failure_body(params: CaptureOperationFailureParams) -> str:
     chain = cap_stack_trace(params.chain or "")
     cache: Dict[Tuple[str, str], Optional[List[Dict[str, Any]]]] = {}
+    history_errors: List[Dict[str, Any]] = []
 
     def fetch(workflow_id: str, run_id: str) -> Optional[List[Dict[str, Any]]]:
         key = (workflow_id, run_id)
         if key not in cache:
-            cache[key] = _fetch_history_http(workflow_id, run_id)
+            cache[key] = _fetch_history_http(workflow_id, run_id, history_errors)
         return cache[key]
 
     capturing_wid = params.capturing_workflow_id or params.workflow_id
@@ -123,6 +124,10 @@ def _capture_operation_failure_body(params: CaptureOperationFailureParams) -> st
     )
     if not nodes:
         return "empty"
+    if history_errors:
+        details = json.loads(nodes[0].details_json or "{}")
+        details["history_read_errors"] = history_errors[:8]
+        nodes[0].details_json = json.dumps(details, separators=(",", ":"))
     base = capture_index_base(op_id, capturing_wid, capturing_rid)
     nodes = apply_index_base(nodes, base)
     captured_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -313,7 +318,9 @@ def loads_temporal_http_json(text: str) -> dict:
         return json.loads(repaired)
 
 
-def _fetch_history_http(workflow_id: str, run_id: str) -> Optional[List[Dict[str, Any]]]:
+def _fetch_history_http(
+    workflow_id: str, run_id: str, errors: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[List[Dict[str, Any]]]:
     from urllib.parse import quote
 
     import requests
@@ -338,7 +345,14 @@ def _fetch_history_http(workflow_id: str, run_id: str) -> Optional[List[Dict[str
             token = payload.get("nextPageToken") or ""
             if not token:
                 return events
-    except Exception:
+    except Exception as error:
+        if errors is not None and len(errors) < 8:
+            response = getattr(error, "response", None)
+            errors.append({
+                "workflow_id": workflow_id[:255], "run_id": run_id[:64],
+                "error_type": type(error).__name__[:64],
+                "http_status": getattr(response, "status_code", None),
+            })
         log.exception(
             "operation failure capture: history read failed for %s", workflow_id)
         return None

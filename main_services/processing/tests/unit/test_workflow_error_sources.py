@@ -32,6 +32,7 @@ def test_p6_failed_writers_keep_one_source_id_for_each_chunk_member(monkeypatch)
                 return [SimpleNamespace(shard_name="shard", hashes=hashes)]
             if fn in (index_workflows.index_text_pages,
                       index_workflows.index_text_pages_with_versions,
+                      index_workflows.index_text_pages_with_receipts,
                       index_workflows.index_vectors):
                 raise RuntimeError("writer failed")
             return None
@@ -131,7 +132,8 @@ def test_p6_text_commit_controls_ledger_with_replay_branch(
             if fn is index_workflows.plan_shards:
                 return [SimpleNamespace(shard_name="shard", hashes=["hash-1"])]
             if fn in (index_workflows.index_text_pages,
-                      index_workflows.index_text_pages_with_versions):
+                      index_workflows.index_text_pages_with_versions,
+                      index_workflows.index_text_pages_with_receipts):
                 raise RuntimeError("text write failed")
             if fn is index_workflows.index_vectors:
                 return ["hash-1"]

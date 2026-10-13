@@ -70,10 +70,12 @@ def recovery_activity(task_name: str) -> str | None:
 
 
 def recovery_activities(task_name: str) -> tuple[str, ...]:
-    """Accept PDF metadata as recovery when it identifies a known document defect."""
+    """Accept the activity generations that can prove recovery for one Error name."""
     primary = recovery_activity(task_name)
     if task_name == "pdf_process":
         return ("pdf_prepare", "pdf_get_metadata_and_store")
+    if task_name == "P6_IndexTextPages":
+        return ("index_text_pages", "index_text_pages_with_versions", "index_text_pages_with_receipts")
     return (primary,) if primary else ()
 
 

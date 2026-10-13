@@ -63,6 +63,10 @@ failing pipeline workflow runs the same capture, so a root write that itself fai
 leaves the child records. The capture never raises into the failing workflow. If
 ClickHouse is unreachable the write is logged and dropped.
 
+Failed history reads retain up to eight diagnostics in the first node's `details_json`.
+Each diagnostic identifies the workflow, run, exception type, and HTTP status when available.
+The capture excludes response bodies and exception messages from these diagnostics.
+
 The CLI and website start `CancelOperation` with the id `cancel-{op_id}`. The finalizer
 cancels the target and waits for it to close. It samples the dataset's failures before it
 writes `cancelled`. A repeated request reads the same finalizer result. If target history

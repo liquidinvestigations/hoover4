@@ -20,7 +20,7 @@ The planner groups text segment versions before it counts rows and bytes.
 ## Entry Points
 
 - Workflows: `IndexDatasetPlan`, `RefreshDocumentLocations` in `workflows.py`
-- Activities: `index_text_pages`, `index_text_pages_with_versions`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `index_entity_terms`, `build_email_graph`, `compact_collection_shards`, `refresh_stale_document_locations` in `activities.py`
+- Activities: `index_text_pages`, `index_text_pages_with_versions`, `index_text_pages_with_receipts`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `index_entity_terms`, `build_email_graph`, `compact_collection_shards`, `refresh_stale_document_locations` in `activities.py`
 - Helpers: `email_graph.py` (the pure edge rules), `document_metadata` (the per-document read half of the writer), `location_refresh.py` (stale folder-closure selection), `string_term_encodings.py`; `fetch_plan_hashes` and `clean_text` are shared and live in `tasks/plan_utils.py`
 
 `build_vfs_nodes` runs once per `ExecutePlans` batch before the per-plan children;
@@ -201,17 +201,28 @@ A fallback nobody can see is a bug that hides, which is why it is loud.
 
 ## OCR index receipts
 
-`index_text_pages_with_versions` runs the same text writer as `index_text_pages`. It also
-returns, for each committed file, the `text_content.version` of each OCR segment that it
-read and indexed. `record_indexed` writes these receipts to `ocr_indexed_text` after the
-`index_state` rows. "Run OCR" counts an index target as done only when each current OCR
-segment of the file has a receipt of its current version. Text written after the writer
-read its rows therefore stays open. A failed writer returns no receipt.
+`index_text_pages_with_receipts` captures the exact stored versions of the text rows it indexes.
+It includes native PDF text, image OCR text, and PDF OCR text.
+It completes every page write, obsolete-page cleanup, and cluster cleanup before inserting receipts.
+It stores receipts durably in batches of at most 512 rows, then returns committed document hashes.
+A failed receipt insert fails the activity. A retry repeats safe writes and receipt inserts.
+A worker stop between receipt batches fails the activity without returning partial success.
 
-`IndexDatasetPlan` calls the new activity behind the `index-ocr-text-versions` patch. An
-execution that started before the patch replays the call to `index_text_pages` and records
-no receipt. The ForPlan parameters of P4, P5 and P6 take an optional `item_hashes` list.
-"Run OCR" sets it to the files with new OCR text, and an empty list reads all plan items.
+The planner records text index state after the writer returns.
+"Run OCR" requires index state and an exact receipt for each current selected text segment.
+Text written after the writer read remains pending until its version reaches the index.
+Existing index state cannot settle a target with missing or older receipts.
+Vector success cannot acknowledge failed text writes.
+
+The `index-durable-text-receipts` patch selects the new activity.
+New workflows schedule at most eight shard chunks per window, with at most 100 documents per chunk.
+They send at most 100 document entries per planner acknowledgement, without page receipts.
+This bounds concurrent commands when each document has a different shard assignment.
+Legacy histories retain `index_text_pages`, `index_text_pages_with_versions`, and their recorded result schemas.
+The older `index-ocr-text-versions` branch still sends receipts to `record_indexed`.
+
+The ForPlan parameters of P4, P5 and P6 accept optional `item_hashes`.
+"Run OCR" supplies files that need index work. An empty list reads all plan items.
 
 ## Indexed text and compaction
 

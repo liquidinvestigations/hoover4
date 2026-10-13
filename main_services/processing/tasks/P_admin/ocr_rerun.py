@@ -44,6 +44,9 @@ OCR_RUN_PAGE = 1000
 OCR_RUN_SAMPLES = 5
 #: The error type of a plan or an operation that ends with an open target.
 OCR_RUN_INCOMPLETE = "OcrRunIncomplete"
+OCR_DESCRIPTOR_PAGE = 100
+OCR_DESCRIPTOR_WINDOW = 3
+OCR_DESCRIPTOR_PATCH = "ocr-plan-descriptor-pages-v1"
 
 
 @dataclass
@@ -105,6 +108,23 @@ class OcrRunPlanWork:
     files: List[OcrRunFile] = field(default_factory=list)
     #: Files with an open index target, or with text that the load wrote from a stored result.
     index_hashes: List[str] = field(default_factory=list)
+
+
+@dataclass
+class OcrRunPlanPageParams(OcrRunPlanParams):
+    after: str = ""
+
+
+@dataclass
+class OcrRunPlanPage(OcrRunPlanWork):
+    after: str = ""
+
+
+@dataclass
+class OcrRunSettlement:
+    settled: int = 0
+    remaining: int = 0
+    samples: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -413,6 +433,11 @@ def load_ocr_run_plan(params: OcrRunPlanParams) -> OcrRunPlanWork:
     Writes the text of stored OCR results that `text_content` lacks first, so a file with
     a result and no text is indexed without a second OCR request.
     """
+    return _load_ocr_run_plan(params)
+
+
+def _load_ocr_run_plan(params: OcrRunPlanParams, *, recover: bool = True,
+                       hashes: Sequence[str] = ()) -> OcrRunPlanWork:
     from database.clickhouse import get_collection_client
     from tasks.ocr_targets import (
         STAGE_IMAGE, STAGE_INDEX, STAGE_PREVIEW, STAGE_PDF_PREPARE, STAGE_IMAGE_PDF, current_pairs, language_settings, recover_ocr_text,
@@ -423,7 +448,7 @@ def load_ocr_run_plan(params: OcrRunPlanParams) -> OcrRunPlanWork:
     pairs = current_pairs(language_settings(params.collection_dataset))
     with get_collection_client(params.collectionname) as client:
         recovered: List[str] = []
-        for _, items in _plan_items(client, params.collection_dataset, params.plan_hash):
+        for _, items in (_plan_items(client, params.collection_dataset, params.plan_hash) if recover else []):
             changed = []
             if params.parts_version:
                 fresh, changed = _current_plan_targets(client, params.collectionname, params.collection_dataset, items, pairs)
@@ -437,10 +462,11 @@ def load_ocr_run_plan(params: OcrRunPlanParams) -> OcrRunPlanWork:
                 client, params.collectionname, params.collection_dataset,
                 _image_items(routes, items),
                 [(engine, languages) for engine, languages, _ in pairs.image]))
-        _settle(client, SettleOcrRunTargetsParams(
-            params.collectionname, params.collection_dataset, params.op_id, params.plan_hash, parts_version=params.parts_version))
+        if recover:
+            _settle(client, SettleOcrRunTargetsParams(
+                params.collectionname, params.collection_dataset, params.op_id, params.plan_hash, parts_version=params.parts_version))
         open_targets = _open_targets(client, params.op_id, params.collection_dataset,
-                                     params.plan_hash)
+                                     params.plan_hash, hashes)
         engines: Dict[str, Tuple[set, set]] = {}
         extra = {}
         index_hashes = set(recovered)
@@ -584,3 +610,54 @@ def remove_pdf_members(params: RerunOcrParams) -> dict:
     build_vfs_nodes(scope)
     index_vfs_structure(scope)
     return {"paths": len(gone), "deindexed": removed}
+
+
+@activity.defn
+@with_heartbeat
+def prepare_ocr_run_plan(params: OcrRunPlanParams) -> int:
+    """Recover stored text and reconcile targets once before descriptor paging."""
+    work = _load_ocr_run_plan(params)
+    if work.index_hashes:
+        ocr_text_pending_index(OcrTextPendingParams(params.collectionname,
+                              params.collection_dataset, params.op_id,
+                              params.plan_hash, work.index_hashes))
+    return len(work.files)
+
+
+@activity.defn
+@with_heartbeat
+def load_ocr_run_plan_page(params: OcrRunPlanPageParams) -> OcrRunPlanPage:
+    """Read one bounded descriptor page without repeating stored-result recovery."""
+    from database.clickhouse import get_collection_client
+    from tasks.P3_parse_files.pdf_parts import bounded_result
+    with get_collection_client(params.collectionname) as client:
+        rows = client.query(
+            "SELECT DISTINCT file_hash FROM ocr_run_targets FINAL "
+            "WHERE op_id = {op:String} AND collection_dataset = {cd:String} "
+            "AND plan_hash = {ph:String} AND done = 0 AND file_hash > {after:String} "
+            "ORDER BY file_hash LIMIT {limit:UInt32}",
+            parameters={"op": params.op_id, "cd": params.collection_dataset,
+                        "ph": params.plan_hash, "after": params.after,
+                        "limit": OCR_DESCRIPTOR_PAGE}).result_rows
+    if not rows:
+        return OcrRunPlanPage()
+    hashes = [row[0] for row in rows]
+    work = _load_ocr_run_plan(params, recover=False, hashes=hashes)
+    return bounded_result(OcrRunPlanPage(work.files, work.index_hashes, hashes[-1]))
+
+
+@activity.defn
+@with_heartbeat
+def settle_ocr_run_targets_diagnostic(params: SettleOcrRunTargetsParams) -> OcrRunSettlement:
+    """Return settlement counts and bounded remaining target identities."""
+    from database.clickhouse import get_collection_client
+    with get_collection_client(params.collectionname) as client:
+        result = _settle(client, params)
+        remaining = _open_targets(client, params.op_id, params.collection_dataset,
+                                  params.plan_hash, params.hashes)
+    samples = ["file %s stage %s engine %s languages %s" % tuple(
+        str(value)[:160] for value in (target.file_hash, target.stage,
+                                     target.engine, target.languages))
+        for target in sorted(remaining, key=lambda target: (
+            target.file_hash, target.stage, target.engine, target.languages))[:OCR_RUN_SAMPLES]]
+    return OcrRunSettlement(result.settled, result.remaining, samples)

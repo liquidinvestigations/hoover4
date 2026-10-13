@@ -44,15 +44,21 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P_admin.ocr_rerun import (
         OCR_RUN_INCOMPLETE,
         OCR_RUN_PAGE,
+        OCR_DESCRIPTOR_PATCH,
+        OCR_DESCRIPTOR_WINDOW,
         ListOcrRunPlansParams,
         OcrRunFile,
         OcrRunPlanParams,
+        OcrRunPlanPageParams,
         OcrTextPendingParams,
         RerunOcrParams,
         SettleOcrRunTargetsParams,
         VerifyOcrRunParams,
         list_ocr_run_plans,
         load_ocr_run_plan,
+        load_ocr_run_plan_page,
+        prepare_ocr_run_plan,
+        settle_ocr_run_targets_diagnostic,
         ocr_text_pending_index,
         record_ocr_run_targets,
         reopen_plans_for_ocr_rerun,
@@ -385,6 +391,8 @@ class OcrRunPlan:
         parts_version = workflow.patched("ocr-run-pdf-parts")
         if parts_version:
             params = dataclasses.replace(params, parts_version=True)
+            if workflow.patched(OCR_DESCRIPTOR_PATCH):
+                return await self._paged(params)
         work = await workflow.execute_activity(
             load_ocr_run_plan,
             params,
@@ -463,6 +471,85 @@ class OcrRunPlan:
         return {"files": len(work.files), "indexed": len(pending),
                 "settled": settlement.settled}
 
+    async def _paged(self, params: "OcrRunPlanParams") -> dict:
+        """Run bounded descriptor pages after one stored-result recovery."""
+        activity_options = dict(start_to_close_timeout=timedelta(minutes=30),
+                                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS))
+        await workflow.execute_activity(prepare_ocr_run_plan, params,
+                                        heartbeat_timeout=HEARTBEAT_TIMEOUT, **activity_options)
+        after = ""
+        files_count = indexed_count = page_index = 0
+        exhausted = False
+        while not exhausted:
+            pages = []
+            for _ in range(OCR_DESCRIPTOR_WINDOW):
+                work = await workflow.execute_activity(
+                    load_ocr_run_plan_page,
+                    OcrRunPlanPageParams(params.collectionname, params.collection_dataset,
+                                         params.op_id, params.plan_hash, True, after),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT, **activity_options)
+                if not work.after:
+                    exhausted = True
+                    break
+                pages.append(functools.partial(self._run_page, params, work, page_index))
+                after = work.after
+                page_index += 1
+            for outcome in await asyncio.gather(*[page() for page in pages], return_exceptions=True):
+                if isinstance(outcome, BaseException):
+                    raise outcome
+                files_count += outcome[0]
+                indexed_count += outcome[1]
+        settlement = await workflow.execute_activity(
+            settle_ocr_run_targets_diagnostic,
+            SettleOcrRunTargetsParams(params.collectionname, params.collection_dataset,
+                                      params.op_id, params.plan_hash, parts_version=True),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, **activity_options)
+        if settlement.remaining:
+            raise ApplicationError(
+                f"{settlement.remaining} OCR targets of plan {params.plan_hash} are not done after its run: "
+                + "; ".join(settlement.samples), type=OCR_RUN_INCOMPLETE, non_retryable=True)
+        return {"files": files_count, "indexed": indexed_count, "settled": settlement.settled}
+
+    async def _run_page(self, params: "OcrRunPlanParams", work, page_index: int) -> tuple[int, int]:
+        """Process one descriptor page with its own temporary directory and child identities."""
+        activity_options = dict(start_to_close_timeout=timedelta(minutes=30),
+                                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS))
+        total_bytes = sum(file.file_size_bytes for file in work.files)
+        temp_plan = f"{params.plan_hash}-page-{page_index}"
+        indexed_count = 0
+        try:
+            if work.files:
+                downloaded = await workflow.execute_activity(
+                    download_plan_files,
+                    DownloadPlanFilesParams(params.collectionname, params.collection_dataset,
+                                            temp_plan,
+                                            [{"item_hash": file.item_hash,
+                                              "file_size_bytes": file.file_size_bytes,
+                                              "s3_url": file.s3_url} for file in work.files],
+                                            OCR_RUN_TEMP_DIR),
+                    start_to_close_timeout=timedelta(seconds=900 + math.ceil(total_bytes / 12_500)),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS))
+                await self._group(params, downloaded["out_dir"], page_index, work.files, True)
+            candidates = sorted({file.item_hash for file in work.files} | set(work.index_hashes))
+            if candidates:
+                pending = await workflow.execute_activity(
+                    ocr_text_pending_index,
+                    OcrTextPendingParams(params.collectionname, params.collection_dataset,
+                                         params.op_id, params.plan_hash, candidates),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT, **activity_options)
+                if pending:
+                    await self._text_steps(params, pending, suffix=f"-page-{page_index}")
+                indexed_count = len(pending)
+        finally:
+            if work.files:
+                await asyncio.shield(workflow.execute_activity(
+                    cleanup_plan_dir,
+                    CleanupPlanDirParams(params.collectionname, params.collection_dataset,
+                                         temp_plan, OCR_RUN_TEMP_DIR),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT, **activity_options))
+        return len(work.files), indexed_count
+
     async def _group(self, params: "OcrRunPlanParams", out_dir: str, index: int,
                      files: list, parts_version: bool = False) -> None:
         """Preview and OCR of one group of files, its errors, and its settlement."""
@@ -538,14 +625,20 @@ class OcrRunPlan:
                 chosen = [next(file for file in pdf_files if file.item_hash == item.item_hash) for item in items]
                 return [result for _, result in await run_stage(name, chosen, items, engine)]
             async def new_pdf_chain():
-                preparation, variants = await run_pdf_chain(sources, pdf_stages)
+                from tasks.P3_parse_files.pdf_cursor import PDF_CURSOR_PATCH
+                preparation, variants = await run_pdf_chain(
+                    sources, pdf_stages,
+                    cursor_context=params if workflow.patched(PDF_CURSOR_PATCH) else None)
                 outcomes["pdf_prepare_batch", ""] = [(file, preparation[file.item_hash])
                                                       for file in pdf_files if file.item_hash in preparation]
                 for engine in OCR_ENGINES:
                     outcomes["pdf_ocr_finalize_batch", engine] = [
                         (file, variants[file.item_hash, engine]) for file in pdf_files
                         if (file.item_hash, engine) in variants]
-            await asyncio.gather(image_ocr(), new_pdf_chain())
+            results = await asyncio.gather(image_ocr(), new_pdf_chain(), return_exceptions=True)
+            for result in results:
+                if isinstance(result, BaseException):
+                    raise result
         else:
             await asyncio.gather(image_ocr(), *[pdf_ocr(engine) for engine in OCR_ENGINES])
 
@@ -613,7 +706,7 @@ class OcrRunPlan:
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
         )
 
-    async def _text_steps(self, params: "OcrRunPlanParams", hashes: list) -> None:
+    async def _text_steps(self, params: "OcrRunPlanParams", hashes: list, suffix: str = "") -> None:
         """P4 and P5 together, then P6, for the files whose OCR text is not indexed.
 
         Date resolution and the canonical type do not run: OCR text changes neither.
@@ -627,21 +720,21 @@ class OcrRunPlan:
                     collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
                     plan_hash=params.plan_hash, op_id=params.op_id, item_hashes=hashes),
-                id=f"run-ocr-entities-{params.op_id}-{params.plan_hash}", **common),
+                id=f"run-ocr-entities-{params.op_id}-{params.plan_hash}{suffix}", **common),
             workflow.execute_child_workflow(
                 ScanRegexEntitiesForPlan.run,
                 ScanRegexEntitiesForPlanParams(
                     collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
                     plan_hash=params.plan_hash, op_id=params.op_id, item_hashes=hashes),
-                id=f"run-ocr-regex-{params.op_id}-{params.plan_hash}", **common),
+                id=f"run-ocr-regex-{params.op_id}-{params.plan_hash}{suffix}", **common),
             workflow.execute_child_workflow(
                 ChunkEmbedForPlan.run,
                 ChunkEmbedForPlanParams(
                     collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
                     plan_hash=params.plan_hash, op_id=params.op_id, item_hashes=hashes),
-                id=f"run-ocr-embed-{params.op_id}-{params.plan_hash}", **common),
+                id=f"run-ocr-embed-{params.op_id}-{params.plan_hash}{suffix}", **common),
             return_exceptions=True,
         )
         for result in results:
@@ -653,7 +746,7 @@ class OcrRunPlan:
                 collectionname=params.collectionname,
                 collection_dataset=params.collection_dataset,
                 plan_hash=params.plan_hash, op_id=params.op_id, item_hashes=hashes),
-            id=f"run-ocr-index-{params.op_id}-{params.plan_hash}", **common)
+            id=f"run-ocr-index-{params.op_id}-{params.plan_hash}{suffix}", **common)
 
 
 @workflow.defn

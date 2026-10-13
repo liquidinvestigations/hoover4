@@ -1,4 +1,4 @@
-"""Run PDF preparation, bounded part lists, and variant completion for one group."""
+"""Run PDF preparation, resumable part processing, and variant completion for one group."""
 
 import asyncio
 import dataclasses
@@ -13,7 +13,7 @@ def part_lists(items, limit: int):
     return [items[index::count] for index in range(count)] if count else []
 
 
-async def run_pdf_chain(files, run_stage, engines=None):
+async def run_pdf_chain(files, run_stage, engines=None, *, cursor_context=None):
     """Return preparation and variant outcomes without moving text through workflows."""
     preparation = {}
     variants = {}
@@ -33,7 +33,8 @@ async def run_pdf_chain(files, run_stage, engines=None):
     jobs = []
     list_limit = 4
     available = {}
-    for file, result in zip(sources, await run_stage("pdf_prepare_batch", sources)):
+    prepare_stage = "pdf_prepare_compact_batch" if cursor_context else "pdf_prepare_batch"
+    for file, result in zip(sources, await run_stage(prepare_stage, sources)):
         preparation[file.item_hash] = result
         if result.status != "ok":
             continue
@@ -49,6 +50,52 @@ async def run_pdf_chain(files, run_stage, engines=None):
                   and (available[file.item_hash].get("has_ocr_pages")
                        or engine in available[file.item_hash].get("saved_engines", []))]
         if not chosen:
+            return
+        if cursor_context:
+            from temporalio import workflow
+            from temporalio.exceptions import ChildWorkflowError
+            from tasks.P3_parse_files.batch_runner import stage_failure_results
+            from tasks.failure_chain import is_cancellation
+            from tasks.P3_parse_files.pdf_cursor import (
+                PdfPartGroup, PdfPartGroupParams, PdfSource, is_pdf_identity_change,
+            )
+            compact = [PdfSource(file.item_hash, file.file_path,
+                                 max(file.file_size_bytes, file.pdf_size_bytes),
+                                 file.source_kind, available[file.item_hash]["segmentation"],
+                                 available[file.item_hash]["source_digest"],
+                                 available[file.item_hash]["part_count"],
+                                 available[file.item_hash]["page_count"],
+                                 available[file.item_hash]["languages"].get(engine, []),
+                                 available[file.item_hash]["settings_versions"][engine]["version_us"],
+                                 available[file.item_hash]["settings_versions"][engine]["is_precise"])
+                       for file in chosen]
+            try:
+                groups = part_lists(compact, min(4, list_limit))
+                completed = await asyncio.gather(*[
+                    workflow.execute_child_workflow(
+                        PdfPartGroup.run,
+                        PdfPartGroupParams(cursor_context.collectionname, cursor_context.collection_dataset,
+                                           cursor_context.plan_hash, cursor_context.op_id, engine, group),
+                        id=f"pdf-cursor-{workflow.info().workflow_id}-{group[0].item_hash}-{engine}")
+                    for group in groups], return_exceptions=True)
+                results = []
+                for group, outcome in zip(groups, completed):
+                    if isinstance(outcome, ChildWorkflowError):
+                        if is_cancellation(outcome) or is_pdf_identity_change(outcome):
+                            raise outcome
+                        results.extend(stage_failure_results("run_ocr_pdf_parts_batch",
+                                       [source.item_hash for source in group], outcome))
+                    elif isinstance(outcome, BaseException):
+                        raise outcome
+                    else:
+                        results.extend(outcome)
+            except ChildWorkflowError as exc:
+                if is_cancellation(exc) or is_pdf_identity_change(exc):
+                    raise
+                results = stage_failure_results("run_ocr_pdf_parts_batch",
+                                                [file.item_hash for file in chosen], exc)
+            for result in results:
+                variants[result.item_hash, engine] = result
             return
         selected = [part for part in jobs if any(file.item_hash == part.item_hash for file in chosen)]
         batches = part_lists(selected, list_limit)

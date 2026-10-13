@@ -31,6 +31,7 @@ with workflow.unsafe.imports_passed_through():
         index_entity_terms,
         index_text_pages,
         index_text_pages_with_versions,
+        index_text_pages_with_receipts,
         index_vectors,
         index_vfs_structure,
         refresh_stale_document_locations,
@@ -54,6 +55,9 @@ MANTICORE_RETRY = RetryPolicy(
 # The patch id of the text writer that returns the OCR text versions it read, which
 # record_indexed stores as index receipts in ocr_indexed_text.
 OCR_TEXT_VERSIONS_PATCH = "index-ocr-text-versions"
+DURABLE_TEXT_RECEIPTS_PATCH = "index-durable-text-receipts"
+INDEXING_CHUNKS_PER_WINDOW = 8
+INDEX_ACK_BATCH_SIZE = 100
 # build_email_graph deletes the rows of its collection that are older than its own
 # start, so two runs on one collection can delete each other's rows. This queue is
 # served by exactly one process with one slot for the whole deployment.
@@ -78,8 +82,8 @@ class ScheduledChunk:
 class IndexDatasetPlan:
     """Index one plan, or its `item_hashes` when set, into the collection's Manticore shards.
 
-    Behind the `index-ocr-text-versions` patch, the text writer returns the OCR text
-    versions that it indexed, and `record_indexed` stores them as receipts.
+    New text writers persist exact receipts and return document hashes.
+    Legacy histories retain their activity contracts and command order.
     """
     @workflow.run
     async def run(self, params: IndexDatasetPlanParams) -> str:
@@ -113,25 +117,35 @@ class IndexDatasetPlan:
             task_queue=PLANNER_TASK_QUEUE,
         )
 
-        # The text writer that returns the OCR text versions it read. An execution that
-        # scheduled the earlier writer replays it, and records no receipt.
+        # Legacy text writers keep their recorded result contracts.
         with_receipts = (not params.vectors_only
                          and workflow.patched(OCR_TEXT_VERSIONS_PATCH))
-        text_writer = index_text_pages_with_versions if with_receipts else index_text_pages
+        durable_receipts = workflow.patched(DURABLE_TEXT_RECEIPTS_PATCH)
+        text_writer = (index_text_pages_with_receipts if durable_receipts else
+                       index_text_pages_with_versions if with_receipts else index_text_pages)
+        chunk_specs = [
+            (assignment.shard_name, assignment.hashes[start:start + INDEXING_CHUNK_SIZE])
+            for assignment in assignments
+            for start in range(0, len(assignment.hashes), INDEXING_CHUNK_SIZE)
+        ]
+        # Legacy histories scheduled every chunk in one workflow task.
+        window_size = INDEXING_CHUNKS_PER_WINDOW if durable_receipts else max(1, len(chunk_specs))
         chunks: list[ScheduledChunk] = []
-        for assignment in assignments:
-            for chunk_start in range(0, len(assignment.hashes), INDEXING_CHUNK_SIZE):
-                chunk_hashes = assignment.hashes[chunk_start:chunk_start+INDEXING_CHUNK_SIZE]
+        pages_results = []
+        vectors_results = []
+        for window_start in range(0, len(chunk_specs), window_size):
+            window = []
+            for shard_name, chunk_hashes in chunk_specs[window_start:window_start + window_size]:
                 shard_params = IndexShardParams(
                     collectionname=params.collectionname,
                     collection_dataset=params.collection_dataset,
                     plan_hash=params.plan_hash,
-                    shard_name=assignment.shard_name,
+                    shard_name=shard_name,
                     hashes=chunk_hashes,
                     op_id=params.op_id,
                 )
-                chunks.append(ScheduledChunk(
-                    shard_name=assignment.shard_name,
+                chunk = ScheduledChunk(
+                    shard_name=shard_name,
                     hashes=chunk_hashes,
                     ordinal=len(chunks),
                     started=workflow.now(),
@@ -147,10 +161,14 @@ class IndexDatasetPlan:
                         retry_policy=MANTICORE_RETRY,
                         task_queue=INDEXING_TASK_QUEUE,
                     ),
-                ))
-        pages_results = ([] if params.vectors_only else
-                         await gather(*[c.pages_future for c in chunks], return_exceptions=True))
-        vectors_results = await gather(*[c.vectors_future for c in chunks], return_exceptions=True)
+                )
+                chunks.append(chunk)
+                window.append(chunk)
+            if not params.vectors_only:
+                pages_results.extend(await gather(
+                    *[c.pages_future for c in window], return_exceptions=True))
+            vectors_results.extend(await gather(
+                *[c.vectors_future for c in window], return_exceptions=True))
 
         # A failed writer chunk (retries already exhausted) becomes one
         # processing_errors row per hash in the chunk, so every document that
@@ -202,20 +220,23 @@ class IndexDatasetPlan:
         # recompute_shard_ledger counts from index_state, so a permanently failed
         # writer chunk never inflates the shard budget.
         if indexed_entries and not params.vectors_only:
-            await workflow.execute_activity(
-                record_indexed,
-                RecordIndexedParams(
-                    collectionname=params.collectionname,
-                    collection_dataset=params.collection_dataset,
-                    plan_hash=params.plan_hash,
-                    entries=sorted(indexed_entries),
-                    ocr_text_versions=sorted(receipts),
-                ),
-                start_to_close_timeout=timedelta(minutes=10),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-                task_queue=PLANNER_TASK_QUEUE,
-            )
+            entries = sorted(indexed_entries)
+            ack_size = INDEX_ACK_BATCH_SIZE if durable_receipts else len(entries)
+            for start in range(0, len(entries), ack_size):
+                await workflow.execute_activity(
+                    record_indexed,
+                    RecordIndexedParams(
+                        collectionname=params.collectionname,
+                        collection_dataset=params.collection_dataset,
+                        plan_hash=params.plan_hash,
+                        entries=entries[start:start + ack_size],
+                        ocr_text_versions=[] if durable_receipts else sorted(receipts),
+                    ),
+                    start_to_close_timeout=timedelta(minutes=10),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                    task_queue=PLANNER_TASK_QUEUE,
+                )
 
         if not params.vectors_only:
             await workflow.execute_activity(

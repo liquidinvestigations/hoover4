@@ -58,7 +58,8 @@ class _Group:
         monkeypatch.setattr(plan_workflows.workflow, "execute_child_workflow",
                             lambda *a, **k: pytest.fail("the group started a child workflow"))
         monkeypatch.setattr(plan_workflows.workflow, "now", lambda: NOW)
-        monkeypatch.setattr(plan_workflows.workflow, "patched", lambda name: parts if name == "pdf-parts" else True)
+        monkeypatch.setattr(plan_workflows.workflow, "patched", lambda name:
+                            False if name == "pdf-part-cursor-v1" else parts if name == "pdf-parts" else True)
         monkeypatch.setattr(plan_workflows.workflow, "info",
                             lambda: SimpleNamespace(run_id=run_id))
 
@@ -370,7 +371,8 @@ def test_searchable_pdf_batches_are_registered_on_both_ocr_queues():
     workers = _workers()
     assert br.STAGE_QUEUES["run_ocr_pdf_batch"] == "processing-ocr-pdf-queue"
     assert "run_ocr_pdf_batch" in workers["processing-ocr-queue"][1]
-    assert workers["processing-ocr-pdf-queue"] == (set(), {"run_ocr_pdf_batch", "run_ocr_pdf_parts_batch", "make_image_pdf_batch"})
+    assert workers["processing-ocr-pdf-queue"] == (set(), {
+        "run_ocr_pdf_batch", "run_ocr_pdf_parts_batch", "run_ocr_pdf_part_cursor", "make_image_pdf_batch"})
     assert workers["processing-preview-queue"] == (set(), {"make_pdf_preview_batch"})
 
 

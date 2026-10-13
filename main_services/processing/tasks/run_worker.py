@@ -281,7 +281,10 @@ async def run_common_worker():
     from .P3_parse_files.parse_table import parse_table_batch
     from .P3_parse_files.parse_mime import detect_mime_batch
     from .P3_parse_files.parse_pdf import pdf_metadata_batch, pdf_extract_batch
-    from .P3_parse_files.pdf_parts import pdf_prepare_batch, pdf_ocr_finalize_batch
+    from .P3_parse_files.pdf_parts import (
+        pdf_prepare_batch, pdf_ocr_finalize_batch, pdf_prepare_compact_batch, pdf_ocr_finalize_cursor,
+    )
+    from .P3_parse_files.pdf_cursor import PdfPartGroup
     from .P3_parse_files.parse_image import parse_image_metadata_batch
     from .P3_parse_files.image_preview import make_image_preview_batch
     from .P3_parse_files.parse_audio import parse_audio_metadata_batch
@@ -321,6 +324,9 @@ async def run_common_worker():
     from .P_admin.ocr_rerun import (
         list_ocr_run_plans,
         load_ocr_run_plan,
+        prepare_ocr_run_plan,
+        load_ocr_run_plan_page,
+        settle_ocr_run_targets_diagnostic,
         ocr_text_pending_index,
         record_ocr_run_targets,
         reopen_plans_for_ocr_rerun,
@@ -405,6 +411,7 @@ async def run_common_worker():
             ExecutePlans,
             ExecuteSinglePlan,
             ProcessItemsBatched,
+            PdfPartGroup,
             ExtractEntitiesForPlan,
             ScanRegexEntitiesForPlan,
             ChunkEmbedForPlan,
@@ -451,7 +458,9 @@ async def run_common_worker():
             pdf_metadata_batch,
             pdf_extract_batch,
             pdf_prepare_batch,
+            pdf_prepare_compact_batch,
             pdf_ocr_finalize_batch,
+            pdf_ocr_finalize_cursor,
             video_batch,
             scan_container_folders,
 
@@ -485,6 +494,9 @@ async def run_common_worker():
             record_ocr_run_targets,
             list_ocr_run_plans,
             load_ocr_run_plan,
+            prepare_ocr_run_plan,
+            load_ocr_run_plan_page,
+            settle_ocr_run_targets_diagnostic,
             settle_ocr_run_targets,
             ocr_text_pending_index,
             verify_ocr_run_completion,
@@ -551,7 +563,7 @@ async def run_ocr_worker():
     # admission, which deploy.py checks.
     from .P3_parse_files.parse_ocr import run_ocr_batch
     from .P3_parse_files.parse_ocr_pdf import run_ocr_pdf_batch
-    from .P3_parse_files.pdf_parts import run_ocr_pdf_parts_batch
+    from .P3_parse_files.pdf_parts import run_ocr_pdf_parts_batch, run_ocr_pdf_part_cursor
     from .P3_parse_files.image_pdf import make_image_pdf_batch
     from .P3_parse_files.pdf_preview import make_pdf_preview_batch
     from .visibility import ensure_search_attributes
@@ -591,7 +603,7 @@ async def run_ocr_worker():
           graceful_shutdown_timeout=graceful_shutdown_timeout(),
           workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
           workflows=[],
-          activities=[run_ocr_pdf_batch, run_ocr_pdf_parts_batch, make_image_pdf_batch],
+          activities=[run_ocr_pdf_batch, run_ocr_pdf_parts_batch, run_ocr_pdf_part_cursor, make_image_pdf_batch],
           activity_executor=pdf_executor,
           max_concurrent_activities=pdf_slots,
           max_concurrent_workflow_tasks=pdf_slots*2,
@@ -668,7 +680,8 @@ async def run_embed_worker():
 
 async def run_indexing_worker():
   from .P6_index_data.activities import (
-      build_vfs_nodes, index_text_pages, index_text_pages_with_versions, index_vectors,
+      build_vfs_nodes, index_text_pages, index_text_pages_with_versions,
+      index_text_pages_with_receipts, index_vectors,
       index_entity_terms, index_vfs_structure, compact_collection_shards,
       refresh_stale_document_locations, resolve_canonical_file_type,
   )
@@ -689,9 +702,9 @@ async def run_indexing_worker():
       graceful_shutdown_timeout=graceful_shutdown_timeout(),
       workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
       workflows=[],
-      # index_text_pages stays for IndexDatasetPlan executions that scheduled it before
-      # the text writer returned its OCR text versions.
-      activities=[index_text_pages, index_text_pages_with_versions, index_vectors,
+      # Legacy text activities retain their recorded result contracts.
+      activities=[index_text_pages, index_text_pages_with_versions,
+                  index_text_pages_with_receipts, index_vectors,
                   build_vfs_nodes, index_vfs_structure, compact_collection_shards,
                   resolve_canonical_file_type, index_entity_terms,
                   refresh_stale_document_locations],

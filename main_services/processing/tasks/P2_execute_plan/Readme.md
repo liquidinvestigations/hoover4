@@ -12,6 +12,11 @@ This stage executes processing plans by downloading planned blobs, running the b
 
 The Error helper records each source id with its failed document hash.
 
+New PDF chains return compact preparation identities and start bounded cursor children for each engine.
+Part metadata and selected pages remain in storage.
+Cursor children continue after completed activity windows to bound their history events and bytes.
+The parent keeps one bounded summary for each source and engine.
+
 ## Entry Points
 
 - Workflows: `ExecutePlans`, `ExecuteSinglePlan`, `ProcessItemsBatched` in `workflows.py`

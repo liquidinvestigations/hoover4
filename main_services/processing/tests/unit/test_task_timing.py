@@ -131,6 +131,45 @@ def test_document_outcomes_keep_chunk_members_and_p6_returned_subset():
     assert rows[0][3] == "P6_IndexTextPages"
 
 
+@pytest.mark.parametrize("writer", ["index_text_pages_with_versions", "index_text_pages_with_receipts"])
+def test_versioned_writers_recover_only_committed_documents(writer):
+    from tasks.P6_index_data.params import IndexedTextResult
+
+    fields = SimpleNamespace(task_name=writer, workflow_run_id="run", activity_id="activity", attempt=1)
+    params = SimpleNamespace(hashes=["written", "failed"])
+    result = IndexedTextResult(["written"]) if writer.endswith("versions") else ["written"]
+    rows = task_timing._outcome_rows([params], fields, "op", "dataset", "ok", result)
+    assert [row[2:4] for row in rows] == [["written", "P6_IndexTextPages"]]
+
+
+@pytest.mark.parametrize("status", ["ok", "failed", "skipped"])
+def test_cursor_finalization_records_document_outcome_without_rewriting_result(monkeypatch, status):
+    from tasks.P3_parse_files.batch_runner import FileResult
+
+    written = []
+    monkeypatch.setattr(task_timing, "_write_operation_result",
+                        lambda collection, rows, outcomes: written.append((rows, outcomes)))
+    result = FileResult("document", "run_ocr_pdf_and_store", status)
+    returned = asyncio.run(_TimingActivityInbound(_FakeNext(result=result)).execute_activity(
+        _input("pdf_ocr_finalize_cursor", _StageParams(op_id="op", engine="tesseract"))))
+    assert returned is result
+    [(rows, outcomes)] = written
+    assert rows[0][1:4] == ["run_ocr_pdf_and_store", "document", "error" if status == "failed" else status]
+    assert [row[2:4] for row in outcomes] == (
+        [] if status == "failed" else [["document", "run_ocr_pdf_and_store[tesseract]"]])
+
+
+def test_cursor_window_success_does_not_acknowledge_variant_recovery(monkeypatch):
+    from tasks.P3_parse_files.pdf_cursor import PdfPartProgress
+
+    written = []
+    monkeypatch.setattr(task_timing, "_write_operation_result",
+                        lambda collection, rows, outcomes: written.append(outcomes))
+    asyncio.run(_TimingActivityInbound(_FakeNext(result=PdfPartProgress(100, 100))).execute_activity(
+        _input("run_ocr_pdf_part_cursor", _StageParams(op_id="op", engine="tesseract"))))
+    assert written == [[]]
+
+
 def test_durable_operation_result_writes_outcomes_before_task_run(monkeypatch):
     import database.clickhouse as clickhouse
 

@@ -31,7 +31,7 @@ import logging
 import os
 from .string_term_encodings import get_string_term_ids, get_string_term_ids_by_field, hash_string_to_uint63
 from tasks.plan_utils import clean_text
-from database.clickhouse import get_collection_client
+from database.clickhouse import get_collection_client, insert_durable
 from database.manticore import (
     DATE_UNKNOWN,
     DOCUMENT_COLUMNS,
@@ -50,7 +50,7 @@ from .params import (
     RefreshDocumentLocationsResult,
     ResolveCanonicalFileTypeParams,
 )
-from tasks.heartbeat import with_heartbeat
+from tasks.heartbeat import with_heartbeat, stop_if_worker_is_stopping
 from tasks.text_sources import OCR_PREFIX, fetch_text_batch, plan_text_batches, indexed_preparation_text
 from tasks.P0_scan_disk.mime_type_mapper import coarse_file_type
 from tasks.regex_entities import (
@@ -66,6 +66,7 @@ log = logging.getLogger(__name__)
 INDEX_ROW_CHUNK_SIZE = 512
 INDEX_STATEMENT_MAX_BYTES = 4 * 1024 * 1024
 INDEX_STATEMENT_MAX_ROWS = 128
+INDEX_RECEIPT_BATCH_ROWS = 512
 # Manticore 14.1.0 defaults to a 128 MiB max packet. Leave room for framing.
 INDEX_ROW_MAX_BYTES = 127 * 1024 * 1024
 
@@ -424,13 +425,49 @@ def index_text_pages(params: IndexShardParams) -> list[str]:
 @activity.defn
 @with_heartbeat
 def index_text_pages_with_versions(params: IndexShardParams) -> IndexedTextResult:
-    """Index the chunk's documents and return the OCR text versions that it read.
+    """Index the chunk's documents and return the selected text versions that it read.
 
     ``IndexDatasetPlan`` stores the versions as index receipts in ``ocr_indexed_text``,
     and an OCR index target is complete when each current OCR segment has one. See
     :func:`write_text_pages`.
     """
     return write_text_pages(params)
+
+
+@activity.defn
+@with_heartbeat
+def index_text_pages_with_receipts(params: IndexShardParams) -> list[str]:
+    """Persist exact receipts after all text writes and cleanup complete.
+
+    Return committed document hashes after every receipt insert reaches storage.
+    Legacy activities retain their recorded result schemas.
+    """
+    result = write_text_pages(params)
+    if result.ocr_text_versions:
+        with get_collection_client(params.collectionname) as client:
+            for batch in chunks(result.ocr_text_versions, INDEX_RECEIPT_BATCH_ROWS):
+                stop_if_worker_is_stopping()
+                insert_durable(
+                    client, 'ocr_indexed_text',
+                    [[params.collection_dataset, file_hash, extracted_by,
+                      int(page_id), int(text_version)]
+                     for file_hash, extracted_by, page_id, text_version in batch],
+                    column_names=['collection_dataset', 'file_hash', 'extracted_by',
+                                  'page_id', 'text_version'],
+                )
+    stop_if_worker_is_stopping()
+    from temporalio.converter import PayloadConverter
+    from temporalio.exceptions import ApplicationError
+    from tasks.payload_guard import MAX_PAYLOAD_BYTES, PAYLOAD_TOO_LARGE, payload_size
+    converter = activity.payload_converter() if activity.in_activity() else PayloadConverter.default
+    result_bytes = payload_size(converter.to_payloads([result.committed_hashes])[0])
+    if result_bytes > MAX_PAYLOAD_BYTES:
+        raise ApplicationError(
+            f"index_text_pages_with_receipts result holds {result_bytes} bytes, "
+            f"above the {MAX_PAYLOAD_BYTES} byte limit",
+            type=PAYLOAD_TOO_LARGE, non_retryable=True,
+        )
+    return result.committed_hashes
 
 
 def write_text_pages(params: IndexShardParams) -> IndexedTextResult:
@@ -451,10 +488,9 @@ def write_text_pages(params: IndexShardParams) -> IndexedTextResult:
     ``IndexDatasetPlan`` records these in ``index_state``. A failed writer must
     never be counted by the shard ledger.
 
-    The result also holds one receipt for each OCR segment of those hashes, with the
-    text version that `fetch_text_batch` returned and the writer indexed. A version
-    read again after the commit could be newer than the indexed text, so none is read.
-    A writer that fails returns nothing, so it records no receipt.
+    The result holds exact versions of selected native PDF and OCR segments from `fetch_text_batch`.
+    A version read after commit could be newer than indexed text. The writer does not read versions after commit.
+    A failed writer returns no receipt.
     """
     collection_dataset: str = params.collection_dataset
     item_hashes: list[str] = params.hashes

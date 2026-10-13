@@ -196,6 +196,9 @@ class FakeOcrStore:
                 rows = [row for row in rows if row["file_hash"] in hashes]
             if "done = 0" in sql:
                 rows = [row for row in rows if not row["done"]]
+            if sql.startswith("SELECT DISTINCT file_hash FROM ocr_run_targets"):
+                hashes = sorted({row["file_hash"] for row in rows if row["file_hash"] > p["after"]})
+                return [(file_hash,) for file_hash in hashes[:p["limit"]]]
             if sql.startswith("SELECT plan_hash FROM ocr_run_targets"):
                 plans = sorted({row["plan_hash"] for row in rows if row["plan_hash"] > p["after"]})
                 return [(plan,) for plan in plans[:p["limit"]]]

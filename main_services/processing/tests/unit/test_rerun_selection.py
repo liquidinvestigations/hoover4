@@ -265,7 +265,9 @@ def test_complete_snapshot_rejects_partial_class_events(monkeypatch):
         ledger.selection_snapshot("collection", "op", "dataset")
 
 
-def test_recovery_needs_exact_outcome_and_current_error_veto(monkeypatch):
+@pytest.mark.parametrize("writer", ["index_text_pages", "index_text_pages_with_versions",
+                                    "index_text_pages_with_receipts"])
+def test_recovery_needs_exact_outcome_and_current_error_veto(monkeypatch, writer):
     import database.clickhouse as clickhouse
     import database.operation_ledger as ledger
 
@@ -273,8 +275,8 @@ def test_recovery_needs_exact_outcome_and_current_error_veto(monkeypatch):
     selected += [("h5", "parse_office_xml_and_store"),
                  ("h6", "unknown_task")]
     client = _Client([("FROM processing_document_outcomes", [
-        ("h1", "P6_IndexTextPages", "index_text_pages"),
-        ("h2", "P6_IndexTextPages", "index_text_pages"),
+        ("h1", "P6_IndexTextPages", writer),
+        ("h2", "P6_IndexTextPages", writer),
         ("h5", "parse_office_xml_and_store", "parse_office_xml_and_store"),
     ])])
     monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)

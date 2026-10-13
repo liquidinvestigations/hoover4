@@ -57,6 +57,13 @@ exactly one source of truth in Python.
 
 ## Run OCR
 
+New plan workflows recover stored text once before they read file descriptors in pages of 100.
+They run at most three pages concurrently, with a separate temporary directory for each page.
+This bound includes both PDF engines, image stages, and error recording in the workflow command budget.
+PDF cursor children read stored part metadata and keep repeated part activity events out of the plan history.
+Completion failures include at most five remaining file, stage, engine, and language identities.
+Earlier workflow branches retain the complete descriptor activity and its original result schema.
+
 `RerunOcr` makes no OCR request for a target that is already done. `tasks/ocr_targets.py`
 defines the targets and the done rule. A run has these steps.
 

@@ -704,7 +704,10 @@ class ProcessItemsBatched:
                 indexes = with_route("pdf") + with_route("office_preview")
                 sources = [batch_file(i, source_kind="preview" if "office_preview" in routes[i] else "original")
                            for i in indexes]
-                preparation, variants = await run_pdf_chain(sources, run_stage)
+                from tasks.P3_parse_files.pdf_cursor import PDF_CURSOR_PATCH
+                preparation, variants = await run_pdf_chain(
+                    sources, run_stage,
+                    cursor_context=params if workflow.patched(PDF_CURSOR_PATCH) else None)
                 for i in indexes:
                     if files[i].item_hash in preparation:
                         put(i, "make_pdf_preview" if preparation[files[i].item_hash].task_name == "make_pdf_preview" else "pdf_process",

@@ -64,7 +64,7 @@ class CompactCollectionShardsParams:
     closed_only: bool
     op_id: str = ""
 
-#: One OCR text segment that a text-page writer read and committed:
+#: Each receipt identifies a native PDF or OCR text segment that the writer committed.
 #: `(file_hash, extracted_by, page_id, text_version)`.
 OcrTextReceipt = tuple[str, str, int, int]
 
@@ -74,8 +74,7 @@ class IndexedTextResult:
     """What one text-page writer committed.
 
     `committed_hashes` are the documents whose rows were written or removed.
-    `ocr_text_versions` holds one receipt for each OCR segment that the writer read, with
-    the version it read, for the committed documents only.
+    `ocr_text_versions` holds exact versions of selected native PDF and OCR segments for committed documents.
     """
 
     committed_hashes: list[str] = field(default_factory=list)
@@ -90,7 +89,7 @@ class RecordIndexedParams:
     # (shard_name, file_hash) pairs whose writers committed; collection_dataset
     # is uniform for the whole batch.
     entries: list[tuple[str, str]]
-    #: The OCR segment versions that the committed writers read. Empty writes no receipt.
+    #: Legacy writers supply exact selected text versions here. Empty writes no receipt.
     ocr_text_versions: list[OcrTextReceipt] = field(default_factory=list)
 
 

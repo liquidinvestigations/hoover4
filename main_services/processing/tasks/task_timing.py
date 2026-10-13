@@ -1,10 +1,10 @@
 """Where processing time goes: rows of activity run time, batched, best-effort.
 
-An activity execution writes one row, with one exception. A stage activity that returns
-a ``BatchResult`` writes one row for each file of its batch and no row of its own. A
-stage activity that raises writes one row under its stage name. ``count()`` over
-``processing_task_runs`` therefore counts files for a P3 stage. To count executions,
-count the distinct ``(workflow_run_id, activity_id, attempt)`` values.
+An activity execution usually writes one run row.
+A ``BatchResult`` writes one row for each file. A complete ``FileResult`` writes one file row.
+A PDF cursor window writes one activity row and does not prove variant completion.
+A stage activity that raises writes one row under its stage name.
+To count executions, count distinct ``(workflow_run_id, activity_id, attempt)`` values.
 
 The hook is a **Temporal activity inbound interceptor** (:class:`TaskTimingInterceptor`),
 installed on every worker in ``run_worker.py``. That is the one place in this codebase
@@ -697,6 +697,8 @@ _OUTCOME_NAMES = {
     "scan_regex_entities_for_hashes": "P4_ScanRegexEntities",
     "chunk_embed_for_hashes": "P5_ChunkEmbed",
     "index_text_pages": "P6_IndexTextPages",
+    "index_text_pages_with_versions": "P6_IndexTextPages",
+    "index_text_pages_with_receipts": "P6_IndexTextPages",
     "index_vectors": "P6_IndexVectors",
 }
 
@@ -718,8 +720,10 @@ def _outcome_rows(args: Sequence[Any], fields: _ActivityFields,
     error_name = _outcome_name(name, getattr(params, "engine", ""))
     if not error_name:
         return []
-    if name in ("index_text_pages", "index_vectors"):
+    if name in ("index_text_pages", "index_text_pages_with_receipts", "index_vectors"):
         hashes = result if isinstance(result, (list, tuple)) else []
+    elif name == "index_text_pages_with_versions":
+        hashes = getattr(result, "committed_hashes", [])
     elif name in ("extract_entities_for_hashes", "scan_regex_entities_for_hashes",
                   "chunk_embed_for_hashes"):
         hashes = getattr(params, "hashes", [])
@@ -848,9 +852,11 @@ class _TimingActivityInbound(ActivityInboundInterceptor):
 
 
 def _batch_of(result: Any) -> Any:
-    """The `BatchResult` that a stage activity returned, or None for any other result."""
-    from tasks.P3_parse_files.batch_runner import BatchResult
+    """Normalize complete document results for outcome recording."""
+    from tasks.P3_parse_files.batch_runner import BatchResult, FileResult
 
+    if isinstance(result, FileResult):
+        return BatchResult("", [result])
     return result if isinstance(result, BatchResult) else None
 
 

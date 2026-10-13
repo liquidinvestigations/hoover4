@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from temporalio import activity
 
 from tasks.heartbeat import heartbeat_pump, with_heartbeat
-from tasks.P3_parse_files.batch_runner import BatchFile, BatchResult, StageBatchParams, run_batch
+from tasks.P3_parse_files.batch_runner import BatchFile, BatchResult, FileResult, StageBatchParams, run_batch
 from tasks.task_timing import SkippedOutcome
 from tasks.text_sources import (
     MIN_OCR_IMAGE_PX, OCR_PAGE_IMAGE_COVERAGE, OCR_PAGE_TEXT_FLOOR,
@@ -176,7 +176,7 @@ def split_pdf(source: str, dest: str, first: int, last: int) -> None:
         raise RuntimeError(f"PDF split failed for pages {first}-{last}: {result.stderr[:200]!r}")
 
 
-def prepare_pdf(params: StageBatchParams, file: BatchFile) -> dict | SkippedOutcome:
+def prepare_pdf(params: StageBatchParams, file: BatchFile, *, compact: bool = False) -> dict | SkippedOutcome:
     from database.clickhouse import get_collection_client
     from database.s3 import collection_bucket, get_s3_client
     from tasks.P3_parse_files.parse_pdf import _qpdf_show_npages, _pdftotext_pages, _insert_pdf_text_pages
@@ -200,7 +200,7 @@ def prepare_pdf(params: StageBatchParams, file: BatchFile) -> dict | SkippedOutc
                 expected = part["last_page"] + 1
             else:
                 if expected == count + 1:
-                    return preparation_value(client, params, file, stored, count, list(needs))
+                    return preparation_value(client, params, file, stored, count, list(needs), compact=compact)
         with source_file(client, params, file) as path, heartbeat_pump(f"PDF preparation {h[:8]}"):
             count = file.page_count or _qpdf_show_npages(path, h)
             size = os.path.getsize(path)
@@ -240,17 +240,30 @@ def prepare_pdf(params: StageBatchParams, file: BatchFile) -> dict | SkippedOutc
                     current_batch().flush()
             write_row(client, "ocr_page_needs", dict(collection_dataset=cd, hash=h,
                       source_kind=kind, rule_version=OCR_PAGE_RULE_VERSION, page_count=count, ocr_pages=needs))
-            return preparation_value(client, params, file, source_parts(client, cd, h, kind), count, needs)
+            return preparation_value(client, params, file, source_parts(client, cd, h, kind), count, needs, compact=compact)
 
 
 def preparation_value(client, params: StageBatchParams, file: BatchFile,
-                      parts: list[dict], count: int, needs: list[int]) -> dict:
-    """Return small part jobs and the engines whose stored variants require completion."""
+                      parts: list[dict], count: int, needs: list[int], *, compact: bool = False) -> dict:
+    """Return legacy part jobs or compact source identities with completion flags."""
     rows = client.query(
         "SELECT DISTINCT engine FROM pdf_ocr_results FINAL "
         "WHERE collection_dataset = {cd:String} AND pdf_hash = {h:String} "
         "AND is_deleted = 0 AND text_complete = 0",
         parameters={"cd": params.collection_dataset, "h": file.item_hash}).result_rows
+    if compact:
+        from tasks.ocr_targets import language_settings, engine_passes
+        from tasks.text_sources import OCR_ENGINES
+        settings = language_settings(params.collection_dataset)
+        return dict(segmentation=PDF_SEGMENTATION_VERSION,
+                    source_digest=source_digest(parts, count, needs), part_count=len(parts),
+                    page_count=count, source_kind=file.source_kind, has_ocr_pages=bool(needs),
+                    saved_engines=[row[0] for row in rows],
+                    languages={engine: engine_passes(engine, settings[engine].value)
+                               for engine in OCR_ENGINES},
+                    settings_versions={engine: dataclasses.asdict(settings[engine].version)
+                                       for engine in OCR_ENGINES},
+                    part_lists=min(4, max(1, int(os.getenv("HOOVER4_OCR_PDF_FILES_PER_BATCH", "4")))))
     return {"parts": [{"part_index": part["part_index"], "first_page": part["first_page"],
                        "last_page": part["last_page"], "part_key": part["s3_path"],
                        "file_size_bytes": part["size_bytes"],
@@ -288,7 +301,9 @@ def build_part(params: StageBatchParams, file: BatchFile) -> str | SkippedOutcom
     from tasks.P3_parse_files.parse_ocr_pdf import _passes_for, MAX_INLINE_PDF_BYTES
     if not service_configured() or params.engine not in engines_for_provider():
         return SkippedOutcome("pdf_builder_disabled")
-    passes = _passes_for(params.engine, params.collection_dataset)
+    passes = getattr(params, "languages", None)
+    if passes is None:
+        passes = _passes_for(params.engine, params.collection_dataset)
     with get_collection_client(params.collectionname) as client:
         if file.item_hash not in live_hashes(client, params.collection_dataset, [file.item_hash]):
             return SkippedOutcome("pdf_source_removed")
@@ -461,7 +476,8 @@ def complete_pdf(params: StageBatchParams, file: BatchFile) -> str | SkippedOutc
     with get_collection_client(params.collectionname) as client:
         if file.item_hash not in live_hashes(client, params.collection_dataset, [file.item_hash]):
             return SkippedOutcome("pdf_source_removed")
-        for languages in _passes_for(params.engine, params.collection_dataset):
+        passes = getattr(params, "languages", None)
+        for languages in (passes if passes is not None else _passes_for(params.engine, params.collection_dataset)):
             result = variant_result(client, params.collection_dataset, file.item_hash, params.engine, languages)
             if result and result["text_complete"]:
                 continue
@@ -479,3 +495,117 @@ def pdf_ocr_finalize_batch(params: StageBatchParams) -> BatchResult:
     return run_batch("pdf_ocr_finalize_batch", params.files, key=lambda f: f.item_hash,
                      size=lambda f: f.file_size_bytes, step=lambda f: complete_pdf(params, f),
                      task_name="run_ocr_pdf_and_store")
+
+
+def source_digest(parts: list[dict], count: int, needs: list[int]) -> str:
+    """Identify the stored source ranges and selected pages without transporting them."""
+    import hashlib
+    encoded = json.dumps([PDF_SEGMENTATION_VERSION, count, needs, parts],
+                         sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def bounded_result(value):
+    """Fail with a compact diagnostic before an oversized activity result reaches Temporal."""
+    from temporalio.converter import DataConverter
+    from temporalio.exceptions import ApplicationError
+    from tasks.payload_guard import MAX_PAYLOAD_BYTES, PAYLOAD_TOO_LARGE, payload_size
+    converter = activity.payload_converter() if activity.in_activity() else DataConverter.default.payload_converter
+    sizes = [payload_size(payload) for payload in converter.to_payloads([value])]
+    if max(sizes, default=0) > MAX_PAYLOAD_BYTES:
+        raise ApplicationError("PDF activity result exceeds the payload limit",
+                               type=PAYLOAD_TOO_LARGE, non_retryable=True)
+    return value
+
+
+@activity.defn
+@with_heartbeat
+def pdf_prepare_compact_batch(params: StageBatchParams) -> BatchResult:
+    """Return source identities after source manifests and native text reach storage."""
+    return bounded_result(run_batch(
+        "pdf_prepare_compact_batch", params.files, key=lambda file: file.item_hash,
+        size=lambda file: file.file_size_bytes,
+        step=lambda file: prepare_pdf(params, file, compact=True), task_name="pdf_prepare"))
+
+
+def cursor_source(client, params):
+    """Verify that a cursor still describes the stored source and page selection."""
+    from temporalio.exceptions import ApplicationError
+    from tasks.ocr_targets import language_settings, engine_passes
+    source = params.source
+    settings = language_settings(params.collection_dataset)[params.engine]
+    if (engine_passes(params.engine, settings.value) != source.languages
+            or settings.version.version_us != source.settings_version_us
+            or settings.version.is_precise != source.settings_version_precise):
+        raise ApplicationError("PDF language settings changed during cursor processing",
+                               type="PdfSettingsChanged", non_retryable=True)
+    parts = source_parts(client, params.collection_dataset, source.item_hash, source.source_kind)
+    rows = client.query(
+        "SELECT page_count, ocr_pages FROM ocr_page_needs FINAL "
+        "WHERE collection_dataset = {cd:String} AND hash = {h:String} "
+        "AND source_kind = {kind:String} AND rule_version = {r:UInt16}",
+        parameters={"cd": params.collection_dataset, "h": source.item_hash,
+                    "kind": source.source_kind, "r": OCR_PAGE_RULE_VERSION}).result_rows
+    if (source.segmentation != PDF_SEGMENTATION_VERSION or not rows
+            or len(parts) != source.part_count
+            or source_digest(parts, int(rows[0][0]), list(rows[0][1])) != source.source_digest):
+        raise ApplicationError("PDF source ranges changed during cursor processing",
+                               type="PdfSourceChanged", non_retryable=True)
+    return parts, list(rows[0][1])
+
+
+def cursor_stage(params, files):
+    """Use the frozen engine language passes for part processing and finalization."""
+    from tasks.P3_parse_files.pdf_cursor import FrozenPdfStageParams
+    return FrozenPdfStageParams(params.collectionname, params.collection_dataset,
+                                params.plan_hash, files, params.op_id, params.engine,
+                                list(params.source.languages))
+
+
+from tasks.P3_parse_files.pdf_cursor import PdfPartCursorParams, PdfPartProgress
+
+
+@activity.defn
+@with_heartbeat
+def run_ocr_pdf_part_cursor(params: PdfPartCursorParams) -> PdfPartProgress:
+    """Load and process at most one hundred stored source ranges."""
+    from database.clickhouse import get_collection_client
+    from tasks.P3_parse_files.pdf_cursor import PDF_PART_WINDOW
+    source = params.source
+    with get_collection_client(params.collectionname) as client:
+        parts, needs = cursor_source(client, params)
+    chosen = [part for part in parts if part["part_index"] > params.after][:PDF_PART_WINDOW]
+    files = [BatchFile(source.item_hash, source.file_path, part["size_bytes"],
+                       source_kind=source.source_kind, part_index=part["part_index"],
+                       first_page=part["first_page"], last_page=part["last_page"],
+                       part_key=part["s3_path"],
+                       ocr_pages=[page - part["first_page"] + 1 for page in needs
+                                  if part["first_page"] <= page <= part["last_page"]])
+             for part in chosen]
+    stage = cursor_stage(params, files)
+    result = run_batch("run_ocr_pdf_parts_batch", files,
+                       key=lambda file: f"{file.item_hash}:{file.first_page}-{file.last_page}",
+                       size=lambda file: file.file_size_bytes,
+                       step=lambda file: build_part(stage, file), task_name="run_ocr_pdf_and_store")
+    failed = next((row for row in result.results if row.status == "failed"), None)
+    if failed:
+        failed = dataclasses.replace(failed, item_hash=source.item_hash)
+    after = chosen[-1]["part_index"] if chosen else params.after
+    return bounded_result(PdfPartProgress(after, len(chosen), after >= source.part_count, failed))
+
+
+@activity.defn
+@with_heartbeat
+def pdf_ocr_finalize_cursor(params: PdfPartCursorParams) -> FileResult:
+    """Verify source identity and complete the variant after all stored parts exist."""
+    from database.clickhouse import get_collection_client
+    with get_collection_client(params.collectionname) as client:
+        cursor_source(client, params)
+    source = params.source
+    file = BatchFile(source.item_hash, source.file_path, source.file_size_bytes,
+                     source_kind=source.source_kind, page_count=source.page_count)
+    stage = cursor_stage(params, [file])
+    return bounded_result(run_batch(
+        "pdf_ocr_finalize_batch", [file], key=lambda item: item.item_hash,
+        size=lambda item: item.file_size_bytes, step=lambda item: complete_pdf(stage, item),
+        task_name="run_ocr_pdf_and_store").results[0])

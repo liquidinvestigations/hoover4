@@ -99,6 +99,19 @@ The `text_complete` marker records successful empty text as well as stored text.
 Retries reuse saved part text and build missing parts only.
 Stored raster outputs receive parts and text from their saved PDF without another OCR request.
 
+New preparation activities return source identities, counts, and completion flags.
+Part metadata and selected pages remain in storage.
+Each cursor activity reads and processes at most 100 source ranges.
+Its result carries a cursor, counters, and at most one document error.
+Each PDF group uses up to four source lanes per engine, within the configured batch count.
+Each lane processes one source at a time.
+The child workflow continues after a completed window at 2,000 history events or 4 MiB of history.
+Source digests and language setting versions remain fixed across continuations.
+A changed source or setting stops the cursor before another window.
+The workflow reports this change as an operation failure and leaves its targets open for a fresh run.
+Activity results use the installed converter to verify the 512 KiB payload limit.
+Legacy activities and workflow branches retain their earlier inputs, results, and heartbeat schemas.
+
 Multipart results have an empty direct object key and a complete `pdf_ocr_parts` manifest.
 They have no stored joined PDF.
 Readers resolve borrowed objects through the matching `pdf_parts` row.
