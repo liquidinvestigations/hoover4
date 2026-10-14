@@ -451,8 +451,9 @@ def _context(row, params, messages, control, event, anchor) -> PolicyContext:
         from tasks.P_agent.steps import _citation_messages
 
         entries = reports.session_citation_entries(row.username, row.session_id)
+        limits = (control.get("definition") or {}).get("limits") or {}
         needed, check = citations.needs_repair(row.result or "", _citation_messages(row, messages),
-                                               entries)
+                                               entries, bool(limits.get("paragraph_repair", 1)))
         structural = check.get("unresolved") or check.get("conflicting") or check.get("page_zero")
         turn["citation"] = {"needed": bool(needed) and (event.draft_kind == "answer" or bool(structural)), "check": check}
         turn["passages"] = _passages(entries)

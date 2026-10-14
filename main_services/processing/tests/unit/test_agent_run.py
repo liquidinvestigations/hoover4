@@ -1340,6 +1340,28 @@ def test_one_web_handle_does_not_cover_an_uncited_paragraph():
     assert citations.answer_metadata(answer, messages, entries, True)["citation_status"] == "missing"
 
 
+def test_without_paragraph_repair_an_uncited_paragraph_needs_no_round():
+    from tasks.P_agent import reports
+    url = "https://example.invalid/report"
+    messages = [
+        agent_runs.RunMessageRow(idx=1, role="tool", tool_name="web_search",
+            content=json.dumps({"results": [{"url": url}]}), usage_json='{"status":"ok"}'),
+        agent_runs.RunMessageRow(idx=2, role="tool", tool_name="read_page",
+            usage_json=json.dumps({"status": "ok", "evidence": [{"kind": "document_read",
+                "status": "ok", "reference": {"url": url}}]})),
+    ]
+    entries = reports.normalize("cite_pages", {}, json.dumps({"citations": [{
+        "handle": "[W1]", "url": url, "version": "v1", "artifact_id": "captured-page",
+        "quote_verified": True, "terms": ["The result is 5."], "quotes": ["The result is 5."]
+    }]}), "ok")
+    answer = "The result is 5 [W1].\n\nA court reported 12 cases in Sudan."
+    needed, check = citations.needs_repair(answer, messages, entries, paragraph_repair=False)
+    assert not needed
+    assert check["unsupported_paragraphs"] == []
+    needed, _ = citations.needs_repair("The result is 5 [W9].", messages, entries, paragraph_repair=False)
+    assert needed, "a label that no citation gives still needs a round"
+
+
 def test_no_progress_ending_reads_text_from_the_stored_decision(store):
     ending = "The requested name was absent. Searches run: quoted name and name variants."
     store["messages"].append(agent_runs.RunMessageRow(

@@ -238,10 +238,13 @@ def web_discoveries(messages) -> set[str]:
     return urls
 
 
-def needs_repair(answer: str, messages, session_entries) -> tuple[bool, dict]:
+def needs_repair(answer: str, messages, session_entries,
+                 paragraph_repair: bool = True) -> tuple[bool, dict]:
     """Whether an answer gets the repair round, and its citation check.
 
     `messages` is the thread, and `session_entries` the citation evidence of the session.
+    With `paragraph_repair` false, a paragraph without a label causes no round, and the check
+    names no such paragraph. The definition limit `paragraph_repair` sets it.
     The policy coordinator counts the rounds of a turn (`control.coordinator`), so a thread
     that holds a note is checked like any other.
     """
@@ -269,7 +272,8 @@ def needs_repair(answer: str, messages, session_entries) -> tuple[bool, dict]:
     check["web_unmarked"] = answer_urls
     check["web_missing"] = web_used and (not web_refs or bool(check["web_unread"])
                                          or bool(check["web_undiscovered"]) or bool(answer_urls))
-    check["unsupported_paragraphs"] = unsupported_paragraphs(answer) if documents_read or web_used else []
+    check["unsupported_paragraphs"] = (unsupported_paragraphs(answer)
+                                       if paragraph_repair and (documents_read or web_used) else [])
     check["read_page_urls"] = list(dict.fromkeys(urls))[:12]
     if not answer.strip():
         return False, check

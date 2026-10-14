@@ -41,6 +41,9 @@ DEFAULT_LIMITS: Dict[str, float] = {
     "answer_seconds": 60.0,
     "preparation_skill_loads": 3,
     "discovery_notes": 1,
+    # 1: a paragraph or list item without a label causes a citation repair round. 0: only a
+    # label fault, page 0, a web fault or an answer without any label does.
+    "paragraph_repair": 1,
 }
 
 

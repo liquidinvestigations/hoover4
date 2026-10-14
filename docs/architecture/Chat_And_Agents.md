@@ -163,6 +163,15 @@ starts, the worker stores a copy of its assets on the opening row of the run. Th
 the definition, the digest of each handler file, the rendered system prompt and the skill
 texts. The turn uses that copy until it ends, so a later change affects new turns only.
 
+Three definitions are built in. `chat-default` is active for every profile. It loads skills
+at the turn start and after the first read, ranks web reads, writes progress, discovery and
+capture notes, reviews each draft, and asks for a repair round when a paragraph or list item
+holds a name or number without a label. `chat-quality` is for a model that searches, reads
+and cites without guidance notes. It has no progress, discovery or capture rule, and its
+limit `paragraph_repair` is 0, so only a label fault, page 0, a web fault or an answer
+without any label causes a repair round. `chat-null` has no rule. A deployment selects a
+definition with `definitions/active.json` in the `chat_control_dir` folder.
+
 For each event the worker stores one decision before it writes any row of it. A retry reads
 the stored decision and writes the same rows at the same keys. An action is a note, a skill
 load or a tool call. Skill loads and tool calls run as a policy batch before the next model

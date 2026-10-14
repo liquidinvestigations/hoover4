@@ -1162,3 +1162,19 @@ def test_verified_citations_reset_progress_in_a_partly_failed_batch():
     again = asyncio.run(Handler().evaluate(event, _progress_context(plain(result.facts), (fact,), 21),
                                          {"signals": False}, object()))
     assert again.facts["units"] == 1
+
+
+def test_the_quality_definition_resolves_from_a_control_folder(monkeypatch, tmp_path):
+    (tmp_path / "definitions").mkdir()
+    (tmp_path / "definitions" / "active.json").write_text(json.dumps({"*": "chat-quality"}))
+    monkeypatch.setenv(registry.CONTROL_DIR_ENV, str(tmp_path))
+    try:
+        registry.load(refresh=True)
+        definition = definitions.resolve("internal_search")
+        assert definition.id == "chat-quality"
+        assert definition.limits["paragraph_repair"] == 0
+        assert {r.id for r in definition.rules} == {"prepare", "result-skills", "web-reads", "review"}
+    finally:
+        monkeypatch.delenv(registry.CONTROL_DIR_ENV)
+        registry.load(refresh=True)
+    assert definitions.resolve("internal_search").limits["paragraph_repair"] == 1
