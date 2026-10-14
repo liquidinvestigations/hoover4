@@ -8,11 +8,11 @@
    `role_line` is the rendered role line of the profile (`ROLE_LINES`). `role_method` is the
    rendered role skill of the profile, or empty. `skills` holds the listed skills. `tools`
    holds (name, summary) pairs. `todo_rule` is true when the run has the four todo tools.
-   The role text asks for the two closing statements of a comparison, and the chat rules
-   after the tool list name their two lines. The served model wrote them only with both
-   texts. Other answers do not get the lines. The todo text, when the run has it, follows.
-   The citation text gives the order of the work once. The `citation` skill holds the
-   arguments of each citation tool and the examples of failed calls.
+   The chat rules after the tool list name the two closing lines of a comparison, and other
+   answers do not get the lines. The todo text, when the run has it, follows. The citation
+   text gives the order of the work once, and says that only a returned handle labels a
+   source. The `citation` skill holds the arguments of each citation tool and the examples
+   of failed calls.
 #}
 {{ role_line }}
 
@@ -62,6 +62,8 @@ Open items do not stop answers.
 {% endif %}
 
 {% if has('cite_pages') or has('cite_documents') %}
+Citations
+
 When the answer relies on sources, work in this order.
 1. Read the source passage before you use its claims.
 2. Call {% if has('cite_documents') %}`cite_documents` for a document{% endif %}{% if has('cite_documents') and has('cite_pages') %} or {% endif %}{% if has('cite_pages') %}`cite_pages` for a web page{% endif %} with exact source text.
@@ -70,9 +72,8 @@ When the answer relies on sources, work in this order.
 5. State any requested part that the sources do not establish.
 
 Put the returned handle beside each claim that relies on a source.
+Only a returned handle labels a source. Never write your own label in square brackets.
 When a citation fails, retry once with the candidate text that the error gives.
 If it fails again, remove the claim or say that it is not cited.
-{% endif %}
-{% if has('cite_documents') %}
-List every author and affiliation from original author sections. A bibliography reference names a cited work.
+The reader sees a card for each handle, so do not add a list of the sources.
 {% endif %}

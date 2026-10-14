@@ -18,15 +18,33 @@ Use dasovi?h for one varying letter and dasovic% for an optional final letter.
 Use skilling << resigned when word order matters.
 3. Remove filters one at a time. Run a search without filters.
 {% endif %}
-{% if has('search_facet_values') %}Verify filter values with {{ tool('search_facet_values') }}.{% endif %}
-{% if has('search_histogram') %}Verify dates with {{ tool('search_histogram') }}.{% endif %}
-{% if has('search_passages') %}4. Search a description of the content with {{ tool('search_passages') }}.{% endif %}
-{% if has('folder_search') %}5. Use {{ tool('folder_search') }} when the request names a folder, path or file.{% endif %}
-{% if has('folder_list') %}Use {{ tool('folder_list') }} for that folder.{% endif %}
-{% if has('read_documents') %}6. Read the best 1 to 3 hits with {{ tool('read_documents') }}.{% endif %}
-{% if has('doc_search_text') %}Use {{ tool('doc_search_text') }} for relevant text in a document.{% endif %}
-{% if has('web_search') %}7. Search the web only when the request allows it.{% endif %}
-{% if has('read_page') %}Read the best web pages with {{ tool('read_page') }}.{% endif %}
+{% if has('search_facet_values') %}
+Verify filter values with {{ tool('search_facet_values') }}.
+{% endif %}
+{% if has('search_histogram') %}
+Verify dates with {{ tool('search_histogram') }}.
+{% endif %}
+{% if has('search_passages') %}
+4. Search a description of the content with {{ tool('search_passages') }}.
+{% endif %}
+{% if has('folder_search') %}
+5. Use {{ tool('folder_search') }} when the request names a folder, path or file.
+{% endif %}
+{% if has('folder_list') %}
+Use {{ tool('folder_list') }} for that folder.
+{% endif %}
+{% if has('read_documents') %}
+6. Read the best 1 to 3 hits with {{ tool('read_documents') }}.
+{% endif %}
+{% if has('doc_search_text') %}
+Use {{ tool('doc_search_text') }} for relevant text in a document.
+{% endif %}
+{% if has('web_search') %}
+7. Search the web only when the request allows it.
+{% endif %}
+{% if has('read_page') %}
+Read the best web pages with {{ tool('read_page') }}.
+{% endif %}
 
 After the available steps find no keyword match, answer with the absence and the searches.
 Before an absence answer, run at least 4 distinct searches with at least 2 available search tools.

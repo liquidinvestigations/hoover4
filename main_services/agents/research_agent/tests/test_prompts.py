@@ -235,14 +235,13 @@ def test_list_constraints_apply_before_any_optional_skill_read():
     text = rendered("full_research")
     assert "For each listed item, verify every constraint against the source text" in text
     assert "Give fewer items when the sources establish fewer matches" in text
-    assert "A trial and its appeals are one prosecution." in text
-    assert "For a product claim, verify its name, composition, and production method in the source." in text
-    assert "A plant extract does not establish synthetic production." in text
+    assert "Verify in the source each property that the request requires of an item." in text
+    assert "Count one case, event or entity once, even when several sources report its stages." in text
     assert "When a page read fails, use another readable source or omit its claims and address." in text
     assert "Read every page that you cite before you answer." in text
     assert "Call `read_page` for every web source before you use its claims." in text
     assert "Use its `find` field to read the passage that supports each claim." in text
-    assert "State when the sources do not establish that ranking." in text
+    assert "State when the sources do not establish the ranking." in text
     assert "Search snippets and security check pages cannot establish a matching item." in text
 
 

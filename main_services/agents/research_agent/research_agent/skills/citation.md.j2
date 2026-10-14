@@ -13,7 +13,7 @@ tools: cite_documents, cite_pages
    example for each citation tool, and what to do after a failed entry.
 #}
 {% if has('cite_documents') %}
-When your {{ citation_artefact }} relies on an {% if web_enabled %}internal {% endif %}document, call {{ tool('cite_documents') }}.
+When your {{ citation_artefact }} relies on {% if web_enabled %}an internal{% else %}a{% endif %} document, call {{ tool('cite_documents') }}.
 Give it each document that supports a claim or quote. Use the returned handle beside that claim.
 Use a handle beside a claim that relies on an internal document. You can also name a
 document to identify it or describe a search result.
@@ -35,7 +35,9 @@ that Jim Steffes approved the draft. Call {{ tool('cite_documents') }} with coll
 file_hash from the result, the quote "Your notes look great. Best of luck today with the
 Hearings.", find "Your notes look great", and why "Steffes approves the draft of 27 December".
 Then write "Steffes approved the draft [D1]."
-Missing or absent quotes allocate no handle. Copy a candidate sentence into quote and retry.
+Line breaks, punctuation and the `>` marks of a quoted e-mail do not need to match.
+Missing or absent quotes allocate no handle. Copy the candidate text that the error gives into quote and retry.
+Only a returned handle labels a source. Never write your own label in square brackets.
 Reuse the returned document handle for additional verified passages. The document has one card.
 {% if citation_resolver == "lead" %}
 The lead researcher resolves them, so a handle you never allocated is no use to anyone.
