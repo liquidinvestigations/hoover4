@@ -1,9 +1,11 @@
 """Board storage: every read and write of the investigation board tables.
 
-The tables are in migrations `00043_investigation_boards.sql` and `00045_board_labels.sql`.
-Each table has one writer (see the migration headers), so this module has no
-read-modify-write of a shared row. `board_labels` holds the generated slug, title and summary
-of each node and the summary of each board. Its writer is `tasks/P_board/labels.py`.
+The tables are in migrations `00043_investigation_boards.sql`, `00045_board_labels.sql` and
+`00046_board_assessments.sql`. Each table has one writer (see the migration headers), so this
+module has no read-modify-write of a shared row. `board_labels` holds the generated slug,
+title and summary of each node and the summary of each board. Its writer is
+`tasks/P_board/labels.py`. `board_assessments` holds the prompt and the reply of each reason
+call. Its writer is `board_reason` in `tasks/P_board/activities.py`.
 
 Three rules hold for every function here:
 
@@ -195,6 +197,14 @@ def write_events(events: list[EventRow]) -> None:
 
 def write_event(event: EventRow) -> None:
     write_events([event])
+
+
+def write_assessment(board_id: str, reason_no: int, prompt: str, reply: str, error: str,
+                     model: str) -> None:
+    """The prompt and the whole reply of one reason call, for the details popup of the board
+    page. A retry writes the same key, and the newest row wins."""
+    _insert("board_assessments", [[board_id, int(reason_no), prompt, reply, error, model, now()]],
+            ["board_id", "reason_no", "prompt", "reply", "error", "model", "created_at"])
 
 
 # ------------------------------------------------------------------------------- facts

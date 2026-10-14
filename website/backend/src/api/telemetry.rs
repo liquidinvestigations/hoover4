@@ -290,7 +290,6 @@ const KNOWN_FUNCTIONS: &[&str] = &[
     "chat_delete_session",
     "chat_dismiss_interrupted",
     "chat_get_session",
-    "chat_list_models",
     "chat_list_sessions",
     "chat_llm_configured",
     "chat_poll",

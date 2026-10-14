@@ -37,7 +37,8 @@ the actual gate.
   `admin_get_manticore_load`, which reads Manticore's `SHOW STATUS` and the status of each
   table for the load panel of `/admin/metrics`. The model and tool time of a user comes
   from `agent_step_events`. See below.
-- `llm.rs`, the model catalog, the defaults, the allowlist and the thinking switch
+- `llm.rs`, the model catalog, the two models that `hoover4.ini` sets (`agent_model`,
+  `short_call_model`, read from the environment and shown read only) and the thinking switch
   (`server_settings.llm_thinking`, on when the row is absent). The `p50` and `Calls 14d`
   columns count `kind = 'chat'` rows of `llm_call_events` only. See below.
 - `llm_reports.rs`, the five reports of `/admin/llm`. See below.
@@ -48,12 +49,11 @@ The table is `ReplacingMergeTree(updated_at, is_deleted)` and every read takes
 `argMax(col, updated_at)`. Two consequences, each of which has already cost a bug:
 
 1. **A refresh must carry forward everything the provider does not tell it.** `/v1/models`
-   returns ids and nothing else, and `is_allowed` defaults to `1`, so a refresh that    wrote its rows produced a *fresher* "allowed" version than the admin's disallow, and
-   the allowlist is enforced server-side against forged model ids, not a dropdown
-   filter. `refresh_catalog_now` reads the current state first (`prior_catalog`) and
-   preserves `is_allowed` plus the price and capability columns; a model never seen before
-   is allowed. The Python catalog task (`tasks/llm_catalog.py::store_models`) does the same,
-   because whichever writer runs last wins.
+   returns ids and nothing else, and a fresher row replaces every column.
+   `refresh_catalog_now` reads the current state first (`prior_catalog`) and preserves the
+   price and capability columns and `is_allowed`, which no code reads since `hoover4.ini`
+   sets the models. The Python catalog task (`tasks/llm_catalog.py::store_models`) does the
+   same, because whichever writer runs last wins.
 2. **Filter deleted rows in `HAVING`, never in `WHERE`.** Every version of a row is still in
    the part, so `WHERE is_deleted = 0` drops the *tombstone version* and keeps the live one.
    A deleted model reads back as present. The only meaningful test is

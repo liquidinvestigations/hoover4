@@ -11,7 +11,6 @@ pub struct LlmModelItem {
     pub supports_tools: bool,
     pub supports_vision: bool,
     pub is_reasoning: bool,
-    pub is_allowed: bool,
     /// RFC3339; empty when never confirmed.
     pub fetched_at: String,
     /// Median latency over the last 14 days of `llm_call_events`, 0 when none.
@@ -33,14 +32,13 @@ pub struct LlmProviderHealth {
 pub struct AdminLlmPage {
     pub providers: Vec<LlmProviderHealth>,
     pub models: Vec<LlmModelItem>,
-    pub default_chat_model: String,
-    pub summarization_model: String,
-    /// The model each agent profile runs on, keyed by the profile's setting key. A
-    /// profile absent from this map, or present with an empty value, runs on
-    /// `default_chat_model`. Unset means "use the default", so a deployment that never
-    /// touches these keys behaves exactly as it did before they existed.
+    /// The model of agent turns from `hoover4.ini`: the quality model when it is set, else
+    /// the provider model.
     #[serde(default)]
-    pub profile_models: std::collections::BTreeMap<String, String>,
+    pub agent_model: String,
+    /// The model of titles, summaries, board labels and assessments: the provider model.
+    #[serde(default)]
+    pub short_call_model: String,
     /// True when a catalog refresh is currently running in-process.
     pub refresh_in_flight: bool,
     /// True when `LLM_BASE_URL` is unset. Chat is disabled.
@@ -122,20 +120,6 @@ pub struct AdminAiStatus {
     pub recent_traffic: Vec<AiTrafficRow>,
     pub service_use: Vec<AiServiceUse>,
     pub llm_configured: bool,
-}
-
-/// One allowed model for the chat picker (subset of the catalog).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ChatModelChoice {
-    pub provider: String,
-    pub model_id: String,
-    pub display_name: String,
-    pub context_window: u32,
-    pub supports_tools: bool,
-    pub supports_vision: bool,
-    pub is_reasoning: bool,
-    pub median_latency_ms: u32,
-    pub is_default: bool,
 }
 
 /// One row of the error counts report on `/admin/llm`: failed attempts of one step and

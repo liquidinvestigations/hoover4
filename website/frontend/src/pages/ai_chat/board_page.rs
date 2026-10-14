@@ -11,25 +11,33 @@
 //! fact in a new tab with that document selected, so the person can browse its cards there.
 //!
 //! The graph keeps its node size at every node count. The pane scrolls, a drag pans it, and a
-//! corner control sets the zoom, which is the `zoom` value of the address.
+//! corner control sets the zoom, which is the `zoom` value of the address. When the selected
+//! node is not wholly in the pane, at the first load or after a link in a detail pane selects
+//! it, the pane scrolls it to the middle. A click on a node does not scroll.
 //!
 //! `selected` is the slug of a node in the address, so a selected node is a link. The page
 //! resolves it by slug first and then by storage id, so a link written before the slugs keeps
-//! working. Every place that shows a node names it by its slug.
+//! working. The address, the event lines and the link column name a node by its slug. The
+//! cards and the detail panes show its type and statuses (`board_graph::corners`).
+//!
+//! `assessment` in the address opens the details popup of that assessment: its prompt and
+//! its response, read from `board_assessments` when the popup opens.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::time::Duration;
 
-use common::board_types::{BoardFact, BoardIntent, BoardSnapshot};
+use common::board_types::{
+    BoardAssessment, BoardEvent, BoardFact, BoardIntent, BoardReviewGoal, BoardSnapshot, MAX_GOALS,
+};
 use common::chat_types::{ChatDocRef, card_find_phrase};
 use common::search_result::{DocumentIdentifier, SearchResultDocuments, SearchResultHitCount};
 use dioxus::prelude::*;
 
 use crate::api::board_api::{
-    board_add_hint, board_drop, board_reject_fact, board_review, board_set_internet_tools, board_set_paused,
-    board_snapshot,
+    board_add_goal, board_add_hint, board_answer, board_assessment, board_drop, board_explore_question,
+    board_reject_fact, board_review, board_set_internet_tools, board_set_paused, board_snapshot,
 };
 use crate::api::error_util::user_facing_message;
 use dioxus_free_icons::icons::md_content_icons::{MdAdd, MdRemove};
@@ -39,7 +47,9 @@ use dioxus_free_icons::Icon;
 use crate::components::admin_components::{
     ErrorBar, BTN, BTN_PRIMARY, BTN_SMALL, BTN_SMALL_DANGER, HELP_TEXT, INPUT, LINK, SUBHEADING, TABLE, TD, TH,
 };
-use crate::components::board_graph::{build_graph, kind_label, render_edge, render_node, settle, ArrowMarker, NodePosition};
+use crate::components::board_graph::{
+    build_graph, corners, render_edge, render_node, settle, ArrowMarker, NodeKind, NodePosition,
+};
 use crate::components::chat_components::doc_ref_card::ChatDocOpen;
 use crate::components::chat_components::markdown_text::MarkdownishText;
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
@@ -57,15 +67,22 @@ const PANEL: &str = "border: 1px solid; border-color: var(--x-border); border-ra
 const PRE: &str = "white-space: pre-wrap; font-size: var(--x-text-detail); background-color: var(--x-surface-muted); padding: 8px; border-radius: 6px; max-height: 260px; overflow: auto;";
 
 #[component]
-pub fn AiBoardPage(board_id: String, selected: String, zoom: String) -> Element {
+pub fn AiBoardPage(board_id: String, selected: String, zoom: String, assessment: String) -> Element {
+    // No top padding: the header row has the height of the logo box of the left bar, so the
+    // two share one middle line (`HEADER_HEIGHT`).
     rsx! {
         Title { "Hoover Search - Board" }
         div {
-            style: "width: 100%; height: 100%; background: #F5F6F8; box-sizing: border-box; padding: 15px 23px; overflow: auto; font-family: var(--x-font); font-size: var(--x-text-body); line-height: var(--x-line-body); color: var(--x-ink);",
-            BoardExplorer { board_id, selected, zoom }
+            style: "width: 100%; height: 100%; background: #F5F6F8; box-sizing: border-box; padding: 0 23px 15px; overflow: auto; font-family: var(--x-font); font-size: var(--x-text-body); line-height: var(--x-line-body); color: var(--x-ink);",
+            BoardExplorer { board_id, selected, zoom, assessment }
         }
     }
 }
+
+/// The height of the board page header row. The logo box of the left bar spans 4 to 41 px
+/// from the top of the window, so a row of this height from the top of the page has its middle
+/// on the middle of the logo.
+const HEADER_HEIGHT: &str = "45px";
 
 /// The zoom levels of the graph, in percent. An empty or unknown address value is 100.
 pub const ZOOM_LEVELS: [u32; 4] = [50, 75, 100, 125];
@@ -93,6 +110,14 @@ const PAN_THRESHOLD: f64 = 4.0;
 
 fn graph_pane() -> Option<web_sys::Element> {
     web_sys::window()?.document()?.get_element_by_id(GRAPH_PANE_ID)
+}
+
+/// Scroll the graph pane so the graph point under the press follows the pointer.
+fn pan_to(start: PanStart, x: f64, y: f64) {
+    if let Some(pane) = graph_pane() {
+        pane.set_scroll_left(start.left - (x - start.x).round() as i32);
+        pane.set_scroll_top(start.top - (y - start.y).round() as i32);
+    }
 }
 
 /// A press on the graph pane: the client point and the scroll at the press.
@@ -131,17 +156,24 @@ async fn reload(board_id: String, mut snapshot: Signal<Option<BoardSnapshot>>, m
     }
 }
 
-/// Whether the board can change soon: it is active, an explore runs, or the newest event is
-/// a person action that the worker has not answered yet. A completed or dropped board waits
-/// for nothing.
+/// Whether the board can change soon: it is active, an explore runs or waits to start for an
+/// open question, or the newest event is a person action that the worker has not answered
+/// yet. A dropped board waits for nothing. On a completed board only a new goal and a
+/// question explore start work, so its other person events do not count.
 fn is_live(snapshot: &Option<BoardSnapshot>) -> bool {
     match snapshot {
         None => true,
-        Some(s) if s.status == "completed" || s.status == "dropped" => false,
+        Some(s) if s.status == "dropped" => false,
         Some(s) => {
-            s.status == "active"
-                || s.intents.iter().any(|i| i.state == "running")
-                || s.events.last().is_some_and(|e| !matches!(e.actor.as_str(), "dispatcher" | "reason" | "explore"))
+            let working = s.intents.iter().any(|i| i.state == "running" || (i.state == "open" && i.asked.is_some()));
+            let waiting = s.events.last().is_some_and(|e| {
+                if s.status == "completed" {
+                    matches!(e.event_type.as_str(), "goal_added" | "question_explored")
+                } else {
+                    !SYSTEM_ACTORS.contains(&e.actor.as_str())
+                }
+            });
+            s.status == "active" || working || waiting
         }
     }
 }
@@ -159,7 +191,12 @@ fn open_in_new_tab(route: Route) {
 }
 
 #[component]
-fn BoardExplorer(board_id: ReadSignal<String>, selected: ReadSignal<String>, zoom: ReadSignal<String>) -> Element {
+fn BoardExplorer(
+    board_id: ReadSignal<String>,
+    selected: ReadSignal<String>,
+    zoom: ReadSignal<String>,
+    assessment: ReadSignal<String>,
+) -> Element {
     let snapshot = use_signal(|| None::<BoardSnapshot>);
     let error = use_signal(|| None::<String>);
     let mut show_settings = use_signal(|| false);
@@ -168,6 +205,9 @@ fn BoardExplorer(board_id: ReadSignal<String>, selected: ReadSignal<String>, zoo
     let mut dragging = use_signal(|| false);
     let mut suppress_click = use_signal(|| false);
     let mut zoom_from = use_signal(|| None::<(u32, f64, f64, f64, f64)>);
+    // The node id that the scroll of `D29` last handled. A node click sets it before it
+    // selects the node, so a click does not scroll.
+    let mut scrolled_for = use_signal(String::new);
 
     // The citation cards of a fact read the selection fields of a search page. This page
     // has no search, so the fields hold nothing and a card click goes to `ChatDocOpen`.
@@ -199,8 +239,17 @@ fn BoardExplorer(board_id: ReadSignal<String>, selected: ReadSignal<String>, zoo
                 shown = id.clone();
             }
             reload(id, snapshot, error).await;
-            let seconds = if is_live(&snapshot.peek()) { LIVE_POLL_SECONDS } else { IDLE_POLL_SECONDS };
-            n0_future::time::sleep(Duration::from_secs(seconds)).await;
+            // An idle board is read every `IDLE_POLL_SECONDS`. The wait is checked every
+            // `LIVE_POLL_SECONDS`, so a person action that a control reloads at once (a goal, a
+            // question) makes the board live and shortens the wait.
+            let mut waited = 0;
+            loop {
+                n0_future::time::sleep(Duration::from_secs(LIVE_POLL_SECONDS)).await;
+                waited += LIVE_POLL_SECONDS;
+                if waited >= IDLE_POLL_SECONDS || is_live(&snapshot.peek()) || *board_id.peek() != shown {
+                    break;
+                }
+            }
         }
     });
 
@@ -226,6 +275,28 @@ fn BoardExplorer(board_id: ReadSignal<String>, selected: ReadSignal<String>, zoo
         }
     });
 
+    // Scroll the selected node into the pane when it is not wholly visible. It runs after the
+    // render that draws the node, and once for each selected node.
+    use_effect(move || {
+        let key = selected.read().clone();
+        let _ = layout.read();
+        let Some(id) = snapshot.peek().as_ref().and_then(|s| s.resolve_node(&key)) else { return };
+        if *scrolled_for.peek() == id {
+            return;
+        }
+        let Some(pane) = graph_pane() else { return };
+        let Ok(Some(node)) = pane.query_selector(&format!("[data-node=\"{id}\"]")) else { return };
+        scrolled_for.set(id);
+        let (p, n) = (pane.get_bounding_client_rect(), node.get_bounding_client_rect());
+        let inside = n.left() >= p.left() && n.right() <= p.right() && n.top() >= p.top() && n.bottom() <= p.bottom();
+        if !inside {
+            let dx = (n.left() + n.right()) / 2.0 - (p.left() + p.right()) / 2.0;
+            let dy = (n.top() + n.bottom()) / 2.0 - (p.top() + p.bottom()) / 2.0;
+            pane.set_scroll_left(pane.scroll_left() + dx.round() as i32);
+            pane.set_scroll_top(pane.scroll_top() + dy.round() as i32);
+        }
+    });
+
     let current = snapshot.read().clone();
     let Some(snap) = current else {
         return rsx! {
@@ -246,15 +317,31 @@ fn BoardExplorer(board_id: ReadSignal<String>, selected: ReadSignal<String>, zoo
     let slug_snap = snap.clone();
     let on_select = Callback::new(move |id: String| {
         let selected = if id.is_empty() { id } else { slug_snap.slug_of(&id) };
-        navigator().push(Route::AiBoardPage { board_id: board_key.clone(), selected, zoom: zoom.peek().clone() });
+        navigator().push(Route::AiBoardPage {
+            board_id: board_key.clone(),
+            selected,
+            zoom: zoom.peek().clone(),
+            assessment: String::new(),
+        });
     });
-    // A click that ends a pan does not select the node under the pointer.
+    // A click that ends a pan does not select the node under the pointer. A click on a node
+    // does not scroll the pane: the node is in view.
     let on_node = Callback::new(move |id: String| {
         if *suppress_click.peek() {
             suppress_click.set(false);
             return;
         }
+        scrolled_for.set(id.clone());
         on_select.call(id);
+    });
+    let popup_board = snap.board.board_id.clone();
+    let set_assessment = Callback::new(move |number: Option<u32>| {
+        navigator().replace(Route::AiBoardPage {
+            board_id: popup_board.clone(),
+            selected: selected.peek().clone(),
+            zoom: zoom.peek().clone(),
+            assessment: number.map(|n| n.to_string()).unwrap_or_default(),
+        });
     });
     let zoom_board = snap.board.board_id.clone();
     let set_zoom = Callback::new(move |next: u32| {
@@ -266,18 +353,21 @@ fn BoardExplorer(board_id: ReadSignal<String>, selected: ReadSignal<String>, zoo
             board_id: zoom_board.clone(),
             selected: selected.peek().clone(),
             zoom: if next == 100 { String::new() } else { next.to_string() },
+            assessment: assessment.peek().clone(),
         });
     });
     let zoom_out = next_zoom(level, -1);
     let zoom_in = next_zoom(level, 1);
 
+    let zoom_value = zoom.read().clone();
     let detail = if let Some(fact) = snap.facts.iter().find(|f| f.fact_id == selected_id) {
-        rsx! { FactDetail { key: "{fact.fact_id}", board_id: snap.board.board_id.clone(), fact: fact.clone(), corrects: slugs(&snap, &fact.corrects), snapshot, error } }
+        rsx! { FactDetail { key: "{fact.fact_id}", snap: snap.clone(), fact: fact.clone(), zoom: zoom_value.clone(), snapshot, error } }
     } else if let Some(intent) = snap.intents.iter().find(|i| i.intent_id == selected_id) {
         rsx! { IntentDetail { intent: intent.clone(), from: slugs(&snap, &intent.from_facts) } }
     } else {
-        rsx! { BoardOverview { snap: snap.clone(), snapshot, error } }
+        rsx! { BoardOverview { snap: snap.clone(), zoom: zoom_value.clone(), on_details: set_assessment, snapshot, error } }
     };
+    let open_assessment = assessment.read().trim().parse::<u32>().ok();
 
     rsx! {
         if let Some(err) = error.read().clone() {
@@ -286,6 +376,14 @@ fn BoardExplorer(board_id: ReadSignal<String>, selected: ReadSignal<String>, zoo
         BoardHeader { snap: snap.clone(), on_settings: move |_| show_settings.set(true) }
         if show_settings() {
             BoardSettings { snap: snap.clone(), snapshot, error, on_close: move |_| show_settings.set(false) }
+        }
+        if let Some(number) = open_assessment {
+            AssessmentDetails {
+                key: "{number}",
+                board_id: snap.board.board_id.clone(),
+                reason_no: number,
+                on_close: move |_| set_assessment.call(None),
+            }
         }
         div {
             style: "display: flex; gap: 12px; height: calc(100vh - 150px); min-height: 480px;",
@@ -296,10 +394,14 @@ fn BoardExplorer(board_id: ReadSignal<String>, selected: ReadSignal<String>, zoo
                     class: "x-board-graph-pane",
                     "data-dragging": "{dragging()}",
                     style: "width: 100%; height: 100%;",
+                    // The press blocks its default action. Firefox otherwise starts a text
+                    // selection and sends every later move to this pane, also over the
+                    // overlay below, so the pane's own handlers pan as well.
                     onmousedown: move |e: Event<MouseData>| {
                         if e.trigger_button() != Some(dioxus::html::input_data::MouseButton::Primary) {
                             return;
                         }
+                        e.prevent_default();
                         let point = e.client_coordinates();
                         if let Some(pane) = graph_pane() {
                             suppress_click.set(false);
@@ -310,14 +412,24 @@ fn BoardExplorer(board_id: ReadSignal<String>, selected: ReadSignal<String>, zoo
                         let Some(start) = *press.peek() else { return };
                         if e.held_buttons().is_empty() {
                             press.set(None);
+                            dragging.set(false);
                             return;
                         }
                         let point = e.client_coordinates();
-                        if (point.x - start.x).hypot(point.y - start.y) > PAN_THRESHOLD {
+                        if *dragging.peek() {
+                            pan_to(start, point.x, point.y);
+                        } else if (point.x - start.x).hypot(point.y - start.y) > PAN_THRESHOLD {
                             dragging.set(true);
+                            pan_to(start, point.x, point.y);
                         }
                     },
-                    onmouseup: move |_| press.set(None),
+                    onmouseup: move |_| {
+                        press.set(None);
+                        if *dragging.peek() {
+                            dragging.set(false);
+                            suppress_click.set(true);
+                        }
+                    },
                     svg {
                         class: "x-board-graph-svg",
                         width: "{graph.width * scale}",
@@ -325,12 +437,15 @@ fn BoardExplorer(board_id: ReadSignal<String>, selected: ReadSignal<String>, zoo
                         view_box: "0 0 {graph.width} {graph.height}",
                         ArrowMarker { id: "x-board-arrow" }
                         for edge in graph.edges.iter() {
-                            {render_edge(edge, &positions, &graph, "x-board-arrow")}
+                            {render_edge(edge, &positions, "x-board-arrow")}
                         }
                         for node in graph.nodes.iter() {
                             {render_node(node, &positions, &selected_id, on_node)}
                         }
                     }
+                }
+                if !selected_id.is_empty() {
+                    button { class: "x-board-overview-open", onclick: move |_| on_select.call(String::new()), "Show the board overview" }
                 }
                 div { class: "x-board-zoom",
                     button {
@@ -350,11 +465,6 @@ fn BoardExplorer(board_id: ReadSignal<String>, selected: ReadSignal<String>, zoo
             }
             div {
                 style: "flex: 1 1 38%; min-width: 340px; overflow: auto;",
-                if !selected_id.is_empty() {
-                    div { style: "margin-bottom: 8px;",
-                        button { style: BTN_SMALL, onclick: move |_| on_select.call(String::new()), "Show the board overview" }
-                    }
-                }
                 {detail}
             }
         }
@@ -367,10 +477,7 @@ fn BoardExplorer(board_id: ReadSignal<String>, selected: ReadSignal<String>, zoo
                 onmousemove: move |e: Event<MouseData>| {
                     let Some(start) = *press.peek() else { return };
                     let point = e.client_coordinates();
-                    if let Some(pane) = graph_pane() {
-                        pane.set_scroll_left(start.left - (point.x - start.x).round() as i32);
-                        pane.set_scroll_top(start.top - (point.y - start.y).round() as i32);
-                    }
+                    pan_to(start, point.x, point.y);
                 },
                 onmouseup: move |_| {
                     press.set(None);
@@ -392,9 +499,9 @@ const SECTION: &str = "margin: 0 0 8px; font-size: var(--x-text-section); line-h
 #[component]
 fn BoardHeader(snap: BoardSnapshot, on_settings: EventHandler<()>) -> Element {
     rsx! {
-        div { style: "display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 10px;",
-            Link { to: Route::AiChatPage {}, style: LINK, "\u{2190} AI Chat" }
-            h1 { style: "margin: 0; font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 600; color: var(--x-ink-strong);", "{snap.board.title}" }
+        div { class: "x-board-header", style: "height: {HEADER_HEIGHT}; margin-bottom: 4px;",
+            Link { to: Route::AiChatPage {}, style: "color: var(--x-link); text-decoration: none;", "\u{2190} AI Chat" }
+            h1 { "{snap.board.title}" }
             StatusText { status: snap.status.clone() }
             span { style: "flex: 1;" }
             button { class: "x-board-settings-open", style: BTN, onclick: move |_| on_settings.call(()), "Settings" }
@@ -502,35 +609,33 @@ fn BoardSettings(
 }
 
 #[component]
-fn BoardOverview(snap: BoardSnapshot, snapshot: Signal<Option<BoardSnapshot>>, error: Signal<Option<String>>) -> Element {
+fn BoardOverview(
+    snap: BoardSnapshot,
+    zoom: String,
+    on_details: Callback<Option<u32>>,
+    snapshot: Signal<Option<BoardSnapshot>>,
+    error: Signal<Option<String>>,
+) -> Element {
     let mut hint = use_signal(String::new);
     let mut correction = use_signal(String::new);
+    let mut goal = use_signal(String::new);
+    let mut adding_goal = use_signal(|| false);
     let mut error = error;
     let board_id = snap.board.board_id.clone();
     let goals: Vec<BoardFact> = snap.goals().into_iter().cloned().collect();
-    let statement_of = |goal: &str| snap.review_goals.iter().find(|r| r.goal == goal).cloned();
+    let dropped = snap.status == "dropped";
     rsx! {
         if snap.status == "review" {
             div { class: "x-board-review", style: "{PANEL} border-color: var(--x-danger);",
                 div { style: SECTION, "The board waits for your review" }
-                if snap.review_goals.is_empty() && snap.review_statement.is_empty() {
-                    p { style: HELP_TEXT, "The board stopped without a statement: the explore budget is used or the work stalled." }
-                }
-                if snap.review_goals.is_empty() && !snap.review_statement.is_empty() {
+                if !snap.answers_proposed.is_empty() {
+                    p { style: HELP_TEXT, "Accept or reject the proposed answer of each goal below. A rejected answer lets the board continue at once." }
+                } else if snap.review_statement.is_empty() {
+                    p { style: HELP_TEXT, "The board stopped without answers: the explore budget is used or the work stalled." }
+                } else {
                     p { "{snap.review_statement}" }
-                    p { style: HELP_TEXT, "From the facts {slugs(&snap, &snap.review_from)}." }
                 }
-                for goal in goals.iter() {
-                    if let Some(review) = statement_of(&goal.fact_id) {
-                        div { key: "{goal.fact_id}", class: "x-board-review-goal", style: "margin: 8px 0;",
-                            div { style: "font-weight: 600;", span { style: "font-family: monospace; font-weight: 400; color: var(--x-ink-muted); margin-right: 6px;", "{goal.slug}" } "{goal.text}" }
-                            p { style: "margin: 4px 0;", "{review.statement}" }
-                            if !review.from.is_empty() {
-                                p { style: HELP_TEXT, "From the facts {slugs(&snap, &review.from)}." }
-                            }
-                        }
-                    }
-                }
+                p { style: HELP_TEXT, "Finish the board to accept every proposed answer and stop it, or continue it with a correction." }
                 div { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;",
                     button {
                         style: BTN_PRIMARY,
@@ -546,7 +651,7 @@ fn BoardOverview(snap: BoardSnapshot, snapshot: Signal<Option<BoardSnapshot>>, e
                                 });
                             }
                         },
-                        "Accept"
+                        "Finish the board"
                     }
                 }
                 textarea {
@@ -570,7 +675,7 @@ fn BoardOverview(snap: BoardSnapshot, snapshot: Signal<Option<BoardSnapshot>>, e
                             });
                         }
                     },
-                    "Reject with correction"
+                    "Continue with a correction"
                 }
             }
         }
@@ -580,22 +685,65 @@ fn BoardOverview(snap: BoardSnapshot, snapshot: Signal<Option<BoardSnapshot>>, e
                 div { key: "{goal.fact_id}", style: "margin: 4px 0;",
                     if goals.len() > 1 { span { style: "font-family: monospace; color: var(--x-ink-muted); margin-right: 6px;", "{goal.slug}" } }
                     "{goal.text}"
-                    if snap.status == "completed" {
-                        if let Some(review) = statement_of(&goal.fact_id) {
-                            div { style: "margin: 4px 0 0 12px; color: var(--x-ok);", "Answer: {review.statement}" }
+                    {
+                        let answer = goal_answer(&snap, &goal.fact_id);
+                        let from: Vec<String> = answer.as_ref().map(|(a, _)| a.from.iter().map(|f| snap.slug_of(f)).collect()).unwrap_or_default();
+                        rsx! {
+                            GoalAnswer {
+                                key: "{goal.fact_id}-{answer_key(&answer)}",
+                                board_id: board_id.clone(),
+                                answer,
+                                from,
+                                zoom: zoom.clone(),
+                                dropped,
+                                snapshot,
+                                error,
+                            }
                         }
                     }
                 }
             }
+            if snap.status != "dropped" && goals.len() < MAX_GOALS {
+                div { class: "x-board-goal-form", style: "margin-top: 10px;",
+                    textarea {
+                        class: "x-board-goal",
+                        style: TEXTAREA, rows: "2",
+                        placeholder: "A new goal",
+                        value: "{goal}", oninput: move |e| goal.set(e.value()),
+                    }
+                    p { style: HELP_TEXT, "The board works on the new goal next. A complete board starts again." }
+                    button {
+                        style: BTN,
+                        disabled: adding_goal() || goal.read().trim().is_empty(),
+                        onclick: {
+                            let id = board_id.clone();
+                            move |_| {
+                                let id = id.clone();
+                                let text = goal.read().clone();
+                                adding_goal.set(true);
+                                spawn(async move {
+                                    match board_add_goal(id.clone(), text).await {
+                                        Ok(()) => goal.set(String::new()),
+                                        Err(e) => error.set(Some(user_facing_message(&e))),
+                                    }
+                                    adding_goal.set(false);
+                                    reload(id, snapshot, error).await;
+                                });
+                            }
+                        },
+                        "Add goal"
+                    }
+                }
+            }
             if !snap.board.context.is_empty() {
-                div { style: SUBHEADING, "Context" }
+                div { style: SUBHEADING, "Background context" }
                 p { style: "margin: 4px 0;", "{snap.board.context}" }
             }
         }
         if snap.status == "active" || snap.status == "paused" {
             div { style: PANEL,
                 div { style: SECTION, "Add a hint" }
-                p { style: HELP_TEXT, "The next reason reads every hint. A hint also answers an explore that asked a question." }
+                p { style: HELP_TEXT, "The next assessment reads every hint. A hint also answers an explore that asked a question." }
                 textarea {
                     class: "x-board-hint",
                     style: TEXTAREA, rows: "2",
@@ -634,18 +782,49 @@ fn BoardOverview(snap: BoardSnapshot, snapshot: Signal<Option<BoardSnapshot>>, e
                         }
                         th { style: TH, "Actor" }
                         th { style: TH, "Event" }
+                        th { style: TH, "aria-label": "Links" }
                     }
                 }
                 tbody {
                     for event in snap.events.iter().rev().take(200) {
                         tr { key: "{event.event_id}",
                             td { style: "{TD} white-space: nowrap;", "{format_utc_ms(event.created_ms)}" }
-                            td { style: "{TD} {actor_style(&event.actor)}", class: "x-board-event-actor", "{event.actor}" }
+                            td { style: "{TD} {actor_style(&event.actor)}", class: "x-board-event-actor", "{actor_label(&event.actor)}" }
                             td { style: TD,
                                 "{event.summary}"
                                 if !event.quote.is_empty() {
                                     ": "
                                     em { class: "x-board-event-quote", "{event.quote}" }
+                                }
+                            }
+                            td { style: "{TD} width: 1%;", class: "x-board-event-link",
+                                match event_link(&snap, event) {
+                                    EventLink::Assessment(number) => rsx! {
+                                        button { style: "{BTN_SMALL} white-space: nowrap;", onclick: move |_| on_details.call(Some(number)), "Show details" }
+                                    },
+                                    EventLink::Chat(session_id) => {
+                                        let href = Route::ai_chat_session(session_id, None, None).to_string();
+                                        rsx! {
+                                        a {
+                                            href: "{href}",
+                                            target: "_blank", rel: "noopener", style: LINK,
+                                            "Open"
+                                        }
+                                        }
+                                    }
+                                    EventLink::Node(id) => rsx! {
+                                        Link {
+                                            to: Route::AiBoardPage {
+                                                board_id: snap.board.board_id.clone(),
+                                                selected: snap.slug_of(&id),
+                                                zoom: zoom.clone(),
+                                                assessment: String::new(),
+                                            },
+                                            style: "{LINK} font-family: monospace; font-size: var(--x-text-detail); overflow-wrap: anywhere;",
+                                            "{snap.slug_of(&id)}"
+                                        }
+                                    },
+                                    EventLink::None => rsx! {},
                                 }
                             }
                         }
@@ -659,6 +838,45 @@ fn BoardOverview(snap: BoardSnapshot, snapshot: Signal<Option<BoardSnapshot>>, e
 
 /// The actors that are the system: their name shows in italic, and a person's in bold.
 const SYSTEM_ACTORS: [&str; 4] = ["dispatcher", "reason", "explore", "worker"];
+
+/// The name of an actor on the page. The stored actor `reason` is the assessment step.
+fn actor_label(actor: &str) -> &str {
+    if actor == "reason" { "assessment" } else { actor }
+}
+
+/// What the last column of an event row links to.
+#[derive(Debug, Clone, PartialEq)]
+enum EventLink {
+    /// The details popup of an assessment.
+    Assessment(u32),
+    /// The explore chat of the intent or the fact that the event names.
+    Chat(String),
+    /// The node that the event names, by its storage id.
+    Node(String),
+    None,
+}
+
+fn event_link(snap: &BoardSnapshot, event: &BoardEvent) -> EventLink {
+    match event.event_type.as_str() {
+        "reason_result" => return event.subject.trim().parse().map(EventLink::Assessment).unwrap_or(EventLink::None),
+        _ => {}
+    }
+    if event.subject.is_empty() {
+        return EventLink::None;
+    }
+    let chat = snap
+        .intents
+        .iter()
+        .find(|i| i.intent_id == event.subject)
+        .map(|i| i.session_id.clone())
+        .or_else(|| snap.facts.iter().find(|f| f.fact_id == event.subject).map(|f| f.session_id.clone()))
+        .filter(|session| !session.is_empty());
+    match chat {
+        Some(session_id) => EventLink::Chat(session_id),
+        None if snap.resolve_node(&event.subject).is_some() => EventLink::Node(event.subject.clone()),
+        None => EventLink::None,
+    }
+}
 
 fn actor_style(actor: &str) -> &'static str {
     if SYSTEM_ACTORS.contains(&actor) {
@@ -698,12 +916,11 @@ fn BoardStatistics(snap: BoardSnapshot) -> Element {
             dl { class: "x-board-stats",
                 dt { "Explores" } dd { "{snap.explores_used} of {snap.max_explores}" }
                 dt { "Model steps per explore" } dd { "{snap.explore_steps}" }
-                dt { "Reasons" } dd { "{snap.reasons_done}" }
+                dt { "Assessments" } dd { "{snap.reasons_done}" }
                 dt { "Intents" } dd { "{intent_line}" }
                 dt { "Facts" } dd { "{fact_line}" }
                 dt { "Collections" } dd { "{snap.board.collections.join(\", \")}" }
                 dt { "Internet tools" } dd { "{internet}" }
-                dt { "Budget" } dd { "A rejected fact or review adds explores and model steps. A hint adds a few." }
                 dt { "Created" } dd { "{format_utc_ms(snap.board.created_ms)}" }
             }
         }
@@ -738,11 +955,60 @@ fn fact_sources(fact: &BoardFact) -> Vec<ChatDocRef> {
         .collect()
 }
 
+/// The title of a fact in its detail pane.
+fn fact_title(fact: &BoardFact) -> String {
+    match fact.kind.as_str() {
+        "origin" => "Background context".to_string(),
+        "goal" => {
+            let number = fact.slug.strip_prefix("goal-").and_then(|n| n.parse::<u32>().ok()).unwrap_or(1);
+            format!("Goal {number}")
+        }
+        _ if fact.title.is_empty() => "Fact".to_string(),
+        _ => fact.title.clone(),
+    }
+}
+
+/// The placeholder of the reject box and the label of its button, for a correction or a fact.
+fn reject_words(kind: &str) -> (&'static str, &'static str) {
+    if kind == "correction" {
+        ("Why the correction is wrong", "Reject correction")
+    } else {
+        ("Why the fact is wrong", "Reject fact")
+    }
+}
+
 #[component]
-fn FactDetail(board_id: String, fact: BoardFact, corrects: String, snapshot: Signal<Option<BoardSnapshot>>, error: Signal<Option<String>>) -> Element {
+fn FactDetail(
+    snap: BoardSnapshot,
+    fact: BoardFact,
+    zoom: String,
+    snapshot: Signal<Option<BoardSnapshot>>,
+    error: Signal<Option<String>>,
+) -> Element {
     let mut reason = use_signal(String::new);
+    let mut asking = use_signal(|| false);
     let mut error = error;
+    let board_id = snap.board.board_id.clone();
+    let dropped = snap.status == "dropped";
+    let link = |selected: String| Route::AiBoardPage {
+        board_id: board_id.clone(),
+        selected,
+        zoom: zoom.clone(),
+        assessment: String::new(),
+    };
+    // The open questions of the fact, each with the slug of the intent that follows it.
+    let questions: Vec<(u32, String, Option<String>)> = fact
+        .open_questions
+        .iter()
+        .enumerate()
+        .map(|(i, text)| {
+            let follower = snap.follower_of(&fact.fact_id, i as u32).map(|f| snap.slug_of(&f.intent_id));
+            (i as u32, text.clone(), follower)
+        })
+        .collect();
+    let answer = goal_answer(&snap, &fact.fact_id);
     let can_reject = !fact.rejected && fact.kind != "origin" && fact.kind != "goal";
+    let (placeholder, reject_label) = reject_words(&fact.kind);
     // A citation card opens the explore chat of this fact in a new tab, with its document
     // selected. The component is keyed by the fact, so the provider names this fact.
     let session_id = fact.session_id.clone();
@@ -763,10 +1029,12 @@ fn FactDetail(board_id: String, fact: BoardFact, corrects: String, snapshot: Sig
     rsx! {
         div { class: "x-board-fact-detail", style: PANEL,
             DetailHeader {
-                title: if fact.title.is_empty() { kind_label(&fact.kind).to_string() } else { fact.title.clone() },
+                title: fact_title(&fact),
+                kind: NodeKind::Fact(fact.kind.clone()),
                 slug: fact.slug.clone(),
-                tags: fact_tags(&fact),
                 rejected: fact.rejected,
+                chat: fact.session_id.clone(),
+                answer: answer_word(&answer),
             }
             if fact.rejected {
                 div { class: "x-board-fact-rejection", style: "border-left: 3px solid; border-left-color: var(--x-danger); padding: 4px 10px; margin: 6px 0;",
@@ -784,18 +1052,57 @@ fn FactDetail(board_id: String, fact: BoardFact, corrects: String, snapshot: Sig
                     }
                 }
             }
-            if !fact.corrects.is_empty() {
-                p { style: HELP_TEXT, "This correction applies to the facts {corrects}." }
-            }
             // The gray area behind the citation cards, as on the chat page, so the white cards
             // stand out.
             div { class: "x-board-fact-text", style: "margin: 6px 0; background: #ECEEF2; padding: 12px; border-radius: 8px;",
                 MarkdownishText { text: fact.text.clone(), cited_handles: Some(handles), sources }
             }
-            if !fact.open_questions.is_empty() {
+            if fact.kind == "goal" {
+                GoalAnswer {
+                    key: "{fact.fact_id}-{answer_key(&answer)}",
+                    board_id: board_id.clone(),
+                    answer: answer.clone(),
+                    from: answer.as_ref().map(|(a, _)| a.from.iter().map(|f| snap.slug_of(f)).collect()).unwrap_or_default(),
+                    zoom: zoom.clone(),
+                    dropped,
+                    snapshot,
+                    error,
+                }
+            }
+            if !questions.is_empty() {
                 div { style: SUBHEADING, "Open questions" }
-                for (i, q) in fact.open_questions.iter().enumerate() {
-                    div { key: "{i}", style: "font-size: var(--x-text-detail);", "{q}" }
+                for (index, text, follower) in questions.into_iter() {
+                    div { key: "{index}", class: "x-board-fact-question",
+                        div { class: "x-board-fact-question-text", "{text}" }
+                        if let Some(intent) = follower {
+                            span { class: "x-board-question-corner x-board-question-followed",
+                                "Explored in "
+                                Link { to: link(intent.clone()), style: "{LINK} font-family: monospace;", "{intent}" }
+                            }
+                        } else if !fact.rejected && !dropped {
+                            button {
+                                class: "x-board-question-corner x-board-explore-question",
+                                style: BTN_SMALL,
+                                disabled: asking(),
+                                onclick: {
+                                    let board_id = board_id.clone();
+                                    let fact_id = fact.fact_id.clone();
+                                    move |_| {
+                                        let (board_id, fact_id) = (board_id.clone(), fact_id.clone());
+                                        asking.set(true);
+                                        spawn(async move {
+                                            if let Err(e) = board_explore_question(board_id.clone(), fact_id, index).await {
+                                                error.set(Some(user_facing_message(&e)));
+                                            }
+                                            asking.set(false);
+                                            reload(board_id, snapshot, error).await;
+                                        });
+                                    }
+                                },
+                                "Explore this question"
+                            }
+                        }
+                    }
                 }
             }
             if !fact.problems.is_empty() {
@@ -804,21 +1111,11 @@ fn FactDetail(board_id: String, fact: BoardFact, corrects: String, snapshot: Sig
                     div { key: "{i}", style: "font-size: var(--x-text-detail); color: var(--x-danger);", "{p}" }
                 }
             }
-            p { style: HELP_TEXT,
-                if fact.created_by.is_empty() || fact.created_by == "explore" {
-                    "Written {format_utc_ms(fact.created_ms)}."
-                } else {
-                    "Written by {fact.created_by} on {format_utc_ms(fact.created_ms)}."
-                }
-            }
-            if !fact.session_id.is_empty() {
-                Link { to: Route::ai_chat_session(fact.session_id.clone(), None, None), style: LINK, "Open the explore chat" }
-            }
             if can_reject {
                 div { style: "margin-top: 10px; display: flex; gap: 8px; align-items: center;",
                     input {
                         class: "x-board-reject-reason",
-                        style: "{INPUT} flex: 1;", placeholder: "Why the fact is wrong",
+                        style: "{INPUT} flex: 1;", placeholder: "{placeholder}",
                         value: "{reason}", oninput: move |e| reason.set(e.value()),
                     }
                     button {
@@ -838,7 +1135,124 @@ fn FactDetail(board_id: String, fact: BoardFact, corrects: String, snapshot: Sig
                                 });
                             }
                         },
-                        "Reject fact"
+                        "{reject_label}"
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The answer of a goal and whether the person accepted it, or none yet.
+fn goal_answer(snap: &BoardSnapshot, goal: &str) -> Option<(BoardReviewGoal, bool)> {
+    snap.answers_accepted.iter().find(|a| a.goal == goal).map(|a| (a.clone(), true))
+        .or_else(|| snap.answers_proposed.iter().find(|a| a.goal == goal).map(|a| (a.clone(), false)))
+}
+
+/// The word of the goal card corner for an answer (`board_graph::GraphNode::answer`).
+fn answer_word(answer: &Option<(BoardReviewGoal, bool)>) -> String {
+    match answer {
+        Some((_, true)) => "answered".to_string(),
+        Some((_, false)) => "answer proposed".to_string(),
+        None => String::new(),
+    }
+}
+
+/// A key that changes when another assessment proposes the answer, so the correction box of
+/// the earlier answer does not stay.
+fn answer_key(answer: &Option<(BoardReviewGoal, bool)>) -> String {
+    match answer {
+        Some((a, accepted)) => format!("{}-{accepted}", a.reason_no),
+        None => "none".to_string(),
+    }
+}
+
+/// The answer of one goal: the accepted answer, the proposed answer with the person's
+/// decision, or none yet. `from` holds the slugs of the answer's facts.
+#[component]
+fn GoalAnswer(
+    board_id: String,
+    answer: Option<(BoardReviewGoal, bool)>,
+    from: Vec<String>,
+    zoom: String,
+    dropped: bool,
+    snapshot: Signal<Option<BoardSnapshot>>,
+    error: Signal<Option<String>>,
+) -> Element {
+    let mut correction = use_signal(String::new);
+    let mut busy = use_signal(|| false);
+    let mut error = error;
+    let Some((answer, accepted)) = answer else {
+        return rsx! { p { class: "x-board-goal-answer", style: HELP_TEXT, "No answer yet." } };
+    };
+    let link_board = board_id.clone();
+    let (goal, reason_no) = (answer.goal.clone(), answer.reason_no);
+    let decide = move |accept: bool| {
+        let (board_id, goal) = (board_id.clone(), goal.clone());
+        let text = correction.read().clone();
+        busy.set(true);
+        spawn(async move {
+            match board_answer(board_id.clone(), goal, reason_no, accept, text).await {
+                Ok(()) => correction.set(String::new()),
+                Err(e) => error.set(Some(user_facing_message(&e))),
+            }
+            busy.set(false);
+            reload(board_id, snapshot, error).await;
+        });
+    };
+    let mut decide_accept = decide.clone();
+    let mut decide_reject = decide;
+    let (label, border) = if accepted { ("Answer", "solid") } else { ("Proposed answer", "dashed") };
+    rsx! {
+        div {
+            class: "x-board-goal-answer",
+            "data-answer": if accepted { "accepted" } else { "proposed" },
+            style: "border-left: 3px {border}; border-left-color: var(--x-ok); padding: 2px 10px; margin: 8px 0;",
+            div { style: "font-weight: 600; color: var(--x-ok);", "{label}" }
+            p { style: "margin: 2px 0; white-space: pre-wrap;", "{answer.statement}" }
+            if !from.is_empty() {
+                p { style: HELP_TEXT,
+                    "From the facts "
+                    for (i, slug) in from.iter().enumerate() {
+                        span { key: "{slug}",
+                            if i > 0 { ", " }
+                            Link {
+                                to: Route::AiBoardPage {
+                                    board_id: link_board.clone(),
+                                    selected: slug.clone(),
+                                    zoom: zoom.clone(),
+                                    assessment: String::new(),
+                                },
+                                style: "{LINK} font-family: monospace;",
+                                "{slug}"
+                            }
+                        }
+                    }
+                    "."
+                }
+            }
+            if !accepted && !dropped {
+                button {
+                    class: "x-board-accept-answer",
+                    style: "{BTN_PRIMARY} margin-top: 4px;",
+                    disabled: busy(),
+                    onclick: move |_| decide_accept(true),
+                    "Accept answer"
+                }
+                div { style: "display: flex; gap: 8px; align-items: center; margin-top: 6px;",
+                    input {
+                        class: "x-board-answer-correction",
+                        style: "{INPUT} flex: 1;",
+                        placeholder: "Why the answer is wrong or incomplete",
+                        value: "{correction}",
+                        oninput: move |e| correction.set(e.value()),
+                    }
+                    button {
+                        class: "x-board-reject-answer",
+                        style: BTN_SMALL_DANGER,
+                        disabled: busy(),
+                        onclick: move |_| decide_reject(false),
+                        "Reject answer"
                     }
                 }
             }
@@ -852,9 +1266,10 @@ fn IntentDetail(intent: BoardIntent, from: String) -> Element {
         div { class: "x-board-intent-detail", style: PANEL,
             DetailHeader {
                 title: if intent.title.is_empty() { "Intent".to_string() } else { intent.title.clone() },
+                kind: NodeKind::Intent(intent.state.clone()),
                 slug: intent.slug.clone(),
-                tags: vec!["intent".to_string(), intent.state.clone()],
                 rejected: false,
+                chat: intent.session_id.clone(),
             }
             p { style: "margin: 4px 0;", "{intent.objective}" }
             p { style: HELP_TEXT, "From the facts {from}. Attempts: {intent.attempts}. Declared {format_utc_ms(intent.created_ms)}." }
@@ -867,9 +1282,6 @@ fn IntentDetail(intent: BoardIntent, from: String) -> Element {
                 div { style: SUBHEADING, "Last error" }
                 p { style: "margin: 4px 0; color: var(--x-danger);", "{intent.last_error}" }
             }
-            if !intent.session_id.is_empty() {
-                Link { to: Route::ai_chat_session(intent.session_id.clone(), None, None), style: LINK, "Open the explore chat" }
-            }
             if !intent.brief.is_empty() {
                 div { style: SUBHEADING, "Brief sent to the explore" }
                 pre { style: PRE, "{intent.brief}" }
@@ -878,30 +1290,83 @@ fn IntentDetail(intent: BoardIntent, from: String) -> Element {
     }
 }
 
-/// The tags of a fact in its detail pane, as on its node.
-fn fact_tags(fact: &BoardFact) -> Vec<String> {
-    let mut tags = vec![kind_label(&fact.kind).to_string()];
-    if fact.rejected {
-        tags.push("rejected".to_string());
-    }
-    tags
-}
-
-/// The head of a detail pane: the title in bold, then the slug and the tags in the meta style
-/// of a node.
 #[component]
-fn DetailHeader(title: String, slug: String, tags: Vec<String>, rejected: bool) -> Element {
+fn DetailHeader(title: String, kind: NodeKind, slug: String, rejected: bool, chat: String,
+                #[props(default)] answer: String) -> Element {
     let decoration = if rejected { "line-through" } else { "none" };
+    let (left, status) = corners(&kind, &slug, rejected, &answer);
     rsx! {
-        div { class: "x-board-detail-title", style: "{SECTION} margin: 0; text-decoration: {decoration};", "{title}" }
+        div { class: "x-board-detail-head",
+            div { class: "x-board-detail-title", style: "{SECTION} margin: 0; text-decoration: {decoration};", "{title}" }
+            if !chat.is_empty() {
+                Link { to: Route::ai_chat_session(chat.clone(), None, None), style: "{LINK} white-space: nowrap;", "Open the explore chat" }
+            }
+        }
         div { class: "x-board-detail-meta",
-            span { title: "{slug}", "{slug}" }
+            span { "{left}" }
             span { style: "display: flex; gap: 6px; flex-shrink: 0;",
-                for (i, tag) in tags.iter().enumerate() {
+                for (i, tag) in status.iter().enumerate() {
                     span { key: "{i}", "{tag}" }
                 }
             }
         }
+    }
+}
+
+/// The details popup of one assessment: its prompt and its response, read only.
+#[component]
+fn AssessmentDetails(board_id: String, reason_no: u32, on_close: EventHandler<()>) -> Element {
+    let details = use_resource(move || board_assessment(board_id.clone(), reason_no));
+    let body = match &*details.read() {
+        None => rsx! { p { style: HELP_TEXT, "Loading the assessment\u{2026}" } },
+        Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
+        Some(Ok(a)) => rsx! { AssessmentBody { assessment: a.clone() } },
+    };
+    rsx! {
+        div {
+            class: "x-board-assessment-overlay",
+            style: "position: fixed; inset: 0; background-color: rgba(0,0,0,0.3); z-index: 50; display: flex; align-items: center; justify-content: center;",
+            onclick: move |_| on_close.call(()),
+            div {
+                class: "x-board-assessment",
+                style: "background: white; border-radius: 10px; padding: 18px 20px; width: min(1100px, 94vw); height: 90vh; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.2);",
+                onclick: move |e| e.stop_propagation(),
+                div { style: "display: flex; align-items: center; gap: 12px;",
+                    div { style: "font-size: var(--x-text-section); font-weight: 600;", "Assessment {reason_no}" }
+                    span { style: "flex: 1;" }
+                    button { style: BTN_PRIMARY, onclick: move |_| on_close.call(()), "Close" }
+                }
+                div { style: "flex: 1; min-height: 0; overflow: auto;", {body} }
+            }
+        }
+    }
+}
+
+#[component]
+fn AssessmentBody(assessment: BoardAssessment) -> Element {
+    let a = assessment;
+    let tokens = format!("{} prompt and {} completion tokens", a.prompt_tokens, a.completion_tokens);
+    rsx! {
+        p { style: HELP_TEXT,
+            "{format_utc_ms(a.created_ms)}. Model {a.model}. Outcome {a.outcome}. {a.latency_ms} ms, {tokens}."
+        }
+        if !a.error.is_empty() {
+            p { style: "color: var(--x-danger);", "{a.error}" }
+        }
+        if !a.problems.is_empty() {
+            div { style: SUBHEADING, "Checks that changed it" }
+            for (i, p) in a.problems.iter().enumerate() {
+                div { key: "{i}", style: "font-size: var(--x-text-detail); color: var(--x-danger);", "{p}" }
+            }
+        }
+        div { style: SUBHEADING, "Prompt" }
+        if a.stored {
+            pre { class: "x-board-assessment-prompt", style: "{PRE} max-height: none;", "{a.prompt}" }
+        } else {
+            p { style: HELP_TEXT, "This assessment ran before the prompts were stored." }
+        }
+        div { style: SUBHEADING, "Response" }
+        pre { class: "x-board-assessment-reply", style: "{PRE} max-height: none;", "{a.reply}" }
     }
 }
 
@@ -932,5 +1397,47 @@ mod tests {
     fn a_system_actor_is_italic_and_a_person_bold() {
         assert!(actor_style("dispatcher").contains("italic"));
         assert!(actor_style("admin").contains("600"));
+        assert_eq!(actor_label("reason"), "assessment");
+    }
+
+    #[test]
+    fn a_correction_pane_rejects_a_correction() {
+        assert_eq!(reject_words("correction"), ("Why the correction is wrong", "Reject correction"));
+        assert_eq!(reject_words("sourced"), ("Why the fact is wrong", "Reject fact"));
+    }
+
+    fn event(event_type: &str, subject: &str) -> BoardEvent {
+        BoardEvent {
+            event_id: format!("{event_type}:{subject}"), event_type: event_type.into(), actor: "admin".into(),
+            subject: subject.into(), summary: String::new(), quote: String::new(), created_ms: 0,
+        }
+    }
+
+    #[test]
+    fn an_event_links_its_assessment_its_chat_or_its_node() {
+        let fact = |id: &str, kind: &str, session: &str| BoardFact {
+            fact_id: id.into(), kind: kind.into(), text: String::new(), intent_id: String::new(),
+            session_id: session.into(), open_questions: vec![], problems: vec![], rejected: false,
+            rejected_by: String::new(), rejected_ms: 0, rejected_reason: String::new(), corrects: vec![],
+            created_by: String::new(), created_ms: 0, citations: vec![], slug: format!("slug-{id}"),
+            title: String::new(), summary: String::new(),
+        };
+        let snap = BoardSnapshot {
+            board: common::board_types::BoardDefinition {
+                board_id: "b".into(), owner: "o".into(), title: "t".into(), goal: "g".into(),
+                context: String::new(), collections: vec![], llm_model: String::new(), max_parallel: 1,
+                internet_tools: false, created_ms: 0,
+            },
+            status: "active".into(), explores_used: 0, reasons_done: 0, stall_count: 0,
+            review_statement: String::new(), answers_proposed: vec![], answers_accepted: vec![],
+            max_explores: 12, explore_steps: 60,
+            facts: vec![fact("f1.1", "sourced", "board-b-i1.1"), fact("c1", "correction", "")],
+            intents: vec![], events: vec![], summary: String::new(),
+        };
+        assert_eq!(event_link(&snap, &event("reason_result", "4")), EventLink::Assessment(4));
+        assert_eq!(event_link(&snap, &event("fact_rejected", "f1.1")), EventLink::Chat("board-b-i1.1".into()));
+        assert_eq!(event_link(&snap, &event("review_rejected", "c1")), EventLink::Node("c1".into()));
+        assert_eq!(event_link(&snap, &event("reason_started", "4")), EventLink::None);
+        assert_eq!(event_link(&snap, &event("hint_added", "")), EventLink::None);
     }
 }

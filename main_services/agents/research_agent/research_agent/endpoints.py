@@ -1,8 +1,8 @@
 """The language-model endpoint of each model name.
 
 `LLM_BASE_URL` serves `LLM_MODEL` and every model that is not the quality model.
-`LLM_QUALITY_BASE_URL` serves `LLM_QUALITY_MODEL`, the model that the chat profiles select
-for agent turns. A request goes to the quality endpoint when it names the quality model.
+`LLM_QUALITY_BASE_URL` serves `LLM_QUALITY_MODEL`, the model of agent turns when
+`hoover4.ini` sets it. A request goes to the quality endpoint when it names the quality model.
 
 **Mirrored in `main_services/processing/tasks/llm_endpoints.py`.** The worker applies the
 same rule to its own calls. The two readers change in the same patch.

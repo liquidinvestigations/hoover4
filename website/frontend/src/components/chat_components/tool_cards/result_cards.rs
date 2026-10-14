@@ -1,11 +1,13 @@
 //! Cards for collection result pages, documents, todos, citations and plan tools.
 
 use dioxus::prelude::*;
+use common::board_types::fact_id_for;
 use common::chat_types::ChatDocRef;
 use crate::components::chat_components::markdown_text::MarkdownishText;
 use crate::components::chat_components::doc_ref_card::ChatDocOpen;
 use crate::components::chat_components::tool_disclosure::{search_all_route_from_tool_input, search_route_from_tool_input};
 use crate::api::storage_api::list_storage_tree;
+use crate::routes::Route;
 
 use super::{CardShell, json_str, page_rows, tool_content, tool_failure};
 
@@ -265,29 +267,47 @@ pub fn BoardFactCard(tool_input: String, tool_output: String, running: bool) -> 
     }}
 }
 
-/// The element at the end of a board explore chat: what the turn gave to the board.
+/// The board and the intent of the chat on the page, for a board explore chat
+/// (`common::board_types::board_of_session`). The session page provides it as a memo of its
+/// session id, so it follows a navigation to another chat.
+#[derive(Clone, Copy)]
+pub struct ChatBoard(pub Memo<Option<(String, String)>>);
+
+/// The element at the end of a board explore chat: what the turn gave to the board. In a
+/// board chat it is a link that opens the board with the turn's fact selected. The colours
+/// are in `assets/main.css`, so the hover rule applies.
 #[component]
 pub fn BoardFactSummary(tool_input: String) -> Element {
     let (kind, _, questions) = board_fact_input(&tool_input);
-    rsx! {
-        div {
-            class: "x-board-fact-summary",
-            "data-board-fact-kind": "{kind}",
-            style: "margin-top: 12px; padding: 10px 14px; border: 1px solid; border-color: #9334e6; border-radius: 10px; background-color: #faf5ff;",
-            div { style: "font-size: var(--x-text-sm); font-weight: 600; color: var(--x-ink-strong);",
-                "The explore gave this answer to its board as a {kind} fact."
-            }
-            if questions.is_empty() {
-                div { style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px;", "It left no open question." }
-            } else {
-                div { style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px;", "Open questions for the board:" }
-                ul { style: "margin: 4px 0 0; padding-left: 20px; font-size: var(--x-text-sm);",
-                    for (index, question) in questions.into_iter().enumerate() {
-                        li { key: "{index}", "{question}" }
-                    }
+    let board = try_consume_context::<ChatBoard>().and_then(|board| board.0.read().clone());
+    let content = rsx! {
+        div { style: "font-size: var(--x-text-sm); font-weight: 600; color: var(--x-ink-strong);",
+            "The explore gave this answer to its board as a {kind} fact."
+        }
+        if questions.is_empty() {
+            div { style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px;", "It left no open question." }
+        } else {
+            div { style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px;", "Open questions for the board:" }
+            ul { style: "margin: 4px 0 0; padding-left: 20px; font-size: var(--x-text-sm);",
+                for (index, question) in questions.into_iter().enumerate() {
+                    li { key: "{index}", "{question}" }
                 }
             }
         }
+    };
+    let style = "margin-top: 12px; padding: 10px 14px; border: 1px solid; border-color: #9334e6; border-radius: 10px;";
+    match board {
+        Some((board_id, intent_id)) => rsx! {
+            Link {
+                class: "x-board-fact-summary",
+                to: Route::ai_board(board_id, fact_id_for(&intent_id)),
+                style: "{style}",
+                div { "data-board-fact-kind": "{kind}", {content} }
+            }
+        },
+        None => rsx! {
+            div { class: "x-board-fact-summary", "data-board-fact-kind": "{kind}", style: "{style}", {content} }
+        },
     }
 }
 

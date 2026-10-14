@@ -97,9 +97,11 @@ pub enum Route {
     AiBoardCreatePage {},
 
     // `selected` is the slug of the node that the detail pane shows, empty for none. `zoom` is
-    // the zoom of the graph in percent, empty for 100.
-    #[route("/ai_chat/boards/:board_id?:selected&:zoom")]
-    AiBoardPage { board_id: String, selected: String, zoom: String },
+    // the zoom of the graph in percent, empty for 100. `assessment` is the number of the
+    // assessment whose details popup is open, empty for none. A link written before a field
+    // existed decodes it empty.
+    #[route("/ai_chat/boards/:board_id?:selected&:zoom&:assessment")]
+    AiBoardPage { board_id: String, selected: String, zoom: String, assessment: String },
 
     #[route("/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state")]
     AiChatSessionPage {
@@ -223,6 +225,12 @@ impl Route {
                 selected_tab: ViewerRightTabSelection::Entities,
             }),
         }
+    }
+
+    /// Open a board with the node `selected` (a slug or a storage id, empty for none), at
+    /// 100 % zoom and with no popup.
+    pub fn ai_board(board_id: String, selected: String) -> Self {
+        Self::AiBoardPage { board_id, selected, zoom: String::new(), assessment: String::new() }
     }
 
     /// Open a chat session, optionally with a document selected in the preview pane.

@@ -8,10 +8,11 @@
 //! because that edge would run back across the whole picture. The intent detail lists it.
 //!
 //! The edges follow Cairn's encoding of the same events. An intent is an edge from the facts
-//! it names to its fact. An accepted review is an edge from each fact that answers a goal to
-//! that goal (Cairn's `complete`), drawn dashed while the review waits for the person. A
-//! rejected review is an edge from each fact of that review to the correction that the person
-//! wrote (Cairn's `reopen`, whose `external_feedback` intent leads to the correction fact).
+//! it names to its fact. An accepted answer of a goal is an edge from each fact of the answer to
+//! that goal (Cairn's `complete`), and a proposed answer that waits for the person is the same
+//! edge dashed, in every status of the board. A rejected answer or review is an edge from each
+//! of its facts to the correction that the person wrote (Cairn's `reopen`, whose
+//! `external_feedback` intent leads to the correction fact).
 //!
 //! The layout is computed in one pass before it is shown, so no node moves on screen. x comes
 //! from the depth. In each column, from left to right, a node asks for a y: its earlier y
@@ -22,16 +23,16 @@
 //! **A node has one size.** The graph is laid out in pixels at 100 % zoom (`NODE_WIDTH`,
 //! `NODE_HEIGHT`, `COLUMN_WIDTH`, `ROW_HEIGHT`), and the board page scales it only by the zoom
 //! that the person chooses. A free band of half a row is above and below the nodes, and
-//! `MARGIN_X` left and right of them, so the routing lanes stay inside the picture.
+//! `MARGIN_X` left and right of them.
 //!
-//! **No edge crosses a node** (`route_edge`). An edge between neighbouring columns is one
-//! straight line. An edge that skips columns turns into the gap after its source, runs along
-//! a free lane past the nodes of the skipped columns, and turns back in the gap before its
-//! target.
+//! **Every edge is one straight line** from the middle of the right side of its source to the
+//! middle of the left side of its target. The page draws all edges before all nodes, so an
+//! edge that skips columns runs under the cards between. A dimmed card has an opaque white
+//! card under it, so an edge does not show through it.
 
 use std::collections::{HashMap, HashSet};
 
-use common::board_types::{BoardFact, BoardGraphInput, BoardIntent};
+use common::board_types::{BoardFact, BoardGraphInput, BoardIntent, BoardReviewGoal};
 use dioxus::prelude::*;
 
 /// Pixels at 100 % zoom: one node, one depth column (a node and a gap of 80), one row (a node
@@ -43,8 +44,6 @@ pub const ROW_HEIGHT: f64 = 180.0;
 pub const MARGIN_X: f64 = 40.0;
 /// The free band above the top node and below the bottom node of every column.
 pub const MARGIN_Y: f64 = ROW_HEIGHT / 2.0;
-/// The distance that a routing lane keeps from the edge of a node.
-const LANE_CLEARANCE: f64 = 8.0;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct NodePosition {
@@ -74,17 +73,19 @@ pub struct GraphNode {
     pub depth: u32,
     pub dimmed: bool,
     pub rejected: bool,
+    /// For a goal: `answered`, `answer proposed`, or empty.
+    pub answer: String,
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum EdgeKind {
     /// From a fact to an intent, or from an intent to its fact.
     Flow,
-    /// From a fact to the goal that an accepted review says it answers.
+    /// From a fact to the goal that an accepted answer says it answers.
     Answers,
-    /// From a fact to a goal, in a review that waits for the person.
+    /// From a fact to a goal, in an answer that waits for the person.
     Proposed,
-    /// From a fact of a rejected review to the correction.
+    /// From a fact of a rejected answer or review to the correction.
     Corrects,
 }
 
@@ -167,6 +168,7 @@ pub fn build_graph(input: &BoardGraphInput) -> Graph {
                     depth: d,
                     dimmed: intent.state == "cancelled",
                     rejected: false,
+                    answer: String::new(),
                 });
                 for from in &intent.from_facts {
                     if depth.contains_key(from) && !goal_ids.contains(from.as_str()) {
@@ -193,23 +195,26 @@ pub fn build_graph(input: &BoardGraphInput) -> Graph {
 
     let last = nodes.iter().map(|n| n.depth).max().unwrap_or(0) + 1;
     for goal in &goals {
-        nodes.push(fact_node(goal, last));
+        let mut node = fact_node(goal, last);
+        let has = |list: &[BoardReviewGoal]| list.iter().any(|a| a.goal == goal.fact_id);
+        if has(&input.answers_accepted) {
+            node.answer = "answered".to_string();
+        } else if has(&input.answers_proposed) {
+            node.answer = "answer proposed".to_string();
+        }
+        nodes.push(node);
     }
-    let review_kind = match input.status.as_str() {
-        "completed" => Some(EdgeKind::Answers),
-        "review" => Some(EdgeKind::Proposed),
-        _ => None,
-    };
-    if let Some(kind) = review_kind {
-        let placed: HashSet<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
-        for review in &input.review_goals {
-            if !placed.contains(review.goal.as_str()) {
-                continue;
-            }
-            for from in &review.from {
-                if placed.contains(from.as_str()) && !goal_ids.contains(from.as_str()) {
-                    edges.push(GraphEdge { src: from.clone(), dst: review.goal.clone(), kind });
-                }
+    // Every accepted answer and every answer that waits for the person, in any status.
+    let placed: HashSet<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
+    let answers = input.answers_accepted.iter().map(|a| (a, EdgeKind::Answers))
+        .chain(input.answers_proposed.iter().map(|a| (a, EdgeKind::Proposed)));
+    for (answer, kind) in answers {
+        if !placed.contains(answer.goal.as_str()) {
+            continue;
+        }
+        for from in &answer.from {
+            if placed.contains(from.as_str()) && !goal_ids.contains(from.as_str()) {
+                edges.push(GraphEdge { src: from.clone(), dst: answer.goal.clone(), kind });
             }
         }
     }
@@ -239,6 +244,7 @@ fn fact_node(fact: &BoardFact, depth: u32) -> GraphNode {
         depth,
         dimmed: fact.rejected,
         rejected: fact.rejected,
+        answer: String::new(),
     }
 }
 
@@ -349,7 +355,7 @@ fn start_of(block: (usize, usize, f64)) -> f64 {
 
 pub fn kind_label(kind: &str) -> &'static str {
     match kind {
-        "origin" => "origin",
+        "origin" => "background",
         "goal" => "goal",
         "sourced" => "sourced",
         "inferred" => "inferred",
@@ -364,7 +370,8 @@ pub fn node_style(kind: &NodeKind) -> (&'static str, &'static str, &'static str,
     match kind {
         NodeKind::Fact(k) => {
             let (fill, stroke) = match k.as_str() {
-                "origin" | "goal" => ("#1a73e8", "#0b57d0"),
+                "origin" => ("#ffffff", "#000000"),
+                "goal" => ("#1a73e8", "#0b57d0"),
                 "sourced" => ("#e6f4ea", "#1e8e3e"),
                 "inferred" => ("#fef7e0", "#e37400"),
                 "not_found" => ("#f1f3f4", "#80868b"),
@@ -396,51 +403,13 @@ pub fn edge_style(kind: EdgeKind) -> (&'static str, &'static str, &'static str) 
     }
 }
 
-/// The points of an edge, from the middle of the right side of its source to the middle of the
-/// left side of its target. See the module doc. Pure, so it is tested without a runtime.
-pub fn route_edge(edge: &GraphEdge, layout: &HashMap<String, NodePosition>, graph: &Graph) -> Vec<(f64, f64)> {
-    let (Some(src), Some(dst)) = (layout.get(&edge.src), layout.get(&edge.dst)) else {
-        return Vec::new();
-    };
-    let start = (src.x + NODE_WIDTH / 2.0, src.y);
-    let end = (dst.x - NODE_WIDTH / 2.0, dst.y);
-    let depth_of = |id: &str| graph.nodes.iter().find(|n| n.id == id).map(|n| n.depth);
-    let (Some(from), Some(to)) = (depth_of(&edge.src), depth_of(&edge.dst)) else {
-        return vec![start, end];
-    };
-    if to <= from + 1 {
-        return vec![start, end];
+/// The two ends of an edge: the middle of the right side of its source and the middle of the
+/// left side of its target, or none when either node is not placed.
+pub fn edge_points(edge: &GraphEdge, layout: &HashMap<String, NodePosition>) -> Vec<(f64, f64)> {
+    match (layout.get(&edge.src), layout.get(&edge.dst)) {
+        (Some(src), Some(dst)) => vec![(src.x + NODE_WIDTH / 2.0, src.y), (dst.x - NODE_WIDTH / 2.0, dst.y)],
+        _ => Vec::new(),
     }
-    // The nodes of each skipped column, top to bottom.
-    let mut columns: Vec<Vec<f64>> = Vec::new();
-    for depth in from + 1..to {
-        let mut ys: Vec<f64> = graph.nodes.iter().filter(|n| n.depth == depth)
-            .filter_map(|n| layout.get(&n.id)).map(|p| p.y).collect();
-        ys.sort_by(f64::total_cmp);
-        columns.push(ys);
-    }
-    let half_gap = (ROW_HEIGHT - NODE_HEIGHT) / 2.0;
-    let mut candidates: Vec<f64> = Vec::new();
-    for ys in &columns {
-        for pair in ys.windows(2) {
-            candidates.push((pair[0] + pair[1]) / 2.0);
-        }
-        if let (Some(first), Some(last)) = (ys.first(), ys.last()) {
-            candidates.push(first - NODE_HEIGHT / 2.0 - half_gap);
-            candidates.push(last + NODE_HEIGHT / 2.0 + half_gap);
-        }
-    }
-    let free = |y: f64| columns.iter().flatten().all(|c| (y - c).abs() >= NODE_HEIGHT / 2.0 + LANE_CLEARANCE);
-    let highest = layout.values().map(|p| p.y).fold(f64::INFINITY, f64::min);
-    let above_all = if highest.is_finite() { highest - NODE_HEIGHT / 2.0 - half_gap } else { start.1 };
-    let cost = |y: f64| (y - start.1).abs() + (y - end.1).abs();
-    let lane = candidates.into_iter().filter(|y| free(*y))
-        .min_by(|a, b| cost(*a).total_cmp(&cost(*b)))
-        .unwrap_or(above_all);
-    let gap = COLUMN_WIDTH - NODE_WIDTH;
-    let out_x = start.0 + gap / 2.0;
-    let in_x = end.0 - gap / 2.0;
-    vec![start, (out_x, start.1), (out_x, lane), (in_x, lane), (in_x, end.1), end]
 }
 
 /// The `d` attribute of a path through `points`.
@@ -450,8 +419,8 @@ pub fn path_data(points: &[(f64, f64)]) -> String {
         .collect()
 }
 
-pub fn render_edge(edge: &GraphEdge, layout: &HashMap<String, NodePosition>, graph: &Graph, marker: &str) -> Element {
-    let points = route_edge(edge, layout, graph);
+pub fn render_edge(edge: &GraphEdge, layout: &HashMap<String, NodePosition>, marker: &str) -> Element {
+    let points = edge_points(edge, layout);
     if points.is_empty() {
         return rsx! {};
     }
@@ -472,23 +441,38 @@ pub fn render_edge(edge: &GraphEdge, layout: &HashMap<String, NodePosition>, gra
     }
 }
 
-/// The tags of a node: its kind, `rejected`, or `intent` and its state.
-pub fn node_tags(node: &GraphNode) -> Vec<String> {
-    match &node.kind {
-        NodeKind::Fact(kind) => {
-            let mut tags = vec![kind_label(kind).to_string()];
-            if node.rejected {
-                tags.push("rejected".to_string());
-            }
-            tags
-        }
-        NodeKind::Intent(state) => vec!["intent".to_string(), state.clone()],
+/// The bottom-left and bottom-right text of a card and of its detail pane: the type of the
+/// node (a goal shows its slug in its place), and the statuses that the type does not say.
+/// `answer` is the answer state of a goal (`GraphNode::answer`).
+pub fn corners(kind: &NodeKind, slug: &str, rejected: bool, answer: &str) -> (String, Vec<String>) {
+    let mut status: Vec<String> = Vec::new();
+    if !answer.is_empty() {
+        status.push(answer.to_string());
     }
+    let left = match kind {
+        NodeKind::Fact(k) => match k.as_str() {
+            "origin" => "background".to_string(),
+            "goal" => slug.to_string(),
+            "correction" => "correction".to_string(),
+            other => {
+                status.push(kind_label(other).to_string());
+                "fact".to_string()
+            }
+        },
+        NodeKind::Intent(state) => {
+            status.push(state.clone());
+            "intent".to_string()
+        }
+    };
+    if rejected {
+        status.push("rejected".to_string());
+    }
+    (left, status)
 }
 
-/// One node: the title in bold, the summary under it, and a meta row with the slug on the
-/// left and the tags on the right. The origin and the goals have no title row. The classes
-/// in `assets/main.css` give the fonts.
+/// One node: the title in bold, the summary under it, and a meta row with the type on the left
+/// and the statuses on the right (`corners`). The origin and the goals have no title row. The classes in `assets/main.css` give the fonts. A dimmed node has an opaque
+/// white card under its translucent card, so an edge under it does not show through.
 pub fn render_node(
     node: &GraphNode,
     layout: &HashMap<String, NodePosition>,
@@ -498,13 +482,18 @@ pub fn render_node(
     let Some(position) = layout.get(&node.id) else { return rsx! {} };
     let (fill, stroke, dash, _) = node_style(&node.kind);
     let is_selected = node.id == selected;
-    let anchor = matches!(&node.kind, NodeKind::Fact(k) if k == "origin" || k == "goal");
+    let untitled = node.title.is_empty()
+        || matches!(&node.kind, NodeKind::Fact(k) if k == "origin" || k == "goal");
     let running = matches!(&node.kind, NodeKind::Intent(s) if s == "running");
     let stroke_width = if is_selected { "3" } else if running { "2.4" } else { "1.2" };
     let opacity = if node.dimmed { "0.5" } else { "1" };
-    let card_class = if anchor { "x-board-node-card x-board-node-anchor" } else { "x-board-node-card" };
+    let card_class = match &node.kind {
+        NodeKind::Fact(k) if k == "goal" => "x-board-node-card x-board-node-untitled x-board-node-anchor",
+        _ if untitled => "x-board-node-card x-board-node-untitled",
+        _ => "x-board-node-card",
+    };
     let title_class = if node.rejected { "x-board-node-title x-board-node-rejected" } else { "x-board-node-title" };
-    let tags = node_tags(node);
+    let (left, status) = corners(&node.kind, &node.slug, node.rejected, &node.answer);
     let id = node.id.clone();
     rsx! {
         g {
@@ -512,26 +501,30 @@ pub fn render_node(
             class: "x-board-node",
             "data-node": "{node.id}",
             "data-slug": "{node.slug}",
-            opacity: "{opacity}",
             style: "cursor: pointer;",
             transform: "translate({position.x - NODE_WIDTH / 2.0}, {position.y - NODE_HEIGHT / 2.0})",
             onclick: move |_| on_select.call(id.clone()),
-            rect {
-                width: "{NODE_WIDTH}", height: "{NODE_HEIGHT}", rx: "8",
-                fill: "{fill}", stroke: "{stroke}", stroke_width: "{stroke_width}", stroke_dasharray: "{dash}",
+            if node.dimmed {
+                rect { width: "{NODE_WIDTH}", height: "{NODE_HEIGHT}", rx: "8", fill: "#ffffff" }
             }
-            foreignObject {
-                x: "0", y: "0", width: "{NODE_WIDTH}", height: "{NODE_HEIGHT}",
-                div { class: "{card_class}",
-                    if !anchor && !node.title.is_empty() {
-                        div { class: "{title_class}", "{node.title}" }
-                    }
-                    div { class: "x-board-node-summary", "{node.summary}" }
-                    div { class: "x-board-node-meta",
-                        span { class: "x-board-node-slug", title: "{node.slug}", "{node.slug}" }
-                        span { class: "x-board-node-tags",
-                            for (i, tag) in tags.iter().enumerate() {
-                                span { key: "{i}", "{tag}" }
+            g { opacity: "{opacity}",
+                rect {
+                    width: "{NODE_WIDTH}", height: "{NODE_HEIGHT}", rx: "8",
+                    fill: "{fill}", stroke: "{stroke}", stroke_width: "{stroke_width}", stroke_dasharray: "{dash}",
+                }
+                foreignObject {
+                    x: "0", y: "0", width: "{NODE_WIDTH}", height: "{NODE_HEIGHT}",
+                    div { class: "{card_class}",
+                        if !untitled {
+                            div { class: "{title_class}", "{node.title}" }
+                        }
+                        div { class: "x-board-node-summary", "{node.summary}" }
+                        div { class: "x-board-node-meta",
+                            span { class: "x-board-node-type", title: "{left}", "{left}" }
+                            span { class: "x-board-node-tags",
+                                for (i, tag) in status.iter().enumerate() {
+                                    span { key: "{i}", "{tag}" }
+                                }
                             }
                         }
                     }
@@ -575,7 +568,7 @@ pub fn BoardThumbnail(input: BoardGraphInput) -> Element {
             for edge in graph.edges.iter() {
                 path {
                     key: "{edge.src}-{edge.dst}",
-                    d: "{path_data(&route_edge(edge, &layout, &graph))}",
+                    d: "{path_data(&edge_points(edge, &layout))}",
                     fill: "none",
                     stroke: "{edge_style(edge.kind).0}", stroke_width: "8", stroke_linejoin: "round",
                 }
@@ -598,7 +591,6 @@ pub fn BoardThumbnail(input: BoardGraphInput) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use common::board_types::BoardReviewGoal;
 
     fn fact(id: &str, kind: &str, intent: &str) -> BoardFact {
         BoardFact {
@@ -639,11 +631,16 @@ mod tests {
             slug: id.into(),
             title: String::new(),
             summary: id.into(),
+            asked: None,
         }
     }
 
+    fn answer(goal: &str, from: &str) -> BoardReviewGoal {
+        BoardReviewGoal { goal: goal.into(), from: vec![from.into()], statement: String::new(), reason_no: 1 }
+    }
+
     fn input(facts: Vec<BoardFact>, intents: Vec<BoardIntent>) -> BoardGraphInput {
-        BoardGraphInput { status: "active".into(), facts, intents, review_goals: vec![] }
+        BoardGraphInput { status: "active".into(), facts, intents, answers_proposed: vec![], answers_accepted: vec![] }
     }
 
     #[test]
@@ -666,7 +663,7 @@ mod tests {
     }
 
     #[test]
-    fn a_review_links_its_facts_to_each_goal_and_a_correction_to_the_facts_it_corrects() {
+    fn the_answers_link_their_facts_to_each_goal_in_every_status_and_a_correction_to_its_facts() {
         let mut correction = fact("c1", "correction", "");
         correction.corrects = vec!["f1.1".into()];
         correction.created_ms = 5;
@@ -681,20 +678,19 @@ mod tests {
             ],
             vec![intent("i1.1", &["origin"], 1), intent("i1.2", &["origin"], 1)],
         );
-        data.review_goals = vec![
-            BoardReviewGoal { goal: "goal".into(), from: vec!["f1.1".into()], statement: String::new() },
-            BoardReviewGoal { goal: "goal-2".into(), from: vec!["f1.2".into()], statement: String::new() },
-        ];
+        // An active board: goal is accepted, goal-2 waits for the person.
+        data.answers_accepted = vec![answer("goal", "f1.1")];
+        data.answers_proposed = vec![answer("goal-2", "f1.2")];
         let active = build_graph(&data);
-        assert!(active.edges.iter().all(|e| e.kind != EdgeKind::Answers && e.kind != EdgeKind::Proposed));
+        let kinds: Vec<(&str, &str, EdgeKind)> = active.edges.iter()
+            .filter(|e| e.kind == EdgeKind::Answers || e.kind == EdgeKind::Proposed)
+            .map(|e| (e.src.as_str(), e.dst.as_str(), e.kind)).collect();
+        assert_eq!(kinds, vec![("f1.1", "goal", EdgeKind::Answers), ("f1.2", "goal-2", EdgeKind::Proposed)]);
+        let answer_of = |id: &str| active.nodes.iter().find(|n| n.id == id).unwrap().answer.clone();
+        assert_eq!((answer_of("goal"), answer_of("goal-2")), ("answered".to_string(), "answer proposed".to_string()));
         let corrects: Vec<_> = active.edges.iter().filter(|e| e.kind == EdgeKind::Corrects).collect();
         assert_eq!(corrects.len(), 1);
         assert_eq!((corrects[0].src.as_str(), corrects[0].dst.as_str()), ("f1.1", "c1"));
-        data.status = "review".into();
-        assert_eq!(build_graph(&data).edges.iter().filter(|e| e.kind == EdgeKind::Proposed).count(), 2);
-        data.status = "completed".into();
-        let done = build_graph(&data);
-        assert!(done.edges.iter().any(|e| e.kind == EdgeKind::Answers && e.src == "f1.2" && e.dst == "goal-2"));
     }
 
     #[test]
@@ -779,48 +775,52 @@ mod tests {
             intent("i2.1", &["f1.2"], 5),
         ]);
         data.status = "completed".into();
-        data.review_goals = vec![
-            BoardReviewGoal { goal: "goal".into(), from: vec!["f1.1".into()], statement: String::new() },
-            BoardReviewGoal { goal: "goal-2".into(), from: vec!["f1.2".into()], statement: String::new() },
-        ];
+        data.answers_accepted = vec![answer("goal", "f1.1"), answer("goal-2", "f1.2")];
         data
     }
 
-    /// Whether the segment from `a` to `b` meets the rectangle of a node at `p`. Segments are
-    /// horizontal or vertical, or join neighbouring columns, so a sampled check is exact
-    /// enough at one pixel.
-    fn meets(a: (f64, f64), b: (f64, f64), p: &NodePosition) -> bool {
-        let steps = 2000;
-        (0..=steps).any(|i| {
-            let t = i as f64 / steps as f64;
-            let (x, y) = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
-            (x - p.x).abs() < NODE_WIDTH / 2.0 - 0.5 && (y - p.y).abs() < NODE_HEIGHT / 2.0 - 0.5
-        })
-    }
-
     #[test]
-    fn no_routed_edge_meets_a_node_that_is_not_its_source_or_target() {
+    fn every_edge_is_one_line_from_the_right_side_of_its_source_to_the_left_side_of_its_target() {
         let graph = build_graph(&test_board());
         assert_eq!(graph.nodes.len(), 13);
         assert_eq!(graph.edges.iter().filter(|e| e.kind == EdgeKind::Answers).count(), 2);
         assert_eq!(graph.edges.iter().filter(|e| e.kind == EdgeKind::Corrects).count(), 4);
         let layout = settle(&graph, &HashMap::new());
         for edge in &graph.edges {
-            let points = route_edge(edge, &layout, &graph);
-            assert!(points.len() >= 2);
-            for pair in points.windows(2) {
-                for node in &graph.nodes {
-                    if node.id == edge.src || node.id == edge.dst {
-                        continue;
-                    }
-                    assert!(!meets(pair[0], pair[1], &layout[&node.id]),
-                            "{}->{} meets {} at {:?}", edge.src, edge.dst, node.id, pair);
-                }
-            }
-            for (x, y) in points {
-                assert!(x >= 0.0 && x <= graph.width && y >= 0.0 && y <= graph.height, "{x} {y} outside");
-            }
+            let (src, dst) = (layout[&edge.src], layout[&edge.dst]);
+            assert_eq!(
+                edge_points(edge, &layout),
+                vec![(src.x + NODE_WIDTH / 2.0, src.y), (dst.x - NODE_WIDTH / 2.0, dst.y)]
+            );
         }
+    }
+
+    #[test]
+    fn an_open_question_has_no_node_and_its_intent_follows_its_fact() {
+        let mut asking = fact("f1.1", "sourced", "i1.1");
+        asking.open_questions = vec!["Who signed?".into(), "When?".into()];
+        let graph = build_graph(&input(
+            vec![fact("origin", "origin", ""), fact("goal", "goal", ""), asking, fact("f0.1", "sourced", "i0.1")],
+            vec![intent("i1.1", &["origin"], 1), intent("i0.1", &["f1.1"], 5)],
+        ));
+        assert_eq!(graph.nodes.len(), 6);
+        let depth: HashMap<&str, u32> = graph.nodes.iter().map(|n| (n.id.as_str(), n.depth)).collect();
+        assert_eq!((depth["f1.1"], depth["i0.1"], depth["f0.1"]), (2, 3, 4));
+        assert!(graph.edges.iter().any(|e| e.src == "f1.1" && e.dst == "i0.1"));
+    }
+
+    #[test]
+    fn a_card_shows_its_type_and_only_the_statuses_that_the_type_does_not_say() {
+        let fact = |k: &str| NodeKind::Fact(k.to_string());
+        let corner = |kind: NodeKind, slug: &str, rejected: bool| corners(&kind, slug, rejected, "");
+        let words = |left: &str, right: &[&str]| (left.to_string(), right.iter().map(|w| w.to_string()).collect::<Vec<_>>());
+        assert_eq!(corner(fact("origin"), "background", false), words("background", &[]));
+        assert_eq!(corner(fact("goal"), "goal-01", false), words("goal-01", &[]));
+        assert_eq!(corner(fact("sourced"), "fact-x", false), words("fact", &["sourced"]));
+        assert_eq!(corner(fact("not_found"), "fact-x", true), words("fact", &["not found", "rejected"]));
+        assert_eq!(corner(fact("correction"), "correction-x", false), words("correction", &[]));
+        assert_eq!(corner(NodeKind::Intent("concluded".into()), "intent-x", false), words("intent", &["concluded"]));
+        assert_eq!(corners(&fact("goal"), "goal-02", false, "answered"), words("goal-02", &["answered"]));
     }
 
     #[test]

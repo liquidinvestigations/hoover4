@@ -10,7 +10,7 @@ use dioxus::prelude::*;
 
 use common::board_types::BoardListItem;
 
-use crate::api::admin_api::{chat_list_models, chat_llm_configured};
+use crate::api::admin_api::chat_llm_configured;
 use crate::api::board_api::list_boards;
 use crate::api::error_util::user_facing_message;
 use crate::components::board_graph::BoardThumbnail;
@@ -19,7 +19,7 @@ use crate::api::chat_api::{
     chat_create_session, chat_delete_session, chat_list_sessions, chat_send_message,
 };
 use crate::components::chat_components::{
-    ChatComposer, ChatGateOverlay, ChatSessionCard, ModelSelector,
+    ChatComposer, ChatGateOverlay, ChatSessionCard,
 };
 use crate::routes::Route;
 
@@ -29,10 +29,8 @@ const HOMEPAGE_CARD_LIMIT: usize = 6;
 pub fn AiChatPage() -> Element {
     let sessions_res = use_resource(|| chat_list_sessions(false));
     let configured_res = use_resource(chat_llm_configured);
-    let models_res = use_resource(chat_list_models);
     let mut draft = use_signal(String::new);
     let mut options = use_signal(ChatOptions::default);
-    let mut selected_model = use_signal(String::new);
     let mut sending = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
     let mut retry_after = use_signal(|| None::<u64>);
@@ -44,34 +42,6 @@ pub fn AiChatPage() -> Element {
         Some(Err(_)) => Some(ChatGate::from_server_result::<()>(Err(()))),
     };
     let gate_open = gate == Some(ChatGate::Open);
-    let choices = models_res
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .cloned()
-        .unwrap_or_default();
-    let show_models = !choices.is_empty();
-    // In an effect, not in the render body: a signal written during render schedules
-    // another render from inside one, which Dioxus tolerates and nobody should rely on.
-    use_effect(move || {
-        let choices = models_res
-            .read()
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
-            .cloned()
-            .unwrap_or_default();
-        // Read, not peeked: this effect must re-run when the value is *cleared*, which
-        // is how a conversation switch asks for a fresh default. The write below then
-        // re-runs it once more and it returns immediately.
-        if !selected_model.read().is_empty() {
-            return;
-        }
-        if let Some(def) = choices.iter().find(|c| c.is_default) {
-            selected_model.set(def.model_id.clone());
-        } else if let Some(first) = choices.first() {
-            selected_model.set(first.model_id.clone());
-        }
-    });
 
     let on_submit = move |_| {
         let text = draft.read().trim().to_string();
@@ -87,7 +57,6 @@ pub fn AiChatPage() -> Element {
             return;
         }
         let opts = *options.read();
-        let model = selected_model.read().clone();
         draft.set(String::new());
         sending.set(true);
         error.set(None);
@@ -100,8 +69,7 @@ pub fn AiChatPage() -> Element {
                     // pure litter, and rate limiting is exactly the case that produces
                     // one per press. So the failure paths take it back out.
                     let sent = {
-                        let model_id = if model.is_empty() { None } else { Some(model) };
-                        match chat_send_message(id.clone(), text, opts, model_id).await {
+                        match chat_send_message(id.clone(), text, opts).await {
                             Ok(result) => match result.retry_after_seconds {
                                 Some(secs) => {
                                     retry_after.set(Some(secs));
@@ -171,15 +139,6 @@ pub fn AiChatPage() -> Element {
             }
 
             div { style: "width: 100%; max-width: 720px; position: relative;",
-                if show_models {
-                    div { style: "margin-bottom: 10px;",
-                        ModelSelector {
-                            choices: choices.clone(),
-                            selected: selected_model,
-                            disabled: *sending.read() || !gate_open,
-                        }
-                    }
-                }
                 ChatComposer {
                     draft,
                     options,
@@ -272,7 +231,7 @@ fn BoardCard(board: BoardListItem) -> Element {
         Link {
             class: "x-board-card",
             "data-board-id": "{board.board_id}",
-            to: Route::AiBoardPage { board_id: board.board_id.clone(), selected: String::new(), zoom: String::new() },
+            to: Route::ai_board(board.board_id.clone(), String::new()),
             style: "display: block; background: white; border: 1px solid; border-color: var(--x-border); border-radius: 12px; \
                     padding: 12px 14px; text-decoration: none; color: inherit;",
             div { style: "display: flex; justify-content: space-between; gap: 8px;",

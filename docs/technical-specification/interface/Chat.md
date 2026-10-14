@@ -12,13 +12,15 @@
 | Previous match | Select and scroll to the previous exact match. | Selection wraps through the available matches. |
 | Next match | Select and scroll to the next exact match. | Selection wraps through the available matches. |
 | Close preview | Close the captured page pane. | The conversation stays open. |
-| Search in conversation | Find messages containing the entered text and move between matches. | The count updates while typing. |
+| Search in conversation | Find messages containing the entered text and move between matches. | The count updates while typing. The input is at most 350 pixels wide, and the counter and the buttons follow it. |
+| Investigation Board | Open the board of a board explore chat, with the chat's intent selected. | It shows only in a board explore chat, at the right end of the search row. It opens in the same tab. |
+| Board answer card | Open the board of a board explore chat, with the fact of the turn selected. | It is the card at the end of a board explore chat. It opens in the same tab. |
 | Follow-up suggestion | Fill and focus the composer with the selected prompt. | The user edits or sends it explicitly. |
 | Send | Submit the composer text. | Empty text and a closed chat gate disable Send. The navigation arrow button includes a Send tooltip. |
 | Tool group | Show or hide the tools, instructions, superseded answers, and the reasoning of the round. | Completed groups start closed. |
 | Todo call card | Expand the stored arguments, the result or failure, and the list after the call. | Every todo call has one card inside its group. |
 | Reasoning | Show or hide the model's reasoning for the answer. | It is inside the group before the answer, or beside an answer that has no group. |
-| Show More... | Show the full text of a user message. | The button shows only when the message is longer than three lines. |
+| Show / Hide | Show the full text of a user message, or cut it to three lines again. | The toggle is in the top-right corner of the message and shows only when the message is longer than three lines. |
 | Internet tools | Show the internet tools option of the conversation, at the right end of the title row. | The checkbox is disabled after the first turn. Its tooltip is "Start a new chat to change this setting." |
 
 ## States
@@ -51,9 +53,10 @@ The prompts occupy three columns inside a card with a question icon and the head
 The centered token footer has a faint separator beneath it.
 An unavailable captured page shows a loading failure.
 Exact find shows the current match and total count.
-A user message shows at most three lines, with an ellipsis, until "Show More..." is clicked.
+A user message shows at most three lines, with an ellipsis, until "Show" is clicked. It then shows its full text and the toggle says "Hide".
 A user message that holds the active conversation find match shows its full text.
 When the page opens with a selected source, the transcript scrolls once to put that card in the middle of the view.
+The board answer card has a pointer cursor and a deeper pink background under the mouse.
 A source card has a pointer cursor and a light blue background under the mouse, unless it is selected.
 
 ## Constraints

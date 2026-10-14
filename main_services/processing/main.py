@@ -95,20 +95,14 @@ def create_collection(collectionname: str, fullname: str, is_public: bool):
 
 
 @cli.command()
-@click.option("--no-defaults", is_flag=True,
-              help="Refresh the model list without touching the chat/summarisation choices.")
-def refresh_llm_catalog(no_defaults: bool = False):
+def refresh_llm_catalog():
     """Discover models from the configured LLM provider into `llm_models`.
 
-    Model ids are matched by PATTERN against what the account actually returns, never
-    hardcoded: NIM retires ids, and a hardcoded one becomes a 404 months later in a path
-    nobody exercises until a user opens the chat.
+    The catalog is for reading: `hoover4.ini` names the models that the stack uses.
     """
-    from tasks.llm_catalog import (
-        SETTING_CHAT_MODEL, SETTING_SUMMARIZATION_MODEL, refresh_catalog,
-    )
+    from tasks.llm_catalog import refresh_catalog
 
-    results = refresh_catalog(choose_defaults=not no_defaults)
+    results = refresh_catalog()
     if not results:
         print("no provider configured (LLM_BASE_URL is empty), or a refresh is in flight")
         return
@@ -117,16 +111,6 @@ def refresh_llm_catalog(no_defaults: bool = False):
             print(f"{result.provider}: {result.model_count} models")
         else:
             print(f"{result.provider}: FAILED {result.error}")
-    if not no_defaults:
-        from database.clickhouse import get_global_client
-        with get_global_client() as client:
-            rows = client.query(
-                "SELECT key, argMax(value, updated_at) FROM server_settings "
-                "WHERE key IN ({a:String}, {b:String}) GROUP BY key",
-                parameters={"a": SETTING_CHAT_MODEL, "b": SETTING_SUMMARIZATION_MODEL},
-            ).result_rows
-        for key, value in rows:
-            print(f"{key} = {value}")
 
 
 @cli.command(name="probe-embeddings")

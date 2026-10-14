@@ -576,8 +576,8 @@ send_temperature = false
 ; The structured server of the chat policy checks. Empty = derived from the host of
 ; base_url and [ai_services] vllm_structured_port.
 decision_url     =
-; A second endpoint for agent turns, and the model it serves. The chat profiles select
-; that model under /admin/llm. Set both or neither. Requests to it carry the API key of
+; A second endpoint for agent turns, and the model it serves. When set, every agent turn
+; uses this model, and the short calls keep `model`. Set both or neither. Requests to it carry the API key of
 ; this provider. Empty: [ai_services] chat_vllm_port and chat_vllm_served_name when
 ; chat_llm_selfhosted is true.
 quality_base_url =

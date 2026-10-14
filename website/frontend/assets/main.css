@@ -604,7 +604,7 @@ the graph and do not depend on the node count. */
     color: var(--x-ink-muted);
     flex-shrink: 0;
 }
-.x-board-node-slug {
+.x-board-node-type {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -615,15 +615,41 @@ the graph and do not depend on the node count. */
     display: flex;
     gap: 6px;
 }
+/* A card without a title row (the background context, a goal) gives its summary one more
+line. A goal is blue with white text. */
+.x-board-node-untitled .x-board-node-summary {
+    -webkit-line-clamp: 5;
+}
 .x-board-node-anchor,
 .x-board-node-anchor .x-board-node-summary {
     color: #ffffff;
 }
-.x-board-node-anchor .x-board-node-summary {
-    -webkit-line-clamp: 5;
-}
 .x-board-node-anchor .x-board-node-meta {
     color: rgba(255, 255, 255, 0.85);
+}
+/* An open question in the fact pane: a card with the question in a larger font, and the
+request to explore it, or the intent that follows it, in the bottom-right corner. */
+.x-board-fact-question {
+    position: relative;
+    border: 1px solid var(--x-border);
+    border-radius: 8px;
+    padding: 10px 12px 46px;
+    margin: 6px 0;
+    background: #ffffff;
+}
+.x-board-fact-question-text {
+    font-size: 15px;
+    line-height: 1.4;
+    color: var(--x-ink-strong);
+}
+.x-board-question-corner {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+}
+.x-board-question-followed {
+    font-size: var(--x-text-detail);
+    color: var(--x-ink-muted);
 }
 
 /* The board graph pane: the graph keeps its size, and the pane scrolls and pans. */
@@ -631,6 +657,8 @@ the graph and do not depend on the node count. */
     display: flex;
     overflow: auto;
     cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
 }
 .x-board-graph-pane[data-dragging="true"] {
     cursor: grabbing;
@@ -639,6 +667,45 @@ the graph and do not depend on the node count. */
 .x-board-graph-svg {
     margin: auto;
     flex-shrink: 0;
+}
+/* "Show the board overview" over the top-right corner of the graph pane, while a node is
+selected. */
+.x-board-overview-open {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: white;
+    border: 1px solid var(--x-border-strong);
+    border-radius: 16px;
+    padding: 4px 12px;
+    font: inherit;
+    font-size: var(--x-text-detail);
+    color: var(--x-ink-strong);
+    cursor: pointer;
+}
+.x-board-overview-open:hover {
+    background: #EAF2FF;
+}
+/* The board page header: one row whose items share one middle line with the logo box of the
+left bar. */
+.x-board-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    white-space: nowrap;
+}
+.x-board-header h1 {
+    margin: 0;
+    font-size: var(--x-text-page);
+    line-height: 1.2;
+    font-weight: 600;
+    color: var(--x-ink-strong);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+.x-board-header > * {
+    line-height: 1.2;
 }
 .x-board-zoom {
     position: absolute;
@@ -673,7 +740,14 @@ the graph and do not depend on the node count. */
     border-color: var(--x-border);
 }
 
-/* The meta row of a board detail pane: the slug on the left, the tags on the right. */
+/* The head of a board detail pane: the title, and the explore chat link at its right. */
+.x-board-detail-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+/* The meta row of a board detail pane: the type on the left, the statuses on the right. */
 .x-board-detail-meta {
     display: flex;
     justify-content: space-between;
@@ -704,23 +778,41 @@ the graph and do not depend on the node count. */
     color: var(--x-ink);
 }
 
-/* A user message shows at most 3 lines until its "Show More..." button opens it. */
+/* A user message shows at most 3 lines until its "Show" toggle opens it. The toggle sits in
+the top-right corner of the message and says "Hide" while the message is open. */
 .x-chat-user-text-clamped {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
     overflow: hidden;
 }
-.x-chat-user-more {
-    display: block;
-    margin-top: 4px;
-    padding: 0;
-    border: none;
-    background: none;
+.x-chat-user-toggle {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    padding: 1px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 6px;
+    background: transparent;
     color: white;
     font: inherit;
+    font-size: var(--x-text-xs);
+    line-height: 1.5;
     cursor: pointer;
 }
-.x-chat-user-more:hover {
-    text-decoration: underline;
+.x-chat-user-toggle:hover {
+    border-color: rgba(255, 255, 255, 0.7);
+}
+/* The answer card at the end of a board explore chat. It opens the board. */
+.x-board-fact-summary {
+    display: block;
+    background-color: #faf5ff;
+    color: inherit;
+    text-decoration: none;
+}
+a.x-board-fact-summary {
+    cursor: pointer;
+}
+a.x-board-fact-summary:hover {
+    background-color: #f3e8ff;
 }

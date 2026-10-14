@@ -28,6 +28,16 @@ const KNOWN_SETTINGS: &[(&str, &str)] = &[
     ("board_max_parallel_explores", "1"),
 ];
 
+/// Settings that this build no longer reads, because `hoover4.ini` sets the models. A stored
+/// row of one of them stays in the table. The page does not list it, and the setter refuses
+/// it, so no control on the page does nothing.
+const RETIRED_SETTINGS: [&str; 4] = [
+    "llm_default_chat_model",
+    "llm_summarization_model",
+    "llm_model_internal_search",
+    "llm_model_full_research",
+];
+
 /// Deployment configuration the page shows but cannot change: these come from
 /// `hoover4.ini` through the container's environment, so a form field for them would be a
 /// control that silently does nothing. They are listed because the alternative (a key
@@ -54,6 +64,7 @@ pub async fn admin_list_settings(user: &CurrentUser) -> anyhow::Result<Vec<Serve
     let rows = settings::list_settings().await?;
     let mut items: Vec<ServerSettingItem> = rows
         .into_iter()
+        .filter(|r| !RETIRED_SETTINGS.contains(&r.key.as_str()))
         .map(|r| ServerSettingItem {
             key: r.key,
             value: r.value,
@@ -86,23 +97,8 @@ pub async fn admin_set_setting(
                 anyhow::bail!("session_expiration_seconds must be > 0");
             }
         }
-        "llm_default_chat_model" => {
-            if value.trim().is_empty() {
-                anyhow::bail!("{key} must not be empty");
-            }
-            if value.chars().count() > 200 {
-                anyhow::bail!("{key} is too long");
-            }
-        }
-        // The per-profile keys, unlike the default, MAY be empty: empty is how an
-        // administrator says "use the default", and without it the picker is a one-way
-        // door.
-        "llm_summarization_model"
-        | "llm_model_internal_search"
-        | "llm_model_full_research" => {
-            if value.chars().count() > 200 {
-                anyhow::bail!("{key} is too long");
-            }
+        k if RETIRED_SETTINGS.contains(&k) => {
+            anyhow::bail!("{key} is set in hoover4.ini, not on this page");
         }
         "embeddings_serving_model" => {
             if value.trim().is_empty() {

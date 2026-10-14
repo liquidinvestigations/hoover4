@@ -25,8 +25,8 @@ from tasks.heartbeat import with_heartbeat
 from tasks.P_agent.activities import AgentRunInput
 from tasks.P_board import model as m
 from tasks.P_board.contracts import labels_of, parse_explore_block, parse_reason
-from tasks.P_board.fold import earlier_objectives, fold, plan
-from tasks.P_board.prompts import CONCLUDE_REQUEST, goal_ids, goal_texts, render_brief, render_reason
+from tasks.P_board.fold import earlier_objectives, fold, may_explore, plan
+from tasks.P_board.prompts import CONCLUDE_REQUEST, goal_texts, render_brief, render_reason
 
 log = logging.getLogger(__name__)
 
@@ -162,6 +162,11 @@ def _reconcile(stale: list[tuple[str, object]]) -> list:
     return asyncio.run(run())
 
 
+def _answers(folded, answers: dict) -> list[dict]:
+    """The goal answers of `answers` in goal order, for the state summary."""
+    return [answers[g] for g in folded.goal_ids if g in answers]
+
+
 def _state_rows(board, folded) -> tuple[dict, list[dict]]:
     from database import boards
 
@@ -171,8 +176,10 @@ def _state_rows(board, folded) -> tuple[dict, list[dict]]:
         by_kind[intent.state] = by_kind.get(intent.state, 0) + 1
     summary = {"intents": by_kind, "facts": folded.fact_count, "sourced": folded.sourced_count,
                "hints": len(folded.hints), "rejected": len(folded.rejected),
-               "review_statement": folded.review_statement, "review_from": folded.review_from,
-               "review_goals": folded.review_goals, "max_explores": folded.max_explores,
+               "review_statement": folded.review_statement,
+               "answers_proposed": _answers(folded, folded.proposed),
+               "answers_accepted": _answers(folded, folded.accepted),
+               "max_explores": folded.max_explores,
                "explore_steps": folded.explore_steps}
     state = {"board_id": board.board_id, "status": folded.status,
              "explores_used": max(0, folded.explores_used), "reasons_done": folded.reasons_done,
@@ -259,7 +266,7 @@ def board_plan(inp: PlanInput) -> PlanOutput:
     for board_id, why in actions.reviews:
         f = folded_by_id[board_id]
         statement = ("The explore budget is used up." if why == "budget"
-                     else "Reason gave no usable direction in several attempts.")
+                     else "The assessment gave no usable direction in several attempts.")
         decided.append(_event(board_id, f"review_proposed:{why}:{f.explores_used}:{f.reasons_done}",
                               m.REVIEW_PROPOSED, "dispatcher", why, {"reason": why, "statement": statement}))
     if decided:
@@ -304,21 +311,6 @@ def _label_candidates(live: list, snapshots: dict) -> list[str]:
 
 
 # ------------------------------------------------------------------------------- reason
-
-
-def _explore_model(board) -> str:
-    """The model of an explore turn: the board's model, else the model of the chat profile
-    of an ordinary chat turn with the board's internet setting. Empty lets the turn use the
-    default chat model."""
-    from database.clickhouse import get_server_setting
-
-    if (board.llm_model or "").strip():
-        return board.llm_model.strip()
-    key = "llm_model_full_research" if board.internet_tools else "llm_model_internal_search"
-    try:
-        return (get_server_setting(key) or "").strip()
-    except Exception:  # noqa: BLE001 - a settings read failure falls back to the default model
-        return ""
 
 
 def _record_llm_call(owner: str, board_id: str, model: str, usage: dict, latency_ms: int,
@@ -385,13 +377,18 @@ def board_reason(task: ReasonTask) -> str:
     else:
         payload = parse_reason(text, {f.fact_id for f in live},
                                {f.fact_id for f in live if f.kind == m.SOURCED},
-                               earlier_objectives(folded), idle, goal_ids(facts),
+                               earlier_objectives(folded), idle, folded.open_goals,
                                {f.fact_id for f in live if f.kind == m.NOT_FOUND}, goal_texts(facts))
     payload.update(situation=folded.situation(), model=model, latency_ms=latency_ms,
                    prompt_tokens=int(usage.get("prompt_tokens") or 0),
                    completion_tokens=int(usage.get("completion_tokens") or 0),
                    stalled=task.stalled)
     if boards.board_is_live(board.board_id):
+        try:
+            boards.write_assessment(board.board_id, task.reason_no, prompt, text, error, model)
+        except Exception:  # noqa: BLE001 - the stored prompt never costs the reason
+            log.warning("[P_board] could not store the prompt of reason %s of %s",
+                        task.reason_no, board.board_id, exc_info=True)
         boards.write_event(_event(board.board_id, f"reason_result:{task.reason_no}", m.REASON_RESULT,
                                   "reason", str(task.reason_no), payload))
     _record_llm_call(board.owner, board.board_id, model, usage, latency_ms, not error, error, len(text))
@@ -488,7 +485,7 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
     events, facts = boards.read_events(board.board_id), boards.read_facts(board.board_id)
     folded = fold(board, events, facts)
     intent = folded.intents.get(req.intent_id)
-    if folded.status != m.ACTIVE or intent is None:
+    if not may_explore(folded, req.intent_id) or intent is None:
         return OpenedTurn(skip_kind=m.EXPLORE_CANCELLED, skip_reason=f"the board is {folded.status}")
     if _chat_closed():
         return OpenedTurn(skip_kind=m.EXPLORE_FAILED, skip_reason="chat is closed in the settings")
@@ -512,7 +509,7 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
     run_input = AgentRunInput(
         run_id=str(uuid.uuid5(BOARD_NAMESPACE, turn_uuid)), username=board.owner,
         session_id=session_id, turn_seq=seq, start_seq=seq + 1, turn_uuid=turn_uuid,
-        allowed_collections=collections, llm_model=_explore_model(board),
+        allowed_collections=collections, llm_model="",  # empty: the agent model of hoover4.ini
         internet_tools=bool(board.internet_tools),
         max_model_steps=int(steps), board_turn=True)
     return OpenedTurn(workflow_id=f"chat-{session_id}-{seq + 1}", run_input=run_input)

@@ -52,6 +52,18 @@ REVIEW_ACCEPTED = "review_accepted"
 REVIEW_REJECTED = "review_rejected"
 DROP_REQUESTED = "drop_requested"
 SETTINGS_CHANGED = "settings_changed"
+#: A person added a goal to a board that exists. The subject is the goal id.
+GOAL_ADDED = "goal_added"
+#: A person asked to explore an open question. The subject is the intent id `i0.N`, where
+#: N counts the explored questions of the board from 1. The payload names the fact, the
+#: position of the question in it, and the question.
+QUESTION_EXPLORED = "question_explored"
+#: A person accepted the proposed answer of one goal. The subject is the goal id, and the
+#: payload is the answer: `reason_no`, `from` and `statement`.
+GOAL_ANSWER_ACCEPTED = "goal_answer_accepted"
+#: A person rejected the proposed answer of one goal. The subject is the correction fact, and
+#: the payload holds `goal`, `reason_no`, `from` and `correction`.
+GOAL_ANSWER_REJECTED = "goal_answer_rejected"
 
 # Event types written by the board activities.
 REASON_STARTED = "reason_started"
@@ -85,6 +97,10 @@ HINT_EXPLORES = 1
 HINT_EXPLORE_STEPS = 5
 MAX_EXPLORES = 24
 MAX_EXPLORE_STEPS = 120
+#: The explores that one explored open question adds. A late goal adds the correction
+#: values. Both are added above `MAX_EXPLORES`, so a person's request after the budget is
+#: used still gets its explore.
+QUESTION_EXPLORES = 1
 
 #: The tool that ends an explore turn with its fact. Only board turns have it.
 #: **Mirrored in `research_agent/board_tools.py` and in the website's tool card.**
@@ -112,6 +128,18 @@ def explore_workflow_id(board_id: str, intent_id: str) -> str:
 def intent_id_for(reason_no: int, index: int) -> str:
     """The id of the `index`-th intent (1-based) of reason `reason_no`."""
     return f"i{reason_no}.{index}"
+
+
+#: The prefix of the intents that a person starts from an open question. Reasons start at 1,
+#: so reason number 0 is free. **Mirrored in `website/common/src/board_types.rs`**
+#: (`QUESTION_INTENT_PREFIX`).
+QUESTION_INTENT_PREFIX = "i0."
+
+
+def is_question_intent(intent_id: str) -> bool:
+    """Whether `intent_id` has the form `i0.<digits>` of an intent from an open question."""
+    rest = intent_id[len(QUESTION_INTENT_PREFIX):] if intent_id.startswith(QUESTION_INTENT_PREFIX) else ""
+    return rest.isdigit() and rest.isascii()
 
 
 def fact_id_for(intent_id: str) -> str:

@@ -68,6 +68,8 @@ properties.
 |---|---|
 | `/ai_chat` | `AiChatPage` |
 | `/ai_chat/history` | `AiChatHistoryPage` |
+| `/ai_chat/boards/new` | `AiBoardCreatePage` |
+| `/ai_chat/boards/:board_id?selected=&zoom=&assessment=` | `AiBoardPage` |
 | `/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state` | `AiChatSessionPage` |
 
 Admin route stubs, registered with no body yet:

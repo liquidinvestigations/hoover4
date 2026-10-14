@@ -193,10 +193,10 @@ read.
 up, `/admin/ai_status` reports the same pair from the running website, with the result of
 a live probe of the endpoint.
 
-**No `server_settings` row is needed.** `llm_default_chat_model` is unset on a fresh
-deployment, and both the website and the worker fall back to `LLM_MODEL`. An
-administrator can set that key, or a per-profile key such as `llm_model_full_research`.
-The stored value then wins over the ini, and an ini change alone does not move it.
+**No `server_settings` row is needed.** The website and the worker read the models from
+the environment only: `LLM_QUALITY_MODEL` for agent turns when it is set, else `LLM_MODEL`,
+and `LLM_MODEL` for the short calls. A stored row of a retired model key, such as
+`llm_default_chat_model`, has no effect, so an ini change and a redeploy move the models.
 
 ## Resetting a host that has run an older stack
 

@@ -97,10 +97,6 @@ admin_server_fn!(admin_list_settings, backend::api::admin::settings::admin_list_
 admin_server_fn!(admin_set_setting, backend::api::admin::settings::admin_set_setting, (key: String, value: String));
 
 admin_server_fn!(admin_get_llm, backend::api::admin::llm::admin_get_llm, () -> common::llm_types::AdminLlmPage);
-admin_server_fn!(admin_set_default_chat_model, backend::api::admin::llm::admin_set_default_chat_model, (model_id: String));
-admin_server_fn!(admin_set_summarization_model, backend::api::admin::llm::admin_set_summarization_model, (model_id: String));
-admin_server_fn!(admin_set_profile_model, backend::api::admin::llm::admin_set_profile_model, (setting_key: String, model_id: String));
-admin_server_fn!(admin_set_model_allowed, backend::api::admin::llm::admin_set_model_allowed, (model_id: String, allowed: bool));
 admin_server_fn!(admin_set_llm_thinking, backend::api::admin::llm::admin_set_llm_thinking, (on: bool));
 admin_server_fn!(admin_llm_error_counts, backend::api::admin::llm_reports::admin_llm_error_counts, () -> Vec<common::llm_types::ErrorCountRow>);
 admin_server_fn!(admin_llm_error_log, backend::api::admin::llm_reports::admin_llm_error_log, () -> Vec<common::llm_types::ErrorLogRow>);
@@ -108,14 +104,6 @@ admin_server_fn!(admin_llm_tool_table, backend::api::admin::llm_reports::admin_l
 admin_server_fn!(admin_llm_top_users, backend::api::admin::llm_reports::admin_llm_top_users, (days: u16) -> Vec<common::llm_types::TopUserRow>);
 admin_server_fn!(admin_refresh_catalog, backend::api::admin::llm::admin_refresh_catalog, () -> bool);
 admin_server_fn!(admin_get_ai_status, backend::api::admin::ai_status::admin_get_ai_status, () -> common::llm_types::AdminAiStatus);
-
-#[server]
-pub async fn chat_list_models() -> Result<Vec<common::llm_types::ChatModelChoice>, ServerFnError> {
-    let user = crate::api::server_auth::extract_user().await?;
-    backend::api::admin::llm::list_chat_model_choices(&user)
-        .await
-        .map_err(to_server_fn_error)
-}
 
 #[server]
 pub async fn chat_llm_configured() -> Result<common::chat_gate::ChatGate, ServerFnError> {

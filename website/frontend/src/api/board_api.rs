@@ -1,7 +1,7 @@
 //! Investigation board server function wrappers. Every user can own boards, and the backend
 //! lets only the owner read or act on one (`backend::api::boards`).
 
-use common::board_types::{BoardCreateRequest, BoardListItem, BoardSnapshot};
+use common::board_types::{BoardAssessment, BoardCreateRequest, BoardListItem, BoardSnapshot};
 use dioxus::prelude::*;
 
 #[cfg(feature = "server")]
@@ -37,3 +37,7 @@ board_server_fn!(board_set_paused, (board_id: String, paused: bool));
 board_server_fn!(board_set_internet_tools, (board_id: String, on: bool));
 board_server_fn!(board_review, (board_id: String, accept: bool, correction: String));
 board_server_fn!(board_drop, (board_id: String));
+board_server_fn!(board_add_goal, (board_id: String, text: String));
+board_server_fn!(board_explore_question, (board_id: String, fact_id: String, index: u32));
+board_server_fn!(board_answer, (board_id: String, goal: String, reason_no: u32, accept: bool, correction: String));
+board_server_fn!(board_assessment, (board_id: String, reason_no: u32) -> BoardAssessment);

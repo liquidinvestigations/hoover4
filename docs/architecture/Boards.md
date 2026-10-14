@@ -3,7 +3,15 @@
 A board is a long-running investigation of one or more goals over one or more collections.
 The worker splits the goals into intents. Each intent runs as one chat turn, which is an
 explore, and the explore ends in one board fact with resolved citations. A person reads the
-board under AI Chat, adds hints, rejects facts, and accepts or rejects the result.
+board under AI Chat, adds hints and goals, rejects facts, starts the explore of an open
+question, and accepts or rejects the result.
+
+The page names three parts of a board in other words than the code. The **assessment** is the
+model call that reads the board and declares intents or proposes the goal answers: the code calls
+it a reason (`board_reason`, the events `reason_started` and `reason_result`, the actor
+`reason`). The **background context** is the fact of kind `origin`: the collections and the
+context of the board. An **open question** is a question that an explore fact leaves for the
+board, stored in the fact's `open_questions`.
 
 A board uses the chat stack for its agent work. It adds one tool, `submit_board_fact`, which
 only board turns have, and no agent or model route.
@@ -14,7 +22,7 @@ only board turns have, and no agent or model route.
 - [Storage](#storage)
 - [Workflows](#workflows)
 - [The fold](#the-fold)
-- [Reason](#reason)
+- [Assessment](#assessment)
 - [Explore](#explore)
 - [Person actions](#person-actions)
 - [The graph](#the-graph)
@@ -28,11 +36,15 @@ only board turns have, and no agent or model route.
   before the summary exists). The overview shows while the chat gate
   is open, because the explores are chat turns.
 - `/ai_chat/boards/new` is the create form. Send opens the new board.
-- `/ai_chat/boards/:board_id?selected=` is the explorer. `selected` is the slug of a node, and
-  empty selects the board overview. The page resolves it by slug first and then by storage id,
-  so a link with a storage id keeps working. A click on a node puts its slug in the address.
-  `zoom` is the zoom of the graph in percent: 50, 75, 100 or 125. Empty or another value is
-  100. A zoom change replaces the address, and a node click keeps the zoom.
+- `/ai_chat/boards/:board_id?selected=&zoom=&assessment=` is the explorer. `selected` is the
+  slug of a node, and empty selects the board overview. The page resolves it by slug first and
+  then by storage id, so a link with a storage id keeps working. A click on a node puts its
+  slug in the address. `zoom` is the zoom of the graph in percent: 50, 75, 100 or 125. Empty or
+  another value is 100. A zoom change replaces the address, and a node click keeps the zoom.
+  `assessment` is the number of the assessment whose details popup is open, empty for none.
+- A board explore chat links back to its board: "Investigation Board" in the row of the
+  conversation search selects the chat's intent, and the answer card at the end of the chat
+  selects its fact. Both open the board in the same tab.
 
 Every user can own boards. A board belongs to the user who created it, also for
 administrators, and the server functions return "not found" for a board of another user.
@@ -42,6 +54,7 @@ administrators, and the server functions return "not found" for a board of anoth
 Migration `00043_investigation_boards.sql` adds six tables to the global database.
 Migration `00044_board_settings.sql` adds the `internet_tools` column to `boards`.
 Migration `00045_board_labels.sql` adds `board_labels`.
+Migration `00046_board_assessments.sql` adds `board_assessments`.
 
 | Table | Content | Writer |
 |---|---|---|
@@ -52,18 +65,20 @@ Migration `00045_board_labels.sql` adds `board_labels`.
 | `board_facts` | The facts. A fact is written once and never changed. | the website and `conclude_explore` |
 | `board_fact_citations` | The documents of each fact, resolved from the explore's `cite_documents` rows. | `conclude_explore` |
 | `board_labels` | The generated slug, title and summary of each intent, fact and correction, and one summary row of the board (empty `node_id`). A slug is a display name and an address key. The storage ids do not change. | `label_board` only |
+| `board_assessments` | The whole prompt and the whole reply of each assessment, keyed by board and assessment number. An assessment that ran before the table existed has no row. | `board_reason` only |
 
 Ids are deterministic, so a retried activity writes the same row again. An intent is
-`i{reason}.{k}` and its fact is `f{reason}.{k}`. An event id is `{type}:{subject}:{attempt}`
-for worker events. The explore of an intent runs in the chat session
+`i{reason}.{k}` and its fact is `f{reason}.{k}`. The intent that a person starts from open
+question N is `i0.N`, because reasons start at 1, and its fact is `f0.N`. An event id is
+`{type}:{subject}:{attempt}` for worker events. The explore of an intent runs in the chat session
 `board-{board_id}-{intent_id}`.
 
 A board fact has one of six kinds.
 
 | Kind | Meaning |
 |---|---|
-| `origin` | The collections and the context, written at creation. |
-| `goal` | A goal, written at creation. The first goal is `goal`, the next ones `goal-2` to `goal-6`. |
+| `origin` | The background context: the collections and the context, written at creation. |
+| `goal` | A goal, written at creation or later by a person. The first goal is `goal`, the next ones `goal-2` to `goal-6`. |
 | `sourced` | An explore finding with at least one citation whose quote the chat verified. |
 | `inferred` | An explore finding without such a citation. A `sourced` claim without a verified quote is stored as `inferred`. |
 | `not_found` | The explore searched and found nothing that answers the intent. |
@@ -83,9 +98,9 @@ flowchart LR
 ```
 
 `BoardDispatcher` has the fixed id `board-dispatcher`. The chat worker starts it at start-up
-when it is not running. Every 5 seconds it runs `board_plan`, starts the reasons and explores
+when it is not running. Every 5 seconds it runs `board_plan`, starts the assessments and explores
 that the plan returns, and cancels the explores of paused and dropped boards. After 200
-passes it waits for its reasons in flight and continues as new. The dispatcher waits for no
+passes it waits for its assessments in flight and continues as new. The dispatcher waits for no
 person. A person action is a row in ClickHouse, and the next pass reads it.
 
 `BoardExplore` runs one intent. It opens a chat turn, runs it as an `AgentRun` child, and
@@ -101,7 +116,7 @@ the summarisation model labels up to 8 nodes, from the full text of each node.
 
 | Node | Slug | Title and summary |
 |---|---|---|
-| origin | `origin`, fixed | none, the text shows |
+| origin (background context) | `background`, fixed | none, the text shows |
 | goal | `goal-01`, `goal-02` and so on, fixed | none, the text shows |
 | intent | `intent-<words>` | generated from the objective and the brief |
 | fact | `fact-<words>` | generated from the kind and the text without `[Dn]` handles |
@@ -128,25 +143,47 @@ website shows its storage id and the first words of its text.
 `tasks/P_board/fold.py` derives the state of a board from its events and facts. It reads no
 storage and no clock. The module docstring lists the rules. These rules have the most effect:
 
-- A pause, a resume, a review decision and a drop apply in event order. Only
-  `review_accepted` completes a board. The worker can propose review, and a person decides.
+- A pause, a resume, a decision and a drop apply in event order. The worker proposes, and a
+  person decides.
+- An assessment of outcome `review` proposes one answer for each goal without an accepted
+  answer, and replaces every earlier proposed answer. The person accepts or rejects each
+  answer separately (`goal_answer_accepted`, `goal_answer_rejected`). An accepted answer stays
+  in every later state. The board is complete when every goal has an accepted answer. A
+  rejected answer moves a board in review to active at once, and the other proposed answers
+  wait for their decision. A decision counts only for the proposed answer of the same
+  assessment, so a decision on a replaced answer does nothing. In review, `review_accepted`
+  ("Finish the board") accepts every proposed answer and completes the board, also with goals
+  that have no answer, and `review_rejected` drops the proposed answers and continues.
+- A `goal_added` moves a board in review or complete back to active, and marks the checkpoint
+  as having work, so the board gets an assessment when that work ends without a new fact. A
+  paused board stays paused.
+- `question_explored` opens the intent `i0.N` from the fact that asked the question, with the
+  question as its objective and no assessment first, and changes no status. On a board in
+  review or complete the planner starts only such intents, and no assessment follows. On an
+  active board the new fact goes to the next assessment.
 - `explore_started` uses one attempt and one explore of the budget. A cancellation returns
   both. An intent fails after 2 failed attempts.
-- A reason is due when the facts, hints or rejections changed since the last valid reason.
-  It runs only on an active board with no open intent and no reason in flight.
-- The board goes to review in three cases. The budget is used, a reason proposes review from
-  sourced facts, or 3 reason replies in a row are invalid.
+- An assessment is due when the facts, hints, rejections or late goals changed since the last
+  valid assessment. It runs only on an active board with no open intent and no assessment in
+  flight. A checkpoint written before late goals existed reads their count as 0.
+- The board goes to review in three cases. The budget is used, an assessment proposes answers
+  from sourced facts, or 3 assessment replies in a row are invalid. The assessment prompt marks
+  an accepted goal as closed, and its check refuses an answer for it.
 - The explore budget and the model steps of one explore start at 12 explores and 60 steps. A
   rejected fact or a rejected review adds 4 explores and 20 steps. A hint adds 1 explore and
-  5 steps. The caps are 24 explores and 120 steps (`Folded.max_explores`,
-  `Folded.explore_steps`).
+  5 steps. The caps are 24 explores and 120 steps. A goal added later adds 4 explores above the
+  explore cap and 20 steps within the step cap, and an explored open question adds 1 explore
+  above the cap, so a person's late request always gets its explore. A repeated event of one
+  goal or one question counts once (`Folded.max_explores`, `Folded.explore_steps`).
 - An explore that asked a question waits. The next hint opens its intent again.
 
-## Reason
+## Assessment
 
-`board_reason` sends one model call on `chat-model-queue`, with the summarisation model
-(`llm_summarization_model`). The prompt holds the goals, the live facts without their citation
-labels, the hints, the rejected facts and the intents. The reply must be one JSON object with
+`board_reason` sends one model call on `chat-model-queue`, with the short-call model of
+`hoover4.ini` (`LLM_MODEL`). The prompt holds the goals, the live facts without their citation
+labels, the hints, the rejected facts and the intents. The activity writes the prompt and the
+whole reply to `board_assessments` before its `reason_result` event, while the board is not
+dropped. The reply must be one JSON object with
 `intents`, `review` or neither. `contracts.parse_reason` checks it.
 
 - An intent must name live facts in `from`. An intent that repeats an earlier objective is
@@ -156,16 +193,19 @@ labels, the hints, the rejected facts and the intents. The reply must be one JSO
   review that leaves out a goal counts as empty.
 - A reply without a JSON object is invalid.
 
-Every change that a check makes is in the `problems` list of the `reason_result` event.
+Every change that a check makes is in the `problems` list of the `reason_result` event. The
+"Show details" button of an assessment row in the events table opens a popup with the date,
+the model, the outcome, the latency, the tokens, these checks, the prompt and the response.
+For an assessment that ran before `board_assessments` existed, the popup shows the first 6000
+characters of the reply, which the event holds, and says that the prompt was not stored.
 
 ## Explore
 
 `open_explore_turn` writes the rows that `send_message` writes for a person: the session with
 the board's internet setting and its options locked, the user message, and the stream row.
 The turn then runs as an ordinary `AgentRun` of kind `board`, with the model step limit of
-the fold. Its model is the model of the chat profile with the board's internet setting
-(`llm_model_full_research` or `llm_model_internal_search`). A board turn does not write
-follow-up suggestions or a session title.
+the fold. Its model is the agent model of `hoover4.ini`, as for a chat turn. A board turn does
+not write follow-up suggestions or a session title.
 
 A board turn has the tool pack `board`, which no chat turn has. Its tool `submit_board_fact`
 takes the fact with inline `[Dn]` handles, its kind and at most 3 open questions, and ends the
@@ -188,26 +228,31 @@ reads the full turn.
 |---|---|
 | Create | Writes the definition, the `origin` fact, a `goal` fact per goal, `board_created`, and one `hint_added` for each first hint. Every readable collection is selected at first, and the internet tools are on. The collections cannot change later. |
 | Settings | Writes a new version of the `boards` row and `settings_changed`. Only the internet tools can change. Explores that run keep the setting they started with. |
-| Add hint | Writes `hint_added`. The next reason reads it. It also opens intents that asked a question. |
-| Reject fact | Writes `fact_rejected` with the reason. Later prompts leave the fact out and list it as rejected. The fact detail shows who rejected it, when and why. |
+| Add hint | Writes `hint_added`. The next assessment reads it. It also opens intents that asked a question. |
+| Add goal | Writes the next goal fact and `goal_added`, at any status but dropped, up to 6 goals. The next assessment reads the goal. A board in review or complete becomes active. |
+| Explore this question | Writes `question_explored` with the subject `i0.N`, where N counts the explored questions of the board, and the fact id, the position and the text of the question. The fold opens the intent, and the board keeps its status. A question of a rejected fact, or one already explored, is refused. |
+| Reject fact | Writes `fact_rejected` with the reason. Later prompts leave the fact out and list it as rejected. The fact detail shows who rejected it, when and why. On a correction the box and the button say "Why the correction is wrong" and "Reject correction". |
 | Pause and resume | Write `pause_requested` and `resume_requested`. A pause cancels running explores and does not use their attempts. |
-| Accept review | Writes `review_accepted`. The board is complete. |
-| Reject review | Writes a `correction` fact and `review_rejected`, whose `from` names the facts of the rejected review. The board is active again. When the explore budget is used, the next pass sends it back to review. |
-| Drop | Writes `drop_requested`, sets `is_deleted` on the `boards` row, cancels the running explores, deletes the board's chat sessions as the chat history deletes a chat (a tombstone on the session row), and deletes the rows of the other six board tables. |
+| Accept answer | Writes `goal_answer_accepted` with the goal, the assessment number and the answer. When every goal has an accepted answer, the board is complete. |
+| Reject answer | Writes a `correction` fact and `goal_answer_rejected`, whose `from` names the facts of the answer. The board continues at once. |
+| Finish the board | In review only. Writes `review_accepted`. Every proposed answer is accepted, and the board is complete. |
+| Continue with a correction | In review only. Writes a `correction` fact and `review_rejected`, whose `from` names the facts of the proposed answers. The board is active again. When the explore budget is used, the next pass sends it back to review. |
+| Drop | Writes `drop_requested`, sets `is_deleted` on the `boards` row, cancels the running explores, deletes the board's chat sessions as the chat history deletes a chat (a tombstone on the session row), and deletes the rows of the other seven board tables. |
 
 ## The graph
 
 The explorer and the overview thumbnail draw one graph (`components/board_graph.rs`). x is
-depth: the origin is the first column, the goals are the last column, and every other node is
-one column after the deepest node it comes from. The edges follow the encoding of Cairn, which
+depth: the background context is the first column, the goals are the last column, and every
+other node is one column after the deepest node it comes from. Open questions have no node.
+The fact pane lists them. The edges follow the encoding of Cairn, which
 records a completion as an edge from the facts to the goal and a reopened goal as an edge from
 those facts to the person's correction.
 
 | Edge | From | To |
 |---|---|---|
 | Flow | a fact that an intent names, or an intent | the intent, or the fact of the intent |
-| Answers | a fact of the accepted review of a goal | that goal. Dashed while the review waits for the person. |
-| Corrects | a fact of a rejected review | the correction of that review |
+| Answers | a fact of the accepted answer of a goal | that goal, in every status. Dashed for a proposed answer that waits for the person. |
+| Corrects | a fact of a rejected answer or review | the correction of it |
 
 The layout is computed in one pass before it shows, so no node moves on screen. In each column
 a node asks for a y: its earlier y, else the mean y of its placed neighbours. The column sorts
@@ -216,23 +261,44 @@ moves only when a new node needs its room.
 
 A node is 300 by 150 pixels at 100 % zoom, and its fonts are the app's text roles: the title
 in bold at the body size, the summary at the detail size in at most 4 lines, and a meta row
-in gray monospace with the slug on the left and the tags (the kind, `rejected`, or `intent`
-and its state) on the right. The origin and the goals show their text with no title. The
-graph does not scale to its pane. The pane scrolls, a press and a drag of more than 4 pixels
+in gray monospace with the type of the node on the left and its statuses on the right
+(`board_graph::corners`). No card shows its slug, and no status repeats the type.
+
+| Node | Left | Right |
+|---|---|---|
+| background context | `background` | none |
+| goal | its slug, `goal-01` | `answered` or `answer proposed` |
+| fact | `fact` | `sourced`, `inferred` or `not found`, and `rejected` |
+| correction | `correction` | `rejected` when rejected |
+| intent | `intent` | its state |
+
+The background context is white with a black border. The goals are blue with white text. The
+background context and the goals show their text with no title. A rejected fact and a
+cancelled intent are dimmed, with an opaque white card under them. The detail pane of a node
+shows the same type and statuses under its title, and "Open the explore chat" at the right
+of the title for an intent or fact with a chat. The graph does not scale to its pane. The pane scrolls, a press and a drag of more than 4 pixels
 pans it up to the edges of the graph, and a control in its lower-right corner zooms out to
 50 % and in to 125 %. After a zoom change the pane keeps the same graph point in its middle.
+While a node is selected, "Show the board overview" is over the top-right corner of the pane.
+When the selected node is not wholly in the pane, at the first load of the page or after a
+link in a detail pane selects it, the pane scrolls it to its middle. A click on a node does
+not scroll.
 
-An edge between neighbouring columns is one straight line. An edge that skips columns turns
-into the gap after its source, runs along a free lane between or around the nodes of the
-skipped columns, and turns back in the gap before its target, so no edge crosses a node
-(`board_graph::route_edge`). Every edge is drawn under the nodes.
+Every edge is one straight line from the middle of the right side of its source to the middle
+of the left side of its target, and every edge is drawn under the nodes.
 
 The board overview on the right shows the review panel while the board waits for review,
-the goals, the hint form, the events as a table (date, actor, event, newest first) and the
-statistics: explores, model steps, reasons, intents and facts by state, collections,
-internet tools, the budget rule and the creation date. A person's name shows in bold and a
-system actor in italic. The text that a person wrote in an event shows in italic after the
-fixed text.
+the goals with their answers and the form to add a goal, the hint form, the events as a table (date, actor,
+event, links, newest first) and the statistics: explores, model steps, assessments, intents
+and facts by state, collections, internet tools and the creation date. A person's name shows
+in bold and a system actor in italic, and the actor `reason` shows as `assessment`. The text
+that a person wrote in an event shows in italic after the fixed text. The links column shows
+"Show details" for an assessment, "Open" (a new tab) for an event of an intent or a fact with
+an explore chat, and else the slug of the node that the event names, as a link that selects
+it. A goal shows its accepted answer, or its proposed answer with "Accept answer" and "Reject
+answer", in the overview and in its detail pane. The fact pane lists each open question of the
+fact as a card with the question in a larger font and, in its bottom-right corner, "Explore
+this question", or "Explored in" and the slug of the intent that follows it.
 
 The brief of an explore allows one tool call per 4 model steps of its budget: 15 calls at the
 base budget and 30 at the cap.
@@ -242,13 +308,13 @@ base budget and 30 at the cap.
 | Limit | Value | Where |
 |---|---|---|
 | Board model work of all boards together | `server_settings` key `board_max_parallel_explores`, default 1 | `/admin/settings` |
-| Explores of one board | 12, growing with corrections and hints to at most 24 | `tasks/P_board/model.py` |
+| Explores of one board | 12, growing with corrections and hints to at most 24, and above that with late goals and explored questions | `tasks/P_board/model.py` |
 | Model steps of one explore | 60, growing with corrections and hints to at most 120 | `tasks/P_board/model.py` |
 | Goals of one board | 1 to 6 | `common::board_types::MAX_GOALS` |
 | Attempts of one intent | 2 | `tasks/P_board/model.py` |
-| Intents kept from one reason | 3 | `tasks/P_board/model.py` |
+| Intents kept from one assessment | 3 | `tasks/P_board/model.py` |
 
-Each running explore and each reason in flight uses one slot of the global cap. The explore
+Each running explore and each assessment in flight uses one slot of the global cap. The explore
 turns also use the chat queues, so a board turn competes with the chats of people.
 
 ## Changing the board workflows

@@ -579,16 +579,16 @@ services:
       - "GPU_FALLBACK=${GPU_FALLBACK:-true}"
       - "GPU_CONNECT_TIMEOUT_MS=${GPU_CONNECT_TIMEOUT_MS:-2000}"
       - "GPU_CIRCUIT_BREAK_SECONDS=${GPU_CIRCUIT_BREAK_SECONDS:-60}"
-      # The LLM provider, for `main.py refresh-llm-catalog`. The worker discovers the
-      # model list into `llm_models` and writes the chat/summarisation choices into
-      # `server_settings`; ids are matched by PATTERN against what the account actually
-      # returns, because NIM retires them and a hardcoded id becomes a 404 months later.
-      # The key is a bind-mounted file, never an env value.
+      # The LLM provider. LLM_MODEL is the model of short calls (titles, summaries, board
+      # labels and assessments), and of agent turns when no quality model is set.
+      # `main.py refresh-llm-catalog` lists the models of the provider into `llm_models`
+      # for reading. The key is a bind-mounted file, never an env value.
       - "LLM_BASE_URL=${LLM_BASE_URL:-}"
       - "LLM_MODEL=${LLM_MODEL:-}"
       - "LLM_API_KEY_FILE=/run/secrets/llm_api_key"
-      # The quality endpoint of the selfhosted provider and its model, for agent turns.
-      # Empty: the base endpoint serves every model (tasks/llm_endpoints.py).
+      # The quality endpoint of the selfhosted provider and its model. When set, agent
+      # turns use this model. Empty: the base endpoint serves every model
+      # (tasks/llm_endpoints.py).
       - "LLM_QUALITY_BASE_URL=${LLM_QUALITY_BASE_URL:-}"
       - "LLM_QUALITY_MODEL=${LLM_QUALITY_MODEL:-}"
       # false when the active provider rejects `temperature`: the title request leaves it out.
@@ -776,6 +776,9 @@ services:
       # and never gets a summary. Both are rendered from hoover4.ini by deploy.py.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - LLM_MODEL=${LLM_MODEL:-}
+      # The model of agent turns when it is set, else LLM_MODEL (api/admin/llm.rs
+      # `agent_model`). hoover4.ini sets it as quality_model of the selfhosted provider.
+      - LLM_QUALITY_MODEL=${LLM_QUALITY_MODEL:-}
       # The chat gate uses this name to decide whether an API key is required.
       - LLM_PROVIDER_NAME=${LLM_PROVIDER_NAME:-}
       # The API key is a bind-mounted file, never an env value: hoover4.ini stores

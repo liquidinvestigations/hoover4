@@ -420,22 +420,22 @@ cloud providers default to `true`.
 bind-mounted read-only. A key value never appears in this file.
 
 The selfhosted provider has three endpoints. `base_url` serves `model` and the short calls:
-conversation titles and board reasons. `decision_url` is the structured
+conversation titles and summaries, board labels and board assessments. `decision_url` is the structured
 server of the chat policy checks, rendered as `CHAT_CLASSIFIER_URL`. Empty derives it from
 the host of `base_url` and `[ai_services] vllm_structured_port`. `quality_base_url` serves
 `quality_model`, and a request that names that model goes there. Set both quality keys or
 neither. Empty quality keys take the second model server of the GPU tier when
 `[ai_services] chat_llm_selfhosted` is true. Requests to the quality endpoint carry the key of
-this provider, or a placeholder when it has none. A
-person selects `quality_model` as the default chat model under `/admin/llm` and keeps the
-base model as the summarisation model. The worker and both
+this provider, or a placeholder when it has none. The worker and both
 agent services apply the rule (`tasks/llm_endpoints.py`, `research_agent/endpoints.py`), and
 `main.py refresh-llm-catalog` lists the quality endpoint as a provider of its own.
 
-Which model a given chat profile uses is *not* here: that is a runtime setting under
-`/admin/llm`, per profile, with an unset value meaning "use the default chat model". The
-provider section says which providers exist; the admin surface says which model each profile
-asks for.
+This file is the only place that chooses a model. Agent turns, of chats and of board
+explores, use `quality_model` when it is set and `model` when it is not. Titles, summaries,
+board labels and board assessments use `model`. No page and no `server_settings` key
+overrides them: the keys `llm_default_chat_model`, `llm_summarization_model`,
+`llm_model_internal_search` and `llm_model_full_research` are retired, and a stored row of
+one of them has no effect. `/admin/llm` shows the two models read only.
 
 ## Secrets
 

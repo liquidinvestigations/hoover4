@@ -1,9 +1,9 @@
 """The language-model endpoint of each model name.
 
 The selfhosted provider can have a second, quality endpoint beside its base endpoint.
-`LLM_BASE_URL` serves `LLM_MODEL` and every short call: titles, follow-up suggestions,
-board reasons. `LLM_QUALITY_BASE_URL` serves `LLM_QUALITY_MODEL`, which the chat profiles
-select for agent turns. A request goes to the quality endpoint when it names the quality
+`LLM_BASE_URL` serves `LLM_MODEL` and every short call: titles, summaries, board labels and
+assessments. `LLM_QUALITY_BASE_URL` serves `LLM_QUALITY_MODEL`, the model of agent turns when
+it is set (`chat_model`). A request goes to the quality endpoint when it names the quality
 model, and to the base endpoint otherwise.
 
 The research agent applies the same rule in `research_agent/endpoints.py`. Both read the
@@ -31,6 +31,19 @@ def quality_model() -> str:
     if not (os.getenv("LLM_QUALITY_BASE_URL") or "").strip():
         return ""
     return (os.getenv("LLM_QUALITY_MODEL") or "").strip()
+
+
+def chat_model() -> str:
+    """The model of agent turns: the quality model when there is one, else `LLM_MODEL`.
+
+    `hoover4.ini` sets both. No setting overrides them.
+    **Mirrored in `website/backend/src/api/admin/llm.rs`** (`agent_model`)."""
+    return quality_model() or short_model()
+
+
+def short_model() -> str:
+    """The model of short calls: titles, summaries, board labels and assessments."""
+    return (os.getenv("LLM_MODEL") or "").strip()
 
 
 def _label(base_url: str) -> str:

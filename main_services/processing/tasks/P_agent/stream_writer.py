@@ -59,27 +59,16 @@ def _tool_name(content: Any) -> str:
 def _chat_model() -> str:
     """The model a research turn runs on, and the one its transcript row records.
 
-    `server_settings.llm_default_chat_model`, the same key the website resolves against,
-    so answers in the same conversation use the same
-    thing. The worker used to write `os.getenv("LLM_MODEL")` into the row instead: unset
-    in this container, so every research row recorded an empty model, while the agent
-    quietly answered with whatever *its* container's env said.
-
-    An empty admin setting uses the configured provider model. A request with neither
-    setting fails before it reaches the agent.
+    The agent model of `hoover4.ini` (`llm_endpoints.chat_model`), the same rule that the
+    website resolves a chat turn with. A deployment without a model fails here, before the
+    request reaches the agent.
     """
-    try:
-        from database.clickhouse import get_server_setting
+    from tasks.llm_endpoints import chat_model
 
-        configured = (get_server_setting("llm_default_chat_model") or "").strip()
-        if configured:
-            return configured
-    except Exception:  # noqa: BLE001 - a research turn must not die over a settings read
-        log.warning("[P_agent] could not read llm_default_chat_model", exc_info=True)
-    configured = (os.getenv("LLM_MODEL") or "").strip()
+    configured = chat_model()
     if configured:
         return configured
-    raise ValueError("No chat model is configured. Set a default model in the LLM catalog.")
+    raise ValueError("No chat model is configured. Set the LLM provider in hoover4.ini.")
 
 
 def context_window_for(model_id: str) -> int:

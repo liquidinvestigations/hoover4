@@ -7,21 +7,39 @@ every rule without ClickHouse or Temporal.
 
 The rules:
 
-* **Status.** A person's pause, resume, review decision or drop applies in event order. A
-  reason result of outcome `review`, and a `review_proposed` of the dispatcher, move an
-  active board to review. Only `review_accepted` completes a board.
+* **Status.** A person's pause, resume, decision or drop applies in event order. A reason
+  result of outcome `review`, and a `review_proposed` of the dispatcher, move an active board
+  to review. A rejected review and a `goal_added` move a board in review or complete back to
+  active.
+* **Goal answers.** A reason result of outcome `review` proposes one answer for each goal
+  that has no accepted answer, and replaces every earlier proposed answer. The person
+  decides each answer separately. `goal_answer_accepted` moves it to the accepted answers,
+  which no later event removes. The board is complete when every goal has an accepted
+  answer. A board in review with no proposed answer left goes back to active.
+  `goal_answer_rejected` drops the answer and moves a board in review to active at once,
+  while the other proposed answers wait. A decision counts only for the proposed answer of
+  the same reason. `review_accepted` accepts every proposed answer and completes the board,
+  also with goals that have no answer. `review_rejected` drops every proposed answer.
+* **Late work of a person.** `goal_added` adds a goal that the next reason reads, and sets
+  `had_work` in the checkpoint, so the board gets a reason when its work ends without a new
+  fact. `question_explored` opens the intent `i0.N` from the fact that asked the question,
+  with the question as its objective, and changes no status. `plan` starts such an intent on
+  a board in review or complete too, and runs nothing else there.
 * **Attempts.** `explore_started` counts an attempt and an explore of the budget. A
   cancellation refunds both. When one attempt has both a concluded event and a cancelled or
   failed event, the concluded event wins, because its fact exists.
 * **Reason trigger.** A reason is due when the board is active, no reason is in flight, no
   intent is open, and the situation changed since the checkpoint of the last successful
-  reason: more facts, more hints, more rejections, or the open and running intents falling
-  to none. A valid empty result while explores run moves the checkpoint. An invalid result,
+  reason: more facts, more hints, more rejections, more goals added later, or the open and
+  running intents falling to none. A checkpoint written before `goals_added` existed reads it
+  as 0. A valid empty result while explores run moves the checkpoint. An invalid result,
   or an empty one with nothing running, does not, so the board stays due, and after
   `INVALID_REASON_LIMIT` such results in a row the board goes to review.
 * **Budget.** `Folded.max_explores` and `Folded.explore_steps` start at the base values of
-  `model` and grow with each rejected fact, rejected review and hint, up to the caps. The
-  explore budget and the step count of the board row are not read.
+  `model` and grow with each rejected fact, rejected review and hint, up to the caps. Each
+  goal added later adds the correction values, and each explored question
+  `QUESTION_EXPLORES`, above the explore cap. A repeated event of one subject counts once.
+  The explore budget and the step count of the board row are not read.
 * **One cap.** Each running explore and each reason in flight takes one board model slot.
   All boards together use at most the global cap, and each board at most its `max_parallel`.
 """
@@ -29,6 +47,7 @@ The rules:
 from dataclasses import dataclass, field
 
 from tasks.P_board import model as m
+from tasks.P_board.prompts import goal_ids
 
 
 @dataclass
@@ -68,31 +87,51 @@ class Folded:
     fact_count: int = 0
     sourced_count: int = 0
     review_statement: str = ""
-    review_from: list[str] = field(default_factory=list)
-    #: The proposed review of each goal: goal id, fact ids and statement.
-    review_goals: list[dict] = field(default_factory=list)
+    #: The goal ids of the board, first goal first.
+    goal_ids: list[str] = field(default_factory=list)
+    #: Goal id to the answer that waits for the person: `goal`, `from`, `statement` and
+    #: `reason_no`, the number of the reason that proposed it.
+    proposed: dict = field(default_factory=dict)
+    #: Goal id to the answer that the person accepted, in the same form.
+    accepted: dict = field(default_factory=dict)
     review_rejections: int = 0
     last_reason_outcome: str = ""
     #: The checks that changed the last reason reply, which the next reason reads.
     last_reason_problems: list[str] = field(default_factory=list)
+    #: The goal ids of `goal_added` events and the intent ids of `question_explored` events.
+    goals_added: set = field(default_factory=set)
+    questions_explored: set = field(default_factory=set)
 
     @property
     def max_explores(self) -> int:
         """The explore budget: the base, grown by the person's corrections and hints."""
         corrections = len(self.rejected) + self.review_rejections
-        return min(m.MAX_EXPLORES, m.BASE_EXPLORES + corrections * m.CORRECTION_EXPLORES
-                   + len(self.hints) * m.HINT_EXPLORES)
+        capped = min(m.MAX_EXPLORES, m.BASE_EXPLORES + corrections * m.CORRECTION_EXPLORES
+                     + len(self.hints) * m.HINT_EXPLORES)
+        return (capped + len(self.goals_added) * m.CORRECTION_EXPLORES
+                + len(self.questions_explored) * m.QUESTION_EXPLORES)
 
     @property
     def explore_steps(self) -> int:
         """The model steps of one explore turn, grown as `max_explores`."""
-        corrections = len(self.rejected) + self.review_rejections
+        corrections = len(self.rejected) + self.review_rejections + len(self.goals_added)
         return min(m.MAX_EXPLORE_STEPS, m.BASE_EXPLORE_STEPS
                    + corrections * m.CORRECTION_EXPLORE_STEPS + len(self.hints) * m.HINT_EXPLORE_STEPS)
 
     def situation(self) -> dict:
         """The counts a reason checkpoint compares."""
-        return {"facts": self.fact_count, "hints": len(self.hints), "rejected": len(self.rejected)}
+        return {"facts": self.fact_count, "hints": len(self.hints), "rejected": len(self.rejected),
+                "goals_added": len(self.goals_added)}
+
+    @property
+    def open_goals(self) -> list[str]:
+        """The goals without an accepted answer, which a review must answer."""
+        return [g for g in self.goal_ids if g not in self.accepted]
+
+    @property
+    def all_answered(self) -> bool:
+        """Whether every goal has an accepted answer."""
+        return bool(self.goal_ids) and not self.open_goals
 
     def by_state(self, state: str) -> list[Intent]:
         return sorted((i for i in self.intents.values() if i.state == state),
@@ -106,7 +145,7 @@ def _concluded_attempts(events) -> set[tuple[str, int]]:
 
 def fold(board, events, facts) -> Folded:
     """The state of one board from its definition, its events and its facts."""
-    folded = Folded(board_id=board.board_id)
+    folded = Folded(board_id=board.board_id, goal_ids=goal_ids(facts))
     concluded = _concluded_attempts(events)
     for event in events:
         kind = event.event_type
@@ -123,14 +162,46 @@ def fold(board, events, facts) -> Folded:
         elif kind == m.RESUME_REQUESTED and folded.status == m.PAUSED:
             folded.status = m.ACTIVE
         elif kind == m.REVIEW_ACCEPTED and folded.status == m.REVIEW:
+            folded.accepted.update(folded.proposed)
+            folded.proposed = {}
             folded.status = m.COMPLETED
         elif kind == m.REVIEW_REJECTED and folded.status in (m.REVIEW, m.COMPLETED):
+            folded.proposed = {}
             folded.review_rejections += 1
             folded.status = m.ACTIVE
             folded.invalid_reasons = 0
             folded.stall_count = 0
+        elif kind == m.GOAL_ANSWER_ACCEPTED:
+            if _decides(folded, event.subject, data):
+                folded.accepted[event.subject] = folded.proposed.pop(event.subject)
+                if folded.status in (m.ACTIVE, m.REVIEW) and folded.all_answered:
+                    folded.status = m.COMPLETED
+                elif folded.status == m.REVIEW and not folded.proposed:
+                    folded.status = m.ACTIVE
+                    folded.checkpoint = dict(folded.checkpoint or {}, had_work=True)
+        elif kind == m.GOAL_ANSWER_REJECTED:
+            goal = str(data.get("goal", ""))
+            if _decides(folded, goal, data):
+                del folded.proposed[goal]
+                folded.review_rejections += 1
+                if folded.status == m.REVIEW:
+                    folded.status = m.ACTIVE
+                    folded.invalid_reasons = 0
+                    folded.stall_count = 0
         elif kind == m.DROP_REQUESTED:
             folded.status = m.DROPPED
+        elif kind == m.GOAL_ADDED:
+            folded.goals_added.add(event.subject)
+            _reopen(folded)
+        elif kind == m.QUESTION_EXPLORED:
+            if m.is_question_intent(event.subject) and event.subject not in folded.intents:
+                fact_id = str(data.get("fact_id", ""))
+                folded.intents[event.subject] = Intent(
+                    intent_id=event.subject, reason_no=0, from_facts=[fact_id] if fact_id else [],
+                    objective=str(data.get("question", "")),
+                    brief=f"The investigator asked to explore this open question of fact {fact_id}.",
+                    created_at=event.created_at)
+                folded.questions_explored.add(event.subject)
         elif kind == m.REVIEW_PROPOSED and folded.status == m.ACTIVE:
             folded.status = m.REVIEW
             folded.review_statement = str(data.get("statement", ""))
@@ -182,6 +253,23 @@ def fold(board, events, facts) -> Folded:
     return folded
 
 
+def _decides(folded: Folded, goal: str, data: dict) -> bool:
+    """Whether a person's decision names the answer that waits for goal `goal`: the decision
+    on an answer that a newer reason replaced does nothing."""
+    answer = folded.proposed.get(goal)
+    return answer is not None and answer.get("reason_no") == _int(str(data.get("reason_no", "")))
+
+
+def _reopen(folded: Folded) -> None:
+    """A person's late work: a board in review or complete goes back to active, and the next
+    idle pass runs a reason even when the work ends without a fact."""
+    if folded.status in (m.REVIEW, m.COMPLETED):
+        folded.status = m.ACTIVE
+        folded.invalid_reasons = 0
+        folded.stall_count = 0
+    folded.checkpoint = dict(folded.checkpoint or {}, had_work=True)
+
+
 def _int(text: str) -> int:
     try:
         return int(text)
@@ -212,8 +300,12 @@ def _apply_reason(folded: Folded, event) -> None:
         folded.invalid_reasons = 0
         review = data.get("review") or {}
         folded.review_statement = str(review.get("statement", ""))
-        folded.review_from = [str(f) for f in review.get("from") or []]
-        folded.review_goals = [dict(g) for g in review.get("goals") or [] if isinstance(g, dict)]
+        folded.proposed = {}
+        for goal in review.get("goals") or []:
+            if isinstance(goal, dict) and str(goal.get("goal", "")) not in folded.accepted:
+                folded.proposed[str(goal.get("goal", ""))] = {
+                    "goal": str(goal.get("goal", "")), "from": [str(f) for f in goal.get("from") or []],
+                    "statement": str(goal.get("statement", "")), "reason_no": reason_no}
         if folded.status == m.ACTIVE:
             folded.status = m.REVIEW
     elif outcome == "noop" and not data.get("idle"):
@@ -253,6 +345,14 @@ def earlier_objectives(folded: Folded) -> list[str]:
     return [i.objective for i in folded.intents.values() if not (i.fact_id and i.fact_id in folded.rejected)]
 
 
+def may_explore(folded: Folded, intent_id: str) -> bool:
+    """Whether an explore of `intent_id` may run now. An active board runs every intent. A
+    board in review or complete runs only the intents that a person asked from an open
+    question. The planner and the explore activity both read this rule."""
+    return folded.status == m.ACTIVE or (folded.status in (m.REVIEW, m.COMPLETED)
+                                         and m.is_question_intent(intent_id))
+
+
 def reason_due(folded: Folded, in_flight: bool) -> bool:
     """Whether a reason should run for this board now. See the module rules."""
     if folded.status != m.ACTIVE or in_flight or folded.by_state(m.OPEN):
@@ -263,7 +363,7 @@ def reason_due(folded: Folded, in_flight: bool) -> bool:
     if idle and folded.invalid_reasons:
         return True
     checkpoint = folded.checkpoint or {}
-    seen = {k: checkpoint.get(k, 0) for k in ("facts", "hints", "rejected")}
+    seen = {k: checkpoint.get(k, 0) for k in ("facts", "hints", "rejected", "goals_added")}
     if seen != folded.situation():
         return True
     return idle and bool(checkpoint.get("had_work"))
@@ -291,6 +391,18 @@ def plan(boards: list, folded: dict, in_flight: set, cap: int) -> Actions:
             actions.cancels.extend((board.board_id, i.intent_id) for i in running)
             continue
         if f.status != m.ACTIVE:
+            # A board in review or complete runs only the questions that a person asked.
+            board_used = len(running) + (1 if board.board_id in in_flight else 0)
+            budget_left = f.max_explores - f.explores_used
+            for intent in f.by_state(m.OPEN):
+                if not may_explore(f, intent.intent_id):
+                    continue
+                if used >= cap or board_used >= max(1, board.max_parallel) or budget_left <= 0:
+                    break
+                actions.explores.append(ExploreAction(board.board_id, intent.intent_id, intent.started + 1))
+                used += 1
+                board_used += 1
+                budget_left -= 1
             continue
         if f.explores_used >= f.max_explores and not running:
             actions.reviews.append((board.board_id, "budget"))

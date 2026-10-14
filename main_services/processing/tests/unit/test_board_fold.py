@@ -264,7 +264,7 @@ def test_a_review_without_goals_answers_the_first_goal():
             '{"review": {"from": ["f1.1"], "statement": "s"}}', {"f1.1"}, {"f1.1"}, [], True)["review"]
     ).events, facts(("f1.1", m.SOURCED)))
     assert review.status == m.REVIEW
-    assert review.review_goals == [{"goal": "goal", "from": ["f1.1"], "statement": "s"}]
+    assert review.proposed == {"goal": {"goal": "goal", "from": ["f1.1"], "statement": "s", "reason_no": 1}}
 
 
 def test_a_submitted_fact_is_read_from_the_tool_row():
@@ -345,3 +345,174 @@ def test_a_review_that_names_a_goal_by_its_text_names_that_goal():
                        set(), {"Who wrote?": "goal", "What figures?": "goal-2"})
     assert out["outcome"] == "review"
     assert [g["goal"] for g in out["review"]["goals"]] == ["goal", "goal-2"]
+
+
+def _review(log: Log, r: int, goals=("goal",), facts_seen: int = 1) -> Log:
+    """A reason `r` that proposes an answer from `f1.1` for each goal of `goals`."""
+    answers = [{"goal": g, "from": ["f1.1"], "statement": f"answer of {g}"} for g in goals]
+    return log.reason(r, outcome="review", review={"from": ["f1.1"], "goals": answers},
+                      situation={"facts": facts_seen, "hints": 0, "rejected": 0})
+
+
+def _explored() -> Log:
+    """A board with one sourced fact `f1.1` and no open intent."""
+    log = Log().add(m.BOARD_CREATED).reason(1, n=1)
+    log.add(m.EXPLORE_STARTED, "i1.1", attempt=1)
+    return log.add(m.EXPLORE_CONCLUDED, "i1.1", attempt=1, fact_id="f1.1", kind=m.SOURCED)
+
+
+def _completed() -> Log:
+    """A board with one sourced fact `f1.1` whose review the person accepted."""
+    return _review(_explored(), 2).add(m.REVIEW_ACCEPTED, "x")
+
+
+TWO_GOALS = (("f1.1", m.SOURCED), ("goal-2", m.GOAL))
+
+
+def test_each_goal_answer_is_decided_separately():
+    log = _review(_explored(), 2, goals=("goal", "goal-2"))
+    rows = facts(*TWO_GOALS)
+    f = fold(board(), log.events, rows)
+    assert f.status == m.REVIEW and sorted(f.proposed) == ["goal", "goal-2"]
+    log.add(m.GOAL_ANSWER_ACCEPTED, "goal", reason_no=2, **{"from": ["f1.1"]}, statement="answer of goal")
+    f = fold(board(), log.events, rows)
+    assert f.status == m.REVIEW, "the other answer still waits"
+    assert list(f.accepted) == ["goal"] and list(f.proposed) == ["goal-2"]
+    log.add(m.GOAL_ANSWER_ACCEPTED, "goal-2", reason_no=2)
+    f = fold(board(), log.events, rows)
+    assert f.status == m.COMPLETED and sorted(f.accepted) == ["goal", "goal-2"]
+
+
+def test_a_rejected_answer_continues_the_board_at_once():
+    log = _review(_explored(), 2, goals=("goal", "goal-2"))
+    rows = facts(*TWO_GOALS)
+    before = fold(board(), log.events, rows)
+    log.add(m.GOAL_ANSWER_ACCEPTED, "goal", reason_no=2)
+    log.add(m.GOAL_ANSWER_REJECTED, "c1", goal="goal-2", reason_no=2, correction="wrong year")
+    f = fold(board(), log.events, rows + [FactRow("b1", "c1", m.CORRECTION, "wrong year")])
+    assert f.status == m.ACTIVE and not f.proposed and list(f.accepted) == ["goal"]
+    assert f.max_explores == before.max_explores + m.CORRECTION_EXPLORES
+    assert reason_due(f, in_flight=False), "the correction is new work"
+    assert f.open_goals == ["goal-2"]
+
+
+def test_a_rejection_leaves_the_other_proposed_answers_waiting():
+    log = _review(_explored(), 2, goals=("goal", "goal-2"))
+    log.add(m.GOAL_ANSWER_REJECTED, "c1", goal="goal", reason_no=2, correction="no")
+    f = fold(board(), log.events, facts(*TWO_GOALS))
+    assert f.status == m.ACTIVE and list(f.proposed) == ["goal-2"]
+    log.add(m.GOAL_ANSWER_ACCEPTED, "goal-2", reason_no=2)
+    f = fold(board(), log.events, facts(*TWO_GOALS))
+    assert f.status == m.ACTIVE and list(f.accepted) == ["goal-2"]
+
+
+def test_a_decision_on_a_replaced_answer_does_nothing():
+    log = _review(_explored(), 2)
+    log.add(m.GOAL_ANSWER_REJECTED, "c1", goal="goal", reason_no=2, correction="no")
+    log.add(m.EXPLORE_STARTED, "i1.1", attempt=2)
+    _review(log, 3)
+    log.add(m.GOAL_ANSWER_ACCEPTED, "goal", reason_no=2)
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
+    assert f.status == m.REVIEW and not f.accepted and f.proposed["goal"]["reason_no"] == 3
+
+
+def test_an_accepted_answer_stays_when_a_goal_reopens_the_board():
+    log = _completed()
+    log.add(m.GOAL_ADDED, "goal-2", text="Find the auditor")
+    f = fold(board(), log.events, facts(*TWO_GOALS))
+    assert f.status == m.ACTIVE and list(f.accepted) == ["goal"]
+    assert f.open_goals == ["goal-2"]
+    _review(log, 3, goals=("goal-2",), facts_seen=1)
+    log.add(m.GOAL_ANSWER_ACCEPTED, "goal-2", reason_no=3)
+    f = fold(board(), log.events, facts(*TWO_GOALS))
+    assert f.status == m.COMPLETED and sorted(f.accepted) == ["goal", "goal-2"]
+
+
+def test_a_review_skips_an_accepted_goal_and_the_prompt_marks_it():
+    from tasks.P_board.prompts import render_reason
+
+    log = _review(_explored(), 2, goals=("goal", "goal-2"))
+    log.add(m.GOAL_ANSWER_ACCEPTED, "goal", reason_no=2)
+    log.add(m.GOAL_ANSWER_REJECTED, "c1", goal="goal-2", reason_no=2, correction="no")
+    rows = facts(*TWO_GOALS)
+    f = fold(board(), log.events, rows)
+    prompt = render_reason(board(), f, rows, [], stalled=False)
+    assert "- goal (accepted, closed): g" in prompt
+    assert "A goal marked accepted is closed." in prompt
+    both = json.dumps({"review": {"goals": [{"goal": "goal", "from": ["f1.1"], "statement": "a"},
+                                            {"goal": "goal-2", "from": ["f1.1"], "statement": "b"}]}})
+    out = parse_reason(both, {"f1.1"}, {"f1.1"}, [], True, f.open_goals)
+    assert out["outcome"] == "noop" and any("unknown goal 'goal'" in p for p in out["problems"])
+    one = json.dumps({"review": {"goals": [{"goal": "goal-2", "from": ["f1.1"], "statement": "b"}]}})
+    assert parse_reason(one, {"f1.1"}, {"f1.1"}, [], True, f.open_goals)["outcome"] == "review"
+
+
+def test_an_explored_question_runs_alone_on_a_completed_board():
+    log = _completed()
+    before = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
+    assert before.status == m.COMPLETED and list(before.accepted) == ["goal"]
+    log.add(m.QUESTION_EXPLORED, "i0.1", fact_id="f1.1", index=0, question="Who signed the memo?")
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
+    assert f.status == m.COMPLETED and list(f.accepted) == ["goal"]
+    intent = f.intents["i0.1"]
+    assert (intent.state, intent.from_facts, intent.objective) == (m.OPEN, ["f1.1"], "Who signed the memo?")
+    assert f.max_explores == before.max_explores + m.QUESTION_EXPLORES
+    actions = plan([board()], {"b1": f}, set(), cap=1)
+    assert [e.intent_id for e in actions.explores] == ["i0.1"] and not actions.reasons
+    from tasks.P_board.fold import may_explore
+
+    assert may_explore(f, "i0.1") and not may_explore(f, "i1.1"), "the explore activity reads the same rule"
+    # The same request again, and a subject that is not a question intent, add nothing.
+    log.add(m.QUESTION_EXPLORED, "i0.1", fact_id="f1.1", index=0, question="other text")
+    log.add(m.QUESTION_EXPLORED, "i3.1", fact_id="f1.1", index=1, question="q")
+    again = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
+    assert again.intents["i0.1"].objective == "Who signed the memo?"
+    assert "i3.1" not in again.intents
+    assert again.max_explores == f.max_explores
+    log.add(m.EXPLORE_STARTED, "i0.1", attempt=1)
+    log.add(m.EXPLORE_CONCLUDED, "i0.1", attempt=1, fact_id="f0.1", kind=m.SOURCED)
+    done = fold(board(), log.events, facts(("f1.1", m.SOURCED), ("f0.1", m.SOURCED)))
+    assert done.status == m.COMPLETED and not reason_due(done, in_flight=False)
+    assert not plan([board()], {"b1": done}, set(), cap=1).reasons
+
+
+def test_a_question_waits_on_a_paused_board_and_feeds_an_active_one():
+    log = _explored().add(m.PAUSE_REQUESTED)
+    log.add(m.QUESTION_EXPLORED, "i0.1", fact_id="f1.1", index=0, question="q")
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
+    assert f.status == m.PAUSED and not plan([board()], {"b1": f}, set(), cap=1).explores
+    log.add(m.RESUME_REQUESTED)
+    log.add(m.EXPLORE_STARTED, "i0.1", attempt=1)
+    log.add(m.EXPLORE_CONCLUDED, "i0.1", attempt=1, fact_id="f0.1", kind=m.SOURCED)
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED), ("f0.1", m.SOURCED)))
+    assert f.status == m.ACTIVE and reason_due(f, in_flight=False)
+
+
+def test_a_late_goal_reopens_a_board_and_grows_the_budget_above_the_cap():
+    log = _completed()
+    for k in range(10):
+        log.add(m.FACT_REJECTED, f"f9.{k}", reason="r")
+    capped = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
+    assert capped.max_explores == m.MAX_EXPLORES
+    log.add(m.GOAL_ADDED, "goal-2", text="Find the auditor")
+    log.add(m.GOAL_ADDED, "goal-2", text="Find the auditor")
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
+    assert f.status == m.ACTIVE
+    assert f.max_explores == m.MAX_EXPLORES + m.CORRECTION_EXPLORES, "one goal, counted once"
+    assert f.explore_steps == m.MAX_EXPLORE_STEPS
+    assert reason_due(f, in_flight=False)
+
+
+def test_a_checkpoint_without_goals_added_keeps_a_board_idle():
+    log = Log().add(m.BOARD_CREATED).reason(1, n=1)
+    log.add(m.EXPLORE_STARTED, "i1.1", attempt=1)
+    log.add(m.EXPLORE_CONCLUDED, "i1.1", attempt=1, fact_id="f1.1", kind=m.SOURCED)
+    # A reason written before `goals_added` existed: three keys only.
+    log.reason(2, outcome="noop", idle=False, situation={"facts": 1, "hints": 0, "rejected": 0})
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
+    assert not reason_due(f, in_flight=False) or f.checkpoint.get("had_work")
+    assert f.situation()["goals_added"] == 0
+    seen = {k: f.checkpoint.get(k, 0) for k in ("facts", "hints", "rejected", "goals_added")}
+    assert seen == f.situation()
+    log.add(m.GOAL_ADDED, "goal-2", text="g2")
+    assert reason_due(fold(board(), log.events, facts(("f1.1", m.SOURCED))), in_flight=False)

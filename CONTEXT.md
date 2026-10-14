@@ -5,6 +5,17 @@ for one sense. Read it before you write a term that already has an entry.
 
 ## Language
 
+**Assessment**:
+In investigation boards, an assessment is the model call that reads a board and declares new
+intents or proposes the review. The code, the stored events and the actor name call it a
+reason (`board_reason`, `reason_result`). It is distinct from the reasoning (thinking) of a
+model in a chat turn.
+
+**Background context**:
+In investigation boards, the background context is the board fact of kind `origin`: the
+collections and the context text written at creation. The page calls it background context,
+and the code and the stored fact kind call it origin.
+
 **Corpus**:
 In architecture and pipeline documentation, an informal name for a body of ingested or
 searchable data, never an administrative unit and never an identifier. In the website's
@@ -39,6 +50,12 @@ frontend area. A text page is the unit of parsed text the pipeline writes, one p
 extractor variant, in the pipeline and storage area. A result page is one page of search
 results, bounded by the reachability ceiling, in the search area. Page cache is reclaimable
 operating-system memory, in the operations area.
+
+**Open question**:
+In investigation boards, an open question is a question that an explore fact leaves for the
+board (`open_questions`). It has no graph node. A person can start its explore from the fact
+pane. An intent in the state `question` is
+a different thing: its explore asked the person a question, and a hint answers it.
 
 **Pass**:
 An escaping pass is one full scan of text being quoted for a query, in the search

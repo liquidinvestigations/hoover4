@@ -168,7 +168,7 @@ pub fn AiBoardCreatePage() -> Element {
                                     error_msg.set(None);
                                     match create_board(request).await {
                                         Ok(board_id) => {
-                                            navigator().push(Route::AiBoardPage { board_id, selected: String::new(), zoom: String::new() });
+                                            navigator().push(Route::ai_board(board_id, String::new()));
                                         }
                                         Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                     }

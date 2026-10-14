@@ -152,11 +152,11 @@ main_services/verify-stack.sh
 
 The run prints a `NOTE - hoover4.ini drift` line naming the two fingerprints.
 
-### `supports_tools` is never populated, so a profile cannot filter for tool-capable models
+### `supports_tools` is never populated, so the catalog cannot show tool-capable models
 
 `llm_models` declares `supports_tools` with a default of 0, and the writer that fills the
-table never sets the column. A profile's model picker cannot check whether a model chosen for
-it can call tools at all.
+table never sets the column. The "tools" flag of the catalog on `/admin/llm` therefore never
+shows, also for a model that calls tools.
 
 ```
 grep -n "supports_tools" main_services/processing/database/db_global_migrations/00018_llm_models.sql main_services/processing/tasks/llm_catalog.py

@@ -4,21 +4,21 @@ use common::chat_gate::ChatGate;
 use common::chat_types::{
     rate_limited_seconds, ChatMessageItem, ChatOptions, ChatRole, ChatSessionDetail,
 };
-use common::llm_types::ChatModelChoice;
 use common::search_query::SearchQuery;
 use common::search_result::{DocumentIdentifier, SearchResultDocuments, SearchResultHitCount};
 use dioxus::prelude::*;
 
-use crate::api::admin_api::{chat_list_models, chat_llm_configured};
+use crate::api::admin_api::chat_llm_configured;
 use crate::api::chat_api::{
     chat_dismiss_interrupted, chat_get_session, chat_poll, chat_send_message,
     chat_stop,
 };
 use crate::components::chat_components::{
-    ChatActivity, ChatComposer, ChatGateOverlay, ChatTranscript, ConversationFindBar, LockedInternetFlag, ModelSelector,
+    ChatActivity, ChatComposer, ChatGateOverlay, ChatTranscript, ConversationFindBar, LockedInternetFlag,
 };
 use crate::components::chat_components::doc_ref_card::{ChatDocOpen, ChatScrolledToSelection};
 use crate::components::chat_components::web_page::{ChatWebOpen, WebPagePreview};
+use crate::components::chat_components::tool_cards::result_cards::ChatBoard;
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
 use crate::components::suspend_boundary::SuspendWrapper;
@@ -197,6 +197,10 @@ fn AiChatSessionRoot(
     let scrolled_for = use_signal(|| None::<String>);
     use_context_provider(move || ChatScrolledToSelection { session_id, scrolled_for });
 
+    // The board of a board explore chat, for the answer card at its end. A memo of the
+    // session id, because the router reuses this component across chats.
+    let board_of_chat = use_memo(move || common::board_types::board_of_session(&session_id.read()));
+    use_context_provider(move || ChatBoard(board_of_chat));
     use_context_provider(move || ChatWebOpen {
         open: Callback::new(move |(artifact_id, find): (String, String)| {
             let mut state = DocViewerState::from_find_query(find);
@@ -211,12 +215,10 @@ fn AiChatSessionRoot(
     // it.
     let messages = use_signal(Vec::<ChatMessageItem>::new);
 
-    // The model list and whether an LLM is configured do not change when the user
-    // switches conversations. They live here rather than inside `ChatConversationPanel`,
-    // which is unmounted and remounted on every switch (see the comment beside the
-    // loading gate below). A resource declared inside the panel would re-run on every
-    // remount for no reason.
-    let models_res = use_resource(chat_list_models);
+    // Whether an LLM is configured does not change when the user switches conversations.
+    // It lives here rather than inside `ChatConversationPanel`, which is unmounted and
+    // remounted on every switch (see the comment beside the loading gate below). A
+    // resource declared inside the panel would re-run on every remount for no reason.
     let configured_res = use_resource(chat_llm_configured);
     let gate = use_memo(move || {
         match configured_res.read().as_ref() {
@@ -224,14 +226,6 @@ fn AiChatSessionRoot(
             Some(Ok(g)) => Some(*g),
             Some(Err(_)) => Some(ChatGate::from_server_result::<()>(Err(()))),
         }
-    });
-    let choices = use_memo(move || {
-        models_res
-            .read()
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
-            .cloned()
-            .unwrap_or_default()
     });
 
     let preview_query = use_memo(move || {
@@ -283,7 +277,7 @@ fn AiChatSessionRoot(
         div {
             style: "height: 100%; width: 100%; display: flex; flex-direction: row; \
                     background: #F5F6F8; overflow: hidden;",
-            ChatConversationPanel { session_id, detail, messages, gate, choices }
+            ChatConversationPanel { session_id, detail, messages, gate }
             // The web page and document panes share one divider and one remembered width.
             if let Some(artifact_id) = doc_viewer_state.read().as_ref().and_then(|state| state.web_artifact_id.clone()) {
                 ChatSidePane {
@@ -322,11 +316,9 @@ fn ChatConversationPanel(
     detail: ChatSessionDetail,
     mut messages: Signal<Vec<ChatMessageItem>>,
     gate: Memo<Option<ChatGate>>,
-    choices: Memo<Vec<ChatModelChoice>>,
 ) -> Element {
     let mut draft = use_signal(String::new);
     let mut options = use_signal(ChatOptions::default);
-    let mut selected_model = use_signal(String::new);
     let mut sending = use_signal(|| false);
     let mut error = use_signal(|| None::<String>);
     let mut retry_after = use_signal(|| None::<u64>);
@@ -347,29 +339,8 @@ fn ChatConversationPanel(
     // Incremented to retire a running poll loop (a second send, leaving the page).
     let mut poll_gen = use_signal(|| 0_u64);
 
-    // In an effect, not in the render body. A signal written during render schedules a
-    // render from inside one. `choices` is read through the `Memo` prop, never a value
-    // already unwrapped by the caller. That is what lets this effect re-run when the
-    // parent's model list resolves after this panel has already rendered once.
-    use_effect(move || {
-        let choices = choices.read().clone();
-        // Read, not peeked: this effect must re-run when the value is *cleared*, which
-        // is how a conversation switch asks for a fresh default. The write below then
-        // re-runs it once more and it returns immediately.
-        if !selected_model.read().is_empty() {
-            return;
-        }
-        if let Some(def) = choices.iter().find(|c| c.is_default) {
-            selected_model.set(def.model_id.clone());
-        } else if let Some(first) = choices.first() {
-            selected_model.set(first.model_id.clone());
-        }
-    });
-
     let gate_now = *gate.read();
     let gate_open = gate_now == Some(ChatGate::Open);
-    let choices = choices.read().clone();
-    let show_models = !choices.is_empty();
 
     if *loaded_for.read() != detail.session.session_id {
         messages.set(detail.messages.clone());
@@ -540,9 +511,6 @@ fn ChatConversationPanel(
         draft.set(String::new());
         error.set(None);
         retry_after.set(None);
-        // Cleared rather than kept: it re-seeds from the model list on the next render,
-        // and the model in force is a property of the conversation being read.
-        selected_model.set(String::new());
         find_query.set(String::new());
         match_index.set(0);
         match_count.set(0);
@@ -557,7 +525,6 @@ fn ChatConversationPanel(
             return;
         }
         let opts = *options.read();
-        let model = selected_model.read().clone();
         let id = session_id.read().clone();
         draft.set(String::new());
         poll_resumed.set(true);
@@ -569,8 +536,7 @@ fn ChatConversationPanel(
         stream_turn.set(None);
         spawn(async move {
             {
-                let model_id = if model.is_empty() { None } else { Some(model) };
-                match chat_send_message(id, text, opts, model_id).await {
+                match chat_send_message(id, text, opts).await {
                     Ok(result) => {
                         if let Some(secs) = result.retry_after_seconds {
                             retry_after.set(Some(secs));
@@ -661,6 +627,8 @@ fn ChatConversationPanel(
                 query: find_query,
                 match_index,
                 match_count,
+                board: common::board_types::board_of_session(&session_id.read())
+                    .map(|(board_id, intent_id)| Route::ai_board(board_id, intent_id)),
             }
             ChatTranscript {
                 messages: messages.read().clone(),
@@ -705,15 +673,6 @@ fn ChatConversationPanel(
                 }
             }
             div { style: "padding: 12px 14px; flex-shrink: 0; position: relative;",
-                if show_models {
-                    div { style: "margin-bottom: 8px;",
-                        ModelSelector {
-                            choices: choices.clone(),
-                            selected: selected_model,
-                            disabled: *sending.read() || !gate_open,
-                        }
-                    }
-                }
                 ChatComposer {
                     draft,
                     options,

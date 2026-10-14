@@ -244,14 +244,13 @@ pub fn intersect_collections(requested: &[String], permitted: &[String]) -> Vec<
 /// that the frozen values on the session win, so a client that forgets to send them
 /// (or forges them) cannot change which agent a thread is talking to mid-way.
 ///
-/// The model is resolved **here**, where the caller's identity is known: a forged id has
-/// to be refused where the user is, not in a worker that cannot check it.
+/// The model of the turn is the agent model of `hoover4.ini` (`admin::llm::agent_model`).
+/// A person does not choose it.
 pub async fn send_message(
     user: &CurrentUser,
     session_id: String,
     message: String,
     requested_options: ChatOptions,
-    requested_model: Option<String>,
 ) -> anyhow::Result<ChatSendResult> {
     gate::require_chat_open().await?;
     let username = user.username.as_str();
@@ -280,21 +279,9 @@ pub async fn send_message(
         .await?
         .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
 
-    // Which profile this turn runs as decides which model setting applies to it, so the
-    // session is read first. Frozen options win where they exist; before the first turn
-    // nothing is frozen and what the client asked for is what will be frozen.
-    let turn_options = if session.options().locked {
-        session.options()
-    } else {
-        requested_options
-    };
-    // Resolve the model before allocating a seq: a forged id must be refused, not merely
-    // absent from the dropdown.
-    let llm_model = crate::api::admin::llm::resolve_chat_model(
-        requested_model.as_deref(),
-        crate::api::admin::llm::ChatProfile::of(turn_options),
-    )
-    .await?;
+    // Resolve the model before allocating a seq, so a deployment without a model refuses
+    // the turn before anything is written.
+    let llm_model = crate::api::admin::llm::chat_turn_model()?;
 
     // Live permissions win over whatever the session was created with.
     let permitted = list_permitted_collections(user).await?;

@@ -819,19 +819,26 @@ fn answer_replaced(messages: &[ChatMessageItem], index: usize) -> bool {
             .any(|m| m.role == ChatRole::Assistant && !m.content.trim().is_empty())
 }
 
-/// A user message: at most 3 lines, cut with an ellipsis by CSS, and a "Show More..." button
-/// that shows the whole message. The button shows only when the text is longer than 3 lines.
+/// A user message: at most 3 lines, cut with an ellipsis by CSS, and a "Show" toggle in its
+/// top-right corner that shows the whole message. The toggle says "Hide" while the message is
+/// whole, and a click cuts it to 3 lines again. The toggle shows only when the cut text is
+/// longer than 3 lines.
 ///
 /// The text block has no padding, so its scroll height and its rectangle compare the text
-/// alone. The block is measured when it mounts and again when it changes size, for example
-/// when a side pane opens. A message that holds the active find match shows open, without a
-/// write to a signal during the render.
+/// alone. The block is measured only while it is cut: when it mounts cut, and when it changes
+/// size while cut, for example when a side pane opens. An open block keeps the last result,
+/// so an open message keeps its toggle. A message that holds the active find match shows open,
+/// without a write to a signal during the render, and is measured as cut when it first mounts.
 #[component]
 fn UserMessage(seq: u32, content: String, highlight: bool, ring: String) -> Element {
     let mut expanded = use_signal(|| false);
     let mut overflows = use_signal(|| false);
     let mut mounted = use_signal(|| None::<std::rc::Rc<MountedData>>);
-    let measure = move || {
+    let open = expanded() || highlight;
+    let measure = move |cut: bool| {
+        if !cut {
+            return;
+        }
         let Some(block) = mounted.peek().clone() else { return };
         spawn(async move {
             if let (Ok(scroll), Ok(rect)) = (block.get_scroll_size().await, block.get_client_rect().await) {
@@ -842,28 +849,32 @@ fn UserMessage(seq: u32, content: String, highlight: bool, ring: String) -> Elem
             }
         });
     };
-    let open = expanded() || highlight;
     let text_class = if open { "x-chat-user-text" } else { "x-chat-user-text x-chat-user-text-clamped" };
+    // A message that a find match opened has not been measured cut. Its length decides then.
+    let long = overflows() || (open && content.lines().count() > 3);
+    let label = if open { "Hide" } else { "Show" };
+    let padding = if long { "padding: 10px 64px 10px 14px;" } else { "padding: 10px 14px;" };
     rsx! {
         div {
             "data-chat-user": "{seq}",
-            style: "align-self: flex-end; background: #4096FF; color: white; max-width: 78%; \
-                    padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; \
+            style: "align-self: flex-end; position: relative; background: #4096FF; color: white; max-width: 78%; \
+                    {padding} border-radius: 14px; white-space: pre-wrap; \
                     word-break: break-word; line-height: 1.55; {ring}",
             div {
                 class: "{text_class}",
                 onmounted: move |e: MountedEvent| {
                     mounted.set(Some(e.data()));
-                    measure();
+                    measure(!open);
                 },
-                onresize: move |_| measure(),
+                onresize: move |_| measure(!open),
                 "{content}"
             }
-            if !open && overflows() {
+            if long {
                 button {
-                    class: "x-chat-user-more",
-                    onclick: move |_| expanded.set(true),
-                    "Show More..."
+                    class: "x-chat-user-toggle",
+                    "aria-expanded": "{open}",
+                    onclick: move |_| expanded.set(!open),
+                    "{label}"
                 }
             }
         }

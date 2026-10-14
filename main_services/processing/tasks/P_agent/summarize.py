@@ -172,23 +172,15 @@ def _api_key() -> str:
 
 
 def _model() -> str:
-    """The configured summarisation model, or the chat model, or nothing.
+    """The short-call model of `hoover4.ini` (`LLM_MODEL`), or nothing.
 
     Nothing disables the summariser: the provisional title is a correct answer to "what
     is this conversation called", and inventing a model id here would send the call to
     whatever the endpoint defaults to.
     """
-    try:
-        from database.clickhouse import get_server_setting
+    from tasks.llm_endpoints import short_model
 
-        from tasks.llm_catalog import SETTING_SUMMARIZATION_MODEL
-
-        configured = (get_server_setting(SETTING_SUMMARIZATION_MODEL) or "").strip()
-        if configured:
-            return configured
-    except Exception:  # noqa: BLE001 - a settings read must not cost the turn anything
-        log.warning("[P_agent] could not read the summarisation model", exc_info=True)
-    return (os.getenv("LLM_MODEL") or "").strip()
+    return short_model()
 
 
 def _post(endpoint, body: dict):

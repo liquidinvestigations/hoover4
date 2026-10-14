@@ -406,6 +406,12 @@ With this option off, the assistant reads the selected collections.
 The option stays fixed after the first message.
 Start a new conversation to change it.
 
+You do not choose a model. The deployment configuration sets the model of every chat.
+
+A long message of yours shows its first three lines. **Show** in its top-right corner shows the
+whole message, and **Hide** cuts it to three lines again. **Search in conversation** finds
+text in the messages of the conversation, and its arrows move between the matches.
+
 ### While it works
 
 The assistant announces each tool it uses as it goes (`list_collections`,
@@ -441,6 +447,70 @@ earlier attempts also failed.
 transcript.
 
 ![Chat history](img/chat-history.png)
+
+### Investigation boards
+
+An investigation board works on one or more goals over your collections for a long time,
+without you in the conversation. The board splits the goals into intents, explores each intent
+in a chat of its own, and writes each finding as a fact with its sources. The boards show on
+the right of the AI chat page, each with its title, its status, a small picture of its graph
+and a short summary.
+
+**Create a board.** **New board** asks for a title, one to six goals, the background context
+(what the board should know before it starts), the collections and first hints. The collections
+cannot change later.
+
+**Read the graph.** The board page shows a graph on the left and the selected card on the
+right. The graph reads from the background context on the left to the goals on the right. Each
+card names its type in its lower-left corner and its status in its lower-right corner:
+
+| Card | What it is |
+|---|---|
+| background | The collections and the background context of the board. White with a black border. |
+| goal-01, goal-02 | A goal. Blue. It says answered when you accepted its answer, and answer proposed while an answer waits for you. |
+| intent | A direction that the board explores, with its state: open, running, concluded, failed, question or cancelled. |
+| fact | A finding: sourced (a document supports it), inferred, or not found. |
+| correction | Your correction of a rejected answer or review. |
+
+Drag the graph to move it, and use **-** and **+** in its lower-right corner to zoom out and in.
+Click a card to see it in full on the right. The address of the page names the selected card,
+so you can send it as a link. **Show the board overview** over the top-right corner of the
+graph returns to the overview.
+
+**Work with a card.** A fact shows its text with its source cards. A source card opens the
+explore chat of the fact in a new tab, with that document open. **Open the explore chat**, at
+the right of the title, opens the whole chat. A fact lists its open questions, each in its own
+card. **Explore this question**, in the corner of the card, asks the board to explore it at
+once. The board keeps its status: on a complete board only that explore runs. The card then
+links to the intent that explores it. Write why a fact is wrong and click **Reject fact**, or
+**Reject correction** on a correction. The board stops using it. The intent that made the fact
+stays.
+
+**Steer the board.** In the overview:
+
+- **Add goal** adds a goal at any time, also after the board is complete. The board then works
+  on the new goal.
+- **Add hint** gives the next assessment a hint. A hint also answers an explore that asked you
+  a question.
+- When an assessment finds an answer for every open goal, the board waits for your review. Each
+  goal shows its proposed answer, in the overview and when you select the goal. **Accept
+  answer** keeps the answer, also when later work starts the board again. Write why an answer
+  is wrong and click **Reject answer**: the board continues at once with your correction, and
+  the other answers wait for you. When every goal has an accepted answer, the board is
+  complete. **Finish the board** accepts every proposed answer and stops the board.
+  **Continue with a correction** gives it your correction, and it continues.
+- **Settings** turns the internet tools on or off for later explores, pauses and resumes the
+  board, and drops it.
+
+**Follow the work.** The **Events** table lists every action, newest first. Your own actions
+show your name in bold. The last column links to the explore chat of the row (**Open**, in a new
+tab), or to the card that the row names. An assessment is the step that reads the board and
+decides the next intents or proposes the review. **Show details** on an assessment row shows
+its prompt and its response. **Statistics** under the events counts the explores, the
+assessments, the intents and the facts.
+
+A board chat has an **Investigation Board** link at the right of its search row, and the
+pink card at its end opens the board with that chat's fact selected.
 
 ---
 
@@ -539,7 +609,8 @@ Groups work the same way, and a group's page is where **collection access** is g
 ### Settings
 
 This page holds the server settings you can change without a redeploy: chat artifact
-retention, the default chat and summarisation models, and the session lifetime. Below
+retention, the chat switch, the board work limit and the session lifetime. The models are not
+here: `hoover4.ini` sets them. Below
 them sits the deployment configuration that is read-only because it comes from
 `hoover4.ini`.
 
@@ -548,8 +619,9 @@ them sits the deployment configuration that is read-only because it comes from
 ### LLM
 
 The provider table with its model count, when the catalogue was last refreshed and whether it
-is stale, a **Refresh catalog** button, the default chat and summarisation models, and the
-allow-list of every model the provider offers with usage counts.
+is stale, and a **Refresh catalog** button. **Models** shows, read only, the model of agent
+turns and the model of titles, summaries and board work, which `hoover4.ini` sets, and the
+**Thinking** switch. **Catalog** lists every model the provider offers with usage counts.
 
 ![Admin, LLM](img/admin-llm.png)
 

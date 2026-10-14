@@ -1,11 +1,8 @@
 """Discover LLM models from each provider and store them in `llm_models`.
 
-Why discovery instead of a constant
------------------------------------
-NIM retires model ids. A hardcoded one turns into a 404 months after the code was
-written, in a code path nobody exercises until a user opens the chat. So the chat and
-summarisation models are *matched by pattern* against the live `/v1/models` list and the
-result is written into `server_settings`, where an admin can see and change it.
+The catalog lists what each provider serves, with context windows and capability flags,
+for the admin LLM page and for the context-window lookup of chat turns. It chooses no
+model: `hoover4.ini` names the models (`tasks/llm_endpoints.py`).
 
 Refresh discipline
 ------------------
@@ -28,7 +25,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 log = logging.getLogger(__name__)
 
@@ -37,30 +34,6 @@ log = logging.getLogger(__name__)
 #: a couple of seconds per refresh.
 CONNECT_TIMEOUT = 3.0
 READ_TIMEOUT = float(os.getenv("LLM_CATALOG_READ_TIMEOUT_SECONDS", "5"))
-
-#: Preference order for the chat model. Matched as regexes, case-insensitively, against
-#: the ids the account actually returns, never used as ids themselves.
-#:
-#: Nemotron Super before Ultra deliberately: measured against this account, Super
-#: answers a tool-calling smoke test in 1.4 s and Ultra in 7.3 s for the same tool call.
-#: Ultra stays as the fallback pattern because Super is the one more likely to be
-#: retired first.
-CHAT_MODEL_PATTERNS = (
-    r"nemotron.*super",
-    r"nemotron.*ultra",
-    r"nemotron.*\d+b",
-)
-
-#: Summarisation runs in the background on every conversation, so it prefers something
-#: small. A nano/mini Nemotron first, then whatever the chat model turned out to be.
-SUMMARIZATION_MODEL_PATTERNS = (
-    r"nemotron.*nano",
-    r"nemotron.*mini",
-    r"nemotron.*super",
-)
-
-SETTING_CHAT_MODEL = "llm_default_chat_model"
-SETTING_SUMMARIZATION_MODEL = "llm_summarization_model"
 
 _refresh_lock = threading.Lock()
 
@@ -198,21 +171,6 @@ def _context_window(entry: dict) -> int:
     return 0
 
 
-def pick_model(model_ids: List[str], patterns) -> Optional[str]:
-    """First id matching the first pattern that matches anything.
-
-    Patterns are tried in order and the *shortest* matching id wins within a pattern,
-    which reliably prefers `nemotron-3-super-120b-a12b` over a dated or suffixed variant
-    of the same family without hardcoding either.
-    """
-    for pattern in patterns:
-        rx = re.compile(pattern, re.IGNORECASE)
-        matches = sorted((m for m in model_ids if rx.search(m)), key=lambda m: (len(m), m))
-        if matches:
-            return matches[0]
-    return None
-
-
 def _is_reasoning(model_id: str) -> bool:
     """Nemotron emits reasoning content that must be stripped from the answer body.
 
@@ -299,8 +257,8 @@ def set_server_setting(key: str, value: str) -> None:
         }))
 
 
-def refresh_catalog(*, choose_defaults: bool = True) -> List[RefreshResult]:
-    """Refresh every configured provider and, optionally, pick the default models.
+def refresh_catalog() -> List[RefreshResult]:
+    """Refresh every configured provider.
 
     Single-flight: a second concurrent caller returns immediately with an empty list
     rather than duplicating the round of requests.
@@ -310,31 +268,18 @@ def refresh_catalog(*, choose_defaults: bool = True) -> List[RefreshResult]:
         return []
     try:
         results = []
-        all_ids: List[str] = []
         for provider in providers_from_env():
             started = time.time()
             result = fetch_models(provider)
             elapsed_ms = int((time.time() - started) * 1000)
             if result.ok:
                 store_models(result, provider.base_url)
-                all_ids.extend(result.models)
                 log.info("provider %s: %d models in %d ms",
                          result.provider, result.model_count, elapsed_ms)
             else:
                 log.warning("provider %s failed in %d ms: %s",
                             result.provider, elapsed_ms, result.error)
             results.append(result)
-
-        if choose_defaults and all_ids:
-            chat = pick_model(all_ids, CHAT_MODEL_PATTERNS)
-            summary = pick_model(all_ids, SUMMARIZATION_MODEL_PATTERNS) or chat
-            if chat:
-                set_server_setting(SETTING_CHAT_MODEL, chat)
-                log.info("chat model: %s", chat)
-            if summary:
-                set_server_setting(SETTING_SUMMARIZATION_MODEL, summary)
-                log.info("summarisation model: %s", summary)
-
         return results
     finally:
         _refresh_lock.release()

@@ -18,7 +18,7 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `tool_run_summary.rs` | The summary line of a run of consecutive tool rows, see below. |
 | `tool_disclosure.rs` | The **generic** card, and the deliberate fallback: type chip + prose summary, Expand to labelled fields, then a second toggle for raw JSON. |
 | `doc_ref_card.rs` | Wraps the shared [`SearchResultItemCard`](../search_components/search_result_item_card.rs) for a `ChatDocRef`. Renders `display_snippet()`, not the raw snippet, see below. |
-| `conversation_find.rs` | "Search in conversation" bar (0/N + up/down), mirroring the document find box chrome. |
+| `conversation_find.rs` | "Search in conversation" bar (an input of at most 350 px, then 0/N and up/down), mirroring the document find box chrome. In a board explore chat it ends with an "Investigation Board" link to the board. |
 | `markdown_text.rs` | Markdown → Dioxus nodes for assistant turns. |
 
 The transcript and persisted answer nodes expose stable attributes for browser history verification.
@@ -34,7 +34,7 @@ Preview find accounts for the display scale when scrolling a match into view.
 Three generated follow-up buttons fill the composer without submitting.
 The buttons share one row inside a card headed "Suggested next...", beside a small question icon.
 Send uses the shared navigation arrow button, including its disabled state and tooltip.
-A user message (`UserMessage` in `transcript.rs`) shows three lines and a "Show More..." button when its text is longer.
+A user message (`UserMessage` in `transcript.rs`) shows three lines and a "Show" toggle in its top-right corner when its text is longer. The toggle says "Hide" while the message is whole. The answer card at the end of a board explore chat (`BoardFactSummary`) is a link to the board with the turn's fact selected, from the `ChatBoard` context of the session page.
 It measures the text on mount and on resize, and opens when it holds the active conversation find match.
 A doc card scrolls to the middle of the transcript once per session when it is the selected card at page load.
 The shared result card has a pointer cursor and a hover background, except when `data-selected` is `true`.

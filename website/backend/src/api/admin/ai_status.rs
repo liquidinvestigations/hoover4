@@ -276,9 +276,7 @@ pub async fn admin_get_ai_status(user: &CurrentUser) -> anyhow::Result<AdminAiSt
 
     // LLM
     let llm_base = std::env::var("LLM_BASE_URL").unwrap_or_default();
-    let llm_model = settings::get_setting("llm_default_chat_model")
-        .await?
-        .unwrap_or_else(|| std::env::var("LLM_MODEL").unwrap_or_default());
+    let llm_model = crate::api::admin::llm::agent_model();
     let llm_ok = if llm_base.is_empty() {
         false
     } else {
