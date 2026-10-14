@@ -21,7 +21,7 @@ use crate::routes::Route;
 type ReportState<T> = Option<Result<(Vec<T>, String), String>>;
 
 /// Format Unix milliseconds as `YYYY-MM-DD HH:MM:SS UTC`.
-fn format_utc_ms(ms: i64) -> String {
+pub fn format_utc_ms(ms: i64) -> String {
     let secs = ms.div_euclid(1000);
     let days = secs.div_euclid(86_400);
     let rem = secs.rem_euclid(86_400);

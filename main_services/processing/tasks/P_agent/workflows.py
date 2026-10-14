@@ -157,8 +157,9 @@ class AgentRun:
     because they drive one browser. The other calls run at once beside both chains. A reply
     with calls gives the next calls. A reply with no call ends the round.
 
-    **The limits.** When the model steps of the thread reach `RUN_MODEL_STEPS`, across
-    continue-as-new and continuations, the run makes no further model call.
+    **The limits.** When the model steps of the thread reach `RUN_MODEL_STEPS`, or the
+    smaller `max_model_steps` of the input, across continue-as-new and continuations, the run
+    makes no further model call.
     `write_incomplete` writes a result from the stored thread, with `end_reason`
     `step_budget`. The first reply of a thread with no text and no call gets
     `steps.EMPTY_REPLY_TEXT`, which is the stored retry marker, and one more model step. A
@@ -230,7 +231,7 @@ class AgentRun:
         # Outside the try: a failure below cannot rewrite the state of this run.
         if summary.outcome == "closed":
             return "closed"
-        if not summary.end_reason:
+        if not summary.end_reason and not inp.board_turn:
             try:
                 await workflow.execute_activity(
                     write_followups,
@@ -249,8 +250,15 @@ class AgentRun:
                     raise
                 workflow.logger.warning("could not generate follow-up suggestions for %s", inp.session_id)
         await self._finish(inp, "completed")
-        await self._summarize_if_first_turn(inp)
+        if not inp.board_turn:
+            await self._summarize_if_first_turn(inp)
         return "completed"
+
+    @staticmethod
+    def _limit(inp: AgentRunInput) -> int:
+        """The model steps of this run: its own budget when it has one, else
+        `RUN_MODEL_STEPS`."""
+        return min(inp.max_model_steps, RUN_MODEL_STEPS) if inp.max_model_steps > 0 else RUN_MODEL_STEPS
 
     @staticmethod
     def _ref_fields(inp: AgentRunInput) -> dict:
@@ -290,7 +298,7 @@ class AgentRun:
             if (self._steps_here >= CONTINUE_AS_NEW_STEPS
                     or workflow.info().get_current_history_length() > HISTORY_EVENTS_PER_RUN):
                 workflow.continue_as_new(inp)
-            if self._steps >= RUN_MODEL_STEPS:
+            if self._steps >= self._limit(inp):
                 # The stored results of the last calls stay. No model call follows.
                 return await self._incomplete(inp, STEP_BUDGET)
             result = await self._model_step(inp, opened)
@@ -316,7 +324,7 @@ class AgentRun:
             control_event,
             ControlParams(**self._ref_fields(inp), hook=hook, anchor_idx=anchor_idx,
                           deadline_seconds=seconds, draft_kind=draft_kind,
-                          model_limit_reached=self._steps >= RUN_MODEL_STEPS),
+                          model_limit_reached=self._steps >= self._limit(inp)),
             start_to_close_timeout=timedelta(seconds=seconds + HOOK_MARGIN_SECONDS),
             heartbeat_timeout=timedelta(seconds=CONTROL_HEARTBEAT_SECONDS * 5),
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
@@ -331,7 +339,7 @@ class AgentRun:
         `write_incomplete` writes from the stored thread, and no model call."""
         next_seq = await workflow.execute_activity(
             write_incomplete,
-            IncompleteParams(**self._ref_fields(inp), reason=reason, limit=RUN_MODEL_STEPS),
+            IncompleteParams(**self._ref_fields(inp), reason=reason, limit=self._limit(inp)),
             start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
             task_queue=CHAT_TASK_QUEUE,

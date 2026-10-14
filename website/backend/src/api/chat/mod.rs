@@ -253,6 +253,11 @@ pub async fn send_message(
 ) -> anyhow::Result<ChatSendResult> {
     gate::require_chat_open().await?;
     let username = user.username.as_str();
+    // An investigation board owns its explore sessions and is their only writer. A person's
+    // message there would race the board's seq allocation.
+    if common::board_types::is_board_session(&session_id) {
+        anyhow::bail!("this conversation belongs to an investigation board and is read-only");
+    }
 
     if let Err(e) = check_and_record(username, RateLimitKind::ChatMessage) {
         return Ok(ChatSendResult {
@@ -1096,7 +1101,7 @@ async fn start_agent_workflow(start: AgentWorkflowStart<'_>) -> anyhow::Result<S
 
 /// Request cancellation of one workflow. `false` means Temporal has never heard of it,
 /// which is the ordinary outcome of stopping a turn that has already finished.
-async fn cancel_workflow(workflow_id: &str) -> anyhow::Result<bool> {
+pub(crate) async fn cancel_workflow(workflow_id: &str) -> anyhow::Result<bool> {
     let url = format!(
         "{}/api/v1/namespaces/default/workflows/{workflow_id}/cancel",
         temporal_base_url()

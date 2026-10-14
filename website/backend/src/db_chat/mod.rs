@@ -225,9 +225,11 @@ pub async fn list_sessions(username: &str, limit: u32) -> anyhow::Result<Vec<Cha
     let rows = client
         .query(&format!(
             "{SESSION_SELECT} WHERE username = ? AND is_deleted = 0 \
-             ORDER BY updated_at DESC LIMIT ?"
+             AND NOT startsWith(session_id, ?) ORDER BY updated_at DESC LIMIT ?"
         ))
         .bind(username)
+        // Explore sessions of investigation boards: the board explorer links to them.
+        .bind(common::board_types::BOARD_SESSION_PREFIX)
         .bind(limit)
         .fetch_all::<ChatSessionRow>()
         .await?;

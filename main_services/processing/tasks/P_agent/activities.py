@@ -343,6 +343,12 @@ class AgentRunInput:
     llm_model: str = ""
     #: The conversation's frozen switch. It selects the agent service.
     internet_tools: bool = False
+    #: The model steps this run may take, 0 for `RUN_MODEL_STEPS`. A board explore sets
+    #: its own, smaller budget.
+    max_model_steps: int = 0
+    #: True for a board explore or conclude turn. Such a run writes no follow-up
+    #: suggestions and no session title, because nobody reads them.
+    board_turn: bool = False
 
     def __post_init__(self):
         if self.allowed_collections is None:

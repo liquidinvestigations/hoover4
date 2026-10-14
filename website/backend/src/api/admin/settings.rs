@@ -23,6 +23,9 @@ const KNOWN_SETTINGS: &[(&str, &str)] = &[
     ("session_expiration_seconds", "604800"),
     ("chat_artifact_ttl_days", "30"),
     (common::chat_gate::CHAT_ENABLED_SETTING, "true"),
+    // Read by `tasks/P_board/activities.py::_cap`: the board model work of all boards
+    // together, explores and reasons. Default 1.
+    ("board_max_parallel_explores", "1"),
 ];
 
 /// Deployment configuration the page shows but cannot change: these come from

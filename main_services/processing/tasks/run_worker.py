@@ -809,6 +809,9 @@ async def run_chat_worker():
   `chat-model-queue` carries `model_step` and follow-up generation.
   `agent-tool-queue` carries `tool_call` for every run. A slot is one model call or one
   tool call in flight, not one agent run.
+  `board-queue` carries the investigation board dispatcher, the `BoardExplore` workflows and
+  their short activities. A board's reason call runs on `chat-model-queue` and its explore
+  turns are `AgentRun`, so board model work counts against the same model slots as chat.
 
   The three queues are not the ingestion queue. An ingestion backlog delaying a person
   waiting at a screen is the failure a shared queue guarantees, and these four make it
@@ -837,6 +840,11 @@ async def run_chat_worker():
       CHAT_TASK_QUEUE,
       AgentRun,
   )
+  from .P_board.activities import (
+      board_plan, board_reason, conclude_explore, open_explore_turn, record_explore_end,
+  )
+  from .P_board.model import BOARD_TASK_QUEUE, DISPATCHER_WORKFLOW_ID
+  from .P_board.workflows import BoardDispatcher, BoardExplore
   from .visibility import ensure_search_attributes
   log.info("Starting Chat worker...")
   # A missing or invalid policy handler stops the worker here, before it takes a turn.
@@ -847,7 +855,7 @@ async def run_chat_worker():
   model_slots = worker_concurrency("chat_model", 3)
   low_latency_slots = worker_concurrency("chat_low_latency", 8)
   tool_slots = worker_concurrency("agent_tool", 16)
-  thread_count = model_slots + low_latency_slots + tool_slots
+  thread_count = model_slots + low_latency_slots + tool_slots + 4
   with concurrent.futures.ThreadPoolExecutor(max_workers=thread_count) as activity_executor:
     workers = [
       Worker(
@@ -875,7 +883,7 @@ async def run_chat_worker():
         max_heartbeat_throttle_interval=STEP_HEARTBEAT_THROTTLE,
         workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
         workflows=[],
-        activities=[model_step, write_followups],
+        activities=[model_step, write_followups, board_reason],
         activity_executor=activity_executor,
         max_concurrent_activities=model_slots,
       ),
@@ -892,7 +900,35 @@ async def run_chat_worker():
         activity_executor=activity_executor,
         max_concurrent_activities=tool_slots,
       ),
+      # Investigation boards: the dispatcher, one BoardExplore per running intent, and
+      # their short activities. The explore turns themselves are AgentRun on chat-queue.
+      Worker(
+        client,
+        interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
+        workflow_runner=sandboxed_runner(),
+        task_queue=BOARD_TASK_QUEUE,
+        graceful_shutdown_timeout=graceful_shutdown_timeout(),
+        workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
+        workflows=[BoardDispatcher, BoardExplore],
+        activities=[board_plan, open_explore_turn, conclude_explore, record_explore_end],
+        activity_executor=activity_executor,
+        max_concurrent_activities=4,
+      ),
     ]
+    # The board dispatcher is a singleton. Two chat workers race to assert it at start, and
+    # WorkflowAlreadyStartedError is the loser's normal outcome.
+    import temporalio.common
+    import temporalio.exceptions
+    try:
+        await client.start_workflow(
+            BoardDispatcher.run,
+            id=DISPATCHER_WORKFLOW_ID,
+            task_queue=BOARD_TASK_QUEUE,
+            id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
+            id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
+        )
+    except temporalio.exceptions.WorkflowAlreadyStartedError:
+        pass
     await run_until_signalled(*workers)
 
 

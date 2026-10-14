@@ -3,7 +3,7 @@
 use dioxus::prelude::*;
 
 use dioxus_free_icons::icons::{
-    md_action_icons::{MdBugReport, MdDashboard, MdDns, MdHistory, MdQuestionAnswer, MdReportProblem, MdSettings},
+    md_action_icons::{MdBugReport, MdDashboard, MdExplore, MdDns, MdHistory, MdQuestionAnswer, MdReportProblem, MdSettings},
     md_device_icons::MdStorage,
     md_editor_icons::MdInsertChart,
     md_social_icons::{MdGroup, MdPerson},
@@ -15,7 +15,7 @@ use crate::routes::Route;
 
 /// `active` selects the highlighted navigation row: one of
 /// "dashboard", "collections", "operations", "failures", "feedback", "users", "groups", "settings",
-/// "llm", "ai_status", "metrics".
+/// "llm", "ai_status", "metrics", "boards".
 ///
 /// `breadcrumb` is the path below Administration, for example "Collections › testdata".
 #[component]
@@ -48,6 +48,7 @@ pub fn AdminShell(
                 NavLink { to: Route::AdminLlmPage {}, icon: MdQuestionAnswer, label: "LLM", selected: active == "llm" }
                 NavLink { to: Route::AdminAiStatusPage {}, icon: MdDns, label: "AI status", selected: active == "ai_status" }
                 NavLink { to: Route::AdminMetricsPage {}, icon: MdInsertChart, label: "Metrics", selected: active == "metrics" }
+                NavLink { to: Route::AdminBoardsPage {}, icon: MdExplore, label: "Boards", selected: active == "boards" }
             }
             main {
                 style: "flex: 1; min-width: 0; height: 100%; overflow: auto; padding: 15px 23px 23px;",

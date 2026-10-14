@@ -285,6 +285,11 @@ temporal:7233` and an `ExecutionStatus='Running'` query. Cancel each live operat
 Deploy only when the count is 0. A `queued` operation is cancelled like the others, and a
 person dispatches it again after the deploy with `main.py operations rerun <op_id>`.
 
+**The board drain.** A change to `P_board/workflows.py` needs no live `BoardDispatcher` or
+`BoardExplore`. Terminate `board-dispatcher`, cancel each `board-explore-*` workflow, and then
+restart the worker, which starts the dispatcher again. `docs/architecture/Boards.md` says how
+the next pass recovers the cancelled intents.
+
 Outbound HTTP from activities (NER, OCR, embeddings) goes through
 `remote.py`: `(connect, read)` two-tuple timeouts (`GPU_CONNECT_TIMEOUT_MS`, default
 2 s connect), an ordered endpoint list with an optional CPU twin, and a per-endpoint,

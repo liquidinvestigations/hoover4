@@ -68,6 +68,12 @@ EXPECTED_GLOBAL_TABLES = {
     "user_groups",
     "users",
     "web_sessions",
+    "boards",
+    "board_events",
+    "board_state",
+    "board_intents",
+    "board_facts",
+    "board_fact_citations",
 }
 
 EXPECTED_COLLECTION_TABLES = {

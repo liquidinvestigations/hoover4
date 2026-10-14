@@ -1,6 +1,7 @@
 //! Admin API server function wrappers.
 
 use common::admin_types::*;
+use common::board_types::{BoardCreateRequest, BoardListItem, BoardSnapshot};
 use common::feedback_types::{FeedbackListRow, FeedbackPage, FeedbackStatusFilter};
 use common::failure_types::{FailureInstanceRow, FailureListFilter, FailureListSort, FailureTree, FailuresPage};
 use common::metrics_types::{AdminMetrics, AdminUserLlmMetrics, ManticoreDaemonLoad};
@@ -143,3 +144,12 @@ admin_server_fn!(admin_set_feedback_flags, backend::api::feedback::admin_set_fee
 admin_server_fn!(admin_list_document_errors, backend::api::admin::document_errors::admin_list_document_errors, (filter: DocumentErrorFilter, page: u32) -> DocumentErrorsPage);
 
 admin_server_fn!(admin_llm_systemone, backend::api::admin::llm_reports::admin_llm_systemone, () -> common::llm_types::SystemOneReport);
+
+admin_server_fn!(admin_list_boards, backend::api::admin::boards::admin_list_boards, () -> Vec<BoardListItem>);
+admin_server_fn!(admin_create_board, backend::api::admin::boards::admin_create_board, (request: BoardCreateRequest) -> String);
+admin_server_fn!(admin_board_snapshot, backend::api::admin::boards::admin_board_snapshot, (board_id: String) -> BoardSnapshot);
+admin_server_fn!(admin_board_add_hint, backend::api::admin::boards::admin_board_add_hint, (board_id: String, text: String));
+admin_server_fn!(admin_board_reject_fact, backend::api::admin::boards::admin_board_reject_fact, (board_id: String, fact_id: String, reason: String));
+admin_server_fn!(admin_board_set_paused, backend::api::admin::boards::admin_board_set_paused, (board_id: String, paused: bool));
+admin_server_fn!(admin_board_review, backend::api::admin::boards::admin_board_review, (board_id: String, accept: bool, correction: String));
+admin_server_fn!(admin_board_drop, backend::api::admin::boards::admin_board_drop, (board_id: String));

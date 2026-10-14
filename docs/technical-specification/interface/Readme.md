@@ -37,6 +37,8 @@ added, renamed or deleted in the code mechanically visible against this tree, an
 | `UI-AdminLlmPage` | `/admin/llm` | - |
 | `UI-AdminAiStatusPage` | `/admin/ai_status` | - |
 | `UI-AdminMetricsPage` | `/admin/metrics` | - |
+| `UI-AdminBoardsPage` | `/admin/boards` | - |
+| `UI-AdminBoardPage` | `/admin/boards/:board_id` | - |
 | `UI-NotFoundPage` | anything else | - |
 
 ## Why most rows have no control table

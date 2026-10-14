@@ -20,6 +20,7 @@ use crate::pages::admin::{
     settings::AdminSettingsPage, user_detail::AdminUserPage,
     user_llm::AdminUserLlmPage, users_list::AdminUsersPage,
     failures::AdminFailuresPage, failure_detail::AdminFailureDetailPage, feedback::AdminFeedbackPage,
+    board_explorer::AdminBoardPage, boards_list::AdminBoardsPage,
 };
 use crate::pages::ai_chat::{AiChatHistoryPage, AiChatPage, AiChatSessionPage};
 use crate::pages::email_graph_page::EmailGraphPage;
@@ -166,6 +167,13 @@ pub enum Route {
 
     #[route("/admin/metrics")]
     AdminMetricsPage {},
+
+    #[route("/admin/boards")]
+    AdminBoardsPage {},
+
+    // `selected` is the fact or intent id that the detail pane shows, empty for none.
+    #[route("/admin/boards/:board_id?:selected")]
+    AdminBoardPage { board_id: String, selected: String },
 
     // LAST, and it must stay last: the router tries the variants in order, so anything
     // declared after this would be unreachable. It also catches a route whose parameter

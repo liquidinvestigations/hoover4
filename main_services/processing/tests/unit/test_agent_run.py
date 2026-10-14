@@ -65,7 +65,7 @@ def test_agent_run_and_its_activities_are_registered_on_their_queues():
     for removed in ("read_chat_todo", "preload_reads", "write_repeat_note",
                     "write_found_documents", "delegate_step"):
         assert removed not in chat_acts, removed
-    assert workers["CHAT_MODEL_TASK_QUEUE"][1] == ["model_step", "write_followups"]
+    assert workers["CHAT_MODEL_TASK_QUEUE"][1] == ["model_step", "write_followups", "board_reason"]
     assert workers["AGENT_TOOL_TASK_QUEUE"][1] == ["tool_call"]
 
 
@@ -108,7 +108,7 @@ def test_lead_queues_mirror_the_workflow_queue_names():
 def test_agent_run_input_holds_ids_and_settings_only():
     assert {f.name for f in fields(AgentRunInput)} == {
         "run_id", "username", "session_id", "turn_seq", "start_seq", "turn_uuid",
-        "allowed_collections", "llm_model", "internet_tools",
+        "allowed_collections", "llm_model", "internet_tools", "max_model_steps", "board_turn",
     }
     for params in (StepRef, ModelStepParams, ModelStepResult, ToolCallParams, StepFailure,
                    CallRef, RunRef, RunSummary, OpenedRun, WriteEndingParams):

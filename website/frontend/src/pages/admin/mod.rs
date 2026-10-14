@@ -1,6 +1,8 @@
 //! Admin pages module.
 
 pub mod ai_status;
+pub mod board_explorer;
+pub mod boards_list;
 pub mod collection_detail;
 pub mod collection_processing;
 pub mod collections_list;

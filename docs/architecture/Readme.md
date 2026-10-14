@@ -8,5 +8,6 @@ Explanation: the shape of the system and the reasons behind it. Procedure lives 
 - `Search_Architecture.md`, the fan-out, the match builder, the caching boundary
 - `Website_Backend.md`, sessions, database routing, error surfacing
 - `Chat_And_Agents.md`, the chat turn, the agents behind it, citations and streaming
+- `Boards.md`, investigation boards: the dispatcher, reasons, explores and board facts
 - `AI_Services.md`, the GPU tier and its CPU twins
 - `Settled_Decisions.md`, choices that read as defects, and the reason each one stands

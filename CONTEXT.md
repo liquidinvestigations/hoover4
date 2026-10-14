@@ -24,6 +24,11 @@ or another datastore.
 A per-document processing failure is stored in `processing_errors`. Each current row
 identifies one source execution, document and task.
 
+**Fact**:
+In entity explainer cards, a fact is one label and value row of sub-metadata. In
+investigation boards, a board fact is one stored finding of a board, with a kind and its
+citations.
+
 **Failure**:
 An above-document record of why a pipeline operation or stage stopped is stored in
 `operation_failures`. Each row is one node of that operation's failure tree.
