@@ -18,7 +18,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use common::board_types::{BoardFact, BoardIntent, BoardSnapshot};
-use common::chat_types::ChatDocRef;
+use common::chat_types::{ChatDocRef, card_find_phrase};
 use common::search_result::{DocumentIdentifier, SearchResultDocuments, SearchResultHitCount};
 use dioxus::prelude::*;
 
@@ -502,7 +502,9 @@ fn fact_sources(fact: &BoardFact) -> Vec<ChatDocRef> {
             why: String::new(),
             quote_verified: c.quote_verified,
             quote_reason: String::new(),
-            find_query: c.quote.clone(),
+            // The words of the quote as one phrase. The raw quote would find each of its
+            // words anywhere in the document.
+            find_query: card_find_phrase(&format!("\"{}\"", c.quote.replace('"', " "))),
             term: String::new(),
             search_snippet: String::new(),
             search_route: String::new(),

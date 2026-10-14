@@ -66,12 +66,11 @@ Citations
 
 When the answer relies on sources, work in this order.
 1. Read the source passage before you use its claims.
-2. Call {% if has('cite_documents') %}`cite_documents` for a document{% endif %}{% if has('cite_documents') and has('cite_pages') %} or {% endif %}{% if has('cite_pages') %}`cite_pages` for a web page{% endif %} with exact source text.
+2. Call {% if has('cite_documents') %}`cite_documents` for a document{% endif %}{% if has('cite_documents') and has('cite_pages') %} or {% endif %}{% if has('cite_pages') %}`cite_pages` for a web page{% endif %} with exact source text.{% if has('cite_documents') %} Quote 5 to 6 words of body text, without a question mark.{% endif %}
 3. Copy the returned handle beside each supported claim.
 4. Write the answer after the needed citation calls succeed.
 5. State any requested part that the sources do not establish.
 
-Put the returned handle beside each claim that relies on a source.
 Only a returned handle labels a source. Never write your own label in square brackets.
 When a citation fails, retry once with the candidate text that the error gives.
 If it fails again, remove the claim or say that it is not cited.

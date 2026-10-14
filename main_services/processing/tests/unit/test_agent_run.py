@@ -1393,6 +1393,19 @@ def test_narrow_findings_name_a_kept_failed_quote_and_an_unsourced_role():
     assert citations.narrow_findings(sourced, messages, verified) == []
 
 
+@pytest.mark.parametrize("quote,kept", [
+    ("the valuations my group has produced", True),
+    ("valuations my group has produced", True),
+    ("my group has produced", False),
+    ("the valuations my group has reported", False),
+])
+def test_a_kept_quote_of_five_or_six_words_is_found(quote, kept):
+    answer = "Kaminski wrote that he cannot support the valuations my group has produced so far."
+    entries = [_failed_citation("b" * 64, quote)]
+    findings = citations.narrow_findings(answer, [], entries)
+    assert [f["kind"] for f in findings] == (["kept_failed_citation"] if kept else [])
+
+
 @pytest.mark.parametrize("reply,expected,problem", [
     ('[{"find": "Head of Research", "replace": "a research manager"}]',
      "Kaminski, a research manager, wrote it.", ""),

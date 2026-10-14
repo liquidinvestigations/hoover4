@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use common::chat_types::{ChatDocRef, clamp_display_text};
+use common::chat_types::{ChatDocRef, card_find_phrase, clamp_display_text};
 use common::search_result::{DocumentIdentifier, SearchResultDocumentItem};
 use common::text_highlight::HighlightTextSpan;
 use dioxus::prelude::*;
@@ -23,7 +23,7 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
     // The click reads the document and its find query of the latest render, because a
     // card instance can receive another document while it stays mounted.
     let target = use_hook(|| Rc::new(RefCell::new((doc.document_identifier(), String::new()))));
-    *target.borrow_mut() = (doc.document_identifier(), doc.find_query.clone());
+    *target.borrow_mut() = (doc.document_identifier(), card_find_phrase(&doc.find_query));
     let chat_open = try_use_context::<ChatDocOpen>();
     let parent = use_context::<SearchResultsState>();
     use_context_provider({
@@ -120,7 +120,7 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
         quotes.push(passage.quote.clone());
         true
     }).collect::<Vec<_>>();
-    let selected_target = (doc.document_identifier(), doc.find_query.clone());
+    let selected_target = (doc.document_identifier(), card_find_phrase(&doc.find_query));
     rsx! {
         div {
             button { "data-citation-select": "true", hidden: true, tabindex: "-1", onclick: move |_| { if let Some(open) = chat_open { open.open.call(selected_target.clone()); } } }
@@ -132,7 +132,7 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
                 children: Some(rsx! {
                     for (index, passage) in passages.into_iter().enumerate() {
                         {
-                            let target = (passage.document_identifier(), passage.find_query.clone());
+                            let target = (passage.document_identifier(), card_find_phrase(&passage.find_query));
                             let key_target = target.clone();
                             rsx! {
                                 // A `div`, not a `button`: the card's three-line limit does

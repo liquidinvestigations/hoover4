@@ -22,7 +22,8 @@ When a search or read returned documents that support a claim, cite those docume
 
 For each citation give:
 - collection and file_hash, copied from a tool result. Never make up a file_hash.
-- quote: one sentence copied exactly from the document text you read.
+- quote: 5 to 6 consecutive words copied from one line of the document body. Not a header
+  line (From, To, Cc, Subject, Date). No span that holds a question mark.
 - find: optional. The shortest exact phrase of the quote that the person must see. The card
   opens the document at this phrase.
 - why: one line that says what the document supports.
@@ -30,13 +31,15 @@ For each citation give:
 Write the handle that you get back, for example `[D1]`, in your {{ citation_artefact }} where you make the claim.
 
 Example. {{ tool('read_documents') if has('read_documents') else 'A tool' }} returned the email "Re: DRAFT talking points" in the collection enron.
-Its text says "Your notes look great. Best of luck today with the Hearings." Your {{ citation_artefact }} says
+Its body says "The talking points look great to me. Best of luck today." Your {{ citation_artefact }} says
 that Jim Steffes approved the draft. Call {{ tool('cite_documents') }} with collection enron, the
-file_hash from the result, the quote "Your notes look great. Best of luck today with the
-Hearings.", find "Your notes look great", and why "Steffes approves the draft of 27 December".
+file_hash from the result, the quote "talking points look great to me", find "look great",
+and why "Steffes approves the draft of 27 December".
 Then write "Steffes approved the draft [D1]."
+Do not quote "Subject: Re: DRAFT talking points", because it is a header line. Do not quote
+"Can you check the notes?", because it holds a question mark.
 Line breaks, punctuation and the `>` marks of a quoted e-mail do not need to match.
-Missing or absent quotes allocate no handle. Copy the candidate text that the error gives into quote and retry.
+Missing or absent quotes allocate no handle. Copy 5 to 6 words of the candidate text that the error gives into quote and retry.
 Only a returned handle labels a source. Never write your own label in square brackets.
 Reuse the returned document handle for additional verified passages. The document has one card.
 {% if citation_resolver == "lead" %}
@@ -71,7 +74,7 @@ An unread, blocked, or unverified page cannot support a claim.
 
 {% if has('cite_documents') %}
 The citations argument is a list of document citation objects.
-Each object requires collection and file_hash. quote must contain exact source wording of at least twelve characters.
+Each object requires collection and file_hash. quote holds 5 to 6 consecutive words of exact source wording.
 Repeat collection and file_hash in every object, including separate quotes from the same document.
 Objects do not inherit arguments from earlier objects.
 find optionally selects an exact phrase within quote. Omission uses the whole quote.
@@ -79,13 +82,13 @@ term optionally records the originating search query. why states the supported c
 The result gives a handle for each verified entry. Failed entries give their reason and can give a candidate passage.
 Retry only failed entries with exact wording. A verified quote does not by itself verify the writer or date of that quote.
 ```json
-{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_EXACT_SOURCE_SENTENCE"}]}
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
 ```
 ```json
-{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_EXACT_SOURCE_SENTENCE","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]}
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]}
 ```
 This batch verifies two passages from the same document.
 ```json
-{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_EXACT_SOURCE_SENTENCE"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_EXACT_SOURCE_SENTENCE"}]}
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}
 ```
 {% endif %}

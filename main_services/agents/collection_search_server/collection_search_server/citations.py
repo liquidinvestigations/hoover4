@@ -102,12 +102,17 @@ def find_in_quote(find: str, quote: str) -> bool:
 
 
 def phrase_query(text: str) -> str:
-    """A document find query that matches `text` as one phrase, or "" for empty text.
+    """A document find query that matches the words of `text` as one phrase, or "" when
+    the text has no word.
 
-    Double quotes inside the text become spaces, because the find query uses them to
-    mark the phrase.
+    The words are the `\\w+` runs of the text in their original case, joined by one space.
+    The search engine reads `?` as a one-character wildcard also inside a phrase. So the
+    phrase `presents ?` asks for a word after `presents`, and punctuation is left out. The
+    search engine splits words at punctuation, so the phrase of the words matches the same
+    text. The website reads stored find queries with the same rule (`card_find_phrase` in
+    `website/common/src/chat_types.rs`).
     """
-    words = " ".join(text.replace('"', " ").split())
+    words = " ".join(_WORD.findall(text or ""))
     return f'"{words}"' if words else ""
 
 

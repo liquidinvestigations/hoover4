@@ -144,7 +144,7 @@ def repair_note(check: dict) -> str:
                         + " for more than one document.")
     if check.get("unsupported_paragraphs") and (check.get("documents_read") or
             (not check.get("web_used") and not check.get("web_missing"))):
-        problems.append('Call cite_documents with {"citations":[{"collection":"COPY_COLLECTION","file_hash":"COPY_HASH","quote":"COPY_EXACT_SOURCE_SENTENCE","why":"What it supports"}]}. The quote field is required. Find is an optional part of quote.')
+        problems.append('Call cite_documents with {"citations":[{"collection":"COPY_COLLECTION","file_hash":"COPY_HASH","quote":"COPY_5_TO_6_WORDS","why":"What it supports"}]}. The quote field is required: 5 to 6 consecutive words of one line of the document body, not a header line, with no question mark. Find is an optional part of quote.')
     if not problems:
         return CITATION_NOTE
     return " ".join(problems) + " Write the complete answer again with the sources that support its claims."
@@ -316,8 +316,12 @@ def answer_metadata(answer: str, messages, session_entries, internet_tools: bool
 
 
 #: A failed quote that shares this many consecutive words with an answer is a claim that the
-#: answer keeps without its citation.
+#: answer keeps without its citation. A quote with fewer words shares all of its words.
 KEPT_QUOTE_WORDS = 8
+
+#: The fewest words of a failed quote that the kept-quote check compares. The quote rule asks
+#: for 5 to 6 words, and a shorter run also occurs in answers that do not use the quote.
+KEPT_QUOTE_MIN_WORDS = 5
 
 #: A role or a title in an answer: the role word in any case, and at most four capitalised
 #: words after it.
@@ -345,8 +349,11 @@ def _folded_words(text: str) -> list[str]:
 
 
 def _shares_run(quote: list[str], answer: str) -> bool:
-    for i in range(0, len(quote) - KEPT_QUOTE_WORDS + 1):
-        if f" {' '.join(quote[i:i + KEPT_QUOTE_WORDS])} " in answer:
+    run = min(KEPT_QUOTE_WORDS, len(quote))
+    if run < KEPT_QUOTE_MIN_WORDS:
+        return False
+    for i in range(0, len(quote) - run + 1):
+        if f" {' '.join(quote[i:i + run])} " in answer:
             return True
     return False
 
@@ -356,7 +363,8 @@ def narrow_findings(answer: str, messages, session_entries) -> list[dict]:
 
     `kept_failed_citation`: a quote whose `cite_documents` entry failed, with no verified
     entry for the same document, shares `KEPT_QUOTE_WORDS` consecutive words with the
-    answer. `unsourced_role`: a role or title phrase of the answer (`ROLE_PATTERN`) whose
+    answer. A quote with fewer words shares all of its words. A quote with fewer than
+    `KEPT_QUOTE_MIN_WORDS` words is not compared. `unsourced_role`: a role or title phrase of the answer (`ROLE_PATTERN`) whose
     first three words are in no tool result of `messages`.
     """
     folded = f" {' '.join(_folded_words(answer))} "

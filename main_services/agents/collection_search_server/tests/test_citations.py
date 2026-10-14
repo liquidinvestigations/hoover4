@@ -15,6 +15,7 @@ from collection_search_server.citations import (
     QUOTE_REASON_SHORT,
     citation_find_query,
     find_in_quote,
+    phrase_query,
     gap_match_in_pages,
     normalise_for_match,
     quote_match_in_pages,
@@ -217,7 +218,7 @@ class TestCiteOne:
         result = _cite_one(_acl(), "retry", Citation(
             collection="testdata", file_hash=HASH, quote="The board approved the transfer on 4 April after a long debate."))
         assert not result.quote_verified
-        assert "Retry with this exact text as quote" in result.error
+        assert "Retry with 5 to 6 consecutive words of this exact text" in result.error
 
     def test_a_find_phrase_of_the_quote_becomes_the_find_query(self, monkeypatch):
         quote = "Your notes look great.  Best of luck today with the Hearings."
@@ -233,7 +234,7 @@ class TestCiteOne:
         result = _cite_one(_acl(), "s1", Citation(
             collection="testdata", file_hash=HASH, quote=quote, term="board transfer"))
         assert result.term == "board transfer"
-        assert result.find_query == '"The board approved the transfer on 3 March."'
+        assert result.find_query == '"The board approved the transfer on 3 March"'
 
     def test_a_short_table_find_keeps_the_verified_quote(self, monkeypatch):
         quote = "Meadow\tTraining contact\tActive"
@@ -252,7 +253,7 @@ class TestCiteOne:
         self._stub_pages(monkeypatch, [quote])
         result = _cite_one(_acl(), "s1", Citation(
             collection="testdata", file_hash=HASH, quote=quote, find="Something else entirely"))
-        assert result.find_query == '"Your notes look great. Best of luck today."'
+        assert result.find_query == '"Your notes look great Best of luck today"'
 
     def test_no_find_phrase_opens_at_the_quote(self, monkeypatch):
         quote = 'He wrote "approved" on the draft of the talking points.'
@@ -260,7 +261,7 @@ class TestCiteOne:
         result = _cite_one(_acl(), "s1", Citation(
             collection="testdata", file_hash=HASH, quote=quote))
         # A double quote inside the text would end the phrase early.
-        assert result.find_query == '"He wrote approved on the draft of the talking points."'
+        assert result.find_query == '"He wrote approved on the draft of the talking points"'
 
     def test_a_short_quote_is_named(self, monkeypatch):
         self._stub_pages(monkeypatch, ["The board approved the transfer on 3 March."])
@@ -699,3 +700,25 @@ class TestCandidatePassage:
         again = _cite_one(_acl(), "s-candidate", Citation(
             collection="testdata", file_hash=HASH, quote=result.candidate["text"]))
         assert again.quote_verified and again.candidate is None
+
+
+#: The cases that `card_find_phrase` in `website/common/src/chat_types.rs` also tests. The
+#: two functions must give the same find phrase for the same stored text.
+SHARED_FIND_PHRASE_CASES = [
+    ('"ethical issues this presents ? Rgds DP"', '"ethical issues this presents Rgds DP"'),
+    ('"Raptor\'s Health - Vince Kaminski"', '"Raptor s Health Vince Kaminski"'),
+    ('"jeff.dasovich@enron.com"', '"jeff dasovich enron com"'),
+    ('"???"', ""),
+    ('"Köszönöm, példa?"', '"Köszönöm példa"'),
+]
+
+
+@pytest.mark.parametrize("text,phrase", SHARED_FIND_PHRASE_CASES)
+def test_the_find_phrase_holds_only_the_words(text, phrase):
+    assert phrase_query(text) == phrase
+
+
+def test_a_quote_with_a_question_mark_opens_at_its_words():
+    quote = "What ethical issues this presents? Rgds DP"
+    assert citation_find_query("", quote) == '"What ethical issues this presents Rgds DP"'
+    assert citation_find_query("issues this presents?", quote) == '"issues this presents"'

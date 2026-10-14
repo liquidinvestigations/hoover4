@@ -225,6 +225,38 @@ impl ChatDocRef {
     }
 }
 
+/// The find text that a document card opens the viewer with.
+///
+/// A citation card stores its find text as one double-quoted phrase. The search engine
+/// reads `?` as a one-character wildcard also inside a phrase, so a phrase that holds `?`
+/// can miss the text that it was copied from.
+///
+/// One phrase is a trimmed text with two `"` characters, one at its start and one at its
+/// end. For one phrase, the result is its words in double quotes, joined by one space. A
+/// word is a run of letters, digits and `_`. A phrase without a word gives an empty text.
+/// Any other text is a search query with its own operators and phrases, and it returns
+/// unchanged. `phrase_query` in `collection_search_server/citations.py` writes new
+/// citations with the same rule.
+pub fn card_find_phrase(find_query: &str) -> String {
+    let trimmed = find_query.trim();
+    let one_phrase = trimmed.len() >= 2
+        && trimmed.starts_with('"')
+        && trimmed.ends_with('"')
+        && trimmed.matches('"').count() == 2;
+    if !one_phrase {
+        return find_query.to_string();
+    }
+    let words: Vec<&str> = trimmed[1..trimmed.len() - 1]
+        .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .filter(|word| !word.is_empty())
+        .collect();
+    if words.is_empty() {
+        String::new()
+    } else {
+        format!("\"{}\"", words.join(" "))
+    }
+}
+
 /// Longest snippet a chat document card renders inline.
 pub const DOC_REF_SNIPPET_CHARS: usize = 400;
 
@@ -1214,6 +1246,25 @@ fn collect_document_shaped(v: &serde_json::Value, out: &mut Vec<ChatDocRef>) {
 
 #[cfg(test)]
 mod tests {
+    /// The cases of `SHARED_FIND_PHRASE_CASES` in
+    /// `main_services/agents/collection_search_server/tests/test_citations.py`, and two
+    /// search queries that only the website reads.
+    #[test]
+    fn a_card_find_phrase_holds_only_the_words_of_one_phrase() {
+        let cases = [
+            ("\"ethical issues this presents ? Rgds DP\"", "\"ethical issues this presents Rgds DP\""),
+            ("\"Raptor's Health - Vince Kaminski\"", "\"Raptor s Health Vince Kaminski\""),
+            ("\"jeff.dasovich@enron.com\"", "\"jeff dasovich enron com\""),
+            ("\"???\"", ""),
+            ("\"Köszönöm, példa?\"", "\"Köszönöm példa\""),
+            ("budget OR forecast", "budget OR forecast"),
+            ("\"a b\" OR \"c d\"", "\"a b\" OR \"c d\""),
+        ];
+        for (input, output) in cases {
+            assert_eq!(super::card_find_phrase(input), output, "{input}");
+        }
+    }
+
     use super::*;
 
     #[test]

@@ -71,7 +71,7 @@ fn HashLink(row: serde_json::Value, refs: Vec<ChatDocRef>) -> Element {
     });
     if let (Some(reference), Some(open)) = (found, try_use_context::<ChatDocOpen>()) {
         let identifier = reference.document_identifier();
-        let find = reference.find_query;
+        let find = common::chat_types::card_find_phrase(&reference.find_query);
         rsx! {
             button {
                 style: "background: none; border: none; color: var(--x-link); cursor: pointer; padding: 0; text-decoration: underline;",

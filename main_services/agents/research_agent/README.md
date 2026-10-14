@@ -67,7 +67,8 @@ old one gets a replacement entry, and that an open item does not stop an answer.
 run has a citation tool, the citation text gives the order of the work once: read the
 passage, call the citation tool with exact text, copy the returned handle beside the
 claim, write the answer after the needed calls succeed, and state the requested parts
-that the sources do not establish. The `citation` skill holds the arguments of each
+that the sources do not establish. A document quote has 5 to 6 words of body text without
+a question mark. The `citation` skill holds the arguments of each
 citation tool, one example for each, and the batch form. The summary of a
 tool is the first sentence of its description, at most 160 characters. `_create_context`
 renders the prompt once for each step context. The prompt cache holds the system text for

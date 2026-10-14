@@ -1418,7 +1418,7 @@ class Citation(BaseModel):
     #: A span copied from the document, checked against its text before a handle is
     #: issued. Not a paraphrase: the check is what makes the difference between a
     #: citation and a claim.
-    quote: str = Field(default="", description="Copy exact source wording of at least twelve characters.")
+    quote: str = Field(default="", description="5 to 6 consecutive words copied from one line of the document body. Not a header line (From, To, Cc, Subject, Date). No span that holds a question mark.")
     #: A short exact phrase of the quote. The card opens the document at this phrase.
     #: Empty means the whole quote.
     find: str = Field(default="", description="Optional exact phrase inside quote to highlight.")
@@ -1522,7 +1522,8 @@ def _session_id() -> str:
     name="cite_documents",
     description=(
         "Create citation handles for documents that support an answer. "
-        "Each citation requires a verbatim quote of at least twelve characters from the document text. "
+        "Each citation requires a quote: 5 to 6 consecutive words copied from one line of the document body, "
+        "not a header line (From, To, Cc, Subject, Date), with no question mark. "
         "The find phrase must be an exact part of the quote. The card opens the document at that phrase. "
         "Write returned handles such as [D1] beside the claims they support. "
         "The tool verifies quotes against extracted document pages. "
@@ -1571,8 +1572,8 @@ def cite_documents(citations: Annotated[list[Citation] | str, Field(description=
 
     if short or absent or lookup_failed:
         note_parts.append(
-            "Failed quotes allocate no handles. Copy an exact supporting sentence from "
-            "the document or returned candidate, at least twelve characters long. "
+            "Failed quotes allocate no handles. Copy 5 to 6 consecutive words of one body line "
+            "from the document or returned candidate, with no question mark. "
             "Send it in quote, not find. Retry only failed entries. Reuse successful handles."
         )
     find_fallbacks = sum(
@@ -1782,11 +1783,12 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
         except Exception as exc:  # noqa: BLE001, the candidate is optional
             log.warning("no candidate passage for %s: %s", citation.file_hash, exc)
     if not result.quote_verified:
-        result.error = "The quote did not verify. Copy at least twelve characters from the source into quote and retry."
+        result.error = ("The quote did not verify. Copy 5 to 6 consecutive words of one body line of the "
+                        "source, with no question mark, into quote and retry.")
         if result.candidate and result.candidate.get("text"):
             passage = " ".join(str(result.candidate["text"]).split())
-            result.error = (f"The quote did not verify. Retry with this exact text as quote: \"{passage}\". "
-                            "Then quote the same words in the answer.")
+            result.error = (f"The quote did not verify. Retry with 5 to 6 consecutive words of this exact text "
+                            f"as quote, with no question mark: \"{passage}\". Then quote the same words in the answer.")
         return result
     owner = {k.lower(): v for k, v in get_http_headers().items()}.get("x-hoover4-user", "")
     try:

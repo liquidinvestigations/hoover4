@@ -168,9 +168,16 @@ A citation accepts an optional `term` from the search that found its document.
 The transcript can infer an omitted term from the newest earlier search for that document.
 The source card shows this term and the matching search passage.
 
+The tool description asks for a quote of 5 to 6 consecutive words copied from one line of
+the document body. It asks for no header line (From, To, Cc, Subject, Date), because the
+email viewer counts hits in the body only. It asks for no span with a question mark,
+because the search engine reads `?` as a wildcard. The tool does not refuse a longer quote.
 An optional `find` selects a nonempty substring of the quote, including a short table value.
 The quote keeps its separate minimum of twelve characters for verification.
 An empty or absent find phrase opens the document at the whole quote.
+The find query of the card is the words of the phrase or the quote (`citations.phrase_query`),
+in double quotes and without punctuation. The website reads stored find queries with the same
+rule (`card_find_phrase` in `website/common/src/chat_types.rs`).
 
 `cite_documents` is how the agent says which documents its answer rests on, as against
 which documents a search happened to return. Each citation names a document, a quote and
