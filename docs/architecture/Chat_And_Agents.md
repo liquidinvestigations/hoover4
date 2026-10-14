@@ -70,8 +70,8 @@ quality model goes to the quality endpoint, and every other model goes to the ba
 The worker (`tasks/llm_endpoints.py`) and the agent services (`research_agent/endpoints.py`)
 apply this rule to every model call. A deployment selects the quality model as
 `llm_default_chat_model`, so agent turns run on it, and the base model as
-`llm_summarization_model`, so titles, follow-up suggestions and board reasons stay on the
-base endpoint. The default chat model is the one that matters for a person's chat, because
+`llm_summarization_model`, so titles and board reasons stay on the base endpoint. Follow-up
+suggestions use the answer's model, so they run on the quality endpoint too. The default chat model is the one that matters for a person's chat, because
 the composer selects it and sends it with every message, and a sent model wins over the
 profile keys. The chat policy checks ask the decision endpoint, `CHAT_CLASSIFIER_URL`.
 The worker uses `llm_default_chat_model` for a request without a model. If that setting is

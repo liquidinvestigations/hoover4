@@ -98,9 +98,7 @@ def write_followups(ref: RunRef) -> None:
     if "follow_up_prompts" in usage:
         return
     question = _user_row_text(run.username, run.session_id, run.turn_seq)
-    # The summarisation model, not the answer's: suggestions are a short call, and the
-    # answer's model can be the quality model of an agent turn.
-    usage.update(generate_prompts(question, run.result, summarize._model()))
+    usage.update(generate_prompts(question, run.result, row["model"]))
     current = agent_runs.read_run(ref.username, ref.session_id, ref.run_id)
     if (current is None or agent_runs.is_terminal(current)
             or agent_runs.turn_is_stopped(ref.username, ref.session_id, run.turn_seq)
