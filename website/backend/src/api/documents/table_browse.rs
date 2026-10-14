@@ -27,6 +27,17 @@
 //! module has already validated against the manifest's own extents, and the fixed
 //! predicate and comparator fragments below.
 //!
+//! # The find text is resolved through the search engine
+//!
+//! The result list and the text viewers match with Manticore. Manticore splits text into
+//! words at punctuation and whitespace. A literal substring test of the find text in one
+//! cell can disagree with it. A search for Prudential Lighting Corp with a final dot
+//! matches the document, and no cell holds the dot. [`table_find_terms`] asks
+//! Manticore which words it marked in this document. It splits each marked run at cell and
+//! row breaks and adds the find text without its double quotes. A cell matches when it
+//! holds any of these terms. The grid, the sheet counts and the `Table` hit count use the
+//! same terms.
+//!
 //! # Why the sort is two phases
 //!
 //! Phase 1 orders one contiguous primary-key range (the whole sort column of one sheet,
@@ -63,6 +74,7 @@ use common::document_tables::{
 use common::search_result::DocumentIdentifier;
 use common::table_cell_preview::cell_preview;
 
+use crate::api::documents::search_document_text::search_document_text_all_hits;
 use crate::auth::guard::NOT_FOUND;
 use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils::get_client_for_dataset;
@@ -343,6 +355,7 @@ fn data_row_floor(header_row: u64) -> String {
 enum Bind {
     Str(String),
     F64(f64),
+    Strs(Vec<String>),
 }
 
 fn apply_binds(
@@ -353,6 +366,7 @@ fn apply_binds(
         query = match bind {
             Bind::Str(value) => query.bind(value),
             Bind::F64(value) => query.bind(value),
+            Bind::Strs(values) => query.bind(values),
         };
     }
     query
@@ -516,7 +530,7 @@ pub async fn get_table_page(
     let sort = query
         .sort
         .filter(|sort| known_columns.contains(&sort.column_id));
-    let search = table_find_text(&query.search);
+    let search = table_find_terms(user, &document_identifier, &query.search).await;
 
     let constrained = !filters.is_empty() || !search.is_empty();
     let offset = query.offset;
@@ -635,6 +649,7 @@ pub async fn get_table_page(
             offset,
             limit,
             clamps,
+            find_terms: search,
         });
     }
 
@@ -702,20 +717,81 @@ pub async fn get_table_page(
         offset,
         limit,
         clamps,
+        find_terms: search,
     })
 }
 
-/// Fill the inline excerpt of every cell of a page for the website grid.
+/// Fill the inline excerpt of every cell of a page for the website grid. The excerpt marks
+/// the page's own find terms, the terms that selected its rows.
 ///
 /// The website route calls this after [`get_table_page`]. The agent route does not, so it
 /// keeps reading the raw `text` and pays nothing for an excerpt it does not show.
-pub fn fill_cell_previews(page: &mut TablePage, search: &str) {
-    let needle = table_find_text(search);
+pub fn fill_cell_previews(page: &mut TablePage) {
+    let terms = page.find_terms.clone();
     for row in &mut page.rows {
         for cell in &mut row.cells {
-            cell.preview = Some(cell_preview(&cell.text, &needle));
+            cell.preview = Some(cell_preview(&cell.text, &terms));
         }
     }
+}
+
+/// Most find terms of one table read. The in-PDF search sends at most the same number of
+/// keywords to its sidecar.
+const MAX_TABLE_FIND_TERMS: usize = 50;
+
+/// The cell text that the find terms are compared with. The extractors write a tab between
+/// cells and a line break between rows. So a term from a cell with a line break holds a
+/// space in its place.
+const FIND_CELL_TEXT: &str = "translate(cell_text, '\\t\\r\\n', '   ')";
+
+/// The terms that the table find searches cells for, for one find text.
+///
+/// An empty find text gives no terms. The other terms are the find text without its double
+/// quotes and the runs that Manticore marked in this document for the same query. The
+/// module docstring gives the reason. When the Manticore read fails, the find text is the
+/// only term and the grid matches as a literal substring.
+pub async fn table_find_terms(
+    user: &CurrentUser,
+    document_identifier: &DocumentIdentifier,
+    query: &str,
+) -> Vec<String> {
+    let literal = table_find_text(query);
+    if literal.is_empty() {
+        return Vec::new();
+    }
+    match search_document_text_all_hits(user, document_identifier.clone(), query.to_string()).await {
+        Ok(hits) => terms_from_marks(
+            &literal,
+            hits.iter()
+                .flat_map(|hit| hit.highlight_text_spans.iter())
+                .filter(|span| span.is_highlighted)
+                .map(|span| span.text.as_str()),
+        ),
+        Err(error) => {
+            tracing::warn!(%error, "table find: the search engine read failed, the find text is the only term");
+            vec![literal]
+        }
+    }
+}
+
+/// The find text and each marked run split at tabs and line breaks, trimmed, without empty
+/// parts and without case-insensitive duplicates, at most [`MAX_TABLE_FIND_TERMS`]. The find
+/// text is first, so the limit never removes it.
+fn terms_from_marks<'a>(literal: &str, marks: impl Iterator<Item = &'a str>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut terms = Vec::new();
+    let parts = marks.flat_map(|mark| mark.split(['\t', '\n', '\r']));
+    for part in std::iter::once(literal).chain(parts) {
+        let part = part.trim();
+        if part.is_empty() || !seen.insert(part.to_lowercase()) {
+            continue;
+        }
+        terms.push(part.to_string());
+        if terms.len() == MAX_TABLE_FIND_TERMS {
+            break;
+        }
+    }
+    terms
 }
 
 /// Build the `AND row_id IN (…)` clauses and push their binds, in textual order.
@@ -724,12 +800,11 @@ pub fn fill_cell_previews(page: &mut TablePage, search: &str) {
 /// bind order must match the SQL text exactly in each of them.
 fn build_constraints(
     filters: &[TableColumnFilter],
-    search: &str,
+    search: &[String],
     sheet_id: u16,
     hash: &str,
     binds: &mut Vec<Bind>,
 ) -> String {
-    let search = table_find_text(search);
     let mut clauses = Vec::new();
     for filter in filters {
         let column_id = filter.column_id;
@@ -754,11 +829,11 @@ fn build_constraints(
     }
     if !search.is_empty() {
         binds.push(Bind::Str(hash.to_string()));
-        binds.push(Bind::Str(search.to_string()));
+        binds.push(Bind::Strs(search.to_vec()));
         clauses.push(format!(
             "row_id IN (SELECT row_id FROM table_cells FINAL \
              WHERE file_hash = ? AND sheet_id = {sheet_id} \
-             AND positionCaseInsensitiveUTF8(cell_text, ?) > 0)"
+             AND multiSearchAnyCaseInsensitiveUTF8({FIND_CELL_TEXT}, ?))"
         ));
     }
     if clauses.is_empty() {
@@ -768,19 +843,20 @@ fn build_constraints(
     }
 }
 
-/// How many data rows of each sheet contain `search`, as `(sheet_id, rows)`, for the
-/// sheet chooser. A sheet with no match is absent. The count is the one the grid shows
-/// for the same search on that sheet, so it excludes the header row.
+/// How many data rows of each sheet hold a find term of `search` ([`table_find_terms`]),
+/// as `(sheet_id, rows)`, for the sheet chooser. A sheet with no match is absent. The count
+/// is the one the grid shows for the same search on that sheet, so it excludes the header
+/// row.
 pub async fn get_table_sheet_hits(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
     search: String,
 ) -> anyhow::Result<Vec<(u16, u64)>> {
-    let search = table_find_text(&search);
-    if search.is_empty() {
+    if table_find_text(&search).is_empty() {
         return Ok(Vec::new());
     }
     let _manifest = require_table_manifest(user, &document_identifier).await?;
+    let search = table_find_terms(user, &document_identifier, &search).await;
     let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
     Ok(client
         .query(
@@ -789,7 +865,7 @@ pub async fn get_table_sheet_hits(
                         WHERE collection_dataset = ? AND hash = ?) AS s \
              ON s.sheet_id = c.sheet_id \
              WHERE c.file_hash = ? AND c.row_id > s.header_row \
-             AND positionCaseInsensitiveUTF8(c.cell_text, ?) > 0 \
+             AND multiSearchAnyCaseInsensitiveUTF8(translate(c.cell_text, '\\t\\r\\n', '   '), ?) \
              GROUP BY c.sheet_id ORDER BY c.sheet_id",
         )
         .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
@@ -875,7 +951,8 @@ pub async fn get_table_column_values(
         .collect())
 }
 
-/// How many cells of this document match the viewer's find box.
+/// How many cells of this document hold a find term of the viewer's find box
+/// ([`table_find_terms`]).
 ///
 /// Feeds the `Table` entry's number in the source selector, the way page hits feed the
 /// text sources'.
@@ -884,11 +961,11 @@ pub async fn count_table_cell_matches(
     document_identifier: &DocumentIdentifier,
     find_query: &str,
 ) -> anyhow::Result<u64> {
-    let find_query = table_find_text(find_query);
-    if find_query.is_empty() {
+    if table_find_text(find_query).is_empty() {
         return Ok(0);
     }
     let _manifest = require_table_manifest(user, document_identifier).await?;
+    let find_terms = table_find_terms(user, document_identifier, find_query).await;
     let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
     // Header rows are excluded, so this number counts the same cells the grid can show a
     // reader. A term that only appears in a header would otherwise promise matches that
@@ -898,7 +975,8 @@ pub async fn count_table_cell_matches(
             "SELECT count() FROM table_cells AS c FINAL \
              INNER JOIN (SELECT sheet_id, row_count, column_count, header_row FROM table_sheets FINAL \
                          WHERE collection_dataset = ? AND hash = ?) AS s ON s.sheet_id = c.sheet_id \
-             WHERE c.file_hash = ? AND positionCaseInsensitiveUTF8(c.cell_text, ?) > 0 \
+             WHERE c.file_hash = ? \
+               AND multiSearchAnyCaseInsensitiveUTF8(translate(c.cell_text, '\\t\\r\\n', '   '), ?) \
                AND c.row_id <= s.row_count AND c.column_id <= s.column_count \
                AND c.row_id > s.header_row",
         )
@@ -906,7 +984,7 @@ pub async fn count_table_cell_matches(
         .bind(&document_identifier.collection_dataset)
         .bind(&document_identifier.file_hash)
         .bind(&document_identifier.file_hash)
-        .bind(&find_query)
+        .bind(find_terms)
         .fetch_one()
         .await?;
     Ok(count)
@@ -930,8 +1008,9 @@ mod tests {
             total_rows: 2,
             ..Default::default()
         };
+        page.find_terms = vec!["weed".to_string()];
         let before = page.clone();
-        fill_cell_previews(&mut page, "\"weed\"");
+        fill_cell_previews(&mut page);
         assert_eq!(page.total_rows, before.total_rows);
         let ids: Vec<u64> = page.rows.iter().map(|r| r.row_id).collect();
         assert_eq!(ids, vec![9, 3]);
@@ -981,22 +1060,22 @@ mod tests {
     /// text into the hash position, which would silently return nothing.
     #[test]
     fn every_constraint_binds_exactly_as_many_values_as_it_marks() {
-        let cases: Vec<(Vec<TableColumnFilter>, &str)> = vec![
-            (vec![], ""),
-            (vec![], "needle"),
+        let cases: Vec<(Vec<TableColumnFilter>, Vec<String>)> = vec![
+            (vec![], vec![]),
+            (vec![], vec!["needle".to_string(), "pin".to_string()]),
             (
                 vec![TableColumnFilter {
                     column_id: 3,
                     kind: TableFilterKind::Contains("acme".into()),
                 }],
-                "",
+                vec![],
             ),
             (
                 vec![TableColumnFilter {
                     column_id: 3,
                     kind: TableFilterKind::NumberRange { min: Some(1.0), max: Some(9.0) },
                 }],
-                "needle",
+                vec!["needle".to_string()],
             ),
             (
                 vec![
@@ -1010,12 +1089,12 @@ mod tests {
                         kind: TableFilterKind::StartsWith("A".into()),
                     },
                 ],
-                "needle",
+                vec!["needle".to_string(), "Prudential Lighting".to_string()],
             ),
         ];
         for (filters, search) in cases {
             let mut binds = Vec::new();
-            let sql = build_constraints(&filters, search, 0, "deadbeef", &mut binds);
+            let sql = build_constraints(&filters, &search, 0, "deadbeef", &mut binds);
             assert_eq!(
                 sql.matches('?').count(),
                 binds.len(),
@@ -1027,7 +1106,7 @@ mod tests {
     #[test]
     fn nothing_filtered_and_nothing_searched_is_no_constraint_at_all() {
         let mut binds = Vec::new();
-        assert!(build_constraints(&[], "", 0, "deadbeef", &mut binds).is_empty());
+        assert!(build_constraints(&[], &[], 0, "deadbeef", &mut binds).is_empty());
         assert!(binds.is_empty());
     }
 
@@ -1038,7 +1117,7 @@ mod tests {
         let mut binds = Vec::new();
         let sql = build_constraints(
             &[TableColumnFilter { column_id: 7, kind: TableFilterKind::IsEmpty }],
-            "",
+            &[],
             2,
             "deadbeef",
             &mut binds,
@@ -1057,12 +1136,67 @@ mod tests {
                 column_id: 1,
                 kind: TableFilterKind::Equals("'; DROP TABLE table_cells --".into()),
             }],
-            "'; SELECT 1 --",
+            &["'; SELECT 1 --".to_string()],
             0,
             "deadbeef",
             &mut binds,
         );
         assert!(!sql.contains("DROP"), "{sql}");
         assert!(!sql.contains("SELECT 1"), "{sql}");
+    }
+
+    fn marks(values: &[&'static str]) -> std::vec::IntoIter<&'static str> {
+        values.to_vec().into_iter()
+    }
+
+    /// A phrase that Manticore marks as one run gives one term, beside the find text.
+    #[test]
+    fn a_marked_phrase_is_one_term() {
+        let terms = terms_from_marks("Prudential Lighting Corp.", marks(&["Prudential Lighting Corp"]));
+        assert_eq!(terms, vec!["Prudential Lighting Corp.", "Prudential Lighting Corp"]);
+    }
+
+    /// Words that Manticore marks one by one give one term each.
+    #[test]
+    fn each_marked_word_is_a_term() {
+        let terms = terms_from_marks("prudential corp", marks(&["Prudential", "Corp", "Corp"]));
+        assert_eq!(terms, vec!["prudential corp", "Prudential", "Corp"]);
+    }
+
+    /// A phrase across two cells or two rows is marked as one run with a tab or a line
+    /// break in it. No cell holds that run, so it splits into the text of each cell.
+    #[test]
+    fn a_marked_run_splits_at_cell_and_row_breaks() {
+        let terms = terms_from_marks("Tarbor Prudential", marks(&["Tarbor\tPrudential", "Acme\r\n Wire \n"]));
+        assert_eq!(terms, vec!["Tarbor Prudential", "Tarbor", "Prudential", "Acme", "Wire"]);
+    }
+
+    #[test]
+    fn duplicates_are_removed_without_regard_to_case() {
+        let terms = terms_from_marks("amic", marks(&["AMIC", "Amic Range", "amic range", "Range"]));
+        assert_eq!(terms, vec!["amic", "Amic Range", "Range"]);
+    }
+
+    #[test]
+    fn at_most_fifty_terms_and_the_find_text_stays() {
+        let many: Vec<String> = (0..80).map(|i| format!("word{i}")).collect();
+        let terms = terms_from_marks("query", many.iter().map(String::as_str));
+        assert_eq!(terms.len(), MAX_TABLE_FIND_TERMS);
+        assert_eq!(terms[0], "query");
+    }
+
+    #[test]
+    fn an_empty_find_text_with_no_marks_has_no_terms() {
+        assert!(terms_from_marks("", marks(&[" ", "\t"])).is_empty());
+    }
+
+    /// The constraint compares the terms with the cell text after the same tab and line
+    /// break replacement, and binds the terms as one array.
+    #[test]
+    fn the_find_constraint_binds_the_terms_as_one_array() {
+        let mut binds = Vec::new();
+        let sql = build_constraints(&[], &["a".to_string(), "b".to_string()], 1, "deadbeef", &mut binds);
+        assert!(sql.contains("multiSearchAnyCaseInsensitiveUTF8(translate(cell_text, '\\t\\r\\n', '   '), ?)"), "{sql}");
+        assert!(matches!(binds.last(), Some(Bind::Strs(terms)) if terms.len() == 2));
     }
 }

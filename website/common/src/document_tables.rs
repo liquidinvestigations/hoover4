@@ -21,7 +21,11 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Remove phrase delimiters before literal table-cell matching.
+/// The find text without its double-quote phrase delimiters.
+///
+/// The backend adds this text to the words that the search engine matched in the document.
+/// The cells are searched for each of these terms. When a response has no excerpt, the grid
+/// builds its own excerpt with this text as the one term.
 pub fn table_find_text(query: &str) -> String {
     query.replace(['"', '“', '”'], "").trim().to_string()
 }
@@ -420,6 +424,11 @@ pub struct TablePage {
     /// How many rows this window holds room for, after clamping.
     pub limit: u32,
     pub clamps: TableClamps,
+    /// The terms that selected the rows and that the cell excerpts mark. They are the words
+    /// that the search engine matched in this document, split at cell and row breaks, and
+    /// the find text without its double quotes. Empty without a find text.
+    #[serde(default)]
+    pub find_terms: Vec<String>,
 }
 
 /// One entry of a filter popover's value list.

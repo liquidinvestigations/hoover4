@@ -1137,11 +1137,11 @@ fn GridCell(
         };
     };
     // The website route always sends the excerpt. Building it here is the fallback for a
-    // response that has none, with the same engine.
+    // response that has none, with the same engine and the find text as its one term.
     let preview = cell
         .preview
         .clone()
-        .unwrap_or_else(|| cell_preview(&cell.text, &table_find_text(&find_query)));
+        .unwrap_or_else(|| cell_preview(&cell.text, &[table_find_text(&find_query)]));
     let expandable = preview.offers_full_view();
     let mut pieces: Vec<(String, bool)> = Vec::new();
     for (index, line) in preview.lines.into_iter().enumerate() {
@@ -1351,11 +1351,10 @@ pub async fn get_table_page(
     query: TableViewQuery,
 ) -> Result<TablePage, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    let search = query.search.clone();
     let mut page = backend::api::documents::table_browse::get_table_page(&user, document_identifier, query)
         .await
         .map_err(crate::api::error_util::to_server_fn_error)?;
-    backend::api::documents::table_browse::fill_cell_previews(&mut page, &search);
+    backend::api::documents::table_browse::fill_cell_previews(&mut page);
     Ok(page)
 }
 

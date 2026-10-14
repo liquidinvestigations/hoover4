@@ -50,6 +50,16 @@ fn prefer_binary_word(sources: &mut [DocumentTextSourceItem]) {
     sources.sort_by_key(|source| source.extracted_by != BINARY_WORD_TEXT_EXTRACTOR);
 }
 
+/// Sorts the sources in the order that the viewers offer them. The viewers open the first one.
+///
+/// The derived order puts the variants in declaration order. A second stable sort moves each
+/// PDF source with an OCR engine to the front. The rendered OCR PDF has a text layer. The
+/// original PDF and the PDF preview of a scanned page have none.
+fn sort_sources(sources: &mut [DocumentSourceItem]) {
+    sources.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    sources.sort_by_key(|source| !matches!(source, DocumentSourceItem::Pdf(pdf) if pdf.is_ocr()));
+}
+
 use common::document_metadata::DocumentMetadataTableInfo;
 
 use crate::api::documents::get_raw_metadata::get_raw_metadata;
@@ -450,7 +460,7 @@ pub async fn get_document_sources_status(
     // since both sort last and neither is ever selected by default it is reachable only as
     // a dead end. `Metadata` stays a variant so a bookmarked URL naming it still parses;
     // the selector falls back to the first real source.
-    sources.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    sort_sources(&mut sources);
 
     let processing = processing.unwrap_or_else(|error| {
         tracing::warn!(%error, "document processing query failed");
@@ -548,6 +558,31 @@ mod tests {
         );
         assert_eq!(sources, vec![original]);
         assert_eq!(error.unwrap().to_string(), "OCR query failed");
+    }
+
+    #[test]
+    fn ocr_pdf_sources_sort_before_the_original_and_the_preview() {
+        let pdf = |kind: &str, engine: &str, languages: &str| DocumentSourceItem::Pdf(DocumentPdfSourceItem {
+            page_count: 3, engine: engine.into(), languages: languages.into(),
+            source_kind: kind.into(), ..Default::default() });
+        let text = DocumentSourceItem::Text(DocumentTextSourceItem {
+            extracted_by: "pdfocr_tesseract_eng".into(), min_page: 1, max_page: 3 });
+        let mut sources = vec![
+            text.clone(), pdf("preview", "", ""), pdf("original", "", ""),
+            pdf("original", "tesseract", "ron"), pdf("preview", "tesseract", "eng"),
+            pdf("original", "tesseract", "eng"),
+        ];
+        sort_sources(&mut sources);
+        let names = sources.iter().map(|source| match source {
+            DocumentSourceItem::Pdf(pdf) => pdf.label(),
+            DocumentSourceItem::Text(text) => format!("text {}", text.extracted_by),
+            _ => String::new(),
+        }).collect::<Vec<_>>();
+        let ocr = names[..3].to_vec();
+        assert!(ocr.iter().all(|name| name.contains("OCR")), "{names:?}");
+        assert!(names[3].starts_with("PDF") && !names[3].contains("OCR"), "{names:?}");
+        assert!(names[4].starts_with("PDF") && !names[4].contains("OCR"), "{names:?}");
+        assert_eq!(names[5], "text pdfocr_tesseract_eng");
     }
 
     #[test]

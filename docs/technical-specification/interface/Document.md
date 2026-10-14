@@ -48,6 +48,7 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 The PDF source list keeps the original PDF when its OCR variant query fails.
 The source response reports the OCR query error beside the available source.
 The Word text source precedes Extractous text for binary Word files.
+OCR PDF sources precede the original PDF and the PDF preview.
 
 ## Constraints
 
@@ -77,8 +78,9 @@ PDF pointer coordinates remain correct at each browser zoom.
 The email headers, expanded details, attachments and body share one scroll container.
 A filename-only search match opens the table without a row filter.
 
-Table find removes double-quote phrase delimiters before literal cell matching.
-Match counts, row filters, and cell highlights use the same normalized text.
+Table find searches cells for the words that the search engine matched in the document, and for the find text without its double quotes.
+A matched run that crosses a cell or row break splits into one term for each cell.
+Match counts, sheet counts, row filters, and cell highlights use the same terms.
 Unicode case folding preserves the original text offsets during highlighting.
 A table cell excerpt has at most five lines of at most 80 display columns.
 A wide character uses two columns.

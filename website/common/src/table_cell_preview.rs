@@ -1,7 +1,7 @@
 //! The inline excerpt of one table cell.
 //!
 //! The grid draws at most [`CELL_EXCERPT_LINES`] lines of a cell, each at most
-//! [`CELL_LINE_COLUMNS`] display columns wide, around the first match of the find text.
+//! [`CELL_LINE_COLUMNS`] display columns wide, around the first match of the find terms.
 //! The excerpt is presentation only. Row selection, sorting, filters and the full-cell
 //! view all read the raw stored value.
 //!
@@ -208,18 +208,34 @@ fn trim_columns(line: &mut Vec<(String, bool)>, mut columns: usize, from_start: 
     }
 }
 
+/// The sorted byte ranges of the matches of every term, with overlapping ranges joined.
+fn term_ranges(text: &str, terms: &[String]) -> Vec<Range<usize>> {
+    let mut ranges: Vec<Range<usize>> =
+        terms.iter().flat_map(|term| case_insensitive_ranges(text, term)).collect();
+    ranges.sort_by_key(|range| (range.start, std::cmp::Reverse(range.end)));
+    let mut joined: Vec<Range<usize>> = Vec::with_capacity(ranges.len());
+    for range in ranges {
+        match joined.last_mut() {
+            Some(last) if range.start <= last.end => last.end = last.end.max(range.end),
+            _ => joined.push(range),
+        }
+    }
+    joined
+}
+
 fn line_width(line: &[(String, bool)]) -> usize {
     line.iter().map(|(text, _)| width_of(text)).sum()
 }
 
-/// Build the inline excerpt of `text` around the first match of `needle`.
+/// Build the inline excerpt of `text` around the first match of any of `terms`.
 ///
-/// `needle` is the find text after [`crate::document_tables::table_find_text`]. Matches
-/// are found in the whole value before it is wrapped, so a phrase across a wrap point
-/// stays marked on both lines.
-pub fn cell_preview(text: &str, needle: &str) -> TableCellPreview {
+/// `terms` are the find terms of the page ([`crate::document_tables::TablePage::find_terms`]).
+/// Each term is marked. Overlapping matches of two terms become one mark. Matches are found
+/// in the whole value before it is wrapped, so a phrase across a wrap point stays marked on
+/// both lines.
+pub fn cell_preview(text: &str, terms: &[String]) -> TableCellPreview {
     let text = normalise(text);
-    let matches = case_insensitive_ranges(&text, needle);
+    let matches = term_ranges(&text, terms);
     let lines = wrap(&text);
     let total = lines.len();
     let first = matches
@@ -253,6 +269,10 @@ pub fn cell_preview(text: &str, needle: &str) -> TableCellPreview {
 mod tests {
     use super::*;
 
+    fn terms(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
     fn plain(line: &[(String, bool)]) -> String {
         line.iter().map(|(text, _)| text.as_str()).collect()
     }
@@ -278,7 +298,7 @@ mod tests {
 
     #[test]
     fn a_short_value_is_one_complete_line() {
-        let preview = cell_preview("Jenalynn Weed", "");
+        let preview = cell_preview("Jenalynn Weed", &[]);
         assert_eq!(preview.lines, vec![vec![("Jenalynn Weed".to_string(), false)]]);
         assert_eq!(preview.line_count, 1);
         assert!(!preview.offers_full_view());
@@ -288,7 +308,7 @@ mod tests {
     fn a_word_ending_at_column_80_wraps_without_lost_text() {
         let first = "a".repeat(80);
         let text = format!("{first} next");
-        let preview = cell_preview(&text, "");
+        let preview = cell_preview(&text, &[]);
         assert_eq!(preview.lines.iter().map(|l| plain(l)).collect::<Vec<_>>(), vec![first, "next".to_string()]);
         assert_limits(&preview);
     }
@@ -296,7 +316,7 @@ mod tests {
     #[test]
     fn a_word_longer_than_80_columns_splits_and_rejoins() {
         let long = "x".repeat(200);
-        let preview = cell_preview(&format!("ab {long}"), "");
+        let preview = cell_preview(&format!("ab {long}"), &[]);
         let joined: String = preview.lines.iter().map(|l| plain(l)).collect();
         assert_eq!(joined, format!("ab{long}"));
         assert_eq!(preview.line_count, 4);
@@ -305,25 +325,25 @@ mod tests {
 
     #[test]
     fn explicit_breaks_stay_and_carriage_returns_and_tabs_are_normalised() {
-        let preview = cell_preview("one\r\ntwo\rthree\n\tfour", "");
+        let preview = cell_preview("one\r\ntwo\rthree\n\tfour", &[]);
         let lines: Vec<String> = preview.lines.iter().map(|l| plain(l)).collect();
         assert_eq!(lines, vec!["one", "two", "three", " four"]);
     }
 
     #[test]
     fn wide_characters_use_two_columns_and_marks_none() {
-        let preview = cell_preview(&"漢".repeat(80), "");
+        let preview = cell_preview(&"漢".repeat(80), &[]);
         assert_eq!(preview.line_count, 2);
         assert_eq!(width_of(&plain(&preview.lines[0])), 80);
         let combining = "e\u{0301}".repeat(80);
-        assert_eq!(cell_preview(&combining, "").line_count, 1);
+        assert_eq!(cell_preview(&combining, &[]).line_count, 1);
     }
 
     #[test]
     fn a_first_match_is_marked_at_the_beginning_middle_and_end() {
         let text = words(200);
         for needle in ["w000", "w100", "w199"] {
-            let preview = cell_preview(&text, needle);
+            let preview = cell_preview(&text, &terms(&[needle]));
             assert_eq!(marked(&preview), vec![needle.to_string()], "{needle}");
             assert_limits(&preview);
         }
@@ -334,7 +354,7 @@ mod tests {
         let mut parts: Vec<String> = (0..200).map(|i| format!("w{i:03}")).collect();
         parts[100] = "target".into();
         parts[150] = "target".into();
-        let preview = cell_preview(&parts.join(" "), "target");
+        let preview = cell_preview(&parts.join(" "), &terms(&["target"]));
         assert_eq!(marked(&preview), vec!["target".to_string()]);
         let middle = plain(&preview.lines[2]);
         assert!(middle.contains("target"), "{middle}");
@@ -345,7 +365,7 @@ mod tests {
     #[test]
     fn a_phrase_across_a_wrap_point_is_marked_on_both_lines() {
         let text = format!("{} alpha beta", "a".repeat(70));
-        let preview = cell_preview(&text, "alpha beta");
+        let preview = cell_preview(&text, &terms(&["alpha beta"]));
         assert_eq!(marked(&preview), vec!["alpha".to_string(), "beta".to_string()]);
     }
 
@@ -355,7 +375,7 @@ mod tests {
         let needle_line = 20;
         let mut lines: Vec<String> = text.split('\n').map(str::to_string).collect();
         lines[needle_line] = format!("{}needle", "y".repeat(74));
-        let preview = cell_preview(&lines.join("\n"), "needle");
+        let preview = cell_preview(&lines.join("\n"), &terms(&["needle"]));
         assert_eq!(preview.lines.len(), CELL_EXCERPT_LINES);
         assert_eq!(preview.line_count, 40);
         assert_limits(&preview);
@@ -366,7 +386,7 @@ mod tests {
     fn a_match_longer_than_one_line_shows_its_first_part() {
         let long_match = "m".repeat(300);
         let text = format!("{} {long_match} {}", words(100), words(100));
-        let preview = cell_preview(&text, &long_match);
+        let preview = cell_preview(&text, &terms(&[&long_match]));
         let shown: String = marked(&preview).concat();
         assert!(shown.len() >= 80, "{shown}");
         assert!(long_match.starts_with(&shown));
@@ -375,7 +395,7 @@ mod tests {
 
     #[test]
     fn a_value_without_a_match_shows_its_first_lines() {
-        let preview = cell_preview(&words(200), "absent");
+        let preview = cell_preview(&words(200), &terms(&["absent"]));
         assert!(plain(&preview.lines[0]).starts_with("w000"));
         assert!(marked(&preview).is_empty());
         assert_limits(&preview);
@@ -383,15 +403,22 @@ mod tests {
 
     #[test]
     fn the_full_view_starts_at_three_wrapped_lines() {
-        assert!(!cell_preview("one\ntwo", "").offers_full_view());
-        assert!(cell_preview("one\ntwo\nthree", "").offers_full_view());
-        assert!(!cell_preview(&"z".repeat(160), "").offers_full_view());
-        assert!(cell_preview(&"z".repeat(161), "").offers_full_view());
+        assert!(!cell_preview("one\ntwo", &[]).offers_full_view());
+        assert!(cell_preview("one\ntwo\nthree", &[]).offers_full_view());
+        assert!(!cell_preview(&"z".repeat(160), &[]).offers_full_view());
+        assert!(cell_preview(&"z".repeat(161), &[]).offers_full_view());
     }
 
     #[test]
     fn case_folding_marks_the_source_text() {
-        let preview = cell_preview("İstanbul WEED", "weed");
+        let preview = cell_preview("İstanbul WEED", &terms(&["weed"]));
         assert_eq!(marked(&preview), vec!["WEED".to_string()]);
+    }
+
+    #[test]
+    fn every_term_is_marked_and_overlapping_matches_join() {
+        let preview = cell_preview("Prudential Lighting Corp, Prudential", &terms(&["prudential lighting", "lighting corp", "Prudential"]));
+        assert_eq!(marked(&preview), vec!["Prudential Lighting Corp".to_string(), "Prudential".to_string()]);
+        assert!(marked(&cell_preview("Tarbor", &terms(&["Prudential", "Tarbor"]))).contains(&"Tarbor".to_string()));
     }
 }
