@@ -152,6 +152,8 @@ def render_reason(board, folded, facts, citations, stalled: bool) -> str:
         "sourced fact.\n"
         "- Direct each intent at one goal, and name that goal in its objective.\n"
         "- A fact of kind not_found means a search found nothing. Do not propose that search again.\n"
+        "- A finished intent was explored once. When every remaining direction repeats a finished "
+        "intent, return review, and state in each goal's statement what the facts do not cover.\n"
         "- A rejected fact is wrong as the investigator says. Use the reason to direct new intents, "
         "and do not name the rejected fact in `from`.\n"
         f"{stall_text}\n"
@@ -165,5 +167,7 @@ def render_reason(board, folded, facts, citations, stalled: bool) -> str:
         "Open intents:\n" + ("\n".join(open_lines) or "- none") + "\n\n"
         "Finished intents:\n" + ("\n".join(done_lines) or "- none") + "\n\n"
         "Questions suggested by earlier explores:\n" + ("\n".join(f"- {q}" for q in questions) or "- none") + "\n\n"
+        "Checks that changed your last reply:\n"
+        + ("\n".join(f"- {p}" for p in folded.last_reason_problems) or "- none") + "\n\n"
         f"Valid facts: {valid_ids}\n"
     )

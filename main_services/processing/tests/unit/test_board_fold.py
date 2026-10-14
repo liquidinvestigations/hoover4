@@ -320,3 +320,16 @@ def test_the_brief_call_guidance_grows_with_the_step_budget():
     assert call_guidance(m.BASE_EXPLORE_STEPS) == 15
     assert call_guidance(m.MAX_EXPLORE_STEPS) == 30
     assert call_guidance(m.CONCLUDE_STEP_BUDGET) == 1
+
+
+def test_the_next_reason_reads_the_checks_that_changed_the_last_reply():
+    from tasks.P_board.prompts import render_reason
+
+    log = Log().add(m.BOARD_CREATED).reason(1, outcome="noop", idle=True,
+                                            problems=["dropped as a repeat: find X"])
+    rows = facts()
+    folded = fold(board(), log.events, rows)
+    assert folded.last_reason_problems == ["dropped as a repeat: find X"]
+    prompt = render_reason(board(), folded, rows, [], stalled=False)
+    assert "Checks that changed your last reply:\n- dropped as a repeat: find X" in prompt
+    assert "every remaining direction repeats a finished intent, return review" in prompt

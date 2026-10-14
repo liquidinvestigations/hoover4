@@ -73,6 +73,8 @@ class Folded:
     review_goals: list[dict] = field(default_factory=list)
     review_rejections: int = 0
     last_reason_outcome: str = ""
+    #: The checks that changed the last reason reply, which the next reason reads.
+    last_reason_problems: list[str] = field(default_factory=list)
 
     @property
     def max_explores(self) -> int:
@@ -193,6 +195,7 @@ def _apply_reason(folded: Folded, event) -> None:
     folded.reasons_done += 1
     outcome = data.get("outcome", "")
     folded.last_reason_outcome = outcome
+    folded.last_reason_problems = [str(p) for p in data.get("problems") or []]
     if outcome == "intents":
         for index, item in enumerate(data.get("intents") or [], start=1):
             intent_id = m.intent_id_for(reason_no, index)
