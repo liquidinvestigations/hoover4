@@ -473,6 +473,12 @@ DEFAULTS = {
         "api_key_file": "",
         # false: every model request leaves `temperature` out, because the server rejects it.
         "send_temperature": "false",
+        # The structured server of the chat policy checks. Empty = derived:
+        # http://<host of base_url>:<ai_services.vllm_structured_port>
+        "decision_url": "",
+        # The endpoint of agent turns. Empty = base_url serves them too. No API key.
+        "quality_base_url": "",
+        "quality_model": "",
     },
     "llm_provider.nvidia": {
         "enabled": "true",
@@ -1568,10 +1574,20 @@ def render_main_env(cfg):
     # It is rendered only for that provider, so chat content never goes to a hosted
     # classifier. Empty: every policy question is unavailable and the turn goes on.
     env["CHAT_CLASSIFIER_URL"] = ""
+    env["LLM_QUALITY_BASE_URL"] = ""
+    env["LLM_QUALITY_MODEL"] = ""
     if env["LLM_PROVIDER_NAME"] == "selfhosted":
         host = urllib.parse.urlsplit(env["LLM_BASE_URL"]).hostname or cfg.get("ai_services", "host")
-        env["CHAT_CLASSIFIER_URL"] = "http://%s:%s" % (
-            host, cfg.get("ai_services", "vllm_structured_port"))
+        env["CHAT_CLASSIFIER_URL"] = cfg.get("llm_provider.selfhosted", "decision_url").strip() or \
+            "http://%s:%s" % (host, cfg.get("ai_services", "vllm_structured_port"))
+        # The quality endpoint serves the model that the chat profiles select for agent
+        # turns. Both halves or neither: a URL without a model would route nothing.
+        quality_url = cfg.get("llm_provider.selfhosted", "quality_base_url").strip()
+        quality_model = cfg.get("llm_provider.selfhosted", "quality_model").strip()
+        if bool(quality_url) != bool(quality_model):
+            fail("[llm_provider.selfhosted] quality_base_url and quality_model are set together")
+        env["LLM_QUALITY_BASE_URL"] = quality_url
+        env["LLM_QUALITY_MODEL"] = quality_model
     control_dir = cfg.get(m, "chat_control_dir").strip()
     if control_dir:
         if not os.path.isabs(control_dir) or not os.path.isdir(control_dir):

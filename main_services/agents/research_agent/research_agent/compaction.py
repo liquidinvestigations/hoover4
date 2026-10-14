@@ -592,15 +592,12 @@ def summarise_with_model(prompt: str, *, model_id: str, max_tokens: int) -> str:
     Thinking is off: a thinking model given a transcript reasons about its content and
     starts to answer the task (`research_agent/thinking.py`).
     """
-    base = (os.getenv("LLM_BASE_URL") or "").rstrip("/")
+    from research_agent.endpoints import endpoint_for
+
+    endpoint = endpoint_for(summary_model(model_id))
+    base, api_key = endpoint.base_url, endpoint.api_key
     if not base:
         return ""
-    api_key = (os.getenv("LLM_API_KEY") or "").strip()
-    if not api_key:
-        key_file = (os.getenv("LLM_API_KEY_FILE") or "").strip()
-        if key_file and os.path.exists(key_file):
-            with open(key_file) as handle:
-                api_key = handle.read().strip()
     try:
         with httpx.Client(timeout=summariser_timeout()) as client:
             response = client.post(

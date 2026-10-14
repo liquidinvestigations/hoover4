@@ -277,26 +277,31 @@ def board_plan(inp: PlanInput) -> PlanOutput:
 # ------------------------------------------------------------------------------- reason
 
 
-def _default_model() -> str:
+def _explore_model(board) -> str:
+    """The model of an explore turn: the board's model, else the model of the internal
+    search chat profile, which an ordinary chat turn without internet tools uses. Empty
+    lets the turn use the default chat model."""
     from database.clickhouse import get_server_setting
 
+    if (board.llm_model or "").strip():
+        return board.llm_model.strip()
     try:
-        configured = (get_server_setting("llm_default_chat_model") or "").strip()
-    except Exception:  # noqa: BLE001 - a settings read failure falls back to the env model
-        configured = ""
-    return configured or (os.getenv("LLM_MODEL") or "").strip()
+        return (get_server_setting("llm_model_internal_search") or "").strip()
+    except Exception:  # noqa: BLE001 - a settings read failure falls back to the default model
+        return ""
 
 
 def _record_llm_call(owner: str, board_id: str, model: str, usage: dict, latency_ms: int,
                      ok: bool, error: str, reply_bytes: int) -> None:
     from database.clickhouse import get_global_client
     from database import boards
+    from tasks.llm_endpoints import endpoint_for
 
     try:
         with get_global_client() as client:
             client.insert(
                 "llm_call_events",
-                [[boards.now(), owner, f"{m.SESSION_PREFIX}{board_id}", "board_reason", "selfhosted",
+                [[boards.now(), owner, f"{m.SESSION_PREFIX}{board_id}", "board_reason", endpoint_for(model).label,
                   model, int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0),
                   0, reply_bytes, latency_ms, 1 if ok else 0, error[:500]]],
                 column_names=["event_time", "username", "session_id", "kind", "provider", "model_id",
@@ -323,12 +328,16 @@ def board_reason(task: ReasonTask) -> str:
     if folded.status != m.ACTIVE:
         return "skipped"
     prompt = render_reason(board, folded, facts, citations, task.stalled)
-    model = board.llm_model or _default_model()
-    base = (os.getenv("LLM_BASE_URL") or "").strip().rstrip("/")
+    # A reason is a short decision call, so it uses the summarisation model, as titles
+    # and follow-up suggestions do. The board's model is the model of its explores.
+    model = summarize._model()
+    from tasks.llm_endpoints import endpoint_for
+
+    endpoint = endpoint_for(model)
     started = time.monotonic()
     text, usage, error = "", {}, ""
     try:
-        response = summarize._post(base, {"model": model, "max_tokens": 4000,
+        response = summarize._post(endpoint, {"model": model, "max_tokens": 4000,
                                           "messages": [{"role": "user", "content": prompt}]})
         response.raise_for_status()
         reply = response.json()
@@ -482,7 +491,7 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
     run_input = AgentRunInput(
         run_id=str(uuid.uuid5(BOARD_NAMESPACE, turn_uuid)), username=board.owner,
         session_id=session_id, turn_seq=seq, start_seq=seq + 1, turn_uuid=turn_uuid,
-        allowed_collections=collections, llm_model=board.llm_model, internet_tools=False,
+        allowed_collections=collections, llm_model=_explore_model(board), internet_tools=False,
         max_model_steps=int(steps), board_turn=True)
     return OpenedTurn(workflow_id=f"chat-{session_id}-{seq + 1}", run_input=run_input)
 

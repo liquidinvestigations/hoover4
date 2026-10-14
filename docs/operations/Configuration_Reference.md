@@ -419,6 +419,17 @@ cloud providers default to `true`.
 `api_key_file` is a **path**, and the file lives outside the repository, chmod-600,
 bind-mounted read-only. A key value never appears in this file.
 
+The selfhosted provider has three endpoints. `base_url` serves `model` and every short call:
+conversation titles, follow-up suggestions and board reasons. `decision_url` is the structured
+server of the chat policy checks, rendered as `CHAT_CLASSIFIER_URL`. Empty derives it from
+the host of `base_url` and `[ai_services] vllm_structured_port`. `quality_base_url` serves
+`quality_model`, and a request that names that model goes there. Set both quality keys or
+neither. The quality endpoint takes no API key, and the clients send a placeholder. A
+person selects `quality_model` as the default chat model under `/admin/llm` and keeps the
+base model as the summarisation model. The worker and both
+agent services apply the rule (`tasks/llm_endpoints.py`, `research_agent/endpoints.py`), and
+`main.py refresh-llm-catalog` lists the quality endpoint as a provider of its own.
+
 Which model a given chat profile uses is *not* here: that is a runtime setting under
 `/admin/llm`, per profile, with an unset value meaning "use the default chat model". The
 provider section says which providers exist; the admin surface says which model each profile
@@ -514,7 +525,8 @@ Deployment renders this value into the server override XML.
 
 ### `[llm_provider.selfhosted]`
 
-- `enabled`, `base_url`, `model`, `api_key_file`, `send_temperature`
+- `enabled`, `base_url`, `model`, `api_key_file`, `send_temperature`, `decision_url`,
+  `quality_base_url`, `quality_model`
 
 ### `[llm_provider.nvidia]`
 

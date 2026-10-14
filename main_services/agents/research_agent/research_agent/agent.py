@@ -22,7 +22,7 @@ from langfuse.langchain import CallbackHandler
 
 from agent_common import tool_packs
 from agent_common.result_pages import is_canonical_page
-from research_agent import compaction, model_params, prompts, skill_store
+from research_agent import compaction, endpoints, model_params, prompts, skill_store
 from research_agent.execution import page_share_client
 from research_agent.tool_args import normalize_arguments
 from research_agent.tool_catalogue import CatalogueSnapshot, build_snapshot
@@ -311,9 +311,11 @@ class MCPGatewayAgent:
         result_pager = next((tool for tool in tools if tool.name == "_page_tool_result"), None)
         tools = [tool for tool in tools if tool.name != "_page_tool_result"]
 
-        llm_api_key = _read_secret("LLM_API_KEY")
-        llm_base_url = os.getenv("LLM_BASE_URL")
         model_id = self._resolve_model(llm_model)
+        # The quality model has an endpoint of its own (`research_agent/endpoints.py`).
+        endpoint = endpoints.endpoint_for(model_id)
+        llm_api_key = endpoint.api_key
+        llm_base_url = endpoint.base_url
         llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.0"))
 
         if not llm_api_key:

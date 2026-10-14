@@ -557,6 +557,13 @@ model        =           ; empty = vllm_served_name
 api_key_file =
 ; false: every model request leaves `temperature` out, because the server rejects it.
 send_temperature = false
+; The structured server of the chat policy checks. Empty = derived from the host of
+; base_url and [ai_services] vllm_structured_port.
+decision_url     =
+; A second endpoint for agent turns, and the model it serves. The chat profiles select
+; that model under /admin/llm. Set both or neither. The endpoint takes no API key.
+quality_base_url =
+quality_model    =
 
 [llm_provider.nvidia]
 ; The only LLM provider the live tests exercise — vLLM is parked.

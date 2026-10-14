@@ -587,6 +587,10 @@ services:
       - "LLM_BASE_URL=${LLM_BASE_URL:-}"
       - "LLM_MODEL=${LLM_MODEL:-}"
       - "LLM_API_KEY_FILE=/run/secrets/llm_api_key"
+      # The quality endpoint of the selfhosted provider and its model, for agent turns.
+      # Empty: the base endpoint serves every model (tasks/llm_endpoints.py).
+      - "LLM_QUALITY_BASE_URL=${LLM_QUALITY_BASE_URL:-}"
+      - "LLM_QUALITY_MODEL=${LLM_QUALITY_MODEL:-}"
       # false when the active provider rejects `temperature`: the title request leaves it out.
       - "LLM_SEND_TEMPERATURE=${LLM_SEND_TEMPERATURE:-true}"
       # The structured server of the selfhosted model for the chat policy checks, and

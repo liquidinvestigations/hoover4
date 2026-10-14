@@ -7,7 +7,6 @@ These activities use that collection list and the submitted model selection.
 
 import logging
 import os
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -254,6 +253,7 @@ def _record_summarizer_call(params: TitleSessionParams, result) -> None:
     while every title falls back to the user's own words.
     """
     from database.clickhouse import get_global_client
+    from tasks.llm_endpoints import endpoint_for
 
     ok = 1 if result.title else 0
     username = params.username.strip()
@@ -261,7 +261,7 @@ def _record_summarizer_call(params: TitleSessionParams, result) -> None:
     # telemetry into a cardinality problem with one row per visitor.
     if not username or username == "guest" or username.startswith("guest-"):
         username = "guest"
-    provider = _provider_label()
+    provider = endpoint_for(result.model).label
     reply_bytes = len(result.title) + len(result.summary)
     event_time = datetime.now(timezone.utc).replace(tzinfo=None)
     try:
@@ -297,17 +297,6 @@ def _record_summarizer_call(params: TitleSessionParams, result) -> None:
         attempt=attempt, ok=bool(ok), queue_wait_ms=queue_wait_ms,
         duration_ms=result.latency_ms, error=result.error,
         prompt_tokens=result.prompt_tokens, completion_tokens=result.completion_tokens))
-
-
-def _provider_label() -> str:
-    """A short, stable name for the endpoint that served the call."""
-    from tasks.llm_catalog import provider_label
-
-    name = (os.getenv("LLM_PROVIDER_NAME") or "").strip()
-    if name:
-        return name
-    host = re.sub(r"^https?://", "", os.getenv("LLM_BASE_URL") or "").split("/")[0]
-    return provider_label(host) if host else "unknown"
 
 
 # ------------------------------------------------------------------------- AgentRun

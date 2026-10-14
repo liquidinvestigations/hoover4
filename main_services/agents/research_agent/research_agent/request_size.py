@@ -115,17 +115,11 @@ def request_text(system_text: str, schemas_json: str, messages: Sequence[RunMess
     return "\n".join(parts)
 
 
-def _api_key() -> Optional[str]:
-    value = (os.getenv("LLM_API_KEY") or "").strip()
-    path = (os.getenv("LLM_API_KEY_FILE") or "").strip()
-    if not value and path and os.path.exists(path):
-        with open(path) as handle:
-            value = handle.read().strip()
-    return value or None
-
-
 def _default_counter(model_id: str) -> Any:
-    return TokenCounter(os.getenv("LLM_BASE_URL") or "", model_id, _api_key())
+    from research_agent.endpoints import endpoint_for
+
+    endpoint = endpoint_for(model_id)
+    return TokenCounter(endpoint.base_url, model_id, endpoint.api_key or None)
 
 
 def measure(system_text: str, schemas_json: str, messages: Sequence[RunMessage], *,
@@ -137,7 +131,9 @@ def measure(system_text: str, schemas_json: str, messages: Sequence[RunMessage],
     and a test passes a fake one."""
     reserve, source = output_reserve()
     clock = time.monotonic() if now is None else now
-    base = os.getenv("LLM_BASE_URL") or ""
+    from research_agent.endpoints import endpoint_for
+
+    base = endpoint_for(model_id).base_url
     error = ""
     if window > 0:
         if _tokenizer_down.get(base, 0.0) > clock:

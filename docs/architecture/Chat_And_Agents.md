@@ -63,6 +63,17 @@ title. Without it the only way to make one faster is to change the model for eve
 
 A model the user picked in the composer still wins over the profile's: the key configures
 the deployment, not the conversation.
+
+The selfhosted provider can have a quality endpoint beside its base endpoint
+(`[llm_provider.selfhosted] quality_base_url` and `quality_model`). A request that names the
+quality model goes to the quality endpoint, and every other model goes to the base endpoint.
+The worker (`tasks/llm_endpoints.py`) and the agent services (`research_agent/endpoints.py`)
+apply this rule to every model call. A deployment selects the quality model as
+`llm_default_chat_model`, so agent turns run on it, and the base model as
+`llm_summarization_model`, so titles, follow-up suggestions and board reasons stay on the
+base endpoint. The default chat model is the one that matters for a person's chat, because
+the composer selects it and sends it with every message, and a sent model wins over the
+profile keys. The chat policy checks ask the decision endpoint, `CHAT_CLASSIFIER_URL`.
 The worker uses `llm_default_chat_model` for a request without a model. If that setting is
 empty, it uses the configured `LLM_MODEL` value, as the website does. It gives an error
 when both values are empty. The agent service also requires a selected or configured

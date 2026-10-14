@@ -102,8 +102,8 @@ storage and no clock. The module docstring lists the rules. These rules have the
 
 ## Reason
 
-`board_reason` sends one model call on `chat-model-queue`, with the board model or the
-default chat model. The prompt holds the goal, the live facts without their citation labels,
+`board_reason` sends one model call on `chat-model-queue`, with the summarisation model
+(`llm_summarization_model`). The prompt holds the goal, the live facts without their citation labels,
 the hints, the rejected facts and the intents. The reply must be one JSON object with
 `intents`, `review` or neither. `contracts.parse_reason` checks it.
 
@@ -118,7 +118,9 @@ Every change that a check makes is in the `problems` list of the `reason_result`
 
 `open_explore_turn` writes the rows that `send_message` writes for a person: the session with
 internet tools off and its options locked, the user message, and the stream row. The turn then
-runs as an ordinary `AgentRun`, with the board's step budget as its model step limit. A board
+runs as an ordinary `AgentRun`, with the board's step budget as its model step limit. Its
+model is the board's model, else the model of the internal search chat profile
+(`llm_model_internal_search`), which is the model of a person's chat without internet tools. A board
 turn does not write follow-up suggestions or a session title.
 
 The brief asks for the answer with inline `[Dn]` labels and a final fenced JSON block with

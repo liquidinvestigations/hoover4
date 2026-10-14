@@ -191,13 +191,14 @@ def _model() -> str:
     return (os.getenv("LLM_MODEL") or "").strip()
 
 
-def _post(base_url: str, body: dict):
-    """One completion request. Raises only what the caller already catches."""
+def _post(endpoint, body: dict):
+    """One completion request to `endpoint` (`tasks.llm_endpoints.Endpoint`). Raises only
+    what the caller already catches."""
     import requests
 
     return requests.post(
-        f"{base_url}/chat/completions",
-        headers={"Authorization": f"Bearer {_api_key()}"},
+        f"{endpoint.base_url}/chat/completions",
+        headers={"Authorization": f"Bearer {endpoint.api_key}"},
         json=body,
         timeout=REQUEST_TIMEOUT,
     )
@@ -209,8 +210,10 @@ def title_and_summary(user_message: str, answer: str) -> TitleSummary:
     if not model:
         return TitleSummary(error="no summarisation model configured")
 
-    base_url = (os.getenv("LLM_BASE_URL") or "").strip().rstrip("/")
-    if not base_url:
+    from tasks.llm_endpoints import endpoint_for
+
+    endpoint = endpoint_for(model)
+    if not endpoint.base_url:
         return TitleSummary(model=model, error="no LLM_BASE_URL configured")
 
     prompt = (
@@ -235,11 +238,11 @@ def title_and_summary(user_message: str, answer: str) -> TitleSummary:
     if _send_temperature():
         body["temperature"] = 0.2
     try:
-        response = _post(base_url, {**body, **NO_THINKING})
+        response = _post(endpoint, {**body, **NO_THINKING})
         if 400 <= response.status_code < 500:
             # The hint is the likeliest thing a provider objects to, so it is the first
             # thing dropped. A second refusal is a real one and is reported.
-            response = _post(base_url, body)
+            response = _post(endpoint, body)
     except Exception as exc:  # noqa: BLE001 - a dead endpoint costs a title, not a turn
         return TitleSummary(model=model, latency_ms=elapsed(), error=str(exc)[:500])
 

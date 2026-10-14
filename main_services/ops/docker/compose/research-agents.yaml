@@ -54,6 +54,10 @@ services:
       - AGENT_MAX_OUTPUT_TOKENS=${AGENT_MAX_OUTPUT_TOKENS:-}
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
+      # The quality endpoint and its model. A turn that names that model goes there
+      # (research_agent/endpoints.py). Empty: LLM_BASE_URL serves every model.
+      - LLM_QUALITY_BASE_URL=${LLM_QUALITY_BASE_URL:-}
+      - LLM_QUALITY_MODEL=${LLM_QUALITY_MODEL:-}
       - AGENT_NAME=${INTERNAL_SEARCH_AGENT_NAME:-Internal Search Agent}
       - AGENT_PROFILE=internal_search
       # The tool packs of each kind of agent run, rendered by deploy.py from
@@ -144,6 +148,10 @@ services:
       - AGENT_MAX_OUTPUT_TOKENS=${AGENT_MAX_OUTPUT_TOKENS:-}
       # Rendered by deploy.py from the active LLM provider in hoover4.ini.
       - LLM_BASE_URL=${LLM_BASE_URL:-}
+      # The quality endpoint and its model. A turn that names that model goes there
+      # (research_agent/endpoints.py). Empty: LLM_BASE_URL serves every model.
+      - LLM_QUALITY_BASE_URL=${LLM_QUALITY_BASE_URL:-}
+      - LLM_QUALITY_MODEL=${LLM_QUALITY_MODEL:-}
       - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME:-Full Research Agent}
       - AGENT_PROFILE=full_research
       # The tool packs of each kind of agent run, rendered by deploy.py from

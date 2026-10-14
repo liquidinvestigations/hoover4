@@ -89,10 +89,10 @@ class RefreshResult:
 def providers_from_env() -> List[ProviderConfig]:
     """The providers this container was configured with.
 
-    Only one is rendered into the environment today (`LLM_BASE_URL` / `LLM_MODEL` /
-    `LLM_API_KEY_FILE`, from the ini's single active provider). Returning a list keeps
-    the caller shaped for the multi-provider catalog the admin page wants, without
-    pretending the extra providers exist.
+    The ini's single active provider is `LLM_BASE_URL` / `LLM_MODEL` / `LLM_API_KEY_FILE`.
+    The selfhosted provider can add its quality endpoint, `LLM_QUALITY_BASE_URL`, which is
+    listed as a provider of its own so that its model can be selected
+    (`tasks/llm_endpoints.py`).
     """
     base_url = (os.getenv("LLM_BASE_URL") or "").strip()
     if not base_url:
@@ -111,7 +111,15 @@ def providers_from_env() -> List[ProviderConfig]:
     name = (os.getenv("LLM_PROVIDER_NAME") or "").strip()
     if not name:
         name = provider_label(re.sub(r"^https?://", "", base_url).split("/")[0])
-    return [ProviderConfig(name=name, base_url=base_url.rstrip("/"), api_key=api_key)]
+    providers = [ProviderConfig(name=name, base_url=base_url.rstrip("/"), api_key=api_key)]
+    quality = (os.getenv("LLM_QUALITY_BASE_URL") or "").strip().rstrip("/")
+    if quality:
+        from tasks.llm_endpoints import QUALITY_PLACEHOLDER_KEY
+
+        host = re.sub(r"^https?://", "", quality).split("/")[0]
+        providers.append(ProviderConfig(name=provider_label(host), base_url=quality,
+                                        api_key=QUALITY_PLACEHOLDER_KEY))
+    return providers
 
 
 def provider_label(host: str) -> str:
@@ -175,8 +183,10 @@ _CONTEXT_WINDOW_KEYS = ("max_model_len", "context_length", "context_window")
 
 
 def _context_window(entry: dict) -> int:
-    for key in _CONTEXT_WINDOW_KEYS:
-        raw = entry.get(key)
+    # llama.cpp states the window inside `meta` as `n_ctx`.
+    meta = entry.get("meta") if isinstance(entry.get("meta"), dict) else {}
+    candidates = [entry.get(key) for key in _CONTEXT_WINDOW_KEYS] + [meta.get("n_ctx")]
+    for raw in candidates:
         if raw is None:
             continue
         try:

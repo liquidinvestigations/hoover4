@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -33,9 +32,11 @@ def parse_prompts(text: str) -> list[str]:
 
 def generate_prompts(question: str, answer: str, model: str) -> dict:
     """Make one tool-free completion request without changing the answer."""
-    base = (os.getenv("LLM_BASE_URL") or "").strip().rstrip("/")
+    from tasks.llm_endpoints import endpoint_for
+
     model = model or summarize._model()
-    if not base or not model:
+    endpoint = endpoint_for(model)
+    if not endpoint.base_url or not model:
         return {"follow_up_prompts": [], "follow_up_error": "No model is configured."}
     body = {
         "model": model,
@@ -57,7 +58,7 @@ def generate_prompts(question: str, answer: str, model: str) -> dict:
     if summarize._send_temperature():
         body["temperature"] = 0.2
     try:
-        response = summarize._post(base, body)
+        response = summarize._post(endpoint, body)
         response.raise_for_status()
         reply = response.json()
         choice = reply["choices"][0]
@@ -97,7 +98,9 @@ def write_followups(ref: RunRef) -> None:
     if "follow_up_prompts" in usage:
         return
     question = _user_row_text(run.username, run.session_id, run.turn_seq)
-    usage.update(generate_prompts(question, run.result, row["model"]))
+    # The summarisation model, not the answer's: suggestions are a short call, and the
+    # answer's model can be the quality model of an agent turn.
+    usage.update(generate_prompts(question, run.result, summarize._model()))
     current = agent_runs.read_run(ref.username, ref.session_id, ref.run_id)
     if (current is None or agent_runs.is_terminal(current)
             or agent_runs.turn_is_stopped(ref.username, ref.session_id, run.turn_seq)

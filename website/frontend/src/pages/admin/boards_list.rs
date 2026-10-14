@@ -244,9 +244,9 @@ fn CreateBoardPanel(on_created: Callback<String>) -> Element {
                     {collection_boxes}
                 }
                 div { style: "display: flex; gap: 14px; flex-wrap: wrap; align-items: center;",
-                    label { style: LABEL, "Model"
+                    label { style: LABEL, "Explore model"
                         input {
-                            style: INPUT, placeholder: "Default chat model",
+                            style: INPUT, placeholder: "The chat profile model",
                             value: "{llm_model}", oninput: move |e| llm_model.set(e.value()),
                         }
                     }

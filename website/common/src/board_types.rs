@@ -41,7 +41,8 @@ pub struct BoardCreateRequest {
     pub goal: String,
     pub context: String,
     pub collections: Vec<String>,
-    /// Empty for the default chat model.
+    /// The model of the explore turns. Empty for the model of the internal search chat
+    /// profile. Reasons always use the summarisation model.
     pub llm_model: String,
     pub max_explores: u16,
     pub max_parallel: u8,

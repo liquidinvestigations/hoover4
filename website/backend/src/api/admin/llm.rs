@@ -827,7 +827,8 @@ pub(crate) fn provider_name_from_url(base: &str) -> String {
 /// `max_model_len` is vLLM's; `context_length` is what most OpenAI-compatible gateways
 /// use; `context_window` is the name the table itself uses and some providers echo it.
 ///
-/// Mirrors `_CONTEXT_WINDOW_KEYS` in `main_services/processing/tasks/llm_catalog.py`.
+/// Mirrors `_CONTEXT_WINDOW_KEYS` in `main_services/processing/tasks/llm_catalog.py`, and
+/// so does the `meta.n_ctx` lookup of `context_window_from_entry`.
 /// The two writers of `llm_models` must read the same keys or a refresh from one blanks
 /// what the other discovered.
 const CONTEXT_WINDOW_KEYS: [&str; 3] = ["max_model_len", "context_length", "context_window"];
@@ -837,10 +838,14 @@ const CONTEXT_WINDOW_KEYS: [&str; 3] = ["max_model_len", "context_length", "cont
 /// There is deliberately no fallback guess. A wrong denominator is worse than an absent
 /// one, because everything computed from it looks calculated.
 fn context_window_from_entry(entry: &serde_json::Value) -> Option<u32> {
-    for key in CONTEXT_WINDOW_KEYS {
-        let raw = match entry.get(key) {
-            Some(v) => v,
-            None => continue,
+    // llama.cpp states the window inside `meta` as `n_ctx`, after the top-level keys.
+    let candidates = CONTEXT_WINDOW_KEYS
+        .iter()
+        .map(|key| entry.get(*key))
+        .chain(std::iter::once(entry.get("meta").and_then(|meta| meta.get("n_ctx"))));
+    for raw in candidates {
+        let Some(raw) = raw else {
+            continue;
         };
         // A gateway that renders the number as a string is common enough to cost an
         // afternoon when it silently parses as nothing.
@@ -983,7 +988,7 @@ mod tests {
     /// fires on a percentage, and a plausible wrong window makes it fire wrongly.
     #[test]
     fn a_stated_context_window_is_read_and_an_unstated_one_stays_absent() {
-        let cases: [(serde_json::Value, Option<u32>); 7] = [
+        let cases: [(serde_json::Value, Option<u32>); 8] = [
             (serde_json::json!({"max_model_len": 262144}), Some(262144)),
             (serde_json::json!({"context_length": 128000}), Some(128000)),
             (serde_json::json!({"context_window": 8192}), Some(8192)),
@@ -997,6 +1002,8 @@ mod tests {
             ),
             (serde_json::json!({"id": "no-window-here"}), None),
             (serde_json::json!({"max_model_len": 0}), None),
+            // llama.cpp states it inside `meta`.
+            (serde_json::json!({"id": "m", "meta": {"n_ctx": 262144}}), Some(262144)),
         ];
         for (entry, expected) in cases {
             assert_eq!(context_window_from_entry(&entry), expected, "{entry}");
