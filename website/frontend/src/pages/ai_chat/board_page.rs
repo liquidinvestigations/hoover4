@@ -204,11 +204,16 @@ fn BoardExplorer(board_id: ReadSignal<String>, selected: ReadSignal<String>) -> 
                     view_box: "0 0 {graph.width} {graph.height}",
                     preserve_aspect_ratio: "xMidYMid meet",
                     ArrowMarker { id: "x-board-arrow" }
-                    for edge in graph.edges.iter() {
+                    // A review edge can cross the correction column on its way to a goal, so
+                    // it is drawn over the nodes. The other edges join neighbouring columns.
+                    for edge in graph.edges.iter().filter(|e| !e.kind.is_review()) {
                         {render_edge(edge, &positions, "x-board-arrow")}
                     }
                     for node in graph.nodes.iter() {
                         {render_node(node, &positions, &selected_id, on_select)}
+                    }
+                    for edge in graph.edges.iter().filter(|e| e.kind.is_review()) {
+                        {render_edge(edge, &positions, "x-board-arrow")}
                     }
                 }
             }

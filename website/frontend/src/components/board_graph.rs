@@ -70,6 +70,11 @@ pub enum EdgeKind {
 }
 
 impl EdgeKind {
+    /// An edge from a fact to a goal.
+    pub fn is_review(self) -> bool {
+        matches!(self, EdgeKind::Answers | EdgeKind::Proposed)
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             EdgeKind::Flow => "flow",
