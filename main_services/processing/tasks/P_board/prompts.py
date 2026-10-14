@@ -70,6 +70,11 @@ def goal_ids(facts) -> list[str]:
     return [f.fact_id for f in goals_of(facts)]
 
 
+def goal_texts(facts) -> dict:
+    """The goal id of each goal text."""
+    return {f.text.strip(): f.fact_id for f in goals_of(facts)}
+
+
 def render_brief(board, facts, citations, hints, intent, collections, steps: int) -> str:
     """The user row of an explore turn with `steps` model steps."""
     hint_lines = "\n".join(f"- {h}" for h in reversed(hints)) or "- none"
@@ -136,7 +141,7 @@ def render_reason(board, folded, facts, citations, stalled: bool) -> str:
         "Return only one JSON object, with no other text.\n"
         "If every goal is answered: {\"review\": {\"goals\": [{\"goal\": \"goal\", \"from\": "
         "[\"f1.1\"], \"statement\": \"why these facts answer this goal, and what they do not "
-        "cover\"}]}}, with one entry for each goal\n"
+        "cover\"}]}}, with one entry for each goal. `goal` is the goal id, such as goal or goal-2\n"
         "If new intents are needed: {\"intents\": [{\"from\": [\"origin\"], \"objective\": \"what "
         "to establish\", \"brief\": \"what to search and what to return\"}]}\n"
         "If the open intents already cover the next steps: {}\n\n"

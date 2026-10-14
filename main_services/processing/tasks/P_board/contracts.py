@@ -72,12 +72,14 @@ def _review_goals(review, goal_ids: list[str]) -> list:
 
 def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str],
                  idle: bool, goal_ids: list[str] | None = None,
-                 not_found_ids: set | None = None) -> dict:
+                 not_found_ids: set | None = None, goal_texts: dict | None = None) -> dict:
     """The `reason_result` payload of one reply.
 
     `valid_ids` are the live fact ids, `sourced_ids` the live sourced ones, `earlier` the
     objectives of every intent the board has, `idle` whether no intent is open or running,
-    `goal_ids` the goal fact ids, and `not_found_ids` the live not-found facts.
+    `goal_ids` the goal fact ids, `not_found_ids` the live not-found facts, and `goal_texts`
+    the goal id of each goal text. A review that names a goal by its exact text names that
+    goal.
 
     A review names each goal with the facts that answer it and a statement. A goal's facts
     are sourced or not-found facts, and the review as a whole needs one sourced fact. A
@@ -98,6 +100,7 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
                 problems.append("a review goal is not an object")
                 continue
             goal = str(entry.get("goal") or "")
+            goal = (goal_texts or {}).get(goal.strip(), goal)
             from_ids = [str(f) for f in entry.get("from") or []]
             if goal not in goal_ids:
                 problems.append(f"review names the unknown goal {goal!r}")

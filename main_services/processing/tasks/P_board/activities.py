@@ -26,7 +26,7 @@ from tasks.P_agent.activities import AgentRunInput
 from tasks.P_board import model as m
 from tasks.P_board.contracts import labels_of, parse_explore_block, parse_reason
 from tasks.P_board.fold import earlier_objectives, fold, plan
-from tasks.P_board.prompts import CONCLUDE_REQUEST, goal_ids, render_brief, render_reason
+from tasks.P_board.prompts import CONCLUDE_REQUEST, goal_ids, goal_texts, render_brief, render_reason
 
 log = logging.getLogger(__name__)
 
@@ -357,7 +357,7 @@ def board_reason(task: ReasonTask) -> str:
         payload = parse_reason(text, {f.fact_id for f in live},
                                {f.fact_id for f in live if f.kind == m.SOURCED},
                                earlier_objectives(folded), idle, goal_ids(facts),
-                               {f.fact_id for f in live if f.kind == m.NOT_FOUND})
+                               {f.fact_id for f in live if f.kind == m.NOT_FOUND}, goal_texts(facts))
     payload.update(situation=folded.situation(), model=model, latency_ms=latency_ms,
                    prompt_tokens=int(usage.get("prompt_tokens") or 0),
                    completion_tokens=int(usage.get("completion_tokens") or 0),
