@@ -6,13 +6,20 @@ starts the reasons and explores it returns, cancels the explores of paused board
 for `POLL_SECONDS`. All state is in ClickHouse, so no person action needs a signal: the next
 pass reads it. The dispatcher waits for no person, only for its own timer and reasons.
 
+Each pass also starts `label_board` for the board that `board_plan` names in `labels`, when
+no label task is in flight (`labels.labels_to_start`). It runs on `chat-model-queue` as a
+reason does and uses no board model slot.
+
 `BoardExplore` runs one intent: an explore turn, and when its answer has no valid block, one
 conclude turn in the same chat session. Each turn is an ordinary `AgentRun` child on
 `chat-queue`.
 
-**A change to these workflows needs the drain of `tasks/Readme.md`.** Terminate
-`board-dispatcher`, cancel every `board-explore-*` workflow, deploy, and let the worker start
-the dispatcher again. The next pass reopens the interrupted intents.
+**A change that schedules a different command for an existing history event needs the drain
+of `tasks/Readme.md`.** Terminate `board-dispatcher`, cancel every `board-explore-*` workflow,
+deploy, and let the worker start the dispatcher again. The next pass reopens the interrupted
+intents. A new step that an old history decodes as empty, such as `PlanOutput.labels`, needs
+no drain. A `temporalio.worker.Replayer` run of the new code over a fetched history is the
+evidence for that.
 """
 
 import asyncio
@@ -39,6 +46,7 @@ with workflow.unsafe.imports_passed_through():
         open_explore_turn,
         record_explore_end,
     )
+    from tasks.P_board.labels import LabelTask, label_board, labels_to_start
 
 #: Seconds between two passes of the dispatcher.
 POLL_SECONDS = 5
@@ -58,6 +66,7 @@ class BoardDispatcher:
 
     def __init__(self) -> None:
         self._reasons: dict[str, asyncio.Task] = {}
+        self._labels: dict[str, asyncio.Task] = {}
         self._woken = False
 
     @workflow.run
@@ -77,6 +86,8 @@ class BoardDispatcher:
                     self._reasons[reason.board_id] = asyncio.ensure_future(self._reason(reason))
             for explore in output.explores:
                 await self._start_explore(explore)
+            for board_id in labels_to_start(set(self._labels), output.labels):
+                self._labels[board_id] = asyncio.ensure_future(self._label(board_id))
             for workflow_id in output.cancels:
                 try:
                     await workflow.get_external_workflow_handle(workflow_id).cancel()
@@ -87,10 +98,11 @@ class BoardDispatcher:
                 await workflow.wait_condition(lambda: self._woken, timeout=timedelta(seconds=POLL_SECONDS))
             except asyncio.TimeoutError:
                 pass
-        # No continue-as-new with a reason in flight: the new run would not know about it
-        # and could start a second reason for the same board.
-        if self._reasons:
-            await asyncio.gather(*self._reasons.values(), return_exceptions=True)
+        # No continue-as-new with a reason or a label task in flight: the new run would not
+        # know about it and could start a second one for the same board.
+        if self._reasons or self._labels:
+            await asyncio.gather(*self._reasons.values(), *self._labels.values(),
+                                 return_exceptions=True)
         workflow.continue_as_new()
 
     async def _start_explore(self, explore: ExploreTask) -> None:
@@ -104,6 +116,19 @@ class BoardDispatcher:
         except Exception as exc:  # noqa: BLE001 - an explore that is already open keeps running
             workflow.logger.warning("could not start the explore of %s %s: %s",
                                     explore.board_id, explore.intent_id, exc)
+
+    async def _label(self, board_id: str) -> None:
+        try:
+            await workflow.execute_activity(
+                label_board, LabelTask(board_id), task_queue=CHAT_MODEL_TASK_QUEUE,
+                start_to_close_timeout=timedelta(minutes=15), heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=2),
+            )
+        except ActivityError as exc:
+            workflow.logger.warning("label_board failed for %s: %s", board_id, exc)
+        finally:
+            self._labels.pop(board_id, None)
+            self._woken = True
 
     async def _reason(self, reason: ReasonTask) -> None:
         try:

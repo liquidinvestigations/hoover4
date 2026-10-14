@@ -843,6 +843,7 @@ async def run_chat_worker():
   from .P_board.activities import (
       board_plan, board_reason, conclude_explore, open_explore_turn, record_explore_end,
   )
+  from .P_board.labels import label_board
   from .P_board.model import BOARD_TASK_QUEUE, DISPATCHER_WORKFLOW_ID
   from .P_board.workflows import BoardDispatcher, BoardExplore
   from .visibility import ensure_search_attributes
@@ -883,7 +884,7 @@ async def run_chat_worker():
         max_heartbeat_throttle_interval=STEP_HEARTBEAT_THROTTLE,
         workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
         workflows=[],
-        activities=[model_step, write_followups, board_reason],
+        activities=[model_step, write_followups, board_reason, label_board],
         activity_executor=activity_executor,
         max_concurrent_activities=model_slots,
       ),

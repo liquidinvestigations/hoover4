@@ -27,6 +27,35 @@ pub fn goal_id(index: usize) -> String {
     if index <= 1 { "goal".to_string() } else { format!("goal-{index}") }
 }
 
+/// The fixed slug of an origin or goal fact, or `None` for a node with a generated label.
+///
+/// The origin is `origin`. The goal with the id `goal` is `goal-01`, and `goal-N` is `goal-`
+/// followed by `N` with at least two digits. The slugs are computed here and not stored,
+/// because the origin and the goals keep their own text as their label.
+pub fn fixed_slug(fact_id: &str, kind: &str) -> Option<String> {
+    match kind {
+        "origin" => Some("origin".to_string()),
+        "goal" => {
+            let number = if fact_id == "goal" {
+                1
+            } else {
+                fact_id.strip_prefix("goal-").and_then(|n| n.parse::<u32>().ok()).unwrap_or(1)
+            };
+            Some(format!("goal-{number:02}"))
+        }
+        _ => None,
+    }
+}
+
+/// The label that the website shows for a node that has no generated label yet: the storage
+/// id as its slug, the first 4 words of its text as its title and the first 20 words as its
+/// summary.
+pub fn fallback_label(id: &str, text: &str) -> (String, String, String) {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let take = |n: usize| words.iter().take(n).copied().collect::<Vec<_>>().join(" ");
+    (id.to_string(), take(4), take(20))
+}
+
 /// One card of the board overview.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BoardListItem {
@@ -43,6 +72,9 @@ pub struct BoardListItem {
     pub max_explores: u32,
     /// Milliseconds since the epoch of the newest event.
     pub updated_ms: i64,
+    /// The generated summary of the board, 10 to 15 words. Empty before its first label pass.
+    #[serde(default)]
+    pub summary: String,
     /// The graph of the card's thumbnail: the facts with short texts and no citations, and
     /// the intents.
     pub graph: BoardGraphInput,
@@ -120,6 +152,16 @@ pub struct BoardFact {
     pub created_by: String,
     pub created_ms: i64,
     pub citations: Vec<BoardCitation>,
+    /// The display name and address key of the node. `fixed_slug` for the origin and the
+    /// goals, the generated slug for a labelled node, else the storage id.
+    #[serde(default)]
+    pub slug: String,
+    /// 3 to 4 words. Empty for the origin and the goals.
+    #[serde(default)]
+    pub title: String,
+    /// 15 to 20 words. The full text for the origin and the goals.
+    #[serde(default)]
+    pub summary: String,
 }
 
 /// The proposed or accepted answer of one goal.
@@ -155,6 +197,13 @@ pub struct BoardIntent {
     pub question: String,
     pub last_error: String,
     pub created_ms: i64,
+    /// The display name and address key of the intent, else its storage id.
+    #[serde(default)]
+    pub slug: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub summary: String,
 }
 
 /// One event, with a sentence a person can read.
@@ -164,7 +213,12 @@ pub struct BoardEvent {
     pub event_type: String,
     pub actor: String,
     pub subject: String,
+    /// The fixed text of the event, with node slugs in place of storage ids.
     pub summary: String,
+    /// The text that a person wrote: a hint, a rejection reason or a correction. Empty for
+    /// other events.
+    #[serde(default)]
+    pub quote: String,
     pub created_ms: i64,
 }
 
@@ -188,6 +242,9 @@ pub struct BoardSnapshot {
     pub facts: Vec<BoardFact>,
     pub intents: Vec<BoardIntent>,
     pub events: Vec<BoardEvent>,
+    /// The generated summary of the board. Empty before its first label pass.
+    #[serde(default)]
+    pub summary: String,
 }
 
 impl BoardSnapshot {
@@ -198,6 +255,31 @@ impl BoardSnapshot {
         goals
     }
 
+    /// The slug of a fact or intent id, or the id itself when the board has no such node.
+    pub fn slug_of(&self, id: &str) -> String {
+        self.facts
+            .iter()
+            .find(|f| f.fact_id == id)
+            .map(|f| f.slug.clone())
+            .or_else(|| self.intents.iter().find(|i| i.intent_id == id).map(|i| i.slug.clone()))
+            .filter(|slug| !slug.is_empty())
+            .unwrap_or_else(|| id.to_string())
+    }
+
+    /// The storage id of the node that an address names: by slug first, then by storage id,
+    /// so a link written before the slugs keeps working.
+    pub fn resolve_node(&self, key: &str) -> Option<String> {
+        if key.is_empty() {
+            return None;
+        }
+        let by_slug = self.facts.iter().find(|f| f.slug == key).map(|f| f.fact_id.clone())
+            .or_else(|| self.intents.iter().find(|i| i.slug == key).map(|i| i.intent_id.clone()));
+        by_slug.or_else(|| {
+            self.facts.iter().find(|f| f.fact_id == key).map(|f| f.fact_id.clone())
+                .or_else(|| self.intents.iter().find(|i| i.intent_id == key).map(|i| i.intent_id.clone()))
+        })
+    }
+
     pub fn graph_input(&self) -> BoardGraphInput {
         BoardGraphInput {
             status: self.status.clone(),
@@ -205,5 +287,63 @@ impl BoardSnapshot {
             intents: self.intents.clone(),
             review_goals: self.review_goals.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_origin_and_the_goals_have_fixed_slugs() {
+        assert_eq!(fixed_slug("origin", "origin").as_deref(), Some("origin"));
+        assert_eq!(fixed_slug("goal", "goal").as_deref(), Some("goal-01"));
+        assert_eq!(fixed_slug("goal-2", "goal").as_deref(), Some("goal-02"));
+        assert_eq!(fixed_slug("goal-12", "goal").as_deref(), Some("goal-12"));
+        assert_eq!(fixed_slug("f1.1", "sourced"), None);
+    }
+
+    fn snapshot() -> BoardSnapshot {
+        let fact = |id: &str, slug: &str| BoardFact {
+            fact_id: id.into(), kind: "sourced".into(), text: String::new(), intent_id: String::new(),
+            session_id: String::new(), open_questions: vec![], problems: vec![], rejected: false,
+            rejected_by: String::new(), rejected_ms: 0, rejected_reason: String::new(), corrects: vec![],
+            created_by: String::new(), created_ms: 0, citations: vec![], slug: slug.into(),
+            title: String::new(), summary: String::new(),
+        };
+        BoardSnapshot {
+            board: BoardDefinition {
+                board_id: "b".into(), owner: "o".into(), title: "t".into(), goal: "g".into(),
+                context: String::new(), collections: vec![], llm_model: String::new(), max_parallel: 1,
+                internet_tools: false, created_ms: 0,
+            },
+            status: "active".into(), explores_used: 0, reasons_done: 0, stall_count: 0,
+            review_statement: String::new(), review_from: vec![], review_goals: vec![],
+            max_explores: 12, explore_steps: 60,
+            // A slug that equals another node's storage id resolves to the node with the slug.
+            facts: vec![fact("f1.1", "fact-raptor"), fact("f1.2", "f1.1")],
+            intents: vec![], events: vec![], summary: String::new(),
+        }
+    }
+
+    #[test]
+    fn an_address_names_a_node_by_slug_first_and_then_by_storage_id() {
+        let snap = snapshot();
+        assert_eq!(snap.resolve_node("fact-raptor").as_deref(), Some("f1.1"));
+        assert_eq!(snap.resolve_node("f1.1").as_deref(), Some("f1.2"));
+        assert_eq!(snap.resolve_node("f1.2").as_deref(), Some("f1.2"));
+        assert_eq!(snap.resolve_node("nothing"), None);
+        assert_eq!(snap.resolve_node(""), None);
+        assert_eq!(snap.slug_of("f1.1"), "fact-raptor");
+        assert_eq!(snap.slug_of("i9.9"), "i9.9");
+    }
+
+    #[test]
+    fn a_node_without_a_label_shows_its_id_and_the_first_words() {
+        let text = (1..=30).map(|i| format!("w{i}")).collect::<Vec<_>>().join(" ");
+        let (slug, title, summary) = fallback_label("f1.1", &text);
+        assert_eq!(slug, "f1.1");
+        assert_eq!(title, "w1 w2 w3 w4");
+        assert_eq!(summary.split(' ').count(), 20);
     }
 }

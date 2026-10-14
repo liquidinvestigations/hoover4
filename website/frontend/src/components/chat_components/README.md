@@ -6,7 +6,7 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 |---|---|
 | `composer.rs` | Textarea + **Internet tools** checkbox + send arrow. The checkbox disappears once the conversation has a turn, see below. No paperclip / upload control: documents enter via the processing pipeline. |
 | `gate_overlay.rs` | Non-dismissible overlay over the composer when a new turn cannot start. Names which reason applies: no provider, missing API key, or chat switched off. History stays readable. |
-| `locked_options.rs` | The two switches, read-only, above the transcript once they are frozen. |
+| `locked_options.rs` | The internet tools switch, read-only, at the right end of the title row once it is frozen. Its tooltip is "Start a new chat to change this setting." |
 | `session_card.rs` | Homepage / history card showing title + summary. |
 | `transcript.rs` | User bubbles, assistant markdown, tool disclosures, inline doc cards, the retry-attempt disclosure, and the token footer under an answer. |
 | `tool_cards/mod.rs` | The card registry dispatches on tool name and provides card chrome, elapsed counters, and JSON helpers. |
@@ -34,6 +34,10 @@ Preview find accounts for the display scale when scrolling a match into view.
 Three generated follow-up buttons fill the composer without submitting.
 The buttons share one row inside a card headed "Suggested next...", beside a small question icon.
 Send uses the shared navigation arrow button, including its disabled state and tooltip.
+A user message (`UserMessage` in `transcript.rs`) shows three lines and a "Show More..." button when its text is longer.
+It measures the text on mount and on resize, and opens when it holds the active conversation find match.
+A doc card scrolls to the middle of the transcript once per session when it is the selected card at page load.
+The shared result card has a pointer cursor and a hover background, except when `data-selected` is `true`.
 Every todo call is a tool card inside its group, with its stored arguments, result,
 failure, origin label and the list after the call. A task summary shows after the group
 of a successful todo call that changed what a reader sees: the goal, the item order and
@@ -63,7 +67,7 @@ call itself is a card inside its group.
 
 The first message stores the internet option in the session.
 The composer then hides its checkbox.
-`LockedOptionsBar` shows the stored option above the transcript.
+`LockedInternetFlag` shows the stored option in the title row.
 The backend enforces the stored option through `db_chat::lock_session_options`.
 Internet tools default to on.
 

@@ -80,6 +80,7 @@ The backend refuses pages beyond the first 1,000 results.
 The page count uses ceiling division.
 Grouped snippets prefer parsed body text, other text, raw text, then the filename.
 A result card shows at most three complete lines of text, with an ellipsis when text is omitted, and does not scroll.
+A result card has a pointer cursor and a light blue background under the mouse, unless it is selected.
 A search card uses 13px snippet text with a 19px line height and a 112px card height.
 The search field width is 375px when space permits.
 A filename-only match shares those lines between its notice and the matching path.

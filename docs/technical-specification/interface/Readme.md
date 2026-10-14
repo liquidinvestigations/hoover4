@@ -18,7 +18,7 @@ added, renamed or deleted in the code mechanically visible against this tree, an
 | `UI-AiChatPage` | `/ai_chat` | - |
 | `UI-AiChatHistoryPage` | `/ai_chat/history` | - |
 | `UI-AiBoardCreatePage` | `/ai_chat/boards/new` | - |
-| `UI-AiBoardPage` | `/ai_chat/boards/:board_id` | - |
+| `UI-AiBoardPage` | `/ai_chat/boards/:board_id?selected=&zoom=` | - |
 | `UI-AiChatSessionPage` | `/ai_chat/c/…` | [`Chat.md`](Chat.md) |
 | `UI-AdminDashboardPage` | `/admin` | - |
 | `UI-AdminCollectionsPage` | `/admin/collections` | - |

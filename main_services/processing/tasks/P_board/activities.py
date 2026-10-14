@@ -65,6 +65,9 @@ class PlanOutput:
     reasons: list[ReasonTask] = field(default_factory=list)
     explores: list[ExploreTask] = field(default_factory=list)
     cancels: list[str] = field(default_factory=list)
+    #: At most one board with a pending label or a stale summary (`labels.label_due`). A
+    #: result in a history written before this field decodes with an empty list.
+    labels: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -273,7 +276,31 @@ def board_plan(inp: PlanInput) -> PlanOutput:
         reasons=[ReasonTask(r.board_id, r.reason_no, r.stalled) for r in actions.reasons],
         explores=[ExploreTask(e.board_id, e.intent_id, e.attempt) for e in actions.explores],
         cancels=[m.explore_workflow_id(b, i) for b, i in actions.cancels],
+        labels=_label_candidates(live, snapshots)[:1],
     )
+
+
+def _label_candidates(live: list, snapshots: dict) -> list[str]:
+    """The boards that need a label call now, in board order. Every board that is not
+    dropped counts, also a completed board. A failed read costs the labels of this pass."""
+    from database import boards
+    from tasks.P_board.labels import label_due
+
+    try:
+        rows = boards.read_labels([b.board_id for b in live])
+    except Exception:  # noqa: BLE001 - labels never cost a pass of the dispatcher
+        log.warning("[P_board] could not read the board labels", exc_info=True)
+        return []
+    by_board: dict[str, list] = {}
+    for row in rows:
+        by_board.setdefault(row.board_id, []).append(row)
+    now_ts = boards.now().timestamp()
+    out = []
+    for board in live:
+        _events, facts, folded = snapshots[board.board_id]
+        if label_due(facts, folded, by_board.get(board.board_id, []), now_ts):
+            out.append(board.board_id)
+    return out
 
 
 # ------------------------------------------------------------------------------- reason
@@ -295,7 +322,9 @@ def _explore_model(board) -> str:
 
 
 def _record_llm_call(owner: str, board_id: str, model: str, usage: dict, latency_ms: int,
-                     ok: bool, error: str, reply_bytes: int) -> None:
+                     ok: bool, error: str, reply_bytes: int, kind: str = "board_reason") -> None:
+    """One `llm_call_events` row of a board model call. `kind` is `board_reason`,
+    `board_label` or `board_summary`."""
     from database.clickhouse import get_global_client
     from database import boards
     from tasks.llm_endpoints import endpoint_for
@@ -304,7 +333,7 @@ def _record_llm_call(owner: str, board_id: str, model: str, usage: dict, latency
         with get_global_client() as client:
             client.insert(
                 "llm_call_events",
-                [[boards.now(), owner, f"{m.SESSION_PREFIX}{board_id}", "board_reason", endpoint_for(model).label,
+                [[boards.now(), owner, f"{m.SESSION_PREFIX}{board_id}", kind, endpoint_for(model).label,
                   model, int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0),
                   0, reply_bytes, latency_ms, 1 if ok else 0, error[:500]]],
                 column_names=["event_time", "username", "session_id", "kind", "provider", "model_id",
@@ -312,7 +341,7 @@ def _record_llm_call(owner: str, board_id: str, model: str, usage: dict, latency
                               "reply_bytes", "latency_ms", "ok", "error"],
             )
     except Exception:  # noqa: BLE001 - telemetry never costs a reason
-        log.warning("[P_board] could not record the reason call", exc_info=True)
+        log.warning("[P_board] could not record the %s call", kind, exc_info=True)
 
 
 @activity.defn

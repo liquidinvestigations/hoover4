@@ -15,9 +15,9 @@ use crate::api::chat_api::{
     chat_stop,
 };
 use crate::components::chat_components::{
-    ChatActivity, ChatComposer, ChatGateOverlay, ChatTranscript, ConversationFindBar, LockedOptionsBar, ModelSelector,
+    ChatActivity, ChatComposer, ChatGateOverlay, ChatTranscript, ConversationFindBar, LockedInternetFlag, ModelSelector,
 };
-use crate::components::chat_components::doc_ref_card::ChatDocOpen;
+use crate::components::chat_components::doc_ref_card::{ChatDocOpen, ChatScrolledToSelection};
 use crate::components::chat_components::web_page::{ChatWebOpen, WebPagePreview};
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
@@ -192,6 +192,10 @@ fn AiChatSessionRoot(
             ));
         }),
     });
+
+    // The first card of the selected document scrolls into view once for each session.
+    let scrolled_for = use_signal(|| None::<String>);
+    use_context_provider(move || ChatScrolledToSelection { session_id, scrolled_for });
 
     use_context_provider(move || ChatWebOpen {
         open: Callback::new(move |(artifact_id, find): (String, String)| {
@@ -647,11 +651,11 @@ fn ChatConversationPanel(
                     title: "{detail.session.title}",
                     "{detail.session.title}"
                 }
-            }
-            // The frozen switches live here once the conversation has started.
-            // Out of the composer, where they would look editable.
-            if options.read().locked {
-                LockedOptionsBar { options: *options.read() }
+                // The frozen switch lives here once the conversation has started. Out of
+                // the composer, where it would look editable.
+                if options.read().locked {
+                    LockedInternetFlag { on: options.read().internet_tools }
+                }
             }
             ConversationFindBar {
                 query: find_query,

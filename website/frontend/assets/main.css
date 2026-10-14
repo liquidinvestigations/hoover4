@@ -31,11 +31,18 @@ html, body, #main {
 	color-scheme: light;
 }
 
-/* Result and citation cards have bounded heights. */
+/* Result and citation cards have bounded heights. A card opens its document on a click, so
+it shows the pointer, and a card that is not selected turns light blue under the pointer. The
+inline `background` of the card sets the selected colour, so the hover rule needs
+`!important`. */
 .x-result-item-card {
     height: var(--x-result-card-height);
     min-height: var(--x-result-card-height);
     box-sizing: border-box;
+    cursor: pointer;
+}
+.x-result-item-card:not([data-selected="true"]):hover {
+    background-color: #EAF2FF !important;
 }
 
 /* Search cards reserve three snippet lines and 55px for the header, controls, and padding. */
@@ -546,4 +553,174 @@ html, body, #main {
 }
 #x-filter-chips[data-chip-overflow="false"] .x-filter-chips-more {
     display: none;
+}
+
+/* Board graph nodes. A node is HTML inside a foreignObject, so its fonts follow the zoom of
+the graph and do not depend on the node count. */
+.x-board-node-card {
+    box-sizing: border-box;
+    height: 100%;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow: hidden;
+    pointer-events: none;
+    font-family: var(--x-font);
+    color: var(--x-ink-strong);
+}
+.x-board-node-title {
+    font-size: var(--x-text-body);
+    line-height: var(--x-line-body);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+}
+.x-board-node-rejected {
+    text-decoration: line-through;
+}
+.x-board-node-summary {
+    font-size: var(--x-text-detail);
+    line-height: var(--x-line-detail);
+    color: var(--x-ink);
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+.x-board-node-meta {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-family: monospace;
+    font-size: var(--x-text-detail);
+    line-height: var(--x-line-detail);
+    color: var(--x-ink-muted);
+    flex-shrink: 0;
+}
+.x-board-node-slug {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.x-board-node-tags {
+    flex-shrink: 0;
+    display: flex;
+    gap: 6px;
+}
+.x-board-node-anchor,
+.x-board-node-anchor .x-board-node-summary {
+    color: #ffffff;
+}
+.x-board-node-anchor .x-board-node-summary {
+    -webkit-line-clamp: 5;
+}
+.x-board-node-anchor .x-board-node-meta {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* The board graph pane: the graph keeps its size, and the pane scrolls and pans. */
+.x-board-graph-pane {
+    display: flex;
+    overflow: auto;
+    cursor: grab;
+}
+.x-board-graph-pane[data-dragging="true"] {
+    cursor: grabbing;
+    user-select: none;
+}
+.x-board-graph-svg {
+    margin: auto;
+    flex-shrink: 0;
+}
+.x-board-zoom {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: white;
+    border: 1px solid var(--x-border);
+    border-radius: 16px;
+    padding: 3px 6px;
+    font-size: var(--x-text-detail);
+    color: var(--x-ink-muted);
+}
+.x-board-zoom button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--x-border-strong);
+    border-radius: 13px;
+    background: white;
+    color: var(--x-ink-strong);
+    cursor: pointer;
+    padding: 0;
+}
+.x-board-zoom button:disabled {
+    cursor: default;
+    color: var(--x-ink-faint);
+    border-color: var(--x-border);
+}
+
+/* The meta row of a board detail pane: the slug on the left, the tags on the right. */
+.x-board-detail-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-family: monospace;
+    font-size: var(--x-text-detail);
+    color: var(--x-ink-muted);
+    margin: 2px 0 8px;
+}
+.x-board-detail-meta span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.x-board-stats {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 4px 14px;
+    margin: 6px 0 0;
+    font-size: var(--x-text-detail);
+}
+.x-board-stats dt {
+    color: var(--x-ink-muted);
+}
+.x-board-stats dd {
+    margin: 0;
+    color: var(--x-ink);
+}
+
+/* A user message shows at most 3 lines until its "Show More..." button opens it. */
+.x-chat-user-text-clamped {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+}
+.x-chat-user-more {
+    display: block;
+    margin-top: 4px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: white;
+    font: inherit;
+    cursor: pointer;
+}
+.x-chat-user-more:hover {
+    text-decoration: underline;
 }

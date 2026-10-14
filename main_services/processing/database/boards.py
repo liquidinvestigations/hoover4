@@ -1,7 +1,9 @@
 """Board storage: every read and write of the investigation board tables.
 
-The tables are in migration `00043_investigation_boards.sql`. Each table has one writer
-(see the migration header), so this module has no read-modify-write of a shared row.
+The tables are in migrations `00043_investigation_boards.sql` and `00045_board_labels.sql`.
+Each table has one writer (see the migration headers), so this module has no
+read-modify-write of a shared row. `board_labels` holds the generated slug, title and summary
+of each node and the summary of each board. Its writer is `tasks/P_board/labels.py`.
 
 Three rules hold for every function here:
 
@@ -98,6 +100,23 @@ class CitationRow:
     quote_verified: int = 0
 
 
+@dataclass
+class LabelRow:
+    """One row of `board_labels`. `node_id` is empty for the summary of the board."""
+
+    board_id: str
+    node_id: str
+    node_kind: str
+    slug: str = ""
+    title: str = ""
+    summary: str = ""
+    source_hash: str = ""
+    model: str = ""
+    attempts: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 BOARD_COLUMNS = ["board_id", "owner", "title", "goal", "context", "collections", "llm_model",
                  "max_explores", "max_parallel", "explore_step_budget", "internet_tools",
                  "created_at", "is_deleted"]
@@ -108,6 +127,8 @@ CITATION_COLUMNS = ["board_id", "fact_id", "label", "collection_dataset", "colle
 INTENT_COLUMNS = ["board_id", "intent_id", "from_facts", "objective", "brief", "state",
                   "attempts", "session_id", "fact_id", "question", "last_error", "created_at",
                   "version", "updated_at"]
+LABEL_COLUMNS = ["board_id", "node_id", "node_kind", "slug", "title", "summary", "source_hash",
+                 "model", "attempts", "created_at", "updated_at"]
 STATE_COLUMNS = ["board_id", "status", "explores_used", "reasons_done", "stall_count",
                  "invalid_reasons", "checkpoint_json", "summary_json", "version", "updated_at"]
 
@@ -253,8 +274,35 @@ def write_state(state: dict, intents: list[dict]) -> None:
     _insert("board_intents", [[i[c] for c in INTENT_COLUMNS] for i in intents], INTENT_COLUMNS)
 
 
+# ------------------------------------------------------------------------------ labels
+
+
+def read_labels(board_ids: list[str]) -> list[LabelRow]:
+    """The labels of the given boards, one row for each node and board."""
+    if not board_ids:
+        return []
+    with _client() as client:
+        result = client.query(
+            f"SELECT {', '.join(LABEL_COLUMNS)} FROM board_labels FINAL "
+            "WHERE board_id IN {b:Array(String)} ORDER BY board_id, node_id",
+            parameters={"b": list(board_ids)},
+        )
+    return [LabelRow(**dict(zip(LABEL_COLUMNS, row))) for row in result.result_rows]
+
+
+def write_labels(rows: list[LabelRow]) -> None:
+    """Write label rows. A row replaces the earlier row of its node."""
+    stamp = now()
+    _insert("board_labels",
+            [[r.board_id, r.node_id, r.node_kind, r.slug, r.title, r.summary, r.source_hash,
+              r.model, max(0, min(255, int(r.attempts))), r.created_at or stamp,
+              r.updated_at or stamp] for r in rows],
+            LABEL_COLUMNS)
+
+
 __all__ = [
-    "BoardRow", "CitationRow", "EventRow", "FactRow", "board_is_live", "fact_exists", "now",
-    "read_board", "read_citations", "read_events", "read_facts", "read_live_boards",
-    "read_state_rows", "write_event", "write_events", "write_fact", "write_state",
+    "BoardRow", "CitationRow", "EventRow", "FactRow", "LabelRow", "board_is_live", "fact_exists",
+    "now", "read_board", "read_citations", "read_events", "read_facts", "read_labels",
+    "read_live_boards", "read_state_rows", "write_event", "write_events", "write_fact",
+    "write_labels", "write_state",
 ]

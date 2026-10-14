@@ -21,7 +21,7 @@ pub use activity::ChatActivity;
 pub use composer::ChatComposer;
 pub use conversation_find::ConversationFindBar;
 pub use gate_overlay::ChatGateOverlay;
-pub use locked_options::LockedOptionsBar;
+pub use locked_options::LockedInternetFlag;
 pub use model_selector::ModelSelector;
 pub use session_card::ChatSessionCard;
 pub use transcript::ChatTranscript;

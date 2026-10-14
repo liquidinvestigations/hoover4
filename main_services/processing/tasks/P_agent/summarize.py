@@ -204,24 +204,40 @@ def _post(endpoint, body: dict):
     )
 
 
-def title_and_summary(user_message: str, answer: str) -> TitleSummary:
-    """Ask the LLM for a title and a summary of one turn. Never raises."""
+@dataclass
+class Completion:
+    """The content of one short completion, or the reason there is none.
+
+    `text` is the raw content, with the `<think>` reasoning blocks still in it. `error` is
+    set on a failed call and on a discarded answer, so the telemetry row of the caller
+    records both.
+    """
+
+    text: str = ""
+    error: str = ""
+    model: str = ""
+    latency_ms: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+def complete(system: str, prompt: str, max_tokens: int) -> Completion:
+    """One short call of the summarisation model, with the conventions of the title call.
+
+    The call asks the model to leave thinking off (`NO_THINKING`) and sends the request again
+    without that hint on a 4xx. It sends a temperature only when `_send_temperature` allows
+    it. A reply cut at `max_tokens`, an empty reply and a reply that holds only the
+    reasoning are failures. Never raises.
+    """
     model = _model()
     if not model:
-        return TitleSummary(error="no summarisation model configured")
+        return Completion(error="no summarisation model configured")
 
     from tasks.llm_endpoints import endpoint_for
 
     endpoint = endpoint_for(model)
     if not endpoint.base_url:
-        return TitleSummary(model=model, error="no LLM_BASE_URL configured")
-
-    prompt = (
-        "Given this chat turn, reply with exactly two lines:\n"
-        "Line 1: a short title (max 8 words, no quotes).\n"
-        "Line 2: a one-or-two sentence summary of what was asked and answered.\n\n"
-        f"User: {user_message}\n\nAssistant: {answer}"
-    )
+        return Completion(model=model, error="no LLM_BASE_URL configured")
     started = time.monotonic()
 
     def elapsed() -> int:
@@ -230,10 +246,10 @@ def title_and_summary(user_message: str, answer: str) -> TitleSummary:
     body = {
         "model": model,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ],
-        "max_tokens": MAX_TOKENS,
+        "max_tokens": max_tokens,
     }
     if _send_temperature():
         body["temperature"] = 0.2
@@ -244,10 +260,10 @@ def title_and_summary(user_message: str, answer: str) -> TitleSummary:
             # thing dropped. A second refusal is a real one and is reported.
             response = _post(endpoint, body)
     except Exception as exc:  # noqa: BLE001 - a dead endpoint costs a title, not a turn
-        return TitleSummary(model=model, latency_ms=elapsed(), error=str(exc)[:500])
+        return Completion(model=model, latency_ms=elapsed(), error=str(exc)[:500])
 
     if response.status_code >= 400:
-        return TitleSummary(
+        return Completion(
             model=model,
             latency_ms=elapsed(),
             error=f"{response.status_code}: {response.text[:200]}",
@@ -260,27 +276,42 @@ def title_and_summary(user_message: str, answer: str) -> TitleSummary:
         reply = response.json()
         choice = reply["choices"][0]
     except Exception as exc:  # noqa: BLE001
-        return TitleSummary(model=model, latency_ms=elapsed(), error=f"unparseable body: {exc}")
+        return Completion(model=model, latency_ms=elapsed(), error=f"unparseable body: {exc}")
     tokens = usage_tokens(reply)
 
     if choice.get("finish_reason") == "length":
-        # A completion cut off at max_tokens is not a title. The user's own words are
+        # A completion cut off at max_tokens is not an answer. The user's own words are
         # always better than half a sentence -- or than the model's scratchpad.
-        return TitleSummary(model=model, latency_ms=elapsed(), **tokens, error="hit max_tokens")
+        return Completion(model=model, latency_ms=elapsed(), **tokens, error="hit max_tokens")
 
     message = choice.get("message") or {}
     raw = (message.get("content") or "").strip()
     if not raw:
-        return TitleSummary(model=model, latency_ms=elapsed(), **tokens, error="empty content")
+        return Completion(model=model, latency_ms=elapsed(), **tokens, error="empty content")
 
     # Reasoning is never the answer. A model that mirrors its scratchpad into `content`
     # has told us nothing usable.
     reasoning = (message.get("reasoning_content") or "").strip()
     if reasoning and raw == reasoning:
-        return TitleSummary(model=model, latency_ms=elapsed(), **tokens,
-                            error="returned only its reasoning")
+        return Completion(model=model, latency_ms=elapsed(), **tokens,
+                          error="returned only its reasoning")
+    return Completion(text=raw, model=model, latency_ms=elapsed(), **tokens)
 
-    title, summary = parse_reply(raw)
+
+def title_and_summary(user_message: str, answer: str) -> TitleSummary:
+    """Ask the LLM for a title and a summary of one turn. Never raises."""
+    prompt = (
+        "Given this chat turn, reply with exactly two lines:\n"
+        "Line 1: a short title (max 8 words, no quotes).\n"
+        "Line 2: a one-or-two sentence summary of what was asked and answered.\n\n"
+        f"User: {user_message}\n\nAssistant: {answer}"
+    )
+    result = complete(SYSTEM_PROMPT, prompt, MAX_TOKENS)
+    meta = dict(model=result.model, latency_ms=result.latency_ms,
+                prompt_tokens=result.prompt_tokens, completion_tokens=result.completion_tokens)
+    if result.error:
+        return TitleSummary(**meta, error=result.error)
+    title, summary = parse_reply(result.text)
     if not title:
-        return TitleSummary(model=model, latency_ms=elapsed(), **tokens, error="no usable lines")
-    return TitleSummary(title=title, summary=summary, model=model, latency_ms=elapsed(), **tokens)
+        return TitleSummary(**meta, error="no usable lines")
+    return TitleSummary(title=title, summary=summary, **meta)

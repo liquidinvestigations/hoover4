@@ -57,6 +57,7 @@ pub fn SearchResultItemCard(
         div {
             "data-citation-search-snippet": citation_excerpt.then_some("true"),
             class: "x-result-item-card",
+            "data-selected": "{we_are_selected}",
             style: "
                 display: flex;
                 flex-direction: column;

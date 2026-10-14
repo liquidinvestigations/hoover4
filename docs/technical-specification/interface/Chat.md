@@ -18,6 +18,8 @@
 | Tool group | Show or hide the tools, instructions, superseded answers, and the reasoning of the round. | Completed groups start closed. |
 | Todo call card | Expand the stored arguments, the result or failure, and the list after the call. | Every todo call has one card inside its group. |
 | Reasoning | Show or hide the model's reasoning for the answer. | It is inside the group before the answer, or beside an answer that has no group. |
+| Show More... | Show the full text of a user message. | The button shows only when the message is longer than three lines. |
+| Internet tools | Show the internet tools option of the conversation, at the right end of the title row. | The checkbox is disabled after the first turn. Its tooltip is "Start a new chat to change this setting." |
 
 ## States
 
@@ -49,6 +51,10 @@ The prompts occupy three columns inside a card with a question icon and the head
 The centered token footer has a faint separator beneath it.
 An unavailable captured page shows a loading failure.
 Exact find shows the current match and total count.
+A user message shows at most three lines, with an ellipsis, until "Show More..." is clicked.
+A user message that holds the active conversation find match shows its full text.
+When the page opens with a selected source, the transcript scrolls once to put that card in the middle of the view.
+A source card has a pointer cursor and a light blue background under the mouse, unless it is selected.
 
 ## Constraints
 

@@ -96,9 +96,10 @@ pub enum Route {
     #[route("/ai_chat/boards/new")]
     AiBoardCreatePage {},
 
-    // `selected` is the fact or intent id that the detail pane shows, empty for none.
-    #[route("/ai_chat/boards/:board_id?:selected")]
-    AiBoardPage { board_id: String, selected: String },
+    // `selected` is the slug of the node that the detail pane shows, empty for none. `zoom` is
+    // the zoom of the graph in percent, empty for 100.
+    #[route("/ai_chat/boards/:board_id?:selected&:zoom")]
+    AiBoardPage { board_id: String, selected: String, zoom: String },
 
     #[route("/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state")]
     AiChatSessionPage {

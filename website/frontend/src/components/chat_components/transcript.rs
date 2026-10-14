@@ -819,6 +819,57 @@ fn answer_replaced(messages: &[ChatMessageItem], index: usize) -> bool {
             .any(|m| m.role == ChatRole::Assistant && !m.content.trim().is_empty())
 }
 
+/// A user message: at most 3 lines, cut with an ellipsis by CSS, and a "Show More..." button
+/// that shows the whole message. The button shows only when the text is longer than 3 lines.
+///
+/// The text block has no padding, so its scroll height and its rectangle compare the text
+/// alone. The block is measured when it mounts and again when it changes size, for example
+/// when a side pane opens. A message that holds the active find match shows open, without a
+/// write to a signal during the render.
+#[component]
+fn UserMessage(seq: u32, content: String, highlight: bool, ring: String) -> Element {
+    let mut expanded = use_signal(|| false);
+    let mut overflows = use_signal(|| false);
+    let mut mounted = use_signal(|| None::<std::rc::Rc<MountedData>>);
+    let measure = move || {
+        let Some(block) = mounted.peek().clone() else { return };
+        spawn(async move {
+            if let (Ok(scroll), Ok(rect)) = (block.get_scroll_size().await, block.get_client_rect().await) {
+                let over = scroll.height > rect.height() + 1.0;
+                if *overflows.peek() != over {
+                    overflows.set(over);
+                }
+            }
+        });
+    };
+    let open = expanded() || highlight;
+    let text_class = if open { "x-chat-user-text" } else { "x-chat-user-text x-chat-user-text-clamped" };
+    rsx! {
+        div {
+            "data-chat-user": "{seq}",
+            style: "align-self: flex-end; background: #4096FF; color: white; max-width: 78%; \
+                    padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; \
+                    word-break: break-word; line-height: 1.55; {ring}",
+            div {
+                class: "{text_class}",
+                onmounted: move |e: MountedEvent| {
+                    mounted.set(Some(e.data()));
+                    measure();
+                },
+                onresize: move |_| measure(),
+                "{content}"
+            }
+            if !open && overflows() {
+                button {
+                    class: "x-chat-user-more",
+                    onclick: move |_| expanded.set(true),
+                    "Show More..."
+                }
+            }
+        }
+    }
+}
+
 #[component]
 fn MessageEntry(
     message: ChatMessageItem,
@@ -868,13 +919,7 @@ fn MessageEntry(
 
     match message.role {
         ChatRole::User => rsx! {
-            div {
-                "data-chat-user": "{message.seq}",
-                style: "align-self: flex-end; background: #4096FF; color: white; max-width: 78%; \
-                        padding: 10px 14px; border-radius: 14px; white-space: pre-wrap; \
-                        word-break: break-word; line-height: 1.55; {ring}",
-                "{message.content}"
-            }
+            UserMessage { seq: message.seq, content: message.content.clone(), highlight, ring: ring.to_string() }
         },
         ChatRole::Assistant => {
             let retries = message.parsed_retry_errors();

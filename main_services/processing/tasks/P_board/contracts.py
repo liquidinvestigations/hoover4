@@ -174,3 +174,77 @@ def labels_of(text: str, listed) -> list[str]:
         if re.fullmatch(r"[DW]\d+", label):
             labels.add(label)
     return sorted(labels, key=lambda x: (x[0], int(x[1:])))
+
+
+#: Limits of the checks of a generated label. The prompt asks for 3 to 4 title words, 15 to
+#: 20 summary words for a node and 10 to 15 for a board. The checks cut a longer text.
+SLUG_WORDS = 4
+SLUG_CHARS = 40
+TITLE_WORDS = 5
+SUMMARY_WORDS = 24
+BOARD_SUMMARY_WORDS = 20
+
+SLUG_WORD_PATTERN = re.compile(r"[a-z0-9]+")
+#: Words of a slug that name a node type. The kind prefix of the slug gives the type.
+TYPE_WORDS = {"intent", "fact", "correction", "origin", "goal"}
+
+
+def slug_words(text: str, limit: int = SLUG_WORDS) -> list[str]:
+    """The lowercase letter and digit runs of a text, at most `limit`, within `SLUG_CHARS`."""
+    words: list[str] = []
+    for word in SLUG_WORD_PATTERN.findall((text or "").lower()):
+        if len(words) >= limit or len("-".join(words + [word])) > SLUG_CHARS:
+            break
+        words.append(word)
+    return words
+
+
+def cut_words(text: str, limit: int) -> str:
+    """The text with collapsed whitespace, cut after `limit` words without an ellipsis."""
+    return " ".join(str(text or "").split()[:limit])
+
+
+def parse_labels(text: str, sources: dict) -> dict:
+    """The checked labels of one reply, by node id: `{"slug", "title", "summary"}`.
+
+    `sources` maps each node id that the call asked for to the text that a fallback reads.
+    An entry for another id is dropped. An entry without a title or a summary is dropped, so
+    its node counts a failed attempt. A slug that is empty after the clean-up comes from the
+    first 3 words of the title, then from the first 3 words of the source text. A reply
+    without a JSON object gives no label.
+    """
+    try:
+        data = extract_json_object(text)
+    except (ValueError, json.JSONDecodeError):
+        return {}
+    entries = data.get("labels")
+    out = {}
+    for entry in entries if isinstance(entries, list) else []:
+        if not isinstance(entry, dict):
+            continue
+        node_id = str(entry.get("id") or "").strip()
+        if node_id not in sources or node_id in out:
+            continue
+        title = cut_words(entry.get("title"), TITLE_WORDS)
+        summary = cut_words(entry.get("summary"), SUMMARY_WORDS)
+        if not title or not summary:
+            continue
+        words = [w for w in slug_words(str(entry.get("slug") or "").replace("-", " "), SLUG_WORDS + 1)
+                 if w not in TYPE_WORDS][:SLUG_WORDS]
+        words = words or slug_words(title, 3) or slug_words(sources[node_id], 3)
+        if not words:
+            continue
+        out[node_id] = {"slug": "-".join(words), "title": title, "summary": summary}
+    return out
+
+
+def parse_board_summary(text: str) -> str:
+    """The board summary of one reply: the first line with words, reasoning blocks and a label
+    removed, cut at `BOARD_SUMMARY_WORDS` words. Empty when the reply has no words."""
+    from tasks.P_agent.summarize import strip_label
+
+    for line in THINK_PATTERN.sub("", text or "").splitlines():
+        line = strip_label(line).strip().strip('"')
+        if SLUG_WORD_PATTERN.search(line.lower()):
+            return cut_words(line, BOARD_SUMMARY_WORDS)
+    return ""

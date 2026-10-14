@@ -18,6 +18,17 @@ pub struct ChatDocOpen {
     pub open: Callback<(DocumentIdentifier, String)>,
 }
 
+/// The chat page's record of its scroll to the selected document. The first card of the
+/// selected document scrolls to the middle of the transcript when it mounts, once for each
+/// session, as the search page does with a selected result. A card on a page without this
+/// context (the board page) does not scroll.
+#[derive(Clone, Copy)]
+pub struct ChatScrolledToSelection {
+    pub session_id: ReadSignal<String>,
+    /// The session whose selected card has scrolled into view, `None` before the scroll.
+    pub scrolled_for: Signal<Option<String>>,
+}
+
 #[component]
 pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: Vec<ChatDocRef>) -> Element {
     // The click reads the document and its find query of the latest render, because a
@@ -26,6 +37,27 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
     *target.borrow_mut() = (doc.document_identifier(), card_find_phrase(&doc.find_query));
     let chat_open = try_use_context::<ChatDocOpen>();
     let parent = use_context::<SearchResultsState>();
+    let scroll_record = try_use_context::<ChatScrolledToSelection>();
+    // The card's own identifier, never the one the result card builds, because that one
+    // joins every dataset of a collapsed document.
+    let own_identifier = doc.document_identifier();
+    let on_card_mounted = move |event: Event<MountedData>| {
+        let Some(mut record) = scroll_record else { return };
+        let session = record.session_id.peek().clone();
+        if record.scrolled_for.peek().as_deref() == Some(session.as_str())
+            || parent.selected_result_hash.peek().as_ref() != Some(&own_identifier)
+        {
+            return;
+        }
+        record.scrolled_for.set(Some(session));
+        spawn(async move {
+            let _ = event.scroll_to_with_options(ScrollToOptions {
+                behavior: ScrollBehavior::Instant,
+                vertical: ScrollLogicalPosition::Center,
+                horizontal: ScrollLogicalPosition::Nearest,
+            }).await;
+        });
+    };
     use_context_provider({
         let target = target.clone();
         move || SearchResultsState {
@@ -126,7 +158,7 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
             button { "data-citation-select": "true", hidden: true, tabindex: "-1", onclick: move |_| { if let Some(open) = chat_open { open.open.call(selected_target.clone()); } } }
             SearchResultItemCard {
                 result,
-                onmounted: |_| {},
+                onmounted: on_card_mounted,
                 citation_excerpt: !doc.search_snippet.is_empty(),
                 citation_handle: doc.handle.clone(),
                 children: Some(rsx! {

@@ -24,11 +24,15 @@ only board turns have, and no agent or model route.
 ## Routes
 
 - `/ai_chat` shows the chat on the left and the board overview on the right: a card per board
-  with its title, counts and a thumbnail of its graph. The overview shows while the chat gate
+  with its title, status, a thumbnail of its graph and the board summary (the first goal
+  before the summary exists). The overview shows while the chat gate
   is open, because the explores are chat turns.
 - `/ai_chat/boards/new` is the create form. Send opens the new board.
-- `/ai_chat/boards/:board_id?selected=` is the explorer. `selected` is a fact id or an intent
-  id, and empty selects the board overview.
+- `/ai_chat/boards/:board_id?selected=` is the explorer. `selected` is the slug of a node, and
+  empty selects the board overview. The page resolves it by slug first and then by storage id,
+  so a link with a storage id keeps working. A click on a node puts its slug in the address.
+  `zoom` is the zoom of the graph in percent: 50, 75, 100 or 125. Empty or another value is
+  100. A zoom change replaces the address, and a node click keeps the zoom.
 
 Every user can own boards. A board belongs to the user who created it, also for
 administrators, and the server functions return "not found" for a board of another user.
@@ -37,6 +41,7 @@ administrators, and the server functions return "not found" for a board of anoth
 
 Migration `00043_investigation_boards.sql` adds six tables to the global database.
 Migration `00044_board_settings.sql` adds the `internet_tools` column to `boards`.
+Migration `00045_board_labels.sql` adds `board_labels`.
 
 | Table | Content | Writer |
 |---|---|---|
@@ -46,6 +51,7 @@ Migration `00044_board_settings.sql` adds the `internet_tools` column to `boards
 | `board_intents` | The intents as the last fold derived them. | `board_plan` only |
 | `board_facts` | The facts. A fact is written once and never changed. | the website and `conclude_explore` |
 | `board_fact_citations` | The documents of each fact, resolved from the explore's `cite_documents` rows. | `conclude_explore` |
+| `board_labels` | The generated slug, title and summary of each intent, fact and correction, and one summary row of the board (empty `node_id`). A slug is a display name and an address key. The storage ids do not change. | `label_board` only |
 
 Ids are deterministic, so a retried activity writes the same row again. An intent is
 `i{reason}.{k}` and its fact is `f{reason}.{k}`. An event id is `{type}:{subject}:{attempt}`
@@ -85,6 +91,32 @@ person. A person action is a row in ClickHouse, and the next pass reads it.
 `BoardExplore` runs one intent. It opens a chat turn, runs it as an `AgentRun` child, and
 concludes it. When the turn ends without a `submit_board_fact` call, it sends one conclude
 turn in the same session and concludes again.
+
+### Labels
+
+`board_plan` also names at most one board that needs labels: a node without a current label,
+or a board summary whose source text changed (`labels.label_due`). The dispatcher then starts
+`label_board` on `chat-model-queue`, one at a time, outside the board model slots. One call of
+the summarisation model labels up to 8 nodes, from the full text of each node.
+
+| Node | Slug | Title and summary |
+|---|---|---|
+| origin | `origin`, fixed | none, the text shows |
+| goal | `goal-01`, `goal-02` and so on, fixed | none, the text shows |
+| intent | `intent-<words>` | generated from the objective and the brief |
+| fact | `fact-<words>` | generated from the kind and the text without `[Dn]` handles |
+| correction | `correction-<words>` | generated from the text |
+| the board | none | 10 to 15 words, from the origin, every goal, and the titles of the intents, the live facts and the corrections |
+
+The model gives 2 to 4 slug words, a title of 3 to 4 words and a summary of 15 to 20 words.
+The code keeps at most 4 slug words and 40 characters, cuts a title at 5 words and a summary at
+24 words. A slug that another node of the board has gets `-2`, then `-3`. A slug does not
+change after its first write. A changed source text gives a new title and summary under it. A
+node that a reply leaves out counts a failed attempt. After 2 failed attempts the code writes a
+label from the first words of the node text, with `model = 'fallback'`. A board whose newest
+row records a failed attempt waits 60 seconds before its next call. Each call writes an
+`llm_call_events` row of kind `board_label` or `board_summary`. Until a node has a label, the
+website shows its storage id and the first words of its text.
 
 `board_plan` also reconciles. It reads the Temporal state of each running intent older than
 60 seconds. When the `BoardExplore` closed without an end event, it writes
@@ -161,7 +193,7 @@ reads the full turn.
 | Pause and resume | Write `pause_requested` and `resume_requested`. A pause cancels running explores and does not use their attempts. |
 | Accept review | Writes `review_accepted`. The board is complete. |
 | Reject review | Writes a `correction` fact and `review_rejected`, whose `from` names the facts of the rejected review. The board is active again. When the explore budget is used, the next pass sends it back to review. |
-| Drop | Writes `drop_requested`, sets `is_deleted` on the `boards` row, cancels the running explores, deletes the board's chat sessions as the chat history deletes a chat (a tombstone on the session row), and deletes the rows of the other five board tables. |
+| Drop | Writes `drop_requested`, sets `is_deleted` on the `boards` row, cancels the running explores, deletes the board's chat sessions as the chat history deletes a chat (a tombstone on the session row), and deletes the rows of the other six board tables. |
 
 ## The graph
 
@@ -180,8 +212,27 @@ those facts to the person's correction.
 The layout is computed in one pass before it shows, so no node moves on screen. In each column
 a node asks for a y: its earlier y, else the mean y of its placed neighbours. The column sorts
 by that y and moves its nodes apart to one row each, so nodes never overlap. A placed node
-moves only when a new node needs its room. A node shows its id and kind in the body font and
-its text in a small font.
+moves only when a new node needs its room.
+
+A node is 300 by 150 pixels at 100 % zoom, and its fonts are the app's text roles: the title
+in bold at the body size, the summary at the detail size in at most 4 lines, and a meta row
+in gray monospace with the slug on the left and the tags (the kind, `rejected`, or `intent`
+and its state) on the right. The origin and the goals show their text with no title. The
+graph does not scale to its pane. The pane scrolls, a press and a drag of more than 4 pixels
+pans it up to the edges of the graph, and a control in its lower-right corner zooms out to
+50 % and in to 125 %. After a zoom change the pane keeps the same graph point in its middle.
+
+An edge between neighbouring columns is one straight line. An edge that skips columns turns
+into the gap after its source, runs along a free lane between or around the nodes of the
+skipped columns, and turns back in the gap before its target, so no edge crosses a node
+(`board_graph::route_edge`). Every edge is drawn under the nodes.
+
+The board overview on the right shows the review panel while the board waits for review,
+the goals, the hint form, the events as a table (date, actor, event, newest first) and the
+statistics: explores, model steps, reasons, intents and facts by state, collections,
+internet tools, the budget rule and the creation date. A person's name shows in bold and a
+system actor in italic. The text that a person wrote in an event shows in italic after the
+fixed text.
 
 The brief of an explore allows one tool call per 4 model steps of its budget: 15 calls at the
 base budget and 30 at the cap.
@@ -202,7 +253,13 @@ turns also use the chat queues, so a board turn competes with the chats of peopl
 
 ## Changing the board workflows
 
-A change to `tasks/P_board/workflows.py` needs the drain of
+A change to `tasks/P_board/workflows.py` that schedules a different command for an existing
+history event needs the drain of
 [`tasks/Readme.md`](../../main_services/processing/tasks/Readme.md). Terminate
 `board-dispatcher`, cancel every `board-explore-*` workflow, deploy, and let the worker start
 the dispatcher again. The next pass reconciles the cancelled intents, and they run again.
+
+A new step that an old history decodes as empty needs no drain. `PlanOutput.labels` is such a
+step: a `board_plan` result in an old history decodes with no labels, so a replay schedules no
+new command. The evidence for such a change is a `temporalio.worker.Replayer` run of the new
+workflow code over the fetched `board-dispatcher` history, before the worker restarts.

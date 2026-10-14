@@ -262,24 +262,31 @@ fn BoardCard(board: BoardListItem) -> Element {
         "dropped" => "Dropped",
         _ => "Unknown",
     };
-    let goals = if board.goals == 1 { "1 goal".to_string() } else { format!("{} goals", board.goals) };
+    // The generated summary of the board. Before its first label pass, the first goal.
+    let summary = if board.summary.is_empty() {
+        board.graph.facts.iter().find(|f| f.fact_id == "goal").map(|f| f.text.clone()).unwrap_or_default()
+    } else {
+        board.summary.clone()
+    };
     rsx! {
         Link {
             class: "x-board-card",
             "data-board-id": "{board.board_id}",
-            to: Route::AiBoardPage { board_id: board.board_id.clone(), selected: String::new() },
+            to: Route::AiBoardPage { board_id: board.board_id.clone(), selected: String::new(), zoom: String::new() },
             style: "display: block; background: white; border: 1px solid; border-color: var(--x-border); border-radius: 12px; \
                     padding: 12px 14px; text-decoration: none; color: inherit;",
             div { style: "display: flex; justify-content: space-between; gap: 8px;",
-                span { style: "font-size: var(--x-text-md); font-weight: 600; color: var(--x-ink-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", "{board.title}" }
-                span { style: "font-size: var(--x-text-xs); color: var(--x-ink-muted); white-space: nowrap;", "{status}" }
+                span { style: "font-size: var(--x-text-body); font-weight: 600; color: var(--x-ink-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", "{board.title}" }
+                span { style: "font-size: var(--x-text-detail); color: var(--x-ink-muted); white-space: nowrap;", "{status}" }
             }
             BoardThumbnail { input: board.graph.clone() }
-            div { style: "font-size: var(--x-text-xs); color: var(--x-ink-muted); line-height: 1.5;",
-                "{goals}, {board.facts_sourced} sourced, {board.facts_inferred} inferred, {board.facts_not_found} not found. "
-                "{board.explores_used} of {board.max_explores} explores, {board.running} running, {board.open} open."
+            div {
+                class: "x-board-card-summary",
+                style: "font-size: var(--x-text-detail); line-height: var(--x-line-detail); color: var(--x-ink); \
+                        display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;",
+                "{summary}"
             }
-            div { style: "font-size: var(--x-text-xs); color: var(--x-ink-faint); margin-top: 2px;", "Updated {format_utc_ms(board.updated_ms)}" }
+            div { style: "font-size: var(--x-text-detail); color: var(--x-ink-faint); margin-top: 2px;", "Updated {format_utc_ms(board.updated_ms)}" }
         }
     }
 }

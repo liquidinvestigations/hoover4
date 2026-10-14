@@ -3,9 +3,10 @@
 //! Deliberately has **no** file-attachment / paperclip control. Documents enter through
 //! the processing pipeline, not the chat UI.
 //!
-//! The two checkboxes disappear from here once the conversation has a turn in it: they
-//! are frozen onto the session at that point and shown read-only above the transcript
-//! by [`LockedOptionsBar`](super::locked_options::LockedOptionsBar). Leaving an editable
+//! The checkboxes disappear from here once the conversation has a turn in it: the options
+//! are frozen onto the session at that point, and the internet tools switch shows read-only
+//! at the right end of the title row
+//! ([`LockedInternetFlag`](super::locked_options::LockedInternetFlag)). Leaving an editable
 //! control that silently does nothing would be worse than removing it.
 
 use common::chat_types::{ChatOptions, MAX_MESSAGE_CHARS};

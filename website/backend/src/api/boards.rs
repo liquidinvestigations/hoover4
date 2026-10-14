@@ -21,13 +21,19 @@
 //! the board row, and the worker computes the budget from the events
 //! (`tasks/P_board/fold.py`, `Folded.max_explores`). A board can have several goals: each
 //! is a fact of kind `goal`, with the ids of `common::board_types::goal_id`.
+//!
+//! The worker writes a generated slug, title and summary for each intent, fact and correction
+//! in `board_labels` (`tasks/P_board/labels.py`), and one summary row for each board. The
+//! reads here attach them to the nodes. A node without a label yet shows its storage id and
+//! the first words of its text (`common::board_types::fallback_label`). The storage ids stay
+//! the keys of every write.
 
 use std::collections::HashMap;
 
 use common::board_types::{
-    goal_id, BoardCitation, BoardCreateRequest, BoardDefinition, BoardEvent, BoardFact,
-    BoardGraphInput, BoardIntent, BoardListItem, BoardReviewGoal, BoardSnapshot,
-    BOARD_SESSION_PREFIX, MAX_GOALS,
+    fallback_label, fixed_slug, goal_id, BoardCitation, BoardCreateRequest, BoardDefinition,
+    BoardEvent, BoardFact, BoardGraphInput, BoardIntent, BoardListItem, BoardReviewGoal,
+    BoardSnapshot, BOARD_SESSION_PREFIX, MAX_GOALS,
 };
 use common::current_user::CurrentUser;
 use time::OffsetDateTime;
@@ -143,6 +149,51 @@ struct IntentRow {
     last_error: String,
     #[serde(with = "clickhouse::serde::time::datetime64::millis")]
     created_at: OffsetDateTime,
+}
+
+#[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
+struct LabelRow {
+    board_id: String,
+    node_id: String,
+    slug: String,
+    title: String,
+    summary: String,
+}
+
+/// The labels of the given boards, keyed by board id and node id. The board summary has an
+/// empty node id.
+async fn read_labels(ids: &[String]) -> anyhow::Result<HashMap<(String, String), LabelRow>> {
+    Ok(get_global_client()
+        .query("SELECT board_id, node_id, slug, title, summary FROM board_labels FINAL WHERE board_id IN ?")
+        .bind(ids)
+        .fetch_all::<LabelRow>()
+        .await?
+        .into_iter()
+        .map(|row| ((row.board_id.clone(), row.node_id.clone()), row))
+        .collect())
+}
+
+/// Set the slug, title and summary of a fact: fixed for the origin and the goals, generated
+/// when a label exists, else the fallback.
+fn label_fact(fact: &mut BoardFact, label: Option<&LabelRow>) {
+    if let Some(slug) = fixed_slug(&fact.fact_id, &fact.kind) {
+        fact.slug = slug;
+        fact.title = String::new();
+        fact.summary = fact.text.clone();
+        return;
+    }
+    (fact.slug, fact.title, fact.summary) = node_label(&fact.fact_id, &fact.text, label);
+}
+
+fn label_intent(intent: &mut BoardIntent, label: Option<&LabelRow>) {
+    (intent.slug, intent.title, intent.summary) = node_label(&intent.intent_id, &intent.objective, label);
+}
+
+fn node_label(id: &str, text: &str, label: Option<&LabelRow>) -> (String, String, String) {
+    match label.filter(|l| !l.slug.is_empty()) {
+        Some(l) => (l.slug.clone(), l.title.clone(), l.summary.clone()),
+        None => fallback_label(id, text),
+    }
 }
 
 fn now() -> OffsetDateTime {
@@ -287,6 +338,9 @@ fn board_fact(f: FactRow, marks: &EventFacts, citations: Vec<BoardCitation>) -> 
         session_id: f.session_id,
         open_questions: f.open_questions,
         problems: f.problems,
+        slug: String::new(),
+        title: String::new(),
+        summary: String::new(),
     }
 }
 
@@ -303,6 +357,9 @@ fn board_intent(i: IntentRow) -> BoardIntent {
         fact_id: i.fact_id,
         question: i.question,
         last_error: i.last_error,
+        slug: String::new(),
+        title: String::new(),
+        summary: String::new(),
     }
 }
 
@@ -349,6 +406,8 @@ pub async fn list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardListItem
         .await?
         .into_iter()
         .collect();
+    let labels = read_labels(&ids).await?;
+    let label = |board: &str, node: &str| labels.get(&(board.to_string(), node.to_string()));
     Ok(boards
         .into_iter()
         .map(|b| {
@@ -364,7 +423,10 @@ pub async fn list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardListItem
                 .cloned()
                 .map(|mut f| {
                     f.text = f.text.chars().take(THUMB_TEXT).collect();
-                    board_fact(f, &marks, Vec::new())
+                    let mut fact = board_fact(f, &marks, Vec::new());
+                    let id = fact.fact_id.clone();
+                    label_fact(&mut fact, label(&b.board_id, &id));
+                    fact
                 })
                 .collect();
             let count = |kind: &str| board_facts.iter().filter(|f| f.kind == kind && !f.rejected).count() as u32;
@@ -379,13 +441,19 @@ pub async fn list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardListItem
                 explores_used: state.map(|s| s.explores_used).unwrap_or(0),
                 max_explores: summary["max_explores"].as_u64().unwrap_or(u64::from(BASE_EXPLORES)) as u32,
                 updated_ms: newest.get(&b.board_id).copied().unwrap_or_else(|| millis(b.created_at)),
+                summary: label(&b.board_id, "").map(|l| l.summary.clone()).unwrap_or_default(),
                 graph: BoardGraphInput {
                     status: status.clone(),
                     intents: intents
                         .iter()
                         .filter(|i| i.board_id == b.board_id)
                         .cloned()
-                        .map(board_intent)
+                        .map(|i| {
+                            let mut intent = board_intent(i);
+                            let id = intent.intent_id.clone();
+                            label_intent(&mut intent, label(&b.board_id, &id));
+                            intent
+                        })
                         .collect(),
                     facts: board_facts,
                     review_goals: review_goals(&summary),
@@ -469,26 +537,28 @@ pub async fn board_set_internet_tools(user: &CurrentUser, board_id: String, on: 
     write_event(&board_id, "settings_changed", &user.username, "", serde_json::json!({"internet_tools": on})).await
 }
 
-/// A sentence for one event, from its type and payload.
-fn summarise(event_type: &str, subject: &str, payload: &serde_json::Value) -> String {
+/// The fixed text of one event and the text that a person wrote in it, from its type and
+/// payload. `slug` gives the display name of a node id. The person's text (a hint, a
+/// rejection reason, a correction) is the second value, so the page can set it apart.
+fn summarise(event_type: &str, subject: &str, payload: &serde_json::Value,
+             slug: &dyn Fn(&str) -> String) -> (String, String) {
     let text = |key: &str| payload[key].as_str().unwrap_or("").to_string();
+    let fixed = |summary: String| (summary, String::new());
     match event_type {
-        "board_created" => "The board was created.".to_string(),
-        "hint_added" => format!("Hint: {}", text("text")),
-        "fact_rejected" => format!("Fact {subject} was rejected: {}", text("reason")),
-        "pause_requested" => "A pause was requested.".to_string(),
-        "resume_requested" => "A resume was requested.".to_string(),
-        "review_accepted" => "The review was accepted. The board is complete.".to_string(),
-        "review_rejected" => format!("The review was rejected: {}", text("correction")),
-        "drop_requested" => "The board was dropped.".to_string(),
-        "settings_changed" => {
-            if payload["internet_tools"].as_bool().unwrap_or(false) {
-                "The internet tools were turned on for later explores.".to_string()
-            } else {
-                "The internet tools were turned off for later explores.".to_string()
-            }
-        }
-        "reason_started" => format!("Reason {subject} started."),
+        "board_created" => fixed("The board was created.".to_string()),
+        "hint_added" => ("Added a hint".to_string(), text("text")),
+        "fact_rejected" => (format!("Rejected {}", slug(subject)), text("reason")),
+        "pause_requested" => fixed("A pause was requested.".to_string()),
+        "resume_requested" => fixed("A resume was requested.".to_string()),
+        "review_accepted" => fixed("The review was accepted. The board is complete.".to_string()),
+        "review_rejected" => ("Rejected the review".to_string(), text("correction")),
+        "drop_requested" => fixed("The board was dropped.".to_string()),
+        "settings_changed" => fixed(if payload["internet_tools"].as_bool().unwrap_or(false) {
+            "The internet tools were turned on for later explores.".to_string()
+        } else {
+            "The internet tools were turned off for later explores.".to_string()
+        }),
+        "reason_started" => fixed(format!("Reason {subject} started.")),
         "reason_result" => {
             let outcome = text("outcome");
             let problems = payload["problems"].as_array().map(|p| p.len()).unwrap_or(0);
@@ -502,15 +572,15 @@ fn summarise(event_type: &str, subject: &str, payload: &serde_json::Value) -> St
                 _ => format!("an invalid reply {}", text("error")),
             };
             let checks = if problems > 0 { format!(", {problems} checks changed it") } else { String::new() };
-            format!("Reason {subject}: {detail}{checks}.")
+            fixed(format!("Reason {subject}: {detail}{checks}."))
         }
-        "explore_started" => format!("Explore of {subject} started, attempt {}.", payload["attempt"]),
-        "explore_concluded" => format!("{subject} concluded in {} ({}).", text("fact_id"), text("kind")),
-        "explore_failed" => format!("{subject} failed: {}", text("error")),
-        "explore_cancelled" => format!("{subject} was cancelled: {}", text("error")),
-        "explore_question" => format!("{subject} asked a question: {}", text("question")),
-        "review_proposed" => format!("The board went to review: {}", text("statement")),
-        other => other.replace('_', " "),
+        "explore_started" => fixed(format!("Explore of {} started, attempt {}.", slug(subject), payload["attempt"])),
+        "explore_concluded" => fixed(format!("{} concluded in {} ({}).", slug(subject), slug(&text("fact_id")), text("kind"))),
+        "explore_failed" => fixed(format!("{} failed: {}", slug(subject), text("error"))),
+        "explore_cancelled" => fixed(format!("{} was cancelled: {}", slug(subject), text("error"))),
+        "explore_question" => fixed(format!("{} asked a question: {}", slug(subject), text("question"))),
+        "review_proposed" => fixed(format!("The board went to review: {}", text("statement"))),
+        other => fixed(other.replace('_', " ")),
     }
 }
 
@@ -546,11 +616,52 @@ pub async fn board_snapshot(user: &CurrentUser, board_id: String) -> anyhow::Res
         .fetch_all::<IntentRow>()
         .await?;
     let marks = event_facts(&events);
+    let labels = read_labels(std::slice::from_ref(&board_id)).await?;
+    let label = |node: &str| labels.get(&(board_id.clone(), node.to_string()));
     let summary: serde_json::Value = state
         .as_ref()
         .and_then(|s| serde_json::from_str(&s.summary_json).ok())
         .unwrap_or_default();
+    let facts: Vec<BoardFact> = facts
+        .into_iter()
+        .map(|f| {
+            let cited = citations
+                .iter()
+                .filter(|c| c.fact_id == f.fact_id)
+                .map(|c| BoardCitation {
+                    label: c.label.clone(),
+                    collection_dataset: c.collection_dataset.clone(),
+                    collectionname: c.collectionname.clone(),
+                    file_hash: c.file_hash.clone(),
+                    path: c.path.clone(),
+                    page_id: c.page_id,
+                    quote: c.quote.clone(),
+                    quote_verified: c.quote_verified != 0,
+                })
+                .collect();
+            let mut fact = board_fact(f, &marks, cited);
+            let id = fact.fact_id.clone();
+            label_fact(&mut fact, label(&id));
+            fact
+        })
+        .collect();
+    let intents: Vec<BoardIntent> = intents
+        .into_iter()
+        .map(|i| {
+            let mut intent = board_intent(i);
+            let id = intent.intent_id.clone();
+            label_intent(&mut intent, label(&id));
+            intent
+        })
+        .collect();
+    let slugs: HashMap<String, String> = facts
+        .iter()
+        .map(|f| (f.fact_id.clone(), f.slug.clone()))
+        .chain(intents.iter().map(|i| (i.intent_id.clone(), i.slug.clone())))
+        .collect();
+    let slug = |id: &str| slugs.get(id).cloned().unwrap_or_else(|| id.to_string());
     Ok(BoardSnapshot {
+        summary: label("").map(|l| l.summary.clone()).unwrap_or_default(),
         status: state.as_ref().map(|s| s.status.clone()).unwrap_or_else(|| "active".to_string()),
         explores_used: state.as_ref().map(|s| s.explores_used).unwrap_or(0),
         reasons_done: state.as_ref().map(|s| s.reasons_done).unwrap_or(0),
@@ -560,33 +671,16 @@ pub async fn board_snapshot(user: &CurrentUser, board_id: String) -> anyhow::Res
         review_goals: review_goals(&summary),
         max_explores: summary["max_explores"].as_u64().unwrap_or(u64::from(BASE_EXPLORES)) as u32,
         explore_steps: summary["explore_steps"].as_u64().unwrap_or(u64::from(BASE_EXPLORE_STEPS)) as u32,
-        facts: facts
-            .into_iter()
-            .map(|f| {
-                let cited = citations
-                    .iter()
-                    .filter(|c| c.fact_id == f.fact_id)
-                    .map(|c| BoardCitation {
-                        label: c.label.clone(),
-                        collection_dataset: c.collection_dataset.clone(),
-                        collectionname: c.collectionname.clone(),
-                        file_hash: c.file_hash.clone(),
-                        path: c.path.clone(),
-                        page_id: c.page_id,
-                        quote: c.quote.clone(),
-                        quote_verified: c.quote_verified != 0,
-                    })
-                    .collect();
-                board_fact(f, &marks, cited)
-            })
-            .collect(),
-        intents: intents.into_iter().map(board_intent).collect(),
+        facts,
+        intents,
         events: events
             .into_iter()
             .map(|e| {
                 let payload: serde_json::Value = serde_json::from_str(&e.payload_json).unwrap_or_default();
+                let (summary, quote) = summarise(&e.event_type, &e.subject, &payload, &slug);
                 BoardEvent {
-                    summary: summarise(&e.event_type, &e.subject, &payload),
+                    summary,
+                    quote,
                     created_ms: millis(e.created_at),
                     event_id: e.event_id,
                     event_type: e.event_type,
@@ -663,7 +757,7 @@ pub async fn board_review(user: &CurrentUser, board_id: String, accept: bool,
 }
 
 /// Drop a board: cancel its running explores, delete its explore sessions through the chat
-/// deletion path, delete its rows, and keep the tombstone of the definition.
+/// deletion path, delete the rows of its six tables, and keep the tombstone of the definition.
 pub async fn board_drop(user: &CurrentUser, board_id: String) -> anyhow::Result<()> {
     let mut board = owned_board(user, &board_id).await?;
     write_event(&board_id, "drop_requested", &user.username, "", serde_json::json!({})).await?;
@@ -691,7 +785,7 @@ pub async fn board_drop(user: &CurrentUser, board_id: String) -> anyhow::Result<
     for session_id in sessions {
         crate::db_chat::delete_session(&user.username, &session_id).await?;
     }
-    for table in ["board_events", "board_state", "board_intents", "board_facts", "board_fact_citations"] {
+    for table in ["board_events", "board_state", "board_intents", "board_facts", "board_fact_citations", "board_labels"] {
         client
             .query(&format!("DELETE FROM {table} WHERE board_id = ?"))
             .bind(&board_id)
@@ -730,6 +824,30 @@ mod tests {
         assert_eq!(marks.rejections["f1.1"], ("alice".to_string(), 10_000, "wrong year".to_string()));
         assert_eq!(marks.corrects["c1"], vec!["f1.2".to_string(), "f2.1".to_string()]);
         assert_eq!(marks.corrects["c2"], vec!["f3.1".to_string()]);
+    }
+
+    #[test]
+    fn an_event_names_nodes_by_slug_and_keeps_the_persons_text_apart() {
+        let slugs: HashMap<&str, &str> = [("f1.2", "fact-raptor-capacity"), ("i1.2", "intent-find-raptor")].into();
+        let slug = |id: &str| slugs.get(id).map(|s| s.to_string()).unwrap_or_else(|| id.to_string());
+        let concluded = summarise("explore_concluded", "i1.2", &serde_json::json!({"fact_id": "f1.2", "kind": "sourced"}), &slug);
+        assert_eq!(concluded, ("intent-find-raptor concluded in fact-raptor-capacity (sourced).".to_string(), String::new()));
+        let rejected = summarise("fact_rejected", "f1.2", &serde_json::json!({"reason": "wrong year"}), &slug);
+        assert_eq!(rejected, ("Rejected fact-raptor-capacity".to_string(), "wrong year".to_string()));
+        let hint = summarise("hint_added", "", &serde_json::json!({"text": "look at May"}), &slug);
+        assert_eq!(hint, ("Added a hint".to_string(), "look at May".to_string()));
+        let correction = summarise("review_rejected", "c1", &serde_json::json!({"correction": "no"}), &slug);
+        assert_eq!(correction.1, "no");
+    }
+
+    #[test]
+    fn a_label_or_its_fallback_names_a_node() {
+        let label = LabelRow { board_id: "b".into(), node_id: "f1.1".into(), slug: "fact-x".into(),
+                               title: "X Title".into(), summary: "x summary".into() };
+        assert_eq!(node_label("f1.1", "some text", Some(&label)), ("fact-x".into(), "X Title".into(), "x summary".into()));
+        let empty = LabelRow { slug: String::new(), ..label };
+        assert_eq!(node_label("f1.1", "one two three four five", Some(&empty)).0, "f1.1");
+        assert_eq!(node_label("f1.1", "one two three four five", None).1, "one two three four");
     }
 
     #[test]

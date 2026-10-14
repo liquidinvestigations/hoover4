@@ -18,20 +18,33 @@
 //! when it was already placed, else the mean y of its placed neighbours. The column sorts by
 //! that y and pushes its nodes apart to one row each. A node that was already placed keeps
 //! its y unless a new node needs the room.
+//!
+//! **A node has one size.** The graph is laid out in pixels at 100 % zoom (`NODE_WIDTH`,
+//! `NODE_HEIGHT`, `COLUMN_WIDTH`, `ROW_HEIGHT`), and the board page scales it only by the zoom
+//! that the person chooses. A free band of half a row is above and below the nodes, and
+//! `MARGIN_X` left and right of them, so the routing lanes stay inside the picture.
+//!
+//! **No edge crosses a node** (`route_edge`). An edge between neighbouring columns is one
+//! straight line. An edge that skips columns turns into the gap after its source, runs along
+//! a free lane past the nodes of the skipped columns, and turns back in the gap before its
+//! target.
 
 use std::collections::{HashMap, HashSet};
 
 use common::board_types::{BoardFact, BoardGraphInput, BoardIntent};
 use dioxus::prelude::*;
 
-/// Simulation units of one depth column, and the smallest viewport.
-pub const COLUMN_WIDTH: f64 = 310.0;
-pub const MIN_WIDTH: f64 = 1000.0;
-pub const MIN_HEIGHT: f64 = 620.0;
-/// Vertical room of one node in the tallest column.
-pub const ROW_HEIGHT: f64 = 132.0;
-pub const NODE_WIDTH: f64 = 260.0;
-pub const NODE_HEIGHT: f64 = 112.0;
+/// Pixels at 100 % zoom: one node, one depth column (a node and a gap of 80), one row (a node
+/// and a gap of 30), and the free band left and right of the nodes.
+pub const NODE_WIDTH: f64 = 300.0;
+pub const NODE_HEIGHT: f64 = 150.0;
+pub const COLUMN_WIDTH: f64 = 380.0;
+pub const ROW_HEIGHT: f64 = 180.0;
+pub const MARGIN_X: f64 = 40.0;
+/// The free band above the top node and below the bottom node of every column.
+pub const MARGIN_Y: f64 = ROW_HEIGHT / 2.0;
+/// The distance that a routing lane keeps from the edge of a node.
+const LANE_CLEARANCE: f64 = 8.0;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct NodePosition {
@@ -52,6 +65,12 @@ pub struct GraphNode {
     pub id: String,
     pub kind: NodeKind,
     pub text: String,
+    /// The display name of the node (`BoardFact::slug`, `BoardIntent::slug`).
+    pub slug: String,
+    /// 3 to 4 words. Empty for the origin and the goals.
+    pub title: String,
+    /// The body of the node card: the generated summary, or the full text of an origin or goal.
+    pub summary: String,
     pub depth: u32,
     pub dimmed: bool,
     pub rejected: bool,
@@ -70,11 +89,6 @@ pub enum EdgeKind {
 }
 
 impl EdgeKind {
-    /// An edge from a fact to a goal.
-    pub fn is_review(self) -> bool {
-        matches!(self, EdgeKind::Answers | EdgeKind::Proposed)
-    }
-
     pub fn name(self) -> &'static str {
         match self {
             EdgeKind::Flow => "flow",
@@ -147,6 +161,9 @@ pub fn build_graph(input: &BoardGraphInput) -> Graph {
                     id: intent.intent_id.clone(),
                     kind: NodeKind::Intent(intent.state.clone()),
                     text: intent.objective.clone(),
+                    slug: intent.slug.clone(),
+                    title: intent.title.clone(),
+                    summary: intent.summary.clone(),
                     depth: d,
                     dimmed: intent.state == "cancelled",
                     rejected: false,
@@ -201,10 +218,11 @@ pub fn build_graph(input: &BoardGraphInput) -> Graph {
     for node in &nodes {
         *per_column.entry(node.depth).or_default() += 1;
     }
-    let tallest = per_column.values().copied().max().unwrap_or(1);
+    let tallest = per_column.values().copied().max().unwrap_or(1) as f64;
+    let columns = (last + 1) as f64;
     Graph {
-        width: MIN_WIDTH.max((last + 1) as f64 * COLUMN_WIDTH + 40.0),
-        height: MIN_HEIGHT.max(tallest as f64 * ROW_HEIGHT + 60.0),
+        width: 2.0 * MARGIN_X + columns * NODE_WIDTH + (columns - 1.0) * (COLUMN_WIDTH - NODE_WIDTH),
+        height: 2.0 * MARGIN_Y + tallest * NODE_HEIGHT + (tallest - 1.0) * (ROW_HEIGHT - NODE_HEIGHT),
         nodes,
         edges,
     }
@@ -215,6 +233,9 @@ fn fact_node(fact: &BoardFact, depth: u32) -> GraphNode {
         id: fact.fact_id.clone(),
         kind: NodeKind::Fact(fact.kind.clone()),
         text: fact.text.clone(),
+        slug: fact.slug.clone(),
+        title: fact.title.clone(),
+        summary: fact.summary.clone(),
         depth,
         dimmed: fact.rejected,
         rejected: fact.rejected,
@@ -228,7 +249,7 @@ fn intent_order(id: &str) -> (u32, u32) {
 }
 
 pub fn target_x(depth: u32) -> f64 {
-    20.0 + NODE_WIDTH / 2.0 + depth as f64 * COLUMN_WIDTH
+    MARGIN_X + NODE_WIDTH / 2.0 + depth as f64 * COLUMN_WIDTH
 }
 
 /// The settled layout of `graph`, after `previous`. See the module doc.
@@ -246,7 +267,7 @@ pub fn settle(graph: &Graph, previous: &HashMap<String, NodePosition>) -> HashMa
         }
     }
     columns.sort_by_key(|(depth, _)| *depth);
-    let (top, bottom) = (NODE_HEIGHT / 2.0 + 4.0, graph.height - NODE_HEIGHT / 2.0 - 4.0);
+    let (top, bottom) = (MARGIN_Y + NODE_HEIGHT / 2.0, graph.height - MARGIN_Y - NODE_HEIGHT / 2.0);
     let middle = graph.height / 2.0;
     let mut positions: HashMap<String, NodePosition> = HashMap::with_capacity(graph.nodes.len());
     for (depth, members) in columns {
@@ -375,32 +396,99 @@ pub fn edge_style(kind: EdgeKind) -> (&'static str, &'static str, &'static str) 
     }
 }
 
-pub fn render_edge(edge: &GraphEdge, layout: &HashMap<String, NodePosition>, marker: &str) -> Element {
+/// The points of an edge, from the middle of the right side of its source to the middle of the
+/// left side of its target. See the module doc. Pure, so it is tested without a runtime.
+pub fn route_edge(edge: &GraphEdge, layout: &HashMap<String, NodePosition>, graph: &Graph) -> Vec<(f64, f64)> {
     let (Some(src), Some(dst)) = (layout.get(&edge.src), layout.get(&edge.dst)) else {
+        return Vec::new();
+    };
+    let start = (src.x + NODE_WIDTH / 2.0, src.y);
+    let end = (dst.x - NODE_WIDTH / 2.0, dst.y);
+    let depth_of = |id: &str| graph.nodes.iter().find(|n| n.id == id).map(|n| n.depth);
+    let (Some(from), Some(to)) = (depth_of(&edge.src), depth_of(&edge.dst)) else {
+        return vec![start, end];
+    };
+    if to <= from + 1 {
+        return vec![start, end];
+    }
+    // The nodes of each skipped column, top to bottom.
+    let mut columns: Vec<Vec<f64>> = Vec::new();
+    for depth in from + 1..to {
+        let mut ys: Vec<f64> = graph.nodes.iter().filter(|n| n.depth == depth)
+            .filter_map(|n| layout.get(&n.id)).map(|p| p.y).collect();
+        ys.sort_by(f64::total_cmp);
+        columns.push(ys);
+    }
+    let half_gap = (ROW_HEIGHT - NODE_HEIGHT) / 2.0;
+    let mut candidates: Vec<f64> = Vec::new();
+    for ys in &columns {
+        for pair in ys.windows(2) {
+            candidates.push((pair[0] + pair[1]) / 2.0);
+        }
+        if let (Some(first), Some(last)) = (ys.first(), ys.last()) {
+            candidates.push(first - NODE_HEIGHT / 2.0 - half_gap);
+            candidates.push(last + NODE_HEIGHT / 2.0 + half_gap);
+        }
+    }
+    let free = |y: f64| columns.iter().flatten().all(|c| (y - c).abs() >= NODE_HEIGHT / 2.0 + LANE_CLEARANCE);
+    let highest = layout.values().map(|p| p.y).fold(f64::INFINITY, f64::min);
+    let above_all = if highest.is_finite() { highest - NODE_HEIGHT / 2.0 - half_gap } else { start.1 };
+    let cost = |y: f64| (y - start.1).abs() + (y - end.1).abs();
+    let lane = candidates.into_iter().filter(|y| free(*y))
+        .min_by(|a, b| cost(*a).total_cmp(&cost(*b)))
+        .unwrap_or(above_all);
+    let gap = COLUMN_WIDTH - NODE_WIDTH;
+    let out_x = start.0 + gap / 2.0;
+    let in_x = end.0 - gap / 2.0;
+    vec![start, (out_x, start.1), (out_x, lane), (in_x, lane), (in_x, end.1), end]
+}
+
+/// The `d` attribute of a path through `points`.
+pub fn path_data(points: &[(f64, f64)]) -> String {
+    points.iter().enumerate()
+        .map(|(i, (x, y))| format!("{}{x:.1} {y:.1}", if i == 0 { "M" } else { " L" }))
+        .collect()
+}
+
+pub fn render_edge(edge: &GraphEdge, layout: &HashMap<String, NodePosition>, graph: &Graph, marker: &str) -> Element {
+    let points = route_edge(edge, layout, graph);
+    if points.is_empty() {
         return rsx! {};
-    };
-    let (x1, x2) = if dst.x >= src.x {
-        (src.x + NODE_WIDTH / 2.0, dst.x - NODE_WIDTH / 2.0)
-    } else {
-        (src.x - NODE_WIDTH / 2.0, dst.x + NODE_WIDTH / 2.0)
-    };
+    }
     let (stroke, width, dash) = edge_style(edge.kind);
     rsx! {
-        line {
+        path {
             key: "{edge.src}-{edge.dst}",
             class: "x-board-edge",
             "data-edge-kind": edge.kind.name(),
-            x1: "{x1}", y1: "{src.y}", x2: "{x2}", y2: "{dst.y}",
+            d: "{path_data(&points)}",
+            fill: "none",
             stroke: "{stroke}",
             stroke_width: "{width}",
             stroke_dasharray: "{dash}",
+            stroke_linejoin: "round",
             marker_end: "url(#{marker})",
         }
     }
 }
 
-/// One node: the title in the body font of the page, and the text of the card under it in
-/// a small font, as many lines as the card holds.
+/// The tags of a node: its kind, `rejected`, or `intent` and its state.
+pub fn node_tags(node: &GraphNode) -> Vec<String> {
+    match &node.kind {
+        NodeKind::Fact(kind) => {
+            let mut tags = vec![kind_label(kind).to_string()];
+            if node.rejected {
+                tags.push("rejected".to_string());
+            }
+            tags
+        }
+        NodeKind::Intent(state) => vec!["intent".to_string(), state.clone()],
+    }
+}
+
+/// One node: the title in bold, the summary under it, and a meta row with the slug on the
+/// left and the tags on the right. The origin and the goals have no title row. The classes
+/// in `assets/main.css` give the fonts.
 pub fn render_node(
     node: &GraphNode,
     layout: &HashMap<String, NodePosition>,
@@ -408,26 +496,22 @@ pub fn render_node(
     on_select: Callback<String>,
 ) -> Element {
     let Some(position) = layout.get(&node.id) else { return rsx! {} };
-    let (fill, stroke, dash, tag) = node_style(&node.kind);
+    let (fill, stroke, dash, _) = node_style(&node.kind);
     let is_selected = node.id == selected;
     let anchor = matches!(&node.kind, NodeKind::Fact(k) if k == "origin" || k == "goal");
-    let text_colour = if anchor { "#ffffff" } else { "#111827" };
-    let sub_colour = if anchor { "rgba(255,255,255,0.88)" } else { "rgba(0,0,0,0.62)" };
     let running = matches!(&node.kind, NodeKind::Intent(s) if s == "running");
     let stroke_width = if is_selected { "3" } else if running { "2.4" } else { "1.2" };
     let opacity = if node.dimmed { "0.5" } else { "1" };
-    let title = if node.rejected {
-        format!("{} \u{00b7} {tag} \u{00b7} rejected", node.id)
-    } else {
-        format!("{} \u{00b7} {tag}", node.id)
-    };
-    let title_decoration = if node.rejected { "line-through" } else { "none" };
+    let card_class = if anchor { "x-board-node-card x-board-node-anchor" } else { "x-board-node-card" };
+    let title_class = if node.rejected { "x-board-node-title x-board-node-rejected" } else { "x-board-node-title" };
+    let tags = node_tags(node);
     let id = node.id.clone();
     rsx! {
         g {
             key: "{node.id}",
             class: "x-board-node",
             "data-node": "{node.id}",
+            "data-slug": "{node.slug}",
             opacity: "{opacity}",
             style: "cursor: pointer;",
             transform: "translate({position.x - NODE_WIDTH / 2.0}, {position.y - NODE_HEIGHT / 2.0})",
@@ -438,16 +522,18 @@ pub fn render_node(
             }
             foreignObject {
                 x: "0", y: "0", width: "{NODE_WIDTH}", height: "{NODE_HEIGHT}",
-                div {
-                    style: "box-sizing: border-box; height: 100%; padding: 6px 9px; overflow: hidden; display: flex; flex-direction: column; gap: 3px; pointer-events: none;",
-                    div {
-                        style: "font-size: 12px; font-weight: 600; color: {text_colour}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-decoration: {title_decoration};",
-                        "{title}"
+                div { class: "{card_class}",
+                    if !anchor && !node.title.is_empty() {
+                        div { class: "{title_class}", "{node.title}" }
                     }
-                    div {
-                        class: "x-board-node-text",
-                        style: "font-size: 10px; line-height: 1.3; color: {sub_colour}; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; word-break: break-word;",
-                        "{node.text}"
+                    div { class: "x-board-node-summary", "{node.summary}" }
+                    div { class: "x-board-node-meta",
+                        span { class: "x-board-node-slug", title: "{node.slug}", "{node.slug}" }
+                        span { class: "x-board-node-tags",
+                            for (i, tag) in tags.iter().enumerate() {
+                                span { key: "{i}", "{tag}" }
+                            }
+                        }
                     }
                 }
             }
@@ -487,12 +573,11 @@ pub fn BoardThumbnail(input: BoardGraphInput) -> Element {
             view_box: "0 0 {graph.width} {graph.height}",
             preserve_aspect_ratio: "xMidYMid meet",
             for edge in graph.edges.iter() {
-                if let (Some(a), Some(b)) = (layout.get(&edge.src), layout.get(&edge.dst)) {
-                    line {
-                        key: "{edge.src}-{edge.dst}",
-                        x1: "{a.x}", y1: "{a.y}", x2: "{b.x}", y2: "{b.y}",
-                        stroke: "{edge_style(edge.kind).0}", stroke_width: "8",
-                    }
+                path {
+                    key: "{edge.src}-{edge.dst}",
+                    d: "{path_data(&route_edge(edge, &layout, &graph))}",
+                    fill: "none",
+                    stroke: "{edge_style(edge.kind).0}", stroke_width: "8", stroke_linejoin: "round",
                 }
             }
             for node in graph.nodes.iter() {
@@ -532,6 +617,9 @@ mod tests {
             created_by: String::new(),
             created_ms: 0,
             citations: vec![],
+            slug: id.into(),
+            title: String::new(),
+            summary: id.into(),
         }
     }
 
@@ -548,6 +636,9 @@ mod tests {
             question: String::new(),
             last_error: String::new(),
             created_ms,
+            slug: id.into(),
+            title: String::new(),
+            summary: id.into(),
         }
     }
 
@@ -660,5 +751,87 @@ mod tests {
             assert_eq!(next[id].y, placed[id].y);
         }
         assert!(next["f1.1"].y.is_finite());
+    }
+
+    /// The shape of the local test board: origin, 2 goals, 3 intents with their facts, and
+    /// 4 corrections, 2 of which correct `f1.1` and `f1.2`. The completed review links
+    /// `f1.1` and `f1.2` to the goals across the correction column.
+    fn test_board() -> BoardGraphInput {
+        let mut facts = vec![
+            fact("origin", "origin", ""),
+            fact("goal", "goal", ""),
+            fact("goal-2", "goal", ""),
+            fact("f1.1", "sourced", "i1.1"),
+            fact("f1.2", "sourced", "i1.2"),
+            fact("f2.1", "not_found", "i2.1"),
+        ];
+        for (index, id) in ["c1", "c2", "c3", "c4"].into_iter().enumerate() {
+            let mut correction = fact(id, "correction", "");
+            correction.created_ms = 10 + index as i64;
+            if index < 2 {
+                correction.corrects = vec!["f1.1".into(), "f1.2".into()];
+            }
+            facts.push(correction);
+        }
+        let mut data = input(facts, vec![
+            intent("i1.1", &["origin"], 1),
+            intent("i1.2", &["origin"], 1),
+            intent("i2.1", &["f1.2"], 5),
+        ]);
+        data.status = "completed".into();
+        data.review_goals = vec![
+            BoardReviewGoal { goal: "goal".into(), from: vec!["f1.1".into()], statement: String::new() },
+            BoardReviewGoal { goal: "goal-2".into(), from: vec!["f1.2".into()], statement: String::new() },
+        ];
+        data
+    }
+
+    /// Whether the segment from `a` to `b` meets the rectangle of a node at `p`. Segments are
+    /// horizontal or vertical, or join neighbouring columns, so a sampled check is exact
+    /// enough at one pixel.
+    fn meets(a: (f64, f64), b: (f64, f64), p: &NodePosition) -> bool {
+        let steps = 2000;
+        (0..=steps).any(|i| {
+            let t = i as f64 / steps as f64;
+            let (x, y) = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+            (x - p.x).abs() < NODE_WIDTH / 2.0 - 0.5 && (y - p.y).abs() < NODE_HEIGHT / 2.0 - 0.5
+        })
+    }
+
+    #[test]
+    fn no_routed_edge_meets_a_node_that_is_not_its_source_or_target() {
+        let graph = build_graph(&test_board());
+        assert_eq!(graph.nodes.len(), 13);
+        assert_eq!(graph.edges.iter().filter(|e| e.kind == EdgeKind::Answers).count(), 2);
+        assert_eq!(graph.edges.iter().filter(|e| e.kind == EdgeKind::Corrects).count(), 4);
+        let layout = settle(&graph, &HashMap::new());
+        for edge in &graph.edges {
+            let points = route_edge(edge, &layout, &graph);
+            assert!(points.len() >= 2);
+            for pair in points.windows(2) {
+                for node in &graph.nodes {
+                    if node.id == edge.src || node.id == edge.dst {
+                        continue;
+                    }
+                    assert!(!meets(pair[0], pair[1], &layout[&node.id]),
+                            "{}->{} meets {} at {:?}", edge.src, edge.dst, node.id, pair);
+                }
+            }
+            for (x, y) in points {
+                assert!(x >= 0.0 && x <= graph.width && y >= 0.0 && y <= graph.height, "{x} {y} outside");
+            }
+        }
+    }
+
+    #[test]
+    fn the_graph_has_fixed_node_sizes_and_bands_around_the_nodes() {
+        let graph = build_graph(&test_board());
+        let layout = settle(&graph, &HashMap::new());
+        let top = layout.values().map(|p| p.y - NODE_HEIGHT / 2.0).fold(f64::INFINITY, f64::min);
+        let bottom = layout.values().map(|p| p.y + NODE_HEIGHT / 2.0).fold(0.0, f64::max);
+        let left = layout.values().map(|p| p.x - NODE_WIDTH / 2.0).fold(f64::INFINITY, f64::min);
+        let right = layout.values().map(|p| p.x + NODE_WIDTH / 2.0).fold(0.0, f64::max);
+        assert!(top >= MARGIN_Y - 0.1 && graph.height - bottom >= MARGIN_Y - 0.1, "{top} {bottom} {}", graph.height);
+        assert_eq!((left, graph.width - right), (MARGIN_X, MARGIN_X));
     }
 }
