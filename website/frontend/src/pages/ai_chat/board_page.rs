@@ -85,10 +85,18 @@ async fn reload(board_id: String, mut snapshot: Signal<Option<BoardSnapshot>>, m
     }
 }
 
+/// Whether the board can change soon: it is active, an explore runs, or the newest event is
+/// a person action that the worker has not answered yet. A completed or dropped board waits
+/// for nothing.
 fn is_live(snapshot: &Option<BoardSnapshot>) -> bool {
     match snapshot {
         None => true,
-        Some(s) => s.status == "active" || s.intents.iter().any(|i| i.state == "running"),
+        Some(s) if s.status == "completed" || s.status == "dropped" => false,
+        Some(s) => {
+            s.status == "active"
+                || s.intents.iter().any(|i| i.state == "running")
+                || s.events.last().is_some_and(|e| !matches!(e.actor.as_str(), "dispatcher" | "reason" | "explore"))
+        }
     }
 }
 
