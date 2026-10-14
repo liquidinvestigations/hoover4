@@ -177,9 +177,14 @@ those facts to the person's correction.
 | Answers | a fact of the accepted review of a goal | that goal. Dashed while the review waits for the person. |
 | Corrects | a fact of a rejected review | the correction of that review |
 
-The layout settles before it shows. Each read that changes the board settles the new nodes in
-one pass, and the nodes that were already placed keep their places. A node shows its id and
-kind in the body font and its text in a small font.
+The layout is computed in one pass before it shows, so no node moves on screen. In each column
+a node asks for a y: its earlier y, else the mean y of its placed neighbours. The column sorts
+by that y and moves its nodes apart to one row each, so nodes never overlap. A placed node
+moves only when a new node needs its room. A node shows its id and kind in the body font and
+its text in a small font.
+
+The brief of an explore allows one tool call per 4 model steps of its budget: 15 calls at the
+base budget and 30 at the cap.
 
 ## Limits and settings
 

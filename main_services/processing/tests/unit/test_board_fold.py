@@ -10,7 +10,7 @@ from database.boards import BoardRow, CitationRow, EventRow, FactRow
 from tasks.P_board import model as m
 from tasks.P_board.contracts import labels_of, parse_explore_block, parse_reason
 from tasks.P_board.fold import fold, plan, reason_due
-from tasks.P_board.prompts import fact_block, strip_labels
+from tasks.P_board.prompts import call_guidance, fact_block, strip_labels
 
 T0 = datetime(2026, 10, 14, 8, 0, 0)
 
@@ -314,3 +314,9 @@ def test_a_rejected_fact_reaches_the_reason_prompt_and_frees_its_objective():
     assert "- f1.1: text Rejected because: D4 names another sender" in prompt
     assert "-> f1.1 (rejected)" in prompt
     assert "'f1.1'" not in prompt.split("Valid facts:")[1]
+
+
+def test_the_brief_call_guidance_grows_with_the_step_budget():
+    assert call_guidance(m.BASE_EXPLORE_STEPS) == 15
+    assert call_guidance(m.MAX_EXPLORE_STEPS) == 30
+    assert call_guidance(m.CONCLUDE_STEP_BUDGET) == 1

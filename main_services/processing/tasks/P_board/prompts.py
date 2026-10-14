@@ -16,9 +16,16 @@ from tasks.P_board import model as m
 
 LABEL_PATTERN = re.compile(r"\s*\[(?:D|W)\d+\](?:\s*,)?")
 
-#: Tool-call guidance for one explore. The chat control layer gives its own guidance from
-#: the request class, and a brief that states a smaller number keeps an explore focused.
-EXPLORE_CALL_GUIDANCE = 15
+#: Model steps per tool call of the guidance in a brief. The chat control layer gives its own
+#: guidance from the request class, and a brief that states a smaller number keeps an
+#: explore focused. The base budget of 60 steps gives 15 calls, and the guidance grows with
+#: the budget.
+STEPS_PER_GUIDED_CALL = 4
+
+
+def call_guidance(steps: int) -> int:
+    """The tool calls that the brief of an explore with `steps` model steps allows."""
+    return max(1, steps // STEPS_PER_GUIDED_CALL)
 
 
 def strip_labels(text: str) -> str:
@@ -63,8 +70,8 @@ def goal_ids(facts) -> list[str]:
     return [f.fact_id for f in goals_of(facts)]
 
 
-def render_brief(board, facts, citations, hints, intent, collections) -> str:
-    """The user row of an explore turn."""
+def render_brief(board, facts, citations, hints, intent, collections, steps: int) -> str:
+    """The user row of an explore turn with `steps` model steps."""
     hint_lines = "\n".join(f"- {h}" for h in reversed(hints)) or "- none"
     sources = ", ".join(intent.from_facts) or "origin"
     brief = f"\n{intent.brief}" if intent.brief else ""
@@ -84,7 +91,7 @@ def render_brief(board, facts, citations, hints, intent, collections) -> str:
         "- If the documents do not establish a point, say \"not found in the documents\" for that point.\n"
         "- Keep what a source states apart from what you infer.\n"
         "- Do not repeat findings that the known facts already state.\n"
-        f"- This is a focused task. Use at most {EXPLORE_CALL_GUIDANCE} tool calls. "
+        f"- This is a focused task. Use at most {call_guidance(steps)} tool calls. "
         "Do not read a document twice.\n"
         "- Put the returned handle, such as [D1], beside each claim that relies on a document.\n"
         "- The fact must keep the names, dates and numbers that the task asks for.\n\n"

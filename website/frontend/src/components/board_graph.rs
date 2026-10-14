@@ -13,10 +13,11 @@
 //! rejected review is an edge from each fact of that review to the correction that the person
 //! wrote (Cairn's `reopen`, whose `external_feedback` intent leads to the correction fact).
 //!
-//! The layout settles before it is shown. x comes from the depth. y comes from repulsion
-//! between the nodes of one column, attraction along edges and a pull to the middle, run for
-//! `SETTLE_TICKS` ticks in one pass. A node that was already placed keeps its y, so a new
-//! node finds its place without moving the rest of the picture.
+//! The layout is computed in one pass before it is shown, so no node moves on screen. x comes
+//! from the depth. In each column, from left to right, a node asks for a y: its earlier y
+//! when it was already placed, else the mean y of its placed neighbours. The column sorts by
+//! that y and pushes its nodes apart to one row each. A node that was already placed keeps
+//! its y unless a new node needs the room.
 
 use std::collections::{HashMap, HashSet};
 
@@ -32,18 +33,10 @@ pub const ROW_HEIGHT: f64 = 132.0;
 pub const NODE_WIDTH: f64 = 260.0;
 pub const NODE_HEIGHT: f64 = 112.0;
 
-/// Ticks of one settle pass.
-pub const SETTLE_TICKS: u32 = 400;
-const REPULSION: f64 = 60_000.0;
-const EDGE_PULL: f64 = 0.02;
-const DAMPING: f64 = 0.8;
-const CENTRING: f64 = 0.004;
-
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct NodePosition {
     pub x: f64,
     pub y: f64,
-    pub vy: f64,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -233,85 +226,99 @@ pub fn target_x(depth: u32) -> f64 {
     20.0 + NODE_WIDTH / 2.0 + depth as f64 * COLUMN_WIDTH
 }
 
-fn clamp_y(y: f64, height: f64) -> f64 {
-    y.clamp(NODE_HEIGHT / 2.0 + 4.0, height - NODE_HEIGHT / 2.0 - 4.0)
-}
-
-/// The settled layout of `graph`. A node of `previous` keeps its y. A new node starts at the
-/// mean y of its placed neighbours, or in a fixed spread down the middle, and then settles.
+/// The settled layout of `graph`, after `previous`. See the module doc.
 pub fn settle(graph: &Graph, previous: &HashMap<String, NodePosition>) -> HashMap<String, NodePosition> {
     let mut neighbours: HashMap<&str, Vec<&str>> = HashMap::new();
     for edge in &graph.edges {
         neighbours.entry(edge.src.as_str()).or_default().push(edge.dst.as_str());
         neighbours.entry(edge.dst.as_str()).or_default().push(edge.src.as_str());
     }
-    let mut positions: HashMap<String, NodePosition> = HashMap::with_capacity(graph.nodes.len());
-    let mut pinned: HashSet<String> = HashSet::new();
+    let mut columns: Vec<(u32, Vec<usize>)> = Vec::new();
     for (index, node) in graph.nodes.iter().enumerate() {
-        let x = target_x(node.depth);
-        if let Some(existing) = previous.get(&node.id) {
-            positions.insert(node.id.clone(), NodePosition { x, y: clamp_y(existing.y, graph.height), vy: 0.0 });
-            pinned.insert(node.id.clone());
-            continue;
+        match columns.iter_mut().find(|(depth, _)| *depth == node.depth) {
+            Some((_, list)) => list.push(index),
+            None => columns.push((node.depth, vec![index])),
         }
-        let placed: Vec<f64> = neighbours
-            .get(node.id.as_str())
-            .map(|list| list.iter().filter_map(|n| positions.get(*n).or_else(|| previous.get(*n))).map(|p| p.y).collect())
-            .unwrap_or_default();
-        let y = if placed.is_empty() {
-            graph.height / 2.0 + ((index % 7) as f64 - 3.0) * (graph.height / 18.0)
-        } else {
-            placed.iter().sum::<f64>() / placed.len() as f64 + ((index % 3) as f64 - 1.0) * 12.0
-        };
-        positions.insert(node.id.clone(), NodePosition { x, y: clamp_y(y, graph.height), vy: 0.0 });
     }
-    if pinned.len() < graph.nodes.len() {
-        for _ in 0..SETTLE_TICKS {
-            simulate_tick(graph, &mut positions, &pinned);
+    columns.sort_by_key(|(depth, _)| *depth);
+    let (top, bottom) = (NODE_HEIGHT / 2.0 + 4.0, graph.height - NODE_HEIGHT / 2.0 - 4.0);
+    let middle = graph.height / 2.0;
+    let mut positions: HashMap<String, NodePosition> = HashMap::with_capacity(graph.nodes.len());
+    for (depth, members) in columns {
+        let mut wanted: Vec<(f64, usize)> = members
+            .iter()
+            .map(|&index| {
+                let node = &graph.nodes[index];
+                let y = previous.get(&node.id).map(|p| p.y).unwrap_or_else(|| {
+                    let placed: Vec<f64> = neighbours
+                        .get(node.id.as_str())
+                        .map(|list| list.iter().filter_map(|n| positions.get(*n)).map(|p| p.y).collect())
+                        .unwrap_or_default();
+                    if placed.is_empty() { middle } else { placed.iter().sum::<f64>() / placed.len() as f64 }
+                });
+                (y, index)
+            })
+            .collect();
+        wanted.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        let ys = spread(&wanted.iter().map(|w| w.0).collect::<Vec<_>>(), top, bottom);
+        for ((_, index), y) in wanted.into_iter().zip(ys) {
+            positions.insert(graph.nodes[index].id.clone(), NodePosition { x: target_x(depth), y });
         }
     }
     positions
 }
 
-/// One step of the simulation in place, in y only. A pinned node pushes and pulls the others
-/// and does not move. O(n²) in the node count, which the explore budget bounds.
-pub fn simulate_tick(graph: &Graph, positions: &mut HashMap<String, NodePosition>, pinned: &HashSet<String>) {
-    let mut forces: HashMap<&str, f64> = graph.nodes.iter().map(|n| (n.id.as_str(), 0.0)).collect();
-    for (index, a_node) in graph.nodes.iter().enumerate() {
-        let Some(a) = positions.get(&a_node.id).copied() else { continue };
-        for b_node in graph.nodes.iter().skip(index + 1) {
-            // Only nodes of one column can overlap, so only they repel.
-            if a_node.depth != b_node.depth {
-                continue;
+/// Sorted wanted ys moved apart to at least `ROW_HEIGHT` and into `top..=bottom`. A run of
+/// nodes that is too close moves as a block centred on its wanted ys, so a node that was
+/// placed moves only when another node needs its room.
+fn spread(wanted: &[f64], top: f64, bottom: f64) -> Vec<f64> {
+    // Blocks of consecutive nodes: (first index, count, mean wanted y). A block that touches
+    // the block before it joins it, and the joined block centres on the mean of its nodes.
+    let mut blocks: Vec<(usize, usize, f64)> = Vec::new();
+    for (index, &y) in wanted.iter().enumerate() {
+        blocks.push((index, 1, y));
+        while blocks.len() > 1 {
+            let (a, b) = (blocks[blocks.len() - 2], blocks[blocks.len() - 1]);
+            let a_end = start_of(a) + (a.1 as f64 - 1.0) * ROW_HEIGHT;
+            if start_of(b) - a_end >= ROW_HEIGHT {
+                break;
             }
-            let Some(b) = positions.get(&b_node.id).copied() else { continue };
-            // Two nodes on one point have no direction between them. Without a fixed
-            // direction they stay on top of each other.
-            let dy = if a.y == b.y { 1.0 } else { a.y - b.y };
-            let distance = dy.abs().max(5.0);
-            let push = REPULSION / (distance * distance) * dy.signum();
-            *forces.entry(a_node.id.as_str()).or_default() += push;
-            *forces.entry(b_node.id.as_str()).or_default() -= push;
+            let count = a.1 + b.1;
+            let mean = (a.2 * a.1 as f64 + b.2 * b.1 as f64) / count as f64;
+            blocks.pop();
+            blocks.pop();
+            blocks.push((a.0, count, mean));
         }
     }
-    for edge in &graph.edges {
-        let (Some(a), Some(b)) = (positions.get(&edge.src).copied(), positions.get(&edge.dst).copied()) else {
-            continue;
-        };
-        let dy = b.y - a.y;
-        *forces.entry(edge.src.as_str()).or_default() += dy * EDGE_PULL;
-        *forces.entry(edge.dst.as_str()).or_default() -= dy * EDGE_PULL;
-    }
-    for node in &graph.nodes {
-        if pinned.contains(&node.id) {
-            continue;
+    let mut out: Vec<f64> = Vec::with_capacity(wanted.len());
+    for block in blocks {
+        for k in 0..block.1 {
+            out.push(start_of(block) + k as f64 * ROW_HEIGHT);
         }
-        let Some(position) = positions.get_mut(&node.id) else { continue };
-        let mut fy = forces.get(node.id.as_str()).copied().unwrap_or(0.0);
-        fy += (graph.height / 2.0 - position.y) * CENTRING;
-        position.vy = (position.vy + fy) * DAMPING;
-        position.y = clamp_y(position.y + position.vy, graph.height);
     }
+    // Into the viewport: the column fits, because the viewport height counts the tallest
+    // column. The two passes keep the gaps.
+    let n = out.len();
+    for i in (0..n).rev() {
+        let limit = bottom - (n - 1 - i) as f64 * ROW_HEIGHT;
+        out[i] = out[i].min(limit);
+        if i + 1 < n {
+            out[i] = out[i].min(out[i + 1] - ROW_HEIGHT);
+        }
+    }
+    for i in 0..n {
+        let limit = top + i as f64 * ROW_HEIGHT;
+        out[i] = out[i].max(limit);
+        if i > 0 {
+            out[i] = out[i].max(out[i - 1] + ROW_HEIGHT);
+        }
+    }
+    out
+}
+
+/// The y of the first node of a block: the block centred on its mean wanted y.
+fn start_of(block: (usize, usize, f64)) -> f64 {
+    block.2 - (block.1 as f64 - 1.0) * ROW_HEIGHT / 2.0
 }
 
 pub fn kind_label(kind: &str) -> &'static str {
@@ -595,6 +602,38 @@ mod tests {
     }
 
     #[test]
+    fn five_nodes_of_one_column_do_not_overlap() {
+        let mut correction = fact("c1", "correction", "");
+        correction.created_ms = 9;
+        let graph = build_graph(&input(
+            vec![
+                fact("origin", "origin", ""),
+                fact("goal", "goal", ""),
+                fact("f1.1", "sourced", "i1.1"),
+                fact("f1.2", "not_found", "i1.2"),
+                fact("f2.1", "sourced", "i2.1"),
+                fact("f2.2", "sourced", "i2.2"),
+                correction,
+            ],
+            vec![
+                intent("i1.1", &["origin"], 1),
+                intent("i1.2", &["origin"], 1),
+                intent("i2.1", &["origin"], 5),
+                intent("i2.2", &["origin"], 5),
+            ],
+        ));
+        let placed = settle(&graph, &HashMap::new());
+        for a in &graph.nodes {
+            for b in &graph.nodes {
+                if a.id < b.id && a.depth == b.depth {
+                    let gap = (placed[&a.id].y - placed[&b.id].y).abs();
+                    assert!(gap >= NODE_HEIGHT, "{} and {} overlap: {:?} {:?}", a.id, b.id, placed[&a.id], placed[&b.id]);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn the_layout_settles_and_a_placed_node_keeps_its_place() {
         let first = build_graph(&input(
             vec![fact("origin", "origin", ""), fact("goal", "goal", "")],
@@ -605,12 +644,8 @@ mod tests {
         for (a, b) in [(0, 1), (0, 2), (1, 2)] {
             assert!((placed[ids[a]].y - placed[ids[b]].y).abs() >= NODE_HEIGHT, "nodes of one column overlap");
         }
-        // One more tick moves no node by a visible amount, so the shown layout was settled.
-        let mut again = placed.clone();
-        simulate_tick(&first, &mut again, &HashSet::new());
-        for id in ids {
-            assert!((again[id].y - placed[id].y).abs() < 1.0);
-        }
+        // Settling the settled layout again moves nothing.
+        assert_eq!(settle(&first, &placed), placed);
         let second = build_graph(&input(
             vec![fact("origin", "origin", ""), fact("goal", "goal", ""), fact("f1.1", "sourced", "i1.1")],
             vec![intent("i1.1", &["origin"], 1), intent("i1.2", &["origin"], 1), intent("i1.3", &["origin"], 1)],

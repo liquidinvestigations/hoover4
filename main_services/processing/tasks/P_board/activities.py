@@ -477,7 +477,7 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
             text = CONCLUDE_REQUEST
         else:
             text = render_brief(board, facts, boards.read_citations(board.board_id),
-                                folded.hints, intent, collections)
+                                folded.hints, intent, collections, folded.explore_steps)
         _write_turn_rows(board.owner, session_id, seq, text, turn_uuid)
     steps = m.CONCLUDE_STEP_BUDGET if req.phase == "conclude" else folded.explore_steps
     run_input = AgentRunInput(
