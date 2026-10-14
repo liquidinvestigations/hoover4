@@ -585,6 +585,8 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
     the reasoning. A reply with no text and no call writes no answer row: it gives `empty`,
     or `empty_again` when the thread holds the retry marker (`is_retry_marker`). A reply of
     the citation round with no text keeps the answer row of the turn (`keeps_answer`).
+    After the note of an edit round (`citations.is_edit_note`), the reply gives edits to the
+    earlier answer (`citations.apply_edits`), and the answer row holds the edited answer.
     """
     from tasks.P_agent.stream_writer import context_window_for, round_view
 
@@ -594,7 +596,12 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
     reasoning = "\n\n".join(p for p in (round_reasoning, (ai.reasoning or "").strip()) if p)
     from tasks.P_agent import citations, reports
 
-    repair_round = any(citations.is_citation_note(m) for m in earlier)
+    notes = [m for m in earlier if citations.is_citation_note(m)]
+    repair_round = bool(notes)
+    edit_round = bool(notes) and citations.is_edit_note(notes[-1])
+    opening = (earlier[0].usage.get("control") or {}) if earlier else {}
+    limits = ((opening.get("definition") or {}).get("limits") or {}
+              if isinstance(opening, dict) else {})
     if keeps_answer(row, ai.content or "", earlier):
         transcript = True
         if transcript:
@@ -619,7 +626,22 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
                  row.run_id, params.step_no, " again" if again else "")
         return ModelStepResult(outcome="empty_again" if again else "empty", next_seq=first,
                                next_idx=reply_end_idx(ai))
-    if repair_round:
+    if edit_round and (row.result or "").strip():
+        # The reply of an edit round holds edits to the earlier answer. A reply that is not
+        # valid edits, or whose result has a label fault, keeps the earlier answer, and the
+        # answer metadata names the findings that remain.
+        edited, problem = citations.apply_edits(row.result, ai.content or "")
+        if not problem:
+            entries = reports.session_citation_entries(row.username, row.session_id)
+            problem = citations.repair_reply_problem(edited, entries)
+        answer = row.result if problem else edited
+        # The thread keeps the published answer as the reply, so a later turn reads that
+        # answer, and the usage keeps the edits.
+        ai = replace(ai, content=answer, usage_json=json.dumps(
+            {**ai.usage, "edit_reply": ai.content or "", "edit_problem": problem}))
+        log.info("[P_agent] run %s: the edit reply at step %d %s", row.run_id, params.step_no,
+                 f"keeps the answer ({problem})" if problem else "edits the answer")
+    elif repair_round:
         entries = reports.session_citation_entries(row.username, row.session_id)
         problem = citations.repair_reply_problem(ai.content or "", entries)
         if problem:
@@ -648,7 +670,7 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
 
     entries = reports.session_citation_entries(row.username, row.session_id)
     metadata = citations.answer_metadata(answer, _citation_messages(row, earlier),
-                                         entries, params.internet_tools)
+                                         entries, params.internet_tools, limits)
     if any(m.usage.get("summarised") for m in round_ai):
         answer = answer + SUMMARY_NOTICE
     ai = replace(ai, usage_json=json.dumps({**ai.usage, **metadata}))

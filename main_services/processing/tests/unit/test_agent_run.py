@@ -1362,6 +1362,91 @@ def test_without_paragraph_repair_an_uncited_paragraph_needs_no_round():
     assert needed, "a label that no citation gives still needs a round"
 
 
+def _failed_citation(file_hash, quote, candidate=""):
+    """The evidence entry of a failed `cite_documents` quote."""
+    reference = {"file_hash": file_hash, "quote": quote, "quote_reason": "absent"}
+    if candidate:
+        reference["candidate"] = {"text": candidate}
+    return {"kind": "citation", "status": "error", "reference": reference,
+            "error": "The quote did not verify."}
+
+
+def test_narrow_findings_name_a_kept_failed_quote_and_an_unsourced_role():
+    quote = "I cannot support the valuations my group has produced so far for the transactions."
+    messages = [agent_runs.RunMessageRow(idx=1, role="tool", tool_name="read_documents",
+                                         content="Vince Kaminski, Research Group. " + quote)]
+    entries = [_failed_citation("a" * 64, quote, "the source sentence")]
+    answer = ("Kaminski, Head of Research, wrote that he cannot support the valuations my "
+              "group has produced so far for the transactions.")
+    findings = citations.narrow_findings(answer, messages, entries)
+    assert [f["kind"] for f in findings] == ["kept_failed_citation", "unsourced_role"]
+    assert findings[1]["text"] == "Head of Research"
+    note = citations.edit_note(findings)
+    assert '"the source sentence"' in note and "'Head of Research'" in note
+    assert "Do not write the answer again." in note
+    verified = entries + [{"kind": "citation", "status": "ok",
+                           "reference": {"file_hash": "a" * 64, "handle": "[D1]"}}]
+    lower = citations.narrow_findings("Kaminski, head of Enron Global Markets, wrote it.",
+                                      messages, [])
+    assert [f["text"] for f in lower] == ["head of Enron Global Markets"]
+    sourced = answer.replace("Head of Research", "head of the Research Group")
+    assert citations.narrow_findings(sourced, messages, verified) == []
+
+
+@pytest.mark.parametrize("reply,expected,problem", [
+    ('[{"find": "Head of Research", "replace": "a research manager"}]',
+     "Kaminski, a research manager, wrote it.", ""),
+    ('```json\n[{"find": ", Head of Research,", "replace": ""}]\n```', "Kaminski wrote it.", ""),
+    ("[]", "Kaminski, Head of Research, wrote it.", ""),
+    ('[{"find": "absent text", "replace": "x"}]', "Kaminski, Head of Research, wrote it.",
+     "find_not_unique"),
+    ("Kaminski wrote it.", "Kaminski, Head of Research, wrote it.", "not_edits"),
+])
+def test_apply_edits_changes_only_the_named_text(reply, expected, problem):
+    assert citations.apply_edits("Kaminski, Head of Research, wrote it.", reply) == (
+        expected, problem)
+
+
+def _edit_round(store):
+    """A turn whose answer has an unsourced role, and the note of its edit round."""
+    store["messages"][0] = agent_runs.RunMessageRow(
+        idx=0, role="human", content="q", run_id=RUN_ID, usage_json=json.dumps(
+            {"control": {"definition": {"limits": {"paragraph_repair": 0, "edit_rounds": 1}}}}))
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=1, role="ai", run_id=RUN_ID, content="Kaminski, Head of Research, wrote it.",
+        usage_json=json.dumps({"step_no": 1})))
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=2, role="human", content="Check these parts of your answer.",
+        usage_json=json.dumps({"repair_marker": "citation", "control": {"edit": True}})))
+    store["row"] = _row(next_seq=8, model_steps=1, result="Kaminski, Head of Research, wrote it.")
+
+
+def test_the_reply_of_an_edit_round_edits_the_answer(store, monkeypatch):
+    _edit_round(store)
+    reply = '[{"find": ", Head of Research,", "replace": ""}]'
+    _serve(monkeypatch, store, _frames(text=reply))
+    assert _step(step_no=2).outcome == "answered"
+    assert [r["content"] for r in store["chat"] if r["role"] == "assistant"] == [
+        "Kaminski wrote it."]
+    assert store["run"][-1]["result"] == "Kaminski wrote it."
+    stored = store["messages"][-1]
+    assert stored.content == "Kaminski wrote it."
+    assert stored.usage["edit_reply"] == reply and stored.usage["edit_problem"] == ""
+    assert "unsourced_claims" not in json.loads(store["chat"][-1]["usage_json"])
+
+
+def test_an_invalid_edit_reply_keeps_the_answer_with_its_findings(store, monkeypatch):
+    _edit_round(store)
+    _serve(monkeypatch, store, _frames(text="Kaminski wrote it."))
+    assert _step(step_no=2).outcome == "answered"
+    [row] = [r for r in store["chat"] if r["role"] == "assistant"]
+    assert row["content"] == "Kaminski, Head of Research, wrote it."
+    metadata = json.loads(row["usage_json"])
+    assert metadata["unsourced_claims"] == ["Head of Research"]
+    assert metadata["citation_status"] == "missing"
+    assert store["messages"][-1].usage["edit_problem"] == "not_edits"
+
+
 def test_no_progress_ending_reads_text_from_the_stored_decision(store):
     ending = "The requested name was absent. Searches run: quoted name and name variants."
     store["messages"].append(agent_runs.RunMessageRow(

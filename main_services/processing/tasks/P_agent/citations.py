@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 
 from tasks.P_agent.control.handlers_common import HEADING
 
@@ -284,12 +285,22 @@ def needs_repair(answer: str, messages, session_entries,
             (names_documents(answer, messages) or documents_read)), check
 
 
-def answer_metadata(answer: str, messages, session_entries, internet_tools: bool) -> dict:
-    """Return citation status and the available tool scope for an answer."""
-    _, check = needs_repair(answer, messages, session_entries)
+def answer_metadata(answer: str, messages, session_entries, internet_tools: bool,
+                    limits=None) -> dict:
+    """Return citation status and the available tool scope for an answer.
+
+    `limits` are the limits of the run's definition. With `paragraph_repair` 0, a paragraph
+    without a label does not make the status `missing`. With `edit_rounds` above 0, the
+    findings of `narrow_findings` do, and their texts are kept as `unsourced_claims`.
+    """
+    limits = limits or {}
+    _, check = needs_repair(answer, messages, session_entries,
+                            bool(limits.get("paragraph_repair", 1)))
+    findings = (narrow_findings(answer, messages, session_entries)
+                if limits.get("edit_rounds") else [])
     if check["unresolved"] or check["conflicting"] or check["page_zero"]:
         status = "invalid"
-    elif check["web_missing"] or check["unsupported_paragraphs"]:
+    elif check["web_missing"] or check["unsupported_paragraphs"] or findings:
         status = "missing"
     elif check["labels"] or URL_PATTERN.search(answer):
         status = "cited"
@@ -297,8 +308,132 @@ def answer_metadata(answer: str, messages, session_entries, internet_tools: bool
         status = "missing"
     else:
         status = "none"
-    return {"citation_status": status,
-            "tool_scope": "documents_and_web" if internet_tools else "documents_only"}
+    out = {"citation_status": status,
+           "tool_scope": "documents_and_web" if internet_tools else "documents_only"}
+    if findings:
+        out["unsourced_claims"] = [finding["text"] for finding in findings]
+    return out
+
+
+#: A failed quote that shares this many consecutive words with an answer is a claim that the
+#: answer keeps without its citation.
+KEPT_QUOTE_WORDS = 8
+
+#: A role or a title in an answer: the role word in any case, and at most four capitalised
+#: words after it.
+ROLE_PATTERN = re.compile(
+    r"\b(?i:head|chief|managing director|director|vice president|vp|president|chairman|ceo"
+    r"|cfo|coo|cao|treasurer|general counsel|counsel|manager|analyst|partner|attorney"
+    r"|lawyer)\b(?:\s+(?:of|for|at|in|,)?\s*[A-Z][\w&'/-]*){0,4}")
+
+#: The most edits that one edit reply can give.
+MAX_EDITS = 20
+
+EDIT_NOTE_TAIL = (
+    'Reply with only a JSON list of edits to your answer, for example '
+    '[{"find": "exact text from your answer", "replace": "the corrected text"}]. '
+    "Each find must occur once in the answer. An empty replace removes the text. "
+    "Leave out a part that is correct as written, and reply [] when no part needs an edit. "
+    "You can call cite_documents before the reply. Do not write the answer again."
+)
+
+
+def _folded_words(text: str) -> list[str]:
+    """The words of a text for comparison, as the quote verifier folds them: Unicode
+    compatibility forms, lower case, and letters and digits only."""
+    return re.findall(r"\w+", unicodedata.normalize("NFKC", text or "").lower())
+
+
+def _shares_run(quote: list[str], answer: str) -> bool:
+    for i in range(0, len(quote) - KEPT_QUOTE_WORDS + 1):
+        if f" {' '.join(quote[i:i + KEPT_QUOTE_WORDS])} " in answer:
+            return True
+    return False
+
+
+def narrow_findings(answer: str, messages, session_entries) -> list[dict]:
+    """The claims that an answer keeps without a source, for an edit round.
+
+    `kept_failed_citation`: a quote whose `cite_documents` entry failed, with no verified
+    entry for the same document, shares `KEPT_QUOTE_WORDS` consecutive words with the
+    answer. `unsourced_role`: a role or title phrase of the answer (`ROLE_PATTERN`) whose
+    first three words are in no tool result of `messages`.
+    """
+    folded = f" {' '.join(_folded_words(answer))} "
+    verified = {(e.get("reference") or {}).get("file_hash") for e in session_entries
+                if e.get("kind") == "citation" and e.get("status") == "ok"}
+    findings, seen = [], set()
+    for entry in session_entries:
+        ref = entry.get("reference") or {}
+        quote = str(ref.get("quote") or "")
+        if (entry.get("kind") != "citation" or entry.get("status") != "error"
+                or not ref.get("file_hash") or ref["file_hash"] in verified or quote in seen):
+            continue
+        seen.add(quote)
+        if _shares_run(_folded_words(quote), folded):
+            candidate = (ref.get("candidate") or {}).get("text") or ""
+            findings.append({"kind": "kept_failed_citation", "text": quote[:240],
+                             "candidate": str(candidate)[:300]})
+    evidence = " " + " ".join(" ".join(_folded_words(m.content or ""))
+                              for m in messages if m.role == "tool") + " "
+    for match in ROLE_PATTERN.finditer(answer):
+        phrase = match.group(0).strip(" ,")
+        words = _folded_words(phrase)
+        if (len(words) >= 2 and phrase not in seen
+                and f" {' '.join(words[:3])} " not in evidence):
+            seen.add(phrase)
+            findings.append({"kind": "unsourced_role", "text": phrase})
+    return findings
+
+
+def edit_note(findings: list[dict]) -> str:
+    """The note of an edit round: the findings, and the reply format of `apply_edits`."""
+    lines = []
+    for finding in findings:
+        if finding["kind"] == "kept_failed_citation":
+            retry = (f' Retry cite_documents with the source text "{finding["candidate"]}" and'
+                     " add the returned handle, or remove the claim or say that it is not cited."
+                     if finding.get("candidate") else
+                     " Remove the claim or say that it is not cited.")
+            lines.append(f"- {finding['text']!r}: the answer uses this quote, and its citation "
+                         f"failed.{retry}")
+        else:
+            lines.append(f"- {finding['text']!r}: no tool result of this chat gives this role "
+                         "or title. Remove it, or use the words of a document and cite it.")
+    return "Check these parts of your answer:\n" + "\n".join(lines) + "\n\n" + EDIT_NOTE_TAIL
+
+
+def is_edit_note(message) -> bool:
+    """Whether a thread message is the note of an edit round."""
+    control = message.usage.get("control")
+    return is_citation_note(message) and isinstance(control, dict) and bool(control.get("edit"))
+
+
+def apply_edits(answer: str, reply: str) -> tuple[str, str]:
+    """The answer with the edits of an edit reply applied, and the problem of the reply.
+
+    The reply is a JSON list of `{"find": ..., "replace": ...}` objects, optionally inside a
+    code fence. The edits apply in order, and each `find` must occur once in the text at its
+    turn. A reply that breaks a rule gives the unchanged answer and the problem.
+    """
+    text = reply.strip()
+    fence = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+    if fence:
+        text = fence.group(1)
+    try:
+        edits = json.loads(text)
+    except ValueError:
+        return answer, "not_edits"
+    if (not isinstance(edits, list) or len(edits) > MAX_EDITS
+            or not all(isinstance(e, dict) and isinstance(e.get("find"), str) and e["find"]
+                       and isinstance(e.get("replace", ""), str) for e in edits)):
+        return answer, "not_edits"
+    edited = answer
+    for edit in edits:
+        if edited.count(edit["find"]) != 1:
+            return answer, "find_not_unique"
+        edited = edited.replace(edit["find"], edit.get("replace", ""))
+    return edited, ""
 
 
 def repair_reply_problem(answer: str, session_entries) -> str:
@@ -325,4 +460,5 @@ __all__ = [
     "REPAIR_MARKER",
     "REPAIR_MARKER_KEY", "is_citation_note", "names_documents",
     "needs_repair", "read_documents", "repair_note", "repair_reply_problem",
+    "narrow_findings", "edit_note", "is_edit_note", "apply_edits",
 ]

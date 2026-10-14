@@ -145,6 +145,19 @@ def test_notes_citations_and_artifacts_are_typed():
     assert [(e["kind"], e["reference"]["artifact_id"]) for e in shown] == [("artifact", "art-1")]
 
 
+def test_a_failed_citation_keeps_the_sent_quote():
+    sent = {"citations": [{"file_hash": HASH_A[:16], "quote": "The lease runs to 2019."},
+                          {"file_hash": HASH_B[:16], "quote": "The rent is fixed."}]}
+    cited = reports.normalize(
+        "cite_documents", sent,
+        json.dumps({"citations": [{"file_hash": HASH_A[:16], "handle": "[D1]"},
+                                  {"file_hash": HASH_B[:16], "error": "The quote did not verify."}]}),
+        "ok", [{"collectionname": "c", "file_hash": HASH_A, "handle": "[D1]",
+                "quote": "The lease runs to 2019."}])
+    assert [(e["status"], e["reference"].get("quote")) for e in cited] == [
+        ("ok", "The lease runs to 2019."), ("error", "The rent is fixed.")]
+
+
 def _cite(idx, call_id, verified, reason=""):
     return _tool(idx, "cite_documents",
                  json.dumps({"citations": [{"file_hash": HASH_A[:16], "handle": "[D1]"}]}),

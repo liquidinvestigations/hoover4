@@ -322,6 +322,10 @@ def _citations(parsed: Any, args: dict, doc_refs: Any, error: str) -> list[dict]
     rows = [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
     refs = [r for r in doc_refs if isinstance(r, dict)] if isinstance(doc_refs, list) else []
     aligned = len(refs) == len(rows)
+    # The server gives one result for each sent citation, in order. A failed result has no
+    # doc ref with its quote, so the quote comes from the sent citation.
+    sent = args.get("citations") if isinstance(args.get("citations"), list) else []
+    sent = sent if len(sent) == len(rows) else []
     out = []
     for i, row in enumerate(rows):
         ref = refs[i] if aligned else next(
@@ -333,8 +337,10 @@ def _citations(parsed: Any, args: dict, doc_refs: Any, error: str) -> list[dict]
                                              or ref.get("quote_verified")),
                          quote_reason=str(row.get("quote_reason")
                                           or ref.get("quote_reason") or ""))
-        if ref.get("quote"):
-            reference["quote"] = _clip(ref["quote"], 500)
+        quote = ref.get("quote") or (sent[i].get("quote") if sent and isinstance(sent[i], dict)
+                                     else "")
+        if isinstance(quote, str) and quote:
+            reference["quote"] = _clip(quote, 500)
         candidate = row.get("candidate") or ref.get("candidate")
         if isinstance(candidate, dict):
             reference["candidate"] = {k: candidate[k] for k in candidate

@@ -77,10 +77,11 @@ def decide_repair(has_defects: bool, rounds_started: int, model_limit_reached: b
 
 
 def counters(messages) -> dict:
-    """The repair rounds, the discovery notes and the applied actions of each rule."""
+    """The repair rounds, the discovery notes, the edit rounds and the applied actions of
+    each rule."""
     from tasks.P_agent import citations
 
-    out: dict[str, int] = {"repair_rounds": 0, "discovery_notes": 0,
+    out: dict[str, int] = {"repair_rounds": 0, "discovery_notes": 0, "edit_rounds": 0,
                            "model_steps": sum(m.role == "ai" and F.origin_of(m) == "model" for m in messages)}
     for m in messages:
         control = control_of(m)
@@ -89,6 +90,8 @@ def counters(messages) -> dict:
                 out["repair_rounds"] += 1
             if control.get("discovery"):
                 out["discovery_notes"] += 1
+            if control.get("edit"):
+                out["edit_rounds"] += 1
         for decision in (control.get("decisions") or {}).values():
             for act in decision.get("actions") or []:
                 key = f"rule:{act.get('rule_id')}"
@@ -456,6 +459,9 @@ def _context(row, params, messages, control, event, anchor) -> PolicyContext:
                                                entries, bool(limits.get("paragraph_repair", 1)))
         structural = check.get("unresolved") or check.get("conflicting") or check.get("page_zero")
         turn["citation"] = {"needed": bool(needed) and (event.draft_kind == "answer" or bool(structural)), "check": check}
+        if limits.get("edit_rounds") and event.draft_kind == "answer":
+            turn["citation"]["edits"] = citations.narrow_findings(
+                row.result or "", _citation_messages(row, messages), entries)
         turn["passages"] = _passages(entries)
     context = PolicyContext(
         run_id=row.run_id, thread_id=row.thread_id, profile=profile_of(params.internet_tools),
@@ -556,11 +562,21 @@ def _decide(row, params, messages, control, anchor, samples) -> dict:
         text, findings = draft_note_text(citation, checks,
                                          discovery["arguments"]["text"] if discovery else "",
                                          allow_repair, allow_discovery)
+        # The narrow findings get one edit round when no other note is due. A full repair
+        # round rewrites the answer, and the next draft is checked again.
+        edits = list(citation.get("edits") or [])
+        allow_edit = (bool(edits) and not text and not params.model_limit_reached
+                      and counts["edit_rounds"] < int(limits.get("edit_rounds", 0)))
+        if allow_edit:
+            from tasks.P_agent import citations
+
+            text = citations.edit_note(edits)
         decision["repair"] = {"has_defects": has_defects, "rounds_started": counts["repair_rounds"],
                               "allowed": allow_repair, "discovery": allow_discovery,
                               "model_limit_reached": params.model_limit_reached,
                               "citation_needed": bool(citation.get("needed")),
-                              "findings": [f["target_id"] for f in findings]}
+                              "findings": [f["target_id"] for f in findings],
+                              "edits": [e["kind"] for e in edits], "edit": allow_edit}
         if text:
             from tasks.P_agent import citations
             from tasks.P_agent.steps import CITATION_NOTE_NAME
@@ -572,11 +588,15 @@ def _decide(row, params, messages, control, anchor, samples) -> dict:
                           "citation_check": citation.get("check") if allow_repair else {},
                           "control": {"kind": DRAFT_NOTE, "event_id": event.id,
                                       "repair": allow_repair, "discovery": allow_discovery,
+                                      "edit": allow_edit,
                                       "definition_revision": definition.revision}}}
             kept += ([discovery] if allow_discovery else []) + (
                 [{"id": action_id(event.id, "repair", "draft", 0), "rule_id": "repair",
                   "kind": "repair", "target": "draft", "arguments": {"findings": len(findings)}}]
-                if allow_repair else [])
+                if allow_repair else []) + (
+                [{"id": action_id(event.id, "edit", "draft", 0), "rule_id": "edit",
+                  "kind": "repair", "target": "draft", "arguments": {"edits": len(edits)}}]
+                if allow_edit else [])
             seq += 1
     elif notes:
         text = "\n\n".join(a["arguments"]["text"] for a in notes)

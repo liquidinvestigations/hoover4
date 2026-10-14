@@ -44,6 +44,9 @@ DEFAULT_LIMITS: Dict[str, float] = {
     # 1: a paragraph or list item without a label causes a citation repair round. 0: only a
     # label fault, page 0, a web fault or an answer without any label does.
     "paragraph_repair": 1,
+    # The edit rounds of a turn. An edit round names claims that the answer keeps without a
+    # source (`citations.narrow_findings`) and asks for edits to the answer. 0: none.
+    "edit_rounds": 0,
 }
 
 

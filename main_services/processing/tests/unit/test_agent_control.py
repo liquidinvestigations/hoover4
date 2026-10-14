@@ -643,6 +643,29 @@ def test_a_restart_after_the_note_write_keeps_the_count(store, monkeypatch, rout
     assert len({c["seq"] for c in store["chat"] if c["role"] == "nag"}) == 1
 
 
+def test_an_unsourced_role_gets_one_edit_round(store, monkeypatch, route):
+    _pin(store, monkeypatch, _definition([], {"paragraph_repair": 0, "edit_rounds": 1}))
+    _hook("turn_started", 0)
+    monkeypatch.setattr(citations, "needs_repair", lambda *a: (False, {"labels": []}))
+    _draft(store, "Kaminski, Head of Research, wrote the memo.")
+    assert _hook("answer_drafted", draft_kind="answer").round
+    note = store["messages"][-1]
+    assert citations.is_edit_note(note) and not note.usage["control"]["repair"]
+    assert "'Head of Research'" in note.content and "JSON list of edits" in note.content
+    _draft(store, "Kaminski, Head of Research, wrote the memo.")
+    assert not _hook("answer_drafted", draft_kind="answer").round
+    decision = store["messages"][-1].usage["control"]["decisions"]["answer_drafted"]
+    assert decision["repair"]["edits"] == ["unsourced_role"] and not decision["repair"]["edit"]
+
+
+def test_a_definition_without_edit_rounds_gives_no_edit_note(store, monkeypatch, route):
+    _pin(store, monkeypatch, _definition([], {"paragraph_repair": 0}))
+    _hook("turn_started", 0)
+    monkeypatch.setattr(citations, "needs_repair", lambda *a: (False, {"labels": []}))
+    _draft(store, "Kaminski, Head of Research, wrote the memo.")
+    assert not _hook("answer_drafted", draft_kind="answer").round
+
+
 def test_the_step_limit_stops_the_repair_round(store, monkeypatch, route):
     _pin(store, monkeypatch, _definition([]))
     _hook("turn_started", 0)
@@ -1173,6 +1196,7 @@ def test_the_quality_definition_resolves_from_a_control_folder(monkeypatch, tmp_
         definition = definitions.resolve("internal_search")
         assert definition.id == "chat-quality"
         assert definition.limits["paragraph_repair"] == 0
+        assert definition.limits["edit_rounds"] == 1
         assert {r.id for r in definition.rules} == {"prepare", "result-skills", "web-reads", "review"}
     finally:
         monkeypatch.delenv(registry.CONTROL_DIR_ENV)

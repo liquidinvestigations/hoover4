@@ -101,6 +101,8 @@ server keeps the numbering. When an answer or a question uses a label that no su
 citation result of the session gives, or a label that results give for two documents, the
 worker asks the model for the citations and the answer again. A quote that is not in
 the text stays unverified, and the result gives an exact passage of the text near it.
+The quote check compares words only, so punctuation and mail reply markers do not affect it,
+and a quote with small gaps verifies as the source span that holds its words.
 An unlabeled answer also gets that round after a successful document read, even if the
 answer does not name the file. A question without a citation label gets no citation repair.
 A verified absence answer needs no source handle. The worker checks the revised answer before it replaces
@@ -169,7 +171,12 @@ capture notes, reviews each draft, and asks for a repair round when a paragraph 
 holds a name or number without a label. `chat-quality` is for a model that searches, reads
 and cites without guidance notes. It has no progress, discovery or capture rule, and its
 limit `paragraph_repair` is 0, so only a label fault, page 0, a web fault or an answer
-without any label causes a repair round. `chat-null` has no rule. A deployment selects a
+without any label causes a repair round. Its limit `edit_rounds` is 1, so one edit round names
+two kinds of unsourced claim. One is a quote whose citation failed and that the answer still
+uses. The other is a role or title that no tool result of the chat gives. The note asks for a
+JSON list of find and replace edits, and the worker applies the edits to the answer. A reply that is not
+valid edits keeps the answer, and the answer metadata lists the parts as `unsourced_claims`.
+`chat-null` has no rule. A deployment selects a
 definition with `definitions/active.json` in the `chat_control_dir` folder.
 
 For each event the worker stores one decision before it writes any row of it. A retry reads
