@@ -424,7 +424,9 @@ conversation titles and board reasons. `decision_url` is the structured
 server of the chat policy checks, rendered as `CHAT_CLASSIFIER_URL`. Empty derives it from
 the host of `base_url` and `[ai_services] vllm_structured_port`. `quality_base_url` serves
 `quality_model`, and a request that names that model goes there. Set both quality keys or
-neither. The quality endpoint takes no API key, and the clients send a placeholder. A
+neither. Empty quality keys take the second model server of the GPU tier when
+`[ai_services] chat_llm_selfhosted` is true. Requests to the quality endpoint carry the key of
+this provider, or a placeholder when it has none. A
 person selects `quality_model` as the default chat model under `/admin/llm` and keeps the
 base model as the summarisation model. The worker and both
 agent services apply the rule (`tasks/llm_endpoints.py`, `research_agent/endpoints.py`), and
@@ -465,6 +467,11 @@ is the map back to the group above that explains it.
 - `vllm_tool_parser`, `vllm_reasoning_parser`, `vllm_image_input`
 - `vllm_mm_max_soft_tokens`, `vllm_mm_image_limit`, `vllm_default_thinking`
 - `vllm_load_format`, `vllm_chat_template`, `vllm_api_key_file`
+- `chat_llm_selfhosted`, `chat_vllm_port`, `chat_vllm_model`, `chat_vllm_served_name`
+- `chat_vllm_gpu_fraction`, `chat_vllm_max_model_len`, `chat_vllm_max_num_seqs`
+- `chat_vllm_mem_limit`, `chat_vllm_args`: the second model server, `hoover4-vllm-chat`
+  (`ai_services/compose/vllm-chat.yaml`). It runs `vllm serve` in the image of `hoover4-vllm`
+  and serves agent turns.
 - `ai_server_enabled`, `ai_server_port`
 - `ner_enabled`, `embeddings_enabled`, `embeddings_model`, `embeddings_dim`
 - `reranker_enabled`, `reranker_model`, `half_precision`, `torch_compile`

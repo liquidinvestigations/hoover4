@@ -609,7 +609,7 @@ def test_every_service_rotates_its_logs():
         for service, definition in (document.get("services") or {}).items():
             assert definition.get("logging") == expected, "%s: %s" % (name, service)
             ai_checked += 1
-    assert ai_checked == 3
+    assert ai_checked == 4
 
 
 def test_gpu_tier_env_carries_the_log_rotation():
@@ -796,7 +796,8 @@ def _class_before_folders(name):
     """The class each volume had under the volume-removing reset code."""
     if name == "serena_state":
         return "protected"
-    if name in ("ai_models_cache", "dgemma_model", "dgemma_cache", "easyocr_models_cache"):
+    if name in ("ai_models_cache", "dgemma_model", "dgemma_cache", "easyocr_models_cache",
+                "chat_model", "chat_cache"):
         return "cache"
     if name in ("temporal_cassandra", "temporal_elasticsearch"):
         return "temporal"
@@ -1333,10 +1334,28 @@ def test_the_download_runs_in_the_built_image():
     cfg.values["ai_services"]["hf_token_file"] = ""
     cmd = deploy.dgemma_download_command(cfg, "/v/dgemma_model")
     assert cmd[:3] == ["run", "--rm", "--entrypoint"]
-    assert "/v/dgemma_model:/models/dgemma" in cmd
+    assert "/v/dgemma_model:/models/weights" in cmd
     assert "/dev/null:/run/secrets/hf_token:ro" in cmd
     assert "M=nvidia/diffusiongemma-26B-A4B-it-NVFP4" in cmd
     assert "hoover4-vllm-dgemma:08b708e51bb8d9f4eba0e85b61dab0be7093d20e" in cmd
+    chat = deploy.dgemma_download_command(cfg, "/v/chat_model", "chat_vllm_model")
+    assert "/v/chat_model:/models/weights" in chat
+    assert "M=ornith-ai/Ornith-1.5-35B-A3B-NVFP4" in chat
+
+
+def test_the_chat_model_server_is_the_default_quality_endpoint():
+    cfg = _config("settings-defaults.ini")
+    cfg.values["ai_services"]["enabled"] = "true"
+    cfg.values["ai_services"]["llm_selfhosted"] = "true"
+    cfg.values["ai_services"]["chat_llm_selfhosted"] = "true"
+    cfg.values["ai_services"]["host"] = "10.9.9.9"
+    cfg.values["llm_provider.selfhosted"]["enabled"] = "true"
+    env = deploy.render_main_env(cfg)
+    assert env["LLM_QUALITY_BASE_URL"] == "http://10.9.9.9:21964/v1"
+    assert env["LLM_QUALITY_MODEL"] == "ornith"
+    assert ("hoover4-vllm-chat", 21964) in deploy.expected_ports(cfg, "ai")
+    ai = deploy.render_ai_env(cfg)
+    assert ai["CHAT_VLLM_SERVED_NAME"] == "ornith" and "qwen3_coder" in ai["CHAT_VLLM_ARGS"]
 
 
 def test_the_upstream_image_is_built_from_the_pinned_commit_once():

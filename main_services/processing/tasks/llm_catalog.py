@@ -118,7 +118,7 @@ def providers_from_env() -> List[ProviderConfig]:
 
         host = re.sub(r"^https?://", "", quality).split("/")[0]
         providers.append(ProviderConfig(name=provider_label(host), base_url=quality,
-                                        api_key=QUALITY_PLACEHOLDER_KEY))
+                                        api_key=api_key or QUALITY_PLACEHOLDER_KEY))
     return providers
 
 

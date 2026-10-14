@@ -13,8 +13,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-#: The bearer token sent to a quality endpoint without login. The OpenAI client refuses an
-#: empty key, and the server ignores this one.
+#: The bearer token sent to a quality endpoint when the provider has no API key. The
+#: OpenAI client refuses an empty key, and a server without login ignores this one.
 QUALITY_PLACEHOLDER_KEY = "unused"
 
 
@@ -49,5 +49,5 @@ def endpoint_for(model: str) -> Endpoint:
     quality = quality_model()
     if quality and (model or "").strip() == quality:
         return Endpoint((os.getenv("LLM_QUALITY_BASE_URL") or "").strip().rstrip("/"),
-                        QUALITY_PLACEHOLDER_KEY, True)
+                        base_api_key() or QUALITY_PLACEHOLDER_KEY, True)
     return Endpoint((os.getenv("LLM_BASE_URL") or "").strip().rstrip("/"), base_api_key(), False)

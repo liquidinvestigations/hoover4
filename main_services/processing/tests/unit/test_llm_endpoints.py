@@ -23,8 +23,15 @@ def test_the_quality_model_goes_to_the_quality_endpoint(monkeypatch):
     configure(monkeypatch)
     endpoint = endpoint_for(QUALITY)
     assert endpoint.base_url == "http://10.0.0.8:12008/v1"
-    assert endpoint.api_key == QUALITY_PLACEHOLDER_KEY
+    assert endpoint.api_key == "base-key"
     assert endpoint.label == "10.0.0.8:12008"
+
+
+def test_a_provider_without_a_key_sends_the_placeholder(monkeypatch):
+    configure(monkeypatch)
+    monkeypatch.delenv("LLM_API_KEY")
+    monkeypatch.delenv("LLM_API_KEY_FILE", raising=False)
+    assert endpoint_for(QUALITY).api_key == QUALITY_PLACEHOLDER_KEY
 
 
 def test_every_other_model_goes_to_the_base_endpoint(monkeypatch):

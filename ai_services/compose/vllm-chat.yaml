@@ -1,0 +1,77 @@
+# Optional overlay: a second model server for agent turns
+# (enabled via [ai_services] chat_llm_selfhosted = true).
+#
+# hoover4-vllm keeps the base model and the decision server. This server holds the model
+# that [llm_provider.selfhosted] quality_model names, and the worker and the research
+# agents send every request that names that model here (tasks/llm_endpoints.py).
+
+# Log rotation for every service in this file, as in vllm.yaml.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "${CONTAINER_LOG_MAX_SIZE:-100m}"
+    max-file: "${CONTAINER_LOG_MAX_FILES:-5}"
+
+services:
+  # ---------------------------------------------------------------- GPU: chat model
+  # Plain `vllm serve` in the image of hoover4-vllm. That image's vLLM build serves the
+  # Qwen3.5 mixture architecture and its MTP draft head. deploy.py downloads the weights of
+  # chat_vllm_model once into the chat_model folder, so HF_HUB_OFFLINE is 1 here.
+  #
+  # chat_vllm_gpu_fraction is a fraction of the WHOLE device, as vllm_gpu_fraction. The
+  # two model servers, hoover4-ai-server and GPU EasyOCR share the device, so the fractions
+  # of the two model servers and the memory of the other two must fit together.
+  #
+  # The API key is the key of hoover4-vllm (vllm_api_key_file). An empty key file turns it
+  # off.
+  #
+  # SECURITY: the published port binds to bind_ip, as in vllm.yaml.
+  hoover4-vllm-chat:
+    logging: *logging
+    image: hoover4-vllm-dgemma:${VLLM_BUILD_REF}
+    container_name: hoover4-vllm-chat
+    restart: unless-stopped
+    mem_limit: ${CHAT_VLLM_MEM_LIMIT}
+    ipc: host
+    ulimits:
+      core: 0
+    ports:
+      - "${AI_BIND_IP:-0.0.0.0}:${CHAT_VLLM_PORT}:8000"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        key="$$(cat /run/secrets/vllm_api_key 2>/dev/null || true)";
+        set -- --host 0.0.0.0 --port 8000
+        --served-model-name "$$SERVED_NAME"
+        --gpu-memory-utilization "$$GPU_UTIL"
+        --max-model-len "$$MAX_MODEL_LEN"
+        --max-num-seqs "$$MAX_SEQS"
+        $$EXTRA_ARGS;
+        if [ -n "$$key" ]; then set -- "$$@" --api-key "$$key"; fi;
+        exec vllm serve /models/chat "$$@"
+    environment:
+      SERVED_NAME: ${CHAT_VLLM_SERVED_NAME}
+      GPU_UTIL: ${CHAT_VLLM_GPU_FRACTION}
+      MAX_MODEL_LEN: ${CHAT_VLLM_MAX_MODEL_LEN}
+      MAX_SEQS: ${CHAT_VLLM_MAX_NUM_SEQS}
+      EXTRA_ARGS: ${CHAT_VLLM_ARGS}
+      HF_HUB_OFFLINE: "1"
+      DO_NOT_TRACK: "1"
+      VLLM_NO_USAGE_STATS: "1"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    volumes:
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/chat_model:/models/chat:ro
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/chat_cache:/root/.cache
+      - ${VLLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/vllm_api_key:ro
+    devices:
+      - nvidia.com/gpu=all
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)\""]
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 1800s
+    networks:
+      - ai_services

@@ -120,6 +120,22 @@ vllm_chat_template =
 ; host path to a file containing ONLY the vLLM API key (chmod 600, outside the repo)
 vllm_api_key_file  =
 
+# ---- second model server for agent turns ----------------------------------------
+; `vllm serve` of chat_vllm_model in the image of hoover4-vllm, with the key of
+; vllm_api_key_file. [llm_provider.selfhosted] quality_base_url and quality_model default
+; to this server when it is on.
+chat_llm_selfhosted     = false
+chat_vllm_port          = 21964
+chat_vllm_model         = ornith-ai/Ornith-1.5-35B-A3B-NVFP4
+chat_vllm_served_name   = ornith
+; A fraction of the WHOLE device, as vllm_gpu_fraction.
+chat_vllm_gpu_fraction  = 0.30
+chat_vllm_max_model_len = 262144
+chat_vllm_max_num_seqs  = 4
+chat_vllm_mem_limit     = 48g
+; More `vllm serve` arguments, split on spaces, so no JSON value holds a space.
+chat_vllm_args          = --kv-cache-dtype fp8 --enable-prefix-caching --enable-chunked-prefill --reasoning-parser qwen3 --enable-auto-tool-choice --tool-call-parser qwen3_coder --speculative-config {"method":"mtp","num_speculative_tokens":3}
+
 # ---- GPU NER + embeddings -------------------------------------------------------
 ai_server_enabled  = true
 ai_server_port     = 21961
@@ -562,7 +578,9 @@ send_temperature = false
 ; base_url and [ai_services] vllm_structured_port.
 decision_url     =
 ; A second endpoint for agent turns, and the model it serves. The chat profiles select
-; that model under /admin/llm. Set both or neither. The endpoint takes no API key.
+; that model under /admin/llm. Set both or neither. Requests to it carry the API key of
+; this provider. Empty: [ai_services] chat_vllm_port and chat_vllm_served_name when
+; chat_llm_selfhosted is true.
 quality_base_url =
 quality_model    =
 

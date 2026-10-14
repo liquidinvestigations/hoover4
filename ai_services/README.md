@@ -26,6 +26,7 @@ Every service is an optional overlay under `compose/`, selected by `hoover4.ini`
 |---|---|---|---|---|
 | `compose/ai-server.yaml` | `hoover4-ai-server` | 21961 (`ai_server_port`) | `ai_server_enabled` | Embeddings, reranking, NER. Also serves the pipeline's P4 stage (`NER_URL`). |
 | `compose/vllm.yaml` | `hoover4-vllm` | 21960 (`vllm_port`), 21963 (`vllm_structured_port`) | `llm_selfhosted` | The agent model (**DiffusionGemma 26B-A4B**, NVFP4), OpenAI-compatible, and its structured server. Off by default; a cloud provider serves the stack until it is turned on. |
+| `compose/vllm-chat.yaml` | `hoover4-vllm-chat` | 21964 (`chat_vllm_port`) | `chat_llm_selfhosted` | A second model server for agent turns (**Ornith-1.5-35B-A3B**, NVFP4 by default). It runs plain `vllm serve` in the image of `hoover4-vllm`, with the same API key. See [The chat model server](#the-chat-model-server). |
 | `compose/easyocr.yaml` | `hoover4-easyocr-gpu` | 21962 (`easyocr_port`) | `easyocr_enabled` | GPU OCR over HTTP ([`easyocr_server/`](easyocr_server/README.md)). Speaks the same request contract as the CPU twin `main_services/ocr_tesseract`, so `tasks/ocr_client.py` posts one request shape to either. |
 
 ## Deploy
@@ -314,3 +315,21 @@ value on spaces, so no JSON value in it holds a space.
 tool-call deltas with no `arguments`, and the agent then made no tool call.
 `research_agent/agent.py` keeps the `disable_streaming` workaround and its comment. The
 symptom to look for is an agent that answers with no tool calls.
+
+## The chat model server
+
+`hoover4-vllm-chat` serves the model of agent turns, beside `hoover4-vllm`, which keeps the
+base model and the structured server. It uses the image of `hoover4-vllm`, because that vLLM
+build serves the Qwen3.5 mixture architecture and its MTP draft head on GB10. The entrypoint
+is plain `vllm serve`, with `chat_vllm_args` added after the size keys.
+
+`deploy.py` downloads `chat_vllm_model` once into the folder `chat_model`, and the folder
+`chat_cache` holds the compile cache. The service reads the key file of
+`vllm_api_key_file`, so one key opens both servers.
+
+The memory of the two model servers, `hoover4-ai-server` and GPU EasyOCR must fit the device
+together. With the chat server on, `hoover4-vllm` needs a smaller KV cache, a smaller
+`vllm_gpu_fraction` and a shorter `vllm_max_model_len`.
+
+`[llm_provider.selfhosted]` `quality_base_url` and `quality_model` default to this server
+when `chat_llm_selfhosted` is true. A request that names `chat_vllm_served_name` goes to it.

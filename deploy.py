@@ -102,6 +102,11 @@ VOLUMES = (
            "hoover4-vllm-dgemma:${VLLM_BUILD_REF}", "cache"),
     Volume("dgemma_cache", "ai", "hoover4-vllm", 0, 0,
            "hoover4-vllm-dgemma:${VLLM_BUILD_REF}", "cache"),
+    # The weights and the compile cache of the second model server.
+    Volume("chat_model", "ai", "hoover4-vllm-chat", 0, 0,
+           "hoover4-vllm-dgemma:${VLLM_BUILD_REF}", "cache"),
+    Volume("chat_cache", "ai", "hoover4-vllm-chat", 0, 0,
+           "hoover4-vllm-dgemma:${VLLM_BUILD_REF}", "cache"),
     Volume("easyocr_models_cache", "ai", "hoover4-easyocr-gpu", 0, 0,
            "hoover4-easyocr:local", "cache"),
 )
@@ -165,6 +170,24 @@ DEFAULTS = {
         # A chat template path inside the container. Empty keeps the model's own template.
         "vllm_chat_template": "",
         "vllm_api_key_file": "",
+        # A second model server for agent turns, beside the model server above. It runs
+        # `vllm serve` in the image of hoover4-vllm, with the API key of vllm_api_key_file.
+        # [llm_provider.selfhosted] quality_base_url and quality_model default to it.
+        "chat_llm_selfhosted": "false",
+        "chat_vllm_port": "21964",
+        "chat_vllm_model": "ornith-ai/Ornith-1.5-35B-A3B-NVFP4",
+        "chat_vllm_served_name": "ornith",
+        # A fraction of the WHOLE device, as vllm_gpu_fraction.
+        "chat_vllm_gpu_fraction": "0.30",
+        "chat_vllm_max_model_len": "262144",
+        "chat_vllm_max_num_seqs": "4",
+        "chat_vllm_mem_limit": "48g",
+        # More `vllm serve` arguments, split on spaces, so no JSON value holds a space.
+        "chat_vllm_args": ("--kv-cache-dtype fp8 --enable-prefix-caching "
+                           "--enable-chunked-prefill --reasoning-parser qwen3 "
+                           "--enable-auto-tool-choice --tool-call-parser qwen3_coder "
+                           "--speculative-config "
+                           '{"method":"mtp","num_speculative_tokens":3}'),
         # GPU NER + embeddings
         "ai_server_enabled": "true",
         "ai_server_port": "21961",
@@ -476,7 +499,9 @@ DEFAULTS = {
         # The structured server of the chat policy checks. Empty = derived:
         # http://<host of base_url>:<ai_services.vllm_structured_port>
         "decision_url": "",
-        # The endpoint of agent turns. Empty = base_url serves them too. No API key.
+        # The endpoint of agent turns, with the API key of this provider. Empty = derived
+        # from [ai_services] chat_vllm_port and chat_vllm_served_name when
+        # chat_llm_selfhosted is true, else base_url serves them too.
         "quality_base_url": "",
         "quality_model": "",
     },
@@ -501,6 +526,7 @@ LLM_PROVIDER_SECTIONS = [s for s in DEFAULTS if s.startswith("llm_provider.")]
 # Compose overlays per side, in order, with the ini flag that enables them.
 AI_OVERLAYS = [
     ("llm_selfhosted", "compose/vllm.yaml", "hoover4-vllm"),
+    ("chat_llm_selfhosted", "compose/vllm-chat.yaml", "hoover4-vllm-chat"),
     ("ai_server_enabled", "compose/ai-server.yaml", "hoover4-ai-server"),
     ("easyocr_enabled", "compose/easyocr.yaml", "hoover4-easyocr-gpu"),
 ]
@@ -554,7 +580,8 @@ SERENA_OVERLAY = "compose/serena.yaml"
 SERENA_PROJECT = "hoover4-devtools"
 
 # Services that request the GPU on the ai side (for the GPU/CDI preflights).
-AI_GPU_OVERLAYS = ("compose/vllm.yaml", "compose/ai-server.yaml", "compose/easyocr.yaml")
+AI_GPU_OVERLAYS = ("compose/vllm.yaml", "compose/vllm-chat.yaml", "compose/ai-server.yaml",
+                   "compose/easyocr.yaml")
 
 # (service, ini section, port key) for every port the selected side publishes. Used by
 # the port-free preflight; stdlib-only deploy.py cannot parse compose YAML, so the
@@ -1038,11 +1065,12 @@ def set_volume_owners(cfg, side, rt, env):
 
 
 #: The script the one-time weight download runs inside the model server's image. It
-#: reads the repository id from M and an optional token from the mounted token file.
+#: reads the repository id from M and an optional token from the mounted token file, and
+#: writes into /models/weights.
 DGEMMA_DOWNLOAD_SCRIPT = (
     "import os; from huggingface_hub import snapshot_download; "
     "t = open('/run/secrets/hf_token').read().strip() or None; "
-    "snapshot_download(repo_id=os.environ['M'], local_dir='/models/dgemma', token=t)"
+    "snapshot_download(repo_id=os.environ['M'], local_dir='/models/weights', token=t)"
 )
 
 
@@ -1079,32 +1107,33 @@ def weights_complete(folder):
     return bool(weight_map)
 
 
-def dgemma_download_command(cfg, folder):
-    """The one-shot container that downloads the weights into folder."""
+def dgemma_download_command(cfg, folder, model_key="vllm_model"):
+    """The one-shot container that downloads the weights of model_key into folder."""
     token = cfg.get("ai_services", "hf_token_file").strip() or "/dev/null"
     return ["run", "--rm", "--entrypoint", "python3",
-            "-v", "%s:/models/dgemma" % folder,
+            "-v", "%s:/models/weights" % folder,
             "-v", "%s:/run/secrets/hf_token:ro" % token,
             "-e", "HF_HUB_OFFLINE=0",
-            "-e", "M=%s" % cfg.get("ai_services", "vllm_model").strip(),
+            "-e", "M=%s" % cfg.get("ai_services", model_key).strip(),
             dgemma_image(cfg), "-c", DGEMMA_DOWNLOAD_SCRIPT]
 
 
-def ensure_dgemma_weights(cfg, rt):
-    """Download the model server's weights once into the dgemma_model folder.
+def ensure_dgemma_weights(cfg, rt, volume="dgemma_model", model_key="vllm_model"):
+    """Download a model server's weights once into its weights folder: dgemma_model for
+    hoover4-vllm, chat_model with chat_vllm_model for hoover4-vllm-chat.
 
-    Runs on the ai side after the image exists and before `up`, only when
-    llm_selfhosted is true. A complete folder is kept. The download resumes a partial
+    Runs on the ai side after the image exists and before `up`, only for a selected
+    model server overlay. A complete folder is kept. The download resumes a partial
     folder, and deploy.py fails when the folder is still incomplete after it.
     """
-    row = [r for r in VOLUMES if r.name == "dgemma_model"][0]
+    row = [r for r in VOLUMES if r.name == volume][0]
     folder = volume_folder(volumes_path(cfg), row)
     if weights_complete(folder):
         return
-    model = cfg.get("ai_services", "vllm_model").strip()
+    model = cfg.get("ai_services", model_key).strip()
     print("weights: downloading %s into %s. This runs for several minutes."
           % (model, folder))
-    result = rt.run(dgemma_download_command(cfg, folder))
+    result = rt.run(dgemma_download_command(cfg, folder, model_key))
     if result.returncode != 0 or not weights_complete(folder):
         fail("the weights of %s are incomplete in %s" % (model, folder))
 
@@ -1584,6 +1613,11 @@ def render_main_env(cfg):
         # turns. Both halves or neither: a URL without a model would route nothing.
         quality_url = cfg.get("llm_provider.selfhosted", "quality_base_url").strip()
         quality_model = cfg.get("llm_provider.selfhosted", "quality_model").strip()
+        if not quality_url and not quality_model and \
+                cfg.get_bool("ai_services", "chat_llm_selfhosted"):
+            quality_url = "http://%s:%s/v1" % (cfg.get("ai_services", "host"),
+                                               cfg.get("ai_services", "chat_vllm_port"))
+            quality_model = cfg.get("ai_services", "chat_vllm_served_name").strip()
         if bool(quality_url) != bool(quality_model):
             fail("[llm_provider.selfhosted] quality_base_url and quality_model are set together")
         env["LLM_QUALITY_BASE_URL"] = quality_url
@@ -1823,6 +1857,10 @@ def render_ai_env(cfg):
     env["AI_BIND_IP"] = cfg.get(a, "bind_ip")
 
     for key in ("vllm_port", "ai_server_port", "easyocr_port"):
+        env[key.upper()] = cfg.get(a, key)
+    for key in ("chat_vllm_port", "chat_vllm_served_name", "chat_vllm_gpu_fraction",
+                "chat_vllm_max_model_len", "chat_vllm_max_num_seqs", "chat_vllm_mem_limit",
+                "chat_vllm_args"):
         env[key.upper()] = cfg.get(a, key)
 
     env["LLM_SERVED_NAME"] = cfg.get(a, "vllm_served_name")
@@ -2211,8 +2249,10 @@ def expected_ports(cfg, side):
         entries = []
         for flag, rel, svc in AI_OVERLAYS:
             if rel in selected_overlays(cfg, "ai"):
-                entries.append((svc, "ai_services", flag.replace("_enabled", "_port")
-                                if flag != "llm_selfhosted" else "vllm_port"))
+                port_key = {"llm_selfhosted": "vllm_port",
+                            "chat_llm_selfhosted": "chat_vllm_port"}.get(
+                                flag, flag.replace("_enabled", "_port"))
+                entries.append((svc, "ai_services", port_key))
                 if flag == "llm_selfhosted":
                     # The structured server of the same container has its own port.
                     entries.append((svc, "ai_services", "vllm_structured_port"))
@@ -2294,12 +2334,11 @@ def preflight_ner_gpu_without_tier(cfg, side):
 def preflight_llm_selfhosted_without_tier(cfg, side):
     if side == "ai":
         return
-    if not cfg.get_bool("ai_services", "llm_selfhosted"):
-        return
-    if _ai_tier_present(cfg):
-        return
-    fail("[ai_services] llm_selfhosted = true but [ai_services] enabled = false. "
-         "Set llm_selfhosted = false, or set [ai_services] enabled = true.")
+    for flag in ("llm_selfhosted", "chat_llm_selfhosted"):
+        if not cfg.get_bool("ai_services", flag) or _ai_tier_present(cfg):
+            continue
+        fail("[ai_services] %s = true but [ai_services] enabled = false. "
+             "Set %s = false, or set [ai_services] enabled = true." % (flag, flag))
 
 
 def preflight_compose_yaml(cfg, side):
@@ -2550,8 +2589,10 @@ def verify_network_dns(rt, cfg, side):
 
 def compose_up(cfg, side, rt, build):
     files = compose_files(cfg, side)
-    vllm = side == "ai" and "compose/vllm.yaml" in selected_overlays(cfg, "ai")
-    if vllm and build:
+    overlays = selected_overlays(cfg, "ai") if side == "ai" else []
+    vllm = "compose/vllm.yaml" in overlays
+    chat = "compose/vllm-chat.yaml" in overlays
+    if (vllm or chat) and build:
         # The compose build below starts from the upstream image. Without --build, only a
         # missing served image is built, and ensure_dgemma_image builds its upstream first.
         ensure_dgemma_upstream_image(cfg, rt)
@@ -2564,9 +2605,12 @@ def compose_up(cfg, side, rt, build):
         up_args = ["up", "-d", "--force-recreate"]
     else:
         up_args = ["up", "-d"]
-    if vllm:
+    if vllm or chat:
         ensure_dgemma_image(cfg, rt)
+    if vllm:
         ensure_dgemma_weights(cfg, rt)
+    if chat:
+        ensure_dgemma_weights(cfg, rt, "chat_model", "chat_vllm_model")
     run_or_fail(compose_command(cfg, side, rt, up_args))
     if side == "main":
         stop_disabled_internet_tools(cfg, rt)
