@@ -192,7 +192,7 @@ container with one server process, and more than one allocating process needs an
 authority.
 
 **A failed quote gets no handle.** The result retains its error and a candidate passage when available.
-Copy a supporting sentence from that passage into `quote` and retry the failed entry.
+The error names the candidate text as the quote of the retry.
 Successful entries keep their handles. Separate verified passages of one document reuse its handle.
 
 **A file hash start names its document.** `read_documents` and `cite_documents` accept the
@@ -210,8 +210,13 @@ with that name. A value that matches nothing is left out. Each change is a line 
 result, and the other documents of the call are read. A call whose every hash matches
 nothing is refused with those lines.
 
-**The quote is checked** against the document's extracted pages before a handle is issued,
-after folding whitespace, case and typographic punctuation. Verification reads every
+**The quote is checked** against the document's extracted pages before a handle is issued.
+Both texts are compared as their words only (`citations.normalise_for_match`): Unicode
+compatibility forms, lower case, and letters and digits. Whitespace, punctuation, and the `> `
+reply markers of a quoted mail do not affect the match. A quote matches whole words only.
+A quote of 6 or more words can also verify with gaps (`citations.gap_match_in_pages`).
+Each of its words must occur in order inside a source span at most 1.3 times its length. The handle then stores the source span as its quote,
+and the result gives `quote_adjusted` and the stored `quote`. Verification reads every
 extracted page in bounded batches, each continuing after the `(extracted_by, page_id)` key of
 the last page read, and is independent of `MAX_DOCUMENT_CHARS`, which only
 bounds the excerpt `read_documents` shows the model. A model quoting a sentence it read

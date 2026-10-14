@@ -15,6 +15,7 @@ from collection_search_server.citations import (
     QUOTE_REASON_SHORT,
     citation_find_query,
     find_in_quote,
+    gap_match_in_pages,
     normalise_for_match,
     quote_match_in_pages,
     quote_occurs_in,
@@ -105,6 +106,50 @@ class TestQuoteVerification:
         ) == QUOTE_REASON_ABSENT
 
 
+class TestLayoutAndGaps:
+    MAIL = ("> In the follow up to the meeting we had on Wednesday I would like \n"
+            "> to reinforce one point I made. I feel strongly that I cannot support \n"
+            "> the valuations my group has produced so far for the LJM/Raptor \n"
+            "> related transactions without examination of all the related legal \n"
+            "> documents. \n")
+
+    def test_the_reply_markers_of_a_quoted_mail_are_not_words(self):
+        quote = ("I feel strongly that I cannot support the valuations my group has produced "
+                 "so far for the LJM/Raptor related transactions without examination of all "
+                 "the related legal documents.")
+        assert quote_occurs_in(quote, self.MAIL)
+
+    def test_punctuation_and_symbols_are_not_words(self):
+        assert quote_occurs_in("LJM Raptor related transactions", self.MAIL)
+        assert quote_occurs_in("it now trades at $3.65 / share", "AVCI: it now trades at $3.65/share.")
+
+    def test_a_quote_matches_whole_words_only(self):
+        assert not quote_occurs_in("oard approved the transfe", "The board approved the transfer.")
+
+    def test_a_quote_with_a_small_gap_matches_its_source_span(self):
+        pages = [("raw_text", 1, "Hello from Chicago\n\nHey guys, I just wanted to update "
+                                 "everybody on what's going on up here in Chicago.")]
+        quote = "Hello from Chicago. I just wanted to update everybody on what's going on"
+        assert quote_match_in_pages(quote, [p[2] for p in pages]) == QUOTE_REASON_ABSENT
+        span = gap_match_in_pages(quote, pages)
+        assert span["text"].startswith("Hello from Chicago\n\nHey guys,")
+        assert span["text"].endswith("going on") and span["page_id"] == 1
+
+    def test_a_gap_match_keeps_the_word_order_and_the_span_limit(self):
+        text = "one two three four five six seven eight"
+        assert gap_match_in_pages("eight seven six five four three", [("t", 1, text)]) is None
+        wide = "alpha " + "filler " * 10 + "beta gamma delta epsilon zeta"
+        assert gap_match_in_pages("alpha beta gamma delta epsilon zeta", [("t", 1, wide)]) is None
+
+    def test_a_short_quote_never_matches_with_gaps(self):
+        assert gap_match_in_pages("the board approved", [("t", 1, "the old board has approved")]) is None
+
+    def test_a_gap_match_can_cross_a_page_boundary(self):
+        pages = [("t", 1, "intro The board quickly approved the"), ("t", 2, "transfer on 3 March. end")]
+        span = gap_match_in_pages("The board approved the transfer on 3 March", pages)
+        assert span["text"] == "The board quickly approved the" + PAGE_JOIN + "transfer on 3 March"
+
+
 class TestCiteOne:
     def _stub_pages(self, monkeypatch, pages, path="/doc.txt", dataset="testdata_ds"):
         import collection_search_server.server as srv
@@ -157,6 +202,22 @@ class TestCiteOne:
         assert result.error is None
         assert result.handle == "[D1]"
         assert result.path == "/doc.txt"
+
+    def test_a_quote_with_a_gap_verifies_with_the_source_text(self, monkeypatch):
+        self._stub_pages(monkeypatch, ["Hello from Chicago\n\nHey guys, I just wanted to update "
+                                       "everybody on what's going on up here in Chicago."])
+        quote = "Hello from Chicago. I just wanted to update everybody on what's going on"
+        result = _cite_one(_acl(), "gap", Citation(collection="testdata", file_hash=HASH, quote=quote))
+        assert result.quote_verified and result.quote_adjusted and result.handle
+        assert result.sent_quote == quote
+        assert result.quote.startswith("Hello from Chicago\n\nHey guys,")
+
+    def test_an_absent_quote_names_the_retry_text(self, monkeypatch):
+        self._stub_pages(monkeypatch, ["The board approved the transfer on 3 March after a long debate."])
+        result = _cite_one(_acl(), "retry", Citation(
+            collection="testdata", file_hash=HASH, quote="The board approved the transfer on 4 April after a long debate."))
+        assert not result.quote_verified
+        assert "Retry with this exact text as quote" in result.error
 
     def test_a_find_phrase_of_the_quote_becomes_the_find_query(self, monkeypatch):
         quote = "Your notes look great.  Best of luck today with the Hearings."

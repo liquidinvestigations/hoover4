@@ -46,6 +46,7 @@ from collection_search_server.citations import (
     candidate_passage,
     citation_find_query,
     find_in_quote,
+    gap_match_in_pages,
     QUOTE_MATCH_VERIFIED,
     QUOTE_REASON_ABSENT,
     QUOTE_REASON_LOOKUP_FAILED,
@@ -1451,6 +1452,10 @@ class CitationResult(BaseModel):
     #: it, with `extracted_by`, `page_id`, `start` and `end` (`citations.candidate_passage`).
     #: The citation keeps `quote` and stays unverified.
     candidate: dict[str, Any] | None = None
+    #: True when the quote verified with small gaps (`citations.gap_match_in_pages`).
+    #: `quote` then holds the source span, and `sent_quote` the model's wording.
+    quote_adjusted: bool = False
+    sent_quote: str = ""
     error: str | None = None
 
 
@@ -1472,6 +1477,9 @@ class CitationsResponse(BaseModel):
                 row["handle"] = result.handle
             if result.quote_verified:
                 row["quote_verified"] = True
+            if result.quote_adjusted:
+                row["quote_adjusted"] = True
+                row["quote"] = result.quote
             if result.quote_reason:
                 row["quote_reason"] = result.quote_reason
             if result.candidate:
@@ -1588,6 +1596,7 @@ def cite_documents(citations: Annotated[list[Citation] | str, Field(description=
         "collection_dataset": result.collection_dataset, "file_hash": result.file_hash,
         "path": result.path, "quote": result.quote, "why": result.why,
         "quote_verified": result.quote_verified, "quote_reason": result.quote_reason,
+        "quote_adjusted": result.quote_adjusted,
         "find_query": result.find_query, "term": result.term, "candidate": result.candidate,
     } for result in results if result.quote_verified and result.handle and result.error is None])
     success = any(result.quote_verified and result.handle and result.error is None for result in results)
@@ -1745,6 +1754,21 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
         return result
 
     match = quote_match_in_pages(citation.quote, pages)
+    if match == QUOTE_REASON_ABSENT:
+        # Every word of the quote in order, with small gaps: the card keeps the source text.
+        try:
+            span = gap_match_in_pages(citation.quote, _extracted_page_rows(
+                citation.collection, citation.file_hash, dataset))
+        except Exception as exc:  # noqa: BLE001, the gap match is optional
+            log.warning("no gap match for %s: %s", citation.file_hash, exc)
+            span = None
+        if span is not None:
+            match = QUOTE_MATCH_VERIFIED
+            result.quote_adjusted = True
+            result.sent_quote = citation.quote
+            result.quote = span["text"]
+            result.find_query = citation_find_query(citation.find, span["text"])
+            matched_page.update(source=span["extracted_by"], page=max(1, int(span["page_id"] or 1)))
     result.quote_verified = match == QUOTE_MATCH_VERIFIED
     if result.quote_verified:
         result.page = matched_page.get("page")
@@ -1759,6 +1783,10 @@ def _cite_one(acl: CallerAcl, session: str, citation: Citation) -> CitationResul
             log.warning("no candidate passage for %s: %s", citation.file_hash, exc)
     if not result.quote_verified:
         result.error = "The quote did not verify. Copy at least twelve characters from the source into quote and retry."
+        if result.candidate and result.candidate.get("text"):
+            passage = " ".join(str(result.candidate["text"]).split())
+            result.error = (f"The quote did not verify. Retry with this exact text as quote: \"{passage}\". "
+                            "Then quote the same words in the answer.")
         return result
     owner = {k.lower(): v for k, v in get_http_headers().items()}.get("x-hoover4-user", "")
     try:

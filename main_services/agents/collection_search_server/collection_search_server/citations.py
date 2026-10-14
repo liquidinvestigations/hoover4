@@ -54,6 +54,10 @@ _PUNCTUATION_FOLDS = (
 )
 
 
+#: A word of a quote or of a document: letters, digits and the underscore.
+_WORD = re.compile(r"\w+")
+
+
 def _fold_for_match(text: str) -> str:
     """NFKC, typographic punctuation, and case. Whitespace is left for the caller."""
     text = unicodedata.normalize("NFKC", text)
@@ -62,18 +66,24 @@ def _fold_for_match(text: str) -> str:
     return text.lower()
 
 
+def _words(text: str) -> list[str]:
+    return _WORD.findall(_fold_for_match(text or ""))
+
+
 def normalise_for_match(text: str) -> str:
-    """Fold the differences that a quote legitimately survives.
+    """Fold the differences that a quote legitimately survives: the words of the text,
+    case-folded, joined by single spaces.
 
     Extracted text is not the document: a PDF wraps lines mid-sentence, a mail parser
-    keeps `\\r\\n`, and every extractor has its own opinion about non-breaking spaces and
-    typographic quotes. A model quoting a sentence it read will reproduce the words and
-    not the whitespace, so an exact-substring test rejects nearly every accurate quote.
+    keeps `\\r\\n`, a quoted mail starts every wrapped line with `> `, and every extractor
+    has its own opinion about non-breaking spaces, typographic quotes and dashes. A model
+    quoting a sentence it read reproduces the words, not the layout, so only the words are
+    compared. Their order still has to match, and so does each word.
 
     Case is folded too. A quote is evidence about content, and a reader shown `Board`
     where the document says `BOARD` has not been misled.
     """
-    return re.sub(r"\s+", " ", _fold_for_match(text)).strip()
+    return " ".join(_words(text))
 
 
 def quote_occurs_in(quote: str, document_text: str) -> bool:
@@ -119,7 +129,7 @@ def quote_match_in_pages(quote: str, pages) -> str:
     needle = normalise_for_match(quote)
     if len(needle) < MIN_QUOTE_CHARS:
         return QUOTE_REASON_SHORT
-    window = _FoldedWindow(needle)
+    window = _FoldedWindow(f" {needle} ")
     first = True
     for page in pages:
         if not first:
@@ -131,32 +141,79 @@ def quote_match_in_pages(quote: str, pages) -> str:
     return QUOTE_REASON_ABSENT
 
 
+#: The fewest quote words for a gap-tolerant match. A shorter quote matches only exactly.
+GAP_MIN_WORDS = 6
+#: The longest source span of a gap-tolerant match, as a multiple of the quote's words.
+GAP_SPAN_RATIO = 1.3
+
+
+def gap_match_in_pages(quote: str, pages) -> dict | None:
+    """The source span that holds every word of a quote, in order, with small gaps, or None.
+
+    A model joins a subject line to the body, or leaves out "Hey guys," inside a sentence it
+    copied. Each quote word must occur in order, and the span from the first to the last
+    word may hold at most `GAP_SPAN_RATIO` times as many words as the quote. The shortest
+    such span wins. `pages` yields `(extracted_by, page_id, text)`. The result holds the
+    stored text of the span, so a citation card shows what the document says, not the
+    model's wording. A span that crosses a page boundary joins the two parts with
+    `PAGE_JOIN`.
+    """
+    needle = _words(quote)
+    if len(needle) < GAP_MIN_WORDS or len(" ".join(needle)) < MIN_QUOTE_CHARS:
+        return None
+    limit = int(len(needle) * GAP_SPAN_RATIO + 0.999)
+    recent: list[tuple[str, int, int, int]] = []  # (word, page number, start, end)
+    texts: dict[int, tuple[str, int, str]] = {}
+    for number, (extracted_by, page_id, text) in enumerate(pages):
+        texts[number] = (str(extracted_by or ""), page_id, text or "")
+        texts.pop(number - 2, None)
+        for match in _WORD.finditer(text or ""):
+            word = _fold_for_match(match.group(0))
+            recent.append((word, number, match.start(), match.end()))
+            if len(recent) > limit:
+                recent.pop(0)
+            if word != needle[-1]:
+                continue
+            # Match the quote backwards from this word, greedily, inside the window.
+            want = len(needle) - 1
+            first = len(recent) - 1
+            for index in range(len(recent) - 1, -1, -1):
+                if recent[index][0] == needle[want]:
+                    first = index
+                    want -= 1
+                    if want < 0:
+                        break
+            if want >= 0:
+                continue
+            start_page, start = recent[first][1], recent[first][2]
+            end_page, end = recent[-1][1], recent[-1][3]
+            if start_page not in texts:
+                continue
+            source, page, body = texts[start_page]
+            if start_page == end_page:
+                span = body[start:end]
+            else:
+                span = body[start:] + PAGE_JOIN + texts[end_page][2][:end]
+            return {"text": span, "extracted_by": source, "page_id": page}
+    return None
+
+
 class _FoldedWindow:
-    """A streaming fold of extracted text that can match without holding the document."""
+    """A streaming fold of extracted text that can match without holding the document.
+
+    The needle is a folded quote with a space at each end, so it matches whole words only.
+    The haystack is the folded words of the text, each followed by a space."""
 
     def __init__(self, needle: str) -> None:
         self._needle = needle
         self._keep = max(len(needle) - 1, 0)
-        self._tail = ""
-        self._started = False
-        self._pending_space = False
+        self._tail = " "
 
     def feed(self, raw: str) -> bool:
-        folded = _fold_for_match(raw)
-        out: list[str] = []
-        for char in folded:
-            if char.isspace():
-                if self._started:
-                    self._pending_space = True
-                continue
-            if self._pending_space:
-                out.append(" ")
-                self._pending_space = False
-            out.append(char)
-            self._started = True
-        if not out:
+        words = _words(raw)
+        if not words:
             return False
-        chunk = "".join(out)
+        chunk = " ".join(words) + " "
         haystack = self._tail + chunk
         if self._needle in haystack:
             return True
@@ -359,8 +416,9 @@ CANDIDATE_MAX_PAGES = 400
 
 def _anchors(quote: str) -> list[tuple[int, int, re.Pattern]]:
     """The quote parts to look for: `(words, chars before the part, pattern)`, the longest
-    first. A pattern matches the words of the part with any whitespace between them, with
-    case and typographic punctuation folded."""
+    first. A pattern matches the words of the part with any other characters between them,
+    such as whitespace, punctuation or the `>` markers of a quoted mail, with case
+    folded."""
     words = normalise_for_match(quote).split(" ")
     out = []
     for size in ANCHOR_WORDS:
@@ -371,7 +429,7 @@ def _anchors(quote: str) -> list[tuple[int, int, re.Pattern]]:
         for start in starts:
             part = words[start:start + size]
             before = len(" ".join(words[:start])) + (1 if start else 0)
-            pattern = re.compile(r"\s+".join(re.escape(w) for w in part), re.IGNORECASE)
+            pattern = re.compile(r"\W+".join(re.escape(w) for w in part), re.IGNORECASE)
             out.append((size, before, pattern))
     return out
 
