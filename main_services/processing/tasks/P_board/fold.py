@@ -19,6 +19,9 @@ The rules:
   to none. A valid empty result while explores run moves the checkpoint. An invalid result,
   or an empty one with nothing running, does not, so the board stays due, and after
   `INVALID_REASON_LIMIT` such results in a row the board goes to review.
+* **Budget.** `Folded.max_explores` and `Folded.explore_steps` start at the base values of
+  `model` and grow with each rejected fact, rejected review and hint, up to the caps. The
+  explore budget and the step count of the board row are not read.
 * **One cap.** Each running explore and each reason in flight takes one board model slot.
   All boards together use at most the global cap, and each board at most its `max_parallel`.
 """
@@ -66,7 +69,24 @@ class Folded:
     sourced_count: int = 0
     review_statement: str = ""
     review_from: list[str] = field(default_factory=list)
+    #: The proposed review of each goal: goal id, fact ids and statement.
+    review_goals: list[dict] = field(default_factory=list)
+    review_rejections: int = 0
     last_reason_outcome: str = ""
+
+    @property
+    def max_explores(self) -> int:
+        """The explore budget: the base, grown by the person's corrections and hints."""
+        corrections = len(self.rejected) + self.review_rejections
+        return min(m.MAX_EXPLORES, m.BASE_EXPLORES + corrections * m.CORRECTION_EXPLORES
+                   + len(self.hints) * m.HINT_EXPLORES)
+
+    @property
+    def explore_steps(self) -> int:
+        """The model steps of one explore turn, grown as `max_explores`."""
+        corrections = len(self.rejected) + self.review_rejections
+        return min(m.MAX_EXPLORE_STEPS, m.BASE_EXPLORE_STEPS
+                   + corrections * m.CORRECTION_EXPLORE_STEPS + len(self.hints) * m.HINT_EXPLORE_STEPS)
 
     def situation(self) -> dict:
         """The counts a reason checkpoint compares."""
@@ -103,6 +123,7 @@ def fold(board, events, facts) -> Folded:
         elif kind == m.REVIEW_ACCEPTED and folded.status == m.REVIEW:
             folded.status = m.COMPLETED
         elif kind == m.REVIEW_REJECTED and folded.status in (m.REVIEW, m.COMPLETED):
+            folded.review_rejections += 1
             folded.status = m.ACTIVE
             folded.invalid_reasons = 0
             folded.stall_count = 0
@@ -189,6 +210,7 @@ def _apply_reason(folded: Folded, event) -> None:
         review = data.get("review") or {}
         folded.review_statement = str(review.get("statement", ""))
         folded.review_from = [str(f) for f in review.get("from") or []]
+        folded.review_goals = [dict(g) for g in review.get("goals") or [] if isinstance(g, dict)]
         if folded.status == m.ACTIVE:
             folded.status = m.REVIEW
     elif outcome == "noop" and not data.get("idle"):
@@ -267,7 +289,7 @@ def plan(boards: list, folded: dict, in_flight: set, cap: int) -> Actions:
             continue
         if f.status != m.ACTIVE:
             continue
-        if f.explores_used >= board.max_explores and not running:
+        if f.explores_used >= f.max_explores and not running:
             actions.reviews.append((board.board_id, "budget"))
             continue
         if (f.invalid_reasons >= m.INVALID_REASON_LIMIT and not running
@@ -281,7 +303,7 @@ def plan(boards: list, folded: dict, in_flight: set, cap: int) -> Actions:
                 board.board_id, f.reasons_started + 1, f.stall_count >= m.STALL_THRESHOLD))
             used += 1
             board_used += 1
-        budget_left = board.max_explores - f.explores_used
+        budget_left = f.max_explores - f.explores_used
         for intent in f.by_state(m.OPEN):
             if used >= cap or board_used >= max(1, board.max_parallel) or budget_left <= 0:
                 break

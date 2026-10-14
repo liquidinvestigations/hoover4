@@ -26,7 +26,7 @@ from tasks.P_agent.activities import AgentRunInput
 from tasks.P_board import model as m
 from tasks.P_board.contracts import labels_of, parse_explore_block, parse_reason
 from tasks.P_board.fold import earlier_objectives, fold, plan
-from tasks.P_board.prompts import CONCLUDE_REQUEST, render_brief, render_reason
+from tasks.P_board.prompts import CONCLUDE_REQUEST, goal_ids, render_brief, render_reason
 
 log = logging.getLogger(__name__)
 
@@ -168,7 +168,9 @@ def _state_rows(board, folded) -> tuple[dict, list[dict]]:
         by_kind[intent.state] = by_kind.get(intent.state, 0) + 1
     summary = {"intents": by_kind, "facts": folded.fact_count, "sourced": folded.sourced_count,
                "hints": len(folded.hints), "rejected": len(folded.rejected),
-               "review_statement": folded.review_statement, "review_from": folded.review_from}
+               "review_statement": folded.review_statement, "review_from": folded.review_from,
+               "review_goals": folded.review_goals, "max_explores": folded.max_explores,
+               "explore_steps": folded.explore_steps}
     state = {"board_id": board.board_id, "status": folded.status,
              "explores_used": max(0, folded.explores_used), "reasons_done": folded.reasons_done,
              "stall_count": min(255, folded.stall_count),
@@ -278,15 +280,16 @@ def board_plan(inp: PlanInput) -> PlanOutput:
 
 
 def _explore_model(board) -> str:
-    """The model of an explore turn: the board's model, else the model of the internal
-    search chat profile, which an ordinary chat turn without internet tools uses. Empty
-    lets the turn use the default chat model."""
+    """The model of an explore turn: the board's model, else the model of the chat profile
+    of an ordinary chat turn with the board's internet setting. Empty lets the turn use the
+    default chat model."""
     from database.clickhouse import get_server_setting
 
     if (board.llm_model or "").strip():
         return board.llm_model.strip()
+    key = "llm_model_full_research" if board.internet_tools else "llm_model_internal_search"
     try:
-        return (get_server_setting("llm_model_internal_search") or "").strip()
+        return (get_server_setting(key) or "").strip()
     except Exception:  # noqa: BLE001 - a settings read failure falls back to the default model
         return ""
 
@@ -353,7 +356,8 @@ def board_reason(task: ReasonTask) -> str:
     else:
         payload = parse_reason(text, {f.fact_id for f in live},
                                {f.fact_id for f in live if f.kind == m.SOURCED},
-                               earlier_objectives(folded), idle)
+                               earlier_objectives(folded), idle, goal_ids(facts),
+                               {f.fact_id for f in live if f.kind == m.NOT_FOUND})
     payload.update(situation=folded.situation(), model=model, latency_ms=latency_ms,
                    prompt_tokens=int(usage.get("prompt_tokens") or 0),
                    completion_tokens=int(usage.get("completion_tokens") or 0),
@@ -370,17 +374,6 @@ def board_reason(task: ReasonTask) -> str:
 
 def _turn_uuid(req: TurnRequest) -> str:
     return uuid.uuid5(BOARD_NAMESPACE, f"{req.board_id}:{req.intent_id}:{req.attempt}:{req.phase}").hex
-
-
-def _owner_is_admin(owner: str) -> bool:
-    from database.clickhouse import get_global_client
-
-    with get_global_client() as client:
-        rows = client.query(
-            "SELECT is_admin FROM users FINAL WHERE username = {u:String} AND is_deleted = 0",
-            parameters={"u": owner},
-        ).result_rows
-    return bool(rows and rows[0][0])
 
 
 def _chat_closed() -> bool:
@@ -402,7 +395,8 @@ def _ensure_session(board, session_id: str, title: str, collections: list[str]) 
             return
         now = boards.now().replace(microsecond=0)
         insert_durable(client, "chat_sessions",
-                       [[session_id, board.owner, title[:200], collections, 0, 1, now, now, 0]],
+                       [[session_id, board.owner, title[:200], collections,
+                         int(bool(board.internet_tools)), 1, now, now, 0]],
                        column_names=["session_id", "username", "title", "collections",
                                      "use_internet_tools", "options_locked", "created_at",
                                      "updated_at", "is_deleted"])
@@ -467,8 +461,6 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
     intent = folded.intents.get(req.intent_id)
     if folded.status != m.ACTIVE or intent is None:
         return OpenedTurn(skip_kind=m.EXPLORE_CANCELLED, skip_reason=f"the board is {folded.status}")
-    if not _owner_is_admin(board.owner):
-        return OpenedTurn(skip_kind=m.EXPLORE_FAILED, skip_reason="the board owner is not an administrator")
     if _chat_closed():
         return OpenedTurn(skip_kind=m.EXPLORE_FAILED, skip_reason="chat is closed in the settings")
     existing = set(list_collections())
@@ -487,11 +479,12 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
             text = render_brief(board, facts, boards.read_citations(board.board_id),
                                 folded.hints, intent, collections)
         _write_turn_rows(board.owner, session_id, seq, text, turn_uuid)
-    steps = m.CONCLUDE_STEP_BUDGET if req.phase == "conclude" else board.explore_step_budget
+    steps = m.CONCLUDE_STEP_BUDGET if req.phase == "conclude" else folded.explore_steps
     run_input = AgentRunInput(
         run_id=str(uuid.uuid5(BOARD_NAMESPACE, turn_uuid)), username=board.owner,
         session_id=session_id, turn_seq=seq, start_seq=seq + 1, turn_uuid=turn_uuid,
-        allowed_collections=collections, llm_model=_explore_model(board), internet_tools=False,
+        allowed_collections=collections, llm_model=_explore_model(board),
+        internet_tools=bool(board.internet_tools),
         max_model_steps=int(steps), board_turn=True)
     return OpenedTurn(workflow_id=f"chat-{session_id}-{seq + 1}", run_input=run_input)
 
@@ -501,7 +494,8 @@ def _turn_rows(owner: str, session_id: str, turn_seq: int) -> list[dict]:
 
     with get_global_client() as client:
         result = client.query(
-            "SELECT seq, role, tool_name, content, doc_refs, usage_json FROM chat_messages FINAL "
+            "SELECT seq, role, tool_name, content, tool_input, tool_output, doc_refs, usage_json "
+            "FROM chat_messages FINAL "
             "WHERE username = {u:String} AND session_id = {s:String} ORDER BY seq",
             parameters={"u": owner, "s": session_id},
         )
@@ -528,6 +522,21 @@ def _citation_index(rows: list[dict]) -> dict[str, dict]:
     return index
 
 
+def submitted_fact(rows: list[dict]) -> dict | None:
+    """The arguments of the last successful `submit_board_fact` call of a turn, or None."""
+    for row in reversed(rows):
+        if row["role"] != "tool" or row["tool_name"] != m.SUBMIT_FACT_TOOL:
+            continue
+        try:
+            result = json.loads(row.get("tool_output") or "{}")
+            args = json.loads(row.get("tool_input") or "{}")
+        except ValueError:
+            continue
+        if isinstance(result, dict) and result.get("submitted") and isinstance(args, dict):
+            return args
+    return None
+
+
 @activity.defn
 @with_heartbeat
 def conclude_explore(req: TurnRequest) -> str:
@@ -550,18 +559,21 @@ def conclude_explore(req: TurnRequest) -> str:
     base = {"attempt": req.attempt, "phase": req.phase}
     asked = [r for r in in_turn if r["role"] == "tool" and r["tool_name"] == "ask_user"]
     answers = [r for r in in_turn if r["role"] == "assistant"]
-    if asked and answers:
+    submitted = submitted_fact(in_turn)
+    if submitted is None and asked and answers:
         boards.write_event(_event(board.board_id, f"explore_question:{req.intent_id}:{req.attempt}",
                                   m.EXPLORE_QUESTION, "explore", req.intent_id,
                                   {**base, "question": answers[-1]["content"][:2000]}))
         return "question"
-    block = parse_explore_block(answers[-1]["content"]) if answers else None
+    # The fact of a `submit_board_fact` call, else a fenced JSON block of the answer, which
+    # explores before the tool wrote.
+    block = submitted or (parse_explore_block(answers[-1]["content"]) if answers else None)
     if block is None:
         if req.phase == "explore":
             return "needs_conclude"
         boards.write_event(_event(board.board_id, f"explore_failed:{req.intent_id}:{req.attempt}",
                                   m.EXPLORE_FAILED, "explore", req.intent_id,
-                                  {**base, "error": "the answer has no valid JSON block"}))
+                                  {**base, "error": f"the turn ended without a {m.SUBMIT_FACT_TOOL} call"}))
         return "failed"
     text = str(block.get("fact") or "").strip()
     kind = str(block.get("kind") or "").strip()
@@ -590,9 +602,9 @@ def conclude_explore(req: TurnRequest) -> str:
     if kind == m.SOURCED and not any(c.quote_verified for c in citations):
         kind = m.INFERRED
         problems.append("a sourced fact without a verified citation became inferred")
-    answer = answers[-1]
+    answer_seq = int(answers[-1]["seq"]) if answers else 0
     fact = boards.FactRow(
-        board.board_id, fact_id, kind, text, req.intent_id, session_id, int(answer["seq"]),
+        board.board_id, fact_id, kind, text, req.intent_id, session_id, answer_seq,
         [str(q)[:500] for q in (block.get("open_questions") or [])][:3], problems)
     if not boards.board_is_live(board.board_id):
         return "skipped"

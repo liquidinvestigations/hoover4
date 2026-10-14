@@ -119,6 +119,8 @@ class StepRun(BaseModel):
     allowed_collections: List[str] = Field(default_factory=list)
     llm_model: Optional[str] = None
     control: Optional[ControlAssets] = None
+    kind: str = Field(default="chat", description="The run kind: chat, or board for a "
+                      "board explore turn, which also has `submit_board_fact`")
 
 
 class ModelStepRequest(StepRun):
@@ -338,7 +340,7 @@ async def _context(agent: Any, request: StepRun) -> Any:
     revision = request.control.revision if request.control is not None else ""
     return await agent.context_for(
         request.username, request.allowed_collections, request.session_id,
-        request.llm_model, request.run_id, revision=revision,
+        request.llm_model, request.run_id, kind=request.kind, revision=revision,
     )
 
 

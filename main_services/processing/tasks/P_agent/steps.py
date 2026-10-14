@@ -163,6 +163,9 @@ class StepRef:
     allowed_collections: list[str] = field(default_factory=list)
     llm_model: str = ""
     internet_tools: bool = False
+    #: True for an explore turn of an investigation board: the agent runs the `board` kind,
+    #: which has `submit_board_fact`.
+    board_turn: bool = False
 
 
 #: The `mode` of every model step in `agent_step_events`. Each model step binds the run's
@@ -268,6 +271,7 @@ def _step_run(row, params: StepRef) -> dict[str, Any]:
         "session_id": row.session_id,
         "allowed_collections": list(params.allowed_collections or []),
         "llm_model": params.llm_model or _chat_model(),
+        "kind": "board" if getattr(params, "board_turn", False) else "chat",
     }
 
 
@@ -627,14 +631,14 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
         return ModelStepResult(outcome="empty_again" if again else "empty", next_seq=first,
                                next_idx=reply_end_idx(ai))
     if edit_round and (row.result or "").strip():
-        # The reply of an edit round holds edits to the earlier answer. A reply that is not
-        # valid edits, or whose result has a label fault, keeps the earlier answer, and the
-        # answer metadata names the findings that remain.
+        # The reply of an edit round holds edits to the earlier answer. The edits that match
+        # apply. A reply that is not edits, or whose result has a label fault, keeps the
+        # earlier answer. The answer metadata names the findings that remain.
         edited, problem = citations.apply_edits(row.result, ai.content or "")
-        if not problem:
-            entries = reports.session_citation_entries(row.username, row.session_id)
-            problem = citations.repair_reply_problem(edited, entries)
-        answer = row.result if problem else edited
+        entries = reports.session_citation_entries(row.username, row.session_id)
+        fault = citations.repair_reply_problem(edited, entries)
+        answer = row.result if problem == "not_edits" or fault else edited
+        problem = fault or problem
         # The thread keeps the published answer as the reply, so a later turn reads that
         # answer, and the usage keeps the edits.
         ai = replace(ai, content=answer, usage_json=json.dumps(
@@ -1025,10 +1029,16 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
                 live.close()
 
 
+#: The tools whose successful call ends the turn, and the argument that holds the answer
+#: text. `submit_board_fact` exists only in board turns.
+TURN_ENDING_TOOLS = {"ask_user": "question", "submit_board_fact": "fact"}
+
+
 @activity.defn
 @with_heartbeat
 def write_asked_answer(params: AskedAnswerParams) -> int:
-    """Write the question as the turn answer after all calls of its step have run."""
+    """Write the text of a turn-ending call as the turn answer after all calls of its step
+    have run: the question of `ask_user`, or the fact of `submit_board_fact`."""
     from database import agent_runs
 
     row = _read_row(params)
@@ -1042,12 +1052,19 @@ def write_asked_answer(params: AskedAnswerParams) -> int:
     result = _answer_of(messages, params.call.call_id)
     if result is None or result.usage.get("status") != "ok":
         raise RuntimeError(f"run {row.run_id} has no successful question result")
-    question = str((entry.get("args") or {}).get("question") or "")
+    key = TURN_ENDING_TOOLS.get(str(entry.get("name") or ""), "question")
+    question = str((entry.get("args") or {}).get(key) or "")
     if not question:
-        raise RuntimeError(f"run {row.run_id} has an empty question")
+        raise RuntimeError(f"run {row.run_id} has an empty {key}")
     if True:
         # The model that asked, from the usage of the reply, as `write_incomplete` does.
         metadata = {"citation_status": "none", "tool_scope": ai.usage.get("tool_scope", "documents_only")}
+        if key == "fact":
+            from tasks.P_agent import citations, reports
+
+            entries = reports.session_citation_entries(row.username, row.session_id)
+            metadata = citations.answer_metadata(question, _citation_messages(row, messages),
+                                                 entries, params.internet_tools)
         ai = replace(ai, usage_json=json.dumps({**ai.usage, **metadata}))
         agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id, ai)
         _chat_row(row)(row.next_seq, "assistant", content=question,

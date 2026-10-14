@@ -265,7 +265,8 @@ class AgentRun:
         return dict(run_id=inp.run_id, username=inp.username, session_id=inp.session_id,
                     turn_uuid=inp.turn_uuid,
                     allowed_collections=list(inp.allowed_collections or []),
-                    llm_model=inp.llm_model, internet_tools=inp.internet_tools)
+                    llm_model=inp.llm_model, internet_tools=inp.internet_tools,
+                    board_turn=inp.board_turn)
 
     def _ref(self, inp: AgentRunInput) -> StepRef:
         return StepRef(**self._ref_fields(inp))
@@ -428,8 +429,11 @@ class AgentRun:
                                        in_order(browser, not page_changes),
                                        *(tasks[c.call_id] for c in parallel))
         statuses = results[0] + results[1] + list(zip(parallel, results[2:]))
+        # A successful turn-ending call ends the turn: `ask_user`, or in a board turn
+        # `submit_board_fact`.
+        enders = ("ask_user", "submit_board_fact") if inp.board_turn else ("ask_user",)
         asked = next((call for call, status in sorted(statuses, key=lambda pair: pair[0].position)
-                      if call.name == "ask_user" and status == "ok"), None)
+                      if call.name in enders and status == "ok"), None)
         if asked is not None:
             next_seq = await workflow.execute_activity(
                 write_asked_answer,
@@ -438,6 +442,8 @@ class AgentRun:
                 retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 task_queue=CHAT_TASK_QUEUE,
             )
+            if asked.name == "submit_board_fact":
+                return RunSummary(outcome="answered", next_seq=next_seq, submitted=True)
             return RunSummary(outcome="answered", next_seq=next_seq, asked=True)
         return None
 
@@ -503,7 +509,7 @@ class AgentRun:
         # True when a round follows a question, so the reply of that round is the question
         # the person reads.
         after_question = False
-        while summary.outcome == "answered" and not summary.end_reason:
+        while summary.outcome == "answered" and not summary.end_reason and not summary.submitted:
             kind = "question" if summary.asked or after_question else "answer"
             review = await self._control(inp, "answer_drafted", draft_kind=kind)
             if review.closed or not review.round:

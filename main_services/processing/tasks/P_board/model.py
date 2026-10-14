@@ -34,6 +34,8 @@ CANCELLED = "cancelled"
 # Fact kinds.
 ORIGIN = "origin"
 GOAL = "goal"
+#: The fact id of the first goal. Further goals are `goal-2`, `goal-3` and so on.
+FIRST_GOAL_ID = "goal"
 SOURCED = "sourced"
 INFERRED = "inferred"
 NOT_FOUND = "not_found"
@@ -68,8 +70,31 @@ MAX_INTENTS = 3
 STALL_THRESHOLD = 4
 #: Invalid or empty reasons in a row with no open intent, after which the board goes to review.
 INVALID_REASON_LIMIT = 3
-#: Model steps of the conclude turn that asks for the JSON block only.
+#: Model steps of the conclude turn that asks for the fact only.
 CONCLUDE_STEP_BUDGET = 4
+
+# The explore budget of a board and the model steps of one explore. A board starts at the
+# base values. A rejected fact or a rejected review adds the correction values, and a hint
+# adds the hint values, up to the caps. The person sets no budget.
+BASE_EXPLORES = 12
+BASE_EXPLORE_STEPS = 60
+CORRECTION_EXPLORES = 4
+CORRECTION_EXPLORE_STEPS = 20
+HINT_EXPLORES = 1
+HINT_EXPLORE_STEPS = 5
+MAX_EXPLORES = 24
+MAX_EXPLORE_STEPS = 120
+
+#: The tool that ends an explore turn with its fact. Only board turns have it.
+#: **Mirrored in `research_agent/board_tools.py` and in the website's tool card.**
+SUBMIT_FACT_TOOL = "submit_board_fact"
+
+
+def goal_id_for(index: int) -> str:
+    """The fact id of the `index`-th goal (1-based) of a board.
+
+    **Mirrored in `website/backend/src/api/boards.rs`**, which writes the goal facts."""
+    return FIRST_GOAL_ID if index == 1 else f"goal-{index}"
 
 
 def session_id_for(board_id: str, intent_id: str) -> str:

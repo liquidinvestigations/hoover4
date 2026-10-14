@@ -163,14 +163,37 @@ def test_review_needs_a_person_to_complete():
     assert fold(board(), log.events, facts()).status == m.COMPLETED
 
 
+def _spent(log, reasons):
+    """`reasons` reasons of one intent each, every explore concluded inferred."""
+    for r in range(1, reasons + 1):
+        log.reason(r, n=1)
+        log.add(m.EXPLORE_STARTED, f"i{r}.1", attempt=1)
+        log.add(m.EXPLORE_CONCLUDED, f"i{r}.1", attempt=1, fact_id=f"f{r}.1", kind=m.INFERRED)
+    return log
+
+
 def test_the_budget_sends_an_idle_board_to_review():
-    b = board(max_explores=1)
-    log = Log().add(m.BOARD_CREATED).reason(1, n=2)
-    log.add(m.EXPLORE_STARTED, "i1.1", attempt=1)
-    log.add(m.EXPLORE_CONCLUDED, "i1.1", attempt=1, fact_id="f1.1", kind=m.INFERRED)
+    b = board(max_explores=100)
+    log = _spent(Log().add(m.BOARD_CREATED), m.BASE_EXPLORES).reason(99, n=1)
     f = fold(b, log.events, facts(("f1.1", m.INFERRED)))
+    assert f.max_explores == m.BASE_EXPLORES, "the board row's budget is not read"
     actions = plan([b], {"b1": f}, set(), cap=1)
     assert actions.reviews == [("b1", "budget")] and actions.explores == []
+
+
+def test_corrections_and_hints_grow_the_budget_up_to_the_caps():
+    log = Log().add(m.BOARD_CREATED)
+    f = fold(board(), log.events, facts())
+    assert (f.max_explores, f.explore_steps) == (m.BASE_EXPLORES, m.BASE_EXPLORE_STEPS)
+    log.add(m.HINT_ADDED, text="h")
+    log.add(m.FACT_REJECTED, "f1.1", reason="wrong person")
+    f = fold(board(), log.events, facts())
+    assert f.max_explores == m.BASE_EXPLORES + m.HINT_EXPLORES + m.CORRECTION_EXPLORES
+    assert f.explore_steps == m.BASE_EXPLORE_STEPS + m.HINT_EXPLORE_STEPS + m.CORRECTION_EXPLORE_STEPS
+    for k in range(10):
+        log.add(m.FACT_REJECTED, f"f9.{k}", reason="r")
+    f = fold(board(), log.events, facts())
+    assert (f.max_explores, f.explore_steps) == (m.MAX_EXPLORES, m.MAX_EXPLORE_STEPS)
 
 
 def test_a_question_waits_for_a_hint():
@@ -214,6 +237,45 @@ def test_parse_reason_accepts_a_review_from_sourced_facts():
     payload = parse_reason('{"review": {"from": ["f1.1"], "statement": "s"}}', {"f1.1"}, {"f1.1"},
                            [], idle=False)
     assert payload["outcome"] == "review"
+
+
+def test_a_review_names_each_goal():
+    goals = ["goal", "goal-2"]
+    one = '{"review": {"goals": [{"goal": "goal", "from": ["f1.1"], "statement": "a"}]}}'
+    payload = parse_reason(one, {"f1.1", "f2.1"}, {"f1.1"}, [], True, goals, {"f2.1"})
+    assert payload["outcome"] == "noop"
+    assert any("leaves out the goals goal-2" in p for p in payload["problems"])
+    both = json.dumps({"review": {"goals": [
+        {"goal": "goal", "from": ["f1.1"], "statement": "a"},
+        {"goal": "goal-2", "from": ["f2.1"], "statement": "not in the documents"}]}})
+    payload = parse_reason(both, {"f1.1", "f2.1"}, {"f1.1"}, [], True, goals, {"f2.1"})
+    assert payload["outcome"] == "review"
+    assert [g["goal"] for g in payload["review"]["goals"]] == goals
+    assert payload["review"]["from"] == ["f1.1", "f2.1"]
+    only_absent = json.dumps({"review": {"goals": [
+        {"goal": "goal", "from": ["f2.1"], "statement": "a"},
+        {"goal": "goal-2", "from": ["f2.1"], "statement": "b"}]}})
+    assert parse_reason(only_absent, {"f2.1"}, set(), [], True, goals, {"f2.1"})["outcome"] == "noop"
+
+
+def test_a_review_without_goals_answers_the_first_goal():
+    review = fold(board(), Log().add(m.BOARD_CREATED).reason(
+        1, outcome="review", review=parse_reason(
+            '{"review": {"from": ["f1.1"], "statement": "s"}}', {"f1.1"}, {"f1.1"}, [], True)["review"]
+    ).events, facts(("f1.1", m.SOURCED)))
+    assert review.status == m.REVIEW
+    assert review.review_goals == [{"goal": "goal", "from": ["f1.1"], "statement": "s"}]
+
+
+def test_a_submitted_fact_is_read_from_the_tool_row():
+    from tasks.P_board.activities import submitted_fact
+
+    args = {"fact": "Kaminski objected [D1].", "kind": "sourced", "open_questions": []}
+    rows = [{"role": "tool", "tool_name": m.SUBMIT_FACT_TOOL, "tool_input": json.dumps(args),
+             "tool_output": json.dumps({"success": True, "submitted": True})}]
+    assert submitted_fact(rows) == args
+    rows[0]["tool_output"] = json.dumps({"success": False, "error": "kind"})
+    assert submitted_fact(rows) is None
 
 
 def test_parse_reason_marks_text_without_json_invalid():

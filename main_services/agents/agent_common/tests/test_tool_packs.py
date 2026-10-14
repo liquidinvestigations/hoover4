@@ -40,9 +40,23 @@ def test_each_tool_name_is_in_exactly_one_pack():
 
 def test_the_chat_run_gets_every_pack_by_default_and_no_pack_delegates():
     for kind in RUN_KINDS:
-        assert packs_for(kind, ALL) == frozenset(PACKS)
-        assert packs_for(kind, "") == frozenset(PACKS)
+        own = frozenset({"board"}) if kind == "board" else frozenset()
+        assert packs_for(kind, ALL) == frozenset(PACKS) - {"board"} | own
+        assert packs_for(kind, "") == frozenset(PACKS) - {"board"} | own
     assert "run_subagent" not in allowed_tools("chat", ALL)
+
+
+def test_only_a_board_turn_has_the_board_tool():
+    assert "submit_board_fact" not in allowed_tools("chat", ALL)
+    assert "submit_board_fact" not in allowed_tools("chat", "collections,board")
+    assert "submit_board_fact" in allowed_tools("board", ALL)
+    assert allowed_tools("board", "collections") == (
+        PACKS["collections"] | PACKS["skills"] | PACKS["board"])
+
+
+def test_a_board_turn_uses_the_chat_setting(monkeypatch):
+    monkeypatch.setenv(env_name("chat"), "collections")
+    assert configured_packs("board") == "collections"
 
 
 def test_the_retired_packs_select_nothing():

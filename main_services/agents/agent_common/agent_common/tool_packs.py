@@ -10,6 +10,10 @@ the research agent. `packs_for` adds it to every run kind, also when the configu
 omits it, because the system prompt of every run lists skills that the model can read with
 `read_skill`.
 
+The `board` run kind is a chat turn of an investigation board. It has the packs of the chat
+kind and the `board` pack, which holds the tool that ends an explore turn with its fact. No
+other run kind gets the `board` pack, also with `all`.
+
 Each model tool belongs to one pack.
 Internal runtime tools belong to `INTERNAL_TOOLS` and stay outside model catalogues.
 Each MCP server verifies its registered names against these sets.
@@ -38,10 +42,14 @@ PACKS: Dict[str, FrozenSet[str]] = {
     "web": frozenset({"web_search", "list_search_sources", "whois_lookup", "read_page", "cite_pages"}),
     "browser": frozenset({"browser_navigate", "browser_snapshot", "browser_click",
                           "browser_type", "browser_select_option", "browser_press_key"}),
+    "board": frozenset({"submit_board_fact"}),
 }
 
 #: The kinds of agent run.
-RUN_KINDS = ("chat",)
+RUN_KINDS = ("chat", "board")
+
+#: The packs that only one run kind gets, by run kind.
+KIND_PACKS: Dict[str, FrozenSet[str]] = {"board": frozenset({"board"})}
 
 #: The value that selects every pack.
 ALL = "all"
@@ -76,9 +84,11 @@ def packs_for(kind: str, configured: str) -> FrozenSet[str]:
     """
     if kind not in RUN_KINDS:
         raise ValueError(f"unknown agent run kind {kind!r}, expected one of {RUN_KINDS}")
+    own = KIND_PACKS.get(kind, frozenset())
+    reserved = frozenset().union(*KIND_PACKS.values()) - own
     value = (configured or "").strip()
     if not value or value == ALL:
-        return frozenset(PACKS)
+        return frozenset(PACKS) - reserved
     names = frozenset(part.strip() for part in value.split(",") if part.strip())
     unknown = sorted(names - set(PACKS) - RETIRED_PACKS)
     if unknown:
@@ -86,7 +96,7 @@ def packs_for(kind: str, configured: str) -> FrozenSet[str]:
             f"{env_name(kind)} names unknown tool packs {unknown}. "
             f"The packs are {sorted(PACKS)}, or {ALL!r}."
         )
-    return (names - RETIRED_PACKS) | {ALWAYS_PACK}
+    return (names - RETIRED_PACKS - reserved) | {ALWAYS_PACK} | own
 
 
 def allowed_tools(kind: str, configured: str) -> FrozenSet[str]:
@@ -98,7 +108,10 @@ def allowed_tools(kind: str, configured: str) -> FrozenSet[str]:
 
 
 def configured_packs(kind: str) -> str:
-    """Return the pack setting of one run kind from the environment. Unset means `all`."""
+    """Return the pack setting of one run kind from the environment. Unset means `all`.
+    The `board` kind uses the setting of the chat kind."""
+    if kind == "board":
+        kind = "chat"
     return os.getenv(env_name(kind), "") or ALL
 
 

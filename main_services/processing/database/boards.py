@@ -53,6 +53,7 @@ class BoardRow:
     max_explores: int = 12
     max_parallel: int = 1
     explore_step_budget: int = 40
+    internet_tools: int = 1
     created_at: datetime | None = None
     is_deleted: int = 0
 
@@ -98,8 +99,8 @@ class CitationRow:
 
 
 BOARD_COLUMNS = ["board_id", "owner", "title", "goal", "context", "collections", "llm_model",
-                 "max_explores", "max_parallel", "explore_step_budget", "created_at",
-                 "is_deleted"]
+                 "max_explores", "max_parallel", "explore_step_budget", "internet_tools",
+                 "created_at", "is_deleted"]
 FACT_COLUMNS = ["board_id", "fact_id", "kind", "text", "intent_id", "session_id", "answer_seq",
                 "open_questions", "problems", "created_by", "created_at"]
 CITATION_COLUMNS = ["board_id", "fact_id", "label", "collection_dataset", "collectionname",

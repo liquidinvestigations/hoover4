@@ -70,7 +70,7 @@ def test_an_unknown_pack_name_raises():
         packs_for("chat", "collections,webb")
     with pytest.raises(ValueError):
         packs_for("reviewer", "all")
-    assert packs_for("chat", "") == frozenset(PACKS)
+    assert packs_for("chat", "") == frozenset(PACKS) - {"board"}
 
 
 # ------------------------------------------------------------------------ ranking
@@ -164,3 +164,9 @@ async def test_the_search_query_takes_one_to_160_characters(query, error):
         assert "matches" in content and "error" not in content
     else:
         assert content["error"] == error
+
+
+def test_the_board_tool_is_in_a_board_snapshot_only():
+    board = snapshot("board", allowed_tools("board", "all"))
+    assert "submit_board_fact" in board.tools_by_name
+    assert "submit_board_fact" not in snapshot().tools_by_name

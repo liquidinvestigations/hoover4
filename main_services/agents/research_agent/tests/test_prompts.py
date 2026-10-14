@@ -33,7 +33,8 @@ BACKTICKED = re.compile(r"`([a-z][a-z0-9_]*)`")
 #: Backticked words that are not tools: fields and states that the prompt names.
 NOT_TOOLS = frozenset({"in_progress", "done", "cancelled", "pending"})
 
-EVERY_TOOL = frozenset().union(*PACKS.values())
+#: Every tool of a chat run. The `board` pack belongs to board turns only.
+EVERY_TOOL = frozenset().union(*(t for p, t in PACKS.items() if p != "board"))
 LOCAL_TOOLS = {"search_agent_tools", "search_skills", "read_skill", "read_tool", "ask_user", "write_note"}
 
 

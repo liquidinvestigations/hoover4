@@ -58,13 +58,33 @@ def is_duplicate(objective: str, earlier: str) -> bool:
     return len(a & b) / min(len(a), len(b)) >= DUPLICATE_OVERLAP
 
 
+def _review_goals(review, goal_ids: list[str]) -> list:
+    """The goal entries of a review object. A review without `goals` answers the first goal
+    with its own `from` and `statement`."""
+    if not isinstance(review, dict):
+        return []
+    goals = review.get("goals")
+    if isinstance(goals, list):
+        return goals
+    return [{"goal": goal_ids[0] if goal_ids else m.FIRST_GOAL_ID, "from": review.get("from"),
+             "statement": review.get("statement") or review.get("description")}]
+
+
 def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str],
-                 idle: bool) -> dict:
+                 idle: bool, goal_ids: list[str] | None = None,
+                 not_found_ids: set | None = None) -> dict:
     """The `reason_result` payload of one reply.
 
     `valid_ids` are the live fact ids, `sourced_ids` the live sourced ones, `earlier` the
-    objectives of every intent the board has, `idle` whether no intent is open or running.
+    objectives of every intent the board has, `idle` whether no intent is open or running,
+    `goal_ids` the goal fact ids, and `not_found_ids` the live not-found facts.
+
+    A review names each goal with the facts that answer it and a statement. A goal's facts
+    are sourced or not-found facts, and the review as a whole needs one sourced fact. A
+    review that leaves out a goal, or names another fact, is no review.
     """
+    goal_ids = list(goal_ids or [m.FIRST_GOAL_ID])
+    answerable = set(sourced_ids) | set(not_found_ids or ())
     payload = {"raw": (text or "")[:6000], "problems": []}
     try:
         data = extract_json_object(text)
@@ -72,14 +92,32 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
         payload.update(outcome="invalid", error=str(exc))
         return payload
     if "review" in data or "complete" in data:
-        review = data.get("review") or data.get("complete") or {}
-        from_ids = [str(f) for f in review.get("from") or []] if isinstance(review, dict) else []
-        if from_ids and set(from_ids) <= sourced_ids:
+        goals, problems = [], []
+        for entry in _review_goals(data.get("review") or data.get("complete") or {}, goal_ids):
+            if not isinstance(entry, dict):
+                problems.append("a review goal is not an object")
+                continue
+            goal = str(entry.get("goal") or "")
+            from_ids = [str(f) for f in entry.get("from") or []]
+            if goal not in goal_ids:
+                problems.append(f"review names the unknown goal {goal!r}")
+            elif not from_ids or not set(from_ids) <= answerable:
+                problems.append(f"review of {goal} from {from_ids} names a fact that is not sourced")
+            elif goal not in {g["goal"] for g in goals}:
+                goals.append({"goal": goal, "from": from_ids,
+                              "statement": str(entry.get("statement") or "")})
+        missing = [g for g in goal_ids if g not in {x["goal"] for x in goals}]
+        if missing and not problems:
+            problems.append("review leaves out the goals " + ", ".join(missing))
+        used = [f for g in goals for f in g["from"]]
+        if not problems and not set(used) & set(sourced_ids):
+            problems.append("review names no sourced fact")
+        if not problems:
             payload.update(outcome="review", review={
-                "from": from_ids,
-                "statement": str(review.get("statement") or review.get("description") or "")})
+                "from": list(dict.fromkeys(used)), "goals": goals,
+                "statement": "\n\n".join(g["statement"] for g in goals if g["statement"])})
             return payload
-        payload["problems"].append(f"review from {from_ids} names a fact that is not sourced")
+        payload["problems"].extend(problems)
     items = data.get("intents")
     if items is None and isinstance(data.get("intent"), dict):
         items = [data["intent"]]

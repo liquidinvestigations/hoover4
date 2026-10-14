@@ -411,6 +411,8 @@ class RunSummary:
     #: before an answer (`steps.write_incomplete`).
     end_reason: str = ""
     asked: bool = False
+    #: True when a board turn ended with `submit_board_fact`, so no draft check follows.
+    submitted: bool = False
 
 
 @dataclass
