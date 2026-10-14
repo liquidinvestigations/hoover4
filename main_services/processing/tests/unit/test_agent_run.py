@@ -1385,7 +1385,7 @@ def test_narrow_findings_name_a_kept_failed_quote_and_an_unsourced_role():
     assert '"the source sentence"' in note and "'Head of Research'" in note
     assert "Do not write the answer again." in note
     verified = entries + [{"kind": "citation", "status": "ok",
-                           "reference": {"file_hash": "a" * 64, "handle": "[D1]"}}]
+                           "reference": {"file_hash": "a" * 16, "handle": "[D1]"}}]
     lower = citations.narrow_findings("Kaminski, head of Enron Global Markets, wrote it.",
                                       messages, [])
     assert [f["text"] for f in lower] == ["head of Enron Global Markets"]
@@ -1400,6 +1400,8 @@ def test_narrow_findings_name_a_kept_failed_quote_and_an_unsourced_role():
     ("[]", "Kaminski, Head of Research, wrote it.", ""),
     ('[{"find": "absent text", "replace": "x"}]', "Kaminski, Head of Research, wrote it.",
      "find_not_unique"),
+    ('[{"find": "absent text", "replace": "x"}, {"find": ", Head of Research,", "replace": ""}]',
+     "Kaminski wrote it.", "find_not_unique"),
     ("Kaminski wrote it.", "Kaminski, Head of Research, wrote it.", "not_edits"),
 ])
 def test_apply_edits_changes_only_the_named_text(reply, expected, problem):

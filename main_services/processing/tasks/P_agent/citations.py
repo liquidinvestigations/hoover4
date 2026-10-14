@@ -360,14 +360,17 @@ def narrow_findings(answer: str, messages, session_entries) -> list[dict]:
     first three words are in no tool result of `messages`.
     """
     folded = f" {' '.join(_folded_words(answer))} "
-    verified = {(e.get("reference") or {}).get("file_hash") for e in session_entries
+    # A result row names a document by the first 16 characters of its hash, and a doc ref by
+    # the whole hash, so the documents compare by that start.
+    verified = {str((e.get("reference") or {}).get("file_hash") or "")[:16] for e in session_entries
                 if e.get("kind") == "citation" and e.get("status") == "ok"}
     findings, seen = [], set()
     for entry in session_entries:
         ref = entry.get("reference") or {}
         quote = str(ref.get("quote") or "")
         if (entry.get("kind") != "citation" or entry.get("status") != "error"
-                or not ref.get("file_hash") or ref["file_hash"] in verified or quote in seen):
+                or not ref.get("file_hash") or str(ref["file_hash"])[:16] in verified
+                or quote in seen):
             continue
         seen.add(quote)
         if _shares_run(_folded_words(quote), folded):
@@ -413,8 +416,9 @@ def apply_edits(answer: str, reply: str) -> tuple[str, str]:
     """The answer with the edits of an edit reply applied, and the problem of the reply.
 
     The reply is a JSON list of `{"find": ..., "replace": ...}` objects, optionally inside a
-    code fence. The edits apply in order, and each `find` must occur once in the text at its
-    turn. A reply that breaks a rule gives the unchanged answer and the problem.
+    code fence. The edits apply in order. An edit whose `find` does not occur exactly once in
+    the text at its turn is skipped, and the problem is then `find_not_unique`. A reply that
+    is not such a list gives the unchanged answer and `not_edits`.
     """
     text = reply.strip()
     fence = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
@@ -428,12 +432,13 @@ def apply_edits(answer: str, reply: str) -> tuple[str, str]:
             or not all(isinstance(e, dict) and isinstance(e.get("find"), str) and e["find"]
                        and isinstance(e.get("replace", ""), str) for e in edits)):
         return answer, "not_edits"
-    edited = answer
+    edited, skipped = answer, False
     for edit in edits:
         if edited.count(edit["find"]) != 1:
-            return answer, "find_not_unique"
+            skipped = True
+            continue
         edited = edited.replace(edit["find"], edit.get("replace", ""))
-    return edited, ""
+    return edited, "find_not_unique" if skipped else ""
 
 
 def repair_reply_problem(answer: str, session_entries) -> str:

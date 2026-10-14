@@ -174,7 +174,8 @@ limit `paragraph_repair` is 0, so only a label fault, page 0, a web fault or an 
 without any label causes a repair round. Its limit `edit_rounds` is 1, so one edit round names
 two kinds of unsourced claim. One is a quote whose citation failed and that the answer still
 uses. The other is a role or title that no tool result of the chat gives. The note asks for a
-JSON list of find and replace edits, and the worker applies the edits to the answer. A reply that is not
+JSON list of find and replace edits, and the worker applies each edit whose text occurs once in
+the answer. A reply that is not
 valid edits keeps the answer, and the answer metadata lists the parts as `unsourced_claims`.
 `chat-null` has no rule. A deployment selects a
 definition with `definitions/active.json` in the `chat_control_dir` folder.
