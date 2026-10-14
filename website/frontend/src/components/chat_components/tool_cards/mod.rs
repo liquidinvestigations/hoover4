@@ -123,6 +123,9 @@ pub fn ToolCard(
         "ask_user" => rsx! {
             result_cards::QuestionCard { tool_input, tool_output, running, draft }
         },
+        "submit_board_fact" => rsx! {
+            result_cards::BoardFactCard { tool_input, tool_output, running }
+        },
         "read_todo" | "write_todo" | "edit_todo" | "mark_todo" => rsx! {
             result_cards::TodoCard { tool_name, tool_input, tool_output, running, content_summary, todo_versions }
         },

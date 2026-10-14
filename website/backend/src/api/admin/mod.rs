@@ -1,7 +1,6 @@
 //! Admin API module.
 
 pub mod ai_status;
-pub mod boards;
 pub mod collections;
 pub mod dataset_ocr;
 pub mod datasets;

@@ -230,6 +230,67 @@ pub fn QuestionCard(tool_input: String, tool_output: String, running: bool, draf
     }}
 }
 
+/// The kind, text and open questions of a `submit_board_fact` call.
+fn board_fact_input(tool_input: &str) -> (String, String, Vec<String>) {
+    let input = serde_json::from_str::<serde_json::Value>(tool_input).unwrap_or_default();
+    let input = input.get("input").unwrap_or(&input);
+    let kind = match input.get("kind").and_then(|value| value.as_str()).unwrap_or("") {
+        "sourced" => "sourced",
+        "inferred" => "inferred",
+        "not_found" => "not found",
+        _ => "unknown kind",
+    };
+    let fact = input.get("fact").and_then(|value| value.as_str()).unwrap_or("").to_string();
+    let questions = input
+        .get("open_questions")
+        .and_then(|value| value.as_array())
+        .map(|list| list.iter().filter_map(|q| q.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+    (kind.to_string(), fact, questions)
+}
+
+/// The call that ends a board explore turn, inside its tool group. The answer after the
+/// group shows the fact with its citations, and [`BoardFactSummary`] under it.
+#[component]
+pub fn BoardFactCard(tool_input: String, tool_output: String, running: bool) -> Element {
+    let expanded = use_signal(|| false);
+    let (kind, fact, questions) = board_fact_input(&tool_input);
+    let failure = tool_content(&tool_output).as_ref().and_then(tool_failure);
+    rsx! { CardShell { chip: "Board fact", label: format!("A {kind} fact for the board"), running, expanded, failure, raw_output: tool_output.clone(),
+        badges: rsx! {},
+        div { style: "white-space: pre-wrap; font-size: var(--x-text-sm);", "{fact}" }
+        for (index, question) in questions.into_iter().enumerate() {
+            div { key: "{index}", style: "font-size: var(--x-text-sm); color: var(--x-ink-muted);", "Open question: {question}" }
+        }
+    }}
+}
+
+/// The element at the end of a board explore chat: what the turn gave to the board.
+#[component]
+pub fn BoardFactSummary(tool_input: String) -> Element {
+    let (kind, _, questions) = board_fact_input(&tool_input);
+    rsx! {
+        div {
+            class: "x-board-fact-summary",
+            "data-board-fact-kind": "{kind}",
+            style: "margin-top: 12px; padding: 10px 14px; border: 1px solid; border-color: #9334e6; border-radius: 10px; background-color: #faf5ff;",
+            div { style: "font-size: var(--x-text-sm); font-weight: 600; color: var(--x-ink-strong);",
+                "The explore gave this answer to its board as a {kind} fact."
+            }
+            if questions.is_empty() {
+                div { style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px;", "It left no open question." }
+            } else {
+                div { style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px;", "Open questions for the board:" }
+                ul { style: "margin: 4px 0 0; padding-left: 20px; font-size: var(--x-text-sm);",
+                    for (index, question) in questions.into_iter().enumerate() {
+                        li { key: "{index}", "{question}" }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[component]
 fn QuestionOption(answer: String, draft: Option<Signal<String>>) -> Element {
     let chosen = answer.clone();

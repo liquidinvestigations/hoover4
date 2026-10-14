@@ -1,5 +1,10 @@
 //! `/ai_chat/history`, full conversation list with delete.
+//!
+//! The explore chats of the user's investigation boards are hidden unless the checkbox
+//! "Show board chats" is ticked. A board chat is marked as such and has no delete button,
+//! because its board deletes it when the board is dropped.
 
+use common::board_types::is_board_session;
 use dioxus::prelude::*;
 
 use crate::api::chat_api::{chat_delete_session, chat_list_sessions};
@@ -7,7 +12,9 @@ use crate::routes::Route;
 
 #[component]
 pub fn AiChatHistoryPage() -> Element {
-    let mut sessions_res = use_resource(chat_list_sessions);
+    let mut show_boards = use_signal(|| false);
+    // The resource reads the signal, so a tick of the checkbox reads the list again.
+    let mut sessions_res = use_resource(move || chat_list_sessions(show_boards()));
 
     rsx! {
         Title { "Hoover Search - Chat history" }
@@ -24,6 +31,16 @@ pub fn AiChatHistoryPage() -> Element {
                 h1 {
                     style: "margin: 0; font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 600; color: var(--x-ink-strong);",
                     "Conversation history"
+                }
+                label {
+                    style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); color: var(--x-ink-muted); cursor: pointer;",
+                    input {
+                        class: "x-history-show-boards",
+                        r#type: "checkbox",
+                        checked: show_boards(),
+                        onchange: move |e: FormEvent| show_boards.set(e.checked()),
+                    }
+                    "Show board chats"
                 }
             }
             match sessions_res.read().as_ref() {
@@ -51,6 +68,14 @@ pub fn AiChatHistoryPage() -> Element {
                                     style: "flex: 1; min-width: 0; text-decoration: none; color: inherit;",
                                     div {
                                         style: "font-size: var(--x-text-md); font-weight: 600; color: var(--x-ink-strong);",
+                                        if is_board_session(&s.session_id) {
+                                            span {
+                                                style: "font-size: var(--x-text-xs); font-weight: 500; color: var(--x-ink-muted); \
+                                                        border: 1px solid; border-color: var(--x-border); border-radius: 6px; \
+                                                        padding: 1px 6px; margin-right: 8px;",
+                                                "Board"
+                                            }
+                                        }
                                         if s.title.is_empty() { "New chat" } else { "{s.title}" }
                                     }
                                     div {
@@ -66,7 +91,7 @@ pub fn AiChatHistoryPage() -> Element {
                                         "{s.message_count} messages · updated {s.updated_at}"
                                     }
                                 }
-                                button {
+                                if !is_board_session(&s.session_id) { button {
                                     style: "background: none; border: 1px solid #FEE2E2; color: var(--x-danger); \
                                             border-radius: 8px; padding: 6px 10px; cursor: pointer; \
                                             font-size: var(--x-text-xs); flex-shrink: 0;",
@@ -83,7 +108,7 @@ pub fn AiChatHistoryPage() -> Element {
                                         }
                                     },
                                     "Delete"
-                                }
+                                } }
                             }
                         }
                     }

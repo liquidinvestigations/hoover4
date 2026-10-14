@@ -5,7 +5,7 @@ and the events of every action. `docs/architecture/Boards.md` describes the whol
 """
 
 #: The queue of `BoardDispatcher`, `BoardExplore` and their short activities.
-#: **Mirrored in `website/backend/src/api/admin/boards.rs`.** The names move together.
+#: **Mirrored in `website/backend/src/api/boards.rs`.** The names move together.
 BOARD_TASK_QUEUE = "board-queue"
 
 #: The fixed id of the singleton dispatcher workflow.
@@ -51,6 +51,7 @@ RESUME_REQUESTED = "resume_requested"
 REVIEW_ACCEPTED = "review_accepted"
 REVIEW_REJECTED = "review_rejected"
 DROP_REQUESTED = "drop_requested"
+SETTINGS_CHANGED = "settings_changed"
 
 # Event types written by the board activities.
 REASON_STARTED = "reason_started"

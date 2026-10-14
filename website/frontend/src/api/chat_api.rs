@@ -12,9 +12,9 @@ use dioxus::prelude::*;
 use crate::api::error_util::to_server_fn_error;
 
 #[server]
-pub async fn chat_list_sessions() -> Result<Vec<ChatSessionItem>, ServerFnError> {
+pub async fn chat_list_sessions(include_boards: bool) -> Result<Vec<ChatSessionItem>, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::chat::list_chat_sessions(&user)
+    backend::api::chat::list_chat_sessions(&user, include_boards)
         .await
         .map_err(to_server_fn_error)
 }

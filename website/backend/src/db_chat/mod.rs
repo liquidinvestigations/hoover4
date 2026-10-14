@@ -219,16 +219,17 @@ pub async fn sessions_by_ids(session_ids: &[String]) -> anyhow::Result<Vec<ChatS
     Ok(rows)
 }
 
-/// Sessions of one user, most recently active first.
-pub async fn list_sessions(username: &str, limit: u32) -> anyhow::Result<Vec<ChatSessionItem>> {
+/// Sessions of one user, most recently active first. The explore sessions of the user's
+/// investigation boards are left out unless `include_boards` is true.
+pub async fn list_sessions(username: &str, limit: u32, include_boards: bool) -> anyhow::Result<Vec<ChatSessionItem>> {
     let client = get_global_client();
     let rows = client
         .query(&format!(
             "{SESSION_SELECT} WHERE username = ? AND is_deleted = 0 \
-             AND NOT startsWith(session_id, ?) ORDER BY updated_at DESC LIMIT ?"
+             AND (? OR NOT startsWith(session_id, ?)) ORDER BY updated_at DESC LIMIT ?"
         ))
         .bind(username)
-        // Explore sessions of investigation boards: the board explorer links to them.
+        .bind(include_boards)
         .bind(common::board_types::BOARD_SESSION_PREFIX)
         .bind(limit)
         .fetch_all::<ChatSessionRow>()

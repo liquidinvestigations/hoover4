@@ -2,6 +2,7 @@
 
 pub mod admin;
 pub mod agent;
+pub mod boards;
 pub mod chat;
 pub mod documents;
 pub mod feedback;

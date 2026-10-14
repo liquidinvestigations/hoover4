@@ -17,6 +17,8 @@ added, renamed or deleted in the code mechanically visible against this tree, an
 | `UI-EmailGraphPage` | `/email_graph/…` | - |
 | `UI-AiChatPage` | `/ai_chat` | - |
 | `UI-AiChatHistoryPage` | `/ai_chat/history` | - |
+| `UI-AiBoardCreatePage` | `/ai_chat/boards/new` | - |
+| `UI-AiBoardPage` | `/ai_chat/boards/:board_id` | - |
 | `UI-AiChatSessionPage` | `/ai_chat/c/…` | [`Chat.md`](Chat.md) |
 | `UI-AdminDashboardPage` | `/admin` | - |
 | `UI-AdminCollectionsPage` | `/admin/collections` | - |
@@ -37,8 +39,6 @@ added, renamed or deleted in the code mechanically visible against this tree, an
 | `UI-AdminLlmPage` | `/admin/llm` | - |
 | `UI-AdminAiStatusPage` | `/admin/ai_status` | - |
 | `UI-AdminMetricsPage` | `/admin/metrics` | - |
-| `UI-AdminBoardsPage` | `/admin/boards` | - |
-| `UI-AdminBoardPage` | `/admin/boards/:board_id` | - |
 | `UI-NotFoundPage` | anything else | - |
 
 ## Why most rows have no control table

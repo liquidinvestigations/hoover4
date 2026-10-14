@@ -13,7 +13,7 @@ use crate::components::chat_components::{
     doc_ref_card::{ChatDocRefCard, ChatDocRefRow},
     markdown_text::{MarkdownishText, referenced_handles},
     web_page::WebPageCard,
-    tool_cards::{ElapsedCounter, ToolCard, result_cards::TodoSummary},
+    tool_cards::{ElapsedCounter, ToolCard, result_cards::{BoardFactSummary, TodoSummary}},
     tool_run_summary::{run_duration_ms, timestamp_ms, tool_run_summary},
 };
 
@@ -115,6 +115,7 @@ pub fn ChatTranscript(
             && asked_question(&messages[..i]) == m.content
             && !m.content.is_empty();
         let reasoning_in_group = group_reasoning.values().any(|answer| *answer == i);
+        let board_fact = if m.role == ChatRole::Assistant { submitted_fact(&messages[..i]) } else { None };
         rsx! {
             div { "data-chat-message": "{m.seq}", style: "display: contents;",
             MessageEntry {
@@ -134,6 +135,7 @@ pub fn ChatTranscript(
                 repeat_question,
                 replaced,
                 reasoning_in_group,
+                board_fact,
                 draft,
             }
             }
@@ -661,6 +663,17 @@ fn asked_question(messages: &[ChatMessageItem]) -> String {
         .unwrap_or_default()
 }
 
+/// The arguments of the `submit_board_fact` call in the tool run just before an answer.
+/// Only a board explore turn has that tool, and its answer is the submitted fact.
+fn submitted_fact(messages: &[ChatMessageItem]) -> Option<String> {
+    messages
+        .iter()
+        .rev()
+        .take_while(|message| message.role == ChatRole::Tool || message.role.is_instruction())
+        .find(|message| message.tool_name == "submit_board_fact")
+        .map(|message| message.tool_input.clone())
+}
+
 fn read_more_source(messages: &[ChatMessageItem], index: usize) -> Option<(String, u32, u32)> {
     let input: serde_json::Value = serde_json::from_str(&messages.get(index)?.tool_input).ok()?;
     let input = input.get("input").unwrap_or(&input);
@@ -843,6 +856,9 @@ fn MessageEntry(
     /// True when the group before this answer shows its reasoning (`reasoning_groups`).
     #[props(default)]
     reasoning_in_group: bool,
+    /// The arguments of the `submit_board_fact` call that this answer reports (`submitted_fact`).
+    #[props(default)]
+    board_fact: Option<String>,
 ) -> Element {
     let ring = if highlight {
         "outline: 2px solid #F59E0B; outline-offset: 2px;"
@@ -942,6 +958,9 @@ fn MessageEntry(
                                 }
                             }
                         }
+                        }
+                        if let Some(tool_input) = board_fact.clone() {
+                            BoardFactSummary { tool_input }
                         }
                         FollowUpSuggestions { prompts: message.follow_up_prompts(), draft }
                     }

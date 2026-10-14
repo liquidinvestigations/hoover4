@@ -1,10 +1,20 @@
-//! `/ai_chat`, "What are you researching?" homepage.
+//! `/ai_chat`, the AI Chat homepage. The left column is the chat: "What are you
+//! researching?", the newest conversations and the composer. The right column is the board
+//! overview of the signed-in user: a card per board with its title, counts and a thumbnail
+//! of its graph, and a link to the create page. The boards need the chat models, so the
+//! column shows only while the chat gate is open.
 
 use common::chat_gate::ChatGate;
 use common::chat_types::ChatOptions;
 use dioxus::prelude::*;
 
+use common::board_types::BoardListItem;
+
 use crate::api::admin_api::{chat_list_models, chat_llm_configured};
+use crate::api::board_api::list_boards;
+use crate::api::error_util::user_facing_message;
+use crate::components::board_graph::BoardThumbnail;
+use crate::pages::admin::llm_reports::format_utc_ms;
 use crate::api::chat_api::{
     chat_create_session, chat_delete_session, chat_list_sessions, chat_send_message,
 };
@@ -17,7 +27,7 @@ const HOMEPAGE_CARD_LIMIT: usize = 6;
 
 #[component]
 pub fn AiChatPage() -> Element {
-    let sessions_res = use_resource(chat_list_sessions);
+    let sessions_res = use_resource(|| chat_list_sessions(false));
     let configured_res = use_resource(chat_llm_configured);
     let models_res = use_resource(chat_list_models);
     let mut draft = use_signal(String::new);
@@ -132,8 +142,10 @@ pub fn AiChatPage() -> Element {
         Title { "Hoover Search - AI Chat" }
         div {
             style: "width: 100%; height: 100%; background: #F5F6F8; box-sizing: border-box; \
-                    display: flex; flex-direction: column; align-items: center; \
-                    padding: 23px; overflow: auto;",
+                    display: flex; gap: 23px; padding: 23px; overflow: auto;",
+        div {
+            class: "x-ai-chat-column",
+            style: "flex: 1 1 60%; min-width: 0; display: flex; flex-direction: column; align-items: center;",
             h1 {
                 style: "margin: 0 0 23px; font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 600; color: var(--x-ink-strong); \
                         text-align: center;",
@@ -193,6 +205,81 @@ pub fn AiChatPage() -> Element {
                     "Starting conversation\u{2026}"
                 }
             }
+        }
+        if gate_open {
+            BoardsOverview {}
+        }
+        }
+    }
+}
+
+/// The right column: a card per board of the user, newest first.
+#[component]
+fn BoardsOverview() -> Element {
+    let boards_res = use_resource(list_boards);
+    rsx! {
+        div {
+            class: "x-boards-overview",
+            style: "flex: 0 1 400px; min-width: 300px; display: flex; flex-direction: column; gap: 11px;",
+            div { style: "display: flex; align-items: center; justify-content: space-between;",
+                h2 { style: "margin: 0; font-size: var(--x-text-section); font-weight: 600; color: var(--x-ink-strong);", "Investigation boards" }
+                Link {
+                    class: "x-board-new",
+                    to: Route::AiBoardCreatePage {},
+                    style: "font-size: var(--x-text-sm); color: var(--x-link); text-decoration: none; font-weight: 500;",
+                    "New board"
+                }
+            }
+            match &*boards_res.read() {
+                None => rsx! { div { style: "color: var(--x-ink-faint); font-size: var(--x-text-sm);", "Loading boards\u{2026}" } },
+                Some(Err(e)) => rsx! {
+                    div { class: "x-error-display", style: "color: var(--x-danger); font-size: var(--x-text-sm);",
+                        "Could not load the boards: {user_facing_message(e)}"
+                    }
+                },
+                Some(Ok(list)) if list.is_empty() => rsx! {
+                    div { style: "color: var(--x-ink-muted); font-size: var(--x-text-sm);",
+                        "You have no board. A board runs a long investigation as a sequence of agent explores, and you review its answers."
+                    }
+                },
+                Some(Ok(list)) => rsx! {
+                    for board in list.clone() {
+                        BoardCard { key: "{board.board_id}", board }
+                    }
+                },
+            }
+        }
+    }
+}
+
+#[component]
+fn BoardCard(board: BoardListItem) -> Element {
+    let status = match board.status.as_str() {
+        "active" => "Active",
+        "paused" => "Paused",
+        "review" => "Waits for review",
+        "completed" => "Completed",
+        "dropped" => "Dropped",
+        _ => "Unknown",
+    };
+    let goals = if board.goals == 1 { "1 goal".to_string() } else { format!("{} goals", board.goals) };
+    rsx! {
+        Link {
+            class: "x-board-card",
+            "data-board-id": "{board.board_id}",
+            to: Route::AiBoardPage { board_id: board.board_id.clone(), selected: String::new() },
+            style: "display: block; background: white; border: 1px solid; border-color: var(--x-border); border-radius: 12px; \
+                    padding: 12px 14px; text-decoration: none; color: inherit;",
+            div { style: "display: flex; justify-content: space-between; gap: 8px;",
+                span { style: "font-size: var(--x-text-md); font-weight: 600; color: var(--x-ink-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", "{board.title}" }
+                span { style: "font-size: var(--x-text-xs); color: var(--x-ink-muted); white-space: nowrap;", "{status}" }
+            }
+            BoardThumbnail { input: board.graph.clone() }
+            div { style: "font-size: var(--x-text-xs); color: var(--x-ink-muted); line-height: 1.5;",
+                "{goals}, {board.facts_sourced} sourced, {board.facts_inferred} inferred, {board.facts_not_found} not found. "
+                "{board.explores_used} of {board.max_explores} explores, {board.running} running, {board.open} open."
+            }
+            div { style: "font-size: var(--x-text-xs); color: var(--x-ink-faint); margin-top: 2px;", "Updated {format_utc_ms(board.updated_ms)}" }
         }
     }
 }

@@ -1,6 +1,7 @@
 //! Frontend component module.
 
 pub mod admin_components;
+pub mod board_graph;
 pub mod chat_components;
 pub mod document_view_components;
 pub mod error_boundary;

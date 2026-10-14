@@ -11,7 +11,7 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `transcript.rs` | User bubbles, assistant markdown, tool disclosures, inline doc cards, the retry-attempt disclosure, and the token footer under an answer. |
 | `tool_cards/mod.rs` | The card registry dispatches on tool name and provides card chrome, elapsed counters, and JSON helpers. |
 | `activity.rs` | The activity line of a turn in progress. |
-| `tool_cards/result_cards.rs` | Result-page, read, citation, todo call, task summary, plan, and question cards. |
+| `tool_cards/result_cards.rs` | Result-page, read, citation, todo call, task summary, plan, question and board fact cards. |
 | `tool_cards/web_search_card.rs` | `web_search`: pending → collapsed → expanded result list → the before/after reranking popup. |
 | `tool_cards/browser_card.rs` | Every `browser_*` tool: action label, capture thumbnails, page text, and the archived page in a sandboxed iframe. |
 | `tool_cards/entities_card.rs` | `list_document_entities`: the two tiers apart, each rule-validated value a link to its explainer card in the document viewer. |
@@ -54,6 +54,10 @@ while its turn is active and not interrupted. A queued turn adds the slot it wai
 under that line. `activity.rs` holds it.
 The transcript root carries `data-chat-turn`, the state of the newest turn: `active`, `queued-model`, `queued-tool`, `interrupted` or `idle`.
 A browser test reads the end of a turn from it and from the user message seq (`data-chat-user`).
+A board explore turn ends with `submit_board_fact`. Its answer is the submitted fact, which
+renders as an ordinary answer with its citation cards. Under the answer, the board fact
+summary (`x-board-fact-summary`) states the kind of the fact and its open questions. The
+call itself is a card inside its group.
 
 ## The internet option stays fixed
 

@@ -48,9 +48,11 @@ use crate::db_utils::clickhouse_utils::list_permitted_collections;
 /// Cap on sessions returned to the history sidebar / homepage.
 const SESSION_LIST_LIMIT: u32 = 100;
 
-pub async fn list_chat_sessions(user: &CurrentUser) -> anyhow::Result<Vec<ChatSessionItem>> {
+/// The sessions of the user. `include_boards` adds the explore sessions of the user's
+/// investigation boards, which the history shows on request.
+pub async fn list_chat_sessions(user: &CurrentUser, include_boards: bool) -> anyhow::Result<Vec<ChatSessionItem>> {
     let username = user.username.as_str();
-    db_chat::list_sessions(username, SESSION_LIST_LIMIT).await
+    db_chat::list_sessions(username, SESSION_LIST_LIMIT, include_boards).await
 }
 
 /// Start a new conversation.

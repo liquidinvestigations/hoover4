@@ -20,9 +20,8 @@ use crate::pages::admin::{
     settings::AdminSettingsPage, user_detail::AdminUserPage,
     user_llm::AdminUserLlmPage, users_list::AdminUsersPage,
     failures::AdminFailuresPage, failure_detail::AdminFailureDetailPage, feedback::AdminFeedbackPage,
-    board_explorer::AdminBoardPage, boards_list::AdminBoardsPage,
 };
-use crate::pages::ai_chat::{AiChatHistoryPage, AiChatPage, AiChatSessionPage};
+use crate::pages::ai_chat::{AiBoardCreatePage, AiBoardPage, AiChatHistoryPage, AiChatPage, AiChatSessionPage};
 use crate::pages::email_graph_page::EmailGraphPage;
 use crate::pages::file_browser_page::{
     FileBrowserCollectionPage, FileBrowserCollectionsPage, FileBrowserPage,
@@ -92,6 +91,14 @@ pub enum Route {
 
     #[route("/ai_chat/history")]
     AiChatHistoryPage {},
+
+    // /ai_chat/boards/new must be declared before the board page, or "new" is a board id.
+    #[route("/ai_chat/boards/new")]
+    AiBoardCreatePage {},
+
+    // `selected` is the fact or intent id that the detail pane shows, empty for none.
+    #[route("/ai_chat/boards/:board_id?:selected")]
+    AiBoardPage { board_id: String, selected: String },
 
     #[route("/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state")]
     AiChatSessionPage {
@@ -167,13 +174,6 @@ pub enum Route {
 
     #[route("/admin/metrics")]
     AdminMetricsPage {},
-
-    #[route("/admin/boards")]
-    AdminBoardsPage {},
-
-    // `selected` is the fact or intent id that the detail pane shows, empty for none.
-    #[route("/admin/boards/:board_id?:selected")]
-    AdminBoardPage { board_id: String, selected: String },
 
     // LAST, and it must stay last: the router tries the variants in order, so anything
     // declared after this would be unreachable. It also catches a route whose parameter

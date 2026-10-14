@@ -18,11 +18,12 @@
 //!
 //! y comes from a plain force loop: pairwise repulsion, attraction along edges, damping.
 //!
-//! **Positions persist across navigations.** The map is keyed by `(dataset, hash)` and
-//! survives a selection change; on a diff, surviving nodes keep their coordinates and new
-//! nodes are seeded at the centroid of the neighbours they arrived with. The loop then
-//! runs a BOUNDED number of further ticks and stops. A simulation that never settles is a
-//! battery drain on a page people leave open, and this one is left open by design.
+//! **The layout settles before it is shown.** Each change of the graph runs `SETTLE_TICKS`
+//! ticks in one pass and renders only the result, so no node moves on screen. Positions
+//! persist across navigations: the map is keyed by `(dataset, hash)` and survives a
+//! selection change. On a diff, surviving nodes start from their coordinates and new nodes
+//! start at the centroid of the neighbours they arrived with, so the settled picture stays
+//! close to the one before it.
 
 use std::collections::HashMap;
 
@@ -43,11 +44,8 @@ use crate::routes::Route;
 const VIEW_WIDTH: f64 = 1000.0;
 const VIEW_HEIGHT: f64 = 620.0;
 
-/// Ticks per navigation, then the loop stops. See the module doc.
-const MAX_TICKS: u32 = 120;
-/// Milliseconds between ticks. 16 would be a frame; 25 is deliberately slower, because
-/// this is a settling animation and not a game loop.
-const TICK_MS: u64 = 25;
+/// Ticks of one settle pass. See the module doc.
+const SETTLE_TICKS: u32 = 300;
 
 /// How hard the time axis pulls. Strong, because x is the one axis that carries meaning.
 const TIME_SPRING: f64 = 0.08;
@@ -115,7 +113,6 @@ fn EmailGraphContent(
     // selection change (which only replaces the URL) and is rebuilt only when the page
     // itself is remounted.
     let positions = use_signal(HashMap::<(String, String), NodePosition>::new);
-    let ticks = use_signal(|| 0_u32);
 
     let selected_value = selected.read().clone().or_else(|| Some(centre_value.clone()));
 
@@ -143,7 +140,6 @@ fn EmailGraphContent(
                 graph: value,
                 selected: selected_value.clone(),
                 positions,
-                ticks,
                 on_node_click,
             }
         },
@@ -169,72 +165,25 @@ fn EmailGraphContent(
     }
 }
 
-/// The SVG and the loop that moves it.
+/// The SVG of the settled layout.
 #[component]
 fn EmailGraphCanvas(
     graph: ReadSignal<EmailGraph>,
     selected: ReadSignal<Option<DocumentIdentifier>>,
     positions: Signal<HashMap<(String, String), NodePosition>>,
-    ticks: Signal<u32>,
     on_node_click: Callback<DocumentIdentifier>,
 ) -> Element {
     let value = graph.read().clone();
 
-    // The diff, once per graph change: surviving nodes keep their coordinates, departed
-    // nodes are dropped, and new ones are seeded. Seeding at the centroid of the
-    // neighbours a node arrived with is what stops a new node from flying in from the
-    // corner across the whole picture.
-    let node_keys: Vec<(String, String)> = value
-        .nodes
-        .iter()
-        .map(|n| (n.document_identifier.collection_dataset.clone(), n.document_identifier.file_hash.clone()))
-        .collect();
-    use_effect({
-        let value = value.clone();
-        let node_keys = node_keys.clone();
+    // The settled layout, once per graph change. It starts from the persisted positions
+    // (`seed_positions`), and the effect stores the result for the next change.
+    let settled = use_memo(move || settle(&graph.read(), &positions.peek()));
+    use_effect(move || {
         let mut positions = positions;
-        let mut ticks = ticks;
-        move || {
-            let seeded = seed_positions(&value, &node_keys, &positions.peek().clone());
-            if seeded != *positions.peek() {
-                positions.set(seeded);
-                // The diff is done, so the loop gets its budget back. That is exactly
-                // what "iterate the positions after the add/remove diff" means.
-                ticks.set(0);
-            }
-        }
+        positions.set(settled.read().clone());
     });
 
-    // The loop. It is a single future that ends: no timer survives it, and it restarts
-    // only because `ticks` was reset by a diff above.
-    use_future({
-        let edges = value.edges.clone();
-        let nodes = value.nodes.clone();
-        let mut positions = positions;
-        let mut ticks = ticks;
-        move || {
-            let edges = edges.clone();
-            let nodes = nodes.clone();
-            async move {
-                loop {
-                    if *ticks.peek() >= MAX_TICKS {
-                        // `n0_future::time::sleep`, never `gloo_timers`: gloo is
-                        // wasm-only and this file is compiled into the server-side render
-                        // build as well.
-                        n0_future::time::sleep(std::time::Duration::from_millis(200)).await;
-                        continue;
-                    }
-                    let mut next = positions.peek().clone();
-                    simulate_tick(&nodes, &edges, &mut next);
-                    positions.set(next);
-                    ticks += 1;
-                    n0_future::time::sleep(std::time::Duration::from_millis(TICK_MS)).await;
-                }
-            }
-        }
-    });
-
-    let layout = positions.read().clone();
+    let layout = settled.read().clone();
     let selected_key = selected
         .read()
         .clone()
@@ -364,6 +313,19 @@ fn target_x(nodes: &[EmailGraphNode]) -> HashMap<(String, String), f64> {
             (node_key(node), VIEW_WIDTH / 2.0 + normalised * (VIEW_WIDTH / 2.0 - margin))
         })
         .collect()
+}
+
+/// The positions of `graph` after the diff and `SETTLE_TICKS` ticks.
+fn settle(
+    graph: &EmailGraph,
+    previous: &HashMap<(String, String), NodePosition>,
+) -> HashMap<(String, String), NodePosition> {
+    let node_keys: Vec<(String, String)> = graph.nodes.iter().map(node_key).collect();
+    let mut positions = seed_positions(graph, &node_keys, previous);
+    for _ in 0..SETTLE_TICKS {
+        simulate_tick(&graph.nodes, &graph.edges, &mut positions);
+    }
+    positions
 }
 
 /// The add/remove diff. Pure so it can be tested without a runtime.
@@ -652,13 +614,28 @@ mod tests {
         for n in &nodes {
             positions.insert(node_key(n), NodePosition { x: 500.0, y: 300.0, vx: 0.0, vy: 0.0 });
         }
-        for _ in 0..MAX_TICKS {
+        for _ in 0..SETTLE_TICKS {
             simulate_tick(&nodes, &edges, &mut positions);
         }
         for position in positions.values() {
             assert!(position.x.is_finite() && position.y.is_finite());
             assert!((40.0..=VIEW_WIDTH - 40.0).contains(&position.x));
             assert!((30.0..=VIEW_HEIGHT - 46.0).contains(&position.y));
+        }
+    }
+
+    #[test]
+    fn a_settled_layout_does_not_move_on_the_next_tick() {
+        let graph = EmailGraph {
+            nodes: vec![node("a", 1_000, true), node("b", 2_000, true), node("c", 3_000, true), node("d", 0, false)],
+            edges: vec![edge("a", "b", 0.9), edge("b", "c", 0.9), edge("a", "d", 0.5)],
+            ..Default::default()
+        };
+        let settled = settle(&graph, &HashMap::new());
+        let mut next = settled.clone();
+        simulate_tick(&graph.nodes, &graph.edges, &mut next);
+        for (key, position) in &settled {
+            assert!((next[key].x - position.x).abs() < 1.0 && (next[key].y - position.y).abs() < 1.0);
         }
     }
 }

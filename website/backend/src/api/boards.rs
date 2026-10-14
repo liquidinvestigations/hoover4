@@ -1,4 +1,4 @@
-//! Investigation boards: the admin server functions.
+//! Investigation boards: the server functions of the board pages under AI Chat.
 //!
 //! The website writes three kinds of rows: the board definition at creation and its
 //! tombstone at a drop, the origin, goal and correction facts, and person events (hints,
@@ -12,14 +12,22 @@
 //! explore sessions through the chat deletion path, because the dispatcher no longer sees a
 //! tombstoned board.
 //!
-//! Only the owner of a board can read it or act on it. Anyone else gets not-found, which is
-//! the convention of `auth::guard::NOT_FOUND`.
+//! Every user can own boards. Only the owner of a board can read it or act on it. This
+//! applies to administrators too. Anyone else gets not-found, which is the convention of
+//! `auth::guard::NOT_FOUND`. A board starts only while AI chat is open
+//! (`chat::gate::evaluate_live_chat_gate`), because its explores are chat turns.
+//!
+//! The explore model and the budgets are not inputs. The website writes the base values in
+//! the board row, and the worker computes the budget from the events
+//! (`tasks/P_board/fold.py`, `Folded.max_explores`). A board can have several goals: each
+//! is a fact of kind `goal`, with the ids of `common::board_types::goal_id`.
 
 use std::collections::HashMap;
 
 use common::board_types::{
-    BoardCitation, BoardCreateRequest, BoardDefinition, BoardEvent, BoardFact, BoardIntent,
-    BoardListItem, BoardSnapshot, BOARD_SESSION_PREFIX,
+    goal_id, BoardCitation, BoardCreateRequest, BoardDefinition, BoardEvent, BoardFact,
+    BoardGraphInput, BoardIntent, BoardListItem, BoardReviewGoal, BoardSnapshot,
+    BOARD_SESSION_PREFIX, MAX_GOALS,
 };
 use common::current_user::CurrentUser;
 use time::OffsetDateTime;
@@ -38,6 +46,17 @@ pub const BOARD_TASK_QUEUE: &str = "board-queue";
 
 const MAX_TEXT: usize = 4000;
 
+/// The base budget that the website writes in a new board row. The worker reads the budget
+/// from the events, so these values describe the start only.
+/// **Mirrored in `main_services/processing/tasks/P_board/model.py`** (`BASE_EXPLORES`,
+/// `BASE_EXPLORE_STEPS`).
+const BASE_EXPLORES: u16 = 12;
+const BASE_EXPLORE_STEPS: u16 = 60;
+/// Explores of one board that may run at once.
+const MAX_PARALLEL: u8 = 2;
+/// The characters of a fact text in an overview thumbnail.
+const THUMB_TEXT: usize = 80;
+
 #[derive(Debug, Clone, clickhouse::Row, serde::Serialize, serde::Deserialize)]
 struct BoardRow {
     board_id: String,
@@ -50,6 +69,7 @@ struct BoardRow {
     max_explores: u16,
     max_parallel: u8,
     explore_step_budget: u16,
+    internet_tools: u8,
     #[serde(with = "clickhouse::serde::time::datetime64::millis")]
     created_at: OffsetDateTime,
     #[serde(with = "clickhouse::serde::time::datetime64::millis")]
@@ -110,6 +130,7 @@ struct StateRow {
 
 #[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
 struct IntentRow {
+    board_id: String,
     intent_id: String,
     from_facts: Vec<String>,
     objective: String,
@@ -142,7 +163,6 @@ fn clip(text: &str) -> String {
 
 /// The board, when it exists, is not dropped, and belongs to `user`. Not-found otherwise.
 async fn owned_board(user: &CurrentUser, board_id: &str) -> anyhow::Result<BoardRow> {
-    guard::require_admin(user)?;
     let rows = get_global_client()
         .query("SELECT ?fields FROM boards FINAL WHERE board_id = ? AND is_deleted = 0")
         .bind(board_id)
@@ -185,9 +205,109 @@ async fn write_fact(board_id: &str, fact_id: &str, kind: &str, text: &str, by: &
     insert_row("board_facts", &row).await
 }
 
-/// Every board of the caller.
-pub async fn admin_list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardListItem>> {
-    guard::require_admin(user)?;
+/// The rejection of each rejected fact (who, when, why), and the facts that each correction
+/// corrects. A correction comes from a rejected review. It corrects the facts that the review
+/// named: the `from` of its event, or for an event written before that field, the facts of the
+/// newest review that reason proposed before it.
+#[derive(Default)]
+struct EventFacts {
+    rejections: HashMap<String, (String, i64, String)>,
+    corrects: HashMap<String, Vec<String>>,
+}
+
+fn event_facts(events: &[EventRow]) -> EventFacts {
+    let mut out = EventFacts::default();
+    let mut last_review: Vec<String> = Vec::new();
+    for event in events {
+        let payload: serde_json::Value = serde_json::from_str(&event.payload_json).unwrap_or_default();
+        match event.event_type.as_str() {
+            "fact_rejected" => {
+                let reason = payload["reason"].as_str().unwrap_or("").to_string();
+                out.rejections.insert(event.subject.clone(), (event.actor.clone(), millis(event.created_at), reason));
+            }
+            "reason_result" if payload["outcome"] == "review" => {
+                last_review = strings(&payload["review"]["from"]);
+            }
+            "review_rejected" => {
+                let from = strings(&payload["from"]);
+                out.corrects.insert(event.subject.clone(), if from.is_empty() { last_review.clone() } else { from });
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+fn strings(value: &serde_json::Value) -> Vec<String> {
+    value.as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default()
+}
+
+/// The review of each goal from the state summary. A summary written before goal reviews
+/// existed has one review, of the first goal.
+fn review_goals(summary: &serde_json::Value) -> Vec<BoardReviewGoal> {
+    let goals: Vec<BoardReviewGoal> = summary["review_goals"]
+        .as_array()
+        .map(|list| {
+            list.iter()
+                .map(|g| BoardReviewGoal {
+                    goal: g["goal"].as_str().unwrap_or("").to_string(),
+                    from: strings(&g["from"]),
+                    statement: g["statement"].as_str().unwrap_or("").to_string(),
+                })
+                .filter(|g| !g.goal.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    let from = strings(&summary["review_from"]);
+    if goals.is_empty() && !from.is_empty() {
+        return vec![BoardReviewGoal {
+            goal: goal_id(1),
+            from,
+            statement: summary["review_statement"].as_str().unwrap_or("").to_string(),
+        }];
+    }
+    goals
+}
+
+fn board_fact(f: FactRow, marks: &EventFacts, citations: Vec<BoardCitation>) -> BoardFact {
+    let rejection = marks.rejections.get(&f.fact_id).cloned();
+    BoardFact {
+        rejected: rejection.is_some(),
+        rejected_by: rejection.as_ref().map(|r| r.0.clone()).unwrap_or_default(),
+        rejected_ms: rejection.as_ref().map(|r| r.1).unwrap_or(0),
+        rejected_reason: rejection.map(|r| r.2).unwrap_or_default(),
+        corrects: marks.corrects.get(&f.fact_id).cloned().unwrap_or_default(),
+        created_by: f.created_by,
+        citations,
+        created_ms: millis(f.created_at),
+        fact_id: f.fact_id,
+        kind: f.kind,
+        text: f.text,
+        intent_id: f.intent_id,
+        session_id: f.session_id,
+        open_questions: f.open_questions,
+        problems: f.problems,
+    }
+}
+
+fn board_intent(i: IntentRow) -> BoardIntent {
+    BoardIntent {
+        created_ms: millis(i.created_at),
+        intent_id: i.intent_id,
+        from_facts: i.from_facts,
+        objective: i.objective,
+        brief: i.brief,
+        state: i.state,
+        attempts: u32::from(i.attempts),
+        session_id: i.session_id,
+        fact_id: i.fact_id,
+        question: i.question,
+        last_error: i.last_error,
+    }
+}
+
+/// Every board of the caller, with the graph of its thumbnail.
+pub async fn list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardListItem>> {
     let client = get_global_client();
     let boards = client
         .query("SELECT ?fields FROM boards FINAL WHERE owner = ? AND is_deleted = 0 ORDER BY created_at DESC")
@@ -195,6 +315,9 @@ pub async fn admin_list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardLi
         .fetch_all::<BoardRow>()
         .await?;
     let ids: Vec<String> = boards.iter().map(|b| b.board_id.clone()).collect();
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
     let states: HashMap<String, StateRow> = client
         .query("SELECT ?fields FROM board_state FINAL WHERE board_id IN ?")
         .bind(&ids)
@@ -203,10 +326,21 @@ pub async fn admin_list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardLi
         .into_iter()
         .map(|s| (s.board_id.clone(), s))
         .collect();
-    let fact_counts: Vec<(String, String, u64)> = client
-        .query("SELECT board_id, kind, count() FROM board_facts FINAL WHERE board_id IN ? GROUP BY board_id, kind")
+    let facts = client
+        .query("SELECT ?fields FROM board_facts FINAL WHERE board_id IN ? ORDER BY created_at, fact_id")
         .bind(&ids)
-        .fetch_all()
+        .fetch_all::<FactRow>()
+        .await?;
+    let intents = client
+        .query("SELECT ?fields FROM board_intents FINAL WHERE board_id IN ? ORDER BY created_at, intent_id")
+        .bind(&ids)
+        .fetch_all::<IntentRow>()
+        .await?;
+    let events = client
+        .query("SELECT ?fields FROM board_events FINAL WHERE board_id IN ? \
+                AND event_type IN ('fact_rejected', 'review_rejected', 'reason_result') ORDER BY created_at, event_id")
+        .bind(&ids)
+        .fetch_all::<EventRow>()
         .await?;
     let newest: HashMap<String, i64> = client
         .query("SELECT board_id, toUnixTimestamp64Milli(max(created_at)) FROM board_events FINAL WHERE board_id IN ? GROUP BY board_id")
@@ -222,24 +356,41 @@ pub async fn admin_list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardLi
             let summary: serde_json::Value = state
                 .and_then(|s| serde_json::from_str(&s.summary_json).ok())
                 .unwrap_or_default();
-            let intents = &summary["intents"];
-            let count = |kind: &str| {
-                fact_counts
-                    .iter()
-                    .filter(|(id, k, _)| *id == b.board_id && k == kind)
-                    .map(|(_, _, n)| *n as u32)
-                    .sum()
-            };
+            let board_events: Vec<EventRow> = events.iter().filter(|e| e.board_id == b.board_id).cloned().collect();
+            let marks = event_facts(&board_events);
+            let board_facts: Vec<BoardFact> = facts
+                .iter()
+                .filter(|f| f.board_id == b.board_id)
+                .cloned()
+                .map(|mut f| {
+                    f.text = f.text.chars().take(THUMB_TEXT).collect();
+                    board_fact(f, &marks, Vec::new())
+                })
+                .collect();
+            let count = |kind: &str| board_facts.iter().filter(|f| f.kind == kind && !f.rejected).count() as u32;
+            let status = state.map(|s| s.status.clone()).unwrap_or_else(|| "active".to_string());
             BoardListItem {
-                status: state.map(|s| s.status.clone()).unwrap_or_else(|| "active".to_string()),
+                goals: count("goal"),
                 facts_sourced: count("sourced"),
                 facts_inferred: count("inferred"),
                 facts_not_found: count("not_found"),
-                running: intents["running"].as_u64().unwrap_or(0) as u32,
-                open: intents["open"].as_u64().unwrap_or(0) as u32,
+                running: summary["intents"]["running"].as_u64().unwrap_or(0) as u32,
+                open: summary["intents"]["open"].as_u64().unwrap_or(0) as u32,
                 explores_used: state.map(|s| s.explores_used).unwrap_or(0),
-                max_explores: u32::from(b.max_explores),
+                max_explores: summary["max_explores"].as_u64().unwrap_or(u64::from(BASE_EXPLORES)) as u32,
                 updated_ms: newest.get(&b.board_id).copied().unwrap_or_else(|| millis(b.created_at)),
+                graph: BoardGraphInput {
+                    status: status.clone(),
+                    intents: intents
+                        .iter()
+                        .filter(|i| i.board_id == b.board_id)
+                        .cloned()
+                        .map(board_intent)
+                        .collect(),
+                    facts: board_facts,
+                    review_goals: review_goals(&summary),
+                },
+                status,
                 board_id: b.board_id,
                 title: b.title,
             }
@@ -248,22 +399,27 @@ pub async fn admin_list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardLi
 }
 
 /// Create a board: its definition, its origin and goal facts, and its first events.
-pub async fn admin_create_board(user: &CurrentUser, request: BoardCreateRequest) -> anyhow::Result<String> {
-    guard::require_admin(user)?;
+pub async fn create_board(user: &CurrentUser, request: BoardCreateRequest) -> anyhow::Result<String> {
+    if !crate::api::chat::gate::evaluate_live_chat_gate().await.is_open() {
+        anyhow::bail!("AI chat is closed, so a board cannot start");
+    }
     let title = clip(&request.title);
-    let goal = clip(&request.goal);
-    if title.is_empty() || goal.is_empty() {
+    let goals: Vec<String> = request.goals.iter().map(|g| clip(g)).filter(|g| !g.is_empty()).collect();
+    if title.is_empty() || goals.is_empty() {
         anyhow::bail!("a board needs a title and a goal");
     }
-    let existing = crate::db_utils::clickhouse_utils::list_collections().await?;
+    if goals.len() > MAX_GOALS {
+        anyhow::bail!("a board has at most {MAX_GOALS} goals");
+    }
+    let permitted = crate::db_auth::collections::permitted_collections(&user.username).await?;
     let collections: Vec<String> = request
         .collections
         .iter()
-        .filter(|c| existing.contains(c))
+        .filter(|c| permitted.contains(c))
         .cloned()
         .collect();
     if collections.is_empty() {
-        anyhow::bail!("choose at least one collection that exists");
+        anyhow::bail!("choose at least one collection that you can read");
     }
     let board_id = new_id();
     let created = now();
@@ -271,13 +427,14 @@ pub async fn admin_create_board(user: &CurrentUser, request: BoardCreateRequest)
         board_id: board_id.clone(),
         owner: user.username.clone(),
         title,
-        goal: goal.clone(),
+        goal: goals[0].clone(),
         context: clip(&request.context),
         collections: collections.clone(),
-        llm_model: request.llm_model.trim().to_string(),
-        max_explores: request.max_explores.clamp(1, 100),
-        max_parallel: request.max_parallel.clamp(1, 4),
-        explore_step_budget: request.explore_step_budget.clamp(8, 200),
+        llm_model: String::new(),
+        max_explores: BASE_EXPLORES,
+        max_parallel: MAX_PARALLEL,
+        explore_step_budget: BASE_EXPLORE_STEPS,
+        internet_tools: u8::from(request.internet_tools),
         created_at: created,
         updated_at: created,
         is_deleted: 0,
@@ -289,12 +446,27 @@ pub async fn admin_create_board(user: &CurrentUser, request: BoardCreateRequest)
         row.context
     );
     write_fact(&board_id, "origin", "origin", origin.trim(), &user.username).await?;
-    write_fact(&board_id, "goal", "goal", &goal, &user.username).await?;
+    for (index, goal) in goals.iter().enumerate() {
+        write_fact(&board_id, &goal_id(index + 1), "goal", goal, &user.username).await?;
+    }
     write_event(&board_id, "board_created", &user.username, "", serde_json::json!({})).await?;
     for hint in request.hints.iter().map(|h| clip(h)).filter(|h| !h.is_empty()) {
         write_event(&board_id, "hint_added", &user.username, "", serde_json::json!({"text": hint})).await?;
     }
     Ok(board_id)
+}
+
+/// Turn the internet tools of a board's later explores on or off. The board row gets a new
+/// version, and an event records the change for the timeline.
+pub async fn board_set_internet_tools(user: &CurrentUser, board_id: String, on: bool) -> anyhow::Result<()> {
+    let mut board = owned_board(user, &board_id).await?;
+    if (board.internet_tools != 0) == on {
+        return Ok(());
+    }
+    board.internet_tools = u8::from(on);
+    board.updated_at = now();
+    insert_row("boards", &board).await?;
+    write_event(&board_id, "settings_changed", &user.username, "", serde_json::json!({"internet_tools": on})).await
 }
 
 /// A sentence for one event, from its type and payload.
@@ -309,6 +481,13 @@ fn summarise(event_type: &str, subject: &str, payload: &serde_json::Value) -> St
         "review_accepted" => "The review was accepted. The board is complete.".to_string(),
         "review_rejected" => format!("The review was rejected: {}", text("correction")),
         "drop_requested" => "The board was dropped.".to_string(),
+        "settings_changed" => {
+            if payload["internet_tools"].as_bool().unwrap_or(false) {
+                "The internet tools were turned on for later explores.".to_string()
+            } else {
+                "The internet tools were turned off for later explores.".to_string()
+            }
+        }
         "reason_started" => format!("Reason {subject} started."),
         "reason_result" => {
             let outcome = text("outcome");
@@ -336,7 +515,7 @@ fn summarise(event_type: &str, subject: &str, payload: &serde_json::Value) -> St
 }
 
 /// The whole board.
-pub async fn admin_board_snapshot(user: &CurrentUser, board_id: String) -> anyhow::Result<BoardSnapshot> {
+pub async fn board_snapshot(user: &CurrentUser, board_id: String) -> anyhow::Result<BoardSnapshot> {
     let board = owned_board(user, &board_id).await?;
     let client = get_global_client();
     let state = client
@@ -366,11 +545,7 @@ pub async fn admin_board_snapshot(user: &CurrentUser, board_id: String) -> anyho
         .bind(&board_id)
         .fetch_all::<IntentRow>()
         .await?;
-    let rejected: Vec<String> = events
-        .iter()
-        .filter(|e| e.event_type == "fact_rejected")
-        .map(|e| e.subject.clone())
-        .collect();
+    let marks = event_facts(&events);
     let summary: serde_json::Value = state
         .as_ref()
         .and_then(|s| serde_json::from_str(&s.summary_json).ok())
@@ -381,15 +556,14 @@ pub async fn admin_board_snapshot(user: &CurrentUser, board_id: String) -> anyho
         reasons_done: state.as_ref().map(|s| s.reasons_done).unwrap_or(0),
         stall_count: state.as_ref().map(|s| u32::from(s.stall_count)).unwrap_or(0),
         review_statement: summary["review_statement"].as_str().unwrap_or("").to_string(),
-        review_from: summary["review_from"]
-            .as_array()
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
-            .unwrap_or_default(),
+        review_from: strings(&summary["review_from"]),
+        review_goals: review_goals(&summary),
+        max_explores: summary["max_explores"].as_u64().unwrap_or(u64::from(BASE_EXPLORES)) as u32,
+        explore_steps: summary["explore_steps"].as_u64().unwrap_or(u64::from(BASE_EXPLORE_STEPS)) as u32,
         facts: facts
             .into_iter()
-            .map(|f| BoardFact {
-                rejected: rejected.contains(&f.fact_id),
-                citations: citations
+            .map(|f| {
+                let cited = citations
                     .iter()
                     .filter(|c| c.fact_id == f.fact_id)
                     .map(|c| BoardCitation {
@@ -402,33 +576,11 @@ pub async fn admin_board_snapshot(user: &CurrentUser, board_id: String) -> anyho
                         quote: c.quote.clone(),
                         quote_verified: c.quote_verified != 0,
                     })
-                    .collect(),
-                created_ms: millis(f.created_at),
-                fact_id: f.fact_id,
-                kind: f.kind,
-                text: f.text,
-                intent_id: f.intent_id,
-                session_id: f.session_id,
-                open_questions: f.open_questions,
-                problems: f.problems,
+                    .collect();
+                board_fact(f, &marks, cited)
             })
             .collect(),
-        intents: intents
-            .into_iter()
-            .map(|i| BoardIntent {
-                created_ms: millis(i.created_at),
-                intent_id: i.intent_id,
-                from_facts: i.from_facts,
-                objective: i.objective,
-                brief: i.brief,
-                state: i.state,
-                attempts: u32::from(i.attempts),
-                session_id: i.session_id,
-                fact_id: i.fact_id,
-                question: i.question,
-                last_error: i.last_error,
-            })
-            .collect(),
+        intents: intents.into_iter().map(board_intent).collect(),
         events: events
             .into_iter()
             .map(|e| {
@@ -452,14 +604,13 @@ pub async fn admin_board_snapshot(user: &CurrentUser, board_id: String) -> anyho
             context: board.context,
             collections: board.collections,
             llm_model: board.llm_model,
-            max_explores: board.max_explores,
             max_parallel: board.max_parallel,
-            explore_step_budget: board.explore_step_budget,
+            internet_tools: board.internet_tools != 0,
         },
     })
 }
 
-pub async fn admin_board_add_hint(user: &CurrentUser, board_id: String, text: String) -> anyhow::Result<()> {
+pub async fn board_add_hint(user: &CurrentUser, board_id: String, text: String) -> anyhow::Result<()> {
     owned_board(user, &board_id).await?;
     let text = clip(&text);
     if text.is_empty() {
@@ -468,7 +619,7 @@ pub async fn admin_board_add_hint(user: &CurrentUser, board_id: String, text: St
     write_event(&board_id, "hint_added", &user.username, "", serde_json::json!({"text": text})).await
 }
 
-pub async fn admin_board_reject_fact(user: &CurrentUser, board_id: String, fact_id: String,
+pub async fn board_reject_fact(user: &CurrentUser, board_id: String, fact_id: String,
                                      reason: String) -> anyhow::Result<()> {
     owned_board(user, &board_id).await?;
     if fact_id == "origin" || fact_id == "goal" {
@@ -478,14 +629,14 @@ pub async fn admin_board_reject_fact(user: &CurrentUser, board_id: String, fact_
                 serde_json::json!({"reason": clip(&reason)})).await
 }
 
-pub async fn admin_board_set_paused(user: &CurrentUser, board_id: String, paused: bool) -> anyhow::Result<()> {
+pub async fn board_set_paused(user: &CurrentUser, board_id: String, paused: bool) -> anyhow::Result<()> {
     owned_board(user, &board_id).await?;
     let kind = if paused { "pause_requested" } else { "resume_requested" };
     write_event(&board_id, kind, &user.username, "", serde_json::json!({})).await
 }
 
 /// Accept the proposed review, or reject it with a correction that becomes a fact.
-pub async fn admin_board_review(user: &CurrentUser, board_id: String, accept: bool,
+pub async fn board_review(user: &CurrentUser, board_id: String, accept: bool,
                                 correction: String) -> anyhow::Result<()> {
     owned_board(user, &board_id).await?;
     if accept {
@@ -495,15 +646,25 @@ pub async fn admin_board_review(user: &CurrentUser, board_id: String, accept: bo
     if correction.is_empty() {
         anyhow::bail!("a rejected review needs a correction");
     }
+    // The correction names the facts of the rejected review, so the graph links it to them.
+    let summary: serde_json::Value = get_global_client()
+        .query("SELECT ?fields FROM board_state FINAL WHERE board_id = ?")
+        .bind(&board_id)
+        .fetch_all::<StateRow>()
+        .await?
+        .into_iter()
+        .next()
+        .and_then(|s| serde_json::from_str(&s.summary_json).ok())
+        .unwrap_or_default();
     let fact_id = format!("c{}", &new_id()[..8]);
     write_fact(&board_id, &fact_id, "correction", &correction, &user.username).await?;
     write_event(&board_id, "review_rejected", &user.username, &fact_id,
-                serde_json::json!({"correction": correction})).await
+                serde_json::json!({"correction": correction, "from": strings(&summary["review_from"])})).await
 }
 
 /// Drop a board: cancel its running explores, delete its explore sessions through the chat
 /// deletion path, delete its rows, and keep the tombstone of the definition.
-pub async fn admin_board_drop(user: &CurrentUser, board_id: String) -> anyhow::Result<()> {
+pub async fn board_drop(user: &CurrentUser, board_id: String) -> anyhow::Result<()> {
     let mut board = owned_board(user, &board_id).await?;
     write_event(&board_id, "drop_requested", &user.username, "", serde_json::json!({})).await?;
     board.is_deleted = 1;
@@ -538,4 +699,47 @@ pub async fn admin_board_drop(user: &CurrentUser, board_id: String) -> anyhow::R
             .await?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(event_type: &str, subject: &str, payload: serde_json::Value, second: i64) -> EventRow {
+        EventRow {
+            board_id: "b".into(),
+            event_id: format!("e{second}"),
+            event_type: event_type.into(),
+            actor: "alice".into(),
+            subject: subject.into(),
+            payload_json: payload.to_string(),
+            created_at: OffsetDateTime::from_unix_timestamp(second).unwrap(),
+        }
+    }
+
+    #[test]
+    fn a_rejection_names_who_when_and_why_and_a_correction_names_the_facts_it_corrects() {
+        let events = vec![
+            event("fact_rejected", "f1.1", serde_json::json!({"reason": "wrong year"}), 10),
+            event("reason_result", "2", serde_json::json!({"outcome": "review", "review": {"from": ["f1.2", "f2.1"]}}), 20),
+            // Written before the event held `from`: the newest review gives the facts.
+            event("review_rejected", "c1", serde_json::json!({"correction": "no"}), 30),
+            event("review_rejected", "c2", serde_json::json!({"correction": "no", "from": ["f3.1"]}), 40),
+        ];
+        let marks = event_facts(&events);
+        assert_eq!(marks.rejections["f1.1"], ("alice".to_string(), 10_000, "wrong year".to_string()));
+        assert_eq!(marks.corrects["c1"], vec!["f1.2".to_string(), "f2.1".to_string()]);
+        assert_eq!(marks.corrects["c2"], vec!["f3.1".to_string()]);
+    }
+
+    #[test]
+    fn a_summary_without_goal_reviews_reviews_the_first_goal() {
+        let old = serde_json::json!({"review_from": ["f1.1"], "review_statement": "done"});
+        assert_eq!(review_goals(&old), vec![BoardReviewGoal { goal: "goal".into(), from: vec!["f1.1".into()], statement: "done".into() }]);
+        let new = serde_json::json!({"review_from": ["f1.1", "f1.2"], "review_goals": [
+            {"goal": "goal", "from": ["f1.1"], "statement": "a"},
+            {"goal": "goal-2", "from": ["f1.2"], "statement": "b"},
+        ]});
+        assert_eq!(review_goals(&new).iter().map(|g| g.goal.as_str()).collect::<Vec<_>>(), vec!["goal", "goal-2"]);
+    }
 }
