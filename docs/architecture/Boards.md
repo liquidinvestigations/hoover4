@@ -340,7 +340,8 @@ explore facts that no intent explores, newest fact first, each with its key
 not dropped. The reply is one JSON object with `answers`, `intents`, both, or neither.
 `contracts.parse_reason` checks it.
 
-- An intent must name live facts in `from`. An intent that repeats an earlier objective is
+- An intent must name live facts in `from`. The prompt names the background context as the
+  `from` of a direction that no fact leads to. An intent that repeats an earlier objective is
   dropped. At most 3 intents are kept, and each keeps its position in the reply, so a dropped
   intent changes no creation key. An intent can name open questions by key in `questions`.
   A key that the prompt did not list, or that an earlier intent of the reply or another live

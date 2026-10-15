@@ -160,6 +160,7 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
                   "different kind of direction, or answer the goals with a statement of what was "
                   "searched.\n" if stalled else "")
     first_goal = folded.goal_ids[0] if folded.goal_ids else m.FIRST_GOAL_ID
+    background = next((f.fact_id for f in live if f.kind == m.ORIGIN), m.ORIGIN)
     if final:
         task = (
             "You are the final reasoning step of an investigation board. The explore budget is "
@@ -196,6 +197,8 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
             "- Split work by evidence: a different person, period, document type or collection. "
             "Never split one search by output field.\n"
             "- If there is no open intent, you must return answers or intents.\n"
+            f"- Each intent lists at least one id in `from`. A direction that no fact leads to lists "
+            f"{background}, the background context.\n"
             "- `slug` names the direction of an intent in two to four lowercase English words.\n"
             "- `questions` lists the keys of the open questions below that the intent explores. "
             "It is optional. Use only listed keys.\n"

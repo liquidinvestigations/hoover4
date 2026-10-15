@@ -426,6 +426,7 @@ def test_the_next_reason_reads_the_checks_that_changed_the_last_reply():
     assert "Checks that changed your last reply:\n- dropped as a repeat: find X" in prompt
     assert "every remaining direction repeats a finished intent, return answers" in prompt
     assert "applies every correction that concerns its facts" in prompt
+    assert "A direction that no fact leads to lists origin, the background context." in prompt
 
 
 def test_a_review_that_names_a_goal_by_its_text_names_that_goal():
