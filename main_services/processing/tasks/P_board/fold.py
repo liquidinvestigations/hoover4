@@ -42,8 +42,9 @@ The rules:
   The explore budget and the step count of the board row are not read.
 * **One cap.** Each running explore and each reason in flight takes one board model slot.
   All boards together use at most the global cap, and each board at most its `max_parallel`.
-  A free slot goes first to the board with the least work in flight, so a new board does not
-  wait for every explore of an older one.
+  A free slot goes first to the board with the least work in flight, then to the board that
+  has received the fewest explores and reasons, so a new board does not wait for every
+  explore of an older one.
 """
 
 from dataclasses import dataclass, field
@@ -381,13 +382,12 @@ def plan(boards: list, folded: dict, in_flight: set, cap: int) -> Actions:
     used = len(in_flight) + sum(len(f.by_state(m.RUNNING)) for f in folded.values())
 
     def turn(board) -> tuple:
-        """A board with less work in flight goes first, so one board cannot hold every slot
-        while another waits for its first reason. The oldest open intent breaks a tie."""
+        """A board with less work in flight goes first, then the board that has received
+        less work so far, so one board cannot take every free slot while another waits for
+        its first reason. The older board breaks a tie."""
         f = folded[board.board_id]
         busy = len(f.by_state(m.RUNNING)) + (1 if board.board_id in in_flight else 0)
-        opened = f.by_state(m.OPEN)
-        first = opened[0].created_at if opened else None
-        return (busy, first is None, str(first or ""), str(board.created_at or ""))
+        return (busy, f.explores_used + f.reasons_started, str(board.created_at or ""))
 
     for board in sorted(boards, key=turn):
         f = folded[board.board_id]

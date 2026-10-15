@@ -83,6 +83,15 @@ def test_a_free_slot_goes_to_the_board_with_the_least_work_in_flight():
     actions = plan([busy, new], folded, set(), cap=2)
     assert [r.board_id for r in actions.reasons] == ["b"], "the idle board gets its first reason"
     assert [e.board_id for e in actions.explores] == []
+    # Both boards idle: the board with open intents does not win over a board that waits for
+    # its first reason.
+    log = Log("a").add(m.BOARD_CREATED).reason(1, n=1)
+    log.add(m.EXPLORE_STARTED, "i1.1", attempt=1)
+    log.add(m.EXPLORE_CONCLUDED, "i1.1", attempt=1, fact_id="f1.1", kind=m.SOURCED)
+    log.reason(2, n=2, situation={"facts": 1, "hints": 0, "rejected": 0})
+    folded["a"] = fold(busy, log.events, facts(("f1.1", m.SOURCED)))
+    actions = plan([busy, new], folded, set(), cap=1)
+    assert [r.board_id for r in actions.reasons] == ["b"] and not actions.explores
 
 
 def test_a_reason_in_flight_takes_a_slot():
