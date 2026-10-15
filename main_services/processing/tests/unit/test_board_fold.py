@@ -75,6 +75,16 @@ def test_the_planner_respects_the_global_cap_across_boards():
     assert len(actions.explores) == 2, "one explore per board, by max_parallel"
 
 
+def test_a_free_slot_goes_to_the_board_with_the_least_work_in_flight():
+    busy, new = board("a", created_at=T0, max_parallel=2), board("b", created_at=T0 + timedelta(hours=1), max_parallel=2)
+    log = Log("a").add(m.BOARD_CREATED).reason(1, n=3)
+    log.add(m.EXPLORE_STARTED, "i1.1", attempt=1)
+    folded = {"a": fold(busy, log.events, facts()), "b": fold(new, Log("b").add(m.BOARD_CREATED).events, facts())}
+    actions = plan([busy, new], folded, set(), cap=2)
+    assert [r.board_id for r in actions.reasons] == ["b"], "the idle board gets its first reason"
+    assert [e.board_id for e in actions.explores] == []
+
+
 def test_a_reason_in_flight_takes_a_slot():
     b = board()
     f = fold(b, Log().add(m.BOARD_CREATED).reason(1).events, facts())

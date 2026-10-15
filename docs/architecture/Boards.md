@@ -314,7 +314,9 @@ base budget and 30 at the cap.
 | Attempts of one intent | 2 | `tasks/P_board/model.py` |
 | Intents kept from one assessment | 3 | `tasks/P_board/model.py` |
 
-Each running explore and each assessment in flight uses one slot of the global cap. The explore
+Each running explore and each assessment in flight uses one slot of the global cap. A free slot
+goes first to the board with the least work in flight, and then to the board with the oldest
+open intent, so a new board does not wait for every explore of an older board. The explore
 turns also use the chat queues, so a board turn competes with the chats of people.
 
 ## Changing the board workflows
