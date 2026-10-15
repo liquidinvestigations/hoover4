@@ -170,7 +170,8 @@ storage and no clock. The module docstring lists the rules. These rules have the
   from sourced facts, or 3 assessment replies in a row are invalid. The assessment prompt marks
   an accepted goal as closed, and its check drops an answer for it with a note. The check also
   reads a `goals` list without its `review` key, a fenced object without its opening brace,
-  and trailing commas.
+  and trailing commas. It drops an id that is not a fact, such as a correction, from an answer
+  that names other facts.
 - The explore budget and the model steps of one explore start at 12 explores and 60 steps. A
   rejected fact or a rejected review adds 4 explores and 20 steps. A hint adds 1 explore and
   5 steps. The caps are 24 explores and 120 steps. A goal added later adds 4 explores above the
