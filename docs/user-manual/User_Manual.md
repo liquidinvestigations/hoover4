@@ -506,7 +506,7 @@ stays.
   answer, also when later work starts the board again. Write why an answer
   is wrong and click **Reject answer**: the board continues at once with your correction, and
   the other answers wait for you. When every goal has an accepted answer, the board is
-  complete. **Finish the board** accepts every proposed answer and stops the board.
+  complete. **Close the board** accepts every proposed answer and stops the board.
   **Continue with a correction** gives it your correction, and it continues.
 - **Settings** turns the internet tools on or off for later explores, pauses and resumes the
   board, and drops it.

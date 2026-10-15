@@ -111,7 +111,15 @@ def render_brief(board, facts, citations, hints, intent, collections, steps: int
         "- Put the returned handle, such as [D1], beside each claim that relies on a document.\n"
         "- The fact must keep the names, dates and numbers that the task asks for.\n\n"
         f"End the task with one call of `{m.SUBMIT_FACT_TOOL}`: the fact as one paragraph with "
-        "its handles, its kind, and at most 3 open questions. The call ends your turn."
+        "its handles, its kind, and at most 3 open questions. The call ends your turn.\n"
+        "Use open_questions: [] when none remain. Known answers and source caveats are not open questions.\n"
+        "For a completed task, a submission can be "
+        '{"fact":"The filing names Judge Smith and gives 2 May 2001 [D1].",'
+        '"kind":"sourced","open_questions":[]}. Use only verified details and returned handles.\n'
+        "A remaining question can be: Who approved the transfer?\n"
+        "For kind not_found, name the searches and documents examined. "
+        "For example: The searched committee minutes did not identify an approval date. "
+        "Do not claim that no such record exists elsewhere."
     )
 
 

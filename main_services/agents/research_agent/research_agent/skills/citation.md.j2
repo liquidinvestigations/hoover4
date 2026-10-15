@@ -66,6 +66,22 @@ Copy the returned web handle, for example `[W1]`, beside the claim it supports.
 Keep each handle with the URL and quotes from its returned citation object.
 An error does not allocate a handle. Omit that source's claims until its citation succeeds.
 For absent wording, copy exact text from the returned candidate and call the tool again.
+When an error includes `errors[i].retry_arguments`, copy that object unchanged into the next call.
+Keep successful citations from a partial result. Retry only the failed pages within the existing retry limit.
+For example, this call joins words across a source line break and fails.
+```json
+{"url":"https://example.org/report","terms":["The plant closed in March 2019"]}
+```
+The error can return these retry arguments with the exact source text.
+```json
+{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}}
+```
+Call {{ tool('cite_pages') }} with that returned object, including its actual version and exact terms.
+```json
+{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}
+```
+If a call exceeds eight terms, split its terms into groups of at most eight and cite each group separately.
+Keep the URL and source version with each group. Changing the call structure does not reduce its term count.
 The handle opens the captured page text and its verified quotes.
 Use a web citation handle in place of a bare source URL.
 Use one page per call if a batch arrives damaged.

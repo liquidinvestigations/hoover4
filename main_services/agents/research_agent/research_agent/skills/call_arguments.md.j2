@@ -34,6 +34,25 @@ It returns the description and full input schema, including allowed values, defa
 ```json
 {"name":"read_documents"}
 ```
+After an unknown-argument error, read the failing tool's schema before retrying.
+{% if has('read_todo') %}
+For example, this {{ tool('read_todo') }} call fails because `todo_list` is not an argument.
+```json
+{"todo_list":"current"}
+```
+Read its schema with {{ tool('read_tool') }}.
+```json
+{"name":"read_todo"}
+```
+Then call {{ tool('read_todo') }} without arguments.
+```json
+{}
+```
+{% endif %}
+{% if has('read_documents') %}
+If {{ tool('read_documents') }} rejects `source2` or `offset2`, read its schema before retrying.
+Use a separate call for each document that needs different range arguments.
+{% endif %}
 {% endif %}
 {% if has('search_skills') %}
 {{ tool('search_skills') }} accepts query, up to 160 characters. Omission or empty text lists every available skill.

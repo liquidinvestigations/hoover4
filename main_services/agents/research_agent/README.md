@@ -69,12 +69,16 @@ passage, call the citation tool with exact text, copy the returned handle beside
 claim, write the answer after the needed calls succeed, and state the requested parts
 that the sources do not establish. A document quote has 5 to 6 words of body text without
 a question mark. The `citation` skill holds the arguments of each
-citation tool, one example for each, and the batch form. The summary of a
+citation tool, recovery examples, and the batch form. The summary of a
 tool is the first sentence of its description, at most 160 characters. `_create_context`
 renders the prompt once for each step context. The prompt cache holds the system text for
 the run.
 
 The method text is in `research_agent/skills/`.
+Citation recovery copies returned retry arguments and retries only failed pages.
+Schema recovery examples use `read_tool` before correcting an unknown argument.
+Document reread examples keep each document's range and source version in its own call.
+Board submission instructions separate unresolved questions from known answers and limit absence statements to the examined records.
 Each skill has a Jinja body and front matter with its name, group, description, and tools.
 A skill can also name `terms` and `not_for`: the words that requests use for the method, and
 the similar requests that do not need it. The worker's turn-start check reads them with the

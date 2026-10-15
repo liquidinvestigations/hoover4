@@ -18,7 +18,7 @@
 | Add hint | Add a hint that the next assessment reads. | It shows while the board is active or paused and below its explore limit. |
 | Reopen with N more explores / Reopen with the remaining budget | Reopen a board in review or complete to continue its open goals. | It shows when a goal has no accepted answer, the board is below its explore limit and the review has not reopened. In a budget review it is the first action. N is the actual grant. |
 | Accept answer / Reject answer | Accept the proposed answer of one goal, or reject it with a correction. | It shows for each goal with a proposed answer, in the goal pane and the overview, in every status but dropped. An accepted answer stays. A rejection lets the board continue at once. |
-| Finish the board / Continue with a correction | Accept every proposed answer and complete the board, or continue it with a correction. | It shows while the board waits for review. |
+| Close the board / Continue with a correction | Accept every proposed answer and complete the board, or continue it with a correction. | It shows while the board waits for review. |
 | Show all events / Show the newest 200 events | Show every event of the board, or the newest 200. | It shows when the board has more than 200 events. |
 | Show details | Open the popup of an assessment with its prompt and its response. | The address holds the assessment number. An assessment that ran before the prompts were stored shows its stored reply only. |
 | Open | Open the explore chat of an event's intent or fact in a new tab. | It shows in the links column of an event with a chat. |

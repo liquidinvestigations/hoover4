@@ -389,7 +389,12 @@ fn BoardExplorer(
     let detail = if let Some(fact) = snap.facts.iter().find(|f| f.fact_id == selected_id) {
         rsx! { FactDetail { key: "{fact.fact_id}", snap: snap.clone(), fact: fact.clone(), zoom: zoom_value.clone(), snapshot, error } }
     } else if let Some(intent) = snap.intents.iter().find(|i| i.intent_id == selected_id) {
-        rsx! { IntentDetail { intent: intent.clone(), from: slugs(&snap, &intent.from_facts) } }
+        rsx! { IntentDetail {
+            intent: intent.clone(),
+            from: intent.from_facts.iter().map(|id| snap.slug_of(id)).collect(),
+            board_id: snap.board.board_id.clone(),
+            zoom: zoom_value.clone(),
+        } }
     } else {
         rsx! { BoardOverview { snap: snap.clone(), zoom: zoom_value.clone(), on_details: set_assessment, snapshot, error } }
     };
@@ -706,36 +711,63 @@ fn BoardOverview(
                 Link { to: Route::AiBoardCreatePage {}, style: LINK, "Create a new board to continue the investigation" }
             }
         }
+        div { style: PANEL,
+            div { style: SECTION, if goals.len() == 1 { "Goal" } else { "Goals" } }
+            for goal in goals.iter() {
+                div { key: "{goal.fact_id}", style: "margin: 4px 0;",
+                    span { style: "font-family: monospace; color: var(--x-ink-muted); margin-right: 6px;", "{goal.slug}" }
+                    "{goal.text}"
+                    {
+                        let answer = goal_answer(&snap, &goal.fact_id);
+                        let from: Vec<String> = answer.as_ref().map(|(a, _)| a.from.iter().map(|f| snap.slug_of(f)).collect()).unwrap_or_default();
+                        rsx! {
+                            GoalAnswer {
+                                key: "{goal.fact_id}-{answer_key(&answer)}",
+                                board_id: board_id.clone(),
+                                goal_slug: goal.slug.clone(),
+                                answer,
+                                from,
+                                zoom: zoom.clone(),
+                                dropped,
+                                snapshot,
+                                error,
+                            }
+                        }
+                    }
+                }
+            }
+            if !dropped && !snap.limit_reached && goals.len() < MAX_GOALS {
+                div { class: "x-board-goal-form", style: "margin-top: 10px;",
+                    div { style: SUBHEADING, "Add new goal..." }
+                    div { class: "x-board-inline-form", style: "display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;",
+                        textarea {
+                            class: "x-board-goal",
+                            style: "{TEXTAREA} flex: 1 1 220px; min-width: 0;", rows: "2",
+                            placeholder: "A new goal",
+                            value: "{goal}", oninput: move |e| goal.set(e.value()),
+                        }
+                        button {
+                            style: BTN,
+                            disabled: busy() || goal.read().trim().is_empty(),
+                            onclick: {
+                                let mut run = run.clone();
+                                move |_| run(BoardAction::AddGoal { text: goal.read().clone() }, Some(goal))
+                            },
+                            "Add goal"
+                        }
+                    }
+                }
+            } else if !dropped && goals.len() >= MAX_GOALS {
+                p { class: "x-board-goal-limit", style: HELP_TEXT, "A board has at most {MAX_GOALS} goals. Create a new board for another goal." }
+            }
+            if !snap.board.context.is_empty() {
+                div { style: SUBHEADING, "Background context" }
+                p { style: "margin: 4px 0;", "{snap.board.context}" }
+            }
+        }
         if snap.status == "review" {
-            div { class: "x-board-review", style: "{PANEL} border-color: var(--x-danger);",
-                div { style: SECTION, "The board waits for your review" }
-                if budget_review {
-                    p { "The board used its budget of {snap.max_explores} explores." }
-                } else if snap.review_reason == "stalled" {
-                    p { "The assessments gave no usable direction." }
-                }
-                if !snap.answers_proposed.is_empty() {
-                    p { style: HELP_TEXT, "Accept or reject the proposed answer of each goal below. A rejected answer lets the board continue at once." }
-                } else if snap.review_statement.is_empty() {
-                    p { style: HELP_TEXT, "The board stopped without answers." }
-                } else {
-                    p { "{snap.review_statement}" }
-                }
-                if budget_review {
-                    if let Some(button) = reopen.clone() {
-                        p { style: HELP_TEXT, "Reopen the board to continue the open goals. It keeps its facts and answers." }
-                        {button}
-                    }
-                }
-                p { style: HELP_TEXT, "Finish the board to accept every proposed answer and stop it, or continue it with a correction." }
-                div { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;",
-                    button {
-                        style: if budget_review && reopen.is_some() { BTN } else { BTN_PRIMARY },
-                        disabled: busy(),
-                        onclick: move |_| finish(BoardAction::Review { review_id: finish_id.clone(), accept: true, correction: String::new() }, None),
-                        "Finish the board"
-                    }
-                }
+            div { class: "x-board-correction", style: PANEL,
+                div { style: SECTION, "Continue with a correction" }
                 textarea {
                     style: "{TEXTAREA} margin-top: 8px;", rows: "2",
                     placeholder: "Correction: what is wrong or missing. The board continues with it.",
@@ -748,6 +780,38 @@ fn BoardOverview(
                         review_id: correction_id.clone(), accept: false, correction: correction.read().clone(),
                     }, Some(correction)),
                     "Continue with a correction"
+                }
+            }
+        }
+        if snap.status == "review" {
+            div { class: "x-board-review", style: "{PANEL} border-color: var(--x-danger);",
+                div { style: SECTION, "The board waits for your review" }
+                if budget_review {
+                    p { "The board used its budget of {snap.max_explores} explores." }
+                } else if snap.review_reason == "stalled" {
+                    p { "The assessments gave no usable direction." }
+                }
+                if !snap.answers_proposed.is_empty() {
+                    p { style: HELP_TEXT, "Accept or reject the proposed answer of each goal above. A rejected answer lets the board continue at once." }
+                } else if snap.review_statement.is_empty() {
+                    p { style: HELP_TEXT, "The board stopped without answers." }
+                } else {
+                    p { "{snap.review_statement}" }
+                }
+                if budget_review {
+                    if let Some(button) = reopen.clone() {
+                        p { style: HELP_TEXT, "Reopen the board to continue the open goals. It keeps its facts and answers." }
+                        {button}
+                    }
+                }
+                p { style: HELP_TEXT, "Close the board to accept every proposed answer and stop it, or continue it with a correction." }
+                div { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;",
+                    button {
+                        style: if budget_review && reopen.is_some() { BTN } else { BTN_PRIMARY },
+                        disabled: busy(),
+                        onclick: move |_| finish(BoardAction::Review { review_id: finish_id.clone(), accept: true, correction: String::new() }, None),
+                        "Close the board"
+                    }
                 }
                 if !budget_review {
                     if let Some(button) = reopen.clone() {
@@ -764,57 +828,6 @@ fn BoardOverview(
                     p { style: HELP_TEXT, "A goal has no accepted answer. Reopen the board to continue it. The board keeps its facts and answers." }
                     {button}
                 }
-            }
-        }
-        div { style: PANEL,
-            div { style: SECTION, if goals.len() == 1 { "Goal" } else { "Goals" } }
-            for goal in goals.iter() {
-                div { key: "{goal.fact_id}", style: "margin: 4px 0;",
-                    if goals.len() > 1 { span { style: "font-family: monospace; color: var(--x-ink-muted); margin-right: 6px;", "{goal.slug}" } }
-                    "{goal.text}"
-                    {
-                        let answer = goal_answer(&snap, &goal.fact_id);
-                        let from: Vec<String> = answer.as_ref().map(|(a, _)| a.from.iter().map(|f| snap.slug_of(f)).collect()).unwrap_or_default();
-                        rsx! {
-                            GoalAnswer {
-                                key: "{goal.fact_id}-{answer_key(&answer)}",
-                                board_id: board_id.clone(),
-                                answer,
-                                from,
-                                zoom: zoom.clone(),
-                                dropped,
-                                snapshot,
-                                error,
-                            }
-                        }
-                    }
-                }
-            }
-            if !dropped && !snap.limit_reached && goals.len() < MAX_GOALS {
-                div { class: "x-board-goal-form", style: "margin-top: 10px;",
-                    textarea {
-                        class: "x-board-goal",
-                        style: TEXTAREA, rows: "2",
-                        placeholder: "A new goal",
-                        value: "{goal}", oninput: move |e| goal.set(e.value()),
-                    }
-                    p { style: HELP_TEXT, "The board works on the new goal next. A complete board starts again." }
-                    button {
-                        style: BTN,
-                        disabled: busy() || goal.read().trim().is_empty(),
-                        onclick: {
-                            let mut run = run.clone();
-                            move |_| run(BoardAction::AddGoal { text: goal.read().clone() }, Some(goal))
-                        },
-                        "Add goal"
-                    }
-                }
-            } else if !dropped && goals.len() >= MAX_GOALS {
-                p { class: "x-board-goal-limit", style: HELP_TEXT, "A board has at most {MAX_GOALS} goals. Create a new board for another goal." }
-            }
-            if !snap.board.context.is_empty() {
-                div { style: SUBHEADING, "Background context" }
-                p { style: "margin: 4px 0;", "{snap.board.context}" }
             }
         }
         if (snap.status == "active" || snap.status == "paused") && !snap.limit_reached {
@@ -1258,6 +1271,7 @@ fn FactDetail(
                 GoalAnswer {
                     key: "{fact.fact_id}-{answer_key(&answer)}",
                     board_id: board_id.clone(),
+                    goal_slug: fact.slug.clone(),
                     answer: answer.clone(),
                     from: answer.as_ref().map(|(a, _)| a.from.iter().map(|f| snap.slug_of(f)).collect()).unwrap_or_default(),
                     zoom: zoom.clone(),
@@ -1308,27 +1322,27 @@ fn FactDetail(
             }
             if can_ask {
                 div { class: "x-board-follow-up", style: "margin-top: 10px;",
-                    textarea {
-                        class: "x-board-own-question-text",
-                        style: TEXTAREA, rows: "2",
-                        placeholder: "A follow-up question about this node",
-                        value: "{own_question}", oninput: move |e| own_question.set(e.value()),
-                    }
-                    p { style: HELP_TEXT,
-                        "An explore answers the question as a new fact. The board keeps its status. To make the board answer it before it is complete, add it as a goal."
-                    }
-                    button {
-                        class: "x-board-ask",
-                        style: BTN,
-                        disabled: busy() || own_question.read().trim().is_empty(),
-                        onclick: {
-                            let mut run = run.clone();
-                            let fact_id = fact.fact_id.clone();
-                            move |_| run(BoardAction::ExploreQuestion {
-                                fact_id: fact_id.clone(), index: None, question: own_question.read().clone(),
-                            }, Some(own_question))
-                        },
-                        "Ask"
+                    div { style: SUBHEADING, if fact.kind == "origin" { "Ask about the background context" } else { "Ask about this fact" } }
+                    div { class: "x-board-inline-form", style: "display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;",
+                        textarea {
+                            class: "x-board-own-question-text",
+                            style: "{TEXTAREA} flex: 1 1 220px; min-width: 0;", rows: "2",
+                            placeholder: "A follow-up question about this node",
+                            value: "{own_question}", oninput: move |e| own_question.set(e.value()),
+                        }
+                        button {
+                            class: "x-board-ask",
+                            style: BTN,
+                            disabled: busy() || own_question.read().trim().is_empty(),
+                            onclick: {
+                                let mut run = run.clone();
+                                let fact_id = fact.fact_id.clone();
+                                move |_| run(BoardAction::ExploreQuestion {
+                                    fact_id: fact_id.clone(), index: None, question: own_question.read().clone(),
+                                }, Some(own_question))
+                            },
+                            "Ask"
+                        }
                     }
                 }
             }
@@ -1339,7 +1353,10 @@ fn FactDetail(
                 }
             }
             if can_reject {
-                div { style: "margin-top: 10px; display: flex; gap: 8px; align-items: center;",
+                div { style: SUBHEADING,
+                    if fact.kind == "correction" { "Reject this correction" } else { "Reject this fact" }
+                }
+                div { style: "display: flex; gap: 8px; align-items: center;",
                     input {
                         class: "x-board-reject-reason",
                         style: "{INPUT} flex: 1;", placeholder: "{placeholder}",
@@ -1390,6 +1407,7 @@ fn answer_key(answer: &Option<(BoardReviewGoal, bool)>) -> String {
 #[component]
 fn GoalAnswer(
     board_id: String,
+    goal_slug: String,
     answer: Option<(BoardReviewGoal, bool)>,
     from: Vec<String>,
     zoom: String,
@@ -1424,7 +1442,10 @@ fn GoalAnswer(
             class: "x-board-goal-answer",
             "data-answer": if accepted { "accepted" } else { "proposed" },
             style: "border-left: 3px {border}; border-left-color: var(--x-ok); padding: 2px 10px; margin: 8px 0;",
-            div { style: "font-weight: 600; color: var(--x-ok);", "{label}" }
+            div { style: "font-weight: 600; color: var(--x-ok);",
+                "{label} "
+                span { style: "font-family: monospace;", "{goal_slug}" }
+            }
             if answer.answer_kind == NOT_ESTABLISHED {
                 div { class: "x-board-answer-unresolved", style: HELP_TEXT,
                     "The facts of this answer are searches that found nothing. Accept it to record that the records do not answer the goal, or reject it to continue the investigation."
@@ -1482,7 +1503,7 @@ fn GoalAnswer(
 }
 
 #[component]
-fn IntentDetail(intent: BoardIntent, from: String) -> Element {
+fn IntentDetail(intent: BoardIntent, from: Vec<String>, board_id: String, zoom: String) -> Element {
     rsx! {
         div { class: "x-board-intent-detail", style: PANEL,
             DetailHeader {
@@ -1492,8 +1513,30 @@ fn IntentDetail(intent: BoardIntent, from: String) -> Element {
                 rejected: false,
                 chat: intent.session_id.clone(),
             }
-            p { style: "margin: 4px 0;", "{intent.objective}" }
-            p { style: HELP_TEXT, "From the facts {from}. Attempts: {intent.attempts}. Declared {format_utc_ms(intent.created_ms)}." }
+            div { style: SUBHEADING, "Intent" }
+            p { class: "x-board-intent-metadata", style: HELP_TEXT,
+                if !from.is_empty() {
+                    "From the facts "
+                    for (index, slug) in from.iter().enumerate() {
+                        span { key: "{index}",
+                            if index > 0 { ", " }
+                            Link {
+                                to: Route::AiBoardPage {
+                                    board_id: board_id.clone(), selected: slug.clone(),
+                                    zoom: zoom.clone(), assessment: String::new(),
+                                },
+                                style: "{LINK} font-family: monospace;",
+                                "{slug}"
+                            }
+                        }
+                    }
+                    ". "
+                }
+                "Attempts: {intent.attempts}. Declared {format_utc_ms(intent.created_ms)}."
+            }
+            div { class: "x-board-intent-objective", style: "white-space: pre-wrap; overflow-wrap: anywhere; background-color: var(--x-surface-muted); padding: 8px; border-radius: 6px;",
+                "{intent.objective}"
+            }
             if !intent.question.is_empty() {
                 div { style: SUBHEADING, "The explore asked" }
                 p { style: "margin: 4px 0;", "{intent.question}" }
@@ -1504,7 +1547,7 @@ fn IntentDetail(intent: BoardIntent, from: String) -> Element {
                 p { style: "margin: 4px 0; color: var(--x-danger);", "{intent.last_error}" }
             }
             if !intent.brief.is_empty() {
-                div { style: SUBHEADING, "Brief sent to the explore" }
+                div { style: SUBHEADING, "Brief" }
                 pre { style: PRE, "{intent.brief}" }
             }
         }

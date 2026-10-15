@@ -51,6 +51,16 @@ A cut marker means the tool delivered only part of the range. It does not mean t
 Use an item's more to continue that document. Use the top-level more to continue the remaining page or later pages.
 Copy the returned handle exactly into {{ tool('read_more') }} as continuation.
 Copy read_before or read_after as read_documents arguments for surrounding text. No offset calculation is required.
+Range arguments apply to every hash in one call. Use separate calls when documents have different sources, ranges, or source versions.
+For example, copy the first document's returned read_after object into one call.
+```json
+{"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"}
+```
+Copy the second document's returned read_after object into another call.
+```json
+{"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"}
+```
+Use the actual returned values for each document. Do not add numbered fields such as source2 or offset2.
 A repeated initial call returns the same text. Use continuation when more text is needed.
 Stop reading when the passage provides enough evidence for the requested claim.
 

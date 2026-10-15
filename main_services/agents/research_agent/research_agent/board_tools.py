@@ -22,7 +22,13 @@ SUBMIT_FACT = "submit_board_fact"
 
 DESCRIPTION = (
     "Submit the finding of this board task and end the turn. Call it once, after the "
-    "citation calls, with one paragraph that keeps the returned handles beside its claims."
+    "citation calls, with one paragraph that keeps the returned handles beside its claims. "
+    "Use open_questions: [] when the task leaves no unresolved question. "
+    "Known answers and source caveats are not open questions. "
+    "A remaining question can be: Who approved the transfer? "
+    "For kind not_found, name the searches and documents examined. "
+    "For example: The searched committee minutes did not identify an approval date. "
+    "Do not extend that absence to records you did not examine."
 )
 
 
@@ -37,7 +43,8 @@ class SubmitFactArgs(BaseModel):
                     "found no answer, and the fact names them.")
     open_questions: List[str] = Field(
         default_factory=list, max_length=3,
-        description="At most three questions that this task leaves open.")
+        description="At most three unresolved questions that this task leaves open. "
+                    "Use [] when none remain. Exclude known answers and source caveats.")
     slug: str = Field(
         default="", max_length=80,
         description="Two to four lowercase English words that name the finding, joined by "
