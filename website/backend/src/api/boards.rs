@@ -486,7 +486,8 @@ pub async fn create_board(user: &CurrentUser, request: BoardCreateRequest) -> an
     if goals.len() > MAX_GOALS {
         anyhow::bail!("a board has at most {MAX_GOALS} goals");
     }
-    let permitted = crate::db_auth::collections::permitted_collections(&user.username).await?;
+    // The rule of chat and search: an administrator reads every collection.
+    let permitted = crate::db_utils::clickhouse_utils::list_permitted_collections(user).await?;
     let collections: Vec<String> = request
         .collections
         .iter()
