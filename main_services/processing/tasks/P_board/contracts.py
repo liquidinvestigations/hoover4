@@ -12,6 +12,10 @@ from tasks.P_board import model as m
 
 THINK_PATTERN = re.compile(r"<think>.*?</think>", re.S)
 FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)
+#: A fenced body that does not start with a brace: the model left out the opening brace.
+OPEN_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\"[^`]*?)\s*```", re.S)
+#: A tool call that the model wrote as text, `[submit_board_fact]{...}`, in place of a call.
+TEXT_CALL_PATTERN = re.compile(r"\[(?:%s)\]\s*(?=\{)" % re.escape(m.SUBMIT_FACT_TOOL))
 LABEL_PATTERN = re.compile(r"\[([DW]\d+)\]")
 WORD_PATTERN = re.compile(r"[a-z0-9]{3,}")
 STOP_WORDS = {"the", "and", "for", "with", "from", "that", "this", "what", "which", "their",
@@ -23,11 +27,16 @@ DUPLICATE_OVERLAP = 0.8
 
 
 def extract_json_object(text: str) -> dict:
-    """The JSON object of a reply, from a fence or the outermost braces."""
+    """The JSON object of a reply, from a fence or the outermost braces. A fenced body that
+    starts with a key, because the model left out the opening brace, gets that brace."""
     text = THINK_PATTERN.sub("", text or "").strip()
     fenced = FENCE_PATTERN.findall(text)
+    keyed = OPEN_FENCE_PATTERN.findall(text)
     if fenced:
         text = fenced[-1]
+    elif keyed:
+        body = keyed[-1].strip()
+        text = "{" + body + ("" if body.endswith("}") else "}")
     start, end = text.find("{"), text.rfind("}")
     if start < 0 or end < start:
         raise ValueError("the reply holds no JSON object")
@@ -154,11 +163,20 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
 
 
 def parse_explore_block(answer: str) -> dict | None:
-    """The last fenced JSON block of an answer, or None."""
-    blocks = FENCE_PATTERN.findall(THINK_PATTERN.sub("", answer or ""))
+    """The last fenced JSON block of an answer, else the arguments of a
+    `[submit_board_fact]{...}` call that the model wrote as text, or None."""
+    answer = THINK_PATTERN.sub("", answer or "")
+    blocks = FENCE_PATTERN.findall(answer)
     for block in reversed(blocks):
         try:
             value = json.loads(block)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    for match in reversed(list(TEXT_CALL_PATTERN.finditer(answer))):
+        try:
+            value, _ = json.JSONDecoder().raw_decode(answer, match.end())
         except json.JSONDecodeError:
             continue
         if isinstance(value, dict):

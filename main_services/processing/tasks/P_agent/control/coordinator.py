@@ -247,7 +247,9 @@ def _pin(row, messages, params) -> dict:
     control = control_of(opening)
     if control.get("definition"):
         return control
-    snapshot = _agent_post(params, "/control_snapshot", {**_step_body(row, params)}, min(5, params.deadline_seconds))
+    # The whole hook deadline: under load the agent opens its tool sessions for the
+    # snapshot in more than 5 seconds, and each timeout costs a retry of the hook.
+    snapshot = _agent_post(params, "/control_snapshot", {**_step_body(row, params)}, params.deadline_seconds)
     assets = {k: snapshot.get(k) for k in ("revision", "system_prompt", "system_prompt_digest",
                                            "prompt_override", "skills", "callable_tools",
                                            "catalogue_version", "profile")}

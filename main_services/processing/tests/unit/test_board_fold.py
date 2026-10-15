@@ -309,6 +309,23 @@ def test_the_explore_block_is_the_last_fenced_object():
     assert labels_of(block["fact"], block["citations"]) == ["D1", "D2", "D3"]
 
 
+def test_a_submit_call_written_as_text_is_read_as_the_block():
+    answer = ('[submit_board_fact]{"fact": "No document shows it [D2].", "kind": "not_found", '
+              '"open_questions": ["Was it forwarded?"]}')
+    block = parse_explore_block(answer)
+    assert block["kind"] == "not_found" and block["open_questions"] == ["Was it forwarded?"]
+    assert parse_explore_block("[submit_board_fact]{not json") is None
+    assert parse_explore_block("[other_tool]{\"fact\": \"x\", \"kind\": \"sourced\"}") is None
+
+
+def test_a_reason_reply_without_its_opening_brace_is_read():
+    reply = '```json\n  "intents": [\n    {"from": ["origin"], "objective": "Find the filings", "brief": ""}\n  ]\n}\n```'
+    out = parse_reason(reply, {"origin"}, set(), [], True)
+    assert out["outcome"] == "intents" and out["intents"][0]["objective"] == "Find the filings"
+    unclosed = '```json\n"intents": [{"from": ["origin"], "objective": "Find the filings", "brief": ""}]\n```'
+    assert parse_reason(unclosed, {"origin"}, set(), [], True)["outcome"] == "intents"
+
+
 def test_labels_are_removed_before_a_fact_enters_another_session():
     assert strip_labels("Kaminski refused [D1], [D3] and asked for documents [D5].") == \
         "Kaminski refused and asked for documents."
