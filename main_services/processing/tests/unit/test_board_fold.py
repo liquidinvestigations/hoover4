@@ -326,6 +326,19 @@ def test_a_reason_reply_without_its_opening_brace_is_read():
     assert parse_reason(unclosed, {"origin"}, set(), [], True)["outcome"] == "intents"
 
 
+def test_recoverable_reason_replies_are_read():
+    goals = json.dumps({"goals": [{"goal": "goal-2", "from": ["f1.1"], "statement": "b"}]})
+    out = parse_reason(goals, {"f1.1"}, {"f1.1"}, [], True, ["goal-2"])
+    assert out["outcome"] == "review", "a top-level goals list is a review"
+    commas = '```json\n{"intents": [{"from": ["origin"], "objective": "Find it",},]}\n```'
+    assert parse_reason(commas, {"origin"}, set(), [], True)["outcome"] == "intents"
+    both = json.dumps({"review": {"goals": [{"goal": "goal", "from": ["f1.1"], "statement": "a"},
+                                            {"goal": "goal-2", "from": ["f1.1"], "statement": "b"}]}})
+    out = parse_reason(both, {"f1.1"}, {"f1.1"}, [], True, ["goal-2"], closed_ids={"goal"})
+    assert out["outcome"] == "review" and [g["goal"] for g in out["review"]["goals"]] == ["goal-2"]
+    assert out["problems"] == ["dropped the answer of the accepted goal goal"]
+
+
 def test_labels_are_removed_before_a_fact_enters_another_session():
     assert strip_labels("Kaminski refused [D1], [D3] and asked for documents [D5].") == \
         "Kaminski refused and asked for documents."

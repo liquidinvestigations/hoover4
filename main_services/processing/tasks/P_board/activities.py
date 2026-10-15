@@ -361,7 +361,7 @@ def board_reason(task: ReasonTask) -> str:
     started = time.monotonic()
     text, usage, error = "", {}, ""
     try:
-        response = summarize._post(endpoint, {"model": model, "max_tokens": 4000,
+        response = summarize._post(endpoint, {"model": model, "max_tokens": m.REASON_MAX_TOKENS,
                                           "messages": [{"role": "user", "content": prompt}]})
         response.raise_for_status()
         reply = response.json()
@@ -378,7 +378,8 @@ def board_reason(task: ReasonTask) -> str:
         payload = parse_reason(text, {f.fact_id for f in live},
                                {f.fact_id for f in live if f.kind == m.SOURCED},
                                earlier_objectives(folded), idle, folded.open_goals,
-                               {f.fact_id for f in live if f.kind == m.NOT_FOUND}, goal_texts(facts))
+                               {f.fact_id for f in live if f.kind == m.NOT_FOUND}, goal_texts(facts),
+                               set(folded.accepted))
     payload.update(situation=folded.situation(), model=model, latency_ms=latency_ms,
                    prompt_tokens=int(usage.get("prompt_tokens") or 0),
                    completion_tokens=int(usage.get("completion_tokens") or 0),

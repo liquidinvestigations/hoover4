@@ -168,7 +168,9 @@ storage and no clock. The module docstring lists the rules. These rules have the
   flight. A checkpoint written before late goals existed reads their count as 0.
 - The board goes to review in three cases. The budget is used, an assessment proposes answers
   from sourced facts, or 3 assessment replies in a row are invalid. The assessment prompt marks
-  an accepted goal as closed, and its check refuses an answer for it.
+  an accepted goal as closed, and its check drops an answer for it with a note. The check also
+  reads a `goals` list without its `review` key, a fenced object without its opening brace,
+  and trailing commas.
 - The explore budget and the model steps of one explore start at 12 explores and 60 steps. A
   rejected fact or a rejected review adds 4 explores and 20 steps. A hint adds 1 explore and
   5 steps. The caps are 24 explores and 120 steps. A goal added later adds 4 explores above the
@@ -313,6 +315,7 @@ base budget and 30 at the cap.
 | Goals of one board | 1 to 6 | `common::board_types::MAX_GOALS` |
 | Attempts of one intent | 2 | `tasks/P_board/model.py` |
 | Intents kept from one assessment | 3 | `tasks/P_board/model.py` |
+| Output tokens of one assessment, reasoning included | 16,000 | `tasks/P_board/model.py` (`REASON_MAX_TOKENS`) |
 
 Each running explore and each assessment in flight uses one slot of the global cap. A free slot
 goes first to the board with the least work in flight, and then to the board that has

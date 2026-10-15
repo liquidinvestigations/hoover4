@@ -17,6 +17,8 @@ OPEN_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\"[^`]*?)\s*```", re.S)
 #: A tool call that the model wrote as text, `[submit_board_fact]{...}`, in place of a call.
 TEXT_CALL_PATTERN = re.compile(r"\[(?:%s)\]\s*(?=\{)" % re.escape(m.SUBMIT_FACT_TOOL))
 LABEL_PATTERN = re.compile(r"\[([DW]\d+)\]")
+#: A comma before a closing bracket, which JSON does not allow and the model sometimes writes.
+TRAILING_COMMA = re.compile(r",(\s*[}\]])")
 WORD_PATTERN = re.compile(r"[a-z0-9]{3,}")
 STOP_WORDS = {"the", "and", "for", "with", "from", "that", "this", "what", "which", "their",
               "emails", "email", "documents", "document", "find", "search", "identify", "any",
@@ -40,7 +42,11 @@ def extract_json_object(text: str) -> dict:
     start, end = text.find("{"), text.rfind("}")
     if start < 0 or end < start:
         raise ValueError("the reply holds no JSON object")
-    value = json.loads(text[start:end + 1])
+    candidate = text[start:end + 1]
+    try:
+        value = json.loads(candidate)
+    except json.JSONDecodeError:
+        value = json.loads(TRAILING_COMMA.sub(r"\1", candidate))
     if not isinstance(value, dict):
         raise ValueError("the reply is not a JSON object")
     return value
@@ -81,7 +87,8 @@ def _review_goals(review, goal_ids: list[str]) -> list:
 
 def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str],
                  idle: bool, goal_ids: list[str] | None = None,
-                 not_found_ids: set | None = None, goal_texts: dict | None = None) -> dict:
+                 not_found_ids: set | None = None, goal_texts: dict | None = None,
+                 closed_ids: set | None = None) -> dict:
     """The `reason_result` payload of one reply.
 
     `valid_ids` are the live fact ids, `sourced_ids` the live sourced ones, `earlier` the
@@ -92,7 +99,9 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
 
     A review names each goal with the facts that answer it and a statement. A goal's facts
     are sourced or not-found facts, and the review as a whole needs one sourced fact. A
-    review that leaves out a goal, or names another fact, is no review.
+    review that leaves out a goal, or names another fact, is no review. An entry for a goal
+    of `closed_ids` (accepted already) is dropped with a note and does not refuse the review.
+    A top-level `goals` list without `review` is read as a review.
     """
     goal_ids = list(goal_ids or [m.FIRST_GOAL_ID])
     answerable = set(sourced_ids) | set(not_found_ids or ())
@@ -102,8 +111,10 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
     except (ValueError, json.JSONDecodeError) as exc:
         payload.update(outcome="invalid", error=str(exc))
         return payload
+    if "goals" in data and not any(k in data for k in ("review", "complete", "intents")):
+        data = {"review": {"goals": data["goals"]}}
     if "review" in data or "complete" in data:
-        goals, problems = [], []
+        goals, problems, skipped = [], [], []
         for entry in _review_goals(data.get("review") or data.get("complete") or {}, goal_ids):
             if not isinstance(entry, dict):
                 problems.append("a review goal is not an object")
@@ -111,7 +122,9 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
             goal = str(entry.get("goal") or "")
             goal = (goal_texts or {}).get(goal.strip(), goal)
             from_ids = [str(f) for f in entry.get("from") or []]
-            if goal not in goal_ids:
+            if goal in (closed_ids or ()):
+                skipped.append(goal)
+            elif goal not in goal_ids:
                 problems.append(f"review names the unknown goal {goal!r}")
             elif not from_ids or not set(from_ids) <= answerable:
                 problems.append(f"review of {goal} from {from_ids} names a fact that is not sourced")
@@ -128,6 +141,7 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
             payload.update(outcome="review", review={
                 "from": list(dict.fromkeys(used)), "goals": goals,
                 "statement": "\n\n".join(g["statement"] for g in goals if g["statement"])})
+            payload["problems"].extend(f"dropped the answer of the accepted goal {g}" for g in skipped)
             return payload
         payload["problems"].extend(problems)
     items = data.get("intents")

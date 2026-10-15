@@ -83,6 +83,10 @@ MAX_INTENTS = 3
 STALL_THRESHOLD = 4
 #: Invalid or empty reasons in a row with no open intent, after which the board goes to review.
 INVALID_REASON_LIMIT = 3
+#: Output tokens of one reason call. The reasoning of the model counts against it, and
+#: replies of 3,000 to 4,000 tokens with a short JSON object are common, so a lower cap cuts
+#: the object off and the reply is invalid.
+REASON_MAX_TOKENS = 16000
 #: Model steps of the conclude turn that asks for the fact only.
 CONCLUDE_STEP_BUDGET = 4
 
