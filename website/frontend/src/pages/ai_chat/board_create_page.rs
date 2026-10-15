@@ -4,7 +4,7 @@
 //! The form has no model, explore count or step budget. The worker starts every board at the
 //! same budget and grows it with the person's corrections and hints. Every collection that
 //! the person can read is selected at first. The collections cannot change after creation,
-//! and the internet tools can (the board settings popup).
+//! and the internet tools can when the deployment enables them (the board settings popup).
 
 use common::board_types::{BoardCreateRequest, MAX_GOALS};
 use dioxus::prelude::*;
@@ -27,6 +27,7 @@ pub fn AiBoardCreatePage() -> Element {
     // `None` until the collections arrive. Then every collection is selected.
     let mut chosen = use_signal(|| None::<Vec<String>>);
     let mut internet_tools = use_signal(|| true);
+    let internet_tools_enabled = crate::api::chat_api::use_internet_tools_enabled();
     let mut error_msg = use_signal(|| None::<String>);
     let mut busy = use_signal(|| false);
 
@@ -140,14 +141,16 @@ pub fn AiBoardCreatePage() -> Element {
                         {collection_boxes}
                     }
                     p { style: HELP_TEXT, "The collections cannot change after the board is created." }
-                    label { style: LABEL,
-                        input {
-                            class: "x-board-internet-tools",
-                            r#type: "checkbox",
-                            checked: internet_tools(),
-                            onchange: move |e: FormEvent| internet_tools.set(e.checked()),
+                    if internet_tools_enabled {
+                        label { style: LABEL,
+                            input {
+                                class: "x-board-internet-tools",
+                                r#type: "checkbox",
+                                checked: internet_tools(),
+                                onchange: move |e: FormEvent| internet_tools.set(e.checked()),
+                            }
+                            "Internet tools: the explores can search the web and read web pages. You can change this later in the board settings."
                         }
-                        "Internet tools: the explores can search the web and read web pages. You can change this later in the board settings."
                     }
                     div {
                         button {
@@ -160,7 +163,7 @@ pub fn AiBoardCreatePage() -> Element {
                                     goals: goals.read().iter().map(|g| g.trim().to_string()).filter(|g| !g.is_empty()).collect(),
                                     context: context.read().clone(),
                                     collections: chosen.read().clone().unwrap_or_default(),
-                                    internet_tools: internet_tools(),
+                                    internet_tools: internet_tools_enabled && internet_tools(),
                                     hints: hints.read().lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect(),
                                 };
                                 spawn(async move {

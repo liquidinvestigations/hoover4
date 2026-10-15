@@ -42,6 +42,7 @@ from temporalio.exceptions import CancelledError
 
 from tasks.heartbeat import with_heartbeat
 from tasks.P_agent.activities import (
+    effective_internet_tools,
     CallRef, _finish_stream_rows_from, _insert_chat_row, agent_url_for,
     call_refs,
 )
@@ -674,7 +675,7 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
 
     entries = reports.session_citation_entries(row.username, row.session_id)
     metadata = citations.answer_metadata(answer, _citation_messages(row, earlier),
-                                         entries, params.internet_tools, limits)
+                                         entries, effective_internet_tools(params.internet_tools), limits)
     if any(m.usage.get("summarised") for m in round_ai):
         answer = answer + SUMMARY_NOTICE
     ai = replace(ai, usage_json=json.dumps({**ai.usage, **metadata}))
@@ -727,7 +728,7 @@ def _store_reply(row, params: ModelStepParams, turn: dict, idx: int, model: str,
         seq += 1
     usage = dict(turn.get("usage") or {})
     usage.update(step_no=params.step_no,
-                 tool_scope="documents_and_web" if params.internet_tools else "documents_only",
+                 tool_scope="documents_and_web" if effective_internet_tools(params.internet_tools) else "documents_only",
                  summarised=bool(turn.get("summarised")), model=model,
                  compaction=bool(turn.get("compaction")))
     ai = agent_runs.RunMessageRow(
@@ -1064,7 +1065,7 @@ def write_asked_answer(params: AskedAnswerParams) -> int:
 
             entries = reports.session_citation_entries(row.username, row.session_id)
             metadata = citations.answer_metadata(question, _citation_messages(row, messages),
-                                                 entries, params.internet_tools)
+                                                 entries, effective_internet_tools(params.internet_tools))
         ai = replace(ai, usage_json=json.dumps({**ai.usage, **metadata}))
         agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id, ai)
         _chat_row(row)(row.next_seq, "assistant", content=question,

@@ -11,6 +11,19 @@ use dioxus::prelude::*;
 #[cfg(feature = "server")]
 use crate::api::error_util::to_server_fn_error;
 
+/// Return the deployment capability for internet tools.
+#[server]
+pub async fn chat_internet_tools_enabled() -> Result<bool, ServerFnError> {
+    let _user = crate::api::server_auth::extract_user().await?;
+    Ok(backend::api::chat::gate::internet_tools_enabled())
+}
+
+/// Keep internet tools unavailable until the server confirms the capability.
+pub fn use_internet_tools_enabled() -> bool {
+    let available = use_resource(chat_internet_tools_enabled);
+    matches!(&*available.read(), Some(Ok(true)))
+}
+
 #[server]
 pub async fn chat_list_sessions(include_boards: bool) -> Result<Vec<ChatSessionItem>, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
@@ -62,8 +75,8 @@ pub async fn chat_set_collections(
 ///
 /// `options.internet_tools` routes to the full research agent
 ///  instead of the internal search agent. The options are
-/// honoured on the **first** turn only and frozen onto the session; later turns reuse
-/// the frozen values whatever the client sends. When rate-limited,
+/// honoured on the **first** turn only and frozen onto the session.
+/// The deployment can disable internet tools for new and existing sessions. When rate-limited,
 /// `retry_after_seconds` is set and `messages` is empty (nothing was written).
 #[server]
 pub async fn chat_send_message(

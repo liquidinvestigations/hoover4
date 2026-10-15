@@ -1752,6 +1752,7 @@ def render_main_env(cfg):
     env.update(agent_model_env(cfg))
     env["HOOVER4_MCP_BROWSER_MEM_LIMIT"] = cfg.get(m, "mcp_browser_mem_limit")
     env["FULL_RESEARCH_AGENT_WORKERS"] = cfg.get(m, "full_research_agent_workers")
+    env["HOOVER4_INTERNET_TOOLS_ENABLED"] = str(cfg.internet_tools_enabled()).lower()
     env["FULL_RESEARCH_MCP_SERVERS"] = (
         FULL_RESEARCH_MCP_SERVERS_ON if cfg.internet_tools_enabled()
         else FULL_RESEARCH_MCP_SERVERS_OFF

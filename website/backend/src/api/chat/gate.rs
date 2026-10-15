@@ -12,6 +12,12 @@ use common::chat_gate::{
 use crate::api::admin::llm::{agent_model, provider_name_from_url, read_llm_api_key};
 use crate::db_auth::settings;
 
+/// Return whether this deployment permits internet tools.
+pub fn internet_tools_enabled() -> bool {
+    std::env::var("HOOVER4_INTERNET_TOOLS_ENABLED")
+        .is_ok_and(|value| value.trim().eq_ignore_ascii_case("true"))
+}
+
 /// Evaluate the live process: env, the key file, and `server_settings`.
 pub async fn evaluate_live_chat_gate() -> ChatGate {
     let stored = match settings::get_setting(CHAT_ENABLED_SETTING).await {

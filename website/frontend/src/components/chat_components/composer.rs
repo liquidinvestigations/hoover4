@@ -4,7 +4,7 @@
 //! the processing pipeline, not the chat UI.
 //!
 //! The checkboxes disappear from here once the conversation has a turn in it: the options
-//! are frozen onto the session at that point, and the internet tools switch shows read-only
+//! are frozen onto the session at that point. When the deployment enables internet tools, the switch shows read-only
 //! at the right end of the title row
 //! ([`LockedInternetFlag`](super::locked_options::LockedInternetFlag)). Leaving an editable
 //! control that silently does nothing would be worse than removing it.
@@ -28,6 +28,7 @@ pub fn ChatComposer(
     #[props(default)]
     blocked: bool,
 ) -> Element {
+    let internet_tools_enabled = crate::api::chat_api::use_internet_tools_enabled();
     // Only a rate-limit lockout or a closed gate disables typing: while a turn streams
     // the user can already draft the next message (the server serialises turns per session).
     let disabled = retry_after_seconds.read().is_some() || blocked;
@@ -67,7 +68,7 @@ pub fn ChatComposer(
             }
             div {
                 style: "display: flex; align-items: center; gap: 15px; flex-wrap: wrap;",
-                if !locked {
+                if !locked && internet_tools_enabled {
                     label {
                         style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); \
                                 color: var(--x-ink); cursor: pointer; user-select: none;",

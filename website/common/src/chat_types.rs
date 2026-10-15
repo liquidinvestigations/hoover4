@@ -22,13 +22,9 @@ pub struct ChatSessionItem {
     pub options: ChatOptions,
 }
 
-/// The Deep Research / Internet tools switches for one conversation.
-///
-/// They are a property of the *conversation*, not of the composer: they decide which
-/// agent answers and therefore which tools exist. Letting them change mid-thread would
-/// produce a transcript where some answers had web access and some did not, with
-/// nothing on screen saying which was which. So the first message freezes them
-/// (`locked`), and from then on the UI shows them read-only above the transcript.
+/// The internet setting for one conversation, locked at the first message.
+/// The deployment can disable internet tools for every conversation, including locked ones.
+/// The interface hides this option when the deployment disables it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ChatOptions {
     pub internet_tools: bool,
@@ -38,9 +34,7 @@ pub struct ChatOptions {
 }
 
 impl Default for ChatOptions {
-    /// Internet tools **on**: the chat is more useful with them than without, and a
-    /// user who wants a documents-only answer can untick before the first message.
-    /// Deep research off: it costs a Temporal workflow and minutes of GPU time.
+    /// The initial preference applies only when the deployment enables internet tools.
     fn default() -> Self {
         Self {
             internet_tools: true,

@@ -6,7 +6,7 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 |---|---|
 | `composer.rs` | Textarea + **Internet tools** checkbox + send arrow. The checkbox disappears once the conversation has a turn, see below. No paperclip / upload control: documents enter via the processing pipeline. |
 | `gate_overlay.rs` | Non-dismissible overlay over the composer when a new turn cannot start. Names which reason applies: no provider, missing API key, or chat switched off. History stays readable. |
-| `locked_options.rs` | The internet tools switch, read-only, at the right end of the title row once it is frozen. Its tooltip is "Start a new chat to change this setting." |
+| `locked_options.rs` | The internet tools switch shows beside the title after locking, only when the deployment enables it. Its tooltip is "Start a new chat to change this setting." |
 | `session_card.rs` | Homepage / history card showing title + summary. |
 | `transcript.rs` | User bubbles, assistant markdown, tool disclosures, inline doc cards, the retry-attempt disclosure, and the token footer under an answer. |
 | `tool_cards/mod.rs` | The card registry dispatches on tool name and provides card chrome, elapsed counters, and JSON helpers. |

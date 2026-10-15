@@ -41,14 +41,11 @@ pub struct ChatSessionRow {
 
 impl ChatSessionRow {
     pub fn options(&self) -> ChatOptions {
-        // Before the first turn nothing is frozen, so the composer defaults apply
-        // rather than the zeroes this row was created with.
-        if self.options_locked == 0 {
-            return ChatOptions::default();
-        }
+        // Unlocked sessions use the initial preference. The deployment limits both states.
         ChatOptions {
-            internet_tools: self.use_internet_tools != 0,
-            locked: true,
+            internet_tools: crate::api::chat::gate::internet_tools_enabled()
+                && (self.options_locked == 0 || self.use_internet_tools != 0),
+            locked: self.options_locked != 0,
         }
     }
 }
@@ -606,11 +603,8 @@ pub async fn touch_session(
     insert_row("chat_sessions", &row).await
 }
 
-/// Freeze the Deep Research / Internet tools switches onto the conversation.
-///
-/// Called once, from the first message. Later calls are no-ops so a second turn cannot
-/// silently change which agent the transcript was produced by, which is what the lock
-/// is for. Returns the options now in force.
+/// Lock the conversation preference at the first message.
+/// Later messages preserve the stored preference. Returned options also apply the deployment limit.
 pub async fn lock_session_options(
     username: &str,
     session_id: &str,
@@ -622,7 +616,9 @@ pub async fn lock_session_options(
     if row.options_locked != 0 {
         return Ok(row.options());
     }
-    row.use_internet_tools = u8::from(requested.internet_tools);
+    row.use_internet_tools = u8::from(
+        requested.internet_tools && crate::api::chat::gate::internet_tools_enabled(),
+    );
     row.options_locked = 1;
     row.updated_at = now();
     insert_row("chat_sessions", &row).await?;

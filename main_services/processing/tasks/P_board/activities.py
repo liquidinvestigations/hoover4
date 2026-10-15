@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from temporalio import activity
 
 from tasks.heartbeat import with_heartbeat
-from tasks.P_agent.activities import AgentRunInput
+from tasks.P_agent.activities import AgentRunInput, effective_internet_tools
 from tasks.P_board import model as m
 from tasks.P_board import commands as cmd
 from tasks.P_board.contracts import labels_of, parse_explore_block, parse_reason
@@ -543,7 +543,7 @@ def _ensure_session(board, session_id: str, title: str, collections: list[str]) 
         now = boards.now().replace(microsecond=0)
         insert_durable(client, "chat_sessions",
                        [[session_id, board.owner, title[:200], collections,
-                         int(bool(board.internet_tools)), 1, now, now, 0]],
+                         int(effective_internet_tools(bool(board.internet_tools))), 1, now, now, 0]],
                        column_names=["session_id", "username", "title", "collections",
                                      "use_internet_tools", "options_locked", "created_at",
                                      "updated_at", "is_deleted"])
@@ -630,7 +630,7 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
         run_id=str(uuid.uuid5(BOARD_NAMESPACE, turn_uuid)), username=board.owner,
         session_id=session_id, turn_seq=seq, start_seq=seq + 1, turn_uuid=turn_uuid,
         allowed_collections=collections, llm_model="",  # empty: the agent model of hoover4.ini
-        internet_tools=bool(board.internet_tools),
+        internet_tools=effective_internet_tools(bool(board.internet_tools)),
         max_model_steps=int(steps), board_turn=True)
     return OpenedTurn(workflow_id=f"chat-{session_id}-{seq + 1}", run_input=run_input)
 

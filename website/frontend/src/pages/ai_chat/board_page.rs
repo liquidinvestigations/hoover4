@@ -543,6 +543,7 @@ fn BoardSettings(
     error: Signal<Option<String>>,
     on_close: EventHandler<()>,
 ) -> Element {
+    let internet_tools_enabled = crate::api::chat_api::use_internet_tools_enabled();
     let mut confirm_drop = use_signal(|| false);
     let mut busy = use_signal(|| false);
     let mut error = error;
@@ -562,28 +563,30 @@ fn BoardSettings(
                 style: "background: white; border-radius: 10px; padding: 18px 20px; width: 460px; max-width: 92%; box-shadow: 0 8px 30px rgba(0,0,0,0.2);",
                 onclick: move |e| e.stop_propagation(),
                 div { style: "font-size: var(--x-text-section); font-weight: 600; margin-bottom: 10px;", "Board settings" }
-                label { style: "display: flex; gap: 8px; align-items: center; font-size: var(--x-text-body);",
-                    input {
-                        class: "x-board-internet-tools",
-                        r#type: "checkbox",
-                        checked: snap.board.internet_tools,
-                        disabled: finished || busy(),
-                        onchange: {
-                            let id = board_id.clone();
-                            move |e: FormEvent| {
-                                let id = id.clone();
-                                let on = e.checked();
-                                busy.set(true);
-                                spawn(async move {
-                                    act(id, BoardAction::SetInternetTools { on }, snapshot, error).await;
-                                    busy.set(false);
-                                });
-                            }
-                        },
+                if internet_tools_enabled {
+                    label { style: "display: flex; gap: 8px; align-items: center; font-size: var(--x-text-body);",
+                        input {
+                            class: "x-board-internet-tools",
+                            r#type: "checkbox",
+                            checked: snap.board.internet_tools,
+                            disabled: finished || busy(),
+                            onchange: {
+                                let id = board_id.clone();
+                                move |e: FormEvent| {
+                                    let id = id.clone();
+                                    let on = e.checked();
+                                    busy.set(true);
+                                    spawn(async move {
+                                        act(id, BoardAction::SetInternetTools { on }, snapshot, error).await;
+                                        busy.set(false);
+                                    });
+                                }
+                            },
+                        }
+                        "Internet tools"
                     }
-                    "Internet tools"
+                    p { style: HELP_TEXT, "The next explores of the board can search the web and read web pages. Running explores keep the setting they started with." }
                 }
-                p { style: HELP_TEXT, "The next explores of the board can search the web and read web pages. Running explores keep the setting they started with." }
                 div { style: SUBHEADING, "Collections" }
                 p { style: "margin: 4px 0;", "{snap.board.collections.join(\", \")}" }
                 p { style: HELP_TEXT, "The collections are fixed when the board is created." }
@@ -975,6 +978,7 @@ fn count_line(entries: &[(usize, &str, bool)]) -> String {
 /// The numbers and settings of a board, under the events.
 #[component]
 fn BoardStatistics(snap: BoardSnapshot) -> Element {
+    let internet_tools_enabled = crate::api::chat_api::use_internet_tools_enabled();
     let intents = |state: &str| snap.intents.iter().filter(|i| i.state == state).count();
     let facts = |kind: &str| snap.facts.iter().filter(|f| f.kind == kind && !f.rejected).count();
     let rejected = snap.facts.iter().filter(|f| f.rejected).count();
@@ -999,7 +1003,9 @@ fn BoardStatistics(snap: BoardSnapshot) -> Element {
                 dt { "Intents" } dd { "{intent_line}" }
                 dt { "Facts" } dd { "{fact_line}" }
                 dt { "Collections" } dd { "{snap.board.collections.join(\", \")}" }
-                dt { "Internet tools" } dd { "{internet}" }
+                if internet_tools_enabled {
+                    dt { "Internet tools" } dd { "{internet}" }
+                }
                 dt { "Created" } dd { "{format_utc_ms(snap.board.created_ms)}" }
             }
         }

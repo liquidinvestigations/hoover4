@@ -670,7 +670,7 @@ pub async fn create_board_command(user: &CurrentUser, request_id: String,
                 max_explores: BASE_EXPLORES,
                 max_parallel: MAX_PARALLEL,
                 explore_step_budget: BASE_EXPLORE_STEPS,
-                internet_tools: u8::from(request.internet_tools),
+                internet_tools: u8::from(request.internet_tools && super::chat::gate::internet_tools_enabled()),
                 created_at: created,
                 updated_at: created,
                 is_deleted: 0,
@@ -696,6 +696,7 @@ pub async fn create_board(_user: &CurrentUser, _request: BoardCreateRequest) -> 
 /// version, which the explores read, and a command records the change for the event log.
 async fn set_internet_tools(user: &CurrentUser, mut board: BoardRow, request_id: &str,
                             on: bool) -> anyhow::Result<BoardCommandReceipt> {
+    let on = on && super::chat::gate::internet_tools_enabled();
     if (board.internet_tools != 0) != on {
         board.internet_tools = u8::from(on);
         board.updated_at = now();
@@ -1038,7 +1039,7 @@ async fn read_snapshot(board: BoardRow) -> anyhow::Result<BoardSnapshot> {
             collections: board.collections,
             llm_model: board.llm_model,
             max_parallel: board.max_parallel,
-            internet_tools: board.internet_tools != 0,
+            internet_tools: board.internet_tools != 0 && super::chat::gate::internet_tools_enabled(),
         },
     })
 }

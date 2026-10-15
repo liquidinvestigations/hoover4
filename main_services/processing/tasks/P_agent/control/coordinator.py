@@ -59,7 +59,9 @@ def capabilities_of(tools) -> frozenset:
 
 
 def profile_of(internet_tools: bool, capabilities=None) -> str:
-    profile = PROFILES[bool(internet_tools)]
+    from tasks.P_agent.activities import effective_internet_tools
+
+    profile = PROFILES[effective_internet_tools(internet_tools)]
     if capabilities is None:
         return profile
     return profile + (":web" if "web" in capabilities else ":documents")

@@ -56,3 +56,6 @@ Cancellation stops qpdf and removes temporary files.
 The response keeps temporary files until streaming ends or the client disconnects.
 No complete multipart object is stored.
 Retained direct OCR objects remain available for complete downloads.
+
+The generated `HOOVER4_INTERNET_TOOLS_ENABLED` value limits chat and board internet settings.
+Only an explicit true value permits internet tools. Stored enabled preferences also follow this deployment limit.

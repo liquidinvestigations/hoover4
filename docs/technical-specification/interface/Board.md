@@ -8,7 +8,7 @@
 | Pan | Move the graph view with a press and a drag on the pane. | A drag of at most 4 pixels stays a click on the node under the pointer. |
 | Zoom out / Zoom in | Show the graph at 50, 75, 100 or 125 %. | The address holds the zoom. The pane keeps its middle graph point. |
 | Show the board overview | Show the board overview in the detail pane. | It is over the top-right corner of the graph pane and shows only while a node is selected. |
-| Settings | Open the settings popup: internet tools, pause or resume, drop. | The collections are fixed at creation. |
+| Settings | Open the settings popup: internet tools, pause or resume, drop. | The collections are fixed at creation. Hide internet tools when `internet_tools_enabled` is false. |
 | Open the explore chat | Open the chat of the selected intent or fact. | It is at the right of the detail pane title, for a node with a chat. |
 | Citation card | Open the explore chat of the fact in a new tab with the document or the web page selected. | The card opens the document at the words of its quote. |
 | Reject fact / Reject correction | Reject the selected fact or correction with a reason. | The background context and the goals cannot be rejected. |

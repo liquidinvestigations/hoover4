@@ -26,6 +26,21 @@ from tasks.P_agent.steps import (
 RUN_WORKER = Path(agent_workflows.__file__).resolve().parent.parent / "run_worker.py"
 RUN_ID = "0b5e3c1a-1111-4222-8333-944455556666"
 
+
+@pytest.mark.parametrize("configured", [None, "", "false", "true"])
+@pytest.mark.parametrize("requested", [False, True])
+def test_deployment_limits_agent_routing(monkeypatch, configured, requested):
+    from tasks.P_agent.control.coordinator import profile_of
+
+    if configured is None:
+        monkeypatch.delenv("HOOVER4_INTERNET_TOOLS_ENABLED", raising=False)
+    else:
+        monkeypatch.setenv("HOOVER4_INTERNET_TOOLS_ENABLED", configured)
+    enabled = configured == "true" and requested
+    expected = activities.AGENT_URL if enabled else activities.INTERNAL_AGENT_URL
+    assert activities.agent_url_for(requested) == expected
+    assert profile_of(requested).startswith("full_research" if enabled else "internal_search")
+
 #: A live tool call id under streaming: the served model's id repeated by the chunk join.
 LONG_ID_A = "chatcmpl-tool-a5ca7d0e11f2" * 9
 LONG_ID_B = "chatcmpl-tool-b71c3e9d04aa" * 9

@@ -54,3 +54,6 @@ A duplicate mapping key is accepted by one compose implementation and rejected o
 the other, so `deploy.py` preflights every file it is about to use with a loader that
 rejects duplicates. The usual way to create one is an edit that removes a name line and
 leaves the indented line under it attached to whatever came before.
+
+`internet_tools_enabled` also generates `HOOVER4_INTERNET_TOOLS_ENABLED` for the website and workers.
+The website hides unavailable internet controls. Backend requests and worker dispatch force effective internet settings off when disabled.

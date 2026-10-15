@@ -1,9 +1,4 @@
-//! Read-only display of the internet tools switch, once a conversation has frozen it.
-//!
-//! Sits at the right end of the chat title row, taking over from the composer's checkbox once
-//! the first message is sent. It is a `disabled` checkbox rather than text or an icon: a
-//! checkbox is what the user ticked, so a checkbox shows their choice back to them, greyed
-//! out, in the position they left it. Its tooltip says how to change it.
+//! Show the locked internet setting beside the chat title when the deployment enables it.
 
 use dioxus::prelude::*;
 
@@ -12,9 +7,10 @@ pub const LOCKED_TOOLTIP: &str = "Start a new chat to change this setting.";
 
 #[component]
 pub fn LockedInternetFlag(on: bool) -> Element {
-    // Off is stated, not merely absent: "Internet tools" greyed and unticked reads as
-    // "this chat had no web access", which is exactly the question a user asks when an
-    // answer says it could not reach the internet.
+    let internet_tools_enabled = crate::api::chat_api::use_internet_tools_enabled();
+    if !internet_tools_enabled {
+        return rsx! {};
+    }
     let color = if on { "var(--x-ink)" } else { "var(--x-ink-faint)" };
     let label = "Internet tools";
     rsx! {

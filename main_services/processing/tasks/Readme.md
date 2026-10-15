@@ -420,3 +420,6 @@ global tables (dataset registry, collections) use `get_global_client()`.
 ## Navigation
 
 -  [Go Back](../Readme.md)
+
+Agent routing and board explores apply the generated `HOOVER4_INTERNET_TOOLS_ENABLED` deployment limit.
+Only an explicit true value permits internet tools, including for queued inputs that request them.

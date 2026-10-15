@@ -412,6 +412,10 @@ RESEARCH_INTERNET = "compose/research-agents-internet.yaml"
 )
 def test_research_agents_follow_the_llm_provider(fixture_name, agents, internet):
     cfg = _config(fixture_name)
+    env, _ = _render(fixture_name)
+    assert env["HOOVER4_INTERNET_TOOLS_ENABLED"] == (
+        "false" if fixture_name == "provider-on-internet-off.ini" else "true"
+    )
     overlays = deploy.selected_overlays(cfg, "main")
     services = {svc for svc, _port in deploy.expected_ports(cfg, "main")}
 

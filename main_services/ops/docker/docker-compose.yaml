@@ -506,6 +506,7 @@ services:
       garage-init:
         condition: service_completed_successfully
     environment:
+      - "HOOVER4_INTERNET_TOOLS_ENABLED=${HOOVER4_INTERNET_TOOLS_ENABLED:-false}"
       - "NER_URL=${NER_URL}"
       - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
       - "S3_ACCESS_KEY=${S3_ACCESS_KEY:-hoover4-blobs-rw}"
@@ -656,6 +657,7 @@ services:
       garage-init:
         condition: service_completed_successfully
     environment:
+      - "HOOVER4_INTERNET_TOOLS_ENABLED=${HOOVER4_INTERNET_TOOLS_ENABLED:-false}"
       # Same passthrough as the worker, and for the same reason: a rendered .env is
       # substituted INTO this file and does not reach the container by itself.
       - "HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS=${HOOVER4_WORKER_GRACEFUL_SHUTDOWN_SECONDS:-60}"
@@ -717,6 +719,7 @@ services:
       - "${WEBSITE_BIND_IP:-0.0.0.0}:12345:8080"
     environment:
       # Read by the unit test in backend/src/temporal_ready.rs. See the mount above.
+      - "HOOVER4_INTERNET_TOOLS_ENABLED=${HOOVER4_INTERNET_TOOLS_ENABLED:-false}"
       - HOOVER4_TEMPORAL_READINESS_PY=/mirror/processing-tasks/temporal_readiness.py
       - CLICKHOUSE_URL=http://clickhouse:8123
       - MANTICORE_URL=http://manticore:9308

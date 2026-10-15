@@ -22,9 +22,14 @@ INTERNAL_AGENT_URL = os.getenv(
 )
 
 
+def effective_internet_tools(requested: bool) -> bool:
+    """Apply the deployment limit to requested and stored internet settings."""
+    return requested and os.getenv("HOOVER4_INTERNET_TOOLS_ENABLED", "").strip().lower() == "true"
+
+
 def agent_url_for(internet_tools: bool) -> str:
     """The agent service a turn with these options belongs to."""
-    return AGENT_URL if internet_tools else INTERNAL_AGENT_URL
+    return AGENT_URL if effective_internet_tools(internet_tools) else INTERNAL_AGENT_URL
 
 
 @dataclass
