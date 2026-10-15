@@ -456,7 +456,7 @@ pub fn corners(kind: &NodeKind, slug: &str, rejected: bool, answer: &str) -> (St
             "correction" => "correction".to_string(),
             other => {
                 status.push(kind_label(other).to_string());
-                "fact".to_string()
+                "finding".to_string()
             }
         },
         NodeKind::Intent(state) => {
@@ -819,8 +819,8 @@ mod tests {
         let words = |left: &str, right: &[&str]| (left.to_string(), right.iter().map(|w| w.to_string()).collect::<Vec<_>>());
         assert_eq!(corner(fact("origin"), "background", false), words("background", &[]));
         assert_eq!(corner(fact("goal"), "goal-01", false), words("goal-01", &[]));
-        assert_eq!(corner(fact("sourced"), "fact-x", false), words("fact", &["sourced"]));
-        assert_eq!(corner(fact("not_found"), "fact-x", true), words("fact", &["not found", "rejected"]));
+        assert_eq!(corner(fact("sourced"), "fact-x", false), words("finding", &["sourced"]));
+        assert_eq!(corner(fact("not_found"), "fact-x", true), words("finding", &["not found", "rejected"]));
         assert_eq!(corner(fact("correction"), "correction-x", false), words("correction", &[]));
         assert_eq!(corner(NodeKind::Intent("concluded".into()), "intent-x", false), words("intent", &["concluded"]));
         assert_eq!(corners(&fact("goal"), "goal-02", false, "answered"), words("goal-02", &["answered"]));

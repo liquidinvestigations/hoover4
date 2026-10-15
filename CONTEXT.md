@@ -38,7 +38,7 @@ identifies one source execution, document and task.
 **Fact**:
 In entity explainer cards, a fact is one label and value row of sub-metadata. In
 investigation boards, a board fact is one stored finding of a board, with a kind and its
-citations.
+citations. The interface calls it a finding. Code identifiers and stored slugs retain `fact`.
 
 **Failure**:
 An above-document record of why a pipeline operation or stage stopped is stored in

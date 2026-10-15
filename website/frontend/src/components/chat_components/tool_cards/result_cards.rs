@@ -258,7 +258,7 @@ pub fn BoardFactCard(tool_input: String, tool_output: String, running: bool) -> 
     let expanded = use_signal(|| false);
     let (kind, fact, questions) = board_fact_input(&tool_input);
     let failure = tool_content(&tool_output).as_ref().and_then(tool_failure);
-    rsx! { CardShell { chip: "Board fact", label: format!("A {kind} fact for the board"), running, expanded, failure, raw_output: tool_output.clone(),
+    rsx! { CardShell { chip: "Board finding", label: format!("A {kind} finding for the board"), running, expanded, failure, raw_output: tool_output.clone(),
         badges: rsx! {},
         div { style: "white-space: pre-wrap; font-size: var(--x-text-sm);", "{fact}" }
         for (index, question) in questions.into_iter().enumerate() {
@@ -292,7 +292,7 @@ pub fn BoardFactSummary(tool_input: String) -> Element {
     });
     let content = rsx! {
         div { style: "font-size: var(--x-text-sm); font-weight: 600; color: var(--x-ink-strong);",
-            "The explore gave this answer to its board as a {kind} fact."
+            "The explore gave this answer to its board as a {kind} finding."
         }
         if questions.is_empty() {
             div { style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px;", "It left no open question." }

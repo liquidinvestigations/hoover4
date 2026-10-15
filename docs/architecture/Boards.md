@@ -6,7 +6,9 @@ explore, and the explore ends in one board fact with resolved citations. A perso
 board under AI Chat, adds hints and goals, rejects facts, starts the explore of an open
 question, and accepts or rejects the result.
 
-The page names three parts of a board in other words than the code. The **assessment** is the
+The interface calls a board fact a **finding**. Stored slugs, tool names, and payload fields retain `fact`.
+
+The page uses display terms for several stored concepts. The **assessment** is the
 model call that reads the board and declares intents or proposes the goal answers: the code calls
 it a reason (`board_reason`, the events `reason_started` and `reason_result`, the actor
 `reason`). The **background context** is the fact of kind `origin`: the collections and the

@@ -455,7 +455,7 @@ transcript.
 
 An investigation board works on one or more goals over your collections for a long time,
 without you in the conversation. The board splits the goals into intents, explores each intent
-in a chat of its own, and writes each finding as a fact with its sources. The boards show on
+in a chat of its own, and writes each finding with its sources. The boards show on
 the right of the AI chat page, each with its title, its status, a small picture of its graph
 and a short summary.
 
@@ -472,7 +472,7 @@ card names its type in its lower-left corner and its status in its lower-right c
 | background | The collections and the background context of the board. White with a black border. |
 | goal-01, goal-02 | A goal. Blue. It says answered when you accepted its answer, and answer proposed while an answer waits for you. |
 | intent | A direction that the board explores, with its state: open, running, concluded, failed, question or cancelled. |
-| fact | A finding: sourced (a document supports it), inferred, or not found. |
+| finding | A finding: sourced (a document supports it), inferred, or not found. |
 | correction | Your correction of a rejected answer or review. |
 
 Drag the graph to move it, and use **-** and **+** in its lower-right corner to zoom out and in.
@@ -480,16 +480,16 @@ Click a card to see it in full on the right. The address of the page names the s
 so you can send it as a link. **Show the board overview** over the top-right corner of the
 graph returns to the overview.
 
-**Work with a card.** A fact shows its text with its source cards. A source card opens the
-explore chat of the fact in a new tab, with that document open. **Open the explore chat**, at
-the right of the title, opens the whole chat. A fact lists its open questions, each in its own
+**Work with a card.** A finding shows its text with its source cards. A source card opens the
+explore chat of the finding in a new tab, with that document open. **Open the explore chat**, at
+the right of the title, opens the whole chat. A finding lists its open questions, each in its own
 card. **Explore this question**, in the corner of the card, asks the board to explore it at
 once. The board keeps its status: on a complete board only that explore runs. The card then
-links to the intent that explores it. To ask your own question about a fact or the
+links to the intent that explores it. To ask your own question about a finding or the
 background context, write it under the card and click **Ask**. An explore answers it as a new
-fact, and the card lists your question with its intent. A question does not hold the board
-open. When the board must answer it before it is complete, add it as a goal. Write why a fact is wrong and click **Reject fact**, or
-**Reject correction** on a correction. The board stops using it. The intent that made the fact
+finding, and the card lists your question with its intent. A question does not hold the board
+open. When the board must answer it before it is complete, add it as a goal. Write why a finding is wrong and click **Reject finding**, or
+**Reject correction** on a correction. The board stops using it. The intent that made the finding
 stays.
 
 **Steer the board.** In the overview:
@@ -500,7 +500,7 @@ stays.
   a question.
 - An assessment can propose answers for some goals and continue to work on the others. When
   every open goal has a proposed answer, the board waits for your review. Each goal shows its
-  proposed answer, in the overview and when you select the goal. An answer whose facts are
+  proposed answer, in the overview and when you select the goal. An answer whose findings are
   all searches that found nothing says that the records do not answer the goal. Accept it to
   record that, or reject it to continue the investigation. **Accept answer** keeps the
   answer, also when later work starts the board again. Write why an answer
@@ -516,8 +516,8 @@ stays.
 **The explore budget.** A board starts with 30 explores. Each goal after the first adds 25,
 and each hint, question and correction adds 4. A board never uses more than 300 explores, so
 near that limit an action adds less, and the event line says how much the budget grew. When
-the explores reach the budget, the board makes one last assessment of its facts and then waits
-for your review. **Reopen with 50 more explores** continues the open goals and keeps the facts
+the explores reach the budget, the board makes one last assessment of its findings and then waits
+for your review. **Reopen with 50 more explores** continues the open goals and keeps the findings
 and the accepted answers. Near the limit the button names the explores that it adds, and at
 a budget of 300 it says **Reopen with the remaining budget**. A complete board with a goal
 that has no accepted answer shows the same button. A board that used 300 explores starts no
@@ -529,10 +529,10 @@ show your name in bold. The last column links to the explore chat of the row (**
 tab), or to the card that the row names. An assessment is the step that reads the board and
 decides the next intents or proposes the review. **Show details** on an assessment row shows
 its prompt and its response. **Statistics** under the events counts the explores, the
-assessments, the intents and the facts.
+assessments, the intents and the findings.
 
 A board chat has an **Investigation Board** link at the right of its search row, and the
-pink card at its end opens the board with that chat's fact selected.
+pink card at its end opens the board with that chat's finding selected.
 
 ---
 

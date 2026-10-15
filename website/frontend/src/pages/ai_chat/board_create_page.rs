@@ -82,7 +82,7 @@ pub fn AiBoardCreatePage() -> Element {
                     }
                 }
                 p { style: HELP_TEXT,
-                    "A board runs its goals as a sequence of agent explores. Each explore is a chat that ends in one board fact. You review the answer of each goal, and you can reject facts and add hints while it runs."
+                    "A board runs its goals as a sequence of agent explores. Each explore is a chat that ends in one board finding. You review the answer of each goal, and you can reject findings and add hints while it runs."
                 }
                 if let Some(err) = error_msg.read().clone() {
                     ErrorBar { message: err }

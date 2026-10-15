@@ -800,7 +800,7 @@ fn BoardOverview(
                 }
                 if budget_review {
                     if let Some(button) = reopen.clone() {
-                        p { style: HELP_TEXT, "Reopen the board to continue the open goals. It keeps its facts and answers." }
+                        p { style: HELP_TEXT, "Reopen the board to continue the open goals. It keeps its findings and answers." }
                         {button}
                     }
                 }
@@ -825,7 +825,7 @@ fn BoardOverview(
             if let Some(button) = reopen.clone() {
                 div { class: "x-board-completed", style: PANEL,
                     div { style: SECTION, "The board is complete" }
-                    p { style: HELP_TEXT, "A goal has no accepted answer. Reopen the board to continue it. The board keeps its facts and answers." }
+                    p { style: HELP_TEXT, "A goal has no accepted answer. Reopen the board to continue it. The board keeps its findings and answers." }
                     {button}
                 }
             }
@@ -1014,7 +1014,7 @@ fn BoardStatistics(snap: BoardSnapshot) -> Element {
                 dt { "Model steps per explore" } dd { "{snap.explore_steps}" }
                 dt { "Assessments" } dd { "{snap.reasons_done}" }
                 dt { "Intents" } dd { "{intent_line}" }
-                dt { "Facts" } dd { "{fact_line}" }
+                dt { "Findings" } dd { "{fact_line}" }
                 dt { "Collections" } dd { "{snap.board.collections.join(\", \")}" }
                 if internet_tools_enabled {
                     dt { "Internet tools" } dd { "{internet}" }
@@ -1118,7 +1118,7 @@ fn fact_title(fact: &BoardFact) -> String {
             let number = fact.slug.strip_prefix("goal-").and_then(|n| n.parse::<u32>().ok()).unwrap_or(1);
             format!("Goal {number}")
         }
-        _ if fact.title.is_empty() => "Fact".to_string(),
+        _ if fact.title.is_empty() => "Finding".to_string(),
         _ => fact.title.clone(),
     }
 }
@@ -1128,7 +1128,7 @@ fn reject_words(kind: &str) -> (&'static str, &'static str) {
     if kind == "correction" {
         ("Why the correction is wrong", "Reject correction")
     } else {
-        ("Why the fact is wrong", "Reject fact")
+        ("Why the finding is wrong", "Reject finding")
     }
 }
 
@@ -1250,9 +1250,9 @@ fn FactDetail(
                 div { class: "x-board-fact-rejection", style: "border-left: 3px solid; border-left-color: var(--x-danger); padding: 4px 10px; margin: 6px 0;",
                     div { style: "color: var(--x-danger); font-weight: 500;",
                         if fact.rejected_ms > 0 {
-                            "{rejected_by} rejected this fact on {format_utc_ms(fact.rejected_ms)}. The board no longer uses it."
+                            "{rejected_by} rejected this finding on {format_utc_ms(fact.rejected_ms)}. The board no longer uses it."
                         } else {
-                            "{rejected_by} rejected this fact. The board no longer uses it."
+                            "{rejected_by} rejected this finding. The board no longer uses it."
                         }
                     }
                     if fact.rejected_reason.is_empty() {
@@ -1322,7 +1322,7 @@ fn FactDetail(
             }
             if can_ask {
                 div { class: "x-board-follow-up", style: "margin-top: 10px;",
-                    div { style: SUBHEADING, if fact.kind == "origin" { "Ask about the background context" } else { "Ask about this fact" } }
+                    div { style: SUBHEADING, if fact.kind == "origin" { "Ask about the background context" } else { "Ask about this finding" } }
                     div { class: "x-board-inline-form", style: "display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;",
                         textarea {
                             class: "x-board-own-question-text",
@@ -1347,14 +1347,14 @@ fn FactDetail(
                 }
             }
             if !fact.problems.is_empty() {
-                div { style: SUBHEADING, "Checks that changed this fact" }
+                div { style: SUBHEADING, "Checks that changed this finding" }
                 for (i, p) in fact.problems.iter().enumerate() {
                     div { key: "{i}", style: "font-size: var(--x-text-detail); color: var(--x-danger);", "{p}" }
                 }
             }
             if can_reject {
                 div { style: SUBHEADING,
-                    if fact.kind == "correction" { "Reject this correction" } else { "Reject this fact" }
+                    if fact.kind == "correction" { "Reject this correction" } else { "Reject this finding" }
                 }
                 div { style: "display: flex; gap: 8px; align-items: center;",
                     input {
@@ -1448,13 +1448,13 @@ fn GoalAnswer(
             }
             if answer.answer_kind == NOT_ESTABLISHED {
                 div { class: "x-board-answer-unresolved", style: HELP_TEXT,
-                    "The facts of this answer are searches that found nothing. Accept it to record that the records do not answer the goal, or reject it to continue the investigation."
+                    "The findings of this answer are searches that found nothing. Accept it to record that the records do not answer the goal, or reject it to continue the investigation."
                 }
             }
             p { style: "margin: 2px 0; white-space: pre-wrap;", "{answer.statement}" }
             if !from.is_empty() {
                 p { style: HELP_TEXT,
-                    "From the facts "
+                    "From the findings "
                     for (i, slug) in from.iter().enumerate() {
                         span { key: "{slug}",
                             if i > 0 { ", " }
@@ -1516,7 +1516,7 @@ fn IntentDetail(intent: BoardIntent, from: Vec<String>, board_id: String, zoom: 
             div { style: SUBHEADING, "Intent" }
             p { class: "x-board-intent-metadata", style: HELP_TEXT,
                 if !from.is_empty() {
-                    "From the facts "
+                    "From the findings "
                     for (index, slug) in from.iter().enumerate() {
                         span { key: "{index}",
                             if index > 0 { ", " }
@@ -1736,7 +1736,7 @@ mod tests {
     #[test]
     fn a_correction_pane_rejects_a_correction() {
         assert_eq!(reject_words("correction"), ("Why the correction is wrong", "Reject correction"));
-        assert_eq!(reject_words("sourced"), ("Why the fact is wrong", "Reject fact"));
+        assert_eq!(reject_words("sourced"), ("Why the finding is wrong", "Reject finding"));
     }
 
     fn event(event_type: &str, subject: &str) -> BoardEvent {
