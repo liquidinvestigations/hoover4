@@ -97,9 +97,10 @@ open that path: the model cannot read files and the website renders it as a brok
 
 `P0_scan_disk` must never walk the `derived/` prefix: an artifact the ingest walker can
 see is ingested, captured again, and produces another artifact, forever. `verify-stack.sh`
-asserts that no `blobs` row references it. Retention is a daily Temporal singleton
-(`sweep-chat-artifacts`, in `tasks/P_admin/artifact_sweeper.py`) that deletes the objects
-**before** the rows, because a ClickHouse TTL cannot touch the object store.
+asserts that no `blobs` row references it. Artifacts have no age limit. A daily Temporal
+singleton (`sweep-chat-artifacts`, in `tasks/P_admin/artifact_sweeper.py`) removes the
+artifacts of deleted chats and objects without a row. It deletes the objects **before** the
+rows, because a ClickHouse TTL cannot touch the object store.
 
 The two research agents share one image built from [`research_agent/`](research_agent/README.md):
 

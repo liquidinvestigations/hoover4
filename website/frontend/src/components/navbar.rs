@@ -66,14 +66,21 @@ pub fn Navbar() -> Element {
                 NavbarBottomIconLinks{},
             },
 
+            // The page frame is the containing block of every fixed overlay of a page, so a
+            // page overlay covers the page area and the rail stays usable (`main.css`). The
+            // frame does not scroll: a scrolling containing block would move its overlays
+            // with the content.
             div {
-                id:"x-page-container",
-                // A page that does not fit scrolls inside this container, so a narrow
-                // window or a high browser zoom never hides a control.
-                style: "flex-grow:1; min-width: 0; height: 100%; overflow: auto;",
-                GlobalErrorBoundary {
-                    boundary_name: "Navbar".to_string(),
-                    Outlet::<Route> {}
+                class: "x-page-frame",
+                div {
+                    id:"x-page-container",
+                    // A page that does not fit scrolls inside this container, so a narrow
+                    // window or a high browser zoom never hides a control.
+                    style: "width: 100%; height: 100%; overflow: auto;",
+                    GlobalErrorBoundary {
+                        boundary_name: "Navbar".to_string(),
+                        Outlet::<Route> {}
+                    }
                 }
             }
         }

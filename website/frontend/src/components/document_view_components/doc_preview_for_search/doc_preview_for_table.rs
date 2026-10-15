@@ -595,11 +595,11 @@ fn TableColumnModalDialog(
     };
     let (pane_size, body_style) = match &modal {
         TableColumnModal::Cell(_) => (
-            "width: calc(100vw - 48px); height: calc(100vh - 48px);",
+            "width: 100%; height: 100%;",
             "flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 8px 11px;",
         ),
         _ => (
-            "width: min(440px, calc(100vw - 48px)); max-height: calc(100vh - 48px);",
+            "width: min(440px, 100%); max-height: 100%;",
             "overflow-y: auto; padding: 8px 11px;",
         ),
     };

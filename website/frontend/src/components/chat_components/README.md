@@ -17,7 +17,7 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 | `tool_cards/entities_card.rs` | `list_document_entities`: the two tiers apart, each rule-validated value a link to its explainer card in the document viewer. |
 | `tool_run_summary.rs` | The summary line of a run of consecutive tool rows, see below. |
 | `tool_disclosure.rs` | The **generic** card, and the deliberate fallback: type chip + prose summary, Expand to labelled fields, then a second toggle for raw JSON. |
-| `doc_ref_card.rs` | Wraps the shared [`SearchResultItemCard`](../search_components/search_result_item_card.rs) for a `ChatDocRef`. Renders `display_snippet()`, not the raw snippet, see below. |
+| `doc_ref_card.rs` | Wraps the shared [`SearchResultItemCard`](../search_components/search_result_item_card.rs) for a `ChatDocRef`. Renders `display_snippet()`, not the raw snippet, see below. Loads the file size and the dates of the document with `get_document_card_facts`, because a stored citation holds neither. |
 | `conversation_find.rs` | "Search in conversation" bar (an input of at most 350 px, then 0/N and up/down), mirroring the document find box chrome. In a board explore chat it ends with an "Investigation Board" link to the board. |
 | `markdown_text.rs` | Markdown → Dioxus nodes for assistant turns. |
 
@@ -278,7 +278,8 @@ server-side render build too, where there is no browser clock.
 ## Reuse of search / document preview
 
 - Document cards use `SearchResultItemCard` unchanged. The session page provides a
-  `SearchResultsState` context with the selection fields the card reads.
+  `SearchResultsState` context with the selection fields the card reads. It has no search
+  result, so the card shows the earliest date. `ChatDocRefCard` loads the size and the dates.
 - The right pane is `DocumentPreviewForSearchRoot` unchanged, including
   `NoDocumentSelected` when nothing is selected. Selection lives in the URL
   (`/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state`).

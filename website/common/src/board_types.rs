@@ -18,7 +18,8 @@ pub fn is_board_session(session_id: &str) -> bool {
 }
 
 /// The board and the intent of a board explore session `board-<board_id>-<intent_id>`, or
-/// `None` for another session. A board id is hex, so the first `-` after the prefix ends it.
+/// `None` for another session. A board id is hex, so the first `-` after the prefix ends it,
+/// and the hyphens of a slug intent id stay in the intent id.
 ///
 /// **Mirrored in `main_services/processing/tasks/P_board/model.py`** (`session_id_for`).
 pub fn board_of_session(session_id: &str) -> Option<(String, String)> {
@@ -30,21 +31,20 @@ pub fn board_of_session(session_id: &str) -> Option<(String, String)> {
     Some((board.to_string(), intent.to_string()))
 }
 
-/// The fact id of the fact that the intent `intent_id` concludes in: `i3.2` gives `f3.2`.
-///
-/// **Mirrored in `main_services/processing/tasks/P_board/model.py`** (`fact_id_for`).
-pub fn fact_id_for(intent_id: &str) -> String {
-    format!("f{}", intent_id.strip_prefix('i').unwrap_or(intent_id))
-}
-
 /// The most goals of one board.
 pub const MAX_GOALS: usize = 6;
 
-/// The prefix of the intents that a person starts from an open question: `i0.N` for the
-/// N-th question that the board explores. Reasons start at 1, so reason number 0 is free.
-///
-/// **Mirrored in `main_services/processing/tasks/P_board/model.py`** (`QUESTION_INTENT_PREFIX`).
-pub const QUESTION_INTENT_PREFIX: &str = "i0.";
+/// The most explores of one board, whatever its budget.
+/// **Mirrored in `main_services/processing/tasks/P_board/model.py`** (`EXPLORE_LIMIT`).
+pub const EXPLORE_LIMIT: u32 = 300;
+
+/// The `answer_kind` of a proposed answer that a sourced fact of its own supports.
+pub const SUPPORTED: &str = "supported";
+/// The `answer_kind` of a proposed answer whose facts are all not-found facts.
+pub const NOT_ESTABLISHED: &str = "not_established";
+/// The fixed statement of a `not_established` answer.
+/// **Mirrored in `main_services/processing/tasks/P_board/model.py`** (`NOT_ESTABLISHED_STATEMENT`).
+pub const NOT_ESTABLISHED_STATEMENT: &str = "The cited records do not establish an answer to this goal.";
 
 /// The open question that an intent follows: its fact and its 0-based position there.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -53,30 +53,39 @@ pub struct BoardQuestionRef {
     pub index: u32,
 }
 
-/// The fact id of the `index`-th goal (1-based) of a board.
+/// The 1-based slot of a goal id in either form: `goal` is 1, `goal-2` and `goal-02` are 2.
+/// 0 for another id.
 ///
-/// **Mirrored in `main_services/processing/tasks/P_board/model.py`** (`goal_id_for`).
-pub fn goal_id(index: usize) -> String {
-    if index <= 1 { "goal".to_string() } else { format!("goal-{index}") }
+/// **Mirrored in `main_services/processing/tasks/P_board/model.py`** (`goal_slot`).
+pub fn goal_slot(fact_id: &str) -> u32 {
+    if fact_id == "goal" {
+        return 1;
+    }
+    fact_id
+        .strip_prefix("goal-")
+        .filter(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+        .and_then(|n| n.parse::<u32>().ok())
+        .unwrap_or(0)
 }
 
-/// The fixed slug of an origin or goal fact, or `None` for a node with a generated label.
+/// The key of open question `index` (0-based) of a fact: `<fact_id>#<1-based index>`. The
+/// fact id is opaque, so a hyphen or a dot in it is part of the id.
 ///
-/// The origin (the background context of the board) is `background`. An address with its
-/// storage id `origin` still resolves. The goal with the id `goal` is `goal-01`, and `goal-N` is `goal-`
-/// followed by `N` with at least two digits. The slugs are computed here and not stored,
-/// because the origin and the goals keep their own text as their label.
+/// **Mirrored in `main_services/processing/tasks/P_board/model.py`** (`question_key`).
+pub fn question_key(fact_id: &str, index: u32) -> String {
+    format!("{fact_id}#{}", index + 1)
+}
+
+/// The fixed slug of a background or goal fact, or `None` for a node with a generated label.
+///
+/// The background context of the board is `background`, whether its id is the legacy
+/// `origin` or `background`. An address with the id `origin` still resolves. A goal is
+/// `goal-` followed by its slot with at least two digits: `goal` is `goal-01`, `goal-2` and
+/// `goal-02` are `goal-02`. The background and the goals keep their own text as their label.
 pub fn fixed_slug(fact_id: &str, kind: &str) -> Option<String> {
     match kind {
         "origin" => Some("background".to_string()),
-        "goal" => {
-            let number = if fact_id == "goal" {
-                1
-            } else {
-                fact_id.strip_prefix("goal-").and_then(|n| n.parse::<u32>().ok()).unwrap_or(1)
-            };
-            Some(format!("goal-{number:02}"))
-        }
+        "goal" => Some(format!("goal-{:02}", goal_slot(fact_id).max(1))),
         _ => None,
     }
 }
@@ -204,10 +213,20 @@ pub struct BoardReviewGoal {
     pub goal: String,
     pub from: Vec<String>,
     pub statement: String,
-    /// The assessment that proposed the answer. A decision names it, so a decision on an
-    /// answer that a newer assessment replaced does nothing.
+    /// The assessment that proposed the answer, for display and for an answer without a
+    /// proposal id.
     #[serde(default)]
     pub reason_no: u32,
+    /// The identity of the proposal. A decision names it, so a decision on an answer that a
+    /// newer assessment replaced does nothing. Empty for an answer proposed before it existed.
+    #[serde(default)]
+    pub proposal_id: String,
+    /// `supported` or `not_established`. Empty for an older answer.
+    #[serde(default)]
+    pub answer_kind: String,
+    /// The model's text of a `not_established` answer. The statement stays the fixed text.
+    #[serde(default)]
+    pub commentary: String,
 }
 
 /// What the graph of a board is drawn from. The explorer and the overview thumbnail build
@@ -247,6 +266,15 @@ pub struct BoardIntent {
     /// The open question that a person asked to explore with this intent.
     #[serde(default)]
     pub asked: Option<BoardQuestionRef>,
+    /// The question keys (`question_key`) that this intent explores.
+    #[serde(default)]
+    pub questions: Vec<String>,
+    /// `assessment` or `person_question`. Empty for an intent of an older board summary.
+    #[serde(default)]
+    pub origin: String,
+    /// A question that the person wrote, with no open question of a fact behind it.
+    #[serde(default)]
+    pub own: bool,
 }
 
 /// One assessment of a board, for its details popup.
@@ -312,22 +340,56 @@ pub struct BoardSnapshot {
     /// The generated summary of the board. Empty before its first label pass.
     #[serde(default)]
     pub summary: String,
+    /// The identity of the current review or completion: the event that caused it. A review
+    /// decision and a reopening name it. Empty on an active or paused board.
+    #[serde(default)]
+    pub review_id: String,
+    /// Why the board is in review: `answers`, `budget` or `stalled`. Empty otherwise.
+    #[serde(default)]
+    pub review_reason: String,
+    /// Whether the board used `EXPLORE_LIMIT` explores. Such a board starts no more work.
+    #[serde(default)]
+    pub limit_reached: bool,
+    /// The explores that a reopening adds now, when the board can reopen: it is in review or
+    /// complete, a goal has no accepted answer, the limit is not reached, and this review
+    /// has not reopened. 0 reopens with the remaining budget. `None` when it cannot reopen.
+    #[serde(default)]
+    pub reopen_grant: Option<u32>,
+    /// A final assessment of the used budget runs.
+    #[serde(default)]
+    pub final_running: bool,
 }
 
 impl BoardSnapshot {
-    /// The goal facts, first goal first.
+    /// The goal facts, in slot order.
     pub fn goals(&self) -> Vec<&BoardFact> {
         let mut goals: Vec<&BoardFact> = self.facts.iter().filter(|f| f.kind == "goal").collect();
-        goals.sort_by_key(|f| (f.fact_id != "goal", f.fact_id.len(), f.fact_id.clone()));
+        goals.sort_by_key(|f| (goal_slot(&f.fact_id), f.fact_id.clone()));
         goals
     }
 
-    /// The intent that follows open question `index` of fact `fact_id`, when a person asked
-    /// to explore it.
+    /// The intent that explores open question `index` of fact `fact_id`. The intent that
+    /// binds its key and did not fail comes first, newest first, then a failed one, then an
+    /// intent of an older person action that names the question.
     pub fn follower_of(&self, fact_id: &str, index: u32) -> Option<&BoardIntent> {
-        self.intents
+        let key = question_key(fact_id, index);
+        let bound: Vec<&BoardIntent> = self.intents.iter().filter(|i| i.questions.contains(&key)).collect();
+        bound
             .iter()
-            .find(|i| i.asked.as_ref().is_some_and(|a| a.fact_id == fact_id && a.index == index))
+            .rev()
+            .find(|i| i.state != "failed")
+            .or_else(|| bound.last())
+            .copied()
+            .or_else(|| {
+                self.intents
+                    .iter()
+                    .find(|i| i.asked.as_ref().is_some_and(|a| a.fact_id == fact_id && a.index == index))
+            })
+    }
+
+    /// The questions that the person wrote about fact `fact_id`, as intents.
+    pub fn own_questions_of(&self, fact_id: &str) -> Vec<&BoardIntent> {
+        self.intents.iter().filter(|i| i.own && i.from_facts.first().is_some_and(|f| f == fact_id)).collect()
     }
 
     /// The slug of a fact or intent id, or the id itself when the board has no such node.
@@ -366,6 +428,50 @@ impl BoardSnapshot {
     }
 }
 
+/// One action of a person on a board. Each is one command of the board's command writer
+/// (`main_services/processing/tasks/P_board/commands.py`). The website maps each to its
+/// command kind, so no action can name a command of the worker.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum BoardAction {
+    AddHint { text: String },
+    RejectFact { fact_id: String, reason: String },
+    SetPaused { paused: bool },
+    SetInternetTools { on: bool },
+    /// Finish the review `review_id`, or continue it with a correction.
+    Review { review_id: String, accept: bool, correction: String },
+    /// Accept or reject the proposed answer `proposal_id` of goal `goal`.
+    Answer { goal: String, proposal_id: String, accept: bool, correction: String },
+    AddGoal { text: String },
+    /// Explore open question `index` of a fact, or the person's own `question` about it.
+    /// Exactly one of the two is set.
+    ExploreQuestion { fact_id: String, index: Option<u32>, question: String },
+    /// Reopen the board in review or completion `expected_id`.
+    Reopen { expected_id: String },
+}
+
+/// The state of one submitted command.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+pub struct BoardCommandReceipt {
+    pub request_id: String,
+    /// `pending`, `committed` or `rejected`.
+    pub state: String,
+    /// Why a rejected command was refused.
+    #[serde(default)]
+    pub error: String,
+    /// The intent that a question opened.
+    #[serde(default)]
+    pub intent_id: String,
+    /// The explores that a reopening added.
+    #[serde(default)]
+    pub grant: Option<u32>,
+}
+
+impl BoardCommandReceipt {
+    pub fn is_done(&self) -> bool {
+        self.state == "committed" || self.state == "rejected"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -376,7 +482,17 @@ mod tests {
         assert_eq!(fixed_slug("goal", "goal").as_deref(), Some("goal-01"));
         assert_eq!(fixed_slug("goal-2", "goal").as_deref(), Some("goal-02"));
         assert_eq!(fixed_slug("goal-12", "goal").as_deref(), Some("goal-12"));
+        assert_eq!(fixed_slug("goal-03", "goal").as_deref(), Some("goal-03"));
+        assert_eq!(fixed_slug("background", "origin").as_deref(), Some("background"));
         assert_eq!(fixed_slug("f1.1", "sourced"), None);
+    }
+
+    #[test]
+    fn a_goal_slot_reads_both_forms_and_a_question_key_keeps_the_fact_id() {
+        assert_eq!((goal_slot("goal"), goal_slot("goal-2"), goal_slot("goal-02"), goal_slot("goal-x")), (1, 2, 2, 0));
+        assert_eq!(goal_slot("fact-goal-2"), 0);
+        assert_eq!(question_key("f1.2", 0), "f1.2#1");
+        assert_eq!(question_key("fact-contract-payment-2", 2), "fact-contract-payment-2#3");
     }
 
     fn snapshot() -> BoardSnapshot {
@@ -398,7 +514,8 @@ mod tests {
             max_explores: 12, explore_steps: 60,
             // A slug that equals another node's storage id resolves to the node with the slug.
             facts: vec![fact("f1.1", "fact-raptor"), fact("f1.2", "f1.1")],
-            intents: vec![], events: vec![], summary: String::new(),
+            intents: vec![], events: vec![], summary: String::new(), review_id: String::new(),
+            review_reason: String::new(), limit_reached: false, reopen_grant: None, final_running: false,
         }
     }
 
@@ -417,19 +534,35 @@ mod tests {
     #[test]
     fn a_question_is_followed_by_the_intent_that_names_it() {
         let mut snap = snapshot();
-        let intent = |id: &str, asked: Option<BoardQuestionRef>| BoardIntent {
+        let intent = |id: &str, asked: Option<BoardQuestionRef>, questions: &[&str], state: &str| BoardIntent {
             intent_id: id.into(), from_facts: vec!["f1.1".into()], objective: String::new(),
-            brief: String::new(), state: "open".into(), attempts: 0, session_id: String::new(),
+            brief: String::new(), state: state.into(), attempts: 0, session_id: String::new(),
             fact_id: String::new(), question: String::new(), last_error: String::new(), created_ms: 0,
             slug: String::new(), title: String::new(), summary: String::new(), asked,
+            questions: questions.iter().map(|q| q.to_string()).collect(), origin: String::new(), own: false,
         };
         snap.intents = vec![
-            intent("i1.1", None),
-            intent("i0.1", Some(BoardQuestionRef { fact_id: "f1.1".into(), index: 1 })),
+            intent("i1.1", None, &[], "open"),
+            intent("i0.1", Some(BoardQuestionRef { fact_id: "f1.1".into(), index: 1 }), &[], "open"),
         ];
         assert_eq!(snap.follower_of("f1.1", 1).map(|i| i.intent_id.as_str()), Some("i0.1"));
         assert!(snap.follower_of("f1.1", 0).is_none());
         assert!(snap.follower_of("f1.2", 1).is_none());
+        // A binding names the intent, and a replacement comes before the failed intent.
+        snap.intents.push(intent("intent-who-signed", None, &["f1.1#1"], "failed"));
+        assert_eq!(snap.follower_of("f1.1", 0).map(|i| i.intent_id.as_str()), Some("intent-who-signed"));
+        snap.intents.push(intent("intent-who-signed-2", None, &["f1.1#1"], "open"));
+        assert_eq!(snap.follower_of("f1.1", 0).map(|i| i.intent_id.as_str()), Some("intent-who-signed-2"));
+    }
+
+    #[test]
+    fn goals_are_in_slot_order_in_both_forms() {
+        let mut snap = snapshot();
+        let base = snap.facts[0].clone();
+        let goal = |id: &str| BoardFact { fact_id: id.into(), kind: "goal".into(), ..base.clone() };
+        snap.facts = vec![goal("goal-10"), goal("goal-02"), goal("goal")];
+        let order: Vec<&str> = snap.goals().iter().map(|g| g.fact_id.as_str()).collect();
+        assert_eq!(order, vec!["goal", "goal-02", "goal-10"]);
     }
 
     #[test]
@@ -438,7 +571,10 @@ mod tests {
             board_of_session("board-0a1b2c-i1.2"),
             Some(("0a1b2c".to_string(), "i1.2".to_string()))
         );
-        assert_eq!(board_of_session("board-0a1b2c-i0.7").map(|(_, i)| fact_id_for(&i)).as_deref(), Some("f0.7"));
+        assert_eq!(
+            board_of_session("board-0a1b2c-intent-check-contracts-2"),
+            Some(("0a1b2c".to_string(), "intent-check-contracts-2".to_string()))
+        );
         assert_eq!(board_of_session("4f2a9e"), None);
         assert_eq!(board_of_session("board-0a1b2c"), None);
         assert_eq!(board_of_session("board-xyz-i1.1"), None);

@@ -78,8 +78,21 @@ impl DocumentEmail {
 /// negative values, and because this crate is compiled to wasm where every extra
 /// dependency is bytes on the wire.
 pub fn format_epoch_utc(epoch_seconds: i64) -> String {
-    let days = epoch_seconds.div_euclid(86_400);
+    let (y, m, d) = civil_date(epoch_seconds);
     let seconds_of_day = epoch_seconds.rem_euclid(86_400);
+    let (hour, minute) = (seconds_of_day / 3_600, (seconds_of_day % 3_600) / 60);
+    format!("{y:04}-{m:02}-{d:02} {hour:02}:{minute:02} UTC")
+}
+
+/// The UTC date of an epoch in seconds, `YYYY-MM-DD`, with no time.
+pub fn format_epoch_date_utc(epoch_seconds: i64) -> String {
+    let (y, m, d) = civil_date(epoch_seconds);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// The UTC year, month and day of an epoch in seconds, also before 1970.
+fn civil_date(epoch_seconds: i64) -> (i64, i64, i64) {
+    let days = epoch_seconds.div_euclid(86_400);
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);
@@ -90,8 +103,7 @@ pub fn format_epoch_utc(epoch_seconds: i64) -> String {
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
-    let (hour, minute) = (seconds_of_day / 3_600, (seconds_of_day % 3_600) / 60);
-    format!("{y:04}-{m:02}-{d:02} {hour:02}:{minute:02} UTC")
+    (y, m, d)
 }
 
 #[cfg(test)]
@@ -107,6 +119,14 @@ mod tests {
         // rem_euclid, not %: a negative epoch with a non-zero time of day must not
         // produce a negative hour.
         assert_eq!(format_epoch_utc(-1), "1969-12-31 23:59 UTC");
+    }
+
+    #[test]
+    fn a_card_date_has_no_time() {
+        assert_eq!(format_epoch_date_utc(0), "1970-01-01");
+        assert_eq!(format_epoch_date_utc(-1), "1969-12-31");
+        assert_eq!(format_epoch_date_utc(-1_072_915_200), "1936-01-02");
+        assert_eq!(format_epoch_date_utc(1_191_970_800), "2007-10-09");
     }
 
     #[test]

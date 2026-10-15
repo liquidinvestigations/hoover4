@@ -2,9 +2,17 @@
 
 `BoardDispatcher` is a singleton with the fixed id `board-dispatcher`. The chat worker
 asserts it at start, as `collect-eta-samples` is asserted. Each pass runs `board_plan`,
-starts the reasons and explores it returns, cancels the explores of paused boards, and sleeps
-for `POLL_SECONDS`. All state is in ClickHouse, so no person action needs a signal: the next
-pass reads it. The dispatcher waits for no person, only for its own timer and reasons.
+starts the command writer `BoardCommands` (`command_workflows.py`) of every board that
+`board_plan` names, starts the reasons and explores whose start commands are committed,
+cancels the explores of paused boards, and sleeps for `POLL_SECONDS`. All state is in
+ClickHouse, so no person action needs a signal: the next pass reads it. The dispatcher waits
+for no person, only for its own timer and reasons.
+
+`board_plan` submits a start command for each reason and explore it returns, and the task
+carries the request id. The dispatcher keeps the task until a later pass reports the command
+committed or refused, and carries the waiting tasks into the next run. A task without a
+request id comes from a history written before the command writer and starts at once, so
+such a history replays with the same commands.
 
 Each pass also starts `label_board` for the board that `board_plan` names in `labels`, when
 no label task is in flight (`labels.labels_to_start`). It runs on `chat-model-queue` as a
@@ -26,9 +34,11 @@ import asyncio
 from datetime import timedelta
 
 from temporalio import workflow
+from dataclasses import dataclass, field
+
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError, ChildWorkflowError
-from temporalio.workflow import ParentClosePolicy
+from temporalio.workflow import ChildWorkflowCancellationType, ParentClosePolicy
 
 with workflow.unsafe.imports_passed_through():
     from tasks.heartbeat import HEARTBEAT_TIMEOUT
@@ -36,6 +46,7 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P_board.activities import (
         EndRequest,
         ExploreTask,
+        FinalFailure,
         PlanInput,
         PlanOutput,
         ReasonTask,
@@ -45,7 +56,9 @@ with workflow.unsafe.imports_passed_through():
         conclude_explore,
         open_explore_turn,
         record_explore_end,
+        record_final_failure,
     )
+    from tasks.P_board.command_workflows import BoardCommands, commands_workflow_id
     from tasks.P_board.labels import LabelTask, label_board, labels_to_start
 
 #: Seconds between two passes of the dispatcher.
@@ -60,6 +73,17 @@ CHAT_MODEL_TASK_QUEUE = "chat-model-queue"
 _SHORT = timedelta(seconds=120)
 
 
+@dataclass
+class DispatcherState:
+    """The start commands that wait for their commit when the dispatcher continues as new."""
+    reasons: list[ReasonTask] = field(default_factory=list)
+    explores: list[ExploreTask] = field(default_factory=list)
+
+
+def _key(board_id: str, request_id: str) -> str:
+    return f"{board_id} {request_id}"
+
+
 @workflow.defn
 class BoardDispatcher:
     """Plan and start the work of every live board."""
@@ -67,25 +91,46 @@ class BoardDispatcher:
     def __init__(self) -> None:
         self._reasons: dict[str, asyncio.Task] = {}
         self._labels: dict[str, asyncio.Task] = {}
+        self._commands: dict[str, asyncio.Task] = {}
+        self._awaiting: dict[str, ReasonTask | ExploreTask] = {}
         self._woken = False
 
     @workflow.run
-    async def run(self) -> None:
+    async def run(self, state: DispatcherState | None = None) -> None:
+        for task in (state.reasons + state.explores) if state else []:
+            self._awaiting[_key(task.board_id, task.request_id)] = task
         for _ in range(PASSES_PER_RUN):
+            waiting_reasons = {t.board_id for t in self._awaiting.values() if isinstance(t, ReasonTask)}
             try:
                 output: PlanOutput = await workflow.execute_activity(
-                    board_plan, PlanInput(in_flight_reasons=sorted(self._reasons)),
+                    board_plan, PlanInput(in_flight_reasons=sorted(set(self._reasons) | waiting_reasons),
+                                          awaiting=sorted(self._awaiting)),
                     start_to_close_timeout=_SHORT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
                     retry_policy=RetryPolicy(maximum_attempts=2),
                 )
             except ActivityError as exc:
                 workflow.logger.warning("board_plan failed: %s", exc)
                 output = PlanOutput()
+            for board_id in output.command_boards:
+                await self._start_commands(board_id)
+            for key in output.rejected:
+                self._awaiting.pop(key, None)
+            for key in output.committed:
+                task = self._awaiting.pop(key, None)
+                if isinstance(task, ReasonTask):
+                    self._start_reason(task)
+                elif isinstance(task, ExploreTask):
+                    await self._start_explore(task)
             for reason in output.reasons:
-                if reason.board_id not in self._reasons:
-                    self._reasons[reason.board_id] = asyncio.ensure_future(self._reason(reason))
+                if reason.request_id:
+                    self._awaiting[_key(reason.board_id, reason.request_id)] = reason
+                else:
+                    self._start_reason(reason)
             for explore in output.explores:
-                await self._start_explore(explore)
+                if explore.request_id:
+                    self._awaiting[_key(explore.board_id, explore.request_id)] = explore
+                else:
+                    await self._start_explore(explore)
             for board_id in labels_to_start(set(self._labels), output.labels):
                 self._labels[board_id] = asyncio.ensure_future(self._label(board_id))
             for workflow_id in output.cancels:
@@ -103,7 +148,40 @@ class BoardDispatcher:
         if self._reasons or self._labels:
             await asyncio.gather(*self._reasons.values(), *self._labels.values(),
                                  return_exceptions=True)
+        if self._awaiting:
+            waiting = list(self._awaiting.values())
+            workflow.continue_as_new(DispatcherState(
+                [t for t in waiting if isinstance(t, ReasonTask)],
+                [t for t in waiting if isinstance(t, ExploreTask)]))
         workflow.continue_as_new()
+
+    def _start_reason(self, reason: ReasonTask) -> None:
+        if reason.board_id not in self._reasons:
+            self._reasons[reason.board_id] = asyncio.ensure_future(self._reason(reason))
+
+    async def _start_commands(self, board_id: str) -> None:
+        """Start the command writer of a board unless this run already waits for it."""
+        if board_id in self._commands:
+            return
+        try:
+            handle = await workflow.start_child_workflow(
+                BoardCommands.run, board_id, id=commands_workflow_id(board_id),
+                task_queue=m.BOARD_TASK_QUEUE, parent_close_policy=ParentClosePolicy.ABANDON,
+                cancellation_type=ChildWorkflowCancellationType.ABANDON,
+            )
+        except Exception as exc:  # noqa: BLE001 - a writer that is already open keeps running
+            workflow.logger.info("could not start the command writer of %s: %s", board_id, exc)
+            return
+        self._commands[board_id] = asyncio.ensure_future(self._command_end(board_id, handle))
+
+    async def _command_end(self, board_id: str, handle) -> None:
+        try:
+            await handle
+        except Exception as exc:  # noqa: BLE001 - the next pass starts the writer again
+            workflow.logger.warning("the command writer of %s ended with %s", board_id, exc)
+        finally:
+            self._commands.pop(board_id, None)
+            self._woken = True
 
     async def _start_explore(self, explore: ExploreTask) -> None:
         try:
@@ -139,9 +217,23 @@ class BoardDispatcher:
             )
         except ActivityError as exc:
             workflow.logger.warning("board_reason failed for %s: %s", reason.board_id, exc)
+            if reason.final:
+                await self._final_failure(reason, str(exc))
         finally:
             self._reasons.pop(reason.board_id, None)
             self._woken = True
+
+    async def _final_failure(self, reason: ReasonTask, error: str) -> None:
+        """Record the end of a final assessment whose call failed, so it ends its operation."""
+        try:
+            await workflow.execute_activity(
+                record_final_failure, FinalFailure(reason.board_id, reason.assessed_budget, error),
+                start_to_close_timeout=_SHORT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=RetryPolicy(maximum_attempts=3),
+            )
+        except ActivityError as exc:
+            # The next pass sees the running operation without a reason in flight and ends it.
+            workflow.logger.warning("record_final_failure failed for %s: %s", reason.board_id, exc)
 
 
 @workflow.defn

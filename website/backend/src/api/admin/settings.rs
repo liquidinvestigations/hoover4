@@ -9,40 +9,49 @@ use crate::db_auth::settings;
 /// Settings this build understands, with the value that applies when no row exists.
 ///
 /// The page used to list `server_settings` and nothing else, so a setting nobody had ever
-/// written was **invisible and therefore unreachable**: `chat_artifact_ttl_days` had
-/// validation here and a reader in the artifact sweeper, and no way for an admin to set
-/// it. A setting that exists in three places and cannot be changed is worse than one that does
+/// written was **invisible and therefore unreachable**. A setting that has validation here
+/// and a reader in the worker, and no way for an admin to set it, is worse than one that does
 /// not exist, because everything about it reads as working.
 ///
 /// The default shown must be the one the reader actually falls back to. Where these
 /// disagree the page misrepresents the current behaviour, so keep them together:
-/// * `chat_artifact_ttl_days`: `tasks/P_admin/artifact_sweeper.py::DEFAULT_TTL_DAYS`
 /// * `session_expiration_seconds`, `auth::session` (one week)
 /// * `chat_enabled`: default `true`. Read at request time by `api::chat::gate`
 const KNOWN_SETTINGS: &[(&str, &str)] = &[
     ("session_expiration_seconds", "604800"),
-    ("chat_artifact_ttl_days", "30"),
     (common::chat_gate::CHAT_ENABLED_SETTING, "true"),
     // Read by `tasks/P_board/activities.py::_cap`: the board model work of all boards
     // together, explores and reasons. Default 1.
     ("board_max_parallel_explores", "1"),
 ];
 
-/// Settings that this build no longer reads, because `hoover4.ini` sets the models. A stored
+/// Settings that this build no longer reads, with the reason that the setter gives. A stored
 /// row of one of them stays in the table. The page does not list it, and the setter refuses
-/// it, so no control on the page does nothing.
-const RETIRED_SETTINGS: [&str; 4] = [
-    "llm_default_chat_model",
-    "llm_summarization_model",
-    "llm_model_internal_search",
-    "llm_model_full_research",
+/// it, so no control on the page does nothing. An empty reason names `hoover4.ini`, which sets
+/// the models. Chat content has no age limit, so no setting can remove it by age.
+const RETIRED_SETTINGS: [(&str, &str); 5] = [
+    ("llm_default_chat_model", ""),
+    ("llm_summarization_model", ""),
+    ("llm_model_internal_search", ""),
+    ("llm_model_full_research", ""),
+    ("chat_artifact_ttl_days", "Chat content is kept permanently. This setting no longer exists."),
 ];
+
+fn retired(key: &str) -> Option<&'static str> {
+    RETIRED_SETTINGS.iter().find(|(k, _)| *k == key).map(|(_, why)| *why)
+}
+
+/// Settings that a deployment step writes. The page does not list them and the setter
+/// refuses them. `board_node_identity_version` selects the id format of new board nodes, and
+/// `main.py activate-board-node-ids` sets it once the compatible services run. A lower value
+/// would give new nodes ids that the stored nodes can already have.
+const INTERNAL_SETTINGS: [&str; 1] = ["board_node_identity_version"];
 
 /// Deployment configuration the page shows but cannot change: these come from
 /// `hoover4.ini` through the container's environment, so a form field for them would be a
 /// control that silently does nothing. They are listed because the alternative (a key
 /// that decides what the dataset-creation form can reach, visible nowhere in the UI) is
-/// how `chat_artifact_ttl_days` became unreachable in the first place.
+/// how a setting becomes unreachable.
 const DEPLOYMENT_KEYS: [(&str, &str); 1] = [("datasets_mount_path", "DATASETS_MOUNT_PATH")];
 
 /// `(key, value)` for every deployment key, read from the environment.
@@ -64,7 +73,7 @@ pub async fn admin_list_settings(user: &CurrentUser) -> anyhow::Result<Vec<Serve
     let rows = settings::list_settings().await?;
     let mut items: Vec<ServerSettingItem> = rows
         .into_iter()
-        .filter(|r| !RETIRED_SETTINGS.contains(&r.key.as_str()))
+        .filter(|r| retired(&r.key).is_none() && !INTERNAL_SETTINGS.contains(&r.key.as_str()))
         .map(|r| ServerSettingItem {
             key: r.key,
             value: r.value,
@@ -97,8 +106,14 @@ pub async fn admin_set_setting(
                 anyhow::bail!("session_expiration_seconds must be > 0");
             }
         }
-        k if RETIRED_SETTINGS.contains(&k) => {
-            anyhow::bail!("{key} is set in hoover4.ini, not on this page");
+        k if INTERNAL_SETTINGS.contains(&k) => {
+            anyhow::bail!("{key} is set by the deployment, not on this page")
+        }
+        k if retired(k).is_some() => {
+            match retired(k).unwrap_or_default() {
+                "" => anyhow::bail!("{key} is set in hoover4.ini, not on this page"),
+                why => anyhow::bail!("{why}"),
+            }
         }
         "embeddings_serving_model" => {
             if value.trim().is_empty() {
@@ -111,14 +126,6 @@ pub async fn admin_set_setting(
                 .map_err(|_| anyhow::anyhow!("embeddings_serving_dim must be a positive integer"))?;
             if v == 0 || v > 8192 {
                 anyhow::bail!("embeddings_serving_dim must be between 1 and 8192");
-            }
-        }
-        "chat_artifact_ttl_days" => {
-            let v: u32 = value
-                .parse()
-                .map_err(|_| anyhow::anyhow!("chat_artifact_ttl_days must be a positive integer"))?;
-            if v == 0 || v > 3650 {
-                anyhow::bail!("chat_artifact_ttl_days must be between 1 and 3650");
             }
         }
         s if s == common::chat_gate::CHAT_ENABLED_SETTING => {

@@ -82,6 +82,7 @@ Grouped snippets prefer parsed body text, other text, raw text, then the filenam
 A result card shows at most three complete lines of text, with an ellipsis when text is omitted, and does not scroll.
 A result card has a pointer cursor and a light blue background under the mouse, unless it is selected.
 A search card uses 13px snippet text with a 19px line height and a 112px card height.
+Two 13px lines under the card controls show the file size and the date that the active sort reads. Newest first shows the latest confirmed date, and every other order the earliest. An unknown value keeps an empty line, so the card stays 112px high.
 The search field width is 375px when space permits.
 A filename-only match shares those lines between its notice and the matching path.
 Folder disclosure appears only when a node has child folders or containers.

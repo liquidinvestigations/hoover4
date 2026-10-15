@@ -1,16 +1,18 @@
 """`board_reason` stores the prompt and the whole reply of each assessment.
 
-The board page shows them in the assessment details popup. The storage and the model call
-are replaced here, so no service runs.
+The board page shows them in the assessment details popup. The result goes to the command
+writer as a `reason_result` command. The storage and the model call are replaced here, so no
+service runs.
 """
 
 from datetime import datetime
 
-from database import boards
-from database.boards import BoardRow, EventRow, FactRow
+from database.boards import EventRow, FactRow
 from tasks.P_agent import summarize
 from tasks.P_board import activities
+from tasks.P_board import commands as cmd
 from tasks.P_board import model as m
+from board_store_fake import FakeBoardStore
 
 T0 = datetime(2026, 10, 14, 8, 0, 0)
 
@@ -27,36 +29,44 @@ class _Reply:
 
 
 def _patch(monkeypatch, live=True):
-    board = BoardRow("b1", "admin", "t", "g", collections=["enron"], created_at=T0)
-    written = {"assessments": [], "events": []}
+    store = FakeBoardStore().install(monkeypatch)
+    store.add_board("b1", is_deleted=0 if live else 1)
+    store.write_events([EventRow("b1", "e1", m.BOARD_CREATED, "admin", "", {}, T0)])
+    store.publish_facts([FactRow("b1", "origin", m.ORIGIN, "o", created_at=T0),
+                         FactRow("b1", "goal", m.GOAL, "g", created_at=T0)], [])
     monkeypatch.setenv("LLM_MODEL", "short-model")
-    monkeypatch.setattr(boards, "read_board", lambda b: board)
-    monkeypatch.setattr(boards, "read_events",
-                        lambda b: [EventRow("b1", "e1", m.BOARD_CREATED, "admin", "", {}, T0)])
-    monkeypatch.setattr(boards, "read_facts", lambda b: [FactRow("b1", "origin", m.ORIGIN, "o"),
-                                                         FactRow("b1", "goal", m.GOAL, "g")])
-    monkeypatch.setattr(boards, "read_citations", lambda b: [])
-    monkeypatch.setattr(boards, "board_is_live", lambda b: live)
-    monkeypatch.setattr(boards, "write_assessment",
-                        lambda *args: written["assessments"].append(args))
-    monkeypatch.setattr(boards, "write_event", lambda e: written["events"].append(e))
     monkeypatch.setattr(activities, "_record_llm_call", lambda *a, **k: None)
-    return written
+    return store
 
 
 def test_a_reason_stores_its_prompt_and_reply(monkeypatch):
-    written = _patch(monkeypatch)
+    store = _patch(monkeypatch)
     reply = '{"intents": [{"from": ["origin"], "objective": "find the memo", "brief": "b"}]}'
     monkeypatch.setattr(summarize, "_post", lambda endpoint, body: _Reply(reply))
     assert activities.board_reason(activities.ReasonTask("b1", 1)) == "intents"
-    (board_id, reason_no, prompt, text, error, model), = written["assessments"]
+    (board_id, reason_no, prompt, text, error, model), = store.assessments
     assert (board_id, reason_no, text, error, model) == ("b1", 1, reply, "", "short-model")
     assert "You are the reasoning step" in prompt and "Goals:" in prompt
-    assert written["events"][0].event_type == m.REASON_RESULT
+    [command] = store.read_inputs("b1")
+    assert (command.request_id, command.kind, command.body["reason_no"]) == (
+        "reason_result:1", cmd.REASON_RESULT, 1)
+    assert command.body["payload"]["outcome"] == "intents"
 
 
 def test_a_dropped_board_gets_no_assessment_row(monkeypatch):
-    written = _patch(monkeypatch, live=False)
+    store = _patch(monkeypatch, live=False)
     monkeypatch.setattr(summarize, "_post", lambda endpoint, body: _Reply("{}"))
     activities.board_reason(activities.ReasonTask("b1", 2))
-    assert written["assessments"] == [] and written["events"] == []
+    assert store.assessments == [] and store.read_inputs("b1") == []
+
+
+def test_a_final_assessment_proposes_answers_only(monkeypatch):
+    store = _patch(monkeypatch)
+    store.write_events([EventRow("b1", "e2", m.PAUSE_REQUESTED, "admin", "", {}, T0)])
+    reply = '{"answers": [], "intents": [{"from": ["origin"], "objective": "find more"}]}'
+    monkeypatch.setattr(summarize, "_post", lambda endpoint, body: _Reply(reply))
+    task = activities.ReasonTask("b1", 3, final=True, assessed_budget=30, assessment_id="final-30")
+    assert activities.board_reason(task) == "noop", "a final call runs on a board that is not active"
+    payload = store.read_inputs("b1")[0].body["payload"]
+    assert (payload["final"], payload["assessed_budget"], payload["assessment_id"]) == (True, 30, "final-30")
+    assert "intents" not in payload

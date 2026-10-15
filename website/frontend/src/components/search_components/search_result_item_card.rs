@@ -12,6 +12,12 @@ use crate::components::search_components::{
     search_panel_left_view::SearchResultsState,
 };
 
+/// One line of the size and date column. The fixed height keeps an empty line, and the 1px
+/// padding aligns the text with the border of the menu button.
+const META_LINE_STYLE: &str = "font-size: var(--x-text-detail); line-height: var(--x-card-meta-line); \
+    height: var(--x-card-meta-line); color: rgba(0, 0, 0, 0.5); white-space: nowrap; \
+    font-variant-numeric: tabular-nums; padding-right: 1px;";
+
 #[component]
 pub fn SearchResultItemCard(
     result: ReadSignal<SearchResultDocumentItem>,
@@ -53,11 +59,23 @@ pub fn SearchResultItemCard(
     };
 
     let label = if citation_handle.is_empty() { item_index.to_string() } else { citation_handle };
+    // The sort of the results that the list shows. The chat and board pages have no
+    // results, so their cards show the earliest date, as the relevance order does.
+    let sort = search_results_state.search_result.read().as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .map(|documents| documents.query.sort)
+        .unwrap_or_default();
+    let item = result.read().clone();
+    let size_label = item.card_size_label();
+    let date_label = item.card_date_label(sort);
+    let size_bytes = item.file_size_bytes.filter(|bytes| *bytes >= 0).map(|bytes| bytes.to_string()).unwrap_or_default();
+    let date_epoch = item.sort_date(sort).map(|epoch| epoch.to_string()).unwrap_or_default();
     rsx! {
         div {
             "data-citation-search-snippet": citation_excerpt.then_some("true"),
             class: "x-result-item-card",
             "data-selected": "{we_are_selected}",
+            "data-file-hash": "{item.file_hash}",
             style: "
                 display: flex;
                 flex-direction: column;
@@ -143,18 +161,35 @@ pub fn SearchResultItemCard(
                     HighlightTextSnippetSection {highlight_text_spans, matched_by_filename}
                     {children}
                 }
+                // The controls, and under them the size and the date that the list sort
+                // reads. An unknown value keeps its empty line, so the card height stays.
                 div {
-                    style: "
-                        display: flex;
-                        flex-direction: row;
-                        align-items: center;
-                        gap: 4px;
-                        flex-shrink: 0;
-                    ",
-                    DocCardActionButtonOpenNewTab {document_identifier: result().document_identifier()}
-                    DocCardActionButtonMore {
-                        document_identifier: result().document_identifier(),
-                        show_finder: true,
+                    class: "x-card-controls",
+                    style: "display: flex; flex-direction: column; align-items: flex-end; flex-shrink: 0;",
+                    div {
+                        style: "
+                            display: flex;
+                            flex-direction: row;
+                            align-items: center;
+                            gap: 4px;
+                        ",
+                        DocCardActionButtonOpenNewTab {document_identifier: result().document_identifier()}
+                        DocCardActionButtonMore {
+                            document_identifier: result().document_identifier(),
+                            show_finder: true,
+                        }
+                    }
+                    div {
+                        class: "x-card-size",
+                        "data-card-size-bytes": "{size_bytes}",
+                        style: META_LINE_STYLE,
+                        "{size_label}"
+                    }
+                    div {
+                        class: "x-card-date",
+                        "data-card-date-epoch": "{date_epoch}",
+                        style: META_LINE_STYLE,
+                        "{date_label}"
                     }
                 }
             }

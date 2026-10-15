@@ -101,7 +101,10 @@ Reading a result card:
   document belongs to, written `<collection>_<dataset>`;
 * the **snippet** is text from the document with your search terms highlighted in orange;
 * the two buttons at the right of each card are **open in the full-page viewer** and the
-  **actions menu**. See [result actions](#result-actions).
+  **actions menu**. See [result actions](#result-actions);
+* under the two buttons are the **file size** and a **date**. The date is the latest date of
+  the document when the list is sorted newest first, and its earliest date otherwise. A value
+  that the index does not know leaves its line empty.
 
 Clicking anywhere else on the card selects it and loads it into the preview pane on the right.
 
@@ -244,8 +247,8 @@ between ascending and descending.
 
 > Choosing a sort marks your choice; press **Search** to put it into effect.
 
-*Relevance* needs something to be relevant to: with an empty query it falls back to newest
-first.
+*Relevance* orders by the search score. With an empty query every document has the same
+score, so choose *Date* to order such a list by time.
 
 Paging is at the top right of the result list: arrows for previous and next, `1/51` for where
 you are, and the up/down arrows next to `- / 1000` step through individual results without
@@ -482,7 +485,10 @@ explore chat of the fact in a new tab, with that document open. **Open the explo
 the right of the title, opens the whole chat. A fact lists its open questions, each in its own
 card. **Explore this question**, in the corner of the card, asks the board to explore it at
 once. The board keeps its status: on a complete board only that explore runs. The card then
-links to the intent that explores it. Write why a fact is wrong and click **Reject fact**, or
+links to the intent that explores it. To ask your own question about a fact or the
+background context, write it under the card and click **Ask**. An explore answers it as a new
+fact, and the card lists your question with its intent. A question does not hold the board
+open. When the board must answer it before it is complete, add it as a goal. Write why a fact is wrong and click **Reject fact**, or
 **Reject correction** on a correction. The board stops using it. The intent that made the fact
 stays.
 
@@ -492,17 +498,33 @@ stays.
   on the new goal.
 - **Add hint** gives the next assessment a hint. A hint also answers an explore that asked you
   a question.
-- When an assessment finds an answer for every open goal, the board waits for your review. Each
-  goal shows its proposed answer, in the overview and when you select the goal. **Accept
-  answer** keeps the answer, also when later work starts the board again. Write why an answer
+- An assessment can propose answers for some goals and continue to work on the others. When
+  every open goal has a proposed answer, the board waits for your review. Each goal shows its
+  proposed answer, in the overview and when you select the goal. An answer whose facts are
+  all searches that found nothing says that the records do not answer the goal. Accept it to
+  record that, or reject it to continue the investigation. **Accept answer** keeps the
+  answer, also when later work starts the board again. Write why an answer
   is wrong and click **Reject answer**: the board continues at once with your correction, and
   the other answers wait for you. When every goal has an accepted answer, the board is
   complete. **Finish the board** accepts every proposed answer and stops the board.
   **Continue with a correction** gives it your correction, and it continues.
 - **Settings** turns the internet tools on or off for later explores, pauses and resumes the
   board, and drops it.
+- A button stays gray until the board has taken your action. When the board refuses it, for
+  example because a newer assessment replaced the answer, the reason shows above the board.
 
-**Follow the work.** The **Events** table lists every action, newest first. Your own actions
+**The explore budget.** A board starts with 30 explores. Each goal after the first adds 25,
+and each hint, question and correction adds 4. A board never uses more than 300 explores, so
+near that limit an action adds less, and the event line says how much the budget grew. When
+the explores reach the budget, the board makes one last assessment of its facts and then waits
+for your review. **Reopen with 50 more explores** continues the open goals and keeps the facts
+and the accepted answers. Near the limit the button names the explores that it adds, and at
+a budget of 300 it says **Reopen with the remaining budget**. A complete board with a goal
+that has no accepted answer shows the same button. A board that used 300 explores starts no
+more work, and its page links to a new board.
+
+**Follow the work.** The **Events** table lists the newest 200 actions, newest first, and
+**Show all** lists every action. Your own actions
 show your name in bold. The last column links to the explore chat of the row (**Open**, in a new
 tab), or to the card that the row names. An assessment is the step that reads the board and
 decides the next intents or proposes the review. **Show details** on an assessment row shows
@@ -608,8 +630,9 @@ Groups work the same way, and a group's page is where **collection access** is g
 
 ### Settings
 
-This page holds the server settings you can change without a redeploy: chat artifact
-retention, the chat switch, the board work limit and the session lifetime. The models are not
+This page holds the server settings you can change without a redeploy: the chat switch, the
+board work limit and the session lifetime. Chats and boards are kept until a person deletes
+them, so no setting removes chat content by age. The models are not
 here: `hoover4.ini` sets them. Below
 them sits the deployment configuration that is read-only because it comes from
 `hoover4.ini`.

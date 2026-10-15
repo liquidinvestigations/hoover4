@@ -191,13 +191,30 @@ def _spent(log, reasons):
     return log
 
 
-def test_the_budget_sends_an_idle_board_to_review():
+def test_the_budget_runs_one_final_assessment_then_sends_the_board_to_review():
     b = board(max_explores=100)
-    log = _spent(Log().add(m.BOARD_CREATED), m.BASE_EXPLORES).reason(99, n=1)
-    f = fold(b, log.events, facts(("f1.1", m.INFERRED)))
-    assert f.max_explores == m.BASE_EXPLORES, "the board row's budget is not read"
+    budget = m.BASE_EXPLORES
+    log = _spent(Log().add(m.BOARD_CREATED), budget).reason(99, n=1)
+    rows = facts(("f1.1", m.INFERRED))
+    f = fold(b, log.events, rows)
+    assert f.max_explores == budget, "the board row's budget is not read"
     actions = plan([b], {"b1": f}, set(), cap=1)
-    assert actions.reviews == [("b1", "budget")] and actions.explores == []
+    [final] = actions.reasons
+    assert (final.final, final.assessed_budget, final.assessment_id) == (True, budget, f"final-{budget}")
+    assert actions.explores == [] and actions.reviews == []
+    log.add(m.REASON_STARTED, "100", final=True, assessed_budget=budget, assessment_id=f"final-{budget}")
+    f = fold(b, log.events, rows)
+    assert not reason_due(f, in_flight=False), "no reason while the final assessment runs"
+    assert plan([b], {"b1": f}, {"b1"}, cap=1) == plan([], {}, set(), cap=1)
+    assert plan([b], {"b1": f}, set(), cap=1).final_failures == [("b1", budget)]
+    log.reason(100, outcome="noop", n=0, final=True, assessed_budget=budget)
+    f = fold(b, log.events, rows)
+    assert f.final_ops[str(budget)]["state"] == "terminal" and f.status == m.ACTIVE
+    actions = plan([b], {"b1": f}, set(), cap=1)
+    assert actions.reviews == [("b1", "budget")] and not actions.reasons
+    log.add(m.REVIEW_PROPOSED, "budget", reason="budget", statement="The explore budget is used.")
+    f = fold(b, log.events, rows)
+    assert (f.status, f.review_reason, f.decision_id) == (m.REVIEW, "budget", log.events[-1].event_id)
 
 
 def test_corrections_and_hints_grow_the_budget_up_to_the_caps():
@@ -207,12 +224,14 @@ def test_corrections_and_hints_grow_the_budget_up_to_the_caps():
     log.add(m.HINT_ADDED, text="h")
     log.add(m.FACT_REJECTED, "f1.1", reason="wrong person")
     f = fold(board(), log.events, facts())
-    assert f.max_explores == m.BASE_EXPLORES + m.HINT_EXPLORES + m.CORRECTION_EXPLORES
+    assert f.max_explores == m.BASE_EXPLORES + 2 * m.ACTION_EXPLORES
+    assert f.grants == {log.events[-2].event_id: m.ACTION_EXPLORES, log.events[-1].event_id: m.ACTION_EXPLORES}
     assert f.explore_steps == m.BASE_EXPLORE_STEPS + m.HINT_EXPLORE_STEPS + m.CORRECTION_EXPLORE_STEPS
-    for k in range(10):
+    for k in range(80):
         log.add(m.FACT_REJECTED, f"f9.{k}", reason="r")
     f = fold(board(), log.events, facts())
-    assert (f.max_explores, f.explore_steps) == (m.MAX_EXPLORES, m.MAX_EXPLORE_STEPS)
+    assert (f.max_explores, f.explore_steps) == (m.EXPLORE_LIMIT, m.MAX_EXPLORE_STEPS)
+    assert f.grants[log.events[-1].event_id] == 0, "a grant above the limit is 0"
 
 
 def test_a_question_waits_for_a_hint():
@@ -262,28 +281,45 @@ def test_a_review_names_each_goal():
     goals = ["goal", "goal-2"]
     one = '{"review": {"goals": [{"goal": "goal", "from": ["f1.1"], "statement": "a"}]}}'
     payload = parse_reason(one, {"f1.1", "f2.1"}, {"f1.1"}, [], True, goals, {"f2.1"})
-    assert payload["outcome"] == "noop"
-    assert any("leaves out the goals goal-2" in p for p in payload["problems"])
+    assert payload["outcome"] == "partial", "an answer for one goal of two is progress"
+    assert [a["goal"] for a in payload["proposals"]] == ["goal"]
     both = json.dumps({"review": {"goals": [
         {"goal": "goal", "from": ["f1.1"], "statement": "a"},
         {"goal": "goal-2", "from": ["f2.1"], "statement": "not in the documents"}]}})
     payload = parse_reason(both, {"f1.1", "f2.1"}, {"f1.1"}, [], True, goals, {"f2.1"})
     assert payload["outcome"] == "review"
-    assert [g["goal"] for g in payload["review"]["goals"]] == goals
-    assert payload["review"]["from"] == ["f1.1", "f2.1"]
+    assert [(a["goal"], a["answer_kind"]) for a in payload["proposals"]] == [
+        ("goal", m.SUPPORTED), ("goal-2", m.NOT_ESTABLISHED)]
+    absent = payload["proposals"][1]
+    assert (absent["statement"], absent["commentary"]) == (m.NOT_ESTABLISHED_STATEMENT, "not in the documents")
     only_absent = json.dumps({"review": {"goals": [
         {"goal": "goal", "from": ["f2.1"], "statement": "a"},
         {"goal": "goal-2", "from": ["f2.1"], "statement": "b"}]}})
-    assert parse_reason(only_absent, {"f2.1"}, set(), [], True, goals, {"f2.1"})["outcome"] == "noop"
+    out = parse_reason(only_absent, {"f2.1"}, set(), [], True, goals, {"f2.1"})
+    assert out["outcome"] == "review"
+    assert {a["answer_kind"] for a in out["proposals"]} == {m.NOT_ESTABLISHED}
+    inferred = json.dumps({"answers": [{"goal": "goal", "from": ["f3.1"], "statement": "a"}]})
+    out = parse_reason(inferred, {"f3.1"}, set(), [], True, goals)
+    assert out["outcome"] == "noop" and "proposals" not in out, "an inferred fact supports no answer"
 
 
 def test_a_review_without_goals_answers_the_first_goal():
-    review = fold(board(), Log().add(m.BOARD_CREATED).reason(
-        1, outcome="review", review=parse_reason(
-            '{"review": {"from": ["f1.1"], "statement": "s"}}', {"f1.1"}, {"f1.1"}, [], True)["review"]
-    ).events, facts(("f1.1", m.SOURCED)))
-    assert review.status == m.REVIEW
-    assert review.proposed == {"goal": {"goal": "goal", "from": ["f1.1"], "statement": "s", "reason_no": 1}}
+    out = parse_reason('{"review": {"from": ["f1.1"], "statement": "s"}}', {"f1.1"}, {"f1.1"}, [], True)
+    assert out["outcome"] == "review"
+    log = Log().add(m.BOARD_CREATED).reason(1, outcome="review", proposals=out["proposals"])
+    review = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
+    assert (review.status, review.review_reason) == (m.REVIEW, "answers")
+    answer = review.proposed["goal"]
+    assert (answer["from"], answer["statement"], answer["reason_no"], answer["answer_kind"]) == (
+        ["f1.1"], "s", 1, m.SUPPORTED)
+    assert answer["proposal_id"] == f"{log.events[-1].event_id}:goal"
+
+
+def test_a_stored_legacy_review_keeps_its_status():
+    log = Log().add(m.BOARD_CREATED).reason(1, outcome="review", review={
+        "from": ["f1.1"], "goals": [{"goal": "goal", "from": ["f1.1"], "statement": "s"}]})
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED), ("goal-2", m.GOAL)))
+    assert f.status == m.REVIEW and list(f.proposed) == ["goal"], "a goal left out does not hold it back"
 
 
 def test_a_submitted_fact_is_read_from_the_tool_row():
@@ -335,12 +371,12 @@ def test_recoverable_reason_replies_are_read():
     both = json.dumps({"review": {"goals": [{"goal": "goal", "from": ["f1.1"], "statement": "a"},
                                             {"goal": "goal-2", "from": ["f1.1"], "statement": "b"}]}})
     out = parse_reason(both, {"f1.1"}, {"f1.1"}, [], True, ["goal-2"], closed_ids={"goal"})
-    assert out["outcome"] == "review" and [g["goal"] for g in out["review"]["goals"]] == ["goal-2"]
+    assert out["outcome"] == "review" and [a["goal"] for a in out["proposals"]] == ["goal-2"]
     assert out["problems"] == ["dropped the answer of the accepted goal goal"]
     cited = json.dumps({"review": {"goals": [{"goal": "goal-2", "from": ["f1.1", "c0c5"],
                                               "statement": "b"}]}})
     out = parse_reason(cited, {"f1.1", "f1.2"}, {"f1.1"}, [], True, ["goal-2"])
-    assert out["outcome"] == "review" and out["review"]["from"] == ["f1.1"]
+    assert out["outcome"] == "review" and out["proposals"][0]["from"] == ["f1.1"]
     assert out["problems"] == ["dropped ['c0c5'] from the answer of goal-2: not a fact"]
     unsourced = cited.replace("c0c5", "f1.2")
     assert parse_reason(unsourced, {"f1.1", "f1.2"}, {"f1.1"}, [], True, ["goal-2"])["outcome"] == "noop"
@@ -388,7 +424,7 @@ def test_the_next_reason_reads_the_checks_that_changed_the_last_reply():
     assert folded.last_reason_problems == ["dropped as a repeat: find X"]
     prompt = render_reason(board(), folded, rows, [], stalled=False)
     assert "Checks that changed your last reply:\n- dropped as a repeat: find X" in prompt
-    assert "every remaining direction repeats a finished intent, return review" in prompt
+    assert "every remaining direction repeats a finished intent, return answers" in prompt
     assert "applies every correction that concerns its facts" in prompt
 
 
@@ -400,7 +436,7 @@ def test_a_review_that_names_a_goal_by_its_text_names_that_goal():
     out = parse_reason(reply, {"f1.1", "f1.2"}, {"f1.1", "f1.2"}, [], True, ["goal", "goal-2"],
                        set(), {"Who wrote?": "goal", "What figures?": "goal-2"})
     assert out["outcome"] == "review"
-    assert [g["goal"] for g in out["review"]["goals"]] == ["goal", "goal-2"]
+    assert [a["goal"] for a in out["proposals"]] == ["goal", "goal-2"]
 
 
 def _review(log: Log, r: int, goals=("goal",), facts_seen: int = 1) -> Log:
@@ -447,7 +483,7 @@ def test_a_rejected_answer_continues_the_board_at_once():
     log.add(m.GOAL_ANSWER_REJECTED, "c1", goal="goal-2", reason_no=2, correction="wrong year")
     f = fold(board(), log.events, rows + [FactRow("b1", "c1", m.CORRECTION, "wrong year")])
     assert f.status == m.ACTIVE and not f.proposed and list(f.accepted) == ["goal"]
-    assert f.max_explores == before.max_explores + m.CORRECTION_EXPLORES
+    assert f.max_explores == before.max_explores + m.ACTION_EXPLORES
     assert reason_due(f, in_flight=False), "the correction is new work"
     assert f.open_goals == ["goal-2"]
 
@@ -498,7 +534,8 @@ def test_a_review_skips_an_accepted_goal_and_the_prompt_marks_it():
     both = json.dumps({"review": {"goals": [{"goal": "goal", "from": ["f1.1"], "statement": "a"},
                                             {"goal": "goal-2", "from": ["f1.1"], "statement": "b"}]}})
     out = parse_reason(both, {"f1.1"}, {"f1.1"}, [], True, f.open_goals)
-    assert out["outcome"] == "noop" and any("unknown goal 'goal'" in p for p in out["problems"])
+    assert out["outcome"] == "review" and [a["goal"] for a in out["proposals"]] == ["goal-2"]
+    assert any("unknown goal 'goal'" in p for p in out["problems"])
     one = json.dumps({"review": {"goals": [{"goal": "goal-2", "from": ["f1.1"], "statement": "b"}]}})
     assert parse_reason(one, {"f1.1"}, {"f1.1"}, [], True, f.open_goals)["outcome"] == "review"
 
@@ -512,7 +549,7 @@ def test_an_explored_question_runs_alone_on_a_completed_board():
     assert f.status == m.COMPLETED and list(f.accepted) == ["goal"]
     intent = f.intents["i0.1"]
     assert (intent.state, intent.from_facts, intent.objective) == (m.OPEN, ["f1.1"], "Who signed the memo?")
-    assert f.max_explores == before.max_explores + m.QUESTION_EXPLORES
+    assert f.max_explores == before.max_explores + m.ACTION_EXPLORES
     actions = plan([board()], {"b1": f}, set(), cap=1)
     assert [e.intent_id for e in actions.explores] == ["i0.1"] and not actions.reasons
     from tasks.P_board.fold import may_explore
@@ -544,19 +581,19 @@ def test_a_question_waits_on_a_paused_board_and_feeds_an_active_one():
     assert f.status == m.ACTIVE and reason_due(f, in_flight=False)
 
 
-def test_a_late_goal_reopens_a_board_and_grows_the_budget_above_the_cap():
+def test_a_late_goal_reopens_a_board_and_grants_a_goal_budget_once():
     log = _completed()
-    for k in range(10):
-        log.add(m.FACT_REJECTED, f"f9.{k}", reason="r")
-    capped = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
-    assert capped.max_explores == m.MAX_EXPLORES
+    before = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
     log.add(m.GOAL_ADDED, "goal-2", text="Find the auditor")
     log.add(m.GOAL_ADDED, "goal-2", text="Find the auditor")
     f = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
     assert f.status == m.ACTIVE
-    assert f.max_explores == m.MAX_EXPLORES + m.CORRECTION_EXPLORES, "one goal, counted once"
-    assert f.explore_steps == m.MAX_EXPLORE_STEPS
+    assert f.max_explores == before.max_explores + m.GOAL_EXPLORES, "one goal, counted once"
+    assert [f.grants[e.event_id] for e in log.events[-2:]] == [m.GOAL_EXPLORES, 0]
     assert reason_due(f, in_flight=False)
+    for k in range(80):
+        log.add(m.FACT_REJECTED, f"f9.{k}", reason="r")
+    assert fold(board(), log.events, facts(("f1.1", m.SOURCED))).max_explores == m.EXPLORE_LIMIT
 
 
 def test_a_checkpoint_without_goals_added_keeps_a_board_idle():

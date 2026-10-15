@@ -76,6 +76,8 @@ EXPECTED_GLOBAL_TABLES = {
     "board_fact_citations",
     "board_labels",
     "board_assessments",
+    "board_command_inputs",
+    "board_command_receipts",
 }
 
 EXPECTED_COLLECTION_TABLES = {

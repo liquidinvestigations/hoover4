@@ -90,6 +90,10 @@ inline `background` of the card sets the selected colour, so the hover rule need
     --x-control-height: 34px;
     --x-card-action-size: 30px;
     --x-result-card-height: 124px;
+    /* The line height of the size and date lines under the card controls. Two lines of
+       13px fit in the 1px that the 112px search card leaves free. A larger value needs a
+       larger --x-result-card-height. */
+    --x-card-meta-line: 13px;
     /* The document title bar. The reader and the preview below it subtract this height. */
     --x-doc-title-height: 42px;
     --x-ink: rgba(0,0,0,0.75);
@@ -125,10 +129,20 @@ inline `background` of the card sets the selected colour, so the hover rule need
     height:100%;
     padding:var(--x-nav-padding);
 }
+/* The page area. `contain: layout` makes it the containing block of each fixed
+   descendant, so an overlay with `position: fixed; inset: 0` covers the page area only.
+   `contain: paint` clips anything that still reaches past it, so no page overlay paints
+   over the rail. The feedback overlay renders from the rail and covers the whole window. */
+.x-page-frame {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    position: relative;
+    contain: layout paint;
+}
 #x-page-container {
-    height:100%;
-    flex:1;
-    /* padding:1rem; */
+    width: 100%;
+    height: 100%;
 }
 
 

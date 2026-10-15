@@ -612,7 +612,7 @@ const OVERLAY_STYLE: &str = "
 const DIALOG_STYLE: &str = "
     background: white; border-radius: 12px;
     box-shadow: 0 12px 40px rgba(0,0,0,0.3);
-    width: min(920px, 94vw); height: min(660px, 90vh);
+    width: min(920px, 94%); height: min(660px, 90%);
     display: flex; flex-direction: column; overflow: hidden;
 ";
 

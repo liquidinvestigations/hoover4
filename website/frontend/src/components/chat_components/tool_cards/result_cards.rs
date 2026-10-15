@@ -1,11 +1,11 @@
 //! Cards for collection result pages, documents, todos, citations and plan tools.
 
 use dioxus::prelude::*;
-use common::board_types::fact_id_for;
 use common::chat_types::ChatDocRef;
 use crate::components::chat_components::markdown_text::MarkdownishText;
 use crate::components::chat_components::doc_ref_card::ChatDocOpen;
 use crate::components::chat_components::tool_disclosure::{search_all_route_from_tool_input, search_route_from_tool_input};
+use crate::api::board_api::board_fact_for_intent;
 use crate::api::storage_api::list_storage_tree;
 use crate::routes::Route;
 
@@ -274,12 +274,22 @@ pub fn BoardFactCard(tool_input: String, tool_output: String, running: bool) -> 
 pub struct ChatBoard(pub Memo<Option<(String, String)>>);
 
 /// The element at the end of a board explore chat: what the turn gave to the board. In a
-/// board chat it is a link that opens the board with the turn's fact selected. The colours
-/// are in `assets/main.css`, so the hover rule applies.
+/// board chat it is a link that opens the board with the turn's fact selected. The fact id
+/// comes from the board (`board_fact_for_intent`). While the board has not published the
+/// fact, the link selects the intent. The colours are in `assets/main.css`, so the hover rule
+/// applies.
 #[component]
 pub fn BoardFactSummary(tool_input: String) -> Element {
     let (kind, _, questions) = board_fact_input(&tool_input);
-    let board = try_consume_context::<ChatBoard>().and_then(|board| board.0.read().clone());
+    let chat_board = try_consume_context::<ChatBoard>();
+    let board = chat_board.and_then(|board| board.0.read().clone());
+    let fact = use_resource(move || {
+        let board = chat_board.and_then(|board| board.0.read().clone());
+        async move {
+            let (board_id, intent_id) = board?;
+            board_fact_for_intent(board_id, intent_id).await.ok().flatten()
+        }
+    });
     let content = rsx! {
         div { style: "font-size: var(--x-text-sm); font-weight: 600; color: var(--x-ink-strong);",
             "The explore gave this answer to its board as a {kind} fact."
@@ -300,7 +310,7 @@ pub fn BoardFactSummary(tool_input: String) -> Element {
         Some((board_id, intent_id)) => rsx! {
             Link {
                 class: "x-board-fact-summary",
-                to: Route::ai_board(board_id, fact_id_for(&intent_id)),
+                to: Route::ai_board(board_id, fact.read().clone().flatten().unwrap_or(intent_id)),
                 style: "{style}",
                 div { "data-board-fact-kind": "{kind}", {content} }
             }

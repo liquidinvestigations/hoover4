@@ -1,4 +1,7 @@
-"""Retention for chat artifacts: delete the Garage objects, then the ClickHouse rows.
+"""Clean-up of chat artifacts: delete the Garage objects, then the ClickHouse rows.
+
+Chat content is kept permanently. An artifact has no age limit. The sweep removes only the
+artifacts of a chat that a person deleted, and objects that no row references.
 
 **A ClickHouse TTL does not delete Garage objects.** That is the whole reason this exists.
 If `chat_artifacts` expired its rows, the bytes would stay in the bucket with
@@ -6,7 +9,7 @@ nothing left pointing at them and no way to find them again except a full prefix
 
 So the order is fixed and is the opposite of the intuitive order:
 
-1. find rows that are soft-deleted (the chat was deleted) or older than the TTL;
+1. find rows that are soft-deleted (the chat was deleted);
 2. delete their objects;
 3. **only then** hard-delete the rows.
 
@@ -29,12 +32,6 @@ from dataclasses import dataclass, field
 log = logging.getLogger(__name__)
 
 GLOBAL_DB = "Hoover4_Processing"
-
-#: Default retention. Overridden by the `chat_artifact_ttl_days` server_setting, so an
-#: admin can change it without a redeploy.
-DEFAULT_TTL_DAYS = int(os.getenv("CHAT_ARTIFACT_TTL_DAYS", "30"))
-
-TTL_SETTING_KEY = "chat_artifact_ttl_days"
 
 #: An object younger than this is never treated as an orphan. A capture in flight has its
 #: bytes written seconds before its row, and a sweeper racing that window would delete a
@@ -59,48 +56,33 @@ class SweepResult:
 
     def summary(self) -> str:
         return (
-            f"{self.expired_rows} expired/deleted artifact rows, "
+            f"{self.expired_rows} deleted artifact rows, "
             f"{self.deleted_objects} objects removed, {self.deleted_rows} rows dropped, "
             f"{self.orphan_objects} orphaned objects collected"
             + (f", {len(self.errors)} error(s)" if self.errors else "")
         )
 
 
-def ttl_days() -> int:
-    """Retention window, from `server_settings` with the env default behind it."""
-    from database.clickhouse import get_global_client
-
-    try:
-        with get_global_client() as client:
-            rows = client.query(
-                "SELECT argMax(value, updated_at) FROM server_settings WHERE key = %(k)s",
-                parameters={"k": TTL_SETTING_KEY},
-            ).result_rows
-        if rows and rows[0][0]:
-            return max(1, int(rows[0][0]))
-    except Exception as exc:  # noqa: BLE001 - a missing setting is normal, not an error
-        log.debug("could not read %s: %s", TTL_SETTING_KEY, exc)
-    return DEFAULT_TTL_DAYS
-
-
 def sweep() -> SweepResult:
-    """One retention pass. Never raises: a failed sweep must be visible, not fatal."""
+    """One clean-up pass. Never raises: a failed sweep must be visible, not fatal."""
     from database.clickhouse import get_global_client
     from database.s3 import get_s3_client
 
     result = SweepResult()
-    days = ttl_days()
 
     with get_global_client() as client:
-        # 1. Rows to remove: tombstoned by a session delete, or past the TTL.
+        # 1. Rows to remove: tombstoned by a session delete. No row expires by age. The table
+        #    is a ReplacingMergeTree with `is_deleted`, so FINAL hides a tombstoned artifact.
+        #    The select groups the raw rows instead. A deleted session is never restored, so
+        #    one tombstone row marks the artifact.
         rows = client.query(
             """
-            SELECT artifact_id, session_id, username, thumb_key, body_key
-            FROM chat_artifacts FINAL
-            WHERE is_deleted = 1 OR created_at < now() - INTERVAL %(days)s DAY
+            SELECT artifact_id, max(session_id), max(username), max(thumb_key), max(body_key)
+            FROM chat_artifacts
+            GROUP BY artifact_id
+            HAVING max(is_deleted) = 1
             LIMIT 10000
-            """,
-            parameters={"days": days},
+            """
         ).result_rows
         result.expired_rows = len(rows)
 
@@ -117,7 +99,7 @@ def _sweep_rows(client, s3, rows, result: SweepResult) -> SweepResult:
 
     # **A body_key can be shared.** The capture path reuses the previous snapshot when the
     # page has not changed between two actions, so two artifacts can point at one object.
-    # Deleting it because the older one expired would silently break the newer one, which
+    # Deleting it because the older one was deleted would silently break the newer one, which
     # would then render as an artifact whose page will not load, with nothing saying why.
     # So a key any *surviving* row still references is left alone.
     still_referenced = {
@@ -214,6 +196,5 @@ def sweep_json() -> str:
             "deleted_rows": result.deleted_rows,
             "orphan_objects": result.orphan_objects,
             "errors": result.errors[:20],
-            "ttl_days": ttl_days(),
         }
     )

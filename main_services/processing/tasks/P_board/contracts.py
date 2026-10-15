@@ -73,111 +73,153 @@ def is_duplicate(objective: str, earlier: str) -> bool:
     return len(a & b) / min(len(a), len(b)) >= DUPLICATE_OVERLAP
 
 
-def _review_goals(review, goal_ids: list[str]) -> list:
-    """The goal entries of a review object. A review without `goals` answers the first goal
-    with its own `from` and `statement`."""
+def _answer_entries(data: dict, goal_ids: list[str]) -> list | None:
+    """The goal answers of a reply, or None when it has none. The reply names them as
+    `answers`, as `review.goals`, as `complete.goals` or as a top-level `goals`. A review
+    object without `goals` answers the first goal with its own `from` and `statement`."""
+    if isinstance(data.get("answers"), list):
+        return data["answers"]
+    if "goals" in data and not any(k in data for k in ("review", "complete")):
+        return data["goals"] if isinstance(data["goals"], list) else []
+    review = data.get("review") if "review" in data else data.get("complete")
+    if review is None:
+        return None
     if not isinstance(review, dict):
         return []
-    goals = review.get("goals")
-    if isinstance(goals, list):
-        return goals
+    if isinstance(review.get("goals"), list):
+        return review["goals"]
     return [{"goal": goal_ids[0] if goal_ids else m.FIRST_GOAL_ID, "from": review.get("from"),
              "statement": review.get("statement") or review.get("description")}]
+
+
+def _parse_answers(entries: list, valid_ids: set, sourced_ids: set, not_found_ids: set,
+                   goal_ids: list[str], goal_texts: dict, closed_ids: set, problems: list) -> list[dict]:
+    """The checked goal answers of a reply. See `parse_reason`."""
+    answers = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            problems.append("an answer is not an object")
+            continue
+        goal = str(entry.get("goal") or "")
+        goal = goal_texts.get(goal.strip(), goal)
+        from_ids = list(dict.fromkeys(str(f) for f in entry.get("from") or []))
+        answerable = sourced_ids | not_found_ids
+        stray = [f for f in from_ids if f not in valid_ids and f not in answerable]
+        if stray and len(stray) < len(from_ids):
+            from_ids = [f for f in from_ids if f not in stray]
+            problems.append(f"dropped {stray} from the answer of {goal}: not a fact")
+        if goal in closed_ids:
+            problems.append(f"dropped the answer of the accepted goal {goal}")
+        elif goal not in goal_ids:
+            problems.append(f"an answer names the unknown goal {goal!r}")
+        elif not from_ids:
+            problems.append(f"the answer of {goal} names no fact")
+        elif not set(from_ids) <= answerable:
+            problems.append(f"the answer of {goal} from {from_ids} names a fact that is not sourced or not found")
+        elif goal in {a["goal"] for a in answers}:
+            problems.append(f"dropped a second answer of {goal}")
+        else:
+            statement = str(entry.get("statement") or "").strip()
+            if set(from_ids) & sourced_ids:
+                answers.append({"goal": goal, "from": from_ids, "statement": statement,
+                                "answer_kind": m.SUPPORTED, "commentary": ""})
+            else:
+                # Only not-found facts: the records do not establish an answer. The model's
+                # text stays as commentary and never becomes the statement.
+                answers.append({"goal": goal, "from": from_ids, "statement": m.NOT_ESTABLISHED_STATEMENT,
+                                "answer_kind": m.NOT_ESTABLISHED, "commentary": statement[:2000]})
+    return answers
 
 
 def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str],
                  idle: bool, goal_ids: list[str] | None = None,
                  not_found_ids: set | None = None, goal_texts: dict | None = None,
-                 closed_ids: set | None = None) -> dict:
+                 closed_ids: set | None = None, question_keys: set | None = None,
+                 final: bool = False) -> dict:
     """The `reason_result` payload of one reply.
 
     `valid_ids` are the live fact ids, `sourced_ids` the live sourced ones, `earlier` the
     objectives of every intent the board has, `idle` whether no intent is open or running,
-    `goal_ids` the goal fact ids, `not_found_ids` the live not-found facts, and `goal_texts`
-    the goal id of each goal text. A review that names a goal by its exact text names that
-    goal.
+    `goal_ids` the goal fact ids, `not_found_ids` the live not-found facts, `goal_texts` the
+    goal id of each goal text, `closed_ids` the goals with an accepted answer, and
+    `question_keys` the question keys that the prompt listed.
 
-    A review names each goal with the facts that answer it and a statement. A goal's facts
-    are sourced or not-found facts, and the review as a whole needs one sourced fact. A
-    review that leaves out a goal, or names another fact, is no review. An entry for a goal
-    of `closed_ids` (accepted already) is dropped with a note and does not refuse the review.
-    An id of `from` that is no fact, such as a correction, is dropped with a note when the
-    entry names other facts.
-    A top-level `goals` list without `review` is read as a review.
+    A reply can hold answers for some goals and intents for the others. An answer names its
+    goal, the facts it rests on and a statement. An answer that names a sourced fact is
+    `supported`. An answer that names only not-found facts is `not_established`: its statement
+    is the fixed `NOT_ESTABLISHED_STATEMENT`, and the model's text is its commentary. An
+    answer that names an inferred fact, no fact, an unknown goal or an accepted goal is
+    dropped with a note. An id of `from` that is no fact, such as a correction, is dropped with
+    a note when the answer names other facts.
+
+    An intent keeps its position in the reply (`position`, from 1), so a dropped intent does
+    not renumber the others. Its `slug` is a candidate name. Its `questions` keep only keys
+    that the prompt listed. A final reply proposes answers only, and its intents are dropped.
+
+    The outcome is `review` when the answers cover every goal of `goal_ids` without an
+    accepted answer and the reply has no intent, `partial` for other answers, `intents` for
+    intents only, `noop` for a valid reply without either, and `invalid` for a reply without
+    a JSON object.
     """
     goal_ids = list(goal_ids or [m.FIRST_GOAL_ID])
-    answerable = set(sourced_ids) | set(not_found_ids or ())
+    closed = set(closed_ids or ())
     payload = {"raw": (text or "")[:6000], "problems": []}
     try:
         data = extract_json_object(text)
     except (ValueError, json.JSONDecodeError) as exc:
         payload.update(outcome="invalid", error=str(exc))
         return payload
-    if "goals" in data and not any(k in data for k in ("review", "complete", "intents")):
-        data = {"review": {"goals": data["goals"]}}
-    if "review" in data or "complete" in data:
-        goals, problems, skipped, dropped = [], [], [], []
-        for entry in _review_goals(data.get("review") or data.get("complete") or {}, goal_ids):
-            if not isinstance(entry, dict):
-                problems.append("a review goal is not an object")
-                continue
-            goal = str(entry.get("goal") or "")
-            goal = (goal_texts or {}).get(goal.strip(), goal)
-            from_ids = [str(f) for f in entry.get("from") or []]
-            stray = [f for f in from_ids if f not in valid_ids and f not in answerable]
-            if stray and len(stray) < len(from_ids):
-                from_ids = [f for f in from_ids if f not in stray]
-                dropped.append(f"dropped {stray} from the answer of {goal}: not a fact")
-            if goal in (closed_ids or ()):
-                skipped.append(goal)
-            elif goal not in goal_ids:
-                problems.append(f"review names the unknown goal {goal!r}")
-            elif not from_ids or not set(from_ids) <= answerable:
-                problems.append(f"review of {goal} from {from_ids} names a fact that is not sourced")
-            elif goal not in {g["goal"] for g in goals}:
-                goals.append({"goal": goal, "from": from_ids,
-                              "statement": str(entry.get("statement") or "")})
-        missing = [g for g in goal_ids if g not in {x["goal"] for x in goals}]
-        if missing and not problems:
-            problems.append("review leaves out the goals " + ", ".join(missing))
-        used = [f for g in goals for f in g["from"]]
-        if not problems and not set(used) & set(sourced_ids):
-            problems.append("review names no sourced fact")
-        if not problems:
-            payload.update(outcome="review", review={
-                "from": list(dict.fromkeys(used)), "goals": goals,
-                "statement": "\n\n".join(g["statement"] for g in goals if g["statement"])})
-            payload["problems"].extend(f"dropped the answer of the accepted goal {g}" for g in skipped)
-            payload["problems"].extend(dropped)
-            return payload
-        payload["problems"].extend(problems)
+    problems = payload["problems"]
+    entries = _answer_entries(data, goal_ids)
+    answers = _parse_answers(entries or [], set(valid_ids), set(sourced_ids), set(not_found_ids or ()),
+                             goal_ids, goal_texts or {}, closed, problems)
     items = data.get("intents")
     if items is None and isinstance(data.get("intent"), dict):
         items = [data["intent"]]
     kept = []
     seen = list(earlier)
-    for item in items or []:
+    allowed = set(question_keys or ())
+    if final and items:
+        problems.append(f"a final assessment starts no explore: dropped {len(items)} intents")
+        items = []
+    for position, item in enumerate(items or [], start=1):
         if not isinstance(item, dict):
-            payload["problems"].append("an intent is not an object")
+            problems.append("an intent is not an object")
             continue
         objective = str(item.get("objective") or item.get("description") or "").strip()
         from_ids = [str(f) for f in item.get("from") or []]
         if not objective or not from_ids:
-            payload["problems"].append("an intent lacks an objective or its from list")
+            problems.append("an intent lacks an objective or its from list")
             continue
         if not set(from_ids) <= valid_ids:
-            payload["problems"].append(f"intent from {from_ids} names an unknown or rejected fact")
+            problems.append(f"intent from {from_ids} names an unknown or rejected fact")
             continue
         if any(is_duplicate(objective, other) for other in seen):
-            payload["problems"].append(f"dropped as a repeat: {objective[:160]}")
+            problems.append(f"dropped as a repeat: {objective[:160]}")
             continue
+        named = list(dict.fromkeys(str(k) for k in item.get("questions") or []))
+        stray = [k for k in named if k not in allowed]
+        if stray:
+            problems.append(f"discarded question keys {stray}: not listed in the prompt")
         seen.append(objective)
         kept.append({"from": from_ids, "objective": objective,
-                     "brief": str(item.get("brief") or "").strip()})
+                     "brief": str(item.get("brief") or "").strip(), "position": position,
+                     "slug": str(item.get("slug") or "").strip()[:80],
+                     "questions": [k for k in named if k in allowed]})
         if len(kept) >= m.MAX_INTENTS:
             break
+    open_goals = [g for g in goal_ids if g not in closed]
+    covered = bool(open_goals) and set(open_goals) <= {a["goal"] for a in answers}
+    if answers:
+        payload["proposals"] = answers
     if kept:
-        payload.update(outcome="intents", intents=kept)
+        payload["intents"] = kept
+    if answers and covered and not kept:
+        payload["outcome"] = "review"
+    elif answers:
+        payload["outcome"] = "partial"
+    elif kept:
+        payload["outcome"] = "intents"
     else:
         payload.update(outcome="noop", idle=idle)
     return payload
@@ -225,13 +267,17 @@ BOARD_SUMMARY_WORDS = 20
 
 SLUG_WORD_PATTERN = re.compile(r"[a-z0-9]+")
 #: Words of a slug that name a node type. The kind prefix of the slug gives the type.
-TYPE_WORDS = {"intent", "fact", "correction", "origin", "goal"}
+TYPE_WORDS = {"intent", "fact", "correction", "origin", "goal", "background"}
 
 
 def slug_words(text: str, limit: int = SLUG_WORDS) -> list[str]:
-    """The lowercase letter and digit runs of a text, at most `limit`, within `SLUG_CHARS`."""
+    """The lowercase letter and digit runs of a text, at most `limit`, within `SLUG_CHARS`.
+    Accents and other marks are removed first, so `Ștefan` gives `stefan`."""
+    import unicodedata
+
+    plain = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode("ascii")
     words: list[str] = []
-    for word in SLUG_WORD_PATTERN.findall((text or "").lower()):
+    for word in SLUG_WORD_PATTERN.findall(plain.lower()):
         if len(words) >= limit or len("-".join(words + [word])) > SLUG_CHARS:
             break
         words.append(word)

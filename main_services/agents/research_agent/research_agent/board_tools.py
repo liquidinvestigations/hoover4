@@ -3,6 +3,8 @@
 Only the `board` run kind has `submit_board_fact` (`agent_common.tool_packs`). A successful
 call ends the turn, as `ask_user` does: the worker's `AgentRun` writes the fact text as the
 answer of the turn, and the board reads the fact from the arguments of the call.
+The optional `slug` is a name candidate. The board writer derives the permanent id of the
+fact from it, adds the kind prefix and a collision suffix, and falls back to the fact text.
 
 **Mirrored in `processing/tasks/P_board/model.py`** (`SUBMIT_FACT_TOOL`) and in the
 website's tool card of the same name.
@@ -36,6 +38,10 @@ class SubmitFactArgs(BaseModel):
     open_questions: List[str] = Field(
         default_factory=list, max_length=3,
         description="At most three questions that this task leaves open.")
+    slug: str = Field(
+        default="", max_length=80,
+        description="Two to four lowercase English words that name the finding, joined by "
+                    "hyphens, such as contract-payment-date.")
 
     @field_validator("open_questions")
     @classmethod
@@ -46,7 +52,8 @@ class SubmitFactArgs(BaseModel):
 
 
 def make_board_tools() -> List[StructuredTool]:
-    async def submit_fact(fact: str, kind: str, open_questions: List[str] | None = None) -> str:
+    async def submit_fact(fact: str, kind: str, open_questions: List[str] | None = None,
+                          slug: str = "") -> str:
         return json.dumps({"success": True, "submitted": True, "kind": kind,
                            "open_questions": open_questions or []})
 

@@ -1,8 +1,9 @@
 """Board storage: every read and write of the investigation board tables.
 
-The tables are in migrations `00043_investigation_boards.sql`, `00045_board_labels.sql` and
-`00046_board_assessments.sql`. Each table has one writer (see the migration headers), so this
-module has no read-modify-write of a shared row. `board_labels` holds the generated slug,
+The tables are in migrations `00043_investigation_boards.sql`, `00045_board_labels.sql`,
+`00046_board_assessments.sql` and `00047_board_commands.sql`. Each table has one writer (see
+the migration headers), so this module has no read-modify-write of a shared row. The command
+tables are read and written by `database/board_commands.py`. `board_labels` holds the generated slug,
 title and summary of each node and the summary of each board. Its writer is
 `tasks/P_board/labels.py`. `board_assessments` holds the prompt and the reply of each reason
 call. Its writer is `board_reason` in `tasks/P_board/activities.py`.
@@ -86,6 +87,8 @@ class FactRow:
     problems: list[str] = field(default_factory=list)
     created_by: str = "explore"
     created_at: datetime | None = None
+    #: The command that wrote the fact. Readers show it once an event carries this id.
+    request_id: str = ""
 
 
 @dataclass
@@ -123,7 +126,7 @@ BOARD_COLUMNS = ["board_id", "owner", "title", "goal", "context", "collections",
                  "max_explores", "max_parallel", "explore_step_budget", "internet_tools",
                  "created_at", "is_deleted"]
 FACT_COLUMNS = ["board_id", "fact_id", "kind", "text", "intent_id", "session_id", "answer_seq",
-                "open_questions", "problems", "created_by", "created_at"]
+                "open_questions", "problems", "created_by", "created_at", "request_id"]
 CITATION_COLUMNS = ["board_id", "fact_id", "label", "collection_dataset", "collectionname",
                     "file_hash", "path", "page_id", "quote", "quote_verified"]
 INTENT_COLUMNS = ["board_id", "intent_id", "from_facts", "objective", "brief", "state",
@@ -243,9 +246,36 @@ def write_fact(fact: FactRow, citations: list[CitationRow]) -> bool:
     _insert("board_facts",
             [[fact.board_id, fact.fact_id, fact.kind, fact.text, fact.intent_id,
               fact.session_id, fact.answer_seq, fact.open_questions, fact.problems,
-              fact.created_by, created]],
+              fact.created_by, created, fact.request_id]],
             FACT_COLUMNS)
     return True
+
+
+def publish_facts(facts: list[FactRow], citations: list[CitationRow]) -> None:
+    """Write the facts and citations of a prepared command. Every row carries the fixed time
+    of the prepared receipt, so a retry writes the same rows again."""
+    stamp = {f.fact_id: f.created_at or now() for f in facts}
+    _insert("board_fact_citations",
+            [[c.board_id, c.fact_id, c.label, c.collection_dataset, c.collectionname,
+              c.file_hash, c.path, c.page_id, c.quote, c.quote_verified, stamp.get(c.fact_id) or now()]
+             for c in citations],
+            CITATION_COLUMNS + ["created_at"])
+    _insert("board_facts",
+            [[f.board_id, f.fact_id, f.kind, f.text, f.intent_id, f.session_id, f.answer_seq,
+              f.open_questions, f.problems, f.created_by, stamp[f.fact_id], f.request_id]
+             for f in facts],
+            FACT_COLUMNS)
+
+
+def facts_of_intent(board_id: str, intent_id: str) -> list[FactRow]:
+    """The fact rows that an intent produced, also one whose event is not written yet."""
+    with _client() as client:
+        result = client.query(
+            f"SELECT {', '.join(FACT_COLUMNS)} FROM board_facts FINAL "
+            "WHERE board_id = {b:String} AND intent_id = {i:String}",
+            parameters={"b": board_id, "i": intent_id},
+        )
+    return [FactRow(**dict(zip(FACT_COLUMNS, row))) for row in result.result_rows]
 
 
 def read_citations(board_id: str) -> list[CitationRow]:
@@ -312,7 +342,7 @@ def write_labels(rows: list[LabelRow]) -> None:
 
 __all__ = [
     "BoardRow", "CitationRow", "EventRow", "FactRow", "LabelRow", "board_is_live", "fact_exists",
-    "now", "read_board", "read_citations", "read_events", "read_facts", "read_labels",
-    "read_live_boards", "read_state_rows", "write_event", "write_events", "write_fact",
-    "write_labels", "write_state",
+    "facts_of_intent", "now", "publish_facts", "read_board", "read_citations", "read_events",
+    "read_facts", "read_labels", "read_live_boards", "read_state_rows", "write_event",
+    "write_events", "write_fact", "write_labels", "write_state",
 ]

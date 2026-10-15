@@ -275,6 +275,8 @@ pub async fn search_for_results(
                 file_size_bytes: (hit._source.file_size_bytes >= 0).then_some(hit._source.file_size_bytes),
                 document_date: (hit._source.date_min != common::search_query::DATE_UNKNOWN)
                     .then_some(hit._source.date_min),
+                document_date_max: (hit._source.date_max != common::search_query::DATE_UNKNOWN)
+                    .then_some(hit._source.date_max),
             }
         })
         .collect::<Vec<_>>();

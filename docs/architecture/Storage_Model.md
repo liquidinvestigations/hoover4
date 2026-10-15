@@ -130,6 +130,7 @@ needs to see. The username is denormalised onto the artefact row so the check ne
 join.
 
 The rows are the **sole** index of those objects' existence. Nothing else in the system
-knows they are there, so retention tombstones the row first, deletes the object, and only
-then drops the row. A store-level expiry cannot remove an object, which is why the order is
+knows they are there, so the deletion of a chat tombstones the row first, the daily sweep
+deletes the object, and only then drops the row. No artifact expires by age: chats and boards
+are kept until a person deletes them. A store-level expiry cannot remove an object, which is why the order is
 that way round.

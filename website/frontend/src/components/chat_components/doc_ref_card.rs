@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use common::chat_types::{ChatDocRef, card_find_phrase, clamp_display_text};
-use common::search_result::{DocumentIdentifier, SearchResultDocumentItem};
+use common::search_result::{DocumentCardFacts, DocumentIdentifier, SearchResultDocumentItem};
 use common::text_highlight::HighlightTextSpan;
 use dioxus::prelude::*;
 
@@ -58,6 +58,19 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
             }).await;
         });
     };
+    // The size and the dates of the document, which a stored citation does not hold. The
+    // lines stay empty while they load and after a failure. This hook stays above the
+    // early return of the stub card, so the hook order does not change.
+    let identifier = doc.document_identifier();
+    let facts = use_resource(use_reactive!(|identifier| async move {
+        if identifier.collection_dataset.is_empty() || identifier.file_hash.is_empty() {
+            return DocumentCardFacts::default();
+        }
+        get_document_card_facts(identifier).await.unwrap_or_else(|error| {
+            dioxus::logger::tracing::warn!("card facts failed: {error}");
+            DocumentCardFacts::default()
+        })
+    }));
     use_context_provider({
         let target = target.clone();
         move || SearchResultsState {
@@ -103,12 +116,18 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
         };
     }
 
+    let card_facts = facts.read().unwrap_or_default();
     let title = doc.display_title();
+    // A verified passage line below shows the quote. The snippet then does not repeat it.
+    let passage_shows_quote = !doc.quote.is_empty()
+        && passages.iter().any(|passage| passage.quote_verified && passage.quote == doc.quote);
     // Clamped, not raw: a search hit's snippet is up to 1200 characters of page text and a
     // turn can return a dozen of them, so one result could bury the conversation it is
     // meant to support. `display_snippet` says what the clamp is for.
     let snippet = if !doc.search_snippet.is_empty() {
         clamp_display_text(&doc.search_snippet, 600)
+    } else if doc.snippet.is_empty() && passage_shows_quote {
+        String::new()
     } else if doc.snippet.is_empty() && !doc.quote.is_empty() {
         clamp_display_text(&doc.quote, 600)
     } else if doc.snippet.is_empty() {
@@ -142,8 +161,9 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
         matched_by_filename: false,
         // The chat's document card draws no type glyph of its own.
         file_type: String::new(),
-        file_size_bytes: None,
-        document_date: None,
+        file_size_bytes: card_facts.file_size_bytes,
+        document_date: card_facts.date_min,
+        document_date_max: card_facts.date_max,
     };
 
     let mut quotes = Vec::new();
@@ -199,6 +219,18 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
     }
 }
 
+/// The size and the dates of one document for a chat or board card
+/// (`backend::api::documents::get_document_card_facts`).
+#[server]
+async fn get_document_card_facts(
+    document_identifier: DocumentIdentifier,
+) -> Result<DocumentCardFacts, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::documents::get_document_card_facts::get_document_card_facts(&user, document_identifier)
+        .await
+        .map_err(crate::api::error_util::to_server_fn_error)
+}
+
 /// One document of a search row as a line: path, collection and an "Open" action. The
 /// action opens the document in the side pane at the query that matched it.
 #[component]
@@ -236,9 +268,30 @@ pub fn ChatDocRefRow(doc: ChatDocRef) -> Element {
 }
 
 
+/// The characters of a snippet without its `**` highlight markers, and a mark for each
+/// character that a pair of markers enclosed. A marker without a partner stays as text.
+fn strip_highlight_markers(text: &str) -> (Vec<char>, Vec<bool>) {
+    let mut pieces: Vec<String> = text.split("**").map(str::to_string).collect();
+    if pieces.len() % 2 == 0 {
+        let last = pieces.pop().unwrap_or_default();
+        if let Some(previous) = pieces.last_mut() {
+            previous.push_str("**");
+            previous.push_str(&last);
+        }
+    }
+    let mut chars = Vec::new();
+    let mut marked = Vec::new();
+    for (index, piece) in pieces.iter().enumerate() {
+        for character in piece.chars() {
+            chars.push(character);
+            marked.push(index % 2 == 1);
+        }
+    }
+    (chars, marked)
+}
+
 fn search_snippet_parts(text: &str, query: &str) -> Vec<(String, bool)> {
-    let chars: Vec<char> = text.chars().collect();
-    let mut marked = vec![false; chars.len()];
+    let (chars, mut marked) = strip_highlight_markers(text);
     for word in query.split(|character: char| !character.is_alphanumeric())
         .filter(|word| !word.is_empty() && !matches!(*word, "AND" | "OR" | "NOT"))
     {
@@ -274,5 +327,15 @@ mod tests {
         assert_eq!(parts.iter().map(|part| part.0.as_str()).collect::<String>(), text);
         assert_eq!(parts.iter().filter(|part| part.1).map(|part| part.0.as_str()).collect::<Vec<_>>(),
             vec!["ȘTEFAN", "budget"]);
+    }
+
+    #[test]
+    fn highlight_markers_become_highlights_and_leave_the_text() {
+        let parts = search_snippet_parts("the **Raptor** deal and **LJM", "");
+        assert_eq!(parts.iter().map(|part| part.0.as_str()).collect::<String>(), "the Raptor deal and **LJM");
+        assert_eq!(parts.iter().filter(|part| part.1).map(|part| part.0.as_str()).collect::<Vec<_>>(), vec!["Raptor"]);
+        let joined = search_snippet_parts("**a** b **c**", "b");
+        assert_eq!(joined.iter().map(|part| part.0.as_str()).collect::<String>(), "a b c");
+        assert!(joined.iter().all(|part| part.1 || part.0.trim().is_empty()));
     }
 }

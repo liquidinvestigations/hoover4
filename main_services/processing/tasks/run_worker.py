@@ -367,7 +367,7 @@ async def run_common_worker():
     except temporalio.exceptions.WorkflowAlreadyStartedError:
         pass
 
-    # Daily chat-artifact retention. Same singleton pattern, same reason: two common
+    # Daily chat-artifact clean-up. Same singleton pattern, same reason: two common
     # workers race to assert it and the loser's error is the normal outcome.
     try:
         await client.start_workflow(
@@ -809,8 +809,8 @@ async def run_chat_worker():
   `chat-model-queue` carries `model_step` and follow-up generation.
   `agent-tool-queue` carries `tool_call` for every run. A slot is one model call or one
   tool call in flight, not one agent run.
-  `board-queue` carries the investigation board dispatcher, the `BoardExplore` workflows and
-  their short activities. A board's reason call runs on `chat-model-queue` and its explore
+  `board-queue` carries the investigation board dispatcher, the `BoardExplore` workflows, the
+  per-board `BoardCommands` writers and their short activities. A board's reason call runs on `chat-model-queue` and its explore
   turns are `AgentRun`, so board model work counts against the same model slots as chat.
 
   The three queues are not the ingestion queue. An ingestion backlog delaying a person
@@ -842,7 +842,9 @@ async def run_chat_worker():
   )
   from .P_board.activities import (
       board_plan, board_reason, conclude_explore, open_explore_turn, record_explore_end,
+      record_final_failure,
   )
+  from .P_board.command_workflows import BoardCommands, board_command_step
   from .P_board.labels import label_board
   from .P_board.model import BOARD_TASK_QUEUE, DISPATCHER_WORKFLOW_ID
   from .P_board.workflows import BoardDispatcher, BoardExplore
@@ -901,8 +903,8 @@ async def run_chat_worker():
         activity_executor=activity_executor,
         max_concurrent_activities=tool_slots,
       ),
-      # Investigation boards: the dispatcher, one BoardExplore per running intent, and
-      # their short activities. The explore turns themselves are AgentRun on chat-queue.
+      # Investigation boards: the dispatcher, one BoardExplore per running intent, one
+      # BoardCommands writer per board with commands, and their short activities. The explore turns themselves are AgentRun on chat-queue.
       Worker(
         client,
         interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
@@ -910,8 +912,9 @@ async def run_chat_worker():
         task_queue=BOARD_TASK_QUEUE,
         graceful_shutdown_timeout=graceful_shutdown_timeout(),
         workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
-        workflows=[BoardDispatcher, BoardExplore],
-        activities=[board_plan, open_explore_turn, conclude_explore, record_explore_end],
+        workflows=[BoardDispatcher, BoardExplore, BoardCommands],
+        activities=[board_plan, open_explore_turn, conclude_explore, record_explore_end,
+                    record_final_failure, board_command_step],
         activity_executor=activity_executor,
         max_concurrent_activities=4,
       ),

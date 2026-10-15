@@ -37,7 +37,7 @@ asks to look is the cost control.
 **Do not add body-key reuse on top of it.** Deduplicating a capture whose
 `(url, document.lastModified)` matches the previous one in the same chat looks free, but
 two explicit snapshots of the same page are a deliberate act, and pointing the second at
-the first one's bytes makes two `chat_artifacts` rows share an object. The retention
+the first one's bytes makes two `chat_artifacts` rows share an object. The clean-up
 sweeper then has to be careful never to delete one out from under the other. (It is
 careful, because transcripts contain rows written that way.)
 """

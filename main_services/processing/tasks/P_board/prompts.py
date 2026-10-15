@@ -70,9 +70,10 @@ def goal_lines(facts, folded=None) -> str:
 
 
 def goals_of(facts) -> list:
-    """The goal facts of a board, first goal first."""
+    """The goal facts of a board in slot order. `goal` and `goal-01` hold slot 1, `goal-2` and
+    `goal-02` slot 2, so legacy and new goals of one board keep their order."""
     goals = [f for f in facts if f.kind == m.GOAL]
-    return sorted(goals, key=lambda f: (f.fact_id != m.FIRST_GOAL_ID, len(f.fact_id), f.fact_id))
+    return sorted(goals, key=lambda f: (m.goal_slot(f.fact_id), f.fact_id))
 
 
 def goal_ids(facts) -> list[str]:
@@ -121,8 +122,25 @@ CONCLUDE_REQUEST = (
 )
 
 
-def render_reason(board, folded, facts, citations, stalled: bool) -> str:
-    """The prompt of one reason call."""
+#: The open questions that a reason prompt lists at most.
+PROMPT_QUESTIONS = 20
+
+
+def open_question_keys(folded, facts) -> list[tuple[str, str]]:
+    """The unexplored open questions of the live explore facts, newest fact first, at most
+    `PROMPT_QUESTIONS`: `(key, question)`. A question that a live intent holds is explored."""
+    out = []
+    explore = [f for f in facts if f.kind in m.EXPLORE_KINDS and f.fact_id not in folded.rejected]
+    for fact in sorted(explore, key=lambda f: (str(f.created_at or ""), f.fact_id), reverse=True):
+        for index, question in enumerate(fact.open_questions or []):
+            key = m.question_key(fact.fact_id, index)
+            if folded.holder(key) is None:
+                out.append((key, str(question)))
+    return out[:PROMPT_QUESTIONS]
+
+
+def render_reason(board, folded, facts, citations, stalled: bool, final: bool = False) -> str:
+    """The prompt of one reason call. A final call asks for answers only."""
     open_lines, done_lines = [], []
     for intent in sorted(folded.intents.values(), key=lambda i: (i.reason_no, i.intent_id)):
         line = f"- {intent.intent_id} from {intent.from_facts}: {intent.objective}"
@@ -135,46 +153,70 @@ def render_reason(board, folded, facts, citations, stalled: bool) -> str:
             done_lines.append(line + f" -> {outcome}")
     live = [f for f in facts if f.fact_id not in folded.rejected]
     valid_ids = [f.fact_id for f in live if f.kind != m.GOAL]
-    questions = [q for f in live for q in (f.open_questions or [])][-6:]
+    questions = open_question_keys(folded, facts)
     rejected_lines = [f"- {f.fact_id}: {strip_labels(f.text)} Rejected because: {folded.rejected[f.fact_id] or 'no reason given'}"
                       for f in facts if f.fact_id in folded.rejected]
     stall_text = ("\nThe board is stalled: the last explores found no new sourced fact. Propose a "
-                  "different kind of direction, or propose review with a statement of what was "
+                  "different kind of direction, or answer the goals with a statement of what was "
                   "searched.\n" if stalled else "")
+    first_goal = folded.goal_ids[0] if folded.goal_ids else m.FIRST_GOAL_ID
+    if final:
+        task = (
+            "You are the final reasoning step of an investigation board. The explore budget is "
+            "used, so no agent explores again. Board facts are confirmed findings. Answer each "
+            "goal that is not accepted from the facts below, as far as the facts allow.\n\n"
+            "Return only one JSON object, with no other text:\n"
+            f"{{\"answers\": [{{\"goal\": \"{first_goal}\", \"from\": [\"<fact id>\"], "
+            "\"statement\": \"what these facts establish for this goal, and what they do not "
+            "cover\"}]}\n"
+            "Do not propose intents. Leave out a goal that the facts do not address.\n\n"
+            "Rules:\n"
+            "- `from` lists only ids from Valid facts.\n")
+    else:
+        task = (
+            "You are the reasoning step of an investigation board. Board facts are confirmed "
+            "findings. Intents are directions that research agents explore in the document "
+            "collections. Decide two things:\n"
+            "1. Which goals that are not accepted do the facts already answer?\n"
+            "2. Which new intents should agents explore now for the other goals?\n\n"
+            "Return only one JSON object, with no other text. Both keys are optional:\n"
+            f"{{\"answers\": [{{\"goal\": \"{first_goal}\", \"from\": [\"<fact id>\"], "
+            "\"statement\": \"what these facts establish for this goal, and what they do not "
+            "cover\"}], \"intents\": [{\"from\": [\"<fact id>\"], \"objective\": \"what to "
+            "establish\", \"brief\": \"what to search and what to return\", \"slug\": \"two to "
+            "four words\", \"questions\": [\"<question key>\"]}]}\n"
+            "Give an answer for each goal that the facts answer, and intents for the goals that "
+            "they do not answer yet. When every goal that is not accepted has an answer, the "
+            "investigator reviews the answers.\n"
+            "If the open intents already cover the next steps: {}\n\n"
+            "Rules:\n"
+            "- `from` lists only ids from Valid facts.\n"
+            f"- Propose at most {m.MAX_INTENTS} intents. Each must be independent of the others and "
+            "must not repeat an open or finished intent.\n"
+            "- Split work by evidence: a different person, period, document type or collection. "
+            "Never split one search by output field.\n"
+            "- If there is no open intent, you must return answers or intents.\n"
+            "- `slug` names the direction of an intent in two to four lowercase English words.\n"
+            "- `questions` lists the keys of the open questions below that the intent explores. "
+            "It is optional. Use only listed keys.\n"
+            "- Direct each intent at one goal, and name that goal in its objective.\n")
     return (
-        "You are the reasoning step of an investigation board. Board facts are confirmed "
-        "findings. Intents are directions that research agents explore in the document "
-        "collections. Decide two things:\n"
-        "1. Do the facts already answer every goal that is not accepted?\n"
-        "2. If not, which new intents should agents explore now?\n\n"
-        "Return only one JSON object, with no other text.\n"
-        "If every goal is answered: {\"review\": {\"goals\": [{\"goal\": \"goal\", \"from\": "
-        "[\"f1.1\"], \"statement\": \"why these facts answer this goal, and what they do not "
-        "cover\"}]}}, with one entry for each goal that is not accepted. `goal` is the goal id, "
-        "such as goal or goal-2\n"
-        "If new intents are needed: {\"intents\": [{\"from\": [\"origin\"], \"objective\": \"what "
-        "to establish\", \"brief\": \"what to search and what to return\"}]}\n"
-        "If the open intents already cover the next steps: {}\n\n"
-        "Rules:\n"
-        "- `from` lists only ids from Valid facts.\n"
-        f"- Propose at most {m.MAX_INTENTS} intents. Each must be independent of the others and "
-        "must not repeat an open or finished intent.\n"
-        "- Split work by evidence: a different person, period, document type or collection. "
-        "Never split one search by output field.\n"
-        "- If there is no open intent, you must return review or intents.\n"
-        "- A goal of the review lists sourced facts, or not_found facts when the documents do "
-        "not hold its answer. An inferred fact cannot support review. The review needs one "
-        "sourced fact.\n"
-        "- Direct each intent at one goal, and name that goal in its objective.\n"
+        task +
+        "- An answer lists the sourced facts that state it. An inferred fact cannot support an "
+        "answer.\n"
+        "- When the documents do not hold the answer of a goal, list only the not_found facts of "
+        "that goal. The board then records that the cited records do not establish an answer. "
+        "Absence of evidence is not evidence of the opposite: do not state that something did not "
+        "happen because no document mentions it.\n"
         "- A goal marked accepted is closed. Do not answer it again, and do not direct an intent at it.\n"
         "- A fact of kind not_found means a search found nothing. Do not propose that search again.\n"
         "- A finished intent was explored once. When every remaining direction repeats a finished "
-        "intent, return review, and state in each goal's statement what the facts do not cover.\n"
+        "intent, return answers, and state in each statement what the facts do not cover.\n"
         "- A rejected fact is wrong as the investigator says. Use the reason to direct new intents, "
         "and do not name the rejected fact in `from`.\n"
-        "- A fact of kind correction is an instruction of the investigator. Each goal statement of a "
-        "review applies every correction that concerns its facts, or an intent establishes what "
-        "the correction asks for.\n"
+        "- A fact of kind correction is an instruction of the investigator. Each answer statement "
+        "applies every correction that concerns its facts, or an intent establishes what the "
+        "correction asks for.\n"
         f"{stall_text}\n"
         f"Goals:\n{goal_lines(facts, folded)}\n"
         f"Context: {board.context or 'none'}\n"
@@ -185,7 +227,8 @@ def render_reason(board, folded, facts, citations, stalled: bool) -> str:
         "Hints from the investigator:\n" + ("\n".join(f"- {h}" for h in folded.hints) or "- none") + "\n\n"
         "Open intents:\n" + ("\n".join(open_lines) or "- none") + "\n\n"
         "Finished intents:\n" + ("\n".join(done_lines) or "- none") + "\n\n"
-        "Questions suggested by earlier explores:\n" + ("\n".join(f"- {q}" for q in questions) or "- none") + "\n\n"
+        "Open questions of earlier explores, newest first, as key: question:\n"
+        + ("\n".join(f"- {key}: {q}" for key, q in questions) or "- none") + "\n\n"
         "Checks that changed your last reply:\n"
         + ("\n".join(f"- {p}" for p in folded.last_reason_problems) or "- none") + "\n\n"
         f"Valid facts: {valid_ids}\n"

@@ -2,12 +2,17 @@
 
 Each intent, fact and correction of a board gets a slug, a title and a summary, made by the
 summarisation model from the full text of the node. The slug is a display name and an
-address key of the website. The storage ids (`i1.2`, `f1.1`, correction ids) do not change.
-The origin and the goals get no generated label: the website gives them fixed slugs.
+address key of the website. A node id never changes. A node that the command writer created
+with a slug identity has its id as its slug from creation, and this module adds only its
+title and summary. A legacy node (`i1.2`, `f1.1`, correction ids) gets its slug here. The
+origin, the goals and the background get no generated label: the website gives them fixed
+slugs.
 
-`label_board` is the one writer of `board_labels`. `BoardDispatcher` starts it on
-`chat-model-queue` for at most one board at a time, when `board_plan` names a board with a
-pending node or a stale summary (`label_due`).
+`label_board` writes titles, summaries and failed attempts. The first slug of a node is a
+board namespace allocation, so it goes through the `assign_labels` command of the board
+(`commands.py`), which keeps a slug that a node already has. `BoardDispatcher` starts
+`label_board` on `chat-model-queue` for at most one board at a time, when `board_plan` names
+a board with a pending node or a stale summary (`label_due`).
 
 The rules:
 
@@ -15,8 +20,8 @@ The rules:
   `source_hash` of its row differs from the hash of its current source text. The oldest
   `LABEL_BATCH` pending nodes go into one model call.
 * **A slug stays.** A slug, once written, does not change. A changed source text gives a new
-  title and summary under the same slug. A new slug that another node of the board has gets
-  `-2`, then `-3`.
+  title and summary under the same slug. A new slug that another node or slug of the board
+  has gets `-2`, then `-3`.
 * **Failures end.** A node that the reply leaves out, or whose entry fails the checks, counts
   one failed attempt. After `LABEL_ATTEMPTS` failed attempts the node gets a label from its
   own text, with `model = 'fallback'`. A board whose newest row records a failed attempt
@@ -289,6 +294,20 @@ def summary_row(board_id: str, facts, old, source: str, text: str, model: str):
                     model=FALLBACK_MODEL, attempts=0, created_at=created)
 
 
+def _submit_first_slugs(board_id: str, rows: list, bodies: dict) -> None:
+    """Submit the rows of nodes without a slug as one `assign_labels` command. The command
+    writer gives each node its slug, or the slug that an earlier command gave it."""
+    from database import board_commands as bc
+    from tasks.P_board import commands as cmd
+
+    entries = [{"node_id": r.node_id, "node_kind": r.node_kind,
+                "slug": r.slug.removeprefix(f"{r.node_kind}-"), "text": bodies.get(r.node_id, ""),
+                "title": r.title, "summary": r.summary, "source_hash": r.source_hash, "model": r.model}
+               for r in rows]
+    request = "labels:" + text_hash("\n".join(f"{e['node_id']} {e['source_hash']}" for e in entries))[:16]
+    bc.submit(board_id, request, cmd.ASSIGN_LABELS, "labels", {"labels": entries})
+
+
 @activity.defn
 @with_heartbeat
 def label_board(task: LabelTask) -> int:
@@ -318,7 +337,10 @@ def label_board(task: LabelTask) -> int:
         rows = node_rows(board.board_id, pending, labels, parsed, result.model)
         if not boards.board_is_live(board.board_id):
             return 0
-        boards.write_labels(rows)
+        first = [r for r in rows if r.slug and not (labels.get(r.node_id) and labels[r.node_id].slug)]
+        if first:
+            _submit_first_slugs(board.board_id, first, {n.node_id: n.body for n in pending})
+        boards.write_labels([r for r in rows if r not in first])
         labels.update({r.node_id: r for r in rows})
         written = sum(1 for r in rows if r.slug and not r.attempts)
     if pending_nodes(nodes, labels):

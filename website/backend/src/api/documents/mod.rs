@@ -1,6 +1,7 @@
 //! Document API routes and module exports.
 
 pub mod download_document;
+pub mod get_document_card_facts;
 pub mod get_document_entities;
 pub mod get_document_sources;
 pub mod get_email_graph;

@@ -78,16 +78,11 @@ pub fn ChatTranscript(
     // Handles are allocated for the whole conversation, so a handle that any citation of
     // any run gave is a real one. The answers mark every other handle as not cited.
     let mut cited_handles = issued_handles(&messages, &run_cited_handles);
-    let web_pages = common::chat_pages::merge_page_refs(messages.iter().filter(|row| row.tool_name == "cite_pages")
-        .flat_map(|row| common::chat_pages::extract_page_refs(&row.tool_output)).collect::<Vec<_>>());
+    let SessionSources { documents: all_sources, pages: web_pages, conflicting } =
+        session_citation_sources(&messages, &collection_tree, &run_cited_refs);
     for page in &web_pages {
         if !cited_handles.contains(&page.handle) { cited_handles.push(page.handle.clone()); }
     }
-    let conflicting = conflicting_handles(&messages);
-    let mut all_sources = messages.iter().enumerate().filter(|(_, row)| row.tool_name == "cite_documents")
-        .flat_map(|(index, _)| citation_search_context_with_tree(&messages, index, &collection_tree)).collect::<Vec<_>>();
-    all_sources.extend(run_cited_refs.clone());
-    all_sources.retain(|source| !source.handle.is_empty());
     let placements = citation_placements(&messages, &all_sources, &web_pages);
     // The todo calls that show a task summary after their group, by row index.
     let summaries = todo_summaries(&messages, &todo_versions);
@@ -601,6 +596,31 @@ fn collect_datasets(
         }
         _ => {}
     }
+}
+
+/// The citation sources of one chat session, as its transcript shows them: each document
+/// citation with its reason, its search snippet, term and route, the cited web pages, and the
+/// handles that the session gives to more than one document. The board fact pane reads the
+/// explore session of a fact through this function too.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SessionSources {
+    pub documents: Vec<ChatDocRef>,
+    pub pages: Vec<common::chat_pages::ChatPageRef>,
+    pub conflicting: Vec<String>,
+}
+
+pub fn session_citation_sources(
+    messages: &[ChatMessageItem],
+    tree: &[common::storage_tree::CollectionNode],
+    run_cited_refs: &[ChatDocRef],
+) -> SessionSources {
+    let pages = common::chat_pages::merge_page_refs(messages.iter().filter(|row| row.tool_name == "cite_pages")
+        .flat_map(|row| common::chat_pages::extract_page_refs(&row.tool_output)).collect::<Vec<_>>());
+    let mut documents = messages.iter().enumerate().filter(|(_, row)| row.tool_name == "cite_documents")
+        .flat_map(|(index, _)| citation_search_context_with_tree(messages, index, tree)).collect::<Vec<_>>();
+    documents.extend(run_cited_refs.iter().cloned());
+    documents.retain(|source| !source.handle.is_empty());
+    SessionSources { documents, pages, conflicting: conflicting_handles(messages) }
 }
 
 /// The handles that the citation rows of the conversation give to more than one document.

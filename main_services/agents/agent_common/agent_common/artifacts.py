@@ -12,7 +12,7 @@ The contract, and every part of it decides where the object lands:
 * Bytes go under `derived/chat-artifacts/…` (see :mod:`.s3_store`), which the ingest
   walker must never see.
 * Objects are written **before** the row. A crash between the two leaves an orphan object
-  the retention sweeper's prefix scan collects. The reverse order would leave a row
+  the clean-up sweeper's prefix scan collects. The reverse order would leave a row
   pointing at nothing, which the UI would render as a broken artifact forever.
 * A failure to write an artifact **never fails the tool**. The search still happened; the
   page was still read. `write()` returns `None` and logs, and the caller omits the id.

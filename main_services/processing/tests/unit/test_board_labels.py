@@ -13,6 +13,7 @@ from tasks.P_board import labels as lb
 from tasks.P_board import model as m
 from tasks.P_board.contracts import parse_board_summary, parse_labels
 from tasks.P_board.fold import fold
+from board_store_fake import FakeBoardStore
 
 T0 = datetime(2026, 10, 14, 8, 0, 0)
 
@@ -221,22 +222,19 @@ def test_one_label_task_at_a_time():
 
 
 def test_board_plan_names_one_board_that_needs_labels(monkeypatch):
-    from database import boards
-
-    live = [board("b1"), board("b2")]
-    rows = {"b1": (events("b1"), facts("b1")), "b2": (events("b2"), facts("b2"))}
-    monkeypatch.setattr(boards, "read_live_boards", lambda: live)
-    monkeypatch.setattr(boards, "read_events", lambda b: rows[b][0])
-    monkeypatch.setattr(boards, "read_facts", lambda b: rows[b][1])
-    monkeypatch.setattr(boards, "read_labels", lambda ids: [])
-    monkeypatch.setattr(boards, "write_events", lambda e: None)
-    monkeypatch.setattr(boards, "read_state_rows", lambda b: (None, {}))
-    monkeypatch.setattr(boards, "write_state", lambda s, i: None)
+    store = FakeBoardStore().install(monkeypatch)
+    for board_id in ("b1", "b2"):
+        store.add_board(board_id, created_at=T0 if board_id == "b1" else T0 + timedelta(hours=1))
+        store.write_events(events(board_id))
+        store.publish_facts(facts(board_id), [])
     monkeypatch.setattr(activities, "_cap", lambda: 0)
     monkeypatch.setattr(activities, "_reconcile", lambda stale: [])
-    output = activities.board_plan.__wrapped__(activities.PlanInput()) if hasattr(
-        activities.board_plan, "__wrapped__") else activities.board_plan(activities.PlanInput())
+    output = activities.board_plan(activities.PlanInput())
     assert output.labels == ["b1"]
+    store.submit("b1", "hint-1", "add_hint", "admin", {"text": "h"})
+    output = activities.board_plan(activities.PlanInput())
+    assert output.labels == ["b2"], "a board with a waiting command gets no label task"
+    assert output.command_boards == ["b1"]
 
 
 def test_an_old_plan_output_decodes_without_labels():

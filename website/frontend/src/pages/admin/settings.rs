@@ -12,11 +12,6 @@ use crate::components::suspend_boundary::SuspendWrapper;
 fn setting_description(key: &str) -> &'static str {
     match key {
         "session_expiration_seconds" => "Web session lifetime in seconds (default: 604800 = 1 week)",
-        "chat_artifact_ttl_days" => {
-            "How long a chat's captured pages and search details are kept, in days \
-             (default: 30). The nightly sweeper deletes the blob-store objects first, then the \
-             rows."
-        }
         "chat_enabled" => {
             "Turns every new chat turn off when false (default: true). An in-flight turn \
              finishes. Takes effect on the next send, with no redeploy."

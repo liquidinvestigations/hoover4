@@ -21,7 +21,7 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 | `.table.sort` | column sort control | cycles ascending, descending and no order | the changed order resets the result page |
 | `.table.sheet` | sheet chooser dialog | selects a workbook sheet, and shows the matching rows of each sheet while the find box holds a search | it clears sheet-specific columns, sorting and filters. With a search and no chosen sheet, the viewer opens on the first sheet with matches |
 | `.table.cell` | table cell text | it shows selectable text spans without a click action | each cell shows an excerpt of at most five lines in a monospaced font |
-| `.table.cell_full` | `Open full cell` control | opens a full-screen modal with the raw value and the cell details | it appears on a cell whose value uses three or more lines |
+| `.table.cell_full` | `Open full cell` control | opens a modal over the page area with the raw value and the cell details | it appears on a cell whose value uses three or more lines |
 | `.source.dropdown` | source selector | selects a stored document source | it appears in the search preview; the full viewer uses the source list; a change resets the selected page. PDF sources use stored document ranges and preserve their identity after manifest refresh. |
 | `.find.clear` | clear search button | clears the in-document query | the main search, document find, and folder search share the input control |
 | `.table.clear_filters` | clear filters button | clears the document query and column filters | it appears when filters return zero rows |

@@ -9,7 +9,7 @@
 use common::board_types::{BoardCreateRequest, MAX_GOALS};
 use dioxus::prelude::*;
 
-use crate::api::board_api::create_board;
+use crate::api::board_api::{board_command_status, create_board_command, new_request_id};
 use crate::api::error_util::user_facing_message;
 use crate::api::storage_api::collections_overview;
 use crate::components::admin_components::{ErrorBar, BTN_PRIMARY, BTN_SMALL, HELP_TEXT, INPUT, LABEL, LINK, SUBHEADING};
@@ -166,11 +166,11 @@ pub fn AiBoardCreatePage() -> Element {
                                 spawn(async move {
                                     busy.set(true);
                                     error_msg.set(None);
-                                    match create_board(request).await {
+                                    match create_and_wait(request).await {
                                         Ok(board_id) => {
                                             navigator().push(Route::ai_board(board_id, String::new()));
                                         }
-                                        Err(e) => error_msg.set(Some(user_facing_message(&e))),
+                                        Err(message) => error_msg.set(Some(message)),
                                     }
                                     busy.set(false);
                                 });
@@ -182,4 +182,27 @@ pub fn AiBoardCreatePage() -> Element {
             }
         }
     }
+}
+
+/// Create a board and wait until its command writer writes its goals, so the board page opens
+/// on a board with goals. A lost response sends the same request id again, which names the
+/// same board. After the wait the page opens the board as it is.
+async fn create_and_wait(request: BoardCreateRequest) -> Result<String, String> {
+    let request_id = new_request_id();
+    let mut created = Err(String::new());
+    for _ in 0..3 {
+        created = create_board_command(request_id.clone(), request.clone()).await.map_err(|e| user_facing_message(&e));
+        if created.is_ok() {
+            break;
+        }
+    }
+    let board_id = created?;
+    for _ in 0..60 {
+        match board_command_status(board_id.clone(), request_id.clone()).await {
+            Ok(receipt) if receipt.state == "rejected" => return Err(receipt.error),
+            Ok(receipt) if receipt.is_done() => break,
+            _ => n0_future::time::sleep(std::time::Duration::from_millis(1000)).await,
+        }
+    }
+    Ok(board_id)
 }

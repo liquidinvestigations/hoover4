@@ -305,7 +305,8 @@ def collect_eta_samples(params: "CollectEtaSamplesParams") -> "CollectEtaSamples
 @activity.defn
 @with_heartbeat
 def sweep_chat_artifacts() -> str:
-    """One chat-artifact retention pass: objects first, then rows.
+    """One chat-artifact clean-up pass: objects first, then rows. Only the artifacts of a
+    deleted chat and objects without a row go. No artifact expires by age.
 
     See ``tasks/P_admin/artifact_sweeper`` for why the order is not interchangeable. A
     ClickHouse TTL cannot delete Garage objects, so dropping the rows first would leak the

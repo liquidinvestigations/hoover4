@@ -47,7 +47,7 @@ Every part of this decides whether the write lands in the right place:
   produces another artifact, forever. `verify-stack.sh` asserts no `blobs` row references
   `derived/`.
 * **Objects are written before the row.** A crash between the two leaves an orphan object
-  the retention sweeper's prefix scan collects. The reverse order would leave a row
+  the clean-up sweeper's prefix scan collects. The reverse order would leave a row
   pointing at nothing, which the UI would render as a broken artifact forever.
 * **A failed artifact never fails the tool.** The search still happened; the page was still
   read. `write()` returns `None` and logs, and the caller omits the id.

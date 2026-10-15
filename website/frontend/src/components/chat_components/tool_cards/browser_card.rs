@@ -446,7 +446,7 @@ fn ArchivedPagePopup(artifact: ArtifactRef, on_close: EventHandler<()>) -> Eleme
         ModalShell {
             label: "Archived page".to_string(),
             on_close,
-            pane_size: "width: min(1300px, 96vw); height: min(86vh, 950px);".to_string(),
+            pane_size: "width: min(1300px, 96%); height: min(86%, 950px);".to_string(),
             header: rsx! {
                 div {
                     style: "display: flex; align-items: center; gap: 12px; padding: 10px 14px; \

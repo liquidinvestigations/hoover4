@@ -448,7 +448,7 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
         ModalShell {
             label: "Search detail".to_string(),
             on_close,
-            pane_size: "width: min(1100px, 96vw); height: min(80vh, 900px);".to_string(),
+            pane_size: "width: min(1100px, 96%); height: min(80%, 900px);".to_string(),
             header: rsx! {
                 div {
                     style: "display: flex; align-items: center; justify-content: space-between; \

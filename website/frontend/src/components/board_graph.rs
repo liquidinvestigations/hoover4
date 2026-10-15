@@ -628,6 +628,9 @@ mod tests {
             question: String::new(),
             last_error: String::new(),
             created_ms,
+            questions: vec![],
+            origin: String::new(),
+            own: false,
             slug: id.into(),
             title: String::new(),
             summary: id.into(),
@@ -636,7 +639,7 @@ mod tests {
     }
 
     fn answer(goal: &str, from: &str) -> BoardReviewGoal {
-        BoardReviewGoal { goal: goal.into(), from: vec![from.into()], statement: String::new(), reason_no: 1 }
+        BoardReviewGoal { goal: goal.into(), from: vec![from.into()], statement: String::new(), reason_no: 1, ..Default::default() }
     }
 
     fn input(facts: Vec<BoardFact>, intents: Vec<BoardIntent>) -> BoardGraphInput {

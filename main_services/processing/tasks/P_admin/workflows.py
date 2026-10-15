@@ -966,7 +966,8 @@ def _is_cancellation(exc: BaseException) -> bool:
 
 @workflow.defn
 class SweepChatArtifacts:
-    """Daily retention pass over `chat_artifacts`.
+    """Daily clean-up pass over `chat_artifacts`: the artifacts of deleted chats and objects
+    without a row. No artifact expires by age.
 
     A singleton like ``CollectEtaSamples``, started once at worker bootstrap with
     ``USE_EXISTING`` so worker restarts never duplicate it. It sleeps rather than using a

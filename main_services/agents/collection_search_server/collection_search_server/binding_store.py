@@ -12,8 +12,8 @@ typed evidence (`usage_json.evidence`) of the run messages of every depth. A run
 from before the typed evidence shows a handle with no whole document, and its number stays
 reserved. `citations.merge_legacy` binds a result handle only when it is unambiguous.
 
-The artifact sweeper removes a binding row after the retention period. The committed
-results then keep the handle reserved, and a transcript result keeps it bound.
+A binding row has no age limit. The artifact sweeper removes it only when a person deletes
+the chat.
 
 **One allocator.** The handles of a session are chosen under the lock of `HandleTable` in
 one process. The compose service runs one container with one server process. More than one

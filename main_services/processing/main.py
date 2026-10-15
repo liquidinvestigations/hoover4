@@ -30,6 +30,22 @@ def migrate():
     manticore_migrate()
 
 
+@cli.command(name="activate-board-node-ids")
+def activate_board_node_ids():
+    """Give new board nodes permanent slug ids (`board_node_identity_version` 2).
+
+    Run it once, after the migrations, the worker and the website of this revision are
+    deployed. Existing nodes keep their ids. A second run changes nothing.
+    """
+    from tasks.P_board.commands import activate_slug_identity
+
+    try:
+        before, after = activate_slug_identity()
+    except RuntimeError as e:
+        raise click.ClickException(str(e))
+    print(f"board_node_identity_version {before} -> {after}")
+
+
 @cli.command()
 @click.argument("collectionname", type=str)
 def ensure_collection(collectionname: str):

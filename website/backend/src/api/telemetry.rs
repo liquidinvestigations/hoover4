@@ -299,6 +299,7 @@ const KNOWN_FUNCTIONS: &[&str] = &[
     "chat_stop",
     "collection_overview",
     "fetch_db_terms_for_ints",
+    "get_document_card_facts",
     "get_document_dates",
     "get_document_email",
     "get_email_envelope",

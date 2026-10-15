@@ -306,9 +306,9 @@ pub fn ResizablePane(
                     width.set(dragged_px(origin.start_px, delta, min_px, max_px));
                 },
                 onmouseup: move |_| end_drag.call(()),
-                // The cursor leaving the overlay means it left the window: without this
-                // the drag survives a release the page never saw and the pane keeps
-                // following the mouse on the way back in.
+                // The overlay covers the page area. The cursor leaving it means it left the
+                // page area or the window: without this the drag survives a release the
+                // page never saw and the pane keeps following the mouse on the way back in.
                 onmouseleave: move |_| end_drag.call(()),
             }
         }

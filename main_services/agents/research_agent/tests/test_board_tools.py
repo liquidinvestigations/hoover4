@@ -17,10 +17,16 @@ def test_a_valid_fact_is_submitted():
     assert result["submitted"] is True and result["kind"] == "sourced"
 
 
+def test_the_slug_is_optional():
+    assert SubmitFactArgs(fact="x", kind="inferred").slug == ""
+    assert SubmitFactArgs(fact="x", kind="inferred", slug="contract-payment").slug == "contract-payment"
+
+
 @pytest.mark.parametrize("args", [
     {"fact": "", "kind": "sourced"},
     {"fact": "x", "kind": "maybe"},
     {"fact": "x", "kind": "inferred", "open_questions": ["a", "b", "c", "d"]},
+    {"fact": "x", "kind": "inferred", "slug": "x" * 81},
 ])
 def test_an_invalid_fact_is_refused(args):
     with pytest.raises(ValidationError):

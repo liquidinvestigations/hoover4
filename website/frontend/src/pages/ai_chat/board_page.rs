@@ -22,6 +22,10 @@
 //!
 //! `assessment` in the address opens the details popup of that assessment: its prompt and
 //! its response, read from `board_assessments` when the popup opens.
+//!
+//! Every action of the person is one board command (`board_api::run_board_action`). Its
+//! button stays disabled until the command writer commits or refuses the command, and then
+//! the page reads the board again. A refused command shows its reason above the board.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -29,17 +33,18 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use common::board_types::{
-    BoardAssessment, BoardEvent, BoardFact, BoardIntent, BoardReviewGoal, BoardSnapshot, MAX_GOALS,
+    BoardAction, BoardAssessment, BoardCommandReceipt, BoardEvent, BoardFact, BoardIntent, BoardReviewGoal,
+    BoardSnapshot, EXPLORE_LIMIT, MAX_GOALS, NOT_ESTABLISHED,
 };
+use common::chat_pages::ChatPageRef;
 use common::chat_types::{ChatDocRef, card_find_phrase};
 use common::search_result::{DocumentIdentifier, SearchResultDocuments, SearchResultHitCount};
 use dioxus::prelude::*;
 
-use crate::api::board_api::{
-    board_add_goal, board_add_hint, board_answer, board_assessment, board_drop, board_explore_question,
-    board_reject_fact, board_review, board_set_internet_tools, board_set_paused, board_snapshot,
-};
+use crate::api::board_api::{board_assessment, board_drop, board_snapshot, run_board_action};
+use crate::api::chat_api::chat_get_session;
 use crate::api::error_util::user_facing_message;
+use crate::api::storage_api::list_storage_tree;
 use dioxus_free_icons::icons::md_content_icons::{MdAdd, MdRemove};
 use dioxus_free_icons::icons::md_navigation_icons::MdArrowDownward;
 use dioxus_free_icons::Icon;
@@ -52,6 +57,8 @@ use crate::components::board_graph::{
 };
 use crate::components::chat_components::doc_ref_card::ChatDocOpen;
 use crate::components::chat_components::markdown_text::MarkdownishText;
+use crate::components::chat_components::transcript::{session_citation_sources, SessionSources};
+use crate::components::chat_components::web_page::ChatWebOpen;
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
 use crate::data_definitions::doc_viewer_state::DocViewerState;
 use crate::pages::admin::llm_reports::format_utc_ms;
@@ -156,16 +163,35 @@ async fn reload(board_id: String, mut snapshot: Signal<Option<BoardSnapshot>>, m
     }
 }
 
-/// Whether the board can change soon: it is active, an explore runs or waits to start for an
-/// open question, or the newest event is a person action that the worker has not answered
-/// yet. A dropped board waits for nothing. On a completed board only a new goal and a
-/// question explore start work, so its other person events do not count.
+/// Run one person action on the board, then read the board again. Returns the receipt of
+/// the command, or `None` after its failure, which `error` shows.
+async fn act(
+    board_id: String,
+    action: BoardAction,
+    snapshot: Signal<Option<BoardSnapshot>>,
+    mut error: Signal<Option<String>>,
+) -> Option<BoardCommandReceipt> {
+    let result = run_board_action(board_id.clone(), action).await;
+    if let Err(message) = &result {
+        error.set(Some(message.clone()));
+    }
+    reload(board_id, snapshot, error).await;
+    result.ok()
+}
+
+/// Whether the board can change soon: it is active, an explore runs or waits to start for a
+/// person's question, a final assessment runs, or the newest event is a person action that
+/// the worker has not answered yet. A dropped board waits for nothing. On a completed board
+/// only a new goal and a question explore start work, so its other person events do not
+/// count.
 fn is_live(snapshot: &Option<BoardSnapshot>) -> bool {
     match snapshot {
         None => true,
         Some(s) if s.status == "dropped" => false,
         Some(s) => {
-            let working = s.intents.iter().any(|i| i.state == "running" || (i.state == "open" && i.asked.is_some()));
+            let asked = |i: &BoardIntent| i.asked.is_some() || i.origin == "person_question";
+            let working = s.final_running
+                || s.intents.iter().any(|i| i.state == "running" || (i.state == "open" && asked(i)));
             let waiting = s.events.last().is_some_and(|e| {
                 if s.status == "completed" {
                     matches!(e.event_type.as_str(), "goal_added" | "question_explored")
@@ -518,6 +544,7 @@ fn BoardSettings(
     on_close: EventHandler<()>,
 ) -> Element {
     let mut confirm_drop = use_signal(|| false);
+    let mut busy = use_signal(|| false);
     let mut error = error;
     let board_id = snap.board.board_id.clone();
     let finished = snap.status == "completed" || snap.status == "dropped";
@@ -532,7 +559,7 @@ fn BoardSettings(
             onclick: move |_| on_close.call(()),
             div {
                 class: "x-board-settings",
-                style: "background: white; border-radius: 10px; padding: 18px 20px; width: 460px; max-width: 92vw; box-shadow: 0 8px 30px rgba(0,0,0,0.2);",
+                style: "background: white; border-radius: 10px; padding: 18px 20px; width: 460px; max-width: 92%; box-shadow: 0 8px 30px rgba(0,0,0,0.2);",
                 onclick: move |e| e.stop_propagation(),
                 div { style: "font-size: var(--x-text-section); font-weight: 600; margin-bottom: 10px;", "Board settings" }
                 label { style: "display: flex; gap: 8px; align-items: center; font-size: var(--x-text-body);",
@@ -540,17 +567,16 @@ fn BoardSettings(
                         class: "x-board-internet-tools",
                         r#type: "checkbox",
                         checked: snap.board.internet_tools,
-                        disabled: finished,
+                        disabled: finished || busy(),
                         onchange: {
                             let id = board_id.clone();
                             move |e: FormEvent| {
                                 let id = id.clone();
                                 let on = e.checked();
+                                busy.set(true);
                                 spawn(async move {
-                                    if let Err(e) = board_set_internet_tools(id.clone(), on).await {
-                                        error.set(Some(user_facing_message(&e)));
-                                    }
-                                    reload(id, snapshot, error).await;
+                                    act(id, BoardAction::SetInternetTools { on }, snapshot, error).await;
+                                    busy.set(false);
                                 });
                             }
                         },
@@ -565,15 +591,15 @@ fn BoardSettings(
                     if let Some((label, paused)) = pause_label {
                         button {
                             style: BTN,
+                            disabled: busy(),
                             onclick: {
                                 let id = board_id.clone();
                                 move |_| {
                                     let id = id.clone();
+                                    busy.set(true);
                                     spawn(async move {
-                                        if let Err(e) = board_set_paused(id.clone(), paused).await {
-                                            error.set(Some(user_facing_message(&e)));
-                                        }
-                                        reload(id, snapshot, error).await;
+                                        act(id, BoardAction::SetPaused { paused }, snapshot, error).await;
+                                        busy.set(false);
                                     });
                                 }
                             },
@@ -608,6 +634,15 @@ fn BoardSettings(
     }
 }
 
+/// The button text of a reopening that adds `grant` explores.
+fn reopen_label(grant: u32) -> String {
+    if grant == 0 {
+        "Reopen with the remaining budget".to_string()
+    } else {
+        format!("Reopen with {grant} more explores")
+    }
+}
+
 #[component]
 fn BoardOverview(
     snap: BoardSnapshot,
@@ -619,38 +654,82 @@ fn BoardOverview(
     let mut hint = use_signal(String::new);
     let mut correction = use_signal(String::new);
     let mut goal = use_signal(String::new);
-    let mut adding_goal = use_signal(|| false);
-    let mut error = error;
+    let mut busy = use_signal(|| false);
+    let mut show_all_events = use_signal(|| false);
     let board_id = snap.board.board_id.clone();
     let goals: Vec<BoardFact> = snap.goals().into_iter().cloned().collect();
     let dropped = snap.status == "dropped";
+    let review_id = snap.review_id.clone();
+    // Run one action from this pane. Every button of the pane is disabled while it runs.
+    let run = {
+        let board_id = board_id.clone();
+        move |action: BoardAction, mut clear: Option<Signal<String>>| {
+            let board_id = board_id.clone();
+            busy.set(true);
+            spawn(async move {
+                if act(board_id, action, snapshot, error).await.is_some() {
+                    if let Some(field) = clear.as_mut() {
+                        field.set(String::new());
+                    }
+                }
+                busy.set(false);
+            });
+        }
+    };
+    let reopen = snap.reopen_grant.map(|grant| {
+        let mut run = run.clone();
+        let expected_id = review_id.clone();
+        rsx! {
+            button {
+                class: "x-board-reopen",
+                style: BTN_PRIMARY,
+                disabled: busy(),
+                onclick: move |_| run(BoardAction::Reopen { expected_id: expected_id.clone() }, None),
+                "{reopen_label(grant)}"
+            }
+        }
+    });
+    let budget_review = snap.review_reason == "budget";
+    let mut finish = run.clone();
+    let mut continue_with = run.clone();
+    let finish_id = review_id.clone();
+    let correction_id = review_id.clone();
+    let events_shown = if show_all_events() { snap.events.len() } else { EVENT_ROWS.min(snap.events.len()) };
     rsx! {
+        if snap.limit_reached && !dropped {
+            div { class: "x-board-limit", style: "{PANEL} border-color: var(--x-danger);",
+                div { style: SECTION, "The board used its explore limit" }
+                p { "The board used {EXPLORE_LIMIT} explores, the limit of one board. It starts no more work. You can still decide the proposed answers." }
+                Link { to: Route::AiBoardCreatePage {}, style: LINK, "Create a new board to continue the investigation" }
+            }
+        }
         if snap.status == "review" {
             div { class: "x-board-review", style: "{PANEL} border-color: var(--x-danger);",
                 div { style: SECTION, "The board waits for your review" }
+                if budget_review {
+                    p { "The board used its budget of {snap.max_explores} explores." }
+                } else if snap.review_reason == "stalled" {
+                    p { "The assessments gave no usable direction." }
+                }
                 if !snap.answers_proposed.is_empty() {
                     p { style: HELP_TEXT, "Accept or reject the proposed answer of each goal below. A rejected answer lets the board continue at once." }
                 } else if snap.review_statement.is_empty() {
-                    p { style: HELP_TEXT, "The board stopped without answers: the explore budget is used or the work stalled." }
+                    p { style: HELP_TEXT, "The board stopped without answers." }
                 } else {
                     p { "{snap.review_statement}" }
+                }
+                if budget_review {
+                    if let Some(button) = reopen.clone() {
+                        p { style: HELP_TEXT, "Reopen the board to continue the open goals. It keeps its facts and answers." }
+                        {button}
+                    }
                 }
                 p { style: HELP_TEXT, "Finish the board to accept every proposed answer and stop it, or continue it with a correction." }
                 div { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;",
                     button {
-                        style: BTN_PRIMARY,
-                        onclick: {
-                            let id = board_id.clone();
-                            move |_| {
-                                let id = id.clone();
-                                spawn(async move {
-                                    if let Err(e) = board_review(id.clone(), true, String::new()).await {
-                                        error.set(Some(user_facing_message(&e)));
-                                    }
-                                    reload(id, snapshot, error).await;
-                                });
-                            }
-                        },
+                        style: if budget_review && reopen.is_some() { BTN } else { BTN_PRIMARY },
+                        disabled: busy(),
+                        onclick: move |_| finish(BoardAction::Review { review_id: finish_id.clone(), accept: true, correction: String::new() }, None),
                         "Finish the board"
                     }
                 }
@@ -661,21 +740,26 @@ fn BoardOverview(
                 }
                 button {
                     style: "{BTN} margin-top: 6px;",
-                    onclick: {
-                        let id = board_id.clone();
-                        move |_| {
-                            let id = id.clone();
-                            let text = correction.read().clone();
-                            spawn(async move {
-                                match board_review(id.clone(), false, text).await {
-                                    Ok(()) => correction.set(String::new()),
-                                    Err(e) => error.set(Some(user_facing_message(&e))),
-                                }
-                                reload(id, snapshot, error).await;
-                            });
-                        }
-                    },
+                    disabled: busy() || correction.read().trim().is_empty(),
+                    onclick: move |_| continue_with(BoardAction::Review {
+                        review_id: correction_id.clone(), accept: false, correction: correction.read().clone(),
+                    }, Some(correction)),
                     "Continue with a correction"
+                }
+                if !budget_review {
+                    if let Some(button) = reopen.clone() {
+                        p { style: "{HELP_TEXT} margin-top: 8px;", "Or reopen the board to continue the open goals without a correction." }
+                        {button}
+                    }
+                }
+            }
+        }
+        if snap.status == "completed" {
+            if let Some(button) = reopen.clone() {
+                div { class: "x-board-completed", style: PANEL,
+                    div { style: SECTION, "The board is complete" }
+                    p { style: HELP_TEXT, "A goal has no accepted answer. Reopen the board to continue it. The board keeps its facts and answers." }
+                    {button}
                 }
             }
         }
@@ -703,7 +787,7 @@ fn BoardOverview(
                     }
                 }
             }
-            if snap.status != "dropped" && goals.len() < MAX_GOALS {
+            if !dropped && !snap.limit_reached && goals.len() < MAX_GOALS {
                 div { class: "x-board-goal-form", style: "margin-top: 10px;",
                     textarea {
                         class: "x-board-goal",
@@ -714,33 +798,23 @@ fn BoardOverview(
                     p { style: HELP_TEXT, "The board works on the new goal next. A complete board starts again." }
                     button {
                         style: BTN,
-                        disabled: adding_goal() || goal.read().trim().is_empty(),
+                        disabled: busy() || goal.read().trim().is_empty(),
                         onclick: {
-                            let id = board_id.clone();
-                            move |_| {
-                                let id = id.clone();
-                                let text = goal.read().clone();
-                                adding_goal.set(true);
-                                spawn(async move {
-                                    match board_add_goal(id.clone(), text).await {
-                                        Ok(()) => goal.set(String::new()),
-                                        Err(e) => error.set(Some(user_facing_message(&e))),
-                                    }
-                                    adding_goal.set(false);
-                                    reload(id, snapshot, error).await;
-                                });
-                            }
+                            let mut run = run.clone();
+                            move |_| run(BoardAction::AddGoal { text: goal.read().clone() }, Some(goal))
                         },
                         "Add goal"
                     }
                 }
+            } else if !dropped && goals.len() >= MAX_GOALS {
+                p { class: "x-board-goal-limit", style: HELP_TEXT, "A board has at most {MAX_GOALS} goals. Create a new board for another goal." }
             }
             if !snap.board.context.is_empty() {
                 div { style: SUBHEADING, "Background context" }
                 p { style: "margin: 4px 0;", "{snap.board.context}" }
             }
         }
-        if snap.status == "active" || snap.status == "paused" {
+        if (snap.status == "active" || snap.status == "paused") && !snap.limit_reached {
             div { style: PANEL,
                 div { style: SECTION, "Add a hint" }
                 p { style: HELP_TEXT, "The next assessment reads every hint. A hint also answers an explore that asked a question." }
@@ -751,19 +825,10 @@ fn BoardOverview(
                 }
                 button {
                     style: "{BTN} margin-top: 6px;",
+                    disabled: busy() || hint.read().trim().is_empty(),
                     onclick: {
-                        let id = board_id.clone();
-                        move |_| {
-                            let id = id.clone();
-                            let text = hint.read().clone();
-                            spawn(async move {
-                                match board_add_hint(id.clone(), text).await {
-                                    Ok(()) => hint.set(String::new()),
-                                    Err(e) => error.set(Some(user_facing_message(&e))),
-                                }
-                                reload(id, snapshot, error).await;
-                            });
-                        }
+                        let mut run = run.clone();
+                        move |_| run(BoardAction::AddHint { text: hint.read().clone() }, Some(hint))
                     },
                     "Add hint"
                 }
@@ -786,7 +851,7 @@ fn BoardOverview(
                     }
                 }
                 tbody {
-                    for event in snap.events.iter().rev().take(200) {
+                    for event in snap.events.iter().rev().take(events_shown) {
                         tr { key: "{event.event_id}",
                             td { style: "{TD} white-space: nowrap;", "{format_utc_ms(event.created_ms)}" }
                             td { style: "{TD} {actor_style(&event.actor)}", class: "x-board-event-actor", "{actor_label(&event.actor)}" }
@@ -831,10 +896,24 @@ fn BoardOverview(
                     }
                 }
             }
+            if snap.events.len() > EVENT_ROWS {
+                if show_all_events() {
+                    button { class: "x-board-events-all", style: "{BTN_SMALL} margin-top: 6px;", onclick: move |_| show_all_events.set(false),
+                        "Show the newest {EVENT_ROWS} events"
+                    }
+                } else {
+                    button { class: "x-board-events-all", style: "{BTN_SMALL} margin-top: 6px;", onclick: move |_| show_all_events.set(true),
+                        "Show all {snap.events.len()} events"
+                    }
+                }
+            }
         }
         BoardStatistics { snap: snap.clone() }
     }
 }
+
+/// The newest events that the event table shows before the person asks for all.
+const EVENT_ROWS: usize = 200;
 
 /// The actors that are the system: their name shows in italic, and a person's in bold.
 const SYSTEM_ACTORS: [&str; 4] = ["dispatcher", "reason", "explore", "worker"];
@@ -927,7 +1006,8 @@ fn BoardStatistics(snap: BoardSnapshot) -> Element {
     }
 }
 
-/// The citation cards of a fact, as the chat builds them from its `cite_documents` results.
+/// The stored citation cards of a fact. The pane shows them while the explore session loads,
+/// and when it cannot load.
 fn fact_sources(fact: &BoardFact) -> Vec<ChatDocRef> {
     fact.citations
         .iter()
@@ -953,6 +1033,62 @@ fn fact_sources(fact: &BoardFact) -> Vec<ChatDocRef> {
             search_route: String::new(),
         })
         .collect()
+}
+
+/// The first 16 characters of a file hash. A stored citation can hold the whole hash or
+/// its start.
+fn hash_key(hash: &str) -> String {
+    hash.chars().take(16).collect()
+}
+
+/// The stored citations of a fact with the metadata of their explore-chat cards: the
+/// reason line, the search snippet, the search term and its route. A stored citation takes
+/// these from the session citation of the same handle, dataset and file only. When several
+/// session citations match, the one with the same quote decides, else they must agree. A
+/// conflicting handle, a missing match or a disagreement keeps the stored citation as it is.
+/// The quote, its verification and the document target always stay the stored ones.
+///
+/// A web citation becomes the session's web page card of the same handle and address, and
+/// stays a document stub when the session has none.
+pub fn enrich_fact_sources(stored: &[ChatDocRef], session: &SessionSources) -> (Vec<ChatDocRef>, Vec<ChatPageRef>) {
+    let mut documents = Vec::new();
+    let mut pages: Vec<ChatPageRef> = Vec::new();
+    for citation in stored {
+        let page = session.pages.iter().find(|page| {
+            page.handle == citation.handle && (citation.path.is_empty() || page.url == citation.path || page.final_url == citation.path)
+        });
+        if let Some(page) = page.filter(|_| citation.handle.starts_with("[W")) {
+            if !pages.contains(page) {
+                pages.push(page.clone());
+            }
+            continue;
+        }
+        let mut doc = citation.clone();
+        if !session.conflicting.contains(&citation.handle) {
+            let matching: Vec<&ChatDocRef> = session.documents.iter().filter(|source| {
+                source.handle == citation.handle
+                    && source.collection_dataset == citation.collection_dataset
+                    && hash_key(&source.file_hash) == hash_key(&citation.file_hash)
+                    && (citation.page_id.is_none() || source.page_id.is_none() || source.page_id == citation.page_id)
+            }).collect();
+            let same_quote: Vec<&&ChatDocRef> = matching.iter().filter(|source| source.quote == citation.quote).collect();
+            let chosen = match same_quote.as_slice() {
+                [one] => Some(**one),
+                _ => matching.first().copied().filter(|first| matching.iter().all(|other| {
+                    (&other.why, &other.search_snippet, &other.term, &other.search_route)
+                        == (&first.why, &first.search_snippet, &first.term, &first.search_route)
+                })),
+            };
+            if let Some(source) = chosen {
+                doc.why = source.why.clone();
+                doc.search_snippet = source.search_snippet.clone();
+                doc.term = source.term.clone();
+                doc.search_route = source.search_route.clone();
+            }
+        }
+        documents.push(doc);
+    }
+    (documents, pages)
 }
 
 /// The title of a fact in its detail pane.
@@ -986,10 +1122,34 @@ fn FactDetail(
     error: Signal<Option<String>>,
 ) -> Element {
     let mut reason = use_signal(String::new);
-    let mut asking = use_signal(|| false);
-    let mut error = error;
+    let mut own_question = use_signal(String::new);
+    let mut busy = use_signal(|| false);
     let board_id = snap.board.board_id.clone();
     let dropped = snap.status == "dropped";
+    let run = {
+        let board_id = board_id.clone();
+        move |action: BoardAction, mut clear: Option<Signal<String>>| {
+            let board_id = board_id.clone();
+            busy.set(true);
+            spawn(async move {
+                if act(board_id, action, snapshot, error).await.is_some() {
+                    if let Some(field) = clear.as_mut() {
+                        field.set(String::new());
+                    }
+                }
+                busy.set(false);
+            });
+        }
+    };
+    // An explore fact and the background take the person's own question. A rejected fact, a
+    // dropped board and a board at its explore limit take no new question.
+    let can_ask = !fact.rejected && !dropped && !snap.limit_reached
+        && matches!(fact.kind.as_str(), "sourced" | "inferred" | "not_found" | "origin");
+    let own: Vec<(String, String)> = snap
+        .own_questions_of(&fact.fact_id)
+        .into_iter()
+        .map(|i| (i.objective.clone(), snap.slug_of(&i.intent_id)))
+        .collect();
     let link = |selected: String| Route::AiBoardPage {
         board_id: board_id.clone(),
         selected,
@@ -1009,8 +1169,19 @@ fn FactDetail(
     let answer = goal_answer(&snap, &fact.fact_id);
     let can_reject = !fact.rejected && fact.kind != "origin" && fact.kind != "goal";
     let (placeholder, reject_label) = reject_words(&fact.kind);
-    // A citation card opens the explore chat of this fact in a new tab, with its document
-    // selected. The component is keyed by the fact, so the provider names this fact.
+    // A citation card opens the explore chat of this fact in a new tab, with its document or
+    // its web page selected. The component is keyed by the fact, so the providers name this
+    // fact.
+    let web_session = fact.session_id.clone();
+    use_context_provider(move || ChatWebOpen {
+        open: Callback::new(move |(artifact_id, find): (String, String)| {
+            if !web_session.is_empty() {
+                let mut state = DocViewerState::from_find_query(find);
+                state.web_artifact_id = Some(artifact_id);
+                open_in_new_tab(Route::ai_chat_session(web_session.clone(), None, Some(state)));
+            }
+        }),
+    });
     let session_id = fact.session_id.clone();
     use_context_provider(move || ChatDocOpen {
         open: Callback::new(move |(id, find_query): (DocumentIdentifier, String)| {
@@ -1023,8 +1194,28 @@ fn FactDetail(
             }
         }),
     });
-    let sources = fact_sources(&fact);
-    let handles: Vec<String> = sources.iter().map(|s| s.handle.clone()).collect();
+    // The explore session gives the cards the metadata of the chat. The component is keyed
+    // by the fact, and the result names the session it was read for, so a response for an
+    // earlier selection never applies here.
+    let read_session = fact.session_id.clone();
+    let session = use_resource(move || {
+        let session_id = read_session.clone();
+        async move {
+            if session_id.is_empty() {
+                return None;
+            }
+            let detail = chat_get_session(session_id.clone()).await.ok()?;
+            let tree = list_storage_tree().await.unwrap_or_default();
+            Some((session_id, session_citation_sources(&detail.messages, &tree, &detail.run_cited_refs)))
+        }
+    });
+    let stored = fact_sources(&fact);
+    let (sources, pages) = match &*session.read() {
+        Some(Some((session_id, read))) if *session_id == fact.session_id => enrich_fact_sources(&stored, read),
+        _ => (stored, Vec::new()),
+    };
+    let handles: Vec<String> = sources.iter().map(|s| s.handle.clone())
+        .chain(pages.iter().map(|p| p.handle.clone())).collect();
     let rejected_by = if fact.rejected_by.is_empty() { "A person".to_string() } else { fact.rejected_by.clone() };
     rsx! {
         div { class: "x-board-fact-detail", style: PANEL,
@@ -1055,7 +1246,7 @@ fn FactDetail(
             // The gray area behind the citation cards, as on the chat page, so the white cards
             // stand out.
             div { class: "x-board-fact-text", style: "margin: 6px 0; background: #ECEEF2; padding: 12px; border-radius: 8px;",
-                MarkdownishText { text: fact.text.clone(), cited_handles: Some(handles), sources }
+                MarkdownishText { text: fact.text.clone(), cited_handles: Some(handles), sources, pages }
             }
             if fact.kind == "goal" {
                 GoalAnswer {
@@ -1079,29 +1270,59 @@ fn FactDetail(
                                 "Explored in "
                                 Link { to: link(intent.clone()), style: "{LINK} font-family: monospace;", "{intent}" }
                             }
-                        } else if !fact.rejected && !dropped {
+                        } else if can_ask {
                             button {
                                 class: "x-board-question-corner x-board-explore-question",
                                 style: BTN_SMALL,
-                                disabled: asking(),
+                                disabled: busy(),
                                 onclick: {
-                                    let board_id = board_id.clone();
+                                    let mut run = run.clone();
                                     let fact_id = fact.fact_id.clone();
-                                    move |_| {
-                                        let (board_id, fact_id) = (board_id.clone(), fact_id.clone());
-                                        asking.set(true);
-                                        spawn(async move {
-                                            if let Err(e) = board_explore_question(board_id.clone(), fact_id, index).await {
-                                                error.set(Some(user_facing_message(&e)));
-                                            }
-                                            asking.set(false);
-                                            reload(board_id, snapshot, error).await;
-                                        });
-                                    }
+                                    move |_| run(BoardAction::ExploreQuestion {
+                                        fact_id: fact_id.clone(), index: Some(index), question: String::new(),
+                                    }, None)
                                 },
                                 "Explore this question"
                             }
                         }
+                    }
+                }
+            }
+            if !own.is_empty() {
+                div { style: SUBHEADING, "Your questions" }
+                for (i, (text, intent)) in own.into_iter().enumerate() {
+                    div { key: "{i}", class: "x-board-fact-question x-board-own-question",
+                        div { class: "x-board-fact-question-text", "{text}" }
+                        span { class: "x-board-question-corner x-board-question-followed",
+                            "Explored in "
+                            Link { to: link(intent.clone()), style: "{LINK} font-family: monospace;", "{intent}" }
+                        }
+                    }
+                }
+            }
+            if can_ask {
+                div { class: "x-board-follow-up", style: "margin-top: 10px;",
+                    textarea {
+                        class: "x-board-own-question-text",
+                        style: TEXTAREA, rows: "2",
+                        placeholder: "A follow-up question about this node",
+                        value: "{own_question}", oninput: move |e| own_question.set(e.value()),
+                    }
+                    p { style: HELP_TEXT,
+                        "An explore answers the question as a new fact. The board keeps its status. To make the board answer it before it is complete, add it as a goal."
+                    }
+                    button {
+                        class: "x-board-ask",
+                        style: BTN,
+                        disabled: busy() || own_question.read().trim().is_empty(),
+                        onclick: {
+                            let mut run = run.clone();
+                            let fact_id = fact.fact_id.clone();
+                            move |_| run(BoardAction::ExploreQuestion {
+                                fact_id: fact_id.clone(), index: None, question: own_question.read().clone(),
+                            }, Some(own_question))
+                        },
+                        "Ask"
                     }
                 }
             }
@@ -1120,20 +1341,11 @@ fn FactDetail(
                     }
                     button {
                         style: BTN_SMALL_DANGER,
+                        disabled: busy(),
                         onclick: {
-                            let board_id = board_id.clone();
+                            let mut run = run.clone();
                             let fact_id = fact.fact_id.clone();
-                            move |_| {
-                                let (board_id, fact_id) = (board_id.clone(), fact_id.clone());
-                                let text = reason.read().clone();
-                                spawn(async move {
-                                    match board_reject_fact(board_id.clone(), fact_id, text).await {
-                                        Ok(()) => reason.set(String::new()),
-                                        Err(e) => error.set(Some(user_facing_message(&e))),
-                                    }
-                                    reload(board_id, snapshot, error).await;
-                                });
-                            }
+                            move |_| run(BoardAction::RejectFact { fact_id: fact_id.clone(), reason: reason.read().clone() }, Some(reason))
                         },
                         "{reject_label}"
                     }
@@ -1162,7 +1374,7 @@ fn answer_word(answer: &Option<(BoardReviewGoal, bool)>) -> String {
 /// the earlier answer does not stay.
 fn answer_key(answer: &Option<(BoardReviewGoal, bool)>) -> String {
     match answer {
-        Some((a, accepted)) => format!("{}-{accepted}", a.reason_no),
+        Some((a, accepted)) => format!("{}-{}-{accepted}", a.reason_no, a.proposal_id),
         None => "none".to_string(),
     }
 }
@@ -1181,23 +1393,21 @@ fn GoalAnswer(
 ) -> Element {
     let mut correction = use_signal(String::new);
     let mut busy = use_signal(|| false);
-    let mut error = error;
     let Some((answer, accepted)) = answer else {
         return rsx! { p { class: "x-board-goal-answer", style: HELP_TEXT, "No answer yet." } };
     };
     let link_board = board_id.clone();
-    let (goal, reason_no) = (answer.goal.clone(), answer.reason_no);
+    let (goal, proposal_id) = (answer.goal.clone(), answer.proposal_id.clone());
     let decide = move |accept: bool| {
-        let (board_id, goal) = (board_id.clone(), goal.clone());
+        let (board_id, goal, proposal_id) = (board_id.clone(), goal.clone(), proposal_id.clone());
         let text = correction.read().clone();
         busy.set(true);
         spawn(async move {
-            match board_answer(board_id.clone(), goal, reason_no, accept, text).await {
-                Ok(()) => correction.set(String::new()),
-                Err(e) => error.set(Some(user_facing_message(&e))),
+            let action = BoardAction::Answer { goal, proposal_id, accept, correction: text };
+            if act(board_id, action, snapshot, error).await.is_some() {
+                correction.set(String::new());
             }
             busy.set(false);
-            reload(board_id, snapshot, error).await;
         });
     };
     let mut decide_accept = decide.clone();
@@ -1209,6 +1419,11 @@ fn GoalAnswer(
             "data-answer": if accepted { "accepted" } else { "proposed" },
             style: "border-left: 3px {border}; border-left-color: var(--x-ok); padding: 2px 10px; margin: 8px 0;",
             div { style: "font-weight: 600; color: var(--x-ok);", "{label}" }
+            if answer.answer_kind == NOT_ESTABLISHED {
+                div { class: "x-board-answer-unresolved", style: HELP_TEXT,
+                    "The facts of this answer are searches that found nothing. Accept it to record that the records do not answer the goal, or reject it to continue the investigation."
+                }
+            }
             p { style: "margin: 2px 0; white-space: pre-wrap;", "{answer.statement}" }
             if !from.is_empty() {
                 p { style: HELP_TEXT,
@@ -1329,7 +1544,7 @@ fn AssessmentDetails(board_id: String, reason_no: u32, on_close: EventHandler<()
             onclick: move |_| on_close.call(()),
             div {
                 class: "x-board-assessment",
-                style: "background: white; border-radius: 10px; padding: 18px 20px; width: min(1100px, 94vw); height: 90vh; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.2);",
+                style: "background: white; border-radius: 10px; padding: 18px 20px; width: min(1100px, 94%); height: 90%; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.2);",
                 onclick: move |e| e.stop_propagation(),
                 div { style: "display: flex; align-items: center; gap: 12px;",
                     div { style: "font-size: var(--x-text-section); font-weight: 600;", "Assessment {reason_no}" }
@@ -1400,6 +1615,75 @@ mod tests {
         assert_eq!(actor_label("reason"), "assessment");
     }
 
+    fn cite(handle: &str, hash: &str, quote: &str) -> ChatDocRef {
+        ChatDocRef {
+            collection_dataset: "enron/d1".into(), file_hash: hash.into(), collectionname: "enron".into(),
+            path: "/mail/83.".into(), page_id: Some(1), score: None, snippet: String::new(), also_in: vec![],
+            handle: handle.into(), quote: quote.into(), why: String::new(), quote_verified: true,
+            quote_reason: String::new(), find_query: String::new(), term: String::new(),
+            search_snippet: String::new(), search_route: String::new(),
+        }
+    }
+
+    fn session_source(handle: &str, hash: &str, quote: &str, why: &str) -> ChatDocRef {
+        ChatDocRef { why: why.into(), term: "raptor".into(), search_snippet: "the **Raptor** deal".into(),
+                     search_route: "/search/x".into(), ..cite(handle, hash, quote) }
+    }
+
+    #[test]
+    fn a_board_citation_takes_the_reason_snippet_and_term_of_its_session_citation() {
+        let stored = vec![cite("[D1]", "aaaaaaaaaaaaaaaa1111", "the quote")];
+        let session = SessionSources {
+            documents: vec![session_source("[D1]", "aaaaaaaaaaaaaaaa", "the quote", "It names the deal.")],
+            ..Default::default()
+        };
+        let (docs, pages) = enrich_fact_sources(&stored, &session);
+        assert!(pages.is_empty());
+        assert_eq!((docs[0].why.as_str(), docs[0].term.as_str(), docs[0].search_route.as_str()),
+                   ("It names the deal.", "raptor", "/search/x"));
+        // The stored identity stays.
+        assert_eq!((docs[0].file_hash.as_str(), docs[0].quote.as_str()), ("aaaaaaaaaaaaaaaa1111", "the quote"));
+    }
+
+    #[test]
+    fn a_conflicting_unmatched_or_ambiguous_citation_keeps_its_stored_card() {
+        let stored = vec![cite("[D1]", "aaaaaaaaaaaaaaaa", "q")];
+        let other_document = SessionSources { documents: vec![session_source("[D1]", "bbbbbbbbbbbbbbbb", "q", "why")], ..Default::default() };
+        assert!(enrich_fact_sources(&stored, &other_document).0[0].why.is_empty());
+        let conflicting = SessionSources {
+            documents: vec![session_source("[D1]", "aaaaaaaaaaaaaaaa", "q", "why")],
+            conflicting: vec!["[D1]".into()], ..Default::default()
+        };
+        assert!(enrich_fact_sources(&stored, &conflicting).0[0].why.is_empty());
+        let disagreeing = SessionSources { documents: vec![
+            session_source("[D1]", "aaaaaaaaaaaaaaaa", "q1", "one"), session_source("[D1]", "aaaaaaaaaaaaaaaa", "q2", "two"),
+        ], ..Default::default() };
+        assert!(enrich_fact_sources(&stored, &disagreeing).0[0].why.is_empty());
+        // The same quote decides between two passages of one document.
+        let passages = SessionSources { documents: vec![
+            session_source("[D1]", "aaaaaaaaaaaaaaaa", "q", "one"), session_source("[D1]", "aaaaaaaaaaaaaaaa", "q2", "two"),
+        ], ..Default::default() };
+        assert_eq!(enrich_fact_sources(&stored, &passages).0[0].why, "one");
+    }
+
+    #[test]
+    fn a_web_citation_becomes_its_session_page_or_stays_a_stub() {
+        let mut web = cite("[W1]", "", "");
+        web.collection_dataset = String::new();
+        web.path = "https://example.org/a".into();
+        let page = ChatPageRef {
+            handle: "[W1]".into(), url: "https://example.org/a".into(), final_url: String::new(), title: "A".into(),
+            artifact_id: String::new(), version: String::new(), terms: vec![], quotes: vec!["q".into()],
+            quote_verified: true, why: "w".into(),
+        };
+        let with_page = SessionSources { pages: vec![page.clone()], ..Default::default() };
+        let (docs, pages) = enrich_fact_sources(std::slice::from_ref(&web), &with_page);
+        assert!(docs.is_empty());
+        assert_eq!(pages, vec![page.clone()]);
+        let (docs, pages) = enrich_fact_sources(std::slice::from_ref(&web), &SessionSources::default());
+        assert_eq!((docs.len(), pages.len()), (1, 0));
+    }
+
     #[test]
     fn a_correction_pane_rejects_a_correction() {
         assert_eq!(reject_words("correction"), ("Why the correction is wrong", "Reject correction"));
@@ -1432,12 +1716,20 @@ mod tests {
             review_statement: String::new(), answers_proposed: vec![], answers_accepted: vec![],
             max_explores: 12, explore_steps: 60,
             facts: vec![fact("f1.1", "sourced", "board-b-i1.1"), fact("c1", "correction", "")],
-            intents: vec![], events: vec![], summary: String::new(),
+            intents: vec![], events: vec![], summary: String::new(), review_id: String::new(),
+            review_reason: String::new(), limit_reached: false, reopen_grant: None, final_running: false,
         };
         assert_eq!(event_link(&snap, &event("reason_result", "4")), EventLink::Assessment(4));
         assert_eq!(event_link(&snap, &event("fact_rejected", "f1.1")), EventLink::Chat("board-b-i1.1".into()));
         assert_eq!(event_link(&snap, &event("review_rejected", "c1")), EventLink::Node("c1".into()));
         assert_eq!(event_link(&snap, &event("reason_started", "4")), EventLink::None);
         assert_eq!(event_link(&snap, &event("hint_added", "")), EventLink::None);
+    }
+
+    #[test]
+    fn a_reopen_button_names_its_actual_grant() {
+        assert_eq!(reopen_label(50), "Reopen with 50 more explores");
+        assert_eq!(reopen_label(20), "Reopen with 20 more explores");
+        assert_eq!(reopen_label(0), "Reopen with the remaining budget");
     }
 }
