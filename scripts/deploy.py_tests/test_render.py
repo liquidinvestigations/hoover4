@@ -1212,6 +1212,7 @@ VLLM_DEFAULT_ENV = {
     "VLLM_MAX_SAMPLES": "32",
     "VLLM_TOOL_PARSER": "gemma4",
     "VLLM_REASONING_PARSER": "gemma4",
+    "VLLM_BASE_RELEASE": "v0.31.0",
     "VLLM_TLS_PORT": "0",
     "VLLM_TEST_PAGE": "1",
     "VLLM_CONSTRAINED": "1",
@@ -1284,10 +1285,12 @@ def test_the_model_server_service_reads_the_rendered_names():
     used = set(re.findall(r"(?<!\$)\$\{([A-Z0-9_]+)", str(service)))
     optional = {"AI_BIND_IP", "VLLM_API_KEY_FILE_HOST"}
     assert used - optional <= set(env), sorted(used - optional - set(env))
-    assert service["image"] == "hoover4-vllm-dgemma:${VLLM_BUILD_REF}"
+    assert service["image"] == "hoover4-vllm-dgemma:${VLLM_BASE_RELEASE}-${VLLM_BUILD_REF}"
     assert service["build"]["context"] == "${HOOVER4_REPO_ROOT}/ai_services/dgemma/vllm-image"
     assert service["build"]["args"] == {
-        "UPSTREAM_IMAGE": "hoover4-vllm-dgemma-upstream:${VLLM_BUILD_REF}"}
+        "VLLM_BASE_RELEASE": "${VLLM_BASE_RELEASE}",
+        "VLLM_BUILD_REPO": "${VLLM_BUILD_REPO}",
+        "VLLM_BUILD_REF": "${VLLM_BUILD_REF}"}
     assert service["ulimits"] == {"core": 0}
 
 
@@ -1337,7 +1340,7 @@ def test_the_download_runs_in_the_built_image():
     assert "/v/dgemma_model:/models/weights" in cmd
     assert "/dev/null:/run/secrets/hf_token:ro" in cmd
     assert "M=nvidia/diffusiongemma-26B-A4B-it-NVFP4" in cmd
-    assert "hoover4-vllm-dgemma:08b708e51bb8d9f4eba0e85b61dab0be7093d20e" in cmd
+    assert "hoover4-vllm-dgemma:v0.31.0-08b708e51bb8d9f4eba0e85b61dab0be7093d20e" in cmd
     chat = deploy.dgemma_download_command(cfg, "/v/chat_model", "chat_vllm_model")
     assert "/v/chat_model:/models/weights" in chat
     assert "M=ornith-ai/Ornith-1.5-35B-A3B-NVFP4" in chat
@@ -1358,22 +1361,10 @@ def test_the_chat_model_server_is_the_default_quality_endpoint():
     assert ai["CHAT_VLLM_SERVED_NAME"] == "ornith" and "qwen3_coder" in ai["CHAT_VLLM_ARGS"]
 
 
-def test_the_upstream_image_is_built_from_the_pinned_commit_once():
+def test_the_model_server_image_is_tagged_by_release_and_commit():
     cfg = _config("settings-defaults.ini")
-    assert deploy.dgemma_upstream_build_command(cfg) == [
-        "build", "-t",
-        "hoover4-vllm-dgemma-upstream:08b708e51bb8d9f4eba0e85b61dab0be7093d20e",
-        "https://github.com/mmastrac/djev-spark.git#08b708e51bb8d9f4eba0e85b61dab0be7093d20e"]
-    rt = mock.Mock()
-    rt.run.return_value = subprocess.CompletedProcess([], 0)
-    with mock.patch.object(deploy, "run_or_fail") as build:
-        deploy.ensure_dgemma_upstream_image(cfg, rt)
-    build.assert_not_called()
-    rt.run.return_value = subprocess.CompletedProcess([], 1)
-    rt.engine = "/usr/bin/docker"
-    with mock.patch.object(deploy, "run_or_fail") as build:
-        deploy.ensure_dgemma_upstream_image(cfg, rt)
-    build.assert_called_once_with(["/usr/bin/docker"] + deploy.dgemma_upstream_build_command(cfg))
+    assert deploy.dgemma_image(cfg) == (
+        "hoover4-vllm-dgemma:v0.31.0-08b708e51bb8d9f4eba0e85b61dab0be7093d20e")
 
 
 def _ai_up(monkeypatch, build, present):
@@ -1399,27 +1390,23 @@ def _ai_up(monkeypatch, build, present):
     return built, bool(composed)
 
 
-def test_a_present_served_image_builds_no_upstream_image_without_build(monkeypatch):
+def test_a_present_served_image_is_not_built_without_build(monkeypatch):
     cfg = _config("settings-defaults.ini")
     served = deploy.dgemma_image(cfg)
-    upstream = deploy.dgemma_upstream_image(cfg)
     assert _ai_up(monkeypatch, False, {served}) == ([], False)
-    assert _ai_up(monkeypatch, False, {served, upstream}) == ([], False)
-    # A missing served image builds its upstream image first, then the served image.
-    assert _ai_up(monkeypatch, False, set()) == ([upstream], True)
-    assert _ai_up(monkeypatch, False, {upstream}) == ([], True)
-    # --build builds the served image, and the upstream image only when it is absent.
-    assert _ai_up(monkeypatch, True, {served}) == ([upstream], True)
-    assert _ai_up(monkeypatch, True, {served, upstream}) == ([], True)
+    # A missing served image is built by compose, and no image is built by tag.
+    assert _ai_up(monkeypatch, False, set()) == ([], True)
+    assert _ai_up(monkeypatch, True, {served}) == ([], True)
 
 
 def test_the_patches_of_the_model_server_image_are_in_the_build_folder():
     folder = deploy.REPO_ROOT / "ai_services" / "dgemma" / "vllm-image"
     dockerfile = (folder / "Dockerfile").read_text()
-    assert "FROM ${UPSTREAM_IMAGE}" in dockerfile
+    assert "FROM vllm/vllm-openai:${VLLM_BASE_RELEASE}" in dockerfile
     for line in dockerfile.splitlines():
-        if line.startswith("COPY "):
-            assert (folder / line.split()[1]).is_file(), line
+        if line.startswith("COPY ") and not line.startswith("COPY --from="):
+            for name in line.split()[1:-1]:
+                assert (folder / name).is_file(), line
 
 
 def test_complete_weights_start_no_download(tmp_path):

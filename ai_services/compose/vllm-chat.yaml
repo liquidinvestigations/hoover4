@@ -28,7 +28,7 @@ services:
   # SECURITY: the published port binds to bind_ip, as in vllm.yaml.
   hoover4-vllm-chat:
     logging: *logging
-    image: hoover4-vllm-dgemma:${VLLM_BUILD_REF}
+    image: hoover4-vllm-dgemma:${VLLM_BASE_RELEASE}-${VLLM_BUILD_REF}
     container_name: hoover4-vllm-chat
     restart: unless-stopped
     mem_limit: ${CHAT_VLLM_MEM_LIMIT}

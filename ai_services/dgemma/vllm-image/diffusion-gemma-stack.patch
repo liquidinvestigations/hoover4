@@ -1,0 +1,473 @@
+diff --git a/vllm/config/diffusion.py b/vllm/config/diffusion.py
+index 6f59c40a8..1ecf8c0c4 100644
+--- a/vllm/config/diffusion.py
++++ b/vllm/config/diffusion.py
+@@ -24,3 +24,16 @@ class DiffusionConfig:
+     max_denoising_steps: int | None = None
+     """Maximum number of denoising iterations per canvas block.
+     If not set, read from the model's generation_config.json."""
++
++    max_samples: int = Field(default=32, ge=1)
++    """Largest ``diffusion_samples`` a request may ask for: the number of
++    child requests one seeded canvas fans out into."""
++    canvas_length_per_batch_size: list[tuple[int, int, int]] | None = None
++    """Load-adaptive canvas width for generation. Each entry is an inclusive
++    batch-size range ``(range_start, range_end, canvas_width)``; the async
++    scheduler picks the width for each block of a request from the number of
++    running and waiting requests when the block starts, so a lightly loaded
++    server denoises wide blocks (more tokens per forward pass) and a busy one
++    denoises narrow blocks (more requests per forward pass). Widths must not
++    exceed ``canvas_length``. Requests that set ``diffusion_canvas_length``
++    keep it. None uses ``canvas_length`` for every block."""
+diff --git a/vllm/model_executor/models/diffusion_gemma.py b/vllm/model_executor/models/diffusion_gemma.py
+index 8f26edf9e..0ddd1f851 100644
+--- a/vllm/model_executor/models/diffusion_gemma.py
++++ b/vllm/model_executor/models/diffusion_gemma.py
+@@ -478,7 +478,7 @@ def _compiled_sample_step(
+     all_slots: torch.Tensor,  # [num_reqs] int64 → all slot indices
+     valid_canvas_len: torch.Tensor,  # [num_decode] int64 → real canvas length (<=CL)
+     # State tensors (modified in-place)
+-    canvas: torch.Tensor,  # [max_num_reqs, CL]
++    canvas_full: torch.Tensor,  # [max_num_reqs, served canvas]; the tile uses [:, :CL]
+     argmax_canvas: torch.Tensor,  # [max_num_reqs, CL]
+     step_tensor: torch.Tensor,  # [max_num_reqs]
+     is_encoder_phase: torch.Tensor,  # [max_num_reqs]
+@@ -518,13 +518,16 @@ def _compiled_sample_step(
+     pass over the logits in ``sample_row_stats``."""
+     num_decode = decode_slots.shape[0]
+     device = decode_slots.device
++    canvas = canvas_full[:, :CL]
+ 
+     # ---- Phase 3: Confidence ----
+-    # A canvas truncated near max_model_len is zero-padded up to CL by the
+-    # caller; those padded rows are uniform (max entropy, argmax 0), so they
+-    # never trigger early convergence and are stable, and only the real
+-    # ``valid_canvas_len`` tokens are committed (num_sampled below).
+-    mean_entropy = token_entropy.mean(dim=-1)  # [num_decode]
++    # A canvas narrower than CL (truncated near max_model_len, or a scheduled
++    # width below the tile's) is zero-padded up to CL by the caller; those
++    # padded rows are uniform (argmax 0, stable) and are left out of the mean
++    # so they cannot hold back convergence. Only the real ``valid_canvas_len``
++    # tokens are committed (num_sampled below).
++    real = torch.arange(CL, device=device)[None, :] < valid_canvas_len[:, None]
++    mean_entropy = (token_entropy * real).sum(dim=-1) / valid_canvas_len.clamp(min=1)
+     confident_tensor[decode_slots] = mean_entropy < confidence_threshold
+ 
+     # ---- Phase 4: Entropy-bound acceptance mask ----
+@@ -567,6 +570,16 @@ def _compiled_sample_step(
+     canvas[decode_slots] = torch.where(
+         is_commit.unsqueeze(1), random_tokens, denoise_canvas
+     )
++    # A commit re-noises the whole row, not just this tile's width, so a
++    # wider next block starts from noise rather than an older block's tokens.
++    full_width = canvas_full.shape[1]
++    if full_width > CL:
++        random_full = torch.randint(
++            0, vocab_size, (num_decode, full_width), device=device, dtype=canvas.dtype
++        )
++        canvas_full[decode_slots] = torch.where(
++            is_commit.unsqueeze(1), random_full, canvas_full[decode_slots]
++        )
+ 
+     # History: write argmax_tokens for denoise requests at circular position
+     hist_len = history_len_tensor[decode_slots]
+@@ -651,7 +664,7 @@ def _compiled_sample_step(
+     is_encoder_phase[decode_slots] &= ~read_only[decode_slots]
+ 
+     # ---- Phase 7: Copy canvas → draft_tokens for all slots ----
+-    draft_tokens[all_slots, :CL] = canvas[all_slots]
++    draft_tokens[all_slots, : canvas_full.shape[1]] = canvas_full[all_slots]
+ 
+ 
+ class DiffusionGemmaRequestStates:
+@@ -745,7 +758,16 @@ class DiffusionGemmaRequestStates:
+         self.constrained: dict[int, tuple[int, ...]] = {}
+         self.step_allowed: torch.Tensor | None = None
+         self._allowed_cache: dict[tuple[int, ...], torch.Tensor] = {}
++        # CPU mirrors for read-only slots, which never commit.
++        self.max_steps_np = np.full(max_num_reqs, max_denoising_steps, dtype=np.int32)
++        self.denoise_steps_np = np.zeros(max_num_reqs, dtype=np.int32)
+         self.read_only_slots: set[int] = set()
++        # Slots that take the seed at pinned positions only: the children of
++        # a diffusion_samples request.
++        self.renoise = torch.zeros(max_num_reqs, dtype=torch.bool, device=device)
++        self.renoise_slots: set[int] = set()
++        # Noise generator seed per slot, from the request seed.
++        self.renoise_seed: dict[int, int] = {}
+         # Slots capped at one denoise step never consume a soft embed.
+         self.single_step_slots: set[int] = set()
+         # Per-slot canvas width, at most canvas_length. The scheduler schedules
+@@ -787,8 +809,13 @@ class DiffusionGemmaRequestStates:
+         self.pin_mask[slot_idx].fill_(False)
+         self.read_only[slot_idx].fill_(False)
+         self.read_only_slots.discard(slot_idx)
++        self.renoise[slot_idx].fill_(False)
++        self.renoise_slots.discard(slot_idx)
++        self.renoise_seed.pop(slot_idx, None)
+         self.single_step_slots.discard(slot_idx)
+         self.constrained.pop(slot_idx, None)
++        self.max_steps_np[slot_idx] = self.max_denoising_steps
++        self.denoise_steps_np[slot_idx] = 0
+         self.canvas_width_np[slot_idx] = self.canvas_length
+ 
+     def remove_request(self, slot_idx: int) -> None:
+@@ -799,8 +826,12 @@ class DiffusionGemmaRequestStates:
+         self.self_conditioning_embeds[slot_idx] = 0
+         self.seeded_slots.discard(slot_idx)
+         self.read_only_slots.discard(slot_idx)
++        self.renoise_slots.discard(slot_idx)
++        self.renoise_seed.pop(slot_idx, None)
+         self.single_step_slots.discard(slot_idx)
+         self.constrained.pop(slot_idx, None)
++        self.max_steps_np[slot_idx] = self.max_denoising_steps
++        self.denoise_steps_np[slot_idx] = 0
+ 
+     def set_seed_canvas(self, slot_idx: int, ids: list[int]) -> None:
+         """``ids`` covers the slot's canvas width; positions past it are never
+@@ -847,16 +878,40 @@ class DiffusionGemmaRequestStates:
+         self.read_only[slot_idx].fill_(True)
+         self.read_only_slots.add(slot_idx)
+ 
++    def set_renoise(self, slot_idx: int, seed: int | None = None) -> None:
++        self.renoise[slot_idx].fill_(True)
++        self.renoise_slots.add(slot_idx)
++        if seed is not None:
++            self.renoise_seed[slot_idx] = seed
++
+     def apply_seed_canvases(
+         self, slots_np: np.ndarray, slots_gpu: torch.Tensor
+     ) -> None:
+-        """Replace the canvas of every seeded slot among ``slots_gpu``."""
+-        if self.seeded_slots.isdisjoint(slots_np.tolist()):
++        """Replace the canvas of every seeded slot among ``slots_gpu``. A
++        re-noised slot takes the seed at its pinned positions only. Its other
++        positions keep the noise from init_canvas, or noise drawn from the
++        request seed if the slot has one."""
++        slots = slots_np.tolist()
++        if self.seeded_slots.isdisjoint(slots):
+             return
++        for slot in slots:
++            seed = self.renoise_seed.get(slot)
++            if seed is None:
++                continue
++            gen = torch.Generator(device=self.device).manual_seed(seed)
++            self.canvas[slot] = torch.randint(
++                0,
++                self.vocab_size,
++                (self.canvas_length,),
++                generator=gen,
++                dtype=torch.int64,
++                device=self.device,
++            )
++        take_seed = self.has_seed[slots_gpu, None] & (
++            ~self.renoise[slots_gpu, None] | self.pin_mask[slots_gpu]
++        )
+         self.canvas[slots_gpu] = torch.where(
+-            self.has_seed[slots_gpu, None],
+-            self.seed_canvas[slots_gpu],
+-            self.canvas[slots_gpu],
++            take_seed, self.seed_canvas[slots_gpu], self.canvas[slots_gpu]
+         )
+ 
+ 
+@@ -1238,6 +1293,7 @@ class DiffusionSampler:
+         if cap is not None:
+             cap = max(1, min(int(cap), states.max_denoising_steps))
+             states.max_steps[req_idx].fill_(cap)
++            states.max_steps_np[req_idx] = cap
+             if cap == 1:
+                 states.single_step_slots.add(req_idx)
+         width = extra.get("diffusion_canvas_length")
+@@ -1257,6 +1313,10 @@ class DiffusionSampler:
+         pins = extra.get("diffusion_pinned")
+         if pins and seed is not None:
+             states.set_pins(req_idx, [int(p) for p in pins])
++            # Each diffusion_samples child re-noises the unpinned positions.
++            # Child seeds are seed + index, so a seeded request reproduces.
++            if int(extra.get("diffusion_samples") or 1) > 1:
++                states.set_renoise(req_idx, getattr(sampling_params, "seed", None))
+         if extra.get("diffusion_read_only"):
+             states.set_read_only(req_idx)
+         if extra.get("diffusion_constrained"):
+@@ -1453,6 +1513,16 @@ class DiffusionSampler:
+         # since it mutates is_encoder_phase (commit→False, converge→True).
+         is_committing = states.is_encoder_phase[decode_slots].clone()
+ 
++        sc_skip = set(states.single_step_slots)
++        if states.read_only_slots:
++            for s in decode_slots_np.tolist():
++                if (
++                    s in states.read_only_slots
++                    and states.denoise_steps_np[s] + 1 >= states.max_steps_np[s]
++                ):
++                    sc_skip.add(s)
++        states.denoise_steps_np[decode_slots_np] += 1
++
+         # Constrained step: logits are [rows, K] over the shared allowed set,
+         # so the self-conditioning matmul only needs those K embedding rows.
+         allowed = states.step_allowed
+@@ -1491,7 +1561,12 @@ class DiffusionSampler:
+         # canvas. Widths ascend, so the last tile's canvas-to-draft copy (over
+         # all slots) is the widest. The fp32 pipeline keeps several live
+         # [tile * W, vocab] copies, so a tile is also bounded by free memory.
+-        widths_np = states.canvas_width_np[decode_slots_np]
++        # Tile by the width the scheduler gave each request this step: an
++        # adaptive canvas runs a narrow block on a narrow tile instead of a
++        # padded one at the served width.
++        widths_np = np.minimum(
++            states.canvas_width_np[decode_slots_np], valid_canvas_len_np
++        )
+         order = np.argsort(widths_np, kind="stable")
+         free = torch.accelerator.get_memory_info()[0] if num_decode > 0 else 0
+         run_start = 0
+@@ -1528,11 +1603,8 @@ class DiffusionSampler:
+                     tile_logits = logits[src.reshape(-1)].masked_fill_(
+                         ~valid.reshape(-1, 1), 0
+                     )
+-                compute_sc = (
+-                    not states.single_step_slots
+-                    or not states.single_step_slots.issuperset(
+-                        decode_slots_np[sel_np].tolist()
+-                    )
++                compute_sc = not sc_skip or not sc_skip.issuperset(
++                    decode_slots_np[sel_np].tolist()
+                 )
+ 
+                 temp = _denoise_temperature(
+@@ -1573,8 +1645,8 @@ class DiffusionSampler:
+                     decode_idx[sel],
+                     all_slots,
+                     tile_valid,
+-                    # State, viewed at this tile's width
+-                    states.canvas[:, :W],
++                    # State, viewed at this tile's width (the canvas whole)
++                    states.canvas,
+                     states.argmax_canvas[:, :W],
+                     states.step,
+                     states.is_encoder_phase,
+diff --git a/vllm/sampling_params.py b/vllm/sampling_params.py
+index 15657997a..08b654ac9 100644
+--- a/vllm/sampling_params.py
++++ b/vllm/sampling_params.py
+@@ -1121,10 +1121,13 @@ class SamplingParams(
+         # Diffusion models denoise a whole canvas per step with a fixed
+         # temperature schedule, so per-request sampling parameters are not
+         # supported. Penalties are ignored by the sampler with a warning.
++        # A seed only seeds the noise of a diffusion_samples request.
++        extra = self.extra_args or {}
++        seed_used = int(extra.get("diffusion_samples") or 1) > 1
+         if (
+             self.temperature != 1.0
+             or self.min_p > _SAMPLING_EPS
+-            or self.seed is not None
++            or (self.seed is not None and not seed_used)
+             or self.min_tokens > 0
+             or self.logit_bias
+             or self.bad_words
+@@ -1133,7 +1136,8 @@ class SamplingParams(
+             raise VLLMValidationError(
+                 "The temperature, min_p, seed, min_tokens, logit_bias, "
+                 "bad_words, and allowed_token_ids sampling parameters "
+-                "are not yet supported with diffusion models."
++                "are not yet supported with diffusion models. seed is "
++                "accepted only with diffusion_samples."
+             )
+ 
+     def _validate_structured_outputs(
+diff --git a/vllm/utils/diffusion.py b/vllm/utils/diffusion.py
+index 4980f940d..f2b472381 100644
+--- a/vllm/utils/diffusion.py
++++ b/vllm/utils/diffusion.py
+@@ -16,6 +16,7 @@ def validate_diffusion_sampling_params(
+     canvas_length: int | None,
+     vocab_size: int,
+     async_scheduling: bool | None,
++    max_samples: int = 32,
+ ) -> None:
+     """Validate request options and normalize one-canvas reads at admission."""
+     extra = params.extra_args
+@@ -114,3 +115,29 @@ def validate_diffusion_sampling_params(
+         "A diffusion_canvas_length smaller than the served canvas "
+         "requires --async-scheduling.",
+     )
++
++    # diffusion_samples: k fans the request out into k children, as n does.
++    # Each child re-noises the unpinned positions of the seed canvas.
++    samples = extra.get("diffusion_samples")
++    if samples is not None:
++        check(
++            isinstance(samples, int) and not isinstance(samples, bool) and samples > 0,
++            "diffusion_samples must be a positive integer.",
++        )
++        check(
++            samples <= max_samples,
++            f"diffusion_samples must be at most {max_samples} "
++            "(the served diffusion_config.max_samples).",
++        )
++        if samples > 1:
++            check(
++                seed is not None and pins is not None,
++                "diffusion_samples needs a diffusion_seed_canvas and "
++                "diffusion_pinned: the unpinned positions are the ones "
++                "re-noised per sample.",
++            )
++            check(
++                params.n == 1,
++                "diffusion_samples and n cannot both be set.",
++            )
++            params.n = samples
+diff --git a/vllm/v1/core/sched/diffusion_scheduler.py b/vllm/v1/core/sched/diffusion_scheduler.py
+index 96462aa6a..94727d08f 100644
+--- a/vllm/v1/core/sched/diffusion_scheduler.py
++++ b/vllm/v1/core/sched/diffusion_scheduler.py
+@@ -8,17 +8,69 @@ scheduling. A sync scheduler creates no output placeholders, which both rules
+ read.
+ """
+ 
++from typing import Any
++
+ from vllm.v1.core.sched.async_scheduler import AsyncScheduler
+ from vllm.v1.core.sched.output import SchedulerOutput
+ from vllm.v1.request import Request
+ 
+ 
+-def diffusion_canvas_width(request: Request, canvas_length: int) -> int:
+-    """The canvas width a diffusion request asked for, else the served one."""
++def requested_canvas_width(request: Request) -> int | None:
++    """The canvas width a request asked for with diffusion_canvas_length."""
+     params = request.sampling_params
+     extra = params.extra_args if params is not None else None
+     width = extra.get("diffusion_canvas_length") if extra else None
+-    return int(width) if width else canvas_length
++    return int(width) if width else None
++
++
++def diffusion_canvas_width(request: Request, canvas_length: int) -> int:
++    """The canvas width a diffusion request asked for, else the served one."""
++    return requested_canvas_width(request) or canvas_length
++
++
++def build_canvas_width_lookup(
++    schedule: Any, canvas_length: int, max_num_seqs: int
++) -> list[int]:
++    """Expand ``canvas_length_per_batch_size`` into a dense lookup indexed by
++    batch size (index 0 unused). Batch sizes above the last range keep the
++    last width; a gap between ranges keeps the width before it."""
++    if not isinstance(schedule, list) or not schedule:
++        raise ValueError(
++            "canvas_length_per_batch_size must be a non-empty list of "
++            "(range_start, range_end, canvas_width) entries."
++        )
++    parsed: list[tuple[int, int, int]] = []
++    for entry in schedule:
++        if not isinstance(entry, list | tuple) or len(entry) != 3:
++            raise ValueError(
++                "Each canvas_length_per_batch_size entry must be "
++                "(range_start, range_end, canvas_width)."
++            )
++        start, end, width = int(entry[0]), int(entry[1]), int(entry[2])
++        if start <= 0 or start > end:
++            raise ValueError(f"Bad batch-size range ({start}, {end}).")
++        if not 1 <= width <= canvas_length:
++            raise ValueError(
++                f"canvas width {width} must be in [1, {canvas_length}], the "
++                "served canvas_length."
++            )
++        parsed.append((start, end, width))
++    parsed.sort()
++    if parsed[0][0] != 1:
++        raise ValueError("The first batch-size range must start at 1.")
++    previous_end = 0
++    for start, end, _ in parsed:
++        if start <= previous_end:
++            raise ValueError("Batch-size ranges must not overlap.")
++        previous_end = end
++    lookup = [canvas_length] * (max_num_seqs + 1)
++    width = parsed[0][2]
++    for batch_size in range(1, max_num_seqs + 1):
++        for start, end, w in parsed:
++            if start <= batch_size <= end:
++                width = w
++        lookup[batch_size] = width
++    return lookup
+ 
+ 
+ def _read_in_flight(request: Request, width: int) -> bool:
+@@ -39,9 +91,60 @@ def _read_in_flight(request: Request, width: int) -> bool:
+ 
+ 
+ class DiffusionAsyncScheduler(AsyncScheduler):
++    def __init__(self, *args: Any, **kwargs: Any) -> None:
++        super().__init__(*args, **kwargs)
++        # Load-adaptive canvas: width per request, held for a whole block, and
++        # the output count at which it was chosen (a change means a commit
++        # landed and the next block may take a new width).
++        self._canvas_lookup: list[int] | None = None
++        self._block_width: dict[str, int] = {}
++        self._block_start: dict[str, int] = {}
++        self.init_canvas_schedule()
++
++    def init_canvas_schedule(self) -> None:
++        config = self.vllm_config.diffusion_config
++        schedule = config.canvas_length_per_batch_size if config else None
++        self._canvas_lookup = (
++            build_canvas_width_lookup(
++                schedule, self.num_spec_tokens, self.scheduler_config.max_num_seqs
++            )
++            if schedule
++            else None
++        )
++
++    def _adaptive_canvas_width(self, request: Request, load: int) -> int | None:
++        """The width for this request's current block under the schedule,
++        or None when there is no schedule or the request set its own."""
++        if self._canvas_lookup is None or requested_canvas_width(request):
++            return None
++        req_id = request.request_id
++        produced = request.num_output_tokens
++        width = self._block_width.get(req_id)
++        if width is None or self._block_start.get(req_id) != produced:
++            width = self._canvas_lookup[min(load, len(self._canvas_lookup) - 1)]
++            self._block_width[req_id] = width
++            self._block_start[req_id] = produced
++        return width
++
++    def _free_request(self, request: Request, *args: Any, **kwargs: Any):
++        self._block_width.pop(request.request_id, None)
++        self._block_start.pop(request.request_id, None)
++        return super()._free_request(request, *args, **kwargs)
++
+     def schedule(self, throttle_prefills: bool = False) -> SchedulerOutput:
++        # Waiting requests join the batch this step when they fit, so count
++        # them: a burst arriving at an idle server starts narrow.
++        load = max(
++            1,
++            min(
++                len(self.running) + len(self.waiting),
++                self.scheduler_config.max_num_seqs,
++            ),
++        )
+         for request in self.running:
+-            width = diffusion_canvas_width(request, self.num_spec_tokens)
++            width = self._adaptive_canvas_width(request, load) or (
++                diffusion_canvas_width(request, self.num_spec_tokens)
++            )
+             # The placeholders are as wide as the served canvas.
+             if len(request.spec_token_ids) > width:
+                 request.spec_token_ids = request.spec_token_ids[:width]
+diff --git a/vllm/v1/engine/input_processor.py b/vllm/v1/engine/input_processor.py
+index 33d413ba2..6cee36c37 100644
+--- a/vllm/v1/engine/input_processor.py
++++ b/vllm/v1/engine/input_processor.py
+@@ -159,6 +159,11 @@ class InputProcessor:
+                     ),
+                     vocab_size=self.model_config.get_vocab_size(),
+                     async_scheduling=self.vllm_config.scheduler_config.async_scheduling,
++                    **(
++                        {"max_samples": self.diffusion_config.max_samples}
++                        if self.diffusion_config is not None
++                        else {}
++                    ),
+                 )
+ 
+             if self.model_config.return_sampling_mask:

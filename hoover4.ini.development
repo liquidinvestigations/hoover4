@@ -72,8 +72,8 @@ vllm_port          = 21960
 ; The structured server of the same container. It is published on bind_ip, and it asks
 ; for the same API key as vllm_port.
 vllm_structured_port = 21963
-; The image is built from this Git repository at this commit, with no copy of its files
-; in this repository. Change the commit to move the build.
+; The image takes its support files and its entrypoint from this Git repository at this
+; commit. deploy.py pins the vLLM release that the image starts from.
 vllm_build_repo    = https://github.com/mmastrac/djev-spark.git
 vllm_build_ref     = 08b708e51bb8d9f4eba0e85b61dab0be7093d20e
 ; The checkpoint. deploy.py downloads it once into the dgemma_model folder under

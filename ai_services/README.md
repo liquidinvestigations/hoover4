@@ -117,18 +117,29 @@ calls. It serves a context of 262,144 tokens.
 
 ### The image
 
-The image has two builds. `deploy.py` builds the upstream image
-`hoover4-vllm-dgemma-upstream:<commit>` from the Git repository in `vllm_build_repo` at the
-commit in `vllm_build_ref`. The build context is the Git URL with `#<commit>`, so no file
-of that repository is in this one. `deploy.py` builds the upstream image only when the
-image of `hoover4-vllm` must be built, with `--build` or when it does not exist, and only
-when the upstream image does not exist, because its commit is pinned.
+The compose build of `hoover4-vllm` starts from the vLLM release image
+`vllm/vllm-openai:<release>`. `deploy.py` pins the release in `VLLM_BASE_RELEASE`. A
+release tag stays on Docker Hub. A nightly tag is deleted after about a week, so the build
+does not start from a nightly.
 
-The compose build of `hoover4-vllm` then starts from the upstream image and applies the
-patches in `dgemma/vllm-image/` to its vLLM package. The build stops when a patch does not
-apply. The image tag is `hoover4-vllm-dgemma:<commit>`. To move the build, change
-`vllm_build_ref` and run `./deploy --ai-services --build`. Check that each patch still
-applies to the new vLLM.
+The build takes its support files from the Git repository in `vllm_build_repo` at the
+commit in `vllm_build_ref`: the CUDA header links, the worker memory cap, the entrypoint,
+the test pages and the image check. It takes the structured server from the djev
+repository at the commit that this djev-spark commit pins. The Dockerfile of djev-spark
+is not used, because it starts from a nightly.
+
+The build then applies the patches in `dgemma/vllm-image/` to the vLLM package. It stops
+when the base reports a vLLM version other than the pinned release, or when a patch does
+not apply. The image tag is `hoover4-vllm-dgemma:<release>-<commit>`. To move the build,
+change `VLLM_BASE_RELEASE` and make each patch again against the new release. Then run
+`./deploy --ai-services --build`.
+
+`diffusion-gemma-stack.patch` adds three DiffusionGemma changes that the release does not
+have: the skip of the last self-conditioning step (vllm-project/vllm#58221), engine
+samples (vllm-project/vllm#58438), which the structured server uses with
+`--engine-samples`, and the load-adaptive canvas width, which `vllm_canvas_schedule`
+sets. The image does not carry the FlashInfer per-request causal change of djev-spark,
+because `vllm_attention_backend` is `TRITON_ATTN`.
 
 `parser-arguments.patch` changes the tool call parser of vLLM. A parser that converts the
 model's own argument syntax to JSON, such as `gemma4`, streams no argument deltas. It sends
@@ -148,10 +159,10 @@ docker run --rm --entrypoint python3 -e HF_HUB_OFFLINE=1 \
   -v <checkout>/ai_services/dgemma/vllm-image:/check:ro \
   -v <checkout>/main_services/agents/research_agent/tests/producer_fixtures:/fixtures:ro \
   -v <volumes_path>/dgemma_model:/models/dgemma:ro \
-  hoover4-vllm-dgemma:<commit> /check/check_parser.py /fixtures/gemma4_tool_calls.json
+  hoover4-vllm-dgemma:<release>-<commit> /check/check_parser.py /fixtures/gemma4_tool_calls.json
 ```
 
-The upstream image fails the case `streamed_prefix_not_json`, and the patched image passes
+An image without `parser-arguments.patch` fails the case `streamed_prefix_not_json`, and the patched image passes
 every case.
 
 The entrypoint of the image composes the `vllm serve` arguments from the container
@@ -293,7 +304,7 @@ it in these arguments.
 
 | argument | recipe | here | why |
 |---|---|---|---|
-| image | `vllm/vllm-openai:gemma` | the build of `vllm_build_ref` | the build adds the adaptive canvas schedule and the structured server |
+| image | `vllm/vllm-openai:gemma` | the release `VLLM_BASE_RELEASE` with the patches of `dgemma/vllm-image/` | the build adds the adaptive canvas schedule and the structured server |
 | `--served-model-name` | not set | `dgemma` (`vllm_served_name`) | a short name for the clients |
 | `--gpu-memory-utilization` | 0.8 | 0.60 (`vllm_gpu_fraction`) | the box runs other model servers |
 | `--kv-cache-memory` | not set | 28 GiB (`vllm_kv_cache_gb`) | a fixed KV cache for 8 sequences at the full context |

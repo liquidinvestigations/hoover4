@@ -99,14 +99,14 @@ VOLUMES = (
     # The model server's weights, downloaded once by ensure_dgemma_weights, and its
     # compile and JIT cache.
     Volume("dgemma_model", "ai", "hoover4-vllm", 0, 0,
-           "hoover4-vllm-dgemma:${VLLM_BUILD_REF}", "cache"),
+           "hoover4-vllm-dgemma:${VLLM_BASE_RELEASE}-${VLLM_BUILD_REF}", "cache"),
     Volume("dgemma_cache", "ai", "hoover4-vllm", 0, 0,
-           "hoover4-vllm-dgemma:${VLLM_BUILD_REF}", "cache"),
+           "hoover4-vllm-dgemma:${VLLM_BASE_RELEASE}-${VLLM_BUILD_REF}", "cache"),
     # The weights and the compile cache of the second model server.
     Volume("chat_model", "ai", "hoover4-vllm-chat", 0, 0,
-           "hoover4-vllm-dgemma:${VLLM_BUILD_REF}", "cache"),
+           "hoover4-vllm-dgemma:${VLLM_BASE_RELEASE}-${VLLM_BUILD_REF}", "cache"),
     Volume("chat_cache", "ai", "hoover4-vllm-chat", 0, 0,
-           "hoover4-vllm-dgemma:${VLLM_BUILD_REF}", "cache"),
+           "hoover4-vllm-dgemma:${VLLM_BASE_RELEASE}-${VLLM_BUILD_REF}", "cache"),
     Volume("easyocr_models_cache", "ai", "hoover4-easyocr-gpu", 0, 0,
            "hoover4-easyocr:local", "cache"),
 )
@@ -140,7 +140,7 @@ DEFAULTS = {
         "vllm_port": "21960",
         # The structured server of the same container, published on bind_ip.
         "vllm_structured_port": "21963",
-        # The image is built from this Git repository at this commit.
+        # The support files of the image come from this Git repository at this commit.
         "vllm_build_repo": "https://github.com/mmastrac/djev-spark.git",
         "vllm_build_ref": "08b708e51bb8d9f4eba0e85b61dab0be7093d20e",
         # The checkpoint that deploy.py downloads once into the dgemma_model folder.
@@ -1076,14 +1076,8 @@ DGEMMA_DOWNLOAD_SCRIPT = (
 
 def dgemma_image(cfg):
     """The image tag of hoover4-vllm, as ai_services/compose/vllm.yaml writes it."""
-    return "hoover4-vllm-dgemma:%s" % cfg.get("ai_services", "vllm_build_ref").strip()
-
-
-def dgemma_upstream_image(cfg):
-    """The tag of the image built from vllm_build_repo at vllm_build_ref. The image of
-    hoover4-vllm is this image with the patches of ai_services/dgemma/vllm-image."""
-    return "hoover4-vllm-dgemma-upstream:%s" % cfg.get("ai_services",
-                                                       "vllm_build_ref").strip()
+    return "hoover4-vllm-dgemma:%s-%s" % (
+        VLLM_BASE_RELEASE, cfg.get("ai_services", "vllm_build_ref").strip())
 
 
 def weights_complete(folder):
@@ -1143,31 +1137,11 @@ def _image_exists(rt, image):
                   stderr=subprocess.DEVNULL).returncode == 0
 
 
-def dgemma_upstream_build_command(cfg):
-    """The build of the upstream image from the Git repository at the pinned commit."""
-    a = "ai_services"
-    return ["build", "-t", dgemma_upstream_image(cfg),
-            "%s#%s" % (cfg.get(a, "vllm_build_repo").strip(),
-                       cfg.get(a, "vllm_build_ref").strip())]
-
-
-def ensure_dgemma_upstream_image(cfg, rt):
-    """Build the upstream image when it does not exist yet. The compose build of
-    hoover4-vllm starts from it, so it has to exist before that build. A deploy with
-    --build keeps an existing upstream image, because its commit is pinned."""
-    if _image_exists(rt, dgemma_upstream_image(cfg)):
-        return
-    print("build: %s does not exist yet, so it is built first" % dgemma_upstream_image(cfg))
-    run_or_fail([rt.engine] + dgemma_upstream_build_command(cfg))
-
-
 def ensure_dgemma_image(cfg, rt):
     """Build the model server's image when it does not exist yet. The weight download
-    runs in this image, so it has to exist before `up` builds it. Its build starts from the
-    upstream image, so only a missing served image needs the upstream image."""
+    runs in this image, so it has to exist before `up` builds it."""
     if _image_exists(rt, dgemma_image(cfg)):
         return
-    ensure_dgemma_upstream_image(cfg, rt)
     print("build: %s does not exist yet, so it is built first" % dgemma_image(cfg))
     run_or_fail(compose_command(cfg, "ai", rt, ["build", "hoover4-vllm"]))
 
@@ -1807,9 +1781,14 @@ VLLM_KEY_ENV = (
     ("vllm_reasoning_parser", "VLLM_REASONING_PARSER"),
 )
 
+#: The vLLM release that the image of hoover4-vllm starts from. The patches in
+#: ai_services/dgemma/vllm-image are made against this release, so it changes with them.
+VLLM_BASE_RELEASE = "v0.31.0"
+
 #: Values of the djev-spark image that hoover4 does not tune. They are the values of the
-#: upstream compose file, and no ini key carries them.
+#: djev-spark compose file, and no ini key carries them.
 DGEMMA_FIXED_ENV = {
+    "VLLM_BASE_RELEASE": VLLM_BASE_RELEASE,
     "VLLM_TLS_PORT": "0",
     "VLLM_TEST_PAGE": "1",
     "VLLM_CONSTRAINED": "1",
@@ -2592,10 +2571,6 @@ def compose_up(cfg, side, rt, build):
     overlays = selected_overlays(cfg, "ai") if side == "ai" else []
     vllm = "compose/vllm.yaml" in overlays
     chat = "compose/vllm-chat.yaml" in overlays
-    if (vllm or chat) and build:
-        # The compose build below starts from the upstream image. Without --build, only a
-        # missing served image is built, and ensure_dgemma_image builds its upstream first.
-        ensure_dgemma_upstream_image(cfg, rt)
     if build:
         build_cmd = rt.compose_prefix()
         for f in files:
