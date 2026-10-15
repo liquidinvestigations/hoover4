@@ -101,6 +101,8 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
     are sourced or not-found facts, and the review as a whole needs one sourced fact. A
     review that leaves out a goal, or names another fact, is no review. An entry for a goal
     of `closed_ids` (accepted already) is dropped with a note and does not refuse the review.
+    An id of `from` that is no fact, such as a correction, is dropped with a note when the
+    entry names other facts.
     A top-level `goals` list without `review` is read as a review.
     """
     goal_ids = list(goal_ids or [m.FIRST_GOAL_ID])
@@ -114,7 +116,7 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
     if "goals" in data and not any(k in data for k in ("review", "complete", "intents")):
         data = {"review": {"goals": data["goals"]}}
     if "review" in data or "complete" in data:
-        goals, problems, skipped = [], [], []
+        goals, problems, skipped, dropped = [], [], [], []
         for entry in _review_goals(data.get("review") or data.get("complete") or {}, goal_ids):
             if not isinstance(entry, dict):
                 problems.append("a review goal is not an object")
@@ -122,6 +124,10 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
             goal = str(entry.get("goal") or "")
             goal = (goal_texts or {}).get(goal.strip(), goal)
             from_ids = [str(f) for f in entry.get("from") or []]
+            stray = [f for f in from_ids if f not in valid_ids and f not in answerable]
+            if stray and len(stray) < len(from_ids):
+                from_ids = [f for f in from_ids if f not in stray]
+                dropped.append(f"dropped {stray} from the answer of {goal}: not a fact")
             if goal in (closed_ids or ()):
                 skipped.append(goal)
             elif goal not in goal_ids:
@@ -142,6 +148,7 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
                 "from": list(dict.fromkeys(used)), "goals": goals,
                 "statement": "\n\n".join(g["statement"] for g in goals if g["statement"])})
             payload["problems"].extend(f"dropped the answer of the accepted goal {g}" for g in skipped)
+            payload["problems"].extend(dropped)
             return payload
         payload["problems"].extend(problems)
     items = data.get("intents")

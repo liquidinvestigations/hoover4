@@ -337,6 +337,13 @@ def test_recoverable_reason_replies_are_read():
     out = parse_reason(both, {"f1.1"}, {"f1.1"}, [], True, ["goal-2"], closed_ids={"goal"})
     assert out["outcome"] == "review" and [g["goal"] for g in out["review"]["goals"]] == ["goal-2"]
     assert out["problems"] == ["dropped the answer of the accepted goal goal"]
+    cited = json.dumps({"review": {"goals": [{"goal": "goal-2", "from": ["f1.1", "c0c5"],
+                                              "statement": "b"}]}})
+    out = parse_reason(cited, {"f1.1", "f1.2"}, {"f1.1"}, [], True, ["goal-2"])
+    assert out["outcome"] == "review" and out["review"]["from"] == ["f1.1"]
+    assert out["problems"] == ["dropped ['c0c5'] from the answer of goal-2: not a fact"]
+    unsourced = cited.replace("c0c5", "f1.2")
+    assert parse_reason(unsourced, {"f1.1", "f1.2"}, {"f1.1"}, [], True, ["goal-2"])["outcome"] == "noop"
 
 
 def test_labels_are_removed_before_a_fact_enters_another_session():
