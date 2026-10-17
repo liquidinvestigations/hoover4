@@ -933,7 +933,8 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/chat-answer.png",
+      "scenario": "website/browser-tests/760-manual-chat-answer.ini"
     },
     {
       "id": "F-chat-01a",
@@ -946,7 +947,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+      "no_screenshot_reason": "The selected active turn did not enter a capacity queue. Its activity and stop controls have separate chat screenshots."
     },
     {
       "id": "F-chat-02",
@@ -960,7 +961,8 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
     },
     {
       "id": "F-chat-03",
@@ -975,7 +977,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-03"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/chat-search-card.png",
+      "scenario": "website/browser-tests/784-manual-chat-search-card.ini"
     },
     {
       "id": "F-chat-03d",
@@ -989,7 +992,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-03a",
@@ -1004,7 +1007,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-03a"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/chat-tool-results.png",
+      "scenario": "website/browser-tests/761-manual-chat-tools.ini"
     },
     {
       "id": "F-chat-03b",
@@ -1018,7 +1022,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-03c",
@@ -1032,7 +1036,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-04",
@@ -1059,7 +1063,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-04b",
@@ -1073,7 +1077,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-05",
@@ -1088,7 +1092,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-05"
       ],
       "audience": "user",
-      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+      "screenshot": "docs/user-manual/img/chat-web-preview.png",
+      "scenario": "website/browser-tests/764-manual-chat-web-preview.ini"
     },
     {
       "id": "F-chat-05a",
@@ -1102,7 +1107,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-06",
@@ -1116,7 +1121,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-07",
@@ -1129,7 +1134,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-07"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/chat-document-citations.png",
+      "scenario": "website/browser-tests/762-manual-chat-document-cards.ini"
     },
     {
       "id": "F-chat-07a",
@@ -1146,7 +1152,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-07a"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/chat-web-preview.png",
+      "scenario": "website/browser-tests/764-manual-chat-web-preview.ini"
     },
     {
       "id": "F-chat-08",
@@ -1162,7 +1169,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-08"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/chat-tool-results.png",
+      "scenario": "website/browser-tests/761-manual-chat-tools.ini"
     },
     {
       "id": "F-chat-08a",
@@ -1174,7 +1182,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "The selected demo examples show document and web citations. They do not show an entity explainer inside a chat."
     },
     {
       "id": "F-chat-09",
@@ -1188,7 +1196,8 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/chat-history.png",
+      "scenario": "website/browser-tests/502-ai-chat-history.ini"
     },
     {
       "id": "F-chat-10",
@@ -1203,7 +1212,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-10"
       ],
       "audience": "user",
-      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+      "screenshot": "docs/user-manual/img/chat-stopped.png",
+      "scenario": "website/browser-tests/dispatch/782-manual-chat-stop.ini"
     },
     {
       "id": "F-chat-11",
@@ -1231,7 +1241,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-12",
@@ -1257,7 +1267,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-14",
@@ -1270,7 +1280,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-14"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/chat-find.png",
+      "scenario": "website/browser-tests/765-manual-chat-find.ini"
     },
     {
       "id": "F-chat-14a",
@@ -1285,7 +1296,7 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-14a"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-14b",
@@ -1298,7 +1309,7 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-14b"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-14c",
@@ -1313,7 +1324,7 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-14c"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-23",
@@ -1326,7 +1337,7 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-23"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-24",
@@ -1338,7 +1349,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-25",
@@ -1350,7 +1361,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-26",
@@ -1364,7 +1375,7 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-26"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-15a",
@@ -1378,7 +1389,8 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/chat-tool-results.png",
+      "scenario": "website/browser-tests/761-manual-chat-tools.ini"
     },
     {
       "id": "F-chat-16",
@@ -1390,7 +1402,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-16a",
@@ -1404,7 +1416,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "Token-count footers were not selected for this procedure sequence. Source contracts describe their display."
     },
     {
       "id": "F-chat-17",
@@ -1432,7 +1444,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-17b",
@@ -1461,7 +1473,7 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-17c"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-17d",
@@ -1476,7 +1488,7 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-17d"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-17e",
@@ -1491,7 +1503,7 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-17e"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-17g",
@@ -1515,7 +1527,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "The demo contains no stored compaction example for this notice."
     },
     {
       "id": "F-chat-17h",
@@ -1527,7 +1539,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-17i",
@@ -1541,7 +1553,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "The demo contains no stored compaction example for this control."
     },
     {
       "id": "F-chat-19",
@@ -1581,7 +1593,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-19c",
@@ -1594,7 +1606,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-19d",
@@ -1607,7 +1619,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-19v",
@@ -1622,7 +1634,7 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-19v"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-19w",
@@ -1634,7 +1646,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-19g",
@@ -1648,7 +1660,7 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-19g"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-19h",
@@ -1660,7 +1672,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-19e",
@@ -1686,7 +1698,7 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-19z"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-19f",
@@ -1698,7 +1710,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-19i",
@@ -1712,7 +1724,7 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-19i"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-19l",
@@ -1724,7 +1736,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-19m",
@@ -1764,7 +1776,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "The selected conversations have no pending question card. The manual describes this conditional control."
     },
     {
       "id": "F-chat-20",
@@ -1791,7 +1803,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-21",
@@ -1804,7 +1816,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
       "id": "F-chat-27",
@@ -1818,7 +1830,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-27"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/board-create.png",
+      "scenario": "website/browser-tests/730-manual-doc-board-create.ini"
     },
     {
       "id": "F-chat-28",
@@ -1834,7 +1847,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-28"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/board-events.png",
+      "scenario": "website/browser-tests/774-manual-board-events.ini"
     },
     {
       "id": "F-chat-29",
@@ -1848,7 +1862,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-29"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/board-overview.png",
+      "scenario": "website/browser-tests/767-manual-board-review.ini"
     },
     {
       "id": "F-chat-30",
@@ -1864,7 +1879,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-30"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/chat-answer.png",
+      "scenario": "website/browser-tests/760-manual-chat-answer.ini"
     },
     {
       "id": "F-chat-31",
@@ -1877,7 +1893,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-31"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/board-explore-chat.png",
+      "scenario": "website/browser-tests/783-manual-board-explore-chat.ini"
     },
     {
       "id": "F-chat-32",
@@ -1891,7 +1908,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-chat-32"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/chat-history.png",
+      "scenario": "website/browser-tests/502-ai-chat-history.ini"
     },
     {
       "id": "F-chat-22",
@@ -1904,7 +1922,8 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/chat-search-card.png",
+      "scenario": "website/browser-tests/784-manual-chat-search-card.ini"
     },
     {
       "id": "F-chat-22a",
@@ -1946,7 +1965,7 @@
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+      "no_screenshot_reason": "The demo has no completed answer with three stored follow-up prompts. The manual describes the conditional suggestions."
     },
     {
       "id": "F-admin-01",

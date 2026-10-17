@@ -586,170 +586,385 @@ filter:
 
 ## 9. AI chat
 
-The speech-bubble icon opens a new conversation.
+Use AI chat to ask questions across the collections you can read.
+The assistant can search documents, read their contents, and cite supporting passages.
+When Internet tools are enabled, it can also search and read web pages.
 
+Use these procedures to [start a conversation](#start-a-conversation), [inspect tool results](#inspect-tool-results),
+[open citations](#open-document-and-web-citations), or [restore an earlier conversation](#earlier-conversations).
 
+<a href="img/chat-new.png"><img src="img/chat-new.png" alt="AI chat home with existing conversations, a question composer, and investigation boards" width="100%"></a>
 
-The Internet tools option permits web searches and browser reads.
-With this option off, the assistant reads the selected collections.
-Your deployment can hide internet tools when they are unavailable.
-The option stays fixed after the first message.
-Start a new conversation to change it.
+### Start a conversation.
 
-You do not choose a model. The deployment configuration sets the model of every chat.
+1. Select the speech-bubble icon in the left rail.
+2. Enter a question in **Ask the bot...**.
+3. Set **Internet tools** before you send the first message.
+4. Select the send arrow.
 
-A long message of yours shows its first three lines. **Show** in its top-right corner shows the
-whole message, and **Hide** cuts it to three lines again. **Search in conversation** finds
-text in the messages of the conversation, and its arrows move between the matches.
+Name the collection, people, dates, and result you need.
+For example, ask for dated Enron emails about California electricity prices and request source citations.
+For a comparison, state which claims and sources the assistant must compare.
+
+The Internet tools option stays fixed after the first message.
+Start another conversation to change it.
+Your deployment can hide this option when internet tools are unavailable.
+The deployment selects the model. There is no model selector in the chat composer.
 
 ### While it works
 
-The assistant announces each tool it uses as it goes (`list_collections`,
-`search_collections`, `web_search`, `browser_navigate`), and shows a turning icon and
-*The bot is working...* with a **■** stop button until the answer arrives.
+The activity line shows when the assistant is working or waiting for capacity.
+Tool groups appear as the assistant searches and reads sources.
+Their summaries show completed work, elapsed time, and any failed tool calls.
+A failed tool call does not necessarily mean that the whole turn failed.
 
+<a href="img/chat-working.png"><img src="img/chat-working.png" alt="An active demo chat with its activity line and stop control" width="100%"></a>
 
+Wait for a final answer before treating the result as complete.
+Response time depends on the question, model, available sources, and service capacity.
+You can draft another message while the current turn runs.
 
-Wait while the progress controls show active work.
-Use the stop button to cancel the active turn.
-Response time depends on the question, selected collections, model, and available services.
+To stop the active turn, select the square stop control beside the composer.
+Wait until the activity line and stop control disappear.
+The partial answer is not saved as a completed answer.
+The red message **This turn was stopped.** records the cancellation.
+Earlier completed turns remain in the conversation.
+
+<a href="img/chat-stopped.png"><img src="img/chat-stopped.png" alt="A cancelled demo turn with the red This turn was stopped message" width="100%"></a>
+
+### Inspect tool results.
+
+Select **Show** on a tool-group summary to inspect its calls.
+Select **Hide** to collapse the group again.
+The expanded group can contain search, read, citation, web, question, and task-list cards.
+An **Instruction to the agent** entry explains a system instruction that affected the work.
+It is separate from an answer or an error.
+
+<a href="img/chat-tool-results.png"><img src="img/chat-tool-results.png" alt="An expanded research tool group with collection-search and document-read calls" width="100%"></a>
+
+Select **Expand** on an individual card to read its arguments and results.
+Search cards show the query forms and returned documents.
+**Search this** opens the corresponding search in the normal search interface.
+When available, **Search every collection** removes that call's collection restriction.
+Document rows open the document preview.
+
+<a href="img/chat-search-card.png"><img src="img/chat-search-card.png" alt="A collection-search card expanded to show its query and returned fields" width="100%"></a>
+
+Read cards show returned text and page or source information.
+Use **Show full text** when the card offers it.
+Citation cards report whether the quoted wording was found, was not found, or was not checked.
+Some cards also provide **Show raw JSON** for inspecting the complete displayed tool data.
+When an entity card offers a validated value, select it to open its explainer in the document preview.
+
+A task list records the assistant's goal and planned steps.
+Completed steps can include the reason for completion.
+The list helps you follow the investigation. Its completion does not verify the answer's claims.
 
 ### Reading the answer
 
-Tool results are shown inline. A collection search renders the documents it found as cards you
-can click through to the viewer; each block has an **Expand** control.
+Scroll through the answer and read its qualifications as well as its conclusions.
+The answer can distinguish document evidence, external evidence, inference, and information that the search did not establish.
+A missing match does not prove that an event did not occur.
 
+<a href="img/chat-answer.png"><img src="img/chat-answer.png" alt="An existing Enron answer that separates search counts from cited document evidence" width="100%"></a>
 
+Document references use labels such as **[D1]**. Web references use labels such as **[W1]**.
+The corresponding source cards appear beside the passages that use them or below the answer.
+Read the quoted passage and its document context before using the claim.
+An unverified quote message means that the displayed wording was not verified against the source.
 
-Scroll to the end of the turn to read the answer.
-Expand a tool group to inspect its work and returned documents.
-Select an inline citation or source card to open its supporting document or captured web page.
-Document citations can identify a source and page. Verify the cited passage before using the answer.
+<a href="img/chat-document-citations.png"><img src="img/chat-document-citations.png" alt="Document citation cards with filenames, dates, quoted passages, and document actions" width="100%"></a>
+
+### Open document and web citations.
+
+Select a document citation label or source card to open its preview beside the conversation.
+The preview can select the cited source, page, and search phrase.
+Use the document controls to inspect the surrounding text, attachments, metadata, and other available sources.
+The open-document action opens the complete viewer when you need more space.
+
+<a href="img/chat-document-preview.png"><img src="img/chat-document-preview.png" alt="An Enron document citation opened beside the answer with its quoted passage highlighted" width="100%"></a>
+
+Select a web citation to open the captured page beside the conversation.
+The preview shows the text the assistant read and can highlight the cited wording.
+Use the page's original link when you need to compare the current website with the captured text.
+A current website can differ from its earlier capture.
+
+<a href="img/chat-web-preview.png"><img src="img/chat-web-preview.png" alt="A captured web article opened beside its cited comparison in a research answer" width="100%"></a>
+
+Close the preview to return the conversation to the available width.
+Drag the pane divider to change the space assigned to the conversation and the source.
+
+### Search in a conversation.
+
+Enter a phrase in **Search in conversation** above the transcript.
+The counter shows the current match and total matches.
+Use the previous and next arrows to move between matches.
+Clear the field to remove the conversation search.
+
+<a href="img/chat-find.png"><img src="img/chat-find.png" alt="Conversation search for Georgia with a match counter and highlighted message" width="100%"></a>
+
+Long user messages initially show three lines.
+Select **Show** on the message to read all of it.
+Select **Hide** to collapse it again.
 
 ### When it fails
 
-If the assistant cannot finish, the turn ends with a message saying so, and tells you whether
-earlier attempts also failed.
+A red error message states why a turn could not finish.
+A deliberately stopped turn also uses a red message, with the wording **This turn was stopped.**
+Read the message before deciding whether to retry.
+A tool group's failure count describes its calls and does not itself establish that the answer failed.
 
-
+When a failure lists attempts, expand that list to inspect their errors.
+An answer that succeeded after retries can also show an attempts disclosure.
+A service interruption can instead produce an interruption notice.
+Ask again when you need a replacement for an unfinished answer.
 
 ### Continue a conversation.
 
-Select a follow-up suggestion to copy its text into the composer.
-Review or change the text, then send it.
-When the assistant asks a question, choose an offered answer or enter your own response.
+Enter a follow-up in the same composer to continue with the conversation's earlier context.
+Refer to a document or citation label when your question depends on that source.
+If **Suggested next...** appears, select a suggestion to copy it into the composer.
+Review or change the text before sending it.
+
+When the assistant asks a question, select an offered response or enter your own answer.
 Context notices describe summaries used for long conversations.
 Expand a notice to inspect its details and displayed token counts.
 A summary can omit earlier detail. Repeat a source or requirement when it remains necessary.
 
 ### Earlier conversations
 
-**History** lists your past chats by their auto-generated titles; opening one restores the whole
-transcript.
-Use the history deletion control to delete a conversation you no longer need.
+Select **History**, or **View all conversations** on the chat home page, to open the conversation list.
+Select a title to restore its transcript.
+The list shows its summary, message count, and last update.
+**Show board chats** includes the explore conversations created by your investigation boards.
+
+<a href="img/chat-history.png"><img src="img/chat-history.png" alt="Conversation history with summaries, deletion controls, and the Show board chats option" width="100%"></a>
+
+Use the deletion control only for a conversation you no longer need.
+Board explore chats have no separate deletion control. Their board manages them.
 Chats remain stored until a person deletes them.
-
-
 
 ## 10. Investigation boards
 
-An investigation board works on one or more goals over your collections for a long time,
-without you in the conversation. The board splits the goals into intents, explores each intent
-in a chat of its own, and writes each finding with its sources. The boards show on
-the right of the AI chat page, each with its title, its status, a small picture of its graph
-and a short summary.
+Use a board for an investigation with one or more goals.
+The board creates research directions, explores them in separate chats, and records findings with sources.
+You review its proposed answers and decide whether they satisfy the goals.
+
+Use these procedures to [create a board](#create-a-board), [read findings](#read-findings-and-ask-questions),
+[accept an answer](#accept-an-answer), [complete the review](#complete-the-review), or [correct a result](#correct-a-result).
+
+The right side of the AI chat home page lists your boards.
+Each card shows a graph preview, summary, status, and last update.
+Select a card to open the board.
 
 ### Create a board.
 
-<a href="img/board-create.png"><img src="img/board-create.png" alt="Board create" width="100%"></a>
+1. Select **New board** on the AI chat home page.
+2. Enter a title and between one and six goals.
+3. Enter background context that defines known facts, constraints, and the required result.
+4. Select the collections to search.
+5. Enter initial hints when you have useful leads.
+6. Set **Internet tools** when the investigation must compare documents with online sources.
+7. Select **Create board**.
 
-The image shows the board create controls.
+<a href="img/board-create.png"><img src="img/board-create.png" alt="Board creation form with goals, background context, hints, collections, and Internet tools" width="100%"></a>
 
-
- **New board** asks for a title, one to six goals, the background context
-(what the board should know before it starts), the collections and first hints. The collections
-cannot change later.
+The collections stay fixed after creation.
+Write goals that you can review separately.
+For example, separate a question about dates from a question about competing explanations.
+A hint supplies a lead. A goal defines an answer that the board must provide.
 
 ### Read the graph.
 
- The board page shows a graph on the left and the selected card on the
-right. The graph reads from the background context on the left to the goals on the right. Each
-card names its type in its lower-left corner and its status in its lower-right corner:
+The graph appears on the left, with the overview or selected card on the right.
+It connects the background context, research directions, findings, and goals.
+A complex graph can extend beyond the visible pane.
 
-| Card | What it is |
+<a href="img/board-overview.png"><img src="img/board-overview.png" alt="A research board with linked graph nodes and three proposed goal answers" width="100%"></a>
+
+| Card | Meaning |
 |---|---|
-| background | The collections and the background context of the board. White with a black border. |
-| goal-01, goal-02 | A goal. Blue. It says answered when you accepted its answer, and answer proposed while an answer waits for you. |
-| intent | A direction that the board explores, with its state: open, running, concluded, failed, question or cancelled. |
-| finding | A finding: sourced (a document supports it), inferred, or not found. |
-| correction | Your correction of a rejected answer or review. |
+| background | The selected collections and background context. It has a black border. |
+| goal-01, goal-02 | A goal. It is blue and shows whether its answer is proposed or accepted. |
+| intent | A research direction. Its state can be open, running, concluded, failed, question, or cancelled. |
+| finding | A sourced, inferred, or not-found result from an explore. |
+| correction | Your recorded correction of a rejected answer or result. |
 
-Drag the graph to move it, and use **-** and **+** in its lower-right corner to zoom out and in.
-Click a card to see it in full on the right. The address of the page names the selected card,
-so you can send it as a link. **Show the board overview** over the top-right corner of the
-graph returns to the overview.
+Drag the graph to move through it.
+Use **-** and **+** to change its zoom between the available levels.
+Select a card to read its complete text and controls in the right pane.
+Selecting a distant card can move the graph to show it.
+
+<a href="img/board-goal.png"><img src="img/board-goal.png" alt="A selected blue goal node with its proposed answer and review controls" width="100%"></a>
+
+The page address records the selected card.
+Copy the address to bookmark that finding or goal.
+Opening the link still requires access to the owning account.
+Select **Show the board overview** to return to the full goal and event list.
+The graph and detail pane can scroll independently.
+
+Select **AI Chat** to return to your board list.
+Opening another board keeps each investigation's goals and findings separate.
+
+<a href="img/board-second-graph.png"><img src="img/board-second-graph.png" alt="A separate financing investigation with a larger graph and its own proposed answers" width="100%"></a>
 
 ### Read findings and ask questions.
 
- A finding shows its text with its source cards. A source card opens the
-explore chat of the finding in a new tab, with that document open. **Open the explore chat**, at
-the right of the title, opens the whole chat. A finding lists its open questions, each in its own
-card. **Explore this question**, in the corner of the card, asks the board to explore it at
-once. The board keeps its status: on a complete board only that explore runs. The card then
-links to the intent that explores it. To ask your own question about a finding or the
-background context, write it under the card and click **Ask**. An explore answers it as a new
-finding, and the card lists your question with its intent. A question does not hold the board
-open. When the board must answer it before it is complete, add it as a goal. Write why a finding is wrong and click **Reject finding**, or
-**Reject correction** on a correction. The board stops using it. The intent that made the finding
-stays.
+Select a finding to read its statement and supporting source cards.
+A **sourced** finding includes supporting source citations.
+An **inferred** finding expresses an inference. A **not found** finding records an unsuccessful search.
+Verify the cited passages before relying on the statement.
+
+<a href="img/board-finding.png"><img src="img/board-finding.png" alt="A selected sourced finding with quoted evidence and document citation cards" width="100%"></a>
+
+Scroll the detail pane to its **Open questions** section.
+**Explore this question** starts an explore for a listed question.
+A question already followed by the board links to the intent that explores it.
+
+To ask your own question, enter it in **Ask about this finding** and select **Ask**.
+For a question about the overall investigation, select the background card and use **Ask about the background context**.
+The new explore records its result as another finding.
+
+<a href="img/board-questions.png"><img src="img/board-questions.png" alt="A finding's open questions, existing exploration links, question composer, and rejection control" width="100%"></a>
+
+<a href="img/board-background.png"><img src="img/board-background.png" alt="The background context card and its follow-up question composer" width="100%"></a>
+
+A question does not keep the whole board open.
+On a completed board, the requested question can run as a separate explore.
+Add a goal when the board must answer the question before the investigation is complete.
+
+### Follow an explore into its chat.
+
+Select an intent to read its objective, brief, state, attempt count, and creation time.
+Select **Open the explore chat** to inspect its research conversation in a new tab.
+A finding provides the same action for the explore that produced it.
+
+<a href="img/board-intent.png"><img src="img/board-intent.png" alt="A concluded research intent with its objective, brief, and Open the explore chat link" width="100%"></a>
+
+A finding's source card opens that explore chat with the document preview selected.
+Use the chat's tool groups and citation cards to inspect the searches and evidence.
+The **Investigation Board** link returns to the board.
+The coloured finding summary at the end of the explore chat opens its finding on the graph.
+
+<a href="img/board-explore-chat.png"><img src="img/board-explore-chat.png" alt="A board explore conversation with source cards and its linked finding summary" width="100%"></a>
 
 ### Review answers and change settings.
 
- In the overview:
+The overview lists every goal and its current answer.
+A dashed answer border and **Proposed answer** label identify an answer that still needs your review.
+The **From the findings** links identify the results used to build that answer.
+Open those findings and inspect their sources before deciding.
 
-- **Add goal** adds a goal at any time, also after the board is complete. The board then works
-  on the new goal.
-- **Add hint** gives the next assessment a hint. A hint also answers an explore that asked you
-  a question.
-- An assessment can propose answers for some goals and continue to work on the others. When
-  every open goal has a proposed answer, the board waits for your review. Each goal shows its
-  proposed answer, in the overview and when you select the goal. An answer whose findings are
-  all searches that found nothing says that the records do not answer the goal. Accept it to
-  record that, or reject it to continue the investigation. **Accept answer** keeps the
-  answer, also when later work starts the board again. Write why an answer
-  is wrong and click **Reject answer**: the board continues at once with your correction, and
-  the other answers wait for you. When every goal has an accepted answer, the board is
-  complete. **Close the board** accepts every proposed answer and stops the board.
-  **Continue with a correction** gives it your correction, and it continues.
-- **Settings** turns the internet tools on or off for later explores, pauses and resumes the
-  board, and drops it.
-- A button stays gray until the board has taken your action. When the board refuses it, for
-  example because a newer assessment replaced the answer, the reason shows above the board.
+The board can propose answers for some goals while it continues work on others.
+When every open goal has a proposed answer, the board waits for review.
+The header then shows **Waits for review**.
+
+### Accept an answer.
+
+1. Select the goal, or find its proposed answer in the overview.
+2. Read its qualifications and follow the supporting finding links.
+3. Select **Accept answer** when the result satisfies the goal.
+4. Wait for the accepted answer to replace the proposal.
+
+The answer label changes to **Answer**, and its border becomes solid.
+The accept and reject controls for that proposal disappear.
+Other proposed answers still need a decision.
+
+<a href="img/board-answer-accepted.png"><img src="img/board-answer-accepted.png" alt="An accepted goal answer with its proposal controls removed" width="100%"></a>
+
+An accepted answer can state that the records did not establish the requested fact.
+The interface identifies an answer supported only by not-found findings.
+Accept it when that qualified result satisfies the goal.
+Reject it when further investigation is needed.
+
+### Complete the review.
+
+Accept each remaining goal answer separately when you need individual decisions.
+Alternatively, select **Close the board** in the review section to accept all proposed answers and stop the board.
+Wait for the header to show **Completed**.
+Accepted answers remain available with their supporting findings and explore chats.
+
+<a href="img/board-review-complete.png"><img src="img/board-review-complete.png" alt="The research board after review with Completed status and accepted goal answers" width="100%"></a>
+
+A smaller completed board shows the same relationship between its graph, goal answer, and event record.
+
+<a href="img/board-completed.png"><img src="img/board-completed.png" alt="A completed single-goal investigation with a short graph and accepted answer" width="100%"></a>
+
+Adding a new goal reopens a completed board while preserving its accepted answers.
+Use **Add goal** in the overview when another required question belongs to the same investigation.
+A board has at most six goals.
+
+### Correct a result.
+
+To reject a proposed answer, enter why it is wrong or incomplete beside **Reject answer**.
+Select **Reject answer** to continue investigation with that correction.
+The other answers wait for your review.
+Use **Continue with a correction** when you need to correct the overall review.
+
+To reject a finding, enter its problem under **Reject this finding** and select **Reject finding**.
+The board stops using that finding. The intent that produced it stays in the graph.
+A correction can itself be rejected through **Reject correction**.
+
+<a href="img/board-correction.png"><img src="img/board-correction.png" alt="An existing correction selected on a completed investigation graph" width="100%"></a>
+
+Use **Add hint** in the overview to supply a lead for the next assessment.
+A hint can also answer an explore that asked you a question.
+A pending action stays disabled until the board processes it.
+If the action is refused, read the reason above the board before trying again.
+A newer assessment can invalidate a decision on an older proposal.
+
+### Change board settings.
+
+Select **Settings** above the graph to open the board settings.
+The dialog lists the fixed collections and available controls.
+**Internet tools** changes access for later explores. Running explores keep their earlier setting.
+Use **Pause the board** or **Resume the board** when the current state offers that action.
+
+<a href="img/board-settings.png"><img src="img/board-settings.png" alt="Board settings with Internet tools, fixed collections, Close, and Drop the board controls" width="100%"></a>
+
+Pausing cancels running explores and prevents new work until the board resumes.
+It differs from accepting answers and completing the review.
+**Drop the board** requests deletion and requires the separate **Confirm drop** action.
+Use **Close** to dismiss the settings dialog without dropping the board.
 
 ### Read the explore budget.
 
- A board starts with 30 explores. Each goal after the first adds 25,
-and each hint, question and correction adds 4. A board never uses more than 300 explores, so
-near that limit an action adds less, and the event line says how much the budget grew. When
-the explores reach the budget, the board makes one last assessment of its findings and then waits
-for your review. **Reopen with 50 more explores** continues the open goals and keeps the findings
-and the accepted answers. Near the limit the button names the explores that it adds, and at
-a budget of 300 it says **Reopen with the remaining budget**. A complete board with a goal
-that has no accepted answer shows the same button. A board that used 300 explores starts no
-more work, and its page links to a new board.
+A board starts with 30 explores.
+Each goal after the first adds 25. Each hint, question, or correction adds 4.
+A board never receives more than 300 explores.
+Near that limit, an action adds fewer explores, and its event records the actual increase.
+
+When the board uses its budget, it makes a final assessment and waits for review.
+**Reopen with 50 more explores** continues open goals while preserving findings and accepted answers.
+Near the limit, the button states the smaller available increase.
+At a budget of 300, it offers only the remaining unused budget.
+A board that already used 300 explores starts no further work and links to a new board.
+
+<a href="img/board-budget.png"><img src="img/board-budget.png" alt="The review section with Close the board and Reopen with 50 more explores controls" width="100%"></a>
+
+The reopen control can also appear on a completed board with a goal that lacks an accepted answer.
+Review the existing evidence before starting more work.
 
 ### Read events and statistics.
 
- The **Events** table lists the newest 200 actions, newest first, and
-**Show all** lists every action. Your own actions
-show your name in bold. The last column links to the explore chat of the row (**Open**, in a new
-tab), or to the card that the row names. An assessment is the step that reads the board and
-decides the next intents or proposes the review. **Show details** on an assessment row shows
-its prompt and its response. **Statistics** under the events counts the explores, the
-assessments, the intents and the findings.
+Return to the board overview and scroll the right pane to **Events**.
+The table records actions, status changes, explore attempts, assessments, and review decisions.
+It lists the newest 200 events first. **Show all** expands an available longer history.
+Your actions show your account name in bold.
 
-A board chat has an **Investigation Board** link at the right of its search row, and the
-pink card at its end opens the board with that chat's finding selected.
+<a href="img/board-events.png"><img src="img/board-events.png" alt="A completed board's event history with actors, status changes, and linked research activity" width="100%"></a>
+
+An event can link to its card or explore chat.
+Select **Show details** on an assessment to inspect its recorded prompt, response, and checks.
+This helps explain why the board proposed an answer or changed direction.
+
+<a href="img/board-assessment.png"><img src="img/board-assessment.png" alt="A recorded assessment showing its result checks, prompt, and model information" width="100%"></a>
+
+**Statistics** below the events shows the explore budget, model steps per explore, assessments, intents, findings, collections, and creation time.
+The counts distinguish sourced, inferred, not-found, and rejected results.
+Use these counts and the event history when deciding whether to refine a goal or continue the investigation.
+
+<a href="img/board-statistics.png"><img src="img/board-statistics.png" alt="Board statistics with explore usage, assessment counts, finding categories, and collection scope" width="100%"></a>
 
 ---
 

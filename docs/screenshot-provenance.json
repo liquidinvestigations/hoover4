@@ -78,11 +78,207 @@
       "sha256": "dc65ffd7ff16f6805e2a21b9438639552e4e5466259cb2d8b8e9e0074cb81eec"
     },
     {
+      "image": "docs/user-manual/img/board-answer-accepted.png",
+      "scenario": "website/browser-tests/785-manual-board-accepted-goal.ini",
+      "revision": "75c7603e52a97230de799d0cbf88e960cd448f0a",
+      "captured_at": "2026-10-17T21:12:35+00:00",
+      "sha256": "e0b2d58d2514b780e825346d8ad6100744f346df08088c681a80cebf96792ee4"
+    },
+    {
+      "image": "docs/user-manual/img/board-assessment.png",
+      "scenario": "website/browser-tests/776-manual-board-assessment.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:39+00:00",
+      "sha256": "90f40462232bc367b20b8cc114ff1794483252a12ae37c67c09aebd63ee2b1f5"
+    },
+    {
+      "image": "docs/user-manual/img/board-background.png",
+      "scenario": "website/browser-tests/771-manual-board-background.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:29+00:00",
+      "sha256": "aa1f8547cd3ed803e63303466996dc5e2fd44294adffb7586e50576b0977c8ba"
+    },
+    {
+      "image": "docs/user-manual/img/board-budget.png",
+      "scenario": "website/browser-tests/773-manual-board-budget.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:33+00:00",
+      "sha256": "74ead6b5b329f9bdf72527c8c04db454d44f752f0142aebc0b2558b8ee951d73"
+    },
+    {
+      "image": "docs/user-manual/img/board-completed.png",
+      "scenario": "website/browser-tests/766-manual-board-completed.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:18+00:00",
+      "sha256": "753cabf30698b448950b273d1723f14f5d65e5ca663d6e1dac0316496f634dc3"
+    },
+    {
+      "image": "docs/user-manual/img/board-correction.png",
+      "scenario": "website/browser-tests/778-manual-board-correction.ini",
+      "revision": "75c7603e52a97230de799d0cbf88e960cd448f0a",
+      "captured_at": "2026-10-17T21:13:05+00:00",
+      "sha256": "da02cf4dc39a2ad71243822fcd4c3c77fd5011adcca72d56c4ac42c1b033cb84"
+    },
+    {
       "image": "docs/user-manual/img/board-create.png",
       "scenario": "website/browser-tests/730-manual-doc-board-create.ini",
       "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
       "captured_at": "2026-10-17T19:47:33+00:00",
       "sha256": "e3f1b09cc3683fe29b0079ddacd597be54a7961f7d0053ec63ab6e4cb19d07c3"
+    },
+    {
+      "image": "docs/user-manual/img/board-events.png",
+      "scenario": "website/browser-tests/774-manual-board-events.ini",
+      "revision": "75c7603e52a97230de799d0cbf88e960cd448f0a",
+      "captured_at": "2026-10-17T21:12:29+00:00",
+      "sha256": "c3f7acb432d519b1f37534fd6fee588332fac27e2e492fd84355844443444ba5"
+    },
+    {
+      "image": "docs/user-manual/img/board-explore-chat.png",
+      "scenario": "website/browser-tests/783-manual-board-explore-chat.ini",
+      "revision": "75c7603e52a97230de799d0cbf88e960cd448f0a",
+      "captured_at": "2026-10-17T21:12:31+00:00",
+      "sha256": "7489c9613c509cf6e35c9cd2cb1c280b4b185528aef82c6da6846a539a62c576"
+    },
+    {
+      "image": "docs/user-manual/img/board-finding.png",
+      "scenario": "website/browser-tests/769-manual-board-finding.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:25+00:00",
+      "sha256": "eb06336b23a522ec66dfdde87fd39bee319bb34e9feb6b73d8839d7fa6daff50"
+    },
+    {
+      "image": "docs/user-manual/img/board-goal.png",
+      "scenario": "website/browser-tests/768-manual-board-goal.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:23+00:00",
+      "sha256": "d18e85a70493152c3de02e713145db024f4a13403f7346813b98d7cb41900a0b"
+    },
+    {
+      "image": "docs/user-manual/img/board-intent.png",
+      "scenario": "website/browser-tests/770-manual-board-intent.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:27+00:00",
+      "sha256": "70232ea152f6cc3e9e4b1599c3d9a30e8529b6f0ff44fc196863905414be9b11"
+    },
+    {
+      "image": "docs/user-manual/img/board-overview.png",
+      "scenario": "website/browser-tests/767-manual-board-review.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:21+00:00",
+      "sha256": "0af1c63edc3a85b5437cfbf9572be6d8fbbf04c1ca261d3b19235181e5c9a0d1"
+    },
+    {
+      "image": "docs/user-manual/img/board-questions.png",
+      "scenario": "website/browser-tests/777-manual-board-questions.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:41+00:00",
+      "sha256": "6c3e5d02874c2f733d06f0a65d4a10ed0922e25599182cf03dd84a635e4a828b"
+    },
+    {
+      "image": "docs/user-manual/img/board-review-complete.png",
+      "scenario": "website/browser-tests/786-manual-board-review-complete.ini",
+      "revision": "75c7603e52a97230de799d0cbf88e960cd448f0a",
+      "captured_at": "2026-10-17T21:12:37+00:00",
+      "sha256": "c56857361c59c485f055949c0be6ab2c77f72f0215adffb46bfb7d745fc66ddb"
+    },
+    {
+      "image": "docs/user-manual/img/board-second-graph.png",
+      "scenario": "website/browser-tests/787-manual-board-second-graph.ini",
+      "revision": "75c7603e52a97230de799d0cbf88e960cd448f0a",
+      "captured_at": "2026-10-17T21:12:39+00:00",
+      "sha256": "d06b245c03d83c18aa284887813b5e449d390de15b7fd571d8985ef42feba710"
+    },
+    {
+      "image": "docs/user-manual/img/board-settings.png",
+      "scenario": "website/browser-tests/772-manual-board-settings.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:31+00:00",
+      "sha256": "34e056c1c9cc8426ca2e8b57c7c29a98600d066f6ade9293b216ea011c8f559e"
+    },
+    {
+      "image": "docs/user-manual/img/board-statistics.png",
+      "scenario": "website/browser-tests/775-manual-board-statistics.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:37+00:00",
+      "sha256": "099a209a2555c152b679a910edf160beac9ee1f2f36ceb43f43dfebc7378c03a"
+    },
+    {
+      "image": "docs/user-manual/img/chat-answer.png",
+      "scenario": "website/browser-tests/760-manual-chat-answer.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:06+00:00",
+      "sha256": "0fcbd3769cde4b7fc1a64664ab910fceebd22c3afa1e27ded2692212ccbf7eca"
+    },
+    {
+      "image": "docs/user-manual/img/chat-document-citations.png",
+      "scenario": "website/browser-tests/762-manual-chat-document-cards.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:10+00:00",
+      "sha256": "7b0679b419c1def25f1d0a5208145895fabe32858a42d00386ad00d146b54282"
+    },
+    {
+      "image": "docs/user-manual/img/chat-document-preview.png",
+      "scenario": "website/browser-tests/763-manual-chat-document-preview.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:12+00:00",
+      "sha256": "daef25af05b5ea8d73d48b6e5132289992ec52dcd54814a23a1c68c4aecc6634"
+    },
+    {
+      "image": "docs/user-manual/img/chat-find.png",
+      "scenario": "website/browser-tests/765-manual-chat-find.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:16+00:00",
+      "sha256": "88c6ae31643d1361db8b3af2a9ecfeccee86be90991eb9d0fe0d881787821d75"
+    },
+    {
+      "image": "docs/user-manual/img/chat-history.png",
+      "scenario": "website/browser-tests/502-ai-chat-history.ini",
+      "revision": "9026fadc9ce2e25d9f2220bde0d59e9ec8ae3506",
+      "captured_at": "2026-10-17T21:06:44+00:00",
+      "sha256": "e03079549aeca7f7c3f5e87a41caa6a971a675680b421ec95abd52d34b93310a"
+    },
+    {
+      "image": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini",
+      "revision": "9026fadc9ce2e25d9f2220bde0d59e9ec8ae3506",
+      "captured_at": "2026-10-17T21:06:42+00:00",
+      "sha256": "c4e5fd9bd5904ad131d801bd0f793923b8590a9396f4a715f5b0774326eb9bb7"
+    },
+    {
+      "image": "docs/user-manual/img/chat-search-card.png",
+      "scenario": "website/browser-tests/784-manual-chat-search-card.ini",
+      "revision": "75c7603e52a97230de799d0cbf88e960cd448f0a",
+      "captured_at": "2026-10-17T21:12:33+00:00",
+      "sha256": "42ce065956364f4cb52360830275148c217ba95d027c463af09906365129433b"
+    },
+    {
+      "image": "docs/user-manual/img/chat-stopped.png",
+      "scenario": "website/browser-tests/dispatch/782-manual-chat-stop.ini",
+      "revision": "13c41691e2e57a1702eedee3b384b26c944372a8",
+      "captured_at": "2026-10-17T21:11:55+00:00",
+      "sha256": "37640709da86e6eb549065cd43bd597545d8a84662457e2c8f76043f30501470"
+    },
+    {
+      "image": "docs/user-manual/img/chat-tool-results.png",
+      "scenario": "website/browser-tests/761-manual-chat-tools.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:08+00:00",
+      "sha256": "f26a85848389f0bb438b835c8e0c97280f40ff30506eea047e83296316e5ae06"
+    },
+    {
+      "image": "docs/user-manual/img/chat-web-preview.png",
+      "scenario": "website/browser-tests/764-manual-chat-web-preview.ini",
+      "revision": "653bbcb37c7f68e4ce289c53833b7cea6c8c87a5",
+      "captured_at": "2026-10-17T21:08:14+00:00",
+      "sha256": "f671576ac51724f64033b161e16e7b3aa94de94f6c3264b7d1dad2feba5b910b"
+    },
+    {
+      "image": "docs/user-manual/img/chat-working.png",
+      "scenario": "website/browser-tests/dispatch/781-manual-chat-working.ini",
+      "revision": "13c41691e2e57a1702eedee3b384b26c944372a8",
+      "captured_at": "2026-10-17T21:11:52+00:00",
+      "sha256": "85b0fab92333a0daa5e61457f0dcd06baf50d7338e63a0f7958fd46008c5c82f"
     },
     {
       "image": "docs/user-manual/img/connected-emails.png",
