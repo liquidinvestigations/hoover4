@@ -185,8 +185,8 @@ class Audit:
                     self.add(path, link.line, "screenshot-size", f"Recapture at 1400 by 900 pixels: {dest} ({size[0]} by {size[1]})")
             except (OSError, ValueError) as error:
                 self.add(path, link.line, "screenshot-file", str(error))
-        if link.attrs.get("align") != "right" or link.attrs.get("width") != "560":
-            self.add(path, link.line, "screenshot-layout", "Use an HTML image with align=right and width=560.")
+        if link.attrs.get("align") or link.attrs.get("width") != "100%":
+            self.add(path, link.line, "screenshot-layout", "Use an HTML image with width=100% and no alignment attribute.")
         if link.attrs.get("_href") != link.url:
             self.add(path, link.line, "screenshot-full-size", "Link the image to its full-size file.")
 

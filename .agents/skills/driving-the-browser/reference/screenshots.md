@@ -73,8 +73,9 @@ Preview that mapping before using `--write`.
 The helper does not crop, resize, or alter the captured image.
 
 Use the same presentation for full-screen screenshots in manuals and other documentation.
-Display each image at 560 pixels wide and align it right beside the related task.
+Display each image at the available page width near the related task.
+Use `width="100%"` without an alignment attribute.
 Link the displayed image to its full-size file and provide alternative text.
-Clear the float before the next section.
+Place each image between paragraphs.
 Verify the rendered page at laptop and narrow widths.
 Keep diagnostic crops separate from the published full-screen sequence.

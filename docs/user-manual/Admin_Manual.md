@@ -28,9 +28,8 @@ Use this manual to manage collections, processing, users, settings, and failures
 The dashboard shows counts of users, groups, collections, and datasets. Each count links to its section. The Datasets
 card opens the Datasets section of the Collections page.
 
-<a href="img/admin-dashboard.png"><img src="img/admin-dashboard.png" alt="Admin dashboard" align="right" width="560"></a>
+<a href="img/admin-dashboard.png"><img src="img/admin-dashboard.png" alt="Admin dashboard" width="100%"></a>
 
-<br clear="all">
 
 ## Collections
 
@@ -40,16 +39,14 @@ otherwise. A failed operation also ends in Done. The Datasets section lists the 
 every collection with their documents, size, indexed documents, errors, state and creation
 date. The form at the bottom adds a collection.
 
-<a href="img/admin-collections.png"><img src="img/admin-collections.png" alt="Admin, collections" align="right" width="560"></a>
+<a href="img/admin-collections.png"><img src="img/admin-collections.png" alt="Admin, collections" width="100%"></a>
 
 A collection's own page lists its datasets first, then renames it, links to its processing
 view, sets its access, and shows its newest ten operations.
 
-<br clear="all">
 
-<a href="img/admin-collection.png"><img src="img/admin-collection.png" alt="Admin, one collection" align="right" width="560"></a>
+<a href="img/admin-collection.png"><img src="img/admin-collection.png" alt="Admin, one collection" width="100%"></a>
 
-<br clear="all">
 
 ## Processing
 
@@ -81,9 +78,8 @@ targets. New OCR text adds indexing targets, so the total can increase during th
 second **Run OCR** on a finished dataset sends no OCR request. A cancelled run loses no
 completed work, and the next **Run OCR** continues from it.
 
-<a href="img/admin-dataset.png"><img src="img/admin-dataset.png" alt="Admin, one dataset" align="right" width="560"></a>
+<a href="img/admin-dataset.png"><img src="img/admin-dataset.png" alt="Admin, one dataset" width="100%"></a>
 
-<br clear="all">
 
 ## Errors and failures
 
@@ -95,11 +91,10 @@ dataset.
 
 ## Feedback
 
-<a href="img/admin-feedback.png"><img src="img/admin-feedback.png" alt="Admin feedback" align="right" width="560"></a>
+<a href="img/admin-feedback.png"><img src="img/admin-feedback.png" alt="Admin feedback" width="100%"></a>
 
 The image shows the admin feedback controls.
 
-<br clear="all">
 
 The Feedback page lists the reports that people sent, newest first. Search finds text in the
 title, the description, the account and the page address. The status list shows the reports
@@ -107,13 +102,12 @@ that are not archived, the unread reports, the archived reports, or all of them.
 to see the description, the page image, a link to the page copy, and the debug context. **Mark
 read** and **Archive** are separate, so an archived report keeps its read state.
 
-<a href="img/admin-feedback-detail.png"><img src="img/admin-feedback-detail.png" alt="Feedback report detail with page image and page-copy link" align="right" width="560"></a>
+<a href="img/admin-feedback-detail.png"><img src="img/admin-feedback-detail.png" alt="Feedback report detail with page image and page-copy link" width="100%"></a>
 
 Select **Open the page image** to inspect the screenshot.
 Select **Open the DOM copy** to inspect the saved page.
 The debug context and browser log appear below the image.
 
-<br clear="all">
 
 ## Users and groups
 
@@ -142,9 +136,8 @@ here: `hoover4.ini` sets them. Below
 them sits the deployment configuration that is read-only because it comes from
 `hoover4.ini`.
 
-<a href="img/admin-settings.png"><img src="img/admin-settings.png" alt="Admin, settings" align="right" width="560"></a>
+<a href="img/admin-settings.png"><img src="img/admin-settings.png" alt="Admin, settings" width="100%"></a>
 
-<br clear="all">
 
 ## LLM
 
@@ -170,23 +163,20 @@ Live chat turns, then usage over the last 24 hours: events by type, events per h
 busiest users. Events record who, which route or function, and when, never a URL or a query
 string.
 
-<a href="img/admin-metrics.png"><img src="img/admin-metrics.png" alt="Top of Metrics with live chats and daily usage" align="right" width="560"></a>
+<a href="img/admin-metrics.png"><img src="img/admin-metrics.png" alt="Top of Metrics with live chats and daily usage" width="100%"></a>
 
-<br clear="all">
 
 ## Inspect operations and their details.
 
-<a href="img/admin-operations.png"><img src="img/admin-operations.png" alt="Admin operations" align="right" width="560"></a>
+<a href="img/admin-operations.png"><img src="img/admin-operations.png" alt="Admin operations" width="100%"></a>
 
 The image shows the admin operations controls.
 
-<br clear="all">
 
-<a href="img/admin-operation.png"><img src="img/admin-operation.png" alt="Admin operation" align="right" width="560"></a>
+<a href="img/admin-operation.png"><img src="img/admin-operation.png" alt="Admin operation" width="100%"></a>
 
 The image shows the admin operation controls.
 
-<br clear="all">
 
 Open **Operations** to list processing and maintenance requests.
 Filter by state, operation kind, collection, or dataset.
@@ -203,11 +193,10 @@ Collection and dataset locks can delay or refuse conflicting work.
 
 ## Inspect document errors and operation failures.
 
-<a href="img/admin-failures.png"><img src="img/admin-failures.png" alt="Admin failures" align="right" width="560"></a>
+<a href="img/admin-failures.png"><img src="img/admin-failures.png" alt="Admin failures" width="100%"></a>
 
 The image shows the admin failures controls.
 
-<br clear="all">
 
 Open **Errors/Failures** and select the relevant record family.
 A document error identifies a document and task.

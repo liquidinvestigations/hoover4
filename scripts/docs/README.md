@@ -118,13 +118,13 @@ Display each full-screen screenshot with this HTML structure.
 Replace the example filename and alternative text with the actual image details.
 
 ```html
-<a href="img/search.png"><img src="img/search.png" alt="Search results and document preview" align="right" width="560"></a>
+<a href="img/search.png"><img src="img/search.png" alt="Search results and document preview" width="100%"></a>
 
 <p>The result list shows the selected document.</p>
-<br clear="all">
 ```
 
-Place the image beside its task instructions and clear the float before the next section.
+Place the image between paragraphs near its task instructions.
+Use the available page width without floating the image.
 Verify the GitHub rendering at laptop and narrow widths.
 The full-size link preserves access to small interface labels.
 Register screenshots outside the manual in the same provenance file.

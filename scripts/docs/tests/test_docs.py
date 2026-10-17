@@ -144,7 +144,7 @@ class AuditTests(unittest.TestCase):
         self.file("docs/technical-specification/Features.md", "| `F-test-01` | Search |\n")
         self.file("website/frontend/src/routes.rs", '#[route("/search")]')
         self.file("website/browser-tests/001-search.ini", "[search]\nurl=/search\n")
-        self.file("docs/user-manual/User_Manual.md", '# Search.\n\n<a href="img/search.png"><img src="img/search.png" alt="Search results" align="right" width="560"></a>\n')
+        self.file("docs/user-manual/User_Manual.md", '# Search.\n\n<a href="img/search.png"><img src="img/search.png" alt="Search results" width="100%"></a>\n')
         png = self.root / "docs/user-manual/img/search.png"
         png.parent.mkdir()
         png.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + struct.pack(">II", 1400, 900))
