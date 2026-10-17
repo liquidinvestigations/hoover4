@@ -1,0 +1,340 @@
+{
+  "screenshots": [
+    {
+      "image": "docs/user-manual/img/admin-collection.png",
+      "scenario": "website/browser-tests/612-admin-collection-detail.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:46:46+00:00",
+      "sha256": "8565400ef2c2a833e4f4c6268834c6d82c1a36469b47c88c2059b99da65360e5"
+    },
+    {
+      "image": "docs/user-manual/img/admin-collections.png",
+      "scenario": "website/browser-tests/602-admin-collections.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:46:06+00:00",
+      "sha256": "6acb09db8478b2719197543ee5555e1bdcd899f955bfdd026739f7924e5c0c29"
+    },
+    {
+      "image": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:46:02+00:00",
+      "sha256": "a5abd314afe55a1aa61858037d0c78f5095cda279e370359b10722ce8c3ddfb0"
+    },
+    {
+      "image": "docs/user-manual/img/admin-dataset.png",
+      "scenario": "website/browser-tests/613-admin-dataset-detail.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:46:49+00:00",
+      "sha256": "22521edac793e07546db64c8fbb8c4360638fd5aecbb2a4dc2fb3c80f03c8f67"
+    },
+    {
+      "image": "docs/user-manual/img/admin-failures.png",
+      "scenario": "website/browser-tests/739-manual-doc-failures.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:47:51+00:00",
+      "sha256": "b0390a86c95f8f915a33b6ae1837b24cf8e06e8a72916bacb246647fb1d256fd"
+    },
+    {
+      "image": "docs/user-manual/img/admin-feedback.png",
+      "scenario": "website/browser-tests/740-manual-doc-admin-feedback.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:47:53+00:00",
+      "sha256": "9d7dcf2b093be5eba5f2e5f58154f068d596c5d79cae9ec5b426183b22dc1b82"
+    },
+    {
+      "image": "docs/user-manual/img/admin-llm.png",
+      "scenario": "website/browser-tests/611-admin-llm.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:46:41+00:00",
+      "sha256": "72d1699a5570348445c0d97cc9dea4e82e4f4f7846bf9eb07a8a20a949331590"
+    },
+    {
+      "image": "docs/user-manual/img/admin-metrics.png",
+      "scenario": "website/browser-tests/609-admin-metrics.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:46:37+00:00",
+      "sha256": "49b165ff58ba31933f4a7f73ac5a93476d6fb138efa79123bd67f5818317f5b8"
+    },
+    {
+      "image": "docs/user-manual/img/admin-operation.png",
+      "scenario": "website/browser-tests/738-manual-doc-operation.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:47:49+00:00",
+      "sha256": "9788cb006e7d52562227b8dc31604d0711bf9691240759085229d49e4646b064"
+    },
+    {
+      "image": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:47:47+00:00",
+      "sha256": "75043cec641b718c7e41d51972347629a6128ca73ab82aea333638453323f75d"
+    },
+    {
+      "image": "docs/user-manual/img/admin-settings.png",
+      "scenario": "website/browser-tests/608-admin-settings.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:46:33+00:00",
+      "sha256": "dc65ffd7ff16f6805e2a21b9438639552e4e5466259cb2d8b8e9e0074cb81eec"
+    },
+    {
+      "image": "docs/user-manual/img/board-create.png",
+      "scenario": "website/browser-tests/730-manual-doc-board-create.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:47:33+00:00",
+      "sha256": "e3f1b09cc3683fe29b0079ddacd597be54a7961f7d0053ec63ab6e4cb19d07c3"
+    },
+    {
+      "image": "docs/user-manual/img/connected-emails.png",
+      "scenario": "website/browser-tests/742-manual-doc-email-graph.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:47:55+00:00",
+      "sha256": "ecb26ae4d2c454d3bf1c95332ff74460839b4464750fb3221bad1f9f90db3365"
+    },
+    {
+      "image": "docs/user-manual/img/document-entity.png",
+      "scenario": "website/browser-tests/726-manual-doc-entity.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:47:20+00:00",
+      "sha256": "d1742350b33f8eca694d19e37ec81d3d341c3e112c5e760f9378cd679441ec3a"
+    },
+    {
+      "image": "docs/user-manual/img/document-file-locations.png",
+      "scenario": "website/browser-tests/210-view-doc-file-locations-multi.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:45:29+00:00",
+      "sha256": "f85c54061c211fcd57de6b5391674492b47eb191aff9d84ccd767785c86b30a7"
+    },
+    {
+      "image": "docs/user-manual/img/document-image-ocr.png",
+      "scenario": "website/browser-tests/203-view-doc-image.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:45:19+00:00",
+      "sha256": "a2aa79d685f07a93f288f7e4702b4b546fa24a56a28e2e2755d918175fa8d320"
+    },
+    {
+      "image": "docs/user-manual/img/document-metadata.png",
+      "scenario": "website/browser-tests/729-manual-doc-metadata.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:47:31+00:00",
+      "sha256": "fa4a625645e15c7c82efc537aa56fc9596eab3b68703944c33d60e852e191ebf"
+    },
+    {
+      "image": "docs/user-manual/img/document-pdf.png",
+      "scenario": "website/browser-tests/201-view-doc-pdf-entities.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:45:14+00:00",
+      "sha256": "336669b9d299f5295a09f039d949d8d43b94d60c6cb9c076875ac6cd34781364"
+    },
+    {
+      "image": "docs/user-manual/img/document-red-flags.png",
+      "scenario": "website/browser-tests/755-manual-fixture-signal-passages.ini",
+      "revision": "2b8b032b14586d709a0c3e648b1848f7262d19e1",
+      "captured_at": "2026-10-17T19:54:45+00:00",
+      "sha256": "85373084c996fa6e40ff0efb777ae980158375e167844e1f7b45c88fd5bb57a0"
+    },
+    {
+      "image": "docs/user-manual/img/document-table.png",
+      "scenario": "website/browser-tests/723-manual-doc-table.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:47:02+00:00",
+      "sha256": "7c610e1017f24aff251e14d45d0403e269f8645e6b36ae254bf0fbbf213232f5"
+    },
+    {
+      "image": "docs/user-manual/img/document-text.png",
+      "scenario": "website/browser-tests/206-view-doc-text.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:45:24+00:00",
+      "sha256": "6a0d4a8c35ab416b539be2819cb9e975064f497a9b3950709bc830781b87d288"
+    },
+    {
+      "image": "docs/user-manual/img/filter-collections.png",
+      "scenario": "website/browser-tests/103-filter-modal-collections.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:44:29+00:00",
+      "sha256": "dcdefa84b3937174276f80249ecab2a6fd919de98a26f835b71d4bce54198b4d"
+    },
+    {
+      "image": "docs/user-manual/img/filter-date.png",
+      "scenario": "website/browser-tests/746-manual-fixture-filter-pane-date.ini",
+      "revision": "2b8b032b14586d709a0c3e648b1848f7262d19e1",
+      "captured_at": "2026-10-17T19:54:17+00:00",
+      "sha256": "3601a54b92ff4cd80d987d7ded5686cdaa12b5b6a9f5a647de52a2fdd3033893"
+    },
+    {
+      "image": "docs/user-manual/img/filter-email.png",
+      "scenario": "website/browser-tests/747-manual-fixture-filter-pane-email.ini",
+      "revision": "2b8b032b14586d709a0c3e648b1848f7262d19e1",
+      "captured_at": "2026-10-17T19:54:21+00:00",
+      "sha256": "d5a4d8e4ad7db6311e19975a95b26ed60382626d10df0bc7edbbfa1fb9a2db5a"
+    },
+    {
+      "image": "docs/user-manual/img/filter-entities.png",
+      "scenario": "website/browser-tests/748-manual-fixture-filter-pane-entities.ini",
+      "revision": "2b8b032b14586d709a0c3e648b1848f7262d19e1",
+      "captured_at": "2026-10-17T19:54:26+00:00",
+      "sha256": "0f9810f4d1a604dc173b91ddcbe196cc2b7d619336189bd6cfb821c160a163ad"
+    },
+    {
+      "image": "docs/user-manual/img/filter-file-location.png",
+      "scenario": "website/browser-tests/745-manual-fixture-filter-pane-filelocation.ini",
+      "revision": "2b8b032b14586d709a0c3e648b1848f7262d19e1",
+      "captured_at": "2026-10-17T19:54:12+00:00",
+      "sha256": "c3cdf7e712e53280def454ad3b306ae1d51a573caab187baa647b9860a526eb0"
+    },
+    {
+      "image": "docs/user-manual/img/filter-file-size.png",
+      "scenario": "website/browser-tests/105-filter-pane-filesize.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:44:38+00:00",
+      "sha256": "c12b18eab177f7c6d3fce4278161b0cec07fdb7e53bfafaedd14cdcb0b997df1"
+    },
+    {
+      "image": "docs/user-manual/img/filter-file-types.png",
+      "scenario": "website/browser-tests/104-filter-pane-filetypes.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:44:33+00:00",
+      "sha256": "b88e6b075ffd9c359bdd6890fdaf694113d62d3ed9ec073f1e2b140dbd8baf5d"
+    },
+    {
+      "image": "docs/user-manual/img/filter-language.png",
+      "scenario": "website/browser-tests/750-manual-fixture-language.ini",
+      "revision": "2b8b032b14586d709a0c3e648b1848f7262d19e1",
+      "captured_at": "2026-10-17T19:54:32+00:00",
+      "sha256": "e98727b56293115bb02648289ee9ee616e2b9b1c194f10f0e8a55569955a562f"
+    },
+    {
+      "image": "docs/user-manual/img/filter-red-flags.png",
+      "scenario": "website/browser-tests/752-manual-fixture-red-flags.ini",
+      "revision": "2b8b032b14586d709a0c3e648b1848f7262d19e1",
+      "captured_at": "2026-10-17T19:54:37+00:00",
+      "sha256": "c4dbd36023e74d40c78c79cbd5b47d975309b8ee1da33a63a99ca791a530fde8"
+    },
+    {
+      "image": "docs/user-manual/img/filter-text-source.png",
+      "scenario": "website/browser-tests/751-manual-fixture-text-source.ini",
+      "revision": "2b8b032b14586d709a0c3e648b1848f7262d19e1",
+      "captured_at": "2026-10-17T19:54:35+00:00",
+      "sha256": "e798227448cac0dfcaa50fd89fbd8651a890821d2b8204aeb8d6e30ce11d6bd3"
+    },
+    {
+      "image": "docs/user-manual/img/home.png",
+      "scenario": "website/browser-tests/001-home.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:44:17+00:00",
+      "sha256": "b36f88f961b9e218b4914e802206e12b7beaf3528adb502f0d683e5165ca4a8b"
+    },
+    {
+      "image": "docs/user-manual/img/not-found.png",
+      "scenario": "website/browser-tests/003-bad-url-malformed-param.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:44:21+00:00",
+      "sha256": "9c1352792c2a360bfd66aaf0cd07863c87d926330c9c805e014a7d954fec8e54"
+    },
+    {
+      "image": "docs/user-manual/img/red-flag-terms.png",
+      "scenario": "website/browser-tests/728-manual-doc-terms.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:47:26+00:00",
+      "sha256": "bf3cb0ae14bfe81a0daf389467a6205a88bfc2d84bffd67b3c91082f9dcb21e0"
+    },
+    {
+      "image": "docs/user-manual/img/result-menu.png",
+      "scenario": "website/browser-tests/735-manual-doc-result-menu.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:47:42+00:00",
+      "sha256": "479930cc4d0f454635d3911ad4b47b0d5c302927de93c798a910b218782c95dd"
+    },
+    {
+      "image": "docs/user-manual/img/search-pagination.png",
+      "scenario": "website/browser-tests/753-manual-fixture-pagination.ini",
+      "revision": "2b8b032b14586d709a0c3e648b1848f7262d19e1",
+      "captured_at": "2026-10-17T19:54:39+00:00",
+      "sha256": "427ac36d38aef9e6b50c0df391d629f3dfff2cb346fc97dc65101595e04a7f1e"
+    },
+    {
+      "image": "docs/user-manual/img/search-preview-pdf.png",
+      "scenario": "website/browser-tests/734-manual-doc-preview.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:47:40+00:00",
+      "sha256": "49741ecade1317bf55cf92f429a9304611de2f1a53a2d45e415ae551981cfcec"
+    },
+    {
+      "image": "docs/user-manual/img/search-repair.png",
+      "scenario": "website/browser-tests/754-manual-fixture-repair.ini",
+      "revision": "2b8b032b14586d709a0c3e648b1848f7262d19e1",
+      "captured_at": "2026-10-17T19:54:41+00:00",
+      "sha256": "b14ef9a73a5f9d8f6a52045ba1639f81b697d9dd5934c63d6a81d14622e7b9c7"
+    },
+    {
+      "image": "docs/user-manual/img/search-results.png",
+      "scenario": "website/browser-tests/102-search-easychair.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:44:24+00:00",
+      "sha256": "1936236a5132f9abca5b60348d34e7c762e4ee79de7843740e6da9366ea293b7"
+    },
+    {
+      "image": "docs/user-manual/img/search-suggestions.png",
+      "scenario": "website/browser-tests/757-manual-fixture-suggestions.ini",
+      "revision": "5736aa76737362ed8317ff364504ecfcd303217b",
+      "captured_at": "2026-10-17T19:58:36+00:00",
+      "sha256": "a6768bf2a682cfe7d6bef463852cd88f8dfa7f5ea783e0f7e73b4db1543c9f9b"
+    },
+    {
+      "image": "docs/user-manual/img/sort-menu.png",
+      "scenario": "website/browser-tests/749-manual-fixture-sort-menu.ini",
+      "revision": "2b8b032b14586d709a0c3e648b1848f7262d19e1",
+      "captured_at": "2026-10-17T19:54:30+00:00",
+      "sha256": "d5f526f21cf880a8d134fd52516c8a912142903fc1cdd30fc9b973f1b3b3d521"
+    },
+    {
+      "image": "docs/user-manual/img/storage-collection.png",
+      "scenario": "website/browser-tests/323-storage-collection-landing.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:45:49+00:00",
+      "sha256": "bb381ab7b6aaa4724a9edfce601b8df44c0fc829135a6a1f7735e26cffc35c46"
+    },
+    {
+      "image": "docs/user-manual/img/storage-collections.png",
+      "scenario": "website/browser-tests/301-storage-collections.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:45:33+00:00",
+      "sha256": "8aa79f4321c84ec2a690eb26b2aa76aa2a55366f776ec9e47d30a6516bd83d6a"
+    },
+    {
+      "image": "docs/user-manual/img/storage-folder-search.png",
+      "scenario": "website/browser-tests/309-storage-in-folder-search.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:45:44+00:00",
+      "sha256": "fecda6f2bcc19dbe571546a054b7157eee48f534d2d03e36118665b61677811e"
+    },
+    {
+      "image": "docs/user-manual/img/storage-folder.png",
+      "scenario": "website/browser-tests/325-storage-dataset-landing.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:45:53+00:00",
+      "sha256": "811b4844f589aa56f4280e06a557f291328322f9c2f4dc23f5b0a605a127ba9e"
+    },
+    {
+      "image": "docs/user-manual/img/storage-tree-deep.png",
+      "scenario": "website/browser-tests/304-storage-shapes-deep.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:45:38+00:00",
+      "sha256": "9eb876665c5b91a69ea34856b58389b96e68ef09c8f3e1b58bb3362df3a5bdea"
+    },
+    {
+      "image": "docs/user-manual/img/table-filter.png",
+      "scenario": "website/browser-tests/725-manual-doc-table-filter.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:47:15+00:00",
+      "sha256": "670b1a54c21f98e869d513c00ce3458dae501e6e18f2d8a2f683dbf4015d241e"
+    },
+    {
+      "image": "docs/user-manual/img/table-sheets.png",
+      "scenario": "website/browser-tests/724-manual-doc-table-sheets.ini",
+      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
+      "captured_at": "2026-10-17T19:47:09+00:00",
+      "sha256": "cd1a2541bc0be6cba1ed47c16eb2d96b55f4eebd9f8c3f909f0189e98ec869b4"
+    }
+  ]
+}
