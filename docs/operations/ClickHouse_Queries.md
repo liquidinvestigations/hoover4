@@ -12,16 +12,16 @@ explains what each is for.
 
 ## Contents
 
-- [The credential question, settled](#the-credential-question-settled)
+- [Use the credential-safe helpers.](#use-the-credential-safe-helpers)
 - [Finding the database](#finding-the-database)
 - [Per-stage counts](#per-stage-counts)
 - [Tracing one document](#tracing-one-document)
 - [Progress and timing](#progress-and-timing)
 - [The search engine](#the-search-engine)
 - [The object store](#the-object-store)
-- [Three traps that return an answer instead of raising](#three-traps-that-return-an-answer-instead-of-raising)
+- [Detect incorrect datastore results.](#detect-incorrect-datastore-results)
 
-## The credential question, settled
+## Use the credential-safe helpers.
 
 Two hand-typed spellings of the client invocation have been in circulation, which is the
 reason this page exists. **The canonical form takes the user and password out of the server
@@ -134,7 +134,7 @@ references it, a row that does is the signature of a re-ingestion loop having st
 The store's image carries no shell, so its command-line tool is invoked directly rather than
 through one.
 
-## Three traps that return an answer instead of raising
+## Detect incorrect datastore results.
 
 **A result row binds by column name.** A renamed or aliased column silently binds nothing and
 the reader sees a default.

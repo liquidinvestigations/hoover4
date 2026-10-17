@@ -6,15 +6,15 @@ The skill-side index. The full directory map, with what each area holds, is
 | question | file |
 |---|---|
 | what the product is, and how to install it | root [Readme.md](../../../../Readme.md) |
-| how a pipeline stage works | `main_services/processing/tasks/P<N>_*/Readme.md` |
+| how a pipeline stage works | [the pipeline task index](../../../../main_services/processing/tasks/Readme.md) |
 | the schema and how migrations run | [main_services/processing/database/Readme.md](../../../../main_services/processing/database/Readme.md) |
 | which containers exist and what they expose | [main_services/ops/Readme.md](../../../../main_services/ops/Readme.md) |
 | what an MCP server does and how it is built | [main_services/agents/README.md](../../../../main_services/agents/README.md), then the per-server one |
-| how the site is structured | [website/Readme.md](../../../../website/Readme.md), then `docs/architecture/` |
+| how the site is structured | [website/Readme.md](../../../../website/Readme.md), then [docs/architecture/](../../../../docs/architecture) |
 | every configuration key and its consumer | [docs/operations/Configuration_Reference.md](../../../../docs/operations/Configuration_Reference.md) |
-| how a subsystem is shaped, and why | `docs/architecture/` |
-| a procedure someone repeats | `docs/operations/`, `docs/development/` |
-| what the product does, as agreed | `docs/technical-specification/` |
+| how a subsystem is shaped, and why | [docs/architecture/](../../../../docs/architecture) |
+| a procedure someone repeats | [docs/operations/](../../../../docs/operations), [docs/development/](../../../../docs/development) |
+| what the product does, as agreed | [docs/technical-specification/](../../../../docs/technical-specification) |
 | how the agent configuration works | [docs/development/Working_With_Agents.md](../../../../docs/development/Working_With_Agents.md) |
 
 ## Reading a long one

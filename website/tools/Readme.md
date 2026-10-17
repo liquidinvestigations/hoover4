@@ -4,31 +4,31 @@ These tools prepare fixtures, drive browser workflows, and write verification ev
 
 | script | answers |
 |---|---|
-| `capture_screenshots.py` | drives a plain browser over a page list and writes a PNG, a DOM text snapshot and console errors per page |
-| `capture_credentials.py` | reads `HOOVER4_TEST_USERNAME` and `HOOVER4_TEST_PASSWORD` from the process environment, and writes the image inventory default |
-| `capture_credentials.sh` | sourced by the capture wrappers after the login file path is set |
-| `chat_observer.py` | observes chat turns and saved plans, then writes screenshots, DOM snapshots and history checks |
-| `prepare_chat_fixtures.py` | writes the stored chat sessions that the chat screenshot cases open by name; `prepare_chat_fixtures.sh` runs it in the worker container |
-| `count_whoami.py` | how many identity requests one navigation costs |
-| `check_session_gate.py` | which of the session gate's three states a page settled in |
+| [capture_screenshots.py](capture_screenshots.py) | drives a plain browser over a page list and writes a PNG, a DOM text snapshot and console errors per page |
+| [capture_credentials.py](capture_credentials.py) | reads `HOOVER4_TEST_USERNAME` and `HOOVER4_TEST_PASSWORD` from the process environment, and writes the image inventory default |
+| [capture_credentials.sh](capture_credentials.sh) | sourced by the capture wrappers after the login file path is set |
+| [chat_observer.py](chat_observer.py) | observes chat turns and saved plans, then writes screenshots, DOM snapshots and history checks |
+| [prepare_chat_fixtures.py](prepare_chat_fixtures.py) | writes the stored chat sessions that the chat screenshot cases open by name; [prepare_chat_fixtures.sh](prepare_chat_fixtures.sh) runs it in the worker container |
+| [count_whoami.py](count_whoami.py) | how many identity requests one navigation costs |
+| [check_session_gate.py](check_session_gate.py) | which of the session gate's three states a page settled in |
 | `console_whitelist.txt` | console messages the screenshot run treats as expected |
-| `manual_qa.py` | validates fixtures, selects cases, and combines procedure evidence |
-| `manual_qa_runtime.py` | executes the manual interactions and records each assertion |
+| [manual_qa.py](manual_qa.py) | validates fixtures, selects cases, and combines procedure evidence |
+| [manual_qa_runtime.py](manual_qa_runtime.py) | executes the manual interactions and records each assertion |
 
 All of them run by copying the script into the browser container and executing it there; the
 container has no bind mounts, so both the script and its output travel by file copy. They do
 not use the browser MCP endpoint, which refuses internal hosts by design.
 
-Screenshot scenarios live in `../browser-tests/`, one numbered ini file per case. Procedures
-live in `../browser-tests/procedures/`. The capture engine reads that directory in slug-number
+Screenshot scenarios live in [../browser-tests/](../browser-tests), one numbered ini file per case. Procedures
+live in [../browser-tests/procedures/](../browser-tests/procedures). The capture engine reads that directory in slug-number
 order.
-The wrapper `../take-screenshots.sh` splits the scenario list into four cost-balanced
+The wrapper [../take-screenshots.sh](../take-screenshots.sh) splits the scenario list into four cost-balanced
 processes by default. `--shards 1` runs one process. `--shard I/N` on
-`capture_screenshots.py` selects one process's pages after `--only` and `--names`.
+[capture_screenshots.py](capture_screenshots.py) selects one process's pages after `--only` and `--names`.
 Image stems keep the global position in the selected list. A merge step writes one
 `report.md`, one `report.html` and one `image_inventory.json`. A shard that exits
 with a code other than 0, 1 or 2 is incomplete execution over the scenarios it held.
-The screenshot wrapper, the chat observer wrapper and `run-manual-qa.sh` require `--remote-target` when the login file supplies their only target.
+The screenshot wrapper, the chat observer wrapper and [run-manual-qa.sh](../run-manual-qa.sh) require `--remote-target` when the login file supplies their only target.
 Operation scenarios use `--operation-id ID` to select a row by its exact operation id.
 
 Screenshot scenarios can use `pointer_click_css`, `pointer_wheel_css SELECTOR :: DELTA`,
@@ -43,7 +43,7 @@ The cache regression fixes the browser clock during warm navigation, then advanc
 The storage tree writes datastore query counts to `#x-vfs-query-log`, separate from browser request totals.
 The file retains completed steps and the failing action when a later assertion fails.
 Failed manual phases also retain the current PDF registry, viewer generation, source, and resource timings before another phase navigates.
-Both browser entry points use `browser_lifecycle.py` for bounded startup and awaited process cleanup.
+Both browser entry points use [browser_lifecycle.py](browser_lifecycle.py) for bounded startup and awaited process cleanup.
 Chromium writes process diagnostics to `chromium.log` in the run output.
 
 Run the capture-driver tests in the browser container.
@@ -83,12 +83,12 @@ docker run --rm --entrypoint node -v "$PWD":/repo -w /repo localhost/hoover4-mcp
 
 ## Manual QA fixtures
 
-Run `website/tools/prepare_manual_qa.sh` from the repository root.
+Run [website/tools/prepare_manual_qa.sh](prepare_manual_qa.sh) from the repository root.
 The script prepares `testdata_manualqa`, `testdata_excelsc`, `testdata_wide`,
 `testdata_leaf`, and `testdata_diskfiles` through disk ingestion.
 It writes local document identities, source rows, PDF rows, table rows, and image OCR rows to `website/test_reports/manual_qa_fixtures.json`.
 
-`manual_qa_fixtures.json` is the tracked logical contract.
+[manual_qa_fixtures.json](manual_qa_fixtures.json) is the tracked logical contract.
 Each entry identifies its source, dataset, original or substitute state, and expected values.
 The resolved profile is ignored because it contains local ingestion results.
 Its independent expectations include source metadata, raw relevance scores, original email bytes, and DOCX entity occurrences.
@@ -116,7 +116,7 @@ The worker log includes captured command output when ingestion fails.
 Interrupted capture wrappers stop only their owned container runner before collecting partial evidence and removing temporary files.
 The runner cancels its active task and awaits Chromium cleanup.
 
-Run `website/run-manual-qa.sh` after the fixture profile reports each required fixture as verified.
+Run [website/run-manual-qa.sh](../run-manual-qa.sh) after the fixture profile reports each required fixture as verified.
 The command writes `manual-qa-plan.json` beside the capture evidence.
 It rejects an empty or unknown case selection.
 It records unmet prerequisites and continues the runnable cases.
@@ -150,7 +150,7 @@ docker exec -w /tmp/capture-tests hoover4-mcp-browser python3 -m unittest test_c
 
 The chat screenshot cases with a chat fixture open stored sessions.
 Run `website/tools/prepare_chat_fixtures.sh --username <name>` with the capture account name before a capture.
-It writes `website/test_reports/chat_fixtures.json`, and `take-screenshots.sh` reads that file when `HOOVER4_SCREENSHOT_CHAT_FIXTURES` is not set.
+It writes `website/test_reports/chat_fixtures.json`, and [take-screenshots.sh](../take-screenshots.sh) reads that file when `HOOVER4_SCREENSHOT_CHAT_FIXTURES` is not set.
 A second run writes the same sessions again.
 The sessions are older than every other session, so the cases that open the newest conversation do not open them.
 The rows name the document `/sample (1).doc` of the `testdata` collection.
@@ -191,7 +191,7 @@ Agents can read `../TEST_LOGIN.env` for a browser work package.
 The file stores the login URL, site URL, username, and password.
 Copy `../TEST_LOGIN.env.example` to create it.
 The repository ignores the account file. The example contains empty values.
-`../take-screenshots.sh`, `../observe-chat.sh` and `../run-manual-qa.sh` load the file
+[../take-screenshots.sh](../take-screenshots.sh), [../observe-chat.sh](../observe-chat.sh) and [../run-manual-qa.sh](../run-manual-qa.sh) load the file
 automatically, beside a `HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD` environment pair
 that takes precedence over it. Credential values are not accepted as `--username` or
 `--password` arguments. A target comes from `--target`, then `HOOVER4_SITE_URL` in the

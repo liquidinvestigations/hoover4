@@ -1,4 +1,4 @@
-# 15. Count by a word and by an entity, and explain the difference
+# 15. Compare word and entity counts.
 
 | field | value |
 |---|---|

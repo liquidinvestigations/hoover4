@@ -1,42 +1,30 @@
-# Meeting a documentation lint without gaming it
+# Write descriptions that match their code.
 
-A missing-documentation lint (`missing_docs` for the Rust workspace, the pydocstyle family
-for Python) measures **presence**, not content. That is the whole problem with it.
+A missing-documentation lint measures whether documentation exists.
+It does not establish whether the description is correct or useful.
 
-## Do not bulk-fill it
+## Avoid repeated descriptions without a contract.
 
-A file full of `/// Document public struct member` or `/// The foo field.` is worse than no
-documentation at all:
+A generic description such as `Document public struct member` adds no information about a specific member.
+Repeated generic descriptions can pass a presence check while leaving behavior unexplained.
 
-- it defeats the lint, which now reports zero while the code is still undocumented;
-- it defeats grep, because the distinctive words are gone and every item reads the same;
-- it costs every future reader the context to skim past it.
+## Describe constraints beyond the identifier.
 
-## The bar
+A useful description can explain these properties:
 
-A doc comment must add something the identifier and its type do not already say:
+- The value has a defined unit, such as bytes or milliseconds.
+- The caller must preserve an invariant, such as a nonzero page number.
+- The caller must hold a lock before changing the value.
+- A repeated call can replace or remove earlier data.
+- An absent value has a meaning that the type does not explain.
 
-- the **unit** (`bytes`, `milliseconds`, `1-based`);
-- the **invariant** (`never 0`, `sorted ascending`, `the caller holds the lock`);
-- the **failure it guards** (`a second call for the same variant deletes the first call's
-  rows`);
-- the **reason the value is not the expected one**.
+Read the implementation before selecting the description.
+Leave an item undocumented when no additional contract needs explanation and the applicable lint permits that omission.
+Report any remaining lint requirement that needs a repository decision.
 
-If there is nothing to add, leave the item undocumented.
+## Verify lint findings against their purpose.
 
-## What to do instead of filling
-
-Report that the lint cannot be satisfied without filler for those items, and name them. That is a
-real answer. Turning a lint on and generating filler to make it pass is a way of hiding the
-question, and the hiding survives long after anyone remembers doing it.
-
-## The one lint worth turning on
-
-`ERA001` ("found commented-out code") targets the one thing that is unambiguously rot and
-that a tool can actually judge. This tree already carries almost none of it, so enabling it
-is nearly free.
-
-Everything in the `missing_docs` / `D` families measures presence, which is the metric that
-produces filler. **No linter can judge whether a comment says something the code cannot, and
-none can detect a comment that has gone stale.** Say that plainly rather than shopping for a
-tool that claims otherwise.
+Rust `missing_docs` and Python documentation rules inspect documentation presence or structure.
+`ERA001` identifies commented-out code.
+Use the rule that addresses the observed defect.
+A passing lint does not establish that documentation matches current behavior.

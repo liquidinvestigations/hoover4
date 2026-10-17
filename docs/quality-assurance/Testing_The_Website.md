@@ -11,13 +11,13 @@ Use [Design browser tests around state changes](Browser_Test_Design.md) to defin
 | what | how |
 |---|---|
 | unit (Rust) | `cargo test --offline` inside `hoover4-website`, Rust is not on `$PATH` there, so `export PATH=/usr/local/cargo/bin:$PATH` first |
-| hook order | `dx check --package frontend` inside `hoover4-website`; `website/run-stack-tests.sh` and `website/development.sh` both run it first |
-| live stack | `website/run-stack-tests.sh` (fast only), `./run-stack-tests.sh --slow` (everything) |
-| whole stack | `main_services/verify-stack.sh` |
-| screenshots | `website/take-screenshots.sh` |
+| hook order | `dx check --package frontend` inside `hoover4-website`; [website/run-stack-tests.sh](../../website/run-stack-tests.sh) and [website/development.sh](../../website/development.sh) both run it first |
+| live stack | [website/run-stack-tests.sh](../../website/run-stack-tests.sh) (fast only), `./run-stack-tests.sh --slow` (everything) |
+| whole stack | [main_services/verify-stack.sh](../../main_services/verify-stack.sh) |
+| screenshots | [website/take-screenshots.sh](../../website/take-screenshots.sh) |
 
 **The stack tests are split by NAME, not by attribute.** Every test in
-`website/backend/tests/stack_integration.rs` is `#[ignore]` already, because they all need a live
+[website/backend/tests/stack_integration.rs](../../website/backend/tests/stack_integration.rs) is `#[ignore]` already, because they all need a live
 stack, so `#[ignore]` cannot also mean "slow". The ones that wait on something with its own
 clock (the 30 s shard-state cache, a ClickHouse mutation) carry a `slow_` prefix and are
 skipped by default. Every other test asserts its own wall time against
@@ -37,14 +37,14 @@ because they never get built. `cargo check --workspace --tests` (fast) or `cargo
 (slower, and produces the binaries) is what closes that gap; run one of them alongside
 `cargo check` whenever a public signature moves.
 
-Both fixture-driven suites use the corpus from `main_services/verify-stack.sh`.
+Both fixture-driven suites use the corpus from [main_services/verify-stack.sh](../../main_services/verify-stack.sh).
 Browser scenarios record missing datasets as incomplete execution.
 Stack tests skip an absent required dataset or stage and print the reason.
 Run `verify-stack.sh` before a full acceptance run.
 
 ## Screenshots
 
-`website/browser-tests/` holds one file per page. `website/take-screenshots.sh` captures each page and writes the PNG a
+[website/browser-tests/](../../website/browser-tests) holds one file per page. [website/take-screenshots.sh](../../website/take-screenshots.sh) captures each page and writes the PNG a
 person would see, a text outline of the rendered DOM, and (where an action raised) the state
 at the moment it failed. `internet_tools_enabled` in `hoover4.ini` must be on. When it is
 off, the wrapper refuses and names that key. Output goes to `website/test_reports/screenshots/`, gitignored, and
@@ -94,7 +94,7 @@ for the whole run. Every PNG path appears in the inventory. Review state starts 
 and is stored apart from assertion verdicts.
 
 **Troubleshooting.** A page that names a dataset that does not exist is incomplete execution:
-the ini is welded to the corpus `main_services/verify-stack.sh` ingests, so run that
+the ini is welded to the corpus [main_services/verify-stack.sh](../../main_services/verify-stack.sh) ingests, so run that
 first. A whitelisted console entry in `tools/console_whitelist.txt` stays a
 `diagnostic_warning`, only labelled with the rule that excused it; it never changes the exit
 status either way.
@@ -102,7 +102,7 @@ status either way.
 It does **not** use the browser MCP endpoint. `hoover4-mcp-browser` refuses internal hosts
 at two independent layers by design (a deny-list in `urlcheck.py` and a PAC script handed
 to Chromium in `netfilter.py`), so `hoover4-website` is unreachable through it. The script
-copies `website/tools/capture_screenshots.py` into that container and runs a plain Chromium with
+copies [website/tools/capture_screenshots.py](../../website/tools/capture_screenshots.py) into that container and runs a plain Chromium with
 neither filter, touching nothing about the MCP server's own behaviour. The container has no
 bind mounts, so both the script and the output travel by `docker cp`. The default run starts
 four capture processes in that container and merges one report. `--shards 1` starts one
@@ -111,12 +111,12 @@ process.
 Two traps the script exists to encapsulate: setting an input's `.value` is invisible to
 Dioxus unless you go through the prototype's setter and dispatch a bubbling `input` event,
 and the home box submits on `onkeypress`, so Enter has to be a real CDP key event. The long
-base64 segments in the ini are CBOR route parameters (`website/frontend/src/data_definitions/url_param.rs`);
+base64 segments in the ini are CBOR route parameters ([website/frontend/src/data_definitions/url_param.rs](../../website/frontend/src/data_definitions/url_param.rs));
 `9g==` is `None`.
 
 ## Manual QA matrix
 
-`website/run-manual-qa.sh` validates the resolved fixture profile before it starts a browser capture.
+[website/run-manual-qa.sh](../../website/run-manual-qa.sh) validates the resolved fixture profile before it starts a browser capture.
 It records each selected baseline and annex variation in `manual-qa-plan.json`.
 It records each observed outcome in `manual-qa-results.json` and retains partial procedure evidence after failures.
 Use `--select` for a row list and `--skip-chat` when the row list does not include chat.
@@ -126,7 +126,7 @@ It also excludes citation-card contents, whose source details can load after the
 
 ## Observing a chat conversation
 
-`website/observe-chat.sh` drives a real chat conversation to completion in the same
+[website/observe-chat.sh](../../website/observe-chat.sh) drives a real chat conversation to completion in the same
 container and by the same mechanism as the screenshot harness, and observes it with one
 browser page per resolution watching the same live generation, not two separate
 generations. `internet_tools_enabled` must be on. When it is off, this wrapper refuses
@@ -134,7 +134,7 @@ and names that key, and does not start `hoover4-mcp-browser`. It needs an identi
 validation failure here, unlike the screenshot runner. The target rules are the rules of
 the screenshot wrapper above. A target that only the login file supplies needs
 `--remote-target`, because a prompt sent to that site starts a real turn there.
-`website/run-manual-qa.sh` applies the same rule before it calls either wrapper.
+[website/run-manual-qa.sh](../../website/run-manual-qa.sh) applies the same rule before it calls either wrapper.
 
 ```
 website/observe-chat.sh --target URL --prompts collection-exploration --conversations 1
@@ -164,8 +164,8 @@ It skips the preview capture when no card exists.
 
 ## Two single-question diagnostics next to it
 
-`website/tools/count_whoami.py` prints the number of `/api/whoami` requests per navigation, and
-`website/tools/check_session_gate.py` reports which of the gate's three states a page settled in.
+[website/tools/count_whoami.py](../../website/tools/count_whoami.py) prints the number of `/api/whoami` requests per navigation, and
+[website/tools/check_session_gate.py](../../website/tools/check_session_gate.py) reports which of the gate's three states a page settled in.
 Both run the same way: `docker cp` into `hoover4-mcp-browser`, then `docker exec`. They
 answer questions the screenshot gate cannot: a page that costs three mint-route calls looks
 identical to one that costs one, and a gate stuck on *Sign-in required* renders the same

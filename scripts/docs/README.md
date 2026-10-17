@@ -77,7 +77,7 @@ Use [Mermaid's format documentation](https://mermaid.js.org/intro/) when selecti
 
 ## Record feature coverage.
 
-The checker reads `docs/documentation-coverage.json` when that file exists.
+The checker reads [docs/documentation-coverage.json](../../docs/documentation-coverage.json) when that file exists.
 Use `--require-manifests` to require both coverage and screenshot provenance.
 Paths inside these manifests are repository-relative.
 Documentation paths can include heading fragments.

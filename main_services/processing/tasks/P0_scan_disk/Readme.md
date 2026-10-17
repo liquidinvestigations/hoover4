@@ -11,10 +11,10 @@ This stage discovers datasets on disk, enumerates directories and files, and pop
 
 ## Entry Points
 
-- Workflow: `IngestDiskDataset` in `workflows.py`
+- Workflow: `IngestDiskDataset` in [workflows.py](workflows.py)
 - Activities: `plan_folder_ranges`, `scan_folder_range`, `reconcile_deleted_files` in
-  `activities.py`
-- CLI helper: `submit_job.py` (used by `main.py add-disk-dataset`)
+  [activities.py](activities.py)
+- CLI helper: [submit_job.py](submit_job.py) (used by `main.py add-disk-dataset`)
 
 ## Technical Details
 
@@ -88,7 +88,7 @@ blob, `ComputePlans` picks up any blob with no plan, and P2-P6 run only over it.
   over the same root is how an edited or deleted file is picked up. Each run gets its own
   Temporal workflow id. An id derived from the dataset alone can be started exactly once,
   and every later rescan either collides with it or silently attaches to the finished run.
-- The worker queue is `processing-common-queue` (see `tasks/run_worker.py`).
+- The worker queue is `processing-common-queue` (see [tasks/run_worker.py](../run_worker.py)).
 
 ## Navigation
 

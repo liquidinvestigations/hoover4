@@ -1,239 +1,92 @@
-# Multilingual E5 Embedding, Reranking & NER Server
+# Serve embeddings, reranking, and named entities.
 
-A high-performance FastAPI-based server that provides OpenAI-compatible APIs for deep learning-powered text processing:
-- **Embeddings** using `intfloat/multilingual-e5-large-instruct`
-- **Document Reranking** using `cross-encoder/ms-marco-MiniLM-L-6-v2`
-- **Named Entity Recognition (NER)** using `FacebookAI/xlm-roberta-large-finetuned-conll03-english`
+[The FastAPI server](hoover4_ai_server.py) provides separate model capabilities.
+[The optional AI tier](../README.md) deploys this service and supplies its configuration.
+The main pipeline and agent services call it through their configured endpoints.
 
- **Performance Optimized**: Batch processing, GPU acceleration, and hardware-adaptive configurations for maximum throughput.
+## Verify configured and serving models.
 
-> ** Project Overview**: Part of the Hoover4 [ai_services tier](../README.md), the optional GPU stack. This server provides the embeddings, NER and reranking used by the processing pipeline and the agents.
+| Capability | Source default | Selection |
+|---|---|---|
+| Embeddings | `intfloat/multilingual-e5-small`, 384 dimensions | `EMBEDDINGS_MODEL` and `EMBEDDINGS_DIM` |
+| Reranking | `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` | `RERANKER_MODEL` |
+| NER | `FacebookAI/xlm-roberta-large-finetuned-conll03-english` | `NER_MODEL` |
 
-## Quick Start
+Deployment renders these values from `hoover4.ini`.
+A deployment can select different values from the source defaults.
+`AI_SERVER_ENABLE_EMBEDDINGS`, `AI_SERVER_ENABLE_RERANKER`, and `AI_SERVER_ENABLE_NER` enable their respective capabilities.
+Startup loads the enabled models and verifies the embedding dimension.
+An embedding request that names a different model returns an error.
+`GET /health` reports readiness, model information, dimensions, admission counters, and available device information.
 
-> ** Complete Setup**: For the full RAG system setup, see the [main project README](../README.md) Quick Start section.
+## Use the HTTP routes.
 
-### Using Poetry (Local Development)
+| Method and route | Result |
+|---|---|
+| `GET /` | Server information and available routes. |
+| `GET /health` | Model readiness, configuration fingerprint, admission state, and device information. |
+| `GET /v1/models` | The available model listing. |
+| `POST /v1/embeddings` | An embedding for each supplied input. |
+| `POST /v1/rerank` | Document relevance scores for a query. |
+| `POST /v1/extract-entities` | Named entity spans and their model information. |
+| `GET /performance-stats` | Current performance counters and configuration. |
 
-1. Install dependencies:
-```bash
-poetry install
+Supply the configured base URL through the private command environment.
+These examples use the environment variable `AI_SERVER_URL` for that base URL.
+They do not select a deployment address.
+
+```sh
+curl -X POST "$AI_SERVER_URL/v1/embeddings" \
+  -H 'Content-Type: application/json' \
+  -d '{"input": ["A sample passage."]}'
 ```
 
-2. Run the server:
-```bash
-poetry run python hoover4_ai_server.py
+The ingestion and search callers apply the selected model's query and passage prefix conventions.
+[The pipeline prefix helper](../../main_services/processing/tasks/P5_chunk_embed/embedding_prefix.py) and [the agent prefix helper](../../main_services/agents/agent_common/agent_common/embeddings.py) must agree.
+
+```sh
+curl -X POST "$AI_SERVER_URL/v1/rerank" \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"contract terms","documents":["Contract terms appear here.","A different topic."],"top_k":2}'
+
+curl -X POST "$AI_SERVER_URL/v1/extract-entities" \
+  -H 'Content-Type: application/json' \
+  -d '{"input":"A sample document names London.","include_confidence":true}'
 ```
 
-The server will start on `http://localhost:8000` and provide embeddings, reranking, and NER services for the RAG system.
+## Bound admission by capability.
 
-## API Endpoints
+[Admission control](admission.py) provides separate inference pools and queue limits.
+`AI_SERVER_NER_CONCURRENCY`, `AI_SERVER_EMBED_CONCURRENCY`, and `AI_SERVER_RERANK_CONCURRENCY` set the active slots.
+The associated queue-depth settings bound waiting requests.
+A request above active and waiting capacity receives HTTP 503 with `Retry-After`.
+Inference runs outside the request event loop so health requests can still proceed.
+A busy response does not establish that a model endpoint is unreachable.
 
-### Health Check
-- `GET /` - Basic server info with all available endpoints
-- `GET /health` - Detailed health check with model status and GPU memory
-- `GET /performance-stats` - Performance metrics and optimization recommendations
+## Build and run through deployment.
 
-### Embeddings
-- `POST /v1/embeddings` - Generate embeddings (OpenAI compatible)
+[The Dockerfile](Dockerfile) builds the runtime environment from the service requirements.
+[The requirements file](requirements.txt) pins the runtime dependencies.
+[The Poetry manifest](pyproject.toml) also describes the package, but does not replace the container build contract.
+Use the [AI deployment procedure](../README.md#deploy) to build and start this service.
 
-### Document Reranking
-- `POST /v1/rerank` - Rerank documents by relevance to a query
+`OPTIMAL_BATCH_SIZE` and `MAX_SEQUENCE_LENGTH` bound batch and sequence behavior.
+`ENABLE_HALF_PRECISION` and `ENABLE_TORCH_COMPILE` control optional model execution settings.
+The server selects CUDA when available and CPU otherwise.
+That internal device choice does not create a deployed CPU embedding fallback.
+[AI architecture](../../docs/architecture/AI_Services.md) defines the pipeline's capability and fallback behavior.
 
-### Named Entity Recognition
-- `POST /v1/extract-entities` - Extract named entities from text
+## Measure performance in the intended environment.
 
-### Models
-- `GET /v1/models` - List available models
+Record the model, device, input lengths, batch size, concurrency, and tested revision with each result.
+The source does not establish throughput from a GPU core-count ratio.
+A performance suggestion returned by the server is not a measured result for another deployment.
+[Throughput tests](tests/test_throughput.py) and [batch tests](tests/test_batch_optimization.py) record measurements against a running service.
 
-## Example Usage
+## Verify the running service.
 
-### Generate Embeddings
-```bash
-curl -X POST "http://localhost:8000/v1/embeddings" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "input": "Hello world",
-       "model": "intfloat/multilingual-e5-large-instruct"
-     }'
-```
-
-### Rerank Documents
-```bash
-curl -X POST "http://localhost:8000/v1/rerank" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "query": "What are the benefits of exercise?",
-       "documents": [
-         "Exercise helps improve cardiovascular health and reduces stress.",
-         "Cooking is a great way to save money and eat healthier.",
-         "Regular physical activity boosts mental health and energy levels."
-       ],
-       "top_k": 2
-     }'
-```
-
-### Extract Named Entities
-```bash
-curl -X POST "http://localhost:8000/v1/extract-entities" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "input": "Apple Inc. was founded by Steve Jobs in Cupertino, California.",
-       "include_confidence": true
-     }'
-```
-
-## Environment Variables
-
-You can configure the server using these environment variables:
-
-### Basic Configuration
-- `HOST`: Server host (default: 0.0.0.0)
-- `PORT`: Server port (default: 8000)
-- `HUGGING_FACE_HUB_TOKEN`: Optional token for private models
-- `CUDA_VISIBLE_DEVICES`: GPU device selection
-
-### Performance Optimization
-- `OPTIMAL_BATCH_SIZE`: Batch size for processing (default: 32)
-- `ENABLE_HALF_PRECISION`: Enable FP16 for 2x speed boost (default: true)
-- `ENABLE_TORCH_COMPILE`: Enable PyTorch compilation (default: true)
-- `MAX_SEQUENCE_LENGTH`: Maximum token length (default: 512)
-- `AI_SERVER_NER_CONCURRENCY` / `AI_SERVER_EMBED_CONCURRENCY` /
-  `AI_SERVER_RERANK_CONCURRENCY`: in-flight inferences per capability (defaults
-  4 / 8 / 4). Rendered from `hoover4.ini`. Past `concurrency + queue_depth` the
-  handler returns 503 + `Retry-After` rather than blocking `/health`. Inference
-  runs on a per-capability thread pool so the event loop never holds the GPU.
-
-## Requirements
-
-### Dependencies
-- Python 3.11+
-- Poetry for dependency management
-- PyTorch with CUDA support, from the CUDA 13 wheel index (see
-  [CUDA and GPU architecture](../README.md#cuda-and-gpu-architecture), it is what
-  makes the image work on both x86_64 and aarch64, and on Blackwell cards)
-- Required Python packages (automatically installed with Poetry):
-  - `sentence-transformers` - for embeddings and reranking
-  - `transformers` - for NER (disabled in current pyproject.toml due to Python 3.13 compatibility)
-  - `fastapi` and `uvicorn` - web framework and server
-  - `tiktoken` - for token decoding (LangChain compatibility)
-
-### Hardware Requirements
-- **Recommended**: NVIDIA GPU with CUDA support for optimal performance
-- **Minimum**: CPU-only execution (slower but functional)
-- **Memory**: At least 8GB RAM (16GB+ recommended for GPU)
-
-## Models Used
-
-### Embedding Model
-- **Model**: `intfloat/multilingual-e5-large-instruct`
-- **Purpose**: Generate high-quality multilingual text embeddings
-- **Features**: Instruction-following, multilingual support, 1024-dimensional vectors
-
-### Reranking Model
-- **Model**: `cross-encoder/ms-marco-MiniLM-L-6-v2`
-- **Purpose**: Rerank documents by relevance to search queries
-- **Features**: Fast cross-encoder architecture, optimized for search relevance
-
-### Named Entity Recognition Model
-- **Model**: `FacebookAI/xlm-roberta-large-finetuned-conll03-english`
-- **Purpose**: Extract named entities (persons, organizations, locations, etc.)
-- **Features**: Multilingual RoBERTa-based, trained on CoNLL-03 dataset
-
-## Performance
-
-### Optimizations
-- **Batch Processing**: Intelligent batching for 2-4x throughput improvement
-- **GPU Acceleration**: Half-precision (FP16) and PyTorch compilation for maximum speed
-- **Memory Efficiency**: Optimized GPU memory usage and automatic device management
-- **Hardware Adaptive**: Automatic configuration based on available hardware
-
-### Benchmark Results (RTX 2080 Ti)
-
-Latest performance test results:
-
-| Batch Size | Throughput (emb/sec) | Avg Time (sec) | Efficiency | Consistency | Status |
-|------------|---------------------|----------------|------------|-------------|--------|
-| 1          | 21.6                | 0.05           | 21.63      | 0.92        |  Pass |
-| 5          | 112.7               | 0.04           | 22.53      | 0.82        |  Pass |
-| 10         | 201.3               | 0.05           | 20.13      | 0.79        |  Pass |
-| 20         | 223.0               | 0.08           | 11.15      | 0.94        |  Pass |
-| 50         | 286.0               | 0.16           | 5.72       | 0.95        |  Pass |
-| 100        | 342.1               | 0.26           | 3.42       | 0.97        |  Pass |
-| 200        | 356.8               | 0.51           | 1.78       | 0.98        |  Pass |
-| **500**    | **381.8**           | **1.17**       | **0.76**   | **1.00**    |  Pass |
-
-** Recommended Configuration**: Batch size 500 for optimal performance
-- **Peak Throughput**: 381.8 embeddings/second
-- **Processing Time**: 1.17 seconds per batch
-- **Estimated 1M embeddings**: 0.7 hours
-- **Hardware**: NVIDIA GeForce RTX 2080 Ti (11GB VRAM)
-
-### Expected Performance by Hardware
-| Hardware | CUDA Cores | Theoretical Max* | Realistic Est. | Recommended Batch | Notes |
-|----------|------------|------------------|----------------|-------------------|-------|
-| **RTX 2080 Ti** | **4,352** | **381.8** | **381.8** | **500** | **Measured performance** |
-| RTX 4090 | 16,384 | ~1,438 | 800-1000 | 500-1000 | 3.76x cores, memory limited |
-| RTX 4080 | 9,728 | ~854 | 600-750 | 400-800 | 2.24x cores |
-| RTX 3080 Ti | 10,240 | ~899 | 650-800 | 400-800 | 2.35x cores |
-| RTX 3080 | 8,704 | ~764 | 550-700 | 300-600 | 2.0x cores |
-| RTX 3070 | 5,888 | ~517 | 400-500 | 200-400 | 1.35x cores |
-| RTX 2070 | 2,304 | ~202 | 180-220 | 100-200 | 0.53x cores |
-| CPU (16 cores) | N/A | N/A | 10-20 | 4-8 | CPU fallback |
-
-**\*Theoretical Max**: Linear scaling based on CUDA core ratio
-**Realistic Est.**: Accounting for memory bandwidth, thermal limits, and architectural efficiency
-
-### Configuration
-```bash
-# High-performance GPU setup (RTX 2080 Ti optimal)
-export OPTIMAL_BATCH_SIZE=500
-export ENABLE_HALF_PRECISION=true
-export ENABLE_TORCH_COMPILE=true
-
-# High-performance GPU setup (other cards)
-export OPTIMAL_BATCH_SIZE=64
-export ENABLE_HALF_PRECISION=true
-export ENABLE_TORCH_COMPILE=true
-
-# CPU-only setup
-export OPTIMAL_BATCH_SIZE=4
-export ENABLE_HALF_PRECISION=false
-```
-
-### Monitoring
-Check real-time performance and get optimization recommendations:
-```bash
-curl http://localhost:8000/performance-stats
-```
-
-## Testing
-
-`tests/` holds HTTP tests that drive a **running** server: they read its base URL from the
-environment and skip themselves when nothing answers, so they check the deployed tier rather
-than the code in isolation.
-
-**The runtime image carries neither the tests nor a test runner.** Only the server modules
-are copied in, so there is nothing to run inside the container. Run them from a checkout,
-against a reachable server:
-
-```bash
-cd ai_services/hoover4_ai_server
-pytest tests/                                   # everything
-pytest tests/test_embeddings.py                 # embeddings
-pytest tests/test_reranking.py                  # reranking
-pytest tests/test_ner.py                        # NER
-pytest tests/test_health.py                     # health and model readiness
-pytest tests/test_admission.py                  # admission control
-```
-
-`tests/test_throughput.py` and `tests/test_batch_optimization.py` are benchmarks rather
-than assertions: they measure and print, and they take as long as the hardware takes.
-
-##  Related Components
-
-- **[ai_services tier](../README.md)**: the optional GPU tier this server belongs to.
-  Deployment, overlays, security posture
-- **[main_services/agents](../../main_services/agents/README.md)**: the MCP servers and
-  research agents, which run on the main stack
-- **Processing pipeline**: the P4 NER stage calls this server via `NER_URL`
+[HTTP tests](tests/) require a reachable server and can skip when no server answers.
+A skipped test does not verify the capability.
+The runtime image does not include the test suite or test runner.
+Use the container-based [test procedure](../README.md#testing) with the checkout mounted into the test image.
+Select the health, embedding, reranking, NER, and admission tests required by the configured capabilities.

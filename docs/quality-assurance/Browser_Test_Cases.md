@@ -1,6 +1,6 @@
 # Browser test cases
 
-This catalogue has one row per scenario file in `website/browser-tests/`. There are 166 files.
+This catalogue has one row per scenario file in [website/browser-tests/](../../website/browser-tests). There are 166 files.
 The slug is the file stem. `--names` selects the ini section name, shown in
 the reproduce column.
 
@@ -37,7 +37,7 @@ With no `--names` and no `--only`, the wrapper captures every file.
 The default run splits the list into four cost-balanced processes and writes one report.
 `--shards 1` runs the list in one process.
 The operation-specific scenarios 629, 630, 632 and 633 require `--operation-id ID`.
-`main_services/verify-reruns.sh` writes the local id to
+[main_services/verify-reruns.sh](../../main_services/verify-reruns.sh) writes the local id to
 `website/test_reports/reruns-browser-fixture.env` as `RERUNS_FAILURE_OP`.
 
 Output lands in `website/test_reports/screenshots/run-<stamp>-<pid>/`.

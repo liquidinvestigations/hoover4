@@ -4,7 +4,7 @@ The chat turn end to end: what is fixed when a conversation starts, which agent 
 how an answer streams back, how citations work, and what the admin views over it show.
 
 The agents themselves and their tools are [main_services/agents/README.md](../../main_services/agents/README.md); the pipeline's
-durable research path is `main_services/processing/tasks/P_agent/`.
+durable research path is [main_services/processing/tasks/P_agent/](../../main_services/processing/tasks/P_agent).
 
 ## Contents
 
@@ -21,7 +21,7 @@ durable research path is `main_services/processing/tasks/P_agent/`.
 - [Allocating a message sequence](#allocating-a-message-sequence)
 - [Tool-event payload shapes](#tool-rows)
 
-Routes (see `website/frontend/src/routes.rs`):
+Routes (see [website/frontend/src/routes.rs](../../website/frontend/src/routes.rs)):
 
 - `/ai_chat`, homepage ("What are you researching?") with recent-session cards and composer
 - `/ai_chat/history`, full conversation list
@@ -67,7 +67,7 @@ the deployment, not the conversation.
 The selfhosted provider can have a quality endpoint beside its base endpoint
 (`[llm_provider.selfhosted] quality_base_url` and `quality_model`). A request that names the
 quality model goes to the quality endpoint, and every other model goes to the base endpoint.
-The worker (`tasks/llm_endpoints.py`) and the agent services (`research_agent/endpoints.py`)
+The worker ([tasks/llm_endpoints.py](../../main_services/processing/tasks/llm_endpoints.py)) and the agent services ([research_agent/endpoints.py](../../main_services/agents/research_agent/research_agent/endpoints.py))
 apply this rule to every model call. A deployment selects the quality model as
 `llm_default_chat_model`, so agent turns run on it, and the base model as
 `llm_summarization_model`, so titles and board reasons stay on the base endpoint. Follow-up
@@ -159,7 +159,7 @@ order of model steps, tool calls and checks.
 
 A definition lists the rules of a profile. Each rule names a handler, an event, a frequency
 and its parameters. Handlers are trusted Python modules. The folder
-`tasks/P_agent/control/handlers/` holds the built-in handlers. The `chat_control_dir` key of
+[tasks/P_agent/control/handlers/](../../main_services/processing/tasks/P_agent/control/handlers) holds the built-in handlers. The `chat_control_dir` key of
 `[main_services]` can add a read-only folder with more handlers and definitions. When a turn
 starts, the worker stores a copy of its assets on the opening row of the run. The copy holds
 the definition, the digest of each handler file, the rendered system prompt and the skill
@@ -178,7 +178,7 @@ JSON list of find and replace edits, and the worker applies each edit whose text
 the answer. A reply that is not
 valid edits keeps the answer, and the answer metadata lists the parts as `unsourced_claims`.
 `chat-null` has no rule. A deployment selects a
-definition with `definitions/active.json` in the `chat_control_dir` folder.
+definition with [definitions/active.json](../../main_services/processing/tasks/P_agent/control/definitions/active.json) in the `chat_control_dir` folder.
 
 For each event the worker stores one decision before it writes any row of it. A retry reads
 the stored decision and writes the same rows at the same keys. An action is a note, a skill
@@ -221,7 +221,7 @@ The chat system prompt requires the name choice before candidate searches and th
 **Every turn is a Temporal workflow, and the website holds nothing open.** `send_message`
 takes the session's **turn lock**, writes the user row, reserves the answer's `seq` as an
 empty stream row, dispatches `AgentRun` to `chat-queue` and returns the transcript
-*including* the message just sent. The start sends the ids of the turn and no text, and it
+*including* the submitted message. The start sends the ids of the turn and no text, and it
 rejects a duplicate workflow id. Temporal answers a duplicate with HTTP 409, which the
 website counts as started. The model call runs on `chat-model-queue`.
 Each tool call runs on `agent-tool-queue`.
@@ -361,7 +361,7 @@ required:
   the same number. Whether a session is on its first turn is read from the transcript,
   never inferred from the seq;
 * **`message_uuid`** (migration `00012`), shared by every row of a turn and **read** rather
-  than merely written: `db_chat::detect_seq_collision` looks for a second uuid at the seq just claimed
+  than merely written: `db_chat::detect_seq_collision` looks for a second uuid at the reserved seq
   and refuses the turn if it finds one, so the user resends instead of losing a message. It
   reads without `FINAL` on purpose: `FINAL` collapses away the evidence. **A write-only
   collision detector is worse than none, because it reads as covered.**
@@ -387,7 +387,7 @@ Note there is **no tool name on a start event**. It appears only at `output.name
 end event, which is why the events have to be paired before a call can be labelled at all.
 
 This format is parsed in two places in the worker, and they must agree:
-`P_agent/stream_writer.py` while the turn streams, and `P_agent/trajectory.py` when it is
+[P_agent/stream_writer.py](../../main_services/processing/tasks/P_agent/stream_writer.py) while the turn streams, and [P_agent/trajectory.py](../../main_services/processing/tasks/P_agent/trajectory.py) when it is
 written into the transcript. A parser that writes the raw event as the message body,
 hardcodes the tool name and populates none of the payload columns produces a transcript
 that renders as a wall of JSON in a card whose expand panel opens onto nothing. If you

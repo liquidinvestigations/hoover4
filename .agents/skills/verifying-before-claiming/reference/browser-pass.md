@@ -12,5 +12,5 @@ Minimum for "the UI change works":
    submit.
 4. Check the browser console for errors introduced by the change.
 
-Screenshots that support a claim belong beside the document that makes it, in the fan-out
-folder described by `planning-work`.
+Preserve raw browser evidence in the local plan.
+Publish reviewed documentation screenshots with their public provenance through the screenshot procedure.

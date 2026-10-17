@@ -1,6 +1,6 @@
 # Working with agents on hoover4
 
-The supported coding agents share the files in `.agents/`. Each harness has a small adapter.
+The supported coding agents share the files in [.agents/](../../.agents). Each harness has a small adapter.
 This page explains what loads, what each file controls, and how to verify the configuration.
 
 ## Contents
@@ -13,7 +13,7 @@ This page explains what loads, what each file controls, and how to verify the co
 - [MCP servers](#mcp-servers)
 - [Harness compatibility](#harness-compatibility)
 - [Which model runs a pass](#which-model-runs-a-pass)
-- [Editing discipline is a setting, not a virtue](#editing-discipline-is-a-setting-not-a-virtue)
+- [Configure editing tools.](#configure-editing-tools)
 - [Adding a skill, a rule or a hook](#adding-a-skill-a-rule-or-a-hook)
 - [Knowing that it fired](#knowing-that-it-fired)
 - [Publication and privacy](#publication-and-privacy)
@@ -37,8 +37,8 @@ or in the `SessionStart` hook's `compact` path.
 
 ## The layout
 
-`.agents/` holds shared skills, rules, hooks, and harness settings. Claude Code reads its role
-files from `.claude/agents/`. Codex role files point to those files. Cursor generates its role
+[.agents/](../../.agents) holds shared skills, rules, hooks, and harness settings. Claude Code reads its role
+files from [.claude/agents/](../../.claude/agents). Codex role files point to those files. Cursor generates its role
 files from them. Cursor reads [AGENTS.md](../../AGENTS.md) and `.agents/skills` directly.
 
 ```
@@ -64,31 +64,31 @@ AGENTS.md                                       the shared root instruction file
 CLAUDE.md                                       one line: @AGENTS.md
 ```
 
-The hooks are **not** symlinked into `.claude/`: the settings file names them at their
-`.agents/hooks/` path directly, which is one fewer thing to be broken.
+The hooks are **not** symlinked into [.claude/](../../.claude): the settings file names them at their
+[.agents/hooks/](../../.agents/hooks) path directly, which is one fewer thing to be broken.
 
 `bootstrap.sh` is idempotent, dry-runs by default, and prints `ok` / `MISSING` / `RELINK` /
 `CONFLICT` per item. It also re-applies the executable bit on every hook, because a hook that
 lost its mode bit fails silently. The harness reports it exactly as it reports no hook at
 all.
 
-**Editing `.claude/settings.json` is a person's job, not an agent's.** A coding agent is
+**Editing [.claude/settings.json](../../.claude/settings.json) is a person's job, not an agent's.** A coding agent is
 prevented from changing its own harness configuration, which is the correct boundary: the
-file declares which commands run on every tool call. `.agents/harnesses/claude-settings.json`
+file declares which commands run on every tool call. [.agents/harnesses/claude-settings.json](../../.agents/harnesses/claude-settings.json)
 holds what the file should contain; merge it by hand and restart the session.
 `verify-wiring.sh` reports whether it is in place.
 
 Codex reads `.codex/config.toml`, [AGENTS.md](../../AGENTS.md), and `.agents/skills` from the checkout. The
-project config matches `.agents/harnesses/codex.toml`. Codex user privacy settings stay in
-the user config. Review `.agents/harnesses/codex-user.toml`, then run
+project config matches [.agents/harnesses/codex.toml](../../.agents/harnesses/codex.toml). Codex user privacy settings stay in
+the user config. Review [.agents/harnesses/codex-user.toml](../../.agents/harnesses/codex-user.toml), then run
 `python3 .agents/update-codex-config.py --apply` to merge its controlled values.
 
-Cursor reads `.cursor/mcp.json`, `.cursor/hooks.json`, `.cursor/permissions.json`,
-`.cursor/cli.json`, [AGENTS.md](../../AGENTS.md), and `.agents/skills` from the checkout. Agent files under
-`.cursor/agents/` are generated from `.claude/agents/` with Cursor model names.
-`.cursor/rules/*.mdc` is generated from `.agents/rules/` and is not tracked.
+Cursor reads [.cursor/mcp.json](../../.cursor/mcp.json), [.cursor/hooks.json](../../.cursor/hooks.json), [.cursor/permissions.json](../../.cursor/permissions.json),
+[.cursor/cli.json](../../.cursor/cli.json), [AGENTS.md](../../AGENTS.md), and `.agents/skills` from the checkout. Agent files under
+[.cursor/agents/](../../.cursor/agents) are generated from [.claude/agents/](../../.claude/agents) with Cursor model names.
+`.cursor/rules/*.mdc` is generated from [.agents/rules/](../../.agents/rules) and is not tracked.
 Cursor user privacy settings, the MCP allowlist, and host-specific Auto-review text stay
-in the user config. Review `.agents/harnesses/cursor-user-permissions.json`, then run
+in the user config. Review [.agents/harnesses/cursor-user-permissions.json](../../.agents/harnesses/cursor-user-permissions.json), then run
 `python3 .agents/update-cursor-config.py --apply` to merge its controlled values. The
 installer copies Auto-review environment text from the live Claude user settings, because
 that text names hosts and must not be tracked.
@@ -159,7 +159,7 @@ instruction names it.
 
 Claude declares five hooks. Codex declares the first four because its tool event has no
 sub-agent identifier for the budget hook. Cursor runs the same five through
-`.agents/hooks/cursor-wrap.py`, and adds a `subagentStart` cap of two counted sub-agents.
+[.agents/hooks/cursor-wrap.py](../../.agents/hooks/cursor-wrap.py), and adds a `subagentStart` cap of two counted sub-agents.
 Cursor injects the orientation text on a new conversation. Compaction does not re-run that hook.
 Each rule also appears in [AGENTS.md](../../AGENTS.md).
 
@@ -219,8 +219,7 @@ configuration: their tools require a header only the chat tier can supply (the p
 collections for one, the chat session for the other), so an entry would be a server whose
 every tool denies.
 
-**The symbol server runs over streamable HTTP, and the reason is a failure mode worth
-knowing.**
+The symbol server uses streamable HTTP to preserve the session handshake after reconnection.
 The older SSE transport carries the session in a held GET; when that stream dies (a
 container restart, a redeploy, a dropped connection) the client reconnects, gets a new
 server-side session, and never repeats the handshake on it, so every later call fails for
@@ -239,12 +238,12 @@ operational detail.
 
 | harness | instructions | skills | rules | MCP | hooks |
 |---|---|---|---|---|---|
-| Claude Code | [CLAUDE.md](../../CLAUDE.md) → the [AGENTS.md](../../AGENTS.md) include directive, imports expanded | `.claude/skills` symlink, verified working | `.claude/rules` symlink | `.mcp.json` | five hooks in `.claude/settings.json` |
+| Claude Code | [CLAUDE.md](../../CLAUDE.md) → the [AGENTS.md](../../AGENTS.md) include directive, imports expanded | `.claude/skills` symlink, verified working | `.claude/rules` symlink | [.mcp.json](../../.mcp.json) | five hooks in [.claude/settings.json](../../.claude/settings.json) |
 | OpenAI Codex CLI | [AGENTS.md](../../AGENTS.md), no import expansion | native `.agents/skills`, verified | no automatic loader | `[mcp_servers.NAME]`, streamable HTTP | four hooks in `.codex/config.toml` |
 | opencode | [AGENTS.md](../../AGENTS.md) | native `.agents/skills/<name>/SKILL.md`; unknown frontmatter keys ignored | unverified | `opencode.json` remote entries | unverified |
 | Gemini CLI | [GEMINI.md](../../GEMINI.md) | none | none | `.gemini/settings.json`, `httpUrl` | none |
-| Cursor | [AGENTS.md](../../AGENTS.md) plus generated `.cursor/rules/*.mdc` | native `.agents/skills` | `.mdc` with `globs:` | `.cursor/mcp.json` | shared hooks via `.cursor/hooks.json` |
-| Kimi Code | [AGENTS.md](../../AGENTS.md), no import expansion | native `.agents/skills` and `~/.agents/skills` | no automatic loader | `.kimi-code/mcp.json` project file plus user `mcp.json`, streamable HTTP | User `config.toml` declares five hooks, permission rules, and privacy settings. Session dispatch requires verification. |
+| Cursor | [AGENTS.md](../../AGENTS.md) plus generated `.cursor/rules/*.mdc` | native `.agents/skills` | `.mdc` with `globs:` | [.cursor/mcp.json](../../.cursor/mcp.json) | shared hooks via [.cursor/hooks.json](../../.cursor/hooks.json) |
+| Kimi Code | [AGENTS.md](../../AGENTS.md), no import expansion | native `.agents/skills` and `~/.agents/skills` | no automatic loader | [.kimi-code/mcp.json](../../.kimi-code/mcp.json) project file plus user `mcp.json`, streamable HTTP | User `config.toml` declares five hooks, permission rules, and privacy settings. Session dispatch requires verification. |
 | Google Antigravity | unverified | unverified | unverified | unverified | unverified |
 
 Rows marked unverified are exactly that: nobody has run them here. Treat them as work to do,
@@ -257,7 +256,7 @@ not as support to rely on.
 | Claude Code | `.claude/agents/*.md` | `model` and `effort` in frontmatter |
 | OpenAI Codex CLI | `.codex/agents/*.toml` | `model` and `model_reasoning_effort` |
 | opencode | `.opencode/agents/*.md`, or the `agent` key in `opencode.json` | `model` as `provider/model-id` |
-| Cursor | `.cursor/agents/*.md`, generated from `.claude/agents/` | `model` in frontmatter |
+| Cursor | `.cursor/agents/*.md`, generated from [.claude/agents/](../../.claude/agents) | `model` in frontmatter |
 | Gemini CLI | [GEMINI.md](../../GEMINI.md) | unverified |
 | Kimi Code | built-in coder, explore and plan sub-agents; no project definitions | `[secondary_model]` pool in user `config.toml` |
 | Google Antigravity | [AGENTS.md](../../AGENTS.md) | unverified |
@@ -300,7 +299,7 @@ Which model fills which role is recorded in [Choosing a model](Choosing_A_Model.
 `allowed-tools` in skill frontmatter is harness-specific metadata. Other harnesses can ignore it.
 The shared skill files preserve that metadata without a separate transform.
 
-## Editing discipline is a setting, not a virtue
+## Configure editing tools.
 
 The policy is that code is read with the read and symbol tools and changed with the edit and
 write tools, not with `sed`, `cat` or heredocs. The reason to state the mechanism plainly:
@@ -317,7 +316,7 @@ Heredocs remain legitimate for throwaway analysis that writes nothing into the r
    procedure → a reference file beside that skill. An invariant tied to a file kind → a rule.
    If it can only be enforced mechanically and denying it is safe → a hook, and only after
    the same content exists as prose.
-2. **Write it in `.agents/`**, never in `.claude/`.
+2. **Write it in [.agents/](../../.agents)**, never in [.claude/](../../.claude).
 3. **For a skill**, spend the effort on the `description`. Take three real past requests and
    check the skill loads without being named; a description that under-triggers is the
    single most common failure.
@@ -338,9 +337,9 @@ Heredocs remain legitimate for throwaway analysis that writes nothing into the r
 
 ## Publication and privacy
 
-**All of this is tracked and public**: `.agents/`, `.codex/`, the two `.claude/` symlinks,
-`.claude/agents/`, `.claude/settings.json`, `.cursor/mcp.json`, `.cursor/hooks.json`, `.cursor/permissions.json`,
-`.cursor/cli.json`, `.cursor/agents/`, `.kimi-code/mcp.json`, [AGENTS.md](../../AGENTS.md), [CLAUDE.md](../../CLAUDE.md), and [GEMINI.md](../../GEMINI.md). Git is the backup, and a
+**All of this is tracked and public**: [.agents/](../../.agents), `.codex/`, the two [.claude/](../../.claude) symlinks,
+[.claude/agents/](../../.claude/agents), [.claude/settings.json](../../.claude/settings.json), [.cursor/mcp.json](../../.cursor/mcp.json), [.cursor/hooks.json](../../.cursor/hooks.json), [.cursor/permissions.json](../../.cursor/permissions.json),
+[.cursor/cli.json](../../.cursor/cli.json), [.cursor/agents/](../../.cursor/agents), [.kimi-code/mcp.json](../../.kimi-code/mcp.json), [AGENTS.md](../../AGENTS.md), [CLAUDE.md](../../CLAUDE.md), and [GEMINI.md](../../GEMINI.md). Git is the backup, and a
 fresh checkout has the whole configuration already: `bootstrap.sh` only creates the
 machine-local per-harness adapters on top of it.
 
@@ -350,13 +349,32 @@ Cursor user files under `~/.cursor/` and `~/.config/Cursor/`, and Kimi user file
 The tracked user templates contain generic harness, privacy, permission, and local-history settings.
 The installers preserve unrelated user settings when they merge those controlled values.
 
-Because they are public, **skills and rules carry the same secrecy rule as `docs/`**: no
+Because they are public, **skills and rules carry the same secrecy rule as [docs/](..)**: no
 hostname, no address, no port that identifies a real host, no credential, no description of
 an authentication boundary. `operating-remote-hosts` describes the *shape* of the work on
 each machine and points at `INFRASTRUCTURE_INVENTORY.md` for the specifics.
 
-The ignore rules that make this work are worth knowing before editing either file. The
+The root ignore rules apply at every directory depth. The
 [AGENTS.md](../../AGENTS.md), [CLAUDE.md](../../CLAUDE.md) and `plans/` rules in the root `.gitignore` are **unanchored**, so
 they match at any depth; the root copies are re-admitted by an explicit negation. That is
-deliberate: a service's own [AGENTS.md](../../AGENTS.md) deeper in the tree is its author's scratch and is
+deliberate: a service's own untracked instruction file is its author's scratch and is
 free to cite the scratch folder, which the tracked tree forbids.
+
+## Read retained agent rules and references.
+
+The harness configuration selects the applicable rules and role instructions.
+These links also permit direct review.
+
+| Subject | Source |
+|---|---|
+| Agent and MCP changes | [The agent rules](../../.agents/rules/agents-mcp.md) apply to agent services. |
+| Frontend controls | [The frontend rules](../../.agents/rules/frontend-ui.md) apply to interface changes. |
+| Rust and Dioxus | [The Rust rules](../../.agents/rules/rust-dioxus.md) describe component constraints. |
+| Python pipeline | [The pipeline rules](../../.agents/rules/pipeline-python.md) describe worker constraints. |
+| Migrations | [The migration rules](../../.agents/rules/migrations.md) preserve applied checksums. |
+| Editing tools | [The symbol editing reference](../../.agents/skills/editing-code/reference/serena-edits.md) describes bounded edits. |
+| Code discovery | [The source map](../../.agents/skills/finding-code/reference/repo-map.md) and [symbol calls](../../.agents/skills/finding-code/reference/serena-calls.md) describe scoped reads. |
+| Role selection evidence | [The retained study](../../.agents/skills/planning-work/reference/triage-marker-study.md) records its method. |
+| Organizer role | [The organizer instructions](../../.claude/agents/organizer.md) define shared-checkout ownership. |
+| Executor roles | [The light executor](../../.claude/agents/executor-light.md) and [heavy executor](../../.claude/agents/executor-heavy.md) define implementation responsibilities. |
+| Reviewer role | [The reviewer instructions](../../.claude/agents/reviewer.md) define independent diff review. |

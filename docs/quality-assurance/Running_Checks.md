@@ -20,7 +20,7 @@ evidence for something it never examined.
 
 The measured counts for each suite are [Test suites](Test_Suites.md).
 The scripts that wrap each of these live beside the verifying skill, in
-`.agents/skills/verifying-before-claiming/scripts/`. Run those rather than retyping the
+[.agents/skills/verifying-before-claiming/scripts/](../../.agents/skills/verifying-before-claiming/scripts). Run those rather than retyping the
 commands: each already carries the container name, the working directory, and the flags that
 are commonly got wrong.
 
@@ -32,12 +32,12 @@ are commonly got wrong.
 | "the frontend renders" | `dx check --package frontend`, then a screenshot of the page |
 | "the pipeline logic is right" | the Python unit tests |
 | "the endpoint works" | a stack test, or a request made from inside a container |
-| "ingestion works end to end" | `main_services/verify-stack.sh` |
+| "ingestion works end to end" | [main_services/verify-stack.sh](../../main_services/verify-stack.sh) |
 | "a worker restart loses nothing" | `main_services/verify-stack.sh --restart-resilience`, per-document assertions read |
 | "it is deployed" | the container is up *and* answering, checked from inside the network |
 | "the bug is fixed" | the failing case reproduced before, and not reproducible after |
-| "the prose obeys the register" | `.agents/check-prose-style.py` over the changed paths, exit 0 |
-| "every test directory has a runner" | `scripts/test-reachability.sh`, exit 0 |
+| "the prose obeys the register" | [.agents/check-prose-style.py](../../.agents/check-prose-style.py) over the changed paths, exit 0 |
+| "every test directory has a runner" | [scripts/test-reachability.sh](../../.agents/skills/verifying-before-claiming/scripts/test-reachability.sh), exit 0 |
 
 Nothing on the left may be claimed on the strength of reading code.
 
@@ -84,7 +84,7 @@ second to nine seconds still passes.
 
 ## Whole-stack verification
 
-`main_services/verify-stack.sh` drives real ingestion from disk to index and asserts the
+[main_services/verify-stack.sh](../../main_services/verify-stack.sh) drives real ingestion from disk to index and asserts the
 invariants that only appear end to end, including that no blob row references derived
 storage.
 
@@ -101,11 +101,11 @@ anything from a wall of red lines.
 
 ## Rerun acceptance
 
-`main_services/verify-reruns.sh` recreates the local `reruns` collection and checks retry
+[main_services/verify-reruns.sh](../../main_services/verify-reruns.sh) recreates the local `reruns` collection and checks retry
 selection, recovery, locking, skipped OCR work, input projection, and a failed import. It
 stops the regex scanner for the failure cases and starts it again on exit.
 
-Run it after `main_services/verify-stack.sh`. It takes up to 30 minutes and leaves the failed
+Run it after [main_services/verify-stack.sh](../../main_services/verify-stack.sh). It takes up to 30 minutes and leaves the failed
 import that the rerun browser scenarios read.
 
 ### Restart resilience
@@ -122,7 +122,7 @@ embeddings were lost. Only a per-document assertion tells the two apart.
 
 It is **deliberately not on the per-deploy or per-commit path.** It costs a worker restart and
 several minutes, and a gate that expensive stops being run. Run it when the worker's process
-lifecycle changes: `tasks/run_worker.py`, `tasks/heartbeat.py`, the graceful shutdown
+lifecycle changes: [tasks/run_worker.py](../../main_services/processing/tasks/run_worker.py), [tasks/heartbeat.py](../../main_services/processing/tasks/heartbeat.py), the graceful shutdown
 configuration, or the worker's stop grace period. It purges its own fixture dataset first, so
 it is repeatable; without that a second run would pass over the first run's data having tested
 nothing.
@@ -134,7 +134,7 @@ defaulting to the same testdata root the normal run uses.
 
 ## Test reachability
 
-`scripts/test-reachability.sh` enumerates every test directory this repository owns and
+[scripts/test-reachability.sh](../../.agents/skills/verifying-before-claiming/scripts/test-reachability.sh) enumerates every test directory this repository owns and
 confirms each is reached by a runner, meaning a script that actually executes it. It fails
 and names the directory when none reaches it, rather than passing silently on a suite that
 ships inside an image and runs nowhere.
@@ -165,12 +165,12 @@ and the home box submits on key press, so Enter must be a real key event.
 The browser wrappers accept `--target` or `HOOVER4_SITE_URL`. They capture a remote site
 without writing into it.
 
-`main_services/verify-stack.sh` refuses a website URL that is not local. It ingests into
+[main_services/verify-stack.sh](../../main_services/verify-stack.sh) refuses a website URL that is not local. It ingests into
 the stack it talks to. A loopback host, the local `WEBSITE_BIND_IP`, or a `hoover4-`
 container name is local. A hostname that starts with `hoover4-` and also contains a
 dot is not local.
 
-`website/run-stack-tests.sh` refuses a non-local `HOOVER4_SITE_URL` before `dx check`.
+[website/run-stack-tests.sh](../../website/run-stack-tests.sh) refuses a non-local `HOOVER4_SITE_URL` before `dx check`.
 `site_url()` in `stack_integration.rs` refuses the same class of host.
 
 ## Waiting without disturbing

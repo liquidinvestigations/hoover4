@@ -171,7 +171,7 @@ client can explain a match it stored months ago. Only `rule_id` is required; unk
 unfamiliar value shapes thin the card rather than fail it, because an entity from an older rule set
 must still explain itself.
 
-The knowledge is static and lives in `src/explain/catalog.rs`: one entry per rule with what it
+The knowledge is static and lives in [src/explain/catalog.rs](src/explain/catalog.rs): one entry per rule with what it
 matches, the standards that define it, what the validator checks, what acceptance does **not**
 prove, the authorities and the references. Per-rule shapers add what only a particular match can
 say. The country behind its top-level domain, the weekday its date fell on, the register entry for
@@ -186,8 +186,7 @@ Details in [docs/Explainer_Cards.md](docs/Explainer_Cards.md).
 
 ## Investigative lexicon
 
-Beside the entities, the service matches term lists that point a reader at passages worth reading
-first. They cover concealment, bribery, accounting manipulation, pressure and dissent, hostility,
+Beside the entities, the service matches term lists that point a reader at passages for review. They cover concealment, bribery, accounting manipulation, pressure and dissent, hostility,
 legal exposure, crime, financial crime, violence, sexual misconduct, genocide, crimes against
 humanity, war crimes, coded language and scams, and the vocabulary of contracts, legal letters,
 memoranda, invoices, payment proofs, international transfers and governing-law clauses. There are
@@ -286,7 +285,7 @@ More in [docs/Containers_And_Scripts.md](docs/Containers_And_Scripts.md).
 The patterns and lexicons are not ours and should not be. Month names across two hundred locales,
 unit surface forms, currency names, phone metadata, and two hundred check-digit algorithms already
 exist upstream under permissive licences; hand-writing any of them would be a mistake rather than
-diligence. `vendored/` holds curated subsets of CLDR, Recognizers-Text, dateparser, python-stdnum,
+diligence. [vendored/](vendored) holds curated subsets of CLDR, Recognizers-Text, dateparser, python-stdnum,
 libphonenumber, quantulum3, price-parser, Presidio, Kingfisher, Gitleaks, the grok patterns,
 FollowTheMoney, the IANA TLD list, OurAirports and the ITU MID table, each with its upstream,
 licence and a fetch script.
@@ -328,5 +327,5 @@ entity resolution, a validated identifier is the anchor that disambiguates a fuz
 
 ## Licence
 
-AGPL-3.0-or-later. See [LICENSE](LICENSE), and `vendored/licenses/` for the upstream notices that
+AGPL-3.0-or-later. See [LICENSE](LICENSE), and [vendored/licenses/](vendored/licenses) for the upstream notices that
 travel with the vendored data.

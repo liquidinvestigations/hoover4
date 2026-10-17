@@ -4,7 +4,7 @@ Ingestion is a chain of Temporal workflows named `P0` through `P6`. Each stage r
 one before it wrote and writes to tables the others do not touch, which is what lets three of
 them run at once.
 
-The code is `main_services/processing/tasks/`, one directory per stage, each with a
+The code is [main_services/processing/tasks/](../../main_services/processing/tasks), one directory per stage, each with a
 [Readme.md](Readme.md) of its own. Where those go into detail, this page states the shape.
 
 ## Contents
@@ -22,16 +22,16 @@ The code is `main_services/processing/tasks/`, one directory per stage, each wit
 
 | stage | reads | writes | directory |
 |---|---|---|---|
-| **P0 scan disk** | a dataset's directory tree | the file and directory tables, the blob table, and the object store | `tasks/P0_scan_disk/` |
-| **P1 compute plans** | newly recorded blobs | processing plans, the batch boundaries every later stage works in | `tasks/P1_compute_plans/` |
-| **P2 execute plan** | a plan | downloads its blobs and drives every stage below for them; resolves the canonical file type for the plan's hashes | `tasks/P2_execute_plan/` |
-| **P3 parse files** | the downloaded bytes | text pages, per-format metadata, email headers, table cells, archive members | `tasks/P3_parse_files/` |
-| **P4 extract entities** | the text pages | model entity hits, pattern entity hits, and the marker that a document was scanned | `tasks/P4_extract_entities/` |
-| **P5 chunk and embed** | the text pages | text chunks and their vectors, the durable vector store | `tasks/P5_chunk_embed/` |
-| **P6 index data** | everything above | the search engine's per-shard page tables, the entities table, the tree table, and a copy of the vectors into the disposable nearest-neighbour tables | `tasks/P6_index_data/` |
+| **P0 scan disk** | a dataset's directory tree | the file and directory tables, the blob table, and the object store | [tasks/P0_scan_disk/](../../main_services/processing/tasks/P0_scan_disk) |
+| **P1 compute plans** | newly recorded blobs | processing plans, the batch boundaries every later stage works in | [tasks/P1_compute_plans/](../../main_services/processing/tasks/P1_compute_plans) |
+| **P2 execute plan** | a plan | downloads its blobs and drives every stage below for them; resolves the canonical file type for the plan's hashes | [tasks/P2_execute_plan/](../../main_services/processing/tasks/P2_execute_plan) |
+| **P3 parse files** | the downloaded bytes | text pages, per-format metadata, email headers, table cells, archive members | [tasks/P3_parse_files/](../../main_services/processing/tasks/P3_parse_files) |
+| **P4 extract entities** | the text pages | model entity hits, pattern entity hits, and the marker that a document was scanned | [tasks/P4_extract_entities/](../../main_services/processing/tasks/P4_extract_entities) |
+| **P5 chunk and embed** | the text pages | text chunks and their vectors, the durable vector store | [tasks/P5_chunk_embed/](../../main_services/processing/tasks/P5_chunk_embed) |
+| **P6 index data** | everything above | the search engine's per-shard page tables, the entities table, the tree table, and a copy of the vectors into the disposable nearest-neighbour tables | [tasks/P6_index_data/](../../main_services/processing/tasks/P6_index_data) |
 
-Two directories in the same place are **not** stages: `tasks/P_admin/` holds administrative
-workflows that run on demand or as a self-scheduling singleton, and `tasks/P_agent/` holds
+Two directories in the same place are **not** stages: [tasks/P_admin/](../../main_services/processing/tasks/P_admin) holds administrative
+workflows that run on demand or as a self-scheduling singleton, and [tasks/P_agent/](../../main_services/processing/tasks/P_agent) holds
 the durable research turn.
 
 ## Preserve stored stage numbers.
@@ -39,7 +39,7 @@ the durable research turn.
 Indexing is `P6`, not `P5`. The embedding stage owns the number that runs before it, and
 there is no `P4b` or `P4.5`. **The stage numbers are a stored contract.** `STAGE_INDEX` and
 its siblings are values written into `processing_eta_samples` *and* constants in
-`website/common/src/processing_types.rs`. Renumbering a stage on one side leaves the admin
+[website/common/src/processing_types.rs](../../website/common/src/processing_types.rs). Renumbering a stage on one side leaves the admin
 processing page silently short a bar, with no error anywhere.
 
 ## Entity extraction and embedding run concurrently.
@@ -81,8 +81,8 @@ It selects `argMax(text, version)` for each group before chunking.
 language prefix; native extractors carry none. The same string is a storage key, part of a
 download route, and the label a user sees in the source selector.
 
-**The convention is implemented twice on purpose** (once in `main_services/processing/tasks/text_sources.py` and once
-in `website/common/src/document_sources.rs`), and neither runtime may depend on the other
+**The convention is implemented twice on purpose** (once in [main_services/processing/tasks/text_sources.py](../../main_services/processing/tasks/text_sources.py) and once
+in [website/common/src/document_sources.rs](../../website/common/src/document_sources.rs)), and neither runtime may depend on the other
 being right. Call the shared formatter; never assemble or parse the string in a component.
 
 One filename row per document is written into the search index with a sentinel page id and a
@@ -173,3 +173,25 @@ flowchart LR
 [P2 workflows](../../main_services/processing/tasks/P2_execute_plan/workflows.py) own execution and the barrier.
 Disabled stages return without producing their capability data.
 Document errors remain recorded when a plan finishes, and cancellation propagates through its workflows.
+
+## OCR targets record prerequisites and outcomes.
+
+[The OCR operation](../../main_services/processing/tasks/P_admin/ocr_rerun.py) selects targets from live document paths.
+It keeps successful work and settles dependent targets when a prerequisite fails.
+The operation finishes only after its target ledger has no open work.
+
+```mermaid
+flowchart TD
+    accTitle: OCR target prerequisites and indexing
+    accDescr: Source preparation enables previews and engine-specific OCR. Completed text and PDF parts enable indexing. Failed prerequisites settle dependent targets.
+    A[Live document target] --> P[Prepare source ranges]
+    P --> I[Image preview and engine OCR]
+    P --> N[Replacement native PDF text]
+    I --> V[Searchable PDF parts and source manifest]
+    I --> T[Stored OCR text]
+    T --> X[Entity and vector work when enabled]
+    N --> X
+    V --> Q[Index targets]
+    X --> Q
+    P -->|Prerequisite failure| F[Record outcome and settle dependent targets]
+```

@@ -1,4 +1,4 @@
-# `src/scan/`
+# [src/scan/](.)
 
 The pipeline.
 
@@ -10,7 +10,7 @@ fragment ─► prefilter ─► validate ─► normalise ─► resolve ─►
 and splitting them would only mean passing a half-checked value between two functions that always
 run together.
 
-## `prefilter.rs`
+## [prefilter.rs](prefilter.rs)
 
 Two passes, on purpose. The `RegexSet` pass answers "does any rule fire anywhere in this fragment"
 for the whole rule set in one go. Only the rules that survive that answer then scan for their own
@@ -25,11 +25,11 @@ states. Past the cache, the lazy DFA clears it over and over, gives up, and the 
 the NFA simulation: the output is the same and the scan is twenty times slower, at about 1.5 MB/s
 instead of over 30. Patterns that stack overlapping counted runs of one class after many literal
 prefixes multiply the states, and Unicode `\d`, dozens of byte ranges, makes each state larger; the
-EU VAT pattern is written with `[0-9]` for that reason. `tests/speed.rs` fails when the set falls
+EU VAT pattern is written with `[0-9]` for that reason. [tests/speed.rs](../../tests/speed.rs) fails when the set falls
 back.
 
 Candidates are collected per rule, so two rules may propose spans that overlap or nest. That is
-intended, and it is `resolve.rs`'s job to decide between them.
+intended, and it is [resolve.rs](resolve.rs)'s job to decide between them.
 
 `compile` refuses a candidate pattern containing `^`, `$` or `\b`. Patterns are re-run over slices
 of a fragment by the scan loop below, and an anchor or a word boundary means something different
@@ -40,7 +40,7 @@ The engine stays behind this module deliberately. Multi-pattern matching and lit
 are where the large factors live; a faster engine underneath is an optimisation this boundary allows
 without touching a single rule.
 
-## The work list in `mod.rs`
+## The work list in [mod.rs](mod.rs)
 
 Scanning is a work list, not a loop over the prefilter's output. Each item is a rule index and a
 span; a visited set on `(rule, start, end)` keeps the same candidate from being validated twice.
@@ -83,7 +83,7 @@ whole fragment would make the result depend on how the caller cut the document, 
 length would not fix that: the work list runs from the end of the fragment, so the near misses there
 would spend the budget of those at the start.
 
-## `resolve.rs`
+## [resolve.rs](resolve.rs)
 
 Structural strength first, then length, then position.
 

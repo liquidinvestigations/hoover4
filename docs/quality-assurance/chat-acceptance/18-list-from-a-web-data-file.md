@@ -1,4 +1,4 @@
-# 18. A list from a large data file in a public code repository
+# 18. Read a list from a public data file.
 
 | field | value |
 |---|---|

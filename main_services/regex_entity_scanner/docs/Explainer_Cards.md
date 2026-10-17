@@ -48,12 +48,12 @@ and links than parse prose. Both may be empty; the three text fields are always 
 
 ## Where the knowledge lives
 
-`src/explain/catalog.rs` holds one static entry per rule: what it matches, the standards that define
+[src/explain/catalog.rs](../src/explain/catalog.rs) holds one static entry per rule: what it matches, the standards that define
 it, what the validator checks, what acceptance does **not** prove, the authorities, and the
 references. It is static because it is knowledge about the **rule**, not about any match, and it
 lives next to the rule for the same reason a doc comment does.
 
-`src/explain/cards.rs` holds the per-rule shapers, which add what only this particular match can
+[src/explain/cards.rs](../src/explain/cards.rs) holds the per-rule shapers, which add what only this particular match can
 say (its country, its weekday, the register entry for its own identifier), and may sharpen the
 title. A rule with a catalogue entry and no shaper still produces a usable card, so writing the
 entry is the requirement and the shaper is the refinement.
@@ -108,7 +108,7 @@ The full table, rule by rule, and what each `res:` extension exists for, is in
 ## The confidence note
 
 `confidence` is a number, and a number without a stated meaning is read as whatever the reader
-already assumes. One static string in `src/explain/catalog.rs` says what it means, and it is the
+already assumes. One static string in [src/explain/catalog.rs](../src/explain/catalog.rs) says what it means, and it is the
 same string everywhere: appended to the body of every card that carries a confidence, as its own
 block, and served once at the top level of `GET /rules` so a client can show it beside a threshold
 control.

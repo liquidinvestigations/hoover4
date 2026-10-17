@@ -1,22 +1,22 @@
-# `src/explain/`
+# [src/explain/](.)
 
 Explainer cards. A client posts an entity back exactly as `/scan` returned it and gets a title, a
 subtitle and a body for the reader who clicked the match.
 
 | File | |
 |---|---|
-| `mod.rs` | The request and card types, and the dispatcher. |
-| `catalog.rs` | One static entry per rule: what it matches, the standards, the checks, what acceptance does not prove, authorities, references. |
-| `cards.rs` | Per-rule shapers, and the fixed-order body assembly. |
+| [mod.rs](mod.rs) | The request and card types, and the dispatcher. |
+| [catalog.rs](catalog.rs) | One static entry per rule: what it matches, the standards, the checks, what acceptance does not prove, authorities, references. |
+| [cards.rs](cards.rs) | Per-rule shapers, and the fixed-order body assembly. |
 
-## Why the catalogue is static Rust
+## The explainer catalog is compiled with the scanner.
 
 It is knowledge about the rule, not about any match, the standard that defines the format, the
 authority that runs the register, the boundary of what validation proves. Keeping it beside the rule
 is what stops it going stale, exactly as with a doc comment. Loading it from a data file would move
 it away from the code it describes and gain nothing, because it changes when the rule changes.
 
-Reference **data** is a different thing and does come from `vendored/`: territory names resolve a
+Reference **data** is a different thing and does come from [vendored/](../../vendored): territory names resolve a
 country-code top-level domain to a country the reader recognises. Static knowledge, vendored data.
 
 ## The tolerance rule
@@ -28,12 +28,12 @@ has never seen thins the card instead of failing it. This is also why the endpoi
 
 ## The FollowTheMoney mapping and the confidence note
 
-Two things are the same for the whole rule set rather than per match, and both live in `catalog.rs`.
+Two things are the same for the whole rule set rather than per match, and both live in [catalog.rs](catalog.rs).
 
 Every entry carries an `FtmMapping`: the FollowTheMoney schema and property this extraction feeds,
 with `res:` marking a property FollowTheMoney does not define and we are adding locally. It rides on
 `GET /rules/{rule_id}` with the rest of the entry, and the test suite fails a rule that has none.
-`docs/FollowTheMoney_Mapping.md` is the table it adds up to.
+[docs/FollowTheMoney_Mapping.md](../../docs/FollowTheMoney_Mapping.md) is the table it adds up to.
 
 `CONFIDENCE_NOTE` is one sentence about what a confidence number means. It is appended to every card
 that carries a confidence and served once at the top of `GET /rules`. It does not vary by rule,

@@ -1,6 +1,6 @@
 # Tika configuration
 
-`deploy.py` generates `tika-config.json` from `hoover4.ini` before it starts the main services.
+[deploy.py](../../../../deploy.py) generates `tika-config.json` from `hoover4.ini` before it starts the main services.
 The generated file is ignored by Git.
 
 The service uses four parser processes by default, with one GiB of heap for each process.

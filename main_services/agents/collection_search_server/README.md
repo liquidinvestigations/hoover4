@@ -135,7 +135,7 @@ A continuation finishes the range before advancing through later stored pages.
 Repeated calls return the same range. They do not advance an implicit cursor.
 Document references remain in structured result metadata for source cards.
 
-## Two tiers of entity, and why they are not merged
+## Model and rule entities retain separate evidence.
 
 `list_document_entities` answers with `entities` (an NER model's reading of the prose)
 and `structured`, the rule scanner's checksum-validated identifiers, normalised dates and
@@ -177,7 +177,7 @@ The quote keeps its separate minimum of twelve characters for verification.
 An empty or absent find phrase opens the document at the whole quote.
 The find query of the card is the words of the phrase or the quote (`citations.phrase_query`),
 in double quotes and without punctuation. The website reads stored find queries with the same
-rule (`card_find_phrase` in `website/common/src/chat_types.rs`).
+rule (`card_find_phrase` in [website/common/src/chat_types.rs](../../../website/common/src/chat_types.rs)).
 
 `cite_documents` is how the agent says which documents its answer rests on, as against
 which documents a search happened to return. Each citation names a document, a quote and
@@ -247,86 +247,47 @@ The API checks access for every requested collection.
 The server checks collection access for tools that read the datastore directly.
 See [`collection_search_server/acl.py`](collection_search_server/acl.py).
 
-## MATCH syntax: operators pass through
+## Query preparation preserves supported syntax.
 
-`sanitize_match_query` used to **strip** every operator character (`!"$()-/<@^|~*`) on the
-grounds that an LLM writes prose, not query syntax. That is wrong: the operators are
-valuable and the model is told how to use them. The canonical syntax reference lives in
-[`collection_search_server/prompts/`](collection_search_server/prompts/) and reaches the
-model as the server's FastMCP `instructions`, i.e. at tool-discovery time. The instructions
-are rendered from `SERVER_TOOLS`, the tool names this server registers, and
-`tests/test_prompts.py` fails when that list stops matching what `server.py` decorates,
-so a renamed tool is caught rather than left as prose telling a model to call something
-that no longer exists.
+Collection tools send typed requests to the website agent API.
+[The Rust match builder](../../../website/backend/src/db_utils/manticore_match.rs) prepares route-backed full-text queries.
+[The tool schema](collection_search_server/tools_search.py) supplies query forms and typed filters.
+[Server instructions](collection_search_server/prompts/) describe the tools registered by the current server.
 
-What the sanitiser does instead is head off the three shapes that come back as an HTTP 500
-the model cannot interpret, plus the empty query that is worse than an error:
+| Input | Current behavior |
+|---|---|
+| `contract -draft` | Requires the positive term and excludes the negative term. |
+| `-draft` | Returns a query error because no positive term exists. |
+| `"test` or `(test` | Repairs unmatched quotes or parentheses and returns repair notes. |
+| `water OR sewage` | Rewrites uppercase `OR` to alternation. |
+| `water AND pollution` | Removes uppercase `AND` because ordinary words are required together. |
+| `water NOT sewage` | Rewrites uppercase `NOT` to exclusion. |
+| `water and pollution` | Keeps lowercase operator words as search terms. |
+| `from:john.smith@example.com` | Removes the address prefix. A sender restriction belongs in `email_from`. |
+| `to:john.smith@example.com` | Removes the address prefix. A receiver restriction belongs in `email_to`. |
+| Empty query | Lists the documents that match the typed filters. The route omits a full-text expression. |
 
-| Input | Before | Now |
-|---|---|---|
-| `-zzz` | 500 `non-computable (single NOT operator)` | refused with "add at least one word to search for" |
-| `"test` / `(test` | 500 `syntax error, unexpected $end` | repaired to `test` / `(test)` |
-| `who paid @acme` | 500 `no field 'acme' found in schema` | searched as `who paid acme` |
-| `@title test` | 500 `no field 'title' found in schema` | searched as `title test` |
-| `''` | **matched every row in the shard** | refused |
-| `a OR b`, `a AND b`, `a NOT b` | searched for the words `OR`, `AND` and `NOT` | searched as `a \| b`, `a b`, `a -b` |
-| `name@host.com` | searched as `namehost.com` | searched as the address, with `\@` |
+The request layer escapes field operators before full-text preparation.
+The SQL literal escape remains separate from query repair.
+The backend reports repairs in `query_notes`.
+A query form that fails records its error while other forms continue.
 
-`OR`, `AND` and `NOT` are ordinary words to Manticore. `_rewrite_boolean_words` reads the
-upper-case words as `|`, as nothing and as `-`, and drops an `OR` or `NOT` with no term on
-one side. It replaces each operator word in place and changes nothing inside double quotes.
-The website search has the same rule in `website/backend/src/db_utils/manticore_match.rs`,
-and the two copies change in one patch.
+Dataset names and dataset identifiers supplied as collection names resolve to their owning collection when permitted.
+The response reports this conversion in its notes.
+Collection access still applies to every route request.
+Search rows merge by document identity and record the forms that found them.
+A `more` handle permits `read_more` to continue the result within the backend search window.
+Continuation does not expand the original search scope or remove its result ceiling.
 
-Repairs are reported back in the response's `note`, and Manticore's own error text is now
-returned in `error` rather than only logged. A syntax error the model never sees is one
-it cannot correct.
+## Wildcard matching requires indexed infixes.
 
-`search_collections` gets the repairs of the website search in `query_notes`. A `from:` or
-`to:` prefix of a word is one such repair: the prefix goes and the word stays. A dataset
-name, a `collection_dataset` value or the `collection/dataset` form in `collectionname`
-becomes the collection that holds the dataset (`tools_search.collections_for`), and the
-first line of `query_notes` says so. A name that matches no dataset reaches the route
-unchanged, so the route still refuses a collection that the user cannot read. The document
-tools apply the same rule (`tools_document._map_collections`) to a name that the caller's
-ACL does not hold, and put the note in `collection_notes` of the result. A name that the ACL
-holds costs no `collections/list` call. With a
-`queries` list, and `query` as its first form when both are given, each form is one route
-search. The rows merge by `(collectionname, file_hash)` in the order they are first found,
-and each row gets `matched_queries`, the forms that found it. A form that fails adds its
-error to `query_notes`, and the other forms still run. Each form gives the first route page
-of its rows, and a form with more rows says so in `query_notes`. The merged rows page
-through `read_more` as a `LocalPagedTool` result.
+The index configuration enables prefix and infix matching.
+An infix query needs at least three characters between its asterisks.
+Changing the infix setting requires rebuilding the affected indexes.
+A metadata setting alone does not establish that existing indexed content has changed.
+[The database guide](../../processing/database/Readme.md) describes reindexing and reload requirements.
 
-**The escaping is unchanged and is the injection barrier.** `\` and `'` are what could
-break out of the single-quoted SQL literal; that is a separate concern from the query
-language living inside it, and passing operators through does not weaken it (`"` is
-harmless in a single-quoted literal).
-
-`page_text` is the **only** full-text field. Everything else in the shard schema
-(`collection_dataset`, `file_hash`, `extracted_by`, `page_id`, `ner_*`) is an attribute
-and belongs in `WHERE`.
-
-## Wildcards work now
-
-Infix indexing was turned on in `main_services/processing/database/manticore.py` and the
-collections reindexed. Before, `doc*` returned a *wrong* answer rather than none, the
-star was dropped during tokenisation and a truncated literal was searched:
-
-| query | before | after |
-|---|---|---|
-| `document` | 16 | 16 |
-| `docum*` | 0 | 19 |
-| `*ocument*` | 0 | 42 |
-| `doc*` | **7 (wrong)** | 34 |
-| `te*t` | **3 (wrong)** | 28 |
-
-Changing that setting requires a **reindex**: `ALTER TABLE` updates the metadata and
-leaves the old index in place, so `SHOW TABLE ... SETTINGS` will report the new value
-while queries keep returning the old answers. See
-[`../../../main_services/processing/database/Readme.md`](../../../main_services/processing/database/Readme.md).
-
-## How big a `search_passages` result may be
+## Passage search results have size limits.
 
 **The size of the serialised response is the bound. The count is only a ceiling.**
 
@@ -347,7 +308,7 @@ what it says. Envelopes also vary (a deep path costs several times a shallow one
 why they are measured per hit rather than assumed.
 
 The budget matches the website's cap on a stored `tool_output`
-(`common/src/chat_types.rs`), and that is the point: a result that fits is stored whole,
+([common/src/chat_types.rs](../../../website/common/src/chat_types.rs)), and that is the point: a result that fits is stored whole,
 so `chat_messages.tool_output` is an accurate copy of what the model saw rather than a
 truncated one that cannot answer the question. Every call also logs
 `search_passages payload: N chars, K of M hit(s) returned`, which is the only place
@@ -408,7 +369,7 @@ versions:
 docker exec hoover4-mcp-collections python -m pytest tests/ -q
 ```
 
-Everything in `tests/test_acl.py` is pure (no database), because the ACL and the query
+Everything in [tests/test_acl.py](tests/test_acl.py) is pure (no database), because the ACL and the query
 sanitiser are the security-relevant parts. The operator table above is asserted case by
 case there.
 

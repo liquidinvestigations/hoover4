@@ -1,19 +1,19 @@
 # hoover4
 
 How to work in this repository. Everything else loads on demand: skills carry procedure,
-rules load themselves beside the code they govern, and `docs/` explains how the system fits
+rules load themselves beside the code they govern, and [docs/](docs) explains how the system fits
 together.
 
 ## Orientation
 
 hoover4 ingests document collections through a Temporal pipeline (`P0`–`P6`) into
-ClickHouse, Manticore and Garage, and serves them from a Dioxus website. `main_services/`
+ClickHouse, Manticore and Garage, and serves them from a Dioxus website. [main_services/](main_services)
 holds the pipeline, the MCP servers, the scanner service and the CPU model twins.
-`ai_services/` is the standalone GPU tier. `website/` is backend, frontend and shared types.
+[ai_services/](ai_services) is the standalone GPU tier. [website/](website) is backend, frontend and shared types.
 `./deploy` starts and rebuilds all of it. `hoover4.ini` is the one source of configuration,
 and the `.env` files are generated from it, so never hand-edit those. **This repository is
 public**, at `github.com/liquidinvestigations/hoover4`, so every tracked file is published and
-`docs/` with it. Keep every hostname, port, address and auth boundary out of them, and out of
+[docs/](docs) with it. Keep every hostname, port, address and auth boundary out of them, and out of
 these skills.
 Those live in the gitignored `INFRASTRUCTURE_INVENTORY.md` at the repository root.
 Use that file as the private infrastructure log. Tools may use its details for authorized operations.
@@ -140,7 +140,7 @@ example "matches by column name, not position".
 Review all headings and context-dependent warnings before completing a documentation change.
 The checks report writing defects without inferring authorship.
 
-`.agents/check-prose-style.py` reports the phrases and the em dashes, and a hook refuses an
+[.agents/check-prose-style.py](.agents/check-prose-style.py) reports the phrases and the em dashes, and a hook refuses an
 edit that adds one.
 
 ## Invariants
@@ -167,7 +167,7 @@ edit that adds one.
 - Change affected comments with the code they describe.
 - Do not edit an applied migration, including comments. The runner verifies a checksum of the complete file.
 - Use a new migration or change the reader unless the owner explicitly authorized resetting deployments that applied the migration.
-- A capability change updates its row in `docs/technical-specification/` in the same patch.
+- A capability change updates its row in [docs/technical-specification/](docs/technical-specification) in the same patch.
 - Preserve shared constants, storage identities, access checks, idempotency, and cancellation contracts when simplifying code.
 - Keep plan tags inside their defining folder. Define each short tag in a Key table when using tags.
 - Preserve local plan evidence when archiving. A gitignored folder may have no recoverable copy.
@@ -176,7 +176,7 @@ edit that adds one.
 
 Skills provide repository-specific procedures when relevant. Load only the procedure needed for the current task.
 They live in `.agents/skills/<name>/SKILL.md`. `.claude/skills` links to that directory.
-Rules in `.agents/rules/` apply beside the code they govern.
+Rules in [.agents/rules/](.agents/rules) apply beside the code they govern.
 
 | Task | Relevant skill |
 |---|---|

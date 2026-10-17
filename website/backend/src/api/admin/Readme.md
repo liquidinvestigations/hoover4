@@ -6,21 +6,21 @@ the actual gate.
 
 ## Modules
 
-- `collections.rs` / `datasets.rs` / `groups.rs` / `users.rs` / `settings.rs`, CRUD for
-  the registry tables. `settings.rs` includes `chat_enabled`, read at request time by
+- [collections.rs](collections.rs) / [datasets.rs](datasets.rs) / [groups.rs](groups.rs) / [users.rs](users.rs) / [settings.rs](settings.rs), CRUD for
+  the registry tables. [settings.rs](settings.rs) includes `chat_enabled`, read at request time by
   the chat gate.
-- `processing.rs`, collection processing status (stage bars derived from watermarks),
+- [processing.rs](processing.rs), collection processing status (stage bars derived from watermarks),
   the Temporal workflow browser, failure lists, retries, and reads of the stored
   `processing_eta_samples` (written by the `CollectEtaSamples` workflow in
-  `main_services/processing/tasks/P_admin/`, and the website never computes ETAs in a
+  [main_services/processing/tasks/P_admin/](../../../../../main_services/processing/tasks/P_admin), and the website never computes ETAs in a
   request path).
-- `dataset_ocr.rs`, per-dataset OCR languages, the `change_ocr_languages` operation and
+- [dataset_ocr.rs](dataset_ocr.rs), per-dataset OCR languages, the `change_ocr_languages` operation and
   the newest operation row a dataset page shows, the collection-level defaults new datasets
   inherit, and dataset **creation** (which was CLI-only). Two rules live here: one language
   change per dataset, refused by the operations lock rather than by a disabled button; and
   the creation form takes a folder *name* validated against the listing of
   `DATASETS_MOUNT_PATH`, never a path.
-- `operations.rs`, the operations log behind `/admin/operations` and the scoped list on
+- [operations.rs](operations.rs), the operations log behind `/admin/operations` and the scoped list on
   a collection page: reads of `operations FINAL`, the per-task error rates, and the
   dispatch path that writes the row and starts the `Operation` workflow on that row's id.
   Its `KINDS` table mirrors the processing side's registry, including which kinds are
@@ -29,19 +29,19 @@ the actual gate.
   and its own row. A fixed workflow id would make the second click resolve to the first
   click's execution and quietly do nothing. Cancellation starts `CancelOperation` with
   `cancel-{op_id}` and returns the recorded terminal state after it closes.
-- `failures.rs`, the grouped list and per-operation tree behind `/admin/failures`. Reads
+- [failures.rs](failures.rs), the grouped list and per-operation tree behind `/admin/failures`. Reads
   of the global `operation_failures` table only. Grouping is by the stored `signature`
   column. A scrubbed copy is built at read time for the copy control. The stored rows
   stay raw.
-- `metrics.rs`, aggregates for `/admin/metrics` and `/admin/users/:username/llm`, and
+- [metrics.rs](metrics.rs), aggregates for `/admin/metrics` and `/admin/users/:username/llm`, and
   `admin_get_manticore_load`, which reads Manticore's `SHOW STATUS` and the status of each
   table for the load panel of `/admin/metrics`. The model and tool time of a user comes
   from `agent_step_events`. See below.
-- `llm.rs`, the model catalog, the two models that `hoover4.ini` sets (`agent_model`,
+- [llm.rs](llm.rs), the model catalog, the two models that `hoover4.ini` sets (`agent_model`,
   `short_call_model`, read from the environment and shown read only) and the thinking switch
   (`server_settings.llm_thinking`, on when the row is absent). The `p50` and `Calls 14d`
   columns count `kind = 'chat'` rows of `llm_call_events` only. See below.
-- `llm_reports.rs`, the five reports of `/admin/llm`. See below.
+- [llm_reports.rs](llm_reports.rs), the five reports of `/admin/llm`. See below.
 
 ## `llm_models` is a ReplacingMergeTree, and both rules that follow from that
 
@@ -52,7 +52,7 @@ The table is `ReplacingMergeTree(updated_at, is_deleted)` and every read takes
    returns ids and nothing else, and a fresher row replaces every column.
    `refresh_catalog_now` reads the current state first (`prior_catalog`) and preserves the
    price and capability columns and `is_allowed`, which no code reads since `hoover4.ini`
-   sets the models. The Python catalog task (`tasks/llm_catalog.py::store_models`) does the
+   sets the models. The Python catalog task ([tasks/llm_catalog.py::store_models](../../../../../main_services/processing/tasks/llm_catalog.py)) does the
    same, because whichever writer runs last wins.
 2. **Filter deleted rows in `HAVING`, never in `WHERE`.** Every version of a row is still in
    the part, so `WHERE is_deleted = 0` drops the *tombstone version* and keeps the live one.
@@ -68,7 +68,7 @@ lists it again.
 `agent_step_events` holds one row for each attempt of an agent model call, tool call and
 title call, for 90 days. The worker's step activities write it, and the `AgentRun` workflow
 writes the row of a step that never started or lost its heartbeat, with `attempt` 0.
-`llm_reports.rs` reads it for four reports. A fifth report reads `systemone_call_events`. Each runs only when an admin clicks its "Run
+[llm_reports.rs](llm_reports.rs) reads it for four reports. A fifth report reads `systemone_call_events`. Each runs only when an admin clicks its "Run
 report" button, so a page load runs no report query.
 
 | report | rows |
@@ -123,7 +123,7 @@ Two things the panels deliberately do **not** do:
 * **Synthetic rows are excluded, not deleted.** `phase5-smoke` and `test-model` are written
   by smoke tests and by `verify-stack.sh`; the rows are evidence the check ran, so they
   stay, but a single 12 ms synthetic call dominated the p50 of a panel whose job is showing
-  how slow real turns are. `SYNTHETIC_MODEL_IDS` in `ai_status.rs` filters them out.
+  how slow real turns are. `SYNTHETIC_MODEL_IDS` in [ai_status.rs](ai_status.rs) filters them out.
 * **`circuit_open_remaining_s` is always 0 and means "n/a", not "closed".** The breakers
   live in the worker and inside each MCP server's process; the website has no channel to
   any of them. It is not rendered for that reason.
@@ -151,7 +151,7 @@ an incomplete match put a permanent unexplained defect on the page of every CPU-
 ## Telemetry (usage_events / api_events)
 
 Two rolling 24h tables in the global database (migrations `00014`/`00015`), written by
-`api/telemetry.rs` through a buffered, batch-inserted, fire-and-forget path. Telemetry
+[api/telemetry.rs](../telemetry.rs) through a buffered, batch-inserted, fire-and-forget path. Telemetry
 must never be able to fail a request, so writes drop on overflow and log at debug.
 
 **PRIVACY RULE, do not "improve" this away.** Record only:
@@ -161,7 +161,7 @@ must never be able to fail a request, so writes drop on overflow and log at debu
   `user_get_document`, `user_other_request`, `llm_chat_message`, `llm_mcp_tool_call`),
 - when (`event_ts`),
 - and, for the API table only: the Rust handler / server-function name (a bounded
-  allowlist in `telemetry.rs`, never derived from the request path), error flag,
+  allowlist in [telemetry.rs](../telemetry.rs), never derived from the request path), error flag,
   duration, bytes in/out.
 
 Never a URL, never a query string, never a document hash, never a result count. A
@@ -178,8 +178,8 @@ A request that identified nobody is recorded under the constant username `anonym
 the same reasoning as the 404 rule below. Without the row a flood of refusals would be
 invisible; with `is_error` set it would read as the site breaking.
 
-Instrumentation points: logins in `auth/session_middleware.rs`, searches in
-`api/search/`, document fetches in `api/documents/`, the `user_other_request` catch-all
+Instrumentation points: logins in [auth/session_middleware.rs](../../auth/session_middleware.rs), searches in
+[api/search/](../search), document fetches in [api/documents/](../documents), the `user_other_request` catch-all
 and all `api_events` in the session middleware (it is the only choke point that sees
 duration and byte counts), and the LLM events in the chat API via
 `telemetry::record_event`.
@@ -224,7 +224,7 @@ backend::api::telemetry::record_event(username, event_type, metadata);
 ## Retry semantics and the mutation caveat
 
 Retrying failed processing work reopens the plans containing the failed documents.
-See `processing.rs::reopen_plans_for_hashes` and `tasks/P_admin/Readme.md`, which
+See `processing.rs::reopen_plans_for_hashes` and [tasks/P_admin/Readme.md](../../../../../main_services/processing/tasks/P_admin/Readme.md), which
 documents why a bare `ExecutePlans` restart is a no-op. The accompanying
 `ALTER TABLE processing_errors DELETE` is an asynchronous ClickHouse mutation, so a
 row can briefly still appear in the failure list after a retry. Accepted, not a bug.
@@ -236,7 +236,7 @@ hashes that failed it, and leaves one error row per (document, task) however man
 is run. The counts on this page and on `/file_browser/c/<name>` are row counts, so an
 append-only retry doubles them.
 
-## A finished plan is not a successful one
+## Plan completion can include document errors.
 
 `processing_plan_finished` records that a plan's stages ran, not that every document
 survived them. The stages record per-document errors and carry on, deliberately, so one
@@ -246,38 +246,16 @@ bar it belongs to) and `StageProgress::is_complete` is false while any document 
 Without that, a stage reads `done` over documents it never processed, which is how 4 792
 documents lost their entities to an NER outage without a single bar changing colour.
 
-## TODO: deferred, with the reason
+## Verify access with distinct ordinary users.
 
-### Verify the artifact ACL with two real users, not both administrators
-
-**Deferred deliberately: this stack's proxy asserts an administrator identity by
-default.**
-
-`proxy_username`/`proxy_groups` in `hoover4.ini` name the identity every request carries,
-and the default group is `admin`, so a caller reaches `200` on **any** chat artifact. (An
-unauthenticated request still gets nowhere: the route requires an identity and answers 401
-without one. That closes the drive-by case and changes nothing about the case below, which
-is one user reading another's.) The code-level rule is correct and was reviewed:
-`/_chat_artifact/{id}/{asset}` resolves the id to its `session_id`/`username` and enforces
-owner-or-admin, returning **403 for someone else's artifact and 404 only for one that does
-not exist** (collapsing those two would hide a real permission failure behind an apparent
-missing row). What cannot be demonstrated in this configuration is the *outcome*: the
-acceptance check "a second user gets 403" passes vacuously because every caller is the
-admin.
-
-So the acceptance run must record it as **not verifiable with the default proxy
-identity**, never as passing. To close it: point the proxy at two identities whose groups
-grant neither `admin` nor `superuser`, have each open a chat that produces an artifact, and
-fetch the other's artifact id. Expected: 403, and `api_events.is_error = 0` for it (a 403
-is the system working).
-
-Until that is done, treat "the ACL is fine" as a code review result, not a test result.
-
-The same applies to the OCR'd-PDF route: `/_download_ocr_pdf/...` calls
-`permissions::assert_can_read` on the *source document's* dataset before it looks anything
-up, which is the same check `/_download_document/...` makes. With every caller an
-administrator that check passes for everyone, so it is likewise a code result rather than a
-test result, and it is closed by the same two-non-admin-identities run.
+The artifact route resolves each artifact to its session and owner before reading bytes.
+It returns 403 for another owner's artifact and 404 for an absent artifact.
+[Chat APIs](../chat/) and [document download routes](../documents/) define the access checks.
+Use two ordinary users with separate conversations to verify the ownership result.
+Administrator access does not establish the result for an ordinary user.
+OCR PDF routes verify access to the source document's dataset before reading its stored source.
+Retain code review and runtime verification as separate evidence.
+Keep the target's identity configuration in the private inventory.
 
 ## Navigation
 

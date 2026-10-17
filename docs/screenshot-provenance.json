@@ -92,6 +92,13 @@
       "sha256": "ecb26ae4d2c454d3bf1c95332ff74460839b4464750fb3221bad1f9f90db3365"
     },
     {
+      "image": "docs/user-manual/img/document-archive.png",
+      "scenario": "website/browser-tests/759-manual-fixture-archive-child.ini",
+      "revision": "8f135094df6247da4c52eb4800cf9f43bc4c0bbb",
+      "captured_at": "2026-10-17T20:01:31+00:00",
+      "sha256": "dfca0e2e20d2187042be4fb933dee913078aa74f3a24b65dda51bcffa25d4e5c"
+    },
+    {
       "image": "docs/user-manual/img/document-entity.png",
       "scenario": "website/browser-tests/726-manual-doc-entity.ini",
       "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
@@ -314,6 +321,13 @@
       "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
       "captured_at": "2026-10-17T19:45:53+00:00",
       "sha256": "811b4844f589aa56f4280e06a557f291328322f9c2f4dc23f5b0a605a127ba9e"
+    },
+    {
+      "image": "docs/user-manual/img/storage-open-in-search.png",
+      "scenario": "website/browser-tests/758-manual-fixture-folder-search.ini",
+      "revision": "2bda7fc125a9623371e53d72487adf2201af3125",
+      "captured_at": "2026-10-17T19:59:16+00:00",
+      "sha256": "bd55856913c89a1022246a4a4e18fee71be7646b74ecee58af13fd3e0c5e670b"
     },
     {
       "image": "docs/user-manual/img/storage-tree-deep.png",

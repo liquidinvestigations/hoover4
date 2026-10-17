@@ -5,12 +5,32 @@ Your account must have administrator access.
 Use this manual to manage collections, processing, users, settings, and failures.
 [The user manual](User_Manual.md) explains document investigation tasks.
 
+## Find an administration task.
+
+- [Dashboard](#dashboard)
+- [Collections](#collections)
+- [Processing](#processing)
+- [Datasets](#datasets)
+- [Errors and failures](#errors-and-failures)
+- [Feedback](#feedback)
+- [Users and groups](#users-and-groups)
+- [Settings](#settings)
+- [LLM](#llm)
+- [AI status](#ai-status)
+- [Metrics](#metrics)
+- [Inspect operations and their details.](#inspect-operations-and-their-details)
+- [Inspect document errors and operation failures.](#inspect-document-errors-and-operation-failures)
+- [Inspect model usage and service metrics.](#inspect-model-usage-and-service-metrics)
+- [Export, restore, and collect diagnostics.](#export-restore-and-collect-diagnostics)
+
 ## Dashboard
 
-Counts of users, groups, collections and datasets, each linking to its section. The Datasets
+The dashboard shows counts of users, groups, collections, and datasets. Each count links to its section. The Datasets
 card opens the Datasets section of the Collections page.
 
-![Admin dashboard](img/admin-dashboard.png)
+<a href="img/admin-dashboard.png"><img src="img/admin-dashboard.png" alt="Admin dashboard" align="right" width="560"></a>
+
+<br clear="all">
 
 ## Collections
 
@@ -20,12 +40,16 @@ otherwise. A failed operation also ends in Done. The Datasets section lists the 
 every collection with their documents, size, indexed documents, errors, state and creation
 date. The form at the bottom adds a collection.
 
-![Admin, collections](img/admin-collections.png)
+<a href="img/admin-collections.png"><img src="img/admin-collections.png" alt="Admin, collections" align="right" width="560"></a>
 
 A collection's own page lists its datasets first, then renames it, links to its processing
 view, sets its access, and shows its newest ten operations.
 
-![Admin, one collection](img/admin-collection.png)
+<br clear="all">
+
+<a href="img/admin-collection.png"><img src="img/admin-collection.png" alt="Admin, one collection" align="right" width="560"></a>
+
+<br clear="all">
 
 ## Processing
 
@@ -35,7 +59,7 @@ Open the processing view during ingestion. It shows five progress groups per dat
 count, an error count beside the dataset name, a throughput chart, what is running right
 now, and a table of where the processing time actually goes.
 
-![Admin, processing](img/admin-processing.png)
+
 
 ## Datasets
 
@@ -57,7 +81,9 @@ targets. New OCR text adds indexing targets, so the total can increase during th
 second **Run OCR** on a finished dataset sends no OCR request. A cancelled run loses no
 completed work, and the next **Run OCR** continues from it.
 
-![Admin, one dataset](img/admin-dataset.png)
+<a href="img/admin-dataset.png"><img src="img/admin-dataset.png" alt="Admin, one dataset" align="right" width="560"></a>
+
+<br clear="all">
 
 ## Errors and failures
 
@@ -68,6 +94,12 @@ each dataset and task. On the Collections page, an error count opens the errors 
 dataset.
 
 ## Feedback
+
+<a href="img/admin-feedback.png"><img src="img/admin-feedback.png" alt="Admin feedback" align="right" width="560"></a>
+
+The image shows the admin feedback controls.
+
+<br clear="all">
 
 The Feedback page lists the reports that people sent, newest first. Search finds text in the
 title, the description, the account and the page address. The status list shows the reports
@@ -80,18 +112,18 @@ read** and **Archive** are separate, so an archived report keeps its read state.
 Users are listed with their origin: the identity the proxy asserted the first time each
 one reached the site.
 
-![Admin, users](img/admin-users.png)
+
 
 A user's page edits their name, email and superuser flag, shows their group memberships, links
 to their LLM usage, and holds the delete action.
 
-![Admin, one user](img/admin-user.png)
+
 
 Groups work the same way, and a group's page is where **collection access** is granted.
 
-![Admin, groups](img/admin-groups.png)
 
-![Admin, one group](img/admin-group.png)
+
+
 
 ## Settings
 
@@ -102,7 +134,9 @@ here: `hoover4.ini` sets them. Below
 them sits the deployment configuration that is read-only because it comes from
 `hoover4.ini`.
 
-![Admin, settings](img/admin-settings.png)
+<a href="img/admin-settings.png"><img src="img/admin-settings.png" alt="Admin, settings" align="right" width="560"></a>
+
+<br clear="all">
 
 ## LLM
 
@@ -111,7 +145,9 @@ is stale, and a **Refresh catalog** button. **Models** shows, read only, the mod
 turns and the model of titles, summaries and board work, which `hoover4.ini` sets, and the
 **Thinking** switch. **Catalog** lists every model the provider offers with usage counts.
 
-![Admin, LLM](img/admin-llm.png)
+<a href="img/admin-llm.png"><img src="img/admin-llm.png" alt="Admin, LLM" align="right" width="560"></a>
+
+<br clear="all">
 
 ## AI status
 
@@ -119,7 +155,7 @@ Configured versus actually serving, per capability (embeddings, rerank, NER, OCR
 browser) with reachability and the endpoint behind each. Below it, the vector shards and the
 browser router's live session count.
 
-![Admin, AI status](img/admin-ai-status.png)
+
 
 Compare the configured and serving providers when a capability fails or returns different model information.
 
@@ -129,9 +165,23 @@ Live chat turns, then usage over the last 24 hours: events by type, events per h
 busiest users. Events record who, which route or function, and when, never a URL or a query
 string.
 
-![Admin, metrics](img/admin-metrics.png)
+<a href="img/admin-metrics.png"><img src="img/admin-metrics.png" alt="Admin, metrics" align="right" width="560"></a>
+
+<br clear="all">
 
 ## Inspect operations and their details.
+
+<a href="img/admin-operations.png"><img src="img/admin-operations.png" alt="Admin operations" align="right" width="560"></a>
+
+The image shows the admin operations controls.
+
+<br clear="all">
+
+<a href="img/admin-operation.png"><img src="img/admin-operation.png" alt="Admin operation" align="right" width="560"></a>
+
+The image shows the admin operation controls.
+
+<br clear="all">
 
 Open **Operations** to list processing and maintenance requests.
 Filter by state, operation kind, collection, or dataset.
@@ -147,6 +197,12 @@ A destructive action requires the target confirmation shown by the interface.
 Collection and dataset locks can delay or refuse conflicting work.
 
 ## Inspect document errors and operation failures.
+
+<a href="img/admin-failures.png"><img src="img/admin-failures.png" alt="Admin failures" align="right" width="560"></a>
+
+The image shows the admin failures controls.
+
+<br clear="all">
 
 Open **Errors/Failures** and select the relevant record family.
 A document error identifies a document and task.
@@ -168,7 +224,8 @@ Inspect the resulting turn state before starting replacement work.
 
 ## Export, restore, and collect diagnostics.
 
-[Administrative workflows](../../main_services/processing/tasks/P_admin/Readme.md) define collection export, restore, purge, and diagnostic commands.
+[The recovery procedure](../operations/Backup_And_Restore.md) explains collection export and restore.
+[Operations workflows](../../main_services/processing/tasks/P_ops/Readme.md) define maintenance operations.
 [The operations guide](../operations/Readme.md) links deployment and datastore procedures.
 These tasks require operator access to the command environment.
 A product administrator account does not itself supply host access.

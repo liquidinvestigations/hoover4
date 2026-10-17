@@ -43,7 +43,7 @@ any value of `[storage] volumes_path` and of the CPU keys.
 `down`, then empties the side's volume folders under `[storage] volumes_path`, in a one-shot
 container, because the files belong to the uids of the services. It never removes a folder,
 and it touches no path outside `<volumes_path>/<volume name>`. The `VOLUMES` table in
-`deploy.py` gives each folder its reset class.
+[deploy.py](../../../../deploy.py) gives each folder its reset class.
 
 Preserved across a reset:
 

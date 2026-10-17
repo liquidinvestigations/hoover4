@@ -2,7 +2,7 @@
 
 Each file in this directory is one capture scenario. The file name is the slug:
 `{number}-{section}.ini`. The capture engine reads every numbered file in slug-number
-order. `website/tools/capture_screenshots.py` is that engine.
+order. [website/tools/capture_screenshots.py](../tools/capture_screenshots.py) is that engine.
 
 `summary` is one sentence that says what the case exercises.
 Operation scenarios use `{{operation_id}}` in JavaScript actions. Pass `--operation-id ID`
@@ -36,8 +36,8 @@ A new case takes the next unused number in its block. Other blocks keep their nu
 | `expect` | one or more of `missing_page`, `error_display`, `error_bar`, comma separated. Declares that this scenario is built to reach that negative state, and reclassifies the matching observation from `application_error` to `expected_outcome`. `allow_error_markers` and `allow_http_errors` only suppress an unrelated, already-known exemption. They do not assert that the state was observed, so a scenario built to demonstrate one uses `expect` instead |
 | `scroll_captures` | one or more pixel offsets, comma separated. An extra same-size capture at each offset, for a page taller than the viewport, beside the primary capture at offset 0 |
 | `manual_asset` | the stable filename [docs/user-manual/User_Manual.md](../../docs/user-manual/User_Manual.md) links for this scenario's capture. The runner records it in the manifest beside the capture it names. It never renames the PNG file itself, so a document that changes keeps the manual's link valid |
-| `requires_dataset` | a page whose route or assertions are tied to one dataset names it here (several, comma-separated, if it needs more than one; `any` if it needs one of the four datasets `main_services/verify-stack.sh` always ingests, testdata_testfiles, testdata_zips, testdata_shapes, other_emails, but not a specific one). The capture wrapper skips a page whose dataset is not on the running site, with the missing dataset named, rather than failing it. A page with no `requires_dataset` renders without the corpus |
-| `procedure` | name of a Python procedure in `procedures/` |
+| `requires_dataset` | a page whose route or assertions are tied to one dataset names it here (several, comma-separated, if it needs more than one; `any` if it needs one of the four datasets [main_services/verify-stack.sh](../../main_services/verify-stack.sh) always ingests, testdata_testfiles, testdata_zips, testdata_shapes, other_emails, but not a specific one). The capture wrapper skips a page whose dataset is not on the running site, with the missing dataset named, rather than failing it. A page with no `requires_dataset` renders without the corpus |
+| `procedure` | name of a Python procedure in [procedures/](procedures) |
 | `summary` | one sentence that says what the case exercises |
 
 Verbs: `goto`, `wait_text`, `wait_css`, `click_text`, `click_css`, `type_css` (SEL :: TEXT),
@@ -47,16 +47,16 @@ Verbs: `goto`, `wait_text`, `wait_css`, `click_text`, `click_css`, `type_css` (S
 The long base64 segments are CBOR-encoded route parameters. They are written out rather
 than driven through the UI because typing into the home box and waiting for a
 navigation is three failure modes to reach a page that a URL reaches in one. See
-`frontend/src/data_definitions/url_param.rs`. `9g==` is `None`.
+[frontend/src/data_definitions/url_param.rs](../frontend/src/data_definitions/url_param.rs). `9g==` is `None`.
 
 ## Procedures
 
-`procedures/` holds one Python file per manual procedure. The file name is the procedure
-name used in the `procedure` key. `website/tools/manual_qa_runtime.py` loads that directory
+[procedures/](procedures) holds one Python file per manual procedure. The file name is the procedure
+name used in the `procedure` key. [website/tools/manual_qa_runtime.py](../tools/manual_qa_runtime.py) loads that directory
 and keeps the shared helpers.
 
 ## Restoring a concatenated ini
 
-`website/tools/split_browser_tests.py` writes this directory from a concatenated ini.
-`website/tools/verify_browser_test_split.py` compares the parsed scenario list from that
+[website/tools/split_browser_tests.py](../tools/split_browser_tests.py) writes this directory from a concatenated ini.
+[website/tools/verify_browser_test_split.py](../tools/verify_browser_test_split.py) compares the parsed scenario list from that
 ini with this directory.

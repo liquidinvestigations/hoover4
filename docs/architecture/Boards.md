@@ -244,24 +244,23 @@ and derives a legacy id only for a legacy event without them.
 
 ## The fold
 
-`tasks/P_board/fold.py` derives the state of a board from its events and facts. It reads no
+[tasks/P_board/fold.py](../../main_services/processing/tasks/P_board/fold.py) derives the state of a board from its events and facts. It reads no
 storage and no clock. The module docstring lists the rules. These rules have the most effect.
 
 ```mermaid
 stateDiagram-v2
     accTitle: Board status transitions
     accDescr: Person actions and assessment events move boards between active, paused, review, completed, and dropped states.
-    [*] --> active: board_created
-    active --> paused: pause_requested
-    paused --> active: resume_requested
-    active --> review: answers proposed
-    review --> active: rejection or new work
-    review --> completed: answers accepted
-    completed --> active: goal added, reopening
-    active --> dropped: drop
-    paused --> dropped: drop
-    review --> dropped: drop
-    completed --> dropped: drop
+    state "Retained board" as retained {
+        [*] --> active: board_created
+        active --> paused: pause
+        paused --> active: resume
+        active --> review: propose answers
+        review --> active: reject or add work
+        review --> completed: accept answers
+        completed --> active: add goal
+    }
+    retained --> dropped: drop
 ```
 
 - A pause, a resume, a decision and a drop apply in event order. The worker proposes, and a
@@ -430,7 +429,7 @@ reload message.
 
 ## The graph
 
-The explorer and the overview thumbnail draw one graph (`components/board_graph.rs`). x is
+The explorer and the overview thumbnail draw one graph ([components/board_graph.rs](../../website/frontend/src/components/board_graph.rs)). x is
 depth: the background context is the first column, the goals are the last column, and every
 other node is one column after the deepest node it comes from. Open questions have no node.
 The fact pane lists them. The edges follow the encoding of Cairn, which
@@ -503,14 +502,14 @@ base budget and 30 at the cap.
 | Limit | Value | Where |
 |---|---|---|
 | Board model work of all boards together | `server_settings` key `board_max_parallel_explores`, default 1 | `/admin/settings` |
-| Explores of one board | See [Budget](#budget). At most 300. | `tasks/P_board/model.py` |
-| Model steps of one explore | 60, growing with corrections, late goals and hints to at most 120 | `tasks/P_board/model.py` |
+| Explores of one board | See [Budget](#budget). At most 300. | [tasks/P_board/model.py](../../main_services/processing/tasks/P_board/model.py) |
+| Model steps of one explore | 60, growing with corrections, late goals and hints to at most 120 | [tasks/P_board/model.py](../../main_services/processing/tasks/P_board/model.py) |
 | Goals of one board | 1 to 6 | `common::board_types::MAX_GOALS` |
-| Attempts of one intent | 2 | `tasks/P_board/model.py` |
-| Intents kept from one assessment | 3 | `tasks/P_board/model.py` |
-| Open questions in one assessment prompt | 20 | `tasks/P_board/prompts.py` (`PROMPT_QUESTIONS`) |
-| Output tokens of one assessment, reasoning included | 16,000 | `tasks/P_board/model.py` (`REASON_MAX_TOKENS`) |
-| Commands of one step of the command writer | 20 | `tasks/P_board/command_workflows.py` |
+| Attempts of one intent | 2 | [tasks/P_board/model.py](../../main_services/processing/tasks/P_board/model.py) |
+| Intents kept from one assessment | 3 | [tasks/P_board/model.py](../../main_services/processing/tasks/P_board/model.py) |
+| Open questions in one assessment prompt | 20 | [tasks/P_board/prompts.py](../../main_services/processing/tasks/P_board/prompts.py) (`PROMPT_QUESTIONS`) |
+| Output tokens of one assessment, reasoning included | 16,000 | [tasks/P_board/model.py](../../main_services/processing/tasks/P_board/model.py) (`REASON_MAX_TOKENS`) |
+| Commands of one step of the command writer | 20 | [tasks/P_board/command_workflows.py](../../main_services/processing/tasks/P_board/command_workflows.py) |
 
 Each running explore, each assessment in flight and each start command that waits uses one
 slot of the global cap. A free slot goes first to the board with the least work in flight,
@@ -520,7 +519,7 @@ queues, so a board turn competes with the chats of people.
 
 ## Changing the board workflows
 
-A change to `tasks/P_board/workflows.py` that schedules a different command for an existing
+A change to [tasks/P_board/workflows.py](../../main_services/processing/tasks/P_board/workflows.py) that schedules a different command for an existing
 history event needs the drain of
 [`tasks/Readme.md`](../../main_services/processing/tasks/Readme.md). Terminate
 `board-dispatcher`, cancel every `board-explore-*` workflow, deploy, and let the worker start

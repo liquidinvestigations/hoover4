@@ -5,12 +5,12 @@ plane. Three Rust crates in one workspace.
 
 ## Components
 
-- `frontend/`, the Dioxus UI compiled to WASM: routed pages for search, the document view,
-  the file browser and chat, with components under `frontend/src/components/`.
-- `backend/`, the server: API modules by feature under `backend/src/api/`, authentication
-  under `backend/src/auth/`, database helpers under `backend/src/db_utils/`,
-  `backend/src/db_chat/` and `backend/src/db_auth/`.
-- `common/`, types and constants shared by both halves. **Anything mirrored across the
+- [frontend/](frontend), the Dioxus UI compiled to WASM: routed pages for search, the document view,
+  the file browser and chat, with components under [frontend/src/components/](frontend/src/components).
+- [backend/](backend), the server: API modules by feature under [backend/src/api/](backend/src/api), authentication
+  under [backend/src/auth/](backend/src/auth), database helpers under [backend/src/db_utils/](backend/src/db_utils),
+  [backend/src/db_chat/](backend/src/db_chat) and [backend/src/db_auth/](backend/src/db_auth).
+- [common/](common), types and constants shared by both halves. **Anything mirrored across the
   language boundary belongs here**, including the stage identifiers the pipeline stores and
   the extractor-key formatter.
 
@@ -22,9 +22,9 @@ the vectors daemon. The backend also uses the blob store for document bytes and 
 services for chat. Every URL is a key in `hoover4.ini`, rendered into the generated `.env`;
 [docs/operations/Configuration_Reference.md](../docs/operations/Configuration_Reference.md) lists them with their consumers.
 
-## How it is structured, and why
+## The website separates shared types, backend, and frontend.
 
-The explanations live in `docs/`, because they outlive any one change here:
+The explanations live in [docs/](../docs), because they outlive any one change here:
 
 | subject | page |
 |---|---|
@@ -122,7 +122,7 @@ table viewer reads it. A cell over 2,000 characters is cut and marked with `cut`
 past 200 values with `ValueKey` positions. `tables/search_cells` pages 200 hits with `Offset`
 positions.
 
-`scripts/test-agent-api-contract.sh` calls every route against the running site, plus the four
+[scripts/test-agent-api-contract.sh](../scripts/test-agent-api-contract.sh) calls every route against the running site, plus the four
 identity refusals, one forbidden-collection case, and the search, folder, document and table
 paging cases, and exits nonzero on the first failure. The table cases read the `testdata_tables`
 dataset: one workbook with one sheet of more than 1,000,000 rows and more than 60 columns, and
@@ -135,12 +135,12 @@ fixture is generated and ingested with `add-disk-dataset testdata tables <root>`
 |---|---|
 | unit (Rust) | `cargo test --offline` inside `hoover4-website`, Rust is at `/usr/local/cargo/bin` there and is not on `$PATH` |
 | type check, test targets included | `cargo check --workspace --tests --offline`, a plain `cargo check` does not build test binaries, so it cannot see a broken one |
-| hook order | `dx check --package frontend`; `run-stack-tests.sh` and `development.sh` both run it first |
-| live stack | `./run-stack-tests.sh` (fast only), `./run-stack-tests.sh --slow` (everything) |
-| whole stack | `main_services/verify-stack.sh` |
-| agent routes | `scripts/test-agent-api-contract.sh`, against the running site |
-| screenshots | `./take-screenshots.sh` |
-| chat observation | `./observe-chat.sh` |
+| hook order | `dx check --package frontend`; [run-stack-tests.sh](run-stack-tests.sh) and [development.sh](development.sh) both run it first |
+| live stack | [./run-stack-tests.sh](run-stack-tests.sh) (fast only), `./run-stack-tests.sh --slow` (everything) |
+| whole stack | [main_services/verify-stack.sh](../main_services/verify-stack.sh) |
+| agent routes | [scripts/test-agent-api-contract.sh](../scripts/test-agent-api-contract.sh), against the running site |
+| screenshots | [./take-screenshots.sh](take-screenshots.sh) |
+| chat observation | [./observe-chat.sh](observe-chat.sh) |
 
 **Both fixture-driven suites separate their corpus-dependent cases from their
 corpus-independent ones.** A screenshot page that names a missing dataset is
@@ -155,9 +155,9 @@ configure the service URLs in `.env.development` from `.env.development.example`
 `website_release_mode` in `hoover4.ini` picks between the dev server and a release build:
 [main_services/ops/Readme.md](../main_services/ops/Readme.md) has the comparison.
 
-Browser work packages can use the ignored `TEST_LOGIN.env` beside `take-screenshots.sh`.
+Browser work packages can use the ignored `TEST_LOGIN.env` beside [take-screenshots.sh](take-screenshots.sh).
 [`TEST_LOGIN.env.example`](TEST_LOGIN.env.example) defines the account input keys for agents.
-`take-screenshots.sh` and `observe-chat.sh` both load this file automatically when no
+[take-screenshots.sh](take-screenshots.sh) and [observe-chat.sh](observe-chat.sh) both load this file automatically when no
 `HOOVER4_TEST_USERNAME`/`HOOVER4_TEST_PASSWORD` pair is supplied. Pass `--login-env FILE`
 to name another file. Credential values are not accepted as `--username` or `--password`
 arguments.

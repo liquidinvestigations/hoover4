@@ -13,8 +13,7 @@
 `get_symbols_overview` with `relative_path:
 main_services/processing/tasks/P3_parse_files/parse_email.py` returns the module's classes
 and functions with their line ranges and nothing else. That is the replacement for
-`sed -n '1,80p'` on an unfamiliar file: it costs a few hundred tokens and tells you which
-line range is worth reading.
+`sed -n '1,80p'` on an unfamiliar file: it costs a few hundred tokens and identifies the line range to read.
 
 ## A single symbol's body
 

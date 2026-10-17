@@ -56,4 +56,4 @@ two hides a real permission failure behind an apparent missing row.
 **A bucket comes out of the row's stored path**, never from this process's configuration.
 
 Before reporting a change done, run the type check above and read its output, and run
-`.agents/skills/reviewing-changes/scripts/check-diff-comments.sh` over the diff.
+[.agents/skills/reviewing-changes/scripts/check-diff-comments.sh](../skills/reviewing-changes/scripts/check-diff-comments.sh) over the diff.

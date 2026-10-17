@@ -9,5 +9,5 @@ How to change the system.
 - [Documentation_Standards.md](Documentation_Standards.md), how documentation and comments are written here
 - [Known_Defects.md](Known_Defects.md), behaviour confirmed wrong or confirmed deliberate, with the command that shows it
 
-Procedure an agent loads mid-task lives in `.agents/skills/` instead; these pages are the
+Procedure an agent loads mid-task lives in [.agents/skills/](../../.agents/skills) instead; these pages are the
 explanation a person reads before there is a task.

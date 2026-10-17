@@ -1,20 +1,20 @@
 # Operations
 
-This directory provides the runtime environment for Hoover4 main services. The `docker/` folder contains Docker Compose definitions and configuration overrides used to run processing dependencies.
+This directory provides the runtime environment for Hoover4 main services. The [docker/](docker) folder contains Docker Compose definitions and configuration overrides used to run processing dependencies.
 
 ## Serena (dev tooling, optional)
 
-`docker/serena/` builds the Serena MCP server image and `docker/compose/serena.yaml` is
+[docker/serena/](docker/serena) builds the Serena MCP server image and [docker/compose/serena.yaml](docker/compose/serena.yaml) is
 its optional overlay. Serena gives the host-side coding agent symbolic code navigation
 (python + rust) over this repository. It can read and write the whole checkout, so it is
 published on `127.0.0.1:21940` only. The repo is mounted at the identical absolute path
-as on the host (`HOOVER4_REPO_ROOT`, set by `deploy.py`), and all language-server state
+as on the host (`HOOVER4_REPO_ROOT`, set by [deploy.py](../../deploy.py)), and all language-server state
 (venvs, cargo target/registry, Serena home) lives in the `serena_state` folder under
 `[storage] volumes_path`, never in the checkout. Resets never empty that folder or remove the
 container, and it is deployed as its
 own compose project so that a `down` or a `--reset` on the main stack cannot select it. The
-MCP endpoint is `http://127.0.0.1:21940/mcp` over streamable HTTP (see `.mcp.json` at the
-repo root, and `docker/serena/entrypoint.sh` for why that transport and not SSE).
+MCP endpoint is `http://127.0.0.1:21940/mcp` over streamable HTTP (see [.mcp.json](../../.mcp.json) at the
+repo root, and [docker/serena/entrypoint.sh](docker/serena/entrypoint.sh) for why that transport and not SSE).
 
 ## Docker Compose Services
 
@@ -30,7 +30,7 @@ The stack includes:
 
 ## Publishing images
 
-`publish-images.sh` builds every image this tree owns and pushes it to the local Nomad
+[publish-images.sh](publish-images.sh) builds every image this tree owns and pushes it to the local Nomad
 cluster's own image registry, for Nomad to pull later. Run it by hand:
 
 ```
@@ -78,7 +78,7 @@ a dozen activities a second while the workers consume a fraction of one core, an
 task type's queue wait shares the same p99. The signature of a fleet that is waiting on
 the server rather than on itself. **The count is fixed for the life of the persistence
 store**: the server refuses to open a keyspace initialised with a different one.
-`deploy.py` preflights the running cluster against the ini and names both numbers rather
+[deploy.py](../../deploy.py) preflights the running cluster against the ini and names both numbers rather
 than letting the server die with a Cassandra error, and `./deploy --reset-temporal` drops
 Temporal's Cassandra keyspace and Elasticsearch index so a new count can take. That reset
 loses workflow history, which the `temporal_retention` key caps (default `168h`) with
@@ -98,7 +98,7 @@ writing there, so setting it would throttle rather than lift.
 A duplicate mapping key is the one that bites: podman-compose takes the file and runs,
 Docker Compose refuses it with `mapping key "driver" already defined`. The usual way to
 create one is an edit that removes a volume's or service's name line and leaves the
-indented line under it to attach to whatever came before. `deploy.py` preflights every
+indented line under it to attach to whatever came before. [deploy.py](../../deploy.py) preflights every
 compose file it is about to use with a loader that rejects duplicates. Note that
 PyYAML's own `safe_load` does not, and it silently keeps the last one, so the failure is
 named on both hosts instead of only on the Docker one.
@@ -140,7 +140,7 @@ usage.
 
 ## Endpoints (local defaults)
 
-Ports are ini keys in `hoover4.ini`, rendered by `deploy.py`; the values below are the
+Ports are ini keys in `hoover4.ini`, rendered by [deploy.py](../../deploy.py); the values below are the
 defaults. `12345` stays hardcoded, which is the one port a human types. The website
 answers on it directly by default. With `development_auth_backdoor_enabled = true`,
 `hoover4-development-auth-backdoor`, a header-setting reverse proxy, takes `12345`
@@ -171,7 +171,7 @@ compose network, on `8080`.
 | serena | `http://127.0.0.1:21940/mcp` | symbolic code navigation for the host-side agent, dev tooling only |
 
 Credentials for the two ClickHouse consoles come from the generated `.env` next to the
-compose files, which `deploy.py` renders from `hoover4.ini`. No credential value belongs in
+compose files, which [deploy.py](../../deploy.py) renders from `hoover4.ini`. No credential value belongs in
 this file.
 
 ## Technical Details
@@ -180,7 +180,7 @@ This directory provides Docker Compose configuration and runtime overrides for t
 
 Configuration lives in `hoover4.ini` at the repository root, and the two shipped
 templates are `hoover4.ini.release` and `hoover4.ini.development`.
-`deploy.py` renders it into a generated `.env` in this directory, never edit that file
+[deploy.py](../../deploy.py) renders it into a generated `.env` in this directory, never edit that file
 by hand. Deploy from the repo root with `./deploy` (see the root [Readme.md](../../Readme.md)); the base
 `docker-compose.yaml` is the always-on core and `compose/*.yaml` are optional overlays
 selected by ini flags.
@@ -242,9 +242,9 @@ Both cost time the first time and neither is discoverable from the error.
 
 ## Rate-limit environment (paste into the `hoover4-website` service)
 
-The website rate limiter (`website/backend/src/api/rate_limit.rs`) defaults every knob
+The website rate limiter ([website/backend/src/api/rate_limit.rs](../../website/backend/src/api/rate_limit.rs)) defaults every knob
 in Rust, so the stack runs unconfigured. These are the same names and values, ready to
-paste into `docker/docker-compose.yaml` for the integrator to tune. **The block is not
+paste into [docker/docker-compose.yaml](docker/docker-compose.yaml) for the integrator to tune. **The block is not
 in the compose file**, deliberately, so the Rust defaults stay the single source of truth
 until someone needs to override them.
 
@@ -308,7 +308,7 @@ above was measured this way (scripted flood, 1380 calls / 5 min).
 
 `website_release_mode` in `hoover4.ini` picks between the two. It is `false` by default.
 
-| | `false`, `dx serve` | `true`, `compose/website-release.yaml` |
+| | `false`, `dx serve` | `true`, [compose/website-release.yaml](docker/compose/website-release.yaml) |
 |---|---|---|
 | build | on start, and again on every source change | once, at boot |
 | dev overlay | "Your app is being rebuilt." on every page | none |
@@ -322,16 +322,9 @@ the served HTML for every fresh profile, not a session-local nag, and the boot r
 was observed 500ing `/admin/ai_status` for about five minutes. A visitor should get the
 release build; whoever is writing the code should not.
 
-Two related fixes landed with it:
-
-* **The dx CLI version must equal the `dioxus` version in `Cargo.lock`** (0.7.9 today).
-  A mismatch prints `ERROR 🚫dx and dioxus versions are incompatible!` at every boot and
-  means the two halves disagree about the built app's manifest format.
-* **The build-cache volume was mounted one directory too deep**
-  (`/app/frontend/target`, while the workspace manifest is at `/app`, so cargo writes to
-  `/app/target`). The named volume held nothing and the 3 GB build tree lived in the
-  container's writable layer, which is precisely why recreating the container cost a
-  multi-minute cold rebuild. Now mounted at `/app/target`.
+The dx CLI version must match the workspace Dioxus version in `Cargo.lock`.
+The website build cache mounts at `/app/target`, which is the workspace target directory.
+Recreating the container preserves that named volume unless the selected reset removes it.
 
 ### Known: the first release boot is a cold build
 

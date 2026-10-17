@@ -9,7 +9,7 @@ the container network, and then drives the container runtime.
 - [Configuration flows one way](#configuration-flows-one-way)
 - [Secrets](#secrets)
 - [Before you deploy anything](#before-you-deploy-anything)
-- [What a deploy does not do](#what-a-deploy-does-not-do)
+- [Verify tasks outside deployment.](#verify-tasks-outside-deployment)
 - [Reading a build](#reading-a-build)
 - [Resetting](#resetting)
 - [After a deploy](#after-a-deploy)
@@ -32,8 +32,7 @@ The two sides are never brought up by one command. The main stack is the pipelin
 datastores, the website, the MCP servers and the CPU model twins; the accelerated tier is a
 separate compose project on its own private network.
 
-The order inside a normal run is worth knowing, because two of the steps only exist because
-of a failure they prevent:
+A normal deployment uses these steps:
 
 1. Create `[storage] volumes_path` and one folder in it for each volume of the side, then
    preflight the configuration and the runtime.
@@ -56,7 +55,7 @@ It recreates services that still use an older image.
 `hoover4.ini` at the repository root is the single source. It is gitignored. Two
 templates ship beside it, `hoover4.ini.release` and `hoover4.ini.development`. Release
 is the default a fresh checkout copies. Development also turns on a container that
-bypasses sign-in. `deploy.py` renders `hoover4.ini` into the generated `.env` files
+bypasses sign-in. [deploy.py](../../deploy.py) renders `hoover4.ini` into the generated `.env` files
 next to the compose files.
 
 **Never hand-edit a generated `.env`.** The next deploy overwrites it, and until then the
@@ -110,7 +109,7 @@ drain first. The worker's own restart is graceful. In-flight activities get
 stop grace period is derived from the same key, but no graceful period helps a replay that
 no longer matches its history.
 
-## What a deploy does not do
+## Verify tasks outside deployment.
 
 **Bringing containers up is a no-op with opinions rather than a deployment.** It reuses
 existing images and containers, so a broken build context, a changed ignore file and new
@@ -124,7 +123,7 @@ reached. It is two commands: `./deploy --reset`, then `./deploy --build`.
 exited.** A `restart` refuses because an initialisation container is `Exited (0)`, which is
 its correct final state. Stop and then start works.
 
-**Restarting the worker by hand needs `main_services/restart-worker.sh`.** A direct
+**Restarting the worker by hand needs [main_services/restart-worker.sh](../../main_services/restart-worker.sh).** A direct
 `docker stop` or `docker restart` kills through the drain after ten seconds however the
 graceful period is configured: the runtime applies the compose file's stop grace period only
 when it is the one stopping the container, and the value cannot be set on the container
@@ -144,7 +143,7 @@ subdirectory therefore points somewhere else entirely from where it reads as poi
 Never judge a build from its last fifty lines: the interesting failure is usually thousands
 of lines above the end, and reading only the tail has cost a full rebuild cycle to recover.
 Redirect the whole run to a file and grep it:
-`.agents/skills/deploying-the-stack/scripts/deploy-logged.sh` does exactly that and prints
+[.agents/skills/deploying-the-stack/scripts/deploy-logged.sh](../../.agents/skills/deploying-the-stack/scripts/deploy-logged.sh) does exactly that and prints
 the exit status on its own line.
 
 **Build parallelism is bounded by one build argument**, which feeds every backend's own
@@ -156,7 +155,7 @@ one of them loses the bound and takes the machine down with it.
 Every volume is a folder `<volumes_path>/<volume name>` that the compose files bind-mount.
 A reset stops this compose project and then **empties the folders** of its side, in a
 one-shot container, because the files belong to the uids of the services. It never removes
-a folder or `volumes_path`, and it touches no other path. The `VOLUMES` table in `deploy.py`
+a folder or `volumes_path`, and it touches no other path. The `VOLUMES` table in [deploy.py](../../deploy.py)
 gives each folder its reset class.
 
 Preserved across a reset: the symbol-navigation server and its state folder, because they

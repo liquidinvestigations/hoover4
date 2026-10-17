@@ -14,12 +14,12 @@ singleton, rather than as part of ingestion.
 - Report what such a purge would delete, per store and per table (`count_dataset_rows`),
   so a destructive command can say what it is about to do before it does it.
 - Select historical Error rows for retry, then reconcile those rows after plan execution
-  (`failed_file_retry.py`).
+  ([failed_file_retry.py](failed_file_retry.py)).
 - Collect ETA samples for the admin processing page (`CollectEtaSamples`).
 - Apply a dataset's new OCR languages end to end (`ChangeOcrLanguages`): write the
   settings, reopen the plans holding OCR candidates, re-run them, then purge the variants
   the change dropped, from ClickHouse, then Manticore, then Garage. The order is the
-  point; `ocr_languages.py`'s module docstring says why each step cannot move.
+  point; [ocr_languages.py](ocr_languages.py)'s module docstring says why each step cannot move.
 - Bring every OCR target of a dataset to done with unchanged settings (`RerunOcr`, the
   "Run OCR" button). See "Run OCR" below.
 
@@ -29,20 +29,20 @@ exactly one source of truth in Python.
 ## Entry Points
 
 - Workflows: `EnsureCollectionDatabase`, `DropCollectionDatabase`, `PurgeDataset`,
-  `ChangeOcrLanguages`, `RerunOcr`, `OcrRunPlan`, `CollectEtaSamples` in `workflows.py`
+  `ChangeOcrLanguages`, `RerunOcr`, `OcrRunPlan`, `CollectEtaSamples` in [workflows.py](workflows.py)
 - Activities: `ensure_collection_database`, `drop_collection_database`,
   `purge_dataset_from_manticore`, `purge_dataset_from_clickhouse`,
-  `recompute_shard_ledger_activity`, `collect_eta_samples` in `activities.py`
-- Run OCR: `ocr_rerun.py` (the activities `record_ocr_run_targets`,
+  `recompute_shard_ledger_activity`, `collect_eta_samples` in [activities.py](activities.py)
+- Run OCR: [ocr_rerun.py](ocr_rerun.py) (the activities `record_ocr_run_targets`,
   `list_ocr_run_plans`, `load_ocr_run_plan`, `settle_ocr_run_targets`,
   `ocr_text_pending_index` and `verify_ocr_run_completion`), the `OcrRunPlan` workflow in
-  `workflows.py`, and the target rule in `tasks/ocr_targets.py`
-- OCR languages: `ocr_languages.py` (the variant diff, the purge, and the stage reports
+  [workflows.py](workflows.py), and the target rule in [tasks/ocr_targets.py](../ocr_targets.py)
+- OCR languages: [ocr_languages.py](ocr_languages.py) (the variant diff, the purge, and the stage reports
   it merges into the operation row the admin form polls)
-- ETA logic: `eta_collector.py` (SQL, rates and throttle, documented in its module docstring)
-- Error selection: `failed_file_retry.py` (the ClickHouse reads and deletes that prepare
+- ETA logic: [eta_collector.py](eta_collector.py) (SQL, rates and throttle, documented in its module docstring)
+- Error selection: [failed_file_retry.py](failed_file_retry.py) (the ClickHouse reads and deletes that prepare
   selected Error rows for plan execution)
-- Collection backfill: `collection_backfill.py` clears unattributed entities once and
+- Collection backfill: [collection_backfill.py](collection_backfill.py) clears unattributed entities once and
   returns finished plans in pages of at most 100.
 - Queue: `processing-common-queue`
 - CLI: `main.py ensure-collection <collectionname>`, `main.py purge-dataset
@@ -64,7 +64,7 @@ PDF cursor children read stored part metadata and keep repeated part activity ev
 Completion failures include at most five remaining file, stage, engine, and language identities.
 Earlier workflow branches retain the complete descriptor activity and its original result schema.
 
-`RerunOcr` makes no OCR request for a target that is already done. `tasks/ocr_targets.py`
+`RerunOcr` makes no OCR request for a target that is already done. [tasks/ocr_targets.py](../ocr_targets.py)
 defines the targets and the done rule. A run has these steps.
 
 1. It runs the unfinished plans and the blobs without a plan through `ExecutePlans`, with
@@ -153,11 +153,11 @@ It deletes older Error rows for every selected pair and every pair with a curren
 Supported unresolved pairs count as still failing. Unsupported task names count separately.
 ClickHouse mutations use `mutations_sync = 2`.
 
-## A finished plan is not a successful one
+## Plan completion can include document errors.
 
 `processing_plan_finished` records that a plan's stages ran, not that every document
 survived them. The admin processing page therefore counts failed documents per stage
-(`api/admin/processing.rs::stage_for_task`) and a stage with any failures never renders
+([api/admin/processing.rs::stage_for_task](../../../../website/backend/src/api/admin/processing.rs)) and a stage with any failures never renders
 as complete, otherwise 4 792 documents can lose their entities to an NER outage while
 every bar reads done.
 

@@ -6,7 +6,7 @@ hang off them. A span this scanner produces is only useful once it lands somewhe
 every rule names the schema and property its extraction feeds, and the mapping travels with the rule
 rather than living in the code of a consumer.
 
-The mapping is a field on every catalogue entry (`FtmMapping` in `src/explain/catalog.rs`) and is
+The mapping is a field on every catalogue entry (`FtmMapping` in [src/explain/catalog.rs](../src/explain/catalog.rs)) and is
 served on `GET /rules/{rule_id}` beside everything else known about the rule. A rule without one
 fails the test suite.
 

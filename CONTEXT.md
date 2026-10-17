@@ -75,7 +75,7 @@ index. In the search index, a term is a facet's normalised value, kept in a term
 and distinct from the entity it was extracted from.
 
 **Tier**:
-In `ai_services/`, a tier is the GPU service tier. A planned pass names a logical role.
+In [ai_services/](ai_services), a tier is the GPU service tier. A planned pass names a logical role.
 The harness maps that role to a model. The plan names its harness for cost estimates.
 In the signal lexicon, a tier is the L, M, or H class that sets a term's scoring points.
 

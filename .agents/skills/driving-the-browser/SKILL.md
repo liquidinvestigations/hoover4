@@ -6,9 +6,9 @@ allowed-tools: Bash, Read, Grep, Glob, mcp__hoover4-browser__browser_navigate, m
 
 # Driving the browser
 
-Use `website/take-screenshots.sh` for rendered-page checks.
+Use [website/take-screenshots.sh](../../../website/take-screenshots.sh) for rendered-page checks.
 Select the affected cases with its `--only` option.
-Use `website/observe-chat.sh` for a real chat conversation and preserve the run report.
+Use [website/observe-chat.sh](../../../website/observe-chat.sh) for a real chat conversation and preserve the run report.
 
 Verify required fixtures before interpreting failures.
 Read the report and captured output, including diagnostic warnings.

@@ -8,7 +8,7 @@ paths: website/frontend/**
 
 **No emoji, anywhere in the interface.** Every glyph comes from the icon crate, so it scales,
 inherits colour, and renders identically on every platform. The families in use are listed in
-`website/frontend/Cargo.toml`; a family that is not enabled produces a compile error naming
+[website/frontend/Cargo.toml](../../website/frontend/Cargo.toml); a family that is not enabled produces a compile error naming
 only the icon, which reads like a typo rather than a missing dependency. Check the feature
 list before assuming the name is wrong.
 
@@ -49,7 +49,7 @@ rest, including the two input traps that make typing into this frontend silently
 
 ## If you add, remove or re-scope a control
 
-Edit its row in `docs/technical-specification/interface/` in the **same patch**. A control
+Edit its row in [docs/technical-specification/interface/](../../docs/technical-specification/interface) in the **same patch**. A control
 with no row was never agreed; a row with no control is false. Layout, wording, colour and
 ordering are not specified there, only what a user can ask for.
 

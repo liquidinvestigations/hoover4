@@ -8,7 +8,7 @@ decides and which code reads it.
 ## Contents
 
 - [How configuration flows](#how-configuration-flows)
-- [The standing rule about keys](#the-standing-rule-about-keys)
+- [Store credential file paths in configuration.](#store-credential-file-paths-in-configuration)
 - [`[storage]`](#storage)
 - [`[ai_services]`](#ai_services)
 - [`[main_services]`](#main_services)
@@ -33,13 +33,13 @@ project; `[main_services]` feeds everything else. The two hosts hold **identical
 this file, copied by hand, which is why the stack verification compares a configuration
 fingerprint between them: it will drift.
 
-## The standing rule about keys
+## Store credential file paths in configuration.
 
 **A key that is rendered and read by nothing is false.** Several have reached a worker's
 environment with no consumer, and the feature they named silently did not exist.
 
 When adding a key, grep for its consumer **in the same change**, or record it here as
-not-yet-implemented. `website/tools/check-spec-drift.sh` reports keys in the template that
+not-yet-implemented. [website/tools/check-spec-drift.sh](../../website/tools/check-spec-drift.sh) reports keys in the template that
 this page does not name, and keys that nothing in the tree reads.
 
 **Ports are keys, not literals.** A connection refused against a hard-coded number is usually
@@ -47,13 +47,13 @@ the port having moved. The website's port is the single exception, because a per
 
 ## `[storage]`
 
-One key, `volumes_path`, read by `deploy.py` on both sides. It is mandatory, and it must be an
+One key, `volumes_path`, read by [deploy.py](../../deploy.py) on both sides. It is mandatory, and it must be an
 absolute host path, for example `/srv/hoover4-volumes`. Each host sets its own value.
 
 Every container keeps its data in a folder `<volumes_path>/<volume name>`, which the compose
-files bind-mount. `deploy.py` creates `volumes_path`, its parents and the folders of the
+files bind-mount. [deploy.py](../../deploy.py) creates `volumes_path`, its parents and the folders of the
 selected side, and it halts with the path when it cannot. Before `compose up`, it gives each
-folder the owner that its service writes as, from the `VOLUMES` table in `deploy.py`. A
+folder the owner that its service writes as, from the `VOLUMES` table in [deploy.py](../../deploy.py). A
 command that starts containers and the reset flags refuse an empty or relative value.
 `--down` runs with any value, and `--print-env` prints the refusal as a warning. The reset
 flags empty folders. They never remove a folder.
@@ -63,7 +63,7 @@ Deployment creates each daemon's authentication file when it is absent and prese
 
 ## `[ai_services]`
 
-Forty-eight keys. Read by `deploy.py`, by the tier's compose overlays, and by the model
+Forty-eight keys. Read by [deploy.py](../../deploy.py), by the tier's compose overlays, and by the model
 server itself.
 
 | group | keys | decides |
@@ -84,7 +84,7 @@ the model without it produces vectors the store rejects or silently truncates.
 
 ## `[main_services]`
 
-`deploy.py`, the main compose files, the worker, and the website read these keys.
+[deploy.py](../../deploy.py), the main compose files, the worker, and the website read these keys.
 
 ### Which provider serves what
 
@@ -96,7 +96,7 @@ accelerated tier and the CPU twins on the main side. See
 `ner_provider` accepts `gpu`, `spacy`, `both`, and `none`. `none` leaves `NER_URL` empty.
 
 `gpu_fallback`, `gpu_connect_timeout_ms` and `gpu_circuit_break_seconds` are the fallback
-behaviour itself, read by `main_services/processing/tasks/remote.py`: whether to retry
+behaviour itself, read by [main_services/processing/tasks/remote.py](../../main_services/processing/tasks/remote.py): whether to retry
 against the twin on a connect failure, how long a connect may take, and how long a failing
 endpoint stays out of rotation.
 
@@ -117,8 +117,8 @@ limits of the two ClickHouse interface containers. Each defaults to `6000M`.
 the variable unset. `tesseract_cpu_cpus` is the container's CPU limit, and empty is no
 limit. `tesseract_cpu_mem_limit` (default empty) is its memory limit. Empty is 4096M plus
 1024M for each unit of `tesseract_cpu_concurrency`, so the default concurrency of 2 gives
-6144M. A set value replaces the formula. `deploy.py` refuses a `tesseract_cpu_cpus` above the
-CPU count of the host. `deploy.py` prints a
+6144M. A set value replaces the formula. [deploy.py](../../deploy.py) refuses a `tesseract_cpu_cpus` above the
+CPU count of the host. [deploy.py](../../deploy.py) prints a
 warning when `ocr_concurrency` is lower than `tesseract_cpu_concurrency`, because the
 worker then leaves Tesseract slots idle.
 
@@ -141,7 +141,7 @@ Its input, page, and raster pixel budgets remain independent.
 `ocr_pdf_mem_limit` is the builder's memory limit. Empty is the larger of 8000M and 2048M
 plus 512M for each builder slot. A set value replaces the formula.
 
-`deploy.py` prints two more warnings. One names an `ocr_pdf_mem_limit` below that formula.
+[deploy.py](../../deploy.py) prints two more warnings. One names an `ocr_pdf_mem_limit` below that formula.
 The other names an `ocr_concurrency` plus `ocr_pdf_concurrency` above 5 times
 `tesseract_cpu_concurrency`. Tesseract admits that many requests, its slots and its
 queue. Above it, Tesseract answers 503, and the builder fails the whole PDF with 503.
@@ -180,7 +180,7 @@ takes the published port instead of the website, because the two cannot both bin
 
 `proxy_username` and `proxy_groups` are the identity the backdoor asserts when it runs,
 as `X-Forwarded-User` and the other three headers `parse_headers` in
-`website/backend/src/auth/session_middleware.rs` reads. A production deployment leaves
+[website/backend/src/auth/session_middleware.rs](../../website/backend/src/auth/session_middleware.rs) reads. A production deployment leaves
 `development_auth_backdoor_enabled` at `false` and puts `oauth2-proxy` in front of the
 website instead, which asserts a real identity the same way. `proxy_groups` is
 comma-separated with no space. A group named `admin` or `superuser` makes the asserted
@@ -195,7 +195,7 @@ An empty `tika_concurrency` uses the parser process count.
 A configured concurrency must equal that count.
 Deployment requires memory for all parser heaps plus one GiB.
 
-`deploy.py` generates the server configuration from these keys.
+[deploy.py](../../deploy.py) generates the server configuration from these keys.
 The configuration disables request overrides and embedded document parsing.
 It limits output to 20,000,000 characters and keeps a truncation flag.
 The XML general and total entity size limits use the same finite value.
@@ -273,7 +273,7 @@ compaction summary, and the worker's limit of one model step. When it is set, th
 client does not retry. Empty keeps the client default of 600 s and 2 retries, 180 s for the
 summary and 3,600 s for the model step. The templates set 3600. `./deploy` refuses a value
 that is not a whole number of at least 1. The worker's limits that have no key are in
-`tasks/P_agent/model_timeouts.py`: 300 s for a tool call, a 30 s heartbeat limit for each
+[tasks/P_agent/model_timeouts.py](../../main_services/processing/tasks/P_agent/model_timeouts.py): 300 s for a tool call, a 30 s heartbeat limit for each
 step, 600 model steps, and a continue-as-new every 250 model steps. The other liveness
 bounds do not have keys either: the agent's keepalive line every 30 s, the worker's 300 s
 read of the agent stream and the website's 180 s stall window.
@@ -301,11 +301,11 @@ off on a workstation also removes the developer harness tools those containers p
 refuse when the key is off.
 
 `hoover4-internal-search-agent` and `hoover4-full-research-agent` start only when an LLM
-provider is enabled (see [`[llm_provider.*]`](#llm_provider)). With no provider, `deploy.py`
+provider is enabled (see [`[llm_provider.*]`](#llm_provider)). With no provider, [deploy.py](../../deploy.py)
 selects no research-agent overlay and removes the agent containers of an earlier deploy.
 
 The chat policy checks of the worker ask the structured server of the selfhosted provider,
-at the host of its `base_url` and `[ai_services] vllm_structured_port`. `deploy.py` renders
+at the host of its `base_url` and `[ai_services] vllm_structured_port`. [deploy.py](../../deploy.py) renders
 `CHAT_CLASSIFIER_URL` only when the selfhosted provider is active. With another provider the
 value is empty, every check question is unavailable, and the turns run without the answers.
 `chat_control_dir` names an absolute host folder with custom policy handlers and
@@ -314,7 +314,7 @@ definitions only.
 
 **More workers is rarely the answer to a slow pipeline.** The workflow engine serialises
 decisions within one execution, so a fan-out driven from a single parent is a latency ceiling
-that no fleet size moves: `.agents/skills/tuning-the-pipeline/` has the measurement that
+that no fleet size moves: [.agents/skills/tuning-the-pipeline/](../../.agents/skills/tuning-the-pipeline) has the measurement that
 distinguishes the two cases.
 
 ### Bind addresses and ports
@@ -323,7 +323,7 @@ distinguishes the two cases.
 address a given deployment uses is not in this tree**. It is in
 `INFRASTRUCTURE_INVENTORY.md` at the repository root, which is local and gitignored.
 
-**Neither key is ever set to `0.0.0.0`.** Both templates and `deploy.py`'s own defaults use
+**Neither key is ever set to `0.0.0.0`.** Both templates and [deploy.py](../../deploy.py)'s own defaults use
 `127.0.0.1`. `website_bind_ip` carries the whole access boundary in release mode, because the
 website accepts `X-Forwarded-User` from whoever connects, so a caller that reaches port
 `12345` directly is the user it names. The infrastructure ports carry no authentication at
@@ -363,17 +363,17 @@ is `128`.
 | `temporal_frontend_persistence_qps` | empty | `frontend.persistenceMaxQPS` |
 | `temporal_matching_persistence_qps` | empty | `matching.persistenceMaxQPS` |
 
-`deploy.py` refuses a `cassandra_mem_limit` smaller than `cassandra_heap` plus
+[deploy.py](../../deploy.py) refuses a `cassandra_mem_limit` smaller than `cassandra_heap` plus
 `cassandra_direct_memory` plus 3G, and names the three values. It refuses a `cassandra_cpus`
 or a `temporal_cpus` above the CPU count of the host, because Docker then refuses to start
 the container. The message names the key, its value and the CPU count. The container reservation is
 5000M, or the limit when the limit is smaller.
 
 The server sets `temporal_retention` only when it creates the namespace. After each
-`compose up`, `deploy.py` therefore waits up to 120 s for Temporal and runs
+`compose up`, [deploy.py](../../deploy.py) therefore waits up to 120 s for Temporal and runs
 `temporal operator namespace update --retention`. A failure stops the deploy.
 
-Temporal reads one dynamic config file. `deploy.py` renders
+Temporal reads one dynamic config file. [deploy.py](../../deploy.py) renders
 `temporal-dynamicconfig/generated.yaml` from the tracked `docker.yaml` and each rate limit
 that is set. An empty rate limit keeps Temporal's own default.
 
@@ -381,7 +381,7 @@ that is set. An empty rate limit keeps Temporal's own default.
 
 `container_log_max_size` (default `100m`) and `container_log_max_files` (default `5`) set
 the `json-file` log rotation of every hoover4 container, on the main stack and on the GPU
-tier. `deploy.py` writes both values into the `.env` file of each side. Podman records only
+tier. [deploy.py](../../deploy.py) writes both values into the `.env` file of each side. Podman records only
 the size, and ignores `container_log_max_files`.
 
 The pinned versions (of the workflow service and its UI, the history and visibility stores,
@@ -395,7 +395,7 @@ tooling and is published on loopback only.
 
 One key for each operation kind, named `<kind>_cap`, with the default `2`. A cap is the most
 operations of that kind that run at once across the deployment. No key covers a group of
-kinds. `deploy.py` refuses a value below 1, and prints a warning for an unknown key in the
+kinds. [deploy.py](../../deploy.py) refuses a value below 1, and prints a warning for an unknown key in the
 section. It renders the 16 values into one variable, `HOOVER4_OPERATION_CAPS`, in
 `hoover4-ops`, as `kind=value` pairs joined by commas.
 
@@ -427,7 +427,7 @@ the host of `base_url` and `[ai_services] vllm_structured_port`. `quality_base_u
 neither. Empty quality keys take the second model server of the GPU tier when
 `[ai_services] chat_llm_selfhosted` is true. Requests to the quality endpoint carry the key of
 this provider, or a placeholder when it has none. The worker and both
-agent services apply the rule (`tasks/llm_endpoints.py`, `research_agent/endpoints.py`), and
+agent services apply the rule ([tasks/llm_endpoints.py](../../main_services/processing/tasks/llm_endpoints.py), [research_agent/endpoints.py](../../main_services/agents/research_agent/research_agent/endpoints.py)), and
 `main.py refresh-llm-catalog` lists the quality endpoint as a provider of its own.
 
 This file is the only place that chooses a model. Agent turns, of chats and of board
@@ -470,7 +470,7 @@ is the map back to the group above that explains it.
 - `chat_llm_selfhosted`, `chat_vllm_port`, `chat_vllm_model`, `chat_vllm_served_name`
 - `chat_vllm_gpu_fraction`, `chat_vllm_max_model_len`, `chat_vllm_max_num_seqs`
 - `chat_vllm_mem_limit`, `chat_vllm_args`: the second model server, `hoover4-vllm-chat`
-  (`ai_services/compose/vllm-chat.yaml`). It runs `vllm serve` in the image of `hoover4-vllm`
+  ([ai_services/compose/vllm-chat.yaml](../../ai_services/compose/vllm-chat.yaml)). It runs `vllm serve` in the image of `hoover4-vllm`
   and serves agent turns.
 - `ai_server_enabled`, `ai_server_port`
 - `ner_enabled`, `embeddings_enabled`, `embeddings_model`, `embeddings_dim`

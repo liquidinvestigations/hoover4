@@ -1,6 +1,6 @@
 # Reading a stack verification run
 
-`main_services/verify-stack.sh` drives a real ingestion through the deployed stack and
+[main_services/verify-stack.sh](../../../../main_services/verify-stack.sh) drives a real ingestion through the deployed stack and
 asserts on the result. It runs for tens of minutes and it runs **inside** the worker
 container.
 

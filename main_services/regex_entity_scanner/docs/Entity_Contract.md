@@ -118,7 +118,7 @@ the numbering plan that country publishes. That is the same kind of evidence a s
 its ISO 4217 code is in the list (narrow, authoritative, and not arithmetic), so the two rules
 report the same number, and the no-checksum flag says which kind of evidence it was.
 
-## Flags, not guesses
+## Flags report validated properties.
 
 Some ambiguity is real and unresolvable from the text alone: `03/04/2021` is genuinely two dates, a
 timestamp without an offset is genuinely not an instant. The contract reports it instead of picking

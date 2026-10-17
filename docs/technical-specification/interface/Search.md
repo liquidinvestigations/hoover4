@@ -61,9 +61,9 @@ The remembered query is specific to the dataset, container, and folder path.
 
 ## Owned by
 
-`website/frontend/src/pages/search_page.rs`,
-`website/frontend/src/components/search_components/`,
-`website/common/src/search_query.rs` (the query, sort and range types, shared with the
+[website/frontend/src/pages/search_page.rs](../../../website/frontend/src/pages/search_page.rs),
+[website/frontend/src/components/search_components/](../../../website/frontend/src/components/search_components),
+[website/common/src/search_query.rs](../../../website/common/src/search_query.rs) (the query, sort and range types, shared with the
 backend). The fan-out, the match builder and the caching boundary are
 [../../architecture/Search_Architecture.md](../../architecture/Search_Architecture.md).
 
@@ -88,3 +88,22 @@ A filename-only match shares those lines between its notice and the matching pat
 Folder disclosure appears only when a node has child folders or containers.
 The folder icon remains the same after expansion.
 The folder page opens Search in a new tab and retains the folder view.
+
+## Apply filters before requesting results.
+
+The filter modal holds draft selections until the person applies them.
+Cancelling the modal preserves the applied query.
+[The filter modal](../../../website/frontend/src/components/search_components/filter_modal.rs) and [search page](../../../website/frontend/src/pages/search_page.rs) own this behavior.
+
+```mermaid
+flowchart TD
+    accTitle: Draft filters and search results
+    accDescr: The person applies or cancels draft filters. An applied query requests results and shows complete, empty, partial, or failed results.
+    A[Applied query] --> D[Edit draft filters]
+    D -->|Cancel| A
+    D -->|Apply| L[Request results]
+    L --> R[Complete results]
+    L --> E[No matching documents]
+    L --> P[Partial result notice]
+    L --> F[Request error and retry]
+```

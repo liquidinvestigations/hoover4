@@ -51,4 +51,4 @@ The HTTP client's timeout is in **seconds**. Use a `(connect, read)` two-tuple s
 is detected in seconds while real work still gets minutes.
 
 Before reporting a change done, run the server's own tests and
-`.agents/skills/reviewing-changes/scripts/check-diff-comments.sh` over the diff.
+[.agents/skills/reviewing-changes/scripts/check-diff-comments.sh](../skills/reviewing-changes/scripts/check-diff-comments.sh) over the diff.

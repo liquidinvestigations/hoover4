@@ -9,7 +9,7 @@ what is known about GPU support on each architecture that runs hoover4 today.
 - [What the local cluster is for](#what-the-local-cluster-is-for)
 - [How it differs from the compose stack](#how-it-differs-from-the-compose-stack)
 - [GPU support by architecture](#gpu-support-by-architecture)
-- [What blocks a container job today](#what-blocks-a-container-job-today)
+- [Verify container-job prerequisites.](#verify-container-job-prerequisites)
 - [The image registry](#the-image-registry)
 
 ## What the local cluster is for
@@ -55,7 +55,7 @@ The workstation and the GPU box differ in more than instruction set.
   images, which today exist only as an x86 local build cache, are the part that would still
   need a multi-architecture build before they could run there.
 
-## What blocks a container job today
+## Verify container-job prerequisites.
 
 Two separate faults, found on the workstation, keep a Nomad job from proving it holds the
 GPU there.

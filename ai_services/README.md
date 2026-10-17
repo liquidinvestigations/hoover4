@@ -20,14 +20,14 @@ GPU-backed embeddings / NER / reranking (`hoover4-ai-server`), a local LLM
 
 ## What runs here
 
-Every service is an optional overlay under `compose/`, selected by `hoover4.ini` flags:
+Every service is an optional overlay under [compose/](compose), selected by `hoover4.ini` flags:
 
 | Overlay | Service | Port (ini key) | Enabled by | Purpose |
 |---|---|---|---|---|
-| `compose/ai-server.yaml` | `hoover4-ai-server` | 21961 (`ai_server_port`) | `ai_server_enabled` | Embeddings, reranking, NER. Also serves the pipeline's P4 stage (`NER_URL`). |
-| `compose/vllm.yaml` | `hoover4-vllm` | 21960 (`vllm_port`), 21963 (`vllm_structured_port`) | `llm_selfhosted` | The agent model (**DiffusionGemma 26B-A4B**, NVFP4), OpenAI-compatible, and its structured server. Off by default; a cloud provider serves the stack until it is turned on. |
-| `compose/vllm-chat.yaml` | `hoover4-vllm-chat` | 21964 (`chat_vllm_port`) | `chat_llm_selfhosted` | A second model server for agent turns (**Ornith-1.5-35B-A3B**, NVFP4 by default). It runs plain `vllm serve` in the image of `hoover4-vllm`, with the same API key. See [The chat model server](#the-chat-model-server). |
-| `compose/easyocr.yaml` | `hoover4-easyocr-gpu` | 21962 (`easyocr_port`) | `easyocr_enabled` | GPU OCR over HTTP ([`easyocr_server/`](easyocr_server/README.md)). Speaks the same request contract as the CPU twin `main_services/ocr_tesseract`, so `tasks/ocr_client.py` posts one request shape to either. |
+| [compose/ai-server.yaml](compose/ai-server.yaml) | `hoover4-ai-server` | 21961 (`ai_server_port`) | `ai_server_enabled` | Embeddings, reranking, NER. Also serves the pipeline's P4 stage (`NER_URL`). |
+| [compose/vllm.yaml](compose/vllm.yaml) | `hoover4-vllm` | 21960 (`vllm_port`), 21963 (`vllm_structured_port`) | `llm_selfhosted` | The agent model (**DiffusionGemma 26B-A4B**, NVFP4), OpenAI-compatible, and its structured server. Off by default; a cloud provider serves the stack until it is turned on. |
+| [compose/vllm-chat.yaml](compose/vllm-chat.yaml) | `hoover4-vllm-chat` | 21964 (`chat_vllm_port`) | `chat_llm_selfhosted` | A second model server for agent turns (**Ornith-1.5-35B-A3B**, NVFP4 by default). It runs plain `vllm serve` in the image of `hoover4-vllm`, with the same API key. See [The chat model server](#the-chat-model-server). |
+| [compose/easyocr.yaml](compose/easyocr.yaml) | `hoover4-easyocr-gpu` | 21962 (`easyocr_port`) | `easyocr_enabled` | GPU OCR over HTTP ([`easyocr_server/`](easyocr_server/README.md)). Speaks the same request contract as the CPU twin `main_services/ocr_tesseract`, so [tasks/ocr_client.py](../main_services/processing/tasks/ocr_client.py) posts one request shape to either. |
 
 ## Deploy
 
@@ -41,7 +41,7 @@ From the repo root, with `hoover4.ini` in place (`[ai_services] enabled = true`)
 ./deploy --ai-services --print-command # show what would run
 ```
 
-`deploy.py` preflights the GPU before anything starts: `nvidia-smi` must work, and on
+[deploy.py](../deploy.py) preflights the GPU before anything starts: `nvidia-smi` must work, and on
 podman a CDI spec must exist (`sudo nvidia-ctk cdi generate
 --output=/etc/cdi/nvidia.yaml` if not). It also prunes stale CDI mounts. A partial
 driver upgrade leaves `/etc/cdi/nvidia.yaml` entries pointing at files that were never
@@ -50,7 +50,7 @@ which looks like a GPU problem and is not. **The durable fix is to bring every
 `nvidia-*` package to the same version**; until then `nvidia-ctk cdi generate` will
 reintroduce the bad entries.
 
-The private `ai_services` network is created by `deploy.py` with explicit DNS
+The private `ai_services` network is created by [deploy.py](../deploy.py) with explicit DNS
 settings. Fresh podman networks have no DNS until resolvers are attached. It is created
 carrying the `com.docker.compose.project` / `com.docker.compose.network` labels compose
 would have set itself, because docker compose refuses to adopt a network that lacks them
@@ -118,7 +118,7 @@ calls. It serves a context of 262,144 tokens.
 ### The image
 
 The compose build of `hoover4-vllm` starts from the vLLM release image
-`vllm/vllm-openai:<release>`. `deploy.py` pins the release in `VLLM_BASE_RELEASE`. A
+`vllm/vllm-openai:<release>`. [deploy.py](../deploy.py) pins the release in `VLLM_BASE_RELEASE`. A
 release tag stays on Docker Hub. A nightly tag is deleted after about a week, so the build
 does not start from a nightly.
 
@@ -128,7 +128,7 @@ the test pages and the image check. It takes the structured server from the djev
 repository at the commit that this djev-spark commit pins. The Dockerfile of djev-spark
 is not used, because it starts from a nightly.
 
-The build then applies the patches in `dgemma/vllm-image/` to the vLLM package. It stops
+The build then applies the patches in [dgemma/vllm-image/](dgemma/vllm-image) to the vLLM package. It stops
 when the base reports a vLLM version other than the pinned release, or when a patch does
 not apply. The image tag is `hoover4-vllm-dgemma:<release>-<commit>`. To move the build,
 change `VLLM_BASE_RELEASE` and make each patch again against the new release. Then run
@@ -148,8 +148,8 @@ can differ from a streamed prefix, and the client cannot take back a prefix that
 received. Without the patch, the client then holds arguments that are not JSON. The streamed
 arguments now equal the arguments of a request without streaming.
 
-`dgemma/vllm-image/check_parser.py` tests the parser of an image against the producer
-fixture `main_services/agents/research_agent/tests/producer_fixtures/gemma4_tool_calls.json`.
+[dgemma/vllm-image/check_parser.py](dgemma/vllm-image/check_parser.py) tests the parser of an image against the producer
+fixture [main_services/agents/research_agent/tests/producer_fixtures/gemma4_tool_calls.json](../main_services/agents/research_agent/tests/producer_fixtures/gemma4_tool_calls.json).
 It feeds each captured raw call to the parser one token at a time, and compares the joined
 argument deltas with the parse without streaming. It needs the weights folder for the
 tokenizer and no GPU:
@@ -166,7 +166,7 @@ An image without `parser-arguments.patch` fails the case `streamed_prefix_not_js
 every case.
 
 The entrypoint of the image composes the `vllm serve` arguments from the container
-environment. `deploy.py` renders that environment from `[ai_services]`. The entrypoint
+environment. [deploy.py](../deploy.py) renders that environment from `[ai_services]`. The entrypoint
 starts vLLM on container port 8000, and then the structured server on container port
 8011. `vllm_port` publishes the first and `vllm_structured_port` publishes the second.
 Both bind to `bind_ip`, which must be a private-network address.
@@ -180,7 +180,7 @@ folder is complete when it holds `config.json` and every shard that
 `model.safetensors.index.json` names, each above zero bytes. A checkpoint of one shard has
 no index, so a folder with no index is complete when it holds `config.json` and one
 `*.safetensors` file above zero bytes. A later deploy does not
-download a complete folder again. `deploy.py` stops with an error when the folder is still
+download a complete folder again. [deploy.py](../deploy.py) stops with an error when the folder is still
 incomplete after the download.
 
 The checkpoint is not gated, so `hf_token_file` can stay empty. The server itself runs
@@ -195,7 +195,7 @@ vLLM asks for `Authorization: Bearer <key>` on `/v1` when the key file in
 POST. The compose wrapper reads the key file, exports the key for both servers, and then
 runs the entrypoint of the image unchanged.
 
-The structured server calls vLLM with no key. `dgemma/sitecustomize.py` adds the key to
+The structured server calls vLLM with no key. [dgemma/sitecustomize.py](dgemma/sitecustomize.py) adds the key to
 each call from inside the container to the local vLLM port, and changes no other call.
 The wrapper puts `/opt/hoover4`, where that folder is mounted, first on `PYTHONPATH`, so
 Python loads the module in every process of the container. The module then runs a
@@ -279,7 +279,7 @@ worst-case request, `W`, is that first chunk plus 33,792 output tokens, 28,150 s
 The templates set the two limits of `[main_services]` below. Each is a time that a person
 waits, and neither is a bound of the model. A request as long as `W` fails at the model call
 limit while the model server still works on it.
-[Known defects](../docs/development/Known_Defects.md#the-model-call-limit-and-the-step-queue-wait-are-usability-limits-not-model-bounds)
+[Known defects](../docs/development/Known_Defects.md#chat-context-handling-depends-on-model-information)
 gives the consequences.
 
 | key | what it limits | value, s |
@@ -304,7 +304,7 @@ it in these arguments.
 
 | argument | recipe | here | why |
 |---|---|---|---|
-| image | `vllm/vllm-openai:gemma` | the release `VLLM_BASE_RELEASE` with the patches of `dgemma/vllm-image/` | the build adds the adaptive canvas schedule and the structured server |
+| image | `vllm/vllm-openai:gemma` | the release `VLLM_BASE_RELEASE` with the patches of [dgemma/vllm-image/](dgemma/vllm-image) | the build adds the adaptive canvas schedule and the structured server |
 | `--served-model-name` | not set | `dgemma` (`vllm_served_name`) | a short name for the clients |
 | `--gpu-memory-utilization` | 0.8 | 0.60 (`vllm_gpu_fraction`) | the box runs other model servers |
 | `--kv-cache-memory` | not set | 28 GiB (`vllm_kv_cache_gb`) | a fixed KV cache for 8 sequences at the full context |
@@ -316,7 +316,7 @@ it in these arguments.
 Every other argument of the recipe is set to the recipe's value. `--mm-processor-kwargs`,
 `--limit-mm-per-prompt`, `--default-chat-template-kwargs` and `--load-format` come from
 `vllm_image_input`, `vllm_mm_max_soft_tokens`, `vllm_mm_image_limit`,
-`vllm_default_thinking` and `vllm_load_format`. `deploy.py` joins them into
+`vllm_default_thinking` and `vllm_load_format`. [deploy.py](../deploy.py) joins them into
 `VLLM_EXTRA_ARGS`, which the entrypoint adds to `vllm serve`. The entrypoint splits that
 value on spaces, so no JSON value in it holds a space.
 
@@ -324,7 +324,7 @@ value on spaces, so no JSON value in it holds a space.
 
 `LLM_STREAMING=true` is the default of the research agents. An earlier vLLM sent streamed
 tool-call deltas with no `arguments`, and the agent then made no tool call.
-`research_agent/agent.py` keeps the `disable_streaming` workaround and its comment. The
+[research_agent/agent.py](../main_services/agents/research_agent/research_agent/agent.py) keeps the `disable_streaming` workaround and its comment. The
 symptom to look for is an agent that answers with no tool calls.
 
 ## The chat model server
@@ -334,7 +334,7 @@ base model and the structured server. It uses the image of `hoover4-vllm`, becau
 build serves the Qwen3.5 mixture architecture and its MTP draft head on GB10. The entrypoint
 is plain `vllm serve`, with `chat_vllm_args` added after the size keys.
 
-`deploy.py` downloads `chat_vllm_model` once into the folder `chat_model`, and the folder
+[deploy.py](../deploy.py) downloads `chat_vllm_model` once into the folder `chat_model`, and the folder
 `chat_cache` holds the compile cache. The service reads the key file of
 `vllm_api_key_file`, so one key opens both servers.
 

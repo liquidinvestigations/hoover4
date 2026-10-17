@@ -87,7 +87,7 @@ Hold only the intended old operation.
 Do not block the current operation and then accept a source label as completion.
 Record that the delayed operation started and how it completed or was cancelled.
 Restore interception and release pending work during cleanup.
-The [CDP Fetch domain](https://chromedevtools.github.io/devtools-protocol/1-3/Fetch/) supports explicit request suspension and continuation.
+The [CDP Fetch domain](https://chromedevtools.github.io/devtools-protocol/tot/Fetch/) supports explicit request suspension and continuation.
 
 ## Exercise input, focus, and appearance.
 
@@ -104,7 +104,7 @@ Test wide data content separately from the controls that must remain reachable.
 Exercise affected controls under both browser color preferences.
 For the application's fixed light palette, assert computed foreground, background, border, and backdrop colors.
 Verify geometry while an overlay remains open during a viewport change.
-The [CDP Emulation domain](https://chromedevtools.github.io/devtools-protocol/1-3/Emulation/) supplies viewport and media controls.
+The [CDP Emulation domain](https://chromedevtools.github.io/devtools-protocol/tot/Emulation/) supplies viewport and media controls.
 
 ## Test a PDF source change.
 

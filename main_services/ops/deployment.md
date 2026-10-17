@@ -111,7 +111,7 @@ For the configuration above it must show `NER_URL=http://hoover4-ner-spacy:8000/
 
 ### Secrets
 
-Every `*_file` key holds a host path, never a value. `deploy.py` refuses a file that does
+Every `*_file` key holds a host path, never a value. [deploy.py](../../deploy.py) refuses a file that does
 not exist, that is group- or world-readable, or whose real path is inside the checkout.
 A key in the checkout leaks into build contexts and commits. The file is bind-mounted
 read-only into the containers that need it; no key value ever reaches a `.env` or a log.
@@ -123,7 +123,7 @@ chmod 600 <secrets-dir>/mcp-shared-secret.txt
 chmod 600 <secrets-dir>/nvidia-api-key.txt
 ```
 
-`<secrets-dir>` is a directory **outside the checkout**, which `deploy.py` enforces: it
+`<secrets-dir>` is a directory **outside the checkout**, which [deploy.py](../../deploy.py) enforces: it
 refuses a file that does not exist, that is group- or world-readable, or whose real path is
 inside the repository. Where a given deployment keeps it is recorded in
 `INFRASTRUCTURE_INVENTORY.md`, by location, never by value.
@@ -170,7 +170,7 @@ enabled      = true     ; the fallback, and it serves nothing while the block ab
 ```
 
 **`llm_selfhosted = true` on its own does not select the self-hosted model.**
-`active_llm_provider()` in `deploy.py` reads that flag **and**
+`active_llm_provider()` in [deploy.py](../../deploy.py) reads that flag **and**
 `[llm_provider.selfhosted] enabled`. With the flag on and the provider off, it falls
 through to the first enabled cloud provider. The whole deployment then answers on that
 provider's model, and nothing reports an error. `hoover4.ini.release` ships the
@@ -251,7 +251,7 @@ containers, so a broken build context stays invisible until something forces a r
 immediately for the main side), so nothing here needs a GPU to exist.
 
 With `website_release_mode = true` the website container then runs `dx build --release`
-**on first boot**, into a build-target volume the reset just emptied. That is a cold Rust
+**on first boot**, into a build-target volume the reset emptied. That is a cold Rust
 + WASM release build and the site is down for its duration:
 
 ```bash
@@ -328,7 +328,7 @@ INGEST_ROOT_SHAPES=$T/many-children \
 ```
 
 The `INGEST_ROOT_*` overrides are not optional when `testdata_dir` points outside the
-repo: the defaults assume the in-repo `testdata/`, and the fixtures then sit at a
+repo: the defaults assume the in-repo [testdata/](../../testdata), and the fixtures then sit at a
 different depth. `fetch-testdata.sh --check` needs `HOOVER4_TESTDATA_DIR` for the same
 reason.
 
@@ -382,7 +382,7 @@ Stated up front, because none of it is a fault to be diagnosed later:
 | **Entity counts differ** | CPU spaCy is a different model from the GPU NER. A different number is not a regression. |
 | **OCR is on the CPU** | Tesseract processes image-bearing PDFs and `ocr_pdf` writes searchable PDFs back to the blob store under `derived/`. Slower ingest, new output, one invariant guarding against re-ingesting it. |
 | **The proxy's default identity is an administrator** | `proxy_username`/`proxy_groups` name the identity every request carries, and the default group is `admin`. Acceptable only behind a reverse proxy that authenticates, which is what `website_bind_ip` is enforcing. |
-| **A browser ships only when the internet-tools switch is on** | `compose/internet-tools.yaml` is selected by `internet_tools_enabled`. Off, `hoover4-mcp-browser`, `hoover4-mcp-metasearch` and `hoover4-mcp-whois` do not start. On, the browser's URL checks are still strict (public http/https only, deny-list, PAC). |
+| **A browser ships only when the internet-tools switch is on** | [compose/internet-tools.yaml](docker/compose/internet-tools.yaml) is selected by `internet_tools_enabled`. Off, `hoover4-mcp-browser`, `hoover4-mcp-metasearch` and `hoover4-mcp-whois` do not start. On, the browser's URL checks are still strict (public http/https only, deny-list, PAC). |
 
 ## Navigation
 

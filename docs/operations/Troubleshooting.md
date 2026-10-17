@@ -5,7 +5,7 @@ system and the failure each prevents, so a person reading cold can route from a 
 mechanism without knowing the history.
 
 The procedural half (the same ground as a checklist an agent loads mid-task) is
-`.agents/skills/debugging-the-stack/`.
+[.agents/skills/debugging-the-stack/](../../.agents/skills/debugging-the-stack).
 
 ## Contents
 
@@ -13,7 +13,7 @@ The procedural half (the same ground as a checklist an agent loads mid-task) is
 - [Route by symptom](#route-by-symptom)
 - [DNS before the application](#dns-before-the-application)
 - [Networks, names and ports](#networks-names-and-ports)
-- [A hang is a question about who is blocked](#a-hang-is-a-question-about-who-is-blocked)
+- [Identify the blocked process.](#identify-the-blocked-process)
 - [Pipeline errors: a messy corpus or a stall](#pipeline-errors-a-messy-corpus-or-a-stall)
 - [Memory that looks like an OOM and is not](#memory-that-looks-like-an-oom-and-is-not)
 - [Failures that produce silence rather than errors](#failures-that-produce-silence-rather-than-errors)
@@ -42,8 +42,8 @@ docker compose … config          # renders absolute paths and resolved values
 docker logs <container> --tail 200
 ```
 
-The worked example is worth keeping in mind because it generalises: when the harness and the
-server disagree about what went wrong, **the server is the one describing the mechanism**.
+Compare the client error with the server log.
+Verify the process inputs before selecting a correction.
 
 **Reproduce from inside the container, never from the host.** "The service is up" on the host
 proves nothing. Containers on separate networks cannot address each other by name, and a
@@ -58,7 +58,7 @@ name for the host.
 |---|---|
 | one container cannot reach the internet, internal names still resolve | [DNS](#dns-before-the-application) |
 | connection refused or timing out between services | [networks and ports](#networks-names-and-ports) |
-| something hangs and nothing is logged | [who is blocked](#a-hang-is-a-question-about-who-is-blocked) |
+| something hangs and nothing is logged | [who is blocked](#identify-the-blocked-process) |
 | memory sits near the limit | [a JVM committing its heap](#memory-that-looks-like-an-oom-and-is-not) |
 | a parser or extractor returns nothing at all | [a missing binary](#failures-that-produce-silence-rather-than-errors) |
 | a configuration value has no effect | [rendered and never read](#failures-that-produce-silence-rather-than-errors) |
@@ -66,7 +66,7 @@ name for the host.
 | a migration fails naming neither file nor line | [the statement splitter](#migrations) |
 | a change did not take effect after a restart | [the old image was reused](#a-change-that-did-not-take-effect) |
 | a browser will not start, or "cannot connect" | [subprocesses](#failures-that-produce-silence-rather-than-errors) |
-| ingestion is slow rather than broken | the pipeline's shape, not the fleet's size, `.agents/skills/tuning-the-pipeline/` |
+| ingestion is slow rather than broken | the pipeline's shape, not the fleet's size, [.agents/skills/tuning-the-pipeline/](../../.agents/skills/tuning-the-pipeline) |
 | the machine itself is unresponsive | [host load](#the-host-itself-is-unresponsive) |
 
 ## DNS before the application
@@ -99,7 +99,7 @@ loopback default meant for running outside a container, and inside a container l
 that container itself. The symptom is a healthy service and a caller insisting it is
 unreachable.
 
-## A hang is a question about who is blocked
+## Identify the blocked process.
 
 Check the runtime's view and the process's view **separately** and compare. They routinely
 disagree. A workflow service reporting an activity as started does not mean the worker is
@@ -136,7 +136,7 @@ alarming and means nothing. Sample twice.
 ## Memory that looks like an OOM and is not
 
 A JVM sized with equal minimum and maximum heap commits its whole heap at boot, so the
-container's resident memory sits just under the cgroup limit from the first second of uptime
+container's resident memory can remain below the cgroup limit from the first second of uptime
 whether it is doing anything or not. A history store configured with a four-gigabyte heap
 reports nearly six gigabytes of a six-gigabyte limit while using a third of that heap.
 Reading it as "about to run out" is wrong every time, and the same applies to every other JVM
@@ -146,9 +146,9 @@ Ask the runtime instead. The node tools report heap used against heap maximum, g
 collection time against uptime, and dropped messages per stage. **A healthy node is a low
 heap fraction, collection well under one per cent of wall time, and zero drops.**
 
-The container-side number worth reading is the anonymous-memory figure in the cgroup's own
-memory statistics, never the runtime's headline total. That counts reclaimable page cache as
-usage.
+Read anonymous memory and file-backed cache separately in the cgroup memory statistics.
+The runtime total includes reclaimable page cache.
+Read JVM heap usage and garbage collection counters to assess the JVM's memory pressure.
 
 ## Failures that produce silence rather than errors
 
@@ -221,7 +221,7 @@ rebuild, and the build output read in full, not tailed.
 A generated environment file hand-edited is overwritten by the next deploy, and looks like it
 worked until then.
 
-## Traps that have cost real time here
+## Verify known failure conditions.
 
 Each of these presented as something other than what it was.
 
@@ -243,8 +243,8 @@ going to apply.
 **Deleting an apparently unreferenced page can break something with no build error.** An asset
 bundle held alive by a `#[used] static … asset!()` binding is loaded by literal URL, so nothing
 in the source refers to it. Removing the page that carries the binding compiles cleanly and
-404s the feature at runtime. Before deleting a page, search for what its assets are named, not
-just for references to the page.
+404s the feature at runtime. Before deleting a page, search for what its assets are named, and
+for references to the page.
 
 ## The host itself is unresponsive
 
@@ -262,7 +262,7 @@ that are commonly got wrong:
 
 ## Collect a debug report
 
-`scripts/collect-debug-report.py` collects the state of one deployment into one zip file.
+[scripts/collect-debug-report.py](../../scripts/collect-debug-report.py) collects the state of one deployment into one zip file.
 It uses the Python standard library only, and runs on Python 3.9 and later. It only reads.
 It starts, stops and changes nothing. Run it on the host of the deployment, from the root of
 the checkout:

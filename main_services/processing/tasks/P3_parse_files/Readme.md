@@ -7,25 +7,25 @@ This stage parses downloaded files by type and writes structured content and met
 - Detect MIME types with GNU `file`, Magika, filename extensions, and content sniffs.
 - Parse archives, emails, PDFs, images, audio, video, and raw text.
 - Read tabular documents (CSV/TSV/PSV, XLSX/XLSM/XLTX, XLS/XLSB, ODS) into individual
-  cells (`parse_table.py`), alongside the text extraction of the same file.
+  cells ([parse_table.py](parse_table.py)), alongside the text extraction of the same file.
 - Run OCR for images and extract text for indexing.
-- Build searchable PDF parts per engine for selected PDF pages (`parse_ocr_pdf.py`), through the
+- Build searchable PDF parts per engine for selected PDF pages ([parse_ocr_pdf.py](parse_ocr_pdf.py)), through the
   `hoover4-ocr-pdf` service.
 - Create temporary directories for extracted content and scan them as containers.
 
 ## Entry Points
 
 - Stage activities: one `*_batch` activity for each stage, in the module of its per-file
-  function (see "Stage activities" below), and `scan_container_folders` in `member_scan.py`
-- Runner: `batch_runner.py`, the shared loop of every stage activity
-- Routing and error names: the pure functions of `workflows.py`
-- Activities: `parse_*` modules (e.g., `parse_pdf.py`, `parse_email.py`, `parse_image.py`)
-- OCR: `parse_ocr.py` (images -> `raw_ocr_results` + text) and `parse_ocr_pdf.py`
+  function (see "Stage activities" below), and `scan_container_folders` in [member_scan.py](member_scan.py)
+- Runner: [batch_runner.py](batch_runner.py), the shared loop of every stage activity
+- Routing and error names: the pure functions of [workflows.py](workflows.py)
+- Activities: `parse_*` modules (e.g., [parse_pdf.py](parse_pdf.py), [parse_email.py](parse_email.py), [parse_image.py](parse_image.py))
+- OCR: [parse_ocr.py](parse_ocr.py) (images -> `raw_ocr_results` + text) and [parse_ocr_pdf.py](parse_ocr_pdf.py)
   (PDF sources -> part manifests, OCR text, and durable variant completion)
-- Tables: `parse_table.py` (cells -> `table_cells` + `table_documents`/`table_sheets`/
-  `table_columns`), with the format list in `table_formats.py`, the readers in
-  `table_readers.py` and the delimited-text sniff in `sniff_table.py`
-- Helpers: `parse_common.py` for text page/segment writing and error recording
+- Tables: [parse_table.py](parse_table.py) (cells -> `table_cells` + `table_documents`/`table_sheets`/
+  `table_columns`), with the format list in [table_formats.py](table_formats.py), the readers in
+  [table_readers.py](table_readers.py) and the delimited-text sniff in [sniff_table.py](sniff_table.py)
+- Helpers: [parse_common.py](parse_common.py) for text page/segment writing and error recording
 
 The workflow Error helper requires one source execution id for each result. It builds the
 id from the workflow run, call site and source schedule ordinal. Replay uses the same id.
@@ -47,7 +47,7 @@ activity id, attempt, task name and document hash. Recorder retries keep that id
   `DEFAULT_TEXT_SEGMENT_BYTES` and numbers the segments from 1. Successful empty text
   clears prior segments.
 - `split_text_segments(...)` segments without inserting, for callers assembling one page
-  sequence from several sources (`parse_email.py` and its MIME parts).
+  sequence from several sources ([parse_email.py](parse_email.py) and its MIME parts).
 
 Most extractors omit text shorter than two characters. Email bodies retain one-character
 text. The email parser selects plain text, HTML, RTF, or legacy rich text as its body.
@@ -135,7 +135,7 @@ Selection and indexing require a current live path.
 
 ## Image previews are a derived object too
 
-`image_preview.py` writes one JPEG for each image that is not JPEG, PNG, BMP or WebP, and
+[image_preview.py](image_preview.py) writes one JPEG for each image that is not JPEG, PNG, BMP or WebP, and
 for the first frame of each video, to the collection bucket under `derived/image-preview/`.
 `image_previews` is its only index, and it gets no `blobs` row, for the reason above. The
 image keeps its own resolution. An SVG is drawn by `rsvg-convert` to fit 480 by 480 pixels.
@@ -168,7 +168,7 @@ PST, OST, and mbox files receive no Tika request.
 Other mail containers receive metadata requests only.
 The extracted members carry their text.
 
-`mail_containers.py` reads PST and OST with pypff, MSG with extract-msg, and TNEF with tnefparse.
+[mail_containers.py](mail_containers.py) reads PST and OST with pypff, MSG with extract-msg, and TNEF with tnefparse.
 It reads mbox separators with support for `Content-Length` and escaped `From` lines.
 A child message keeps its `>From ` lines as stored, so its body is not read as a mailbox.
 When pypff cannot expose an embedded PST message, `readpst` exports that child message.
@@ -276,15 +276,15 @@ Tika runs after route selection on its separate queue.
 Its document type adds a fifth detector row when metadata contains a type.
 Canonical type resolution runs after all parsers finish.
 
-`content_sniff` is the one that reads content nothing else can name. `sniff_table.py`
+`content_sniff` is the one that reads content nothing else can name. [sniff_table.py](sniff_table.py)
 recognises delimited text the same way, and runs only after `sniff_email` has declined:
 an RFC 822 header block is a rectangular two-column table to any sniff that accepts `:`
 as a delimiter, so `:` is excluded from the candidate set permanently and a message the
 email sniff accepted is never offered to the table sniff at all.
-`tests/integration/test_table_sniff_corpus.py` is the measurement that keeps both rules
+[tests/integration/test_table_sniff_corpus.py](../../tests/integration/test_table_sniff_corpus.py) is the measurement that keeps both rules
 accurate. Zero acceptances across the 21 291 messages of `enron-kaminski-v`.
 
-`sniff_email.py`
+[sniff_email.py](sniff_email.py)
 recognises an RFC 822 message from its header block, which is the only way to classify an
 extension-less maildir: every other detector calls those files `text/plain`. It also
 strips Apple Mail's `.emlx` byte-count prefix and a leading BOM before the message is
@@ -301,7 +301,7 @@ filter pane use. Nothing here picks a winner.
 ## Stage activities and the batch runner
 
 The group workflow runs one activity for each stage over the files of that stage. Each
-stage activity calls `run_batch` in `batch_runner.py`, with a step that calls the existing
+stage activity calls `run_batch` in [batch_runner.py](batch_runner.py), with a step that calls the existing
 per-file function for one file. `run_batch` returns one `FileResult` for each file, in
 input order. The rows of each file carry the per-file function name.
 
@@ -380,7 +380,7 @@ lookup key rather than a capability. `table_sheets` and `table_columns` carry th
 the headers and the per-column statistics.
 
 The manifest row is written **before** the cells, which is the opposite of
-`parse_ocr_pdf.py`'s object-before-row rule and is the mirrored reason: a cell with no
+[parse_ocr_pdf.py](parse_ocr_pdf.py)'s object-before-row rule and is the mirrored reason: a cell with no
 manifest row is invisible to the permission check and to `sweep_orphan_table_cells` alike.
 
 Two rules decide whether something is a table at all, and the asymmetry is the point. A
@@ -408,7 +408,7 @@ That source uses sheet and source row labels in segments of at most 256 KiB.
 Its 20,000,000-character limit appears in the manifest.
 The text and cells come from the same accepted read.
 
-Every cap in `table_formats.py` that fires is recorded in three parallel arrays on the
+Every cap in [table_formats.py](table_formats.py) that fires is recorded in three parallel arrays on the
 manifest row (the limit's stable name, its maximum and the sheet it fired on), so the
 grid can say what was dropped. A cap that is invisible in the UI reads as "this file has
 300 columns", which is false about the corpus.
@@ -416,7 +416,7 @@ grid can say what was dropped. A cap that is invisible in the UI reads as "this 
 `python_calamine` is a Rust extension and fails by **panicking** rather than raising: a
 `PanicException` derives from `BaseException` and an ordinary `except Exception` does not
 see it. A workbook with one blank sheet (a pivot-table template, entirely ordinary) is
-enough to trigger it. `parse_table.py` therefore catches `BaseException` and re-raises
+enough to trigger it. [parse_table.py](parse_table.py) therefore catches `BaseException` and re-raises
 only the interpreter's own, and the calamine reader skips a sheet with no used range.
 
 ## Busy services

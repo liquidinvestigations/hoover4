@@ -48,7 +48,7 @@ denies the second outright.
 ## The system prompt and the skill store
 
 Not in compose, and not as string literals. One template, `research_agent/prompts/agent.md.j2`,
-renders the system prompt of every profile (`research_agent/prompts/__init__.py`).
+renders the system prompt of every profile ([research_agent/prompts/__init__.py](research_agent/prompts/__init__.py)).
 `SYSTEM_PROMPT` overrides the whole rendered text, and empty means "render the template".
 
 **The prompt holds the role, lists the rest, and the skills teach.** The prompt holds the
@@ -74,7 +74,7 @@ tool is the first sentence of its description, at most 160 characters. `_create_
 renders the prompt once for each step context. The prompt cache holds the system text for
 the run.
 
-The method text is in `research_agent/skills/`.
+The method text is in [research_agent/skills/](research_agent/skills).
 Citation recovery copies returned retry arguments and retries only failed pages.
 Schema recovery examples use `read_tool` before correcting an unknown argument.
 Document reread examples keep each document's range and source version in its own call.
@@ -98,7 +98,7 @@ Repository data reads use raw addresses, returned continuation offsets, and surr
 The other groups provide search, citation, tool use, and failed-call instructions.
 A technique or stumble skill has at most 2,600 characters.
 A skill renders a tool name only when the run has that tool.
-`tests/test_skill_store.py` verifies skill rendering and tool membership.
+[tests/test_skill_store.py](tests/test_skill_store.py) verifies skill rendering and tool membership.
 
 The model finds a skill with `search_skills` and reads one with `read_skill` when it chooses
 to. The result of a read starts with the line ``Skill `name`.``. A role skill and a skill of
@@ -112,7 +112,7 @@ the descriptions of the search tools. The collection MCP server also renders it 
 
 ## Tool packs and the catalogue
 
-A tool pack is a named set of tools in `agent_common/tool_packs.py`.
+A tool pack is a named set of tools in [agent_common/tool_packs.py](../agent_common/agent_common/tool_packs.py).
 `agent_packs_chat` selects chat packs. Its default is `all`.
 The available packs are `catalogue`, `skills`, `collections`, `conversation`, `web`, and `browser`.
 Every run receives the `skills` pack.
@@ -323,12 +323,12 @@ Different passages, partial failures, and reduced results remain executable.
 Its limits are the step limit of the run and one retry
 after a reply with no text and no call. At a limit, the worker ends the run with a result
 that code writes from the stored thread, and it sends no further model request. See
-`processing/tasks/Readme.md` for the loop.
+[processing/tasks/Readme.md](../../processing/tasks/Readme.md) for the loop.
 
 ## Context compaction: `AGENT_COMPACTION_FRACTION`
 
 A run grows because every result that it collected stays in the list of the next model call.
-`research_agent/compaction.py` compacts the list when the measured size of the next request
+[research_agent/compaction.py](research_agent/compaction.py) compacts the list when the measured size of the next request
 (see "The size of a request") reaches the trigger, a fraction of the model's stated context
 window. The trigger is never above the safe input, the window less the output reserve. It
 plans the list to a target of a third of the trigger before the next model call, and
@@ -506,7 +506,7 @@ of objects, the missing required keys, the keys that the schema does not name, a
 that it names. A list sent for a single value gets "takes one string value, and the call gave
 a list of 14 items. Send one value."
 
-**The served parser.** `tests/producer_fixtures/gemma4_tool_calls.json` holds calls of the
+**The served parser.** [tests/producer_fixtures/gemma4_tool_calls.json](tests/producer_fixtures/gemma4_tool_calls.json) holds calls of the
 served model: the raw text where it was captured, the parse that the model server gave, and
 the cause. The parser is the `gemma4` tool parser of vLLM (`vllm/parser/gemma4.py`) in the
 serving image, and this repository holds none of its code. Two cases are defects of the
@@ -519,7 +519,7 @@ reason.
 ## `LLM_STREAMING` and `disable_streaming`
 
 **Streaming is back on** (`LLM_STREAMING=true`), and the workaround is retained.
-`deploy.py` renders `LLM_STREAMING` from `[main_services] llm_streaming`, and an empty key
+[deploy.py](../../../deploy.py) renders `LLM_STREAMING` from `[main_services] llm_streaming`, and an empty key
 renders `true`.
 
 Under **vLLM 0.11**, streamed tool-call deltas arrived with the function name but
@@ -559,18 +559,18 @@ unrelated reason. See [`../README.md`](../README.md).
 In deployment both agent containers are built from this directory by
 [`../../ops/docker/compose/agents.yaml`](../../ops/docker/compose/agents.yaml) and come
 up with the main stack (`./deploy` from the repo root). Environment is rendered from
-`hoover4.ini` by `deploy.py`, there is no `.env` to copy. For local development
+`hoover4.ini` by [deploy.py](../../../deploy.py), there is no `.env` to copy. For local development
 outside docker, `poetry install` and `python main.py` still work.
 
 ## Configuration
 
 The application is configured entirely via environment variables (rendered from
-`hoover4.ini` by `deploy.py` in deployment):
+`hoover4.ini` by [deploy.py](../../../deploy.py) in deployment):
 
 ### Required Variables
 
 - `LLM_API_KEY` (or `LLM_API_KEY_FILE`, a bind-mounted file takes precedence when the plain var is unset): Your LLM API key
-- `MCP_SERVERS`: Comma-separated list of MCP server URLs. On `hoover4-full-research-agent`, `deploy.py` renders this from `internet_tools_enabled`: five servers when on, collections and todo when off.
+- `MCP_SERVERS`: Comma-separated list of MCP server URLs. On `hoover4-full-research-agent`, [deploy.py](../../../deploy.py) renders this from `internet_tools_enabled`: five servers when on, collections and todo when off.
 
 ### Optional Variables
 
@@ -579,8 +579,8 @@ The application is configured entirely via environment variables (rendered from
   error when it has no model and this value is empty.
 - `LLM_TEMPERATURE`: Temperature setting (default: 0.0)
 - `LLM_SEND_TEMPERATURE`: `false` leaves `temperature` out of every model request: the agent
-  turns and the compaction summary. `deploy.py` renders it from the active provider's
-  `send_temperature` key. Empty or unset is `true`. `research_agent/model_params.py` owns
+  turns and the compaction summary. [deploy.py](../../../deploy.py) renders it from the active provider's
+  `send_temperature` key. Empty or unset is `true`. [research_agent/model_params.py](research_agent/model_params.py) owns
   the rule, and the worker's title request mirrors it.
 - `AGENT_MAX_OUTPUT_TOKENS`: the output cap of every agent model request, which the model
   client sends as `max_completion_tokens`. It is also the output reserve of the request size.
@@ -657,7 +657,7 @@ poetry run mypy research_agent/
 
 ## Docker Support
 
-The included Dockerfile is what `compose/research-agents.yaml` builds (context:
+The included Dockerfile is what [compose/research-agents.yaml](../../ops/docker/compose/research-agents.yaml) builds (context:
 `main_services/agents`, because the image copies `agent_common` for the tool pack table). Secrets arrive as read-only bind mounts under `/run/secrets/`; the code
 falls back to `LLM_API_KEY_FILE` / `MCP_SHARED_SECRET_FILE` when the plain env vars
 are unset.
@@ -695,7 +695,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Support
 
-For questions, issues, or contributions, please open an issue on the GitHub repository.
+For questions, issues, or contributions, open an issue on the GitHub repository.
 
 Method skills describe related tools within a task workflow.
 They include argument defaults, required values, result interpretation and complete call examples.

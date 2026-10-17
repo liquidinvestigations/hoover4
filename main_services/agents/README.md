@@ -33,7 +33,7 @@ inconsistently, so every open-web source lives behind `web_search` in
 are still in the tree but nothing builds or deploys them, and `hoover4.ini` has no
 `mcp_ddg_port` / `mcp_wikipedia_port`. Do not revive them.
 
-## Shared code: `agent_common/`
+## Shared code: [agent_common/](agent_common)
 
 [`agent_common/`](agent_common/) holds what more than one server needs and neither should
 own: the chat-artifact writer, the S3 helper both artifact writers sit on, and the
@@ -96,9 +96,9 @@ The router also strips links into playwright-mcp's own output directory
 open that path: the model cannot read files and the website renders it as a broken link.
 
 `P0_scan_disk` must never walk the `derived/` prefix: an artifact the ingest walker can
-see is ingested, captured again, and produces another artifact, forever. `verify-stack.sh`
+see is ingested, captured again, and produces another artifact, forever. [verify-stack.sh](../verify-stack.sh)
 asserts that no `blobs` row references it. Artifacts have no age limit. A daily Temporal
-singleton (`sweep-chat-artifacts`, in `tasks/P_admin/artifact_sweeper.py`) removes the
+singleton (`sweep-chat-artifacts`, in [tasks/P_admin/artifact_sweeper.py](../processing/tasks/P_admin/artifact_sweeper.py)) removes the
 artifacts of deleted chats and objects without a row. It deletes the objects **before** the
 rows, because a ClickHouse TTL cannot touch the object store.
 
@@ -133,7 +133,7 @@ search UI. The chain is:
 
 The model never sees or supplies its own permissions. The shared secret is a
 bind-mounted file, never an env value: `[main_services] mcp_shared_secret_file` in
-`hoover4.ini` names the host path, `deploy.py` mounts it at
+`hoover4.ini` names the host path, [deploy.py](../../deploy.py) mounts it at
 `/run/secrets/mcp_shared_secret`, and both sides read it via their
 `MCP_SHARED_SECRET_FILE` fallback. Without it the collection server accepts any caller
 and logs a warning (the ports are bound to 127.0.0.1, which is the only reason that is
@@ -157,12 +157,9 @@ folders, each with a loader that is the only thing that renders them:
 * [`research_agent/research_agent/prompts/`](research_agent/research_agent/prompts/),
   one template per agent profile, selected by `AGENT_PROFILE`, plus the blocks they share.
 
-**A prompt is rendered from what the deployment binds, not written as a constant.** The
-tool section of every profile is generated from the tool names on the graph, and the
-tool-turn budget comes from the constant the graph enforces, so a prompt cannot claim a
-tool the model does not have, cannot omit one it does, and cannot promise a budget the
-code contradicts. Each package's `tests/test_prompts.py` is what turns a drifted sentence
-into a failing test, which is the whole reason the text is not a string literal.
+The deployment renders prompts from its bound tools and enforced tool-turn budget.
+Each package verifies these values in its prompt tests.
+See the [search prompt tests](collection_search_server/tests/test_prompts.py) and [research prompt tests](research_agent/tests/test_prompts.py).
 
 `SYSTEM_PROMPT` / `SERVER_INSTRUCTIONS` remain as thin env overrides for experiments;
 empty means "render the templates". `SYSTEM_PROMPT` changes only the words: the profile
@@ -174,7 +171,7 @@ query it had already run until the request died. Detail belongs in tool descript
 which the model reads in context at the moment it picks a tool. Re-measure before
 lengthening.
 
-## Why search goes through Manticore, and where Milvus went
+## Manticore serves the current search indexes.
 
 The ingestion pipeline writes extracted text to ClickHouse and search documents to
 Manticore shards. It **never wrote vectors**, so the whole Milvus tier, three containers
@@ -185,7 +182,7 @@ packages, and the legacy `hoover4_rag` ingestion CLI, is gone.
 The `text_chunks_milvus`, `entity_hits_milvus` and `entity_hits_milvus_unique` ClickHouse
 tables do not exist, and no migration creates them. The collapsed migration set carries
 no trace of them. `test_no_migration_recreates_a_removed_table` in
-`tests/unit/test_migrations_parity.py` keeps them from coming back.
+[tests/unit/test_migrations_parity.py](../processing/tests/unit/test_migrations_parity.py) keeps them from coming back.
 
 **Vector search runs without Milvus.** `text_chunks` and `text_chunk_vectors` are
 collection tables, and three pieces make it work:
@@ -238,10 +235,10 @@ Every product `@` is escaped, so field operators are unavailable. Addresses reta
 The builders repair unmatched quotes, brackets and stray operators. They refuse empty and exclusion-only expressions.
 The response reports repairs. SQL literal escaping preserves the query boundary.
 
-### Infix indexing: what it cost
+### Verify infix indexing with measured data.
 
 `min_infix_len='3'` is set on `pages_table_ddl` in
-`main_services/processing/database/manticore.py`. Changing it requires a full reindex of
+[main_services/processing/database/manticore.py](../processing/database/manticore.py). Changing it requires a full reindex of
 every collection. Behaviour on the real `testdata` shard (156 pages, 26 MB of text):
 
 | query | before | after |

@@ -1,6 +1,6 @@
 # Investigative lexicon
 
-Term lists that point a reader at the passages worth reading first. They cover the language of
+Term lists that point a reader at passages for review. They cover the language of
 concealment, bribery, accounting manipulation, pressure and dissent, conflict and crime, the
 atrocity crimes of international law, and the vocabulary that marks a document as a contract, a legal letter, an invoice, a proof of payment or a
 scam. The scanner loads every list at startup and reports each match as a **signal**.
@@ -49,14 +49,14 @@ Tab-separated, with a header row:
 | `term` | The word or phrase as people write it. A trailing `*` makes it a prefix: `bestech*` matches `Bestechung` and `bestechen`. A `*` anywhere else is refused at load time. |
 | `tier` | `H`, `M` or `L`. `H` is rarely innocent and worth a look alone. `M` has a routine reading in some context. `L` is a common word that counts only beside other signals. |
 | `speaker` | Who usually writes it: `actor` (a participant), `insider` (an uneasy participant or a future witness), `accuser` (whistleblower, lawyer, auditor, journalist, policy), `neutral` (document furniture). |
-| `concept` | The English term this row expresses, spelt exactly as its `en/` row, with the `*` of a stem. In `en/` it is the term itself. It groups one idea across languages. |
+| `concept` | The English term this row expresses, spelt exactly as its [en/](en) row, with the `*` of a stem. In [en/](en) it is the term itself. It groups one idea across languages. |
 | `source` | Where the term comes from; see [Sources](#sources). |
 | `review` | `original` for the English lists. `mt-edited` for a row drafted by machine translation and then rewritten by hand into an idiomatic equivalent, but not yet read by a native speaker. |
 | `note` | Free text: why the term is there, or what it is often confused with. |
 
 A term is matched exactly, but insensitive to case, punctuation and accents: `don't`, `dont` and
 `DON’T` are one term; `cover-up` and `cover up` are one term; `illégal` matches `illegal`. The
-normalisation is in `src/lexicon/Readme.md`. Two spellings that the normalisation does not join
+normalisation is in [src/lexicon/Readme.md](../src/lexicon/Readme.md). Two spellings that the normalisation does not join
 (`coverup` and `cover up`, `Geldwäsche` and `Geldwaesche`) need a row each.
 
 A term is only ever a whole word or a run of whole words. With a trailing `*` it is a whole-word
@@ -90,17 +90,17 @@ unpointed text writes them.
 Much Arabic chat is written in Arabizi, Latin letters with digits standing for the sounds Latin
 lacks (`3` for `ع`, `7` for `ح`, `2` for `ء`, `5` for `خ`). In one Egyptian SMS and chat corpus
 most conversations were entirely Arabizi, so an Arabic-script list alone misses the register that
-matters most. The `ar/` lists hold Arabizi rows for the chat-register categories (concealment,
+matters most. The [ar/](ar) lists hold Arabizi rows for the chat-register categories (concealment,
 bribery, threats, pressure, scams), noted `Arabizi` with the dialect. The fold keeps digits inside
 a word, so `ma7adsh` is one word. Arabizi has no standard spelling, so a phrase has one row per
 common spelling (`ma7adsh hay3raf`, `mahadesh hay3raf`).
 
-Hebrew chat keeps Hebrew script, so `he/` romanises only the few Hebrew words that English text
+Hebrew chat keeps Hebrew script, so [he/](he) romanises only the few Hebrew words that English text
 writes in Latin letters (`protektzia`, `kombina`), noted `romanised Hebrew`.
 
 A translation that folds to the same string as its English term is not repeated, because the
 English row already matches it in text of any language. The same holds for language-neutral terms:
-ISO 20022 element names, MT103, UETR, acronyms and application names exist only in `en/`.
+ISO 20022 element names, MT103, UETR, acronyms and application names exist only in [en/](en).
 
 ## Sources
 

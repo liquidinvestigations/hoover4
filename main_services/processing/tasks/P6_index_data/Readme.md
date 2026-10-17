@@ -19,9 +19,9 @@ The planner groups text segment versions before it counts rows and bytes.
 
 ## Entry Points
 
-- Workflows: `IndexDatasetPlan`, `RefreshDocumentLocations` in `workflows.py`
-- Activities: `index_text_pages`, `index_text_pages_with_versions`, `index_text_pages_with_receipts`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `index_entity_terms`, `build_email_graph`, `compact_collection_shards`, `refresh_stale_document_locations` in `activities.py`
-- Helpers: `email_graph.py` (the pure edge rules), `document_metadata` (the per-document read half of the writer), `location_refresh.py` (stale folder-closure selection), `string_term_encodings.py`; `fetch_plan_hashes` and `clean_text` are shared and live in `tasks/plan_utils.py`
+- Workflows: `IndexDatasetPlan`, `RefreshDocumentLocations` in [workflows.py](workflows.py)
+- Activities: `index_text_pages`, `index_text_pages_with_versions`, `index_text_pages_with_receipts`, `index_vectors`, `build_vfs_nodes`, `index_vfs_structure`, `index_entity_terms`, `build_email_graph`, `compact_collection_shards`, `refresh_stale_document_locations` in [activities.py](activities.py)
+- Helpers: [email_graph.py](email_graph.py) (the pure edge rules), `document_metadata` (the per-document read half of the writer), [location_refresh.py](location_refresh.py) (stale folder-closure selection), [string_term_encodings.py](string_term_encodings.py); `fetch_plan_hashes` and `clean_text` are shared and live in [tasks/plan_utils.py](../plan_utils.py)
 
 `build_vfs_nodes` runs once per `ExecutePlans` batch before the per-plan children;
 afterwards it runs again, followed by `resolve_canonical_file_type`'s dataset-wide sweep
@@ -32,9 +32,9 @@ known bytes, skips the graph, because the graph reads the whole collection and n
 reads has changed. `IndexDatasetPlan` itself writes shards only.
 Its finalizer has six attempts, with delays from 30 seconds up to 10 minutes.
 `build_vfs_nodes` also writes `subtree_file_count` and `subtree_size_bytes` on every
-row. `compute_subtree_stats` in `vfs_nodes.py` defines them, including the cycle rule
+row. `compute_subtree_stats` in [vfs_nodes.py](vfs_nodes.py) defines them, including the cycle rule
 that the website's read-time fallback repeats. The `FillVfsSubtreeStats` singleton in
-`tasks/P_admin/workflows.py` reruns `build_vfs_nodes` for one idle dataset at a time whose
+[tasks/P_admin/workflows.py](../P_admin/workflows.py) reruns `build_vfs_nodes` for one idle dataset at a time whose
 root row still reads -1, which is the state of a dataset built before the columns existed.
 `RefreshDocumentLocations` rebuilds the tree and rewrites page-row folder attributes
 for a dataset whose indexed locations lag `vfs_files`. It does not extract, OCR, or
@@ -71,7 +71,7 @@ Two of those columns are not what they look like:
 - **`re_money` holds magnitude buckets, not amounts.** 2 419 distinct amounts across
   twenty-five documents is not a facet; ten buckets per currency is. The raw amounts stay
   in `regex_entity_hit`, which is what lets a viewer show a bucket card containing its own
-  amounts. The ladder is in `tasks/regex_entities.py` with a test enumerating its
+  amounts. The ladder is in [tasks/regex_entities.py](../regex_entities.py) with a test enumerating its
   boundaries, because changing it means a rescan.
 - **`mentioned_dates` is filtered with `ANY(...) BETWEEN lo AND hi`, never with the
   interval-overlap test `dates` uses.** A document that mentions 1936 and 2020 occupies
@@ -130,7 +130,7 @@ The final batch and collection reindex include open shards. Failed plans do not 
 `email_edges` and `email_clusters`. It is the one activity here that is COLLECTION-scoped
 rather than dataset-scoped, because its most common edge is `identity` (the same message
 present in two custodians' mailboxes), and an edge builder that could only see one dataset
-would never find one. The identity rows for the dataset that just finished are refreshed
+would never find one. The identity rows for the dataset that finished are refreshed
 first, then the whole collection's edges and clusters are rebuilt and swept. It runs once
 at the end of each `ExecutePlans` batch that ran plans, so a large dataset or a dataset with
 nested archives builds the graph more than once, and edges appear during the ingest. Its
@@ -144,7 +144,7 @@ from an equal normalised subject plus a participant overlap and records `0.5`, b
 corpora this runs against carry `In-Reply-To` on well under 1% of their messages and a
 graph built on threading headers alone would be empty. The inference is guarded three ways
  (a subject-length floor, a cap on how many messages may share one normalised subject, and
-a time window), and every guard is a module constant in `email_graph.py` with the number it
+a time window), and every guard is a module constant in [email_graph.py](email_graph.py) with the number it
 was chosen against. `build_email_graph` logs the edge count per kind and what each guard
 dropped in one line, so a threshold change is visible in the worker log rather than in a
 graph nobody can read.
@@ -182,7 +182,7 @@ It reads every detector's `file_types` row and every parser's output, and writes
 per document to `file_type_canonical`: the winning MIME, the winning coarse type, the
 rule that chose it, and every detection that lost.
 
-The rank table is in `canonical_file_type.py`. The rule that matters is the first one: a
+The rank table is in [canonical_file_type.py](canonical_file_type.py). The rule that matters is the first one: a
 document is a docx because the docx parser read text out of it, not because a lookup
 table says `.docx` is not a zip. An archive that produced no members at all is demoted
 there too. An empty tar is text, and an email whose attachment extraction failed is an

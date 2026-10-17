@@ -1,39 +1,39 @@
-# `tests/conformance/`
+# [tests/conformance/](.)
 
 The upstream conformance corpus: cases taken from the test material of the projects our rules were
 ported from, so a run answers "do we agree with the people who implement this scheme" rather than
-"do we agree with ourselves". `./test-long.sh` runs it; `tests/conformance.rs` is the runner and
+"do we agree with ourselves". [./test-long.sh](../../test-long.sh) runs it; [tests/conformance.rs](../conformance.rs) is the runner and
 scorer.
 
 | File | What it holds |
 |---|---|
-| `extract_stdnum.py` | Turns the `python-stdnum` module docstrings into cases. Runs in the dev container. |
+| [extract_stdnum.py](extract_stdnum.py) | Turns the `python-stdnum` module docstrings into cases. Runs in the dev container. |
 | `stdnum.jsonl` | The extracted `python-stdnum` cases, checked in. |
-| `extract_libphonenumber.py` | Turns libphonenumber's per-region example numbers and its matcher's free-text corpus into cases. |
+| [extract_libphonenumber.py](extract_libphonenumber.py) | Turns libphonenumber's per-region example numbers and its matcher's free-text corpus into cases. |
 | `libphonenumber.jsonl` | The extracted libphonenumber cases, checked in. |
-| `extract_recognizers.py` | Turns the Recognizers-Text English specs (dates, currency, IP, phone, email) into cases. |
+| [extract_recognizers.py](extract_recognizers.py) | Turns the Recognizers-Text English specs (dates, currency, IP, phone, email) into cases. |
 | `recognizers.jsonl` | The extracted Recognizers-Text cases, checked in. |
-| `extract_price_parser.py` | Turns price-parser's parametrised (text, currency, amount) rows into cases. |
+| [extract_price_parser.py](extract_price_parser.py) | Turns price-parser's parametrised (text, currency, amount) rows into cases. |
 | `price-parser.jsonl` | The extracted price-parser cases, checked in. |
-| `extract_grok.py` | Turns the logstash-patterns-core specs (the log lines each grok pattern must match) into date cases. |
+| [extract_grok.py](extract_grok.py) | Turns the logstash-patterns-core specs (the log lines each grok pattern must match) into date cases. |
 | `grok.jsonl` | The extracted logstash-patterns-core cases, checked in. |
-| `extract_dateparser.py` | Turns dateparser's parametrised date strings, and the two tests that declare a string unparseable, into date cases. |
+| [extract_dateparser.py](extract_dateparser.py) | Turns dateparser's parametrised date strings, and the two tests that declare a string unparseable, into date cases. |
 | `dateparser.jsonl` | The extracted dateparser cases, checked in. |
-| `extract_open_location_code.py` | Turns the Open Location Code test data into plus-code and decimal-coordinate cases. |
+| [extract_open_location_code.py](extract_open_location_code.py) | Turns the Open Location Code test data into plus-code and decimal-coordinate cases. |
 | `open-location-code.jsonl` | The extracted Open Location Code cases, checked in. |
-| `extract_isemail.py` | Turns the is_email test set (an address with the category and diagnosis upstream returns for it) into email cases. |
+| [extract_isemail.py](extract_isemail.py) | Turns the is_email test set (an address with the category and diagnosis upstream returns for it) into email cases. |
 | `isemail.jsonl` | The extracted is_email cases, checked in. |
-| `extract_eth_utils.py` | Turns eth-utils' address tables and ERC-55's own vectors into Ethereum address cases. |
+| [extract_eth_utils.py](extract_eth_utils.py) | Turns eth-utils' address tables and ERC-55's own vectors into Ethereum address cases. |
 | `eth-utils.jsonl` | The extracted eth-utils and ERC-55 cases, checked in. |
-| `extract_hoover_mail.py` | Turns the hoover mail slice into message-id, date, address and Received cases, with the header field itself as the fragment. |
+| [extract_hoover_mail.py](extract_hoover_mail.py) | Turns the hoover mail slice into message-id, date, address and Received cases, with the header field itself as the fragment. |
 | `hoover-mail.jsonl` | The extracted hoover mail cases, checked in. |
-| `extract_pyais.py` | Turns pyais' decoded AIS expectations into MMSI cases. |
+| [extract_pyais.py](extract_pyais.py) | Turns pyais' decoded AIS expectations into MMSI cases. |
 | `pyais.jsonl` | The extracted pyais cases, checked in. |
-| `extract_advisory_database.py` | Turns one month of GitHub advisories into CVE cases: the identifier bare, and the same identifier inside a reference URL. |
+| [extract_advisory_database.py](extract_advisory_database.py) | Turns one month of GitHub advisories into CVE cases: the identifier bare, and the same identifier inside a reference URL. |
 | `advisory-database.jsonl` | The extracted GitHub Advisory Database cases, checked in. |
-| `extract_crossref.py` | Turns the reduced Crossref slice (DOIs and the ORCID identifiers on author records) into publication cases. |
+| [extract_crossref.py](extract_crossref.py) | Turns the reduced Crossref slice (DOIs and the ORCID identifiers on author records) into publication cases. |
 | `crossref.jsonl` | The extracted Crossref cases, checked in. |
-| `extract_presidio.py` | Turns Presidio's recogniser tests (parametrised free-text fragments with the spans upstream asserts are in them) into cases. |
+| [extract_presidio.py](extract_presidio.py) | Turns Presidio's recogniser tests (parametrised free-text fragments with the spans upstream asserts are in them) into cases. |
 | `presidio.jsonl` | The extracted Presidio cases, checked in. |
 
 ## The case file
@@ -152,7 +152,7 @@ an NVD URL with a slash on its left), and a guard against the rule being narrowe
 The same reading applies wherever an upstream can only confirm us: agreement from a source that
 publishes nothing wrong is a weaker measurement than the percentage makes it look.
 
-## What a flag would say, and the one origin that needs it to
+## Single-case Ethereum addresses have no verified checksum.
 
 An Ethereum address written in a single case carries no EIP-55 checksum, and the rule says so: it
 reports the address with the no-checksum flag and a markedly lower confidence, because nothing about

@@ -1,4 +1,4 @@
-# `src/rules/`
+# [src/rules/](.)
 
 One module per entity type. A rule is a candidate pattern plus a validator, and adding a type is a
 pattern, a validator and a fixture, not a new pipeline.
@@ -7,21 +7,21 @@ pattern, a validator and a fixture, not a new pipeline.
 
 | Module | Rules |
 |---|---|
-| `email.rs` | `email.basic` |
-| `date_iso.rs` | `date.iso8601` |
-| `date_machine.rs` | `date.rfc2822`, `date.clf`, `date.iso_week` |
-| `bank.rs` | `bank.iban`, `bank.bic`, `bank.payment_card`, `bank.aba_routing` |
-| `company.rs` | `company.lei`, `company.vat_eu`, `company.vat_non_eu`, `company.se_organisationsnummer` |
-| `security.rs` | `security.isin`, `security.cusip`, `security.sedol` |
-| `maritime.rs` | `vessel.imo`, `vessel.mmsi`, `container.iso6346` |
-| `device.rs` | `device.imei`, `device.mac` |
-| `network.rs` | `network.ip`, `network.asn` |
-| `extras.rs` | `vulnerability.cve`, `publication.doi`, `publication.orcid`, `message.rfc5322` |
-| `coordinates.rs` | `coord.decimal`, `coord.dms`, `coord.plus_code` |
-| `crypto.rs` | `crypto.ethereum`, `crypto.bitcoin` |
-| `phone.rs` | `phone.international` |
-| `money.rs` | `money.iso_code`, `money.symbol` |
-| `national_id.rs` | `natid.it_codice_fiscale`, `natid.es_nif_nie`, `natid.mx_curp`, `natid.in_pan`, `natid.pl_pesel`, `natid.se_personnummer` |
+| [email.rs](email.rs) | `email.basic` |
+| [date_iso.rs](date_iso.rs) | `date.iso8601` |
+| [date_machine.rs](date_machine.rs) | `date.rfc2822`, `date.clf`, `date.iso_week` |
+| [bank.rs](bank.rs) | `bank.iban`, `bank.bic`, `bank.payment_card`, `bank.aba_routing` |
+| [company.rs](company.rs) | `company.lei`, `company.vat_eu`, `company.vat_non_eu`, `company.se_organisationsnummer` |
+| [security.rs](security.rs) | `security.isin`, `security.cusip`, `security.sedol` |
+| [maritime.rs](maritime.rs) | `vessel.imo`, `vessel.mmsi`, `container.iso6346` |
+| [device.rs](device.rs) | `device.imei`, `device.mac` |
+| [network.rs](network.rs) | `network.ip`, `network.asn` |
+| [extras.rs](extras.rs) | `vulnerability.cve`, `publication.doi`, `publication.orcid`, `message.rfc5322` |
+| [coordinates.rs](coordinates.rs) | `coord.decimal`, `coord.dms`, `coord.plus_code` |
+| [crypto.rs](crypto.rs) | `crypto.ethereum`, `crypto.bitcoin` |
+| [phone.rs](phone.rs) | `phone.international` |
+| [money.rs](money.rs) | `money.iso_code`, `money.symbol` |
+| [national_id.rs](national_id.rs) | `natid.it_codice_fiscale`, `natid.es_nif_nie`, `natid.mx_curp`, `natid.in_pan`, `natid.pl_pesel`, `natid.se_personnummer` |
 
 ## A date rule ships only when the match fixes the whole day
 
@@ -135,12 +135,12 @@ In rough order of how much noise they remove per line of code:
 
 ## Shared machinery
 
-`checksum.rs` is the check-digit arithmetic (`luhn`, `damm`, `weighted_mod`, and `iso7064`'s
+[checksum.rs](checksum.rs) is the check-digit arithmetic (`luhn`, `damm`, `weighted_mod`, and `iso7064`'s
 `mod_97_10`, `mod_11_2` and `mod_11_10`) ported from `python-stdnum`, each with the valid and
 invalid pair from its upstream documentation as a test. The arithmetic is not invented here; a
 divergence from the reference shows up as a failing test rather than a quietly wrong facet.
 
-`context.rs` adds `Candidate::has_cue`, which answers whether one of a rule's cue words appears
+[context.rs](context.rs) adds `Candidate::has_cue`, which answers whether one of a rule's cue words appears
 within a window either side of the candidate, case-insensitively and on ASCII word boundaries. A
 check digit on a bare digit run is a one-in-ten filter, so the formats that are nothing but a token
 and a check digit are admitted on a cue word as well.

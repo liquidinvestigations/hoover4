@@ -25,7 +25,7 @@ the vectors daemon through `MANTICORE_VECTORS_URL` and show its tables separatel
 
 Every route requires an already-resolved identity except `/favicon.ico`, including the app
 shell, `/assets/…` and the wasm bundle. The policy is one file,
-`website/backend/src/auth/route_policy.rs`, and its tests enumerate the custom routes
+[website/backend/src/auth/route_policy.rs](../../website/backend/src/auth/route_policy.rs), and its tests enumerate the custom routes
 (`/_download_document/…`, `/_download_ocr_pdf/…`, `/_image_preview/…`, `/_chat_artifact/…`,
 `/_feedback/…`) literally, so a
 route added to `main.rs` and forgotten there fails a test rather than shipping open.
@@ -39,7 +39,7 @@ session created before a deployment stopped minting new ones. A caller with neit
 `401` with `route_policy::NO_SESSION_MESSAGE`.
 
 **The frontend reads the identity, it does not gate on it.**
-`website/frontend/src/components/session_context.rs` calls `/api/whoami` once and
+[website/frontend/src/components/session_context.rs](../../website/frontend/src/components/session_context.rs) calls `/api/whoami` once and
 publishes the result as a context; anything under it that needs the identity (the admin
 shell, the admin guard, both chat pages) reads it with `use_session_user()` instead of
 running its own `use_resource(whoami)`. Pages render immediately rather than waiting for
@@ -59,7 +59,7 @@ ClickHouse is split into the global database `Hoover4_Processing` (users, groups
 collections, the dataset registry, sessions, settings, search cache) and one database
 per collection, `Hoover4_Collection_<collectionname>` (blobs, VFS, parsed content, plans,
 errors, term dictionaries). The backend picks the database per query in
-`website/backend/src/db_utils/clickhouse_utils.rs`:
+[website/backend/src/db_utils/clickhouse_utils.rs](../../website/backend/src/db_utils/clickhouse_utils.rs):
 
 - `get_global_client()` for global tables;
 - `get_collection_client(collectionname)` for per-collection tables;
@@ -75,7 +75,7 @@ database, deleting one (only allowed when it has no datasets) drops it.
 
 ## Every `MATCH()` argument goes through one builder
 
-That builder is `website/backend/src/db_utils/manticore_match.rs`.
+That builder is [website/backend/src/db_utils/manticore_match.rs](../../website/backend/src/db_utils/manticore_match.rs).
 
 Manticore has no parameter binding over its HTTP SQL endpoint, so a `MATCH()` argument
 crosses two language boundaries at once and each has its own rule. Generic SQL quoting
@@ -121,7 +121,7 @@ a search page's pagination.
 
 The status picks the presentation: a **4xx** is something the caller can fix and is shown
 as a plain message, anything else is a failure of ours and is shown as the red component
-error. Both carry `x-error-display`, which is how `website/tools/capture_screenshots.py` finds a
+error. Both carry `x-error-display`, which is how [website/tools/capture_screenshots.py](../../website/tools/capture_screenshots.py) finds a
 surfaced error structurally rather than by matching words.
 
 `api::error_util::to_server_fn_error` writes each 500 to the website log with its full
@@ -182,9 +182,9 @@ This is not `PDF_TO_HTML_ENDPOINT`. That names `hoover4-processing-pdf-to-html`,
 separate container that takes a POST of raw PDF bytes and returns HTML; it answers
 `GET requests are not supported` to anything the search path sends.
 
-The viewer's own bundle is vendored under `frontend/assets/embed-pdf/_viewer/` and is
+The viewer's own bundle is vendored under [frontend/assets/embed-pdf/_viewer/](../../website/frontend/assets/embed-pdf/_viewer) and is
 pulled into the build by a `#[used] static … asset!(…folder…)` in
-`website/frontend/src/components/pdf_viewer/mod.rs`. Nothing reads that binding, and the `<script>` tag loads
+[website/frontend/src/components/pdf_viewer/mod.rs](../../website/frontend/src/components/pdf_viewer/mod.rs). Nothing reads that binding, and the `<script>` tag loads
 the entry point by literal URL, so the `with_hash_suffix(false)` option and the
 `/assets/_viewer/…` path in the tag have to be changed together, and dropping the
 declaration silently ships a site with no PDF viewer.
@@ -203,7 +203,7 @@ offers it a **Table** source, declared before `Text` in `DocumentSourceItem` so 
 opens on its grid rather than on the tab-separated flattening of it that the text
 extractor also produced.
 
-`website/backend/src/api/documents/table_browse.rs` is the whole query surface: `get_table_overview` (the
+[website/backend/src/api/documents/table_browse.rs](../../website/backend/src/api/documents/table_browse.rs) is the whole query surface: `get_table_overview` (the
 sheets, the columns and their statistics, the caps that fired), `get_table_page` (one
 window of one sheet) and `get_table_column_values` (a filter popover's value list).
 
@@ -224,7 +224,7 @@ Three more rules those functions share:
 * every column id (visible, sorted, filtered) is validated against the sheet's own
   columns before it reaches SQL.
 * every reader-supplied string is a bound parameter. This is ClickHouse, not Manticore:
-  `website/backend/src/db_utils/manticore_match.rs`'s escaping exists because Manticore has nothing to bind,
+  [website/backend/src/db_utils/manticore_match.rs](../../website/backend/src/db_utils/manticore_match.rs)'s escaping exists because Manticore has nothing to bind,
   and copying it here would be a second, worse escaping layer.
 
 `TableCell.text` is always the raw stored value. Row selection, sorting, filters, the
@@ -264,8 +264,8 @@ on every click.
 
 ## The file-type glyph
 
-`website/common/src/file_type_icons.rs` maps a canonical file type to a glyph name and a label, and
-`website/frontend/src/components/file_type_icon.rs` maps that one enum to one icon. Five sites draw it: the
+[website/common/src/file_type_icons.rs](../../website/common/src/file_type_icons.rs) maps a canonical file type to a glyph name and a label, and
+[website/frontend/src/components/file_type_icon.rs](../../website/frontend/src/components/file_type_icon.rs) maps that one enum to one icon. Five sites draw it: the
 search result card, the storage browser's file rows, the viewer's title bar, an email's
 attachment cards and the preview source selector. `SearchResultDocumentItem.file_type` and
 `VfsFileEntry.file_type` are filled from `file_type_canonical` (one ClickHouse read per

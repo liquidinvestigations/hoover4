@@ -16,11 +16,11 @@ Do not request another confirmation for those actions. Preserve their requested 
 Read [deploy flags](reference/deploy-flags.md) before selecting a build or reset operation.
 A normal bring-up does not prove that an image was rebuilt.
 
-Use `scripts/deploy-logged.sh` to preserve output and the deployment exit status.
+Use [scripts/deploy-logged.sh](scripts/deploy-logged.sh) to preserve output and the deployment exit status.
 Verify the source or image that the changed service actually loads.
 Keep build parallelism within the configured resource limit.
 
-Restart a worker through `main_services/restart-worker.sh` so it receives the intended drain period.
+Restart a worker through [main_services/restart-worker.sh](../../../main_services/restart-worker.sh) so it receives the intended drain period.
 The script restarts `hoover4-worker` and `hoover4-ops` together, because both load the worker source.
 A bare container restart can interrupt active work.
 For a single Compose service, use `--no-deps` when dependency recreation is outside the requested change.

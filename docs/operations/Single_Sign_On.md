@@ -1,61 +1,43 @@
-# Single sign-on
+# Supply request identity through the configured provider.
 
-What a deployment must put in front of hoover4 for a person to reach it.
+[Session middleware](../../website/backend/src/auth/session_middleware.rs) resolves request identity.
+[The route policy](../../website/backend/src/auth/route_policy.rs) requires identity on every route except `/favicon.ico`.
+Website routes do not create sessions.
+An existing session cookie can resume an unexpired row already stored in `web_sessions`.
+Deployment access details belong in the private infrastructure inventory.
 
-## The proxy is the only way in
+## Supply the identity headers.
 
-hoover4 mints no session of its own. Every route requires an already-resolved identity,
-except `/favicon.ico`. The identity comes from a session cookie already in `web_sessions`,
-or from four headers a reverse proxy asserts on the request. A caller with neither gets a
-`401` response from every other route.
-
-**The website accepts those four headers from whoever connects to it.** It reads no
-address and keeps no list of trusted senders. A caller that reaches the website directly
-and sets `X-Forwarded-User` is that user, and a caller that also sets `X-Forwarded-Groups`
-to `admin` is an administrator. The proxy is the only way in because the deployment binds
-the website where only the proxy reaches it, never because the website checks.
-
-This repository ships two configuration templates, `hoover4.ini.release` and
-`hoover4.ini.development`. A public deployment copies `hoover4.ini.release`. The website
-publishes port `12345` itself, `website_bind_ip` is `127.0.0.1`, and a real identity
-provider, such as `oauth2-proxy`, sits in front of it. A provider on another host needs
-`website_bind_ip` set to the one private address that provider dials.
-`hoover4.ini.development` turns on `hoover4-development-auth-backdoor` instead, a
-container that asserts a fixed identity on every request with no sign-in step. Anyone who
-reaches its published port is that identity, so it never runs on a machine anyone else can
-reach.
-
-## The four headers
-
-| header | required | format |
+| Header | Requirement | Format |
 |---|---|---|
-| `X-Forwarded-User` | yes | the username, trimmed. A missing or blank value gets a `401` response |
-| `X-Forwarded-Preferred-Username` | no | the display name, trimmed. An absent header gives an empty string |
-| `X-Forwarded-Email` | no | the email address, trimmed. An absent header gives an empty string |
-| `X-Forwarded-Groups` | no | a comma-separated list. Each entry is trimmed, an empty entry is dropped, and a repeated entry is kept once |
+| `X-Forwarded-User` | The header identity requires a nonempty username. | The middleware trims surrounding whitespace. |
+| `X-Forwarded-Preferred-Username` | This header is optional. | It supplies the display name, or an empty string when absent. |
+| `X-Forwarded-Email` | This header is optional. | It supplies the email address, or an empty string when absent. |
+| `X-Forwarded-Groups` | This header is optional. | It supplies comma-separated groups. The middleware trims, deduplicates, and removes empty entries. |
 
-A header name is read case-insensitively.
+Header names are case-insensitive.
+The deployment must supply headers through its configured identity integration.
+Keep the selected provider, traffic path, and access boundary in the private inventory.
+[Deployment configuration](Configuration_Reference.md) describes the available keys and generated service configuration.
 
-## The administrator condition
+## Resolve administrator and collection permissions.
 
-A person is an administrator when `X-Forwarded-Groups` carries the literal string `admin`
-or the literal string `superuser`. No other group name grants it.
+The middleware recognizes the exact group values `admin` and `superuser` for administrator identity.
+Other groups receive collection access through stored grants.
+[Permission checks](../../website/backend/src/auth/permissions.rs) restrict each collection read.
+[The administration manual](../user-manual/Admin_Manual.md#users-and-groups) explains group management.
 
-## This project's implementation
+## Verify sign-in and sign-out behavior.
 
-This project puts `liquid-core` behind `oauth2-proxy` to produce the four headers.
-`liquid-core` sets no identity header itself. It publishes identity as JSON at
-`/accounts/profile` and as OIDC claims. `oauth2-proxy` turns one of those into the headers
-above. `liquid-core` puts the literal strings `admin` and `superuser` into its `roles` list
-for a staff user and a superuser. The administrator condition matches without a code change
-on either side.
+Verify the identity returned by `whoami` through the configured provider.
+Verify ordinary and administrator access with their respective accounts.
+Calling `whoami` reads identity and does not create a session.
+An existing website session cookie follows its stored expiration and deletion state.
+Do not assume that an external provider's sign-out also deletes an existing website session row.
+Verify that behavior in the actual integration before documenting its result.
 
-Any proxy that asserts the same four headers, in the same format, works in place of this
-pair.
+## Use the separate agent identity contract.
 
-## Known limitation: sign-out
-
-`liquid-core` clears a downstream application's proxy session from a shared Redis store,
-keyed by an application id, when a person signs out. hoover4 keeps its own session table
-and its own cookie, which that mechanism cannot see. A person who signs out of
-`liquid-core` keeps a hoover4 session until it expires on its own.
+Agent routes use their own request identity contract in the same middleware.
+Do not copy browser identity handling into an agent caller.
+[The agent API](../../website/backend/src/api/agent/) defines its typed routes and collection checks.

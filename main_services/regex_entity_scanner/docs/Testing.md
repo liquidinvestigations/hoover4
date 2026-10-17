@@ -7,20 +7,16 @@
 ./test-long.sh stdnum  # one origin, named by its case file's stem
 ```
 
-`test.sh` builds the dev image if it is missing, then runs `cargo fmt --check`, `cargo clippy` with
+[test.sh](../test.sh) builds the dev image if it is missing, then runs `cargo fmt --check`, `cargo clippy` with
 warnings denied, and `cargo test`.
 
-## The speed budget is a design constraint
+## Select bounded representative tests.
 
-The whole battery stays inside **two to three minutes**, and an individual test inside **ten to
-fifteen seconds**. This is not a nicety. The only way precision work gets done at all is if the loop
-is short enough to run on every rule change, and a suite that is slow enough to skip is a suite
-nobody runs.
-
-Reference corpora and upstream test suites are large, and running one whole is the usual way this
-budget gets lost. A test iterates a **representative subset**, chosen to cover the formats, locales
-and failure modes that rule actually claims, and says in the test what the subset is for. That is
-thoroughness; iterating everything is just slowness that looks like thoroughness.
+Use the fast suite during rule development.
+Choose subsets that cover the formats, locales, and failure conditions of the changed rule.
+Describe each subset's purpose in its test.
+Run the upstream conformance suite separately when a rule or upstream dataset changes.
+Record measured test duration with its environment before using that duration for scheduling.
 
 ## The golden corpus
 
@@ -53,7 +49,7 @@ list edit that changes what matches adds a case, the same way a rule change does
 
 ## The upstream conformance run
 
-The golden corpus measures us against cases we wrote. `./test-long.sh` measures us against cases the
+The golden corpus measures us against cases we wrote. [./test-long.sh](../test-long.sh) measures us against cases the
 upstream implementers wrote. Fourteen origins carry it: `python-stdnum`, whose every module
 docstring is a labelled valid/invalid corpus for its own scheme; `libphonenumber`, whose metadata
 holds an example number for every region and line type and whose matcher test holds a free-text
@@ -80,7 +76,7 @@ first cases of a scheme in the case file's sorted order, so the sample is the sa
 with no seed to carry.
 
 The run asserts a recall and a precision floor on the aggregate **and on every origin
-separately**, in `tests/conformance.rs`. The per-origin floors are what stop one origin regressing
+separately**, in [tests/conformance.rs](../tests/conformance.rs). The per-origin floors are what stop one origin regressing
 behind the others: the largest origin carries many times the cases of the smallest, so a rule that
 loses every case in a small one moves the aggregate by less than the aggregate floor's own margin.
 Every origin in the corpus must have a floor, so adding an origin is a decision about the number it
@@ -97,7 +93,7 @@ Three numbers are reported per scheme, per origin and in aggregate, and never bl
 over upstream-valid cases in a scheme we implement, **precision** over upstream-invalid ones (did
 we stay silent), and **coverage**, how much of the extracted material was scored at all. Excluded
 cases are counted and listed with their reason beside every score, because a run that excludes its
-way to a good number measures nothing. `tests/conformance/Readme.md` has the case-file schema, the
+way to a good number measures nothing. [tests/conformance/Readme.md](../tests/conformance/Readme.md) has the case-file schema, the
 carrier and cue rules, and what may be excluded.
 
 ## The four rules whose evidence is their unit tests
@@ -110,17 +106,17 @@ not a sample of the evidence; they are the evidence.
 - **`coord.dms`.** No corpus writes a coordinate pair in the sexagesimal surface form under a licence
   that can be redistributed: geographic gazetteers keep latitude and longitude in separate columns,
   so joining them manufactures the token, and wiki sources hold template parameters rather than a
-  surface form. `tests/extras.rs` carries the same point in the ASCII spelling, in the typographic
+  surface form. [tests/extras.rs](../tests/extras.rs) carries the same point in the ASCII spelling, in the typographic
   prime spelling and in a mixture of the two, plus the sexagesimal overflow, the lone latitude and
   the hemisphere-first form the card refuses.
 - **`network.asn`.** Every authoritative source publishes bare numbers, and the rule requires the
   literal `AS`/`ASN` prefix *inside* the token, so prefixing them manufactures the token. The one
   register that writes the prefix out (RIPE's database) forbids redistributing any substantial
-  part of it, which is not a licence a manifest can record. `tests/devices_network.rs` carries the
+  part of it, which is not a licence a manifest can record. [tests/devices_network.rs](../tests/devices_network.rs) carries the
   guard that is the rule's whole interesting claim: a space is allowed after the three-letter
   spelling and refused after the two-letter one, because `AS` followed by a space is the English
   word far more often than it is a network.
-- **`date.iso_week`.** No public dataset carries a week date. `tests/dates.rs` therefore sweeps it
+- **`date.iso_week`.** No public dataset carries a week date. [tests/dates.rs](../tests/dates.rs) therefore sweeps it
   exhaustively rather than sampling: eight years (2004, 2009, 2015, 2020 and 2026, which have
   fifty-three weeks, and 2021, 2022 and 2023, which have fifty-two) times every week from 1 to 53,
   times every weekday from 1 to 7, times both ISO spellings. Each is accepted or refused according
@@ -131,7 +127,7 @@ not a sample of the evidence; they are the evidence.
 - **`device.imei`.** The one public type-allocation database fails TLS and has no mirror, and a type
   allocation code is the first eight digits rather than an IMEI, so building numbers out of one
   manufactures tokens. `python-stdnum` supplies a single upstream case, an invalid one, which is
-  precision evidence and no recall evidence at all; `tests/devices_network.rs` carries the valid
+  precision evidence and no recall evidence at all; [tests/devices_network.rs](../tests/devices_network.rs) carries the valid
   number, its grouped spelling, the counterpart whose check digit disagrees, and the cue the rule
   requires.
 

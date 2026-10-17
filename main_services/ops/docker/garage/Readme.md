@@ -27,13 +27,13 @@ to ask whether the application can reach it.
 
 Files here:
 
-- `garage.toml`, the daemon's config, bind-mounted read-only.
-- `Dockerfile` + `init.sh`, the `garage-init` one-shot that turns a blank node into a
+- [garage.toml](garage.toml), the daemon's config, bind-mounted read-only.
+- `Dockerfile` + [init.sh](init.sh), the `garage-init` one-shot that turns a blank node into a
   usable cluster.
 
-## The region is not cosmetic
+## Use the configured object-store region.
 
-`s3_region = "us-east-1"` in `garage.toml` is a deliberate deviation from Garage's own
+`s3_region = "us-east-1"` in [garage.toml](garage.toml) is a deliberate deviation from Garage's own
 default of `"garage"`, and it is the single setting that decides whether an S3 client
 needs to know anything about this deployment.
 
@@ -60,7 +60,7 @@ refusal happens at bootstrap rather than at first use.
 partitions"* with a 503 on a node that has never been bootstrapped, because a node with
 no layout owns no partitions. Assigning that layout is the bootstrap's own first job, so
 waiting for a 200 there before bootstrapping deadlocks on exactly the case the bootstrap
-exists for. `init.sh` polls `/v2/GetClusterStatus` for a node id instead, which is both
+exists for. [init.sh](init.sh) polls `/v2/GetClusterStatus` for a node id instead, which is both
 the real readiness signal and the next thing it needs. Once a layout is applied, `/health`
 answers 200 and is a fine liveness probe.
 
@@ -70,7 +70,7 @@ anything else is attempted.
 
 ## The bootstrap runs on every deploy
 
-`init.sh` is not a first-run script. It waits for `/health`, reads the node id from the
+[init.sh](init.sh) is not a first-run script. It waits for `/health`, reads the node id from the
 admin API, and then checks each piece of state before changing it: the layout is assigned
 only when `.nodes[0].role` is still `null`, the key is imported only when
 `garage key info` does not already find it, the bucket is created only when

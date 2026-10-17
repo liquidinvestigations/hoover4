@@ -29,19 +29,14 @@ rather than by erroring.
 The vectors daemon holds `<collectionname>_<n>_vectors` tables. Website search reads text
 tables only, so an unavailable vectors daemon does not stop full-text search.
 
-**One table per shard, and no JOIN.** Each document's metadata is denormalized onto every
-one of its pages rows by the indexer. The JOIN this replaced was the single most expensive
-thing in the search path. A nested-loop lookup per left row, evaluated before any
-predicate, so an unfiltered entity facet on the largest shard cost 13 s alone and 100 s
-under the four-way concurrency of the Entities tab, which is what produced HTTP 504 there.
-It was also silently wrong: Manticore's `LEFT JOIN` drops unmatched left rows, 0.28% of
-documents on the corpus it was measured against. Denormalized, the same facet is ~1 s and
-a `file_types` facet is ~0.27 s, for about 15% more disk. Do not reintroduce a join.
+Each shard page row carries its document metadata.
+Search and facets query those denormalized rows without joining a separate metadata table.
+Measured query duration depends on the corpus, shard count, filters, and request concurrency.
 
 Every search (result list, hit count, string facets, MVA facets, the date histogram) is
-therefore built once **per shard** (`website/backend/src/api/search/search_sql.rs`) and fanned out
+therefore built once **per shard** ([website/backend/src/api/search/search_sql.rs](../../website/backend/src/api/search/search_sql.rs)) and fanned out
 through a PROCESS-WIDE gate of `MAX_PARALLEL_INDEX_QUERIES = 8` concurrent Manticore
-queries (`website/backend/src/api/search/fanout.rs`, override with
+queries ([website/backend/src/api/search/fanout.rs](../../website/backend/src/api/search/fanout.rs), override with
 `HOOVER4_SEARCH_MAX_PARALLELISM`, clamped to 1..=64; ini key `search_max_parallelism`).
 Process-wide rather than per request because the Entities tab opens four fan-outs at once,
 and a per-call limit multiplies by four against a daemon that has a dozen worker threads.
@@ -84,11 +79,11 @@ possible outcome is `0 documents found`. The guard is display-only: the orphan r
 inflate unfiltered hit counts, and `main.py purge-dataset` is what removes them.
 
 The four NER Entities facets (`ner_per`, `ner_org`, `ner_loc`, `ner_misc`) and the
-document viewer's entities panel are filtered through `website/common/src/entity_stoplist.rs`,
+document viewer's entities panel are filtered through [website/common/src/entity_stoplist.rs](../../website/common/src/entity_stoplist.rs),
 which
 rejects mail header names, encoding fragments and letter-spaced PDF headings. The
 pipeline drops the same values before storing them
-(`main_services/processing/tasks/entity_stoplist.py`), so on freshly extracted data this
+([main_services/processing/tasks/entity_stoplist.py](../../main_services/processing/tasks/entity_stoplist.py)), so on freshly extracted data this
 finds nothing; it exists because a write-time rule governs only rows written after it,
 and on a mail corpus the rows written earlier put `Content-Transfer-Encoding` at the top
 of the facet. The duplication is deliberate and mirrors `document_sources.rs`: neither
@@ -99,7 +94,7 @@ against a checksummed identifier it would only do damage.
 **A facet search box asks the corpus, not the buckets on screen.** A pane holds the top
 twenty-one buckets of one query, so narrowing those client-side answers "nothing matches"
 for a value that is present and merely unpopular. `search_entity_terms`
-(`website/backend/src/api/search/entity_terms.rs`) resolves a needle against
+([website/backend/src/api/search/entity_terms.rs](../../website/backend/src/api/search/entity_terms.rs)) resolves a needle against
 `<collectionname>_entities` (the only table carrying both the text and the term id the
 search columns are written in), and the ids narrow the facet query through
 `search_string_facet`'s `restrict_to_ids`. `Some(vec![])` is a needle that matched
@@ -124,7 +119,7 @@ collection-granular. A permitted collection implies all of its datasets. Dataset
 permissions would make that line a leak.
 
 The two copies are held together by a digest rather than by discipline. No path is
-visible to both test runs (`hoover4-website` mounts only `website/` and `hoover4-worker`
+visible to both test runs (`hoover4-website` mounts only [website/](../../website) and `hoover4-worker`
 only `main_services/processing`), so each side hashes its own header names, thresholds and
 canonical cases into `STOPLIST_PARITY_DIGEST` and asserts the same literal. A rule changed
 on one side alone fails that side's test; updating the digest then fails the other side
@@ -203,7 +198,7 @@ filter**, a facet that filtered itself would be one solid block inside the cutof
 zero outside. The bars the cutoffs cover are drawn in the accent, so the picture is
 "what you selected against what is there".
 
-`search_date_histogram` (`website/backend/src/api/search/date_histogram.rs`) does it in two fan-outs:
+`search_date_histogram` ([website/backend/src/api/search/date_histogram.rs](../../website/backend/src/api/search/date_histogram.rs)) does it in two fan-outs:
 
 1. **Measure the domain.** `min(date_min)` and `max(date_max)` over the filtered set, plus
    the undated count. The bounds come from `ORDER BY … LIMIT 1` in each direction rather
@@ -250,7 +245,7 @@ user had not confirmed.
 
 ## Only the first 1 000 results are reachable
 
-`MAX_PAGINATION_DOCUMENT_LIMIT` (`website/common/src/search_const.rs`) caps how deep the pager
+`MAX_PAGINATION_DOCUMENT_LIMIT` ([website/common/src/search_const.rs](../../website/common/src/search_const.rs)) caps how deep the pager
 and the next/previous-result buttons go. The hit count above them is the whole match, so
 a corpus-wide query says "6 379 documents found" over a pager that ends at `1000`, two
 numbers on one line that legitimately disagree. The `i` beside the count explains it
@@ -281,7 +276,7 @@ dataset) holding one row per VFS node. It powers the storage sidebar, the filter
 folder picker, and in-folder search.
 
 **Three independent caps bound what it renders**, and they are separate because they
-answer different questions (`website/frontend/src/components/search_components/vfs_tree.rs`):
+answer different questions ([website/frontend/src/components/search_components/vfs_tree.rs](../../website/frontend/src/components/search_components/vfs_tree.rs)):
 
 | cap | bounds | overflow row |
 |---|---|---|
@@ -334,7 +329,7 @@ twenty-one siblings. The path to the focus stays open, including the levels elis
 and branches elsewhere in the tree keep whatever the user opened by hand.
 
 **The storage sidebar is resizable and remembers its width**
-(`website/frontend/src/components/resizable_sidebar.rs`). The unit is CSS pixels. A percentage or `vw` would
+([website/frontend/src/components/resizable_sidebar.rs](../../website/frontend/src/components/resizable_sidebar.rs)). The unit is CSS pixels. A percentage or `vw` would
 re-scale the pane on every window change, and the width a folder name needs is a number of
 pixels, not a share of a screen. Those are LAYOUT pixels, before the app's scale, so the
 drag divides the cursor's travel by the scale it measures off `#x-nav-container`; the
@@ -351,8 +346,7 @@ whole activation sequence. `is_double_press` pairs two presses within 400 ms and
 each other, which is the only path that writes the default width back to storage.
 
 Breadcrumbs resolve through `vfs_tree_path_to`, which walks `parent_key` and therefore
-crosses container boundaries: `PathDescriptor` carries a single `container_hash`, so an
-archive inside an archive used to render one hop and lose the rest. A container has no
+crosses container boundaries. `PathDescriptor` carries one `container_hash`, while parent links retain the complete container hierarchy. A container has no
 `/` node: what is inside it hangs off the container FILE, so expanding `report.zip` shows
 its contents and the trail reads `dataset › folder › report.zip › member`. The content
 pane still addresses that level as the descriptor `container_hash + "/"`. A descriptor
@@ -361,7 +355,7 @@ and a tree node are different things. Past
 
 Every tree endpoint reads through `manticore_search_sql_uncached`. The file and byte counts
 of the file location picker and the folder listing come from ClickHouse `vfs_nodes`, also
-without a cache (`api/vfs/stats.rs`).
+without a cache ([api/vfs/stats.rs](../../website/backend/src/api/vfs/stats.rs)).
 The mounted dataset tree retains child pages and resolved paths for five seconds.
 Navigation or remount refreshes expired entries while existing rows remain visible.
 Successful path results retain their original fetch time, and failed requests remain errors.

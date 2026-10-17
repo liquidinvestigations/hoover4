@@ -9,3 +9,5 @@ How to run the stack.
 - [Nomad_Cluster.md](Nomad_Cluster.md), the local Nomad, Consul and Vault cluster, and GPU support by architecture
 - [Troubleshooting.md](Troubleshooting.md), symptom to mechanism, for a human reading cold
 - [ClickHouse_Queries.md](ClickHouse_Queries.md), the recurring diagnostic queries
+
+[Export and restore a collection.](Backup_And_Restore.md)

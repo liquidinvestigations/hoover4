@@ -21,8 +21,8 @@ between P4 and P5 would move a number that existing rows already hold.
   each batch** (`NLP_MODEL_BY_PROVIDER`: `gpu → ner-gpu-xlmr`,
   `spacy → ner-spacy-xx`), not the configured one, under fallback the two
   differ, and that difference is the only evidence an outage happened.
-- Send only the variants worth reading (below) and drop the values that are
-  debris rather than entities (`tasks/entity_stoplist.py`).
+- Send only the eligible source variants described below and drop the values that are
+  debris rather than entities ([tasks/entity_stoplist.py](../entity_stoplist.py)).
 - Call the remote NER service in batches of `NLP_BATCH_TEXTS = 32` texts per
   request (and `NLP_BATCH_CHARS = 250_000` characters), via `tasks.remote.post_json` over an ordered endpoint list
   (`NER_URL` primary, `NER_URL_FALLBACK` the `hoover4-ner-spacy` CPU twin, which is
@@ -38,7 +38,7 @@ between P4 and P5 would move a number that existing rows already hold.
   part of `entity_hit`'s `ORDER BY`, so two providers' hits for the same
   `(file, variant, page, type)` coexist instead of one replacing the other.
 
-## What the model is allowed to read, and what it is allowed to return
+## Entity extraction uses a bounded input and output contract.
 
 A model labels whatever it is handed, so both of these are correctness questions about
 the Entities facet rather than tuning.
@@ -60,7 +60,7 @@ chunks. Its unit is a chunk; this stage's unit is a whole page or a 256 KB segme
 one mostly-base64 page whose remaining fifth is prose would lose that prose's entities
 entirely. The failure mode this stage exists to avoid.
 
-**Which values.** `tasks/entity_stoplist.py` rejects what cannot be an entity: mail and
+**Which values.** [tasks/entity_stoplist.py](../entity_stoplist.py) rejects what cannot be an entity: mail and
 MIME header names (`X-` extension headers by shape, so no corpus's private ones need
 enumerating), day and month names, SMTP/MIME protocol words, quoted-printable soft-break
 fragments (`of=`), long case-shuffled base64 runs, single latin characters, four or more
@@ -76,7 +76,7 @@ ordinary English words as well as headers, so they count only with the header's 
 still attached (`Sara Shackleton To:`) and `Blind Date` stays searchable.
 
 The website applies the same rules again when it renders entities
-(`website/common/src/entity_stoplist.rs`), because rows written before a rule existed
+([website/common/src/entity_stoplist.rs](../../../../website/common/src/entity_stoplist.rs)), because rows written before a rule existed
 keep their values until this stage is re-run over the collection. The two copies cannot
 share a file (the two test suites run in containers that mount different trees), so each
 hashes its own rule data and canonical cases into `STOPLIST_PARITY_DIGEST` and asserts the
@@ -84,13 +84,13 @@ same literal, which makes a one-sided change fail a test rather than drift.
 
 ## Two providers, and the two places they collide
 
-Both providers run over every text variant, and both sets are kept. That is the
-design, not an accident. It has two consequences that are invisible when broken:
+With `ner_provider = both`, both configured providers process the eligible text variants.
+Their stored hits retain provider identity. The storage and indexing contracts require these properties:
 
 1. **`entity_hit` must carry `nlp_model`.** With it empty, both providers land on
    the same key and whichever ran last is the only one with entities.
 2. **P6 must UNION the two, not take the last one.** `union_entities_by_segment`
-   in `P6_index_data/activities.py` does this and deduplicates. The providers
+   in [P6_index_data/activities.py](../P6_index_data/activities.py) does this and deduplicates. The providers
    agree on most entities, and the same term id twice in a Manticore MVA inflates
    every facet count that includes it.
 
@@ -100,17 +100,17 @@ under two different `entity_type` values depending on which provider served it,
 and the union above renders them as two facets, which reads as duplicate data
 rather than as one entity found twice.
 
-**Fallback is verified, not assumed.** Stopping
-`hoover4-ai-server` makes NER fail over to `ner-spacy-xx` in ~0.02 s, the breaker
-opens for 60 s after three consecutive connect failures, and work returns to
-`ner-gpu-xlmr` once the host is back.
+The NER caller can use an enabled spaCy fallback after a GPU connection failure.
+It records the provider that served the request.
+Read timeouts and busy responses retain their separate retry behavior.
+[The remote client](../remote.py) defines the connection and circuit-breaker conditions.
 - Write `nlp_processed` watermark rows, including `text_bytes`. The byte
   length of the cleaned source text (`len(clean_text(text).encode('utf-8'))`).
   The Manticore shard planner (part 6) sizes shards from this column.
 
 ## Regex entity scanning
 
-`scan_regex_entities.py` sends the same segments to `hoover4-regex-entity-scanner` and
+[scan_regex_entities.py](scan_regex_entities.py) sends the same segments to `hoover4-regex-entity-scanner` and
 writes `regex_entity_hit` plus the `regex_scanned` watermark. It reads the same variants
 NER does (`text_sources.ner_reads_variant`), applies the same `clean_text`, and
 watermarks the segments it skipped for the same reason.
@@ -145,24 +145,24 @@ stage does not window. The loss is real, bounded, and written down here so it is
 rediscovered later as a mystery about one missing value.
 
 The derived facets (the money magnitude ladder, the day snap, the date plausibility window)
-are **not** here. They live in `tasks/regex_entities.py`, which the indexing stage imports
+are **not** here. They live in [tasks/regex_entities.py](../regex_entities.py), which the indexing stage imports
 too: changing any of them means a rescan and a reindex together, and a rule that lives in
 one stage is a rule the other can drift away from.
 
 ## Entry Points
 
-- Workflow: `ExtractEntitiesForPlan` in `workflows.py` (runs on the common queue,
+- Workflow: `ExtractEntitiesForPlan` in [workflows.py](workflows.py) (runs on the common queue,
   like all workflows).
-- Workflow: `ScanRegexEntitiesForPlan` in `workflows.py`, a sibling of it rather than a
+- Workflow: `ScanRegexEntitiesForPlan` in [workflows.py](workflows.py), a sibling of it rather than a
   successor.
-- Activity: `scan_regex_entities_for_hashes` in `scan_regex_entities.py`, on
+- Activity: `scan_regex_entities_for_hashes` in [scan_regex_entities.py](scan_regex_entities.py), on
   `processing-common-queue`, not on a queue of its own: the CPU work is in another
   container and this activity only moves rows.
-- Activity: `extract_entities_for_hashes` in `activities.py`, runs on
+- Activity: `extract_entities_for_hashes` in [activities.py](activities.py), runs on
   `processing-nlp-queue` with a dedicated worker (`main.py worker nlp`,
   concurrency 2; concurrency here pipelines HTTP to the remote service, not
   local CPU).
-- NER client: `extract_ner_from_text.py`.
+- NER client: [extract_ner_from_text.py](extract_ner_from_text.py).
 
 ## Failure Policy
 

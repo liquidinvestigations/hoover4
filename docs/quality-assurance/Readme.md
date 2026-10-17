@@ -8,7 +8,7 @@ capture report.
 - [Running the checks](Running_Checks.md), what each check proves, and the claim-to-evidence table
 - [Testing the website](Testing_The_Website.md), the website suites and the two diagnostics beside them
 - [Browser test design](Browser_Test_Design.md), how to design a browser test around state changes
-- [Browser test cases](Browser_Test_Cases.md), one row per numbered scenario in `website/browser-tests/`
+- [Browser test cases](Browser_Test_Cases.md), one row per numbered scenario in [website/browser-tests/](../../website/browser-tests)
 - [Capture report format](Capture_Report_Format.md), the four verdict words, the report columns, and where the artefacts land
 - [Legacy data processing tests](Legacy_Data_Processing_Tests.md), the older system's tests and fixtures, for feature and test parity
 - [Chat acceptance stories](chat-acceptance/Readme.md), chat acceptance stories with their facts and a report template

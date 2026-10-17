@@ -4,12 +4,12 @@ This directory centralizes database utilities and schema definitions used by the
 
 ## Contents
 
-- `db_global_migrations/` - SQL migrations for the global ClickHouse database, `Hoover4_Processing`.
-- `db_collection_migrations/` - SQL migrations applied to every per-collection ClickHouse database, `Hoover4_Collection_<collectionname>`.
-- `clickhouse.py` - ClickHouse client configuration and migration runner.
-- `manticore.py` - Manticore index maintenance and search configuration utilities.
-- `s3.py` - S3 client helpers and bucket naming for the Garage blob store.
-- `chat_todos.py` - chat and agent-run todo lists: validation, storage, and the
+- [db_global_migrations/](db_global_migrations) - SQL migrations for the global ClickHouse database, `Hoover4_Processing`.
+- [db_collection_migrations/](db_collection_migrations) - SQL migrations applied to every per-collection ClickHouse database, `Hoover4_Collection_<collectionname>`.
+- [clickhouse.py](clickhouse.py) - ClickHouse client configuration and migration runner.
+- [manticore.py](manticore.py) - Manticore index maintenance and search configuration utilities.
+- [s3.py](s3.py) - S3 client helpers and bucket naming for the Garage blob store.
+- [chat_todos.py](chat_todos.py) - chat and agent-run todo lists: validation, storage, and the
   questions that decide whether the agent gets nagged. A new completion needs a reason,
   done and replaced items keep their ids, an identical write adds no version, and a bare
   status flip is not a change. The module docstring gives the reason for each rule. Every run writes one chat turn.
@@ -32,7 +32,7 @@ the split costs no storage.
 It also turns "`P0_scan_disk` must never walk derived material" from a prefix check
 somebody has to remember into a structural property for the chat artifacts: they are in a
 bucket no collection's walker looks at. The OCR'd PDFs still share a bucket with the blobs
-they were built from, which is why `verify-stack.sh` still asserts that no `blobs` row
+they were built from, which is why [verify-stack.sh](../../verify-stack.sh) still asserts that no `blobs` row
 references `derived/`.
 
 A collection's bucket is created with the collection and removed with it, which is why the
@@ -58,8 +58,8 @@ ClickHouse storage is split across `1 + N` databases.
 
 | | Database | Migrations | Holds |
 |---|---|---|---|
-| Global | `Hoover4_Processing` | `db_global_migrations/` | `users`, `user_groups`, `user_group_membership`, `collections`, `collection_group_permissions`, `web_sessions`, `server_settings`, `dataset`, `search_manticore_cache`, `temp_chat_json_objects`, `processing_eta_samples`, `processing_task_runs` (unroutable activity timings), `processing_queue_backlog`, `bench_runs`, `dataset_stats`, `feedback_reports` |
-| Per collection | `Hoover4_Collection_<collectionname>` | `db_collection_migrations/` | blobs, VFS, parsed content, plans, errors, task runs, document outcomes, term dictionaries, NLP watermark, Manticore shard ledger |
+| Global | `Hoover4_Processing` | [db_global_migrations/](db_global_migrations) | `users`, `user_groups`, `user_group_membership`, `collections`, `collection_group_permissions`, `web_sessions`, `server_settings`, `dataset`, `search_manticore_cache`, `temp_chat_json_objects`, `processing_eta_samples`, `processing_task_runs` (unroutable activity timings), `processing_queue_backlog`, `bench_runs`, `dataset_stats`, `feedback_reports` |
+| Per collection | `Hoover4_Collection_<collectionname>` | [db_collection_migrations/](db_collection_migrations) | blobs, VFS, parsed content, plans, errors, task runs, document outcomes, term dictionaries, NLP watermark, Manticore shard ledger |
 
 `operation_error_events` stores `selection_complete` after all selector class events.
 Its JSON value stores the filter and counts. A missing marker permits synchronous removal
@@ -74,7 +74,7 @@ The table stores later writes with `write_version`, and current-row queries use 
 Migration copies retain equal-key historical rows with separate legacy identities.
 
 `dataset_stats` holds the newest document count, size, indexed count, error count and
-processing state of each dataset. `dataset_stats.py` writes it when an operation is
+processing state of each dataset. [dataset_stats.py](dataset_stats.py) writes it when an operation is
 admitted, when an operation reaches a terminal state, and during the ETA collector pass
 while a collection has a live operation. A dataset is `processing` while a live operation
 other than `export_collection` holds it under the operation lock rule, and `done`
@@ -107,7 +107,7 @@ insert cannot replace a terminal row in a `FINAL` read.
 Manticore table names (`<name>_<n>_pages`) are interpolated unquoted in both runtimes,
 and a dashed identifier does not parse. The rule is enforced by
 `clickhouse.py::validate_collectionname` and, independently, by `collectionname_valid` in
-`website/backend/src/api/admin/collections.rs` - a database name cannot be bound as a SQL
+[website/backend/src/api/admin/collections.rs](../../../website/backend/src/api/admin/collections.rs) - a database name cannot be bound as a SQL
 parameter, so both runtimes must refuse a bad name on their own.
 
 `dataset` deliberately stays global: it is the registry the website lists before it knows
@@ -180,8 +180,8 @@ Execution duration excludes time before worker acceptance.
 
 ## Migrations
 
-Migrations are run by `main.py migrate`, which applies `db_global_migrations/` to
-`Hoover4_Processing` and then `db_collection_migrations/` to every non-deleted collection.
+Migrations are run by `main.py migrate`, which applies [db_global_migrations/](db_global_migrations) to
+`Hoover4_Processing` and then [db_collection_migrations/](db_collection_migrations) to every non-deleted collection.
 `main.py ensure-collection <name>` applies the collection set to a single collection and
 creates its database if missing; that is also what the admin UI triggers (via the
 `EnsureCollectionDatabase` Temporal workflow) when a collection is created.
@@ -196,7 +196,7 @@ consequences:
   `migrate` run, because each has its own independent `schema_versions`.
 
 Both sets are **collapsed at a baseline**, then grow by new numbered files.
-`COLLAPSED_BASELINE` in `tests/unit/test_migrations_parity.py` is `{global: 28,
+`COLLAPSED_BASELINE` in [tests/unit/test_migrations_parity.py](../tests/unit/test_migrations_parity.py) is `{global: 28,
 collection: 48}`. Files at or below those numbers are CREATE-only history and must
 never be edited. A file above a baseline may `ALTER TABLE`.
 
@@ -210,7 +210,7 @@ being acceptable.
 `cursor.execute(sql, params)` is not safe for a statement carrying corpus text, and no
 amount of escaping makes it safe. The MySQL driver scans the **fully interpolated**
 statement for a client-side `DELIMITER` command before sending it, and that scanner does
-not understand the backslash escaping the same driver has just applied. A document
+not understand the backslash escaping the same driver applied. A document
 containing the word `delimiter` followed by whitespace and a quote (ordinary MediaWiki
 markup and manual pages do this) is read as a delimiter change: the statement is either
 refused outright (`the backslash (\) character is not a valid delimiter`) or re-split and
@@ -221,7 +221,7 @@ failed, so a single file can hide dozens of healthy ones.
 `manticore_execute(cnx, sql, params)` substitutes the parameters with the connection's own
 escaping and sends the bytes with `cmd_query`, which has no splitter in front of it. The
 statement template is split on `%s` rather than `%`-formatted, so a `%s` inside a document
-is just text.
+remains text.
 
 The page writer binds each row with `bind_manticore_sql`. It combines encoded value groups
 and sends the resulting statement with `cmd_query`. It does not bind the statement again.
@@ -243,10 +243,10 @@ See [P6](../tasks/P6_index_data/Readme.md) for the encoded text rule and merge s
 
 ## Manticore infix indexing (`min_infix_len='3'`)
 
-`pages_table_ddl` in `manticore.py` sets `min_infix_len='3'`, so `MATCH('doc*')` and
+`pages_table_ddl` in [manticore.py](manticore.py) sets `min_infix_len='3'`, so `MATCH('doc*')` and
 `MATCH('*ocument*')` work.
 
-### Why, and what "before" actually looked like
+### Verify wildcard matching after indexing.
 
 Without it the star is dropped during tokenisation and the query silently becomes an exact
 search for a truncated word. That is not "wildcards are unsupported"; it is a **wrong
@@ -264,7 +264,7 @@ The `filename_index` row is a pages row like any other, so a filename fragment
 (`*report*` finding `annual_report_2024.pdf`) is infix-matched by the same setting. The
 best fuzzy-match case in the schema.
 
-### The value is a statement of intent, not a tuning knob
+### Verify the effect of the infix setting.
 
 In this Manticore version `min_infix_len` is an **on/off switch, not a threshold**: 2, 3
 and 4 are byte-for-byte identical in size *and* behaviour, and `do*` (2 characters) matches
@@ -290,7 +290,7 @@ metric being noisy at this corpus size. A controlled probe (two tables, the same
 same flush/optimise) put the difference at **+0.8%**. Re-measure on a real-sized collection
 before treating infix indexing as a storage problem.
 
-### Two traps
+### Reindex and reload after changing index settings.
 
 **`ALTER TABLE` does not reindex.** It changes metadata only:
 
@@ -316,7 +316,7 @@ long-running process that imported `database.manticore` at startup; a reindex tr
 without restarting it recreates the tables from the *old* DDL, and `SHOW TABLE ... SETTINGS`
 will show the setting missing with no other sign anything went wrong.
 
-Always verify the **behaviour**, not just the settings:
+Verify query behavior after changing the settings:
 
 ```bash
 docker exec hoover4-mcp-collections python -c "
@@ -339,7 +339,7 @@ preserves historical rows and creates `processing_errors_identity_ready` last.
 It is `processing_errors_identity_ready`. Update both sentinel copies when a later table-creating migration
 is added.
 
-## `table_cells` is keyed by hash, and that is why it needs a sweeper
+## Hash-keyed table cells need a sweeper.
 
 `purge_dataset_from_clickhouse` enumerates `SHOW TABLES`, runs `DESCRIBE TABLE` on each,
 and **skips every table with no `collection_dataset` column**. `table_cells` has none, on

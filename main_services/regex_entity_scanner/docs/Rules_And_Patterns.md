@@ -79,7 +79,7 @@ Roughly in order of noise removed per line of code:
    `t`, `$`) need stronger context before they count at all.
 6. **Negative contexts.** Inside a URL, inside a base64 blob, inside a hash, inside a code block.
 
-## Confidence is a ladder, not an opinion
+## Confidence follows validation levels.
 
 Confidence is thresholded by consumers at index time, so it must mean the same thing across every
 rule: how likely this span is to be what the rule claims, given what the validator could actually
@@ -172,7 +172,7 @@ carry a valid ISO 3166-1 country code in positions five and six, so the label be
 what makes the rule usable rather than merely correct.
 
 The cue list lives with the rule and appears verbatim in its catalogue entry: "this was accepted
-because the word IMO was nearby" is exactly what a reader needs in order to weigh the match.
+because the word IMO was nearby" is exactly what a reader needs to assess the match.
 
 ### The window is field-scoped
 
@@ -260,7 +260,7 @@ lands in the index, which makes renaming one a data migration rather than a tidy
 ## Every rule is documented
 
 A rule is not finished when it matches correctly. It is finished when a reader who clicks one of its
-matches can find out what it is: a catalogue entry in `src/explain/catalog.rs` naming what it
+matches can find out what it is: a catalogue entry in [src/explain/catalog.rs](../src/explain/catalog.rs) naming what it
 matches, the standards behind it, what the validator checks, what acceptance does **not** prove, the
 authorities and the references. The test suite asserts that every compiled rule has one. See
 [Explainer_Cards.md](Explainer_Cards.md).

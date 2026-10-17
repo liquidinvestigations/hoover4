@@ -1,13 +1,13 @@
 # GPU tier compose overlays
 
-One overlay per service in the standalone GPU tier. `deploy.py` selects them from
+One overlay per service in the standalone GPU tier. [deploy.py](../../deploy.py) selects them from
 `hoover4.ini`; they are never run by hand with a bare `up -d`.
 
 | file | service |
 |---|---|
-| `ai-server.yaml` | embeddings, reranking and NER |
-| `easyocr.yaml` | GPU OCR |
-| `vllm.yaml` | local model serving |
+| [ai-server.yaml](ai-server.yaml) | embeddings, reranking and NER |
+| [easyocr.yaml](easyocr.yaml) | GPU OCR |
+| [vllm.yaml](vllm.yaml) | local model serving |
 
 Relative paths in these files resolve against the **project directory** (the first compose
 file's directory) not against the overlay's own location. Render the merged configuration

@@ -19,7 +19,6 @@ Your administrator supplies the site address and account access.
 9. [AI chat](#9-ai-chat)
 10. [Investigation boards](#10-investigation-boards)
 
-[Read the administration manual.](Admin_Manual.md)
 11. [Sharing and bookmarking](#11-sharing-and-bookmarking)
 12. [Review search and processing limits.](#12-review-search-and-processing-limits)
 
@@ -55,9 +54,11 @@ listing and the preview, the three panes of a document tab, and a conversation a
 pane. Drag a divider to change the width of a pane, and double-click it to put it back. Each
 width is remembered on this browser.
 
-![Home page](img/home.png)
+<a href="img/home.png"><img src="img/home.png" alt="Home page" align="right" width="560"></a>
 
 ---
+
+<br clear="all">
 
 ## 3. Home
 
@@ -86,7 +87,7 @@ viewers can look different in the image, and the form names them when the page h
 Submitting a query opens the search page: the query box and toolbar across the top, the result
 list on the left, and the document preview on the right.
 
-![Search results for “computer”](img/search-results.png)
+<a href="img/search-results.png"><img src="img/search-results.png" alt="Search results for “easychair”" align="right" width="560"></a>
 
 Reading a result card:
 
@@ -104,9 +105,19 @@ Reading a result card:
 
 Clicking anywhere else on the card selects it and loads it into the preview pane on the right.
 
-![A selected result previewed beside the list](img/search-preview-pdf.png)
+<br clear="all">
+
+<a href="img/search-preview-pdf.png"><img src="img/search-preview-pdf.png" alt="A selected result previewed beside the list" align="right" width="560"></a>
+
+<br clear="all">
 
 ### What you can type
+
+<a href="img/search-repair.png"><img src="img/search-repair.png" alt="Uppercase Boolean query results" align="right" width="560"></a>
+
+The image shows uppercase Boolean query results.
+
+<br clear="all">
 
 The query accepts these full-text operators.
 
@@ -130,7 +141,9 @@ The query accepts these full-text operators.
 | `"(water \| sewage) plant"/2` | It accepts an alternative inside the quorum search. |
 
 Word forms do not match automatically. Search `contract \| contracts` or `contract*` to include both forms.
-The search repairs unmatched quotes, brackets and stray operator characters. Its note explains each repair.
+The search repairs unmatched quotes, brackets, and stray operator characters.
+The normal result view does not display these repair details.
+A short-infix notice explains the three-character minimum when it applies.
 A query needs at least one positive word. Use `contract -draft` when you need an exclusion.
 
 ### Apply a search scope.
@@ -159,12 +172,19 @@ Clearing a dataset restriction returns to the permitted search scope.
 | `"water pollution"~10` | This is a phrase proximity query. The number describes word positions. |
 | Earlier bookmarks | Recreate legacy queries with current filters. Legacy addresses have no automatic migration contract. |
 
-A repair notice explains changes to an expression.
-Review it before interpreting the results.
+The collection tools report query repairs to the assistant.
+The normal search result view does not show the same repair notes.
+Use the operator reference to interpret a repaired expression.
 Public tags, private tags, stars, batch-search screens, and Nextcloud upload controls have no established current equivalent.
 Use collection filters, document links, Storage, and the supported dataset ingestion procedure for the relevant current tasks.
 
 ### When no result is found
+
+<a href="img/search-suggestions.png"><img src="img/search-suggestions.png" alt="Similar word suggestions for an empty result" align="right" width="560"></a>
+
+The image shows similar word suggestions for an empty result.
+
+<br clear="all">
 
 The result area shows **No results** and the query.
 A loading line appears while the search verifies similar indexed words.
@@ -177,7 +197,7 @@ A partial notice identifies incomplete suggestions or search results. An empty q
 
 The **⋮** button on a result card opens a small menu:
 
-![The per-result actions menu](img/result-menu.png)
+<a href="img/result-menu.png"><img src="img/result-menu.png" alt="The per-result actions menu" align="right" width="560"></a>
 
 * **Copy Document Link.** Puts a permanent link to this document on your clipboard.
 * **Download Document.** Downloads the original file with its real name
@@ -186,6 +206,8 @@ The **⋮** button on a result card opens a small menu:
   document selected, so you can see what sits next to it on disk.
 
 ---
+
+<br clear="all">
 
 ## 5. Filters
 
@@ -200,20 +222,36 @@ many documents you will get.
 Restrict the search to particular datasets. Counts are how many of your current results come
 from each.
 
-![The Collections pane](img/filter-collections.png)
+<a href="img/filter-collections.png"><img src="img/filter-collections.png" alt="The Collections pane" align="right" width="560"></a>
+
+<br clear="all">
 
 ### File types
 
 Broad categories, `text`, `email`, `html`, `code`, `pdf`, `doc`, `image`, `archive`, `other`.
 
-![The File types pane](img/filter-file-types.png)
+<a href="img/filter-file-types.png"><img src="img/filter-file-types.png" alt="The File types pane" align="right" width="560"></a>
+
+<br clear="all">
 
 ### Language
+
+<a href="img/filter-language.png"><img src="img/filter-language.png" alt="Filter language" align="right" width="560"></a>
+
+The image shows the filter language controls.
+
+<br clear="all">
 
 The languages detected in the documents' text. For an email, the language comes from its
 body and not from its headers.
 
 ### Text source
+
+<a href="img/filter-text-source.png"><img src="img/filter-text-source.png" alt="Filter text source" align="right" width="560"></a>
+
+The image shows the filter text source controls.
+
+<br clear="all">
 
 Where the matching text came from: for example **Raw file text**, **Email body**, or an OCR
 engine such as **OCR · Tesseract · eng**. Ticking a source keeps documents whose text from
@@ -223,14 +261,18 @@ that source matches the query.
 
 Four ready-made bands, or your own range in megabytes.
 
-![The File size pane](img/filter-file-size.png)
+<a href="img/filter-file-size.png"><img src="img/filter-file-size.png" alt="The File size pane" align="right" width="560"></a>
+
+<br clear="all">
 
 ### File location
 
 A folder tree. Ticking a folder finds **everything below it**, including files inside archives
 and attachments inside emails.
 
-![The File location pane](img/filter-file-location.png)
+<a href="img/filter-file-location.png"><img src="img/filter-file-location.png" alt="The File location pane" align="right" width="560"></a>
+
+<br clear="all">
 
 ### Date
 
@@ -238,7 +280,7 @@ Four modes (*No filtering*, *Before…*, *After…*, *Between…*) plus **Unknow
 documents whose date could not be established. The histogram under them shows how your results
 are spread over time, and **clicking a bar filters to that period**.
 
-![The Date pane](img/filter-date.png)
+<a href="img/filter-date.png"><img src="img/filter-date.png" alt="The Date pane" align="right" width="560"></a>
 
 A document matches when its earliest-to-latest confirmed date interval overlaps the selected range.
 For example, confirmed dates in 2000 and 2010 make the document match a range in 2005.
@@ -246,21 +288,33 @@ This does not establish that the document contains an individual date in 2005.
 **Unknown only** selects documents without a confirmed document date.
 **Mentioned Date** filters dates extracted from document text and uses separate entity values.
 
+<br clear="all">
+
 ### Email
 
 Filter by **Sender** or **Receiver** address, with per-address counts, and a
 *Email has attachments* switch.
 
-![The Email pane](img/filter-email.png)
+<a href="img/filter-email.png"><img src="img/filter-email.png" alt="The Email pane" align="right" width="560"></a>
+
+<br clear="all">
 
 ### Entities
 
 People, organisations, locations and other names that were extracted from the documents
 automatically. Pick one or several to keep only documents mentioning them.
 
-![The Entities pane](img/filter-entities.png)
+<a href="img/filter-entities.png"><img src="img/filter-entities.png" alt="The Entities pane" align="right" width="560"></a>
+
+<br clear="all">
 
 ### Red flags
+
+<a href="img/filter-red-flags.png"><img src="img/filter-red-flags.png" alt="Filter red flags" align="right" width="560"></a>
+
+The image shows the filter red flags controls.
+
+<br clear="all">
 
 Select **Red flags** in the filter dialog.
 Select one or more categories and apply them.
@@ -273,7 +327,7 @@ Open a matching document to inspect its scored passages and supporting signals.
 Once applied, the active filters are listed under the toolbar with a **Clear all** beside them,
 and the toolbar's **Filter** button gains a count: `Filter (1)`.
 
-![A search with a date range applied](img/search-filter-applied.png)
+
 
 ---
 
@@ -283,7 +337,7 @@ and the toolbar's **Filter** button gains a count: `Filter (1)`.
 The arrow changes direction for Date, File size, and Name.
 Relevance always uses descending score order.
 
-![The sort menu](img/sort-menu.png)
+<a href="img/sort-menu.png"><img src="img/sort-menu.png" alt="The sort menu" align="right" width="560"></a>
 
 > Choosing a sort marks your choice; press **Search** to put it into effect.
 
@@ -294,12 +348,16 @@ Paging is at the top right of the result list: arrows for previous and next, `1/
 you are, and the up/down arrows next to `- / 1000` step through individual results without
 leaving the page.
 
-![Page 26 of a result set](img/search-pagination.png)
+<br clear="all">
+
+<a href="img/search-pagination.png"><img src="img/search-pagination.png" alt="The second page of a result set" align="right" width="560"></a>
 
 **Only the first 1 000 results of any search can be opened**, however many were found. If your
 search matches more than that, narrow it with [filters](#5-filters) rather than paging.
 
 ---
+
+<br clear="all">
 
 ## 7. Reading a document
 
@@ -307,11 +365,19 @@ Selecting a result opens the viewer, either in the right-hand pane or full-page.
 
 * **left**: search within this document, and the list of *sources*;
 * **middle**: the document itself;
-* **right**: the **Entities** and **Metadata** tabs.
+* **right**: the **Entities**, **File Locations**, and **Metadata** tabs.
 
-![A text document with its entities](img/document-text.png)
+<a href="img/document-text.png"><img src="img/document-text.png" alt="A text document with its entities" align="right" width="560"></a>
+
+<br clear="all">
 
 ### Sources
+
+<a href="img/document-archive.png"><img src="img/document-archive.png" alt="Archive member file locations" align="right" width="560"></a>
+
+The image shows archive member file locations.
+
+<br clear="all">
 
 One file can be readable in several ways, and each way is a source you can switch between:
 
@@ -320,7 +386,7 @@ One file can be readable in several ways, and each way is a source you can switc
 | **Extracted text** | the text a general extractor pulled out |
 | **Plain text** | the raw file as text |
 | **Email** | the message rendered as an email, subject, addresses, date, body |
-| **Email body** | just the parsed body |
+| **Email body** | the selected parsed body |
 | **PDF** | the real PDF, rendered page by page |
 | **PDF · OCR · Tesseract · eng** | the same PDF after optical character recognition |
 | **PDF text** | the text layer, without the page images |
@@ -331,11 +397,11 @@ One file can be readable in several ways, and each way is a source you can switc
 | **Office XML** | a `.docx` / `.odt` rendered from its XML |
 | **Image** / **OCR · Tesseract · eng** | the picture, and the text read out of it |
 | **Table** | a spreadsheet or delimited-text grid with sheet and column controls |
-| **File locations** | every path in the corpus where this exact file appears |
+| **File Locations tab** | every path in the collection where this exact content appears |
 
 A PDF gets the full viewer, page navigation, zoom, and the page counter at the bottom right:
 
-![A PDF in the viewer](img/document-pdf.png)
+<a href="img/document-pdf.png"><img src="img/document-pdf.png" alt="A PDF in the viewer" align="right" width="560"></a>
 
 PDF navigation uses document page numbers across all parts.
 The viewer loads the required part when you change pages.
@@ -347,17 +413,23 @@ the pipeline stores a JPEG copy, and the viewer and the text recognition use tha
 video shows its first frame before you start it. When an image has no such copy and the
 browser cannot show it, the viewer gives a link that downloads the file.
 
-![A scanned image and its OCR](img/document-image-ocr.png)
+<br clear="all">
+
+<a href="img/document-image-ocr.png"><img src="img/document-image-ocr.png" alt="A scanned image and its OCR" align="right" width="560"></a>
 
 A file found inside an archive shows its container in the breadcrumb, here `parent.zip` above
 `parent/child.txt`:
 
-![A file inside an archive](img/document-archive.png)
 
-**File locations** does more than its name suggests: the same content can sit at several paths, and
-this is the list of them.
 
-![The File locations source](img/document-file-locations.png)
+Select the **File Locations** tab to list the paths that contain the same content.
+Use a path control to open its folder or copy the path.
+
+<br clear="all">
+
+<a href="img/document-file-locations.png"><img src="img/document-file-locations.png" alt="The File locations source" align="right" width="560"></a>
+
+<br clear="all">
 
 ### Searching inside a document
 
@@ -366,11 +438,30 @@ the arrows beside the counter step between them.
 
 ### Entities
 
-The right pane groups the names found in the document into **People**, **Organizations**,
-**Locations** and **Misc**, each with the number of times it appears. The box at the top
-filters the list.
+The right pane groups extracted names and structured values by category.
+Model groups include **People**, **Organizations**, **Locations**, and **Misc**.
+Structured categories include addresses, identifiers, amounts, and mentioned dates.
+Counts include all sources. Use the box at the top to filter the list.
 
 ### Inspect an entity and its passages.
+
+<a href="img/document-red-flags.png"><img src="img/document-red-flags.png" alt="Scored red flag passages" align="right" width="560"></a>
+
+The image shows scored red flag passages.
+
+<br clear="all">
+
+<a href="img/document-entity.png"><img src="img/document-entity.png" alt="Document entity" align="right" width="560"></a>
+
+The image shows the document entity controls.
+
+<br clear="all">
+
+<a href="img/red-flag-terms.png"><img src="img/red-flag-terms.png" alt="Red flag terms" align="right" width="560"></a>
+
+The image shows the red flag terms controls.
+
+<br clear="all">
 
 Select a structured entity value in the document pane to open its explainer.
 Read the validated value, type, and detail rows.
@@ -383,6 +474,24 @@ Expand a passage to inspect its supporting signals and source text.
 Open **Red flag terms** to inspect the categories and terms used for scoring.
 
 ### Read a spreadsheet or table.
+
+<a href="img/document-table.png"><img src="img/document-table.png" alt="Document table" align="right" width="560"></a>
+
+The image shows the document table controls.
+
+<br clear="all">
+
+<a href="img/table-sheets.png"><img src="img/table-sheets.png" alt="Table sheets" align="right" width="560"></a>
+
+The image shows the table sheets controls.
+
+<br clear="all">
+
+<a href="img/table-filter.png"><img src="img/table-filter.png" alt="Table filter" align="right" width="560"></a>
+
+The image shows the table filter controls.
+
+<br clear="all">
 
 Select **Table** in the source list.
 Choose a sheet from the sheet control.
@@ -398,6 +507,12 @@ A clamp or extraction notice describes a limit that affected the returned table.
 
 ### Read connected email.
 
+<a href="img/connected-emails.png"><img src="img/connected-emails.png" alt="Connected email graph and selected message" align="right" width="560"></a>
+
+The image shows connected email graph and selected message.
+
+<br clear="all">
+
 Select the **Email** source to read the subject, addresses, date, body, and attachments.
 Expand header details when you need the complete stored headers.
 Select an attachment to open its document.
@@ -409,6 +524,12 @@ The graph contains at most 50 messages and traverses at most three relationship 
 An absent message can be outside those limits. Search for it separately before concluding that it is absent from the collection.
 
 ### Metadata
+
+<a href="img/document-metadata.png"><img src="img/document-metadata.png" alt="Document metadata" align="right" width="560"></a>
+
+The image shows the document metadata controls.
+
+<br clear="all">
 
 The **Metadata** tab holds everything the pipeline knows about the file: its dates and why they
 are trusted, email headers, blob hashes and size, and the detected file types.
@@ -432,13 +553,15 @@ left. A card shows the number of datasets and the summed documents, total size, 
 documents and processing errors of those datasets. A card marked Processing belongs to a
 collection whose data is changing.
 
-![Storage, all collections](img/storage-collections.png)
+<a href="img/storage-collections.png"><img src="img/storage-collections.png" alt="Storage, all collections" align="right" width="560"></a>
 
 Choosing a collection shows a card per dataset with its document count, total size, how many
 are indexed, and how many hit processing errors. The pipeline counts these numbers during and
 after processing. A dataset that it has not counted yet says so.
 
-![A collection's datasets](img/storage-collection.png)
+<br clear="all">
+
+<a href="img/storage-collection.png"><img src="img/storage-collection.png" alt="A collection&#x27;s datasets" align="right" width="560"></a>
 
 Choosing a dataset lists its contents, folders first, with **Files** and **Size** columns.
 Files counts nested archive members and email attachments under each path.
@@ -446,7 +569,11 @@ Size counts bytes at the current container level, so archive members do not add 
 Unavailable statistics remain unavailable until the pipeline computes them.
 Select a file to open its preview beside the listing.
 
-![Inside a dataset](img/storage-folder.png)
+<br clear="all">
+
+<a href="img/storage-folder.png"><img src="img/storage-folder.png" alt="Inside a dataset" align="right" width="560"></a>
+
+<br clear="all">
 
 ### The tree
 
@@ -464,28 +591,38 @@ down it goes. Each of those rows also states its true depth in a `depth N` badge
 Drag the divider on the right edge of the pane to make it wider, and double-click the
 divider to put it back. The width is remembered on this browser.
 
-![A deep folder chain in the tree](img/storage-tree-deep.png)
+<a href="img/storage-tree-deep.png"><img src="img/storage-tree-deep.png" alt="A deep folder chain in the tree" align="right" width="560"></a>
+
+<br clear="all">
 
 ### Finding a file by name
+
+<a href="img/storage-open-in-search.png"><img src="img/storage-open-in-search.png" alt="Folder scope opened in Search" align="right" width="560"></a>
+
+The image shows folder scope opened in Search.
+
+<br clear="all">
 
 The box above the listing filters the **names** of files under the current folder. It does not
 search their contents. `HOUSE` finds `HOUSE_OVERSIGHT_010560.txt`; searching for a word that
 only appears *inside* the documents will find nothing.
 
-![Filtering a folder by filename](img/storage-folder-search.png)
+<a href="img/storage-folder-search.png"><img src="img/storage-folder-search.png" alt="Filtering a folder by filename" align="right" width="560"></a>
 
 For content, use **Open in Search**, which carries the current folder over as a *File location*
 filter:
 
-![The same folder, opened in search](img/storage-open-in-search.png)
+
 
 ---
+
+<br clear="all">
 
 ## 9. AI chat
 
 The speech-bubble icon opens a new conversation.
 
-![A new chat](img/chat-new.png)
+
 
 The Internet tools option permits web searches and browser reads.
 With this option off, the assistant reads the selected collections.
@@ -505,7 +642,7 @@ The assistant announces each tool it uses as it goes (`list_collections`,
 `search_collections`, `web_search`, `browser_navigate`), and shows a turning icon and
 *The bot is working...* with a **■** stop button until the answer arrives.
 
-![A chat in progress](img/chat-working.png)
+
 
 Wait while the progress controls show active work.
 Use the stop button to cancel the active turn.
@@ -516,7 +653,7 @@ Response time depends on the question, selected collections, model, and availabl
 Tool results are shown inline. A collection search renders the documents it found as cards you
 can click through to the viewer; each block has an **Expand** control.
 
-![A finished conversation](img/chat-transcript.png)
+
 
 Scroll to the end of the turn to read the answer.
 Expand a tool group to inspect its work and returned documents.
@@ -528,7 +665,7 @@ Document citations can identify a source and page. Verify the cited passage befo
 If the assistant cannot finish, the turn ends with a message saying so, and tells you whether
 earlier attempts also failed.
 
-![A failed turn](img/chat-error.png)
+
 
 ### Continue a conversation.
 
@@ -546,7 +683,7 @@ transcript.
 Use the history deletion control to delete a conversation you no longer need.
 Chats remain stored until a person deletes them.
 
-![Chat history](img/chat-history.png)
+
 
 ## 10. Investigation boards
 
@@ -557,6 +694,12 @@ the right of the AI chat page, each with its title, its status, a small picture 
 and a short summary.
 
 ### Create a board.
+
+<a href="img/board-create.png"><img src="img/board-create.png" alt="Board create" align="right" width="560"></a>
+
+The image shows the board create controls.
+
+<br clear="all">
 
  **New board** asks for a title, one to six goals, the background context
 (what the board should know before it starts), the collections and first hints. The collections
@@ -661,9 +804,11 @@ Earlier Hoover4 search fields can take their current defaults when a bookmark om
 Legacy Hoover URLs do not automatically migrate to Hoover4.
 A route that cannot be decoded shows **Page not found**.
 
-![The not-found page](img/not-found.png)
+<a href="img/not-found.png"><img src="img/not-found.png" alt="The not-found page" align="right" width="560"></a>
 
 ---
+
+<br clear="all">
 
 ## 12. Review search and processing limits.
 

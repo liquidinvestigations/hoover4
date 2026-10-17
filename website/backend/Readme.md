@@ -4,12 +4,12 @@ The Rust server half of the Dioxus application: HTTP API, authentication, datast
 
 | path | holds |
 |---|---|
-| `src/api/` | endpoints grouped by feature, `search/`, `documents/`, `vfs/`, `chat/`, `admin/` |
-| `src/auth/`, `src/db_auth/` | identity, sessions and the collection permissions they resolve to |
-| `src/db_chat/` | chat persistence and the per-session turn lock |
-| `src/db_utils/` | datastore clients, query builders, and the single place a full-text match argument is constructed |
-| `tests/` | stack integration tests; fixture guard checks run without a live stack |
-| `pdf-viewer/` | the viewer distribution this server hands to the client |
+| [src/api/](src/api) | endpoints grouped by feature, `search/`, `documents/`, `vfs/`, `chat/`, `admin/` |
+| [src/auth/](src/auth), [src/db_auth/](src/db_auth) | identity, sessions and the collection permissions they resolve to |
+| [src/db_chat/](src/db_chat) | chat persistence and the per-session turn lock |
+| [src/db_utils/](src/db_utils) | datastore clients, query builders, and the single place a full-text match argument is constructed |
+| [tests/](tests) | stack integration tests; fixture guard checks run without a live stack |
+| [pdf-viewer/](pdf-viewer) | the viewer distribution this server hands to the client |
 
 `target/` is this crate's build output, tens of gigabytes, and the reason every search here
 must be scoped.
@@ -31,7 +31,7 @@ collector workflow `collect-eta-samples`. A 404 for the collector counts as good
 returns `Temporal did not stay ready for 5 s within 60 s, so the workflow was not started.
 Last error: <text>`, and an operation start then writes its row `errored`. Each start request
 goes through `temporal_ready::start_client()`, which has a 30 s timeout. The constants and the
-text are mirrored in `main_services/processing/tasks/temporal_readiness.py`, and a unit test
+text are mirrored in [main_services/processing/tasks/temporal_readiness.py](../../main_services/processing/tasks/temporal_readiness.py), and a unit test
 in each runtime compares them when the other file is reachable.
 
 ## Document processing state

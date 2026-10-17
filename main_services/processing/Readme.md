@@ -11,8 +11,8 @@ This directory contains the ingestion and processing pipeline that populates Hoo
 
 ## Entry Points
 
-- `main.py` provides a Click CLI for migrations, dataset onboarding, and worker orchestration.
-- `tasks/run_worker.py` defines worker types and task queues for Temporal.
+- [main.py](main.py) provides a Click CLI for migrations, dataset onboarding, and worker orchestration.
+- [tasks/run_worker.py](tasks/run_worker.py) defines worker types and task queues for Temporal.
 
 The worker image installs dependencies in `/opt/pysetup/.venv`.
 Each container uses its own environment outside the shared source mount.
@@ -20,14 +20,14 @@ Each container uses its own environment outside the shared source mount.
 
 ## Subdirectories
 
-- `database/` - ClickHouse migrations, Manticore index utilities, Garage client helpers, and related scripts.
-- `tasks/` - Temporal workflows and activities for the multi-stage processing pipeline.
+- [database/](database) - ClickHouse migrations, Manticore index utilities, Garage client helpers, and related scripts.
+- [tasks/](tasks) - Temporal workflows and activities for the multi-stage processing pipeline.
 
 ## Technical Details
 
 This service implements a multi-stage pipeline: P0 scans datasets and records files/blobs, P1 builds processing plans, P2 executes plan downloads and orchestration, P3 parses content by file type, P4 extracts named entities via the remote NER service, and P6 indexes text and metadata into Manticore.
 
-Code is arranged by function: `tasks/` contains Temporal workflows/activities grouped by stage, `database/` contains ClickHouse/Manticore/Garage helpers, and `main.py` with `tasks/run_worker.py` provide CLI and worker entry points.
+Code is arranged by function: [tasks/](tasks) contains Temporal workflows/activities grouped by stage, [database/](database) contains ClickHouse/Manticore/Garage helpers, and [main.py](main.py) with [tasks/run_worker.py](tasks/run_worker.py) provide CLI and worker entry points.
 
 ClickHouse storage is partitioned per collection: global tables (users, groups, collections,
 the dataset registry, sessions, settings, search cache, chat, ETA samples, and the 24h
@@ -38,7 +38,7 @@ See [database/Readme.md](database/Readme.md).
 Usage:
 - Run migrations with `python main.py migrate` - migrates the global database and then every collection's database.
 - Create a collection with `python main.py create-collection <collectionname> [--fullname TEXT] [--public]`. The scripted equivalent of the admin UI's create action: it writes the `collections` row and then provisions the database, so one idempotent command leaves a collection that can be ingested into. Without `--public` the collection is restricted and is readable only through a group grant.
-- Provision one collection's database with `python main.py ensure-collection <collectionname>`. Idempotent; creates the database if missing and applies `database/db_collection_migrations/`. It does **not** write the `collections` row. Use `create-collection` for that, or the admin UI, which triggers the same provisioning as a Temporal workflow.
+- Provision one collection's database with `python main.py ensure-collection <collectionname>`. Idempotent; creates the database if missing and applies [database/db_collection_migrations/](database/db_collection_migrations). It does **not** write the `collections` row. Use `create-collection` for that, or the admin UI, which triggers the same provisioning as a Temporal workflow.
 - Onboard a dataset with `python main.py add-disk-dataset <collectionname> <dataset_name> <path>`, the collection must already exist (admin UI or `create-collection`); the composed `collection_dataset` is `<collectionname>_<dataset_name>` and the collection assignment is fixed at creation. It dispatches an operation and prints the operation id. The `Operation` workflow runs the stages on the server. The command follows the operation for 60 s, then prints that processing continues and exits 0. It exits 1 when the operation errors inside the minute. `--wait` follows the operation to its end, and `--no-wait` returns after the submission. **Ctrl-C detaches from the ingest and does not stop it.** A dataset that already exists is rescanned rather than refused.
 - List collections with `python main.py list-collections`.
 - Remove one dataset's data with `python main.py purge-dataset <collectionname> <collection_dataset> [--apply] [--registered]`. Deletes its rows from every Manticore table of the collection and every collection-DB table that has a `collection_dataset` column, then recomputes the shard ledger. The recovery path for a dataset that was abandoned rather than deleted (a failed ingest, or a re-ingest under a new name), whose index rows otherwise keep answering searches and keep the Collections filter offering a dataset that no longer exists. It reports what it will delete and deletes nothing without `--apply`, refuses a dataset that still has a live registry row (deleting a live dataset belongs in the admin UI, which purges *and* removes the row) unless `--registered` is passed, and is idempotent. A second run finds nothing to purge.
@@ -46,11 +46,11 @@ Usage:
 - Re-index a collection with `python main.py reindex-collection <collectionname>`, drops the collection's Manticore shard tables and shard ledger, then re-runs indexing for every finished plan (recovery path for a lost Manticore volume, a `MAX_SHARD_TEXT_BYTES` change, or shard fragmentation; files are not re-parsed). It refuses while any operation for the collection is non-terminal, or while any `IndexDatasetPlan` workflow is open for it: truncating the ledger under a live writer produces a ledger claiming documents no table holds.
 - Refresh searchable folder attributes with `python main.py refresh-document-locations <collectionname> <collection_dataset> [--apply]`. Selects hashes whose indexed `file_paths` lag current `vfs_files` closures. Dry-run is the default. `--apply` dispatches the rewrite. Does not extract, OCR, or embed, and does not drop shard tables. Deployment does not start this.
 - Inspect long operations with `python main.py operations list|show|rerun|cancel`. Every significant command above dispatches one and then follows it, so an interrupted command loses a view and never the work. `rerun` projects the stored detail to the current operation inputs before it writes a new row. `cancel` waits for the finalizer and prints the terminal state it recorded. The collector refreshes progress and marks a live row `errored` when its Temporal workflow is absent, closed, or has a stuck descendant.
-- Every CLI command that starts a top-level workflow connects through `connect_when_ready` in `tasks/temporal_readiness.py`. The connect has a 30 s limit. Then the readiness gate probes Temporal every 1 s. A probe checks frontend health, describes namespace `default`, lists one workflow and describes the collector workflow `collect-eta-samples`. A `NOT_FOUND` answer for the collector counts as good. The start continues when every probe is good for 5 s without a break. After 60 s the command refuses with `Temporal did not stay ready for 5 s within 60 s, so the workflow was not started. Last error: <text>`, and an operation row is written `errored`. Each start request has a 30 s limit (`rpc_timeout`). The worker singletons in `tasks/run_worker.py` and the `IndexDatasetPlan` starts of the reindex activity do not use the gate. A worker starts them after it connects, and they are not a request from a person. The website runs the same gate in `website/backend/src/temporal_ready.rs`, with the same constants and text.
+- Every CLI command that starts a top-level workflow connects through `connect_when_ready` in [tasks/temporal_readiness.py](tasks/temporal_readiness.py). The connect has a 30 s limit. Then the readiness gate probes Temporal every 1 s. A probe checks frontend health, describes namespace `default`, lists one workflow and describes the collector workflow `collect-eta-samples`. A `NOT_FOUND` answer for the collector counts as good. The start continues when every probe is good for 5 s without a break. After 60 s the command refuses with `Temporal did not stay ready for 5 s within 60 s, so the workflow was not started. Last error: <text>`, and an operation row is written `errored`. Each start request has a 30 s limit (`rpc_timeout`). The worker singletons in [tasks/run_worker.py](tasks/run_worker.py) and the `IndexDatasetPlan` starts of the reindex activity do not use the gate. A worker starts them after it connects, and they are not a request from a person. The website runs the same gate in [website/backend/src/temporal_ready.rs](../../website/backend/src/temporal_ready.rs), with the same constants and text.
 - Start workers with `python main.py worker [common|tika|ocr|nlp|embed|indexing|index-planner|operations]`. The `index-planner` worker must run at exactly one process (see [tasks/Readme.md](tasks/Readme.md)). `operations` runs in its own container rather than in the pipeline fleet, so a long operation's load is bounded by that container's budget; it is not in the set the bare `worker` command spawns. Worker startup also registers the `CollectionDataset` Temporal search attribute and starts the singleton `CollectEtaSamples` ETA workflow, both idempotent, so restarts are safe.
-- Every worker fails a workflow on its first attempt when a command is too large or when workflow code raises. Temporal 1.23 retries a failed workflow task at once and without a limit, so without this the workflow never fails and never makes progress. `tasks/payload_guard.py` measures the input of each activity start, child workflow start, continue-as-new and signal, and the workflow's own result, with the worker's payload converter. The limits are 512 KiB for one payload and 1 MiB for all commands of one workflow task. A call over a limit fails the workflow with a non-retryable `PayloadTooLarge` error. The error names the call, its target type and both sizes. Each `Worker` sets `workflow_failure_exception_types=[Exception]`, so any Python exception in workflow code fails the workflow.
+- Every worker fails a workflow on its first attempt when a command is too large or when workflow code raises. Temporal 1.23 retries a failed workflow task at once and without a limit, so without this the workflow never fails and never makes progress. [tasks/payload_guard.py](tasks/payload_guard.py) measures the input of each activity start, child workflow start, continue-as-new and signal, and the workflow's own result, with the worker's payload converter. The limits are 512 KiB for one payload and 1 MiB for all commands of one workflow task. A call over a limit fails the workflow with a non-retryable `PayloadTooLarge` error. The error names the call, its target type and both sizes. Each `Worker` sets `workflow_failure_exception_types=[Exception]`, so any Python exception in workflow code fails the workflow.
 - Two risks of that setting have no test. A non-determinism error also fails the workflow, so a deploy that changes a workflow's code fails the runs of that workflow that are in flight. A code error in `CollectEtaSamples` or `SweepChatArtifacts` fails that singleton, and only the next start of a common worker starts it again.
-- Every worker process logs its resident size (`tasks/worker_memory.py`). It reads its own `VmRSS` every 30 s. When the value first reaches 4 GiB, and at each further 1 GiB, it writes one `WARNING` line. The line holds the task queues, the resident size in MB and the activities in flight. Each activity shows its file hash or its dataset when its input has one.
+- Every worker process logs its resident size ([tasks/worker_memory.py](tasks/worker_memory.py)). It reads its own `VmRSS` every 30 s. When the value first reaches 4 GiB, and at each further 1 GiB, it writes one `WARNING` line. The line holds the task queues, the resident size in MB and the activities in flight. Each activity shows its file hash or its dataset when its input has one.
 
 ## Navigation
 
@@ -127,7 +127,7 @@ contains itself (`eml-7-recursive`) and one archive in two places
 Hitting either cap sets `struct_flags` bit 1 (`truncated_ancestry`) and logs, rather than
 silently returning a short closure.
 
-### Two wire-format traps, both found on the live stack
+### Preserve workflow serialization contracts.
 
 * **Temporal deserialises an activity argument into its ANNOTATED type.** An unannotated
   `params` arrives as a raw dict and every attribute access fails at runtime.
@@ -135,5 +135,5 @@ silently returning a short closure.
   Comparing that int against `'container'` never raises; it silently makes every container
   a directory, and comparing `role` against `'from'` silently files every sender as a
   recipient. Pass every enum read through `database/enum_wire.py::enum_from_wire`, and
-  select the column as `toString(col)` as well. `tests/unit/test_enum_wire.py` greps
+  select the column as `toString(col)` as well. [tests/unit/test_enum_wire.py](tests/unit/test_enum_wire.py) greps
   `P6_index_data` for the bare comparison and fails the suite if it reappears.

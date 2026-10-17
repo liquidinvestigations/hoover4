@@ -21,7 +21,7 @@ Verify diagram content against current code before rendering it.
 Use the browser skill for screenshots and retain their provenance.
 Keep user procedures separate from administrator procedures.
 
-Run `scripts/docs/run.sh` on affected Markdown, then inspect the complete report before completing a documentation review.
+Run [scripts/docs/run.sh](../../../scripts/docs/run.sh) on affected Markdown, then inspect the complete report before completing a documentation review.
 Inspect warnings in context and preserve exact quotations and upstream text according to their ownership.
 The checker does not determine factual accuracy or authorship.
 

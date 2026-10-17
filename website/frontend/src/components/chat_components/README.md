@@ -4,22 +4,22 @@ UI building blocks for the AI Chat pages under `/ai_chat`.
 
 | Module | Role |
 |---|---|
-| `composer.rs` | Textarea + **Internet tools** checkbox + send arrow. The checkbox disappears once the conversation has a turn, see below. No paperclip / upload control: documents enter via the processing pipeline. |
-| `gate_overlay.rs` | Non-dismissible overlay over the composer when a new turn cannot start. Names which reason applies: no provider, missing API key, or chat switched off. History stays readable. |
-| `locked_options.rs` | The internet tools switch shows beside the title after locking, only when the deployment enables it. Its tooltip is "Start a new chat to change this setting." |
-| `session_card.rs` | Homepage / history card showing title + summary. |
-| `transcript.rs` | User bubbles, assistant markdown, tool disclosures, inline doc cards, the retry-attempt disclosure, and the token footer under an answer. |
-| `tool_cards/mod.rs` | The card registry dispatches on tool name and provides card chrome, elapsed counters, and JSON helpers. |
-| `activity.rs` | The activity line of a turn in progress. |
-| `tool_cards/result_cards.rs` | Result-page, read, citation, todo call, task summary, plan, question and board fact cards. |
-| `tool_cards/web_search_card.rs` | `web_search`: pending → collapsed → expanded result list → the before/after reranking popup. |
-| `tool_cards/browser_card.rs` | Every `browser_*` tool: action label, capture thumbnails, page text, and the archived page in a sandboxed iframe. |
-| `tool_cards/entities_card.rs` | `list_document_entities`: the two tiers apart, each rule-validated value a link to its explainer card in the document viewer. |
-| `tool_run_summary.rs` | The summary line of a run of consecutive tool rows, see below. |
-| `tool_disclosure.rs` | The **generic** card, and the deliberate fallback: type chip + prose summary, Expand to labelled fields, then a second toggle for raw JSON. |
-| `doc_ref_card.rs` | Wraps the shared [`SearchResultItemCard`](../search_components/search_result_item_card.rs) for a `ChatDocRef`. Renders `display_snippet()`, not the raw snippet, see below. Loads the file size and the dates of the document with `get_document_card_facts`, because a stored citation holds neither. |
-| `conversation_find.rs` | "Search in conversation" bar (an input of at most 350 px, then 0/N and up/down), mirroring the document find box chrome. In a board explore chat it ends with an "Investigation Board" link to the board. |
-| `markdown_text.rs` | Markdown → Dioxus nodes for assistant turns. |
+| [composer.rs](composer.rs) | Textarea + **Internet tools** checkbox + send arrow. The checkbox disappears once the conversation has a turn, see below. No paperclip / upload control: documents enter via the processing pipeline. |
+| [gate_overlay.rs](gate_overlay.rs) | Non-dismissible overlay over the composer when a new turn cannot start. Names which reason applies: no provider, missing API key, or chat switched off. History stays readable. |
+| [locked_options.rs](locked_options.rs) | The internet tools switch shows beside the title after locking, only when the deployment enables it. Its tooltip is "Start a new chat to change this setting." |
+| [session_card.rs](session_card.rs) | Homepage / history card showing title + summary. |
+| [transcript.rs](transcript.rs) | User bubbles, assistant markdown, tool disclosures, inline doc cards, the retry-attempt disclosure, and the token footer under an answer. |
+| [tool_cards/mod.rs](tool_cards/mod.rs) | The card registry dispatches on tool name and provides card chrome, elapsed counters, and JSON helpers. |
+| [activity.rs](activity.rs) | The activity line of a turn in progress. |
+| [tool_cards/result_cards.rs](tool_cards/result_cards.rs) | Result-page, read, citation, todo call, task summary, plan, question and board fact cards. |
+| [tool_cards/web_search_card.rs](tool_cards/web_search_card.rs) | `web_search`: pending → collapsed → expanded result list → the before/after reranking popup. |
+| [tool_cards/browser_card.rs](tool_cards/browser_card.rs) | Every `browser_*` tool: action label, capture thumbnails, page text, and the archived page in a sandboxed iframe. |
+| [tool_cards/entities_card.rs](tool_cards/entities_card.rs) | `list_document_entities`: the two tiers apart, each rule-validated value a link to its explainer card in the document viewer. |
+| [tool_run_summary.rs](tool_run_summary.rs) | The summary line of a run of consecutive tool rows, see below. |
+| [tool_disclosure.rs](tool_disclosure.rs) | The **generic** card, and the deliberate fallback: type chip + prose summary, Expand to labelled fields, then a second toggle for raw JSON. |
+| [doc_ref_card.rs](doc_ref_card.rs) | Wraps the shared [`SearchResultItemCard`](../search_components/search_result_item_card.rs) for a `ChatDocRef`. Renders `display_snippet()`, not the raw snippet, see below. Loads the file size and the dates of the document with `get_document_card_facts`, because a stored citation holds neither. |
+| [conversation_find.rs](conversation_find.rs) | "Search in conversation" bar (an input of at most 350 px, then 0/N and up/down), mirroring the document find box chrome. In a board explore chat it ends with an "Investigation Board" link to the board. |
+| [markdown_text.rs](markdown_text.rs) | Markdown → Dioxus nodes for assistant turns. |
 
 The transcript and persisted answer nodes expose stable attributes for browser history verification.
 Each finished answer retains citation status and tool scope in metadata.
@@ -34,7 +34,7 @@ Preview find accounts for the display scale when scrolling a match into view.
 Three generated follow-up buttons fill the composer without submitting.
 The buttons share one row inside a card headed "Suggested next...", beside a small question icon.
 Send uses the shared navigation arrow button, including its disabled state and tooltip.
-A user message (`UserMessage` in `transcript.rs`) shows three lines and a "Show" toggle in its top-right corner when its text is longer. The toggle says "Hide" while the message is whole. The answer card at the end of a board explore chat (`BoardFactSummary`) is a link to the board with the turn's fact selected, from the `ChatBoard` context of the session page.
+A user message (`UserMessage` in [transcript.rs](transcript.rs)) shows three lines and a "Show" toggle in its top-right corner when its text is longer. The toggle says "Hide" while the message is whole. The answer card at the end of a board explore chat (`BoardFactSummary`) is a link to the board with the turn's fact selected, from the `ChatBoard` context of the session page.
 It measures the text on mount and on resize, and opens when it holds the active conversation find match.
 A doc card scrolls to the middle of the transcript once per session when it is the selected card at page load.
 The shared result card has a pointer cursor and a hover background, except when `data-selected` is `true`.
@@ -55,7 +55,7 @@ reasoning inside its round's group. The live reasoning follows the group of the 
 tool rows, or the stored group that the live answer follows.
 The session page shows one activity line, a rotating icon and `The bot is working...`,
 while its turn is active and not interrupted. A queued turn adds the slot it waits for
-under that line. `activity.rs` holds it.
+under that line. [activity.rs](activity.rs) holds it.
 The transcript root carries `data-chat-turn`, the state of the newest turn: `active`, `queued-model`, `queued-tool`, `interrupted` or `idle`.
 A browser test reads the end of a turn from it and from the user message seq (`data-chat-user`).
 A board explore turn ends with `submit_board_fact`. Its answer is the submitted fact, which
@@ -63,7 +63,7 @@ renders as an ordinary answer with its citation cards. Under the answer, the boa
 summary (`x-board-fact-summary`) states the kind of the fact and its open questions. The
 call itself is a card inside its group.
 
-## The internet option stays fixed
+## Internet access stays fixed for a conversation.
 
 The first message stores the internet option in the session.
 The composer then hides its checkbox.
@@ -73,7 +73,7 @@ Internet tools default to on.
 
 ## Markdown rendering
 
-`markdown_text.rs` maps markdown to real Dioxus elements: headings, bold/italic, inline
+[markdown_text.rs](markdown_text.rs) maps markdown to real Dioxus elements: headings, bold/italic, inline
 and fenced code, links, tables, block quotes, rules, bullets and numbered lists.
 
 **No `dangerous_inner_html` anywhere.** The input is model output built partly from pages
@@ -92,9 +92,9 @@ The heading scale tops out at **body + 3px** (18px against 15px). Chat headings 
 inside a message, not page titles. A browser-default `h1` at 2em towers over the
 conversation. Weight and colour carry the hierarchy instead. A test pins this.
 
-## A run of tool rows is one line
+## Group consecutive tool rows.
 
-`transcript.rs` puts each run of consecutive tool and instruction rows behind one button, and the
+[transcript.rs](transcript.rs) puts each run of consecutive tool and instruction rows behind one button, and the
 button opens the cards of the run. `tool_run_summary` writes the line from rules, for
 example `Searched 20 terms, read 8 documents, 2 failed, took 8m12s`. The kinds of call
 always appear in one order: corpus search, document reads, web search, web page reads,
@@ -106,29 +106,29 @@ the model time between the calls. The line always shows the time, and says
 cards, because a running card shows its own counter. The conversation search opens a run
 that holds its current match.
 
-## Tool cards: a registry, not a growing `match`
+## A registry selects each tool card renderer.
 
-Do not collapse this back into one `match` in `tool_disclosure.rs` with a branch per
+Do not collapse this back into one `match` in [tool_disclosure.rs](tool_disclosure.rs) with a branch per
 tool. That shape has a specific failure: the generic branch collects the *newest* tools,
 which are the ones whose output is least readable as flat key/value rows. Dispatch lives
-in `tool_cards/mod.rs` and the generic card is the deliberate fallback. An MCP server
-that adds a tool tomorrow still renders, just plainly.
+in [tool_cards/mod.rs](tool_cards/mod.rs) and the generic card is the deliberate fallback. An MCP server
+that adds a tool tomorrow uses the default renderer.
 
 `browser_*` is matched on the **prefix**, not by listing thirty names, so a
 playwright-mcp upgrade that adds a tool does not silently drop it into the generic card.
 
-### Only a validated value gets a link out of the transcript
+### Validate external links.
 
 The entities card links a value to its explainer card in the document viewer, and the
 explainer is fetched with the rule that accepted the value, so a name a model found has
 nothing to explain and is rendered as text with a line saying why. The link also needs a
-dataset, which that tool does not return: `transcript.rs` collects `file_hash` to
+dataset, which that tool does not return: [transcript.rs](transcript.rs) collects `file_hash` to
 `collection_dataset` from every tool result in the conversation and hands the map down. A
 document nothing named a dataset for keeps its values as text under the reason. Both cases
 are visible rather than silent, because a link that works for some values and does nothing
 for others is worse than no link.
 
-### The generic card still has three levels
+### Display generic card detail levels.
 
 1. **Collapsed**: a type chip plus a one-line prose summary, never raw JSON.
 2. **Expand**: arguments and result as labelled key/value rows, with nested data summarised
@@ -178,19 +178,13 @@ renders after the primary one under a CSS width clamp. Without that collapse the
 rendered three times over and the disclosure's count described page-hits while calling them
 documents.
 
-**The cards are collapsed behind `DocRefsDisclosure` by default**, one disclosure per tool
-row, labelled `<n> documents from <tool>, show`. A result set is evidence for the answer,
-not the answer: rendered open, a single search put 46 cards between the question and a
-one-line reply and made the page 22 168 characters of which 31 were the answer. The
-summary line carries the tool name and the count because a bare chevron makes the reader
-open the list to find out whether it is worth opening.
+Document cards use `DocRefsDisclosure`, collapsed by default for each tool row.
+The summary identifies the tool and document count.
+Expand the disclosure to read the result cards.
 
-The clamp counts **characters, never bytes**. The text is arbitrary extracted content
-(Romanian diacritics, CJK, an attachment's base64) and slicing a `&str` mid-codepoint
-panics. The worst offenders were exactly the hits least worth reading: extraction indexes
-an email attachment's base64 and an image's pixel rows as page text. `tasks/text_quality.py`
-now keeps those out of the vector index, but a keyword hit can still surface one, and a card
-must not depend on the pipeline having been perfect.
+Text truncation counts Unicode characters and preserves character boundaries.
+Extracted content can contain encoded attachments or pixel data.
+The card renderer must handle that content even when the pipeline excludes it from vector indexing.
 
 ### `browser_*`
 
@@ -207,7 +201,7 @@ the strict one; an omitted attribute means no sandbox at all. The response addit
 carries `default-src 'none'`. Both are required: the CSP alone still allows scripts, and
 the sandbox alone still lets a stylesheet fetch leak that the capture was viewed.
 
-### Every card says whether the call worked, collapsed
+### Show tool status in collapsed cards.
 
 A card built from the tool's **arguments** describes what was attempted, and most readers
 never expand it. Live, a `browser_navigate` that urlcheck refused rendered as "opened
@@ -230,36 +224,29 @@ fetched page, and a page whose body contains "Error: 404" has not failed the too
 Browser labels carry two tenses for this (`opened {url}` and `could not open {url}`), so
 the header is a statement about the outcome rather than about the argument.
 
-### The rule every card follows
+### Apply shared card behavior.
 
 **Tool payloads are never rendered as HTML.** Titles, snippets and page text come from the
 open web and are attacker-controlled; every one is a Dioxus text node, and a URL becomes an
 `href` only after `http_link` has confirmed it is plainly `http`/`https`.
 
-### Popups: Escape, a focus trap, and focus back where it came from
+### Manage popup keyboard focus.
 
 Both popups go through `ModalShell`, which supplies `role="dialog"`, `aria-modal`, an
 announced label, Escape, and a focus trap made of two guard elements. Tab off either end
 lands on a guard, which bounces focus back into the pane. There is no DOM to query for
 focusable descendants from here, which is why guards rather than a focus list.
 
-Before this, neither popup could be closed or navigated without a mouse: nothing was
-announced, Tab walked straight past the overlay into the transcript behind it, and the
-search-detail popup had no Escape at all. The capture thumbnails became real `<button>`s
-in the same change. They open a modal, so they have to be in the tab order and they have
-to be the element focus returns to on close.
+Capture thumbnails are buttons in the tab order.
+Closing a modal returns focus to its opening control.
 
-### A truncated payload is truncated inside its JSON
+### Mark truncated JSON values.
 
-Storage cut the serialised document at `TOOL_PAYLOAD_CHARS`, which leaves a `{` with no
-`}`, so `tool_content` parsed nothing and the card printed "the result payload was not
-recorded" about data sitting in the row it had just read. `truncate_tool_payload` now drops
-whole elements off the biggest array and marks the owning object `"truncated": true`, which
-the card reports as a line rather than letting the list stop silently. When a payload
-genuinely cannot be parsed the card shows the **bytes**; a card must never deny data the
-transcript is holding.
+`truncate_tool_payload` removes complete elements from the largest array and sets the owning object's `truncated` flag.
+The card reports that flag beside the retained data.
+If parsing fails, the card displays the stored bytes.
 
-### Pending cards read their arguments from the stream row's summary
+### Read pending arguments from stream summaries.
 
 A `chat_message_stream` row has no payload columns. The arguments and result are written
 only when the call finalises into `chat_messages`. Its `summary` **is** the arguments JSON
@@ -267,15 +254,11 @@ while the call runs (`AgentToolCall::summary` takes `input` first), which is wha
 pending `web_search` card show the query. It is truncated at 400 chars, so the cards parse
 it best-effort and fall back to a bare label.
 
-The row also carries `elapsed_ms`, measured **server-side**. A running tool's stream row is
-written once, at `tool_start`, and not rewritten until the call finalises (the keepalive
-touches the assistant row), so its `updated_at` is when the call started. Refreshing the
-page mid-call used to restart the counter at 0, which made a two-minute browse read as
-having just begun: the reassuring number showing up exactly when the worrying one is true.
-It is a duration rather than a start timestamp because this component is compiled into the
-server-side render build too, where there is no browser clock.
+The stream row carries `elapsed_ms`, measured by the server from the tool start.
+The component uses that elapsed value after reload because the component also renders without a browser clock.
+A running tool's `updated_at` records its start until the call finishes.
 
-## Reuse of search / document preview
+## Reuse search and document previews.
 
 - Document cards use `SearchResultItemCard` unchanged. The session page provides a
   `SearchResultsState` context with the selection fields the card reads. It has no search
@@ -284,7 +267,7 @@ server-side render build too, where there is no browser clock.
   `NoDocumentSelected` when nothing is selected. Selection lives in the URL
   (`/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state`).
 
-## Tool-event shapes (for the next person)
+## Read tool event structures.
 
 Observed from the live internal search agent:
 
@@ -300,7 +283,7 @@ end    {"output": {"content": …, "type": "tool", "name": "list_collections"|"s
 `file_hash` without `collection_dataset`. Those cards render as a non-clickable stub.
 
 There is **no tool name on a raw start event**. It appears only at `output.name` on the
-end event. `research_agent/agent.py` therefore copies it onto the start chunk, because a
+end event. [research_agent/agent.py](../../../../../main_services/agents/research_agent/research_agent/agent.py) therefore copies it onto the start chunk, because a
 card rendered *while the call runs* has no end event yet and would otherwise be labelled
 "tool".
 

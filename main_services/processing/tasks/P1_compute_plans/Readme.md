@@ -10,9 +10,9 @@ This stage creates processing plans from newly ingested blobs. Plans define batc
 
 ## Entry Points
 
-- Workflow: `ComputePlans` in `workflows.py`
-- Activities: `count_new_blobs`, `compute_plans` in `activities.py`
-- Submit helper: `submit_job.py` (invoked by `main.py add-disk-dataset`)
+- Workflow: `ComputePlans` in [workflows.py](workflows.py)
+- Activities: `count_new_blobs`, `compute_plans` in [activities.py](activities.py)
+- Submit helper: [submit_job.py](submit_job.py) (invoked by `main.py add-disk-dataset`)
 
 ## Technical Details
 
@@ -22,8 +22,8 @@ A blob already present in `processing_plan_hits` does not receive another plan w
 
 ## Usage
 
-- Triggered automatically after dataset ingestion in `main.py`.
-- `submit_job.py` holds one `async def` and no entry point: it is a helper `main.py`
+- Triggered automatically after dataset ingestion in [main.py](../../main.py).
+- [submit_job.py](submit_job.py) holds one `async def` and no entry point: it is a helper [main.py](../../main.py)
   imports, not a script. To start this stage by hand, start the `ComputePlans` workflow
   from the Temporal UI or from the dataset's page in the admin UI.
 

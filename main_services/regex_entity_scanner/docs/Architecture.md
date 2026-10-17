@@ -65,7 +65,7 @@ address) rarely survives; a bare digit-run rule survives in almost every mail me
 handful of rules the saving is small; at several hundred it is the difference between one pass over
 the text and several hundred.
 
-## Where the performance actually is
+## Measure scanner throughput by stage.
 
 In descending order of effect: multi-pattern single-pass matching, literal prefiltering, not running
 expensive validation on non-candidates, and parallelism across fragments. Compiling patterns into
@@ -100,3 +100,22 @@ One process, N threads, no models, no writes. The scanner is built once at start
 request carries its own fragment. That is what makes the container disposable, horizontally
 scalable, and independently versionable from anything else in a pipeline. Its rules ship on their
 own cadence.
+
+## Entity validation and signal scoring have separate owners.
+
+The scanner returns structured entity candidates and lexicon signal matches through separate routes.
+The pipeline stores their source evidence and scores red flag passages during indexing.
+[Scanner routes](../src/) and [pipeline scoring](../../processing/tasks/red_flags.py) own the respective steps.
+
+```mermaid
+flowchart LR
+    accTitle: Structured entity and red flag evidence paths
+    accDescr: Text feeds candidate validation and lexicon matching. Validated entities remain separate from signal evidence and pipeline-scored red flag passages.
+    T[Cleaned source text] --> P[Candidate prefilters]
+    P --> V[Type validators]
+    V --> E[Structured entity hits]
+    T --> L[Lexicon matching]
+    L --> S[Signal hits and offsets]
+    S --> R[Pipeline passage scoring]
+    R --> F[Stored red flag passages]
+```

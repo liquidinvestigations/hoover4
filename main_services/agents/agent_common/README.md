@@ -12,10 +12,10 @@ would drift.
 
 Consumers include `metasearch_server` for search artifacts, `collection_search_server` for optional corpus reranking,
 and `browser_use_server` for page captures. The research agent image copies the package
-folder for `tool_packs.py` alone, and each MCP server image runs `tests/test_tool_packs.py`
+folder for `tool_packs.py` alone, and each MCP server image runs [tests/test_tool_packs.py](tests/test_tool_packs.py)
 against the tools that server lists.
 
-## It is vendored, not published
+## Services package the shared code.
 
 There is no index to install it from. The consuming Dockerfiles build with
 **`main_services/agents` as their build context** and do
@@ -25,13 +25,12 @@ COPY ./agent_common/ ./agent_common/
 RUN pip install --no-cache-dir ./agent_common
 ```
 
-before installing their own package. Two consequences worth knowing before you edit
-anything:
+before installing their own package. The build has these requirements:
 
 * **Moving a consumer's Dockerfile means moving its `context:`** in
-  `../../ops/docker/compose/agents.yaml`. A Docker build cannot reach outside its context,
+  [../../ops/docker/compose/agents.yaml](../../ops/docker/compose/agents.yaml). A Docker build cannot reach outside its context,
   and the failure is a missing-module traceback at container start, not at build time.
-* **`agent_common`'s dependencies are declared in each consumer's `pyproject.toml` as
+* **`agent_common`'s dependencies are declared in each consumer's [pyproject.toml](pyproject.toml) as
   well.** pip resolves the two installs separately, so `requests` and `minio` appear in
   both places on purpose. Adding a dependency here means adding it there too.
 
@@ -44,7 +43,7 @@ Every part of this decides whether the write lands in the right place:
   enforces owner-or-admin before serving a single byte.
 * Bytes go under `derived/chat-artifacts/<session>/<id>/`, the one prefix `P0_scan_disk`
   must never walk. An artifact the ingest walker can see is ingested, captured again, and
-  produces another artifact, forever. `verify-stack.sh` asserts no `blobs` row references
+  produces another artifact, forever. [verify-stack.sh](../../verify-stack.sh) asserts no `blobs` row references
   `derived/`.
 * **Objects are written before the row.** A crash between the two leaves an orphan object
   the clean-up sweeper's prefix scan collects. The reverse order would leave a row
@@ -86,7 +85,7 @@ Two rules that read identically to their wrong versions:
   order is the RRF order.
 * **The breaker counts connect failures only.** A model returning 500 is a different problem
   and must stay visible on every call. A read timeout is likewise not counted: the host
-  answered, it was just slow, and skipping it for a minute would hide a model that needs
+  answered, its response exceeded the read timeout, and skipping it for a minute would hide a model that needs
   replacing.
 
 Latency is logged on every call, successful or not. `breaker_state()` is exposed on the
@@ -105,7 +104,7 @@ A dropped row at shutdown is the right trade for never delaying an answer.
 **Every outcome is recorded, not only the successes**, a capability that writes rows only
 when it works shows as idle exactly while it is failing.
 
-The worker keeps its own copy at `main_services/processing/tasks/ai_telemetry.py`: different
+The worker keeps its own copy at [main_services/processing/tasks/ai_telemetry.py](../../processing/tasks/ai_telemetry.py): different
 image, and it already holds a ClickHouse client. Same table, same column meanings; the two
 are duplicated on purpose and must agree. Their one deliberate difference is the default
 `username`: `guest` for a request with no user, `pipeline` for work that is on nobody's
@@ -114,5 +113,5 @@ behalf.
 ## Tests
 
 The consumers' suites verify their call sites.
-`collection_search_server/tests/test_fused_search.py` verifies optional corpus reranking.
-`metasearch_server/tests/test_pipeline.py` verifies fusion and the payload/artifact split without reranking.
+[collection_search_server/tests/test_fused_search.py](../collection_search_server/tests/test_fused_search.py) verifies optional corpus reranking.
+[metasearch_server/tests/test_pipeline.py](../metasearch_server/tests/test_pipeline.py) verifies fusion and the payload/artifact split without reranking.

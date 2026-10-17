@@ -3,7 +3,7 @@
 Everything long that a person can start is an **operation**: a row in the global
 `operations` table, and a Temporal workflow whose id *is* that row's `op_id`.
 
-## Why the identity matters more than the table
+## Operation identity remains stable.
 
 A command that drives multi-stage work from the client is only as durable as the client.
 When the sequencing of scan → compute plans → execute plans lived in the CLI, killing the
@@ -239,7 +239,7 @@ rewrite and not a restore.
 
 **Every object volume is read, and there can be many.** A volume rolls at a fixed size, so a
 corpus larger than that is several tars whose members continue from one into the next. The
-threshold is `OBJECT_VOLUME_BYTES` in `backup.py`, 8 GiB by default. It reads
+threshold is `OBJECT_VOLUME_BYTES` in [backup.py](backup.py), 8 GiB by default. It reads
 `HOOVER4_BACKUP_OBJECT_VOLUME_BYTES`, so a small corpus can prove the roll without changing
 what a real deployment writes. The key manifest's offsets are for pulling one blob out of a
 backup without reading it all; a whole-collection restore streams the volumes instead, which

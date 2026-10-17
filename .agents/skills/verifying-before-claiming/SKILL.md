@@ -18,23 +18,23 @@ Select tests by changed behavior and dependencies.
 Use the full relevant fast suite when selection costs more than running it.
 Add a regression test for a meaningful failure mechanism. Avoid tests that only repeat the implementation.
 The [test guidance](../writing-tests/reference/test-shapes.md) and [suite inventory](../writing-tests/reference/suites.md) provide further detail.
-The retained `../writing-tests/scripts/gate-map.sh` routes paths to candidate checks. Review relevance before running them.
+The retained [../writing-tests/scripts/gate-map.sh](../writing-tests/scripts/gate-map.sh) routes paths to candidate checks. Review relevance before running them.
 
 | Changed behavior | Available check |
 |---|---|
-| Markdown changes. | Run `scripts/docs/run.sh` from the repository root and review its warnings. |
+| Markdown changes. | Run [scripts/docs/run.sh](../../../scripts/docs/run.sh) from the repository root and review its warnings. |
 | Documentation tooling changes. | Run `scripts/docs/run.sh test` from the repository root. |
 | Mermaid blocks change. | Run the renderer described in the [documentation tools](../../../scripts/docs/README.md). |
-| Rust types and test targets change. | Run `scripts/cargo-check.sh`. |
-| Dioxus components change. | Run `scripts/dx-check.sh` and exercise the affected controls. |
+| Rust types and test targets change. | Run [scripts/cargo-check.sh](scripts/cargo-check.sh). |
+| Dioxus components change. | Run [scripts/dx-check.sh](scripts/dx-check.sh) and exercise the affected controls. |
 | Worker Python changes. | Run `scripts/pytest-unit.sh [path]`. |
 | Research-agent behavior changes. | Run `scripts/pytest-research-agent.sh [path]`. |
 | MCP or shared agent code changes. | Run `scripts/pytest-agents.sh [path]` against the affected images. |
 | OCR-PDF behavior changes. | Run `scripts/pytest-ocr-pdf.sh [path]`. |
 | Tesseract OCR service behavior changes. | Run `scripts/pytest-ocr-tesseract.sh [path]`. |
-| Test reachability changes. | Run `scripts/test-reachability.sh`. |
-| Website backend contracts change. | Run the relevant cases in `website/run-stack-tests.sh`. |
-| Ingestion and storage contracts change. | Use `main_services/verify-stack.sh` for the affected end-to-end claim. |
+| Test reachability changes. | Run [scripts/test-reachability.sh](scripts/test-reachability.sh). |
+| Website backend contracts change. | Run the relevant cases in [website/run-stack-tests.sh](../../../website/run-stack-tests.sh). |
+| Ingestion and storage contracts change. | Use [main_services/verify-stack.sh](../../../main_services/verify-stack.sh) for the affected end-to-end claim. |
 
 Scripts above are relative to this skill unless they name a repository path.
 Verify the source loaded by the test process. An image can contain older code than the checkout.

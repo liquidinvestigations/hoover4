@@ -1,6 +1,6 @@
-# `src/lexicon/`
+# [src/lexicon/](.)
 
-The investigative lexicon's matcher: it loads the term lists in `lexicon/`, compiles them into one
+The investigative lexicon's matcher: it loads the term lists in [lexicon/](.), compiles them into one
 automaton, and turns matches into signals.
 
 ```text
@@ -12,7 +12,7 @@ word that is present, which proves nothing on its own, so signals do not enter `
 overlap drops the weaker reading. Otherwise a hit on `claim` could delete an insurance-policy number
 that it overlaps.
 
-## `fold.rs`
+## [fold.rs](fold.rs)
 
 The normalisation that terms and text share. The module header lists the steps. The ones that
 decide what matches are these:
@@ -37,7 +37,7 @@ Each folded byte remembers the source offset of the character that produced it. 
 carries byte offsets into the caller's document, exactly like an entity. `text[start..end]` is
 always the reported `text`, and the corpus test asserts it for every signal.
 
-## `clitics.rs`
+## [clitics.rs](clitics.rs)
 
 Arabic and Hebrew join the conjunction, the article and the one-letter prepositions to the next
 word, so a term whose first word is in either script also compiles with the common proclitic
@@ -48,7 +48,7 @@ too often spells another word; a phrase gets them at any length. A variant that 
 out belongs to that row alone. The Arabic and Hebrew lists add about 55 000 variant patterns to
 their 2 600 terms.
 
-## `load.rs`
+## [load.rs](load.rs)
 
 Reads `categories.tsv` and every `<lang>/<category>.tsv`, and refuses a malformed lexicon at
 startup, naming the file and line:
@@ -70,7 +70,7 @@ it for a field quote and refuse to show the whole file.
 The version is the first twelve hex digits of a SHA-256 over every file loaded. It is a content
 hash rather than a hand-bumped number, because the lists are edited far more often than the code.
 
-## `mod.rs`
+## [mod.rs](mod.rs)
 
 One Aho-Corasick automaton over every term of every language. It is a contiguous NFA with standard
 semantics, searched for overlapping matches, so two adjacent terms can share the space between them.
@@ -102,7 +102,7 @@ is `1 − ∏(1 − wᵢ)` over distinct terms, with `H` 1.0, `M` 0.4 and `L` 0.
 The score is a sort key. The counts are what a threshold belongs on, because the rule-based
 detectors that work require several distinct terms rather than one.
 
-## `check.rs`
+## [check.rs](check.rs)
 
 Everything that needs context runs here, per hit or once per fragment, never as another pass per
 hit over the text.

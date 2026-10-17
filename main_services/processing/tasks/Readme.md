@@ -1,6 +1,6 @@
 # Processing Tasks
 
-This directory contains Temporal workflows and activities that implement the multi-stage Hoover4 ingestion pipeline. Each stage is organized as a separate submodule and executed via worker queues defined in `run_worker.py`.
+This directory contains Temporal workflows and activities that implement the multi-stage Hoover4 ingestion pipeline. Each stage is organized as a separate submodule and executed via worker queues defined in [run_worker.py](run_worker.py).
 
 ## Pipeline Stages
 
@@ -128,7 +128,7 @@ lifecycle and its terminal write is what releases the operations lock. Runs on
 the running operations of each kind at the cap of the `[operations]` section, and a
 `queued` row waits there for a slot. See [P_ops/Readme.md](P_ops/Readme.md). A failed operation also writes a
 tree of worker stack traces into the global `operation_failures` table
-(`tasks/operation_failure_capture.py`). A pipeline workflow that fails an operation writes
+([tasks/operation_failure_capture.py](operation_failure_capture.py)). A pipeline workflow that fails an operation writes
 the same way. The group workflow `ProcessItemsBatched` records an unreadable PDF, like
 every failed file, in `processing_errors`, and does not write `operation_failures` for it.
 
@@ -167,8 +167,8 @@ The transcript shows this metadata below the answer.
 The worker stores typed evidence beside each tool result.
 Evidence identifies document reads, discovery, citations, notes, artifacts, spans, and errors.
 
-The `control_event` activity runs the chat checks of `P_agent/control/` at the turn start, after each tool batch, and at each answer draft.
-`control/coordinator.py` describes the stored decision of each event and the rows it writes.
+The `control_event` activity runs the chat checks of [P_agent/control/](P_agent/control) at the turn start, after each tool batch, and at each answer draft.
+[control/coordinator.py](P_agent/control/coordinator.py) describes the stored decision of each event and the rows it writes.
 A policy batch runs through `tool_call` before the next model step.
 The checks ask the selfhosted structured server at `CHAT_CLASSIFIER_URL` and continue without answers when it fails.
 
@@ -187,7 +187,7 @@ Deploy the worker before the website so every dispatched queue has a poller.
 ## Temporal visibility
 
 Every workflow the pipeline starts (top-level submissions and child workflows alike)
-carries the `CollectionDataset` keyword search attribute (`visibility.py`), registered
+carries the `CollectionDataset` keyword search attribute ([visibility.py](visibility.py)), registered
 idempotently at every worker startup. The admin workflow browser filters on it, so
 child workflows (`HandleFolders-<hash>`, per-plan runs) show up in a collection-scoped
 query.
@@ -203,7 +203,7 @@ Polling cannot close the frontend-cache window, only retrying the start can.
 ## Activity liveness and outbound HTTP
 
 Every activity declares `heartbeat_timeout = HEARTBEAT_TIMEOUT` (30 s) at all 55 call
-sites, and every activity body is wrapped in `@with_heartbeat` (`heartbeat.py`), which
+sites, and every activity body is wrapped in `@with_heartbeat` ([heartbeat.py](heartbeat.py)), which
 beats every 15 s from a pump thread. The blanket wrap is deliberate: any activity whose
 real work legitimately exceeds the deadline (ffprobe on a large video, a Manticore batch
 write) would otherwise be killed and retried forever.
@@ -232,7 +232,7 @@ needed costs nothing, and every activity is idempotent on retry. Activities with
 real loop additionally beat a `HeartbeatClock` inside it, which is evidence of forward
 progress rather than only a live thread.
 
-Every heartbeat goes through `send_heartbeat` (`heartbeat.py`): the pump, the
+Every heartbeat goes through `send_heartbeat` ([heartbeat.py](heartbeat.py)): the pump, the
 `HeartbeatClock`, `stop_if_worker_is_stopping`, and the cursor heartbeat of a scan range.
 A stage activity of the group workflow registers its batch progress with
 `batch_progress`, and `send_heartbeat` then puts the batch detail first on every
@@ -273,7 +273,7 @@ order of its commands, the ids it gives its children, a loop, a timer) makes a l
 execution's replay disagree with its history, and it wedges with a non-determinism error
 until someone terminates it. So a workflow change requires no live executions of the
 workflows it touches: drain the queue, or terminate and re-drive, and only then restart
-the worker. `.agents/check-workflow-diff.py` says which of the two a diff is and names
+the worker. [.agents/check-workflow-diff.py](../../../.agents/check-workflow-diff.py) says which of the two a diff is and names
 the files.
 
 **The pipeline drain.** No workflow versioning exists. A change to the command sequence of
@@ -285,18 +285,18 @@ temporal:7233` and an `ExecutionStatus='Running'` query. Cancel each live operat
 Deploy only when the count is 0. A `queued` operation is cancelled like the others, and a
 person dispatches it again after the deploy with `main.py operations rerun <op_id>`.
 
-**The board drain.** A change to `P_board/workflows.py` needs no live `BoardDispatcher` or
+**The board drain.** A change to [P_board/workflows.py](P_board/workflows.py) needs no live `BoardDispatcher` or
 `BoardExplore`. Terminate `board-dispatcher`, cancel each `board-explore-*` workflow, and then
 restart the worker, which starts the dispatcher again. [docs/architecture/Boards.md](../../../docs/architecture/Boards.md) says how
 the next pass recovers the cancelled intents.
 
 Outbound HTTP from activities (NER, OCR, embeddings) goes through
-`remote.py`: `(connect, read)` two-tuple timeouts (`GPU_CONNECT_TIMEOUT_MS`, default
+[remote.py](remote.py): `(connect, read)` two-tuple timeouts (`GPU_CONNECT_TIMEOUT_MS`, default
 2 s connect), an ordered endpoint list with an optional CPU twin, and a per-endpoint,
 time-boxed circuit breaker (`GPU_CIRCUIT_BREAK_SECONDS`). A connect failure falls back;
 a read timeout does not. `RemoteResult.provider` records which endpoint actually served.
 
-## Where processing time goes (`task_timing.py`)
+## Where processing time goes ([task_timing.py](task_timing.py))
 
 Every worker installs `TaskTimingInterceptor` (a Temporal **activity inbound
 interceptor**), so one row lands in the collection's `processing_task_runs` per activity
@@ -305,7 +305,7 @@ worker process, plus queue-wait (`scheduled_at`, `schedule_to_start_ms`,
 `retry_backoff_ms`) and the parent workflow identity (`workflow_id`, `workflow_run_id`,
 `workflow_type`). The interceptor is the hook rather than the 79 call sites or
 `@with_heartbeat` for one reason: it cannot be forgotten by the next activity someone
-adds. `tests/unit/test_task_timing.py` asserts every `Worker(...)` installs it.
+adds. [tests/unit/test_task_timing.py](../tests/unit/test_task_timing.py) asserts every `Worker(...)` installs it.
 
 Operation-owned successful and skipped rows are durable before an activity returns.
 The interceptor writes document outcomes first for each file of a P3 stage activity, P4
@@ -347,7 +347,7 @@ backlog -- a server that leaves the enhanced `stats` block empty falls back to
 fleet stalled on dispatch reports zeros everywhere while activities wait seconds to
 start. Only a stack with no workers at all costs zero rows.
 
-Read it back with `main_services/task-time-report.sh` (per-task totals, shares, p95, wall
+Read it back with [main_services/task-time-report.sh](../../task-time-report.sh) (per-task totals, shares, p95, wall
 clock, achieved parallelism) or on `/admin/collections/<name>/processing`, which has both
 the after-the-fact breakdown and a live view.
 
@@ -399,7 +399,7 @@ The two remote tiers pipeline HTTP against a GPU that has its own admission cont
 their number is the *server's* window (`ai_server_ner_concurrency`,
 `ai_server_embed_concurrency`), not anything about this host. Below it the GPU idles
 between batches; above it the server sheds with 503 + `Retry-After`, which
-`tasks/remote.py` retries, an asymmetry that argues for sitting at the window rather
+[tasks/remote.py](remote.py) retries, an asymmetry that argues for sitting at the window rather
 than under it. A plan's chunk+embed work arrives as a handful of long activities, so
 slots below the window turned one stage into several serial waves at the end of every
 plan.

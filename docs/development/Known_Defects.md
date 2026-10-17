@@ -1,216 +1,56 @@
-# Known defects and limitations
-
-What the system does today that a person changing it should know about. Every entry states
-behaviour confirmed against the running stack, either by a command whose output shows it or
-by naming where the behaviour was decided on purpose.
-
-## Pipeline and indexing
-
-### No extraction code rejoins a PDF's single-character text runs
-
-A PDF page whose text layer stores a heading as single-character runs keeps that shape
-through extraction and storage, because nothing in the pipeline rejoins the runs into words.
-The entity stop-list hides the garbage entity this produces, but the underlying text is
-untouched.
-
-```
-grep -rn "rejoin\|single.character run" --include="*.py" main_services/processing/tasks/
-```
-
-The search returns nothing. No extraction code rejoins the letters.
-
-## Search and interface
-
-### The in-chat search tool has no offset, so only the nearest results are reachable
-
-`search_collections` takes a `max_results` argument up to its ceiling, and no offset. A
-caller cannot page past the first batch of hits, so a plan that reasons "more turns reach
-further results" is wrong: the tool returns the same top results every time.
-
-```
-grep -n "^def search_collections" -A 6 main_services/agents/collection_search_server/collection_search_server/server.py
-```
-
-### An unparseable route renders the not-found page under an HTTP 200 status
-
-A request for a route the frontend cannot match renders the "Page not found" page, and the
-response still carries a 200 status. A tool reading the status code alone sees success for a
-page that does not exist.
-
-```
-env_file="main_services/ops/docker/.env"
-bind=$(grep -E '^WEBSITE_BIND_IP=' "$env_file" | cut -d= -f2-)
-case "$bind" in
-    ""|0.0.0.0) WEBSITE_URL="http://localhost:12345" ;;
-    *)          WEBSITE_URL="http://$bind:12345" ;;
-esac
-curl -s -o /dev/null -w '%{http_code}\n' "$WEBSITE_URL/this-route-cannot-match"
-```
-
-`WEBSITE_URL` follows the same derivation `main_services/verify-stack.sh` uses from
-`WEBSITE_BIND_IP` in the rendered `.env`. The request prints `200`.
-
-### The collection detail page renders no document error count
-
-The collection detail page shows no error count for a collection, even when a plan recorded
-failures against its documents.
-
-```
-grep -n "error" website/frontend/src/pages/admin/collection_detail.rs
-```
-
-The matches are all interface-action errors. None of them is a document error count.
-
-## Chat and agents
-
-### A chat conversation has no cap on its total prompt size
-
-Cost tracks the number of tool calls made in a turn, not the size of any one of them, and
-nothing caps how long a conversation or its tool history can grow.
-
-```
-grep -rn "max.*token\|prompt.*budget" main_services/processing/tasks/P_agent/summarize.py
-```
-
-The only cap found bounds one title-and-summary completion, not the conversation.
-
-### The model call limit and the step queue wait are usability limits, not model bounds
-
-`llm_request_timeout_seconds` is 3,600 s and `agent_queue_wait_seconds` is 5,400 s. They set
-how long a person waits for one model call and for one free slot. They do not bound what the
-model server can take. The sweep in [ai_services/README.md](../../ai_services/README.md) extrapolates one request at the
-full context and a full output to 28,150 s. Such a request fails at 3,600 s while the model
-server still works on it. A call that waits in the model server's own queue counts that wait
-against the same 3,600 s. A healthy server under full load can therefore fail a call. A run
-has no time limit, and each of its steps can wait up to 5,400 s for a slot.
-
-```
-grep -n "llm_request_timeout_seconds\|agent_queue_wait_seconds" hoover4.ini.release
-grep -n "28,150" ai_services/README.md
-```
-
-## Configuration and deployment
-
-### A plain container stop or restart can cut the worker's drain short
-
-The container runtime applies the compose file's stop grace period only when it is itself
-the process stopping the container, so a plain `docker stop` or `docker restart` still kills
-the worker ten seconds in, whatever the configuration says. `main_services/restart-worker.sh`
-reads the worker's own drain period and passes it explicitly, but anything else that stops
-the worker cuts the drain short, silently.
-
-```
-docker inspect hoover4-worker --format '{{.Config.StopTimeout}}'
-```
-
-It prints `10`, the runtime's own default, whatever the compose file configures.
-
-### Workflow versions are patch gates only, with no build ids
-
-A workflow change keeps the histories of running executions valid with a `workflow.patched`
-gate. The old commands stay behind the gate until no execution that started before the change
-runs on any deployment. No build id ties an execution to the code that started it. A
-change without a gate therefore fails a running execution at its next workflow task.
-`.agents/check-workflow-diff.py` names a diff that touches workflow code. Such a diff needs
-a gate or a default that keeps the old commands.
-
-```
-grep -rn "workflow.patched(" main_services/processing/tasks --include=*.py
-ls .agents/check-workflow-diff.py
-```
-
-### An applied migration is frozen, and its wording cannot be corrected
-
-The migration runner records an md5 of the whole migration file, comments included, so
-editing one word in an already-applied migration makes every deployment that already ran it
-refuse to start. Two migration files in the tree carry wording that is known to be wrong and
-cannot be corrected without resetting every deployment that applied them.
-
-```
-grep -n "already-applied migration is the exception" AGENTS.md
-```
-
-### `PDF_TO_HTML_ENDPOINT` reaches the website and nothing reads it
-
-The website container is given the `PDF_TO_HTML_ENDPOINT` environment variable, but no Rust
-or Python file in the tree reads it under that name.
-
-```
-grep -rn 'env::var("PDF_TO_HTML_ENDPOINT")' --include='*.rs' --include='*.py' .
-```
-
-### The AI status page reports a configuration mismatch across hosts
-
-The host running the GPU-side services carries a diverged copy of the deployment script, so
-its configuration fingerprint disagrees with the one the website host renders. Every guarded
-capability still probes as agreeing, so the page states a real divergence in a way that
-reads as worse than it is.
-
-```
-main_services/verify-stack.sh
-```
-
-The run prints a `NOTE - hoover4.ini drift` line naming the two fingerprints.
-
-### `supports_tools` is never populated, so the catalog cannot show tool-capable models
-
-`llm_models` declares `supports_tools` with a default of 0, and the writer that fills the
-table never sets the column. The "tools" flag of the catalog on `/admin/llm` therefore never
-shows, also for a model that calls tools.
-
-```
-grep -n "supports_tools" main_services/processing/database/db_global_migrations/00018_llm_models.sql main_services/processing/tasks/llm_catalog.py
-```
-
-The migration line is the only match. `llm_catalog.py` is the only writer and does not
-mention the column.
-
-### The local testdata checkout is behind the pinned commit
-
-The stack verification warns that the local fixture checkout is at a different commit from
-the one pinned in the repository. Every pinned fixture path still resolves, but a fixture
-added since the pin is missing until the checkout is pulled.
-
-```
-main_services/verify-stack.sh
-```
-
-The run prints a `WARN - hoover-testdata is at` line naming both commits.
-
-### A credential-shaped default sits in the tracked compose file
-
-The object store's access secret has a literal default value, repeated in four services in
-the compose file, so a deployment that sets nothing runs on a known key. It is a
-long-standing convention here, which is why it keeps being copied into the next service.
-
-```
-grep -n "S3_SECRET_KEY" main_services/ops/docker/docker-compose.yaml
-```
-
-## Stated limitations, not defects
-
-These are decisions. They are here so nobody re-reports them as bugs.
-
-### A plan reports success over per-document failures
-
-A plan is marked finished when its stages ran, not when every document inside it succeeded.
-Requiring per-document success would mean a messy corpus never finishes. The operations log
-renders the failure counts on the finished row instead, so a reader still has to check them
-beside the green status.
-
-### Two collections are restricted and must be flipped by hand
-
-No code is involved. Recorded here so the fact is not rediscovered.
-
-### The search result ceiling of 1,000 is intended
-
-The ceiling itself is a decision. The missing offset under it, which stops a caller from
-reaching results past the first batch, is tracked above under Search and interface.
-
-## Full-text operator limitations
-
-`REGEX(...)` loses its slashes during query preparation. `SENTENCE` and `PARAGRAPH` run as ordinary AND searches.
-`ZONE` returns no matches. `ZONESPAN` requires the same absent zone setting, but its behavior has not been measured.
-`=word` has no effect without indexed word forms. Every product `@` is escaped, so field operators are unavailable.
-CJK text is not indexed. Addresses split into words. The product does not use automatic fuzzy search.
-Spelling suggestions require explicit selection and retain the original search filters.
+# Verify known defects and source-defined limitations.
+
+A defect report must identify the source, input, environment, and observed result.
+Deployment-specific observations belong in the private infrastructure inventory.
+The limits below describe current source behavior and do not establish a runtime failure in another environment.
+
+## Search repair details are absent from the normal result view.
+
+[The match builder](../../website/backend/src/db_utils/manticore_match.rs) returns a prepared expression and repair notes.
+[Website query construction](../../website/backend/src/api/search/search_sql.rs) consumes the quoted expression without returning those notes to the result view.
+[Agent search](../../website/backend/src/api/agent/search.rs) separately returns query notes.
+A browser capture of an uppercase Boolean query showed results without the expected repair notice.
+The short-infix notice is separate and appears when its documented length condition applies.
+
+## Collection tools can continue bounded result pages.
+
+Collection tools return a `more` handle when results remain in the current window.
+`read_more` continues that result for the same user, conversation, and run.
+[Paging](../../main_services/agents/collection_search_server/collection_search_server/paging.py) owns handles and stored windows.
+[Search tools](../../main_services/agents/collection_search_server/collection_search_server/tools_search.py) own multi-form continuation.
+The first 1,000 full-text document results remain the search reachability limit.
+Narrow the query when the required records are outside that range.
+
+## Chat context handling depends on model information.
+
+The agent measures model input and can compact earlier step groups when the provider supplies a context window.
+It preserves user messages and the stored transcript.
+An unknown context window does not receive a guessed compaction threshold.
+[Chat architecture](../architecture/Chat_And_Agents.md) describes the current context and queue contracts.
+Model request and queue wait deadlines remain separate configuration settings.
+A request deadline can expire while an external provider still processes that request.
+
+## Plan completion can include document errors.
+
+A plan finishes after its stages run, including when individual documents fail.
+Inspect operation counts and document errors before treating the collection as complete.
+[Operations](../../main_services/processing/tasks/P_ops/Readme.md) record the operation outcome and error counts.
+[Processing stages](../architecture/Pipeline_Stages.md) describe the document outcomes and retry contract.
+
+## Worker and migration changes have separate constraints.
+
+Use [the worker restart script](../../main_services/restart-worker.sh) to preserve the configured drain period.
+Verify that workflows using changed commands remain compatible with their stored history.
+[The workflow diff check](../../.agents/check-workflow-diff.py) identifies changes that need that review.
+The migration runner verifies the checksum of the complete applied file, including comments.
+Use a new migration or change the reader when an applied contract needs correction.
+[Settled decisions](../architecture/Settled_Decisions.md) describe the migration invariant.
+
+## Verify full-text operator behavior.
+
+The user reference documents supported operators and their current migration behavior.
+[Read the query table.](../user-manual/User_Manual.md#what-you-can-type)
+Word forms do not match automatically.
+A stray tilde does not enable legacy edit-distance fuzzy search.
+The request layer escapes field operators, so field restrictions use typed filters.
+Spelling suggestions require explicit selection and preserve the active filters.

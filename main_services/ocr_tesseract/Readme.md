@@ -4,7 +4,7 @@ This service runs Tesseract on the CPU.
 Its GPU counterpart, `ai_services/easyocr_server`, runs EasyOCR through the same request contract.
 The client preserves each engine's source identity and does not substitute one engine for the other.
 
-## Why OCR is a service
+## OCR runs in a separate service.
 
 Two failure modes put it here:
 
@@ -56,7 +56,7 @@ An undecodable image keeps its original failure.
   request is bounded, the `tesseract` process it spawned is not. Do not remove
   `OCR_SUBPROCESS_TIMEOUT_S` on the grounds that the service is bounded.
 - Requests are JSON with base64 rather than multipart so the call goes through
-  `tasks/remote.py` and inherits its `(connect, read)` timeouts, CPU fallback and
+  [tasks/remote.py](../processing/tasks/remote.py) and inherits its `(connect, read)` timeouts, CPU fallback and
   circuit breaker. That costs 33% on the wire for a payload capped at
   `OCR_MAX_IMAGE_BYTES`. PDFs never come through here.
 

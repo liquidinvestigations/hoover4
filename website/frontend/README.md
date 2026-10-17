@@ -4,22 +4,20 @@ The frontend is a Dioxus WASM application that provides the Hoover4 user interfa
 
 ## Structure
 
-- `assets/` - Static assets and global styles.
-- `src/main.rs` - Dioxus entry point and application launch configuration.
-- `src/app.rs` - Application root component, layout, and router. The router sits inside
-  `components/session_gate.rs`: no page renders until `whoami` has answered and the session
-  cookie exists, because every other endpoint refuses a request without one. When the
-  deployment issues no anonymous session, the gate renders *Sign-in required* as a page
-  rather than raising it into the error boundary. A boundary presents the site as broken
-  and offers a retry that cannot work.
-- `src/routes.rs` - Route definitions (search, document view, file browser, AI chat, admin).
-- `src/pages/` - Page-level UI compositions (`ai_chat/`, `admin/`, search, …).
+- [assets/](assets) - Static assets and global styles.
+- [src/main.rs](src/main.rs) - Dioxus entry point and application launch configuration.
+- [src/app.rs](src/app.rs) creates the layout and router inside the shared session context.
+  [Session context](src/components/session_context.rs) reads the current identity once.
+  Pages render while that identity request resolves because the backend already verifies incoming requests.
+  Controls that require administrator identity remain hidden until that identity is known.
+- [src/routes.rs](src/routes.rs) - Route definitions (search, document view, file browser, AI chat, admin).
+- [src/pages/](src/pages) - Page-level UI compositions (`ai_chat/`, `admin/`, search, …).
   Folder search remembers each folder's query during browser return navigation within the mounted application.
-- `src/components/` - Reusable UI building blocks (`chat_components/`, `search_components/`, …).
+- [src/components/](src/components) - Reusable UI building blocks (`chat_components/`, `search_components/`, …).
   `resizable_sidebar.rs` is the storage pane's drag handle and remembered width; it reads
   local storage and measures the layout scale, so it is the one component that needs
   `web-sys` beyond `Window`.
-- `src/api/` - Server functions that proxy to the backend crate.
+- [src/api/](src/api) - Server functions that proxy to the backend crate.
 
 ## The document viewer's right-hand tabs
 
@@ -102,7 +100,7 @@ use_effect(move || {
 ```
 
 `cargo check` cannot see any of this. `dx check --package frontend` names the exact line,
-in about a second, and both `run-stack-tests.sh` and `development.sh` gate on it.
+in about a second, and both [run-stack-tests.sh](../run-stack-tests.sh) and [development.sh](../development.sh) gate on it.
 
 ## Development
 
@@ -117,3 +115,9 @@ Or rebuild the container: `main_services/start-docker.sh --build hoover4-website
 ## Navigation
 
 -  [Go Back](../Readme.md)
+
+## Retain the Dioxus instruction references.
+
+[The full reference](prompt.md) and [the shorter reference](prompt-small.md) retain Dioxus scaffold instructions from the initial import.
+They do not configure the application's research agents.
+[The workspace manifest](../Cargo.toml) defines the current application dependencies.

@@ -1,17 +1,17 @@
-# `src/`
+# [src/](.)
 
 The scanner and the service around it.
 
 | Module | What it holds |
 |---|---|
-| `model.rs` | The output contract: `Entity`, `Value`, `EntityType`, `Flag`, and the cross-type precedence order. |
-| `data.rs` | Loading of the vendored reference data the validators consult, once at startup. |
-| `rules/` | One candidate pattern and one validator per entity type. |
-| `scan/` | The pipeline: prefilter, then validate and normalise inside the rules, then resolve. |
-| `explain/` | Explainer cards: the static per-rule catalogue and the shapers that turn one match into a card. |
-| `lexicon/` | The investigative lexicon matcher: the fold, the loader for `lexicon/`, the automaton and the signal flags. |
-| `service.rs` | The HTTP surface. |
-| `main.rs` | The service shell: load, compile, serve. |
+| [model.rs](model.rs) | The output contract: `Entity`, `Value`, `EntityType`, `Flag`, and the cross-type precedence order. |
+| [data.rs](data.rs) | Loading of the vendored reference data the validators consult, once at startup. |
+| [rules/](rules) | One candidate pattern and one validator per entity type. |
+| [scan/](scan) | The pipeline: prefilter, then validate and normalise inside the rules, then resolve. |
+| [explain/](explain) | Explainer cards: the static per-rule catalogue and the shapers that turn one match into a card. |
+| [lexicon/](lexicon) | The investigative lexicon matcher: the fold, the loader for [lexicon/](lexicon), the automaton and the signal flags. |
+| [service.rs](service.rs) | The HTTP surface. |
+| [main.rs](main.rs) | The service shell: load, compile, serve. |
 
 ## Why the work is split this way
 
@@ -37,7 +37,7 @@ scanning a large document splits it into overlapping windows (the overlap at lea
 longest matchable entity) passes each window's own offset as `base_offset`, and deduplicates on
 `(type, start, end)`. Never split a window mid-codepoint.
 
-## A missing table is a startup failure, not a quiet one
+## Startup fails when a required table is missing.
 
 Every vendored table is read once at startup, and each one has a minimum number of entries it has
 to hold to be the file it was transformed from. This is commonly underestimated: a validator whose

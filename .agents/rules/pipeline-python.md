@@ -11,7 +11,7 @@ P5: the embedding stage owns the number that runs before it.
 
 **Stage identifiers are mirrored across the language boundary.** `STAGE_INDEX` and its
 siblings are stored values in `processing_eta_samples` and constants in
-`website/common/src/processing_types.rs`. Both sides move in the same patch, or the admin
+[website/common/src/processing_types.rs](../../website/common/src/processing_types.rs). Both sides move in the same patch, or the admin
 processing view silently loses a bar.
 
 **`text_content.page_id` is never 0.** It is a real 1-based page number for paged formats and
@@ -30,7 +30,7 @@ other being right. Call the shared formatter; never assemble or parse the string
 collection; readers split the stored path. Reconstructing the bucket from configuration works
 on one collection and fails on the next.
 
-## Two wire formats that fail as silence
+## Preserve serialized value types.
 
 **Temporal deserialises an activity argument into its annotated type.** An unannotated
 parameter arrives as a dict and the feature quietly does nothing. Annotate every one.
