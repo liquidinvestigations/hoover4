@@ -107,6 +107,14 @@ that are not archived, the unread reports, the archived reports, or all of them.
 to see the description, the page image, a link to the page copy, and the debug context. **Mark
 read** and **Archive** are separate, so an archived report keeps its read state.
 
+<a href="img/admin-feedback-detail.png"><img src="img/admin-feedback-detail.png" alt="Feedback report detail with page image and page-copy link" align="right" width="560"></a>
+
+Select **Open the page image** to inspect the screenshot.
+Select **Open the DOM copy** to inspect the saved page.
+The debug context and browser log appear below the image.
+
+<br clear="all">
+
 ## Users and groups
 
 Users are listed with their origin: the identity the proxy asserted the first time each

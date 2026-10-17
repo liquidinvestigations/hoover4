@@ -36,6 +36,13 @@
       "sha256": "b0390a86c95f8f915a33b6ae1837b24cf8e06e8a72916bacb246647fb1d256fd"
     },
     {
+      "image": "docs/user-manual/img/admin-feedback-detail.png",
+      "scenario": "website/browser-tests/741-manual-doc-feedback-detail.ini",
+      "revision": "40aa21d3fc0c59f9dcf6442f95087e792caedf94",
+      "captured_at": "2026-10-17T20:13:01+00:00",
+      "sha256": "5bb646178d63dbc4952610ed9953afd4c45c0f7cadf5b7f88355e9f7a60c31c1"
+    },
+    {
       "image": "docs/user-manual/img/admin-feedback.png",
       "scenario": "website/browser-tests/740-manual-doc-admin-feedback.ini",
       "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
@@ -153,6 +160,13 @@
       "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
       "captured_at": "2026-10-17T19:45:24+00:00",
       "sha256": "6a0d4a8c35ab416b539be2819cb9e975064f497a9b3950709bc830781b87d288"
+    },
+    {
+      "image": "docs/user-manual/img/feedback-form.png",
+      "scenario": "website/browser-tests/732-manual-doc-feedback.ini",
+      "revision": "40aa21d3fc0c59f9dcf6442f95087e792caedf94",
+      "captured_at": "2026-10-17T20:12:59+00:00",
+      "sha256": "e75e0cf62189b4683148c4ba8f5405a3d17d72ce4efdd5a42ebcb13e626f3698"
     },
     {
       "image": "docs/user-manual/img/filter-collections.png",

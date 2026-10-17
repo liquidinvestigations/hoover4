@@ -2490,7 +2490,8 @@
         "docs/technical-specification/Capability_Contracts.md#f-admin-35"
       ],
       "audience": "user",
-      "no_screenshot_reason": "A replacement interface capture remains pending. Publication requires a public fixture without private deployment or account details."
+      "screenshot": "docs/user-manual/img/feedback-form.png",
+      "scenario": "website/browser-tests/732-manual-doc-feedback.ini"
     },
     {
       "id": "F-admin-36",

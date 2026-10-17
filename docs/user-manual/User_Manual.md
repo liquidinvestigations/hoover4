@@ -73,12 +73,16 @@ Below them is a feedback card. Its button opens the same report as the bug icon 
 
 ### Reporting a bug or sending feedback
 
+<a href="img/feedback-form.png"><img src="img/feedback-form.png" alt="Feedback form with captured page and debug context" align="right" width="560"></a>
+
 Select the bug icon at the bottom of the rail. The icon turns red while the browser copies the
 page and draws an image of it. A full-screen form then shows the image, the size of the image
 and of the page copy, the browser information and the browser log. Select **Bug** or
 **Feedback**, write a title and a description, and select **Send**. You can paste links to
 other pages of the application into the description. Frames, some canvases and some embedded
 viewers can look different in the image, and the form names them when the page has them.
+
+<br clear="all">
 
 ---
 
