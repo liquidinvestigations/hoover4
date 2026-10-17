@@ -1,12 +1,8 @@
 # Hoover: user manual
 
-Using the site: searching a corpus, filtering it, reading a document, browsing storage,
-asking the chat about it, and administering collections. Screenshots are real captures of a
-running deployment at 1400x850 unless a caption says otherwise.
-
-How you reach a deployment, and what credentials it wants, depend on that deployment and are
-not in this repository. See `INFRASTRUCTURE_INVENTORY.md` at the repository root, which is
-local and gitignored.
+Use this manual to search collections, read documents, browse folders, ask chat questions, and work with investigation boards.
+[The administration manual](Admin_Manual.md) explains collection management and processing.
+Your administrator supplies the site address and account access.
 
 ---
 
@@ -21,20 +17,20 @@ local and gitignored.
 7. [Reading a document](#7-reading-a-document)
 8. [Storage, browsing by folder](#8-storage-browsing-by-folder)
 9. [AI chat](#9-ai-chat)
-10. [Administration](#10-administration)
+10. [Investigation boards](#10-investigation-boards)
+
+[Read the administration manual.](Admin_Manual.md)
 11. [Sharing and bookmarking](#11-sharing-and-bookmarking)
-12. [Limits worth knowing](#12-limits-worth-knowing)
+12. [Review search and processing limits.](#12-review-search-and-processing-limits)
 
 ---
 
 ## 1. Getting in
 
-Every page requires an identity. A reverse proxy in front of the site asserts who you are
-on every request; the credentials it checks, where it checks any, are held locally in
-`INFRASTRUCTURE_INVENTORY.md` rather than on this page. What you can see is decided by the
-groups you belong to and the collections those groups may read. A screenshot deployment's
-proxy asserts an administrator by default, which is why [Administration](#10-administration)
-is reachable in the screenshots below.
+Sign in through your deployment's sign-in page.
+Your group memberships determine which collections you can read.
+Ask your administrator when an expected collection is absent.
+Administration controls appear only for accounts with administrator access.
 
 ---
 
@@ -137,6 +133,37 @@ Word forms do not match automatically. Search `contract \| contracts` or `contra
 The search repairs unmatched quotes, brackets and stray operator characters. Its note explains each repair.
 A query needs at least one positive word. Use `contract -draft` when you need an exclusion.
 
+### Apply a search scope.
+
+Open **Filter**, then **Collections**.
+Select the datasets you need and apply the filter.
+An empty query lists documents within the selected scope.
+Your account must have access to at least one readable collection.
+Clearing a dataset restriction returns to the permitted search scope.
+
+### Move searches from legacy Hoover.
+
+| Legacy input | Hoover4 instruction |
+|---|---|
+| `water AND pollution` | Hoover4 rewrites uppercase `AND` and requires both words. |
+| `water OR sewage` | Hoover4 rewrites uppercase `OR` to `\|`. |
+| `water NOT sewage` | Hoover4 rewrites uppercase `NOT` to exclusion. Keep a positive term. |
+| `water and pollution` | Lowercase `and`, `or`, and `not` remain ordinary search words. |
+| `from:john.smith@example.com` | The prefix is removed and the address becomes text. Use **Email Sender** for a sender restriction. |
+| `to:john.smith@example.com` | The prefix is removed and the address becomes text. Use **Email Receiver** for a recipient restriction. |
+| `filename:invoice.pdf` | Field-prefix syntax does not select a filename field. Search the filename text or use Storage name search. |
+| `filetype:email` | Use the **File types** filter. |
+| `@field value` | Field operators are unavailable. Use the corresponding filter. |
+| `comput*` and `*pollut*` | Prefix and infix wildcards remain available. An infix needs at least three characters. |
+| `word~1` | This is not a legacy fuzzy edit-distance query. A stray tilde becomes a separator. Use the documented wildcard operators. |
+| `"water pollution"~10` | This is a phrase proximity query. The number describes word positions. |
+| Earlier bookmarks | Recreate legacy queries with current filters. Legacy addresses have no automatic migration contract. |
+
+A repair notice explains changes to an expression.
+Review it before interpreting the results.
+Public tags, private tags, stars, batch-search screens, and Nextcloud upload controls have no established current equivalent.
+Use collection filters, document links, Storage, and the supported dataset ingestion procedure for the relevant current tasks.
+
 ### When no result is found
 
 The result area shows **No results** and the query.
@@ -162,7 +189,7 @@ The **⋮** button on a result card opens a small menu:
 
 ## 5. Filters
 
-**Filter** in the toolbar opens the filter dialog. It has nine panes down the left. Changes
+**Filter** in the toolbar opens the filter dialog. Select a pane on the left. Changes
 accumulate across panes. The button at the bottom right applies them together and states how
 many documents you will get.
 
@@ -213,7 +240,11 @@ are spread over time, and **clicking a bar filters to that period**.
 
 ![The Date pane](img/filter-date.png)
 
-A document matches if **any** of its confirmed dates falls in the range.
+A document matches when its earliest-to-latest confirmed date interval overlaps the selected range.
+For example, confirmed dates in 2000 and 2010 make the document match a range in 2005.
+This does not establish that the document contains an individual date in 2005.
+**Unknown only** selects documents without a confirmed document date.
+**Mentioned Date** filters dates extracted from document text and uses separate entity values.
 
 ### Email
 
@@ -229,6 +260,14 @@ automatically. Pick one or several to keep only documents mentioning them.
 
 ![The Entities pane](img/filter-entities.png)
 
+### Red flags
+
+Select **Red flags** in the filter dialog.
+Select one or more categories and apply them.
+Counts use the other active search restrictions.
+A red flag directs document review and does not establish misconduct.
+Open a matching document to inspect its scored passages and supporting signals.
+
 ### Applied filters
 
 Once applied, the active filters are listed under the toolbar with a **Clear all** beside them,
@@ -240,8 +279,9 @@ and the toolbar's **Filter** button gains a count: `Filter (1)`.
 
 ## 6. Sorting and paging
 
-**Sort** offers *Relevance*, *Date*, *File size* and *Name*, and the arrow beside it flips
-between ascending and descending.
+**Sort** offers *Relevance*, *Date*, *File size* and *Name*.
+The arrow changes direction for Date, File size, and Name.
+Relevance always uses descending score order.
 
 ![The sort menu](img/sort-menu.png)
 
@@ -290,6 +330,7 @@ One file can be readable in several ways, and each way is a source you can switc
 | **Preview OCR · Tesseract · eng** | a searchable image preview |
 | **Office XML** | a `.docx` / `.odt` rendered from its XML |
 | **Image** / **OCR · Tesseract · eng** | the picture, and the text read out of it |
+| **Table** | a spreadsheet or delimited-text grid with sheet and column controls |
 | **File locations** | every path in the corpus where this exact file appears |
 
 A PDF gets the full viewer, page navigation, zoom, and the page counter at the bottom right:
@@ -329,6 +370,44 @@ The right pane groups the names found in the document into **People**, **Organiz
 **Locations** and **Misc**, each with the number of times it appears. The box at the top
 filters the list.
 
+### Inspect an entity and its passages.
+
+Select a structured entity value in the document pane to open its explainer.
+Read the validated value, type, and detail rows.
+Validation establishes the recorded property, such as a checksum, and does not establish ownership or authenticity.
+Use source counts and matching passages to locate the extracted value.
+Follow the available links to search that entity in permitted collections.
+
+Open the red flag section to read the scored passages.
+Expand a passage to inspect its supporting signals and source text.
+Open **Red flag terms** to inspect the categories and terms used for scoring.
+
+### Read a spreadsheet or table.
+
+Select **Table** in the source list.
+Choose a sheet from the sheet control.
+Enter text in the cell search control to locate matching cells.
+Cell search applies to the selected table and is separate from collection search.
+Open a column control to inspect its values and apply a text, number, or date filter when available.
+Select a column sort direction to order the matching rows.
+Use the column controls to hide columns and restore them when needed.
+Use the page controls to read additional rows.
+Open a long cell value to read its complete stored text.
+The server returns at most 200 rows and 60 visible columns per request.
+A clamp or extraction notice describes a limit that affected the returned table.
+
+### Read connected email.
+
+Select the **Email** source to read the subject, addresses, date, body, and attachments.
+Expand header details when you need the complete stored headers.
+Select an attachment to open its document.
+Open the connected-email control to show the graph centered on this message.
+Select a message node to read it in the preview.
+Reply links show stored message relationships.
+Time placement uses known message dates, while messages without known dates remain identified separately.
+The graph contains at most 50 messages and traverses at most three relationship levels.
+An absent message can be outside those limits. Search for it separately before concluding that it is absent from the collection.
+
 ### Metadata
 
 The **Metadata** tab holds everything the pipeline knows about the file: its dates and why they
@@ -361,7 +440,11 @@ after processing. A dataset that it has not counted yet says so.
 
 ![A collection's datasets](img/storage-collection.png)
 
-Choosing a dataset lists its contents, folders first, with sizes.
+Choosing a dataset lists its contents, folders first, with **Files** and **Size** columns.
+Files counts nested archive members and email attachments under each path.
+Size counts bytes at the current container level, so archive members do not add their bytes to the archive size again.
+Unavailable statistics remain unavailable until the pipeline computes them.
+Select a file to open its preview beside the listing.
 
 ![Inside a dataset](img/storage-folder.png)
 
@@ -406,6 +489,7 @@ The speech-bubble icon opens a new conversation.
 
 The Internet tools option permits web searches and browser reads.
 With this option off, the assistant reads the selected collections.
+Your deployment can hide internet tools when they are unavailable.
 The option stays fixed after the first message.
 Start a new conversation to change it.
 
@@ -423,8 +507,9 @@ The assistant announces each tool it uses as it goes (`list_collections`,
 
 ![A chat in progress](img/chat-working.png)
 
-**Expect this to take minutes, not seconds, on this deployment.** A simple question needed
-about five minutes and four model calls.
+Wait while the progress controls show active work.
+Use the stop button to cancel the active turn.
+Response time depends on the question, selected collections, model, and available services.
 
 ### Reading the answer
 
@@ -433,9 +518,10 @@ can click through to the viewer; each block has an **Expand** control.
 
 ![A finished conversation](img/chat-transcript.png)
 
-The assistant's own answer comes **after** the tool output, so scroll to the bottom of the
-conversation for it (the tool cards are expanded by default and can bury a
-one-line answer)*.
+Scroll to the end of the turn to read the answer.
+Expand a tool group to inspect its work and returned documents.
+Select an inline citation or source card to open its supporting document or captured web page.
+Document citations can identify a source and page. Verify the cited passage before using the answer.
 
 ### When it fails
 
@@ -444,14 +530,25 @@ earlier attempts also failed.
 
 ![A failed turn](img/chat-error.png)
 
+### Continue a conversation.
+
+Select a follow-up suggestion to copy its text into the composer.
+Review or change the text, then send it.
+When the assistant asks a question, choose an offered answer or enter your own response.
+Context notices describe summaries used for long conversations.
+Expand a notice to inspect its details and displayed token counts.
+A summary can omit earlier detail. Repeat a source or requirement when it remains necessary.
+
 ### Earlier conversations
 
 **History** lists your past chats by their auto-generated titles; opening one restores the whole
 transcript.
+Use the history deletion control to delete a conversation you no longer need.
+Chats remain stored until a person deletes them.
 
 ![Chat history](img/chat-history.png)
 
-### Investigation boards
+## 10. Investigation boards
 
 An investigation board works on one or more goals over your collections for a long time,
 without you in the conversation. The board splits the goals into intents, explores each intent
@@ -459,11 +556,15 @@ in a chat of its own, and writes each finding with its sources. The boards show 
 the right of the AI chat page, each with its title, its status, a small picture of its graph
 and a short summary.
 
-**Create a board.** **New board** asks for a title, one to six goals, the background context
+### Create a board.
+
+ **New board** asks for a title, one to six goals, the background context
 (what the board should know before it starts), the collections and first hints. The collections
 cannot change later.
 
-**Read the graph.** The board page shows a graph on the left and the selected card on the
+### Read the graph.
+
+ The board page shows a graph on the left and the selected card on the
 right. The graph reads from the background context on the left to the goals on the right. Each
 card names its type in its lower-left corner and its status in its lower-right corner:
 
@@ -480,7 +581,9 @@ Click a card to see it in full on the right. The address of the page names the s
 so you can send it as a link. **Show the board overview** over the top-right corner of the
 graph returns to the overview.
 
-**Work with a card.** A finding shows its text with its source cards. A source card opens the
+### Read findings and ask questions.
+
+ A finding shows its text with its source cards. A source card opens the
 explore chat of the finding in a new tab, with that document open. **Open the explore chat**, at
 the right of the title, opens the whole chat. A finding lists its open questions, each in its own
 card. **Explore this question**, in the corner of the card, asks the board to explore it at
@@ -492,7 +595,9 @@ open. When the board must answer it before it is complete, add it as a goal. Wri
 **Reject correction** on a correction. The board stops using it. The intent that made the finding
 stays.
 
-**Steer the board.** In the overview:
+### Review answers and change settings.
+
+ In the overview:
 
 - **Add goal** adds a goal at any time, also after the board is complete. The board then works
   on the new goal.
@@ -513,7 +618,9 @@ stays.
 - A button stays gray until the board has taken your action. When the board refuses it, for
   example because a newer assessment replaced the answer, the reason shows above the board.
 
-**The explore budget.** A board starts with 30 explores. Each goal after the first adds 25,
+### Read the explore budget.
+
+ A board starts with 30 explores. Each goal after the first adds 25,
 and each hint, question and correction adds 4. A board never uses more than 300 explores, so
 near that limit an action adds less, and the event line says how much the budget grew. When
 the explores reach the budget, the board makes one last assessment of its findings and then waits
@@ -523,7 +630,9 @@ a budget of 300 it says **Reopen with the remaining budget**. A complete board w
 that has no accepted answer shows the same button. A board that used 300 explores starts no
 more work, and its page links to a new board.
 
-**Follow the work.** The **Events** table lists the newest 200 actions, newest first, and
+### Read events and statistics.
+
+ The **Events** table lists the newest 200 actions, newest first, and
 **Show all** lists every action. Your own actions
 show your name in bold. The last column links to the explore chat of the row (**Open**, in a new
 tab), or to the card that the row names. An assessment is the step that reads the board and
@@ -536,156 +645,27 @@ pink card at its end opens the board with that chat's finding selected.
 
 ---
 
-## 10. Administration
-
-Reachable at `/admin`. On this deployment the proxy asserts an administrator by default.
-
-### Dashboard
-
-Counts of users, groups, collections and datasets, each linking to its section. The Datasets
-card opens the Datasets section of the Collections page.
-
-![Admin dashboard](img/admin-dashboard.png)
-
-### Collections
-
-The first table shows each collection's display name, dataset count, documents, size, state
-and access. The state is Processing while an operation changes the collection, and Done
-otherwise. A failed operation also ends in Done. The Datasets section lists the datasets of
-every collection with their documents, size, indexed documents, errors, state and creation
-date. The form at the bottom adds a collection.
-
-![Admin, collections](img/admin-collections.png)
-
-A collection's own page lists its datasets first, then renames it, links to its processing
-view, sets its access, and shows its newest ten operations.
-
-![Admin, one collection](img/admin-collection.png)
-
-### Processing
-
-The most useful page during an ingest. Per dataset it shows the pipeline stages.
-**P0 Scan & deduplicate**, **P1 Compute plans**, **P2/P3 Execute plans & parse**,
-**P4 Extract entities (NLP)**, **P6 Index for search**, each with a progress bar and a
-count, an error count beside the dataset name, a throughput chart, what is running right
-now, and a table of where the processing time actually goes.
-
-![Admin, processing](img/admin-processing.png)
-
-### Datasets
-
-A dataset's page shows its type and source path, when it was created, and its statistics:
-state, documents, size, indexed documents, errors, and finished plans. It also shows the OCR
-languages in use.
-
-**Run OCR** completes the work required by the dataset's current OCR settings.
-It first completes unfinished processing and removes earlier PDF member documents.
-It then prepares PDF sources, completes previews, runs missing OCR work, and indexes changed text.
-Saved OCR results provide their text without another OCR request.
-The operation also indexes replacement native PDF text when OCR languages are empty.
-It skips small or empty images and retains known PDF defects as metadata.
-Current processing errors settle the affected work.
-**Retry** on the processing page repeats failed files.
-
-The progress bar counts plans while unfinished processing runs, then OCR and indexing
-targets. New OCR text adds indexing targets, so the total can increase during the run. A
-second **Run OCR** on a finished dataset sends no OCR request. A cancelled run loses no
-completed work, and the next **Run OCR** continues from it.
-
-![Admin, one dataset](img/admin-dataset.png)
-
-### Errors and failures
-
-The Errors/Failures page has two sections. Operational failures lists failed operations, grouped by
-their error. Document errors lists the newest error of each document and task in every collection.
-Filter by collection, dataset, task and error text. A table above the list counts the documents of
-each dataset and task. On the Collections page, an error count opens the errors of its collection or
-dataset.
-
-### Feedback
-
-The Feedback page lists the reports that people sent, newest first. Search finds text in the
-title, the description, the account and the page address. The status list shows the reports
-that are not archived, the unread reports, the archived reports, or all of them. Select a title
-to see the description, the page image, a link to the page copy, and the debug context. **Mark
-read** and **Archive** are separate, so an archived report keeps its read state.
-
-### Users and groups
-
-Users are listed with their origin: the identity the proxy asserted the first time each
-one reached the site.
-
-![Admin, users](img/admin-users.png)
-
-A user's page edits their name, email and superuser flag, shows their group memberships, links
-to their LLM usage, and holds the delete action.
-
-![Admin, one user](img/admin-user.png)
-
-Groups work the same way, and a group's page is where **collection access** is granted.
-
-![Admin, groups](img/admin-groups.png)
-
-![Admin, one group](img/admin-group.png)
-
-### Settings
-
-This page holds the server settings you can change without a redeploy: the chat switch, the
-board work limit and the session lifetime. Chats and boards are kept until a person deletes
-them, so no setting removes chat content by age. The models are not
-here: `hoover4.ini` sets them. Below
-them sits the deployment configuration that is read-only because it comes from
-`hoover4.ini`.
-
-![Admin, settings](img/admin-settings.png)
-
-### LLM
-
-The provider table with its model count, when the catalogue was last refreshed and whether it
-is stale, and a **Refresh catalog** button. **Models** shows, read only, the model of agent
-turns and the model of titles, summaries and board work, which `hoover4.ini` sets, and the
-**Thinking** switch. **Catalog** lists every model the provider offers with usage counts.
-
-![Admin, LLM](img/admin-llm.png)
-
-### AI status
-
-Configured versus actually serving, per capability (embeddings, rerank, NER, OCR, LLM,
-browser) with reachability and the endpoint behind each. Below it, the vector shards and the
-browser router's live session count.
-
-![Admin, AI status](img/admin-ai-status.png)
-
-This page exists to make silent fallbacks visible: if something says it is configured one way
-and served another, this is where you find out.
-
-### Metrics
-
-Live chat turns, then usage over the last 24 hours: events by type, events per hour, and the
-busiest users. Events record who, which route or function, and when, never a URL or a query
-string.
-
-![Admin, metrics](img/admin-metrics.png)
-
----
-
 ## 11. Sharing and bookmarking
 
-Every view is a URL, and every URL is shareable:
+Copy a view address to share its query or selected item:
 
 * a search carries its query, filters, sort, page and selected document, so sending someone a
   search sends them the exact search;
 * a document has a permanent link, from *Copy Document Link* in the ⋮ menu;
 * a chat conversation has one too.
 
-Old links keep working after upgrades; a link that can no longer be understood lands on a
-**Page not found** card rather than an error.
+Recipients need permission to read the selected collections.
+Chats belong to their owner, so copying a chat address does not grant another account access.
+Board addresses also require the owning account.
+Earlier Hoover4 search fields can take their current defaults when a bookmark omits them.
+Legacy Hoover URLs do not automatically migrate to Hoover4.
+A route that cannot be decoded shows **Page not found**.
 
 ![The not-found page](img/not-found.png)
 
 ---
 
-## 12. Limits worth knowing
+## 12. Review search and processing limits.
 
 These are properties of how search works here, not faults, and each has a visible sign on
 the page.
@@ -696,13 +676,12 @@ of the whole match, and the pager is what you can walk. The page states the diff
 the count rather than implying the rest are reachable. Narrow the query (with words, a
 filter, or a folder) to bring what you want inside the reachable range.
 
-**The assistant's searches are capped per query, and it cannot page past the cap.** When you
-ask the assistant a question it runs its own searches, and each one returns at most a set
-number of documents. Enough to answer from, not the whole match. There is no "next page" for
-it to ask for, so a second search on the same words returns the same documents rather than the
-ones after them. It reaches new material by asking a *different* question (other words, a
-narrower filter, a particular folder) which is also the most useful way to steer it when an
-answer looks thin.
+**Assistant tools can continue results.** When a collection tool returns a `more` handle, the assistant can call `read_more`.
+The handle belongs to the same user, conversation, and run.
+Continuation follows the original search window and does not remove the backend result limit.
+Full-text document search can reach the first 1,000 matching documents.
+Passage retrieval has a separate per-query limit, which defaults to 15 and follows deployment configuration.
+Ask a narrower question when the available results do not cover the required material.
 
 **A document with no confirmed date can never fall inside a date range.** It matches only
 through the *no confirmed date* option, which is why that option exists alongside before,
@@ -712,4 +691,3 @@ question from the one you asked.
 **Filter counts are counts within the rest of the query**, not counts in the corpus. A chip
 showing 12 means twelve documents among those that already match everything else you have
 set.
-

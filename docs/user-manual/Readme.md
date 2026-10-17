@@ -1,7 +1,5 @@
-# User manual
+# Read the product manuals.
 
-The product manual for people using the site: searching, filtering, reading documents,
-browsing storage, chat, and administration.
-
-- [User_Manual.md](User_Manual.md), the manual
-- `img/`, the screenshots it references
+[The user manual](User_Manual.md) explains search, filters, document reading, tables, connected email, Storage, chat, boards, sharing, and feedback.
+[The administration manual](Admin_Manual.md) explains collections, datasets, processing, operations, failures, accounts, settings, providers, and metrics.
+[Operations documentation](../operations/Readme.md) explains deployment and host procedures.

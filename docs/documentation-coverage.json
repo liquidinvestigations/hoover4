@@ -1,0 +1,2694 @@
+{
+  "features": [
+    {
+      "id": "F-ingest-01",
+      "source": [
+        "main_services/processing/tasks/P0_scan_disk"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-02",
+      "source": [
+        "main_services/processing/tasks/P0_scan_disk"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-03",
+      "source": [
+        "main_services/processing/tasks/P3_parse_files",
+        "main_services/processing/tasks/P2_execute_plan/workflows.py"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-ingest-03"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-04",
+      "source": [
+        "main_services/processing/tasks/P3_parse_files"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-ingest-04"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-05",
+      "source": [
+        "main_services/processing/tasks/P3_parse_files"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-ingest-05"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-06",
+      "source": [
+        "main_services/ocr_tesseract",
+        "main_services/ocr_pdf",
+        "main_services/processing/tasks/P3_parse_files/parse_ocr.py"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-ingest-06"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-07",
+      "source": [
+        "main_services/processing/tasks/P4_extract_entities"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-08",
+      "source": [
+        "main_services/processing/tasks/P4_extract_entities",
+        "main_services/regex_entity_scanner"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-09",
+      "source": [
+        "main_services/processing/tasks/P5_chunk_embed"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-10",
+      "source": [
+        "main_services/processing/tasks/P6_index_data"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-ingest-10"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-11",
+      "source": [
+        "main_services/processing/tasks/P0_scan_disk"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-12",
+      "source": [
+        "main_services/processing/tasks/P_admin/rerun_selection.py"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-ingest-12"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-13",
+      "source": [
+        "main_services/processing/tasks"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-14",
+      "source": [
+        "main_services/processing/tasks/P_admin/activities.py"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-15",
+      "source": [
+        "main_services/processing/tasks/run_worker.py",
+        "main_services/processing/tasks/heartbeat.py",
+        "deploy.py"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-16",
+      "source": [
+        "main_services/processing/tasks/task_timing.py",
+        "main_services/processing/tasks/P3_parse_files/parse_ocr.py",
+        "main_services/processing/tasks/P3_parse_files/parse_ocr_pdf.py",
+        "main_services/processing/tasks/P3_parse_files/parse_table.py",
+        "main_services/processing/tasks/P3_parse_files/parse_office_xml.py",
+        "main_services/processing/tasks/P3_parse_files/temp_dirs.py",
+        "main_services/processing/tasks/P3_parse_files/parse_tika.py",
+        "main_services/processing/tasks/P3_parse_files/workflows.py",
+        "main_services/processing/tasks/P3_parse_files/batch_runner.py",
+        "main_services/processing/tasks/P2_execute_plan/workflows.py"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-ingest-16"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-17",
+      "source": [
+        "main_services/processing/tasks"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-18",
+      "source": [
+        "main_services/processing/tasks/P2_execute_plan/workflows.py"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-19",
+      "source": [
+        "main_services/processing/tasks/document_language.py",
+        "main_services/processing/tasks/red_flags.py",
+        "main_services/processing/tasks/signal_storage.py"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-20",
+      "source": [
+        "main_services/processing/tasks/P3_parse_files/image_preview.py",
+        "main_services/processing/tasks/P2_execute_plan/workflows.py"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-21",
+      "source": [
+        "main_services/processing/tasks/P3_parse_files/pdf_parts.py",
+        "main_services/processing/tasks/P3_parse_files/pdf_cursor.py"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-ingest-21"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-22",
+      "source": [
+        "main_services/processing/tasks/P3_parse_files/parse_pdf.py",
+        "main_services/processing/tasks/P3_parse_files/pdf_parts.py"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-23",
+      "source": [
+        "main_services/processing/tasks/P3_parse_files/pdf_preview.py",
+        "main_services/processing/tasks/P3_parse_files/image_pdf.py"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-ingest-24",
+      "source": [
+        "main_services/processing/tasks/P_admin/ocr_rerun.py",
+        "main_services/processing/tasks/P0_scan_disk/activities.py",
+        "main_services/processing/tasks/P3_parse_files/workflows.py"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
+    },
+    {
+      "id": "F-search-01",
+      "source": [
+        "website/backend/src/api/search"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/search-results.png",
+      "scenario": "website/browser-tests/102-search-easychair.ini"
+    },
+    {
+      "id": "F-search-02",
+      "source": [
+        "website/backend/src/db_utils/manticore_match.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/search-results.png",
+      "scenario": "website/browser-tests/102-search-easychair.ini"
+    },
+    {
+      "id": "F-search-03",
+      "source": [
+        "website/backend/src/api/search/search_facets.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/search-results.png",
+      "scenario": "website/browser-tests/102-search-easychair.ini"
+    },
+    {
+      "id": "F-search-04",
+      "source": [
+        "website/backend/src/api/search/entity_terms.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/search-results.png",
+      "scenario": "website/browser-tests/102-search-easychair.ini"
+    },
+    {
+      "id": "F-search-05",
+      "source": [
+        "website/backend/src/api/search/search_sql.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/filter-date.png",
+      "scenario": "website/browser-tests/108-filter-pane-date.ini"
+    },
+    {
+      "id": "F-search-06",
+      "source": [
+        "website/backend/src/api/search/date_histogram.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/filter-date.png",
+      "scenario": "website/browser-tests/108-filter-pane-date.ini"
+    },
+    {
+      "id": "F-search-07",
+      "source": [
+        "website/backend/src/api/search/search_sql.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/search-results.png",
+      "scenario": "website/browser-tests/102-search-easychair.ini"
+    },
+    {
+      "id": "F-search-08",
+      "source": [
+        "website/backend/src/api/search",
+        "website/common/src/search_query.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/filter-date.png",
+      "scenario": "website/browser-tests/108-filter-pane-date.ini"
+    },
+    {
+      "id": "F-search-09",
+      "source": [
+        "website/backend/src/api/search",
+        "website/frontend/src/components/search_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/search-results.png",
+      "scenario": "website/browser-tests/102-search-easychair.ini"
+    },
+    {
+      "id": "F-search-10",
+      "source": [
+        "website/backend/src/api/vfs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/search-results.png",
+      "scenario": "website/browser-tests/102-search-easychair.ini"
+    },
+    {
+      "id": "F-search-11",
+      "source": [
+        "website/backend/src/api/search/fanout.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/search-results.png",
+      "scenario": "website/browser-tests/102-search-easychair.ini"
+    },
+    {
+      "id": "F-search-12",
+      "source": [
+        "website/frontend/src/data_definitions/url_param.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/sort-menu.png",
+      "scenario": "website/browser-tests/116-sort-menu.ini"
+    },
+    {
+      "id": "F-search-13",
+      "source": [
+        "website/backend/src/api/search",
+        "website/frontend/src/components/search_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/filter-date.png",
+      "scenario": "website/browser-tests/108-filter-pane-date.ini"
+    },
+    {
+      "id": "F-search-14",
+      "source": [
+        "website/backend/src/api/search/suggestions.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/search-results.png",
+      "scenario": "website/browser-tests/102-search-easychair.ini"
+    },
+    {
+      "id": "F-search-15",
+      "source": [
+        "website/backend/src/api/agent/search.rs",
+        "main_services/agents/collection_search_server/collection_search_server/tools_search.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#4-search",
+        "docs/user-manual/User_Manual.md#5-filters",
+        "docs/technical-specification/interface/Search.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/filter-date.png",
+      "scenario": "website/browser-tests/108-filter-pane-date.ini"
+    },
+    {
+      "id": "F-doc-01",
+      "source": [
+        "website/frontend/src/components/document_view_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#7-reading-a-document",
+        "docs/technical-specification/interface/Document.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/document-text.png",
+      "scenario": "website/browser-tests/206-view-doc-text.ini"
+    },
+    {
+      "id": "F-doc-02",
+      "source": [
+        "website/common/src/document_sources.rs",
+        "website/frontend/src/components/document_view_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#7-reading-a-document",
+        "docs/technical-specification/interface/Document.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/document-text.png",
+      "scenario": "website/browser-tests/206-view-doc-text.ini"
+    },
+    {
+      "id": "F-doc-03",
+      "source": [
+        "website/frontend/assets/embed-pdf/_viewer/embed-pdf.js",
+        "components/pdf-viewer"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#7-reading-a-document",
+        "docs/technical-specification/interface/Document.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/document-pdf.png",
+      "scenario": "website/browser-tests/201-view-doc-pdf-entities.ini"
+    },
+    {
+      "id": "F-doc-04",
+      "source": [
+        "website/backend/src/api/documents",
+        "website/frontend/src/components/document_view_components/doc_preview_for_search/doc_preview_for_email.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#7-reading-a-document",
+        "docs/technical-specification/interface/Document.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/document-text.png",
+      "scenario": "website/browser-tests/206-view-doc-text.ini"
+    },
+    {
+      "id": "F-doc-05",
+      "source": [
+        "website/backend/src/api/documents/table_browse.rs",
+        "website/frontend/src/components/document_view_components/doc_preview_for_search/doc_preview_for_table.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#7-reading-a-document",
+        "docs/technical-specification/interface/Document.md",
+        "docs/technical-specification/Capability_Contracts.md#f-doc-05"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/document-table.png",
+      "scenario": "website/browser-tests/723-manual-doc-table.ini"
+    },
+    {
+      "id": "F-doc-06",
+      "source": [
+        "website/backend/src/api/documents",
+        "main_services/regex_entity_scanner"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#7-reading-a-document",
+        "docs/technical-specification/interface/Document.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/document-text.png",
+      "scenario": "website/browser-tests/206-view-doc-text.ini"
+    },
+    {
+      "id": "F-doc-10",
+      "source": [
+        "website/backend/src/api/documents/signals.rs",
+        "website/frontend/src/pages/signal_terms.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#7-reading-a-document",
+        "docs/technical-specification/interface/Document.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/document-red-flags.png",
+      "scenario": "website/browser-tests/727-manual-doc-signals.ini"
+    },
+    {
+      "id": "F-doc-07",
+      "source": [
+        "website/backend/src/api/documents",
+        "website/frontend/src/components/document_view_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#7-reading-a-document",
+        "docs/technical-specification/interface/Document.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/document-text.png",
+      "scenario": "website/browser-tests/206-view-doc-text.ini"
+    },
+    {
+      "id": "F-doc-08",
+      "source": [
+        "website/backend/src/api/documents/download_document.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#7-reading-a-document",
+        "docs/technical-specification/interface/Document.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/document-pdf.png",
+      "scenario": "website/browser-tests/201-view-doc-pdf-entities.ini"
+    },
+    {
+      "id": "F-doc-09",
+      "source": [
+        "website/frontend/src/components/search_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#7-reading-a-document",
+        "docs/technical-specification/interface/Document.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/document-text.png",
+      "scenario": "website/browser-tests/206-view-doc-text.ini"
+    },
+    {
+      "id": "F-doc-11",
+      "source": [
+        "website/backend/src/server_extra/image_preview.rs",
+        "website/frontend/src/components/document_view_components/doc_preview_shared.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#7-reading-a-document",
+        "docs/technical-specification/interface/Document.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/document-text.png",
+      "scenario": "website/browser-tests/206-view-doc-text.ini"
+    },
+    {
+      "id": "F-store-01",
+      "source": [
+        "website/backend/src/api/vfs/tree.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#8-storage-browsing-by-folder",
+        "docs/architecture/Storage_Model.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/storage-folder.png",
+      "scenario": "website/browser-tests/325-storage-dataset-landing.ini"
+    },
+    {
+      "id": "F-store-02",
+      "source": [
+        "website/frontend/src/components/search_components/vfs_tree.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#8-storage-browsing-by-folder",
+        "docs/architecture/Storage_Model.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/storage-folder.png",
+      "scenario": "website/browser-tests/325-storage-dataset-landing.ini"
+    },
+    {
+      "id": "F-store-03",
+      "source": [
+        "website/frontend/src/components/resizable_sidebar.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#8-storage-browsing-by-folder",
+        "docs/architecture/Storage_Model.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/storage-folder.png",
+      "scenario": "website/browser-tests/325-storage-dataset-landing.ini"
+    },
+    {
+      "id": "F-store-04",
+      "source": [
+        "website/backend/src/api/vfs/tree.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#8-storage-browsing-by-folder",
+        "docs/architecture/Storage_Model.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/storage-folder.png",
+      "scenario": "website/browser-tests/325-storage-dataset-landing.ini"
+    },
+    {
+      "id": "F-store-05",
+      "source": [
+        "website/backend/src/api/vfs/tree.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#8-storage-browsing-by-folder",
+        "docs/architecture/Storage_Model.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/storage-folder.png",
+      "scenario": "website/browser-tests/325-storage-dataset-landing.ini"
+    },
+    {
+      "id": "F-store-07",
+      "source": [
+        "main_services/processing/tasks/P6_index_data/vfs_nodes.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#8-storage-browsing-by-folder",
+        "docs/architecture/Storage_Model.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/storage-folder.png",
+      "scenario": "website/browser-tests/325-storage-dataset-landing.ini"
+    },
+    {
+      "id": "F-store-08",
+      "source": [
+        "website/backend/src/api/vfs/stats.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#8-storage-browsing-by-folder",
+        "docs/architecture/Storage_Model.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/storage-folder.png",
+      "scenario": "website/browser-tests/325-storage-dataset-landing.ini"
+    },
+    {
+      "id": "F-store-09",
+      "source": [
+        "website/frontend/src/pages/file_browser_page.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#8-storage-browsing-by-folder",
+        "docs/architecture/Storage_Model.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/storage-folder.png",
+      "scenario": "website/browser-tests/325-storage-dataset-landing.ini"
+    },
+    {
+      "id": "F-store-06",
+      "source": [
+        "website/backend/src/api/list_datasets.rs",
+        "website/frontend/src/pages/file_browser_page.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#8-storage-browsing-by-folder",
+        "docs/architecture/Storage_Model.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/storage-folder.png",
+      "scenario": "website/browser-tests/325-storage-dataset-landing.ini"
+    },
+    {
+      "id": "F-qa-01",
+      "source": [
+        "website/tools/capture_screenshots.py",
+        "website/take-screenshots.sh",
+        "website/tools/browser_lifecycle.py"
+      ],
+      "docs": [
+        "docs/quality-assurance/Running_Checks.md",
+        "website/browser-tests/Readme.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines verification tooling and recorded evidence, not a product control."
+    },
+    {
+      "id": "F-qa-02",
+      "source": [
+        "website/take-screenshots.sh",
+        "website/observe-chat.sh",
+        "website/run-manual-qa.sh",
+        "website/tools/capture_credentials.sh",
+        "website/tools/capture_credentials.py"
+      ],
+      "docs": [
+        "docs/quality-assurance/Running_Checks.md",
+        "website/browser-tests/Readme.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines verification tooling and recorded evidence, not a product control."
+    },
+    {
+      "id": "F-qa-03",
+      "source": [
+        "website/tools/capture_credentials.py"
+      ],
+      "docs": [
+        "docs/quality-assurance/Running_Checks.md",
+        "website/browser-tests/Readme.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines verification tooling and recorded evidence, not a product control."
+    },
+    {
+      "id": "F-qa-04",
+      "source": [
+        "website/browser-tests",
+        "website/tools/prepare_manual_qa.py"
+      ],
+      "docs": [
+        "docs/quality-assurance/Running_Checks.md",
+        "website/browser-tests/Readme.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines verification tooling and recorded evidence, not a product control."
+    },
+    {
+      "id": "F-qa-05",
+      "source": [
+        "website/tools/prepare_manual_qa.py"
+      ],
+      "docs": [
+        "docs/quality-assurance/Running_Checks.md",
+        "website/browser-tests/Readme.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines verification tooling and recorded evidence, not a product control."
+    },
+    {
+      "id": "F-qa-06",
+      "source": [
+        "website/tools/capture_screenshots.py",
+        "website/tools/manual_qa.py"
+      ],
+      "docs": [
+        "docs/quality-assurance/Running_Checks.md",
+        "website/browser-tests/Readme.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines verification tooling and recorded evidence, not a product control."
+    },
+    {
+      "id": "F-qa-07",
+      "source": [
+        "website/run-manual-qa.sh",
+        "website/tools/chat_observer.py",
+        "website/tools/browser_lifecycle.py"
+      ],
+      "docs": [
+        "docs/quality-assurance/Running_Checks.md",
+        "website/browser-tests/Readme.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines verification tooling and recorded evidence, not a product control."
+    },
+    {
+      "id": "F-qa-08",
+      "source": [
+        "website/tools/manual_qa_fixtures.json",
+        "main_services/verify-stack.sh"
+      ],
+      "docs": [
+        "docs/quality-assurance/Running_Checks.md",
+        "website/browser-tests/Readme.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines verification tooling and recorded evidence, not a product control."
+    },
+    {
+      "id": "F-qa-09",
+      "source": [
+        "website/tools/capture_screenshots.py",
+        "website/browser-tests"
+      ],
+      "docs": [
+        "docs/quality-assurance/Running_Checks.md",
+        "website/browser-tests/Readme.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines verification tooling and recorded evidence, not a product control."
+    },
+    {
+      "id": "F-chat-01",
+      "source": [
+        "website/backend/src/api/chat"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-01a",
+      "source": [
+        "website/backend/src/api/chat/run_queue.rs",
+        "website/frontend/src/components/chat_components/transcript.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-02",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-03",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-03"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-03d",
+      "source": [
+        "website/backend/src/api/agent/search.rs",
+        "main_services/agents/collection_search_server/collection_search_server/tools_document.py",
+        "main_services/agents/collection_search_server/collection_search_server/paging.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-03a",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-03a"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-03b",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-03c",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-04",
+      "source": [
+        "main_services/agents/metasearch_server"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-04"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-04a",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-04b",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-05",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-05"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-05a",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-06",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-07",
+      "source": [
+        "website/frontend"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#10-investigation-boards",
+        "docs/architecture/Boards.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-07"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/board-goal.png",
+      "scenario": "website/browser-tests/731-manual-doc-board.ini"
+    },
+    {
+      "id": "F-chat-07a",
+      "source": [
+        "main_services/agents/browser_use_server/browser_use_server/page_citations.py",
+        "main_services/processing/tasks/P_agent/reports.py",
+        "main_services/processing/tasks/P_agent/citations.py",
+        "website/common/src/chat_pages.rs",
+        "website/frontend/src/components/chat_components/web_page.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-07a"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-08",
+      "source": [
+        "website/frontend/src/components/chat_components",
+        "website/frontend/src/components/chat_components/tool_run_summary.rs",
+        "main_services/agents/agent_common/agent_common/result_pages.py",
+        "main_services/agents/agent_common/agent_common/artifacts.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-08"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-08a",
+      "source": [
+        "website/frontend/src/components/chat_components/tool_cards/entities_card.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-09",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-10",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-10"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-11",
+      "source": [
+        "main_services/processing/tasks/P_agent/steps.py",
+        "main_services/processing/database/agent_runs.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-11a",
+      "source": [
+        "main_services/agents/research_agent/research_agent/steps.py",
+        "main_services/processing/tasks/P_agent/steps.py",
+        "main_services/agents/collection_search_server/collection_search_server/paging.py",
+        "main_services/agents/research_agent/research_agent/tool_args.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-12",
+      "source": [
+        "main_services/processing/tasks/P_agent"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-13",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-14",
+      "source": [
+        "main_services/agents/agent_todo_server"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-14"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-14a",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-14a"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-14b",
+      "source": [
+        "main_services/agents/research_agent/research_agent/prompts/agent.md.j2"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-14b"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-14c",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-14c"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-23",
+      "source": [
+        "main_services/processing/tasks/P_agent/control"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-23"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-24",
+      "source": [
+        "main_services/processing/tasks/P_agent/control/handlers/progress.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-25",
+      "source": [
+        "main_services/agents/research_agent/research_agent/steps.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-26",
+      "source": [
+        "main_services/processing/tasks/P_agent/control/handlers/absence.py",
+        "main_services/processing/tasks/P_agent/control/coordinator.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-26"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-15a",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-16",
+      "source": [
+        "main_services/processing/tasks/P_agent"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-16a",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-17",
+      "source": [
+        "main_services/agents/research_agent/research_agent/request_size.py",
+        "main_services/agents/research_agent/research_agent/compaction.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-17"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-17a",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-17b",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-17c",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-17c"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-17d",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-17d"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-17e",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-17e"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-17g",
+      "source": [
+        "website/frontend/src/components/chat_components/transcript.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-17f",
+      "source": [
+        "main_services/agents/research_agent/research_agent/agent.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-17h",
+      "source": [
+        "main_services/agents/research_agent/research_agent/note_tools.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-17i",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-19",
+      "source": [
+        "main_services/agents/research_agent/research_agent/prompts/agent.md.j2",
+        "main_services/agents/research_agent/tests/test_prompts.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-19a",
+      "source": [
+        "main_services/agents/collection_search_server/collection_search_server/prompts",
+        "main_services/agents/collection_search_server/tests/test_prompts.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-19b",
+      "source": [
+        "main_services/processing/tasks/P_agent",
+        "website/backend/src/api/chat",
+        "website/frontend/src/components/chat_components"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-19c",
+      "source": [
+        "main_services/agents/agent_common/agent_common/tool_packs.py",
+        "main_services/agents/research_agent/research_agent/agent.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-19d",
+      "source": [
+        "main_services/agents/research_agent/research_agent/tool_catalogue.py",
+        "main_services/agents/research_agent/research_agent/steps.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-19v",
+      "source": [
+        "main_services/agents/research_agent/research_agent/skill_store.py",
+        "main_services/agents/research_agent/research_agent/skill_tools.py",
+        "main_services/agents/research_agent/research_agent/skills"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-19v"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-19w",
+      "source": [
+        "main_services/agents/research_agent/research_agent/stumbles.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-19g",
+      "source": [
+        "main_services/agents/research_agent/research_agent/execution.py",
+        "scripts/test-agent-batch-budget.sh"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-19g"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-19h",
+      "source": [
+        "scripts/probe-agent-tool-limits.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-19e",
+      "source": [
+        "main_services/agents/research_agent/research_agent/steps.py",
+        "main_services/processing/tasks/P_agent/steps.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-19z",
+      "source": [
+        "main_services/agents/research_agent/research_agent/tool_args.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-19z"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-19f",
+      "source": [
+        "main_services/agents/browser_use_server/browser_use_server/router.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-19i",
+      "source": [
+        "main_services/processing/database/agent_runs.py",
+        "scripts/test-agent-run-workflow.sh"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-19i"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-19l",
+      "source": [
+        "main_services/processing/tasks/P_agent/supervise.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-19m",
+      "source": [
+        "main_services/processing/tasks/P_agent/steps.py",
+        "main_services/processing/database/agent_runs.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-19u",
+      "source": [
+        "main_services/processing/tasks/P_agent/thread_facts.py",
+        "main_services/processing/tasks/P_agent/model_timeouts.py",
+        "main_services/processing/tasks/run_worker.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-19u"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-19y",
+      "source": [
+        "main_services/agents/research_agent/research_agent/skill_tools.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-20",
+      "source": [
+        "deploy.py",
+        "main_services/ops/docker/compose/internet-tools.yaml",
+        "main_services/ops/docker/compose/research-agents-internet.yaml"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#10-investigation-boards",
+        "docs/architecture/Boards.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-20"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-20a",
+      "source": [
+        "main_services/ops/docker/compose/research-agents.yaml"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-21",
+      "source": [
+        "website/backend/src/api/chat/gate.rs",
+        "website/frontend/src/components/chat_components/gate_overlay.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-27",
+      "source": [
+        "website/backend/src/api/boards.rs",
+        "main_services/processing/tasks/P_board/fold.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#10-investigation-boards",
+        "docs/architecture/Boards.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-27"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/board-goal.png",
+      "scenario": "website/browser-tests/731-manual-doc-board.ini"
+    },
+    {
+      "id": "F-chat-28",
+      "source": [
+        "main_services/processing/tasks/P_board",
+        "main_services/processing/tasks/P_board/commands.py",
+        "main_services/processing/tasks/P_board/labels.py",
+        "main_services/agents/research_agent/research_agent/board_tools.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#10-investigation-boards",
+        "docs/architecture/Boards.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-28"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/board-goal.png",
+      "scenario": "website/browser-tests/731-manual-doc-board.ini"
+    },
+    {
+      "id": "F-chat-29",
+      "source": [
+        "website/frontend/src/pages/ai_chat/board_page.rs",
+        "website/frontend/src/components/board_graph.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#10-investigation-boards",
+        "docs/architecture/Boards.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-29"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/board-goal.png",
+      "scenario": "website/browser-tests/731-manual-doc-board.ini"
+    },
+    {
+      "id": "F-chat-30",
+      "source": [
+        "website/frontend/src/components/chat_components/locked_options.rs",
+        "website/frontend/src/components/chat_components/doc_ref_card.rs",
+        "website/backend/src/api/documents/get_document_card_facts.rs",
+        "website/frontend/assets/main.css"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-30"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-31",
+      "source": [
+        "website/frontend/src/components/chat_components/conversation_find.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#10-investigation-boards",
+        "docs/architecture/Boards.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-31"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/board-goal.png",
+      "scenario": "website/browser-tests/731-manual-doc-board.ini"
+    },
+    {
+      "id": "F-chat-32",
+      "source": [
+        "main_services/processing/tasks/P_admin/artifact_sweeper.py",
+        "website/backend/src/api/admin/settings.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#10-investigation-boards",
+        "docs/architecture/Boards.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-32"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/board-goal.png",
+      "scenario": "website/browser-tests/731-manual-doc-board.ini"
+    },
+    {
+      "id": "F-chat-22",
+      "source": [
+        "main_services/agents/collection_search_server/collection_search_server/backend_client.py",
+        "website/backend/src/api/agent"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/chat-new.png",
+      "scenario": "website/browser-tests/501-ai-chat.ini"
+    },
+    {
+      "id": "F-chat-22a",
+      "source": [
+        "main_services/agents/collection_search_server/collection_search_server/paging.py",
+        "main_services/agents/collection_search_server/collection_search_server/tools_search.py",
+        "main_services/agents/agent_common/agent_common/result_pages.py",
+        "main_services/agents/agent_common/agent_common/artifacts.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md",
+        "docs/technical-specification/Capability_Contracts.md#f-chat-22a"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-22b",
+      "source": [
+        "main_services/processing/database/agent_step_events.py",
+        "main_services/processing/tasks/task_timing.py",
+        "main_services/processing/tasks/P_agent/steps.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-chat-33",
+      "source": [
+        "main_services/processing/tasks/P_agent/followups.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#9-ai-chat",
+        "docs/architecture/Chat_And_Agents.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "This feature defines agent execution, request construction, or persistence. The manual explains its visible effect where applicable."
+    },
+    {
+      "id": "F-admin-01",
+      "source": [
+        "website/backend/src/api/admin/collections.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-02",
+      "source": [
+        "website/backend/src/api/admin/datasets.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-03",
+      "source": [
+        "website/backend/src/api/admin/processing.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-04",
+      "source": [
+        "main_services/processing/tasks/P_admin/rerun_selection.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-05",
+      "source": [
+        "website/backend/src/api/admin/dataset_ocr.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-05a",
+      "source": [
+        "main_services/processing/tasks/P_admin/ocr_rerun.py",
+        "main_services/processing/tasks/ocr_targets.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-admin-05a"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-06",
+      "source": [
+        "website/backend/src/api/admin/users.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-07",
+      "source": [
+        "website/backend/src/api/admin/llm.rs",
+        "website/backend/src/api/admin/settings.rs",
+        "main_services/processing/tasks/llm_endpoints.py",
+        "main_services/processing/tasks/P_agent/steps.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-admin-07"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-07a",
+      "source": [
+        "website/backend/src/api/admin/llm.rs",
+        "main_services/processing/tasks/llm_catalog.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-07b",
+      "source": [
+        "main_services/agents/research_agent/research_agent/model_params.py",
+        "main_services/processing/tasks/P_agent/summarize.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-07c",
+      "source": [
+        "website/backend/src/api/admin/llm_reports.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-08",
+      "source": [
+        "website/backend/src/api/admin/ai_status.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-09",
+      "source": [
+        "website/backend/src/api/admin/metrics.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-10",
+      "source": [
+        "website/backend/src/api/admin/settings.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-11",
+      "source": [
+        "docs/operations",
+        "main_services/processing/database/operations.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-admin-11"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-12",
+      "source": [
+        "website/backend/src/api/admin",
+        "main_services/processing/tasks/P_ops"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-13",
+      "source": [
+        "website/backend/src/api/admin",
+        "main_services/processing/tasks/P_ops"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-14",
+      "source": [
+        "main_services/processing/tasks/P_ops/cli.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-admin-14"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-15",
+      "source": [
+        "main_services/processing/database/operation_inputs.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-16",
+      "source": [
+        "website/frontend/src/pages/admin/operations.rs",
+        "website/backend/src/api/admin/operations.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-admin-16"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-17",
+      "source": [
+        "website/backend/src/api/admin",
+        "main_services/processing/tasks/P_ops"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-18",
+      "source": [
+        "website/frontend/src/pages/admin/collection_detail.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-19",
+      "source": [
+        "main_services/processing/tasks/P_admin/rerun_selection.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-20",
+      "source": [
+        "website/backend/src/api/admin",
+        "main_services/processing/tasks/P_ops"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-21",
+      "source": [
+        "main_services/processing/tasks/P_ops/workflows.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-22",
+      "source": [
+        "website/backend/src/api/admin",
+        "main_services/processing/tasks/P_ops"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-23",
+      "source": [
+        "main_services/processing/tasks/P_ops/backup.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-24",
+      "source": [
+        "main_services/processing/tasks/P_ops/backup.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-25",
+      "source": [
+        "main_services/processing/tasks/P_ops/restore.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-26",
+      "source": [
+        "main_services/processing/tasks/operation_failure_capture.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-27",
+      "source": [
+        "website/backend/src/api/admin/failures.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-27a",
+      "source": [
+        "website/backend/src/api/admin/document_errors.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-admin-27a"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-28",
+      "source": [
+        "website/backend/src/api/admin/operations.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-29",
+      "source": [
+        "main_services/processing/tasks/temporal_readiness.py",
+        "website/backend/src/temporal_ready.rs"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-30",
+      "source": [
+        "main_services/processing/tasks/payload_guard.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-31",
+      "source": [
+        "scripts/collect-debug-report.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-32",
+      "source": [
+        "website/backend/src/api/admin",
+        "main_services/processing/tasks/P_ops"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-33",
+      "source": [
+        "main_services/processing/database/dataset_stats.py",
+        "main_services/processing/tasks/P_admin/eta_collector.py"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-admin-33"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-operations.png",
+      "scenario": "website/browser-tests/737-manual-doc-operations.ini"
+    },
+    {
+      "id": "F-admin-34",
+      "source": [
+        "website/backend/src/api/admin",
+        "main_services/processing/tasks/P_ops"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-dashboard.png",
+      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+    },
+    {
+      "id": "F-admin-35",
+      "source": [
+        "website/frontend/src/components/feedback_control.rs",
+        "website/backend/src/api/feedback.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#reporting-a-bug-or-sending-feedback",
+        "docs/technical-specification/Capability_Contracts.md#f-admin-35"
+      ],
+      "audience": "user",
+      "screenshot": "docs/user-manual/img/feedback-form.png",
+      "scenario": "website/browser-tests/732-manual-doc-feedback.ini"
+    },
+    {
+      "id": "F-admin-36",
+      "source": [
+        "website/backend/src/api/admin",
+        "main_services/processing/tasks/P_ops"
+      ],
+      "docs": [
+        "docs/user-manual/Admin_Manual.md",
+        "website/backend/src/api/admin/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-admin-36"
+      ],
+      "audience": "admin",
+      "screenshot": "docs/user-manual/img/admin-feedback.png",
+      "scenario": "website/browser-tests/740-manual-doc-admin-feedback.ini"
+    },
+    {
+      "id": "F-auth-01",
+      "source": [
+        "website/backend/src/auth/route_policy.rs"
+      ],
+      "docs": [
+        "docs/architecture/Website_Backend.md",
+        "docs/operations/Single_Sign_On.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines identity resolution, access checks, or request limits. It has no independent screenshot state."
+    },
+    {
+      "id": "F-auth-02",
+      "source": [
+        "website/backend/src/auth/session_middleware.rs"
+      ],
+      "docs": [
+        "docs/architecture/Website_Backend.md",
+        "docs/operations/Single_Sign_On.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines identity resolution, access checks, or request limits. It has no independent screenshot state."
+    },
+    {
+      "id": "F-auth-04",
+      "source": [
+        "website/backend/src/db_auth",
+        "website/backend/src/db_utils/clickhouse_utils.rs"
+      ],
+      "docs": [
+        "docs/architecture/Website_Backend.md",
+        "docs/operations/Single_Sign_On.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines identity resolution, access checks, or request limits. It has no independent screenshot state."
+    },
+    {
+      "id": "F-auth-05",
+      "source": [
+        "website/backend/src/api/rate_limit.rs"
+      ],
+      "docs": [
+        "docs/architecture/Website_Backend.md",
+        "docs/operations/Single_Sign_On.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines identity resolution, access checks, or request limits. It has no independent screenshot state."
+    },
+    {
+      "id": "F-auth-06",
+      "source": [
+        "website/backend/src/db_chat/artifacts.rs"
+      ],
+      "docs": [
+        "docs/architecture/Website_Backend.md",
+        "docs/operations/Single_Sign_On.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines identity resolution, access checks, or request limits. It has no independent screenshot state."
+    },
+    {
+      "id": "F-auth-07",
+      "source": [
+        "website/frontend/src/components/navbar.rs",
+        "website/frontend/src/components/session_context.rs",
+        "website/backend/src/auth/guard.rs"
+      ],
+      "docs": [
+        "docs/architecture/Website_Backend.md",
+        "docs/operations/Single_Sign_On.md"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines identity resolution, access checks, or request limits. It has no independent screenshot state."
+    },
+    {
+      "id": "F-auth-08",
+      "source": [
+        "website/backend/src/auth/session_middleware.rs",
+        "website/backend/src/api/agent",
+        "website/common/src/agent_api.rs"
+      ],
+      "docs": [
+        "docs/architecture/Website_Backend.md",
+        "docs/operations/Single_Sign_On.md",
+        "docs/technical-specification/Capability_Contracts.md#f-auth-08"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines identity resolution, access checks, or request limits. It has no independent screenshot state."
+    }
+  ],
+  "routes": {
+    "/": "docs/user-manual/User_Manual.md",
+    "/search/:query/:current_search_result_page/:selected_result_hash/:doc_viewer_state": "docs/user-manual/User_Manual.md#4-search",
+    "/view_document/:document_identifier/:doc_viewer_state/:viewer_right_tab_state": "docs/user-manual/User_Manual.md#7-reading-a-document",
+    "/file_browser": "docs/user-manual/User_Manual.md#8-storage-browsing-by-folder",
+    "/file_browser/c/:collectionname": "docs/user-manual/User_Manual.md#8-storage-browsing-by-folder",
+    "/file_browser/:collection/:path/:selected_result_hash/:doc_viewer_state": "docs/user-manual/User_Manual.md#8-storage-browsing-by-folder",
+    "/email_graph/:centre/:selected/:doc_viewer_state": "docs/user-manual/User_Manual.md#7-reading-a-document",
+    "/ai_chat": "docs/user-manual/User_Manual.md#9-ai-chat",
+    "/ai_chat/history": "docs/user-manual/User_Manual.md#9-ai-chat",
+    "/ai_chat/boards/new": "docs/user-manual/User_Manual.md#10-investigation-boards",
+    "/ai_chat/boards/:board_id?:selected&:zoom&:assessment": "docs/user-manual/User_Manual.md#10-investigation-boards",
+    "/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state": "docs/user-manual/User_Manual.md#9-ai-chat",
+    "/red_flag_terms": "docs/user-manual/User_Manual.md#7-reading-a-document",
+    "/admin": "docs/user-manual/Admin_Manual.md",
+    "/admin/collections": "docs/user-manual/Admin_Manual.md",
+    "/admin/collections/:collection_id": "docs/user-manual/Admin_Manual.md",
+    "/admin/collections/:collection_id/processing": "docs/user-manual/Admin_Manual.md",
+    "/admin/collections/:collection_id/datasets/:dataset_id": "docs/user-manual/Admin_Manual.md",
+    "/admin/operations": "docs/user-manual/Admin_Manual.md",
+    "/admin/operations/:op_id?:plans_page&:events_page": "docs/user-manual/Admin_Manual.md",
+    "/admin/failures?:collection&:dataset&:task&:search&:page": "docs/user-manual/Admin_Manual.md",
+    "/admin/failures/:op_id": "docs/user-manual/Admin_Manual.md",
+    "/admin/feedback?:search&:status&:page": "docs/user-manual/Admin_Manual.md",
+    "/admin/users": "docs/user-manual/Admin_Manual.md",
+    "/admin/users/:username/llm": "docs/user-manual/Admin_Manual.md",
+    "/admin/users/:username": "docs/user-manual/Admin_Manual.md",
+    "/admin/user_groups": "docs/user-manual/Admin_Manual.md",
+    "/admin/user_groups/:groupname": "docs/user-manual/Admin_Manual.md",
+    "/admin/settings": "docs/user-manual/Admin_Manual.md",
+    "/admin/llm": "docs/user-manual/Admin_Manual.md",
+    "/admin/ai_status": "docs/user-manual/Admin_Manual.md",
+    "/admin/metrics": "docs/user-manual/Admin_Manual.md",
+    "/:..segments": "docs/user-manual/User_Manual.md"
+  }
+}
