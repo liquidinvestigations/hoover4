@@ -50,18 +50,11 @@
       "sha256": "9d7dcf2b093be5eba5f2e5f58154f068d596c5d79cae9ec5b426183b22dc1b82"
     },
     {
-      "image": "docs/user-manual/img/admin-llm.png",
-      "scenario": "website/browser-tests/611-admin-llm.ini",
-      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
-      "captured_at": "2026-10-17T19:46:41+00:00",
-      "sha256": "72d1699a5570348445c0d97cc9dea4e82e4f4f7846bf9eb07a8a20a949331590"
-    },
-    {
       "image": "docs/user-manual/img/admin-metrics.png",
       "scenario": "website/browser-tests/609-admin-metrics.ini",
-      "revision": "d146f116d7f7ec73b3232ac51b103a9104002eed",
-      "captured_at": "2026-10-17T19:46:37+00:00",
-      "sha256": "49b165ff58ba31933f4a7f73ac5a93476d6fb138efa79123bd67f5818317f5b8"
+      "revision": "31889cfd2d6423355592af7a22089ba6f74c04ab",
+      "captured_at": "2026-10-17T20:16:22+00:00",
+      "sha256": "cb901a4c36c8ff5d53945d9cb0eb4838b07d22b378e5f531eabb7678dd8a5103"
     },
     {
       "image": "docs/user-manual/img/admin-operation.png",

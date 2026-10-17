@@ -2055,8 +2055,7 @@
         "docs/technical-specification/Capability_Contracts.md#f-admin-07"
       ],
       "audience": "admin",
-      "screenshot": "docs/user-manual/img/admin-dashboard.png",
-      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+      "no_screenshot_reason": "The user omitted pictures for the provider and AI-status sections. The administration manual retains their instructions."
     },
     {
       "id": "F-admin-07a",
@@ -2069,8 +2068,7 @@
         "website/backend/src/api/admin/Readme.md"
       ],
       "audience": "admin",
-      "screenshot": "docs/user-manual/img/admin-dashboard.png",
-      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+      "no_screenshot_reason": "The user omitted pictures for the provider and AI-status sections. The administration manual retains their instructions."
     },
     {
       "id": "F-admin-07b",
@@ -2083,8 +2081,7 @@
         "website/backend/src/api/admin/Readme.md"
       ],
       "audience": "admin",
-      "screenshot": "docs/user-manual/img/admin-dashboard.png",
-      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+      "no_screenshot_reason": "The user omitted pictures for the provider and AI-status sections. The administration manual retains their instructions."
     },
     {
       "id": "F-admin-07c",
@@ -2109,8 +2106,7 @@
         "website/backend/src/api/admin/Readme.md"
       ],
       "audience": "admin",
-      "screenshot": "docs/user-manual/img/admin-dashboard.png",
-      "scenario": "website/browser-tests/601-admin-dashboard.ini"
+      "no_screenshot_reason": "The user omitted pictures for the provider and AI-status sections. The administration manual retains their instructions."
     },
     {
       "id": "F-admin-09",

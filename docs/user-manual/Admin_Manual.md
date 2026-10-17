@@ -153,9 +153,6 @@ is stale, and a **Refresh catalog** button. **Models** shows, read only, the mod
 turns and the model of titles, summaries and board work, which `hoover4.ini` sets, and the
 **Thinking** switch. **Catalog** lists every model the provider offers with usage counts.
 
-<a href="img/admin-llm.png"><img src="img/admin-llm.png" alt="Admin, LLM" align="right" width="560"></a>
-
-<br clear="all">
 
 ## AI status
 
@@ -173,7 +170,7 @@ Live chat turns, then usage over the last 24 hours: events by type, events per h
 busiest users. Events record who, which route or function, and when, never a URL or a query
 string.
 
-<a href="img/admin-metrics.png"><img src="img/admin-metrics.png" alt="Admin, metrics" align="right" width="560"></a>
+<a href="img/admin-metrics.png"><img src="img/admin-metrics.png" alt="Top of Metrics with live chats and daily usage" align="right" width="560"></a>
 
 <br clear="all">
 
