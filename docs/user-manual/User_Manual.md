@@ -35,6 +35,8 @@ Administration controls appear only for accounts with administrator access.
 
 ## 2. The layout
 
+<img src="crops/home-logo-and-1-more.png" align="right" width="40%" alt="Red frames mark the H logo, the Home icon, the Search icon, the Storage icon, the AI chat icon, the bug icon and the person icon.">
+
 Every page shares the dark rail down the left edge. From the top:
 
 | icon | goes to |
@@ -56,6 +58,8 @@ width is remembered on this browser.
 
 <a href="img/home.png"><img src="img/home.png" alt="Home page" width="100%"></a>
 
+<br clear="right">
+
 ---
 
 
@@ -74,6 +78,8 @@ Below them is a feedback card. Its button opens the same report as the bug icon 
 
 <a href="img/feedback-form.png"><img src="img/feedback-form.png" alt="Feedback form with captured page and debug context" width="100%"></a>
 
+<img src="crops/feedback-form-bug-and-1-more.png" align="right" width="40%" alt="Red frames mark Bug, Feedback and Send.">
+
 Select the bug icon at the bottom of the rail. The icon turns red while the browser copies the
 page and draws an image of it. A full-screen form then shows the image, the size of the image
 and of the page copy, the browser information and the browser log. Select **Bug** or
@@ -81,6 +87,8 @@ and of the page copy, the browser information and the browser log. Select **Bug*
 other pages of the application into the description. Frames, some canvases and some embedded
 viewers can look different in the image, and the form names them when the page has them.
 
+
+<br clear="right">
 
 ---
 
@@ -90,6 +98,8 @@ Submitting a query opens the search page: the query box and toolbar across the t
 list on the left, and the document preview on the right.
 
 <a href="img/search-results.png"><img src="img/search-results.png" alt="Search results for “easychair”" width="100%"></a>
+
+<img src="crops/search-results-open-viewer.png" align="right" width="40%" alt="Red frames mark the full-page viewer button and the actions menu button.">
 
 Reading a result card:
 
@@ -155,6 +165,10 @@ Clearing a dataset restriction returns to the permitted search scope.
 
 ### Move searches from legacy Hoover.
 
+<br clear="right">
+
+<img src="crops/filter-collections-file-types.png" align="right" width="40%" alt="A red frame marks File types.">
+
 | Legacy input | Hoover4 instruction |
 |---|---|
 | `water AND pollution` | Hoover4 rewrites uppercase `AND` and requires both words. |
@@ -197,16 +211,24 @@ The **⋮** button on a result card opens a small menu:
 
 <a href="img/result-menu.png"><img src="img/result-menu.png" alt="The per-result actions menu" width="100%"></a>
 
+<br clear="right">
+
+<img src="crops/result-menu-menu-dots-and-1-more.png" align="right" width="40%" alt="Red frames mark the actions menu button, Copy Document Link, Download Document and Open in File Browser.">
+
 * **Copy Document Link.** Puts a permanent link to this document on your clipboard.
 * **Download Document.** Downloads the original file with its real name
   (`stanley.ec02.pdf`, not a hash).
 * **Open in File Browser.** Jumps to [Storage](#8-storage-browsing-by-folder) with this
   document selected, so you can see what sits next to it on disk.
 
+<br clear="right">
+
 ---
 
 
 ## 5. Filters
+
+<img src="crops/result-menu-filter-and-2-more.png" align="right" width="40%" alt="Red frames mark Filter, Clear all and Cancel.">
 
 **Filter** in the toolbar opens the filter dialog. Select a pane on the left. Changes
 accumulate across panes. The button at the bottom right applies them together and states how
@@ -223,6 +245,10 @@ from each.
 
 
 ### File types
+
+<br clear="right">
+
+<img src="crops/filter-file-types-text.png" align="right" width="40%" alt="Red frames mark text and email.">
 
 Broad categories, `text`, `email`, `html`, `code`, `pdf`, `doc`, `image`, `archive`, `other`.
 
@@ -242,6 +268,10 @@ body and not from its headers.
 ### Text source
 
 <a href="img/filter-text-source.png"><img src="img/filter-text-source.png" alt="Filter text source" width="100%"></a>
+
+<br clear="right">
+
+<img src="crops/filter-text-source-raw-file-text-and-1-more.png" align="right" width="40%" alt="Red frames mark Raw file text, Email body and OCR · Tesseract · eng.">
 
 The image shows the filter text source controls.
 
@@ -273,6 +303,10 @@ are spread over time, and **clicking a bar filters to that period**.
 
 <a href="img/filter-date.png"><img src="img/filter-date.png" alt="The Date pane" width="100%"></a>
 
+<br clear="right">
+
+<img src="crops/filter-date-unknown-only-and-1-more.png" align="right" width="40%" alt="Red frames mark Unknown only and Mentioned Date.">
+
 A document matches when its earliest-to-latest confirmed date interval overlaps the selected range.
 For example, confirmed dates in 2000 and 2010 make the document match a range in 2005.
 This does not establish that the document contains an individual date in 2005.
@@ -281,6 +315,10 @@ This does not establish that the document contains an individual date in 2005.
 
 
 ### Email
+
+<br clear="right">
+
+<img src="crops/filter-email-sender.png" align="right" width="40%" alt="Red frames mark Sender and Receiver.">
 
 Filter by **Sender** or **Receiver** address, with per-address counts, and a
 *Email has attachments* switch.
@@ -300,6 +338,10 @@ automatically. Pick one or several to keep only documents mentioning them.
 
 <a href="img/filter-red-flags.png"><img src="img/filter-red-flags.png" alt="Filter red flags" width="100%"></a>
 
+<br clear="right">
+
+<img src="crops/filter-red-flags-red-flags.png" align="right" width="40%" alt="A red frame marks Red flags.">
+
 The image shows the filter red flags controls.
 
 
@@ -311,10 +353,16 @@ Open a matching document to inspect its scored passages and supporting signals.
 
 ### Applied filters
 
+<br clear="right">
+
+<img src="crops/filter-red-flags-clear-all-and-1-more.png" align="right" width="40%" alt="Red frames mark Clear all, Filter and Filter (1).">
+
 Once applied, the active filters are listed under the toolbar with a **Clear all** beside them,
 and the toolbar's **Filter** button gains a count: `Filter (1)`.
 
 
+
+<br clear="right">
 
 ---
 
@@ -325,6 +373,8 @@ The arrow changes direction for Date, File size, and Name.
 Relevance always uses descending score order.
 
 <a href="img/sort-menu.png"><img src="img/sort-menu.png" alt="The sort menu" width="100%"></a>
+
+<img src="crops/sort-menu-sort-and-2-more.png" align="right" width="40%" alt="Red frames mark Sort, the sort direction button, Search, the previous page arrow, the next page arrow, the previous result arrow and the next result arrow.">
 
 > Choosing a sort marks your choice; press **Search** to put it into effect.
 
@@ -341,10 +391,14 @@ leaving the page.
 **Only the first 1 000 results of any search can be opened**, however many were found. If your
 search matches more than that, narrow it with [filters](#5-filters) rather than paging.
 
+<br clear="right">
+
 ---
 
 
 ## 7. Reading a document
+
+<img src="crops/document-text-entities.png" align="right" width="40%" alt="Red frames mark Entities, File Locations and Metadata.">
 
 Selecting a result opens the viewer, either in the right-hand pane or full-page. Three columns:
 
@@ -359,8 +413,16 @@ Selecting a result opens the viewer, either in the right-hand pane or full-page.
 
 <a href="img/document-archive.png"><img src="img/document-archive.png" alt="Archive member file locations" width="100%"></a>
 
+<br clear="right">
+
+<img src="crops/document-archive-extracted-text-and-2-more.png" align="right" width="40%" alt="Red frames mark Extracted text, Email body, PDF and PDF text.">
+
 The image shows archive member file locations.
 
+
+<br clear="right">
+
+<img src="crops/document-table-office-xml-and-1-more.png" align="right" width="40%" alt="Red frames mark Office XML and Image.">
 
 One file can be readable in several ways, and each way is a source you can switch between:
 
@@ -399,6 +461,10 @@ browser cannot show it, the viewer gives a link that downloads the file.
 
 <a href="img/document-image-ocr.png"><img src="img/document-image-ocr.png" alt="A scanned image and its OCR" width="100%"></a>
 
+<br clear="right">
+
+<img src="crops/document-image-ocr-file-locations.png" align="right" width="40%" alt="A red frame marks File Locations.">
+
 A file found inside an archive shows its container in the breadcrumb, here `parent.zip` above
 `parent/child.txt`:
 
@@ -412,6 +478,10 @@ Use a path control to open its folder or copy the path.
 
 
 ### Searching inside a document
+
+<br clear="right">
+
+<img src="crops/document-red-flags-page-up.png" align="right" width="40%" alt="A red frame marks the previous result arrow.">
 
 The box at the top left of the viewer searches the open document. Matches are highlighted and
 the arrows beside the counter step between them.
@@ -436,6 +506,10 @@ The image shows the document entity controls.
 
 
 <a href="img/red-flag-terms.png"><img src="img/red-flag-terms.png" alt="Red flag terms" width="100%"></a>
+
+<br clear="right">
+
+<img src="crops/red-flag-terms-red-flag-terms.png" align="right" width="40%" alt="A red frame marks Red flag terms.">
 
 The image shows the red flag terms controls.
 
@@ -464,6 +538,10 @@ The image shows the table sheets controls.
 
 <a href="img/table-filter.png"><img src="img/table-filter.png" alt="Table filter" width="100%"></a>
 
+<br clear="right">
+
+<img src="crops/table-filter-table.png" align="right" width="40%" alt="A red frame marks Table.">
+
 The image shows the table filter controls.
 
 
@@ -483,6 +561,10 @@ A clamp or extraction notice describes a limit that affected the returned table.
 
 <a href="img/connected-emails.png"><img src="img/connected-emails.png" alt="Connected email graph and selected message" width="100%"></a>
 
+<br clear="right">
+
+<img src="crops/connected-emails-email.png" align="right" width="40%" alt="A red frame marks Email.">
+
 The image shows connected email graph and selected message.
 
 
@@ -500,6 +582,10 @@ An absent message can be outside those limits. Search for it separately before c
 
 <a href="img/document-metadata.png"><img src="img/document-metadata.png" alt="Document metadata" width="100%"></a>
 
+<br clear="right">
+
+<img src="crops/document-metadata-metadata.png" align="right" width="40%" alt="A red frame marks Metadata.">
+
 The image shows the document metadata controls.
 
 
@@ -514,9 +600,13 @@ The pipeline retains that metadata and skips later PDF processing.
 **Download Document** in the ⋮ menu, or the same item in the viewer's own menu, saves the
 original file under its real name.
 
+<br clear="right">
+
 ---
 
 ## 8. Storage: browsing by folder
+
+<img src="crops/storage-collections-storage.png" align="right" width="40%" alt="A red frame marks the Storage icon.">
 
 The folder icon in the rail opens **Storage**: the corpus as it is laid out on disk.
 
@@ -545,6 +635,10 @@ Select a file to open its preview beside the listing.
 
 
 ### The tree
+
+<br clear="right">
+
+<img src="crops/storage-tree-deep-chevron.png" align="right" width="40%" alt="A red frame marks the tree chevron.">
 
 In the left pane, the chevron opens a row and the label navigates to it, two separate
 gestures, so you can look inside a folder without leaving the one you are in.
@@ -576,10 +670,16 @@ only appears *inside* the documents will find nothing.
 
 <a href="img/storage-folder-search.png"><img src="img/storage-folder-search.png" alt="Filtering a folder by filename" width="100%"></a>
 
+<br clear="right">
+
+<img src="crops/storage-open-in-search-home-and-1-more.png" align="right" width="40%" alt="Red frames mark the Home icon and Open in Search.">
+
 For content, use **Open in Search**, which carries the current folder over as a *File location*
 filter:
 
 
+
+<br clear="right">
 
 ---
 
@@ -596,6 +696,8 @@ Use these procedures to [start a conversation](#start-a-conversation), [inspect 
 <a href="img/chat-new.png"><img src="img/chat-new.png" alt="AI chat home with existing conversations, a question composer, and investigation boards" width="100%"></a>
 
 ### Start a conversation.
+
+<img src="crops/chat-new-chat-and-1-more.png" align="right" width="40%" alt="Red frames mark the AI chat icon, Ask the bot, Internet tools and the send arrow.">
 
 1. Select the speech-bubble icon in the left rail.
 2. Enter a question in **Ask the bot...**.
@@ -634,6 +736,10 @@ Earlier completed turns remain in the conversation.
 
 ### Inspect tool results.
 
+<br clear="right">
+
+<img src="crops/chat-search-card-show-and-2-more.png" align="right" width="40%" alt="Red frames mark Show, Hide and Instruction to the agent.">
+
 Select **Show** on a tool-group summary to inspect its calls.
 Select **Hide** to collapse the group again.
 The expanded group can contain search, read, citation, web, question, and task-list cards.
@@ -649,6 +755,10 @@ When available, **Search every collection** removes that call's collection restr
 Document rows open the document preview.
 
 <a href="img/chat-search-card.png"><img src="img/chat-search-card.png" alt="A collection-search card expanded to show its query and returned fields" width="100%"></a>
+
+<br clear="right">
+
+<img src="crops/chat-tool-results-expand-and-2-more.png" align="right" width="40%" alt="Red frames mark Expand, Search this and Show raw JSON.">
 
 Read cards show returned text and page or source information.
 Use **Show full text** when the card offers it.
@@ -696,12 +806,20 @@ Drag the pane divider to change the space assigned to the conversation and the s
 
 ### Search in a conversation.
 
+<br clear="right">
+
+<img src="crops/chat-web-preview-search-in-conversation-and-1-more.png" align="right" width="40%" alt="Red frames mark Search in conversation, the previous match arrow and the next match arrow.">
+
 Enter a phrase in **Search in conversation** above the transcript.
 The counter shows the current match and total matches.
 Use the previous and next arrows to move between matches.
 Clear the field to remove the conversation search.
 
 <a href="img/chat-find.png"><img src="img/chat-find.png" alt="Conversation search for Georgia with a match counter and highlighted message" width="100%"></a>
+
+<br clear="right">
+
+<img src="crops/chat-find-show-and-1-more.png" align="right" width="40%" alt="Red frames mark Show and Hide.">
 
 Long user messages initially show three lines.
 Select **Show** on the message to read all of it.
@@ -740,9 +858,15 @@ The list shows its summary, message count, and last update.
 
 <a href="img/chat-history.png"><img src="img/chat-history.png" alt="Conversation history with summaries, deletion controls, and the Show board chats option" width="100%"></a>
 
+<br clear="right">
+
+<img src="crops/chat-new-view-all-conversations-and-1-more.png" align="right" width="40%" alt="Red frames mark View all conversations and Show board chats.">
+
 Use the deletion control only for a conversation you no longer need.
 Board explore chats have no separate deletion control. Their board manages them.
 Chats remain stored until a person deletes them.
+
+<br clear="right">
 
 ## 10. Investigation boards
 
@@ -769,6 +893,8 @@ Select a card to open the board.
 
 <a href="img/board-create.png"><img src="img/board-create.png" alt="Board creation form with goals, background context, hints, collections, and Internet tools" width="100%"></a>
 
+<img src="crops/chat-new-new-board-and-1-more.png" align="right" width="40%" alt="Red frames mark New board, Internet tools and Create board.">
+
 The collections stay fixed after creation.
 Write goals that you can review separately.
 For example, separate a question about dates from a question about competing explanations.
@@ -781,6 +907,10 @@ It connects the background context, research directions, findings, and goals.
 A complex graph can extend beyond the visible pane.
 
 <a href="img/board-overview.png"><img src="img/board-overview.png" alt="A research board with linked graph nodes and three proposed goal answers" width="100%"></a>
+
+<br clear="right">
+
+<img src="crops/board-goal-zoom-out.png" align="right" width="40%" alt="Red frames mark the zoom out button and the zoom in button.">
 
 | Card | Meaning |
 |---|---|
@@ -796,6 +926,10 @@ Select a card to read its complete text and controls in the right pane.
 Selecting a distant card can move the graph to show it.
 
 <a href="img/board-goal.png"><img src="img/board-goal.png" alt="A selected blue goal node with its proposed answer and review controls" width="100%"></a>
+
+<br clear="right">
+
+<img src="crops/board-goal-show-the-board-overview-and-1-more.png" align="right" width="40%" alt="Red frames mark Show the board overview and AI Chat.">
 
 The page address records the selected card.
 Copy the address to bookmark that finding or goal.
@@ -816,6 +950,10 @@ An **inferred** finding expresses an inference. A **not found** finding records 
 Verify the cited passages before relying on the statement.
 
 <a href="img/board-finding.png"><img src="img/board-finding.png" alt="A selected sourced finding with quoted evidence and document citation cards" width="100%"></a>
+
+<br clear="right">
+
+<img src="crops/board-questions-ask.png" align="right" width="40%" alt="A red frame marks Ask.">
 
 Scroll the detail pane to its **Open questions** section.
 **Explore this question** starts an explore for a listed question.
@@ -841,6 +979,10 @@ A finding provides the same action for the explore that produced it.
 
 <a href="img/board-intent.png"><img src="img/board-intent.png" alt="A concluded research intent with its objective, brief, and Open the explore chat link" width="100%"></a>
 
+<br clear="right">
+
+<img src="crops/board-intent-open-the-explore-chat-and-1-more.png" align="right" width="40%" alt="Red frames mark Open the explore chat and Investigation Board.">
+
 A finding's source card opens that explore chat with the document preview selected.
 Use the chat's tool groups and citation cards to inspect the searches and evidence.
 The **Investigation Board** link returns to the board.
@@ -860,6 +1002,10 @@ When every open goal has a proposed answer, the board waits for review.
 The header then shows **Waits for review**.
 
 ### Accept an answer.
+
+<br clear="right">
+
+<img src="crops/board-second-graph-accept-answer.png" align="right" width="40%" alt="A red frame marks Accept answer.">
 
 1. Select the goal, or find its proposed answer in the overview.
 2. Read its qualifications and follow the supporting finding links.
@@ -890,11 +1036,19 @@ A smaller completed board shows the same relationship between its graph, goal an
 
 <a href="img/board-completed.png"><img src="img/board-completed.png" alt="A completed single-goal investigation with a short graph and accepted answer" width="100%"></a>
 
+<br clear="right">
+
+<img src="crops/board-budget-close-the-board-and-1-more.png" align="right" width="40%" alt="Red frames mark Close the board and Add goal.">
+
 Adding a new goal reopens a completed board while preserving its accepted answers.
 Use **Add goal** in the overview when another required question belongs to the same investigation.
 A board has at most six goals.
 
 ### Correct a result.
+
+<br clear="right">
+
+<img src="crops/board-second-graph-reject-answer-and-1-more.png" align="right" width="40%" alt="Red frames mark Reject answer and Reject correction.">
 
 To reject a proposed answer, enter why it is wrong or incomplete beside **Reject answer**.
 Select **Reject answer** to continue investigation with that correction.
@@ -922,12 +1076,20 @@ Use **Pause the board** or **Resume the board** when the current state offers th
 
 <a href="img/board-settings.png"><img src="img/board-settings.png" alt="Board settings with Internet tools, fixed collections, Close, and Drop the board controls" width="100%"></a>
 
+<br clear="right">
+
+<img src="crops/board-correction-settings-and-2-more.png" align="right" width="40%" alt="Red frames mark Settings, Internet tools, Drop the board and Close.">
+
 Pausing cancels running explores and prevents new work until the board resumes.
 It differs from accepting answers and completing the review.
 **Drop the board** requests deletion and requires the separate **Confirm drop** action.
 Use **Close** to dismiss the settings dialog without dropping the board.
 
 ### Read the explore budget.
+
+<br clear="right">
+
+<img src="crops/board-budget-reopen-with-50-more-explores.png" align="right" width="40%" alt="A red frame marks Reopen with 50 more explores.">
 
 A board starts with 30 explores.
 Each goal after the first adds 25. Each hint, question, or correction adds 4.
@@ -965,6 +1127,8 @@ The counts distinguish sourced, inferred, not-found, and rejected results.
 Use these counts and the event history when deciding whether to refine a goal or continue the investigation.
 
 <a href="img/board-statistics.png"><img src="img/board-statistics.png" alt="Board statistics with explore usage, assessment counts, finding categories, and collection scope" width="100%"></a>
+
+<br clear="right">
 
 ---
 

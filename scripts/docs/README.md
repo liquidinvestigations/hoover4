@@ -129,6 +129,23 @@ Verify the GitHub rendering at laptop and narrow widths.
 The full-size link preserves access to small interface labels.
 Register screenshots outside the manual in the same provenance file.
 
+The user manual also shows highlight crops in `docs/user-manual/crops/`.
+Each crop is cut from a published screenshot, and a 5 pixel red frame marks the control that the paragraph names.
+A crop is at most 35 percent of the screenshot width and height.
+Crops that share a paragraph are stacked in one image, because two floats on one line sit side by side.
+Put each crop image before the paragraph that names its control, after any rule or heading above it.
+
+```html
+<img src="crops/feedback-form-bug-and-1-more.png" align="right" width="40%" alt="Red frames mark Bug, Feedback and Send.">
+```
+
+GitHub removes `style` attributes, so `align="right"` makes the float.
+GitHub draws a full-width line at a horizontal rule and under a level 1 or level 2 heading.
+Put `<br clear="right">` before such a rule or heading when a crop above it is still floating, so that the line starts below the crop.
+Put the same break before a second crop that starts while an earlier crop still floats.
+Cut the crops again when a recapture changes their source screenshot.
+Crops have no provenance records, and the screenshot checks do not apply to them.
+
 ## Check external links separately.
 
 Save a JSON report from the local check, then run the external check on demand.
