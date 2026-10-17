@@ -2,12 +2,12 @@
 
 What the product does, stated once, in the present tense. Three things live here:
 
-- `Features.md`, every capability the product offers, one row each, with the code that owns
+- [Features.md](Features.md), every capability the product offers, one row each, with the code that owns
   it.
 - `interface/`, one page per screen the product serves, listing the controls that screen
   carries, the states it can be in, and the constraints that govern them.
 - The configuration surface is **not** duplicated here. Every setting and its consumer is
-  `../operations/Configuration_Reference.md`; this tree links to it and the drift check
+  [../operations/Configuration_Reference.md](../operations/Configuration_Reference.md); this tree links to it and the drift check
   covers it.
 
 This is the specification, not the design. `../architecture/` explains *how* the system is
@@ -40,7 +40,7 @@ Three consequences worth stating, because each is a trap:
 |---|---|---|
 | page | `UI-<RouteVariant>`, `UI-SearchPage`, `UI-AdminCollectionProcessingPage` | the variant name in the frontend's route enum, character for character |
 | control | `<page id>.<slug>`, `UI-SearchPage.sort` | assigned here; lowercase, dotted, stable across renames of the visible label |
-| feature | `F-<area>-<nn>`, `F-search-07` | assigned in `Features.md`, never reused after removal |
+| feature | `F-<area>-<nn>`, `F-search-07` | assigned in [Features.md](Features.md), never reused after removal |
 
 Page identifiers are deliberately not invented: they are the route variant, so a page that
 is added, renamed or deleted in the code is mechanically visible against this tree. Control

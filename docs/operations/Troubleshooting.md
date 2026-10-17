@@ -22,7 +22,7 @@ The procedural half (the same ground as a checklist an agent loads mid-task) is
 - [A change that did not take effect](#a-change-that-did-not-take-effect)
 - [The host itself is unresponsive](#the-host-itself-is-unresponsive)
 - [Collect a debug report](#collect-a-debug-report)
-- [Cause or workaround. Say which](#cause-or-workaround--say-which)
+- [Cause or workaround. Say which](#cause-or-workaround-say-which)
 
 ## Two rules that come before any symptom
 

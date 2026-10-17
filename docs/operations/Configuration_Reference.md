@@ -332,7 +332,7 @@ and reach the infrastructure ports through an ssh tunnel.
 
 Everything else in this group is a port key: the datastores, the workflow service and its
 stores, the admin consoles, the processing services, the MCP servers, the two agent services,
-and the symbol-navigation server. `main_services/ops/Readme.md` lists them with their
+and the symbol-navigation server. [main_services/ops/Readme.md](../../main_services/ops/Readme.md) lists them with their
 defaults and what each answers.
 
 ### Data and infrastructure versions

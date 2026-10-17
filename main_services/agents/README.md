@@ -33,7 +33,7 @@ inconsistently, so every open-web source lives behind `web_search` in
 are still in the tree but nothing builds or deploys them, and `hoover4.ini` has no
 `mcp_ddg_port` / `mcp_wikipedia_port`. Do not revive them.
 
-### Shared code: `agent_common/`
+## Shared code: `agent_common/`
 
 [`agent_common/`](agent_common/) holds what more than one server needs and neither should
 own: the chat-artifact writer, the S3 helper both artifact writers sit on, and the

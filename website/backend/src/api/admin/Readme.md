@@ -205,14 +205,14 @@ allowed only if every enabled window still has budget, so a burst is fine and su
 abuse is not. Refusals are `429` with `Retry-After`. The limiter **fails open** on
 internal errors. Counters are in-process. Correct only while the website is one
 container. Defaults, the measured numbers behind them, and the paste-ready env block
-live in `main_services/ops/Readme.md`.
+live in [main_services/ops/Readme.md](../../../../../main_services/ops/Readme.md).
 
 The poll limiter's ladder is **flat** (1.00 in every window) and its refusal is typed
 (`rate_limited:<secs>`) rather than a 429, because it is consumed by a server function.
 Polling is machine-paced (a tab watching a streaming answer polls at the 500 ms floor for
 as long as the model generates), so the decay that separates a human burst from an hour of
 one is wrong here: it put a single streaming tab on the 1 h window's ceiling. See
-`docs/architecture/Chat_And_Agents.md`.
+[docs/architecture/Chat_And_Agents.md](../../../../../docs/architecture/Chat_And_Agents.md).
 
 The chat API enforces the chat limiter and records the LLM events through:
 

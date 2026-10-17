@@ -13,7 +13,7 @@ the vectors daemon through `MANTICORE_VECTORS_URL` and show its tables separatel
 
 ## Contents
 
-- [Sessions: one route mints, every other endpoint requires](#sessions-one-route-mints-every-other-endpoint-requires)
+- [Sessions: one route mints, every other endpoint requires](#sessions-no-route-mints-every-route-requires)
 - [ClickHouse database routing](#clickhouse-database-routing)
 - [Every `MATCH()` argument goes through one builder](#every-match-argument-goes-through-one-builder)
 - [Showing a failed server call](#showing-a-failed-server-call)

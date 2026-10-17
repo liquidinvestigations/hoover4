@@ -65,7 +65,7 @@ The remembered query is specific to the dataset, container, and folder path.
 `website/frontend/src/components/search_components/`,
 `website/common/src/search_query.rs` (the query, sort and range types, shared with the
 backend). The fan-out, the match builder and the caching boundary are
-`../../architecture/Search_Architecture.md`.
+[../../architecture/Search_Architecture.md](../../architecture/Search_Architecture.md).
 
 Language values show English names and accept a code or name in facet search.
 Text source values show the source labels of the document viewer and omit the filename row.

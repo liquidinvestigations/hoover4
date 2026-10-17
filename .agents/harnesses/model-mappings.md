@@ -1,7 +1,7 @@
 # Model mappings
 
 These names match the project role definitions. Update this table when a configured model
-changes. `docs/development/Choosing_A_Model.md` describes how to assess a proposed change.
+changes. [docs/development/Choosing_A_Model.md](../../docs/development/Choosing_A_Model.md) describes how to assess a proposed change.
 
 ## The mappings
 

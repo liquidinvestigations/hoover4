@@ -19,7 +19,7 @@ local and gitignored.
 5. [Filters](#5-filters)
 6. [Sorting and paging](#6-sorting-and-paging)
 7. [Reading a document](#7-reading-a-document)
-8. [Storage, browsing by folder](#8-storage--browsing-by-folder)
+8. [Storage, browsing by folder](#8-storage-browsing-by-folder)
 9. [AI chat](#9-ai-chat)
 10. [Administration](#10-administration)
 11. [Sharing and bookmarking](#11-sharing-and-bookmarking)
@@ -155,7 +155,7 @@ The **⋮** button on a result card opens a small menu:
 * **Copy Document Link.** Puts a permanent link to this document on your clipboard.
 * **Download Document.** Downloads the original file with its real name
   (`stanley.ec02.pdf`, not a hash).
-* **Open in File Browser.** Jumps to [Storage](#8-storage--browsing-by-folder) with this
+* **Open in File Browser.** Jumps to [Storage](#8-storage-browsing-by-folder) with this
   document selected, so you can see what sits next to it on disk.
 
 ---

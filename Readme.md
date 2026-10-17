@@ -8,7 +8,7 @@ Hoover4 will supersede the legacy [hoover-search](https://github.com/liquidinves
 
 ## [Live Demo](https://liquiddemo.org/)
 
-<a href="https://new.liquiddemo.org" target="_blank"> <img src="./main_services/docs/website-screenshot.png" width="100%"></img></a>
+<a href="https://new.liquiddemo.org" target="_blank"> <img alt="Hoover document search interface" src="./main_services/docs/website-screenshot.png" width="100%"></img></a>
 
 A live demo website for this prototype is available at https://new.liquiddemo.org/.
 
@@ -197,4 +197,4 @@ See [`main_services/docs/Readme.md`](main_services/docs/Readme.md) for high-leve
 [`docs/`](docs/Readme.md). How the system is shaped and why (`architecture/`), how to run it
 (`operations/`), how to change it (`development/`), the product manual (`user-manual/`), and
 what the product does stated once (`technical-specification/`). Each code directory also has
-a `Readme.md` describing itself.
+documentation for its implementation.

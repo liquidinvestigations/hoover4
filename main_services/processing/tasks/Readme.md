@@ -287,7 +287,7 @@ person dispatches it again after the deploy with `main.py operations rerun <op_i
 
 **The board drain.** A change to `P_board/workflows.py` needs no live `BoardDispatcher` or
 `BoardExplore`. Terminate `board-dispatcher`, cancel each `board-explore-*` workflow, and then
-restart the worker, which starts the dispatcher again. `docs/architecture/Boards.md` says how
+restart the worker, which starts the dispatcher again. [docs/architecture/Boards.md](../../../docs/architecture/Boards.md) says how
 the next pass recovers the cancelled intents.
 
 Outbound HTTP from activities (NER, OCR, embeddings) goes through

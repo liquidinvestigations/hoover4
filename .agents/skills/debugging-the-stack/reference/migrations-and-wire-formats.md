@@ -19,7 +19,7 @@ Temporal deserialises an activity argument into its **annotated** type. An unann
 **ordinal** on read.
 
 Both fail silently, in the shape of "the feature quietly does nothing".
-`main_services/processing/Readme.md` carries the detail.
+[main_services/processing/Readme.md](../../../../main_services/processing/Readme.md) carries the detail.
 
 ## ClickHouse query traps
 

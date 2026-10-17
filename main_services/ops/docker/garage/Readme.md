@@ -86,7 +86,7 @@ about later.
 LMDB is mmap-backed, so most of what the container appears to be using is reclaimable
 page cache rather than the daemon's own memory. Under a memory limit the total sits near
 that limit whether the store is busy or idle. This is the same reading mistake the JVM
-services invite (see the ops `Readme.md`): judge by `anon` in
+services invite (see the ops [Readme.md](../../Readme.md)): judge by `anon` in
 `/sys/fs/cgroup/memory.stat`, never by the `docker stats` total, and ask Garage itself
 with `garage stats` when the question is whether the store is healthy.
 

@@ -4,7 +4,7 @@ The accelerated tier is a **separate stack**: its own compose project, its own p
 network, and no dependency on the main stack in either direction. Nothing in it calls back
 into the pipeline; the pipeline reaches it over published ports only.
 
-`ai_services/README.md` is the operator's document for that tier: overlays, flags and the GPU
+[ai_services/README.md](../../ai_services/README.md) is the operator's document for that tier: overlays, flags and the GPU
 preflight. This page is the shape and the reason.
 
 ## Contents

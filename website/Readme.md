@@ -20,7 +20,7 @@ The backend expects ClickHouse (`CLICKHOUSE_URL`) for structured data and the te
 daemon (`MANTICORE_URL`) for search. The admin views use `MANTICORE_VECTORS_URL` to inspect
 the vectors daemon. The backend also uses the blob store for document bytes and the two agent
 services for chat. Every URL is a key in `hoover4.ini`, rendered into the generated `.env`;
-`docs/operations/Configuration_Reference.md` lists them with their consumers.
+[docs/operations/Configuration_Reference.md](../docs/operations/Configuration_Reference.md) lists them with their consumers.
 
 ## How it is structured, and why
 
@@ -153,7 +153,7 @@ Run the stack verification first to exercise the corpus-dependent half too.
 Bring up `main_services` (and `ai_services` if the accelerated tier is wanted) first, then
 configure the service URLs in `.env.development` from `.env.development.example`.
 `website_release_mode` in `hoover4.ini` picks between the dev server and a release build:
-`main_services/ops/Readme.md` has the comparison.
+[main_services/ops/Readme.md](../main_services/ops/Readme.md) has the comparison.
 
 Browser work packages can use the ignored `TEST_LOGIN.env` beside `take-screenshots.sh`.
 [`TEST_LOGIN.env.example`](TEST_LOGIN.env.example) defines the account input keys for agents.

@@ -161,11 +161,11 @@ compose network, on `8080`.
 | Manticore SQL | `localhost:21902` | search engine, MySQL protocol |
 | Manticore HTTP | `http://localhost:21903` | search engine, HTTP API |
 | Garage S3 API | `http://localhost:21904` | the blob store |
-| Garage admin API | `http://127.0.0.1:21905` | cluster status over curl; there is no console, see `docker/garage/Readme.md` |
+| Garage admin API | `http://127.0.0.1:21905` | cluster status over curl; there is no console, see [docker/garage/Readme.md](docker/garage/Readme.md) |
 | Redis | `tcp://localhost:21906` | caches and locks; TCP, not HTTP |
 | pdf-to-html | `http://localhost:21920` | the PDF renderer the document viewer calls |
 | tesseract-cpu | `localhost:21921` | the CPU OCR twin; `/health` lists the languages the image can actually serve |
-| ocr-pdf | `localhost:21922` | searchable-PDF assembly: renders pages, calls the OCR tier, writes the result under the blob store's `derived/` prefix with **no** `blobs` row (`main_services/ocr_pdf/Readme.md` explains what that absence prevents) |
+| ocr-pdf | `localhost:21922` | searchable-PDF assembly: renders pages, calls the OCR tier, writes the result under the blob store's `derived/` prefix with **no** `blobs` row ([main_services/ocr_pdf/Readme.md](../ocr_pdf/Readme.md) explains what that absence prevents) |
 | ner-spacy | `localhost:21923` | the CPU NER twin, only when `[main_services] ner_spacy_enabled = true` (off by default) |
 | regex-entity-scanner | `localhost:21925` | the pattern scanner the P4 stage calls |
 | serena | `http://127.0.0.1:21940/mcp` | symbolic code navigation for the host-side agent, dev tooling only |
@@ -181,7 +181,7 @@ This directory provides Docker Compose configuration and runtime overrides for t
 Configuration lives in `hoover4.ini` at the repository root, and the two shipped
 templates are `hoover4.ini.release` and `hoover4.ini.development`.
 `deploy.py` renders it into a generated `.env` in this directory, never edit that file
-by hand. Deploy from the repo root with `./deploy` (see the root `Readme.md`); the base
+by hand. Deploy from the repo root with `./deploy` (see the root [Readme.md](../../Readme.md)); the base
 `docker-compose.yaml` is the always-on core and `compose/*.yaml` are optional overlays
 selected by ini flags.
 

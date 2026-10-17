@@ -1,6 +1,6 @@
 # Documentation
 
-Explanation and procedure that outlives any one change. Code-adjacent `Readme.md` files
+Explanation and procedure that outlives any one change. Code-adjacent README files
 describe their directory; these pages describe the system.
 
 - [`architecture/`](architecture/Readme.md), how the system is shaped and why

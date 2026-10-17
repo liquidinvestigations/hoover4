@@ -18,7 +18,7 @@ these skills.
 Those live in the gitignored `INFRASTRUCTURE_INVENTORY.md` at the repository root.
 Use that file as the private infrastructure log. Tools may use its details for authorized operations.
 Record private access details and infrastructure changes there. Keep credentials out of output.
-`CONTEXT.md` at the repository root records the words this tree uses in more than one sense,
+[CONTEXT.md](CONTEXT.md) at the repository root records the words this tree uses in more than one sense,
 and the words that compete for one sense. Read it before you write a term that already has an
 entry there.
 

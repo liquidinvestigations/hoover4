@@ -24,7 +24,7 @@ Four levels keep session context small. Codex does not load the fourth level aut
 
 | rung | what it is | when it loads | cost |
 |---|---|---|---|
-| the core | `AGENTS.md` at the repo root | every session, every turn | paid always, keep it near 60 lines |
+| the core | [AGENTS.md](../../AGENTS.md) at the repo root | every session, every turn | paid always, keep it near 60 lines |
 | a skill | `.agents/skills/<name>/SKILL.md` | when the agent's task matches its `description` | paid only in matching sessions |
 | a reference file | `reference/*.md` beside a skill | when the skill body sends the agent to it | paid only inside that procedure |
 | a rule | `.agents/rules/<name>.md` with a `paths:` glob | when a supported harness opens a matching file | paid only while editing that kind of file |
@@ -39,7 +39,7 @@ or in the `SessionStart` hook's `compact` path.
 
 `.agents/` holds shared skills, rules, hooks, and harness settings. Claude Code reads its role
 files from `.claude/agents/`. Codex role files point to those files. Cursor generates its role
-files from them. Cursor reads `AGENTS.md` and `.agents/skills` directly.
+files from them. Cursor reads [AGENTS.md](../../AGENTS.md) and `.agents/skills` directly.
 
 ```
 .agents/
@@ -78,13 +78,13 @@ file declares which commands run on every tool call. `.agents/harnesses/claude-s
 holds what the file should contain; merge it by hand and restart the session.
 `verify-wiring.sh` reports whether it is in place.
 
-Codex reads `.codex/config.toml`, `AGENTS.md`, and `.agents/skills` from the checkout. The
+Codex reads `.codex/config.toml`, [AGENTS.md](../../AGENTS.md), and `.agents/skills` from the checkout. The
 project config matches `.agents/harnesses/codex.toml`. Codex user privacy settings stay in
 the user config. Review `.agents/harnesses/codex-user.toml`, then run
 `python3 .agents/update-codex-config.py --apply` to merge its controlled values.
 
 Cursor reads `.cursor/mcp.json`, `.cursor/hooks.json`, `.cursor/permissions.json`,
-`.cursor/cli.json`, `AGENTS.md`, and `.agents/skills` from the checkout. Agent files under
+`.cursor/cli.json`, [AGENTS.md](../../AGENTS.md), and `.agents/skills` from the checkout. Agent files under
 `.cursor/agents/` are generated from `.claude/agents/` with Cursor model names.
 `.cursor/rules/*.mdc` is generated from `.agents/rules/` and is not tracked.
 Cursor user privacy settings, the MCP allowlist, and host-specific Auto-review text stay
@@ -161,13 +161,13 @@ Claude declares five hooks. Codex declares the first four because its tool event
 sub-agent identifier for the budget hook. Cursor runs the same five through
 `.agents/hooks/cursor-wrap.py`, and adds a `subagentStart` cap of two counted sub-agents.
 Cursor injects the orientation text on a new conversation. Compaction does not re-run that hook.
-Each rule also appears in `AGENTS.md`.
+Each rule also appears in [AGENTS.md](../../AGENTS.md).
 
 | hook | event | what it denies |
 |---|---|---|
 | unscoped recursive search | `PreToolUse(Bash)` | a recursive `grep`/`ugrep` over `.` or a build-bearing directory with no `--include`/`--exclude-dir`. A scoped search at one small directory passes |
 | long commit message | `PreToolUse(Bash)` | `git commit -m` with a multi-line or over-length message |
-| register | `PreToolUse(Edit\|Write\|MultiEdit)` or Codex `apply_patch` | added text that contains a phrase from `AGENTS.md`, "How to write", or an em dash. The hook checks the documented file types and preserves its path exemptions |
+| register | `PreToolUse(Edit\|Write\|MultiEdit)` or Codex `apply_patch` | added text that contains a phrase from [AGENTS.md](../../AGENTS.md), "How to write", or an em dash. The hook checks the documented file types and preserves its path exemptions |
 | orientation | `SessionStart`, including `compact` | denies nothing; points to the shared instructions and restores the current-task reminder after compaction |
 | tool-call budget | `PostToolUse(*)` | denies nothing; reports calls at 80% and 95% only when an explicit positive budget is configured. A call whose payload carries no `agent_id` was made by the session that launched the pass, and is not counted |
 
@@ -239,12 +239,12 @@ operational detail.
 
 | harness | instructions | skills | rules | MCP | hooks |
 |---|---|---|---|---|---|
-| Claude Code | `CLAUDE.md` → `@AGENTS.md`, imports expanded | `.claude/skills` symlink, verified working | `.claude/rules` symlink | `.mcp.json` | five hooks in `.claude/settings.json` |
-| OpenAI Codex CLI | `AGENTS.md`, no import expansion | native `.agents/skills`, verified | no automatic loader | `[mcp_servers.NAME]`, streamable HTTP | four hooks in `.codex/config.toml` |
-| opencode | `AGENTS.md` | native `.agents/skills/<name>/SKILL.md`; unknown frontmatter keys ignored | unverified | `opencode.json` remote entries | unverified |
-| Gemini CLI | `GEMINI.md` | none | none | `.gemini/settings.json`, `httpUrl` | none |
-| Cursor | `AGENTS.md` plus generated `.cursor/rules/*.mdc` | native `.agents/skills` | `.mdc` with `globs:` | `.cursor/mcp.json` | shared hooks via `.cursor/hooks.json` |
-| Kimi Code | `AGENTS.md`, no import expansion | native `.agents/skills` and `~/.agents/skills` | no automatic loader | `.kimi-code/mcp.json` project file plus user `mcp.json`, streamable HTTP | User `config.toml` declares five hooks, permission rules, and privacy settings. Session dispatch requires verification. |
+| Claude Code | [CLAUDE.md](../../CLAUDE.md) → the [AGENTS.md](../../AGENTS.md) include directive, imports expanded | `.claude/skills` symlink, verified working | `.claude/rules` symlink | `.mcp.json` | five hooks in `.claude/settings.json` |
+| OpenAI Codex CLI | [AGENTS.md](../../AGENTS.md), no import expansion | native `.agents/skills`, verified | no automatic loader | `[mcp_servers.NAME]`, streamable HTTP | four hooks in `.codex/config.toml` |
+| opencode | [AGENTS.md](../../AGENTS.md) | native `.agents/skills/<name>/SKILL.md`; unknown frontmatter keys ignored | unverified | `opencode.json` remote entries | unverified |
+| Gemini CLI | [GEMINI.md](../../GEMINI.md) | none | none | `.gemini/settings.json`, `httpUrl` | none |
+| Cursor | [AGENTS.md](../../AGENTS.md) plus generated `.cursor/rules/*.mdc` | native `.agents/skills` | `.mdc` with `globs:` | `.cursor/mcp.json` | shared hooks via `.cursor/hooks.json` |
+| Kimi Code | [AGENTS.md](../../AGENTS.md), no import expansion | native `.agents/skills` and `~/.agents/skills` | no automatic loader | `.kimi-code/mcp.json` project file plus user `mcp.json`, streamable HTTP | User `config.toml` declares five hooks, permission rules, and privacy settings. Session dispatch requires verification. |
 | Google Antigravity | unverified | unverified | unverified | unverified | unverified |
 
 Rows marked unverified are exactly that: nobody has run them here. Treat them as work to do,
@@ -258,9 +258,9 @@ not as support to rely on.
 | OpenAI Codex CLI | `.codex/agents/*.toml` | `model` and `model_reasoning_effort` |
 | opencode | `.opencode/agents/*.md`, or the `agent` key in `opencode.json` | `model` as `provider/model-id` |
 | Cursor | `.cursor/agents/*.md`, generated from `.claude/agents/` | `model` in frontmatter |
-| Gemini CLI | `GEMINI.md` | unverified |
+| Gemini CLI | [GEMINI.md](../../GEMINI.md) | unverified |
 | Kimi Code | built-in coder, explore and plan sub-agents; no project definitions | `[secondary_model]` pool in user `config.toml` |
-| Google Antigravity | `AGENTS.md` | unverified |
+| Google Antigravity | [AGENTS.md](../../AGENTS.md) | unverified |
 
 Claude Code maps every role to Opus 5.5.
 Codex maps `executor-light` to GPT-5.6 Terra and the other roles to GPT-5.6 Sol.
@@ -340,7 +340,7 @@ Heredocs remain legitimate for throwaway analysis that writes nothing into the r
 
 **All of this is tracked and public**: `.agents/`, `.codex/`, the two `.claude/` symlinks,
 `.claude/agents/`, `.claude/settings.json`, `.cursor/mcp.json`, `.cursor/hooks.json`, `.cursor/permissions.json`,
-`.cursor/cli.json`, `.cursor/agents/`, `.kimi-code/mcp.json`, `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`. Git is the backup, and a
+`.cursor/cli.json`, `.cursor/agents/`, `.kimi-code/mcp.json`, [AGENTS.md](../../AGENTS.md), [CLAUDE.md](../../CLAUDE.md), and [GEMINI.md](../../GEMINI.md). Git is the backup, and a
 fresh checkout has the whole configuration already: `bootstrap.sh` only creates the
 machine-local per-harness adapters on top of it.
 
@@ -356,7 +356,7 @@ an authentication boundary. `operating-remote-hosts` describes the *shape* of th
 each machine and points at `INFRASTRUCTURE_INVENTORY.md` for the specifics.
 
 The ignore rules that make this work are worth knowing before editing either file. The
-`AGENTS.md`, `CLAUDE.md` and `plans/` rules in the root `.gitignore` are **unanchored**, so
+[AGENTS.md](../../AGENTS.md), [CLAUDE.md](../../CLAUDE.md) and `plans/` rules in the root `.gitignore` are **unanchored**, so
 they match at any depth; the root copies are re-admitted by an explicit negation. That is
-deliberate: a service's own `AGENTS.md` deeper in the tree is its author's scratch and is
+deliberate: a service's own [AGENTS.md](../../AGENTS.md) deeper in the tree is its author's scratch and is
 free to cite the scratch folder, which the tracked tree forbids.

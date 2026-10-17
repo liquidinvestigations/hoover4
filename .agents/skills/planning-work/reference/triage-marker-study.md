@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This reference backs the role selection rule in [`planning-work`](../SKILL.md#selecting-pass-roles).
+This reference backs the role selection rule in [`planning-work`](../SKILL.md).
 It contains no prompt text, response text, source identity, session identifier, or project name.
 
 ## Sample and method

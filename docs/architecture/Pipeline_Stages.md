@@ -5,7 +5,7 @@ one before it wrote and writes to tables the others do not touch, which is what 
 them run at once.
 
 The code is `main_services/processing/tasks/`, one directory per stage, each with a
-`Readme.md` of its own. Where those go into detail, this page states the shape.
+[Readme.md](Readme.md) of its own. Where those go into detail, this page states the shape.
 
 ## Contents
 
@@ -144,7 +144,7 @@ matching successful task run and document outcome. A current Error event replace
 Error for the pair. The operation record keeps separate counts for selection, recovery,
 current failures, disabled stages, missing plans and unsupported task names.
 
-`main_services/processing/Readme.md` lists those entry points with their flags.
+[main_services/processing/Readme.md](../../main_services/processing/Readme.md) lists those entry points with their flags.
 
 Removing an OCR source also removes its regex hits, red flag evidence, scored passages, and scan markers.
 The purge keeps other sources and other datasets.

@@ -20,5 +20,5 @@ Use a trial large enough to expose relevant variation and report the actual samp
 Do not impose a universal call-count test or context fraction.
 Use configured platform limits and explicit user budgets.
 
-`.agents/harnesses/model-mappings.md` records the configured roles.
+[.agents/harnesses/model-mappings.md](../../.agents/harnesses/model-mappings.md) records the configured roles.
 [Working with agents](Working_With_Agents.md) identifies the harness files.

@@ -6,7 +6,7 @@ Copy this file once for each run. Fill every field. Write "not seen" when a fiel
 
 | field | value |
 |---|---|
-| story | the story file, for example `05-nili-priell-barak-fortress.md` |
+| story | the story file, for example [05-nili-priell-barak-fortress.md](05-nili-priell-barak-fortress.md) |
 | mode | chat, internet tools on or off |
 | session id | the 64-character id |
 | chat page | `/ai_chat/c/<session id>/9g==/9g==` on the site under test |

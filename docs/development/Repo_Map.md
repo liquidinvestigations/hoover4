@@ -1,6 +1,6 @@
 # Repository map
 
-Where things are, and which `Readme.md` answers which question. Read this before searching:
+This page lists directories and their documentation. Read this before searching:
 most questions here are answered by opening one known file rather than by grepping.
 
 ## Contents
@@ -30,7 +30,7 @@ most questions here are answered by opening one known file rather than by greppi
 
 | path | holds |
 |---|---|
-| `processing/` | the Temporal workflows and activities; `tasks/P0_scan_disk` … `P6_index_data` are the pipeline stages, each with its own `Readme.md` |
+| `processing/` | the Temporal workflows and activities; `tasks/P0_scan_disk` … `P6_index_data` are the pipeline stages, each with its own README |
 | `processing/database/` | schema, per-collection and global migrations, and the migration runner |
 | `processing/tests/` | unit tests that run without a stack, and integration tests that need one |
 | `agents/` | the MCP servers and research agents, plus `agent_common`, which is vendored into the server images |
@@ -66,12 +66,12 @@ fixtures.
 
 | question | file |
 |---|---|
-| what the product is, and how to install it | root `Readme.md` |
+| what the product is, and how to install it | root [Readme.md](../../Readme.md) |
 | how a pipeline stage works | `main_services/processing/tasks/P<n>_*/Readme.md` |
-| the schema and how migrations run | `main_services/processing/database/Readme.md` |
-| which containers exist and what they expose | `main_services/ops/Readme.md` |
-| what an MCP server does and how it is built | `main_services/agents/README.md` and the per-server README |
-| how the website is structured | `website/Readme.md` and the pages under `docs/architecture/` |
+| the schema and how migrations run | [main_services/processing/database/Readme.md](../../main_services/processing/database/Readme.md) |
+| which containers exist and what they expose | [main_services/ops/Readme.md](../../main_services/ops/Readme.md) |
+| what an MCP server does and how it is built | [main_services/agents/README.md](../../main_services/agents/README.md) and the per-server README |
+| how the website is structured | [website/Readme.md](../../website/Readme.md) and the pages under `docs/architecture/` |
 | how the agent configuration works | [Working with agents](Working_With_Agents.md) |
 | every configuration key and its consumer | [Configuration reference](../operations/Configuration_Reference.md) |
 | what the product does, as agreed | [`docs/technical-specification/`](../technical-specification/Readme.md) |

@@ -8,7 +8,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 
 Read the documentation beside the affected code.
 Update the contract made false by the change and keep unrelated prose unchanged.
-Use the shared writing rules in `AGENTS.md`.
+Use the shared writing rules in [AGENTS.md](../../../AGENTS.md).
 Read [the documentation checks](../../../scripts/docs/README.md) before changing Markdown.
 
 Link file references that readers need to open.

@@ -320,7 +320,7 @@ A candidate pattern, a validator, a fixture, and a catalogue entry so the match 
 The pattern goes in the prefilter and must stay linear-time; the validator gets one candidate at a
 time and does the deciding. Guards that need lookaround move into the validator as byte comparisons.
 See [docs/Rules_And_Patterns.md](docs/Rules_And_Patterns.md),
-[docs/Explainer_Cards.md](docs/Explainer_Cards.md) and `src/rules/Readme.md`.
+[docs/Explainer_Cards.md](docs/Explainer_Cards.md) and [src/rules/Readme.md](src/rules/Readme.md).
 
 Person names, organisations, locations and relationships are deliberately out of scope. This layer
 owns everything with machine-checkable structure; meaning belongs to an NLP layer. The two meet at

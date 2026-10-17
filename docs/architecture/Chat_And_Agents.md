@@ -3,14 +3,14 @@
 The chat turn end to end: what is fixed when a conversation starts, which agent answers,
 how an answer streams back, how citations work, and what the admin views over it show.
 
-The agents themselves and their tools are `main_services/agents/README.md`; the pipeline's
+The agents themselves and their tools are [main_services/agents/README.md](../../main_services/agents/README.md); the pipeline's
 durable research path is `main_services/processing/tasks/P_agent/`.
 
 ## Contents
 
 - [The internet option stays fixed](#the-internet-option-stays-fixed)
 - [Reaching the agents](#reaching-the-agents)
-- [Citations, and why they are not the search cards](#citations-and-why-they-are-not-the-search-cards)
+- [Citations, and why they are not the search cards](#citations)
 - [Chat checks](#chat-checks)
 - [Streaming a turn](#streaming-a-turn)
 - [Timeouts and retries](#timeouts-and-retries)
@@ -19,7 +19,7 @@ durable research path is `main_services/processing/tasks/P_agent/`.
 - [Admin: the inline SVG charts](#admin-the-inline-svg-charts)
 - [Language-model access](#language-model-access)
 - [Allocating a message sequence](#allocating-a-message-sequence)
-- [Tool-event payload shapes](#tool-event-payload-shapes)
+- [Tool-event payload shapes](#tool-rows)
 
 Routes (see `website/frontend/src/routes.rs`):
 

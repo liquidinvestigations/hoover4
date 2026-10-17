@@ -1,8 +1,8 @@
-## System Architecture Diagrams
+# System Architecture Diagrams
 
 This directory contains visual references for the Hoover4 processing pipeline, data flow, and storage model.
 
-### High-Level Process Overview
+## High-Level Process Overview
 ![High-Level Process](diagram-1-high-level-process.png)
 
 The lifecycle from source acquisition to processing, review, analysis, and internal presentation. It situates Hoover4 as the processing core that turns raw collections into searchable, labeled, and analysis-ready data products.
@@ -15,7 +15,7 @@ The lifecycle from source acquisition to processing, review, analysis, and inter
 - Analysis workflows extend search with chat/LLM interfaces, pattern detection, and analytical dashboards.
 - Production and presentation focus on analyst synthesis, cross-referenced outputs, and internal knowledge delivery. This stage happens outside of Hoover4; data is exported from the system before publication and production.
 
-### Data Flow Architecture
+## Data Flow Architecture
 ![Data Flow](diagram-2-data-flow.png)
 
 The end-to-end flow from raw inputs through extraction and normalization into storage and index layers, then onward to search, analytics, and AI-driven interfaces.
@@ -27,7 +27,7 @@ The end-to-end flow from raw inputs through extraction and normalization into st
 - ClickHouse stores normalized records and metadata; Manticore provides keyword search; vector indexing supports similarity and RAG workflows.
 - Downstream applications include operational dashboards, search interfaces, chat/LLM tools, analytics dashboards, and classification workflows.
 
-### Data Representation
+## Data Representation
 ![Data Representation](diagram-3-data-representation.png)
 
 The relational model that connects datasets, files, derived artifacts, and indexing outputs. It provides a map of how raw source material is transformed into searchable and analyzable representations.
