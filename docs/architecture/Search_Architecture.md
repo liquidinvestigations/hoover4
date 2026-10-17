@@ -419,3 +419,26 @@ The agent emits no absence instruction from partial dictionary results.
 Dictionary responses use the search cache with the collection shard generation.
 The search page verifies at most six candidate queries with unchanged filters within two seconds.
 Suggestions never change the original query automatically.
+
+## Search requests merge collection shards.
+
+Permission checks and query preparation precede shard requests. Results and counts have separate limits.
+
+```mermaid
+sequenceDiagram
+    accTitle: Search request and shard merge
+    accDescr: The backend verifies scope, prepares the query, queries collection shards and merges their results for the browser.
+    participant U as Search page
+    participant B as Backend
+    participant C as Collection registry
+    participant M as Manticore shards
+    U->>B: Applied query and filters
+    B->>C: Verify collection access and resolve shards
+    B->>B: Prepare MATCH expression
+    B->>M: Bounded shard requests
+    M-->>B: Results and counts or errors
+    B->>B: Merge and sort results
+    B-->>U: Results, counts and partial-state details
+```
+
+[The search API](../../website/backend/src/api/search/) and [query builder](../../website/backend/src/db_utils/manticore_match.rs) own this sequence.

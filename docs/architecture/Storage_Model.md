@@ -5,16 +5,16 @@ keys that cross between stores.
 
 ## Contents
 
-- [Three stores, one corpus](#three-stores-one-corpus)
+- [Each store has a defined responsibility.](#each-store-has-a-defined-responsibility)
 - [Content-addressed blobs](#content-addressed-blobs)
 - [ClickHouse: a database per collection](#clickhouse-a-database-per-collection)
 - [The file tree, and what deletion means](#the-file-tree-and-what-deletion-means)
 - [The object store: a bucket per collection](#the-object-store-a-bucket-per-collection)
 - [Derived output is never source](#derived-output-is-never-source)
 - [The search engine: one denormalised table per shard](#the-search-engine-one-denormalised-table-per-shard)
-- [A chat artefact id is a lookup key, never a capability](#a-chat-artefact-id-is-a-lookup-key-never-a-capability)
+- [Verify ownership before reading a chat artifact.](#verify-ownership-before-reading-a-chat-artifact)
 
-## Three stores, one corpus
+## Each store has a defined responsibility.
 
 | store | holds | keyed by |
 |---|---|---|
@@ -31,10 +31,9 @@ A blob is identified by a content hash, and the same content ingested twice is o
 row also carries the auxiliary hashes a user might paste, the size, and either the object
 path or a flag saying the value is small enough to live in ClickHouse itself.
 
-The consequence for every count above it: **the blob count is below the file count on any
-real corpus**, because two paths holding the same content are two files and one blob. Parsed
-content, entities and chunks all hang off the *hash*, so they are computed once however many
-paths point at them.
+Deduplication reduces the blob count when multiple paths contain identical bytes.
+Blob and file counts can be equal when every file has distinct content.
+Parsed content, entities, and chunks use content identity, while search documents also retain dataset identity.
 
 **Document identity in the index is the pair, not the hash alone.** The same content in two
 datasets of one collection is indexed twice, deliberately, because those are two documents
@@ -110,16 +109,14 @@ A collection's searchable data lives in a dynamic number of shard tables, capped
 indexing planner on both text bytes and row count, plus one entities table and one tree table
 per collection.
 
-**Each document's metadata is denormalised onto every one of its page rows, and there is no
-join.** The join this replaced was the single most expensive thing in the search path (a
-per-row lookup evaluated before any predicate), and it was also silently wrong, because the
-engine's outer join drops unmatched left rows. Denormalised costs about fifteen per cent more
-disk and turns a thirteen-second facet into a one-second one. Do not reintroduce a join.
+Each page row carries its document metadata.
+Search and facet queries can therefore read one denormalized table without joining a separate metadata table.
+Performance depends on indexed content, shard count, filters, and the query environment.
 
 How queries fan out over those shards, and what is exact versus approximate across them, is
 [Search architecture](Search_Architecture.md).
 
-## A chat artefact id is a lookup key, never a capability
+## Verify ownership before reading a chat artifact.
 
 An artefact id reaches the backend through a tool payload that a language model wrote. Every
 read resolves it to its owning session and username and enforces owner-or-admin.
@@ -134,3 +131,47 @@ knows they are there, so the deletion of a chat tombstones the row first, the da
 deletes the object, and only then drops the row. No artifact expires by age: chats and boards
 are kept until a person deletes them. A store-level expiry cannot remove an object, which is why the order is
 that way round.
+
+## Document identities connect stored data.
+
+Paths identify file locations. Content hashes identify bytes, and dataset plus hash identifies a searchable document.
+
+```mermaid
+flowchart LR
+    accTitle: Logical document data relationships
+    accDescr: Dataset paths refer to blobs. Documents select source pages and derived data. Indexing copies searchable fields and vectors.
+    D[Collection and dataset registry] --> F[Live file paths]
+    F --> H[Content hash and blob]
+    F --> I[Dataset plus hash document]
+    H --> O[Inline bytes or Garage object]
+    I --> T[Extractor and page text]
+    I --> E[Entities and red flag passages]
+    I --> Q[Email headers and attachments]
+    I --> S[Table manifest and sheets]
+    S --> C[Cells keyed by hash]
+    T --> V[Chunks and durable vectors]
+    T --> M[Manticore pages]
+    V --> K[Manticore vector tables]
+```
+
+[Collection migrations](../../main_services/processing/database/db_collection_migrations/), [document readers](../../website/backend/src/api/documents/), and [indexing](../../main_services/processing/tasks/P6_index_data/) define the stored keys.
+This diagram shows logical relationships and does not imply foreign-key constraints.
+
+## Live paths determine index cleanup.
+
+Deleting one path does not remove content that remains reachable through another live path.
+
+```mermaid
+stateDiagram-v2
+    accTitle: File path deletion and index reachability
+    accDescr: A rescan updates a live path or marks it deleted. Index cleanup removes a document only when no live path reaches its content.
+    [*] --> Live
+    Live --> Live: Rescan finds path
+    Live --> Deleted: Rescan finds path absent
+    Deleted --> Live: Path returns
+    Deleted --> Reachable: Another live path reaches content
+    Deleted --> Unreachable: No live path reaches content
+    Unreachable --> Removed: Remove index entries
+```
+
+[VFS reconciliation](../../main_services/processing/tasks/P0_scan_disk/) and [index maintenance](../../main_services/processing/tasks/P6_index_data/) own these transitions.

@@ -102,6 +102,8 @@ A board fact has one of six kinds.
 
 ```mermaid
 flowchart LR
+    accTitle: Board workflow ownership
+    accDescr: The dispatcher starts command writers and explores. Explores run durable chat turns.
     W[website] -->|command input| CI[(board_command_inputs)]
     D[BoardDispatcher<br/>board-queue] -->|board_plan| CH[(ClickHouse)]
     D -->|start commands| CI
@@ -177,6 +179,8 @@ the explores and the labels.
 
 ```mermaid
 sequenceDiagram
+    accTitle: Board command persistence
+    accDescr: The writer prepares receipts, writes facts and events, and commits each request.
     participant P as producer
     participant I as board_command_inputs
     participant C as BoardCommands
@@ -245,12 +249,14 @@ storage and no clock. The module docstring lists the rules. These rules have the
 
 ```mermaid
 stateDiagram-v2
+    accTitle: Board status transitions
+    accDescr: Person actions and assessment events move boards between active, paused, review, completed, and dropped states.
     [*] --> active: board_created
     active --> paused: pause_requested
     paused --> active: resume_requested
-    active --> review: answers for every open goal, or review_proposed
-    review --> active: rejected answer, rejected review, goal added, reopening
-    review --> completed: every goal accepted, or review_accepted
+    active --> review: answers proposed
+    review --> active: rejection or new work
+    review --> completed: answers accepted
     completed --> active: goal added, reopening
     active --> dropped: drop
     paused --> dropped: drop
@@ -308,6 +314,8 @@ grant.
 
 ```mermaid
 flowchart TD
+    accTitle: Board explore budget
+    accDescr: The final assessment precedes budget review. Reopening grants bounded additional explores.
     U[the explores reach the budget] --> F{final assessment<br/>of this budget?}
     F -->|none yet| R[one final assessment:<br/>answers from the facts, no explore]
     R --> T[its result or its failure ends it]

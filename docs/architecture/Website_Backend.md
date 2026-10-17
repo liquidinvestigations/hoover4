@@ -13,7 +13,7 @@ the vectors daemon through `MANTICORE_VECTORS_URL` and show its tables separatel
 
 ## Contents
 
-- [Sessions: one route mints, every other endpoint requires](#sessions-no-route-mints-every-route-requires)
+- [Requests require an established identity.](#requests-require-an-established-identity)
 - [ClickHouse database routing](#clickhouse-database-routing)
 - [Every `MATCH()` argument goes through one builder](#every-match-argument-goes-through-one-builder)
 - [Showing a failed server call](#showing-a-failed-server-call)
@@ -21,7 +21,7 @@ the vectors daemon through `MANTICORE_VECTORS_URL` and show its tables separatel
 - [Browsing a tabular document](#browsing-a-tabular-document)
 - [The file-type glyph](#the-file-type-glyph)
 
-## Sessions: no route mints, every route requires
+## Requests require an established identity.
 
 Every route requires an already-resolved identity except `/favicon.ico`, including the app
 shell, `/assets/…` and the wasm bundle. The policy is one file,
@@ -48,9 +48,10 @@ identity. `use_session_user()` answers `None` until the call resolves, which mea
 known yet", never a stand-in identity: a component that defaults an unknown identity to a
 concrete answer draws the wrong control on first paint and then takes it away.
 
-A non-browser client must therefore hold a cookie jar and call `whoami` first. That is what
-`main_services/verify-stack.sh` does, discovering both URLs from the served WASM bundle
-because a server function's path carries a build hash.
+A non-browser client must supply an identity accepted by the deployment.
+Calling `whoami` reads that identity and does not create a session.
+Agent routes use the identity contract in [session middleware](../../website/backend/src/auth/session_middleware.rs).
+Server-function paths can contain build hashes, so clients must use the paths served by the current build.
 
 ## ClickHouse database routing
 
@@ -282,3 +283,30 @@ Dictionary requests use generation-aware caching and a 200 ms deadline. Suggesti
 
 The builders preserve alternatives inside phrases, quorum and proximity searches. They preserve `NOTNEAR`, `?`, `%` and strict order `<<`.
 The product escapes every `@` before Rust query preparation. Field operators are therefore unavailable, while address queries retain their existing expressions.
+
+## Document source requests verify access.
+
+A selected source determines which stored bytes or rows the backend reads.
+
+```mermaid
+sequenceDiagram
+    accTitle: Source selection and document reading
+    accDescr: The viewer requests sources, selects one and requests its content. The backend checks document access before reading stored content.
+    participant V as Document viewer
+    participant B as Document API
+    participant S as Stored sources
+    V->>B: List sources for dataset and hash
+    B->>B: Verify document access
+    B->>S: Read current source manifests
+    S-->>B: Current source records
+    B-->>V: Available sources and page ranges
+    V->>B: Read selected source or PDF part
+    B->>B: Verify document access and source identity
+    B->>S: Read source bytes or table rows
+    S-->>B: Selected source content
+    B-->>V: Content and processing state
+```
+
+[Document APIs](../../website/backend/src/api/documents/) and [viewer components](../../website/frontend/src/components/) own source loading.
+PDF page ranges retain document page numbers across parts.
+Table requests verify the dataset manifest before reading hash-keyed cells.

@@ -8,7 +8,7 @@ durable research path is `main_services/processing/tasks/P_agent/`.
 
 ## Contents
 
-- [The internet option stays fixed](#the-internet-option-stays-fixed)
+- [Internet access stays fixed for a conversation.](#internet-access-stays-fixed-for-a-conversation)
 - [Reaching the agents](#reaching-the-agents)
 - [Citations, and why they are not the search cards](#citations)
 - [Chat checks](#chat-checks)
@@ -39,7 +39,7 @@ a per-attempt error to the row's writer. The column and the disclosure that rend
 kept because a future writer would want exactly that shape, and an empty column renders
 nothing.
 
-## The internet option stays fixed
+## Internet access stays fixed for a conversation.
 
 The first message stores `use_internet_tools` and locks the session options.
 The composer then shows the stored option above the transcript.
@@ -407,3 +407,37 @@ The third level requires an answer. Six further model steps end the turn through
 Classifier signals require measured score thresholds. A failed request supplies no signal.
 Each classifier request writes metadata to `systemone_call_events` and traffic to `ai_service_telemetry`.
 The admin report reads these rows only when an administrator selects Run report.
+
+## A turn persists tool work and citations.
+
+The durable workflow records progress while the browser polls the conversation.
+
+```mermaid
+sequenceDiagram
+    accTitle: Durable chat turn and tool events
+    accDescr: A submitted turn runs a model and typed tools, persists their events and citations, and completes or cancels.
+    participant U as Chat page
+    participant B as Chat API
+    participant W as Turn workflow
+    participant A as Research agent
+    participant T as Typed tools
+    U->>B: Submit message
+    B->>W: Start durable turn
+    W->>A: Run with stored conversation and scope
+    loop Model requests tools
+        A->>T: Typed tool request
+        T-->>A: Results and continuation handles
+        A-->>B: Persist progress and citation events
+        U->>B: Poll conversation events
+    end
+    alt Turn finishes
+        A-->>W: Answer or failure
+    else Person cancels the active turn
+        U->>B: Cancel active turn
+        B->>W: Request cancellation
+    end
+    W-->>B: Record terminal turn state
+```
+
+[Turn workflows](../../main_services/processing/tasks/P_agent/), [chat API](../../website/backend/src/api/chat/), and [research agents](../../main_services/agents/README.md) own these steps.
+Tool results can expose continuation handles. The agent can request further pages within the tool limits.

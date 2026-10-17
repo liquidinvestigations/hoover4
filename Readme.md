@@ -1,200 +1,92 @@
-# Hoover4
+# Hoover4 processes and searches document collections.
 
-Hoover4 is a prototype tool by [Liquid Investigations](https://liquid-investigations.org/index.html). More information is available on the [Wiki Site](https://github.com/liquidinvestigations/docs/wiki).
+Hoover4 is a self-hosted document processing and investigation application from [Liquid Investigations](https://liquid-investigations.org/index.html).
+It ingests registered filesystem datasets, extracts content, and serves search, document reading, chat, and investigation boards.
+It is the successor to [hoover-search](https://github.com/liquidinvestigations/hoover-search).
 
-Hoover4 will supersede the legacy [hoover-search](https://github.com/liquidinvestigations/hoover-search) project.
+## Read the documentation for your task.
 
----
+- [The user manual](docs/user-manual/User_Manual.md) explains search, filters, document sources, folders, chat, and boards.
+- [Architecture](docs/architecture/Readme.md) explains components, processing, identities, and request flows.
+- [Operations](docs/operations/Readme.md) explains deployment, configuration, diagnostics, and maintenance.
+- [Development](docs/development/Readme.md) explains code ownership and verification.
+- [The feature register](docs/technical-specification/Features.md) identifies current capabilities and their source owners.
 
-## [Live Demo](https://liquiddemo.org/)
+## The components have separate responsibilities.
 
-<a href="https://new.liquiddemo.org" target="_blank"> <img alt="Hoover document search interface" src="./main_services/docs/website-screenshot.png" width="100%"></img></a>
+| Component | Responsibility |
+|---|---|
+| [Main services](main_services/Readme.md) | Temporal workflows, parsing services, CPU model services, agents, and datastore management. |
+| [ClickHouse storage](main_services/processing/database/Readme.md) | Collection data, metadata, extracted content, durable vectors, and global application records. |
+| [Manticore indexing](docs/architecture/Search_Architecture.md) | Sharded full-text search, facets, and disposable vector tables. |
+| [Garage object storage](main_services/ops/docker/garage/Readme.md) | Original bytes and derived document or chat artifacts. |
+| [AI services](ai_services/README.md) | Optional GPU embeddings, reranking, NER, OCR, and self-hosted model servers. |
+| [Website](website/Readme.md) | Dioxus Rust backend and WebAssembly frontend for users and administrators. |
 
-A live demo website for this prototype is available at https://new.liquiddemo.org/.
+[The architecture diagram](docs/architecture/Readme.md#the-components-have-separate-responsibilities) shows these relationships.
 
-A live demo website for the legacy project is also available at https://liquiddemo.org/.
+## Ingest supported document formats.
 
----
+The [processing pipeline](main_services/processing/Readme.md) runs stages P0 through P6.
+It scans paths, deduplicates bytes, computes plans, parses files, extracts entities, creates vectors when enabled, and indexes search data.
+Archives and email attachments create member documents that pass through the pipeline.
 
-## What is Hoover4?
+Readers support archives, email, PDF, images, text, spreadsheets, delimited text, audio, video, and formats handled by Tika.
+Supported extraction varies by format and configured service.
+[Parser documentation](main_services/processing/tasks/P3_parse_files/Readme.md) identifies the implemented readers.
 
-Hoover4 is a self-hosted end-to-end document processing and search platform. It ingests heterogeneous file collections, made of archives, emails, PDFs, images, audio, video, and raw text, then extracts and normalizes their content, indexes structured and unstructured data, and exposes search and retrieval through a web application.
+Content hashes identify deduplicated bytes.
+Dataset and content hash identify a searchable document.
+A collection groups datasets and defines document access.
+A dataset belongs to its collection permanently.
+[The storage model](docs/architecture/Storage_Model.md) explains these identities.
 
----
+Dataset ingestion starts from registered directories available to the worker.
+The repository does not establish general wiki, team-chat, or remote database ingestion connectors.
+Collection export and restore transfer stored collection data for recovery.
+They do not define a general reporting export format.
+[Administrative workflows](main_services/processing/tasks/P_admin/Readme.md) describe supported maintenance operations.
 
-## Who is Hoover4 for?
+## Select model capabilities through configuration.
 
-Hoover4 is designed for investigative teams, analysts, and organizations that need to process, search, and analyze large heterogeneous document collections, while cross-referencing them with internal knowledge bases. Typical use cases include:
+The main services can run without a GPU.
+Tesseract provides CPU OCR, and an enabled spaCy service provides CPU NER.
+OCR engines retain separate source identities.
+GPU NER can use a configured spaCy fallback after a connection failure.
+Embeddings and reranking have no CPU fallback.
+An empty embedding endpoint skips chunking and embedding.
 
-- Ingesting and deduplicating document archives at scale.
-- Extracting text, metadata, and named entities from mixed-format collections.
-- Performing keyword, semantic, and hybrid search across processed content.
-- Exporting analysis-ready data products for downstream reporting and publication.
-- Running on self-hosted, private cloud or offline environments; possibly on consumer-level hardware.
----
+Chat uses the configured provider and model catalog.
+The optional local servers support separate models for agent turns and structured or summary work.
+[AI architecture](docs/architecture/AI_Services.md) explains provider selection and disabled capabilities.
+[Provider configuration](docs/operations/Configuration_Reference.md) defines the accepted configuration keys.
 
-## Design Principles
+## Install and configure the application.
 
-### Staged pipeline architecture.
+Use a supported container runtime and Compose implementation.
+GPU services also require compatible NVIDIA drivers and the configured GPU runtime.
+Resource requirements depend on document content, stored data, enabled models, and concurrency.
+Measure the intended workload before selecting hardware.
 
-Processing is decomposed into discrete, independently scalable stages: P0 filesystem scanning and deduplication, P1 plan computation, P2 plan execution and scheduling, P3 type-specific parsing, P4 named-entity extraction (NLP/NER against a remote service, on its own queue), P5 chunking and embedding, and P6 indexing. Each stage is a [Temporal](https://temporal.io/) workflow with dedicated worker queues. See the [processing code](main_services/processing/Readme.md) for more details.
+Copy one public configuration template to the local configuration file.
 
-### Content-type routing.
-
-Files are classified by MIME type using multiple detectors ([`file`/`libmagic`](https://man7.org/linux/man-pages/man3/libmagic.3.html), [Tika](https://tika.apache.org/)/[Extractous](https://github.com/yobix-ai/extractous), [Magika](https://github.com/google/magika)) and dispatched to specialized parsers for archives, email, PDF, images, audio, video, OCR, and plain text. Containers (archives, emails with attachments) recursively spawn child ingestion workflows.
-
-### Deduplication and blob-level storage.
-
-File content is hashed (SHA3-256 primary; MD5, SHA1, SHA256 secondary) in a single streaming pass. Small blobs are stored inline in ClickHouse; large blobs are offloaded to Garage. Processing operates on deduplicated blobs, not raw files. In ClickHouse this data is partitioned per collection into `Hoover4_Collection_<collectionname>` databases, with only global state (users, groups, collections, the dataset registry, sessions, settings, search cache) in `Hoover4_Processing`.
-
-### Sharded full-text indexes.
-
-Manticore search indexes are sharded per collection: each shard is one `<collectionname>_<n>_pages` table, carrying each document's metadata on every one of its rows, that stays open until it would exceed `MAX_SHARD_TEXT_BYTES` (4 GB of extracted text) or `MAX_SHARD_ROWS` (2.5 M rows), then seals. A ledger in the collection's ClickHouse database (`manticore_shards`, `manticore_shard_assignments`) records which shard owns each document, and the website fans searches out to the live shards and merges the results. See [tasks/Readme.md](main_services/processing/tasks/Readme.md).
-
-### Separation of compute concerns.
-
-Heavy workloads are isolated into dedicated task queues (common processing, Tika parsing, [EasyOCR](https://github.com/JaidedAI/EasyOCR), and text/vector indexing) to prevent resource contention and allow independent scaling.
-
-### AI as a composable service layer.
-
-Embedding, NER, reranking, and RAG capabilities are exposed as stateless HTTP APIs with LangChain-compatible client libraries, decoupled from the core ingestion pipeline.
-
----
-
-## Software Components
-
-The system is composed of three layers:
-
-### [Main Services](main_services/Readme.md)
-
-Data ingestion pipelines orchestrated by [Temporal](https://temporal.io/), backed by [ClickHouse](https://clickhouse.com/) (analytics/structured storage), [Manticore](https://manticoresearch.com/) (full-text search, vector search), [Garage](https://garagehq.deuxfleurs.fr/) (object storage), [Tika](https://tika.apache.org/)/[Extractous](https://github.com/yobix-ai/extractous) (metadata/text extraction). A multi-stage [processing pipeline](main_services/processing/Readme.md) scans datasets, builds processing plans, parses files by type, runs OCR, and indexes results.
-
-### [AI Services](ai_services/README.md)
-
-The optional GPU tier: a FastAPI server providing multilingual embeddings, cross-encoder reranking and named entity recognition, GPU EasyOCR, and a parked local vLLM. Standalone, no dependency on the main stack; the MCP servers and research agents live in [`main_services/agents/`](main_services/agents/README.md).
-
-### [Website](website/Readme.md)
-
-A full-stack [Dioxus](https://dioxuslabs.com/) application (Rust backend, WASM frontend) that provides search, document viewing, file browsing, and chatbot interfaces over the indexed data.
-
----
-
-## Installation
-
-### Requirements
-
-**Hardware (minimal requirements):**
-
-- 1x GPU Node:
-    - Minimum 1x NVIDIA RTX 3090 (24 GB VRAM) or equivalent.
-    - 64 GB system RAM or more.
-    - 8+ CPU cores.
-- 1x Database Node:
-    - 256 GB NVME storage (operating system & containers)
-    - 1 TB SSD (SATA) storage (databases)
-    - 6 TB HDD storage (objects, original data, backups)
-    - 8+ CPU cores.
-    - 64 GB system RAM or more.
-- 1x Website Node:
-    - 64 GB SSD (SATA) storage (operating system & containers)
-    - 4+ CPU cores.
-    - 16 GB system RAM.
-
-**Software:**
-
-For hosting:
-
-- Debian 12 or 13.
-- Docker and Docker Compose.
-- `nvidia-docker` and CUDA 12.8 (for GPU-accelerated AI services).
-
-For development:
-
-- All of the above, and:
-- Python 3.11+ with [uv](https://github.com/astral-sh/uv).
-- Rust toolchain and [Dioxus CLI](https://dioxuslabs.com/).
-- System utilities: `file`, `7z`, `qpdf`, `ffprobe`, `ffmpeg`.
-
-### Deployment
-
-Both stacks deploy from one `hoover4.ini` at the repository root, copied by hand to
-both hosts. Two fully commented templates ship in the repository:
-`hoover4.ini.release`, for a public deployment, and `hoover4.ini.development`, which
-also turns on a container that bypasses sign-in. Copy the one you need:
-
-```bash
+```sh
 cp hoover4.ini.release hoover4.ini
-$EDITOR hoover4.ini      # ports, providers, secret file paths, never key values
-
-./deploy                 # main_services: databases, worker, website, agents
-./deploy --ai-services   # ai_services: the optional GPU tier (needs [ai_services] enabled = true)
-./deploy --build         # rebuild images (force-recreates)
-./deploy --reset         # wipe data volumes (model caches preserved unless --reset-caches)
-./deploy --reset-temporal # wipe Temporal's history only, keeping the corpus
-./deploy --print-env     # show the generated .env, start nothing
+$EDITOR hoover4.ini
+./deploy
 ```
 
-`deploy.py` renders the ini into generated `.env` files next to each compose file
-(never edit those by hand), preflights the machine (GPU/CDI, secret files, free
-ports), and shells out to `docker compose`. The main stack brings up Temporal (with
-Cassandra and Elasticsearch), ClickHouse, Manticore, Garage, Redis, the processing
-worker, the research agents and MCP servers, monitoring UIs, and the website on port
-`12345`. The GPU tier is standalone: no shared network, no dependency on the main
-host. The pipeline reaches it over the published ports in the ini.
+[The development template](hoover4.ini.development) enables development tooling.
+[The release template](hoover4.ini.release) describes release configuration.
+The local `hoover4.ini` is the single source of truth.
+Deployment generates environment files, which must not be edited by hand.
+Store credential file paths in configuration and credential values in files outside the checkout.
+Keep deployment addresses and access details in the gitignored `INFRASTRUCTURE_INVENTORY.md`.
 
-Secrets never enter a compose file, a generated `.env` or a command line. The ini
-holds *host paths* to key files (`chmod 600`, outside the checkout: `deploy.py`
-refuses paths inside the repo, since those leak into build contexts); the deploy turns
-each into a read-only bind mount, so a container learns the path and never the value.
+[The deployment procedure](docs/operations/Deploying.md) explains builds, service selection, and verification.
+[The configuration reference](docs/operations/Configuration_Reference.md) links each setting to its consumer.
+[Development checks](docs/quality-assurance/Running_Checks.md) describe container-based verification.
 
-`[main_services] serena_enabled` additionally starts a [Serena](https://github.com/oraios/serena)
-MCP server on `127.0.0.1:21940` for the coding agents (`.mcp.json` points at it). It
-is development tooling, not part of the stack: it runs as its own compose project
-(`hoover4-devtools`) on its own network, so `./deploy --down` and `./deploy --reset`
-cannot take it down mid-session, and its index volume survives a reset. It can read
-and write the whole repository, never publish it off `127.0.0.1`.
+## Read the license.
 
----
-
-## License
-
-This project is licensed under the [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). See the `LICENSE` file for the full text.
-
----
-
-## FAQ
-
-
-**What file formats does Hoover4 support?**
-
-Archives (via 7z), email (RFC 822, mbox), PDF, images (with OCR), audio, video, and any format supported by Apache Tika. Container formats are recursively unpacked and their contents processed independently.
-
-**How is data structured in Hoover4?**
-
-Data is organized on two levels:
-
-- Dataset: Individual batch of original data. This can conceptually be a scanned filesystem, a remote database, a group of scraped websites, or a stream of data from an external app. The dataset can be fixed (frozen) or continually updating. One or more datasets are grouped into a Collection (see below).
-- Collection: Groups of multiple datasets. Access control and authorization works at this level.
-
-**Can Hoover4 run without a GPU?**
-
-The core ingestion pipeline (main services) does not require a GPU. AI services (embeddings, NER, reranking, RAG) do require GPU for execution.
-
-**What LLM providers are supported for RAG?**
-
-The RAG system uses LiteLLM and supports OpenAI, Anthropic, Ollama (local), VLLM (local) and any LiteLLM-compatible provider. Configuration is set via environment variables. The current prototype runs on a locally hosted VLLM, using the Qwen3 family of LLMs.
-
-**How does deduplication work?**
-
-Files are hashed during ingestion using SHA3-256. Blobs with identical hashes are stored once. Downstream processing operates on unique blobs rather than individual file copies.
-
-**Where can I find architecture diagrams?**
-
-See [`main_services/docs/Readme.md`](main_services/docs/Readme.md) for high-level process, data flow, and data representation diagrams.
-
-**Where is everything else documented?**
-
-[`docs/`](docs/Readme.md). How the system is shaped and why (`architecture/`), how to run it
-(`operations/`), how to change it (`development/`), the product manual (`user-manual/`), and
-what the product does stated once (`technical-specification/`). Each code directory also has
-documentation for its implementation.
+Hoover4 uses the [GNU Affero General Public License v3.0](LICENSE).

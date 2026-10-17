@@ -14,9 +14,11 @@ The Rust server half of the Dioxus application: HTTP API, authentication, datast
 `target/` is this crate's build output, tens of gigabytes, and the reason every search here
 must be scoped.
 
-Two invariants worth knowing before touching anything here: one route mints a session and
-every other endpoint requires one, and every full-text match argument goes through the shared
-builder rather than being assembled at a call site.
+Every protected request requires an established identity.
+[Session middleware](src/auth/session_middleware.rs) resolves the forwarded identity or an existing session cookie.
+Website routes do not create sessions.
+[The route policy](src/auth/route_policy.rs) defines the request requirements.
+Every full-text match argument uses the [shared builder](src/db_utils/manticore_match.rs).
 
 ## Workflow starts
 

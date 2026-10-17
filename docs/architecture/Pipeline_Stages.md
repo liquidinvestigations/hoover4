@@ -10,8 +10,8 @@ The code is `main_services/processing/tasks/`, one directory per stage, each wit
 ## Contents
 
 - [The chain](#the-chain)
-- [Why indexing is P6](#why-indexing-is-p6)
-- [What runs concurrently, and why it can](#what-runs-concurrently-and-why-it-can)
+- [Preserve stored stage numbers.](#preserve-stored-stage-numbers)
+- [Entity extraction and embedding run concurrently.](#entity-extraction-and-embedding-run-concurrently)
 - [Text pages: the writer contract](#text-pages-the-writer-contract)
 - [The extractor key is a label and a storage key at once](#the-extractor-key-is-a-label-and-a-storage-key-at-once)
 - [Dates come from the document, never from ingestion](#dates-come-from-the-document-never-from-ingestion)
@@ -34,7 +34,7 @@ Two directories in the same place are **not** stages: `tasks/P_admin/` holds adm
 workflows that run on demand or as a self-scheduling singleton, and `tasks/P_agent/` holds
 the durable research turn.
 
-## Why indexing is P6
+## Preserve stored stage numbers.
 
 Indexing is `P6`, not `P5`. The embedding stage owns the number that runs before it, and
 there is no `P4b` or `P4.5`. **The stage numbers are a stored contract.** `STAGE_INDEX` and
@@ -42,7 +42,7 @@ its siblings are values written into `processing_eta_samples` *and* constants in
 `website/common/src/processing_types.rs`. Renumbering a stage on one side leaves the admin
 processing page silently short a bar, with no error anywhere.
 
-## What runs concurrently, and why it can
+## Entity extraction and embedding run concurrently.
 
 `ExecuteSinglePlan` runs entity extraction, pattern scanning and chunk-and-embed as three
 branches of one barrier. They can share a barrier because they read the same rows and write
@@ -71,9 +71,9 @@ most one entity to a segment boundary, which is the accepted cost of segmenting 
 call for the same variant deletes the first call's pages. Every writer goes through it; none
 of them may call it twice for one variant.
 
-The table is a replacing engine, so a re-parse leaves two rows for a segment until a merge
-collapses them. Readers that must not see both (the chunker in particular) read with
-`FINAL`.
+The table uses a replacing engine, so older versions can remain until a merge.
+[The chunk reader](../../main_services/processing/tasks/P5_chunk_embed/activities.py) groups by dataset, hash, extractor, and page.
+It selects `argMax(text, version)` for each group before chunking.
 
 ## The extractor key is a label and a storage key at once
 
@@ -148,3 +148,28 @@ current failures, disabled stages, missing plans and unsupported task names.
 
 Removing an OCR source also removes its regex hits, red flag evidence, scored passages, and scan markers.
 The purge keeps other sources and other datasets.
+
+## The processing branches join before indexing.
+
+P2 runs the child stages. Recursive parsing creates additional plans for extracted members.
+
+```mermaid
+flowchart LR
+    accTitle: Processing stages and indexing barrier
+    accDescr: P2 drives parsing and parallel entity, pattern and embedding work. Their barrier precedes indexing.
+    P0[P0 scan disk] --> P1[P1 compute plans]
+    P1 --> P2[P2 execute plan]
+    P2 --> P3[P3 parse files]
+    P3 --> N[P4 model entities]
+    P3 --> R[P4 patterns and signals]
+    P3 --> V[P5 chunks and vectors]
+    N --> B[Required branches settle]
+    R --> B
+    V --> B
+    B --> P6[P6 index data]
+    P3 -->|Container members| P1
+```
+
+[P2 workflows](../../main_services/processing/tasks/P2_execute_plan/workflows.py) own execution and the barrier.
+Disabled stages return without producing their capability data.
+Document errors remain recorded when a plan finishes, and cancellation propagates through its workflows.
