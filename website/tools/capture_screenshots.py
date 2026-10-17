@@ -127,6 +127,7 @@ return {ok: true};
 # these exact -- `tab.set_window_size` sets the OUTER window and does not establish the
 # image size; a 1280x900 request measured 1280x813 through that path.
 RESOLUTIONS: dict[str, tuple[int, int]] = {
+    "docs": (1400, 900),
     "720p": (1280, 720),
     "1080p": (1920, 1080),
 }

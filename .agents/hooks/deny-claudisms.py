@@ -5,15 +5,16 @@
 and plain language (ISO 24495-1). Two of its rules are mechanical, so a hook can hold them.
 The rest are judgement and belong to the reader.
 
-Only added text is inspected. Deleting a banned phrase, or moving a file that contains one,
-is allowed. `Edit` compares `new_string` against `old_string`. Codex `apply_patch` input is
-split by target file and only its lines that start with `+` are inspected.
+Markdown edits compare phrase counts before and after the change.
+Edit strings and patch context preserve matches across unchanged lines.
+Other source edits inspect added lines.
+Deleting prohibited wording remains allowed.
 
 Narrow by construction:
 
-  * it fires on `.md`, `.rs`, `.py`, `.sh`, `.sql`, `.toml` and `.yaml` only;
-  * it exempts the documents that define the rule, which have to quote every word they ban;
-  * it exempts the vendored trees and `plans/`;
+  * it reads Markdown, Markdown templates, and the source extensions listed below;
+  * Markdown rule examples use explicit regions, while source rule definitions remain exempt;
+  * it uses explicit ownership records for Markdown and preserves local plans;
   * **it does not exempt the migration directories**, because it fires on an edit being made
     now, and a new migration is written in the register like anything else. The two reporting
     checkers do exempt them, because they scan files that are already applied and cannot be
@@ -27,25 +28,23 @@ deliberate: a hook that imports a checker fails closed when the checker moves.
 Reads the hook payload on stdin, writes a JSON permission decision on stdout.
 """
 import json
+from collections import Counter
 import os
+from pathlib import Path
 import re
 import sys
 
 EM_DASH = "—"
 
-EXTENSIONS = (".md", ".rs", ".py", ".sh", ".sql", ".toml", ".yaml", ".yml")
+EXTENSIONS = (".md", ".j2", ".rs", ".py", ".sh", ".sql", ".toml", ".yaml", ".yml")
 
-# Paths whose text may hold a banned word. The first six define the rule and have to quote
-# it. The rest are vendored or generated, or are gitignored scratch. The migration
-# directories are not here: a new migration is written in the register like anything else.
+# Source files that define phrase rules remain exempt from raw source matching.
+# Markdown rule documents use explicit example regions.
 EXEMPT = (
-    "AGENTS.md",
-    # A byte-identical mirror of AGENTS.md, written for another harness.
-    "GEMINI.md",
     ".agents/check-prose-style.py",
     ".agents/hooks/deny-claudisms.py",
-    ".agents/skills/writing-project-docs/SKILL.md",
-    "docs/development/Documentation_Standards.md",
+    "scripts/docs/check.py",
+    "scripts/docs/tests/test_docs.py",
     # It probes this hook, so it has to hold a phrase the hook rejects.
     ".agents/verify-wiring.sh",
     # `nice` is banned in prose, but this file holds it as the Unix command, in the
@@ -80,6 +79,11 @@ PHRASES = [
     r"paper cuts?\b",
     r"chesterton's fence",
     r"worth stating plainly",
+    r"\bworth (?:knowing|remembering|reading|mentioning|highlighting|keeping|calling out)\b",
+    r"\b(?:needless to say|it goes without saying|for the avoidance of doubt)\b",
+    r"\b(?:without further ado|rest assured|please note|as you can see)\b",
+    r"\b(?:under the hood|behind the scenes|at a glance|the bottom line)\b",
+    r"\b(?:key takeaways?|why (?:this|it) matters|things (?:to know|worth))\b",
     r"(?:it is|it's|its)? ?worth noting",
     r"to be clear\b",
     r"the honest (?:answer|take)",
@@ -103,7 +107,7 @@ PHRASES = [
     r"\bunfortunately\b", r"\bfortunately\b", r"\bluckily\b", r"\bthankfully\b",
     r"\bsadly\b", r"\bhappily\b", r"\btragically\b", r"\bhopefully\b",
     r"\bpainful\b", r"\bpainless\b", r"\bbeautiful\b", r"\belegant\b",
-    r"\blovely\b", r"\bawesome\b", r"\bnice\b", r"\bneat\b", r"\bslick\b",
+    r"\blovely\b", r"\bawesome\b", r"\bnice\b(?!\s+Actimize\b)", r"\bneat\b", r"\bslick\b",
     r"\bannoying\b", r"\bfrustrating\b", r"\btedious\b", r"\bbrutal\b",
     r"\bsavage\b", r"\bafraid\b", r"\bworried\b", r"\bscary\b", r"\bterrifying\b",
     r"\bseamless\b", r"\bpowerful\b", r"best practices?\b",
@@ -153,31 +157,31 @@ COMPILED = [re.compile(p, re.I) for p in PHRASES]
 # particle, which closes a sentence on its own, is banned.
 FULL_STOP = re.compile(r"(?:^|[.,;:]\s*)full stop\s*[.!]", re.I)
 
-MESSAGE = """Blocked: this text adds {what}.
+MESSAGE = """The edit adds {what}.
 
 {detail}
 
-AGENTS.md, "How to write", sets the register for every Readme, docstring, comment, plan and
-report here: Simplified Technical English (ASD-STE100) and plain language (ISO 24495-1).
-
-For a banned phrase, say what depends on what and what breaks without it. "The guard is
-load-bearing" says nothing; "without the guard a re-parse writes two rows for one segment"
-says the same thing and is checkable.
-
-For an em dash, read the sentence and pick the punctuation it needs:
-  a comma, when the clause is an aside inside the sentence;
-  a full stop and a new sentence, when the second half is an independent claim;
-  brackets, when the aside is genuinely parenthetical;
-  a colon, when the second half is a list or a literal.
-
-`.agents/check-prose-style.py` reports the same over the whole tree."""
+Use a direct statement of behavior or an instruction.
+See AGENTS.md and scripts/docs/README.md for the writing rules and checks."""
 
 
 def is_exempt(path):
     if not path:
         return True
     norm = "/" + path.replace("\\", "/").lstrip("/")
+    markdown = norm.lower().endswith((".md", ".md.j2"))
+    if markdown:
+        root = Path(__file__).resolve().parents[2]
+        try:
+            owners = json.loads((root / "scripts/docs/ownership.json").read_text())
+            relative = Path(path).relative_to(root).as_posix() if Path(path).is_absolute() else Path(path).as_posix()
+            if relative in owners:
+                return True
+        except (OSError, ValueError):
+            pass
     for e in EXEMPT:
+        if markdown and e.startswith("/") and e != "/plans/":
+            continue
         if e.startswith("/"):
             if e in norm:
                 return True
@@ -257,6 +261,7 @@ def check(text):
     """Return (what, detail), or None."""
     if not text:
         return None
+    text = re.sub(r"\s+", " ", text)
     if EM_DASH in text:
         for line in text.split("\n"):
             if EM_DASH in line:
@@ -274,6 +279,77 @@ def check(text):
     return None
 
 
+def markdown_fragment(text, examples=False):
+    """Remove quoted examples and code from an added Markdown span."""
+    if examples:
+        text = re.sub(r"<!-- prose-examples:start -->.*?<!-- prose-examples:end -->", "", text, flags=re.S)
+    text = re.sub(r"(?m)^>[^\n]*", "", text)
+    text = re.sub(r"(?ms)^\s*(`{3,}|~{3,})[^\n]*\n.*?^\s*\1\s*$", "", text)
+    text = re.sub(r"(`+).*?\1", " \x00 ", text, flags=re.S)
+    text = re.sub(r"\]\([^)]*\)", "]", text)
+    return re.sub(r"(?<!\w)[*_]+|[*_]+(?!\w)", "", text)
+
+
+def markdown_pairs(tool_name, tool_input):
+    """Retain edit context so a phrase can span an unchanged line."""
+    path = tool_input.get("file_path", "")
+    if tool_name == "Write":
+        return [(path, "", tool_input.get("content", ""))]
+    if tool_name in ("Edit", "MultiEdit"):
+        edits = tool_input.get("edits", []) if tool_name == "MultiEdit" else [tool_input]
+        pairs = []
+        try:
+            with open(path, encoding="utf-8") as stream:
+                current = stream.read()
+        except OSError:
+            current = None
+        for edit in edits:
+            old, new = edit.get("old_string", ""), edit.get("new_string", "")
+            if current is not None and old and current.count(old) == 1:
+                old, new = current, current.replace(old, new, 1)
+                current = new
+            pairs.append((path, old, new))
+        return pairs
+    pairs, path, old, new = [], None, [], []
+    for line in tool_input.get("command", "").splitlines():
+        header = re.match(r"^\*\*\* (?:Add|Update) File: (.+)$", line)
+        if header or line.startswith("*** Delete File:") or line == "*** End Patch":
+            if path is not None:
+                pairs.append((path, "\n".join(old), "\n".join(new)))
+            path = header.group(1) if header else None
+            old, new = [], []
+        elif line.startswith("*** Move to:"):
+            path = line.removeprefix("*** Move to:").strip()
+        elif line.startswith("@@"):
+            old.append("")
+            new.append("")
+        elif path is not None and line.startswith(" "):
+            old.append(line[1:])
+            new.append(line[1:])
+        elif path is not None and line.startswith("-"):
+            old.append(line[1:])
+        elif path is not None and line.startswith("+"):
+            new.append(line[1:])
+    if path is not None:
+        pairs.append((path, "\n".join(old), "\n".join(new)))
+    return pairs
+
+
+def markdown_change(old, new, path):
+    """Report a newly introduced phrase without blocking its removal."""
+    examples = os.path.basename(path) in ("AGENTS.md", "GEMINI.md", "Documentation_Standards.md")
+    def matches(text):
+        text = re.sub(r"\s+", " ", markdown_fragment(text, examples))
+        terms = [match.group().lower() for rx in COMPILED for match in rx.finditer(text)]
+        terms.extend(EM_DASH for _ in range(text.count(EM_DASH)))
+        terms.extend(match.group().lower() for match in FULL_STOP.finditer(text))
+        return Counter(terms)
+    added = matches(new) - matches(old)
+    if added:
+        return (f'prohibited wording "{next(iter(added))}"', "Remove the added wording or state the technical fact directly.")
+    return None
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
@@ -283,8 +359,20 @@ def main():
     if tool_name not in ("Edit", "Write", "MultiEdit", "apply_patch"):
         return 0
     tool_input = payload.get("tool_input", {}) or {}
+    for path, old, new in markdown_pairs(tool_name, tool_input):
+        if not path.lower().endswith((".md", ".md.j2")) or is_exempt(path):
+            continue
+        found = markdown_change(old, new, path)
+        if found:
+            what, detail = found
+            print(json.dumps({"hookSpecificOutput": {
+                "hookEventName": "PreToolUse", "permissionDecision": "deny",
+                "permissionDecisionReason": MESSAGE.format(what=what, detail=detail)}}))
+            return 0
     for path, text in added_changes(tool_name, tool_input):
-        if os.path.splitext(path)[1] not in EXTENSIONS or is_exempt(path):
+        if os.path.splitext(path)[1].lower() not in EXTENSIONS or is_exempt(path):
+            continue
+        if path.lower().endswith((".md", ".j2")):
             continue
         found = check(text)
         if found:

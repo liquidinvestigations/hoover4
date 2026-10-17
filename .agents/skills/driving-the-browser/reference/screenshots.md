@@ -1,57 +1,80 @@
-# The page list, and reading a run
+# Capture and review screenshots.
 
-## Format
+Use [the capture script](../../../../website/take-screenshots.sh) from the repository root.
+It copies the browser tools into the existing browser container and preserves each run in a new output directory.
+The container does not need a repository mount.
 
-One file per screenshot in `website/browser-tests/`. The file name is the slug,
-`{number}-{section}.ini`. Capture order is slug-number order. A new case takes the next
-unused number in its hundred-block. Other blocks keep their numbers.
+## Select the capture size.
 
-Per section: the path on the site, an optional viewport, an optional settle time, a
-full-page flag, and a list of actions, one per line, each a verb and its argument. The verbs
-cover navigation, waiting for text or a selector, clicking by text or selector (optionally
-scoped to a container), typing into a selector, pressing enter, hovering, scrolling,
-sleeping, and evaluating script.
+Use `--resolutions docs` for published screenshots at exactly 1400 by 900 pixels.
+Use `--resolutions docs,720p` when a second layout check is needed.
+The second profile captures 1280 by 720 pixels and remains local verification evidence.
+The default test profiles remain unchanged for existing browser checks.
 
-The long encoded segments in the URLs are route parameters written out rather than driven
-through the UI, for the reason in the skill: a URL reaches the page in one step.
+A scenario's `viewport` setting overrides the selected profile.
+Remove that override from a documentation scenario or create a separate scenario when the override tests required layout behavior.
+Use viewport PNGs for documentation.
+Keep `full_page` images and failure captures in the run evidence.
 
-## Adding a page
+## Prepare the scenario and fixtures.
 
-1. Add a numbered file in the hundred-block that matches what the case exercises.
-2. Give it the smallest action list that reaches the state you want to see. Every action is a
-   failure mode.
-3. Prefer waiting on text or a selector over sleeping. A sleep that is long enough on a warm
-   stack is short enough to flake on a cold one.
-4. Run with the `--only` filter on your new section until it passes, then run the whole list.
+Scenario files live in [the browser test directory](../../../../website/browser-tests/Readme.md).
+Their numbered filenames determine execution order.
+Add scenarios for new controls or states that the manual explains.
+Reuse existing navigation, selector waits, and input actions.
+Prefer a selector or state wait to a fixed delay.
 
-## Reading a run
+Verify the configured target, browser container, credentials, and required datasets before starting.
+Read private target details from the local infrastructure inventory.
+Pass credentials through the environment or `--login-env`.
+A target supplied by a login file requires `--remote-target`.
+Do not put credential values in command arguments or tracked documentation.
 
-The run's `report.md` names each page with its worst severity and the reason. Two
-severities change the exit status; the rest are recorded but do not:
+Use `--only` while developing a case, or `--names` for an exact list of scenarios.
+Use `--shards 1` for a sequential capture run.
+The separate `--dispatch` cases submit server operations.
+Select them only when that operation is within the accepted task.
 
-| verdict | exit effect | means |
-|---|---|---|
-| `application_error` | exit 1 | an error marker on the page, a non-200 response, or an undeclared error bar: read the page, because the backend is probably the cause |
-| `incomplete_execution` | exit 2 (unless an application error also occurred) | a failed login, a stopped browser, or a capture that could not be written |
-| `diagnostic_warning` | exit 0 | a console error or warning, a failed subresource request, or a request to an outside origin: the message is in the snapshot beside the image, and it is worth reading even on a clean exit |
-| `expected_outcome`, `behavioral_warning`, `trace` | exit 0 | a declared negative state, or a category with no producer in this runner yet |
+```sh
+website/take-screenshots.sh --resolutions docs --shards 1 --only search
+```
 
-A page that fails by naming a dataset that does not exist is a **fixture** problem, not a code
-problem. The list assumes the corpus the end-to-end verification ingests.
+This example requires target and credential variables to be supplied through the private environment.
+The script requires the existing browser service and its configured enablement.
+It does not start the stack or ingest missing fixtures.
 
-The whitelist file beside the harness holds run-wide console exceptions. A whitelisted match
-is still a `diagnostic_warning`, only labelled with the rule that excused it; adding an entry
-does not hide it from the report, only from ever changing the exit status.
+## Review the report and images.
 
-An action that raises leaves `<resolution>/NN-name.FAILED.png`,
-`<resolution>/NN-name.FAILED.snapshot.txt` (the rendered DOM at that moment), and
-`diagnostics/<resolution>__NN-name.exception.txt` (the full traceback) beside the scenario's
-other files, whether or not the run's overall exit status changed.
+Each run contains `report.md`, `report.html`, `manifest.json`, PNGs, snapshots, and diagnostics.
+The manifest records the source revision, requested dimensions, actual dimensions, and observations.
+The `latest` symlink points to the most recent run without deleting earlier runs.
 
-## Cropping
+| Result | Required action |
+|---|---|
+| `application_error` returns 1. | Inspect the failure and correct the cause before publication. |
+| `incomplete_execution` returns 2 unless an application error exists. | Supply the missing fixture or correct the interrupted capture. |
+| `diagnostic_warning` can return 0. | Read the warning and record its disposition. |
+| Other reported observations can return 0. | Verify that the visible state matches the intended example. |
 
-A full page screenshot is rarely the evidence; the region under discussion is. Crop before
-attaching an image to a report, so the reader is looking at the same thing you are.
+Inspect every image selected for publication.
+Verify populated content, completed loading, labels, selected controls, and readable text.
+Verify that no credentials, private addresses, or private document content appear.
+An exit status alone does not establish these facts.
 
-Any local image tool does this. Store the cropped image **beside the document that
-discusses it**, in that document's own folder. Do not leave it in a temporary directory. A finding whose evidence has been deleted is a finding nobody can check.
+A failed action preserves a `.FAILED.png`, snapshot, and exception report.
+Do not publish those files as successful examples.
+Preserve raw reports locally because they can contain private target details and captured model output.
+
+## Publish selected viewport images.
+
+Use [the publication helper](../../../../scripts/docs/README.md#publish-reviewed-screenshots) to copy selected captures and record provenance.
+The helper uses a local mapping from capture files to documentation images and scenario paths.
+Preview that mapping before using `--write`.
+The helper does not crop, resize, or alter the captured image.
+
+Use the same presentation for full-screen screenshots in manuals and other documentation.
+Display each image at 560 pixels wide and align it right beside the related task.
+Link the displayed image to its full-size file and provide alternative text.
+Clear the float before the next section.
+Verify the rendered page at laptop and narrow widths.
+Keep diagnostic crops separate from the published full-screen sequence.

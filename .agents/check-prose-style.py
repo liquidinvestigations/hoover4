@@ -20,9 +20,10 @@ deliberately narrow lens: `#` line comments, `//` line comments (`///` and `//!`
 `--` line comments in SQL, and Python docstrings. A Rust `/* */` block and a shell heredoc
 are not inspected, so a banned phrase inside one is missed.
 
-Four documents have to quote the banned words in order to ban them. They are exempt from the
-phrase check and are still checked for em dashes. RULE_DOCS holds them, and the same list
-appears in `.agents/hooks/deny-claudisms.py`.
+Markdown rule examples use explicit HTML comment regions.
+Other prose in those documents remains checked.
+RULE_DOCS preserves exemptions for source files that define the phrase patterns.
+Use scripts/docs/run.sh for parsed links, headings, images, and complete Markdown checks.
 
 Usage:
     .agents/check-prose-style.py [path ...]      # default: whole repository
@@ -38,6 +39,7 @@ rewriting what the product says is a change a person has to read in place.
 Exit status is 1 when any error is found, so it can gate a commit.
 """
 
+import json
 import os
 import re
 import subprocess
@@ -121,6 +123,11 @@ _PHRASES = [
     r"chesterton's fence",
     # emphasis particles and preambles
     r"worth stating plainly",
+    r"\bworth (?:knowing|remembering|reading|mentioning|highlighting|keeping|calling out)\b",
+    r"\b(?:needless to say|it goes without saying|for the avoidance of doubt)\b",
+    r"\b(?:without further ado|rest assured|please note|as you can see)\b",
+    r"\b(?:under the hood|behind the scenes|at a glance|the bottom line)\b",
+    r"\b(?:key takeaways?|why (?:this|it) matters|things (?:to know|worth))\b",
     r"(?:it is|it's|its)? ?worth noting",
     r"to be clear\b",
     r"the honest (?:answer|take)",
@@ -145,7 +152,7 @@ _PHRASES = [
     r"\bunfortunately\b", r"\bfortunately\b", r"\bluckily\b", r"\bthankfully\b",
     r"\bsadly\b", r"\bhappily\b", r"\btragically\b", r"\bhopefully\b",
     r"\bpainful\b", r"\bpainless\b", r"\bbeautiful\b", r"\belegant\b",
-    r"\blovely\b", r"\bawesome\b", r"\bnice\b", r"\bneat\b", r"\bslick\b",
+    r"\blovely\b", r"\bawesome\b", r"\bnice\b(?!\s+Actimize\b)", r"\bneat\b", r"\bslick\b",
     r"\bannoying\b", r"\bfrustrating\b", r"\btedious\b", r"\bbrutal\b",
     r"\bsavage\b", r"\bafraid\b", r"\bworried\b", r"\bscary\b", r"\bterrifying\b",
     r"\bseamless\b", r"\bpowerful\b", r"best practices?\b",
@@ -471,12 +478,27 @@ def check_markdown(path, rel, exempt, want_warnings):
     except OSError:
         return []
     out, prose = [], []
+    # Rule examples use explicit regions. Other text in rule documents is checked.
+    examples, front = False, bool(lines and lines[0].strip() == "---")
+    for i, line in enumerate(lines):
+        if front:
+            lines[i] = ""
+            if i and line.strip() in ("---", "..."):
+                front = False
+            continue
+        if rel in RULE_DOCS and "<!-- prose-examples:start -->" in line:
+            examples = True
+        if examples or line.lstrip().startswith(">"):
+            lines[i] = ""
+        if "<!-- prose-examples:end -->" in line:
+            examples = False
     for lineno, text, is_row in strip_markdown_noise(lines):
-        out.extend(phrase_errors(rel, lineno, text, exempt))
+        text = re.sub(r"(?<!\w)[*_]+|[*_]+(?!\w)", "", text)
+        prose.append((lineno, text))
+    for lineno, text in paragraphs_from(prose):
+        out.extend(phrase_errors(rel, lineno, text, False))
         if want_warnings:
             out.extend(soft_phrase_warnings(rel, lineno, text))
-        if not is_row:
-            prose.append((lineno, text))
     if want_warnings:
         out.extend(structural_warnings(rel, paragraphs_from(prose)))
     return out
@@ -700,7 +722,7 @@ def copy_findings(path, rel, ext, lines):
 
 
 def check_source(path, rel, exempt, want_warnings, want_copy=True):
-    ext = os.path.splitext(path)[1]
+    ext = os.path.splitext(path)[1].lower()
     items = list(comment_lines(path, ext))
     out = []
     for lineno, text in items:
@@ -740,12 +762,26 @@ def walk(roots, tracked):
         if os.path.isfile(root):
             yield root
             continue
+        if tracked is not None:
+            repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            try:
+                with open(os.path.join(repo, "scripts/docs/ownership.json"), encoding="utf-8") as stream:
+                    ownership = json.load(stream)
+            except (OSError, ValueError):
+                ownership = {}
+            for path in sorted(tracked):
+                if os.path.splitext(path)[1].lower() != ".md" or os.path.commonpath([root, path]) != root:
+                    continue
+                if os.path.relpath(path, repo) not in ownership:
+                    yield path
         for dirpath, dirnames, filenames in os.walk(root):
             if any(p in dirpath + "/" for p in EXCLUDE):
                 dirnames[:] = []
                 continue
             for fn in sorted(filenames):
-                ext = os.path.splitext(fn)[1]
+                ext = os.path.splitext(fn)[1].lower()
+                if tracked is not None and ext == ".md":
+                    continue
                 if ext not in (".md", ".j2") and ext not in COMMENT_MARK:
                     continue
                 if fn.endswith(EXCLUDE_SUFFIX):
@@ -780,7 +816,7 @@ def main():
         rel = os.path.relpath(path, repo)
         exempt = rel in RULE_DOCS
         scanned += 1
-        if os.path.splitext(path)[1] in (".md", ".j2"):
+        if os.path.splitext(path)[1].lower() in (".md", ".j2"):
             findings.extend(check_markdown(path, rel, exempt, want_warnings))
         else:
             findings.extend(check_source(path, rel, exempt, want_warnings, want_copy))

@@ -22,6 +22,10 @@ An abstraction with one implementation, a private test helper, or repeated condi
 Do not turn a review into a new architecture investigation without evidence that the requested outcome requires it.
 
 Read captured checks and verify that they cover the changed code and relevant environment.
+For Markdown, run the [documentation checks](../../../scripts/docs/README.md) and read every changed heading.
+Verify renamed anchors, linked files, diagram relationships, screenshot provenance, and user or administrator task placement.
+Remove evaluative filler and metaphors even when no phrase rule matches them.
+Review generated or quoted text according to its source ownership.
 Rerun when edits, failures, or uncertainty invalidate the evidence. A new review turn alone does not invalidate it.
 
 Give the smallest sufficient correction. The organizer chooses its execution structure and role.

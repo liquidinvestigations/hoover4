@@ -30,3 +30,7 @@ Prefer an existing harness interaction to duplicating those details.
 For external exploration, navigate and read the accessibility snapshot before acting.
 If a tool wrapper drops result text, inspect the underlying response before declaring the page empty.
 Read [screenshot procedures](reference/screenshots.md) when adding or diagnosing a case.
+Use `--resolutions docs` for published documentation screenshots at 1400 by 900 pixels.
+Use `--resolutions docs,720p` only when additional layout evidence is needed.
+Publish the `docs` captures and preserve smaller diagnostic captures locally.
+Read the report, inspect each selected image, and record provenance before publication.

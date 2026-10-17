@@ -36,6 +36,11 @@ Record unrelated findings without adding implementation passes.
 
 Keep status sufficient to resume. Record completed work, remaining work, blockers, tested revision, and evidence paths.
 A handoff adds the next action and current Git state. It need not create another report when the plan already contains those facts.
+For staged work, record local commit checkpoints with their acceptance checks and evidence paths.
+Keep a short todo list with the current stage, remaining stages, and completed commit hashes.
+Update that list after each checkpoint and material interruption.
+Preserve an explicit single-session or no-subagent requirement in the handoff.
+For documentation work, link the page catalog, feature coverage, heading review, diagram mapping, and screenshot selection evidence when available.
 Finish when the accepted outcome is delivered and its checks pass. Report unresolved requirements accurately.
 
 Working plans are local scratch. Tracked documentation states current behavior without citing scratch documents.

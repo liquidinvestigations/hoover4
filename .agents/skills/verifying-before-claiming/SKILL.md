@@ -22,6 +22,9 @@ The retained `../writing-tests/scripts/gate-map.sh` routes paths to candidate ch
 
 | Changed behavior | Available check |
 |---|---|
+| Markdown changes. | Run `scripts/docs/run.sh` from the repository root and review its warnings. |
+| Documentation tooling changes. | Run `scripts/docs/run.sh test` from the repository root. |
+| Mermaid blocks change. | Run the renderer described in the [documentation tools](../../../scripts/docs/README.md). |
 | Rust types and test targets change. | Run `scripts/cargo-check.sh`. |
 | Dioxus components change. | Run `scripts/dx-check.sh` and exercise the affected controls. |
 | Worker Python changes. | Run `scripts/pytest-unit.sh [path]`. |
@@ -40,6 +43,9 @@ Do not restart a container that owns a running check.
 
 Verify fixture availability before interpreting integration or screenshot failures.
 For visible changes, use the browser skill and preserve its report.
+For documentation screenshots, verify dimensions, image content, provenance, and the rendered Markdown layout.
+For a full documentation review, require coverage manifests and inspect all headings before claiming completion.
+Distinguish local Mermaid rendering from verified GitHub rendering.
 For model-driven behavior, exercise the actual prompt and tools before claiming the model completes the task.
 
 Keep complete output for long checks and record the command, tested revision, result, and limitations.

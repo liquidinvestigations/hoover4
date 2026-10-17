@@ -9,6 +9,21 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 Read the documentation beside the affected code.
 Update the contract made false by the change and keep unrelated prose unchanged.
 Use the shared writing rules in `AGENTS.md`.
+Read [the documentation checks](../../../scripts/docs/README.md) before changing Markdown.
+
+Link file references that readers need to open.
+Review every affected heading for a direct subject or instruction, including headings that pass the phrase check.
+Remove claims about importance, reader reassurance, and repeated conclusions that add no technical fact.
+Update incoming section links when headings change.
+
+Use Mermaid for relationships that a diagram explains better than prose alone.
+Verify diagram content against current code before rendering it.
+Use the browser skill for screenshots and retain their provenance.
+Keep user procedures separate from administrator procedures.
+
+Run `scripts/docs/run.sh` on affected Markdown, then inspect the complete report before completing a documentation review.
+Inspect warnings in context and preserve exact quotations and upstream text according to their ownership.
+The checker does not determine factual accuracy or authorship.
 
 Describe current behavior, inputs, outputs, failure behavior, and non-obvious constraints.
 Do not add a comment that only restates the next line of code.

@@ -58,6 +58,8 @@ things keep their exact wording, because something else depends on the bytes. Co
 and the format strings that build a log line. Text quoted from another system, such as a tool's
 own output or an upstream error. A value a test compares against, until the test moves with it.
 
+<!-- prose-examples:start -->
+
 - **State the claim. Do not build to a turn of phrase.** If a sentence is arranged so its last
   few words land, rewrite it. Punchy is the failure, not the goal.
 - **No metaphor where a plain word exists.** Never load-bearing, seam, blast radius, surface
@@ -106,6 +108,23 @@ own output or an upstream error. A value a test compares against, until the test
   questions before writing them out.
 - **This instruction decays.** Re-read this section before writing prose after a compaction.
 
+<!-- prose-examples:end -->
+
+Use headings that state a subject, behavior, or instruction.
+Remove claims about the importance of information and phrases that add emphasis without a technical fact.
+The phrase checks include these additional examples.
+
+<!-- prose-examples:start -->
+
+Never "worth knowing", "worth remembering", "worth reading", "worth mentioning", "worth highlighting", "worth keeping", or "worth calling out".
+Never "needless to say", "it goes without saying", "for the avoidance of doubt", "without further ado", or "rest assured".
+Never "please note", "as you can see", "under the hood", "behind the scenes", "at a glance", or "the bottom line".
+Never "key takeaways", "why this matters", "why it matters", or "things to know".
+
+<!-- prose-examples:end -->
+
+<!-- prose-examples:start -->
+
 Some vocabulary stays legal because it is the accurate technical term here. `harness` for the
 screenshot harness and the Claude Code harness. `invariant`, `contract`, `idempotent`,
 `barrier`, `heartbeat`, `lease`, `shard`, `fanout`, `denormalisation`, `sidecar` and the rest
@@ -114,6 +133,12 @@ really is one. `latency ceiling` for a measured limit that adding workers does n
 `fail loudly` and `fail silently` describing observable tool behaviour.
 `rather than` when it genuinely compares two options. `not` in a plain correction of fact, for
 example "matches by column name, not position".
+
+<!-- prose-examples:end -->
+
+[Documentation checks](scripts/docs/README.md) inspect Markdown structure, links, headings, prose, and screenshot records.
+Review all headings and context-dependent warnings before completing a documentation change.
+The checks report writing defects without inferring authorship.
 
 `.agents/check-prose-style.py` reports the phrases and the em dashes, and a hook refuses an
 edit that adds one.
