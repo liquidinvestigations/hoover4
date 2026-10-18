@@ -851,8 +851,9 @@ def convert_explore_report(req: TurnRequest) -> str:
     function (`conversion.py`). The checked arguments are stored as the conversion row of
     the turn before the fact is submitted, so a retry reuses them and sends no request. A
     transport failure and a malformed reply are raised, so Temporal sends the request once
-    more. A refused request (4xx) cannot change in a second request and is raised as not
-    retryable. After the last attempt the workflow records `explore_failed`.
+    more. The second attempt turns off the reasoning phase (`conversion.request_body`). A
+    refused request (4xx) cannot change in a second request and is raised as not retryable.
+    After the last attempt the workflow records `explore_failed`.
     """
     from temporalio.exceptions import ApplicationError
 
@@ -889,13 +890,22 @@ def convert_explore_report(req: TurnRequest) -> str:
         if intent is None:
             return "skipped"
         model = chat_model()
-        body = conversion.request_body(model, _task_text(intent), version.name, version.content,
-                                       version.citations)
-        started = time.monotonic()
-        try:
-            response = summarize.post_or_raise(
+        retry = activity.in_activity() and activity.info().attempt > 1
+
+        def send(reasoning: bool):
+            body = conversion.request_body(model, _task_text(intent), version.name,
+                                           version.content, version.citations, reasoning)
+            return summarize.post_or_raise(
                 endpoint_for(model), body,
                 timeout=(CONVERT_CONNECT_SECONDS, TIMEOUTS.board_reason_request_seconds))
+
+        started = time.monotonic()
+        try:
+            response = send(reasoning=not retry)
+            if retry and 400 <= response.status_code < 500:
+                # A provider that does not accept the hint refuses the request, so the
+                # request goes again without the hint.
+                response = send(reasoning=True)
         except summarize.TransportFailure as exc:
             _record_llm_call(board.owner, board.board_id, model, {},
                              int((time.monotonic() - started) * 1000), False, str(exc), 0,

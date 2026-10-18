@@ -437,7 +437,10 @@ pinned report version and its verified citations, and offers only the `submit_bo
 function with a named tool choice ([P_board/conversion.py](../../main_services/processing/tasks/P_board/conversion.py)). The request holds no
 narration, earlier draft, tool row or reasoning. The function takes the fact with inline
 handles, its kind, at most 3 open questions and an optional slug candidate. A reply without
-a valid call fails the attempt, and Temporal sends the request once more. The activity
+a valid call fails the attempt, and Temporal sends the request once more. The second
+request turns off the reasoning phase of the model, because a reply that reaches the token
+limit usually ran out in its reasoning. A provider that refuses that hint gets the request
+without it. The first request keeps reasoning, because it gives the more accurate kind. The activity
 stores the checked call as a `submit_board_fact` tool row of the turn before it submits the
 fact, so a later attempt reuses the row and sends no request. The transcript shows the row as
 "Submitted by the board", and under the answer what the turn gave to the board. Each handle

@@ -4,7 +4,10 @@ An explore turn writes its result as a workspace report, as a chat turn does. Af
 turn, `convert_explore_report` (`activities.py`) sends one request to the agent model. The
 request holds the task, the text of the pinned report version and the verified citations of
 that version, and offers only the `submit_board_fact` function with a named tool choice. It
-holds no narration, no earlier draft, no tool row and no reasoning text.
+holds no narration, no earlier draft, no tool row and no reasoning text. The second attempt
+turns off the reasoning phase of the model. A reply that reached the token limit usually ran
+out in its reasoning, and the kind is more accurate with reasoning, so the first attempt
+keeps it.
 
 This module builds the request and checks the reply. The checks keep the field limits of the
 earlier explore tool: a fact of 1 to 4,000 characters, a known kind, at most 3 open
@@ -103,20 +106,24 @@ def _citation_lines(citations: list[dict]) -> str:
 
 
 def request_body(model: str, task: str, report_name: str, report_text: str,
-                 citations: list[dict]) -> dict:
-    """The conversion request for `model`."""
+                 citations: list[dict], reasoning: bool = True) -> dict:
+    """The conversion request for `model`. With `reasoning` false, the request carries the
+    hint that turns off the reasoning phase of the model (`summarize.NO_THINKING`)."""
+    from tasks.P_agent.summarize import NO_THINKING
+
     content = (
         f"Task:\n<task>\n{task}\n</task>\n\n"
         f"Report {report_name}:\n<report>\n{report_text}\n</report>\n\n"
         f"Verified citations of the report:\n{_citation_lines(citations)}"
     )
-    return {
+    body = {
         "model": model, "max_tokens": CONVERSION_MAX_TOKENS,
         "messages": [{"role": "system", "content": INSTRUCTIONS},
                      {"role": "user", "content": content}],
         "tools": [SUBMIT_FACT_SCHEMA],
         "tool_choice": {"type": "function", "function": {"name": m.SUBMIT_FACT_TOOL}},
     }
+    return body if reasoning else {**body, **NO_THINKING}
 
 
 def parse_reply(reply: dict) -> dict:

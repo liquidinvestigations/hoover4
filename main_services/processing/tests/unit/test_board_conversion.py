@@ -196,6 +196,26 @@ def test_a_malformed_conversion_reply_is_raised_for_the_second_attempt(board, tu
     assert not [i for i in board.read_inputs("b1") if i.request_id == "explore_end:intent-approval:1"]
 
 
+def test_the_second_attempt_turns_off_reasoning_and_drops_a_refused_hint(board, turn, monkeypatch):
+    turn["rows"] = [answer(report=REPORT)]
+    turn["versions"][("report.md", 2)] = store_mod.FileVersion(
+        OWNER, "s", "report.md", 2, content="Approved [D1].", citations=CITATIONS)
+    reply = call_reply({"fact": "Approved [D1].", "kind": "sourced", "open_questions": []})
+    sent = []
+
+    def post(endpoint, body, timeout=None):
+        sent.append(body)
+        status = 400 if "chat_template_kwargs" in body else 200
+        return SimpleNamespace(status_code=status, json=lambda: reply, text=json.dumps(reply))
+
+    monkeypatch.setattr(summarize, "post_or_raise", post)
+    monkeypatch.setattr(activities.activity, "in_activity", lambda: True)
+    monkeypatch.setattr(activities.activity, "info", lambda: SimpleNamespace(attempt=2))
+    assert activities.convert_explore_report(request()) == "fact"
+    assert sent[0]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert len(sent) == 2 and "chat_template_kwargs" not in sent[1]
+
+
 def test_a_failed_explore_is_not_sent_again(board):
     board.submit("b1", "explore_end:intent-approval:1", cmd.EXPLORE_END, "explore",
                  {"intent_id": "intent-approval", "attempt": 1, "end": m.EXPLORE_FAILED,
