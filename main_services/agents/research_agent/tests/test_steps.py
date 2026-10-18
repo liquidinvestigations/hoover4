@@ -563,6 +563,13 @@ async def test_a_name_outside_every_pack_names_search_agent_tools_when_the_run_h
     assert message == "No tool of this run is named 'no_such_tool'. Find tools with search_agent_tools."
 
 
+async def test_a_misspelled_name_gets_the_closest_names_of_the_run():
+    chat = pack_agent("chat", "all", [])
+    message = refusal_of(await steps.run_tool_call(chat, tool_request("write_write")))
+    assert message.startswith("No tool of this run is named 'write_write'. The closest names are ")
+    assert "workspace_write" in message and message.endswith("Find tools with search_agent_tools.")
+
+
 def test_the_refusal_text_of_an_unavailable_tool_names_no_skill():
     for text in ("No tool of this run is named 'x'.",):
         content = json.dumps({"success": False, "message": text})

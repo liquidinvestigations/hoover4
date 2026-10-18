@@ -1246,7 +1246,7 @@ fn MessageEntry(
                         read_more_source: read_more_source.clone(),
                         draft: Some(draft),
                     }
-                    ToolImages { refs: message.image_refs() }
+                    ToolImages { refs: message.image_refs(), tool_name: message.tool_name.clone() }
                     if !refs.is_empty() && message.tool_name != "cite_documents" {
                         DocRefsDisclosure { tool_name: message.tool_name.clone(), refs }
                     }

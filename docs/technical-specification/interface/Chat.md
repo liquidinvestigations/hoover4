@@ -24,7 +24,7 @@
 | Tool group | Show or hide the tools, instructions, superseded answers, and the reasoning of the round. | Completed groups start closed. |
 | Todo call card | Expand the stored arguments, the result or failure, and the list after the call. | Every todo call has one card inside its group. |
 | Reasoning | Show or hide the model's reasoning for the answer. | It is inside the group before the answer, or beside an answer that has no group. |
-| Tool images | Show each document image that the model received after a tool result. | The previews are under the tool card. A page screenshot shows on the browser card. |
+| Tool images | Show each document image and each `read_page` screenshot that the model received after a tool result. | The previews are under the tool card. A browser tool shows its screenshot on its own card. |
 | Narration | Show the model's text before a tool call, in gray above the card of that call. | A closed group shows its newest narration above its line. The reasoning view leaves the narration out. A board explore chat shows it too. |
 | Show / Hide | Show the full text of a user message, or cut it to three lines again. | The toggle is in the top-right corner of the message and shows only when the message is longer than three lines. |
 | Internet tools | Show the internet tools option only when `internet_tools_enabled` is true. Show it in the composer before locking and beside the title afterwards. | The checkbox is disabled after the first turn. Its tooltip is "Start a new chat to change this setting." |

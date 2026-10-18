@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import difflib
 import json
 import logging
 import os
@@ -833,8 +834,12 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
         ), "error", "invalid_arguments")
 
     if name not in allowed:
+        # A misspelled name, such as `write_write` for `workspace_write`, gets the closest
+        # names of the run, so the next call can use the right one.
+        close = difflib.get_close_matches(name, sorted(allowed), n=2, cutoff=0.6)
+        hint = f" The closest names are {', '.join(close)}." if close else ""
         return _tool_response(request, _error(
-            "tool_unavailable", f"No tool of this run is named {name!r}. "
+            "tool_unavailable", f"No tool of this run is named {name!r}.{hint} "
             f"Find tools with {SEARCH_TOOL}.", tool=name,
         ), "error", "tool_unavailable")
 

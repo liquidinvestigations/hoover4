@@ -482,15 +482,19 @@ pub fn strip_artifact_marker(text: &str) -> String {
     }
 }
 
-/// Small previews of the document images that the agent model received after a tool
-/// result. A page screenshot is left out, because the browser card shows it.
+/// Small previews of the images that the agent model received after a tool result: the
+/// document images, and the page screenshots of a tool that is not a browser tool.
 #[component]
-pub fn ToolImages(refs: Vec<common::chat_types::ChatImageRef>) -> Element {
+pub fn ToolImages(refs: Vec<common::chat_types::ChatImageRef>, #[props(default)] tool_name: String) -> Element {
+    // A browser card shows the thumbnail of its own capture, so only another tool, such as
+    // `read_page`, shows a page screenshot here.
+    let browser_card = tool_name.starts_with("browser_");
     let shown: Vec<(String, String)> = refs
         .iter()
-        .filter(|r| r.kind == "document")
+        .filter(|r| r.kind == "document" || (r.kind == "capture" && !browser_card))
         .filter_map(|r| {
-            let what = if r.video { "First frame of the video" } else { "Image" };
+            let what = if r.video { "First frame of the video" }
+                else if r.kind == "capture" { "Screenshot of" } else { "Image" };
             r.url().map(|url| (url, format!("{what} {} that the model received", r.label)))
         })
         .collect();
