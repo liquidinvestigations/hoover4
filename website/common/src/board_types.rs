@@ -344,7 +344,10 @@ pub struct BoardSnapshot {
     /// decision and a reopening name it. Empty on an active or paused board.
     #[serde(default)]
     pub review_id: String,
-    /// Why the board is in review: `answers`, `budget` or `stalled`. Empty otherwise.
+    /// Why the board is in review: `answers`, `budget`, `stalled_no_direction`,
+    /// `stalled_invalid` or `model_unavailable`. An older review has `stalled` for every cause
+    /// without progress. Empty otherwise. Mirrors `STALL_REVIEW_REASONS` in
+    /// `main_services/processing/tasks/P_board/model.py`.
     #[serde(default)]
     pub review_reason: String,
     /// Whether the board used `EXPLORE_LIMIT` explores. Such a board starts no more work.

@@ -268,6 +268,9 @@ code default. An agent run has no time limit of its own: 600 model steps bound i
 slot. A model step that waits longer fails the run, and empty sets no limit. The templates
 set 5400. `title_request_timeout_seconds` (empty: 30) is the read timeout of the
 conversation title request, and the title activity allows two requests and 30 s more.
+`board_reason_request_seconds` (empty: 600) is the read timeout of one board assessment
+request. Temporal sends the request once more after a transport failure. The templates set
+600.
 `llm_request_timeout_seconds` is the read timeout of one agent model call and of the
 compaction summary, and the worker's limit of one model step. When it is set, the model
 client does not retry. Empty keeps the client default of 600 s and 2 retries, 180 s for the
@@ -494,6 +497,7 @@ is the map back to the group above that explains it.
 - `agent_packs_chat`
 - `agent_catalogue_match_count`
 - `agent_queue_wait_seconds`, `title_request_timeout_seconds`
+- `board_reason_request_seconds`
 - `llm_request_timeout_seconds`
 - `agent_max_output_tokens`
 - `llm_streaming`

@@ -298,6 +298,8 @@ DEFAULTS = {
         "agent_queue_wait_seconds": "",
         "title_request_timeout_seconds": "",
         "llm_request_timeout_seconds": "",
+        # The read timeout of one board assessment request. Empty keeps 600 s.
+        "board_reason_request_seconds": "",
         # The output cap of one agent model request, in tokens. Empty sends no cap.
         "agent_max_output_tokens": "",
         # Token streaming of the agent's model calls. Empty is true.
@@ -852,14 +854,15 @@ def agent_probe_env(cfg):
 AGENT_MODEL_NUMBER_KEYS = (
     ("agent_queue_wait_seconds", "HOOVER4_AGENT_QUEUE_WAIT_SECONDS"),
     ("title_request_timeout_seconds", "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS"),
+    ("board_reason_request_seconds", "HOOVER4_BOARD_REASON_REQUEST_SECONDS"),
     ("llm_request_timeout_seconds", "LLM_REQUEST_TIMEOUT_SECONDS"),
     ("agent_max_output_tokens", "AGENT_MAX_OUTPUT_TOKENS"),
 )
 
 def agent_model_env(cfg):
     """The timeouts, the output cap and the streaming switch of the agent model calls.
-    The worker reads the three `HOOVER4_*` timeouts and `LLM_REQUEST_TIMEOUT_SECONDS`, and
-    both agent services read the rest. The thinking switch is not a key: it is the
+    The worker reads the `HOOVER4_*` timeouts and `LLM_REQUEST_TIMEOUT_SECONDS`, and both
+    agent services read the rest. The thinking switch is not a key: it is the
     `server_settings` row `llm_thinking`, set on `/admin/llm`.
 
     A number key must be a whole number of at least 1 when it is set.

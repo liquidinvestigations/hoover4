@@ -841,7 +841,7 @@ async def run_chat_worker():
   )
   from .P_board.activities import (
       board_plan, board_reason, conclude_explore, open_explore_turn, record_explore_end,
-      record_final_failure,
+      record_final_failure, record_reason_failure,
   )
   from .P_board.command_workflows import BoardCommands, board_command_step
   from .P_board.labels import label_board
@@ -913,7 +913,7 @@ async def run_chat_worker():
         workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
         workflows=[BoardDispatcher, BoardExplore, BoardCommands],
         activities=[board_plan, open_explore_turn, conclude_explore, record_explore_end,
-                    record_final_failure, board_command_step],
+                    record_final_failure, record_reason_failure, board_command_step],
         activity_executor=activity_executor,
         max_concurrent_activities=4,
       ),

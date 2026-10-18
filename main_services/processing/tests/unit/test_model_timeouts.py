@@ -14,12 +14,14 @@ def test_an_empty_environment_keeps_the_code_defaults():
     assert timeouts.model_call == timedelta(seconds=3600)
     assert timeouts.title_request_seconds == 30
     assert timeouts.title_activity == timedelta(seconds=90)
+    assert timeouts.board_reason_request_seconds == 600
+    assert timeouts.board_reason_activity == timedelta(seconds=660)
 
 
 def test_empty_strings_are_unset():
     assert load({name: "" for name in (
         model_timeouts.QUEUE_WAIT_ENV, model_timeouts.MODEL_CALL_ENV,
-        model_timeouts.TITLE_REQUEST_ENV)}) == load({})
+        model_timeouts.TITLE_REQUEST_ENV, model_timeouts.BOARD_REASON_REQUEST_ENV)}) == load({})
 
 
 def test_every_variable_set_gives_its_value():
@@ -27,10 +29,12 @@ def test_every_variable_set_gives_its_value():
         "HOOVER4_AGENT_QUEUE_WAIT_SECONDS": "5400",
         "LLM_REQUEST_TIMEOUT_SECONDS": "1800",
         "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS": "120",
+        "HOOVER4_BOARD_REASON_REQUEST_SECONDS": "900",
     })
     assert timeouts.queue_wait == timedelta(seconds=5400)
     assert timeouts.model_call == timedelta(seconds=1800)
     assert timeouts.title_request_seconds == 120
+    assert timeouts.board_reason_request_seconds == 900
 
 
 def test_the_run_timeout_variables_are_read_no_more():
@@ -47,6 +51,7 @@ def test_the_title_activity_allows_two_requests_and_thirty_seconds():
     "HOOVER4_AGENT_QUEUE_WAIT_SECONDS",
     "LLM_REQUEST_TIMEOUT_SECONDS",
     "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS",
+    "HOOVER4_BOARD_REASON_REQUEST_SECONDS",
 ])
 def test_a_value_that_is_not_a_number_names_its_variable(name):
     with pytest.raises(ValueError, match=name):

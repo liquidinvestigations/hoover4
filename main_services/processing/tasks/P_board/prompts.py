@@ -160,7 +160,8 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
                 outcome += " (rejected)"
             done_lines.append(line + f" -> {outcome}")
     live = [f for f in facts if f.fact_id not in folded.rejected]
-    valid_ids = [f.fact_id for f in live if f.kind != m.GOAL]
+    answer_ids = [f.fact_id for f in live if f.kind in (m.SOURCED, m.NOT_FOUND)]
+    other_ids = [f.fact_id for f in live if f.kind not in (m.GOAL, m.SOURCED, m.NOT_FOUND)]
     questions = open_question_keys(folded, facts)
     rejected_lines = [f"- {f.fact_id}: {strip_labels(f.text)} Rejected because: {folded.rejected[f.fact_id] or 'no reason given'}"
                       for f in facts if f.fact_id in folded.rejected]
@@ -180,7 +181,7 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
             "cover\"}]}\n"
             "Do not propose intents. Leave out a goal that the facts do not address.\n\n"
             "Rules:\n"
-            "- `from` lists only ids from Valid facts.\n")
+            "- `from` lists only ids from Facts that can support an answer.\n")
     else:
         task = (
             "You are the reasoning step of an investigation board. Board facts are confirmed "
@@ -199,7 +200,8 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
             "investigator reviews the answers.\n"
             "If the open intents already cover the next steps: {}\n\n"
             "Rules:\n"
-            "- `from` lists only ids from Valid facts.\n"
+            "- The `from` of an answer lists only ids from Facts that can support an answer. "
+            "The `from` of an intent lists ids from either list of fact ids.\n"
             f"- Propose at most {m.MAX_INTENTS} intents. Each must be independent of the others and "
             "must not repeat an open or finished intent.\n"
             "- Split work by evidence: a different person, period, document type or collection. "
@@ -240,7 +242,30 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
         "Finished intents:\n" + ("\n".join(done_lines) or "- none") + "\n\n"
         "Open questions of earlier explores, newest first, as key: question:\n"
         + ("\n".join(f"- {key}: {q}" for key, q in questions) or "- none") + "\n\n"
-        "Checks that changed your last reply:\n"
-        + ("\n".join(f"- {p}" for p in folded.last_reason_problems) or "- none") + "\n\n"
-        f"Valid facts: {valid_ids}\n"
+        "Checks that changed your last 3 replies, oldest first:\n"
+        + ("\n".join(recent_lines(folded.recent_reasons)) or "- none") + "\n\n"
+        f"Facts that can support an answer: {answer_ids}\n"
+        f"Other facts: {other_ids}\n"
     )
+
+
+#: What the next reason reads about an earlier result without a reply that the checks read.
+_OUTCOME_NOTES = {
+    "invalid": "the reply held no valid JSON object",
+    m.MODEL_FAILURE: "the model request failed, so no reply was read",
+}
+
+
+def recent_lines(recent: list[dict]) -> list[str]:
+    """One line for each check of the recent assessment results, oldest first: each dropped
+    intent and answer with its reason, or why no reply was read."""
+    lines = []
+    for result in recent:
+        name = f"Assessment {result.get('reason_no')}"
+        note = _OUTCOME_NOTES.get(str(result.get("outcome") or ""))
+        if note:
+            lines.append(f"- {name}: {note}.")
+        lines.extend(f"- {name}: {p}" for p in result.get("problems") or [])
+        if not note and not result.get("problems"):
+            lines.append(f"- {name}: no check changed it.")
+    return lines

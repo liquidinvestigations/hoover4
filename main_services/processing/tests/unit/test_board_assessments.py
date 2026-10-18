@@ -18,11 +18,13 @@ T0 = datetime(2026, 10, 14, 8, 0, 0)
 
 
 class _Reply:
-    def __init__(self, text):
+    def __init__(self, text, status_code=200):
         self.text = text
+        self.status_code = status_code
 
     def raise_for_status(self):
-        return None
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
 
     def json(self):
         return {"choices": [{"message": {"content": self.text}}], "usage": {"prompt_tokens": 7}}
@@ -42,7 +44,7 @@ def _patch(monkeypatch, live=True):
 def test_a_reason_stores_its_prompt_and_reply(monkeypatch):
     store = _patch(monkeypatch)
     reply = '{"intents": [{"from": ["origin"], "objective": "find the memo", "brief": "b"}]}'
-    monkeypatch.setattr(summarize, "_post", lambda endpoint, body: _Reply(reply))
+    monkeypatch.setattr(summarize, "_post", lambda endpoint, body, timeout=None: _Reply(reply))
     assert activities.board_reason(activities.ReasonTask("b1", 1)) == "intents"
     (board_id, reason_no, prompt, text, error, model), = store.assessments
     assert (board_id, reason_no, text, error, model) == ("b1", 1, reply, "", "short-model")
@@ -55,7 +57,7 @@ def test_a_reason_stores_its_prompt_and_reply(monkeypatch):
 
 def test_a_dropped_board_gets_no_assessment_row(monkeypatch):
     store = _patch(monkeypatch, live=False)
-    monkeypatch.setattr(summarize, "_post", lambda endpoint, body: _Reply("{}"))
+    monkeypatch.setattr(summarize, "_post", lambda endpoint, body, timeout=None: _Reply("{}"))
     activities.board_reason(activities.ReasonTask("b1", 2))
     assert store.assessments == [] and store.read_inputs("b1") == []
 
@@ -64,9 +66,64 @@ def test_a_final_assessment_proposes_answers_only(monkeypatch):
     store = _patch(monkeypatch)
     store.write_events([EventRow("b1", "e2", m.PAUSE_REQUESTED, "admin", "", {}, T0)])
     reply = '{"answers": [], "intents": [{"from": ["origin"], "objective": "find more"}]}'
-    monkeypatch.setattr(summarize, "_post", lambda endpoint, body: _Reply(reply))
+    monkeypatch.setattr(summarize, "_post", lambda endpoint, body, timeout=None: _Reply(reply))
     task = activities.ReasonTask("b1", 3, final=True, assessed_budget=30, assessment_id="final-30")
     assert activities.board_reason(task) == "noop", "a final call runs on a board that is not active"
     payload = store.read_inputs("b1")[0].body["payload"]
     assert (payload["final"], payload["assessed_budget"], payload["assessment_id"]) == (True, 30, "final-30")
     assert "intents" not in payload
+
+
+def test_an_attempt_after_a_submitted_result_sends_no_request(monkeypatch):
+    store = _patch(monkeypatch)
+    store.submit("b1", "reason_result:4", cmd.REASON_RESULT, "reason", {"reason_no": 4, "payload": {}})
+
+    def refuse(*a, **k):
+        raise AssertionError("a reused assessment sends no request")
+
+    monkeypatch.setattr(summarize, "_post", refuse)
+    assert activities.board_reason(activities.ReasonTask("b1", 4)) == "reused"
+    assert store.assessments == []
+
+
+def test_a_transport_failure_is_raised_and_stores_nothing(monkeypatch):
+    import pytest
+    import requests
+
+    store = _patch(monkeypatch)
+    calls = []
+    monkeypatch.setattr(activities, "_record_llm_call", lambda *a, **k: calls.append(a))
+    sent = []
+
+    def timeout(endpoint, body, timeout=None):
+        sent.append(timeout)
+        raise requests.ReadTimeout("read timeout")
+
+    monkeypatch.setattr(summarize, "_post", timeout)
+    with pytest.raises(summarize.TransportFailure):
+        activities.board_reason(activities.ReasonTask("b1", 5))
+    assert store.read_inputs("b1") == [] and store.assessments == []
+    from tasks.P_agent.model_timeouts import TIMEOUTS
+
+    assert sent == [(activities.REASON_CONNECT_SECONDS, TIMEOUTS.board_reason_request_seconds)]
+    assert calls and calls[0][5] is False, "the failed attempt is recorded"
+    monkeypatch.setattr(summarize, "_post", lambda endpoint, body, timeout=None: _Reply("busy", 503))
+    with pytest.raises(summarize.TransportFailure):
+        activities.board_reason(activities.ReasonTask("b1", 5))
+
+
+def test_a_refused_request_is_a_model_failure(monkeypatch):
+    store = _patch(monkeypatch)
+    monkeypatch.setattr(summarize, "_post", lambda endpoint, body, timeout=None: _Reply("too long", 400))
+    assert activities.board_reason(activities.ReasonTask("b1", 6)) == m.MODEL_FAILURE
+    payload = store.read_inputs("b1")[0].body["payload"]
+    assert payload["outcome"] == m.MODEL_FAILURE and "400" in payload["error"]
+
+
+def test_an_exhausted_assessment_records_a_model_failure(monkeypatch):
+    store = _patch(monkeypatch)
+    activities.record_reason_failure(activities.ReasonFailure("b1", 7, True, "ReadTimeout: x"))
+    [command] = store.read_inputs("b1")
+    assert command.request_id == "reason_result:7"
+    assert command.body["payload"] == {"outcome": m.MODEL_FAILURE, "error": "ReadTimeout: x", "raw": "",
+                                       "problems": [], "stalled": True}

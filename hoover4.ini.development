@@ -303,12 +303,15 @@ agent_catalogue_match_count =
 ;   A model step that waits longer fails the run. Empty is no limit.
 ; title_request_timeout_seconds: the title request. Empty is 30. The title activity
 ;   allows two requests and 30 s more.
+; board_reason_request_seconds: one board assessment request. Empty is 600. Temporal
+;   sends the request once more after a transport failure.
 ; llm_request_timeout_seconds: the read timeout of one model call of the agent and of
 ;   its compaction summary, and the limit of one model step in the worker. When set, the
 ;   model client does not retry. Empty keeps the client default (600 s and 2 retries),
 ;   180 s for the summary and 3,600 s for the model step.
 agent_queue_wait_seconds = 5400
 title_request_timeout_seconds = 120
+board_reason_request_seconds = 600
 llm_request_timeout_seconds = 3600
 ; The output cap of one agent model request, in tokens. Without a cap a request can
 ; decode to the end of the context window, which no timeout above bounds. Empty sends

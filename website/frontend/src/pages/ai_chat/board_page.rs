@@ -698,6 +698,8 @@ fn BoardOverview(
         }
     });
     let budget_review = snap.review_reason == "budget";
+    let stall_review = matches!(snap.review_reason.as_str(),
+        "stalled_no_direction" | "stalled_invalid" | "model_unavailable");
     let mut finish = run.clone();
     let mut continue_with = run.clone();
     let finish_id = review_id.clone();
@@ -790,10 +792,12 @@ fn BoardOverview(
                     p { "The board used its budget of {snap.max_explores} explores." }
                 } else if snap.review_reason == "stalled" {
                     p { "The assessments gave no usable direction." }
+                } else if stall_review {
+                    p { "{snap.review_statement}" }
                 }
                 if !snap.answers_proposed.is_empty() {
                     p { style: HELP_TEXT, "Accept or reject the proposed answer of each goal above. A rejected answer lets the board continue at once." }
-                } else if snap.review_statement.is_empty() {
+                } else if snap.review_statement.is_empty() || stall_review {
                     p { style: HELP_TEXT, "The board stopped without answers." }
                 } else {
                     p { "{snap.review_statement}" }

@@ -6,6 +6,8 @@ Every function under test is pure, so the rows are built here and no service run
 import json
 from datetime import datetime, timedelta
 
+import pytest
+
 from database.boards import BoardRow, CitationRow, EventRow, FactRow
 from tasks.P_board import model as m
 from tasks.P_board.contracts import labels_of, parse_explore_block, parse_reason
@@ -157,7 +159,48 @@ def test_invalid_reasons_keep_the_board_due_then_send_it_to_review():
         log.reason(r, outcome="invalid")
     f = fold(b, log.events, facts())
     actions = plan([b], {"b1": f}, set(), cap=1)
-    assert actions.reviews == [("b1", "stalled")]
+    assert actions.reviews == [("b1", m.STALLED_INVALID)]
+    assert f.stall_causes == {m.CAUSE_INVALID: m.INVALID_REASON_LIMIT}
+
+
+@pytest.mark.parametrize("outcomes, reason", [
+    ([m.MODEL_FAILURE] * 3, m.MODEL_UNAVAILABLE),
+    (["noop", "noop", m.MODEL_FAILURE], m.STALLED_NO_DIRECTION),
+    (["invalid", m.MODEL_FAILURE, "noop"], m.STALLED_NO_DIRECTION),
+    (["noop", "invalid", "invalid"], m.STALLED_INVALID),
+])
+def test_the_stall_review_names_the_cause_with_the_most_results(outcomes, reason):
+    b = board()
+    log = Log().add(m.BOARD_CREATED)
+    for r, outcome in enumerate(outcomes, start=1):
+        log.reason(r, outcome=outcome, idle=True)
+    f = fold(b, log.events, facts())
+    assert f.invalid_reasons == 3
+    assert plan([b], {"b1": f}, set(), cap=1).reviews == [("b1", reason)]
+
+
+def test_progress_clears_the_stall_causes():
+    log = Log().add(m.BOARD_CREATED).reason(1, outcome=m.MODEL_FAILURE).reason(2, outcome="invalid")
+    log.reason(3, n=1)
+    f = fold(board(), log.events, facts())
+    assert (f.invalid_reasons, f.stall_causes, f.last_stall_cause) == (0, {}, "")
+
+
+def test_a_model_failure_keeps_the_board_due_and_is_not_invalid():
+    log = Log().add(m.BOARD_CREATED).reason(1, outcome=m.MODEL_FAILURE, error="ReadTimeout")
+    f = fold(board(), log.events, facts())
+    assert reason_due(f, in_flight=False)
+    assert f.stall_causes == {m.CAUSE_MODEL_FAILURE: 1}
+
+
+def test_the_stall_statement_names_each_cause_and_count():
+    from tasks.P_board.commands import stall_statement
+
+    assert stall_statement({m.CAUSE_MODEL_FAILURE: 2, m.CAUSE_INVALID: 1}) == (
+        "The last 3 assessments made no progress: 2 got no answer from the model, and 1 held "
+        "no valid JSON.")
+    assert stall_statement({m.CAUSE_NO_DIRECTION: 1}) == (
+        "The last assessment made no progress: 1 gave no new direction.")
 
 
 def test_a_pause_cancels_running_explores_and_a_resume_restores_work():
@@ -303,6 +346,52 @@ def test_a_review_names_each_goal():
     assert out["outcome"] == "noop" and "proposals" not in out, "an inferred fact supports no answer"
 
 
+def test_an_inferred_fact_is_dropped_from_an_answer_that_names_a_sourced_fact():
+    reply = json.dumps({"answers": [
+        {"goal": "goal-01", "from": ["fact-a", "fact-guess", "origin", "fact-gone"], "statement": "s"}]})
+    out = parse_reason(reply, {"fact-a", "fact-guess", "origin"}, {"fact-a"}, [], True, ["goal-01"])
+    assert out["outcome"] == "review"
+    [answer] = out["proposals"]
+    assert (answer["from"], answer["answer_kind"]) == (["fact-a"], m.SUPPORTED)
+    assert out["problems"] == [
+        "dropped ['fact-gone'] from the answer of goal-01: not a fact",
+        "dropped ['fact-guess', 'origin'] from the answer of goal-01: only sourced and "
+        "not_found facts support an answer"]
+    not_found = json.dumps({"answers": [{"goal": "goal-01", "from": ["fact-guess", "fact-none"],
+                                         "statement": "s"}]})
+    out = parse_reason(not_found, {"fact-guess", "fact-none"}, set(), [], True, ["goal-01"], {"fact-none"})
+    assert [a["answer_kind"] for a in out["proposals"]] == [m.NOT_ESTABLISHED]
+
+
+def test_the_prompt_lists_answer_facts_apart_from_other_facts():
+    from tasks.P_board.prompts import render_reason
+
+    rows = facts(("f1.1", m.SOURCED), ("f1.2", m.INFERRED), ("f1.3", m.NOT_FOUND))
+    prompt = render_reason(board(), fold(board(), Log().add(m.BOARD_CREATED).events, rows), rows, [],
+                           stalled=False)
+    assert "Facts that can support an answer: ['f1.1', 'f1.3']\n" in prompt
+    assert "Other facts: ['origin', 'f1.2']\n" in prompt
+    assert "Valid facts" not in prompt
+
+
+def test_the_prompt_reports_the_last_three_results():
+    from tasks.P_board.prompts import render_reason
+
+    log = Log().add(m.BOARD_CREATED)
+    log.reason(1, outcome="noop", idle=True, problems=["dropped as a repeat: one"])
+    log.reason(2, outcome="noop", idle=True, problems=["dropped as a repeat: two"])
+    log.reason(3, outcome=m.MODEL_FAILURE)
+    log.reason(4, outcome="invalid")
+    folded = fold(board(), log.events, facts())
+    assert [r["reason_no"] for r in folded.recent_reasons] == [2, 3, 4]
+    prompt = render_reason(board(), folded, facts(), [], stalled=False)
+    section = prompt.split("Checks that changed your last 3 replies, oldest first:\n")[1].split("\n\n")[0]
+    assert section.splitlines() == [
+        "- Assessment 2: dropped as a repeat: two",
+        "- Assessment 3: the model request failed, so no reply was read.",
+        "- Assessment 4: the reply held no valid JSON object."]
+
+
 def test_a_review_without_goals_answers_the_first_goal():
     out = parse_reason('{"review": {"from": ["f1.1"], "statement": "s"}}', {"f1.1"}, {"f1.1"}, [], True)
     assert out["outcome"] == "review"
@@ -379,7 +468,9 @@ def test_recoverable_reason_replies_are_read():
     assert out["outcome"] == "review" and out["proposals"][0]["from"] == ["f1.1"]
     assert out["problems"] == ["dropped ['c0c5'] from the answer of goal-2: not a fact"]
     unsourced = cited.replace("c0c5", "f1.2")
-    assert parse_reason(unsourced, {"f1.1", "f1.2"}, {"f1.1"}, [], True, ["goal-2"])["outcome"] == "noop"
+    out = parse_reason(unsourced, {"f1.1", "f1.2"}, {"f1.1"}, [], True, ["goal-2"])
+    assert out["outcome"] == "review" and out["proposals"][0]["from"] == ["f1.1"], (
+        "an inferred fact beside a sourced fact is dropped, and the answer stays")
 
 
 def test_labels_are_removed_before_a_fact_enters_another_session():
@@ -405,7 +496,7 @@ def test_a_rejected_fact_reaches_the_reason_prompt_and_frees_its_objective():
     prompt = render_reason(board(), f, rows, [], stalled=False)
     assert "- f1.1: text Rejected because: D4 names another sender" in prompt
     assert "-> f1.1 (rejected)" in prompt
-    assert "'f1.1'" not in prompt.split("Valid facts:")[1]
+    assert "'f1.1'" not in prompt.split("Facts that can support an answer:")[1]
 
 
 def test_the_brief_call_guidance_grows_with_the_step_budget():
@@ -423,7 +514,8 @@ def test_the_next_reason_reads_the_checks_that_changed_the_last_reply():
     folded = fold(board(), log.events, rows)
     assert folded.last_reason_problems == ["dropped as a repeat: find X"]
     prompt = render_reason(board(), folded, rows, [], stalled=False)
-    assert "Checks that changed your last reply:\n- dropped as a repeat: find X" in prompt
+    assert ("Checks that changed your last 3 replies, oldest first:\n"
+            "- Assessment 1: dropped as a repeat: find X") in prompt
     assert "every remaining direction repeats a finished intent, return answers" in prompt
     assert "applies every correction that concerns its facts" in prompt
     assert "A direction that no fact leads to lists origin, the background context." in prompt

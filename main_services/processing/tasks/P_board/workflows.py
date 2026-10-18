@@ -49,6 +49,7 @@ with workflow.unsafe.imports_passed_through():
         FinalFailure,
         PlanInput,
         PlanOutput,
+        ReasonFailure,
         ReasonTask,
         TurnRequest,
         board_plan,
@@ -57,7 +58,9 @@ with workflow.unsafe.imports_passed_through():
         open_explore_turn,
         record_explore_end,
         record_final_failure,
+        record_reason_failure,
     )
+    from tasks.P_agent.model_timeouts import TIMEOUTS
     from tasks.P_board.command_workflows import BoardCommands, commands_workflow_id
     from tasks.P_board.labels import LabelTask, label_board, labels_to_start
 
@@ -219,16 +222,31 @@ class BoardDispatcher:
         try:
             await workflow.execute_activity(
                 board_reason, reason, task_queue=CHAT_MODEL_TASK_QUEUE,
-                start_to_close_timeout=timedelta(minutes=15), heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=2),
+                start_to_close_timeout=TIMEOUTS.board_reason_activity,
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=EXTERNAL_RETRY,
             )
         except ActivityError as exc:
             workflow.logger.warning("board_reason failed for %s: %s", reason.board_id, exc)
             if reason.final:
                 await self._final_failure(reason, str(exc))
+            else:
+                await self._reason_failure(reason, str(exc.cause or exc))
         finally:
             self._reasons.pop(reason.board_id, None)
             self._woken = True
+
+    async def _reason_failure(self, reason: ReasonTask, error: str) -> None:
+        """Record `model_failure` for an assessment whose call failed in every attempt."""
+        try:
+            await workflow.execute_activity(
+                record_reason_failure,
+                ReasonFailure(reason.board_id, reason.reason_no, reason.stalled, error),
+                start_to_close_timeout=_SHORT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                retry_policy=STORAGE_RETRY,
+            )
+        except ActivityError as exc:
+            # A later pass plans from the fold without a result of this assessment.
+            workflow.logger.warning("record_reason_failure failed for %s: %s", reason.board_id, exc)
 
     async def _final_failure(self, reason: ReasonTask, error: str) -> None:
         """Record the end of a final assessment whose call failed, so it ends its operation."""

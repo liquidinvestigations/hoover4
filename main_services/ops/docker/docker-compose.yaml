@@ -599,10 +599,12 @@ services:
       - "CHAT_CLASSIFIER_URL=${CHAT_CLASSIFIER_URL:-}"
       - "HOOVER4_CHAT_CONTROL_DIR=${HOOVER4_CHAT_CONTROL_DIR:-}"
       # The agent step limits of tasks/P_agent/model_timeouts.py. Empty keeps the code
-      # defaults: no queue-wait limit, a 3,600 s model step and a 30 s title request.
+      # defaults: no queue-wait limit, a 3,600 s model step, a 30 s title request and a
+      # 600 s board assessment request.
       - "HOOVER4_AGENT_QUEUE_WAIT_SECONDS=${HOOVER4_AGENT_QUEUE_WAIT_SECONDS:-}"
       - "LLM_REQUEST_TIMEOUT_SECONDS=${LLM_REQUEST_TIMEOUT_SECONDS:-}"
       - "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS=${HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS:-}"
+      - "HOOVER4_BOARD_REASON_REQUEST_SECONDS=${HOOVER4_BOARD_REASON_REQUEST_SECONDS:-}"
       # Read by tests/unit/test_temporal_readiness.py. See the mount above.
       - "HOOVER4_TEMPORAL_READY_RS=/mirror/website-backend-src/temporal_ready.rs"
 

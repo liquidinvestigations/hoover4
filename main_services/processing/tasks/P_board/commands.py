@@ -562,11 +562,34 @@ def _review_proposed(ctx: Context, body: dict, alloc: Allocator, prepared: Prepa
     if f.status != m.ACTIVE:
         raise Rejected(f"the board is {f.status}")
     why = _text(body, "why")
-    statement = ("The explore budget is used." if why == "budget"
-                 else "The assessment gave no usable direction in several attempts.")
+    statement = "The explore budget is used." if why == "budget" else stall_statement(f.stall_causes)
     _event(ctx, prepared, m.REVIEW_PROPOSED, why,
            {"reason": why, "statement": statement, "explores_used": f.explores_used,
-            "max_explores": f.max_explores}, ctx.request_id, actor="dispatcher")
+            "max_explores": f.max_explores, "causes": dict(f.stall_causes)},
+           ctx.request_id, actor="dispatcher")
+
+
+#: The words of each stall cause in a review statement.
+_CAUSE_WORDS = {
+    m.CAUSE_NO_DIRECTION: "gave no new direction",
+    m.CAUSE_INVALID: "held no valid JSON",
+    m.CAUSE_MODEL_FAILURE: "got no answer from the model",
+}
+
+
+def stall_statement(causes: dict) -> str:
+    """The review statement of a board that stopped without progress. It names each cause
+    and its count, for example: "The last 3 assessments made no progress: 2 got no answer
+    from the model, and 1 held no valid JSON."."""
+    parts = [f"{count} {_CAUSE_WORDS[cause]}"
+             for cause, count in sorted(causes.items(), key=lambda kv: -kv[1])
+             if cause in _CAUSE_WORDS and count]
+    total = sum(int(c) for c in causes.values())
+    if not parts:
+        return "The assessments made no progress."
+    listed = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + ", and " + parts[-1]
+    noun = "assessment" if total == 1 else f"{total} assessments"
+    return f"The last {noun} made no progress: {listed}."
 
 
 def _final_ended(ctx: Context, body: dict, alloc: Allocator, prepared: Prepared) -> None:

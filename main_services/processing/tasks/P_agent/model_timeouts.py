@@ -11,6 +11,7 @@ Each variable is rendered by `deploy.py` from a `[main_services]` key.
 | `HOOVER4_AGENT_QUEUE_WAIT_SECONDS` | `agent_queue_wait_seconds` | the schedule-to-start limit of each `model_step` and `tool_call` | no limit |
 | `LLM_REQUEST_TIMEOUT_SECONDS` | `llm_request_timeout_seconds` | the start-to-close limit of one `model_step` | 3,600 s |
 | `HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS` | `title_request_timeout_seconds` | the read timeout of the title request | 30 s |
+| `HOOVER4_BOARD_REASON_REQUEST_SECONDS` | `board_reason_request_seconds` | the read timeout of the board assessment request | 600 s |
 
 The agent services read `LLM_REQUEST_TIMEOUT_SECONDS` as the read timeout of their model
 client, so one model call and the step that waits for it have the same limit.
@@ -29,9 +30,11 @@ from typing import Mapping
 QUEUE_WAIT_ENV = "HOOVER4_AGENT_QUEUE_WAIT_SECONDS"
 MODEL_CALL_ENV = "LLM_REQUEST_TIMEOUT_SECONDS"
 TITLE_REQUEST_ENV = "HOOVER4_TITLE_REQUEST_TIMEOUT_SECONDS"
+BOARD_REASON_REQUEST_ENV = "HOOVER4_BOARD_REASON_REQUEST_SECONDS"
 
 DEFAULT_MODEL_CALL_SECONDS = 3600
 DEFAULT_TITLE_REQUEST_SECONDS = 30.0
+DEFAULT_BOARD_REASON_REQUEST_SECONDS = 600.0
 
 #: The start-to-close limit of one `tool_call` attempt. A tool that runs longer gets a
 #: `tool_unavailable` result after its last attempt, and the model reads it.
@@ -70,6 +73,8 @@ class ModelTimeouts:
     model_call: timedelta
     #: The read timeout of the title request, in seconds.
     title_request_seconds: float
+    #: The read timeout of the board assessment request, in seconds.
+    board_reason_request_seconds: float = DEFAULT_BOARD_REASON_REQUEST_SECONDS
 
     @property
     def title_activity(self) -> timedelta:
@@ -79,6 +84,12 @@ class ModelTimeouts:
         requests and 30 s more: 90 s at a 30 s request, 270 s at 120 s.
         """
         return timedelta(seconds=2 * self.title_request_seconds + 30)
+
+    @property
+    def board_reason_activity(self) -> timedelta:
+        """The start-to-close timeout of one `board_reason` attempt: one request and 60 s
+        more for the prompt and the stored result."""
+        return timedelta(seconds=self.board_reason_request_seconds + 60)
 
 
 def _seconds(environ: Mapping[str, str], name: str) -> float | None:
@@ -103,11 +114,14 @@ def load(environ: Mapping[str, str] = os.environ) -> ModelTimeouts:
     queue_wait = _seconds(environ, QUEUE_WAIT_ENV)
     model_call = _seconds(environ, MODEL_CALL_ENV)
     title = _seconds(environ, TITLE_REQUEST_ENV)
+    board_reason = _seconds(environ, BOARD_REASON_REQUEST_ENV)
     return ModelTimeouts(
         queue_wait=timedelta(seconds=queue_wait) if queue_wait is not None else None,
         model_call=timedelta(seconds=model_call if model_call is not None
                              else DEFAULT_MODEL_CALL_SECONDS),
         title_request_seconds=title if title is not None else DEFAULT_TITLE_REQUEST_SECONDS,
+        board_reason_request_seconds=(board_reason if board_reason is not None
+                                      else DEFAULT_BOARD_REASON_REQUEST_SECONDS),
     )
 
 

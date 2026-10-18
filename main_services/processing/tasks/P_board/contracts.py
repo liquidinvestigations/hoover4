@@ -83,10 +83,15 @@ def _parse_answers(entries: list, valid_ids: set, sourced_ids: set, not_found_id
         goal = goal_texts.get(goal.strip(), goal)
         from_ids = list(dict.fromkeys(str(f) for f in entry.get("from") or []))
         answerable = sourced_ids | not_found_ids
-        stray = [f for f in from_ids if f not in valid_ids and f not in answerable]
-        if stray and len(stray) < len(from_ids):
-            from_ids = [f for f in from_ids if f not in stray]
-            problems.append(f"dropped {stray} from the answer of {goal}: not a fact")
+        if set(from_ids) & answerable:
+            stray = [f for f in from_ids if f not in valid_ids and f not in answerable]
+            other = [f for f in from_ids if f in valid_ids and f not in answerable]
+            if stray:
+                problems.append(f"dropped {stray} from the answer of {goal}: not a fact")
+            if other:
+                problems.append(f"dropped {other} from the answer of {goal}: only sourced and "
+                                "not_found facts support an answer")
+            from_ids = [f for f in from_ids if f in answerable]
         if goal in closed_ids:
             problems.append(f"dropped the answer of the accepted goal {goal}")
         elif goal not in goal_ids:
@@ -94,7 +99,7 @@ def _parse_answers(entries: list, valid_ids: set, sourced_ids: set, not_found_id
         elif not from_ids:
             problems.append(f"the answer of {goal} names no fact")
         elif not set(from_ids) <= answerable:
-            problems.append(f"the answer of {goal} from {from_ids} names a fact that is not sourced or not found")
+            problems.append(f"the answer of {goal} from {from_ids} names no sourced or not_found fact")
         elif goal in {a["goal"] for a in answers}:
             problems.append(f"dropped a second answer of {goal}")
         else:
@@ -127,9 +132,10 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
     goal, the facts it rests on and a statement. An answer that names a sourced fact is
     `supported`. An answer that names only not-found facts is `not_established`: its statement
     is the fixed `NOT_ESTABLISHED_STATEMENT`, and the model's text is its commentary. An
-    answer that names an inferred fact, no fact, an unknown goal or an accepted goal is
-    dropped with a note. An id of `from` that is no fact, such as a correction, is dropped with
-    a note when the answer names other facts.
+    answer is dropped with a note when it names no sourced or not-found fact, an unknown goal
+    or an accepted goal. When it names one, the other ids of `from` (an inferred fact, the
+    background, a correction or an id that is no fact) are dropped with a note, and the
+    answer stays.
 
     An intent keeps its position in the reply (`position`, from 1), so a dropped intent does
     not renumber the others. Its `slug` is a candidate name. Its `questions` keep only keys

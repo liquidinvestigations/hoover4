@@ -37,7 +37,9 @@ The rules:
 * **Progress.** An assessment makes progress when it adds an intent, proposes an answer for
   a goal without one, or changes the facts or the kind of a proposal. An assessment without
   progress follows the no-progress rules of an empty result, so repeated partial answers
-  end in review after `INVALID_REASON_LIMIT` results.
+  end in review after `INVALID_REASON_LIMIT` results. The fold counts each such result by
+  its cause: no new direction, no valid JSON, or a failed model request (`model_failure`).
+  The review reason names the cause with the most results.
 * **Attempts.** `explore_started` counts an attempt and an explore of the budget. A
   cancellation refunds both. When one attempt has both a concluded event and a cancelled or
   failed event, the concluded event wins, because its fact exists.
@@ -66,6 +68,9 @@ from dataclasses import dataclass, field
 
 from tasks.P_board import model as m
 from tasks.P_board.prompts import goal_ids
+
+#: The assessment results that the next reason prompt reports.
+RECENT_REASONS = 3
 
 #: The event types that can change the budget. Each keeps its actual grant.
 BUDGET_EVENTS = (m.HINT_ADDED, m.QUESTION_EXPLORED, m.FACT_REJECTED, m.REVIEW_REJECTED,
@@ -138,8 +143,17 @@ class Folded:
     accepted: dict = field(default_factory=dict)
     review_rejections: int = 0
     last_reason_outcome: str = ""
-    #: The checks that changed the last reason reply, which the next reason reads.
+    #: The checks that changed the last reason reply.
     last_reason_problems: list[str] = field(default_factory=list)
+    #: The last `RECENT_REASONS` assessment results, oldest first, which the next reason
+    #: reads: `reason_no`, `outcome`, `problems` and `error`.
+    recent_reasons: list[dict] = field(default_factory=list)
+    #: The assessments without progress since the last progress, by cause
+    #: (`m.CAUSE_NO_DIRECTION`, `m.CAUSE_INVALID`, `m.CAUSE_MODEL_FAILURE`). Their sum is
+    #: `invalid_reasons`.
+    stall_causes: dict = field(default_factory=dict)
+    #: The cause of the last assessment without progress.
+    last_stall_cause: str = ""
     #: The goals of the creation, and the goal ids of later `goal_added` events.
     initial_goals: list[str] = field(default_factory=list)
     goals_added: set = field(default_factory=set)
@@ -153,7 +167,8 @@ class Folded:
     transitions: list[Transition] = field(default_factory=list)
     #: The id of the event that moved the board into its current review or completion.
     decision_id: str = ""
-    #: Why the board is in review: `answers`, `budget` or `stalled`. Empty otherwise.
+    #: Why the board is in review: `answers`, `budget`, a value of `m.STALL_REVIEW_REASONS`,
+    #: or `stalled` from an older event. Empty otherwise.
     review_reason: str = ""
     #: The decision ids that a reopening has used.
     extended: set = field(default_factory=set)
@@ -164,6 +179,21 @@ class Folded:
     bindings: dict = field(default_factory=dict)
     #: The highest canonical sequence number.
     last_seq: int = 0
+
+    def clear_stalls(self) -> None:
+        """Progress or a person's action: no assessment without progress is counted."""
+        self.invalid_reasons = 0
+        self.stall_causes = {}
+        self.last_stall_cause = ""
+
+    def stall_review_reason(self) -> str:
+        """The review reason of a board that stopped without progress: the cause with the
+        most assessments, and on a tie the cause of the last one."""
+        if not self.stall_causes:
+            return m.STALLED_NO_DIRECTION
+        cause = max(self.stall_causes,
+                    key=lambda c: (self.stall_causes[c], c == self.last_stall_cause))
+        return m.STALL_REVIEW_REASONS.get(cause, m.STALLED_NO_DIRECTION)
 
     def counts(self) -> dict:
         """The counts that the budget formula reads."""
@@ -300,7 +330,7 @@ class _Fold:
         f = self.f
         if f.status in (m.REVIEW, m.COMPLETED):
             self.status(m.ACTIVE)
-            f.invalid_reasons = 0
+            f.clear_stalls()
             f.stall_count = 0
         f.checkpoint = dict(f.checkpoint or {}, had_work=True)
 
@@ -359,7 +389,7 @@ def _apply(run: _Fold, event, data: dict, concluded: set) -> None:
         folded.proposed = {}
         folded.review_rejections += 1
         run.status(m.ACTIVE)
-        folded.invalid_reasons = 0
+        folded.clear_stalls()
         folded.stall_count = 0
     elif kind == m.GOAL_ANSWER_ACCEPTED:
         if _decides(folded, event.subject, data):
@@ -376,7 +406,7 @@ def _apply(run: _Fold, event, data: dict, concluded: set) -> None:
             folded.review_rejections += 1
             if folded.status == m.REVIEW:
                 run.status(m.ACTIVE)
-                folded.invalid_reasons = 0
+                folded.clear_stalls()
                 folded.stall_count = 0
     elif kind == m.DROP_REQUESTED:
         run.status(m.DROPPED)
@@ -533,6 +563,9 @@ def _apply_reason(run: _Fold, event) -> None:
     outcome = data.get("outcome", "")
     folded.last_reason_outcome = outcome
     folded.last_reason_problems = [str(p) for p in data.get("problems") or []]
+    folded.recent_reasons = (folded.recent_reasons + [{
+        "reason_no": reason_no, "outcome": outcome, "problems": folded.last_reason_problems,
+        "error": str(data.get("error") or "")}])[-RECENT_REASONS:]
     if data.get("final"):
         # A final assessment proposes answers and ends its operation. It changes no status,
         # so the budget review of the next pass follows it.
@@ -568,20 +601,25 @@ def _apply_reason(run: _Fold, event) -> None:
     covered = bool(folded.open_goals) and all(g in folded.proposed for g in folded.open_goals)
     if legacy_review or (covered and (changed or outcome == "review")):
         folded.checkpoint = dict(data.get("situation") or {}, had_work=False)
-        folded.invalid_reasons = 0
+        folded.clear_stalls()
         if folded.status == m.ACTIVE:
             run.status(m.REVIEW)
             folded.review_reason = "answers"
     elif added or changed:
         folded.checkpoint = dict(data.get("situation") or {}, had_work=True)
-        folded.invalid_reasons = 0
+        folded.clear_stalls()
     elif outcome == "noop" and not data.get("idle"):
         # A valid empty result while explores run: the open work covers the situation.
         folded.checkpoint = dict(data.get("situation") or {}, had_work=True)
-        folded.invalid_reasons = 0
+        folded.clear_stalls()
     else:
-        # Invalid, empty with nothing open, or no progress: the board stays due, up to the limit.
+        # Invalid, empty with nothing open, no progress, or a failed request: the board stays
+        # due, up to the limit.
         folded.invalid_reasons += 1
+        cause = {"invalid": m.CAUSE_INVALID, m.MODEL_FAILURE: m.CAUSE_MODEL_FAILURE}.get(
+            outcome, m.CAUSE_NO_DIRECTION)
+        folded.stall_causes[cause] = folded.stall_causes.get(cause, 0) + 1
+        folded.last_stall_cause = cause
 
 
 @dataclass
@@ -715,7 +753,7 @@ def plan(boards: list, folded: dict, in_flight: set, cap: int,
             continue
         if (f.invalid_reasons >= m.INVALID_REASON_LIMIT and not running
                 and not f.by_state(m.OPEN)):
-            actions.reviews.append((board.board_id, "stalled"))
+            actions.reviews.append((board.board_id, f.stall_review_reason()))
             continue
         if used < cap and board_used < max(1, board.max_parallel) and reason_due(
                 f, board.board_id in in_flight):

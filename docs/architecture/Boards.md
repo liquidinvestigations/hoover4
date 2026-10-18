@@ -289,9 +289,12 @@ stateDiagram-v2
 - An assessment is due when the facts, hints, rejections or late goals changed since the last
   assessment with progress, or the open work ended. It runs only on an active board with no
   open intent, no assessment in flight and no final assessment in flight. Progress is a new
-  intent, a proposal for a goal without one, or a changed fact list or kind of a proposal. A
-  reply without progress counts as empty, and 3 empty or invalid replies in a row send the
-  board to review.
+  intent, a proposal for a goal without one, or a changed fact list or kind of a proposal. 3
+  assessments in a row without progress send the board to review. The fold counts each one
+  by its cause: a valid reply without new work, a reply without a valid JSON object, or a
+  failed model request (`model_failure`). The review reason is `stalled_no_direction`,
+  `stalled_invalid` or `model_unavailable`, for the cause with the most assessments, and the
+  review statement names each cause and its count. An older review has the reason `stalled`.
 - Each status change is a derived `status_changed` row with the id
   `status_changed:{causal event id}:{ordinal}` and the time of its cause. `board_plan` writes
   the rows that the stored events lack, so a repeated pass writes nothing new and a pause and a
@@ -349,6 +352,17 @@ explore facts that no intent explores, newest fact first, each with its key
 not dropped. The reply is one JSON object with `answers`, `intents`, both, or neither.
 `contracts.parse_reason` checks it.
 
+The prompt lists the fact ids in two lists: "Facts that can support an answer" (sourced and
+not-found facts) and "Other facts" (inferred facts, the background context and corrections).
+It also lists the checks that changed the last 3 replies, each with its assessment number.
+
+The read timeout of the request is `board_reason_request_seconds` of `hoover4.ini` (600 s
+when empty). An attempt that finds the `reason_result` command of its assessment sends no
+request. A transport failure fails the attempt, and Temporal sends the request once more
+after 1 s. When both attempts fail, `record_reason_failure` submits a `reason_result` with
+the outcome `model_failure`. A refused request (4xx) gives `model_failure` at once. A final
+assessment that fails in both attempts ends its operation through `record_final_failure`.
+
 - An intent must name live facts in `from`. The prompt names the background context as the
   `from` of a direction that no fact leads to. An intent that repeats an earlier objective is
   dropped. At most 3 intents are kept, and each keeps its position in the reply, so a dropped
@@ -358,8 +372,10 @@ not dropped. The reply is one JSON object with `answers`, `intents`, both, or ne
 - An answer names its goal, the facts it rests on and a statement. An answer with a sourced
   fact is `supported`. An answer whose facts are all not-found facts is `not_established`:
   its statement is the fixed text "The cited records do not establish an answer to this
-  goal.", and the model's text stays in the assessment details. An answer that names an
-  inferred fact, no fact, an accepted goal or an unknown goal is dropped with a note.
+  goal.", and the model's text stays in the assessment details. An answer that names no
+  sourced or not-found fact, an accepted goal or an unknown goal is dropped with a note. An
+  answer that names one keeps it. Its other ids (an inferred fact, the background, a
+  correction or an id that is no fact) are dropped with a note.
 - The outcome is `review` when the answers cover every open goal and the reply has no intent,
   `partial` for other answers, `intents` for intents only, `noop` for neither, and `invalid`
   for a reply without a JSON object.
@@ -509,6 +525,8 @@ base budget and 30 at the cap.
 | Intents kept from one assessment | 3 | [tasks/P_board/model.py](../../main_services/processing/tasks/P_board/model.py) |
 | Open questions in one assessment prompt | 20 | [tasks/P_board/prompts.py](../../main_services/processing/tasks/P_board/prompts.py) (`PROMPT_QUESTIONS`) |
 | Output tokens of one assessment, reasoning included | 16,000 | [tasks/P_board/model.py](../../main_services/processing/tasks/P_board/model.py) (`REASON_MAX_TOKENS`) |
+| Read timeout of one assessment request | 600 s | `hoover4.ini` key `board_reason_request_seconds` |
+| Attempts of one assessment request | 2, 1 s apart | [tasks/P_board/workflows.py](../../main_services/processing/tasks/P_board/workflows.py) (`EXTERNAL_RETRY`) |
 | Commands of one step of the command writer | 20 | [tasks/P_board/command_workflows.py](../../main_services/processing/tasks/P_board/command_workflows.py) |
 
 Each running explore, each assessment in flight and each start command that waits uses one

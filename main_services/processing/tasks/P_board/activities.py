@@ -107,6 +107,14 @@ class PlanOutput:
 
 
 @dataclass
+class ReasonFailure:
+    board_id: str
+    reason_no: int
+    stalled: bool = False
+    error: str = ""
+
+
+@dataclass
 class FinalFailure:
     board_id: str
     assessed_budget: int
@@ -438,19 +446,43 @@ def _read(board) -> tuple[list, list, object]:
     return events, visible_facts(facts, canonical_events(events)), folded
 
 
+#: The connect timeout of the assessment request. The read timeout is
+#: `board_reason_request_seconds`.
+REASON_CONNECT_SECONDS = 10
+
+
+def _reason_submitted(board_id: str, reason_no: int) -> bool:
+    """Whether a `reason_result` command of this assessment exists, so an attempt after a
+    lost worker makes no second model call."""
+    from database import board_commands as bc
+
+    key = (board_id, f"reason_result:{reason_no}")
+    return bc.states([key]).get(key, bc.UNKNOWN) != bc.UNKNOWN
+
+
 @activity.defn
 @with_heartbeat
 def board_reason(task: ReasonTask) -> str:
     """One reason call. Submits one `reason_result` command and returns its outcome.
 
     A final assessment runs on a board that is not active too, because its result ends its
-    operation. Its reply holds answers only."""
+    operation. Its reply holds answers only.
+
+    An attempt that finds the `reason_result` command of its assessment returns `reused`
+    and sends no request. A transport failure is raised as `summarize.TransportFailure`, so
+    Temporal sends the request once more. After the last attempt the workflow records
+    `model_failure` (`record_reason_failure`). A refused request (4xx) or a reply that is not
+    a completion gives `model_failure` at once, because a second request cannot change it.
+    """
     from database import boards
     from tasks.P_agent import summarize
+    from tasks.P_agent.model_timeouts import TIMEOUTS
 
     board = boards.read_board(task.board_id)
     if board is None or board.is_deleted:
         return "skipped"
+    if _reason_submitted(board.board_id, task.reason_no):
+        return "reused"
     _events, facts, folded = _read(board)
     citations = boards.read_citations(board.board_id)
     if folded.status != m.ACTIVE and not task.final:
@@ -465,19 +497,25 @@ def board_reason(task: ReasonTask) -> str:
     started = time.monotonic()
     text, usage, error = "", {}, ""
     try:
-        response = summarize._post(endpoint, {"model": model, "max_tokens": m.REASON_MAX_TOKENS,
-                                          "messages": [{"role": "user", "content": prompt}]})
+        response = summarize.post_or_raise(
+            endpoint, {"model": model, "max_tokens": m.REASON_MAX_TOKENS,
+                       "messages": [{"role": "user", "content": prompt}]},
+            timeout=(REASON_CONNECT_SECONDS, TIMEOUTS.board_reason_request_seconds))
         response.raise_for_status()
         reply = response.json()
         text = reply["choices"][0]["message"].get("content") or ""
         usage = reply.get("usage") or {}
-    except Exception as exc:  # noqa: BLE001 - a failed call is an invalid outcome, recorded
+    except summarize.TransportFailure as exc:
+        _record_llm_call(board.owner, board.board_id, model, {},
+                         int((time.monotonic() - started) * 1000), False, str(exc), 0)
+        raise
+    except Exception as exc:  # noqa: BLE001 - a refused request is a model failure, recorded
         error = f"{type(exc).__name__}: {exc}"[:500]
     latency_ms = int((time.monotonic() - started) * 1000)
     live = [f for f in facts if f.fact_id not in folded.rejected and f.kind != m.GOAL]
     idle = not folded.by_state(m.OPEN) and not folded.by_state(m.RUNNING)
     if error:
-        payload = {"outcome": "invalid", "error": error, "raw": "", "problems": []}
+        payload = {"outcome": m.MODEL_FAILURE, "error": error, "raw": "", "problems": []}
     else:
         payload = parse_reason(text, {f.fact_id for f in live},
                                {f.fact_id for f in live if f.kind == m.SOURCED},
@@ -501,6 +539,18 @@ def board_reason(task: ReasonTask) -> str:
                 {"reason_no": task.reason_no, "payload": payload})
     _record_llm_call(board.owner, board.board_id, model, usage, latency_ms, not error, error, len(text))
     return payload["outcome"]
+
+
+@activity.defn
+@with_heartbeat
+def record_reason_failure(failure: ReasonFailure) -> None:
+    """Record `model_failure` for an assessment whose call failed in every attempt, or
+    whose worker was lost. The command writer refuses a second result of one assessment,
+    so a result that an earlier attempt submitted stays."""
+    payload = {"outcome": m.MODEL_FAILURE, "error": failure.error[:500], "raw": "",
+               "problems": [], "stalled": failure.stalled}
+    _submit(failure.board_id, f"reason_result:{failure.reason_no}", cmd.REASON_RESULT, "reason",
+            {"reason_no": failure.reason_no, "payload": payload})
 
 
 # ------------------------------------------------------------------------------ explore

@@ -111,8 +111,28 @@ MAX_ATTEMPTS = 2
 MAX_INTENTS = 3
 #: Explores in a row without a new sourced fact, after which reason is told the board stalled.
 STALL_THRESHOLD = 4
-#: Invalid or empty reasons in a row with no open intent, after which the board goes to review.
+#: Assessments in a row without progress and with no open intent, after which the board goes
+#: to review.
 INVALID_REASON_LIMIT = 3
+
+#: The `reason_result` outcome of an assessment whose model request failed in every attempt,
+#: or was refused. Older results of a failed request have the outcome `invalid`.
+MODEL_FAILURE = "model_failure"
+
+# The causes of an assessment without progress, which the fold counts in `stall_causes`.
+# A valid reply without new work, a reply without a valid JSON object, and a failed request.
+CAUSE_NO_DIRECTION = "no_direction"
+CAUSE_INVALID = "invalid"
+CAUSE_MODEL_FAILURE = "model_failure"
+
+# The `review_proposed` reasons of a board that stopped without progress, by cause. An older
+# event has the reason `stalled` for every cause. **Mirrored in
+# `website/common/src/board_types.rs`** (`BoardSnapshot.review_reason`).
+STALLED_NO_DIRECTION = "stalled_no_direction"
+STALLED_INVALID = "stalled_invalid"
+MODEL_UNAVAILABLE = "model_unavailable"
+STALL_REVIEW_REASONS = {CAUSE_NO_DIRECTION: STALLED_NO_DIRECTION, CAUSE_INVALID: STALLED_INVALID,
+                        CAUSE_MODEL_FAILURE: MODEL_UNAVAILABLE}
 #: Output tokens of one reason call. The reasoning of the model counts against it, and
 #: replies of 3,000 to 4,000 tokens with a short JSON object are common, so a lower cap cuts
 #: the object off and the reply is invalid.

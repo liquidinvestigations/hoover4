@@ -861,6 +861,7 @@ fn summarise(event_type: &str, subject: &str, payload: &serde_json::Value,
                 "review" => "it proposes an answer for every open goal".to_string(),
                 "partial" => format!("it proposes {} answers and {} new intents", count("proposals"), count("intents")),
                 "noop" => "no new intent".to_string(),
+                "model_failure" => format!("the model request failed: {}", text("error")),
                 _ => format!("an invalid reply {}", text("error")),
             };
             let checks = if problems > 0 { format!(", {problems} checks changed it") } else { String::new() };
