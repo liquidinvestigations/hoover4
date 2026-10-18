@@ -47,24 +47,31 @@ def test_success_forwards_only_agent_identity_headers(monkeypatch):
     assert session.calls[0][1]["headers"] == {"x-hoover4-user": "ann", "X-Hoover4-Collections": "testdata"}
 
 
-def test_retries_one_transport_failure_then_succeeds(monkeypatch):
-    session = Session([requests.ConnectionError("down"), Response(200, {"collections": [], "source": ""})])
-    client = backend_client.BackendClient("http://agent-api", session)
-    monkeypatch.setattr(client, "caller_headers", lambda: {})
-
-    assert client.post("collections/list", request(), backend_client.CollectionsListResponse).collections == []
-    assert len(session.calls) == 2
-
-
-def test_returns_typed_error_after_two_transport_failures(monkeypatch):
-    session = Session([requests.ConnectionError("one"), requests.ConnectionError("two")])
+@pytest.mark.parametrize("failure, error", [
+    (requests.ConnectionError("down"), "backend_unavailable"),
+    (requests.Timeout(), "timed_out"),
+    (Response(503, {"message": "busy"}), "backend_unavailable"),
+    (Response(504, {"message": "gateway"}), "timed_out"),
+])
+def test_a_transport_failure_is_sent_once_and_marked_retryable(monkeypatch, failure, error):
+    session = Session([failure, Response(200, {"collections": [], "source": ""})])
     client = backend_client.BackendClient("http://agent-api", session)
     monkeypatch.setattr(client, "caller_headers", lambda: {})
 
     result = client.post("collections/list", request())
 
-    assert result.error == "backend_unavailable"
-    assert len(session.calls) == 2
+    assert result.error == error and result.retryable is True
+    assert len(session.calls) == 1
+
+
+def test_a_route_deadline_is_a_result_and_not_retryable(monkeypatch):
+    session = Session([Response(504, {"error": "timed_out", "message": "the read took too long"})])
+    client = backend_client.BackendClient("http://agent-api", session)
+    monkeypatch.setattr(client, "caller_headers", lambda: {})
+
+    result = client.post("collections/list", request())
+
+    assert result.error == "timed_out" and result.retryable is False
 
 
 def test_does_not_retry_permission_failure(monkeypatch):
@@ -74,19 +81,18 @@ def test_does_not_retry_permission_failure(monkeypatch):
 
     result = client.post("collections/list", request())
 
-    assert result.error == "permission_denied"
+    assert result.error == "permission_denied" and result.retryable is False
     assert len(session.calls) == 1
 
 
-def test_timeout_is_typed_and_retried(monkeypatch):
-    session = Session([requests.Timeout(), requests.Timeout()])
-    client = backend_client.BackendClient("http://agent-api", session)
-    monkeypatch.setattr(client, "caller_headers", lambda: {})
+def test_the_tool_text_names_retryable_only_when_true():
+    import json
 
-    result = client.post("collections/list", request())
+    from collection_search_server import paging
 
-    assert result.error == "timed_out"
-    assert len(session.calls) == 2
+    retry = json.loads(paging.error_text(backend_client.AgentError(error="timed_out", message="m", retryable=True)))
+    plain = json.loads(paging.error_text(backend_client.AgentError(error="not_found", message="m")))
+    assert retry["retryable"] is True and "retryable" not in plain
 
 
 def test_continuation_keeps_document_source(monkeypatch):

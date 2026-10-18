@@ -28,12 +28,13 @@ from temporalio.api.workflowservice.v1 import DeleteWorkflowExecutionRequest
 from temporalio.service import RPCError, RPCStatusCode
 from temporalio.common import WorkflowIDReusePolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
-from temporalio import workflow
+from temporalio import activity, workflow
 from temporalio.worker import UnsandboxedWorkflowRunner, Worker
 
 from database import agent_runs, chat_todos
 from database.clickhouse import get_global_client
 from tasks.P_agent import activities, steps, stream_writer, workflows
+from tasks.P_agent.control_steps import ControlOutcome, ControlParams
 from tasks.run_worker import STEP_HEARTBEAT_THROTTLE, WORKFLOW_FAILURE_EXCEPTION_TYPES
 
 pytestmark = [pytest.mark.integration, pytest.mark.timeout(240)]
@@ -199,6 +200,14 @@ class _Case:
                                parameters={"u": self.username})
 
 
+@activity.defn(name="control_event")
+def _no_control(params: ControlParams) -> ControlOutcome:
+    """The policy hook with no rule: no call, no note and no round. The policy layer has
+    its own tests in `test_agent_control_workflow.py`."""
+    row = agent_runs.read_run(params.username, params.session_id, params.run_id)
+    return ControlOutcome(next_seq=row.next_seq if row is not None else 0)
+
+
 async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
                     model_worker=True, plan=False):
     """Run `body(client, case, stub, queue, titled)` with a worker on each queue of the
@@ -220,8 +229,8 @@ async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
     client = None
     acts = [activities.open_run, activities.write_ending,
             activities.summarize_if_first_turn,
-            steps.record_step_failure, steps.check_citations,
-            steps.write_empty_note, steps.write_asked_answer, steps.write_incomplete]
+            steps.record_step_failure, _no_control,
+            steps.write_asked_answer, steps.write_incomplete]
     try:
         client = await Client.connect("temporal:7233")
         with ThreadPoolExecutor(max_workers=32) as executor:
@@ -423,7 +432,7 @@ def test_a_lost_tool_ends_after_its_limit_with_a_stored_result(monkeypatch):
         assert again.content == tool_message.content
         # Each attempt that passed its limit wrote its own row, and the workflow none.
         rows = sorted((e.attempt, e.ok, e.error_class) for e in recorded if e.step == "tool")
-        assert rows == [(n, False, "start_to_close_timeout") for n in (1, 2, 3)], rows
+        assert rows == [(n, False, "start_to_close_timeout") for n in (1, 2)], rows
 
     asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
@@ -445,9 +454,11 @@ def test_identical_searches_of_one_reply_all_run(monkeypatch):
 
     async def body(client, case, stub, queue, titled):
         assert await (await _start(client, case, queue)).result() == "completed"
-        assert [r["call"]["args"] for r in stub.tool_requests] == [{"query": "a"}] * 6
+        # The three identical calls of one reply share one execution (`share_key`).
+        assert [r["call"]["args"] for r in stub.tool_requests] == [{"query": "a"}] * 4
         tools = [m for m in case.messages() if m.role == "tool"]
         assert len(tools) == 6 and all("repeated_call" not in m.content for m in tools)
+        assert len([m for m in tools if m.usage.get("shared_from")]) == 2
         row = case.run_row()
         assert (row.end_reason, row.result, row.model_steps) == ("", "Answer.", 5)
         assert "nag" not in [r[1] for r in case.chat_rows()]
@@ -533,48 +544,45 @@ async def _wait_terminal(case, run_id=None, seconds=90):
 # ------------------------------------------------------------------------ the empty reply
 
 
-def _empty_rows(case, thread_id=None):
-    return [m for m in case.messages(thread_id) if steps.is_retry_marker(m)]
-
-
-def test_an_empty_third_step_gets_one_nudge_and_a_fourth_step(monkeypatch):
+def test_an_empty_reply_is_sent_again_and_the_valid_reply_answers(monkeypatch):
+    """An empty reply fails its attempt of `model_step`. The second attempt sends the same
+    request, and its reply is the one answer. No note is added to the conversation."""
     def script(request, n):
-        if n <= 2:
-            return _reply(request, calls=[_call("search_collections", {"query": f"q{n}"})])
-        if n == 3:
+        if n == 1:
+            return _reply(request, calls=[_call("search_collections", {"query": "q"})])
+        if n == 2:
             return _reply(request)
-        return _reply(request, "The answer after the nudge.")
+        return _reply(request, "The answer after one empty reply.")
 
     async def body(client, case, stub, queue, titled):
         assert await (await _start(client, case, queue)).result() == "completed"
-        assert len(stub.requests) == 4 and len(_empty_rows(case)) == 1
-        assert stub.requests[3]["messages"][-1]["content"] == steps.EMPTY_REPLY_TEXT
+        assert len(stub.requests) == 3
+        assert stub.requests[1]["messages"] == stub.requests[2]["messages"]
+        assert [m.role for m in case.messages()].count("ai") == 2
         rows = [(r[1], r[2]) for r in case.chat_rows()]
-        assert rows[-2:] == [("nag", steps.EMPTY_REPLY_TEXT),
-                             ("assistant", "The answer after the nudge.")]
-        assert "(the assistant returned an empty answer)" not in [r[1] for r in rows]
+        assert "nag" not in [r[0] for r in rows]
+        assert rows[-1] == ("assistant", "The answer after one empty reply.")
         row = case.run_row()
-        assert (row.result, row.end_reason) == ("The answer after the nudge.", "")
-        assert json.loads(_empty_rows(case)[0].usage_json) == {
-            steps.RETRY_MARKER_KEY: steps.EMPTY_RETRY_MARKER}
+        assert (row.result, row.end_reason, row.model_steps) == (
+            "The answer after one empty reply.", "", 2)
 
     asyncio.run(_run_case(monkeypatch, script, body))
 
 
-def test_a_second_empty_step_ends_the_turn_incomplete_with_its_evidence(monkeypatch):
+def test_two_empty_replies_of_one_step_end_the_turn_incomplete(monkeypatch):
     def script(request, n):
-        if n <= 2:
-            return _reply(request, calls=[_call("search_collections", {"query": f"q{n}"})])
+        if n == 1:
+            return _reply(request, calls=[_call("search_collections", {"query": "q"})])
         return _reply(request)
 
     async def body(client, case, stub, queue, titled):
         assert await (await _start(client, case, queue)).result() == "completed"
-        assert len(stub.requests) == 4 and len(_empty_rows(case)) == 1
+        assert len(stub.requests) == 3
         rows = [(r[1], r[2]) for r in case.chat_rows()]
         assert rows[-1][0] == "assistant"
         assert rows[-1][1].startswith("This run stopped before a final answer, because the "
                                       "model returned two replies")
-        assert [r[0] for r in rows].count("nag") == 1
+        assert "nag" not in [r[0] for r in rows]
         row = case.run_row()
         assert (row.state, row.end_reason, row.result) == (
             "completed", "empty_response", rows[-1][1])
@@ -582,25 +590,75 @@ def test_a_second_empty_step_ends_the_turn_incomplete_with_its_evidence(monkeypa
     asyncio.run(_run_case(monkeypatch, script, body))
 
 
-def test_an_empty_reply_of_a_later_turn_gets_a_new_nudge(monkeypatch):
+# ------------------------------------------------------------------ tool transport failures
+
+
+def _transport_then_ok(request, n):
+    call = request["call"]
+    if n == 1:
+        return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "error",
+                     "content": json.dumps({"success": False, "error": "backend_unavailable",
+                                            "message": "down", "retryable": True}),
+                     "error_class": "transport_failure", "retryable": True}
+    return _ok_tool(request, n)
+
+
+def test_a_tool_transport_failure_is_sent_again_and_stores_one_result(monkeypatch):
     def script(request, n):
-        if n in (1, 3):
-            return _reply(request)
-        return _reply(request, f"Answer {n}.")
+        if n == 1:
+            return _reply(request, calls=[_call("search_collections", {"query": "q"})])
+        return _reply(request, "done")
 
     async def body(client, case, stub, queue, titled):
         assert await (await _start(client, case, queue)).result() == "completed"
-        first = case.run_id
-        case.run_id, case.turn_uuid = str(uuid.uuid4()), str(uuid.uuid4())
-        case.turn_seq, case.start_seq = 10, 11
-        activities._insert_chat_row(case.username, case.session_id, case.turn_seq, "user",
-                                    content="And the second question?")
-        assert await (await _start(client, case, queue)).result() == "completed"
-        assert len(stub.requests) == 4
-        assert len(_empty_rows(case, first)) == 1 and len(_empty_rows(case)) == 1
-        assert case.run_row().result == "Answer 4."
+        assert len(stub.tool_requests) == 2
+        keys = {r["idempotency_key"] for r in stub.tool_requests}
+        assert len(keys) == 1
+        tools = [m for m in case.messages() if m.role == "tool"]
+        assert len(tools) == 1 and tools[0].usage["status"] == "ok"
+        # The model reads one successful result and no recovery message.
+        assert stub.requests[1]["messages"][-1]["status"] == "ok"
+        assert "nag" not in [r[1] for r in case.chat_rows()]
 
-    asyncio.run(_run_case(monkeypatch, script, body))
+    asyncio.run(_run_case(monkeypatch, script, body, tool=_transport_then_ok))
+
+
+def test_a_refused_tool_call_is_sent_once(monkeypatch):
+    def script(request, n):
+        if n == 1:
+            return _reply(request, calls=[_call("read_documents", {"collection": "x"})])
+        return _reply(request, "done")
+
+    def refuse(request, n):
+        call = request["call"]
+        return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "error",
+                     "content": json.dumps({"success": False, "error": "permission_denied",
+                                            "message": "no access"}),
+                     "error_class": "tool_error", "retryable": False}
+
+    async def body(client, case, stub, queue, titled):
+        assert await (await _start(client, case, queue)).result() == "completed"
+        assert len(stub.tool_requests) == 1
+        [tool] = [m for m in case.messages() if m.role == "tool"]
+        assert json.loads(tool.content)["error"] == "permission_denied"
+
+    asyncio.run(_run_case(monkeypatch, script, body, tool=refuse))
+
+
+def test_two_tool_transport_failures_store_tool_unavailable(monkeypatch):
+    def script(request, n):
+        if n == 1:
+            return _reply(request, calls=[_call("search_collections", {"query": "q"})])
+        return _reply(request, "done")
+
+    async def body(client, case, stub, queue, titled):
+        assert await (await _start(client, case, queue)).result() == "completed"
+        assert len(stub.tool_requests) == 2
+        [tool] = [m for m in case.messages() if m.role == "tool"]
+        assert json.loads(tool.content)["error"] == "tool_unavailable"
+
+    asyncio.run(_run_case(monkeypatch, script, body,
+                          tool=lambda r, n: _transport_then_ok(r, 1)))
 
 
 def test_todo_calls_of_one_reply_run_in_the_order_of_the_reply(monkeypatch):
@@ -810,7 +868,7 @@ def test_an_agent_error_ends_the_run_as_failed(monkeypatch):
         handle = await _start(client, case, queue)
         with pytest.raises(WorkflowFailureError):
             await handle.result()
-        assert len(stub.requests) == 3
+        assert len(stub.requests) == 2
         row = case.run_row()
         assert row.state == "failed" and "model unavailable" in row.error
         ending = case.chat_rows()[-1]
@@ -818,40 +876,6 @@ def test_an_agent_error_ends_the_run_as_failed(monkeypatch):
         assert ending[2].startswith("The assistant could not answer: ")
 
     asyncio.run(_run_case(monkeypatch, script, body))
-
-
-def test_an_uncited_answer_that_names_a_document_gets_one_citation_round(monkeypatch):
-    def script(request, n):
-        if n == 1:
-            return _reply(request, "The memo sets the budget [D1].")
-        if n == 2:
-            return _reply(request, calls=[_call("cite_documents", {"citations": [
-                {"collectionname": "testdata", "file_hash": "a" * 64, "quote": "q"}]})])
-        return _reply(request, "The memo sets the budget [D1], cited.")
-
-    async def body(client, case, stub, queue, titled):
-        handle = await _start(client, case, queue)
-        assert await handle.result() == "completed"
-        assert len(stub.requests) == 3
-        note = stub.requests[1]["messages"][-1]["content"]
-        assert "No successful citation result gives [D1]." in note
-        assert "Write the complete answer again" in note
-        rows = [(r[1], r[2], r[3]) for r in case.chat_rows()]
-        assert [r[0] for r in rows] == ["user", "assistant", "nag", "tool", "assistant"]
-        assert rows[2][1] == note and rows[3][2] == "cite_documents"
-        assert rows[4][1] == "The memo sets the budget [D1], cited."
-        row = case.run_row()
-        assert row.state == "completed"
-        assert row.result == "The memo sets the budget [D1], cited."
-
-    def tool(request, n):
-        call = request["call"]
-        return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "ok",
-                     "content": json.dumps({"citations": [{"file_hash": "a" * 16,
-                                                        "handle": "[D1]"}]}),
-                     "measure": {}, "error_class": ""}
-
-    asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
 def _citation_tool(frames):
@@ -864,75 +888,6 @@ def _citation_tool(frames):
             frame = "data: " + json.dumps(data) + "\n\n"
         out.append(frame)
     return out
-
-
-def test_a_read_document_answer_without_a_file_name_gets_one_round(monkeypatch):
-    """The stored read shape can support an answer that names no path or hash."""
-    def script(request, n):
-        if n == 1:
-            return _citation_tool(_reply(request, calls=[_call("read_documents", {
-                "collectionname": "testdata", "file_hashes": ["a" * 64]})]))
-        if n == 2:
-            return _citation_tool(_reply(request, "The budget is 5."))
-        if n == 3:
-            return _citation_tool(_reply(request, calls=[_call("cite_documents", {
-                "citations": [{"collectionname": "testdata", "file_hash": "a" * 64,
-                               "quote": "The budget is 5."}]})]))
-        return _citation_tool(_reply(request, "The budget is 5 [D1]."))
-
-    def tool(request, n):
-        call = request["call"]
-        if call["name"] == "read_documents":
-            content = {"items": [{"collectionname": "testdata", "file_hash": "a" * 16,
-                                  "path": "/memo.txt", "page": 1,
-                                  "text": "The budget is 5.", "more": "next"}]}
-        else:
-            content = {"citations": [{"collectionname": "testdata",
-                                      "file_hash": "a" * 16, "handle": "[D1]"}]}
-        return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "ok",
-                     "content": json.dumps(content), "measure": {}, "error_class": ""}
-
-    async def body(client, case, stub, queue, titled):
-        assert await (await _start(client, case, queue)).result() == "completed"
-        assert len(stub.requests) == 4
-        notes = [m for m in case.messages() if m.usage.get("repair_marker") == "citation"]
-        assert len(notes) == 1
-        assert case.run_row().result == "The budget is 5 [D1]."
-        assert any(m.tool_name == "cite_documents" for m in case.messages())
-
-    asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
-
-
-def test_a_failed_citation_call_does_not_stop_the_label_check(monkeypatch):
-    """The model calls `cite_documents`, the call fails, and the answer uses the label it
-    wanted. The check reads the failed result, finds no successful one, and asks once."""
-    def script(request, n):
-        if n == 1:
-            return _citation_tool(_reply(request, calls=[_call("cite_documents", {
-                "citations": [{"source": "memo.txt"}]})]))
-        if n == 2:
-            return _citation_tool(_reply(request, "The memo sets the budget [D1]."))
-        return _citation_tool(_reply(request, "The memo sets the budget."))
-
-    def tool(request, n):
-        call = request["call"]
-        return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "error",
-                     "content": json.dumps({"success": False, "error": "invalid_arguments",
-                                            "message": "citations is not valid"}),
-                     "measure": None, "error_class": "invalid_arguments"}
-
-    async def body(client, case, stub, queue, titled):
-        handle = await _start(client, case, queue)
-        assert await handle.result() == "completed"
-        assert len(stub.requests) == 3
-        [cite] = [m for m in case.messages() if m.role == "tool"]
-        assert [e["status"] for e in cite.usage["evidence"]] == ["error"]
-        notes = [m for m in case.messages() if m.usage.get("repair_marker") == "citation"]
-        assert len(notes) == 1
-        assert notes[0].usage["citation_check"]["unresolved"] == ["[D1]"]
-        assert case.run_row().result == "The memo sets the budget."
-
-    asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
 # ------------------------------------------------------------------------- stop and orphans

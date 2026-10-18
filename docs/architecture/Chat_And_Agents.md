@@ -261,20 +261,107 @@ left, keeps working for another quarter of an hour and writes a full set of `ok 
 into `llm_call_events`. Log the error's whole cause chain and its timeout flag, never the
 message alone.
 
-Retries are Temporal's: the agent activity gets two attempts, and a worker that dies
-mid-turn does not consume one. The activity is rescheduled on whichever worker picks it
-up, which is the durability the whole shape exists for. A turn that ends in an error
-writes an `error` row into the transcript *and* logs at ERROR with the session and the
-turn uuid. A failure whose only record is a row in `chat_messages` is a failure nobody
-finds while the user is asking why the assistant stopped answering.
+### Retry classes
+
+Temporal retries an activity. No code adds a message to the conversation to recover from a
+failure of the infrastructure or of the model's output format. An activity raises a
+transport failure. It returns a result only for an outcome that a second attempt cannot
+change, such as a refused request. A turn that ends in an error writes an `error`
+row into the transcript and logs at ERROR with the session and the turn uuid.
+
+| Class | Activities | Attempts |
+|---|---|---|
+| External request | `model_step`, `tool_call`, `write_followups`, `summarize_if_first_turn`, `label_board` | 2, the second after 1 s. A browser tool that can change the page gets 1. |
+| Storage write | `open_run`, `control_event`, `write_asked_answer`, `write_incomplete`, `write_ending`, `record_step_failure`, and the board storage activities | 5 (`ACTIVITY_MAX_ATTEMPTS`). Each write has a fixed key, so a repeat is harmless. |
+
+No activity sends a second request to the same target. The collection server's backend
+client, the browser router and the model client each send a request once. Two cases send a
+different request, so they are not retries. The metasearch server tries another route when
+a route fails. The agent service compacts again after the provider refuses a request as too
+large. The compaction summary returns no summary on a failed request, so
+the step continues when the request fits, and fails as `context_preparation` otherwise.
+The chat checks ask their classifier inside the hook deadline, and a failed request gives
+the answer `unknown`.
+
+**A transport failure of a tool reaches Temporal.** The collection server marks a
+connection error, a client timeout, and a 503 or 504 of a dependency as `retryable`. A 504
+whose body is the route's own `timed_out` answer is a deliberate query deadline and is a
+result. The browser router marks a failed read tool as `retryable`. The agent service
+returns `retryable` with the error class `transport_failure`, also for a connection error
+to the MCP server. The worker raises before it stores a result, and after the last attempt
+`record_step_failure` stores `tool_unavailable`. An invalid argument, a refused access and a
+missing document are results, and they get one request. A search with more than one query
+form keeps the forms that succeeded, and it is retryable only when every form failed in
+transport.
+
+**An empty reply is not stored.** A reply with no text and no call fails its attempt of
+`model_step` (`EmptyModelReply`). Its tokens stay in the attempt's `agent_step_events` row.
+The second attempt sends the same request. When both attempts reply that way, the run ends
+with the result of `write_incomplete` and the `end_reason` `empty_response`.
+
+```mermaid
+sequenceDiagram
+    accTitle: Model step with one reattempt
+    accDescr: A model step that fails or returns an empty reply is sent again once by Temporal. The second attempt reuses any reply that the first attempt stored.
+    participant W as AgentRun
+    participant T as Temporal
+    participant S as model_step attempt
+    participant DB as agent_run_messages
+    participant M as model server
+    W->>T: execute model_step (2 attempts, 1 s)
+    T->>S: attempt 1
+    S->>DB: read thread, look for ai row with step_no
+    S->>M: request
+    M--xS: timeout, 5xx or empty reply
+    S-->>T: retryable error
+    T->>S: attempt 2 after 1 s
+    S->>DB: read thread, no stored reply for step_no
+    S->>M: same request
+    M-->>S: reply
+    S->>DB: write ai row with step_no
+    S-->>W: result
+```
+
+### Restart recovery
+
+A worker restart during a step gives the same rows and the same answer as a run without the
+restart. Each attempt reads its input from the stored thread and finds the result of an
+earlier attempt before it sends a request. A model step finds its stored reply by `step_no`.
+A tool call finds its stored result by call id, and it sends the same idempotency key in
+every attempt. `./deploy` drains a worker for 90 s before it stops it, and Temporal sends a
+step that a stopped worker left to a live worker.
+
+```mermaid
+sequenceDiagram
+    accTitle: Worker restart during a tool call
+    accDescr: The worker stops during a tool call. Temporal sends the call to a live worker, which finds the stored result or runs the call with the same idempotency key.
+    participant W as AgentRun
+    participant T as Temporal
+    participant A as tool_call on worker A
+    participant B as tool_call on worker B
+    participant DB as agent_run_messages
+    W->>T: execute tool_call (call id, seq)
+    T->>A: attempt 1
+    A->>DB: no stored result
+    A--xT: worker stops (raise, or heartbeat timeout)
+    T->>B: attempt 2 after 1 s
+    B->>DB: read result row by call id
+    alt result stored by attempt 1
+        B-->>W: stored status
+    else no result
+        B->>B: run the call with the same idempotency key
+        B->>DB: write result row
+        B-->>W: status
+    end
+```
 
 ## Naming a conversation
 
 The first turn writes a provisional title from the user's own words, and the workflow then
 asks the LLM for a better one. **It cannot fail the turn**: the answer is already written
-and read by the time it runs, so it gets one attempt, a short timeout, and every exception
-swallowed on both sides of the call. The provisional title is the fallback and doing
-nothing is the correct failure.
+and read by the time it runs. A transport failure gets the second attempt of the external
+request class, and the workflow catches the last failure. Every other failure returns no
+title. The provisional title is the fallback and doing nothing is the correct failure.
 
 Naming a conversation is not a reasoning problem, and a reasoning model given one spends
 its whole token budget on the thought and returns nothing usable. The request therefore

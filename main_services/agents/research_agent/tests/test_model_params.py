@@ -42,9 +42,9 @@ def test_the_output_cap_is_sent_when_set(monkeypatch):
     assert model_params.sampling_params(0.3) == {"max_tokens": 32768}
 
 
-def test_the_request_timeout_is_unset_by_default():
+def test_the_request_timeout_is_unset_by_default_and_the_client_never_retries():
     assert model_params.request_timeout() is None
-    assert model_params.client_kwargs() == {}
+    assert model_params.client_kwargs() == {"max_retries": 0}
 
 
 def test_a_set_request_timeout_turns_off_the_client_retries(monkeypatch):

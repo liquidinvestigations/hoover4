@@ -6,8 +6,10 @@ a bad name for what the conversation turned into.
 
 **Nothing here may raise into a turn.** By the time it runs the answer is already written
 and read; a failed summarisation must cost the conversation a good title, never an answer.
-Every entry point returns a result object instead of throwing, and the caller writes the
-provisional title's fallback by doing nothing.
+Every entry point returns a result object, and the caller writes the provisional title's
+fallback by doing nothing. The one exception is a transport failure (`TransportFailure`),
+which the title activity raises so Temporal sends it once more. The workflow catches the
+last failure.
 
 Deliberately not through the agent: that would drag the whole MCP tool surface into a
 call that summarises two paragraphs.
@@ -269,7 +271,9 @@ def complete(system: str, prompt: str, max_tokens: int) -> Completion:
     The call asks the model to leave thinking off (`NO_THINKING`) and sends the request again
     without that hint on a 4xx. It sends a temperature only when `_send_temperature` allows
     it. A reply cut at `max_tokens`, an empty reply and a reply that holds only the
-    reasoning are failures. Never raises.
+    reasoning are failures in the result. A transport failure raises `TransportFailure`,
+    with the failed `Completion` as its `completion`, so the activity of the caller is
+    sent again by Temporal.
     """
     model = _model()
     if not model:
@@ -296,13 +300,14 @@ def complete(system: str, prompt: str, max_tokens: int) -> Completion:
     if _send_temperature():
         body["temperature"] = 0.2
     try:
-        response = _post(endpoint, {**body, **NO_THINKING})
+        response = post_or_raise(endpoint, {**body, **NO_THINKING})
         if 400 <= response.status_code < 500:
             # The hint is the likeliest thing a provider objects to, so it is the first
             # thing dropped. A second refusal is a real one and is reported.
-            response = _post(endpoint, body)
-    except Exception as exc:  # noqa: BLE001 - a dead endpoint costs a title, not a turn
-        return Completion(model=model, latency_ms=elapsed(), error=str(exc)[:500])
+            response = post_or_raise(endpoint, body)
+    except TransportFailure as exc:
+        exc.completion = Completion(model=model, latency_ms=elapsed(), error=str(exc)[:500])
+        raise
 
     if response.status_code >= 400:
         return Completion(
@@ -341,7 +346,7 @@ def complete(system: str, prompt: str, max_tokens: int) -> Completion:
 
 
 def title_and_summary(user_message: str, answer: str) -> TitleSummary:
-    """Ask the LLM for a title and a summary of one turn. Never raises."""
+    """Ask the LLM for a title and a summary of one turn. Raises only `TransportFailure`."""
     prompt = (
         "Given this chat turn, reply with exactly two lines:\n"
         "Line 1: a short title (max 8 words, no quotes).\n"

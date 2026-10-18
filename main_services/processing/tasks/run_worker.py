@@ -831,7 +831,6 @@ async def run_chat_worker():
       record_step_failure,
       tool_call,
       write_asked_answer,
-      write_empty_note,
       write_incomplete,
   )
   from .P_agent.workflows import (
@@ -872,7 +871,7 @@ async def run_chat_worker():
         activities=[
             open_run, write_ending, summarize_if_first_turn,
             record_step_failure, control_event,
-            write_empty_note, write_asked_answer, write_incomplete,
+            write_asked_answer, write_incomplete,
         ],
         activity_executor=activity_executor,
         max_concurrent_activities=low_latency_slots,

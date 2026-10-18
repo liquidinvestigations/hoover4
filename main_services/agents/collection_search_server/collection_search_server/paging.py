@@ -982,7 +982,9 @@ def _cut_unit_page(tool, base, start, raw_offset, data, size, record, source_end
 
 
 def error_text(error: AgentError) -> str:
-    return canonical_json(error.model_dump())
+    """The tool result of a failed backend request. `retryable` appears only when it is
+    true, so the research service can tell a transport failure from a result."""
+    return canonical_json(error.model_dump(exclude=set() if error.retryable else {"retryable"}))
 
 
 def _position_is_valid(handler: Any, position: dict[str, Any]) -> bool:

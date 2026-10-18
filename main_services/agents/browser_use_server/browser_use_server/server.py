@@ -70,9 +70,14 @@ def browser_key() -> str:
     """The router key of this request: the run id, else the chat session id."""
     return _header(RUN_HEADER) or _header(SESSION_HEADER)
 
-#: One retry on a dead sidecar. A node process that died between calls should cost the
-#: user a restart, not a failed answer; a *second* failure is real and is surfaced.
-SIDECAR_RETRIES = 1
+#: The forwarded tools that only read the page or wait. A failed call of one of them is
+#: marked retryable, and the worker's `tool_call` activity runs it once more. Every other
+#: forwarded tool can change the page, so its failure is a result. **Mirrors
+#: `BROWSER_READS` of `research_agent/steps.py`.**
+READ_TOOLS = frozenset({
+    "browser_snapshot", "browser_take_screenshot", "browser_wait_for",
+    "browser_console_messages", "browser_network_requests",
+})
 
 mcp = FastMCP(
     name=os.getenv("SERVER_NAME", "hoover4_browser"),
@@ -185,56 +190,54 @@ class RoutedTool(Tool):
     async def _forward(
         self, chat, tool_name: str, arguments: dict[str, Any]
     ) -> tuple[ToolResult, bool]:
-        """Call the sidecar, restarting it once if it has died."""
+        """Call the sidecar once. A sidecar that died before the call starts again first.
+
+        A call that raises restarts the sidecar for the next call and returns an error.
+        The router sends no second call: the worker's `tool_call` activity is the only
+        retry, and only for `READ_TOOLS`, whose error is marked retryable."""
         import time
 
-        last_error: Exception | None = None
         started = time.monotonic()
-        for attempt in range(SIDECAR_RETRIES + 1):
-            if chat.client is None or not chat_browser.sidecar_alive(chat):
-                await chat_browser.restart_sidecar(chat)
-            try:
-                call = await chat.client.call_tool(
-                    tool_name, arguments, raise_on_error=False
-                )
-            except Exception as exc:  # noqa: BLE001 - a dead sidecar looks like this
-                last_error = exc
-                log.warning(
-                    "sidecar call %s failed (attempt %d): %s", tool_name, attempt + 1, exc
-                )
-                await chat_browser.restart_sidecar(chat)
-                continue
-            failed = bool(getattr(call, "is_error", False))
-            # One `ai_service_telemetry` row per forwarded tool call. `/admin/ai_status`
-            # had a browser column that no writer ever filled, so a dead router and an
-            # unused one looked identical there, and the router is the capability most
-            # likely to be quietly broken, because a page can fail for reasons that are
-            # nobody's fault.
+        if chat.client is None or not chat_browser.sidecar_alive(chat):
+            await chat_browser.restart_sidecar(chat)
+        try:
+            call = await chat.client.call_tool(tool_name, arguments, raise_on_error=False)
+        except Exception as exc:  # noqa: BLE001 - a dead sidecar looks like this
+            log.warning("sidecar call %s failed: %s", tool_name, exc)
+            await chat_browser.restart_sidecar(chat)
             telemetry.record_async(
                 "browser", provider=tool_name,
                 latency_ms=(time.monotonic() - started) * 1000.0,
-                ok=not failed, detail=tool_name,
+                ok=False, detail=f"sidecar unresponsive: {exc}",
                 session_id=chat.session_id,
             )
+            payload = {"success": False,
+                       "error": f"refused: the browser sidecar is not responding: {exc}"}
+            if tool_name in READ_TOOLS:
+                payload["retryable"] = True
             return (
-                ToolResult(
-                    content=list(getattr(call, "content", []) or []),
-                    structured_content=getattr(call, "structured_content", None),
-                ),
-                failed,
+                ToolResult(content=[TextContent(type="text", text=json.dumps(payload))],
+                           structured_content=payload),
+                True,
             )
-
-        # Both attempts failed. This is returned as a tool error rather than raised so the
-        # model sees a retryable failure instead of the connection wedging.
+        failed = bool(getattr(call, "is_error", False))
+        # One `ai_service_telemetry` row per forwarded tool call. `/admin/ai_status`
+        # had a browser column that no writer ever filled, so a dead router and an
+        # unused one looked identical there, and the router is the capability most
+        # likely to be quietly broken, because a page can fail for reasons that are
+        # nobody's fault.
         telemetry.record_async(
             "browser", provider=tool_name,
             latency_ms=(time.monotonic() - started) * 1000.0,
-            ok=False, detail=f"sidecar unresponsive: {last_error}",
+            ok=not failed, detail=tool_name,
             session_id=chat.session_id,
         )
         return (
-            _refusal(f"the browser sidecar is not responding: {last_error}"),
-            True,
+            ToolResult(
+                content=list(getattr(call, "content", []) or []),
+                structured_content=getattr(call, "structured_content", None),
+            ),
+            failed,
         )
 
 

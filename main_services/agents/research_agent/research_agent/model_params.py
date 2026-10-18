@@ -76,13 +76,14 @@ def sampling_params(temperature: float) -> Dict[str, Any]:
 def client_kwargs() -> Dict[str, Any]:
     """Return the `timeout` and `max_retries` of the agent's model client.
 
-    When `LLM_REQUEST_TIMEOUT_SECONDS` is set, `timeout` is the tuple `request_timeout()`
-    returns, (connect, read), and the client does not retry, because each retry would add
-    one more timeout. `langchain-openai` accepts the tuple, and httpx reads it as the
+    The client never retries: the worker's `model_step` activity is the only retry of a
+    model request, and Temporal runs it once more after a transport failure. When
+    `LLM_REQUEST_TIMEOUT_SECONDS` is set, `timeout` is the tuple `request_timeout()`
+    returns, (connect, read). `langchain-openai` accepts the tuple, and httpx reads it as the
     connect and read timeouts. It refuses an `httpx.Timeout`, which is not hashable. When
-    the variable is unset, both are left out and the client keeps its own defaults.
+    the variable is unset, the client keeps its own timeout.
     """
     timeout = request_timeout()
     if timeout is None:
-        return {}
+        return {"max_retries": 0}
     return {"timeout": timeout, "max_retries": 0}

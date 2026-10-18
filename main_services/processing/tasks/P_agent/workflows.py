@@ -56,7 +56,6 @@ with workflow.unsafe.imports_passed_through():
         EMPTY_RESPONSE,
         STEP_BUDGET,
         AskedAnswerParams,
-        EmptyNoteParams,
         IncompleteParams,
         ModelStepParams,
         ModelStepResult,
@@ -69,7 +68,6 @@ with workflow.unsafe.imports_passed_through():
         runs_in_order,
         tool_call,
         write_asked_answer,
-        write_empty_note,
         write_incomplete,
     )
 
@@ -115,6 +113,18 @@ def _was_cancelled(exc: BaseException) -> bool:
             return True
         seen = seen.__cause__
     return False
+
+
+def _error_type(exc: BaseException) -> str:
+    """The type name of the `ApplicationError` in a failure's cause chain, else empty. An
+    activity that raises a Python exception reaches the workflow as an `ApplicationError`
+    named after the exception class."""
+    seen: BaseException | None = exc
+    while seen is not None:
+        if isinstance(seen, ApplicationError):
+            return seen.type or ""
+        seen = seen.__cause__
+    return ""
 
 
 _TIMEOUT_CLASSES = {
@@ -165,11 +175,12 @@ class AgentRun:
     smaller `max_model_steps` of the input, across continue-as-new and continuations, the run
     makes no further model call.
     `write_incomplete` writes a result from the stored thread, with `end_reason`
-    `step_budget`. The first reply of a thread with no text and no call gets
-    `steps.EMPTY_REPLY_TEXT`, which is the stored retry marker, and one more model step. A
-    second such reply ends the run the same way, with `end_reason` `empty_response`. The
-    workflow continues as new every `CONTINUE_AS_NEW_STEPS` model steps, or when its
-    history passes `HISTORY_EVENTS_PER_RUN` events, and the new run resumes from the thread.
+    `step_budget`. A reply with no text and no call fails its attempt of `model_step`
+    (`steps.EmptyModelReply`), and Temporal sends the same request once more. When both
+    attempts reply that way, the run ends the same way, with `end_reason`
+    `empty_response`. No note is added to the conversation. The workflow continues as new
+    every `CONTINUE_AS_NEW_STEPS` model steps, or when its history passes
+    `HISTORY_EVENTS_PER_RUN` events, and the new run resumes from the thread.
 
     The run uses no Signal and no Update, and it never waits for a person. A stop cancels
     the workflow. The cancellation reaches the workflow as a `CancelledError`, or as an
@@ -307,14 +318,11 @@ class AgentRun:
                 # The stored results of the last calls stay. No model call follows.
                 return await self._incomplete(inp, STEP_BUDGET)
             result = await self._model_step(inp, opened)
+            if result is None:
+                # Both attempts of the step replied with no text and no call.
+                return await self._incomplete(inp, EMPTY_RESPONSE)
             if result.outcome == "closed":
                 return RunSummary(outcome="closed", next_seq=result.next_seq)
-            if result.outcome == "empty":
-                # The first reply of the thread with no text and no call gets one more step.
-                await self._write_empty_note(inp, result)
-                continue
-            if result.outcome == "empty_again":
-                return await self._incomplete(inp, EMPTY_RESPONSE)
             if result.outcome == "answered":
                 return RunSummary(outcome="answered", next_seq=result.next_seq,
                                   next_idx=result.next_idx)
@@ -352,19 +360,8 @@ class AgentRun:
         self._raise_if_stopped()
         return RunSummary(outcome="answered", next_seq=next_seq, end_reason=reason)
 
-    async def _write_empty_note(self, inp: AgentRunInput, result: ModelStepResult) -> None:
-        """EMPTY_REPLY_TEXT at the index and seq after the reply. It is the retry marker of
-        the thread, and it writes no counter."""
-        await workflow.execute_activity(
-            write_empty_note,
-            EmptyNoteParams(**self._ref_fields(inp), seq=result.next_seq, idx=result.next_idx),
-            start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-            task_queue=CHAT_TASK_QUEUE,
-        )
-        self._raise_if_stopped()
-
-    async def _model_step(self, inp: AgentRunInput, opened: OpenedRun) -> ModelStepResult:
+    async def _model_step(self, inp: AgentRunInput, opened: OpenedRun) -> ModelStepResult | None:
+        """One model step. None when both attempts replied with no text and no call."""
         self._steps += 1
         self._steps_here += 1
         try:
@@ -376,18 +373,20 @@ class AgentRun:
                 # The wait for a free model slot. None sets no limit. Temporal does not
                 # retry this timeout, so a step that waits past it fails the run.
                 schedule_to_start_timeout=TIMEOUTS.queue_wait,
-                retry_policy=RetryPolicy(maximum_attempts=3,
-                                         initial_interval=timedelta(seconds=5),
-                                         backoff_coefficient=2.0,
-                                         maximum_interval=timedelta(seconds=60),
+                retry_policy=RetryPolicy(maximum_attempts=2,
+                                         initial_interval=timedelta(seconds=1),
                                          non_retryable_error_types=["ModelRequestRejected"]),
                 task_queue=CHAT_MODEL_TASK_QUEUE,
                 cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
             )
         except ActivityError as exc:
-            if not _was_cancelled(exc):
-                await self._record_failure(inp, "model", CHAT_MODEL_TASK_QUEUE, exc,
-                                           name=inp.llm_model, mode=MODEL_STEP_MODE)
+            if _was_cancelled(exc):
+                raise
+            if _error_type(exc) == "EmptyModelReply":
+                self._raise_if_stopped()
+                return None
+            await self._record_failure(inp, "model", CHAT_MODEL_TASK_QUEUE, exc,
+                                       name=inp.llm_model, mode=MODEL_STEP_MODE)
             raise
         self._raise_if_stopped()
         return result
@@ -465,9 +464,8 @@ class AgentRun:
                 start_to_close_timeout=TOOL_CALL_TIMEOUT,
                 heartbeat_timeout=STEP_HEARTBEAT_TIMEOUT,
                 schedule_to_start_timeout=TIMEOUTS.queue_wait,
-                retry_policy=RetryPolicy(maximum_attempts=3 if call.retry else 1,
-                                         initial_interval=timedelta(seconds=2),
-                                         backoff_coefficient=2.0),
+                retry_policy=RetryPolicy(maximum_attempts=2 if call.retry else 1,
+                                         initial_interval=timedelta(seconds=1)),
                 task_queue=AGENT_TOOL_TASK_QUEUE,
                 cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
             )
@@ -547,7 +545,7 @@ class AgentRun:
                 RunRef(run_id=inp.run_id, username=inp.username, session_id=inp.session_id),
                 start_to_close_timeout=TIMEOUTS.title_activity,
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=1),
+                retry_policy=EXTERNAL_RETRY,
                 task_queue=CHAT_TASK_QUEUE,
             )
         except Exception as exc:

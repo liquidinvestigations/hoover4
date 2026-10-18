@@ -201,6 +201,7 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
     found: dict[tuple[str, str], tuple[dict[str, Any], list[int]]] = {}
     partial = False
     succeeded = 0
+    transport = 0
     word_counts, suggestions, query_forms = [], [], []
     keyword_sources = set()
     suggestions_partial = False
@@ -209,6 +210,7 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
         result = BackendClient().post("search/results", _route_request(request, form), SearchResultsResponse)
         if isinstance(result, AgentError):
             notes.append(f"the query {form!r} failed: {result.message}")
+            transport += result.retryable
             continue
         succeeded += 1
         suggestions_partial |= result.suggestions_partial
@@ -242,6 +244,11 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
             _, numbers = found.setdefault(key, (document.model_dump(mode="json"), []))
             numbers.append(number)
     if not succeeded:
+        # Every form failed. When each failure was a transport failure, the worker runs the
+        # call again. A call with one successful form keeps it, and its notes name the rest.
+        if transport and transport == len(forms):
+            return {"success": False, "error": "backend_unavailable", "message": " ".join(notes),
+                    "retryable": True}
         return {"success": False, "error": "invalid_argument", "message": " ".join(notes) or "no query to run"}
     several = len(forms) > 1
     rows = []

@@ -75,7 +75,7 @@ def test_agent_run_and_its_activities_are_registered_on_their_queues():
     assert chat_workflows == ["AgentRun"]
     for name in ("open_run", "write_ending", "summarize_if_first_turn",
                  "record_step_failure",
-                 "control_event", "write_empty_note", "write_incomplete"):
+                 "control_event", "write_incomplete"):
         assert name in chat_acts, name
     for removed in ("read_chat_todo", "preload_reads", "write_repeat_note",
                     "write_found_documents", "delegate_step"):
@@ -440,9 +440,10 @@ def test_the_reply_of_the_citation_round_replaces_the_answer(store, monkeypatch)
 def test_a_citation_round_reply_with_no_text_keeps_the_answer(store, monkeypatch, marked):
     _citation_round(store, marked)
     _serve(monkeypatch, store, _frames(reasoning="The citations are done."))
-    _step(step_no=2)
+    with pytest.raises(steps.EmptyModelReply):
+        _step(step_no=2)
     assert [r for r in store["chat"] if r["role"] == "assistant"] == []
-    assert "result" not in store["run"][-1]
+    assert not store["run"] or "result" not in store["run"][-1]
 
 
 @pytest.mark.parametrize("reply", [
@@ -677,19 +678,30 @@ def test_the_first_reply_of_a_turn_still_writes_the_answer_row(store, monkeypatc
         "The answer."]
 
 
-def test_a_second_reply_with_reasoning_and_no_text_writes_no_answer_row(store, monkeypatch):
-    """The thread holds its retry marker, so a second reply with no text and no call gives
-    `empty_again`. Its reasoning stays in its `ai` message, and no answer row is written."""
-    store["messages"].append(agent_runs.RunMessageRow(
-        idx=1, role="human", content=steps.EMPTY_REPLY_TEXT,
-        usage_json=json.dumps({steps.RETRY_MARKER_KEY: steps.EMPTY_RETRY_MARKER})))
-    store["row"] = _row(next_seq=6, model_steps=1)
+def test_an_empty_reply_is_not_stored_and_the_next_attempt_asks_again(store, monkeypatch):
+    """An empty reply fails its attempt and leaves no `ai` row, so the second attempt sends
+    the request again and the valid reply becomes the one answer."""
+    store["row"] = _row(next_seq=6, result="")
+    before = len(store["messages"])
     _serve(monkeypatch, store, _frames(reasoning="The letters are dated 2018."))
-    result = _step(step_no=2)
-    assert result.outcome == "empty_again"
+    with pytest.raises(steps.EmptyModelReply):
+        _step(step_no=1)
+    assert len(store["messages"]) == before
     assert [r for r in store["chat"] if r["role"] == "assistant"] == []
-    assert "result" not in store["run"][-1]
-    assert store["messages"][-1].reasoning == "The letters are dated 2018."
+    _serve(monkeypatch, store, _frames(text="The letters are dated 2018."))
+    assert _step(step_no=1).outcome == "answered"
+    assert len(store["requests"]) == 2
+    assert [r["content"] for r in store["chat"] if r["role"] == "assistant"] == [
+        "The letters are dated 2018."]
+
+
+def test_a_stored_empty_reply_of_older_code_is_not_reused(store, monkeypatch):
+    store["row"] = _row(next_seq=6, result="")
+    store["messages"].append(agent_runs.RunMessageRow(idx=1, role="ai", run_id=RUN_ID,
+                                                      usage_json=json.dumps({"step_no": 1})))
+    _serve(monkeypatch, store, _frames(text="The answer."))
+    assert _step(step_no=1).outcome == "answered"
+    assert len(store["requests"]) == 1
 
 
 def test_the_answer_row_never_holds_reasoning(store, monkeypatch):
@@ -944,44 +956,6 @@ def test_the_run_row_carries_the_step_columns():
 
 
 # ------------------------------------------------------- the empty reply and the limits
-
-
-def test_the_first_empty_reply_of_a_thread_writes_no_answer_and_gives_empty(store, monkeypatch):
-    _serve(monkeypatch, store, _frames(reasoning="I'll try to read the file properly."))
-    result = _step(step_no=1)
-    assert (result.outcome, result.next_seq, result.next_idx) == ("empty", 5, 2)
-    assert [r for r in store["chat"] if r["role"] == "assistant"] == []
-    assert store["run"][-1] == {"next_seq": 5, "model_steps": 1, "prompt_tokens": 7,
-                                "completion_tokens": 3}
-
-
-@pytest.mark.parametrize("marker", ["usage", "legacy text"])
-def test_an_empty_reply_after_the_retry_marker_gives_empty_again(store, monkeypatch, marker):
-    store["messages"].append(agent_runs.RunMessageRow(idx=1, role="ai", run_id=RUN_ID,
-                                                      usage_json=json.dumps({"step_no": 1})))
-    usage = (json.dumps({steps.RETRY_MARKER_KEY: steps.EMPTY_RETRY_MARKER})
-             if marker == "usage" else "")
-    store["messages"].append(agent_runs.RunMessageRow(
-        idx=2, role="human", content=steps.EMPTY_REPLY_TEXT, usage_json=usage))
-    _serve(monkeypatch, store, _frames())
-    result = _step(step_no=2)
-    assert result.outcome == "empty_again"
-    assert [r for r in store["chat"] if r["role"] == "assistant"] == []
-
-
-def test_write_empty_note_writes_the_marker_and_no_counter(monkeypatch, store):
-    run_writes = []
-    monkeypatch.setattr(agent_runs, "write_run", lambda r, **c: run_writes.append(c))
-    params = steps.EmptyNoteParams(run_id=RUN_ID, username="u", session_id="s", seq=9, idx=6)
-    assert ActivityEnvironment().run(steps.write_empty_note, params) == 10
-    [note] = [m for m in store["messages"] if m.idx == 6]
-    assert (note.role, note.content) == ("human", steps.EMPTY_REPLY_TEXT)
-    assert steps.is_retry_marker(note)
-    assert store["chat"] == [{"seq": 9, "role": "nag", "content": steps.EMPTY_REPLY_TEXT}]
-    assert run_writes == [{"next_seq": 10}]
-    # A retry writes the same rows.
-    assert ActivityEnvironment().run(steps.write_empty_note, params) == 10
-    assert len([m for m in store["messages"] if m.idx == 6]) == 1
 
 
 def _thread_with_evidence(store):

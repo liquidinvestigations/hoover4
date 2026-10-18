@@ -229,7 +229,13 @@ def _call(board, kind: str, prompt: str, max_tokens: int):
     from tasks.P_agent import summarize
     from tasks.P_board.activities import _record_llm_call
 
-    result = summarize.complete(SYSTEM_PROMPT, prompt, max_tokens)
+    try:
+        result = summarize.complete(SYSTEM_PROMPT, prompt, max_tokens)
+    except summarize.TransportFailure as exc:
+        failed = exc.completion
+        _record_llm_call(board.owner, board.board_id, failed.model, {}, failed.latency_ms,
+                         False, failed.error, 0, kind=kind)
+        raise
     if result.model:
         _record_llm_call(board.owner, board.board_id, result.model,
                          {"prompt_tokens": result.prompt_tokens,

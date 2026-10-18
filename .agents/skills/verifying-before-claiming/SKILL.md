@@ -42,6 +42,7 @@ Use the supported rebuild or a controlled source mount or copy when appropriate.
 Do not restart a container that owns a running check.
 
 Verify fixture availability before interpreting integration or screenshot failures.
+For a changed durable workflow, restart the worker during the changed step and compare the visible result with an uninterrupted run.
 For visible changes, use the browser skill and preserve its report.
 For documentation screenshots, verify dimensions, image content, provenance, and the rendered Markdown layout.
 For a full documentation review, require coverage manifests and inspect all headings before claiming completion.

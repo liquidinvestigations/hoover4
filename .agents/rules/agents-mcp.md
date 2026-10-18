@@ -45,6 +45,14 @@ error message routinely names the wrong half of the problem.
 takes several seconds to be ready; a client that allows less than that reports a connection
 failure for a browser that is still starting.
 
+## Retries
+
+A tool server and a model client send each request once. The worker's `tool_call` and
+`model_step` activities are the only retry, and Temporal runs them. Mark a transport failure
+`retryable` in the tool result, so the worker raises instead of storing it. An invalid
+argument, a refused access and a deliberate query deadline are results. A failover to
+another route is not a retry and stays.
+
 ## Timeouts
 
 The HTTP client's timeout is in **seconds**. Use a `(connect, read)` two-tuple so a dead host

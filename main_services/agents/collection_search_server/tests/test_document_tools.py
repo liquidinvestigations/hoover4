@@ -305,3 +305,23 @@ def test_read_documents_sends_an_explicit_character_range(sent):
                                      offset=50000, length=4000, source_version="version")
     assert sent[0][1]["offset"] == 50000 and sent[0][1]["length"] == 4000
     assert sent[0][1]["expected_source"] == "version"
+
+
+@pytest.mark.parametrize("retryable, mixed", [(True, False), (False, False), (True, True)])
+def test_a_search_is_retryable_only_when_every_form_failed_in_transport(monkeypatch, retryable, mixed):
+    from collection_search_server.backend_client import AgentError, SearchResultsResponse
+
+    found = SearchResultsResponse.model_validate({
+        "documents": [], "total_count": 0, "facet_counts": {}, "page": 0, "has_more": False,
+        "source": "s", "word_counts": []})
+    replies = iter([AgentError(error="backend_unavailable", message="down", retryable=retryable),
+                    found if mixed else AgentError(error="backend_unavailable", message="down",
+                                                   retryable=retryable)])
+    monkeypatch.setattr(tools_search.BackendClient, "post", lambda *args, **kwargs: next(replies))
+    response = tools_search._search_forms(tools_search.SearchCollectionsRequest(queries=["a", "b"]))
+    if mixed:
+        assert "documents" in response and "failed" in response["query_notes"][0]
+    elif retryable:
+        assert response["retryable"] is True and response["success"] is False
+    else:
+        assert "retryable" not in response

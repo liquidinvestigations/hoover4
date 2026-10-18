@@ -95,7 +95,7 @@ def _title_body(monkeypatch, send_temperature):
         monkeypatch.delenv("LLM_SEND_TEMPERATURE", raising=False)
     else:
         monkeypatch.setenv("LLM_SEND_TEMPERATURE", send_temperature)
-    monkeypatch.setattr(summarize, "_post", lambda url, body: bodies.append(body) or _Reply())
+    monkeypatch.setattr(summarize, "_post", lambda url, body, timeout=None: bodies.append(body) or _Reply())
     summarize.title_and_summary("question", "answer")
     assert len(bodies) == 1
     return bodies[0]

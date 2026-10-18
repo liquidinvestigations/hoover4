@@ -14,14 +14,13 @@ and result hold ids, counts and tool names.
 * `record_step_failure` stores a `tool_unavailable` result for a tool step that failed.
 * The policy hooks of the run, which check answers and write their notes, are in
   `control_steps.py`.
-* `write_empty_note` writes the note after the first reply with no text and no call. The
-  note is the stored marker of the one retry of a thread.
-* `write_incomplete` ends a run that stopped before an answer, at the step limit or after a
-  second empty reply, with a result that code writes from the stored thread.
+* `write_incomplete` ends a run that stopped before an answer. It writes a result from the
+  stored thread after the step limit, or after two empty replies of one step.
 
 A stored write has a fixed key (`(thread_id, idx)`, `(username, session_id, seq)`), so a
 retry writes the same rows. The `ai` message of a step carries `step_no` in its usage, and a
-retry that finds it makes no second model call.
+retry that finds it makes no second model call. An empty reply is never stored, so it is not
+reused.
 """
 
 from __future__ import annotations
@@ -58,18 +57,9 @@ TOOL_READ_SECONDS = 310
 #: The connect timeout of both step requests. A dead agent host fails the step in seconds.
 CONNECT_SECONDS = 10
 
-#: The human message after a reply with no text and no call, once in a thread.
-EMPTY_REPLY_TEXT = ("Your last reply had no text and no tool call. Make the call you planned, "
-                    "or write your answer now from the results above.")
-
-#: The usage key and value that mark the EMPTY_REPLY_TEXT message of a thread. The marker
-#: holds the one retry of a thread. A thread from before the marker has the text only.
-RETRY_MARKER_KEY = "retry_marker"
-EMPTY_RETRY_MARKER = "empty_reply"
-
-#: The chat role of a note to the model that the transcript shows: the empty-reply note,
-#: and the citation note. It is not
-#: the user speaking. Mirrored as `ChatRole::Nag` in `website/common/src/chat_types.rs`.
+#: The chat role of a note to the model that the transcript shows. It is not the user
+#: speaking. Older turns hold the empty-reply note and the citation note in this role.
+#: Mirrored as `ChatRole::Nag` in `website/common/src/chat_types.rs`.
 NOTE_ROLE = "nag"
 
 #: The `tool_name` of the note row of the citation repair round. The transcript shows the
@@ -153,6 +143,17 @@ class ModelRequestRejected(Exception):
     other than 408 and 429). The workflow does not retry this type."""
 
 
+class EmptyModelReply(Exception):
+    """The model replied with no text and no call. The reply is not stored as the output of
+    its step, so the next attempt of `model_step` sends the request again. After the last
+    attempt the workflow ends the run with `end_reason` `empty_response`."""
+
+
+class ToolTransportFailure(Exception):
+    """A tool request failed in transport (`error_class` `transport_failure` of the agent
+    service). No result is stored, so Temporal runs the call again."""
+
+
 @dataclass
 class StepRef:
     """The common input of a step: ids and settings only."""
@@ -182,9 +183,8 @@ class ModelStepParams(StepRef):
 
 @dataclass
 class ModelStepResult:
-    #: `answered`, `calls`, `closed`, `empty` or `empty_again`. A reply with no text and no
-    #: call writes no answer. It gives `empty` in a thread with no retry marker, and
-    #: `empty_again` in a thread that has one.
+    #: `answered`, `calls` or `closed`. A reply with no text and no call raises
+    #: `EmptyModelReply`, and the workflow ends the run after the last attempt.
     outcome: str
     #: The calls of the reply that the loop runs.
     calls: list[CallRef] = field(default_factory=list)
@@ -567,13 +567,6 @@ def keeps_answer(row, reply: str = "", earlier=()) -> bool:
     return not reply.strip() and any(citations.is_citation_note(m) for m in earlier)
 
 
-def is_retry_marker(message) -> bool:
-    """Whether a thread message is the note after the thread's first empty reply."""
-    return message.role == "human" and (
-        message.usage.get(RETRY_MARKER_KEY) == EMPTY_RETRY_MARKER
-        or (message.content or "") == EMPTY_REPLY_TEXT)
-
-
 def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
                   seq0: Optional[int] = None) -> ModelStepResult:
     """Step 9 of `model_step`: the answer row and the run row of a reply with no call.
@@ -587,9 +580,8 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
     there replaces no `compaction` row.
 
     The answer row holds the text of the reply and the plan prose of the round, and never
-    the reasoning. A reply with no text and no call writes no answer row: it gives `empty`,
-    or `empty_again` when the thread holds the retry marker (`is_retry_marker`). A reply of
-    the citation round with no text keeps the answer row of the turn (`keeps_answer`).
+    the reasoning. A reply of the citation round with no text keeps the answer row of the
+    turn (`keeps_answer`).
     After the note of an edit round (`citations.is_edit_note`), the reply gives edits to the
     earlier answer (`citations.apply_edits`), and the answer row holds the edited answer.
     """
@@ -617,19 +609,6 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
         log.info("[P_agent] run %s: the citation round reply at step %d keeps the answer row",
                  row.run_id, params.step_no)
         return ModelStepResult(outcome="answered", next_seq=first,
-                               next_idx=reply_end_idx(ai))
-    if not (ai.content or "").strip() and not ai.tool_calls:
-        # The workflow writes the retry marker at `next_idx` and asks again, once in a
-        # thread. A second empty reply ends the run through `write_incomplete`.
-        again = any(is_retry_marker(m) for m in earlier)
-        if True:
-            _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid,
-                                     row.start_seq)
-        writer.write(next_seq=first, model_steps=max(row.model_steps, params.step_no),
-                     **_step_tokens(row, params.step_no, ai.usage))
-        log.info("[P_agent] run %s: the reply at step %d has no text and no call%s",
-                 row.run_id, params.step_no, " again" if again else "")
-        return ModelStepResult(outcome="empty_again" if again else "empty", next_seq=first,
                                next_idx=reply_end_idx(ai))
     if edit_round and (row.result or "").strip():
         # The reply of an edit round holds edits to the earlier answer. The edits that match
@@ -798,8 +777,8 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
        `compaction` row when the service sent one, one live tool row for each call, and the
        run row. Every call
        of the reply runs. A reply with no call gets the `ai` message, the answer row and
-       the run row with the result. A reply with no text and no call writes no answer and
-       gives `empty` or `empty_again`.
+       the run row with the result. A reply with no text and no call writes nothing and
+       raises `EmptyModelReply`, so the next attempt asks the model again.
     """
     from database import agent_runs
     from tasks.P_agent.stream_writer import (
@@ -813,7 +792,8 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
     writer = agent_runs.RunRowWriter(row, interval=KEEPALIVE_SECONDS)
     last_ai = _last_ai(messages)
     if (last_ai is not None and last_ai.run_id == row.run_id
-            and last_ai.usage.get("step_no") == params.step_no):
+            and last_ai.usage.get("step_no") == params.step_no
+            and ((last_ai.content or "").strip() or last_ai.tool_calls)):
         earlier = [m for m in messages if m.idx < last_ai.idx]
         seq0 = row.next_seq
         if (last_ai.usage.get("compaction") and True
@@ -881,6 +861,11 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
                     shift = 1
                     stream.shift_seq(1, COMPACTION_ROLE, content)
                 elif kind == "model_turn" and ai is None:
+                    if not str(frame.get("text") or "").strip() and not frame.get("tool_calls"):
+                        # An empty reply is evidence of this attempt only: it stays out of
+                        # the thread, so the next attempt asks the model again.
+                        event.completion_tokens = int((frame.get("usage") or {}).get("output_tokens") or 0)
+                        raise EmptyModelReply(f"the reply at step {params.step_no} has no text and no call")
                     # Written at once, so a retry after a later failure finds the reply.
                     _store_reductions(row, frame.get("reductions") or [])
                     ai = _store_reply(row, params, frame, next_idx,
@@ -1018,6 +1003,10 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
             content = content if isinstance(content, str) else json.dumps(content, default=str)
             status = "error" if result.get("status") == "error" else "ok"
             error_class = str(result.get("error_class") or "")
+            if status == "error" and result.get("retryable"):
+                # No result is stored. Temporal runs the call again, and after the last
+                # attempt `record_step_failure` stores `tool_unavailable`.
+                raise ToolTransportFailure(f"{call.name}: {content[:300]}")
             _write_tool_result(row, params.turn_uuid, ai, call, content, status,
                                result.get("measure"), error_class, result.get("doc_refs"))
             # A result with an error code only in its text, such as not_found, is a result.
@@ -1138,38 +1127,6 @@ def record_step_failure(params: StepFailure) -> None:
                        error_class=params.error_class)
 
 
-@dataclass
-class EmptyNoteParams(StepRef):
-    """The input of `write_empty_note`: the keys of its rows."""
-
-    seq: int = 0
-    idx: int = 0
-
-
-@activity.defn
-@with_heartbeat
-def write_empty_note(params: EmptyNoteParams) -> int:
-    """Write EMPTY_REPLY_TEXT as a `human` row at `idx` with the retry marker in its usage,
-    and for a run that writes the transcript, as a note row at `seq`. Returns the next free
-    seq. A retry writes the same rows at the same keys. No counter is written."""
-    from database import agent_runs
-
-    row = _read_row(params)
-    if agent_runs.is_terminal(row):
-        return params.seq
-    agent_runs.write_message(
-        row.username, row.session_id, row.thread_id, row.run_id,
-        agent_runs.RunMessageRow(idx=params.idx, role="human", content=EMPTY_REPLY_TEXT,
-                                 usage_json=json.dumps({RETRY_MARKER_KEY: EMPTY_RETRY_MARKER}),
-                                 run_id=row.run_id))
-    if not True:
-        return params.seq
-    _insert_chat_row(row.username, row.session_id, params.seq, NOTE_ROLE,
-                     content=EMPTY_REPLY_TEXT)
-    agent_runs.write_run(row, next_seq=params.seq + 1)
-    return params.seq + 1
-
-
 #: The `end_reason` values of a run that stopped before an answer.
 STEP_BUDGET = "step_budget"
 EMPTY_RESPONSE = "empty_response"
@@ -1218,11 +1175,11 @@ def write_incomplete(params: IncompleteParams) -> int:
 
 
 __all__ = [
-    "BROWSER_READ_TOOL", "BROWSER_TOOL_PREFIX", "EMPTY_REPLY_TEXT", "EMPTY_RESPONSE", "EmptyNoteParams",
+    "BROWSER_READ_TOOL", "BROWSER_TOOL_PREFIX", "EMPTY_RESPONSE", "EmptyModelReply",
     "INCOMPLETE_REASONS", "IncompleteParams", "ModelRequestRejected", "ModelStepParams",
     "CITATION_NOTE_NAME", "ModelStepResult", "NOTE_ROLE", "STEP_BUDGET", "StepFailure", "StepRef",
     "SHARED_MODE", "SHARED_TOOLS", "SHARED_TEXT", "ToolCallParams", "ToolCallResult",
     "complete_result", "pinned_control", "share_key",
-    "is_browser_tool", "is_retry_marker", "model_step", "record_step_failure", "runs_in_browser", "runs_in_order",
-    "tool_call", "tool_idx", "write_asked_answer", "write_empty_note", "write_incomplete",
+    "is_browser_tool", "model_step", "record_step_failure", "runs_in_browser", "runs_in_order",
+    "ToolTransportFailure", "tool_call", "tool_idx", "write_asked_answer", "write_incomplete",
 ]

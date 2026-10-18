@@ -10,6 +10,7 @@ Name the old paths that become unnecessary and the conditions for removing them.
 
 For persistent data, state how old records remain readable and how new writes are identified.
 For workflow changes, state how active histories remain executable during deployment.
+For each new or changed workflow step, state its retry class, its attempt count, its operation identity, its cancellation behavior, and its result after a worker restart.
 For shared Python and Rust behavior, name both consumers and the common acceptance cases.
 
 Define verification before implementation.

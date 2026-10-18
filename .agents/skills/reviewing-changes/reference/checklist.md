@@ -16,6 +16,9 @@ Select checks with the verification skill. Reuse captured evidence when it remai
 | An activity writes before it can retry. | Verify its idempotency identity and behavior after a partial failure. |
 | A workflow grows with input. | Verify history growth and continuation against the supported input size. |
 | Retry or heartbeat settings change. | Compare the settings and failure interpretation across the caller, worker, and configuration. |
+| An external request fails. | Report a transport failure that a catch turns into an ordinary result. Temporal can then not retry it. |
+| A request is repeated. | Report a retry inside an activity or client that repeats a request to the same target. Temporal retries the activity. |
+| A failure is recovered. | Report a message added to a conversation to recover from an infrastructure or output-format failure. |
 | Several writers update one record. | Verify serialization or atomic updates. Read-then-insert alone does not exclude a second writer. |
 | An identifier changes. | Verify uniqueness at the actual call rate. A one-second timestamp alone can collide. |
 | ClickHouse returns typed rows. | Verify column names and Enum values on the actual wire. Avoid aliases that shadow source columns. |

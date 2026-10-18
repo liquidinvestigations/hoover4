@@ -182,20 +182,27 @@ class TitleSessionParams:
 def title_session(params: TitleSessionParams) -> str:
     """Name a conversation from its first exchange. Returns the title, or empty.
 
-    `summarize_if_first_turn` calls it. **It cannot fail.** It runs after the answer is
-    written and read, so everything that could go wrong here -- a dead endpoint, an
-    unusable reply, an unreachable database -- is worth exactly one mediocre title and
-    nothing more. It returns instead of raising, and the workflow shields the call as well.
+    `summarize_if_first_turn` calls it. It runs after the answer is written and read. An
+    unusable reply or an unreachable database costs the conversation its title only, and
+    the function returns empty. A transport failure of the model request raises
+    `summarize.TransportFailure`, after its telemetry row, so Temporal sends the activity
+    once more. The workflow catches the last failure.
 
     The provisional title the website wrote from the first message stays in place
     whenever this produces nothing.
     """
     if activity.in_activity():
         activity.heartbeat("summarising the conversation")
-    from tasks.P_agent.summarize import title_and_summary
+    from tasks.P_agent.summarize import TitleSummary, TransportFailure, title_and_summary
 
     try:
         result = title_and_summary(params.user_message, params.answer)
+    except TransportFailure as exc:
+        failed = getattr(exc, "completion", None)
+        _record_summarizer_call(params, TitleSummary(
+            error=str(exc)[:500], model=getattr(failed, "model", ""),
+            latency_ms=getattr(failed, "latency_ms", 0)))
+        raise
     except Exception:  # noqa: BLE001 - see the docstring: a title is never worth a turn
         log.warning("[P_agent] the summariser raised", exc_info=True)
         return ""
@@ -593,7 +600,7 @@ def summarize_if_first_turn(ref: RunRef) -> str:
     """Name the conversation when this run answered its first turn. Returns the title.
 
     Reads the user message and the answer from the database, so neither crosses a Temporal
-    payload. **Never raises**, like `title_session`.
+    payload. Raises only a transport failure of the model request, like `title_session`.
     """
     from database import agent_runs
 

@@ -18,7 +18,7 @@ from temporalio.common import RetryPolicy
 from temporalio.exceptions import ActivityError
 
 with workflow.unsafe.imports_passed_through():
-    from tasks.heartbeat import HEARTBEAT_TIMEOUT, with_heartbeat
+    from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT, with_heartbeat
 
 #: The prefix of the workflow id of a board's command writer.
 COMMANDS_WORKFLOW_PREFIX = "board-commands-"
@@ -71,7 +71,7 @@ class BoardCommands:
                 out: CommandStepOutput = await workflow.execute_activity(
                     board_command_step, CommandStepInput(board_id),
                     start_to_close_timeout=_SHORT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=3),
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 )
             except ActivityError as exc:
                 # The commands stay in storage. The dispatcher starts the writer again on a

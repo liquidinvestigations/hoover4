@@ -165,6 +165,11 @@ class AgentError(AgentModel):
     success: bool = False
     error: str
     message: str
+    #: True for a transport failure that a second request can change: a connection error,
+    #: a timeout of this client, or a 503 or 504 of a dependency. The worker then raises,
+    #: and Temporal runs the tool call again. A 504 whose body is the route's own
+    #: `timed_out` answer is a deliberate query deadline and is not retryable.
+    retryable: bool = False
 
 
 class CollectionsListRequest(AgentRequest):
@@ -836,7 +841,8 @@ def _server_deadline_fired(response: requests.Response) -> bool:
 
 
 class BackendClient:
-    """POST-only client with one retry for transport and dependency failures."""
+    """POST-only client of the agent API. It sends each request once: the worker's
+    `tool_call` activity is the only retry of a tool request (`AgentError.retryable`)."""
 
     def __init__(self, base_url: str | None = None, session: requests.Session | None = None):
         self.base_url = (base_url or os.getenv("AGENT_API_BASE_URL", "http://hoover4-website:8080")).rstrip("/")
@@ -855,38 +861,28 @@ class BackendClient:
         body = request.model_dump(mode="json", exclude_none=True, by_alias=True)
         if expected_source is not None:
             body["expected_source"] = expected_source
-        started = time.monotonic()
-        for attempt in range(2):
-            remaining = TOTAL_TIMEOUT - (time.monotonic() - started)
-            if remaining <= 0:
-                return AgentError(error="timed_out", message="the agent API deadline expired")
+        try:
+            response = self.session.post(url, json=body, headers=self.caller_headers(), timeout=(CONNECT_TIMEOUT, TOTAL_TIMEOUT))
+        except requests.Timeout:
+            return AgentError(error="timed_out", message="the agent API deadline expired", retryable=True)
+        except requests.RequestException as exc:
+            return AgentError(error="backend_unavailable", message=f"agent API transport failure: {exc}", retryable=True)
+        if response.status_code >= 400:
+            message = response.text[:1000]
             try:
-                response = self.session.post(url, json=body, headers=self.caller_headers(), timeout=(CONNECT_TIMEOUT, remaining))
-            except requests.Timeout:
-                failure = AgentError(error="timed_out", message="the agent API deadline expired")
-            except requests.RequestException as exc:
-                failure = AgentError(error="backend_unavailable", message=f"agent API transport failure: {exc}")
-            else:
-                if response.status_code >= 400:
-                    message = response.text[:1000]
-                    try:
-                        message = response.json().get("message", message)
-                    except ValueError:
-                        pass
-                    failure = error_from_status(response.status_code, message)
-                    if response.status_code not in RETRY_STATUSES or _server_deadline_fired(response):
-                        return failure
-                else:
-                    try:
-                        data = response.json()
-                    except ValueError:
-                        return AgentError(error="backend_unavailable", message="agent API returned invalid JSON")
-                    if response_model is None:
-                        return data
-                    try:
-                        return response_model.model_validate(data)
-                    except ValidationError as exc:
-                        return AgentError(error="backend_unavailable", message=f"agent API returned an invalid response: {exc}")
-            if attempt == 1:
-                return failure
-        raise AssertionError("unreachable")
+                message = response.json().get("message", message)
+            except ValueError:
+                pass
+            failure = error_from_status(response.status_code, message)
+            failure.retryable = response.status_code in RETRY_STATUSES and not _server_deadline_fired(response)
+            return failure
+        try:
+            data = response.json()
+        except ValueError:
+            return AgentError(error="backend_unavailable", message="agent API returned invalid JSON")
+        if response_model is None:
+            return data
+        try:
+            return response_model.model_validate(data)
+        except ValidationError as exc:
+            return AgentError(error="backend_unavailable", message=f"agent API returned an invalid response: {exc}")

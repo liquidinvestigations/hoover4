@@ -41,7 +41,7 @@ from temporalio.exceptions import ActivityError, ChildWorkflowError
 from temporalio.workflow import ChildWorkflowCancellationType, ParentClosePolicy
 
 with workflow.unsafe.imports_passed_through():
-    from tasks.heartbeat import HEARTBEAT_TIMEOUT
+    from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.P_board import model as m
     from tasks.P_board.activities import (
         EndRequest,
@@ -71,6 +71,13 @@ CHAT_TASK_QUEUE = "chat-queue"
 CHAT_MODEL_TASK_QUEUE = "chat-model-queue"
 
 _SHORT = timedelta(seconds=120)
+
+#: The retry of an activity that reads and writes ClickHouse only. Its writes have fixed
+#: keys, so a repeat is harmless (`tasks/Readme.md`, retries).
+STORAGE_RETRY = RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS)
+#: The retry of an activity that sends one external model request: one more attempt after
+#: one second.
+EXTERNAL_RETRY = RetryPolicy(maximum_attempts=2, initial_interval=timedelta(seconds=1))
 
 
 @dataclass
@@ -106,7 +113,7 @@ class BoardDispatcher:
                     board_plan, PlanInput(in_flight_reasons=sorted(set(self._reasons) | waiting_reasons),
                                           awaiting=sorted(self._awaiting)),
                     start_to_close_timeout=_SHORT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=2),
+                    retry_policy=STORAGE_RETRY,
                 )
             except ActivityError as exc:
                 workflow.logger.warning("board_plan failed: %s", exc)
@@ -200,7 +207,7 @@ class BoardDispatcher:
             await workflow.execute_activity(
                 label_board, LabelTask(board_id), task_queue=CHAT_MODEL_TASK_QUEUE,
                 start_to_close_timeout=timedelta(minutes=15), heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=2),
+                retry_policy=EXTERNAL_RETRY,
             )
         except ActivityError as exc:
             workflow.logger.warning("label_board failed for %s: %s", board_id, exc)
@@ -229,7 +236,7 @@ class BoardDispatcher:
             await workflow.execute_activity(
                 record_final_failure, FinalFailure(reason.board_id, reason.assessed_budget, error),
                 start_to_close_timeout=_SHORT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=3),
+                retry_policy=STORAGE_RETRY,
             )
         except ActivityError as exc:
             # The next pass sees the running operation without a reason in flight and ends it.
@@ -255,14 +262,14 @@ class BoardExplore:
         await workflow.execute_activity(
             record_explore_end, EndRequest(task.board_id, task.intent_id, task.attempt, kind, error),
             start_to_close_timeout=_SHORT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
-            retry_policy=RetryPolicy(maximum_attempts=3),
+            retry_policy=STORAGE_RETRY,
         )
 
     async def _turn(self, task: ExploreTask, phase: str) -> str:
         request = TurnRequest(task.board_id, task.intent_id, task.attempt, phase)
         opened = await workflow.execute_activity(
             open_explore_turn, request, start_to_close_timeout=_SHORT,
-            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=RetryPolicy(maximum_attempts=3),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=STORAGE_RETRY,
         )
         if opened.skip_kind:
             await self._record(task, opened.skip_kind, opened.skip_reason)
@@ -276,5 +283,5 @@ class BoardExplore:
             workflow.logger.warning("the %s turn of %s ended with %s", phase, task.intent_id, exc)
         return await workflow.execute_activity(
             conclude_explore, request, start_to_close_timeout=_SHORT,
-            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=RetryPolicy(maximum_attempts=3),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=STORAGE_RETRY,
         )

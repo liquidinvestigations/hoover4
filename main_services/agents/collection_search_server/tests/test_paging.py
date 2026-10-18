@@ -425,10 +425,12 @@ def test_a_server_deadline_504_is_not_retried():
 
     fired = Session([Response(504, {"error": "timed_out", "message": "the server deadline fired"})])
     result = BackendClient("http://x", fired).post("collections/list", CollectionsListRequest())
-    assert (result.error, fired.calls) == ("timed_out", 1)
+    assert (result.error, result.retryable, fired.calls) == ("timed_out", False, 1)
+    # A proxy 504 is a transport failure. The client sends it once, and the worker's
+    # `tool_call` activity runs the call again.
     proxy = Session([Response(504, {"message": "gateway"}), Response(200, {"collections": [], "source": "s"})])
-    assert BackendClient("http://x", proxy).post("collections/list", CollectionsListRequest()) == {"collections": [], "source": "s"}
-    assert proxy.calls == 2
+    result = BackendClient("http://x", proxy).post("collections/list", CollectionsListRequest())
+    assert (result.error, result.retryable, proxy.calls) == ("timed_out", True, 1)
 
 
 def test_a_value_key_position_holding_control_characters_continues(monkeypatch):

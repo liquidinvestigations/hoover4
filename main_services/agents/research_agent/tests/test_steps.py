@@ -1045,3 +1045,51 @@ async def test_search_second_completed_repeat_is_refused(model, first, expected)
     request.messages = [m for m in request.messages if m.role != "tool"]
     assert (await steps.run_tool_call(agent, request))["status"] == "ok"
     assert len(seen) == 1
+
+
+def _raising_tool(name: str, error: BaseException):
+    async def call(**arguments):
+        raise error
+
+    return StructuredTool(name=name, description=f"{name} stub.", args_schema=LIST_SCHEMA,
+                          coroutine=call)
+
+
+def _returning_tool(name: str, text: str):
+    async def call(**arguments):
+        return text
+
+    return StructuredTool(name=name, description=f"{name} stub.", args_schema=LIST_SCHEMA,
+                          coroutine=call)
+
+
+@pytest.mark.parametrize("error", [
+    httpx.ConnectError("refused"),
+    ExceptionGroup("task group", [httpx.ReadTimeout("slow")]),
+    RuntimeError("wrapped"),
+])
+async def test_a_transport_exception_is_retryable_and_another_is_a_result(model, error):
+    if isinstance(error, RuntimeError):
+        error.__cause__ = ConnectionError("reset")
+    agent = FakeAgent([_raising_tool("search_collections", error)], {"search_collections"})
+    result = await steps.run_tool_call(agent, tool_request("search_collections", {"query": "q"}))
+    assert (result["status"], result["error_class"], result["retryable"]) == (
+        "error", steps.TRANSPORT_FAILURE, True)
+
+
+async def test_a_tool_exception_without_transport_is_a_result(model):
+    agent = FakeAgent([_raising_tool("search_collections", ValueError("bad"))], {"search_collections"})
+    result = await steps.run_tool_call(agent, tool_request("search_collections", {"query": "q"}))
+    assert (result["status"], result["error_class"], result["retryable"]) == ("error", "tool_error", False)
+
+
+@pytest.mark.parametrize("body, retryable", [
+    ({"success": False, "error": "backend_unavailable", "message": "down", "retryable": True}, True),
+    ({"success": False, "error": "permission_denied", "message": "no"}, False),
+    ({"success": False, "error": "timed_out", "message": "route deadline", "retryable": False}, False),
+])
+async def test_a_retryable_backend_error_reaches_the_worker(model, body, retryable):
+    agent = FakeAgent([_returning_tool("search_collections", json.dumps(body))], {"search_collections"})
+    result = await steps.run_tool_call(agent, tool_request("search_collections", {"query": "q"}))
+    assert result["retryable"] is retryable
+    assert result["error_class"] == (steps.TRANSPORT_FAILURE if retryable else "")

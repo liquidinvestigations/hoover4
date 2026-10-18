@@ -149,10 +149,17 @@ Todo calls run in reply order. Browser calls run in a separate ordered sequence.
 Other calls can run concurrently.
 An identical search or read call of the same reply waits for the first call (`steps.SHARED_TOOLS`).
 It stores a pointer to that result when the result is complete, and it runs on its own otherwise.
-Browser calls that change a page get one attempt.
 The workflow continues as new after 250 model steps or 30,000 history events.
 After 600 model steps, it writes an incomplete result from stored evidence.
-A second empty reply also ends the run with an incomplete result.
+Two empty replies of one model step also end the run with an incomplete result.
+
+An activity that sends one external request gets two attempts: `model_step`, `tool_call`,
+`write_followups`, `summarize_if_first_turn` and `label_board`. Browser calls that change a
+page get one attempt. An activity that only reads and writes ClickHouse gets
+`ACTIVITY_MAX_ATTEMPTS` (5), for the lost dispatches of the section on activity liveness.
+No activity repeats a request inside itself, and no note in the conversation recovers a
+failure. The [chat architecture](../../../docs/architecture/Chat_And_Agents.md#retry-classes)
+lists each activity and the transport failures that reach Temporal.
 
 The agent service compacts the model thread when it exceeds its size threshold.
 The worker stores the compaction status in the transcript.

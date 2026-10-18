@@ -709,9 +709,12 @@ async def stream_frames(frames: AsyncIterator[Dict[str, Any]]) -> AsyncIterator[
 def _tool_response(request: ToolCallRequest, content: str, status: str = "ok",
                    error_class: str = "", measure: Optional[Dict[str, Any]] = None,
                    matched: Optional[List[str]] = None,
-                   doc_refs: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+                   doc_refs: Optional[List[Dict[str, Any]]] = None,
+                   retryable: bool = False) -> Dict[str, Any]:
     """The `/tool_call` response. `doc_refs` is the whole identity of each row of a
-    result page, or None when the tool sent none."""
+    result page, or None when the tool sent none. `retryable` is true for a transport
+    failure that a second attempt can change, and the worker then raises before it stores
+    a result (`TRANSPORT_FAILURE`)."""
     return {
         "tool_call_id": request.call.id,
         "name": request.call.name,
@@ -721,7 +724,43 @@ def _tool_response(request: ToolCallRequest, content: str, status: str = "ok",
         "measure": measure,
         "matched_names": matched or [],
         "doc_refs": doc_refs,
+        "retryable": bool(retryable),
     }
+
+
+#: The `error_class` of a tool result whose request failed in transport: the MCP server or
+#: its backend did not answer, or answered with a status that a second request can change.
+#: The worker raises for it, so Temporal runs the tool call again.
+TRANSPORT_FAILURE = "transport_failure"
+
+
+def transport_exception(exc: BaseException) -> bool:
+    """Whether an exception of a tool call is a transport failure: a connection error or a
+    timeout, also inside an exception group or the cause chain."""
+    pending: List[BaseException] = [exc]
+    seen = 0
+    while pending and seen < 32:
+        current = pending.pop()
+        seen += 1
+        if isinstance(current, (httpx.TransportError, ConnectionError, TimeoutError,
+                                asyncio.TimeoutError)):
+            return True
+        if isinstance(current, httpx.HTTPStatusError) and current.response.status_code >= 500:
+            return True
+        pending.extend(getattr(current, "exceptions", ()) or ())
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+    return False
+
+
+def retryable_result(content: str) -> bool:
+    """Whether a failed tool result says that its request can succeed when it is sent again:
+    an error object with `retryable` true (`collection_search_server.backend_client`)."""
+    try:
+        body = json.loads(content)
+    except (TypeError, ValueError):
+        return False
+    return isinstance(body, dict) and body.get("success") is False and body.get("retryable") is True
 
 
 def _listed_skill_names(context: Any) -> FrozenSet[str]:
@@ -897,6 +936,9 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
         )
     except Exception as exc:  # noqa: BLE001 - the model reads the error
         log.warning("tool %s raised: %s", name, exc)
+        if transport_exception(exc):
+            return _tool_response(request, f"Error: {exc}", "error", TRANSPORT_FAILURE,
+                                  retryable=True)
         return _tool_response(request, f"Error: {exc}", "error", "tool_error")
     finally:
         _PAGE_SHARE.reset(share_token)
@@ -912,6 +954,9 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
             status = "error"
     else:
         content = _text_of(result)
+    if retryable_result(content):
+        return _tool_response(request, content, "error", TRANSPORT_FAILURE,
+                              _with_repairs(measure, repairs), [], doc_refs, retryable=True)
     return _tool_response(
         request, content, status, "tool_error" if status == "error" else "",
         _with_repairs(measure, repairs), [], doc_refs
