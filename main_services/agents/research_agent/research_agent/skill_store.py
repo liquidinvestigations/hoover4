@@ -49,11 +49,16 @@ ROLE_SKILLS = {
     "full_research": "method_chat_full",
 }
 
-#: The values of `citation_artefact` and `citation_resolver` for each profile.
+#: The values of `citation_artefact` and `citation_resolver` for each profile. Cited text
+#: goes into a workspace file in every profile (`report` skill).
 ROLE_CONTEXT = {
-    "internal_search": ("answer", "reader"),
+    "internal_search": ("report", "reader"),
     "full_research": ("report", "reader"),
 }
+
+#: The skill whose short routing text the system prompt holds (`report_rules`).
+REPORT_SKILL = "report"
+
 
 class UnboundToolError(RuntimeError):
     """A text names a tool that no pack holds.
@@ -184,8 +189,10 @@ def tool_function(strict: bool):
     return tool
 
 
-def skill_variables(ctx: SkillContext, strict: bool = False) -> Dict[str, object]:
-    """The names a skill body can read."""
+def skill_variables(ctx: SkillContext, strict: bool = False,
+                    routing_only: bool = False) -> Dict[str, object]:
+    """The names a skill body can read. `routing_only` is true when the system prompt
+    renders the routing text of the `report` skill."""
     names = ctx.tool_names
     artefact, resolver = ROLE_CONTEXT.get(ctx.profile, ROLE_CONTEXT[DEFAULT_PROFILE])
     return {
@@ -196,6 +203,7 @@ def skill_variables(ctx: SkillContext, strict: bool = False) -> Dict[str, object
         "citation_resolver": resolver,
         "collections_hint": bool(ctx.collections_hint),
         "profile": ctx.profile,
+        "routing_only": routing_only,
     }
 
 
@@ -211,6 +219,18 @@ def render_skill(name: str, ctx: SkillContext, *, strict: bool = False,
     """The text of one skill for one run. The first line is ``Skill `name`.``, and a blank
     line follows it. An unknown name raises `KeyError`."""
     return f"Skill `{name}`.\n\n{render_body(name, ctx, strict=strict, skills=skills)}"
+
+
+def report_rules(ctx: SkillContext, *, strict: bool = False,
+                 skills: Optional[Dict[str, Skill]] = None) -> str:
+    """The routing text of the `report` skill, for the system prompt of every run that
+    has the workspace tools. Empty when the run has no `workspace_write`. The system prompt
+    holds it, so compaction cannot remove it, and no skill load is needed."""
+    store = SKILLS if skills is None else skills
+    if REPORT_SKILL not in store or "workspace_write" not in ctx.tool_names:
+        return ""
+    return environment().from_string(store[REPORT_SKILL].body).render(
+        **skill_variables(ctx, strict, routing_only=True)).strip()
 
 
 def role_method(ctx: SkillContext, *, strict: bool = False,
@@ -285,6 +305,7 @@ __all__ = [
     "DEFAULT_PROFILE", "GROUPS", "ROLE_CONTEXT",
     "ROLE_SKILLS", "SKILLS", "SKILL_DIR", "Skill", "SkillContext",
     "SkillFileError", "UnboundToolError", "listed_skills", "load_skills",
-    "rank_matches", "render_body", "render_skill", "role_method", "search_skills",
+    "REPORT_SKILL", "rank_matches", "render_body", "render_skill", "report_rules",
+    "role_method", "search_skills",
     "skill_variables", "words",
 ]

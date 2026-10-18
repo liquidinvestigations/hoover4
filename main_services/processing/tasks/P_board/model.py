@@ -105,8 +105,10 @@ NOT_ESTABLISHED = "not_established"
 #: **Mirrored in `website/common/src/board_types.rs`** (`NOT_ESTABLISHED_STATEMENT`).
 NOT_ESTABLISHED_STATEMENT = "The cited records do not establish an answer to this goal."
 
-#: Attempts of one intent that count. A cancellation by a pause does not count.
-MAX_ATTEMPTS = 2
+#: Attempts of one intent that count. A cancellation by a pause does not count. An explore
+#: that fails is not sent again: a Temporal retry is the recovery from an infrastructure
+#: failure. An older board can hold a second attempt of an intent, and the fold reads it.
+MAX_ATTEMPTS = 1
 #: Intents one reason may declare.
 MAX_INTENTS = 3
 #: Explores in a row without a new sourced fact, after which reason is told the board stalled.
@@ -142,9 +144,6 @@ STALL_REVIEW_REASONS = {CAUSE_NO_DIRECTION: STALLED_NO_DIRECTION, CAUSE_INVALID:
 #: replies of 3,000 to 4,000 tokens with a short JSON object are common, so a lower cap cuts
 #: the object off and the reply is invalid.
 REASON_MAX_TOKENS = 16000
-#: Model steps of the conclude turn that asks for the fact only.
-CONCLUDE_STEP_BUDGET = 4
-
 # The explore budget of a board. The base covers the first goal. Each further goal, at
 # creation or later, adds `GOAL_EXPLORES`. Each hint, explored question, own question,
 # rejected fact and rejected answer or review adds `ACTION_EXPLORES`, and each reopening
@@ -163,8 +162,9 @@ CORRECTION_EXPLORE_STEPS = 20
 HINT_EXPLORE_STEPS = 5
 MAX_EXPLORE_STEPS = 120
 
-#: The tool that ends an explore turn with its fact. Only board turns have it.
-#: **Mirrored in `research_agent/board_tools.py` and in the website's tool card.**
+#: The function of the conversion request of an explore report (`conversion.py`), and the
+#: tool name of its transcript row. No agent run has it. An older explore turn called it.
+#: **Mirrored in the website's tool card.**
 SUBMIT_FACT_TOOL = "submit_board_fact"
 
 
@@ -202,7 +202,7 @@ def parse_question_key(key: str) -> tuple[str, int] | None:
 
 
 def session_id_for(board_id: str, intent_id: str) -> str:
-    """The chat session of an intent. Every attempt and conclude turn of it run there."""
+    """The chat session of an intent. Every attempt of it runs there."""
     return f"{SESSION_PREFIX}{board_id}-{intent_id}"
 
 

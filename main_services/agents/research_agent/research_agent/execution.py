@@ -19,8 +19,10 @@ server's page broker sizes each page within that share, and it divides the share
 that reads several documents among those documents.
 
 **The idempotency key.** `page_share_client` also sends the key of the current call as
-`X-Hoover4-Idempotency-Key`. The plan server returns the stored result for a key it has, so
-a retried plan mutation changes the tree once.
+`X-Hoover4-Idempotency-Key`. The worker derives the key from the thread, the reply and the
+place of the call, so every attempt of one call sends the same key. The session tool server
+uses it as the operation id of a workspace write or patch, so a retried call changes the
+file once.
 
 **The call measure.** The broker adds the `PageMeasure` of the page it returned as an
 embedded resource beside the page text, and the MCP adapter puts that block in the tool
@@ -48,11 +50,12 @@ from agent_common.result_pages import SAFE_MODE_BATCH_BYTES, ByteLimit, PageInpu
 
 log = logging.getLogger(__name__)
 
-#: The calls that the worker runs in reply order, in one chain: the todo tools, because each
-#: one reads or changes state that the next one reads.
+#: The calls that the worker runs in reply order, in one chain: the todo tools and the
+#: workspace tools, because each one reads or changes state that the next one reads.
 #: `/model_step` gives them the kind `ordered`. The worker's copy is `STATE_TOOLS` in
 #: `processing/tasks/P_agent/steps.py`, and the two lists change in one patch.
-ORDERED_TOOLS = frozenset({"write_todo", "edit_todo", "mark_todo", "read_todo"})
+ORDERED_TOOLS = frozenset({"write_todo", "edit_todo", "mark_todo", "read_todo",
+                           "workspace_read", "workspace_write", "workspace_patch"})
 
 #: The browser server's own tool, and the name prefix of every tool it routes to the
 #: browser (`BROWSER_EXPOSED_TOOLS` chooses which of them it lists).
@@ -70,6 +73,8 @@ def is_browser_tool(name: str) -> bool:
 
 #: The request header that carries one call's page share to the page broker.
 PAGE_SHARE_HEADER = "X-Hoover4-Page-Share"
+#: The request header that carries one call's idempotency key.
+IDEMPOTENCY_HEADER = "X-Hoover4-Idempotency-Key"
 #: The URI of the embedded resource in which the broker returns the call measure.
 CALL_MEASURE_URI = "hoover4://call-measure"
 #: The URI of the embedded resource in which the broker returns the doc refs of a page.
@@ -94,12 +99,16 @@ def page_share_client(
     auth: Optional[httpx.Auth] = None,
 ) -> httpx.AsyncClient:
     """The MCP HTTP client factory of the agent's connections. It adds the page share of
-    the current call as `X-Hoover4-Page-Share` when it is set. The adapter opens one session for each
+    the current call as `X-Hoover4-Page-Share` and its idempotency key as
+    `X-Hoover4-Idempotency-Key` when they are set. The adapter opens one session for each
     tool call inside the call's task, so the values it reads are those of that call."""
     share = _PAGE_SHARE.get()
+    key = _IDEMPOTENCY_KEY.get()
     merged = dict(headers or {})
     if share is not None:
         merged[PAGE_SHARE_HEADER] = str(share)
+    if key:
+        merged[IDEMPOTENCY_HEADER] = key
     return create_mcp_http_client(headers=merged, timeout=timeout, auth=auth)
 
 

@@ -194,7 +194,8 @@ class Handler:
                 source_note = "Search the permitted document collections first. Read their relevant documents. "
                 if "web" in context.capabilities:
                     source_note += "Read those documents before using the web. "
-            if not facts.get("web_unavailable"):
+            # A board brief gives its own call limit, so a board turn gets no effort note.
+            if not facts.get("web_unavailable") and context.run_kind != "board":
                 actions.append(Action("append_note", "effort", freeze({"text":
                     source_note +
                     f"Use 3 to 10 calls for a fact, 10 to 20 for a list, count or comparison, and 20 to 40 for research. "

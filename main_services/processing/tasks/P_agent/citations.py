@@ -1,477 +1,52 @@
-"""The citation check of an answer, and the text of its repair note.
+"""The citation status of an answer row, and the marker of a stored repair note.
 
-`reports.check_labels` compares the `[Dn]` labels of an answer with the successful
-`cite_documents` results of the whole chat session. A label that no successful result gives
-is unresolved. A label that results give for more than one document conflicts. A call that
-failed gives no label, so a failed call does not satisfy the check, and a call that exists
-does not stop it.
+`answer_metadata` gives the metadata of an answer row: the tool scope, and the citation
+status of the response. When the turn wrote a workspace file, the response is that report,
+and the status describes its stored version. Otherwise the status describes the chat text,
+from `reports.check_labels`: a handle that no successful citation gives, or that names more
+than one source, makes it `invalid`. No rule asks a paragraph for a citation, and no note
+asks the model to repeat an answer. The workspace tools check the handles of a report when
+it is written (`tasks/P_workspace/references.py`).
 
-An answer needs a repair round (`needs_repair`) when it has an unresolved or a conflicting
-label, or when it has no label and names a document or follows a document read. These
-rules ask for citations. They do not show that the claims of the answer are supported.
-The note of the round asks for the citations and the whole answer again. A reply with
-no text keeps the earlier answer. A reply with invalid labels or raw call text keeps
-that answer with a notice. A reply without labels shows its citation status.
-Another invalid reply does not repeat an identical notice.
-
-The note of a round is stored with its marker (`REPAIR_MARKER_KEY` in its usage), and
-`is_citation_note` reads this marker. The policy coordinator (`control.coordinator`) runs this
-check after each answer or question, counts the rounds of the turn from the stored notes, and
-combines these findings with the other checks in one note. The evidence includes earlier
-turns' tool reads, without their repair notes.
-A web check compares every answer link with readable page evidence and names each unread link.
-A stopped run and a run that ended at a limit get no round. The rules here are pure.
+Earlier turns can hold citation repair notes. `is_citation_note` reads their marker, so the
+policy counters and the transcript still recognise them.
 """
 
 from __future__ import annotations
 
-import json
-import re
-import unicodedata
-
-from tasks.P_agent.control.handlers_common import HEADING
-
-#: The note of the repair round of an answer that names a document with no label.
-CITATION_NOTE = (
-    "Your answer names documents, but it has no citation handle, so the reader sees no "
-    "document card. Call `cite_documents` now with each document that your answer names, "
-    "quotes or relies on. Then write the whole answer again, with the handles that the "
-    "successful calls returned."
-)
-
-#: The usage key and value of the note of the repair round.
+#: The usage key and value of a stored citation repair note.
 REPAIR_MARKER_KEY = "repair_marker"
 REPAIR_MARKER = "citation"
 
-#: A citation handle as the answer writes it, for example `[D1]`.
-HANDLE_PATTERN = re.compile(r"\[\s*[DW]\d+(?:\s*,\s*[DW]\d+)*\s*\]")
-DOCUMENT_HANDLE_PATTERN = re.compile(r"\[D\d+\]")
-PAGE_ZERO_PATTERN = re.compile(r"\bpage\s+0\b", re.IGNORECASE)
-
-#: A file hash as the answer writes it.
-HASH_PATTERN = re.compile(r"(?<![0-9a-fA-F])[0-9a-fA-F]{64}(?![0-9a-fA-F])")
-
-#: The shortest file name of a tool result that counts as a document name in an answer.
-#: A shorter name, such as `12.`, also matches ordinary prose.
-MIN_NAME_CHARS = 6
-
-#: The shortest part of a file hash that counts as a document name in an answer.
-MIN_HASH_CHARS = 12
-
-
-def _result_documents(message) -> list[dict]:
-    """The document references of one stored tool result."""
-    from tasks.P_agent.trajectory import extract_doc_refs
-
-    try:
-        result = json.loads(message.content or "")
-    except ValueError:
-        return []
-    return extract_doc_refs(message.tool_name or "", result)
-
-
-def names_documents(answer: str, messages) -> bool:
-    """Whether an answer names a document: a `[Dn]` handle, a file hash, or the file hash,
-    path or file name of a document that a tool result of the thread returned."""
-    if DOCUMENT_HANDLE_PATTERN.search(answer) or HASH_PATTERN.search(answer):
-        return True
-    for message in messages:
-        if message.role != "tool":
-            continue
-        for ref in _result_documents(message):
-            file_hash = ref.get("file_hash") or ""
-            if len(file_hash) >= MIN_HASH_CHARS and file_hash[:MIN_HASH_CHARS] in answer:
-                return True
-            path = (ref.get("path") or "").strip()
-            name = path.rstrip("/").rsplit("/", 1)[-1]
-            if len(path) >= MIN_NAME_CHARS and path in answer:
-                return True
-            if len(name) >= MIN_NAME_CHARS and name in answer:
-                return True
-    return False
-
-
-def read_documents(messages) -> bool:
-    """Whether a content reader gives successful document-read evidence."""
-    for message in messages:
-        if message.role != "tool":
-            continue
-        if message.usage.get("status") == "error":
-            continue
-        if any(e.get("kind") == "document_read" and e.get("status") in ("ok", "partial")
-               and (e.get("reference") or {}).get("file_hash")
-               for e in (message.usage.get("evidence") or []) if isinstance(e, dict)):
-            return True
-    return False
-
 
 def is_citation_note(message) -> bool:
-    """Whether a thread message is the note of the repair round."""
-    return message.role == "human" and (
-        message.usage.get(REPAIR_MARKER_KEY) == REPAIR_MARKER
-)
+    """Whether a stored human message is a citation repair note of an earlier turn."""
+    return message.role == "human" and message.usage.get(REPAIR_MARKER_KEY) == REPAIR_MARKER
 
 
-def repair_note(check: dict) -> str:
-    """The note of a repair round for the citation check `check`."""
-    problems = []
-    if check.get("page_zero"):
-        problems.append("The answer names page 0. Use the 1-based page from the verified cite_documents result.")
-    if check.get("web_missing") or (check.get("web_used") and check.get("unsupported_paragraphs")):
-        problems.append('Call `cite_pages` before answering. Use one page per call: {"url":"COPY_READ_URL","terms":["COPY_EXACT_SOURCE_WORDS"]}. Copy a short phrase from read_page text. A title, paraphrase, or guessed wording can fail. If the call returns an error, correct it and retry. Only returned handles are valid.')
-    if check.get("web_missing") and check.get("read_page_urls"):
-        problems.append("Already read page URLs: " + ", ".join(check["read_page_urls"]) + ". Cite the supporting pages from this list.")
-    for url in check.get("web_unread") or []:
-        problems.append(f"The answer links an unread page: {url}. Call `read_page` for that address before you use its claims, or remove those claims.")
-    for url in check.get("web_undiscovered") or []:
-        problems.append(f"No successful search found this page: {url}. Find it with `web_search` before using it as a source.")
-    if check.get("web_unmarked"):
-        problems.append("Replace bare source URLs with handles returned by `cite_pages`. Copy exact supporting text into its terms field.")
-    for paragraph in (check.get("unsupported_paragraphs") or [])[:3]:
-        location = (f"List item {paragraph['item']} in paragraph {paragraph['number']}"
-                    if "item" in paragraph else f"Paragraph {paragraph['number']}")
-        problems.append(f"{location} has a name or number without a source: {paragraph['text']} Add its citation or remove the claim.")
-    if check.get("unsupported_paragraphs"):
-        problems.append("Give every factual paragraph and list item a verified source handle, including items beyond these examples. Retry each failed citation entry before answering.")
-        if check.get("web_used") or check.get("web_missing"):
-            problems.append("After another read_page call, call cite_pages again.")
-        problems.append("Remove claims that have no verified source.")
-    if check.get("unresolved"):
-        problems.append("No successful citation result gives "
-                        + ", ".join(check["unresolved"]) + ".")
-    if check.get("conflicting"):
-        problems.append("Results give " + ", ".join(check["conflicting"])
-                        + " for more than one document.")
-    if check.get("unsupported_paragraphs") and (check.get("documents_read") or
-            (not check.get("web_used") and not check.get("web_missing"))):
-        problems.append('Call cite_documents with {"citations":[{"collection":"COPY_COLLECTION","file_hash":"COPY_HASH","quote":"COPY_5_TO_6_WORDS","why":"What it supports"}]}. The quote field is required: 5 to 6 consecutive words of one line of the document body, not a header line, with no question mark. Find is an optional part of quote.')
-    if not problems:
-        return CITATION_NOTE
-    return " ".join(problems) + " Write the complete answer again with the sources that support its claims."
+def answer_metadata(answer: str, session_entries, internet_tools: bool,
+                    report: dict | None = None) -> dict:
+    """Return the citation status, the available tool scope and the report of an answer.
 
-
-URL_PATTERN = re.compile(r"https?://[^\s<>\]]+")
-NAME_PATTERN = re.compile(r"\b[^\W\d_][^\W\d_'-]{2,}\b")
-OPENING_WORDS = frozenset({"The", "This", "There", "These", "Those", "However", "It", "They", "Their", "For", "From", "With", "Not", "None", "Some"})
-LIST_ITEM_PATTERN = re.compile(r"^([ \t]*)(?:[-+*]|\d+[.)])\s+(.+)")
-
-
-def page_address(url: str) -> str:
-    """Compare page addresses without a fragment or trailing sentence punctuation."""
-    url = url.rstrip(".,;:!?")
-    while url.endswith(")") and url.count(")") > url.count("("):
-        url = url[:-1]
-    return url.split("#", 1)[0]
-
-
-def unsupported_paragraphs(answer: str) -> list[dict]:
-    """Identify uncited names or numbers in each paragraph or list item.
-
-    A Markdown heading line states no claim, as in `answer_blocks`. A part that holds
-    only headings gives no finding, and the heading lines of any other part are left out
-    of its text. The paragraph and item numbers count every part, headings included."""
-    findings = []
-    for number, paragraph in enumerate(re.split(r"\n\s*\n", answer), 1):
-        parts = re.split(r"\n(?=[ \t]*(?:[-+*]|\d+[.)])\s+)", paragraph)
-        for position, raw in enumerate(parts):
-            lines = [line for line in raw.splitlines() if line.strip()]
-            if all(HEADING.match(line) for line in lines):
-                continue
-            part = "\n".join(line for line in lines if not HEADING.match(line))
-            item = LIST_ITEM_PATTERN.match(part)
-            text = part[item.start(2):] if item else part
-            following = LIST_ITEM_PATTERN.match(parts[position + 1]) if position + 1 < len(parts) else None
-            if (item and following and len(following[1]) > len(item[1])
-                    and text.rstrip(" *_`").endswith(":")):
-                continue
-            if HANDLE_PATTERN.search(text) or URL_PATTERN.search(text):
-                continue
-            names = {word for word in NAME_PATTERN.findall(text) if word[0].isupper()} - OPENING_WORDS
-            if names or re.search(r"\b\d+(?:[.,]\d+)*\b", text):
-                finding = {"number": number, "text": part[:500]}
-                if item:
-                    finding["item"] = position + (0 if not LIST_ITEM_PATTERN.match(parts[0]) else 1)
-                findings.append(finding)
-    return findings
-
-
-def web_evidence(messages) -> tuple[bool, list[str]]:
-    """Return web use and the addresses of pages that supplied readable evidence."""
-    used, urls = False, []
-    for message in messages:
-        if message.role != "tool":
-            continue
-        if message.tool_name in ("web_search", "read_page", "cite_pages"):
-            used = True
-        if message.usage.get("status") == "error":
-            continue
-        for entry in message.usage.get("evidence") or []:
-            if entry.get("kind") == "document_read" and entry.get("status") in ("ok", "partial"):
-                url = (entry.get("reference") or {}).get("url")
-                if url:
-                    used = True
-                    urls.append(url)
-    return used, list(dict.fromkeys(urls))
-
-
-def web_discoveries(messages) -> set[str]:
-    """Return page URLs from successful stored search results."""
-    urls = set()
-    for message in messages:
-        if (message.role != "tool" or message.tool_name != "web_search"
-                or message.usage.get("status") == "error"):
-            continue
-        for entry in message.usage.get("evidence") or []:
-            if entry.get("kind") == "discovery" and entry.get("status") == "ok":
-                url = (entry.get("reference") or {}).get("url")
-                if url:
-                    urls.add(page_address(url))
-        try:
-            parsed = json.loads(message.content or "{}")
-        except ValueError:
-            continue
-        if not isinstance(parsed, dict) or parsed.get("success") is False or parsed.get("error"):
-            continue
-        rows = parsed.get("items", parsed.get("results", []))
-        for row in rows if isinstance(rows, list) else []:
-            if isinstance(row, dict) and isinstance(row.get("url"), str):
-                urls.add(page_address(row["url"]))
-    return urls
-
-
-def needs_repair(answer: str, messages, session_entries,
-                 paragraph_repair: bool = True) -> tuple[bool, dict]:
-    """Whether an answer gets the repair round, and its citation check.
-
-    `messages` is the thread, and `session_entries` the citation evidence of the session.
-    With `paragraph_repair` false, a paragraph without a label causes no round, and the check
-    names no such paragraph. The definition limit `paragraph_repair` sets it.
-    The policy coordinator counts the rounds of a turn (`control.coordinator`), so a thread
-    that holds a note is checked like any other.
+    `report` is the report of the turn (`tasks.P_workspace.selection.selected_report`), or
+    None. With a report, the status describes that file version: `cited` when it holds
+    resolved citation handles, else `none`, and `report` names the version. Without a
+    report, the status describes the chat text: `invalid` for a handle that no successful
+    citation gives or that names more than one source, `cited` for resolved handles, else
+    `none`. No rule asks a paragraph for a citation.
     """
     from tasks.P_agent import reports
 
-    check = reports.check_labels(answer, reports.label_bindings(session_entries),
-                                 session_entries)
-    check["page_zero"] = bool(PAGE_ZERO_PATTERN.search(answer))
-    documents_read = read_documents(messages)
-    check["documents_read"] = documents_read
-    web_used, urls = web_evidence(messages)
-    read_urls = {page_address(url) for url in urls}
-    answer_urls = list(dict.fromkeys(page_address(url) for url in URL_PATTERN.findall(answer)))
-    web_refs = [(entry.get("reference") or {}) for entry in session_entries
-                if entry.get("kind") == "citation" and entry.get("status") == "ok"
-                and (entry.get("reference") or {}).get("handle") in check["labels"]
-                and (entry.get("reference") or {}).get("url")]
-    cited_urls = [page_address(ref["url"]) for ref in web_refs]
-    source_urls = list(dict.fromkeys(answer_urls + cited_urls))
-    web_used = web_used or bool(web_refs) or bool(answer_urls)
-    check["web_used"] = web_used
-    check["web_unread"] = [url for url in source_urls if url not in read_urls] if web_used else []
-    discovered = web_discoveries(messages)
-    check["web_undiscovered"] = [url for url in source_urls if url not in discovered] if web_used else []
-    check["web_unmarked"] = answer_urls
-    check["web_missing"] = web_used and (not web_refs or bool(check["web_unread"])
-                                         or bool(check["web_undiscovered"]) or bool(answer_urls))
-    check["unsupported_paragraphs"] = (unsupported_paragraphs(answer)
-                                       if paragraph_repair and (documents_read or web_used) else [])
-    check["read_page_urls"] = list(dict.fromkeys(urls))[:12]
-    if not answer.strip():
-        return False, check
-    if (check["unresolved"] or check["conflicting"] or check["page_zero"]
-            or check["web_missing"] or check["unsupported_paragraphs"]):
-        return True, check
-    return (not any(label.startswith("[D") for label in check["labels"]) and
-            (names_documents(answer, messages) or documents_read)), check
-
-
-def answer_metadata(answer: str, messages, session_entries, internet_tools: bool,
-                    limits=None) -> dict:
-    """Return citation status and the available tool scope for an answer.
-
-    `limits` are the limits of the run's definition. With `paragraph_repair` 0, a paragraph
-    without a label does not make the status `missing`. With `edit_rounds` above 0, the
-    findings of `narrow_findings` do, and their texts are kept as `unsourced_claims`.
-    """
-    limits = limits or {}
-    _, check = needs_repair(answer, messages, session_entries,
-                            bool(limits.get("paragraph_repair", 1)))
-    findings = (narrow_findings(answer, messages, session_entries)
-                if limits.get("edit_rounds") else [])
-    if check["unresolved"] or check["conflicting"] or check["page_zero"]:
-        status = "invalid"
-    elif check["web_missing"] or check["unsupported_paragraphs"] or findings:
-        status = "missing"
-    elif check["labels"] or URL_PATTERN.search(answer):
-        status = "cited"
-    elif read_documents(messages) or any(is_citation_note(m) for m in messages):
-        status = "missing"
+    out: dict = {"tool_scope": "documents_and_web" if internet_tools else "documents_only"}
+    if report:
+        out["citation_status"] = "cited" if report.get("citations") else "none"
+        out["report"] = {"name": report["name"], "version": int(report["version"])}
+        return out
+    check = reports.check_labels(answer, reports.label_bindings(session_entries), session_entries)
+    if check["unresolved"] or check["conflicting"]:
+        out["citation_status"] = "invalid"
+    elif check["labels"]:
+        out["citation_status"] = "cited"
     else:
-        status = "none"
-    out = {"citation_status": status,
-           "tool_scope": "documents_and_web" if internet_tools else "documents_only"}
-    if findings:
-        out["unsourced_claims"] = [finding["text"] for finding in findings]
+        out["citation_status"] = "none"
     return out
-
-
-#: A failed quote that shares this many consecutive words with an answer is a claim that the
-#: answer keeps without its citation. A quote with fewer words shares all of its words.
-KEPT_QUOTE_WORDS = 8
-
-#: The fewest words of a failed quote that the kept-quote check compares. The quote rule asks
-#: for 5 to 6 words, and a shorter run also occurs in answers that do not use the quote.
-KEPT_QUOTE_MIN_WORDS = 5
-
-#: A role or a title in an answer: the role word in any case, and at most four capitalised
-#: words after it.
-ROLE_PATTERN = re.compile(
-    r"\b(?i:head|chief|managing director|director|vice president|vp|president|chairman|ceo"
-    r"|cfo|coo|cao|treasurer|general counsel|counsel|manager|analyst|partner|attorney"
-    r"|lawyer)\b(?:\s+(?:of|for|at|in|,)?\s*[A-Z][\w&'/-]*){0,4}")
-
-#: The most edits that one edit reply can give.
-MAX_EDITS = 20
-
-EDIT_NOTE_TAIL = (
-    'Reply with only a JSON list of edits to your answer, for example '
-    '[{"find": "exact text from your answer", "replace": "the corrected text"}]. '
-    "Each find must occur once in the answer. An empty replace removes the text. "
-    "Leave out a part that is correct as written, and reply [] when no part needs an edit. "
-    "You can call cite_documents before the reply. Do not write the answer again."
-)
-
-
-def _folded_words(text: str) -> list[str]:
-    """The words of a text for comparison, as the quote verifier folds them: Unicode
-    compatibility forms, lower case, and letters and digits only."""
-    return re.findall(r"\w+", unicodedata.normalize("NFKC", text or "").lower())
-
-
-def _shares_run(quote: list[str], answer: str) -> bool:
-    run = min(KEPT_QUOTE_WORDS, len(quote))
-    if run < KEPT_QUOTE_MIN_WORDS:
-        return False
-    for i in range(0, len(quote) - run + 1):
-        if f" {' '.join(quote[i:i + run])} " in answer:
-            return True
-    return False
-
-
-def narrow_findings(answer: str, messages, session_entries) -> list[dict]:
-    """The claims that an answer keeps without a source, for an edit round.
-
-    `kept_failed_citation`: a quote whose `cite_documents` entry failed, with no verified
-    entry for the same document, shares `KEPT_QUOTE_WORDS` consecutive words with the
-    answer. A quote with fewer words shares all of its words. A quote with fewer than
-    `KEPT_QUOTE_MIN_WORDS` words is not compared. `unsourced_role`: a role or title phrase of the answer (`ROLE_PATTERN`) whose
-    first three words are in no tool result of `messages`.
-    """
-    folded = f" {' '.join(_folded_words(answer))} "
-    # A result row names a document by the first 16 characters of its hash, and a doc ref by
-    # the whole hash, so the documents compare by that start.
-    verified = {str((e.get("reference") or {}).get("file_hash") or "")[:16] for e in session_entries
-                if e.get("kind") == "citation" and e.get("status") == "ok"}
-    findings, seen = [], set()
-    for entry in session_entries:
-        ref = entry.get("reference") or {}
-        quote = str(ref.get("quote") or "")
-        if (entry.get("kind") != "citation" or entry.get("status") != "error"
-                or not ref.get("file_hash") or str(ref["file_hash"])[:16] in verified
-                or quote in seen):
-            continue
-        seen.add(quote)
-        if _shares_run(_folded_words(quote), folded):
-            candidate = (ref.get("candidate") or {}).get("text") or ""
-            findings.append({"kind": "kept_failed_citation", "text": quote[:240],
-                             "candidate": str(candidate)[:300]})
-    evidence = " " + " ".join(" ".join(_folded_words(m.content or ""))
-                              for m in messages if m.role == "tool") + " "
-    for match in ROLE_PATTERN.finditer(answer):
-        phrase = match.group(0).strip(" ,")
-        words = _folded_words(phrase)
-        if (len(words) >= 2 and phrase not in seen
-                and f" {' '.join(words[:3])} " not in evidence):
-            seen.add(phrase)
-            findings.append({"kind": "unsourced_role", "text": phrase})
-    return findings
-
-
-def edit_note(findings: list[dict]) -> str:
-    """The note of an edit round: the findings, and the reply format of `apply_edits`."""
-    lines = []
-    for finding in findings:
-        if finding["kind"] == "kept_failed_citation":
-            retry = (f' Retry cite_documents with the source text "{finding["candidate"]}" and'
-                     " add the returned handle, or remove the claim or say that it is not cited."
-                     if finding.get("candidate") else
-                     " Remove the claim or say that it is not cited.")
-            lines.append(f"- {finding['text']!r}: the answer uses this quote, and its citation "
-                         f"failed.{retry}")
-        else:
-            lines.append(f"- {finding['text']!r}: no tool result of this chat gives this role "
-                         "or title. Remove it, or use the words of a document and cite it.")
-    return "Check these parts of your answer:\n" + "\n".join(lines) + "\n\n" + EDIT_NOTE_TAIL
-
-
-def is_edit_note(message) -> bool:
-    """Whether a thread message is the note of an edit round."""
-    control = message.usage.get("control")
-    return is_citation_note(message) and isinstance(control, dict) and bool(control.get("edit"))
-
-
-def apply_edits(answer: str, reply: str) -> tuple[str, str]:
-    """The answer with the edits of an edit reply applied, and the problem of the reply.
-
-    The reply is a JSON list of `{"find": ..., "replace": ...}` objects, optionally inside a
-    code fence. The edits apply in order. An edit whose `find` does not occur exactly once in
-    the text at its turn is skipped, and the problem is then `find_not_unique`. A reply that
-    is not such a list gives the unchanged answer and `not_edits`.
-    """
-    text = reply.strip()
-    fence = re.fullmatch(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
-    if fence:
-        text = fence.group(1)
-    try:
-        edits = json.loads(text)
-    except ValueError:
-        return answer, "not_edits"
-    if (not isinstance(edits, list) or len(edits) > MAX_EDITS
-            or not all(isinstance(e, dict) and isinstance(e.get("find"), str) and e["find"]
-                       and isinstance(e.get("replace", ""), str) for e in edits)):
-        return answer, "not_edits"
-    edited, skipped = answer, False
-    for edit in edits:
-        if edited.count(edit["find"]) != 1:
-            skipped = True
-            continue
-        edited = edited.replace(edit["find"], edit.get("replace", ""))
-    return edited, "find_not_unique" if skipped else ""
-
-
-def repair_reply_problem(answer: str, session_entries) -> str:
-    """The structural problem in a citation reply, or empty when it can be shown."""
-    from tasks.P_agent import reports, thread_facts
-    from tasks.P_agent.control.handlers.answer_review import unissued_markers
-
-    if (thread_facts.RAW_CITATION_CALL.search(answer)
-            or "<|tool_call>" in answer or "<|\"|>" in answer):
-        return "raw_call"
-    check = reports.check_labels(answer, reports.label_bindings(session_entries),
-                                 session_entries)
-    if check["unresolved"] or unissued_markers(answer):
-        return "unresolved_label"
-    if check["conflicting"]:
-        return "conflicting_label"
-    if PAGE_ZERO_PATTERN.search(answer):
-        return "page_zero"
-    return ""
-
-
-__all__ = [
-    "CITATION_NOTE", "answer_metadata",
-    "REPAIR_MARKER",
-    "REPAIR_MARKER_KEY", "is_citation_note", "names_documents",
-    "needs_repair", "read_documents", "repair_note", "repair_reply_problem",
-    "narrow_findings", "edit_note", "is_edit_note", "apply_edits",
-]

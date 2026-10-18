@@ -403,7 +403,8 @@ def test_a_retried_conclusion_returns_the_submitted_end(store, monkeypatch):
 
     monkeypatch.setattr(activities, "_existing_user_seq", no_read)
     request = activities.TurnRequest("b1", "intent-memo", 1, "explore")
-    assert activities.conclude_explore(request) == "fact"
+    assert activities.conclude_explore(request).outcome == "fact"
+    assert activities.convert_explore_report(request) == "fact"
 
 
 def test_a_slug_stem_is_ascii_and_bounded():
@@ -418,19 +419,6 @@ def test_a_session_of_a_slug_intent_names_its_intent():
     session = m.session_id_for("0a1b2c", "intent-check-contracts-2")
     assert session == "board-0a1b2c-intent-check-contracts-2"
     assert len(m.explore_workflow_id("0" * 32, "intent-" + "x" * 40 + "-99")) < 200
-
-
-def test_a_verified_web_citation_resolves_its_handle():
-    page = {"handle": "[W4]", "url": "http://a.example/x", "final_url": "http://a.example/y", "title": "T",
-            "version": "v1", "artifact_id": "art", "terms": ["the exact phrase"], "quotes": ["a longer quote"],
-            "quote_verified": True}
-    unverified = dict(page, handle="[W5]", quote_verified=False)
-    output = json.dumps({"output": json.dumps({"citations": [page, unverified, {"handle": "[W6]", "error": "Unread page"}]})})
-    rows = [{"tool_name": "cite_pages", "tool_output": output, "doc_refs": ""},
-            {"tool_name": "cite_documents", "tool_output": "", "doc_refs": json.dumps([{"handle": "[D1]", "file_hash": "h"}])}]
-    index = activities._citation_index(rows)
-    assert sorted(index) == ["D1", "W4"]
-    assert index["W4"] == {"url": "http://a.example/y", "quote": "the exact phrase", "quote_verified": True}
 
 
 def test_finishing_a_review_lists_the_goals_without_a_proposal(store):

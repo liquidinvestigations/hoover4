@@ -173,6 +173,8 @@ class PolicyContext:
     capabilities: frozenset = frozenset()
     collections: tuple[str, ...] = ()
     recent_steps: str = ""
+    #: `chat`, or `board` for an explore turn of an investigation board.
+    run_kind: str = "chat"
 
 
 class PolicyServices(Protocol):

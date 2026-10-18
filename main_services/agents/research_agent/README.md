@@ -54,11 +54,13 @@ renders the system prompt of every profile ([research_agent/prompts/__init__.py]
 **The prompt holds the role, lists the rest, and the skills teach.** The prompt holds the
 role line of the profile and the role text of the run kind, which is the rendered role skill
 (`skill_store.role_method`). The run's skills by name and description and the run's tools by
-name and summary follow. A chat run then gets the `ask_user` rule and the closing lines rule:
-an answer to a request that compares documents or collections ends with a `Disagreements:`
-line and a `Not covered:` line, and other answers end without them. The role text of the
-chat asks for the same two statements. The served model wrote the lines only when both
-texts asked for them. The initial web role names `read_page` and its `find` field for supporting passages. It requires `cite_pages` after each source read. The returned web handles identify captured source versions. Bare source URLs require citation repair.
+name and summary follow. A chat run then gets the `ask_user` rule. Every run with
+`workspace_write` gets the routing text of the `report` skill under "Reports and other
+documents" (`skill_store.report_rules`): a requested report, list, table or draft, and every
+answer with citations, goes into a workspace file, an edit of a report patches that file, and
+the chat holds questions, progress and a short note about the file. The `report` skill that
+`read_skill` returns holds the same text and then the examples, from one template. The
+initial web role names `read_page` and its `find` field for supporting passages. It requires `cite_pages` after each source read. The returned web handles identify captured source versions. Bare source URLs are replaced with the returned handles.
 It requires comparative evidence for a size ranking. The todo text
 follows when the run has the four todo tools. It says
 that the list is optional, that a step stays pending until its work ends and is then done
@@ -66,8 +68,9 @@ with a short reason, that done steps stay in the list, that a new step that repl
 old one gets a replacement entry, and that an open item does not stop an answer. When the
 run has a citation tool, the citation text gives the order of the work once: read the
 passage, call the citation tool with exact text, copy the returned handle beside the
-claim, write the answer after the needed calls succeed, and state the requested parts
-that the sources do not establish. A document quote has 5 to 6 words of body text without
+claim, write the report after the needed calls succeed, and state the requested parts
+that the sources do not establish. After a citation fails twice, the report leaves out the
+claim or states that the sources read do not confirm it. A document quote has 5 to 6 words of body text without
 a question mark. The `citation` skill holds the arguments of each
 citation tool, recovery examples, and the batch form. The summary of a
 tool is the first sentence of its description, at most 160 characters. `_create_context`
@@ -78,7 +81,6 @@ The method text is in [research_agent/skills/](research_agent/skills).
 Citation recovery copies returned retry arguments and retries only failed pages.
 Schema recovery examples use `read_tool` before correcting an unknown argument.
 Document reread examples keep each document's range and source version in its own call.
-Board submission instructions separate unresolved questions from known answers and limit absence statements to the examined records.
 Each skill has a Jinja body and front matter with its name, group, description, and tools.
 A skill can also name `terms` and `not_for`: the words that requests use for the method, and
 the similar requests that do not need it. The worker's turn-start check reads them with the

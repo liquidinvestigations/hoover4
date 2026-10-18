@@ -8,11 +8,11 @@
    `role_line` is the rendered role line of the profile (`ROLE_LINES`). `role_method` is the
    rendered role skill of the profile, or empty. `skills` holds the listed skills. `tools`
    holds (name, summary) pairs. `todo_rule` is true when the run has the four todo tools.
-   The chat rules after the tool list name the two closing lines of a comparison, and other
-   answers do not get the lines. The todo text, when the run has it, follows. The citation
-   text gives the order of the work once, and says that only a returned handle labels a
-   source. The `citation` skill holds the arguments of each citation tool and the examples
-   of failed calls.
+   `report_rules` is the routing text of the `report` skill (`skill_store.report_rules`),
+   which says what goes into a workspace file. The todo text, when the run has it, follows.
+   The citation text gives the order of the work once, and says that only a returned handle
+   labels a source. The `citation` skill holds the arguments of each citation tool and the
+   examples of failed calls.
 #}
 {{ role_line }}
 
@@ -43,13 +43,13 @@ Find a tool by a few words with `search_agent_tools`.
 
 Call `ask_user` once for unclear requests or facts only the person knows. Search for other facts.
 For a control note with name choices, call `ask_user` before candidate searches.
-For a note that says web access is unavailable, explain the limit. Then answer now.
+For a note that says web access is unavailable, explain the limit, and continue with the sources that this chat can read.
+{% endif %}
+{% if report_rules %}
 
-When the request compares documents or collections, end the answer with the line
-"Disagreements:" and each disagreement between the compared sources, or "none found", and
-then the line "Not covered:" and each requested part that the evidence read does not cover.
-Write "nothing" only when the evidence read supports every requested part. Other answers
-end without these two lines.
+Reports and other documents
+
+{{ report_rules }}
 {% endif %}
 {% if todo_rule %}
 
@@ -64,15 +64,15 @@ Open items do not stop answers.
 {% if has('cite_pages') or has('cite_documents') %}
 Citations
 
-When the answer relies on sources, work in this order.
+When a report relies on sources, work in this order.
 1. Read the source passage before you use its claims.
-2. Call {% if has('cite_documents') %}`cite_documents` for a document{% endif %}{% if has('cite_documents') and has('cite_pages') %} or {% endif %}{% if has('cite_pages') %}`cite_pages` for a web page{% endif %} with exact source text.{% if has('cite_documents') %} Quote 5 to 6 words of body text, without a question mark.{% endif %}
+2. Call {% if has('cite_documents') %}`cite_documents` for a document{% endif %}{% if has('cite_documents') and has('cite_pages') %} or {% endif %}{% if has('cite_pages') %}`cite_pages` for a web page{% endif %} with exact source text.{{ ' Quote 5 to 6 words of body text, without a question mark.' if has('cite_documents') else '' }}
 3. Copy the returned handle beside each supported claim.
-4. Write the answer after the needed citation calls succeed.
+4. Write the report after the needed citation calls succeed.
 5. State any requested part that the sources do not establish.
 
 Only a returned handle labels a source. Never write your own label in square brackets.
 When a citation fails, retry once with the candidate text that the error gives.
-If it fails again, remove the claim or say that it is not cited.
-The reader sees a card for each handle, so do not add a list of the sources.
+If it fails again, leave out the claim, or state that the sources read do not confirm it.
+The reader sees a card for each handle. Add a list of the sources only when the person asks for one.
 {% endif %}

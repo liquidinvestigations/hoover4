@@ -166,7 +166,7 @@ async def test_the_search_query_takes_one_to_160_characters(query, error):
         assert content["error"] == error
 
 
-def test_the_board_tool_is_in_a_board_snapshot_only():
+def test_no_snapshot_has_the_board_tool():
     board = snapshot("board", allowed_tools("board", "all"))
-    assert "submit_board_fact" in board.tools_by_name
-    assert "submit_board_fact" not in snapshot().tools_by_name
+    assert "submit_board_fact" not in board.tools_by_name
+    assert "workspace_write" in allowed_tools("board", "all")

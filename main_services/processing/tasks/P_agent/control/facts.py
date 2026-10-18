@@ -148,9 +148,11 @@ def satisfactory_reads(facts: Iterable[ResultFact]) -> list[str]:
 
 
 def page_address(url: str) -> str:
-    from tasks.P_agent.citations import page_address as address
-
-    return address(url)
+    """Compare page addresses without a fragment or trailing sentence punctuation."""
+    url = url.rstrip(".,;:!?")
+    while url.endswith(")") and url.count(")") > url.count("("):
+        url = url[:-1]
+    return url.split("#", 1)[0]
 
 
 def is_table_hit(fact: ResultFact) -> bool:

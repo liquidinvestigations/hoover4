@@ -96,6 +96,7 @@ pub async fn get_chat_session(
     let tail = stream_state(username, &session_id).await?;
     let (run_cited_handles, run_cited_refs) = run_citations(username, &session_id).await?;
     let todo_versions = todo_snapshots(username, &session_id, &messages).await?;
+    let reports = pinned_reports(username, &session_id, &messages).await?;
 
     let options = row.options();
     Ok(ChatSessionDetail {
@@ -119,6 +120,7 @@ pub async fn get_chat_session(
         run_cited_handles,
         run_cited_refs,
         todo_versions,
+        reports,
     })
 }
 
@@ -167,6 +169,51 @@ async fn todo_snapshots(
     messages: &[common::chat_types::ChatMessageItem],
 ) -> anyhow::Result<Vec<common::chat_types::TodoSnapshot>> {
     db_chat::todo_snapshots(username, session_id, &todo_versions_in(messages)).await
+}
+
+/// The report versions that the answer rows of `messages` name.
+async fn pinned_reports(
+    username: &str,
+    session_id: &str,
+    messages: &[common::chat_types::ChatMessageItem],
+) -> anyhow::Result<Vec<common::chat_types::WorkspaceVersion>> {
+    let mut refs: Vec<common::chat_types::ReportRef> = Vec::new();
+    for report in messages.iter().filter_map(|message| message.report_ref()) {
+        if !refs.contains(&report) {
+            refs.push(report);
+        }
+    }
+    db_chat::workspace::versions(username, session_id, &refs).await
+}
+
+/// The workspace files of a session that the caller owns. A session of another account is
+/// "not found", as in `get_chat_session`.
+pub async fn workspace_files(
+    user: &CurrentUser,
+    session_id: String,
+) -> anyhow::Result<Vec<common::chat_types::WorkspaceFile>> {
+    let username = user.username.as_str();
+    db_chat::get_session(username, &session_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
+    db_chat::workspace::files(username, &session_id).await
+}
+
+/// One version of a workspace file of a session that the caller owns, or the current
+/// version when `version` is `None`.
+pub async fn workspace_version(
+    user: &CurrentUser,
+    session_id: String,
+    name: String,
+    version: Option<u32>,
+) -> anyhow::Result<common::chat_types::WorkspaceVersion> {
+    let username = user.username.as_str();
+    db_chat::get_session(username, &session_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
+    db_chat::workspace::version(username, &session_id, &name, version)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("the workspace has no file {name}"))
 }
 
 pub async fn delete_chat_session(user: &CurrentUser, session_id: String) -> anyhow::Result<()> {
@@ -787,6 +834,7 @@ pub async fn poll_chat(
             }
             let (run_cited_handles, run_cited_refs) = run_citations(username, &session_id).await?;
             let todo_versions = todo_snapshots(username, &session_id, &messages).await?;
+            let reports = pinned_reports(username, &session_id, &messages).await?;
             return Ok(ChatPollResult {
                 messages,
                 stream: tail.stream,
@@ -797,6 +845,7 @@ pub async fn poll_chat(
                 run_cited_handles,
                 run_cited_refs,
                 todo_versions,
+                reports,
                 sig: current_sig,
             });
         }

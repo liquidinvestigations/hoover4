@@ -15,8 +15,9 @@ it a reason (`board_reason`, the events `reason_started` and `reason_result`, th
 context of the board. An **open question** is a question that an explore fact leaves for the
 board, stored in the fact's `open_questions`.
 
-A board uses the chat stack for its agent work. It adds one tool, `submit_board_fact`, which
-only board turns have, and no agent or model route.
+A board uses the chat stack for its agent work. An explore writes a workspace report, as a
+chat turn does, and one model request converts the report into the fact. A board adds no
+agent tool and no agent or model route.
 
 ## Contents
 
@@ -115,6 +116,7 @@ flowchart LR
     E -->|child| A[AgentRun<br/>chat-queue]
     A --> CH
     E -->|conclude_explore| CI
+    E -->|convert_explore_report<br/>chat-model-queue| CI
 ```
 
 `BoardDispatcher` has the fixed id `board-dispatcher`. The chat worker starts it at start-up
@@ -133,10 +135,12 @@ Each step handles up to 20 commands. The writer makes no model call and takes no
 slot.
 
 `BoardExplore` runs one intent. It opens a chat turn, runs it as an `AgentRun` child, and
-concludes it. When the turn ends without a `submit_board_fact` call, it sends one conclude
-turn in the same session and concludes again. The end of the explore is an `explore_end`
-command with the request id `explore_end:{intent}:{attempt}`, so a retry of the conclusion
-returns the end that it submitted and never reads a later answer of the session.
+concludes it. When the turn wrote a report, it converts the report into the fact
+(`convert_explore_report` on `chat-model-queue`, 2 attempts). After the last attempt,
+`record_explore_end` records `explore_failed` with the report version. The end of the
+explore is an `explore_end` command with the request id `explore_end:{intent}:{attempt}`, so
+a retry of the conclusion or the conversion returns the end that it submitted and never reads
+a later answer of the session.
 
 ### Labels
 
@@ -234,7 +238,7 @@ it.
 | correction | `c<hash>` | `correction-<words>` | the correction request |
 
 A version 2 id is its final slug. The words come from the model's candidate (`slug` of an
-intent in the assessment reply or of the `submit_board_fact` call), else from the node text,
+intent in the assessment reply or of the converted `submit_board_fact` call), else from the node text,
 else from a word of the node kind. The writer removes type words and stop words, keeps at
 most 4 words and 40 characters, and adds `-2`, `-3` and so on when another node id, slug or
 reserved name of the board has the id. Every existing node keeps its id, so a board can hold
@@ -303,7 +307,8 @@ stateDiagram-v2
   intents, and no assessment follows. On an active board the new fact goes to the next
   assessment.
 - `explore_started` uses one attempt and one explore of the budget. A cancellation returns
-  both. An intent fails after 2 failed attempts.
+  both. An intent fails after 1 failed attempt (`MAX_ATTEMPTS`). An older board can hold a
+  second attempt of an intent, and the fold reads it.
 - An assessment is due when the facts, hints, rejections or late goals changed since the last
   assessment with progress, or the open work ended. It runs only on an active board with no
   open intent, no assessment in flight and no final assessment in flight. Progress is a new
@@ -413,17 +418,34 @@ The turn then runs as an ordinary `AgentRun` of kind `board`, with the model ste
 the fold. Its model is the agent model of `hoover4.ini`, as for a chat turn. A board turn does
 not write follow-up suggestions or a session title.
 
-A board turn has the tool pack `board`, which no chat turn has. Its tool `submit_board_fact`
-takes the fact with inline `[Dn]` handles, its kind, at most 3 open questions and an optional
-slug candidate, and ends the turn. The workflow writes the fact as the answer of the turn, with the citation metadata of a
-chat answer. The chat page shows the answer and, under it, what the turn gave to the board.
-`conclude_explore` reads the call and resolves each handle: a `[Dn]` handle from the
-`doc_refs` of the session's `cite_documents` results, and a `[Wn]` handle from the verified
-citations of its `cite_pages` results. A web citation row has the page address as its path
-and the first verified term as its quote, and it counts as a verified citation of a sourced
-fact. It submits the fact with its session and answer
-position as an `explore_end` command, and the writer gives the fact its id. A turn that asks
-the person a question becomes an `explore_question` event.
+A board turn has the tool packs of a chat turn, with the workspace tools. The brief gives the
+full text of the intent's `from` facts and of the background context, and the label of each
+other fact, or its first 40 words when it has no label. It asks for a report file, also for
+a short result, an inference or an absence, with at most 3 open questions at its end. A board
+turn gets no effort note from the chat checks, because the brief gives its call limit. The
+report of the turn is the last file version that it wrote ([Reports and workspace
+files](Chat_And_Agents.md#reports-and-workspace-files)), and the chat page shows it as the
+answer.
+
+`conclude_explore` reads the end of the turn. A turn that asks the person a question becomes
+an `explore_question` event. A failed turn and a turn without a report become
+`explore_failed`, and the files stay in the workspace. A turn with a report returns its
+version for the conversion.
+
+`convert_explore_report` sends one request to the agent model with the task, the text of the
+pinned report version and its verified citations, and offers only the `submit_board_fact`
+function with a named tool choice ([P_board/conversion.py](../../main_services/processing/tasks/P_board/conversion.py)). The request holds no
+narration, earlier draft, tool row or reasoning. The function takes the fact with inline
+handles, its kind, at most 3 open questions and an optional slug candidate. A reply without
+a valid call fails the attempt, and Temporal sends the request once more. The activity
+stores the checked call as a `submit_board_fact` tool row of the turn before it submits the
+fact, so a later attempt reuses the row and sends no request. The transcript shows the row as
+"Submitted by the board", and under the answer what the turn gave to the board. Each handle
+of the fact resolves against the citations of the report version. A handle that the report
+does not hold is dropped with a problem, and a sourced fact without a verified citation
+becomes inferred. The fact goes with its session, answer position and report version as an
+`explore_end` command, and the writer gives the fact its id. An older explore turn that
+called `submit_board_fact` itself keeps its rows, and the page still shows them.
 
 Citation labels are local to one chat session. The worker removes them from a fact before the
 fact enters another prompt, and the citation rows keep the document identity. The fact pane

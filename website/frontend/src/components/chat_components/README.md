@@ -49,7 +49,7 @@ colour, with the task icon in its upper-right corner. A done item is struck thro
 followed by the first three words of its reason in bold. The whole reason is the title of
 those words and is in the call card.
 The reasoning of an answer renders once, inside the group of tool rows directly before
-the answer, because stored reasoning covers a repair round and names no tool. An answer
+the answer, because stored reasoning of an earlier turn can cover a repair round and names no tool. An answer
 with no group before it keeps its reasoning beside it. A superseded answer keeps its
 reasoning inside its round's group. The live reasoning follows the group of the live
 tool rows, or the stored group that the live answer follows.
@@ -58,10 +58,17 @@ while its turn is active and not interrupted. A queued turn adds the slot it wai
 under that line. [activity.rs](activity.rs) holds it.
 The transcript root carries `data-chat-turn`, the state of the newest turn: `active`, `queued-model`, `queued-tool`, `interrupted` or `idle`.
 A browser test reads the end of a turn from it and from the user message seq (`data-chat-user`).
-A board explore turn ends with `submit_board_fact`. Its answer is the submitted fact, which
-renders as an ordinary answer with its citation cards. Under the answer, the board fact
-summary (`x-board-fact-summary`) states the kind of the fact and its open questions. The
-call itself is a card inside its group.
+An answer whose turn wrote a workspace file names it in `report`. The page reads the pinned
+versions with the transcript (`reports`), and `with_reports` in [transcript.rs](transcript.rs) puts the report
+text in place of the answer text before the citation cards are placed. A line above the
+report names the file and version and opens it in the workspace pane
+([workspace_pane.rs](workspace_pane.rs)), and the chat text of the answer follows the report in a muted colour.
+The pane is read-only, and the address holds its file and version
+(`DocViewerState::workspace_file`).
+A board explore turn writes a report. The board then writes a `submit_board_fact` row after
+the answer, and its card says "Submitted by the board". Under the answer, the board fact
+summary (`x-board-fact-summary`) states the kind of the fact and its open questions. An
+older explore turn has the call as a card inside the group before its answer.
 
 ## Internet access stays fixed for a conversation.
 

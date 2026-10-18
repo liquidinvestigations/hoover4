@@ -131,44 +131,6 @@
       ]
     },
     {
-      "id": "l3",
-      "hook": "answer_drafted",
-      "handler": "discovery",
-      "priority": 10,
-      "frequency": "turn",
-      "parameters": {
-        "requires_reads": [
-          "documents",
-          "web",
-          "both"
-        ]
-      }
-    },
-    {
-      "id": "review",
-      "hook": "answer_drafted",
-      "handler": "answer_review",
-      "priority": 20,
-      "frequency": "event",
-      "parameters": {
-        "markers": {
-          "enabled": true,
-          "repair": true
-        },
-        "supported": {
-          "threshold": 0.05,
-          "repair": false
-        },
-        "names": {
-          "repair": false
-        },
-        "requirements": {
-          "threshold": 0.05,
-          "repair": false
-        }
-      }
-    },
-    {
       "id": "progress",
       "hook": "tool_batch_completed",
       "handler": "progress",

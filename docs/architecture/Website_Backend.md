@@ -20,6 +20,7 @@ the vectors daemon through `MANTICORE_VECTORS_URL` and show its tables separatel
 - [In-document PDF search](#in-document-pdf-search)
 - [Browsing a tabular document](#browsing-a-tabular-document)
 - [The file-type glyph](#the-file-type-glyph)
+- [Chat readers check the session owner.](#chat-readers-check-the-session-owner)
 
 ## Requests require an established identity.
 
@@ -310,3 +311,18 @@ sequenceDiagram
 [Document APIs](../../website/backend/src/api/documents/) and [viewer components](../../website/frontend/src/components/) own source loading.
 PDF page ranges retain document page numbers across parts.
 Table requests verify the dataset manifest before reading hash-keyed cells.
+
+## Chat readers check the session owner.
+
+The chat server functions in [api/chat/mod.rs](../../website/backend/src/api/chat/mod.rs) read rows of one conversation. Each reads the session with the caller's user name first, and a session of another account is "chat session not found".
+
+| Reader | Rows | Notes |
+|---|---|---|
+| `get_chat_session`, `chat_poll` | the transcript, the stream, the citations, the todo snapshots and the pinned reports | `pinned_reports` reads each file version that an answer row names in `report`. |
+| `turn_narration` | the `ai` rows of one turn | Each step with its text, its reasoning and the seqs of its calls. |
+| `workspace_files` | the files of the workspace, each at its current version | [db_chat/workspace.rs](../../website/backend/src/db_chat/workspace.rs) reads with FINAL and skips tombstones. |
+| `workspace_version` | one version of one file, or the current version | The workspace pane and the "Open in the workspace" button of a report use it. |
+
+`delete_chat_session` marks the session deleted, writes a tombstone for each workspace file version, deletes the run rows and the workspace receipts, and cancels the workspace writer `workspace-<session id>`.
+
+The agent routes `images/document` and `images/capture` in [api/agent/images.rs](../../website/backend/src/api/agent/images.rs) serve image bytes to the agent service with the agent caller identity. A document image needs read access to its collection, and a capture belongs to its owner or an administrator. Each response has an `etag` that names the source object, and a matching `if-none-match` gets `304` after the access check. The document routes of the agent add the `archive` object of an archive or a mail store, with its extracted file count and its folder term.

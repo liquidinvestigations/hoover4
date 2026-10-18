@@ -11,6 +11,7 @@ durable research path is [main_services/processing/tasks/P_agent/](../../main_se
 - [Internet access stays fixed for a conversation.](#internet-access-stays-fixed-for-a-conversation)
 - [Reaching the agents](#reaching-the-agents)
 - [Citations, and why they are not the search cards](#citations)
+- [Reports and workspace files](#reports-and-workspace-files)
 - [Chat checks](#chat-checks)
 - [Streaming a turn](#streaming-a-turn)
 - [Timeouts and retries](#timeouts-and-retries)
@@ -29,7 +30,8 @@ Routes (see [website/frontend/src/routes.rs](../../website/frontend/src/routes.r
 - `/ai_chat/c/:session_id/:selected_result_hash/:doc_viewer_state`, transcript + document preview (60/40)
 
 Storage lives in the global ClickHouse database: `chat_sessions` (migration `00011`) and
-`chat_messages` (`00012`), plus `chat_message_stream` (`00018`) for in-flight output. The
+`chat_messages` (`00012`), plus `chat_message_stream` (`00018`) for in-flight output and
+`chat_workspace_files` and `chat_workspace_receipts` (`00048`) for workspace files. The
 tool payload columns (`tool_input` / `tool_output` / `doc_refs` / `created_ms` /
 `agent_duration_ms`), `retry_errors`, the per-message `model`, the session `summary` and
 the frozen option flags are all declared in those two `CREATE TABLE`s. The migration set
@@ -98,30 +100,19 @@ The line is absent when stored traces cannot identify that query.
 Each citation carries a handle (`[D1]`, `[D2]`) allocated per chat **session** by the
 collection-search MCP server, so a handle from the first turn still resolves in the ninth.
 The server stores each new handle as an artifact before it returns it, so a restart of the
-server keeps the numbering. When an answer or a question uses a label that no successful
-citation result of the session gives, or a label that results give for two documents, the
-worker asks the model for the citations and the answer again. A quote that is not in
+server keeps the numbering. A quote that is not in
 the text stays unverified, and the result gives an exact passage of the text near it.
 The quote check compares words only, so punctuation and mail reply markers do not affect it,
 and a quote with small gaps verifies as the source span that holds its words.
-An unlabeled answer also gets that round after a successful document read, even if the
-answer does not name the file. A question without a citation label gets no citation repair.
-A verified absence answer needs no source handle. The worker checks the revised answer before it replaces
-the earlier answer. It retains the earlier answer with a notice when the reply contains
-raw call text, a label that does not resolve, or an unissued bracketed source name.
-The worker does not repeat an identical notice after another invalid reply.
-Each answer stores citation status in its usage metadata.
-The interface omits redundant status prose.
-A turn gets at most two repair rounds after its first draft.
-The answer of the last round is published when other findings remain.
 
-The citation check uses tool evidence from the current and earlier turns.
-It excludes earlier repair notes.
-The web repair requires search discovery, successful page reads, and `cite_pages` references.
-It identifies bare source URLs, unread pages, and undiscovered pages.
-It requires verified item identities and each requested constraint.
-It requires merged duplicates and fewer items when sources are insufficient.
-It verifies each list item separately, so a sibling citation cannot cover an uncited claim.
+Cited claims go into a workspace report (see [Reports and workspace files](#reports-and-workspace-files)).
+The workspace tools check each handle of a report before they store it. No harness round
+asks the model to repeat an answer. Each answer stores its citation status and tool scope in
+its usage metadata. The status of a report answer describes the report version. The status
+of a chat answer without a report is `invalid` when a handle does not resolve or names two
+documents, and the check uses the citation results of the current and earlier turns. Earlier
+turns can hold citation repair notes and replaced answers, and the transcript still shows
+them.
 
 `read_page` stores successful Markdown under the owner and chat session.
 `cite_pages` verifies exact supporting terms against that captured text.
@@ -143,7 +134,8 @@ record keeps its source version and unread continuation when the page gives them
 `markdown_text.rs` renders bare document and web handles as controls that scroll to their cards.
 Repeated references resolve beside their claim within the answer.
 A Markdown link remains a link.
-Superseded answers remain inside collapsed tool groups.
+A bracket after a backslash, such as `\[D9]`, and a bracket in a code span are text.
+Superseded answers of earlier turns remain inside collapsed tool groups.
 
 **A quote that does not verify is shown, marked, never dropped.** A model that stops citing
 is a worse outcome than a citation the reader can see is unverified.
@@ -152,10 +144,61 @@ De-duplication of document cards is **within a group and never across one**. A s
 and a citation card for the same document are two different statements about it, and
 collapsing them would hide that the agent chose one of the things it found.
 
+## Reports and workspace files
+
+The agent writes each requested report, list, table or draft, and each answer with citations,
+as a text file in the workspace of the conversation. The `report` skill of the research agent
+holds the rule, and the system prompt of every run holds its routing text, so compaction
+cannot remove it. An ordinary question that needs no citation and no document gets a chat
+answer.
+
+The session tool server serves three tools. `workspace_read` reads a file with a `N|` line
+gutter, or lists the files. `workspace_write` creates or replaces a whole file, and an
+existing file needs `expected_version`, the version that the agent read. `workspace_patch`
+replaces one region through the matcher of the Hermes agent file tools, which reports the
+strategy that matched, refuses an ambiguous match, and shows the closest lines when nothing
+matches. A patch whose new text is already present succeeds and stores nothing.
+
+Every write and patch of a session goes through one workflow, `WorkspaceWriter`, with the id
+`workspace-<session id>` on `chat-queue`. ClickHouse has no compare-and-write, so the one
+writer is what makes two writes with the same expected version fail. The tool server sends
+the command with signal-with-start and reads the receipt of its operation id. The operation
+id is the idempotency key of the tool call (`X-Hoover4-Idempotency-Key`), so a retried call
+returns the stored result and changes the file once. The writer checks each handle of the
+candidate against the successful citation results of the session. A handle that no result
+gives, that names two sources, or whose quote did not verify gives a finding, and the file
+does not change. The check does not show that a claim follows from its source.
+
+```mermaid
+flowchart TD
+    accTitle: The report of a turn
+    accDescr: The agent writes a file through the session writer. A checked version is stored. At the end of the turn the last successful write or patch is the report of the answer.
+    A[Agent calls workspace_write or workspace_patch] --> B[WorkspaceWriter checks version, gutter and handles]
+    B -->|finding| C[Tool result with findings, file unchanged]
+    C --> A
+    B -->|valid| D[Immutable version and receipt in ClickHouse]
+    D --> E{Turn ends}
+    E -->|a successful write or patch| F[Answer row names the last such version as its report]
+    E -->|no write or patch| G[Ordinary chat answer]
+```
+
+When the turn ends, the last successful write or patch of its run, in call order, is the
+report of the turn. The answer row stores its name and version (`report` in `usage_json`), and
+the transcript shows that version as the answer with its citation cards. The chat text of the
+answer shows muted under it. A later edit of the file does not change an earlier answer. A
+turn that stops before its answer names its report in the same way. A turn that asks the
+person a question shows the question, and its files stay in the workspace. The Workspace
+button of the conversation opens a read-only pane with the file list and the content of one
+version. The pane state is in the URL. Deleting the conversation writes a tombstone for each
+version and cancels the writer, and the writer refuses a command for a deleted session.
+
+[database/chat_workspace.py](../../main_services/processing/database/chat_workspace.py) holds the storage and the read format.
+[tasks/P_workspace/](../../main_services/processing/tasks/P_workspace) holds the write and patch rules, the handle check, the writer and the report selection.
+
 ## Chat checks
 
-The worker runs chat checks at three events of a turn: the turn start, each completed tool
-batch, and each answer draft. The `control_event` activity runs them. `AgentRun` keeps the
+The worker runs chat checks at two events of a turn: the turn start and each completed tool
+batch. The `control_event` activity runs them. `AgentRun` keeps the
 order of model steps, tool calls and checks.
 
 A definition lists the rules of a profile. Each rule names a handler, an event, a frequency
@@ -167,18 +210,10 @@ the definition, the digest of each handler file, the rendered system prompt and 
 texts. The turn uses that copy until it ends, so a later change affects new turns only.
 
 Three definitions are built in. `chat-default` is active for every profile. It loads skills
-at the turn start and after the first read, ranks web reads, writes progress, discovery and
-capture notes, reviews each draft, and asks for a repair round when a paragraph or list item
-holds a name or number without a label. `chat-quality` is for a model that searches, reads
-and cites without guidance notes. It has no progress, discovery or capture rule, and its
-limit `paragraph_repair` is 0, so only a label fault, page 0, a web fault or an answer
-without any label causes a repair round. Its limit `edit_rounds` is 1, so one edit round names
-two kinds of unsourced claim. One is a quote whose citation failed and that the answer still
-uses. The other is a role or title that no tool result of the chat gives. The note asks for a
-JSON list of find and replace edits, and the worker applies each edit whose text occurs once in
-the answer. A reply that is not
-valid edits keeps the answer, and the answer metadata lists the parts as `unsourced_claims`.
-`chat-null` has no rule. A deployment selects a
+at the turn start and after the first read, ranks web reads, and writes progress, discovery
+and capture notes. `chat-quality` is for a model that searches, reads and cites without
+guidance notes. It has no progress, discovery or capture rule. `chat-null` has no rule. A
+board explore turn gets no effort note, because its brief gives its own call limit. A deployment selects a
 definition with [definitions/active.json](../../main_services/processing/tasks/P_agent/control/definitions/active.json) in the `chat_control_dir` folder.
 
 For each event the worker stores one decision before it writes any row of it. A retry reads
@@ -204,13 +239,6 @@ The built-in definition has these rules:
   search-rank order. It uses one `read_page` call of at most six addresses.
 - A short page capture with no article text gets a note that names the page.
 - A reply that reads one page while two or more search results stay unread gets one note.
-- An answer drafted before any source read, in a turn that needs documents or web sources,
-  gets one note that asks for reads first.
-  A verified citation from an earlier turn also meets this read condition.
-- Each answer draft gets the citation check and a check for bracketed source names that
-  no citation returned. It also gets semantic checks of support, names and explicit
-  requirements, which are recorded. All findings that start a round go into one correction note. The semantic
-  checks do not start a round.
 
 An absent-name note requires the person's choice before the agent searches a suggested spelling.
 Without web tools, preparation records whether the request asks for public sources, including past events.
@@ -279,8 +307,8 @@ row into the transcript and logs at ERROR with the session and the turn uuid.
 
 | Class | Activities | Attempts |
 |---|---|---|
-| External request | `model_step`, `tool_call`, `write_followups`, `summarize_if_first_turn`, `label_board` | 2, the second after 1 s. A browser tool that can change the page gets 1. |
-| Storage write | `open_run`, `control_event`, `write_asked_answer`, `write_incomplete`, `write_ending`, `record_step_failure`, and the board storage activities | 5 (`ACTIVITY_MAX_ATTEMPTS`). Each write has a fixed key, so a repeat is harmless. |
+| External request | `model_step`, `tool_call`, `write_followups`, `summarize_if_first_turn`, `label_board`, `board_reason`, `convert_explore_report` | 2, the second after 1 s. A browser tool that can change the page gets 1. |
+| Storage write | `open_run`, `control_event`, `write_asked_answer`, `write_incomplete`, `write_ending`, `record_step_failure`, `prepare_workspace_mutation`, `commit_workspace_mutation`, and the board storage activities | 5 (`ACTIVITY_MAX_ATTEMPTS`). Each write has a fixed key, so a repeat is harmless. |
 
 No activity sends a second request to the same target. The collection server's backend
 client, the browser router and the model client each send a request once. Two cases send a

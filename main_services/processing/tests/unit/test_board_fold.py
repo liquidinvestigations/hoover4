@@ -10,7 +10,7 @@ import pytest
 
 from database.boards import BoardRow, CitationRow, EventRow, FactRow
 from tasks.P_board import model as m
-from tasks.P_board.contracts import labels_of, parse_explore_block, parse_reason
+from tasks.P_board.contracts import parse_reason
 from tasks.P_board.fold import fold, plan, reason_due
 from tasks.P_board.prompts import call_guidance, fact_block, strip_labels
 
@@ -411,36 +411,8 @@ def test_a_stored_legacy_review_keeps_its_status():
     assert f.status == m.REVIEW and list(f.proposed) == ["goal"], "a goal left out does not hold it back"
 
 
-def test_a_submitted_fact_is_read_from_the_tool_row():
-    from tasks.P_board.activities import submitted_fact
-
-    args = {"fact": "Kaminski objected [D1].", "kind": "sourced", "open_questions": []}
-    rows = [{"role": "tool", "tool_name": m.SUBMIT_FACT_TOOL, "tool_input": json.dumps(args),
-             "tool_output": json.dumps({"success": True, "submitted": True})}]
-    assert submitted_fact(rows) == args
-    rows[0]["tool_output"] = json.dumps({"success": False, "error": "kind"})
-    assert submitted_fact(rows) is None
-
-
 def test_parse_reason_marks_text_without_json_invalid():
     assert parse_reason("We should look further.", set(), set(), [], True)["outcome"] == "invalid"
-
-
-def test_the_explore_block_is_the_last_fenced_object():
-    answer = ("Text [D1].\n\n```json\n{\"fact\": \"A [D1] and B [D2].\", \"kind\": \"sourced\", "
-              "\"citations\": [\"D1\", \"D3\"], \"open_questions\": []}\n```")
-    block = parse_explore_block(answer)
-    assert block["kind"] == "sourced"
-    assert labels_of(block["fact"], block["citations"]) == ["D1", "D2", "D3"]
-
-
-def test_a_submit_call_written_as_text_is_read_as_the_block():
-    answer = ('[submit_board_fact]{"fact": "No document shows it [D2].", "kind": "not_found", '
-              '"open_questions": ["Was it forwarded?"]}')
-    block = parse_explore_block(answer)
-    assert block["kind"] == "not_found" and block["open_questions"] == ["Was it forwarded?"]
-    assert parse_explore_block("[submit_board_fact]{not json") is None
-    assert parse_explore_block("[other_tool]{\"fact\": \"x\", \"kind\": \"sourced\"}") is None
 
 
 def test_a_reason_reply_without_its_opening_brace_is_read():
@@ -502,7 +474,7 @@ def test_a_rejected_fact_reaches_the_reason_prompt_and_frees_its_objective():
 def test_the_brief_call_guidance_grows_with_the_step_budget():
     assert call_guidance(m.BASE_EXPLORE_STEPS) == 15
     assert call_guidance(m.MAX_EXPLORE_STEPS) == 30
-    assert call_guidance(m.CONCLUDE_STEP_BUDGET) == 1
+    assert call_guidance(4) == 1
 
 
 def test_the_next_reason_reads_the_checks_that_changed_the_last_reply():

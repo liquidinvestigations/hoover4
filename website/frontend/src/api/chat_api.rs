@@ -57,6 +57,22 @@ pub async fn chat_turn_narration(session_id: String, turn_seq: u32) -> Result<Ve
 }
 
 #[server]
+pub async fn chat_workspace_files(session_id: String) -> Result<Vec<common::chat_types::WorkspaceFile>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::workspace_files(&user, session_id)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+#[server]
+pub async fn chat_workspace_file(session_id: String, name: String, version: Option<u32>) -> Result<common::chat_types::WorkspaceVersion, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::workspace_version(&user, session_id, name, version)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+#[server]
 pub async fn chat_delete_session(session_id: String) -> Result<(), ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::chat::delete_chat_session(&user, session_id)

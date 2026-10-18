@@ -517,6 +517,8 @@ def _explore_end(ctx: Context, body: dict, alloc: Allocator, prepared: Prepared)
             raise Rejected(f"unknown end {end!r}")
         extra = {"question": str(body.get("question") or "")[:2000]} if end == m.EXPLORE_QUESTION else {
             "error": str(body.get("error") or "")[:2000]}
+        if isinstance(body.get("report"), dict):
+            extra["report"] = body["report"]
         _event(ctx, prepared, end, intent_id, {**base, **extra}, f"{end}:{intent_id}:{attempt}", actor=actor)
         return
     intent = f.intents.get(intent_id)
@@ -554,7 +556,8 @@ def _explore_end(ctx: Context, body: dict, alloc: Allocator, prepared: Prepared)
     _event(ctx, prepared, m.EXPLORE_CONCLUDED, intent_id,
            {**base, "fact_id": fact_id, "kind": str(fact.get("kind") or ""),
             "claimed_kind": str(fact.get("claimed_kind") or ""), "problems": list(fact.get("problems") or []),
-            "citations": len(body.get("citations") or [])},
+            "citations": len(body.get("citations") or []),
+            **({"report": fact["report"]} if isinstance(fact.get("report"), dict) else {})},
            f"{m.EXPLORE_CONCLUDED}:{intent_id}:{attempt}", actor=actor)
     prepared.result["fact_id"] = fact_id
 

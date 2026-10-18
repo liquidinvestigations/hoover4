@@ -128,11 +128,11 @@ class Handler:
             if level == 1:
                 text += "Search steps still available:\n" + ("\n".join(pending) or "The available search steps are complete.")
             elif level == 2:
-                text += (pending[0] if pending else "Write the answer now. State what the collections do not hold and name the searches.")
+                text += (pending[0] if pending else "Write the answer or the report now. State what the collections do not hold and name the searches.")
             else:
                 text += "The next reply must be the answer. State the missing facts and the searches that you ran."
             if signals["answered"]["fired"] or previous.get("answered"):
-                text += " A result already gives what the request asks for. Write the answer."
+                text += " A result already gives what the request asks for. Write the answer or the report."
             actions.append(Action("append_note", f"progress-{level}", freeze({"text": text, "level": level})))
         model_steps = context.counters.get("model_steps", 0)
         strongest = None if made_progress else previous.get("strongest_step")

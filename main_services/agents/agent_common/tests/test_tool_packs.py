@@ -38,20 +38,19 @@ def test_each_tool_name_is_in_exactly_one_pack():
     assert len(names) == len(set(names))
 
 
-def test_the_chat_run_gets_every_pack_by_default_and_no_pack_delegates():
+def test_every_run_kind_gets_every_bound_pack_by_default_and_no_pack_delegates():
     for kind in RUN_KINDS:
-        own = frozenset({"board"}) if kind == "board" else frozenset()
-        assert packs_for(kind, ALL) == frozenset(PACKS) - {"board"} | own
-        assert packs_for(kind, "") == frozenset(PACKS) - {"board"} | own
+        assert packs_for(kind, ALL) == frozenset(PACKS) - {"board"}
+        assert packs_for(kind, "") == frozenset(PACKS) - {"board"}
     assert "run_subagent" not in allowed_tools("chat", ALL)
 
 
-def test_only_a_board_turn_has_the_board_tool():
-    assert "submit_board_fact" not in allowed_tools("chat", ALL)
-    assert "submit_board_fact" not in allowed_tools("chat", "collections,board")
-    assert "submit_board_fact" in allowed_tools("board", ALL)
+def test_no_run_kind_has_the_board_tool():
+    for kind in RUN_KINDS:
+        assert "submit_board_fact" not in allowed_tools(kind, ALL)
+        assert "submit_board_fact" not in allowed_tools(kind, "collections,board")
     assert allowed_tools("board", "collections") == (
-        PACKS["collections"] | PACKS["skills"] | PACKS["board"])
+        PACKS["collections"] | PACKS["skills"] | PACKS["workspace"])
 
 
 def test_a_board_turn_uses_the_chat_setting(monkeypatch):
@@ -61,18 +60,18 @@ def test_a_board_turn_uses_the_chat_setting(monkeypatch):
 
 def test_the_retired_packs_select_nothing():
     assert packs_for("chat", "collections,delegation,plan") == frozenset(
-        {"collections", "skills"})
+        {"collections", "skills", "workspace"})
 
 
-def test_a_narrowed_setting_gives_only_its_packs_and_the_skill_tools():
+def test_a_narrowed_setting_gives_only_its_packs_and_the_skill_and_workspace_tools():
     assert allowed_tools("chat", "collections,catalogue") == (
-        PACKS["collections"] | PACKS["catalogue"] | PACKS["skills"]
+        PACKS["collections"] | PACKS["catalogue"] | PACKS["skills"] | PACKS["workspace"]
     )
 
 
-def test_every_run_kind_gets_the_skills_pack():
+def test_every_run_kind_gets_the_skills_and_workspace_packs():
     for kind in RUN_KINDS:
-        assert "skills" in packs_for(kind, "collections")
+        assert {"skills", "workspace"} <= packs_for(kind, "collections")
 
 
 def test_an_unknown_pack_or_kind_raises():

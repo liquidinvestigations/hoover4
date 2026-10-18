@@ -1,4 +1,5 @@
-"""Board activities: plan, reason, open an explore turn, conclude it, record its end.
+"""Board activities: plan, reason, open an explore turn, conclude it, convert its report,
+record its end.
 
 `board_plan` is the only writer of `board_state`, `board_intents` and the derived
 `status_changed` rows. It folds the events of every live board, reconciles running intents
@@ -12,9 +13,10 @@ assessment only after `board_plan` reports its start command as committed, so a 
 start runs nothing.
 
 An explore is an ordinary chat turn: `open_explore_turn` writes the session, the user row and
-the stream row that `send_message` writes for a person, and the turn runs as `AgentRun`.
-`conclude_explore` reads the answer, resolves its citation labels from the session's
-`cite_documents` results, and submits the fact.
+the stream row that `send_message` writes for a person, and the turn runs as `AgentRun`. The
+turn writes its result as a workspace report. `conclude_explore` reads the end of the turn:
+a question, a failure, or the report to convert. `convert_explore_report` turns the pinned
+report version into the fact with one model request (`conversion.py`) and submits it.
 """
 
 import asyncio
@@ -31,7 +33,7 @@ from tasks.heartbeat import with_heartbeat
 from tasks.P_agent.activities import AgentRunInput, effective_internet_tools
 from tasks.P_board import model as m
 from tasks.P_board import commands as cmd
-from tasks.P_board.contracts import labels_of, parse_explore_block, parse_reason
+from tasks.P_board.contracts import parse_reason
 from tasks.P_board.fold import (
     canonical_events,
     earlier_objectives,
@@ -41,7 +43,6 @@ from tasks.P_board.fold import (
     visible_facts,
 )
 from tasks.P_board.prompts import (
-    CONCLUDE_REQUEST,
     goal_texts,
     open_question_keys,
     render_brief,
@@ -126,7 +127,19 @@ class TurnRequest:
     board_id: str
     intent_id: str
     attempt: int
+    #: Always `explore`. It is part of the identity of the turn (`_turn_uuid`).
     phase: str = "explore"
+    #: Why the `AgentRun` of the turn failed, or empty when it completed.
+    turn_error: str = ""
+
+
+@dataclass
+class Concluded:
+    """The end of an explore turn. `outcome` is `fact`, `question`, `failed`, `skipped`, or
+    `convert` when `report` names the report version to convert."""
+
+    outcome: str
+    report: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -144,6 +157,8 @@ class EndRequest:
     attempt: int
     kind: str
     error: str = ""
+    #: The report version of a failed conversion, `{name, version}`, or empty.
+    report: dict = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------------- plan
@@ -636,7 +651,7 @@ def _write_turn_rows(owner: str, session_id: str, seq: int, text: str, turn_uuid
 @activity.defn
 @with_heartbeat
 def open_explore_turn(req: TurnRequest) -> OpenedTurn:
-    """Write the rows of one explore or conclude turn and return the `AgentRun` input."""
+    """Write the rows of one explore turn and return the `AgentRun` input."""
     from database import boards
     from database.clickhouse import list_collections
 
@@ -659,13 +674,12 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
     seq = _existing_user_seq(board.owner, session_id, turn_uuid)
     if seq is None:
         seq = _next_seq(board.owner, session_id)
-        if req.phase == "conclude":
-            text = CONCLUDE_REQUEST
-        else:
-            text = render_brief(board, facts, boards.read_citations(board.board_id),
-                                folded.hints, intent, collections, folded.explore_steps)
+        text = render_brief(board, facts, boards.read_citations(board.board_id),
+                            folded.hints, intent, collections, folded.explore_steps,
+                            boards.read_labels([board.board_id]),
+                            effective_internet_tools(bool(board.internet_tools)))
         _write_turn_rows(board.owner, session_id, seq, text, turn_uuid)
-    steps = m.CONCLUDE_STEP_BUDGET if req.phase == "conclude" else folded.explore_steps
+    steps = folded.explore_steps
     run_input = AgentRunInput(
         run_id=str(uuid.uuid5(BOARD_NAMESPACE, turn_uuid)), username=board.owner,
         session_id=session_id, turn_seq=seq, start_seq=seq + 1, turn_uuid=turn_uuid,
@@ -675,98 +689,42 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
     return OpenedTurn(workflow_id=f"chat-{session_id}-{seq + 1}", run_input=run_input)
 
 
+
+
 def _turn_rows(owner: str, session_id: str, turn_seq: int) -> list[dict]:
+    """The rows of a session after the user row at `turn_seq`, in seq order."""
     from database.clickhouse import get_global_client
 
     with get_global_client() as client:
         result = client.query(
-            "SELECT seq, role, tool_name, content, tool_input, tool_output, doc_refs, usage_json "
+            "SELECT seq, role, tool_name, content, tool_input, tool_output, usage_json, message_uuid "
             "FROM chat_messages FINAL "
-            "WHERE username = {u:String} AND session_id = {s:String} ORDER BY seq",
-            parameters={"u": owner, "s": session_id},
+            "WHERE username = {u:String} AND session_id = {s:String} AND seq > {t:UInt32} ORDER BY seq",
+            parameters={"u": owner, "s": session_id, "t": int(turn_seq)},
         )
-    rows = [dict(zip(result.column_names, r)) for r in result.result_rows]
-    for row in rows:
-        row["in_turn"] = row["seq"] > turn_seq
-    return rows
+    return [dict(zip(result.column_names, r)) for r in result.result_rows]
 
 
-#: The keys under which a stored tool result nests its citation objects.
-_NESTED_KEYS = ("output", "content", "text", "citations", "items", "structuredContent")
+def _usage(row: dict) -> dict:
+    try:
+        value = json.loads(row.get("usage_json") or "{}")
+    except ValueError:
+        return {}
+    return value if isinstance(value, dict) else {}
 
 
-def page_citations(output: str) -> list[dict]:
-    """The verified web page citations of a stored `cite_pages` result: objects with a
-    handle `[W1]` to `[W200]`, `quote_verified`, an artifact id and a version, read through
-    the stored wrappers. **Mirrored in `website/common/src/chat_pages.rs`**
-    (`extract_page_refs`)."""
-    found: list[dict] = []
-
-    def collect(value, depth: int) -> None:
-        if depth > 8:
-            return
-        if isinstance(value, str):
-            try:
-                collect(json.loads(value), depth + 1)
-            except ValueError:
-                pass
-        elif isinstance(value, list):
-            for item in value:
-                collect(item, depth + 1)
-        elif isinstance(value, dict):
-            handle = str(value.get("handle") or "")
-            number = handle[2:-1] if handle.startswith("[W") and handle.endswith("]") else ""
-            if (number.isdigit() and 1 <= int(number) <= 200 and value.get("quote_verified") is True
-                    and value.get("artifact_id") and value.get("version")):
-                found.append(value)
-            for key in _NESTED_KEYS:
-                if key in value:
-                    collect(value[key], depth + 1)
-
-    collect(output or "", 0)
-    return found
-
-
-def _citation_index(rows: list[dict]) -> dict[str, dict]:
-    """Handle to source, from every successful citation result of the session. A document
-    handle comes from the `doc_refs` of a `cite_documents` row. A web handle comes from the
-    verified citations in the `tool_output` of a `cite_pages` row, and becomes a citation
-    whose path is the page address and whose quote is its first verified term."""
-    index: dict[str, dict] = {}
-    for row in rows:
-        if row["tool_name"] == "cite_pages":
-            for page in page_citations(row.get("tool_output") or ""):
-                terms = [str(t) for t in page.get("terms") or [] if str(t).strip()]
-                quotes = [str(q) for q in page.get("quotes") or [] if str(q).strip()]
-                index[str(page["handle"]).strip("[]")] = {
-                    "url": str(page.get("final_url") or page.get("url") or ""),
-                    "quote": (terms or quotes or [""])[0], "quote_verified": True}
-        if row["tool_name"] not in ("cite_documents", "cite_pages") or not row["doc_refs"]:
-            continue
-        try:
-            refs = json.loads(row["doc_refs"])
-        except ValueError:
-            continue
-        for ref in refs if isinstance(refs, list) else []:
-            handle = str(ref.get("handle") or "").strip("[]")
-            if handle:
-                index[handle] = ref
-    return index
-
-
-def submitted_fact(rows: list[dict]) -> dict | None:
-    """The arguments of the last successful `submit_board_fact` call of a turn, or None."""
-    for row in reversed(rows):
-        if row["role"] != "tool" or row["tool_name"] != m.SUBMIT_FACT_TOOL:
-            continue
-        try:
-            result = json.loads(row.get("tool_output") or "{}")
-            args = json.loads(row.get("tool_input") or "{}")
-        except ValueError:
-            continue
-        if isinstance(result, dict) and result.get("submitted") and isinstance(args, dict):
-            return args
-    return None
+def turn_report(rows: list[dict], turn_uuid: str) -> tuple[dict, int]:
+    """The report version that the turn pinned, `{name, version}`, and the seq of the
+    assistant row that names it. The last assistant row of the turn names it in its
+    metadata (`P_workspace.selection`). Empty and 0 when the turn wrote no report."""
+    answers = [r for r in rows if r["role"] == "assistant" and r.get("message_uuid") in ("", turn_uuid)]
+    if not answers:
+        return {}, 0
+    report = _usage(answers[-1]).get("report")
+    if (isinstance(report, dict) and isinstance(report.get("name"), str)
+            and isinstance(report.get("version"), int) and report["version"] > 0):
+        return {"name": report["name"], "version": report["version"]}, int(answers[-1]["seq"])
+    return {}, int(answers[-1]["seq"])
 
 
 #: The outcome of `conclude_explore` for each end of a submitted explore.
@@ -779,92 +737,209 @@ def _end_request(intent_id: str, attempt: int) -> str:
     return f"explore_end:{intent_id}:{attempt}"
 
 
+def _submitted_end(board_id: str, request_id: str) -> str | None:
+    """The outcome of the end that an earlier attempt submitted, or None."""
+    from database import board_commands as bc
+
+    earlier = [i for i in bc.read_inputs(board_id) if i.request_id == request_id]
+    return _OUTCOMES.get(str(earlier[0].body.get("end")), "skipped") if earlier else None
+
+
 @activity.defn
 @with_heartbeat
-def conclude_explore(req: TurnRequest) -> str:
-    """Turn the answer of one turn into a board fact, a question or a failure, and submit it.
+def conclude_explore(req: TurnRequest) -> Concluded:
+    """Read the end of one explore turn and submit it, unless its report needs a conversion.
 
-    Returns `fact`, `question`, `needs_conclude` (explore phase without a valid block),
-    `failed` or `skipped`. A retry after the submission returns the submitted end, so it
-    never reads a later answer of the session as the same fact.
+    A turn that asked the person a question ends in `question`. A failed turn and a turn
+    without a report end in `failed`. A turn with a report returns `convert` and the pinned
+    report version, and submits nothing. A retry after a submission returns the submitted
+    end, so it never reads a later answer of the session as the same end.
     """
-    from database import board_commands as bc
     from database import boards
+
+    board = boards.read_board(req.board_id)
+    if board is None or board.is_deleted:
+        return Concluded("skipped")
+    request_id = _end_request(req.intent_id, req.attempt)
+    earlier = _submitted_end(board.board_id, request_id)
+    if earlier is not None:
+        return Concluded(earlier)
+    session_id = m.session_id_for(board.board_id, req.intent_id)
+    turn_uuid = _turn_uuid(req)
+    turn_seq = _existing_user_seq(board.owner, session_id, turn_uuid)
+    if turn_seq is None:
+        return Concluded("skipped")
+    rows = _turn_rows(board.owner, session_id, turn_seq)
+    base = {"intent_id": req.intent_id, "attempt": req.attempt}
+    asked = [r for r in rows if r["role"] == "tool" and r["tool_name"] == "ask_user"]
+    answers = [r for r in rows if r["role"] == "assistant"]
+    if asked and answers:
+        _submit(board.board_id, request_id, cmd.EXPLORE_END, "explore",
+                {**base, "end": m.EXPLORE_QUESTION, "question": answers[-1]["content"][:2000]})
+        return Concluded("question")
+    report, _seq = turn_report(rows, turn_uuid)
+    if req.turn_error:
+        error = f"the explore turn failed: {req.turn_error}"
+    elif not report:
+        error = "the explore turn wrote no report"
+    else:
+        return Concluded("convert", report)
+    _submit(board.board_id, request_id, cmd.EXPLORE_END, "explore",
+            {**base, "end": m.EXPLORE_FAILED, "error": error[:2000],
+             **({"report": report} if report else {})})
+    return Concluded("failed")
+
+
+def _conversion_row(owner: str, session_id: str, turn_uuid: str) -> dict | None:
+    """The stored conversion call of a turn: its tool row, or None."""
+    from database.clickhouse import get_global_client
+
+    with get_global_client() as client:
+        result = client.query(
+            "SELECT seq, tool_input FROM chat_messages FINAL WHERE username = {u:String} "
+            "AND session_id = {s:String} AND message_uuid = {m:String} AND role = 'tool' "
+            "AND tool_name = {t:String} ORDER BY seq DESC LIMIT 1",
+            parameters={"u": owner, "s": session_id, "m": turn_uuid, "t": m.SUBMIT_FACT_TOOL},
+        )
+    if not result.result_rows:
+        return None
+    seq, tool_input = result.result_rows[0]
+    try:
+        args = json.loads(tool_input or "{}")
+    except ValueError:
+        return None
+    return {"seq": int(seq), "args": args} if isinstance(args, dict) else None
+
+
+def _write_conversion_row(owner: str, session_id: str, turn_uuid: str, args: dict,
+                          report: dict, model: str) -> None:
+    """Store the conversion call as a tool row of the turn, after its answer. The row is the
+    checkpoint of the conversion: a retry reads it and makes no second model call. The
+    transcript shows it as the submission of the board (`by`)."""
+    from database import boards
+    from database.clickhouse import get_global_client, insert_durable
+
+    now = boards.now()
+    seq = _next_seq(owner, session_id)
+    output = {"success": True, "submitted": True, "by": "board", "report": report}
+    with get_global_client() as client:
+        insert_durable(client, "chat_messages",
+                       [[session_id, owner, seq, "tool", "", m.SUBMIT_FACT_TOOL,
+                         json.dumps(args, ensure_ascii=False), json.dumps(output),
+                         model, now.replace(microsecond=0), now.replace(microsecond=0), now,
+                         turn_uuid]],
+                       column_names=["session_id", "username", "seq", "role", "content",
+                                     "tool_name", "tool_input", "tool_output", "model",
+                                     "created_at", "updated_at", "created_ms", "message_uuid"])
+
+
+def _task_text(intent) -> str:
+    return intent.objective + (f"\n{intent.brief}" if intent.brief else "")
+
+
+#: The connect timeout of the conversion request. The read timeout is
+#: `board_reason_request_seconds`.
+CONVERT_CONNECT_SECONDS = 10
+
+
+@activity.defn
+@with_heartbeat
+def convert_explore_report(req: TurnRequest) -> str:
+    """Turn the pinned report of an explore turn into its fact, and submit the fact.
+
+    The request goes to the agent model (`llm_endpoints.chat_model`) with only the fact
+    function (`conversion.py`). The checked arguments are stored as the conversion row of
+    the turn before the fact is submitted, so a retry reuses them and sends no request. A
+    transport failure and a malformed reply are raised, so Temporal sends the request once
+    more. A refused request (4xx) cannot change in a second request and is raised as not
+    retryable. After the last attempt the workflow records `explore_failed`.
+    """
+    from temporalio.exceptions import ApplicationError
+
+    from database import boards
+    from database import chat_workspace as store
+    from tasks.llm_endpoints import chat_model, endpoint_for
+    from tasks.P_agent import summarize
+    from tasks.P_agent.model_timeouts import TIMEOUTS
+    from tasks.P_board import conversion
 
     board = boards.read_board(req.board_id)
     if board is None or board.is_deleted:
         return "skipped"
     request_id = _end_request(req.intent_id, req.attempt)
-    earlier = [i for i in bc.read_inputs(board.board_id) if i.request_id == request_id]
-    if earlier:
-        return _OUTCOMES.get(str(earlier[0].body.get("end")), "skipped")
+    earlier = _submitted_end(board.board_id, request_id)
+    if earlier is not None:
+        return earlier
     session_id = m.session_id_for(board.board_id, req.intent_id)
-    turn_seq = _existing_user_seq(board.owner, session_id, _turn_uuid(req))
+    turn_uuid = _turn_uuid(req)
+    turn_seq = _existing_user_seq(board.owner, session_id, turn_uuid)
     if turn_seq is None:
         return "skipped"
-    rows = _turn_rows(board.owner, session_id, turn_seq)
-    in_turn = [r for r in rows if r["in_turn"]]
-    base = {"intent_id": req.intent_id, "attempt": req.attempt, "phase": req.phase}
-    asked = [r for r in in_turn if r["role"] == "tool" and r["tool_name"] == "ask_user"]
-    answers = [r for r in in_turn if r["role"] == "assistant"]
-    submitted = submitted_fact(in_turn)
-    if submitted is None and asked and answers:
-        _submit(board.board_id, request_id, cmd.EXPLORE_END, "explore",
-                {**base, "end": m.EXPLORE_QUESTION, "question": answers[-1]["content"][:2000]})
-        return "question"
-    # The fact of a `submit_board_fact` call, else a fenced JSON block of the answer, which
-    # explores before the tool wrote.
-    block = submitted or (parse_explore_block(answers[-1]["content"]) if answers else None)
-    if block is None:
-        if req.phase == "explore":
-            return "needs_conclude"
-        _submit(board.board_id, request_id, cmd.EXPLORE_END, "explore",
-                {**base, "end": m.EXPLORE_FAILED, "error": f"the turn ended without a {m.SUBMIT_FACT_TOOL} call"})
-        return "failed"
-    text = str(block.get("fact") or "").strip()
-    kind = str(block.get("kind") or "").strip()
-    if not text or kind not in m.EXPLORE_KINDS:
-        _submit(board.board_id, request_id, cmd.EXPLORE_END, "explore",
-                {**base, "end": m.EXPLORE_FAILED, "error": f"the block has no fact or an unknown kind {kind!r}"})
-        return "failed"
-    index = _citation_index(rows)
-    problems, citations = [], []
-    unresolved = []
-    for label in labels_of(text, block.get("citations")):
-        ref = index.get(label)
-        if ref is None:
-            unresolved.append(label)
-            continue
-        citations.append({
-            "label": label, "collection_dataset": str(ref.get("collection_dataset") or ""),
-            "collectionname": str(ref.get("collectionname") or ""), "file_hash": str(ref.get("file_hash") or ""),
-            "path": str(ref.get("path") or ref.get("url") or ""), "page_id": int(ref.get("page_id") or 0),
-            "quote": str(ref.get("quote") or "")[:4000], "quote_verified": 1 if ref.get("quote_verified") else 0})
-    if unresolved:
-        problems.append("unresolved labels: " + ", ".join(unresolved))
-    claimed = kind
-    if kind == m.SOURCED and not any(c["quote_verified"] for c in citations):
-        kind = m.INFERRED
-        problems.append("a sourced fact without a verified citation became inferred")
-    answer_seq = int(answers[-1]["seq"]) if answers else 0
+    report, answer_seq = turn_report(_turn_rows(board.owner, session_id, turn_seq), turn_uuid)
+    version = (store.read_version(board.owner, session_id, report["name"], report["version"])
+               if report else None)
+    if version is None:
+        raise ApplicationError(f"the report {report or 'of the turn'} is missing", non_retryable=True)
+    stored = _conversion_row(board.owner, session_id, turn_uuid)
+    if stored is not None:
+        args = conversion.check_args(stored["args"])
+    else:
+        _events, _facts, folded = _read(board)
+        intent = folded.intents.get(req.intent_id)
+        if intent is None:
+            return "skipped"
+        model = chat_model()
+        body = conversion.request_body(model, _task_text(intent), version.name, version.content,
+                                       version.citations)
+        started = time.monotonic()
+        try:
+            response = summarize.post_or_raise(
+                endpoint_for(model), body,
+                timeout=(CONVERT_CONNECT_SECONDS, TIMEOUTS.board_reason_request_seconds))
+        except summarize.TransportFailure as exc:
+            _record_llm_call(board.owner, board.board_id, model, {},
+                             int((time.monotonic() - started) * 1000), False, str(exc), 0,
+                             kind="board_convert")
+            raise
+        latency_ms = int((time.monotonic() - started) * 1000)
+        if response.status_code >= 400:
+            error = f"HTTP {response.status_code}: {response.text[:200]}"
+            _record_llm_call(board.owner, board.board_id, model, {}, latency_ms, False, error, 0,
+                             kind="board_convert")
+            raise ApplicationError(f"the conversion request was refused: {error}", non_retryable=True)
+        reply = response.json()
+        usage = reply.get("usage") or {} if isinstance(reply, dict) else {}
+        try:
+            args = conversion.parse_reply(reply)
+        except conversion.MalformedConversion as exc:
+            _record_llm_call(board.owner, board.board_id, model, usage, latency_ms, False, str(exc),
+                             len(response.text), kind="board_convert")
+            raise ApplicationError(f"the conversion reply is malformed: {exc}") from exc
+        _record_llm_call(board.owner, board.board_id, model, usage, latency_ms, True, "",
+                         len(response.text), kind="board_convert")
+        _write_conversion_row(board.owner, session_id, turn_uuid, args, report, model)
+    kind, citations, problems = conversion.resolve(args, version.citations)
     if not boards.board_is_live(board.board_id):
         return "skipped"
-    fact = {"kind": kind, "claimed_kind": claimed, "text": text, "session_id": session_id,
-            "answer_seq": answer_seq, "slug": str(block.get("slug") or "")[:80],
-            "open_questions": [str(q)[:500] for q in (block.get("open_questions") or [])][:3],
-            "problems": problems}
+    fact = {"kind": kind, "claimed_kind": args["kind"], "text": args["fact"],
+            "session_id": session_id, "answer_seq": answer_seq, "slug": args["slug"][:80],
+            "open_questions": args["open_questions"], "problems": problems,
+            "report": report}
     _submit(board.board_id, request_id, cmd.EXPLORE_END, "explore",
-            {**base, "end": m.EXPLORE_CONCLUDED, "fact": fact, "citations": citations})
+            {"intent_id": req.intent_id, "attempt": req.attempt, "end": m.EXPLORE_CONCLUDED,
+             "fact": fact, "citations": citations})
     return "fact"
 
 
 @activity.defn
 @with_heartbeat
 def record_explore_end(req: EndRequest) -> None:
-    """Record a cancelled or failed explore that wrote no fact."""
+    """Record a cancelled or failed explore that wrote no fact. A failed conversion names
+    its report version."""
     from database import boards
 
     if not boards.board_is_live(req.board_id):
         return
     _submit(req.board_id, _end_request(req.intent_id, req.attempt), cmd.EXPLORE_END, "explore",
-            {"intent_id": req.intent_id, "attempt": req.attempt, "end": req.kind, "error": req.error})
+            {"intent_id": req.intent_id, "attempt": req.attempt, "end": req.kind, "error": req.error,
+             **({"report": req.report} if req.report else {})})

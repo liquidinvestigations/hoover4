@@ -576,7 +576,7 @@ async def test_the_mcp_server_receives_the_idempotency_key_and_the_share():
         agent, tool_request("write_todo", idempotency_key="K", page_share=5000))
     assert result["status"] == "ok"
     headers = seen[0][2]
-    assert "x-hoover4-idempotency-key" not in headers
+    assert headers["x-hoover4-idempotency-key"] == "K"
     assert headers["x-hoover4-page-share"] == "5000"
     # The values belong to the call, and do not leak into the next one.
     assert execution._IDEMPOTENCY_KEY.get() is None and execution._PAGE_SHARE.get() is None

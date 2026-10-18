@@ -25,7 +25,7 @@ FIXTURES = Path(__file__).parent / "prompt_fixtures"
 TOOL_DESCRIPTIONS = json.loads((FIXTURES / "tool_descriptions.json").read_text())
 
 #: The size budget of the system text of every profile.
-MAX_PROMPT_CHARS = 11_000
+MAX_PROMPT_CHARS = 12_500
 
 #: Any backticked snake_case word in a rendered prompt.
 BACKTICKED = re.compile(r"`([a-z][a-z0-9_]*)`")
@@ -81,7 +81,7 @@ def listed_lines(text):
 
 def test_the_full_chat_lead_lists_every_tool_and_every_skill():
     skills = all_skills("full_research")
-    assert len(skills) == 16
+    assert len(skills) == 17
     text = rendered("full_research", skills=skills)
     names = listed_lines(text)
     tools = [n for n in names if n in EVERY_TOOL]
@@ -239,7 +239,7 @@ def test_list_constraints_apply_before_any_optional_skill_read():
     assert "Verify in the source each property that the request requires of an item." in text
     assert "Count one case, event or entity once, even when several sources report its stages." in text
     assert "When a page read fails, use another readable source or omit its claims and address." in text
-    assert "Read every page that you cite before you answer." in text
+    assert "Read every page that you cite before you write the report." in text
     assert "Call `read_page` for every web source before you use its claims." in text
     assert "Use its `find` field to read the passage that supports each claim." in text
     assert "State when the sources do not establish the ranking." in text

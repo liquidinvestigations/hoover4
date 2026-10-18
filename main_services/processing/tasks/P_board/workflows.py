@@ -18,9 +18,11 @@ Each pass also starts `label_board` for the board that `board_plan` names in `la
 no label task is in flight (`labels.labels_to_start`). It runs on `chat-model-queue` as a
 reason does and uses no board model slot.
 
-`BoardExplore` runs one intent: an explore turn, and when its answer has no valid block, one
-conclude turn in the same chat session. Each turn is an ordinary `AgentRun` child on
-`chat-queue`.
+`BoardExplore` runs one intent: one explore turn, an ordinary `AgentRun` child on
+`chat-queue` that writes a workspace report, then `conclude_explore`, and for a report
+`convert_explore_report` on `chat-model-queue`. The conversion is one model request with two
+attempts. After its last attempt, `record_explore_end` records `explore_failed` with the
+report version. A cancellation records `explore_cancelled`.
 
 **A change that schedules a different command for an existing history event needs the drain
 of `tasks/Readme.md`.** Terminate `board-dispatcher`, cancel every `board-explore-*` workflow,
@@ -37,13 +39,14 @@ from temporalio import workflow
 from dataclasses import dataclass, field
 
 from temporalio.common import RetryPolicy
-from temporalio.exceptions import ActivityError, ChildWorkflowError
+from temporalio.exceptions import ActivityError, ChildWorkflowError, is_cancelled_exception
 from temporalio.workflow import ChildWorkflowCancellationType, ParentClosePolicy
 
 with workflow.unsafe.imports_passed_through():
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.P_board import model as m
     from tasks.P_board.activities import (
+        Concluded,
         EndRequest,
         ExploreTask,
         FinalFailure,
@@ -55,6 +58,7 @@ with workflow.unsafe.imports_passed_through():
         board_plan,
         board_reason,
         conclude_explore,
+        convert_explore_report,
         open_explore_turn,
         record_explore_end,
         record_final_failure,
@@ -263,28 +267,26 @@ class BoardDispatcher:
 
 @workflow.defn
 class BoardExplore:
-    """Run one intent as an explore turn, and a conclude turn when the answer needs one."""
+    """Run one intent as one explore turn, and convert its report into the fact."""
 
     @workflow.run
     async def run(self, task: ExploreTask) -> str:
         try:
-            outcome = await self._turn(task, "explore")
-            if outcome == "needs_conclude":
-                outcome = await self._turn(task, "conclude")
-            return outcome
+            return await self._explore(task)
         except asyncio.CancelledError:
             await asyncio.shield(self._record(task, m.EXPLORE_CANCELLED, "the explore was cancelled"))
             raise
 
-    async def _record(self, task: ExploreTask, kind: str, error: str) -> None:
+    async def _record(self, task: ExploreTask, kind: str, error: str, report: dict | None = None) -> None:
         await workflow.execute_activity(
-            record_explore_end, EndRequest(task.board_id, task.intent_id, task.attempt, kind, error),
+            record_explore_end,
+            EndRequest(task.board_id, task.intent_id, task.attempt, kind, error, report or {}),
             start_to_close_timeout=_SHORT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
             retry_policy=STORAGE_RETRY,
         )
 
-    async def _turn(self, task: ExploreTask, phase: str) -> str:
-        request = TurnRequest(task.board_id, task.intent_id, task.attempt, phase)
+    async def _explore(self, task: ExploreTask) -> str:
+        request = TurnRequest(task.board_id, task.intent_id, task.attempt)
         opened = await workflow.execute_activity(
             open_explore_turn, request, start_to_close_timeout=_SHORT,
             heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=STORAGE_RETRY,
@@ -297,9 +299,28 @@ class BoardExplore:
                 "AgentRun", opened.run_input, id=opened.workflow_id, task_queue=CHAT_TASK_QUEUE,
             )
         except ChildWorkflowError as exc:
-            # A failed or killed turn still leaves its rows. Conclude reads what it wrote.
-            workflow.logger.warning("the %s turn of %s ended with %s", phase, task.intent_id, exc)
-        return await workflow.execute_activity(
+            if is_cancelled_exception(exc):
+                raise asyncio.CancelledError() from exc
+            # The files of a failed turn stay in its workspace. The explore fails.
+            workflow.logger.warning("the explore turn of %s ended with %s", task.intent_id, exc)
+            request.turn_error = str(exc.cause or exc)[:500]
+        concluded: Concluded = await workflow.execute_activity(
             conclude_explore, request, start_to_close_timeout=_SHORT,
             heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=STORAGE_RETRY,
         )
+        if concluded.outcome != "convert":
+            return concluded.outcome
+        try:
+            return await workflow.execute_activity(
+                convert_explore_report, request, task_queue=CHAT_MODEL_TASK_QUEUE,
+                start_to_close_timeout=TIMEOUTS.board_reason_activity,
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=EXTERNAL_RETRY,
+            )
+        except ActivityError as exc:
+            if is_cancelled_exception(exc):
+                raise asyncio.CancelledError() from exc
+            workflow.logger.warning("the conversion of %s failed: %s", task.intent_id, exc)
+            await self._record(task, m.EXPLORE_FAILED,
+                               f"the report conversion failed: {exc.cause or exc}"[:2000],
+                               concluded.report)
+            return "failed"

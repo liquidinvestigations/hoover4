@@ -6,6 +6,7 @@
 //! session id alone is never sufficient to read a conversation.
 
 pub mod artifacts;
+pub mod workspace;
 
 use common::chat_types::{ChatMessageItem, ChatOptions, ChatRole, ChatSessionItem, TodoItemView, TodoSnapshot};
 use time::format_description::well_known::Rfc3339;
@@ -640,10 +641,25 @@ pub async fn delete_session(username: &str, session_id: &str) -> anyhow::Result<
         tracing::error!("could not soft-delete artifacts for session {session_id}: {e}");
     }
     delete_session_runs(username, session_id).await;
+    // The session row is marked first, so the workspace writer refuses a command that
+    // arrives during the delete. Then the files get their tombstones, and the writer of the
+    // session is cancelled. Each failure is logged, as above.
     row.is_deleted = 1;
     row.updated_at = now();
-    insert_row("chat_sessions", &row).await
+    insert_row("chat_sessions", &row).await?;
+    if let Err(e) = workspace::tombstone(username, session_id).await {
+        tracing::error!("could not delete the workspace files of session {session_id}: {e}");
+    }
+    let writer = format!("{WORKSPACE_WRITER_PREFIX}{session_id}");
+    if let Err(e) = crate::api::chat::cancel_workflow(&writer).await {
+        tracing::error!("could not cancel the workspace writer {writer}: {e}");
+    }
+    Ok(())
 }
+
+/// The id prefix of the workspace writer workflow of a session.
+/// **Mirrored in `tasks/P_workspace/workflows.py`** (`WRITER_WORKFLOW_PREFIX`).
+const WORKSPACE_WRITER_PREFIX: &str = "workspace-";
 
 // ---------------------------------------------------------------------------
 // Streaming: chat_message_stream holds the in-flight turn, one row per partial
@@ -956,16 +972,18 @@ pub async fn write_turn_stop(username: &str, session_id: &str, turn_seq: u32) ->
     insert_row("agent_turn_stops", &row).await
 }
 
-/// The tables that hold the agent runs and the plans of a session. Each has `username` and
-/// `session_id` columns.
-pub(crate) const SESSION_RUN_TABLES: [&str; 3] = [
+/// The tables that hold the agent runs, the plans and the workspace receipts of a session.
+/// Each has `username` and `session_id` columns.
+pub(crate) const SESSION_RUN_TABLES: [&str; 4] = [
     "agent_runs",
     "agent_run_messages",
     "agent_turn_stops",
+    "chat_workspace_receipts",
 ];
 
-/// Delete the run rows, run messages, stop rows and plan rows of one session. Each failure
-/// is logged and does not stop the others, because the session delete goes on regardless.
+/// Delete the run rows, run messages, stop rows, plan rows and workspace receipts of one
+/// session. Each failure is logged and does not stop the others, because the session delete
+/// goes on regardless.
 async fn delete_session_runs(username: &str, session_id: &str) {
     for table in SESSION_RUN_TABLES {
         let result = get_global_client()

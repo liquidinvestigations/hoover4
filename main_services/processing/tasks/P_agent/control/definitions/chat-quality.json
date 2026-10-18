@@ -102,30 +102,6 @@
       "requires_tools": [
         "read_page"
       ]
-    },
-    {
-      "id": "review",
-      "hook": "answer_drafted",
-      "handler": "answer_review",
-      "priority": 20,
-      "frequency": "event",
-      "parameters": {
-        "markers": {
-          "enabled": true,
-          "repair": true
-        },
-        "supported": {
-          "threshold": 0.05,
-          "repair": false
-        },
-        "names": {
-          "repair": false
-        },
-        "requirements": {
-          "threshold": 0.05,
-          "repair": false
-        }
-      }
     }
   ]
 }

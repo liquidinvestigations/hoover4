@@ -15,6 +15,10 @@
 | Search in conversation | Find messages containing the entered text and move between matches. | The count updates while typing. The input is at most 350 pixels wide, and the counter and the buttons follow it. |
 | Investigation Board | Open the board of a board explore chat, with the chat's intent selected. | It shows only in a board explore chat, at the right end of the search row. It opens in the same tab. |
 | Board answer card | Open the board of a board explore chat, with the fact of the turn selected. | It is the card at the end of a board explore chat. It opens in the same tab. |
+| Workspace | Open the workspace pane with the files that the assistant wrote in the conversation. | It is in the title row. The pane is read-only. Its file and version are in the address. |
+| Workspace file | Show the current version of the file in the workspace pane. | The list shows each file with its current version and length. |
+| Open in the workspace | Open the pinned report version of an answer in the workspace pane. | It is in the line above an answer that shows a report. |
+| Close the workspace | Close the workspace pane. | The conversation stays open. |
 | Follow-up suggestion | Fill and focus the composer with the selected prompt. | The user edits or sends it explicitly. |
 | Send | Submit the composer text. | Empty text and a closed chat gate disable Send. The navigation arrow button includes a Send tooltip. |
 | Tool group | Show or hide the tools, instructions, superseded answers, and the reasoning of the round. | Completed groups start closed. |
@@ -48,6 +52,9 @@ It uses the neutral surface colour, fits its text, and takes at most 80% of the 
 A done task is struck through and followed by the first three words of its reason in bold.
 A replaced task stays struck through directly above the task that replaces it.
 A failed, unchanged, or unstored todo call shows no new summary.
+An answer whose turn wrote a workspace file shows the last file version of the turn as its text, under a line with the file name and the version. The chat text of the answer follows it in a muted colour.
+An answer whose report version cannot be read shows its chat text and says so.
+The board writes a "Submitted by the board" finding card after the answer of a board explore turn.
 An active turn shows one line with a turning icon and the text "The bot is working...".
 A queued turn adds the slot that it waits for under that line.
 Failed document quotes allocate no new handles.
@@ -68,5 +75,7 @@ Captured Markdown cannot execute HTML or create citation controls.
 Page content and exact find state survive URL reload.
 Page reads enforce the existing artifact ownership access check.
 Citation cards omit tool diagnostics and publication metadata.
+A bracket after a backslash, such as `\[D9]`, and a bracket in code are text, not citation handles.
+A later edit of a file does not change the report of an earlier answer.
 The search-term line is absent when its originating search cannot be reconstructed.
 The answer omits redundant citation-status and tool-scope text.

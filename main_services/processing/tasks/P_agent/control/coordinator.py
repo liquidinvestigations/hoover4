@@ -72,12 +72,6 @@ def control_of(message) -> dict:
     return dict(value) if isinstance(value, dict) else {}
 
 
-def decide_repair(has_defects: bool, rounds_started: int, model_limit_reached: bool,
-                  limit: int = 2) -> bool:
-    """Return whether the draft can start another repair round within `limit`."""
-    return has_defects and rounds_started < limit and not model_limit_reached
-
-
 def counters(messages) -> dict:
     """The repair rounds, the discovery notes, the edit rounds and the applied actions of
     each rule."""
@@ -307,19 +301,6 @@ def _turn_facts(messages) -> dict:
     return facts
 
 
-def _passages(entries) -> list[dict]:
-    out = []
-    for entry in entries:
-        ref = entry.get("reference") or {}
-        if entry.get("kind") != "citation" or entry.get("status") != "ok" or not ref.get("handle"):
-            continue
-        quotes = [q for q in ([ref.get("quote")] + list(ref.get("quotes") or [])
-                              + list(ref.get("terms") or [])) if isinstance(q, str) and q]
-        out.append({"handle": ref["handle"], "source": ref.get("url") or ref.get("path") or "",
-                    "quotes": quotes[:6]})
-    return out
-
-
 def _visible_skills(row, params, messages) -> Optional[set]:
     from tasks.P_agent.steps import _earlier_turns
     from tasks.P_agent.stream_writer import run_message
@@ -412,39 +393,6 @@ def _policy_calls(actions, assets) -> list[dict]:
 
 HOOK_LIMITS = {"turn_started": "preparation_seconds", "tool_batch_completed": "batch_seconds",
                "answer_drafted": "answer_seconds"}
-FAMILY_ORDER = ("supported", "requirements", "names", "markers")
-FINAL_LINE = "Write the complete answer again with the sources that support its claims."
-
-
-def draft_note_text(citation: dict, checks: list[dict], discovery: str,
-                    allow_repair: bool, allow_discovery: bool) -> tuple[str, list[dict]]:
-    """One combined note for a draft, and the findings that it names, in answer order."""
-    from tasks.P_agent import citations
-
-    parts = []
-    findings = []
-    if allow_discovery and discovery:
-        parts.append(discovery)
-    if allow_repair:
-        if citation.get("needed"):
-            parts.append(citations.repair_note(citation.get("check") or {}))
-        findings = [c for c in checks if c["status"] == "defect" and (c.get("detail") or {}).get("mandatory")]
-        findings.sort(key=lambda c: (FAMILY_ORDER.index(c["detail"].get("family", "markers"))
-                                     if c["detail"].get("family") in FAMILY_ORDER else 9,
-                                     len(c["target_id"]), c["target_id"]))
-        lines = []
-        for c in findings:
-            detail = c["detail"]
-            quoted = (detail.get("text") or "").replace("\n", " ")[:240]
-            handles = (" Sources: " + ", ".join(c["input_refs"]) + ".") if c["input_refs"] else ""
-            lines.append(f"- {quoted!r}: {c['reason']}.{handles} {detail.get('correction', '')}".rstrip())
-        if lines:
-            parts.append("Correct these parts of the answer:\n" + "\n".join(lines))
-            if FINAL_LINE not in "\n".join(parts):
-                parts.append(FINAL_LINE)
-    return "\n\n".join(p for p in parts if p), findings
-
-
 def _context(row, params, messages, control, event, anchor) -> PolicyContext:
     assets = control.get("assets") or {}
     results = F.result_facts(messages)
@@ -453,20 +401,6 @@ def _context(row, params, messages, control, event, anchor) -> PolicyContext:
               for name, skill in (assets.get("skills") or {}).items()}
     turn = _turn_facts(messages)
     turn["conversation"] = control.get("conversation") or []
-    if params.hook == "answer_drafted":
-        from tasks.P_agent import citations, reports
-        from tasks.P_agent.steps import _citation_messages
-
-        entries = reports.session_citation_entries(row.username, row.session_id)
-        limits = (control.get("definition") or {}).get("limits") or {}
-        needed, check = citations.needs_repair(row.result or "", _citation_messages(row, messages),
-                                               entries, bool(limits.get("paragraph_repair", 1)))
-        structural = check.get("unresolved") or check.get("conflicting") or check.get("page_zero")
-        turn["citation"] = {"needed": bool(needed) and (event.draft_kind == "answer" or bool(structural)), "check": check}
-        if limits.get("edit_rounds") and event.draft_kind == "answer":
-            turn["citation"]["edits"] = citations.narrow_findings(
-                row.result or "", _citation_messages(row, messages), entries)
-        turn["passages"] = _passages(entries)
     context = PolicyContext(
         run_id=row.run_id, thread_id=row.thread_id, profile=profile_of(params.internet_tools),
         definition_revision=control["definition"]["revision"], request=messages[0].content or "",
@@ -476,13 +410,8 @@ def _context(row, params, messages, control, event, anchor) -> PolicyContext:
         draft=row.result or "",
         capabilities=frozenset(control.get("capabilities") or capabilities_of(assets.get("callable_tools") or [])),
         collections=tuple(control.get("collections", params.allowed_collections) or []),
-        recent_steps=F.render_steps(messages))
-    if params.hook == "answer_drafted" and F.justified_absence(context):
-        citation = plain(context.turn.get("citation") or {})
-        check = citation.get("check") or {}
-        if not check.get("labels") and not citations.URL_PATTERN.search(context.draft) and not check.get("page_zero"):
-            turn["citation"] = {**citation, "needed": False, "reason": "verified absence needs no source handle"}
-            context = replace(context, turn=freeze(turn))
+        recent_steps=F.render_steps(messages),
+        run_kind="board" if getattr(params, "board_turn", False) else "chat")
     return context
 
 
@@ -529,8 +458,7 @@ def _decide(row, params, messages, control, anchor, samples) -> dict:
     ending = next((a for a in actions if a["kind"] == "end_turn"), None)
     decision["end_turn"] = ending["arguments"].get("text", "") if ending else ""
     notes = [a for a in actions if a["kind"] == "append_note"]
-    calls = [a for a in actions if a["kind"] in ("load_skill", "call_tools")] \
-        if params.hook != "answer_drafted" else []
+    calls = [a for a in actions if a["kind"] in ("load_skill", "call_tools")]
     kept = []
     if calls:
         planned = _policy_calls(calls, control.get("assets") or {})
@@ -553,56 +481,7 @@ def _decide(row, params, messages, control, anchor, samples) -> dict:
             kept = [a for a in calls if any(c["action_id"] == a["id"] for c in rows_calls)]
             idx += 1 + len(rows_calls)
             seq += len(rows_calls)
-    if params.hook == "answer_drafted":
-        limits = definition.limits
-        citation = plain(context.turn.get("citation") or {})
-        mandatory = [c for c in checks if c["status"] == "defect" and (c.get("detail") or {}).get("mandatory")]
-        has_defects = bool(citation.get("needed")) or bool(mandatory)
-        allow_repair = decide_repair(has_defects, counts["repair_rounds"], params.model_limit_reached,
-                                     int(limits["repair_rounds"]))
-        discovery = next((a for a in notes if a["arguments"].get("discovery")), None)
-        allow_discovery = (discovery is not None and not params.model_limit_reached
-                           and counts["discovery_notes"] < int(limits["discovery_notes"]))
-        text, findings = draft_note_text(citation, checks,
-                                         discovery["arguments"]["text"] if discovery else "",
-                                         allow_repair, allow_discovery)
-        # The narrow findings get one edit round when no other note is due. A full repair
-        # round rewrites the answer, and the next draft is checked again.
-        edits = list(citation.get("edits") or [])
-        allow_edit = (bool(edits) and not text and not params.model_limit_reached
-                      and counts["edit_rounds"] < int(limits.get("edit_rounds", 0)))
-        if allow_edit:
-            from tasks.P_agent import citations
-
-            text = citations.edit_note(edits)
-        decision["repair"] = {"has_defects": has_defects, "rounds_started": counts["repair_rounds"],
-                              "allowed": allow_repair, "discovery": allow_discovery,
-                              "model_limit_reached": params.model_limit_reached,
-                              "citation_needed": bool(citation.get("needed")),
-                              "findings": [f["target_id"] for f in findings],
-                              "edits": [e["kind"] for e in edits], "edit": allow_edit}
-        if text:
-            from tasks.P_agent import citations
-            from tasks.P_agent.steps import CITATION_NOTE_NAME
-
-            decision["round"] = True
-            decision["rows"]["note"] = {
-                "idx": idx, "seq": seq, "text": text, "tool_name": CITATION_NOTE_NAME,
-                "usage": {citations.REPAIR_MARKER_KEY: citations.REPAIR_MARKER,
-                          "citation_check": citation.get("check") if allow_repair else {},
-                          "control": {"kind": DRAFT_NOTE, "event_id": event.id,
-                                      "repair": allow_repair, "discovery": allow_discovery,
-                                      "edit": allow_edit,
-                                      "definition_revision": definition.revision}}}
-            kept += ([discovery] if allow_discovery else []) + (
-                [{"id": action_id(event.id, "repair", "draft", 0), "rule_id": "repair",
-                  "kind": "repair", "target": "draft", "arguments": {"findings": len(findings)}}]
-                if allow_repair else []) + (
-                [{"id": action_id(event.id, "edit", "draft", 0), "rule_id": "edit",
-                  "kind": "repair", "target": "draft", "arguments": {"edits": len(edits)}}]
-                if allow_edit else [])
-            seq += 1
-    elif notes:
+    if notes:
         text = "\n\n".join(a["arguments"]["text"] for a in notes)
         decision["rows"]["note"] = {
             "idx": idx, "seq": seq, "text": text, "tool_name": BATCH_NOTE_NAME,
@@ -718,9 +597,6 @@ def _run_hook(params, samples):
     row = _read_row(params)
     if agent_runs.is_terminal(row):
         return ControlOutcome(closed=True, next_seq=row.next_seq)
-    if params.hook == "answer_drafted" and row.end_reason:
-        # A run that ended at a limit has a result that code wrote, and gets no review.
-        return ControlOutcome(next_seq=row.next_seq)
     messages = _read_thread(row)
     if not messages or messages[0].role != "human":
         return ControlOutcome(next_seq=row.next_seq)

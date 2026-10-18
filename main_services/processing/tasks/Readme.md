@@ -154,7 +154,8 @@ After 600 model steps, it writes an incomplete result from stored evidence.
 Two empty replies of one model step also end the run with an incomplete result.
 
 An activity that sends one external request gets two attempts: `model_step`, `tool_call`,
-`write_followups`, `summarize_if_first_turn` and `label_board`. Browser calls that change a
+`write_followups`, `summarize_if_first_turn`, `label_board`, `board_reason` and
+`convert_explore_report`. Browser calls that change a
 page get one attempt. An activity that only reads and writes ClickHouse gets
 `ACTIVITY_MAX_ATTEMPTS` (5), for the lost dispatches of the section on activity liveness.
 No activity repeats a request inside itself, and no note in the conversation recovers a
@@ -165,16 +166,13 @@ The agent service compacts the model thread when it exceeds its size threshold.
 The worker stores the compaction status in the transcript.
 Request preparation failures end the run and preserve the stored thread.
 An answer ends the run with its todo list unchanged.
-The worker requests citation repair from stored read evidence, at most two rounds after the first draft.
-The note of a round combines invalid labels, missing read-page addresses, paragraphs with uncited names or numbers, and the other findings of the answer checks.
-Document reads through continuation pages also count.
-Search results and failed reads do not count as document reads.
-The answer stores citation status and tool scope in `usage_json`.
+No harness round asks the model to repeat an answer.
+The answer stores citation status, tool scope and the report of the turn in `usage_json`.
 The transcript shows this metadata below the answer.
 The worker stores typed evidence beside each tool result.
 Evidence identifies document reads, discovery, citations, notes, artifacts, spans, and errors.
 
-The `control_event` activity runs the chat checks of [P_agent/control/](P_agent/control) at the turn start, after each tool batch, and at each answer draft.
+The `control_event` activity runs the chat checks of [P_agent/control/](P_agent/control) at the turn start and after each tool batch.
 [control/coordinator.py](P_agent/control/coordinator.py) describes the stored decision of each event and the rows it writes.
 A policy batch runs through `tool_call` before the next model step.
 The checks ask the selfhosted structured server at `CHAT_CLASSIFIER_URL` and continue without answers when it fails.
@@ -190,6 +188,22 @@ It leaves rows younger than 120 seconds unchanged.
 Stop active turns before changing the workflow's command sequence.
 Cancellation must finish while the old worker still runs.
 Deploy the worker before the website so every dispatched queue has a poller.
+
+### P_workspace - workspace files of a chat
+
+The agent writes reports and other files with the workspace tools of the session tool server.
+`WorkspaceWriter` ([P_workspace/workflows.py](P_workspace/workflows.py)) is the one writer of the files of a session, with the
+id `workspace-<session id>` on `chat-queue`. The tool server starts it or signals it with
+signal-with-start, and reads the receipt of the operation id, the idempotency key of the
+tool call. The writer takes the commands in order. `prepare_workspace_mutation` reads the
+receipt, the current file and the citation results of the session, and returns the outcome
+(`P_workspace/mutations.py`). `commit_workspace_mutation` writes the version row, then the
+receipt. Both are storage activities with 5 attempts. A repeated operation returns its
+receipt. A version without its receipt is a commit that stopped, and the next preparation
+writes the missing receipt. The writer completes after 15 minutes without a command, and
+continues as new after 200 commands with the commands that wait. A deleted session refuses
+every command, and the website cancels the writer when it deletes the session. The last
+successful write or patch of a turn is its report (`P_workspace/selection.py`).
 
 ## Temporal visibility
 

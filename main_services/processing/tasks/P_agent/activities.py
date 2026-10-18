@@ -347,7 +347,7 @@ class AgentRunInput:
     #: The model steps this run may take, 0 for `RUN_MODEL_STEPS`. A board explore sets
     #: its own, smaller budget.
     max_model_steps: int = 0
-    #: True for a board explore or conclude turn. Such a run writes no follow-up
+    #: True for a board explore turn. Such a run writes no follow-up
     #: suggestions and no session title, because nobody reads them.
     board_turn: bool = False
 
@@ -423,8 +423,6 @@ class RunSummary:
     #: before an answer (`steps.write_incomplete`).
     end_reason: str = ""
     asked: bool = False
-    #: True when a board turn ended with `submit_board_fact`, so no draft check follows.
-    submitted: bool = False
 
 
 @dataclass

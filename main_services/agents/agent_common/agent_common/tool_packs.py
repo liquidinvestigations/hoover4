@@ -6,13 +6,15 @@ runs and lists in its catalogue only the tools of the run's packs. A tool that a
 for every run.
 
 The `skills` pack holds the three skill tools, `ask_user` and the notes tool `write_note` of
-the research agent. `packs_for` adds it to every run kind, also when the configured list
-omits it, because the system prompt of every run lists skills that the model can read with
-`read_skill`.
+the research agent. The `workspace` pack holds the file tools of the session tool server.
+`packs_for` adds both to every run kind, also when the configured list omits them, because
+the system prompt of every run lists skills that the model can read with `read_skill`, and
+every report goes through the workspace tools.
 
 The `board` run kind is a chat turn of an investigation board. It has the packs of the chat
-kind and the `board` pack, which holds the tool that ends an explore turn with its fact. No
-other run kind gets the `board` pack, also with `all`.
+kind. The `board` pack holds `submit_board_fact`, which no run kind gets, also with `all`.
+The board's conversion activity sends that schema to the model on its own, after the
+explore wrote its report.
 
 Each model tool belongs to one pack.
 Internal runtime tools belong to `INTERNAL_TOOLS` and stay outside model catalogues.
@@ -39,6 +41,7 @@ PACKS: Dict[str, FrozenSet[str]] = {
         "folder_list", "folder_search", "read_more",
     }),
     "conversation": frozenset({"read_todo", "write_todo", "edit_todo", "mark_todo"}),
+    "workspace": frozenset({"workspace_read", "workspace_write", "workspace_patch"}),
     "web": frozenset({"web_search", "list_search_sources", "whois_lookup", "read_page", "cite_pages"}),
     "browser": frozenset({"browser_navigate", "browser_snapshot", "browser_click",
                           "browser_type", "browser_select_option", "browser_press_key"}),
@@ -48,14 +51,14 @@ PACKS: Dict[str, FrozenSet[str]] = {
 #: The kinds of agent run.
 RUN_KINDS = ("chat", "board")
 
-#: The packs that only one run kind gets, by run kind.
-KIND_PACKS: Dict[str, FrozenSet[str]] = {"board": frozenset({"board"})}
+#: The packs that no run kind gets.
+UNBOUND_PACKS = frozenset({"board"})
 
 #: The value that selects every pack.
 ALL = "all"
 
-#: The pack that every run kind gets, whatever its setting says.
-ALWAYS_PACK = "skills"
+#: The packs that every run kind gets, whatever its setting says.
+ALWAYS_PACKS = frozenset({"skills", "workspace"})
 
 #: Removed pack names select no tools.
 RETIRED_PACKS = frozenset({"delegation", "plan"})
@@ -79,16 +82,14 @@ def packs_for(kind: str, configured: str) -> FrozenSet[str]:
 
     `configured` is a comma list of pack names, or `all`. An empty value means `all`,
     because compose renders an unset key as an empty string. A name of `RETIRED_PACKS` is
-    left out. An unknown pack name or an unknown run kind raises `ValueError`. The result
-    always holds `ALWAYS_PACK`.
+    left out, and so is every pack of `UNBOUND_PACKS`. An unknown pack name or an unknown
+    run kind raises `ValueError`. The result always holds `ALWAYS_PACKS`.
     """
     if kind not in RUN_KINDS:
         raise ValueError(f"unknown agent run kind {kind!r}, expected one of {RUN_KINDS}")
-    own = KIND_PACKS.get(kind, frozenset())
-    reserved = frozenset().union(*KIND_PACKS.values()) - own
     value = (configured or "").strip()
     if not value or value == ALL:
-        return frozenset(PACKS) - reserved
+        return frozenset(PACKS) - UNBOUND_PACKS
     names = frozenset(part.strip() for part in value.split(",") if part.strip())
     unknown = sorted(names - set(PACKS) - RETIRED_PACKS)
     if unknown:
@@ -96,7 +97,7 @@ def packs_for(kind: str, configured: str) -> FrozenSet[str]:
             f"{env_name(kind)} names unknown tool packs {unknown}. "
             f"The packs are {sorted(PACKS)}, or {ALL!r}."
         )
-    return (names - RETIRED_PACKS - reserved) | {ALWAYS_PACK} | own
+    return (names - RETIRED_PACKS - UNBOUND_PACKS) | ALWAYS_PACKS
 
 
 def allowed_tools(kind: str, configured: str) -> FrozenSet[str]:

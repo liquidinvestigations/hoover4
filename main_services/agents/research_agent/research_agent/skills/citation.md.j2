@@ -10,8 +10,11 @@ tools: cite_documents, cite_pages
    `citation_resolver` says who turns a handle back into a document. A worker runs on the
    lead's chat session, so its handles are the lead's handles, and its text names the lead.
    The system prompt gives the order of the work. This skill gives the arguments, one
-   example for each citation tool, and what to do after a failed entry.
+   example for each citation tool, and what to do after a failed entry. The `report` skill
+   says which file holds the cited text.
 #}
+Cited text goes into a workspace file. The `report` skill says how to write and edit it.
+
 {% if has('cite_documents') %}
 When your {{ citation_artefact }} relies on {% if web_enabled %}an internal{% else %}a{% endif %} document, call {{ tool('cite_documents') }}.
 Give it each document that supports a claim or quote. Use the returned handle beside that claim.

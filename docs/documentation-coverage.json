@@ -1200,6 +1200,23 @@
       "scenario": "website/browser-tests/764-manual-chat-web-preview.ini"
     },
     {
+      "id": "F-chat-34",
+      "source": [
+        "main_services/processing/tasks/P_workspace",
+        "main_services/processing/database/chat_workspace.py",
+        "main_services/agents/agent_todo_server/agent_todo_server/workspace.py",
+        "website/backend/src/db_chat/workspace.rs",
+        "website/frontend/src/components/chat_components/workspace_pane.rs"
+      ],
+      "docs": [
+        "docs/technical-specification/Capability_Contracts.md#f-chat-34",
+        "docs/architecture/Chat_And_Agents.md#reports-and-workspace-files",
+        "docs/technical-specification/interface/Chat.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "The screenshot of a report and the workspace pane needs a finished agent turn with files. The chat walkthrough records it as browser evidence."
+    },
+    {
       "id": "F-chat-08",
       "source": [
         "website/frontend/src/components/chat_components",
@@ -1883,7 +1900,7 @@
         "main_services/processing/tasks/P_board",
         "main_services/processing/tasks/P_board/commands.py",
         "main_services/processing/tasks/P_board/labels.py",
-        "main_services/agents/research_agent/research_agent/board_tools.py"
+        "main_services/processing/tasks/P_board/conversion.py"
       ],
       "docs": [
         "docs/user-manual/User_Manual.md#10-investigation-boards",

@@ -1,7 +1,9 @@
 # agent todo MCP server
 
-One todo list per chat or agent run (a goal and a list of steps) is exposed as four tools:
-`read_todo`, `write_todo`, `edit_todo` and `mark_todo`.
+The session tool server. One todo list per chat or agent run (a goal and a list of steps) is
+exposed as four tools: `read_todo`, `write_todo`, `edit_todo` and `mark_todo`. The workspace
+files of a conversation are exposed as three more: `workspace_read`, `workspace_write` and
+`workspace_patch` (see [Workspace files](#workspace-files)).
 
 **The server holds no rules.** Every shape, limit and refusal lives in
 [`../../processing/database/chat_todos.py`](../../processing/database/chat_todos.py),
@@ -37,6 +39,20 @@ Tool arguments cannot select another list.
 `write_todo` returns the version and step identifiers.
 `edit_todo` and `mark_todo` return open steps.
 Every result includes the version. A call that changed nothing also returns `unchanged`.
+
+## Workspace files
+
+[agent_todo_server/workspace.py](agent_todo_server/workspace.py) serves the workspace tools. The rules live in the
+pipeline: the storage and the read format in
+[`../../processing/database/chat_workspace.py`](../../processing/database/chat_workspace.py), and the write and patch
+rules in [`../../processing/tasks/P_workspace/`](../../processing/tasks/P_workspace). `workspace_read` reads storage
+directly. `workspace_write` and `workspace_patch` send the command to the session writer
+workflow `WorkspaceWriter` on `chat-queue` with signal-with-start (`TEMPORAL_ADDRESS`), and
+read the receipt of the operation id every 0.3 s for up to `WORKSPACE_WRITER_WAIT_SECONDS`
+(60). The operation id is the `X-Hoover4-Idempotency-Key` header that the worker sends for
+the tool call. A failed receipt is a tool error with the result as its text. A writer that
+cannot be reached, or that gives no receipt in time, is a tool error with `retryable` true,
+and the worker sends the call again with the same key.
 
 ## Build context
 

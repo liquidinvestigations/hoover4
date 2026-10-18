@@ -805,13 +805,14 @@ async def run_chat_worker():
   stay separate so a long model call cannot hold a write slot or a tool slot.
 
   `chat-queue` carries `AgentRun` and its short activities (open, ending, step failure,
-  policy hooks, notes, title).
+  policy hooks, notes, title), and the `WorkspaceWriter` of each session with files.
   `chat-model-queue` carries `model_step` and follow-up generation.
   `agent-tool-queue` carries `tool_call` for every run. A slot is one model call or one
   tool call in flight, not one agent run.
   `board-queue` carries the investigation board dispatcher, the `BoardExplore` workflows, the
-  per-board `BoardCommands` writers and their short activities. A board's reason call runs on `chat-model-queue` and its explore
-  turns are `AgentRun`, so board model work counts against the same model slots as chat.
+  per-board `BoardCommands` writers and their short activities. A board's reason call and
+  the conversion of an explore report run on `chat-model-queue`, and its explore turns are
+  `AgentRun`, so board model work counts against the same model slots as chat.
 
   The three queues are not the ingestion queue. An ingestion backlog delaying a person
   waiting at a screen is the failure a shared queue guarantees, and these four make it
@@ -840,13 +841,16 @@ async def run_chat_worker():
       AgentRun,
   )
   from .P_board.activities import (
-      board_plan, board_reason, conclude_explore, open_explore_turn, record_explore_end,
-      record_final_failure, record_reason_failure,
+      board_plan, board_reason, conclude_explore, convert_explore_report, open_explore_turn,
+      record_explore_end, record_final_failure, record_reason_failure,
   )
   from .P_board.command_workflows import BoardCommands, board_command_step
   from .P_board.labels import label_board
   from .P_board.model import BOARD_TASK_QUEUE, DISPATCHER_WORKFLOW_ID
   from .P_board.workflows import BoardDispatcher, BoardExplore
+  from .P_workspace.workflows import (
+      WorkspaceWriter, commit_workspace_mutation, prepare_workspace_mutation,
+  )
   from .visibility import ensure_search_attributes
   log.info("Starting Chat worker...")
   # A missing or invalid policy handler stops the worker here, before it takes a turn.
@@ -867,11 +871,12 @@ async def run_chat_worker():
         task_queue=CHAT_TASK_QUEUE,
         graceful_shutdown_timeout=graceful_shutdown_timeout(),
         workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
-        workflows=[AgentRun],
+        workflows=[AgentRun, WorkspaceWriter],
         activities=[
             open_run, write_ending, summarize_if_first_turn,
             record_step_failure, control_event,
             write_asked_answer, write_incomplete,
+            prepare_workspace_mutation, commit_workspace_mutation,
         ],
         activity_executor=activity_executor,
         max_concurrent_activities=low_latency_slots,
@@ -885,7 +890,8 @@ async def run_chat_worker():
         max_heartbeat_throttle_interval=STEP_HEARTBEAT_THROTTLE,
         workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
         workflows=[],
-        activities=[model_step, write_followups, board_reason, label_board],
+        activities=[model_step, write_followups, board_reason, label_board,
+                    convert_explore_report],
         activity_executor=activity_executor,
         max_concurrent_activities=model_slots,
       ),

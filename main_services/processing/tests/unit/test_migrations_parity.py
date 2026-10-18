@@ -78,6 +78,8 @@ EXPECTED_GLOBAL_TABLES = {
     "board_assessments",
     "board_command_inputs",
     "board_command_receipts",
+    "chat_workspace_files",
+    "chat_workspace_receipts",
 }
 
 EXPECTED_COLLECTION_TABLES = {

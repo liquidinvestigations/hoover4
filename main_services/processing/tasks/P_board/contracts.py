@@ -1,4 +1,4 @@
-"""Checks of the model output of a reason call and of an explore answer.
+"""Checks of the model output of a reason call, and the labels of a fact.
 
 The reason reply must be one JSON object. A reply inside a Markdown fence is accepted,
 because the chat model sometimes adds one. Every check here records what it changed, so a
@@ -11,10 +11,6 @@ import re
 from tasks.llm_json import THINK_PATTERN, extract_json
 from tasks.P_board import model as m
 
-FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)
-#: A tool call that the model wrote as text, `[submit_board_fact]{...}`, in place of a call.
-TEXT_CALL_PATTERN = re.compile(r"\[(?:%s)\]\s*(?=\{)" % re.escape(m.SUBMIT_FACT_TOOL))
-LABEL_PATTERN = re.compile(r"\[([DW]\d+)\]")
 WORD_PATTERN = re.compile(r"[a-z0-9]{3,}")
 STOP_WORDS = {"the", "and", "for", "with", "from", "that", "this", "what", "which", "their",
               "emails", "email", "documents", "document", "find", "search", "identify", "any",
@@ -222,38 +218,6 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
     else:
         payload.update(outcome="noop", idle=idle)
     return payload
-
-
-def parse_explore_block(answer: str) -> dict | None:
-    """The last fenced JSON block of an answer, else the arguments of a
-    `[submit_board_fact]{...}` call that the model wrote as text, or None."""
-    answer = THINK_PATTERN.sub("", answer or "")
-    blocks = FENCE_PATTERN.findall(answer)
-    for block in reversed(blocks):
-        try:
-            value = json.loads(block)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(value, dict):
-            return value
-    for match in reversed(list(TEXT_CALL_PATTERN.finditer(answer))):
-        try:
-            value, _ = json.JSONDecoder().raw_decode(answer, match.end())
-        except json.JSONDecodeError:
-            continue
-        if isinstance(value, dict):
-            return value
-    return None
-
-
-def labels_of(text: str, listed) -> list[str]:
-    """The labels a fact names, in its text or in its citations list."""
-    labels = set(LABEL_PATTERN.findall(text or ""))
-    for item in listed or []:
-        label = str(item).strip().strip("[]")
-        if re.fullmatch(r"[DW]\d+", label):
-            labels.add(label)
-    return sorted(labels, key=lambda x: (x[0], int(x[1:])))
 
 
 #: Limits of the checks of a generated label. The prompt asks for 3 to 4 title words, 15 to

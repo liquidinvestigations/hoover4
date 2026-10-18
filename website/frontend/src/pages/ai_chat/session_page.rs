@@ -18,6 +18,7 @@ use crate::components::chat_components::{
 };
 use crate::components::chat_components::doc_ref_card::{ChatDocOpen, ChatScrolledToSelection};
 use crate::components::chat_components::web_page::{ChatWebOpen, WebPagePreview};
+use crate::components::chat_components::workspace_pane::{ChatWorkspaceOpen, WorkspacePane};
 use crate::components::chat_components::tool_cards::result_cards::ChatBoard;
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
@@ -201,6 +202,13 @@ fn AiChatSessionRoot(
     // session id, because the router reuses this component across chats.
     let board_of_chat = use_memo(move || common::board_types::board_of_session(&session_id.read()));
     use_context_provider(move || ChatBoard(board_of_chat));
+    use_context_provider(move || ChatWorkspaceOpen {
+        open: Callback::new(move |(name, version): (String, Option<u32>)| {
+            navigator().push(Route::ai_chat_session(
+                session_id(), None, Some(DocViewerState::for_workspace(name, version)),
+            ));
+        }),
+    });
     use_context_provider(move || ChatWebOpen {
         open: Callback::new(move |(artifact_id, find): (String, String)| {
             let mut state = DocViewerState::from_find_query(find);
@@ -278,8 +286,17 @@ fn AiChatSessionRoot(
             style: "height: 100%; width: 100%; display: flex; flex-direction: row; \
                     background: #F5F6F8; overflow: hidden;",
             ChatConversationPanel { session_id, detail, messages, gate }
-            // The web page and document panes share one divider and one remembered width.
-            if let Some(artifact_id) = doc_viewer_state.read().as_ref().and_then(|state| state.web_artifact_id.clone()) {
+            // The workspace, web page and document panes share one divider and one
+            // remembered width.
+            if let Some(file) = doc_viewer_state.read().as_ref().and_then(|state| state.workspace_file.clone()) {
+                ChatSidePane {
+                    WorkspacePane {
+                        session_id,
+                        file,
+                        version: doc_viewer_state.read().as_ref().and_then(|state| state.workspace_version),
+                    }
+                }
+            } else if let Some(artifact_id) = doc_viewer_state.read().as_ref().and_then(|state| state.web_artifact_id.clone()) {
                 ChatSidePane {
                     WebPagePreview { artifact_id, find: doc_viewer_state.read().as_ref().map(|state| state.find_query.clone()).unwrap_or_default() }
                 }
@@ -332,6 +349,7 @@ fn ChatConversationPanel(
     let mut run_cited_handles = use_signal(Vec::<String>::new);
     let mut run_cited_refs = use_signal(Vec::<common::chat_types::ChatDocRef>::new);
     let mut todo_versions = use_signal(Vec::<common::chat_types::TodoSnapshot>::new);
+    let mut reports = use_signal(Vec::<common::chat_types::WorkspaceVersion>::new);
     let mut loaded_for = use_signal(String::new);
     let mut find_query = use_signal(String::new);
     let mut match_index = use_signal(|| 0_usize);
@@ -354,6 +372,7 @@ fn ChatConversationPanel(
         run_cited_handles.set(detail.run_cited_handles.clone());
         run_cited_refs.set(detail.run_cited_refs.clone());
         todo_versions.set(detail.todo_versions.clone());
+        reports.set(detail.reports.clone());
         loaded_for.set(detail.session.session_id.clone());
         // A refresh mid-answer picks the turn up exactly where a poller left it.
         if detail.active && !detail.interrupted {
@@ -414,6 +433,15 @@ fn ChatConversationPanel(
                                 }
                             }
                             todo_versions.set(known);
+                        }
+                        if !result.reports.is_empty() {
+                            let mut known = reports.read().clone();
+                            for version in result.reports {
+                                if !known.iter().any(|stored| stored.name == version.name && stored.version == version.version) {
+                                    known.push(version);
+                                }
+                            }
+                            reports.set(known);
                         }
                         // An interrupted turn keeps whatever partial text it produced
                         // (under the banner, which is its marker), but never the
@@ -622,6 +650,19 @@ fn ChatConversationPanel(
                 if options.read().locked {
                     LockedInternetFlag { on: options.read().internet_tools }
                 }
+                button {
+                    "data-chat-workspace-button": "true",
+                    title: "Show the files that the assistant wrote in this conversation",
+                    style: "background: none; border: 1px solid; border-color: var(--x-border); border-radius: 6px; \
+                            padding: 2px 10px; cursor: pointer; color: var(--x-link); font-size: var(--x-text-sm); \
+                            white-space: nowrap;",
+                    onclick: move |_| {
+                        if let Some(open) = try_consume_context::<ChatWorkspaceOpen>() {
+                            open.open.call((String::new(), None));
+                        }
+                    },
+                    "Workspace"
+                }
             }
             ConversationFindBar {
                 query: find_query,
@@ -641,6 +682,7 @@ fn ChatConversationPanel(
                 run_cited_handles: run_cited_handles.read().clone(),
                 run_cited_refs: run_cited_refs.read().clone(),
                 todo_versions: todo_versions.read().clone(),
+                reports: reports.read().clone(),
                 turn: turn_state(*sending.read(), &queued_for.read(), *interrupted.read()).to_string(),
                 session_id: session_id.read().clone(),
             }

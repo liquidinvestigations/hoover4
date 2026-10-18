@@ -389,6 +389,18 @@ impl ChatMessageItem {
         if prompts.len() == 3 && prompts.iter().all(|prompt| !prompt.trim().is_empty()) { prompts } else { Vec::new() }
     }
 
+    /// The report of an answer row: the workspace file version of its turn, or `None`.
+    pub fn report_ref(&self) -> Option<ReportRef> {
+        if self.role != ChatRole::Assistant {
+            return None;
+        }
+        serde_json::from_str::<serde_json::Value>(&self.usage_json)
+            .ok()
+            .and_then(|usage| usage.get("report").cloned())
+            .and_then(|report| serde_json::from_value::<ReportRef>(report).ok())
+            .filter(|report| !report.name.is_empty() && report.version > 0)
+    }
+
     /// The images that the agent model received after this tool result.
     pub fn image_refs(&self) -> Vec<ChatImageRef> {
         if self.role != ChatRole::Tool {
@@ -429,10 +441,13 @@ impl ChatMessageItem {
             "documents_and_web" => "The run uses documents and web.",
             _ => return None,
         };
+        let report = usage.get("report").is_some();
         let status = match usage.get("citation_status").and_then(|v| v.as_str()) {
+            Some("cited") if report => "The report includes source citations.",
             Some("cited") => "The answer includes source citations.",
             Some("missing") => "Some source citations are missing.",
             Some("invalid") => "Some document citations are invalid.",
+            _ if report => "The report has no source citations.",
             _ => "The answer has no source citations.",
         };
         Some(format!("{status} {scope}"))
@@ -662,6 +677,9 @@ pub struct ChatPollResult {
     /// Todo snapshots named by tool rows returned in this poll.
     #[serde(default)]
     pub todo_versions: Vec<TodoSnapshot>,
+    /// The report versions that the answer rows of this poll name.
+    #[serde(default)]
+    pub reports: Vec<WorkspaceVersion>,
     /// Opaque change-detection token: the client echoes it back on the next poll, and
     /// the server returns early when the current state produces a different one.
     pub sig: String,
@@ -716,6 +734,36 @@ pub struct ChatSessionDetail {
     /// The lead todo snapshots named by this transcript's todo writes.
     #[serde(default)]
     pub todo_versions: Vec<TodoSnapshot>,
+    /// The report versions that the answer rows of this transcript name.
+    #[serde(default)]
+    pub reports: Vec<WorkspaceVersion>,
+}
+
+/// The workspace file version that an answer row shows as its report: the last file that
+/// the turn wrote or changed. The worker stores it in the row metadata (`report`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct ReportRef {
+    pub name: String,
+    pub version: u32,
+}
+
+/// One file of a conversation workspace: its name, its current version, its length in
+/// characters and the time of that version.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WorkspaceFile {
+    pub name: String,
+    pub version: u32,
+    pub chars: u32,
+    pub updated_at: String,
+}
+
+/// One stored version of a workspace file. A version never changes.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WorkspaceVersion {
+    pub name: String,
+    pub version: u32,
+    pub content: String,
+    pub created_at: String,
 }
 
 /// One stored version of the conversation's todo list.
@@ -1418,6 +1466,19 @@ mod tests {
         row.streaming = false;
         row.role = ChatRole::Tool;
         assert!(row.answer_status_line().is_none());
+    }
+
+    #[test]
+    fn an_answer_row_names_its_report_and_its_status_speaks_of_the_report() {
+        let mut row = counted(0, 0, 0);
+        assert!(row.report_ref().is_none());
+        row.usage_json = r#"{"citation_status":"cited","tool_scope":"documents_only",
+            "report":{"name":"report.md","version":3}}"#.into();
+        assert_eq!(row.report_ref(), Some(ReportRef { name: "report.md".into(), version: 3 }));
+        assert_eq!(row.answer_status_line().unwrap(),
+            "The report includes source citations. The run uses documents only.");
+        row.role = ChatRole::Tool;
+        assert!(row.report_ref().is_none());
     }
 
     #[test]

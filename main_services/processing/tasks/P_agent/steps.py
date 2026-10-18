@@ -67,11 +67,12 @@ NOTE_ROLE = "nag"
 #: `CITATION_NOTE_NAME` in `website/common/src/chat_types.rs`.
 CITATION_NOTE_NAME = "citation_check"
 
-#: The tools that read or change the todo list. The calls of one reply to
-#: these tools run one after the other, in the order of the reply, because each one reads
-#: the state that the call before it wrote.
+#: The tools that read or change the todo list or the workspace files. The calls of one
+#: reply to these tools run one after the other, in the order of the reply, because each one
+#: reads the state that the call before it wrote.
 STATE_TOOLS = frozenset({
     "write_todo", "edit_todo", "mark_todo", "read_todo",
+    "workspace_read", "workspace_write", "workspace_patch",
 })
 
 
@@ -165,8 +166,7 @@ class StepRef:
     allowed_collections: list[str] = field(default_factory=list)
     llm_model: str = ""
     internet_tools: bool = False
-    #: True for an explore turn of an investigation board: the agent runs the `board` kind,
-    #: which has `submit_board_fact`.
+    #: True for an explore turn of an investigation board: the agent runs the `board` kind.
     board_turn: bool = False
 
 
@@ -562,18 +562,6 @@ def _write_calls(row, params: ModelStepParams, ai, writer, stream) -> ModelStepR
                            next_idx=next_idx)
 
 
-def keeps_answer(row, reply: str = "", earlier=()) -> bool:
-    """Whether a reply with no call keeps the answer row of the turn: an earlier reply of
-    the turn wrote an answer with text, the run is in the citation round
-    (`citations.CITATION_NOTE` in `earlier`), and the reply has no text. The reply of that
-    round replaces the answer only when it writes one."""
-    from tasks.P_agent import citations
-
-    if not (row.result or "").strip():
-        return False
-    return not reply.strip() and any(citations.is_citation_note(m) for m in earlier)
-
-
 def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
                   seq0: Optional[int] = None) -> ModelStepResult:
     """Step 9 of `model_step`: the answer row and the run row of a reply with no call.
@@ -583,85 +571,32 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
 
     `earlier` is the thread before the `ai` message. A retry after the run row write finds
     `model_steps` at this step, and writes the answer row again at the same seq. The
-    result's `next_idx` is the index after the last row of the reply, so a note written
-    there replaces no `compaction` row.
+    result's `next_idx` is the index after the last row of the reply.
 
     The answer row holds the text of the reply and the plan prose of the round, and never
-    the reasoning. A reply of the citation round with no text keeps the answer row of the
-    turn (`keeps_answer`).
-    After the note of an edit round (`citations.is_edit_note`), the reply gives edits to the
-    earlier answer (`citations.apply_edits`), and the answer row holds the edited answer.
+    the reasoning. When the run wrote or changed a workspace file, the metadata names the
+    last such version as the report of the turn (`P_workspace.selection`), and the page
+    shows that version as the response.
     """
-    from tasks.P_agent.stream_writer import context_window_for, round_view
+    from database import agent_runs
+    from tasks.P_agent import citations, reports
+    from tasks.P_agent.stream_writer import context_window_for, round_view, starts_round
+    from tasks.P_workspace.selection import selected_report
 
     first = row.next_seq if seq0 is None else seq0
     plan_prose, round_reasoning, _ = round_view(earlier)
     answer = "\n\n".join(p for p in (plan_prose, (ai.content or "").strip()) if p)
     reasoning = "\n\n".join(p for p in (round_reasoning, (ai.reasoning or "").strip()) if p)
-    from tasks.P_agent import citations, reports
-
-    notes = [m for m in earlier if citations.is_citation_note(m)]
-    repair_round = bool(notes)
-    edit_round = bool(notes) and citations.is_edit_note(notes[-1])
-    opening = (earlier[0].usage.get("control") or {}) if earlier else {}
-    limits = ((opening.get("definition") or {}).get("limits") or {}
-              if isinstance(opening, dict) else {})
-    if keeps_answer(row, ai.content or "", earlier):
-        transcript = True
-        if transcript:
-            _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid,
-                                     row.start_seq)
-        writer.write(next_seq=first, model_steps=max(row.model_steps, params.step_no),
-                     **_step_tokens(row, params.step_no, ai.usage))
-        log.info("[P_agent] run %s: the citation round reply at step %d keeps the answer row",
-                 row.run_id, params.step_no)
-        return ModelStepResult(outcome="answered", next_seq=first,
-                               next_idx=reply_end_idx(ai))
-    if edit_round and (row.result or "").strip():
-        # The reply of an edit round holds edits to the earlier answer. The edits that match
-        # apply. A reply that is not edits, or whose result has a label fault, keeps the
-        # earlier answer. The answer metadata names the findings that remain.
-        edited, problem = citations.apply_edits(row.result, ai.content or "")
-        entries = reports.session_citation_entries(row.username, row.session_id)
-        fault = citations.repair_reply_problem(edited, entries)
-        answer = row.result if problem == "not_edits" or fault else edited
-        problem = fault or problem
-        # The thread keeps the published answer as the reply, so a later turn reads that
-        # answer, and the usage keeps the edits.
-        ai = replace(ai, content=answer, usage_json=json.dumps(
-            {**ai.usage, "edit_reply": ai.content or "", "edit_problem": problem}))
-        log.info("[P_agent] run %s: the edit reply at step %d %s", row.run_id, params.step_no,
-                 f"keeps the answer ({problem})" if problem else "edits the answer")
-    elif repair_round:
-        entries = reports.session_citation_entries(row.username, row.session_id)
-        problem = citations.repair_reply_problem(ai.content or "", entries)
-        if problem:
-            detail = {
-                "raw_call": "It contains a tool call as text.",
-                "unresolved_label": "It uses a label that no successful citation gives.",
-                "conflicting_label": "It uses a label for more than one document.",
-                "page_zero": "It names page 0 instead of the verified page.",
-            }[problem]
-            notice = "The citation reply could not replace the earlier answer. " + detail
-            if (row.result or "").strip():
-                answer = (row.result if row.result.startswith(notice + "\n\n")
-                          else notice + "\n\n" + row.result)
-            else:
-                answer = ("The citation reply could not be used. " + detail
-                          + " No earlier answer is available.")
-    from tasks.P_agent.stream_writer import starts_round
-
     start = 0
     for i, m in enumerate(earlier):
         if starts_round(m):
             start = i
     round_ai = [m for m in earlier[start:] if m.role == "ai"
                 and m.usage.get("origin") != "policy"] + [ai]
-    from database import agent_runs
-
     entries = reports.session_citation_entries(row.username, row.session_id)
-    metadata = citations.answer_metadata(answer, _citation_messages(row, earlier),
-                                         entries, effective_internet_tools(params.internet_tools), limits)
+    report = selected_report(earlier)
+    metadata = citations.answer_metadata(answer, entries,
+                                         effective_internet_tools(params.internet_tools), report)
     if any(m.usage.get("summarised") for m in round_ai):
         answer = answer + SUMMARY_NOTICE
     ai = replace(ai, usage_json=json.dumps({**ai.usage, **metadata}))
@@ -1028,15 +963,16 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
 
 
 #: The tools whose successful call ends the turn, and the argument that holds the answer
-#: text. `submit_board_fact` exists only in board turns.
-TURN_ENDING_TOOLS = {"ask_user": "question", "submit_board_fact": "fact"}
+#: text.
+TURN_ENDING_TOOLS = {"ask_user": "question"}
 
 
 @activity.defn
 @with_heartbeat
 def write_asked_answer(params: AskedAnswerParams) -> int:
-    """Write the text of a turn-ending call as the turn answer after all calls of its step
-    have run: the question of `ask_user`, or the fact of `submit_board_fact`."""
+    """Write the question of a successful `ask_user` call as the turn answer after all
+    calls of its step have run. The question stays visible, and a workspace file that the
+    turn wrote stays in the workspace without becoming the response."""
     from database import agent_runs
 
     row = _read_row(params)
@@ -1057,12 +993,6 @@ def write_asked_answer(params: AskedAnswerParams) -> int:
     if True:
         # The model that asked, from the usage of the reply, as `write_incomplete` does.
         metadata = {"citation_status": "none", "tool_scope": ai.usage.get("tool_scope", "documents_only")}
-        if key == "fact":
-            from tasks.P_agent import citations, reports
-
-            entries = reports.session_citation_entries(row.username, row.session_id)
-            metadata = citations.answer_metadata(question, _citation_messages(row, messages),
-                                                 entries, effective_internet_tools(params.internet_tools))
         ai = replace(ai, usage_json=json.dumps({**ai.usage, **metadata}))
         agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id, ai)
         _chat_row(row)(row.next_seq, "assistant", content=question,
@@ -1156,10 +1086,13 @@ def write_incomplete(params: IncompleteParams) -> int:
 
     The result is `thread_facts.incomplete_text`: the reason, the newest text that the
     model wrote in the thread, and the documents and searches of the stored results. The
-    result is the assistant row at `row.next_seq`. The run row gets the result and `end_reason`. A retry
-    after the run row write finds `end_reason` and writes nothing. Returns the next free seq.
+    result is the assistant row at `row.next_seq`. When the run wrote or changed a workspace
+    file, the row metadata names the last such version as the report of the turn, as an
+    answer row does. The run row gets the result and `end_reason`. A retry after the run row
+    write finds `end_reason` and writes nothing. Returns the next free seq.
     """
     from database import agent_runs
+    from tasks.P_workspace.selection import selected_report
 
     row = _read_row(params)
     if agent_runs.is_terminal(row) or row.end_reason == params.reason:
@@ -1173,7 +1106,10 @@ def write_incomplete(params: IncompleteParams) -> int:
     if True:
         last = _last_ai(messages)
         model = str(last.usage.get("model") or "") if last is not None else ""
-        _chat_row(row)(seq, "assistant", content=text, model=model)
+        report = selected_report(messages)
+        metadata = {"report": {"name": report["name"], "version": report["version"]}} if report else {}
+        _chat_row(row)(seq, "assistant", content=text, model=model,
+                       usage_json=json.dumps(metadata) if metadata else "")
         _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid,
                                  row.start_seq)
         seq += 1

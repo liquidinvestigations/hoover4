@@ -32,8 +32,10 @@ from tasks.P_agent.control.registry import ControlConfigError
 
 SCHEMA_VERSION = 1
 
-#: The limits of a definition and their defaults. D5 sets two repair rounds, and D7 a
-#: preparation deadline of 15 seconds. The other values are experiment parameters.
+#: The limits of a definition and their defaults. The preparation deadline is 15 seconds.
+#: `repair_rounds`, `answer_seconds`, `discovery_notes`, `paragraph_repair` and `edit_rounds`
+#: belonged to the review of a drafted answer, which no turn runs now. They stay valid keys,
+#: so a stored or custom definition that sets them still validates, and no code reads them.
 DEFAULT_LIMITS: Dict[str, float] = {
     "repair_rounds": 2,
     "preparation_seconds": 15.0,
@@ -41,11 +43,7 @@ DEFAULT_LIMITS: Dict[str, float] = {
     "answer_seconds": 60.0,
     "preparation_skill_loads": 3,
     "discovery_notes": 1,
-    # 1: a paragraph or list item without a label causes a citation repair round. 0: only a
-    # label fault, page 0, a web fault or an answer without any label does.
     "paragraph_repair": 1,
-    # The edit rounds of a turn. An edit round names claims that the answer keeps without a
-    # source (`citations.narrow_findings`) and asks for edits to the answer. 0: none.
     "edit_rounds": 0,
 }
 

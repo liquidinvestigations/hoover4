@@ -37,6 +37,8 @@ GENERAL_DESCRIPTIONS = {
     "search": "how to search document collections and use the query syntax",
     "thorough": "how to choose further searches when a question needs research",
     "citation": "how to cite documents and captured web pages that support an answer",
+    "report": ("where a report, a list, a table, a draft or an answer with citations goes, "
+               "and how to edit it"),
 }
 
 #: The descriptions of the technique and stumble skills that the classifier forms were
@@ -81,7 +83,7 @@ def test_the_store_holds_the_migrated_and_the_new_skills():
               for group in skill_store.GROUPS}
     assert groups == {
         "role": sorted(["method_chat_full", "method_chat_internal"]),
-        "general": sorted(["search", "thorough", "citation"]),
+        "general": sorted(["search", "thorough", "citation", "report"]),
         "technique": TECHNIQUE_SKILLS,
         "stumble": STUMBLE_SKILLS,
     }
@@ -309,3 +311,12 @@ def test_web_citation_role_does_not_request_bare_source_links():
     assert "give the link of each web page" not in body
     assert "Never number citations yourself." in body
     assert "omit its claims until a later citation succeeds" in body
+
+
+def test_the_system_prompt_holds_the_report_routing_text_and_the_skill_adds_the_details():
+    rules = skill_store.report_rules(context())
+    body = render_skill("report", context())
+    assert "Write a file with `workspace_write`" in rules
+    assert "Example." not in rules
+    assert rules in body and "Example." in body
+    assert skill_store.report_rules(context(tools={"cite_documents"})) == ""

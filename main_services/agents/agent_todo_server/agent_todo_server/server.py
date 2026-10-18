@@ -1,10 +1,13 @@
-"""FastMCP server exposing one agent todo list per chat conversation.
+"""FastMCP server exposing one agent todo list and one workspace per chat conversation.
 
 Tools:
     ``read_todo``   the whole list, cheap, callable any time
     ``write_todo``  sets the goal and the steps, the plan-first call
     ``edit_todo``   revises the steps and keeps the goal and the done steps
     ``mark_todo``   pending, or done with a reason, for a list of step ids
+
+The workspace tools ``workspace_read``, ``workspace_write`` and ``workspace_patch`` are in
+`workspace.py`.
 
 **This server holds no rules of its own.** Every shape, every limit and every rule
 about statuses, reasons and identities lives in `database.chat_todos`, which the
@@ -32,6 +35,7 @@ from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
 from pydantic import BaseModel, Field, PrivateAttr, model_serializer
 
+from agent_todo_server import workspace
 from agent_todo_server.identity import Caller, CallerUnknown, parse_caller
 
 # The store, imported from the pipeline package rather than copied: the chat workflow
@@ -309,6 +313,9 @@ def mark_todo(
         chat_todos.summarise(todo),
     )
     return _response(todo, kind="mark")
+
+
+workspace.register(mcp)
 
 
 @mcp.custom_route("/health", methods=["GET"])

@@ -15,6 +15,7 @@ pub mod tool_disclosure;
 pub mod tool_run_summary;
 pub mod transcript;
 pub mod web_page;
+pub mod workspace_pane;
 
 pub use activity::ChatActivity;
 pub use composer::ChatComposer;

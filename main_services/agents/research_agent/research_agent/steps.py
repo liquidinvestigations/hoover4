@@ -120,7 +120,7 @@ class StepRun(BaseModel):
     llm_model: Optional[str] = None
     control: Optional[ControlAssets] = None
     kind: str = Field(default="chat", description="The run kind: chat, or board for a "
-                      "board explore turn, which also has `submit_board_fact`")
+                      "board explore turn")
 
 
 class ModelStepRequest(StepRun):

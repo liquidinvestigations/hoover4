@@ -36,6 +36,7 @@ from research_agent.skill_store import (
     UnboundToolError,
     environment,
     render_skill,
+    report_rules,
     role_method,
 )
 
@@ -148,6 +149,7 @@ def render(
         has=lambda name: name in tool_names,
         role_line=role_line,
         role_method=role_method(ctx, strict=strict),
+        report_rules=report_rules(ctx, strict=strict),
         skills=list(skills),
         tools=_pairs(snapshot, snapshot.callable_names()),
         catalogue_search="search_agent_tools" in tool_names,

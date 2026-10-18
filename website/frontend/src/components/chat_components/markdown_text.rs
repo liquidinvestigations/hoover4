@@ -759,6 +759,14 @@ fn parse_inline_depth(text: &str, depth: usize) -> Vec<Span> {
     while i < chars.len() {
         let c = chars[i];
 
+        // A bracket after a backslash is literal text, such as `\[D9]` from a source. The
+        // workspace check reads the same rule (`tasks/P_workspace/references.py`).
+        if c == '\\' && matches!(chars.get(i + 1), Some('[') | Some(']')) {
+            plain.push(chars[i + 1]);
+            i += 2;
+            continue;
+        }
+
         if c == '`' {
             if let Some(end) = find_char(&chars, i + 1, '`') {
                 push_plain(&mut plain, &mut out);
@@ -916,6 +924,17 @@ mod tests {
         let blocks = unique_card_blocks(parse_blocks("First **[D1]**. Again [D1].\n\n| Source |\n| --- |\n| [D1] |\n| [D2] |"), Some(&["[D1]".into()]));
         assert_eq!(blocks.iter().flat_map(block_handles).collect::<Vec<_>>(), vec!["[D1]"]);
         assert_eq!(referenced_handles("**[D1]** then *[D2]*"), vec!["[D1]", "[D2]"]);
+    }
+
+    #[test]
+    fn an_escaped_bracket_and_a_code_span_are_literal() {
+        assert_eq!(parse_inline("Source text \\[D9] and `[D8]`, cited [D1]."), vec![
+            Span::Text("Source text [D9] and ".into()),
+            Span::Code("[D8]".into()),
+            Span::Text(", cited ".into()),
+            Span::Handle("[D1]".into()),
+            Span::Text(".".into()),
+        ]);
     }
 
     #[test]

@@ -540,51 +540,10 @@ def _prepared(store, monkeypatch, route, rules, sources="web"):
     route["route"] = _Route()
 
 
-def test_l3_asks_for_reads_before_an_answer_once(store, monkeypatch, route):
-    _prepared(store, monkeypatch, route, [L3])
-    _draft(store, "Fortress was paid twice.")
-    outcome = _hook("answer_drafted", draft_kind="answer")
-    note = store["messages"][-1]
-    assert outcome.round and "read_page once with the URLs" in note.content
-    assert note.usage["control"]["discovery"] and not note.usage["control"]["repair"]
-    _draft(store, "Fortress was paid twice.")
-    assert not _hook("answer_drafted", draft_kind="answer").round
-
-
-def test_l3_uses_document_wording_without_web_tools(store, monkeypatch, route):
-    _prepared(store, monkeypatch, route, [L3], sources="documents")
-    _draft(store, "Fortress was paid twice.")
-    assert _hook("answer_drafted", draft_kind="answer", internet=False).round
-    assert "read_documents" in store["messages"][-1].content
-
-
 def test_a_clarification_gets_no_discovery_note(store, monkeypatch, route):
     _prepared(store, monkeypatch, route, [L3])
     _draft(store, "Which Fortress do you mean?")
     assert not _hook("answer_drafted", draft_kind="question").round
-
-
-def test_a_clarification_gets_no_citation_round_from_earlier_reads(store, monkeypatch, route):
-    _prepared(store, monkeypatch, route, [L3])
-    monkeypatch.setattr(citations, "needs_repair", lambda *a: (True, {
-        "labels": [], "unsupported_paragraphs": [{"number": 1, "text": "Which epstein collection?"}]}))
-    _draft(store, "Which epstein collection do you mean?")
-    assert not _hook("answer_drafted", draft_kind="question").round
-
-
-def test_verified_absence_gets_no_citation_round_from_earlier_reads(store, monkeypatch, route):
-    _prepared(store, monkeypatch, route, [L3], sources="documents")
-    _search_batch(store, [])
-    monkeypatch.setattr(citations, "needs_repair", lambda *a: (True, {
-        "labels": [], "unsupported_paragraphs": [{"number": 1, "text": "No documents found."}]}))
-    _draft(store, "No documents contain the requested name.")
-    assert not _hook("answer_drafted", draft_kind="answer").round
-
-
-def test_a_clarification_with_an_unissued_handle_still_needs_repair(store, monkeypatch, route):
-    _prepared(store, monkeypatch, route, [L3])
-    _draft(store, "Which collection do you mean [D999]?")
-    assert _hook("answer_drafted", draft_kind="question").round
 
 
 def test_named_collection_absence_does_not_require_a_document_search():
@@ -602,109 +561,11 @@ def _cited_answer(store, text="The memo sets the budget [D1]."):
     _draft(store, text)
 
 
-def test_two_repair_rounds_then_the_draft_is_published(store, monkeypatch, route):
-    _pin(store, monkeypatch, _definition([]))
-    _hook("turn_started", 0)
-    rounds = []
-    for _ in range(3):
-        _cited_answer(store)
-        rounds.append(_hook("answer_drafted", draft_kind="answer").round)
-    assert rounds == [True, True, False]
-    notes = [m for m in store["messages"] if citations.is_citation_note(m)]
-    assert len(notes) == 2
-    # The last draft is checked and its findings are recorded with no further round.
-    last = store["messages"][-1]
-    decision = last.usage["control"]["decisions"]["answer_drafted"]
-    assert decision["repair"]["has_defects"] and not decision["repair"]["allowed"]
-
-
-def test_an_older_marker_counts_as_one_round(store, monkeypatch, route):
-    _pin(store, monkeypatch, _definition([]))
-    _hook("turn_started", 0)
-    _cited_answer(store)
-    store["messages"].append(agent_runs.RunMessageRow(
-        idx=max(m.idx for m in store["messages"]) + 1, role="human", content="Cite [D1].",
-        usage_json=json.dumps({"repair_marker": "citation"}), run_id=RUN_ID))
-    _cited_answer(store)
-    assert _hook("answer_drafted", draft_kind="answer").round
-    _cited_answer(store)
-    assert not _hook("answer_drafted", draft_kind="answer").round
-
-
-def test_a_restart_after_the_note_write_keeps_the_count(store, monkeypatch, route):
-    _pin(store, monkeypatch, _definition([]))
-    _hook("turn_started", 0)
-    _cited_answer(store)
-    assert _hook("answer_drafted", draft_kind="answer").round
-    # The activity runs again after its note write: same note, same count.
-    assert _hook("answer_drafted", draft_kind="answer").round
-    assert sum(citations.is_citation_note(m) for m in store["messages"]) == 1
-    assert len([c for c in store["chat"] if c["role"] == "nag"]) == 2
-    assert len({c["seq"] for c in store["chat"] if c["role"] == "nag"}) == 1
-
-
-def test_an_unsourced_role_gets_one_edit_round(store, monkeypatch, route):
-    _pin(store, monkeypatch, _definition([], {"paragraph_repair": 0, "edit_rounds": 1}))
-    _hook("turn_started", 0)
-    monkeypatch.setattr(citations, "needs_repair", lambda *a: (False, {"labels": []}))
-    _draft(store, "Kaminski, Head of Research, wrote the memo.")
-    assert _hook("answer_drafted", draft_kind="answer").round
-    note = store["messages"][-1]
-    assert citations.is_edit_note(note) and not note.usage["control"]["repair"]
-    assert "'Head of Research'" in note.content and "JSON list of edits" in note.content
-    _draft(store, "Kaminski, Head of Research, wrote the memo.")
-    assert not _hook("answer_drafted", draft_kind="answer").round
-    decision = store["messages"][-1].usage["control"]["decisions"]["answer_drafted"]
-    assert decision["repair"]["edits"] == ["unsourced_role"] and not decision["repair"]["edit"]
-
-
-def test_a_definition_without_edit_rounds_gives_no_edit_note(store, monkeypatch, route):
-    _pin(store, monkeypatch, _definition([], {"paragraph_repair": 0}))
-    _hook("turn_started", 0)
-    monkeypatch.setattr(citations, "needs_repair", lambda *a: (False, {"labels": []}))
-    _draft(store, "Kaminski, Head of Research, wrote the memo.")
-    assert not _hook("answer_drafted", draft_kind="answer").round
-
-
 def test_the_step_limit_stops_the_repair_round(store, monkeypatch, route):
     _pin(store, monkeypatch, _definition([]))
     _hook("turn_started", 0)
     _cited_answer(store)
     assert not _hook("answer_drafted", draft_kind="answer", limit=True).round
-
-
-def test_a_classifier_timeout_keeps_a_code_defect_round(store, monkeypatch, route):
-    _pin(store, monkeypatch, _definition([REVIEW]))
-    _hook("turn_started", 0)
-    route["route"] = _Route(delay=1.0)
-    store["session_citations"] = []
-    _cited_answer(store)
-    outcome = _hook("answer_drafted", draft_kind="answer", seconds=0.3)
-    assert outcome.round
-    decision = store["messages"][-2].usage["control"]["decisions"]["answer_drafted"]
-    assert decision["repair"]["citation_needed"]
-    assert any(r["status"] in ("timeout", "ok") for r in decision["rules"])
-
-
-def test_semantic_findings_join_the_citation_note(store, monkeypatch, route):
-    from tasks.P_agent import reports
-
-    _pin(store, monkeypatch, _definition([REVIEW]))
-    _hook("turn_started", 0)
-    content = {"citations": [{"file_hash": "a" * 16, "handle": "[D1]"}]}
-    entries = reports.with_source(reports.normalize(
-        "cite_documents", {}, json.dumps(content), "ok",
-        [{"collectionname": "c", "file_hash": "a" * 64, "handle": "[D1]", "quote": "The budget is 5.",
-          "quote_verified": True}]), RUN_ID, 1)
-    store["session_citations"] = [agent_runs.RunMessageRow(
-        idx=1, role="tool", tool_name="cite_documents", content=json.dumps(content),
-        usage_json=json.dumps({"status": "ok", "evidence": entries}))]
-    route["route"] = _Route({"b1_supported=": {"noul": 0.01}})
-    _cited_answer(store, "The memo sets the budget at 7 [D1]. See [newspaste].")
-    assert _hook("answer_drafted", draft_kind="answer").round
-    note = store["messages"][-1]
-    assert note.content.count("Correct these parts of the answer") == 1
-    assert "newspaste" in note.content and "Cite a passage that states this claim" in note.content
 
 
 def test_a_draft_without_a_finding_ends_the_turn(store, monkeypatch, route):
@@ -1197,7 +1058,7 @@ def test_the_quality_definition_resolves_from_a_control_folder(monkeypatch, tmp_
         assert definition.id == "chat-quality"
         assert definition.limits["paragraph_repair"] == 0
         assert definition.limits["edit_rounds"] == 1
-        assert {r.id for r in definition.rules} == {"prepare", "result-skills", "web-reads", "review"}
+        assert {r.id for r in definition.rules} == {"prepare", "result-skills", "web-reads"}
     finally:
         monkeypatch.delenv(registry.CONTROL_DIR_ENV)
         registry.load(refresh=True)

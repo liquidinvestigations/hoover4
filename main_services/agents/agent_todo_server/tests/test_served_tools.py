@@ -1,9 +1,8 @@
-"""The served server lists the todo tools.
+"""The served server lists the todo tools and the workspace tools.
 
 The image starts `python -m agent_todo_server`. Each case starts a fresh interpreter the same
 way, replaces `FastMCP.run` so that it prints the tools of the server it was asked to serve,
-and reads that list. A start that serves a second copy of `server.py` lists only the four todo
-tools.
+and reads that list. A start that serves a second copy of `server.py` lists another set.
 """
 
 from __future__ import annotations
@@ -14,7 +13,8 @@ import sys
 
 import pytest
 
-TODO_TOOLS = {"read_todo", "write_todo", "edit_todo", "mark_todo"}
+TODO_TOOLS = {"read_todo", "write_todo", "edit_todo", "mark_todo",
+              "workspace_read", "workspace_write", "workspace_patch"}
 
 PROBE = """
 import asyncio, json, runpy, sys

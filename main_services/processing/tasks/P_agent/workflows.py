@@ -187,18 +187,14 @@ class AgentRun:
     `ActivityError` that wraps it, and both write the `cancelled` ending. A workflow that
     starts after a stop closes in `open_run`.
 
-    **The policy hooks.** `control_event` runs at three points of the loop
+    **The policy hooks.** `control_event` runs at two points of the loop
     (`control_steps.py`). `turn_started` follows `open_run`, and its skill loads run as a
     policy batch before the first model step. `tool_batch_completed` follows every batch,
     and its follow-on calls run as one more batch before the next model step. Automatic
     reads follow a model batch only, so after a policy batch the hook can load skills and
-    no more.
-    `answer_drafted` follows an answer or a question. It writes one combined note when
-    the draft has a finding that asks for a round, and the loop runs one more round. A turn
-    gets at most two repair rounds after its first draft, counted from the stored notes, and
-    a discovery note counts separately. A run that ended at a limit gets no review, and a
-    run at the step limit gets no further round. The reply of a round after a question is
-    the question that the person reads.
+    no more. An answer or a question ends the turn. No hook reviews it and no note starts
+    another round: the workspace tools check the citation handles of each file when it is
+    written (`tasks/P_workspace`).
 
     **Shared calls.** Two parallel calls of one batch with the same `share_key` share one
     execution: the later call waits for the first, and `tool_call` stores a pointer to the
@@ -432,11 +428,9 @@ class AgentRun:
                                        in_order(browser, not page_changes),
                                        *(tasks[c.call_id] for c in parallel))
         statuses = results[0] + results[1] + list(zip(parallel, results[2:]))
-        # A successful turn-ending call ends the turn: `ask_user`, or in a board turn
-        # `submit_board_fact`.
-        enders = ("ask_user", "submit_board_fact") if inp.board_turn else ("ask_user",)
+        # A successful `ask_user` call ends the turn.
         asked = next((call for call, status in sorted(statuses, key=lambda pair: pair[0].position)
-                      if call.name in enders and status == "ok"), None)
+                      if call.name == "ask_user" and status == "ok"), None)
         if asked is not None:
             next_seq = await workflow.execute_activity(
                 write_asked_answer,
@@ -445,8 +439,6 @@ class AgentRun:
                 retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
                 task_queue=CHAT_TASK_QUEUE,
             )
-            if asked.name == "submit_board_fact":
-                return RunSummary(outcome="answered", next_seq=next_seq, submitted=True)
             return RunSummary(outcome="answered", next_seq=next_seq, asked=True)
         return None
 
@@ -507,18 +499,7 @@ class AgentRun:
             return RunSummary(outcome="closed", next_seq=prepared.next_seq)
         pending = list(prepared.calls) + [c for c in opened.pending
                                           if c.call_id not in {p.call_id for p in prepared.calls}]
-        summary = await self._agent_loop(inp, opened, pending)
-        # True when a round follows a question, so the reply of that round is the question
-        # the person reads.
-        after_question = False
-        while summary.outcome == "answered" and not summary.end_reason and not summary.submitted:
-            kind = "question" if summary.asked or after_question else "answer"
-            review = await self._control(inp, "answer_drafted", draft_kind=kind)
-            if review.closed or not review.round:
-                break
-            after_question = kind == "question"
-            summary = await self._agent_loop(inp, opened, [])
-        return summary
+        return await self._agent_loop(inp, opened, pending)
 
     async def _finish(self, inp: AgentRunInput, state: str, error: str = "") -> None:
         await workflow.execute_activity(

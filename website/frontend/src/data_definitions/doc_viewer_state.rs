@@ -63,6 +63,14 @@ pub struct DocViewerState {
     /// The captured web page shown by the chat preview pane.
     #[serde(default)]
     pub web_artifact_id: Option<String>,
+    /// The workspace file shown by the chat preview pane, or an empty name for the file
+    /// list alone. `None` shows no workspace. A link written before the field existed
+    /// takes `None`.
+    #[serde(default)]
+    pub workspace_file: Option<String>,
+    /// The version of `workspace_file`, or `None` for its current version.
+    #[serde(default)]
+    pub workspace_version: Option<u32>,
 }
 
 impl DocViewerState {
@@ -74,6 +82,18 @@ impl DocViewerState {
             table_state: None,
             selected_entity: None,
             web_artifact_id: None,
+            workspace_file: None,
+            workspace_version: None,
+        }
+    }
+
+    /// The viewer state that opens the workspace pane at one file version, or at the file
+    /// list when `name` is empty.
+    pub fn for_workspace(name: String, version: Option<u32>) -> Self {
+        Self {
+            workspace_file: Some(name),
+            workspace_version: version,
+            ..Self::default()
         }
     }
 
@@ -100,6 +120,8 @@ impl Default for DocViewerState {
             table_state: None,
             selected_entity: None,
             web_artifact_id: None,
+            workspace_file: None,
+            workspace_version: None,
         }
     }
 }
@@ -150,6 +172,18 @@ mod tests {
         let encoded = UrlParam(state.clone()).to_string();
         assert_eq!(UrlParam::<DocViewerState>::from_str(&encoded).unwrap().0, state);
         assert!(DocViewerState::from_find_query("document".into()).web_artifact_id.is_none());
+    }
+
+    #[test]
+    fn a_workspace_file_survives_the_url_and_an_older_url_shows_no_workspace() {
+        let state = DocViewerState::for_workspace("report.md".into(), Some(3));
+        let encoded = UrlParam(state.clone()).to_string();
+        assert_eq!(UrlParam::<DocViewerState>::from_str(&encoded).unwrap().0, state);
+        let older = UrlParam(LegacyDocViewerState {
+            find_query: "acme".into(), selected_source: None, selected_source_page: None,
+        }).to_string();
+        let parsed = UrlParam::<DocViewerState>::from_str(&older).unwrap().0;
+        assert!(parsed.workspace_file.is_none() && parsed.workspace_version.is_none());
     }
 
     fn round_trip(tab: ViewerRightTabSelection) -> ViewerRightTabSelection {
@@ -223,6 +257,8 @@ mod tests {
             }),
             selected_entity: None,
             web_artifact_id: None,
+            workspace_file: None,
+            workspace_version: None,
         };
         let encoded = UrlParam(state.clone()).to_string();
         let parsed = UrlParam::<DocViewerState>::from_str(&encoded)

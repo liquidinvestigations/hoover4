@@ -14,6 +14,7 @@ use crate::components::chat_components::{
     doc_ref_card::{ChatDocRefCard, ChatDocRefRow},
     markdown_text::{MarkdownishText, referenced_handles},
     web_page::WebPageCard,
+    workspace_pane::ChatWorkspaceOpen,
     tool_cards::{ElapsedCounter, ToolCard, ToolImages, result_cards::{BoardFactSummary, TodoSummary}},
     tool_run_summary::{run_duration_ms, timestamp_ms, tool_run_summary},
 };
@@ -39,6 +40,9 @@ pub fn ChatTranscript(
     run_cited_refs: Vec<ChatDocRef>,
     #[props(default)]
     todo_versions: Vec<common::chat_types::TodoSnapshot>,
+    /// The report versions that the answer rows name (`ChatMessageItem::report_ref`).
+    #[props(default)]
+    reports: Vec<common::chat_types::WorkspaceVersion>,
     /// The state of the newest turn, from `turn_state`. The root element carries it as
     /// `data-chat-turn`, so a browser test reads the turn state from the page.
     #[props(default)]
@@ -93,6 +97,9 @@ pub fn ChatTranscript(
         }
         fragments.extend(narration_fragments(&steps_of(Some(turn_seq)), &answer));
     }
+    // From here on, an answer with a report shows the report version as its text, so the
+    // citation cards and the find bar read the report.
+    let (messages, report_views) = with_reports(messages, &reports);
     let q = find_query.read().clone().to_lowercase();
     let matches: Vec<usize> = if q.is_empty() {
         Vec::new()
@@ -159,7 +166,8 @@ pub fn ChatTranscript(
             && asked_question(&messages[..i]) == m.content
             && !m.content.is_empty();
         let reasoning_in_group = group_reasoning.values().any(|answer| *answer == i);
-        let board_fact = if m.role == ChatRole::Assistant { submitted_fact(&messages[..i]) } else { None };
+        let board_fact = if m.role == ChatRole::Assistant { submitted_fact(&messages, i) } else { None };
+        let report = report_views.get(&m.seq).cloned();
         let fragment = if m.role == ChatRole::Tool { fragments.get(&m.seq).cloned() } else { None };
         rsx! {
             div { "data-chat-message": "{m.seq}", style: "display: contents;",
@@ -184,6 +192,7 @@ pub fn ChatTranscript(
                 replaced,
                 reasoning_in_group,
                 board_fact,
+                report,
                 draft,
             }
             }
@@ -795,15 +804,53 @@ fn asked_question(messages: &[ChatMessageItem]) -> String {
         .unwrap_or_default()
 }
 
-/// The arguments of the `submit_board_fact` call in the tool run just before an answer.
-/// Only a board explore turn has that tool, and its answer is the submitted fact.
-fn submitted_fact(messages: &[ChatMessageItem]) -> Option<String> {
-    messages
+/// The arguments of the `submit_board_fact` row of the answer at `index`: the row that the
+/// board wrote after the answer when it converted the report, or in an older explore turn,
+/// the call in the tool run just before the answer.
+fn submitted_fact(messages: &[ChatMessageItem], index: usize) -> Option<String> {
+    let is_fact = |message: &&ChatMessageItem| message.tool_name == "submit_board_fact";
+    messages[index + 1..]
         .iter()
-        .rev()
-        .take_while(|message| message.role == ChatRole::Tool || message.role.is_instruction())
-        .find(|message| message.tool_name == "submit_board_fact")
+        .take_while(|message| message.role == ChatRole::Tool)
+        .find(is_fact)
+        .or_else(|| messages[..index]
+            .iter()
+            .rev()
+            .take_while(|message| message.role == ChatRole::Tool || message.role.is_instruction())
+            .find(is_fact))
         .map(|message| message.tool_input.clone())
+}
+
+/// The report of an answer row as the transcript shows it: the pinned file version, and the
+/// chat text of the answer, which the transcript shows under the report.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReportView {
+    pub name: String,
+    pub version: u32,
+    pub acknowledgement: String,
+    /// False when the version could not be read. The row then shows its chat text.
+    pub found: bool,
+}
+
+/// The messages with the report version as the text of each answer that names one, and the
+/// report of each such answer by seq.
+fn with_reports(
+    mut messages: Vec<ChatMessageItem>,
+    reports: &[common::chat_types::WorkspaceVersion],
+) -> (Vec<ChatMessageItem>, HashMap<u32, ReportView>) {
+    let mut views = HashMap::new();
+    for message in messages.iter_mut() {
+        let Some(report) = message.report_ref() else { continue };
+        let found = reports.iter().find(|v| v.name == report.name && v.version == report.version);
+        let acknowledgement = match found {
+            Some(version) => std::mem::replace(&mut message.content, version.content.clone()),
+            None => String::new(),
+        };
+        views.insert(message.seq, ReportView {
+            name: report.name, version: report.version, acknowledgement, found: found.is_some(),
+        });
+    }
+    (messages, views)
 }
 
 fn read_more_source(messages: &[ChatMessageItem], index: usize) -> Option<(String, u32, u32)> {
@@ -1053,6 +1100,9 @@ fn MessageEntry(
     /// The arguments of the `submit_board_fact` call that this answer reports (`submitted_fact`).
     #[props(default)]
     board_fact: Option<String>,
+    /// The report that this answer shows (`with_reports`).
+    #[props(default)]
+    report: Option<ReportView>,
 ) -> Element {
     let ring = if highlight {
         "outline: 2px solid #F59E0B; outline-offset: 2px;"
@@ -1102,8 +1152,12 @@ fn MessageEntry(
                             }
                         }
                     } else if !repeat_question {
+                        if let Some(report) = report.clone() {
+                            ReportHeader { report }
+                        }
                         div {
                             "data-chat-answer": "{message.seq}",
+                            "data-chat-report": report.as_ref().filter(|r| r.found).map(|r| format!("{}:{}", r.name, r.version)).unwrap_or_default(),
                             MarkdownishText {
                                 text: message.content.clone(),
                                 cited_handles: Some(cited_handles.clone()),
@@ -1111,6 +1165,12 @@ fn MessageEntry(
                                 sources: sources.clone(),
                                 pages: web_pages.clone(),
                                 card_handles: Some(if replaced { Vec::new() } else { card_handles.clone() }),
+                            }
+                        }
+                        if let Some(report) = report.as_ref().filter(|r| r.found && !r.acknowledgement.trim().is_empty()) {
+                            div { class: "x-chat-report-note", "data-chat-report-note": "{message.seq}",
+                                style: "margin-top: 6px; font-size: var(--x-text-sm); color: var(--x-ink-muted);",
+                                MarkdownishText { text: report.acknowledgement.clone(), citation_links: false }
                             }
                         }
                     } else {
@@ -1893,5 +1953,32 @@ mod tests {
         let messages = transcript_with_d1("See [D1].");
         let spans = marked(&messages, &[], "See [D1].");
         assert!(spans.contains(&Span::Handle("[D1]".to_string())), "{spans:?}");
+    }
+}
+
+
+/// The line above an answer that shows a report: the file name and version, and a button
+/// that opens that version in the workspace pane.
+#[component]
+fn ReportHeader(report: ReportView) -> Element {
+    let open = try_use_context::<ChatWorkspaceOpen>();
+    let label = format!("{}, version {}", report.name, report.version);
+    rsx! {
+        div { class: "x-chat-report-header",
+            style: "display: flex; align-items: center; gap: 8px; margin-bottom: 4px; \
+                    font-size: var(--x-text-sm); color: var(--x-ink-muted);",
+            span { "Report {label}" }
+            if let Some(open) = open {
+                button {
+                    style: "background: none; border: none; padding: 0; cursor: pointer; \
+                            color: var(--x-link); font-size: var(--x-text-sm);",
+                    onclick: move |_| open.open.call((report.name.clone(), Some(report.version))),
+                    "Open in the workspace"
+                }
+            }
+            if !report.found {
+                span { "This version could not be read. The chat text of the answer follows." }
+            }
+        }
     }
 }

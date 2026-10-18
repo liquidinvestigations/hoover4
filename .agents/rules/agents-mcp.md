@@ -50,8 +50,8 @@ failure for a browser that is still starting.
 A tool server and a model client send each request once. The worker's `tool_call` and
 `model_step` activities are the only retry, and Temporal runs them. Mark a transport failure
 `retryable` in the tool result, so the worker raises instead of storing it. An invalid
-argument, a refused access and a deliberate query deadline are results. A failover to
-another route is not a retry and stays.
+argument, a refused access, a deliberate query deadline and a workspace validation finding
+are results. A failover to another route is not a retry and stays.
 
 ## Timeouts
 

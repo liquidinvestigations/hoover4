@@ -104,6 +104,8 @@ services:
       # arrive as headers. acl-style bearer check in front of them, same secret file.
       - MCP_SHARED_SECRET_FILE=/run/secrets/mcp_shared_secret
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # The workspace tools send each write and patch to the session writer workflow.
+      - TEMPORAL_ADDRESS=temporal:7233
     volumes:
       - ${MCP_SHARED_SECRET_FILE_HOST:-/dev/null}:/run/secrets/mcp_shared_secret:ro
     restart: unless-stopped

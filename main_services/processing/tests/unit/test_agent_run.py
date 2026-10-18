@@ -72,16 +72,17 @@ def _chat_worker_calls():
 def test_agent_run_and_its_activities_are_registered_on_their_queues():
     workers = _chat_worker_calls()
     chat_workflows, chat_acts = workers["CHAT_TASK_QUEUE"]
-    assert chat_workflows == ["AgentRun"]
+    assert chat_workflows == ["AgentRun", "WorkspaceWriter"]
     for name in ("open_run", "write_ending", "summarize_if_first_turn",
                  "record_step_failure",
-                 "control_event", "write_incomplete"):
+                 "control_event", "write_incomplete",
+                 "prepare_workspace_mutation", "commit_workspace_mutation"):
         assert name in chat_acts, name
     for removed in ("read_chat_todo", "preload_reads", "write_repeat_note",
                     "write_found_documents", "delegate_step"):
         assert removed not in chat_acts, removed
     assert workers["CHAT_MODEL_TASK_QUEUE"][1] == ["model_step", "write_followups", "board_reason",
-                                                  "label_board"]
+                                                  "label_board", "convert_explore_report"]
     assert workers["AGENT_TOOL_TASK_QUEUE"][1] == ["tool_call"]
 
 
@@ -447,38 +448,6 @@ def test_a_citation_round_reply_with_no_text_keeps_the_answer(store, monkeypatch
 
 
 @pytest.mark.parametrize("reply", [
-    "The memo sets the budget [D9].",
-    "The memo sets the budget [D1-D4].",
-    "The memo sets the budget [newspaste].",
-    "The memo sets the budget on page 0 [D2].",
-    'The memo [cite_documents(citations=[{"file_hash":"a"}])] sets the budget [D2].',
-])
-def test_an_invalid_citation_reply_keeps_the_prior_answer(store, monkeypatch, reply):
-    _citation_round(store, marked=True)
-    store["session_citations"] = [_citation_result(3, "[D2]", "a" * 64)]
-    _serve(monkeypatch, store, _frames(text=reply))
-    assert _step(step_no=2).outcome == "answered"
-    [answer] = [r["content"] for r in store["chat"] if r["role"] == "assistant"]
-    assert answer.startswith("The citation reply could not replace the earlier answer.")
-    assert answer.endswith("The memo sets the budget [D1].")
-    assert reply not in answer
-    assert store["run"][-1]["result"] == answer
-
-
-def test_repeated_invalid_citation_replies_keep_one_notice(store, monkeypatch):
-    _citation_round(store, marked=True)
-    notice = ("The citation reply could not replace the earlier answer. "
-              "It uses a label that no successful citation gives.")
-    prior = notice + "\n\nThe memo sets the budget [D1]."
-    store["row"] = _row(next_seq=8, model_steps=1, result=prior)
-    _serve(monkeypatch, store, _frames(text="The memo sets the budget [D9]."))
-    assert _step(step_no=2).outcome == "answered"
-    [answer] = [r["content"] for r in store["chat"] if r["role"] == "assistant"]
-    assert answer == prior
-    assert store["run"][-1]["result"] == prior
-
-
-@pytest.mark.parametrize("reply", [
     "The memo sets the budget [D2]. [sic]",
     "The memo sets the budget [D2]. [1]",
     "The memo sets the budget [D2]. [Source](https://example.invalid/memo)",
@@ -489,30 +458,6 @@ def test_citation_reply_preserves_ordinary_brackets(store, monkeypatch, reply):
     _serve(monkeypatch, store, _frames(text=reply))
     assert _step(step_no=2).outcome == "answered"
     assert store["run"][-1]["result"] == reply
-
-
-def test_a_no_label_correction_is_shown_with_its_status(store, monkeypatch):
-    _citation_round(store, marked=True)
-    _serve(monkeypatch, store, _frames(text="I cannot verify the budget from these records."))
-    assert _step(step_no=2).outcome == "answered"
-    [answer] = [r["content"] for r in store["chat"] if r["role"] == "assistant"]
-    assert answer == "I cannot verify the budget from these records."
-    metadata = json.loads(store["chat"][-1]["usage_json"])
-    assert metadata == {"citation_status": "missing", "tool_scope": "documents_only"}
-    assert store["messages"][-1].usage["citation_status"] == "missing"
-    assert store["run"][-1]["result"] == answer
-
-
-def test_an_invalid_repair_without_a_prior_answer_has_a_bounded_result(store, monkeypatch):
-    _citation_round(store, marked=True)
-    store["row"] = _row(next_seq=8, model_steps=1, result="")
-    raw = 'call:cite_documents{"citations":<|"|>broken<|"|>}'
-    _serve(monkeypatch, store, _frames(text=raw))
-    assert _step(step_no=2).outcome == "answered"
-    assert store["run"][-1]["result"] == (
-        "The citation reply could not be used. It contains a tool call as text. "
-        "No earlier answer is available.")
-    assert raw not in store["run"][-1]["result"]
 
 
 def _citation_result(idx, handle, file_hash, status="ok", error=""):
@@ -573,34 +518,11 @@ def _check(store, seq=9):
     return SimpleNamespace(needed=outcome.round, next_seq=outcome.next_seq)
 
 
-def _next_answer(store, text):
-    """A new draft after the newest message, as the next round's reply writes it."""
-    from dataclasses import replace
-
-    store["messages"].append(agent_runs.RunMessageRow(
-        idx=max(m.idx for m in store["messages"]) + 1, role="ai", run_id=RUN_ID, content=text,
-        usage_json=json.dumps({"step_no": 2})))
-    store["row"] = replace(store["row"], result=text)
-
-
 def _answer_with_tool(store, text, citation_tool=True, **changes):
     store["messages"].append(agent_runs.RunMessageRow(
         idx=1, role="ai", run_id=RUN_ID, content=text,
         usage_json=json.dumps({"step_no": 1, "citation_tool": citation_tool})))
     store["row"] = _row(result=text, **changes)
-
-
-@pytest.mark.parametrize("changes, expected", [
-    ({}, True),
-    ({"end_reason": "step_budget"}, False),
-    ({"end_reason": "empty_response"}, False),
-    ({"state": "completed"}, False),
-    ({"state": "cancelled"}, False),
-])
-def test_check_citations_repairs_an_unresolved_label_unless_the_run_ended(
-        citations_store, changes, expected):
-    _answer_with_tool(citations_store, "The memo sets the budget [D1].", **changes)
-    assert _check(citations_store).needed is expected
 
 
 def test_a_label_that_a_successful_result_gives_needs_no_repair(citations_store):
@@ -610,64 +532,11 @@ def test_a_label_that_a_successful_result_gives_needs_no_repair(citations_store)
     assert citations_store["chat"] == []
 
 
-def test_a_failed_citation_call_does_not_stop_the_check(citations_store):
-    citations_store["session_citations"] = [
-        _citation_result(5, "", "a" * 64, status="error", error="invalid_arguments")]
-    _answer_with_tool(citations_store, "The memo sets the budget [D1].")
-    repair = _check(citations_store)
-    assert repair.needed is True and repair.next_seq == 10
-    assert citations_store["run"][-1] == {"next_seq": 10}
-    note = citations_store["messages"][-1]
-    assert note.role == "human" and note.usage["repair_marker"] == "citation"
-    assert note.usage["citation_check"]["unresolved"] == ["[D1]"]
-    assert "[D1]" in note.content
-    assert citations_store["chat"][-1]["role"] == "nag"
-    # The transcript reads the tag to show the answer before the note as replaced.
-    assert citations_store["chat"][-1]["tool_name"] == "citation_check"
-
-
-def test_a_label_bound_to_two_documents_conflicts(citations_store):
-    citations_store["session_citations"] = [_citation_result(5, "[D1]", "a" * 64),
-                                            _citation_result(7, "[D1]", "b" * 64)]
-    _answer_with_tool(citations_store, "Both say so [D1].")
-    assert _check(citations_store).needed is True
-    assert citations_store["messages"][-1].usage["citation_check"]["conflicting"] == ["[D1]"]
-
-
 def test_an_earlier_valid_handle_resolves_with_no_new_citation(citations_store):
     """A follow-up turn reuses `[D2]` from a citation result of an earlier thread."""
     citations_store["session_citations"] = [_citation_result(3, "[D2]", "c" * 64)]
     _answer_with_tool(citations_store, "As before, the memo says so [D2].")
     assert _check(citations_store).needed is False
-
-
-def test_a_document_name_with_no_label_still_gets_the_round_after_a_citation_call(
-        citations_store):
-    """A citation call in the thread does not stop the check."""
-    citations_store["messages"].append(agent_runs.RunMessageRow(
-        idx=2, role="tool", tool_name="search_collections", tool_call_id="s1",
-        content=json.dumps({"items": [{"file_hash": "d" * 64, "path": "/memo-budget.txt"}]})))
-    citations_store["session_citations"] = [_citation_result(5, "[D1]", "a" * 64)]
-    _answer_with_tool(citations_store, "The file memo-budget.txt sets the budget.")
-    assert _check(citations_store).needed is True
-    assert citations_store["messages"][-1].content == citations.CITATION_NOTE
-
-
-@pytest.mark.parametrize("reader", ["read_documents", "table_page", "table_cell"])
-def test_a_read_result_without_a_named_file_starts_one_citation_round(
-        citations_store, reader):
-    citations_store["messages"].append(agent_runs.RunMessageRow(
-        idx=2, role="tool", tool_name=reader, tool_call_id="r",
-        content=json.dumps({"items": [{"file_hash": "a" * 16,
-                                        "collectionname": "c", "text": "The budget is 5."}]}),
-        usage_json=json.dumps({"status": "ok", "evidence": [
-            {"kind": "document_read", "status": "partial", "reference": {
-                "file_hash": "a" * 64, "collectionname": "c"}}]})))
-    _answer_with_tool(citations_store, "The budget is 5.")
-    assert _check(citations_store).needed is True
-    assert _check(citations_store).needed is True
-    assert len([m for m in citations_store["messages"]
-                if m.usage.get("repair_marker") == "citation"]) == 1
 
 
 def test_the_first_reply_of_a_turn_still_writes_the_answer_row(store, monkeypatch):
@@ -1059,16 +928,6 @@ def test_the_browser_tools_are_the_tools_of_the_browser_server():
         "browser_wait_for", "browser_take_screenshot"]
 
 
-def test_page_zero_gets_a_repair_with_the_verified_page_instruction(citations_store):
-    from tasks.P_agent import citations
-    citations_store["session_citations"] = [_citation_result(5, "[D1]", "a" * 64)]
-    _answer_with_tool(citations_store, "The memo sets the budget on page 0 [D1].")
-    assert _check(citations_store).needed
-    assert "1-based page" in citations_store["messages"][-1].content
-    entries = [entry for message in citations_store["session_citations"] for entry in message.usage["evidence"]]
-    assert citations.repair_reply_problem("The budget is on page 0 [D1].", entries) == "page_zero"
-
-
 def test_model_view_persistence_keeps_complete_evidence(store):
     row = store["row"]
     from database import agent_runs
@@ -1083,102 +942,6 @@ def test_model_view_persistence_keeps_complete_evidence(store):
     assert saved.usage["model_content"] == "first window"
 
 
-@pytest.mark.parametrize("reader, reference", [
-    ("read_more", {"file_hash": "a" * 64, "collectionname": "c"}),
-    ("read_page", {"url": "https://example.invalid/report"}),
-])
-def test_read_evidence_starts_repair_without_a_citation_tool(citations_store, reader, reference):
-    citations_store["messages"].append(agent_runs.RunMessageRow(
-        idx=2, role="tool", tool_name=reader, usage_json=json.dumps({"status": "ok", "evidence": [
-            {"kind": "document_read", "status": "partial", "reference": reference}]})))
-    _answer_with_tool(citations_store, "The budget is 5.", citation_tool=False)
-    assert _check(citations_store).needed
-    note = citations_store["messages"][-1]
-    assert note.usage["repair_marker"] == "citation"
-    if reader == "read_page":
-        assert note.usage["citation_check"]["web_missing"]
-    else:
-        assert note.usage["citation_check"]["unsupported_paragraphs"][0]["number"] == 1
-    # D5: the repaired draft gets a second round, and the draft after it none.
-    _next_answer(citations_store, "The budget is 5.")
-    assert _check(citations_store).needed
-    _next_answer(citations_store, "The budget is 5.")
-    assert not _check(citations_store).needed
-    assert sum(citations.is_citation_note(m) for m in citations_store["messages"]) == 2
-
-
-def test_document_and_web_findings_share_one_repair_note(citations_store):
-    for idx, reference in enumerate((
-            {"file_hash": "a" * 64}, {"url": "https://example.invalid/report"}), 2):
-        citations_store["messages"].append(agent_runs.RunMessageRow(
-            idx=idx, role="tool", tool_name="read_more", usage_json=json.dumps({"evidence": [
-                {"kind": "document_read", "status": "ok", "reference": reference}]})))
-    _answer_with_tool(citations_store, "The budget is 5.")
-    citations_store["messages"].sort(key=lambda message: message.idx)
-    assert _check(citations_store).needed
-    note = citations_store["messages"][-1]
-    assert "Call `cite_pages`" in note.content
-    assert "Call cite_documents" in note.content
-    assert "Paragraph 1" in note.content
-    assert len([m for m in citations_store["messages"] if citations.is_citation_note(m)]) == 1
-
-
-def test_a_cited_paragraph_does_not_cover_the_next_claim():
-    findings = citations.unsupported_paragraphs("The budget is 5 [D1].\n\nȘtefan receives 12 payments.")
-    assert findings == [{"number": 2, "text": "Ștefan receives 12 payments."}]
-
-
-def test_document_only_citation_repairs_do_not_request_web_tools():
-    note = citations.repair_note({"documents_read": True, "unsupported_paragraphs": [
-        {"number": 1, "text": "Ștefan receives 12 payments."}]})
-    assert "cite_documents" in note
-    assert "read_page" not in note and "cite_pages" not in note
-
-
-@pytest.mark.parametrize("marker", ["-", "*", "+", "1.", "2)"])
-def test_a_cited_list_item_does_not_cover_its_uncited_sibling(marker):
-    answer = f"{marker} South Africa filed a case [W2].\n{marker} Francesca Albanese issued a report."
-    findings = citations.unsupported_paragraphs(answer)
-    assert findings == [{"number": 1, "item": 2,
-                         "text": f"{marker} Francesca Albanese issued a report."}]
-    note = citations.repair_note({"unsupported_paragraphs": findings})
-    assert "List item 2 in paragraph 1" in note
-    assert "Francesca Albanese" in note
-
-
-@pytest.mark.parametrize("heading", ["### **Key Findings**", "## Results", "# Summary of 2001"])
-def test_a_standalone_heading_gives_no_finding(heading):
-    answer = f"{heading}\n\nThe budget is 5 [D1]."
-    assert citations.unsupported_paragraphs(answer) == []
-
-
-@pytest.mark.parametrize("gap", ["\n\n", "\n"])
-def test_a_heading_does_not_hide_an_uncited_paragraph_under_it(gap):
-    answer = f"### **Key Findings**{gap}Ștefan receives 12 payments."
-    findings = citations.unsupported_paragraphs(answer)
-    assert [f["text"] for f in findings] == ["Ștefan receives 12 payments."]
-    assert findings[0]["number"] == (2 if gap == "\n\n" else 1)
-    cited = f"### **Key Findings**{gap}Ștefan receives 12 payments [D1]."
-    assert citations.unsupported_paragraphs(cited) == []
-
-
-def test_a_heading_above_a_numbered_list_keeps_the_item_numbers():
-    answer = "## Payments\n1. Enron paid 5 million [D1].\n2. Dynegy paid 3 million."
-    findings = citations.unsupported_paragraphs(answer)
-    assert findings == [{"number": 1, "item": 2, "text": "2. Dynegy paid 3 million."}]
-
-
-def test_nested_claims_keep_their_own_citations_and_wrapped_text():
-    answer = ("### **Israel**\n* **Accused by:**\n"
-              "    * **South Africa:** Filed a case.\n      [W2]\n"
-              "    * **UN Special Rapporteurs:** Francesca Albanese issued a report.")
-    findings = citations.unsupported_paragraphs(answer)
-    assert len(findings) == 1
-    assert findings[0]["item"] == 3
-    assert findings[0]["text"].lstrip().startswith("* **UN Special Rapporteurs:**")
-    assert citations.unsupported_paragraphs(answer + " [W3].") == []
-
-
 def _with_earlier_turn(store, monkeypatch, messages):
     read_current = agent_runs.read_messages
     monkeypatch.setattr(agent_runs, "read_earlier_threads", lambda *a: ["previous"])
@@ -1190,46 +953,6 @@ def _with_earlier_turn(store, monkeypatch, messages):
     monkeypatch.setattr(agent_runs, "read_messages", read_messages)
 
 
-@pytest.mark.parametrize("reader, reference", [
-    ("read_page", {"url": "https://example.invalid/report"}),
-    ("read_more", {"file_hash": "a" * 64, "collectionname": "c"}),
-])
-def test_a_followup_gets_its_own_repair_for_earlier_read_evidence(
-        citations_store, monkeypatch, reader, reference):
-    previous = [
-        agent_runs.RunMessageRow(idx=1, role="human", content="repair",
-            usage_json=json.dumps({"repair_marker": "citation"})),
-        agent_runs.RunMessageRow(idx=2, role="tool", tool_name=reader,
-            usage_json=json.dumps({"status": "ok", "evidence": [
-                {"kind": "document_read", "status": "partial", "reference": reference}]})),
-    ]
-    _with_earlier_turn(citations_store, monkeypatch, previous)
-    _answer_with_tool(citations_store, "The budget is 5.", citation_tool=False)
-    assert _check(citations_store).needed
-    assert sum(citations.is_citation_note(m) for m in citations_store["messages"]) == 1
-    # The earlier turn's note is not a round of this turn. D5 allows a second round here.
-    _next_answer(citations_store, "The budget is 5.")
-    assert _check(citations_store).needed
-    _next_answer(citations_store, "The budget is 5.")
-    assert not _check(citations_store).needed
-
-
-@pytest.mark.parametrize("address, expected", [
-    ("", "missing"),
-    ("https://example.invalid/report", "missing"),
-    ("https://example.invalid/unread", "missing"),
-])
-def test_followup_answer_status_uses_earlier_page_reads(store, monkeypatch, address, expected):
-    previous = [agent_runs.RunMessageRow(idx=1, role="tool", tool_name="read_page",
-        usage_json=json.dumps({"status": "ok", "evidence": [
-            {"kind": "document_read", "status": "ok",
-             "reference": {"url": "https://example.invalid/report"}}]}))]
-    _with_earlier_turn(store, monkeypatch, previous)
-    _serve(monkeypatch, store, _frames(text=f"The budget is 5. {address}"))
-    assert _step().outcome == "answered"
-    assert json.loads(store["chat"][-1]["usage_json"])["citation_status"] == expected
-
-
 def test_an_unfinished_earlier_page_result_gives_no_followup_evidence(store, monkeypatch):
     previous = [agent_runs.RunMessageRow(idx=1, role="tool", tool_name="read_page", is_final=0,
         usage_json=json.dumps({"status": "ok", "evidence": [
@@ -1239,229 +962,6 @@ def test_an_unfinished_earlier_page_result_gives_no_followup_evidence(store, mon
     _serve(monkeypatch, store, _frames(text="The result is 5."))
     assert _step().outcome == "answered"
     assert json.loads(store["chat"][-1]["usage_json"])["citation_status"] == "none"
-
-
-@pytest.mark.parametrize("unread_status", ["absent", "error"])
-def test_one_read_web_link_does_not_cover_an_unread_link(citations_store, unread_status):
-    evidence = [{"kind": "document_read", "status": "partial",
-                 "reference": {"url": "https://example.invalid/read"}}]
-    if unread_status == "error":
-        evidence.append({"kind": "document_read", "status": "error",
-                         "reference": {"url": "https://example.invalid/unread"}})
-    citations_store["messages"].append(agent_runs.RunMessageRow(
-        idx=2, role="tool", tool_name="read_page",
-        usage_json=json.dumps({"status": "ok", "evidence": evidence})))
-    answer = "One case [source](https://example.invalid/read#case).\n\nAnother case https://example.invalid/unread."
-    _answer_with_tool(citations_store, answer, citation_tool=False)
-    citations_store["messages"].sort(key=lambda message: message.idx)
-    assert _check(citations_store).needed
-    note = citations_store["messages"][-1]
-    assert note.usage["citation_check"]["web_unread"] == ["https://example.invalid/unread"]
-    assert "The answer links an unread page: https://example.invalid/unread." in note.content
-    assert citations.answer_metadata(answer, citations_store["messages"], [], True)["citation_status"] == "missing"
-    # The check is pure. The coordinator counts the rounds of the turn.
-    assert citations.needs_repair(answer, citations_store["messages"], [])[0]
-
-
-@pytest.mark.parametrize("page", ["read", "report_(court)"])
-def test_read_web_links_require_citation_handles(page):
-    messages = [agent_runs.RunMessageRow(idx=2, role="tool", tool_name="read_page",
-        usage_json=json.dumps({"status": "ok", "evidence": [
-            {"kind": "document_read", "status": "ok", "reference": {"url": f"https://example.invalid/{page}"}},
-            {"kind": "document_read", "status": "partial", "reference": {"url": "https://example.invalid/next"}}]}))]
-    answer = f"[First](https://example.invalid/{page}#one). [Second](https://example.invalid/next#two)."
-    needed, check = citations.needs_repair(answer, messages, [])
-    assert needed and check["web_unmarked"]
-    assert citations.answer_metadata(answer, messages, [], True)["citation_status"] == "missing"
-
-
-def test_a_failed_web_read_cannot_satisfy_its_answer_link():
-    url = "https://example.invalid/blocked"
-    messages = [agent_runs.RunMessageRow(idx=2, role="tool", tool_name="read_page",
-        usage_json=json.dumps({"status": "error", "evidence": [
-            {"kind": "document_read", "status": "error", "reference": {"url": url}}]}))]
-    needed, check = citations.needs_repair(f"The source is {url}.", messages, [])
-    assert needed and check["web_unread"] == [url]
-    assert citations.answer_metadata(f"The source is {url}.", messages, [], True)["citation_status"] == "missing"
-
-
-@pytest.mark.parametrize("missing", [None, "search", "read", "citation"])
-def test_web_claim_requires_discovery_read_and_citation(missing):
-    from tasks.P_agent import reports
-    url = "https://example.invalid/report"
-    reference = {"handle": "[W1]", "url": url, "final_url": url, "version": "v1",
-                 "artifact_id": "captured-page", "quote_verified": True,
-                 "terms": ["The result is 5."], "quotes": ["The result is 5."]}
-    messages = []
-    if missing != "search":
-        messages.append(agent_runs.RunMessageRow(idx=1, role="tool", tool_name="web_search",
-            content=json.dumps({"results": [{"url": url}]}), usage_json='{"status":"ok"}'))
-    if missing != "read":
-        messages.append(agent_runs.RunMessageRow(idx=2, role="tool", tool_name="read_page",
-            usage_json=json.dumps({"status": "ok", "evidence": [{"kind": "document_read",
-                "status": "ok", "reference": {"url": url}}]})))
-    entries = [] if missing == "citation" else reports.normalize(
-        "cite_pages", {}, json.dumps({"citations": [reference]}), "ok")
-    needed, check = citations.needs_repair("The result is 5 [W1].", messages, entries)
-    assert needed == (missing is not None)
-    assert citations.answer_metadata("The result is 5 [W1].", messages, entries, True)["citation_status"] == (
-        "cited" if missing is None else "invalid" if missing == "citation" else "missing")
-    if missing == "search":
-        assert check["web_undiscovered"] == [url]
-    if missing == "read":
-        assert check["web_unread"] == [url]
-
-
-def test_raw_web_citation_call_is_rejected():
-    assert citations.repair_reply_problem('[cite_pages(pages=[])]', []) == "raw_call"
-
-
-def test_one_web_handle_does_not_cover_an_uncited_paragraph():
-    from tasks.P_agent import reports
-    url = "https://example.invalid/report"
-    messages = [
-        agent_runs.RunMessageRow(idx=1, role="tool", tool_name="web_search",
-            content=json.dumps({"results": [{"url": url}]}), usage_json='{"status":"ok"}'),
-        agent_runs.RunMessageRow(idx=2, role="tool", tool_name="read_page",
-            usage_json=json.dumps({"status": "ok", "evidence": [{"kind": "document_read",
-                "status": "ok", "reference": {"url": url}}]})),
-    ]
-    entries = reports.normalize("cite_pages", {}, json.dumps({"citations": [{
-        "handle": "[W1]", "url": url, "version": "v1", "artifact_id": "captured-page",
-        "quote_verified": True, "terms": ["The result is 5."], "quotes": ["The result is 5."]
-    }]}), "ok")
-    answer = "The result is 5 [W1].\n\nA court reported 12 cases in Sudan."
-    needed, check = citations.needs_repair(answer, messages, entries)
-    assert needed
-    assert not check["web_missing"]
-    assert check["unsupported_paragraphs"] == [{"number": 2, "text": answer.split("\n\n")[1]}]
-    assert "Paragraph 2" in citations.repair_note(check)
-    assert "Call `cite_pages`" in citations.repair_note(check)
-    assert "Call cite_documents" not in citations.repair_note(check)
-    assert "every factual paragraph and list item" in citations.repair_note(check)
-    assert citations.answer_metadata(answer, messages, entries, True)["citation_status"] == "missing"
-
-
-def test_without_paragraph_repair_an_uncited_paragraph_needs_no_round():
-    from tasks.P_agent import reports
-    url = "https://example.invalid/report"
-    messages = [
-        agent_runs.RunMessageRow(idx=1, role="tool", tool_name="web_search",
-            content=json.dumps({"results": [{"url": url}]}), usage_json='{"status":"ok"}'),
-        agent_runs.RunMessageRow(idx=2, role="tool", tool_name="read_page",
-            usage_json=json.dumps({"status": "ok", "evidence": [{"kind": "document_read",
-                "status": "ok", "reference": {"url": url}}]})),
-    ]
-    entries = reports.normalize("cite_pages", {}, json.dumps({"citations": [{
-        "handle": "[W1]", "url": url, "version": "v1", "artifact_id": "captured-page",
-        "quote_verified": True, "terms": ["The result is 5."], "quotes": ["The result is 5."]
-    }]}), "ok")
-    answer = "The result is 5 [W1].\n\nA court reported 12 cases in Sudan."
-    needed, check = citations.needs_repair(answer, messages, entries, paragraph_repair=False)
-    assert not needed
-    assert check["unsupported_paragraphs"] == []
-    needed, _ = citations.needs_repair("The result is 5 [W9].", messages, entries, paragraph_repair=False)
-    assert needed, "a label that no citation gives still needs a round"
-
-
-def _failed_citation(file_hash, quote, candidate=""):
-    """The evidence entry of a failed `cite_documents` quote."""
-    reference = {"file_hash": file_hash, "quote": quote, "quote_reason": "absent"}
-    if candidate:
-        reference["candidate"] = {"text": candidate}
-    return {"kind": "citation", "status": "error", "reference": reference,
-            "error": "The quote did not verify."}
-
-
-def test_narrow_findings_name_a_kept_failed_quote_and_an_unsourced_role():
-    quote = "I cannot support the valuations my group has produced so far for the transactions."
-    messages = [agent_runs.RunMessageRow(idx=1, role="tool", tool_name="read_documents",
-                                         content="Vince Kaminski, Research Group. " + quote)]
-    entries = [_failed_citation("a" * 64, quote, "the source sentence")]
-    answer = ("Kaminski, Head of Research, wrote that he cannot support the valuations my "
-              "group has produced so far for the transactions.")
-    findings = citations.narrow_findings(answer, messages, entries)
-    assert [f["kind"] for f in findings] == ["kept_failed_citation", "unsourced_role"]
-    assert findings[1]["text"] == "Head of Research"
-    note = citations.edit_note(findings)
-    assert '"the source sentence"' in note and "'Head of Research'" in note
-    assert "Do not write the answer again." in note
-    verified = entries + [{"kind": "citation", "status": "ok",
-                           "reference": {"file_hash": "a" * 16, "handle": "[D1]"}}]
-    lower = citations.narrow_findings("Kaminski, head of Enron Global Markets, wrote it.",
-                                      messages, [])
-    assert [f["text"] for f in lower] == ["head of Enron Global Markets"]
-    sourced = answer.replace("Head of Research", "head of the Research Group")
-    assert citations.narrow_findings(sourced, messages, verified) == []
-
-
-@pytest.mark.parametrize("quote,kept", [
-    ("the valuations my group has produced", True),
-    ("valuations my group has produced", True),
-    ("my group has produced", False),
-    ("the valuations my group has reported", False),
-])
-def test_a_kept_quote_of_five_or_six_words_is_found(quote, kept):
-    answer = "Kaminski wrote that he cannot support the valuations my group has produced so far."
-    entries = [_failed_citation("b" * 64, quote)]
-    findings = citations.narrow_findings(answer, [], entries)
-    assert [f["kind"] for f in findings] == (["kept_failed_citation"] if kept else [])
-
-
-@pytest.mark.parametrize("reply,expected,problem", [
-    ('[{"find": "Head of Research", "replace": "a research manager"}]',
-     "Kaminski, a research manager, wrote it.", ""),
-    ('```json\n[{"find": ", Head of Research,", "replace": ""}]\n```', "Kaminski wrote it.", ""),
-    ("[]", "Kaminski, Head of Research, wrote it.", ""),
-    ('[{"find": "absent text", "replace": "x"}]', "Kaminski, Head of Research, wrote it.",
-     "find_not_unique"),
-    ('[{"find": "absent text", "replace": "x"}, {"find": ", Head of Research,", "replace": ""}]',
-     "Kaminski wrote it.", "find_not_unique"),
-    ("Kaminski wrote it.", "Kaminski, Head of Research, wrote it.", "not_edits"),
-])
-def test_apply_edits_changes_only_the_named_text(reply, expected, problem):
-    assert citations.apply_edits("Kaminski, Head of Research, wrote it.", reply) == (
-        expected, problem)
-
-
-def _edit_round(store):
-    """A turn whose answer has an unsourced role, and the note of its edit round."""
-    store["messages"][0] = agent_runs.RunMessageRow(
-        idx=0, role="human", content="q", run_id=RUN_ID, usage_json=json.dumps(
-            {"control": {"definition": {"limits": {"paragraph_repair": 0, "edit_rounds": 1}}}}))
-    store["messages"].append(agent_runs.RunMessageRow(
-        idx=1, role="ai", run_id=RUN_ID, content="Kaminski, Head of Research, wrote it.",
-        usage_json=json.dumps({"step_no": 1})))
-    store["messages"].append(agent_runs.RunMessageRow(
-        idx=2, role="human", content="Check these parts of your answer.",
-        usage_json=json.dumps({"repair_marker": "citation", "control": {"edit": True}})))
-    store["row"] = _row(next_seq=8, model_steps=1, result="Kaminski, Head of Research, wrote it.")
-
-
-def test_the_reply_of_an_edit_round_edits_the_answer(store, monkeypatch):
-    _edit_round(store)
-    reply = '[{"find": ", Head of Research,", "replace": ""}]'
-    _serve(monkeypatch, store, _frames(text=reply))
-    assert _step(step_no=2).outcome == "answered"
-    assert [r["content"] for r in store["chat"] if r["role"] == "assistant"] == [
-        "Kaminski wrote it."]
-    assert store["run"][-1]["result"] == "Kaminski wrote it."
-    stored = store["messages"][-1]
-    assert stored.content == "Kaminski wrote it."
-    assert stored.usage["edit_reply"] == reply and stored.usage["edit_problem"] == ""
-    assert "unsourced_claims" not in json.loads(store["chat"][-1]["usage_json"])
-
-
-def test_an_invalid_edit_reply_keeps_the_answer_with_its_findings(store, monkeypatch):
-    _edit_round(store)
-    _serve(monkeypatch, store, _frames(text="Kaminski wrote it."))
-    assert _step(step_no=2).outcome == "answered"
-    [row] = [r for r in store["chat"] if r["role"] == "assistant"]
-    assert row["content"] == "Kaminski, Head of Research, wrote it."
-    metadata = json.loads(row["usage_json"])
-    assert metadata["unsourced_claims"] == ["Head of Research"]
-    assert metadata["citation_status"] == "missing"
-    assert store["messages"][-1].usage["edit_problem"] == "not_edits"
 
 
 def test_no_progress_ending_reads_text_from_the_stored_decision(store):

@@ -251,14 +251,23 @@ fn board_fact_input(tool_input: &str) -> (String, String, Vec<String>) {
     (kind.to_string(), fact, questions)
 }
 
-/// The call that ends a board explore turn, inside its tool group. The answer after the
-/// group shows the fact with its citations, and [`BoardFactSummary`] under it.
+/// The finding of a board explore turn. The board writes it after the answer, when it
+/// converts the report of the turn (`by` is `board` in the output). An older explore turn
+/// called the tool itself, inside its tool group. [`BoardFactSummary`] under the answer
+/// states the kind and the open questions.
 #[component]
 pub fn BoardFactCard(tool_input: String, tool_output: String, running: bool) -> Element {
     let expanded = use_signal(|| false);
     let (kind, fact, questions) = board_fact_input(&tool_input);
-    let failure = tool_content(&tool_output).as_ref().and_then(tool_failure);
-    rsx! { CardShell { chip: "Board finding", label: format!("A {kind} finding for the board"), running, expanded, failure, raw_output: tool_output.clone(),
+    let content = tool_content(&tool_output);
+    let failure = content.as_ref().and_then(tool_failure);
+    let by_board = content.as_ref().and_then(|value| value.get("by")).and_then(|value| value.as_str()) == Some("board");
+    let label = if by_board {
+        format!("Submitted by the board: a {kind} finding from the report")
+    } else {
+        format!("A {kind} finding for the board")
+    };
+    rsx! { CardShell { chip: "Board finding", label, running, expanded, failure, raw_output: tool_output.clone(),
         badges: rsx! {},
         div { style: "white-space: pre-wrap; font-size: var(--x-text-sm);", "{fact}" }
         for (index, question) in questions.into_iter().enumerate() {

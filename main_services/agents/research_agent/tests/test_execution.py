@@ -121,6 +121,7 @@ def test_the_ordered_tools_are_the_todo_tools():
     This list is the same set, so the stored kind says what the worker does."""
     assert execution.ORDERED_TOOLS == frozenset({
         "write_todo", "edit_todo", "mark_todo", "read_todo",
+        "workspace_read", "workspace_write", "workspace_patch",
     })
 
 

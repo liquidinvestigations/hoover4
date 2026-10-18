@@ -13,6 +13,8 @@ dependencies = [
     # pipeline uses, because it is the same module -- see the Dockerfile.
     "clickhouse-connect>=0.10.0",
     "pyarrow>=21.0.0",
+    # The workspace tools send each write to the session writer workflow.
+    "temporalio>=1.16.0",
 ]
 
 [project.optional-dependencies]
