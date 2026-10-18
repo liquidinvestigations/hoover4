@@ -232,6 +232,16 @@ pub fn QuestionCard(tool_input: String, tool_output: String, running: bool, draf
     }}
 }
 
+/// "an" before a kind that starts with a vowel, such as "inferred", else "a".
+fn article(kind: &str) -> &'static str {
+    if kind.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" }
+}
+
+fn capitalized(word: &str) -> String {
+    let mut chars = word.chars();
+    chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
+}
+
 /// The kind, text and open questions of a `submit_board_fact` call.
 fn board_fact_input(tool_input: &str) -> (String, String, Vec<String>) {
     let input = serde_json::from_str::<serde_json::Value>(tool_input).unwrap_or_default();
@@ -263,9 +273,9 @@ pub fn BoardFactCard(tool_input: String, tool_output: String, running: bool) -> 
     let failure = content.as_ref().and_then(tool_failure);
     let by_board = content.as_ref().and_then(|value| value.get("by")).and_then(|value| value.as_str()) == Some("board");
     let label = if by_board {
-        format!("Submitted by the board: a {kind} finding from the report")
+        format!("Submitted by the board: {} {kind} finding from the report", article(&kind))
     } else {
-        format!("A {kind} finding for the board")
+        format!("{} {kind} finding for the board", capitalized(article(&kind)))
     };
     rsx! { CardShell { chip: "Board finding", label, running, expanded, failure, raw_output: tool_output.clone(),
         badges: rsx! {},
@@ -299,9 +309,10 @@ pub fn BoardFactSummary(tool_input: String) -> Element {
             board_fact_for_intent(board_id, intent_id).await.ok().flatten()
         }
     });
+    let kind_article = article(&kind);
     let content = rsx! {
         div { style: "font-size: var(--x-text-sm); font-weight: 600; color: var(--x-ink-strong);",
-            "The explore gave this answer to its board as a {kind} finding."
+            "The explore gave this answer to its board as {kind_article} {kind} finding."
         }
         if questions.is_empty() {
             div { style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px;", "It left no open question." }
