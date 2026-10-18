@@ -814,6 +814,26 @@ def _successful_repeat_result(message: RunMessage) -> bool:
         return True
 
 
+#: The note of a `write_todo` result that changed nothing. A model that means to write its
+#: report can call `write_todo` again and again, so the note names the file tool.
+UNCHANGED_TODO_NOTE = ("The list did not change. write_todo only plans the steps. "
+                       "Do the next open step now.")
+UNCHANGED_TODO_FILE_NOTE = " To write a report or another file, call workspace_write."
+
+
+def _unchanged_todo_note(content: str, allowed: FrozenSet[str]) -> str:
+    """The `write_todo` result with a `note` when the call changed nothing, or the result
+    as it was."""
+    try:
+        body = json.loads(content)
+    except (TypeError, ValueError):
+        return content
+    if not isinstance(body, dict) or body.get("unchanged") is not True:
+        return content
+    note = UNCHANGED_TODO_NOTE + (UNCHANGED_TODO_FILE_NOTE if "workspace_write" in allowed else "")
+    return json.dumps({**body, "note": note}, ensure_ascii=False)
+
+
 async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, Any]:
     snapshot = context.snapshot
     name = request.call.name
@@ -974,6 +994,8 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     if retryable_result(content):
         return _tool_response(request, content, "error", TRANSPORT_FAILURE,
                               _with_repairs(measure, repairs), [], doc_refs, retryable=True)
+    if name == "write_todo":
+        content = _unchanged_todo_note(content, allowed)
     return _tool_response(
         request, content, status, "tool_error" if status == "error" else "",
         _with_repairs(measure, repairs), [], doc_refs, image_refs=image_refs

@@ -244,8 +244,12 @@ response is JSON:
 | `measure` | the call measure of a broker tool, or `null`. When `/tool_call` changed the arguments itself, `argument_repairs` lists each change. A call that `/model_step` normalized holds its changes in its call entry |
 | `matched_names` | the names that a `search_agent_tools` result matched, or the name that a `read_tool` result described |
 
-A `tool_unavailable` result names the unavailable tool. `search_agent_tools` can list
-available names.
+A `tool_unavailable` result names the unavailable tool and at most two close names of
+the run. `search_agent_tools` can list available names.
+
+A `write_todo` result that returns `unchanged` gets a `note`. The note tells the model to do
+the next open step, and it names `workspace_write` when the run has that tool. A model that
+means to write its report can otherwise call `write_todo` again until the step limit.
 
 **A failed result names the skill of its fix.** `stumbles.with_skill_line` reads each result
 before the service returns it. When the result shows a known stumble, and the run lists the

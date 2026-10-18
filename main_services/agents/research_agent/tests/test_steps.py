@@ -570,6 +570,18 @@ async def test_a_misspelled_name_gets_the_closest_names_of_the_run():
     assert "workspace_write" in message and message.endswith("Find tools with search_agent_tools.")
 
 
+def test_an_unchanged_todo_list_gets_a_note_that_names_the_file_tool():
+    unchanged = json.dumps({"version": 4, "ids": ["1"], "summary": "0/1 items resolved", "unchanged": True})
+    body = json.loads(steps._unchanged_todo_note(unchanged, frozenset({"write_todo", "workspace_write"})))
+    assert body["version"] == 4 and body["unchanged"] is True
+    assert body["note"] == steps.UNCHANGED_TODO_NOTE + steps.UNCHANGED_TODO_FILE_NOTE
+    body = json.loads(steps._unchanged_todo_note(unchanged, frozenset({"write_todo"})))
+    assert body["note"] == steps.UNCHANGED_TODO_NOTE
+    changed = json.dumps({"version": 5, "ids": ["1"], "summary": "0/1 items resolved"})
+    assert steps._unchanged_todo_note(changed, frozenset({"workspace_write"})) == changed
+    assert steps._unchanged_todo_note("Error: x", frozenset({"workspace_write"})) == "Error: x"
+
+
 def test_the_refusal_text_of_an_unavailable_tool_names_no_skill():
     for text in ("No tool of this run is named 'x'.",):
         content = json.dumps({"success": False, "message": text})
