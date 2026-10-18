@@ -8,6 +8,7 @@ use dioxus_free_icons::{
     icons::{
         md_action_icons::MdQuestionAnswer,
         md_communication_icons::MdEmail,
+        md_content_icons::MdArchive,
         md_editor_icons::MdTableChart,
         md_file_icons::MdTextSnippet,
         md_image_icons::{MdAudiotrack, MdImage, MdPictureAsPdf, MdSwitchVideo},
@@ -213,6 +214,7 @@ fn SourceItemRow(
         // pass, so the label has to name which, three entries all reading "PDF" is a
         // selector that cannot be used.
         DocumentSourceItem::Pdf(source) => (_item_icon_rsx(MdPictureAsPdf), source.label()),
+        DocumentSourceItem::Archive(source) => (_item_icon_rsx(MdArchive), source.label().to_string()),
         DocumentSourceItem::Email(_source) => (_item_icon_rsx(MdEmail), "Email".to_string()),
         // The grid, above the text sources: a workbook flattened to tab-separated text is
         // a fallback, not the thing a reader came for.

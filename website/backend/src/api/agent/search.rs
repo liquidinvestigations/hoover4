@@ -355,12 +355,28 @@ async fn search_results_body(
         }
     }
 
-    let paths = futures::future::join_all(
+    let paths: Vec<_> = futures::future::join_all(
         results.results.iter().map(|item| vfs_api::get_first_vfs_path(user, item.document_identifier())),
     )
+    .await
+    .into_iter()
+    .map(|found| found.ok())
+    .collect();
+    // The path of each container in its own folder, with the same lookup, for the hits
+    // inside an archive or an email.
+    let container_paths = futures::future::join_all(results.results.iter().zip(&paths).map(|(item, path)| {
+        let container = path.as_ref().map(|p| p.container_hash.clone()).unwrap_or_default();
+        let identifier = DocumentIdentifier { collection_dataset: item.collection_dataset.clone(), file_hash: container };
+        async move {
+            if identifier.file_hash.is_empty() {
+                return String::new();
+            }
+            vfs_api::get_first_vfs_path(user, identifier).await.map(|p| p.path).unwrap_or_default()
+        }
+    }))
     .await;
     let mut documents = Vec::with_capacity(results.results.len());
-    for (item, path) in results.results.iter().zip(paths) {
+    for ((item, path), container_path) in results.results.iter().zip(paths).zip(container_paths) {
         let (collectionname, dataset) = lookup
             .get(&item.collection_dataset)
             .cloned()
@@ -368,6 +384,8 @@ async fn search_results_body(
         documents.push(AgentSearchDocument {
             collectionname,
             file_hash: item.file_hash.clone(),
+            container_hash: path.as_ref().map(|d| d.container_hash.clone()).unwrap_or_default(),
+            container_path,
             path: path.map(|d| d.path).unwrap_or_default(),
             title: item.title.clone(),
             snippet: spans_to_snippet(&item.highlight_text_spans),

@@ -164,6 +164,45 @@ def doc_ref(row: dict[str, Any], page_id: int | None = None, snippet: str | None
     }
 
 
+def _size(n: Any) -> str:
+    """Bytes as a short text: `16.4 MB`."""
+    value = float(n)
+    for unit in ("bytes", "KB", "MB", "GB"):
+        if value < 1000 or unit == "GB":
+            return f"{value:.0f} {unit}" if unit == "bytes" else f"{value:.1f} {unit}"
+        value /= 1000
+    return f"{value:.1f} GB"
+
+
+def archive_note(archive: dict[str, Any]) -> str:
+    """The note of a document that is an archive or a mail store, from the `archive` object
+    of a document route. It names the extracted files and the tools that reach them. The
+    file count counts extracted locations, which are not always searchable."""
+    kind = "email archive" if archive.get("kind") == "email_archive" else "archive"
+    count = archive.get("extracted_file_count")
+    node = archive.get("node_id")
+    term = archive.get("folder_term_id")
+    parts = []
+    if count is None:
+        parts.append(f"This document is an {kind}, and the pipeline extracted no files from it.")
+    else:
+        files = "1 extracted file" if count == 1 else f"{count} extracted files"
+        size = archive.get("extracted_size_bytes")
+        parts.append(f"This {kind} has {files}" + (f", {_size(size)} in total." if size is not None else "."))
+        parts.append("Some files can be unavailable in search while processing continues or after a processing failure.")
+    if term is not None:
+        parts.append(f"Search inside it with search_collections and folder_term_id {term}.")
+    if node:
+        dataset = archive.get("dataset") or ""
+        parts.append(f'List its folders with folder_list, dataset "{dataset}" and node_id "{node}".')
+        parts.append(f'Find its files by name with folder_search, dataset "{dataset}" and node_id "{node}".')
+    errors = int(archive.get("processing_errors") or 0)
+    if errors:
+        tasks = "1 processing task" if errors == 1 else f"{errors} processing tasks"
+        parts.append(f"{tasks[0].upper()}{tasks[1:]} recorded an error for the archive file.")
+    return " ".join(parts)
+
+
 def slim_items(tool_name: str, items: list[Any]) -> tuple[list[Any], list[dict[str, Any]]]:
     """The units of a page as the model reads them, and the doc ref of each unit that names a
     document. A unit's `file_hash` becomes its first `HASH_START` characters. A
@@ -427,7 +466,12 @@ class PagedTool:
     def window(self, result: dict[str, Any], request: BaseModel | None = None) -> Window:
         """The route paging policy. The units are the list under `item_key`, the rest of
         the response is the page fields, and the route's `next_position` and `total`
-        decide what follows."""
+        decide what follows. An `archive` object becomes the field `archive_note`."""
+        if "archive" in result:
+            result = dict(result)
+            archive = result.pop("archive")
+            if isinstance(archive, dict):
+                result["archive_note"] = archive_note(archive)
         excluded = {self.item_key}
         if self.item_key == "__folder_items":
             items = [

@@ -59,6 +59,9 @@ class ReadDocumentsTool(PagedTool):
         result = {**result, "documents": [dict(row) for row in result.get("documents", [])]}
         for row in result.get("documents", []):
             if row.get("page") is None:
+                if isinstance(row.get("archive"), dict):
+                    row["note"] = paging.archive_note(row.pop("archive"))
+                    continue
                 row["error"] = ("The document read timed out." if row.get("count_state") == "timed_out"
                                 else "The document has no extracted text.")
                 continue
@@ -239,7 +242,7 @@ def doc_search_text(collection: Annotated[str, Field(description='Copy the colle
     return _render(DOC_SEARCH_TEXT, {"collectionname": collection, "file_hash": file_hash, "query": query, "source": source})
 
 
-@mcp.tool(name="doc_sources", description="List every source of one document: text, PDF, email, table, image, audio and video, with the page range of each text source. With a query, give the hit count of each source. Use it to select a source before reading or comparing text.")
+@mcp.tool(name="doc_sources", description="List every source of one document: text, PDF, email, table, image, audio and video, with the page range of each text source. With a query, give the hit count of each source. Use it to select a source before reading or comparing text. For an archive or a mail store, archive_note gives the extracted files and the tools that reach them.")
 def doc_sources(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str, Field(description='Copy the document hash from a result in this collection.')], query: Annotated[str | None, Field(description='Optional keyword query to count hits in each extraction. Omission lists sources without matching a query.')] = None) -> str:
     return _render(DOC_SOURCES, {"collectionname": collection, "file_hash": file_hash, "query": query})
 

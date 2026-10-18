@@ -1,6 +1,7 @@
 //! Document preview components for search results.
 
 pub mod doc_preview_find_query;
+pub mod doc_preview_for_archive;
 pub mod doc_preview_for_email;
 pub mod doc_preview_for_pdf;
 pub mod doc_preview_for_table;

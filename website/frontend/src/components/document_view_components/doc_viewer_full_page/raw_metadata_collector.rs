@@ -487,7 +487,7 @@ fn EmailSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
 }
 
 #[server]
-async fn get_document_dates(
+pub(crate) async fn get_document_dates(
     document_identifier: DocumentIdentifier,
 ) -> Result<DocumentDates, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;

@@ -5,7 +5,7 @@ use anyhow::Context;
 use common::{
     current_user::CurrentUser,
     document_sources::{
-        DocumentAudioSourceItem, DocumentEmailSourceItem, DocumentImageSourceItem,
+        archive_kind, DocumentArchiveSourceItem, DocumentAudioSourceItem, DocumentEmailSourceItem, DocumentImageSourceItem,
         DocumentPdfSourceItem, DocumentProcessingStatus, DocumentSourceItem, DocumentSourcesStatus, DocumentTableSourceItem,
         DocumentTextSourceItem, DocumentVideoSourceItem, BINARY_WORD_TEXT_EXTRACTOR,
         EMAIL_TEXT_EXTRACTOR,
@@ -345,6 +345,84 @@ async fn get_table_sources(
     }))
 }
 
+/// The archive facts of a document, or `None` when its type is not an archive type
+/// (`common::document_sources::archive_kind`).
+///
+/// The type comes from `file_type_canonical` and the `archives` row. The counts and the
+/// folder identity come from the container row of `vfs_nodes`, which an archive without
+/// extracted files does not have. `processing_errors` counts the failed tasks of
+/// `processing` for the archive file itself.
+pub async fn archive_info(
+    user: &CurrentUser,
+    identifier: &DocumentIdentifier,
+    processing: &DocumentProcessingStatus,
+) -> anyhow::Result<Option<DocumentArchiveSourceItem>> {
+    permissions::assert_can_read(user, &identifier.collection_dataset).await?;
+    let client = get_client_for_dataset(&identifier.collection_dataset).await?;
+    let dataset = &identifier.collection_dataset;
+    let hash = &identifier.file_hash;
+    let canonical: Vec<(String, String)> = client
+        .query("SELECT mime_type, toString(file_type) FROM file_type_canonical FINAL
+                WHERE collection_dataset = ? AND hash = ? LIMIT 1")
+        .bind(dataset).bind(hash)
+        .fetch_all().await?;
+    let (mime, file_type) = canonical.into_iter().next().unwrap_or_default();
+    let archive_types: Vec<String> = client
+        .query("SELECT archive_type FROM archives FINAL WHERE collection_dataset = ? AND archive_hash = ? LIMIT 1")
+        .bind(dataset).bind(hash)
+        .fetch_all().await?;
+    let tokens: Vec<&str> = archive_types.iter().flat_map(|t| t.split_whitespace()).collect();
+    let Some(kind) = archive_kind(&tokens, &mime, &file_type) else {
+        return Ok(None);
+    };
+    let nodes: Vec<(String, i64, i64)> = client
+        .query("SELECT node_key, subtree_file_count, subtree_size_bytes FROM vfs_nodes FINAL
+                WHERE collection_dataset = ? AND file_hash = ? AND kind = 'container'
+                ORDER BY depth, path LIMIT 1")
+        .bind(dataset).bind(hash)
+        .fetch_all().await?;
+    let sizes: Vec<u64> = client
+        .query("SELECT blob_size_bytes FROM blobs FINAL WHERE collection_dataset = ? AND blob_hash = ? LIMIT 1")
+        .bind(dataset).bind(hash)
+        .fetch_all().await?;
+    let path = super::get_file_path::get_file_path(user, identifier.clone()).await?.unwrap_or_default();
+    let node = nodes.into_iter().next();
+    let folder_term_id = match &node {
+        Some((node_key, _, _)) => crate::api::vfs::tree::node_term_id(dataset, node_key).await?,
+        None => None,
+    };
+    // `-1` is the stored sentinel of an unknown count.
+    let known = |value: i64| u64::try_from(value).ok();
+    Ok(Some(DocumentArchiveSourceItem {
+        kind: kind.to_string(),
+        mime,
+        extracted_file_count: node.as_ref().and_then(|(_, files, _)| known(*files)),
+        extracted_size_bytes: node.as_ref().and_then(|(_, _, bytes)| known(*bytes)),
+        size_bytes: sizes.into_iter().next(),
+        dataset: dataset.clone(),
+        path,
+        node_id: node.map(|(node_key, _, _)| node_key),
+        folder_term_id,
+        processing_errors: match processing {
+            DocumentProcessingStatus::Failed { tasks } => tasks.len() as u32,
+            _ => 0,
+        },
+    }))
+}
+
+/// The archive facts of a document for an agent route, with its processing state read
+/// first. A failed lookup gives `None`, so the route answers as before.
+pub async fn archive_info_for(
+    user: &CurrentUser,
+    identifier: &DocumentIdentifier,
+) -> Option<DocumentArchiveSourceItem> {
+    let processing = get_processing_status(identifier).await.unwrap_or_default();
+    archive_info(user, identifier, &processing).await.unwrap_or_else(|error| {
+        tracing::warn!(%error, "archive lookup failed");
+        None
+    })
+}
+
 #[allow(for_loops_over_fallibles)]
 pub async fn get_document_sources(
     user: &CurrentUser,
@@ -363,7 +441,7 @@ pub async fn get_document_sources_status(
 ) -> anyhow::Result<DocumentSourcesStatus> {
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
-    let (txt, pdf, email, img, vid, aud, table, processing) = tokio::join!(
+    let (txt, pdf, email, img, vid, aud, table, processing, archive) = tokio::join!(
         get_text_sources(user, document_identifier.clone()),
         get_pdf_sources_with_status(user, document_identifier.clone()),
         get_email_sources(user, document_identifier.clone()),
@@ -372,6 +450,8 @@ pub async fn get_document_sources_status(
         get_audio_sources(user, document_identifier.clone()),
         get_table_sources(user, document_identifier.clone()),
         get_processing_status(&document_identifier),
+        // The failed tasks are set below, from the processing state of the same join.
+        archive_info(user, &document_identifier, &DocumentProcessingStatus::Done),
     );
 
     let mut sources = vec![];
@@ -426,6 +506,19 @@ pub async fn get_document_sources_status(
         .find(|s| s.extracted_by == EMAIL_TEXT_EXTRACTOR)
         .map(|s| (s.min_page.max(1), s.max_page.max(1)));
     let (body_min_page, body_max_page) = body_range.unwrap_or((1, 1));
+    match archive {
+        Ok(Some(mut archive)) => {
+            if let Ok(DocumentProcessingStatus::Failed { tasks }) = &processing {
+                archive.processing_errors = tasks.len() as u32;
+            }
+            sources.push(DocumentSourceItem::Archive(archive));
+        }
+        Ok(None) => {}
+        Err(error) => {
+            tracing::warn!(%error, "archive query failed");
+            errors.push("Archive facts could not load".to_string());
+        }
+    }
     for source in text_sources {
         sources.push(DocumentSourceItem::Text(source));
     }

@@ -9,6 +9,7 @@ use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
 use crate::components::document_view_components::doc_preview_for_search::{
+    doc_preview_for_archive::DocumentPreviewForArchive,
     doc_preview_for_email::DocumentPreviewForEmail, doc_preview_for_pdf::DocumentPreviewForPdf,
     doc_preview_for_table::DocumentPreviewForTable,
     doc_preview_for_text::DocumentPreviewForTextWithSearch,
@@ -51,6 +52,9 @@ pub fn DocSourceDispatch(
     source: ReadSignal<DocumentSourceItem>,
 ) -> Element {
     match source.read().clone() {
+        DocumentSourceItem::Archive(archive) => rsx! {
+            DocumentPreviewForArchive { document_identifier, source: archive }
+        },
         DocumentSourceItem::Pdf(pdf) => rsx! {
             DocumentPreviewForPdf { document_identifier, source: pdf }
         },

@@ -4,6 +4,8 @@ mod document_entities_panel;
 mod document_red_flags;
 mod raw_metadata_collector;
 
+pub(crate) use raw_metadata_collector::get_document_dates;
+
 use common::document_sources::{DocumentSourceItem, DocumentSourcesStatus, ItemHitCounts};
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;

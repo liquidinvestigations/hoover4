@@ -165,13 +165,16 @@ def _search_date(epoch: int | None) -> str | None:
 def search_row(document: dict[str, Any], forms: list[int] | None, words: list[str]) -> dict[str, Any]:
     """The row of one document that the model reads. `forms` is the numbers of the query
     forms that found it, or None when the call has one form. The title is left out when
-    the path holds it, and every empty value is left out."""
+    the path holds it, and every empty value is left out. `container` is the path of the
+    archive or email that holds the file."""
     title = document.get("title") or ""
     path = document.get("path") or ""
     row = {
         "file_hash": paging.hash_start(document.get("file_hash") or ""),
         "collection": document.get("collectionname") or "",
         "path": path,
+        # A hit inside an archive or an email: `path` is inside that container.
+        "container": document.get("container_path") or None,
         "title": title if title and title not in path else None,
         "type": document.get("canonical_file_type") or None,
         "size": document.get("size"),

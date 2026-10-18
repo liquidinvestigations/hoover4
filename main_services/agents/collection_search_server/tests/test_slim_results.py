@@ -313,3 +313,14 @@ def test_the_words_of_a_form_drop_quotes_bars_and_a_leading_minus():
 
 def test_the_continuation_kind_is_named():
     assert artifacts.KIND_AGENT_CONTINUATION == "agent_continuation"
+
+
+def test_a_search_row_names_the_container_of_a_file_inside_an_archive():
+    from collection_search_server.tools_search import search_row
+
+    inside = {"file_hash": "b" * 64, "collectionname": "c", "path": "/TW_PNR.doc", "title": "TW_PNR.doc",
+              "snippet": "", "canonical_file_type": "doc", "size": 1, "document_date": None,
+              "container_hash": "a" * 64, "container_path": "/sources/enron.pst"}
+    assert search_row(inside, None, [])["container"] == "/sources/enron.pst"
+    outside = {**inside, "container_hash": "", "container_path": ""}
+    assert "container" not in search_row(outside, None, [])

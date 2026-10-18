@@ -26,6 +26,7 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 | `.find.clear` | clear search button | clears the in-document query | the main search, document find, and folder search share the input control |
 | `.table.clear_filters` | clear filters button | clears the document query and column filters | it appears when filters return zero rows |
 | `.source.retry` | retry button | requests document sources again | it appears when the source request fails |
+| `.archive.browse` | `Browse the archive` link on the Archive or Email Archive tab | opens the file browser inside the archive | it appears when the extraction created the archive's folder |
 
 ## States
 
@@ -38,6 +39,7 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 | email without body | the email parser stores no readable body | the envelope, attachments, and source selector remain available |
 | source failure | the source request fails | one row above the viewer holds the error and the retry button, and the sources that loaded stay available |
 | image preview | the image format has a stored JPEG preview | the viewer shows the preview |
+| archive | the document is an archive or a mail store | the Archive or Email Archive tab opens first, with the extracted file count and size, the archive file size and dates, and the dates inside. The empty-source message is not shown |
 | image not shown | the browser cannot show the image and no preview exists | a note and a link that downloads the file |
 | processing pending | no operation has reached the document | the page states that processing has not reached this document |
 | processing active | its unfinished plan belongs to an active operation | the page states that processing runs |

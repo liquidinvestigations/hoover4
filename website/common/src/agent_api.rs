@@ -14,6 +14,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::document_sources::DocumentArchiveSourceItem;
+
 /// The JSON body of a non-2xx agent response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentErrorBody {
@@ -187,6 +189,13 @@ pub struct AgentSearchDocument {
     /// Holds the full dataset key that a document card opens the document with.
     #[serde(default)]
     pub collection_dataset: String,
+    /// The hash of the archive or email that holds this file at `path`, or empty for a
+    /// file outside any container.
+    #[serde(default)]
+    pub container_hash: String,
+    /// The path of that archive or email in its own folder, or empty.
+    #[serde(default)]
+    pub container_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -424,6 +433,9 @@ pub struct AgentDocumentText {
     /// Continues the character range, then advances to the next stored page.
     /// It is absent after the final character of the final page.
     pub next_position: Option<AgentPosition>,
+    /// The archive facts of a document that is an archive or a mail store.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive: Option<DocumentArchiveSourceItem>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -471,6 +483,10 @@ pub struct DocumentsSearchTextResponse {
     pub source_used: String,
     pub hit_count: u64,
     pub hits: Vec<AgentTextHit>,
+    /// The archive facts of a document that is an archive and has no text source. The
+    /// route then answers with no hits in place of "the document has no text source".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive: Option<DocumentArchiveSourceItem>,
     #[serde(flatten)]
     pub page_info: AgentPageInfo,
 }
@@ -523,6 +539,9 @@ pub struct AgentDocumentSource {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DocumentsSourcesResponse {
     pub sources: Vec<AgentDocumentSource>,
+    /// The archive facts of a document that is an archive or a mail store.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive: Option<DocumentArchiveSourceItem>,
     #[serde(flatten)]
     pub page_info: AgentPageInfo,
 }
@@ -590,6 +609,9 @@ pub struct DocumentsMetadataResponse {
     pub canonical_file_type: String,
     pub download_links: AgentDownloadLinks,
     pub source: String,
+    /// The archive facts of a document that is an archive or a mail store.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive: Option<DocumentArchiveSourceItem>,
 }
 
 // ---------------------------------------------------------------------------------

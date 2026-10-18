@@ -474,8 +474,94 @@ impl DocumentTableSourceItem {
     }
 }
 
+/// The `kind` of an email archive: a mail store such as PST, OST or mbox.
+pub const EMAIL_ARCHIVE: &str = "email_archive";
+/// The `kind` of another archive, such as ZIP, TAR, 7z or RAR.
+pub const ARCHIVE: &str = "archive";
+
+/// MIME types of mail stores, which hold many messages.
+const MAIL_STORE_TYPES: &[&str] = &["application/x-hoover-pst", "application/vnd.ms-outlook-pst",
+    "application/vnd.ms-outlook-ost", "application/mbox"];
+/// MIME types of one message or of an attachment wrapper. Such a file is not an archive even
+/// when the pipeline extracted its attachments.
+const MESSAGE_TYPES: &[&str] = &["message/rfc822", "application/vnd.ms-outlook", "application/x-ms-msg",
+    "application/ms-tnef", "application/vnd.ms-tnef"];
+/// MIME types of archives.
+const ARCHIVE_TYPES: &[&str] = &["application/zip", "application/x-zip-compressed", "application/x-tar",
+    "application/x-ustar", "application/gzip", "application/x-gzip", "application/x-7z-compressed",
+    "application/vnd.rar", "application/x-rar", "application/x-rar-compressed", "application/x-bzip2",
+    "application/x-xz", "application/x-iso9660-image", "application/x-cpio"];
+
+/// The archive kind of a file, or `None` for a file that is not an archive.
+///
+/// `archive_types` holds the MIME types of the file's `archives` row, when it has one, and
+/// `mime` and `file_type` come from `file_type_canonical`. A mail store gives
+/// [`EMAIL_ARCHIVE`]. One message or an attachment wrapper (EML, MSG, TNEF) gives `None`,
+/// as do images and videos that have an `archives` row. A known archive type, or the
+/// canonical type `archive`, gives [`ARCHIVE`]. A VFS container node is not evidence: an
+/// email with attachments is a container, and an empty archive has no container node.
+pub fn archive_kind(archive_types: &[&str], mime: &str, file_type: &str) -> Option<&'static str> {
+    let has = |list: &[&str]| archive_types.iter().chain(std::iter::once(&mime)).any(|t| list.contains(t));
+    if has(MAIL_STORE_TYPES) {
+        return Some(EMAIL_ARCHIVE);
+    }
+    if has(MESSAGE_TYPES) || mime.starts_with("image/") || mime.starts_with("video/")
+        || mime.starts_with("audio/") || archive_types.contains(&"video")
+    {
+        return None;
+    }
+    (has(ARCHIVE_TYPES) || file_type == "archive").then_some(ARCHIVE)
+}
+
+/// An archive or a mail store, for the Archive tab of the viewer and the `archive` object of
+/// the agent document routes. One lookup fills both (`get_document_sources::archive_info`).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, PartialOrd)]
+pub struct DocumentArchiveSourceItem {
+    /// [`EMAIL_ARCHIVE`] or [`ARCHIVE`].
+    pub kind: String,
+    /// The canonical MIME type of the archive file.
+    #[serde(default)]
+    pub mime: String,
+    /// The files that the pipeline extracted from the archive, through every level, as
+    /// `vfs_nodes.subtree_file_count` counts their locations. `None` when the archive has no
+    /// container node or the count is unknown. An extracted file is not always searchable.
+    #[serde(default)]
+    pub extracted_file_count: Option<u64>,
+    /// The bytes of the extracted files (`vfs_nodes.subtree_size_bytes`), or `None`.
+    #[serde(default)]
+    pub extracted_size_bytes: Option<u64>,
+    /// The size of the archive file itself, or `None`.
+    #[serde(default)]
+    pub size_bytes: Option<u64>,
+    #[serde(default)]
+    pub dataset: String,
+    #[serde(default)]
+    pub path: String,
+    /// The folder node of the archive, which `folder_list` and the file browser open.
+    /// `None` when the extraction created no container node.
+    #[serde(default)]
+    pub node_id: Option<String>,
+    /// The `folder_term_id` that scopes a search to the archive, or `None`.
+    #[serde(default)]
+    pub folder_term_id: Option<u64>,
+    /// The processing tasks that recorded an error for the archive file itself. One task
+    /// can fail for several extracted messages, so this is not a count of failed files.
+    #[serde(default)]
+    pub processing_errors: u32,
+}
+
+impl DocumentArchiveSourceItem {
+    /// The tab name: `Email Archive` or `Archive`.
+    pub fn label(&self) -> &'static str {
+        if self.kind == EMAIL_ARCHIVE { "Email Archive" } else { "Archive" }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, PartialOrd)]
 pub enum DocumentSourceItem {
+    /// Declared first, so an archive opens on its Archive tab. Variants sort by declaration
+    /// order, and the URL names a variant by its name, so older links decode unchanged.
+    Archive(DocumentArchiveSourceItem),
     Pdf(DocumentPdfSourceItem),
     Email(DocumentEmailSourceItem),
     /// Declared before `Text` on purpose: variants sort by declaration order and
@@ -500,12 +586,15 @@ impl DocumentSourceItem {
     pub fn route_identity(&self) -> Self {
         match self {
             Self::Pdf(source) => Self::Pdf(DocumentPdfSourceItem {page_count:0,parts:Vec::new(),..source.clone()}),
+            // The counts change while processing runs, so the address holds the kind only.
+            Self::Archive(source) => Self::Archive(DocumentArchiveSourceItem { kind: source.kind.clone(), ..Default::default() }),
             _ => self.clone(),
         }
     }
     pub fn same_source(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Pdf(a),Self::Pdf(b)) => a.identity() == b.identity(),
+            (Self::Archive(_), Self::Archive(_)) => true,
             _ => self == other,
         }
     }
@@ -559,3 +648,41 @@ impl Ord for DocumentSourceItem {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, PartialOrd, Default)]
 pub struct ItemHitCounts(pub Vec<(DocumentSourceItem, u64)>);
+
+#[cfg(test)]
+mod archive_kind_tests {
+    use super::*;
+
+    #[test]
+    fn mail_stores_messages_and_archives_are_told_apart() {
+        let pst = ["application/octet-stream", "application/vnd.ms-outlook", "application/x-hoover-pst"];
+        assert_eq!(archive_kind(&pst, "application/x-hoover-pst", "archive"), Some(EMAIL_ARCHIVE));
+        assert_eq!(archive_kind(&["application/mbox", "message/rfc822"], "message/rfc822", "archive"), Some(EMAIL_ARCHIVE));
+        let msg = ["application/octet-stream", "application/vnd.ms-outlook", "application/x-ms-msg"];
+        assert_eq!(archive_kind(&msg, "application/vnd.ms-outlook", "archive"), None, "an MSG is one message");
+        assert_eq!(archive_kind(&["application/ms-tnef"], "application/ms-tnef", "archive"), None);
+        assert_eq!(archive_kind(&[], "message/rfc822", "email"), None, "an EML with attachments stays an email");
+        assert_eq!(archive_kind(&["video"], "image/heic", "image"), None);
+        assert_eq!(archive_kind(&["video"], "video/matroska", "archive"), None);
+        assert_eq!(archive_kind(&["application/octet-stream", "application/zip"], "application/octet-stream", "other"),
+                   Some(ARCHIVE), "a ZIP typed other");
+        assert_eq!(archive_kind(&[], "application/zip", "archive"), Some(ARCHIVE), "an empty ZIP has no archives row");
+        assert_eq!(archive_kind(&[], "application/vnd.rar", "other"), Some(ARCHIVE));
+        assert_eq!(archive_kind(&[], "application/pdf", "pdf"), None);
+    }
+
+    #[test]
+    fn the_archive_tab_sorts_first_and_old_links_decode() {
+        let archive = DocumentSourceItem::Archive(DocumentArchiveSourceItem { kind: ARCHIVE.into(), ..Default::default() });
+        let text = DocumentSourceItem::Text(DocumentTextSourceItem {
+            extracted_by: "extractous".into(), min_page: 1, max_page: 1 });
+        let mut list = vec![text.clone(), archive.clone()];
+        list.sort();
+        assert_eq!(list[0], archive);
+        let old: DocumentSourceItem = serde_json::from_str(&serde_json::to_string(&text).unwrap()).unwrap();
+        assert_eq!(old, text);
+        let counted = DocumentSourceItem::Archive(DocumentArchiveSourceItem {
+            kind: ARCHIVE.into(), extracted_file_count: Some(3), ..Default::default() });
+        assert!(counted.route_identity().same_source(&archive));
+    }
+}

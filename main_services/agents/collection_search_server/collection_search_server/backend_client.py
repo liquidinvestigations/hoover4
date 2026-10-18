@@ -345,6 +345,8 @@ class SearchDocument(AgentModel):
     document_date: int | None
     dataset: str
     collection_dataset: str = ""
+    container_hash: str = ""
+    container_path: str = ""
 
 
 class FacetCount(AgentModel):
@@ -411,6 +413,7 @@ class DocumentText(AgentModel):
     hit_pages: list[int]
     count_state: str
     next_position: AgentPosition | None = None
+    archive: dict[str, Any] | None = None
 
 
 class TextHit(AgentModel):
@@ -682,6 +685,7 @@ class DocumentsSearchTextResponse(AgentModel):
     source_used: str
     hit_count: int
     hits: list[TextHit]
+    archive: dict[str, Any] | None = None
     source: str
     next_position: AgentPosition | None = None
     total: int | None = None
@@ -690,6 +694,7 @@ class DocumentsSearchTextResponse(AgentModel):
 
 class DocumentsSourcesResponse(AgentModel):
     sources: list[DocumentSource]
+    archive: dict[str, Any] | None = None
     source: str
     next_position: AgentPosition | None = None
     total: int | None = None
@@ -705,6 +710,7 @@ class DocumentsMetadataResponse(AgentModel):
     canonical_file_type: str
     download_links: DownloadLinks
     source: str
+    archive: dict[str, Any] | None = None
 
 
 class DocumentsEmailResponse(AgentModel):

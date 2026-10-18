@@ -325,3 +325,49 @@ def test_a_search_is_retryable_only_when_every_form_failed_in_transport(monkeypa
         assert response["retryable"] is True and response["success"] is False
     else:
         assert "retryable" not in response
+
+
+PST = {"kind": "email_archive", "mime": "application/x-hoover-pst", "extracted_file_count": 141,
+       "extracted_size_bytes": 16389707, "size_bytes": 271360, "dataset": "testdata_diskfiles",
+       "path": "/sources/enron.pst", "node_id": "testdata_diskfiles\u001f\u001f/sources/enron.pst",
+       "folder_term_id": 2979142087377742315, "processing_errors": 2}
+
+
+def _answer(monkeypatch, body):
+    from collection_search_server import backend_client
+
+    def fake_post(self, route, request, response_model=None, expected_source=None):
+        return response_model.model_validate(body)
+
+    monkeypatch.setattr("collection_search_server.paging.BackendClient.post", fake_post)
+    return backend_client
+
+
+def test_an_archive_read_gets_a_note_in_place_of_the_no_text_error(monkeypatch):
+    row = {"collectionname": "c", "collection_dataset": "testdata_diskfiles", "file_hash": "a" * 64,
+           "path": "/sources/enron.pst", "title": "enron.pst", "source_used": "", "page": None,
+           "min_page": None, "max_page": None, "text": "", "text_start": 0, "text_end": 0, "text_length": 0,
+           "source_version": "", "hit_count": 0, "hit_pages": [], "count_state": "no_text", "archive": PST}
+    _answer(monkeypatch, {"documents": [row], "source": "s"})
+    page = json.loads(tools_document.read_documents.fn(collection="c", file_hash=["a" * 64]))
+    [item] = page["items"]
+    assert "error" not in item and "archive" not in item
+    assert item["note"].startswith("This email archive has 141 extracted files, 16.4 MB in total.")
+    assert "search_collections and folder_term_id 2979142087377742315" in item["note"]
+    assert 'folder_list, dataset "testdata_diskfiles" and node_id' in item["note"]
+    assert "2 processing tasks recorded an error for the archive file." in item["note"]
+    assert "indexed" not in item["note"], "an extracted file is not a searchable document"
+
+
+def test_an_archive_text_search_and_source_list_carry_the_note(monkeypatch):
+    _answer(monkeypatch, {"source_used": "", "hit_count": 0, "hits": [], "archive": PST, "source": "s", "total": 0})
+    page = json.loads(tools_document.doc_search_text.fn(collection="c", file_hash="a" * 64, query="q"))
+    assert page["archive_note"].startswith("This email archive has 141 extracted files")
+    _answer(monkeypatch, {"sources": [], "archive": {**PST, "extracted_file_count": None, "node_id": None,
+                                                     "folder_term_id": None, "extracted_size_bytes": None,
+                                                     "processing_errors": 0, "kind": "archive"},
+                          "source": "s", "total": 0})
+    page = json.loads(tools_document.doc_sources.fn(collection="c", file_hash="a" * 64))
+    assert page["archive_note"] == "This document is an archive, and the pipeline extracted no files from it."
+    _answer(monkeypatch, {"sources": [], "source": "s", "total": 0})
+    assert "archive_note" not in json.loads(tools_document.doc_sources.fn(collection="c", file_hash="a" * 64))

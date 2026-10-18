@@ -57,6 +57,12 @@ Browse a tabular document by sheet, with sorting, per-column filters, hidden col
 
 Source ownership uses [website/backend/src/api/documents/table_browse.rs](../../website/backend/src/api/documents/table_browse.rs), [website/frontend/src/components/document_view_components/doc_preview_for_search/doc_preview_for_table.rs](../../website/frontend/src/components/document_view_components/doc_preview_for_search/doc_preview_for_table.rs).
 
+## F-doc-12
+
+Classify an archive by its `archives` MIME types and its canonical type. A PST, OST or mbox file is an email archive. A ZIP, TAR, 7z, RAR or ISO file, or a file of canonical type `archive`, is an archive. An EML, MSG or TNEF file and an image or video with an `archives` row are not archives, and a VFS container node alone does not make one. Open an archive on an Archive or Email Archive tab, which sorts before every other source and keeps older viewer links valid. Show the extracted file count and size from `vfs_nodes`, the archive file size, the archive's own dates, the date range of a search scoped to the archive's folder term, and a link that opens the file browser inside the archive. Show an archive without extracted files with that statement and no browse link. Count an extracted file location without a claim that it is searchable.
+
+Source ownership uses [website/common/src/document_sources.rs](../../website/common/src/document_sources.rs), [website/backend/src/api/documents/get_document_sources.rs](../../website/backend/src/api/documents/get_document_sources.rs), [website/frontend/src/components/document_view_components/doc_preview_for_search/doc_preview_for_archive.rs](../../website/frontend/src/components/document_view_components/doc_preview_for_search/doc_preview_for_archive.rs).
+
 ## F-chat-03
 
 Search the corpus from up to 12 query forms in one call. Return at most 15 rows per form, with a continuation for later rows. Each row names its query forms, gives known size in bytes, and has a snippet of at most 350 characters. Read `OR`, `AND` and `NOT` as `\|`, nothing and `-`. Keep the word after `from:` or `to:` and report each rewrite. Resolve a dataset name to its collection and report that choice
@@ -68,6 +74,12 @@ Source ownership uses [main_services/processing/tasks/P_agent](../../main_servic
 Read one text page of each of up to 20 documents in one call. With a query, open the page with the most hits and list the pages with hits. Count page 0 as no page. With no page and no query, open the first stored page of the source, which can be above 1. Read a positive page exactly. Page through a long document by page id, and list its hits page by page. When `collectionname` of a document tool names a dataset that the caller cannot read as a collection, use the collection that holds the dataset and say so in `collection_notes`. Refuse a collection outside the caller's set with a message that names `list_collections`
 
 Source ownership uses [main_services/processing/tasks/P_agent](../../main_services/processing/tasks/P_agent), [website/backend/src/api/chat](../../website/backend/src/api/chat), [website/frontend/src/components/chat_components](../../website/frontend/src/components/chat_components).
+
+## F-chat-03e
+
+Give `documents/read`, `documents/search_text`, `documents/sources` and `documents/metadata` an `archive` object for an archive or a mail store, with the classification of `F-doc-12`. `documents/search_text` answers an archive without text with no hits and the object. The collection tools show the object as one note: the extracted file count and size, the `folder_term_id` for `search_collections`, the node for `folder_list` and `folder_search`, and the processing tasks that recorded an error for the archive file. The note says that an extracted file can be missing from search. Show `bytes_stored_in` (`clickhouse` or `object_storage`) in place of the raw `blobs.stored_in_clickhouse` flag. Give a search hit inside an archive or an email its container hash and path, and show the path as `container` in the tool row.
+
+Source ownership uses [website/backend/src/api/agent/documents.rs](../../website/backend/src/api/agent/documents.rs), [website/backend/src/api/agent/search.rs](../../website/backend/src/api/agent/search.rs), [main_services/agents/collection_search_server/collection_search_server/paging.py](../../main_services/agents/collection_search_server/collection_search_server/paging.py).
 
 ## F-chat-04
 

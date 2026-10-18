@@ -2,6 +2,7 @@
 //! `documents/metadata`, `documents/email`, `documents/diff_sources` and `documents/pdf_search`.
 
 use super::*;
+use common::document_sources::DocumentArchiveSourceItem;
 use crate::api::documents::search_document_itemcount::SourceCount;
 use crate::api::documents::search_document_text::DOCUMENT_HIT_ROW_LIMIT;
 
@@ -260,6 +261,8 @@ struct PlannedRead {
     identifier: DocumentIdentifier,
     chosen: Option<common::document_sources::DocumentTextSourceItem>,
     extent: (u64, u32),
+    /// The archive facts of a document without a text source that is an archive.
+    archive: Option<DocumentArchiveSourceItem>,
 }
 
 async fn documents_read_body(
@@ -307,7 +310,11 @@ async fn documents_read_body(
             Some(source) => pages.extent(&source.extracted_by).await?,
             None => (0, 0),
         };
-        planned.push(PlannedRead { file_hash: file_hash.clone(), identifier, chosen, extent });
+        let archive = match &chosen {
+            Some(_) => None,
+            None => get_document_sources::archive_info_for(user, &identifier).await,
+        };
+        planned.push(PlannedRead { file_hash: file_hash.clone(), identifier, chosen, extent, archive });
     }
     let source = planned
         .iter()
@@ -347,6 +354,7 @@ async fn documents_read_body(
                     hit_pages: Vec::new(),
                     count_state: "timed_out".to_string(),
                     next_position: None,
+                    archive: None,
                 });
             }
         }
@@ -393,6 +401,7 @@ async fn read_one_document(
                 hit_pages: Vec::new(),
                 count_state: "no_text".to_string(),
                 next_position: None,
+                archive: plan.archive.clone(),
             },
             false,
         ));
@@ -422,6 +431,7 @@ async fn read_one_document(
             hit_pages: counts.iter().take(MAX_HIT_PAGES).map(|(page, _)| *page).collect(),
             count_state: "read".to_string(),
             next_position,
+            archive: None,
         },
         stopped,
     ))
@@ -530,7 +540,25 @@ async fn documents_search_text_body(
             .iter()
             .find(|source| &source.extracted_by == wanted)
             .ok_or_else(|| AgentError::not_found(format!("no text source {wanted:?}")))?,
-        None => sources.first().ok_or_else(|| AgentError::not_found("the document has no text source"))?,
+        None => match sources.first() {
+            Some(first) => first,
+            None => {
+                // An archive has no text of its own. Its facts tell the caller how to reach
+                // the extracted files.
+                let Some(archive) = get_document_sources::archive_info_for(user, &identifier).await else {
+                    return Err(AgentError::not_found("the document has no text source"));
+                };
+                let source = format!("{}:archive", body.file_hash);
+                verify_expected_source(body.expected_source.as_deref(), &source)?;
+                return Ok(DocumentsSearchTextResponse {
+                    source_used: String::new(),
+                    hit_count: 0,
+                    hits: Vec::new(),
+                    archive: Some(archive),
+                    page_info: AgentPageInfo { source, next_position: None, total: Some(0), partial: false },
+                });
+            }
+        },
     };
     let pages = StoredTextPages { user, identifier: &identifier, collectionname: &body.collectionname, deadline };
     let extent = pages.extent(&chosen.extracted_by).await?;
@@ -545,6 +573,7 @@ async fn documents_search_text_body(
         source_used: chosen.extracted_by.clone(),
         hit_count,
         hits,
+        archive: None,
         page_info: AgentPageInfo { source, next_position, total: Some(hit_count), partial },
     })
 }
@@ -604,7 +633,7 @@ fn describe_source(source: &DocumentSourceItem) -> Option<AgentDocumentSource> {
         DocumentSourceItem::Image(_) => AgentDocumentSource { kind: "image".into(), label: "Image".into(), ..Default::default() },
         DocumentSourceItem::Video(_) => AgentDocumentSource { kind: "video".into(), label: "Video".into(), ..Default::default() },
         DocumentSourceItem::Audio(_) => AgentDocumentSource { kind: "audio".into(), label: "Audio".into(), ..Default::default() },
-        DocumentSourceItem::FileLocations | DocumentSourceItem::Metadata => return None,
+        DocumentSourceItem::FileLocations | DocumentSourceItem::Metadata | DocumentSourceItem::Archive(_) => return None,
     };
     Some(AgentDocumentSource { count_state: "no_query".into(), ..described })
 }
@@ -627,11 +656,20 @@ async fn documents_sources_body(
     deadline: Deadline,
 ) -> Result<DocumentsSourcesResponse, AgentError> {
     let identifier = document_identifier(user, headers, &body.collectionname, &body.file_hash, DatasetRow::Any).await?;
+    let mut archive = None;
     let items: Vec<DocumentSourceItem> = get_document_sources::get_document_sources(user, identifier.clone())
         .await
         .map_err(AgentError::from_anyhow)?
         .into_iter()
-        .filter(|item| !matches!(item, DocumentSourceItem::FileLocations | DocumentSourceItem::Metadata))
+        .filter_map(|item| match item {
+            // The archive facts go to `archive`, so `sources` and the hit counts stay aligned.
+            DocumentSourceItem::Archive(found) => {
+                archive = Some(found);
+                None
+            }
+            DocumentSourceItem::FileLocations | DocumentSourceItem::Metadata => None,
+            other => Some(other),
+        })
         .collect();
     let mut sources: Vec<AgentDocumentSource> = items.iter().filter_map(describe_source).collect();
     let source = format!(
@@ -672,7 +710,7 @@ async fn documents_sources_body(
         }
     }
     let total = Some(sources.len() as u64);
-    Ok(DocumentsSourcesResponse { sources, page_info: AgentPageInfo { source, next_position: None, total, partial } })
+    Ok(DocumentsSourcesResponse { sources, archive, page_info: AgentPageInfo { source, next_position: None, total, partial } })
 }
 
 // ===================================================================================
@@ -733,6 +771,17 @@ fn cut_long_strings(value: &mut serde_json::Value, pointer: &str) {
     }
 }
 
+/// Replaces the `stored_in_clickhouse` flag of a `blobs` row with `bytes_stored_in`:
+/// `clickhouse` or `object_storage`. A model read the raw `0` as "not stored".
+fn name_blob_storage(row: &mut serde_json::Value) {
+    let Some(map) = row.as_object_mut() else { return };
+    let Some(flag) = map.remove("stored_in_clickhouse") else { return };
+    let in_clickhouse = flag.as_u64().map(|n| n != 0).or_else(|| flag.as_bool())
+        .or_else(|| flag.as_str().map(|s| s != "0" && !s.is_empty())).unwrap_or(false);
+    map.insert("bytes_stored_in".into(),
+               if in_clickhouse { "clickhouse".into() } else { "object_storage".into() });
+}
+
 pub async fn documents_metadata(
     Extension(user): Extension<CurrentUser>,
     headers: HeaderMap,
@@ -764,6 +813,9 @@ async fn documents_metadata_body(
         for (index, value) in values.iter_mut().enumerate() {
             cut_long_strings(value, &format!("/{table}/{index}"));
         }
+    }
+    if let Some(blobs) = raw_metadata.get_mut("blobs") {
+        blobs.iter_mut().for_each(name_blob_storage);
     }
 
     let dates = get_document_provenance::get_document_dates(user, identifier.clone())
@@ -806,7 +858,9 @@ async fn documents_metadata_body(
             source:source.source_name(),label:source.label(),url:source.url(&identifier.collection_dataset,&identifier.file_hash)
         }).collect() };
 
+    let archive = get_document_sources::archive_info_for(user, &identifier).await;
     Ok(DocumentsMetadataResponse {
+        archive,
         raw_metadata,
         dates,
         file_locations,
@@ -1175,5 +1229,20 @@ mod page_choice_tests {
         assert_eq!(chosen_page(requested_page(Some(5)), &[(4, 9)], 3), 5);
         assert_eq!(chosen_page(requested_page(Some(1)), &[], 3), 1);
         assert_eq!(chosen_page(requested_page(Some(0)), &[(4, 1), (7, 9)], 3), 7);
+    }
+}
+
+#[cfg(test)]
+mod blob_storage_tests {
+    use super::name_blob_storage;
+
+    #[test]
+    fn the_storage_flag_becomes_a_named_place() {
+        let mut row = serde_json::json!({"blob_hash": "h", "stored_in_clickhouse": 0});
+        name_blob_storage(&mut row);
+        assert_eq!(row, serde_json::json!({"blob_hash": "h", "bytes_stored_in": "object_storage"}));
+        let mut row = serde_json::json!({"stored_in_clickhouse": "1"});
+        name_blob_storage(&mut row);
+        assert_eq!(row["bytes_stored_in"], "clickhouse");
     }
 }
