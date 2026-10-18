@@ -244,3 +244,22 @@ def test_an_old_plan_output_decodes_without_labels():
         [{"reasons": [], "explores": [], "cancels": []}])
     decoded = DataConverter.default.payload_converter.from_payloads(payload, [activities.PlanOutput])
     assert decoded[0].labels == []
+
+
+def test_a_trailing_goal_id_is_removed_from_a_label():
+    from tasks.P_board.contracts import drop_goal_phrase, parse_labels
+
+    assert drop_goal_phrase("Approval Date for goal-01") == "Approval Date"
+    assert drop_goal_phrase("Who signed the swap for goal-2.") == "Who signed the swap."
+    assert drop_goal_phrase("Payments for the goal-03") == "Payments"
+    assert drop_goal_phrase("A goal for the board") == "A goal for the board"
+    reply = json.dumps({"labels": [{"id": "i1.1", "slug": "approval-date", "title": "Approval Date for goal-01",
+                                    "summary": "Finds the date that the board approved the swap for goal-01."}]})
+    entry = parse_labels(reply, {"i1.1": "text"})["i1.1"]
+    assert (entry["title"], entry["summary"]) == ("Approval Date", "Finds the date that the board approved the swap.")
+
+
+def test_the_label_prompt_asks_for_no_ids():
+    from tasks.P_board.labels import label_prompt
+
+    assert "Do not copy ids such as goal-01 or fact-... into a title or summary." in label_prompt([], [])

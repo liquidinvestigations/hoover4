@@ -208,6 +208,7 @@ def label_prompt(goals: list[str], nodes: list[Node]) -> str:
         "- slug: 2 to 4 lowercase English words that name the content, joined by hyphens. "
         "No type word such as intent, fact or correction, and no id.\n"
         "- title: 3 to 4 words in title case that name what the node establishes or asks.\n"
+        "- Do not copy ids such as goal-01 or fact-... into a title or summary.\n"
         "- summary: one sentence of 15 to 20 words with the names, dates and numbers of the "
         "text. Use only content of the text. Do not write \"this fact\", \"the agent\", ids or "
         "citation handles."

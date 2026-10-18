@@ -252,6 +252,21 @@ pub struct BoardGraphInput {
     pub not_answered: Vec<String>,
 }
 
+impl BoardGraphInput {
+    /// The nodes that a label of this board can name (`board_text::name_nodes`).
+    pub fn link_nodes(&self) -> Vec<crate::board_text::LinkNode> {
+        node_list(&self.facts, &self.intents)
+    }
+}
+
+fn node_list(facts: &[BoardFact], intents: &[BoardIntent]) -> Vec<crate::board_text::LinkNode> {
+    let fact = facts.iter().map(|f| (&f.fact_id, &f.slug, &f.title));
+    let intent = intents.iter().map(|i| (&i.intent_id, &i.slug, &i.title));
+    fact.chain(intent)
+        .map(|(id, slug, title)| crate::board_text::LinkNode { id: id.clone(), slug: slug.clone(), title: title.clone() })
+        .collect()
+}
+
 /// One intent.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BoardIntent {
@@ -433,6 +448,11 @@ impl BoardSnapshot {
             self.facts.iter().find(|f| f.fact_id == key).map(|f| f.fact_id.clone())
                 .or_else(|| self.intents.iter().find(|i| i.intent_id == key).map(|i| i.intent_id.clone()))
         })
+    }
+
+    /// The nodes that a text of this board can name (`board_text::link_nodes`).
+    pub fn link_nodes(&self) -> Vec<crate::board_text::LinkNode> {
+        node_list(&self.facts, &self.intents)
     }
 
     pub fn graph_input(&self) -> BoardGraphInput {

@@ -145,7 +145,8 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
     `dropped_answers` lists the goals whose only answer the checks dropped.
 
     An intent keeps its position in the reply (`position`, from 1), so a dropped intent does
-    not renumber the others. Its `slug` is a candidate name. Its `questions` keep only keys
+    not renumber the others. Its `slug` is a candidate name. Its `goal` is kept when it names
+    a goal of `goal_ids`. Its `questions` keep only keys
     that the prompt listed. A final reply proposes answers only, and its intents are dropped.
 
     The outcome is `review` when the answers cover every goal of `goal_ids` without an
@@ -197,7 +198,10 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
         if stray:
             problems.append(f"discarded question keys {stray}: not listed in the prompt")
         seen.append(objective)
+        goal = str(item.get("goal") or "").strip()
+        goal = (goal_texts or {}).get(goal, goal)
         kept.append({"from": from_ids, "objective": objective,
+                     "goal": goal if goal in goal_ids else "",
                      "brief": str(item.get("brief") or "").strip(), "position": position,
                      "slug": str(item.get("slug") or "").strip()[:80],
                      "questions": [k for k in named if k in allowed]})
@@ -284,14 +288,25 @@ def cut_words(text: str, limit: int) -> str:
     return " ".join(str(text or "").split()[:limit])
 
 
+#: A trailing "for goal-01" of a generated label, which names a goal by its id.
+TRAILING_GOAL_PATTERN = re.compile(r"\s+for\s+(?:the\s+)?goal[-\w.]*?-\w+(?P<end>[.!?]?)\s*$", re.IGNORECASE)
+
+
+def drop_goal_phrase(text: str) -> str:
+    """`text` without a trailing phrase such as "for goal-01" or "for goal-2.". A final
+    full stop stays."""
+    return TRAILING_GOAL_PATTERN.sub(lambda m: m.group("end"), text.strip())
+
+
 def parse_labels(text: str, sources: dict) -> dict:
     """The checked labels of one reply, by node id: `{"slug", "title", "summary"}`.
 
     `sources` maps each node id that the call asked for to the text that a fallback reads.
     An entry for another id is dropped. An entry without a title or a summary is dropped, so
     its node counts a failed attempt. A slug that is empty after the clean-up comes from the
-    first 3 words of the title, then from the first 3 words of the source text. A reply
-    without a JSON object gives no label.
+    first 3 words of the title, then from the first 3 words of the source text. A trailing
+    "for goal-01" of a title or a summary is removed. A reply without a JSON object gives no
+    label.
     """
     try:
         data = extract_json_object(text)
@@ -305,8 +320,8 @@ def parse_labels(text: str, sources: dict) -> dict:
         node_id = str(entry.get("id") or "").strip()
         if node_id not in sources or node_id in out:
             continue
-        title = cut_words(entry.get("title"), TITLE_WORDS)
-        summary = cut_words(entry.get("summary"), SUMMARY_WORDS)
+        title = cut_words(drop_goal_phrase(str(entry.get("title") or "")), TITLE_WORDS)
+        summary = cut_words(drop_goal_phrase(str(entry.get("summary") or "")), SUMMARY_WORDS)
         if not title or not summary:
             continue
         words = [w for w in slug_words(str(entry.get("slug") or "").replace("-", " "), SLUG_WORDS + 1)

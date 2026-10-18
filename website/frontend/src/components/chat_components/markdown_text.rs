@@ -19,6 +19,7 @@
 
 use dioxus::prelude::*;
 use common::chat_pages::ChatPageRef;
+use common::board_text::{link_nodes, LinkNode, TextPart};
 use common::chat_types::ChatDocRef;
 use super::transcript::DocumentCitationCards;
 use super::web_page::WebPageCard;
@@ -52,6 +53,10 @@ pub fn MarkdownishText(
     citation_links: bool,
     #[props(default)]
     card_handles: Option<Vec<String>>,
+    /// The board nodes that the text can name, each with the address that selects it. A
+    /// name becomes a link with the node title (`common::board_text::link_nodes`).
+    #[props(default)]
+    node_links: Option<NodeLinks>,
 ) -> Element {
     let blocks = if !citation_links {
         parse_blocks(&text).into_iter().map(|block| map_spans(block, &|span| match span {
@@ -65,6 +70,10 @@ pub fn MarkdownishText(
             .collect(),
     }};
     let blocks = unique_card_blocks(blocks, card_handles.as_deref());
+    let blocks = match &node_links {
+        Some(links) => blocks.into_iter().map(|block| link_block_nodes(block, links)).collect(),
+        None => blocks,
+    };
     rsx! {
         div {
             style: "font-size: {BODY_PX}px; line-height: var(--x-line-body); color: var(--x-ink-strong); \
@@ -379,6 +388,16 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                             "{handle} ({CONFLICTING_LABEL})"
                         }
                     },
+                    Span::Node { text, name, href } => rsx! {
+                        Link {
+                            key: "{i}",
+                            class: "x-node-link",
+                            to: href,
+                            title: "{name}",
+                            style: "color: var(--x-link); text-decoration: underline;",
+                            "{text}"
+                        }
+                    },
                     Span::Link { text, href } => rsx! {
                         a {
                             key: "{i}",
@@ -394,6 +413,41 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                 }
             }
         }
+    }
+}
+
+/// The board nodes of `MarkdownishText::node_links`: `hrefs[i]` selects `nodes[i]`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct NodeLinks {
+    pub nodes: Vec<LinkNode>,
+    pub hrefs: Vec<String>,
+}
+
+/// The text spans of a block with each node name as a `Span::Node`.
+fn link_block_nodes(block: Block, links: &NodeLinks) -> Block {
+    fn inline(spans: Vec<Span>, links: &NodeLinks) -> Vec<Span> {
+        spans.into_iter().flat_map(|span| match span {
+            Span::Text(text) => link_nodes(&text, &links.nodes).into_iter().map(|part| match part {
+                TextPart::Text(t) => Span::Text(t),
+                TextPart::Node { name, node } => Span::Node {
+                    text: links.nodes[node].label().to_string(),
+                    name,
+                    href: links.hrefs.get(node).cloned().unwrap_or_default(),
+                },
+            }).collect::<Vec<_>>(),
+            Span::Styled { bold, spans } => vec![Span::Styled { bold, spans: inline(spans, links) }],
+            other => vec![other],
+        }).collect()
+    }
+    let all = |lists: Vec<Vec<Span>>| -> Vec<Vec<Span>> { lists.into_iter().map(|l| inline(l, links)).collect() };
+    match block {
+        Block::Heading { level, spans } => Block::Heading { level, spans: inline(spans, links) },
+        Block::Paragraph(spans) => Block::Paragraph(inline(spans, links)),
+        Block::Bullets(items) => Block::Bullets(all(items)),
+        Block::Numbers(items) => Block::Numbers(all(items)),
+        Block::Quote(spans) => Block::Quote(inline(spans, links)),
+        Block::Table { header, rows } => Block::Table { header: all(header), rows: rows.into_iter().map(all).collect() },
+        other => other,
     }
 }
 
@@ -417,6 +471,8 @@ pub enum Span {
     /// A handle that citations of the conversation gave to more than one document, in
     /// records from before durable handles. Rendered as plain text with no chip.
     ConflictingHandle(String),
+    /// A board node that the text names (`name`), shown as a link with the node title.
+    Node { text: String, name: String, href: String },
 }
 
 #[derive(Debug, Clone, PartialEq)]

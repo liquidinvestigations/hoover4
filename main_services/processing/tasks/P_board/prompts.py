@@ -192,9 +192,9 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
             "Return only one JSON object, with no other text. Both keys are optional:\n"
             f"{{\"answers\": [{{\"goal\": \"{first_goal}\", \"from\": [\"<fact id>\"], "
             "\"statement\": \"what these facts establish for this goal, and what they do not "
-            "cover\"}], \"intents\": [{\"from\": [\"<fact id>\"], \"objective\": \"what to "
-            "establish\", \"brief\": \"what to search and what to return\", \"slug\": \"two to "
-            "four words\", \"questions\": [\"<question key>\"]}]}\n"
+            "cover\"}], \"intents\": [{\"from\": [\"<fact id>\"], \"goal\": \"<goal id>\", "
+            "\"objective\": \"what to establish\", \"brief\": \"what to search and what to "
+            "return\", \"slug\": \"two to four words\", \"questions\": [\"<question key>\"]}]}\n"
             "Give an answer for each goal that the facts answer, and intents for the goals that "
             "they do not answer yet. When every goal that is not accepted has an answer, the "
             "investigator reviews the answers.\n"
@@ -212,9 +212,11 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
             "- `slug` names the direction of an intent in two to four lowercase English words.\n"
             "- `questions` lists the keys of the open questions below that the intent explores. "
             "It is optional. Use only listed keys.\n"
-            "- Direct each intent at one goal, and name that goal in its objective.\n")
+            "- Direct each intent at one goal, and give that goal in its `goal` field.\n")
     return (
         task +
+        "- Name goals and facts by their ids in `from` and `goal` fields only. Do not write ids "
+        "in statements or objectives.\n"
         "- An answer lists the sourced facts that state it. An inferred fact cannot support an "
         "answer.\n"
         "- When the documents do not hold the answer of a goal, list only the not_found facts of "

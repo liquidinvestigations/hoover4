@@ -32,6 +32,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use common::board_text::name_nodes;
 use common::board_types::{BoardFact, BoardGraphInput, BoardIntent, BoardReviewGoal};
 use dioxus::prelude::*;
 
@@ -219,6 +220,13 @@ pub fn build_graph(input: &BoardGraphInput) -> Graph {
                 edges.push(GraphEdge { src: from.clone(), dst: answer.goal.clone(), kind });
             }
         }
+    }
+
+    // A label that names another node shows its title (`board_text::name_nodes`).
+    let names = input.link_nodes();
+    for node in &mut nodes {
+        node.title = name_nodes(&node.title, &names);
+        node.summary = name_nodes(&node.summary, &names);
     }
 
     let mut per_column: HashMap<u32, u32> = HashMap::new();

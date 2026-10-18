@@ -794,3 +794,23 @@ def test_the_parser_lists_the_goals_whose_answer_it_dropped():
                                     {"goal": "goal-2", "from": [], "statement": "s"}]})
     out = parse_reason(reply, {"f1.2"}, set(), [], True, ["goal", "goal-2"])
     assert out["dropped_answers"] == ["goal", "goal-2"]
+
+
+def test_the_prompt_asks_for_ids_only_in_from_and_goal_fields():
+    from tasks.P_board.prompts import render_reason
+
+    rows = facts(("f1.1", m.SOURCED))
+    prompt = render_reason(board(), fold(board(), Log().add(m.BOARD_CREATED).events, rows), rows, [],
+                           stalled=False)
+    assert ("Name goals and facts by their ids in `from` and `goal` fields only. Do not write ids "
+            "in statements or objectives.") in prompt
+    assert "give that goal in its `goal` field" in prompt
+    assert "name that goal in its objective" not in prompt
+
+
+def test_an_intent_keeps_a_goal_field_that_names_a_goal():
+    reply = json.dumps({"intents": [
+        {"from": ["origin"], "goal": "goal-01", "objective": "Find the approval date"},
+        {"from": ["origin"], "goal": "goal-9", "objective": "Find the bank that paid"}]})
+    out = parse_reason(reply, {"origin"}, set(), [], True, ["goal-01"])
+    assert [i["goal"] for i in out["intents"]] == ["goal-01", ""]

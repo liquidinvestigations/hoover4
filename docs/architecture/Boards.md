@@ -242,6 +242,20 @@ both forms. A goal slot reads both forms, so the first legacy goal `goal` holds 
 later goal is `goal-02`. The fold reads the explicit `intent_id` and `origin` of a new event,
 and derives a legacy id only for a legacy event without them.
 
+### Node names in text
+
+Older statements, fact texts and labels can name a node by its id or slug, for example
+"Fact f1.1 provides" or "for goal-2". `common::board_text::link_nodes` finds such names as
+whole words and shows each one as a link with the node title. A word is a name only when it
+holds a hyphen or a digit, so the words `goal`, `origin` and `background` stay text. Code,
+Markdown links, URLs and citation handles such as `[D1]` stay text. The board page links names
+in answer statements, fact texts, intent objectives, event lines and assessment checks. The
+graph shows the node title in place of a name in a label (`board_text::name_nodes`).
+
+The assessment prompt asks for ids only in the `from` and `goal` fields, and an intent names
+its goal in its `goal` field. The label prompt asks for no ids, and the label code removes a
+trailing phrase such as "for goal-01" from a title or a summary.
+
 ## The fold
 
 [tasks/P_board/fold.py](../../main_services/processing/tasks/P_board/fold.py) derives the state of a board from its events and facts. It reads no

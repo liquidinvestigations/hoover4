@@ -36,6 +36,7 @@ use common::board_types::{
     BoardAction, BoardAssessment, BoardCommandReceipt, BoardEvent, BoardFact, BoardIntent, BoardReviewGoal,
     BoardSnapshot, EXPLORE_LIMIT, MAX_GOALS, NOT_ESTABLISHED,
 };
+use common::board_text::{link_nodes, TextPart};
 use common::chat_pages::ChatPageRef;
 use common::chat_types::{ChatDocRef, card_find_phrase};
 use common::search_result::{DocumentIdentifier, SearchResultDocuments, SearchResultHitCount};
@@ -56,7 +57,7 @@ use crate::components::board_graph::{
     build_graph, corners, render_edge, render_node, settle, ArrowMarker, NodeKind, NodePosition,
 };
 use crate::components::chat_components::doc_ref_card::ChatDocOpen;
-use crate::components::chat_components::markdown_text::MarkdownishText;
+use crate::components::chat_components::markdown_text::{MarkdownishText, NodeLinks};
 use crate::components::chat_components::transcript::{session_citation_sources, SessionSources};
 use crate::components::chat_components::web_page::ChatWebOpen;
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
@@ -394,6 +395,7 @@ fn BoardExplorer(
             from: intent.from_facts.iter().map(|id| snap.slug_of(id)).collect(),
             board_id: snap.board.board_id.clone(),
             zoom: zoom_value.clone(),
+            links: node_links(&snap, &zoom_value),
         } }
     } else {
         rsx! { BoardOverview { snap: snap.clone(), zoom: zoom_value.clone(), on_details: set_assessment, snapshot, error } }
@@ -413,6 +415,7 @@ fn BoardExplorer(
                 key: "{number}",
                 board_id: snap.board.board_id.clone(),
                 reason_no: number,
+                links: node_links(&snap, &zoom_value),
                 on_close: move |_| set_assessment.call(None),
             }
         }
@@ -667,6 +670,7 @@ fn BoardOverview(
     let board_id = snap.board.board_id.clone();
     let goals: Vec<BoardFact> = snap.goals().into_iter().cloned().collect();
     let dropped = snap.status == "dropped";
+    let links = node_links(&snap, &zoom);
     let review_id = snap.review_id.clone();
     // Run one action from this pane. Every button of the pane is disabled while it runs.
     let run = {
@@ -732,6 +736,7 @@ fn BoardOverview(
                                 zoom: zoom.clone(),
                                 dropped,
                                 not_answered: snap.not_answered.contains(&goal.fact_id),
+                                links: links.clone(),
                                 snapshot,
                                 error,
                             }
@@ -877,10 +882,10 @@ fn BoardOverview(
                             td { style: "{TD} white-space: nowrap;", "{format_utc_ms(event.created_ms)}" }
                             td { style: "{TD} {actor_style(&event.actor)}", class: "x-board-event-actor", "{actor_label(&event.actor)}" }
                             td { style: TD,
-                                "{event.summary}"
+                                NodeText { text: event.summary.clone(), links: links.clone() }
                                 if !event.quote.is_empty() {
                                     ": "
-                                    em { class: "x-board-event-quote", "{event.quote}" }
+                                    em { class: "x-board-event-quote", NodeText { text: event.quote.clone(), links: links.clone() } }
                                 }
                             }
                             td { style: "{TD} width: 1%;", class: "x-board-event-link",
@@ -1150,6 +1155,7 @@ fn FactDetail(
     let mut busy = use_signal(|| false);
     let board_id = snap.board.board_id.clone();
     let dropped = snap.status == "dropped";
+    let links = node_links(&snap, &zoom);
     let run = {
         let board_id = board_id.clone();
         move |action: BoardAction, mut clear: Option<Signal<String>>| {
@@ -1270,7 +1276,7 @@ fn FactDetail(
             // The gray area behind the citation cards, as on the chat page, so the white cards
             // stand out.
             div { class: "x-board-fact-text", style: "margin: 6px 0; background: #ECEEF2; padding: 12px; border-radius: 8px;",
-                MarkdownishText { text: fact.text.clone(), cited_handles: Some(handles), sources, pages }
+                MarkdownishText { text: fact.text.clone(), cited_handles: Some(handles), sources, pages, node_links: Some(links.clone()) }
             }
             if fact.kind == "goal" {
                 GoalAnswer {
@@ -1282,6 +1288,7 @@ fn FactDetail(
                     zoom: zoom.clone(),
                     dropped,
                     not_answered: snap.not_answered.contains(&fact.fact_id),
+                    links: links.clone(),
                     snapshot,
                     error,
                 }
@@ -1355,7 +1362,9 @@ fn FactDetail(
             if !fact.problems.is_empty() {
                 div { style: SUBHEADING, "Checks that changed this finding" }
                 for (i, p) in fact.problems.iter().enumerate() {
-                    div { key: "{i}", style: "font-size: var(--x-text-detail); color: var(--x-danger);", "{p}" }
+                    div { key: "{i}", style: "font-size: var(--x-text-detail); color: var(--x-danger);",
+                        NodeText { text: p.clone(), links: links.clone() }
+                    }
                 }
             }
             if can_reject {
@@ -1420,6 +1429,7 @@ fn GoalAnswer(
     zoom: String,
     dropped: bool,
     not_answered: bool,
+    links: NodeLinks,
     snapshot: Signal<Option<BoardSnapshot>>,
     error: Signal<Option<String>>,
 ) -> Element {
@@ -1476,7 +1486,7 @@ fn GoalAnswer(
                     "The findings of this answer are searches that found nothing. Accept it to record that the records do not answer the goal, or reject it to continue the investigation."
                 }
             }
-            p { style: "margin: 2px 0; white-space: pre-wrap;", "{answer.statement}" }
+            p { style: "margin: 2px 0; white-space: pre-wrap;", NodeText { text: answer.statement.clone(), links: links.clone() } }
             p { class: "x-board-answer-age", style: HELP_TEXT, "{proposed_by}" }
             if !drops.is_empty() {
                 p { class: "x-board-answer-drops", style: HELP_TEXT,
@@ -1550,7 +1560,7 @@ fn GoalAnswer(
 }
 
 #[component]
-fn IntentDetail(intent: BoardIntent, from: Vec<String>, board_id: String, zoom: String) -> Element {
+fn IntentDetail(intent: BoardIntent, from: Vec<String>, board_id: String, zoom: String, links: NodeLinks) -> Element {
     rsx! {
         div { class: "x-board-intent-detail", style: PANEL,
             DetailHeader {
@@ -1582,7 +1592,7 @@ fn IntentDetail(intent: BoardIntent, from: Vec<String>, board_id: String, zoom: 
                 "Attempts: {intent.attempts}. Declared {format_utc_ms(intent.created_ms)}."
             }
             div { class: "x-board-intent-objective", style: "white-space: pre-wrap; overflow-wrap: anywhere; background-color: var(--x-surface-muted); padding: 8px; border-radius: 6px;",
-                "{intent.objective}"
+                NodeText { text: intent.objective.clone(), links: links.clone() }
             }
             if !intent.question.is_empty() {
                 div { style: SUBHEADING, "The explore asked" }
@@ -1624,14 +1634,51 @@ fn DetailHeader(title: String, kind: NodeKind, slug: String, rejected: bool, cha
     }
 }
 
+/// The board nodes that a text can name, with the address that selects each one.
+fn node_links(snap: &BoardSnapshot, zoom: &str) -> NodeLinks {
+    let nodes = snap.link_nodes();
+    let hrefs = nodes
+        .iter()
+        .map(|n| {
+            Route::AiBoardPage {
+                board_id: snap.board.board_id.clone(),
+                selected: n.target().to_string(),
+                zoom: zoom.to_string(),
+                assessment: String::new(),
+            }
+            .to_string()
+        })
+        .collect();
+    NodeLinks { nodes, hrefs }
+}
+
+/// A plain text with each node name as a link with the node title
+/// (`common::board_text::link_nodes`).
+#[component]
+fn NodeText(text: String, links: NodeLinks) -> Element {
+    let parts = link_nodes(&text, &links.nodes);
+    rsx! {
+        for (i, part) in parts.into_iter().enumerate() {
+            match part {
+                TextPart::Text(t) => rsx! { span { key: "{i}", "{t}" } },
+                TextPart::Node { name, node } => {
+                    let label = links.nodes[node].label().to_string();
+                    let href = links.hrefs.get(node).cloned().unwrap_or_default();
+                    rsx! { Link { key: "{i}", class: "x-node-link", to: href, title: "{name}", style: LINK, "{label}" } }
+                }
+            }
+        }
+    }
+}
+
 /// The details popup of one assessment: its prompt and its response, read only.
 #[component]
-fn AssessmentDetails(board_id: String, reason_no: u32, on_close: EventHandler<()>) -> Element {
+fn AssessmentDetails(board_id: String, reason_no: u32, links: NodeLinks, on_close: EventHandler<()>) -> Element {
     let details = use_resource(move || board_assessment(board_id.clone(), reason_no));
     let body = match &*details.read() {
         None => rsx! { p { style: HELP_TEXT, "Loading the assessment\u{2026}" } },
         Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
-        Some(Ok(a)) => rsx! { AssessmentBody { assessment: a.clone() } },
+        Some(Ok(a)) => rsx! { AssessmentBody { assessment: a.clone(), links: links.clone() } },
     };
     rsx! {
         div {
@@ -1654,7 +1701,7 @@ fn AssessmentDetails(board_id: String, reason_no: u32, on_close: EventHandler<()
 }
 
 #[component]
-fn AssessmentBody(assessment: BoardAssessment) -> Element {
+fn AssessmentBody(assessment: BoardAssessment, links: NodeLinks) -> Element {
     let a = assessment;
     let tokens = format!("{} prompt and {} completion tokens", a.prompt_tokens, a.completion_tokens);
     rsx! {
@@ -1667,7 +1714,9 @@ fn AssessmentBody(assessment: BoardAssessment) -> Element {
         if !a.problems.is_empty() {
             div { style: SUBHEADING, "Checks that changed it" }
             for (i, p) in a.problems.iter().enumerate() {
-                div { key: "{i}", style: "font-size: var(--x-text-detail); color: var(--x-danger);", "{p}" }
+                div { key: "{i}", style: "font-size: var(--x-text-detail); color: var(--x-danger);",
+                    NodeText { text: p.clone(), links: links.clone() }
+                }
             }
         }
         div { style: SUBHEADING, "Prompt" }
