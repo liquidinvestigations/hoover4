@@ -304,6 +304,12 @@ async fn prior_catalog(provider: &str) -> std::collections::HashMap<String, Prio
     }
 }
 
+/// The models that read images, from `LLM_VISION_MODELS` (`[llm_provider.selfhosted]
+/// vision_models`). The refresh marks them `supports_vision`.
+fn vision_models(list: &str) -> std::collections::HashSet<&str> {
+    list.split(',').map(str::trim).filter(|name| !name.is_empty()).collect()
+}
+
 async fn refresh_catalog_now() -> anyhow::Result<()> {
     let base = std::env::var("LLM_BASE_URL")
         .map_err(|_| anyhow::anyhow!("LLM_BASE_URL unset"))?
@@ -373,6 +379,8 @@ async fn refresh_catalog_now() -> anyhow::Result<()> {
     let now = crate::db_auth::now();
     let client = get_global_client();
     let prior = prior_catalog(&provider).await;
+    let vision_list = std::env::var("LLM_VISION_MODELS").unwrap_or_default();
+    let vision = vision_models(&vision_list);
 
     let mut insert = client.insert::<InsertModel>("llm_models").await?;
     for model_id in &models {
@@ -408,7 +416,12 @@ async fn refresh_catalog_now() -> anyhow::Result<()> {
                 price_in_milli: prior.map(|p| p.price_in_milli).unwrap_or(0),
                 price_out_milli: prior.map(|p| p.price_out_milli).unwrap_or(0),
                 supports_tools: prior.map(|p| p.supports_tools).unwrap_or(0),
-                supports_vision: prior.map(|p| p.supports_vision).unwrap_or(0),
+                // A configured vision model, else what was stored.
+                supports_vision: if vision.contains(model_id.as_str()) {
+                    1
+                } else {
+                    prior.map(|p| p.supports_vision).unwrap_or(0)
+                },
                 is_reasoning,
                 // Never seen before → allowed. Seen before → whatever the admin left it
                 // at, including on a model the provider dropped and has now re-listed.
@@ -559,6 +572,14 @@ pub(crate) fn read_llm_api_key() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_vision_list_is_split_on_commas() {
+        let names = vision_models(" ornith, ,other ");
+        assert!(names.contains("ornith") && names.contains("other"));
+        assert_eq!(names.len(), 2);
+        assert!(vision_models("").is_empty());
+    }
 
     /// Thinking is on by default. Only the stored value `off` turns it off.
     #[test]

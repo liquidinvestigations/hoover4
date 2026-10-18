@@ -16,7 +16,7 @@ mod document_pages_tests;
 
 /// Resolves one document of a collection that the caller may read, in a dataset that
 /// holds `row` when one does.
-async fn document_identifier(
+pub(super) async fn document_identifier(
     user: &CurrentUser,
     headers: &HeaderMap,
     collectionname: &str,
@@ -263,6 +263,8 @@ struct PlannedRead {
     extent: (u64, u32),
     /// The archive facts of a document without a text source that is an archive.
     archive: Option<DocumentArchiveSourceItem>,
+    /// The image of an image or a video document.
+    image: Option<AgentDocumentImage>,
 }
 
 async fn documents_read_body(
@@ -314,7 +316,8 @@ async fn documents_read_body(
             Some(_) => None,
             None => get_document_sources::archive_info_for(user, &identifier).await,
         };
-        planned.push(PlannedRead { file_hash: file_hash.clone(), identifier, chosen, extent, archive });
+        let image = get_document_sources::image_info_for(user, &identifier).await;
+        planned.push(PlannedRead { file_hash: file_hash.clone(), identifier, chosen, extent, archive, image });
     }
     let source = planned
         .iter()
@@ -355,6 +358,7 @@ async fn documents_read_body(
                     count_state: "timed_out".to_string(),
                     next_position: None,
                     archive: None,
+                    image: None,
                 });
             }
         }
@@ -402,6 +406,7 @@ async fn read_one_document(
                 count_state: "no_text".to_string(),
                 next_position: None,
                 archive: plan.archive.clone(),
+                image: plan.image.clone(),
             },
             false,
         ));
@@ -432,6 +437,7 @@ async fn read_one_document(
             count_state: "read".to_string(),
             next_position,
             archive: None,
+            image: plan.image.clone(),
         },
         stopped,
     ))

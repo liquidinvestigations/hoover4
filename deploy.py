@@ -506,6 +506,9 @@ DEFAULTS = {
         # chat_llm_selfhosted is true, else base_url serves them too.
         "quality_base_url": "",
         "quality_model": "",
+        # The models of this provider that read images, comma separated. The catalog
+        # marks them `supports_vision`. Empty = the quality model.
+        "vision_models": "",
     },
     "llm_provider.nvidia": {
         "enabled": "true",
@@ -1582,6 +1585,7 @@ def render_main_env(cfg):
     env["CHAT_CLASSIFIER_URL"] = ""
     env["LLM_QUALITY_BASE_URL"] = ""
     env["LLM_QUALITY_MODEL"] = ""
+    env["LLM_VISION_MODELS"] = ""
     if env["LLM_PROVIDER_NAME"] == "selfhosted":
         host = urllib.parse.urlsplit(env["LLM_BASE_URL"]).hostname or cfg.get("ai_services", "host")
         env["CHAT_CLASSIFIER_URL"] = cfg.get("llm_provider.selfhosted", "decision_url").strip() or \
@@ -1599,6 +1603,9 @@ def render_main_env(cfg):
             fail("[llm_provider.selfhosted] quality_base_url and quality_model are set together")
         env["LLM_QUALITY_BASE_URL"] = quality_url
         env["LLM_QUALITY_MODEL"] = quality_model
+        vision = [name.strip() for name in
+                  cfg.get("llm_provider.selfhosted", "vision_models").split(",") if name.strip()]
+        env["LLM_VISION_MODELS"] = ",".join(vision or ([quality_model] if quality_model else []))
     control_dir = cfg.get(m, "chat_control_dir").strip()
     if control_dir:
         if not os.path.isabs(control_dir) or not os.path.isdir(control_dir):

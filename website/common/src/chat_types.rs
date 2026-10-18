@@ -110,6 +110,45 @@ impl ChatRole {
 /// when the round writes a later answer with text.
 pub const CITATION_NOTE_NAME: &str = "citation_check";
 
+/// One image of a tool result, which the agent model received after the result text. A
+/// document image names its dataset and hash. A page screenshot names its capture.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+pub struct ChatImageRef {
+    /// `document` or `capture`.
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub dataset: String,
+    #[serde(default)]
+    pub file_hash: String,
+    #[serde(default)]
+    pub artifact_id: String,
+    #[serde(default)]
+    pub label: String,
+    /// The worker stored a JPEG preview of the document.
+    #[serde(default)]
+    pub preview: bool,
+    /// The image is the first frame of a video document.
+    #[serde(default)]
+    pub video: bool,
+}
+
+impl ChatImageRef {
+    /// The browser route of the image: the stored preview, else the document file, else
+    /// the capture screenshot. `None` when the reference names no source.
+    pub fn url(&self) -> Option<String> {
+        match self.kind.as_str() {
+            "document" if !self.dataset.is_empty() && !self.file_hash.is_empty() => Some(if self.preview {
+                format!("/_image_preview/{}/{}", self.dataset, self.file_hash)
+            } else {
+                format!("/_download_document/{}/{}", self.dataset, self.file_hash)
+            }),
+            "capture" if !self.artifact_id.is_empty() => Some(format!("/_chat_artifact/{}/thumb.webp", self.artifact_id)),
+            _ => None,
+        }
+    }
+}
+
 /// One document a tool step surfaced. Enough to render a search-result card and open
 /// the document preview (`DocumentIdentifier` = `collection_dataset` + `file_hash`).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -348,6 +387,18 @@ impl ChatMessageItem {
         let prompts = value.get("follow_up_prompts").and_then(|value| value.as_array())
             .map(|items| items.iter().filter_map(|item| item.as_str().map(str::to_string)).collect::<Vec<_>>()).unwrap_or_default();
         if prompts.len() == 3 && prompts.iter().all(|prompt| !prompt.trim().is_empty()) { prompts } else { Vec::new() }
+    }
+
+    /// The images that the agent model received after this tool result.
+    pub fn image_refs(&self) -> Vec<ChatImageRef> {
+        if self.role != ChatRole::Tool {
+            return Vec::new();
+        }
+        serde_json::from_str::<serde_json::Value>(&self.usage_json)
+            .ok()
+            .and_then(|usage| usage.get("image_refs").cloned())
+            .and_then(|refs| serde_json::from_value(refs).ok())
+            .unwrap_or_default()
     }
 
     /// The label of a tool row that the model did not request in its own reply: a call that a
@@ -1367,6 +1418,25 @@ mod tests {
         row.streaming = false;
         row.role = ChatRole::Tool;
         assert!(row.answer_status_line().is_none());
+    }
+
+    #[test]
+    fn a_tool_row_gives_its_images_with_their_browser_routes() {
+        let mut row = counted(0, 0, 0);
+        row.role = ChatRole::Tool;
+        assert!(row.image_refs().is_empty());
+        row.usage_json = r#"{"image_refs":[
+            {"kind":"document","dataset":"c_d","file_hash":"h","label":"a.png","preview":true},
+            {"kind":"document","dataset":"c_d","file_hash":"g","label":"b.png"},
+            {"kind":"capture","artifact_id":"a1","label":"Page","width":1280,"height":720}]}"#.into();
+        let urls: Vec<_> = row.image_refs().iter().map(|r| r.url()).collect();
+        assert_eq!(urls, vec![
+            Some("/_image_preview/c_d/h".to_string()),
+            Some("/_download_document/c_d/g".to_string()),
+            Some("/_chat_artifact/a1/thumb.webp".to_string()),
+        ]);
+        row.role = ChatRole::Assistant;
+        assert!(row.image_refs().is_empty());
     }
 
     #[test]

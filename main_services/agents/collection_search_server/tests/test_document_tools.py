@@ -359,6 +359,37 @@ def test_an_archive_read_gets_a_note_in_place_of_the_no_text_error(monkeypatch):
     assert "indexed" not in item["note"], "an extracted file is not a searchable document"
 
 
+def test_a_read_of_image_documents_attaches_at_most_four_images(monkeypatch):
+    from collection_search_server import paging
+
+    def image_row(n, text=""):
+        return {"collectionname": "c", "collection_dataset": "c_d", "file_hash": f"{n}" * 64,
+                "path": f"/p/{n}.png", "title": f"{n}.png", "source_used": "ocr" if text else "",
+                "page": 1 if text else None, "min_page": 1 if text else None, "max_page": 1 if text else None,
+                "text": text, "text_start": 0, "text_end": len(text), "text_length": len(text),
+                "source_version": "v" if text else "", "hit_count": 0, "hit_pages": [],
+                "count_state": "read" if text else "no_text",
+                "image": {"kind": "video" if n == 2 else "image", "width": 800, "height": 600,
+                          "preview": n == 1}}
+    rows = [image_row(1, "OCR text"), *(image_row(n) for n in range(2, 6))]
+    _answer(monkeypatch, {"documents": rows, "source": "s"})
+    kept = []
+    token = paging._CALL_IMAGES.set(kept)
+    try:
+        page = json.loads(tools_document.read_documents.fn(collection="c", file_hash=[r["file_hash"] for r in rows]))
+    finally:
+        paging._CALL_IMAGES.reset(token)
+    notes = [item.get("note") for item in page["items"]]
+    assert notes[0] == tools_document.IMAGE_ATTACHED
+    assert notes[1] == "The document has no extracted text. " + tools_document.IMAGE_ATTACHED
+    assert notes[4] == "The document has no extracted text. " + tools_document.IMAGE_NOT_ATTACHED
+    assert all("image" not in item and "error" not in item for item in page["items"])
+    assert [ref["label"] for ref in kept] == ["1.png", "2.png", "3.png", "4.png"]
+    assert kept[0] == {"kind": "document", "collection": "c", "dataset": "c_d", "file_hash": "1" * 64,
+                       "label": "1.png", "width": 800, "height": 600, "preview": True}
+    assert kept[1]["video"] is True
+
+
 def test_an_archive_text_search_and_source_list_carry_the_note(monkeypatch):
     _answer(monkeypatch, {"source_used": "", "hit_count": 0, "hits": [], "archive": PST, "source": "s", "total": 0})
     page = json.loads(tools_document.doc_search_text.fn(collection="c", file_hash="a" * 64, query="q"))

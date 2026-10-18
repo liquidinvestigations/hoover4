@@ -174,6 +174,9 @@ class PageRead:
     error: str = ""
     truncated: bool = False
     artifact: dict | None = None
+    #: The image reference of the page screenshot, which the agent service sends to the
+    #: model after the result text. None when the capture stored no screenshot.
+    image: dict | None = None
     links: bool = True
     route: str = "direct"
     tried: list[str] = field(default_factory=list)
@@ -628,6 +631,11 @@ async def _capture_read(chat, page, url, goal, username):
         if detail:
             entry["detail"] = detail
         page.artifact = entry
+        if captured.screenshot:
+            title = entry["title"] or entry["url"]
+            page.image = {"kind": "capture", "artifact_id": captured.artifact_id,
+                          "label": f"{title} ({entry['url']})" if title != entry["url"] else title,
+                          "width": capture_mod.THUMB_WIDTH, "height": capture_mod.THUMB_HEIGHT}
 
 
 def _extract(

@@ -521,7 +521,8 @@ def run_message(message, thread_id: str) -> dict[str, Any]:
     """One stored thread message in the `RunMessage` shape of a step request.
 
     A call entry sends its `id`, `name` and `args` only. A `tool` message carries the
-    `status` of its stored usage, so the service rebuilds a failed call as an error. Every
+    `status` of its stored usage, so the service rebuilds a failed call as an error, and
+    the `image_refs` of its usage, so the service sends its images again. Every
     message carries its key, `thread_id` and `idx`, which a `compaction` row names.
     """
     out: dict[str, Any] = {"role": message.role, "content": message.content,
@@ -545,6 +546,7 @@ def run_message(message, thread_id: str) -> dict[str, Any]:
         if isinstance(message.usage.get("model_content"), str):
             out["model_content"] = message.usage["model_content"]
         out["doc_refs"] = message.usage.get("doc_refs") or []
+        out["image_refs"] = message.usage.get("image_refs") or []
     return out
 
 

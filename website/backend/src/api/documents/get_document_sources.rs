@@ -423,6 +423,34 @@ pub async fn archive_info_for(
     })
 }
 
+/// The image that a read of the document gives the model: the image of an image
+/// document, or the stored first frame of a video. A video without a stored frame and
+/// every other document give `None`, and so does a failed lookup.
+pub async fn image_info_for(
+    user: &CurrentUser,
+    identifier: &DocumentIdentifier,
+) -> Option<common::agent_api::AgentDocumentImage> {
+    use common::agent_api::AgentDocumentImage;
+    let (image, video) = tokio::join!(
+        get_image_sources(user, identifier.clone()),
+        get_video_sources(user, identifier.clone()),
+    );
+    if let Ok(Some(image)) = image {
+        return Some(AgentDocumentImage {
+            kind: "image".into(),
+            width: image.width,
+            height: image.height,
+            preview: image.preview,
+        });
+    }
+    match video {
+        Ok(Some(video)) if video.preview => {
+            Some(AgentDocumentImage { kind: "video".into(), width: video.width, height: video.height, preview: true })
+        }
+        _ => None,
+    }
+}
+
 #[allow(for_loops_over_fallibles)]
 pub async fn get_document_sources(
     user: &CurrentUser,

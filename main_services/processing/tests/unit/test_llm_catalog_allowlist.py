@@ -65,7 +65,7 @@ def _column(client, name):
 
 
 def test_a_disallowed_model_stays_disallowed(fake):
-    client = fake([("nvidia/keep-off", 0, 0), ("nvidia/fine", 1, 0)])
+    client = fake([("nvidia/keep-off", 0, 0, 0), ("nvidia/fine", 1, 0, 0)])
     written = store_models(
         RefreshResult(provider="nvidia", ok=True,
                       models=["nvidia/keep-off", "nvidia/fine"]),
@@ -96,13 +96,13 @@ def test_the_previous_state_is_read_for_this_provider_only(fake):
 
 
 def test_nothing_is_written_when_the_provider_failed(fake):
-    client = fake([("nvidia/keep-off", 0, 0)])
+    client = fake([("nvidia/keep-off", 0, 0, 0)])
     assert store_models(RefreshResult(provider="nvidia", ok=False, models=[]), "u") == 0
     assert client.inserted is None
 
 
 def test_the_column_is_typed_uint8_like_the_table(fake):
-    client = fake([("nvidia/keep-off", 0, 0)])
+    client = fake([("nvidia/keep-off", 0, 0, 0)])
     store_models(
         RefreshResult(provider="nvidia", ok=True, models=["nvidia/keep-off"]),
         "http://provider/v1",
@@ -127,7 +127,7 @@ def test_a_window_the_provider_stopped_stating_is_not_blanked(fake):
     otherwise erase the only number a context percentage can be computed against, and
     the footer would go from a percentage to "unknown" with nothing having changed.
     """
-    client = fake([("local/x", 1, 262144)])
+    client = fake([("local/x", 1, 262144, 0)])
     store_models(
         RefreshResult(provider="selfhosted", ok=True, models=["local/x"]),
         "http://provider/v1",
@@ -147,6 +147,17 @@ def test_an_unknown_window_stays_zero_rather_than_being_guessed(fake):
         "http://provider/v1",
     )
     assert _column(client, "context_window") == [0]
+
+
+def test_a_configured_vision_model_is_marked_and_a_stored_flag_is_carried(fake, monkeypatch):
+    monkeypatch.setenv("LLM_VISION_MODELS", "ornith, other")
+    client = fake([("local/seen", 1, 0, 1)])
+    store_models(
+        RefreshResult(provider="selfhosted", ok=True, models=["ornith", "local/seen", "local/x"]),
+        "http://provider/v1",
+    )
+    assert _column(client, "supports_vision") == [1, 1, 0]
+    assert client.inserted[1].schema.field("supports_vision").type == pa.uint8()
 
 
 @pytest.mark.parametrize(

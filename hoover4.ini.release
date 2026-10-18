@@ -586,6 +586,10 @@ decision_url     =
 ; chat_llm_selfhosted is true.
 quality_base_url =
 quality_model    =
+; The models of this provider that read images, comma separated. The catalog marks them
+; supports_vision, and agent turns then send the images of tool results. Empty: the
+; quality model.
+vision_models    =
 
 [llm_provider.nvidia]
 ; The only LLM provider the live tests exercise — vLLM is parked.

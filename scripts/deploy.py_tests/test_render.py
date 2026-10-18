@@ -1362,6 +1362,9 @@ def test_the_chat_model_server_is_the_default_quality_endpoint():
     env = deploy.render_main_env(cfg)
     assert env["LLM_QUALITY_BASE_URL"] == "http://10.9.9.9:21964/v1"
     assert env["LLM_QUALITY_MODEL"] == "ornith"
+    assert env["LLM_VISION_MODELS"] == "ornith"
+    cfg.values["llm_provider.selfhosted"]["vision_models"] = " a, ,b "
+    assert deploy.render_main_env(cfg)["LLM_VISION_MODELS"] == "a,b"
     assert ("hoover4-vllm-chat", 21964) in deploy.expected_ports(cfg, "ai")
     ai = deploy.render_ai_env(cfg)
     assert ai["CHAT_VLLM_SERVED_NAME"] == "ornith" and "qwen3_coder" in ai["CHAT_VLLM_ARGS"]

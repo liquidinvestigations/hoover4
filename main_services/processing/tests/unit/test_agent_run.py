@@ -826,6 +826,18 @@ def test_two_parallel_calls_keep_their_own_arguments_results_and_indexes(store, 
     assert bodies[2]["idempotency_key"] == bodies[1]["idempotency_key"]
 
 
+def test_the_image_refs_of_a_result_reach_the_message_the_row_and_the_next_request(store, monkeypatch):
+    calls = _with_calls(store, [_entry(LONG_ID_A, "read_page", {"urls": ["https://x.org"]})])
+    image = {"kind": "capture", "artifact_id": "a1", "label": "X", "width": 1280, "height": 720}
+    monkeypatch.setattr(steps, "_post_json", lambda url, body, read_seconds: {
+        "content": "page text", "status": "ok", "image_refs": [image]})
+    assert _tool(calls[0]).status == "ok"
+    tool = next(m for m in store["messages"] if m.role == "tool")
+    assert json.loads(tool.usage_json)["image_refs"] == [image]
+    assert json.loads(store["chat"][-1]["usage_json"]) == {"image_refs": [image]}
+    assert stream_writer.run_message(tool, RUN_ID)["image_refs"] == [image]
+
+
 def test_a_call_with_unreadable_arguments_sends_its_argument_error(store, monkeypatch):
     """The agent service stores a call whose arguments the model client could not read
     with empty arguments and `argument_error`. The worker sends the error with the call."""

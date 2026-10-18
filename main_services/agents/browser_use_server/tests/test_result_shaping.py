@@ -211,3 +211,19 @@ class TestCaptureIsExplicit:
         chat = ChatBrowser(session_id="s", sidecar_port=1)
         for attr in ("last_capture_key", "last_body_key", "last_body_bytes"):
             assert not hasattr(chat, attr), f"{attr} outlived the implicit captures"
+
+
+# --------------------------------------------------------------------------- images
+
+
+def test_screenshot_references_follow_the_marker_as_a_resource():
+    from browser_use_server.server import IMAGE_REFS_URI, _with_images
+
+    image = {"kind": "capture", "artifact_id": "a1", "label": "X", "width": 1280, "height": 720}
+    marked = _append_marker(_result("page text"), [{"artifact_id": "a1"}])
+    out = _with_images(marked, [image] * 8)
+    assert _marker_payload(out)["artifacts"] == [{"artifact_id": "a1"}]
+    resource = out.content[-1].resource
+    assert str(resource.uri) == IMAGE_REFS_URI
+    assert json.loads(resource.text) == [image] * 6
+    assert _with_images(marked, []) is marked

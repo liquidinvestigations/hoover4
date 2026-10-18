@@ -45,6 +45,10 @@ order, which the page itself names by a 16-character hash start. The page text s
 only text content block, so the page bytes do not change. The MCP adapter of the agent puts
 a non-text block in the tool message artifact, which the model does not read.
 
+A read of image and video documents adds a third embedded resource with the URI
+`IMAGE_REFS_URI`: one reference for each image that the agent service sends to the model
+after the result text (`note_images`). A reference names the source and holds no bytes.
+
 A page with more units carries `more`, a 12-character handle. `finish`, which the
 middleware runs on every tool result, stores the encoded continuation that the handle names once, as a chat artifact of the kind
 `agent_continuation` whose id is a UUID of the chat session and the handle. `read_more`
@@ -129,6 +133,8 @@ MAX_HEADER_BYTES = 4 * MAX_PAGE_SHARE
 CALL_MEASURE_URI = "hoover4://call-measure"
 #: The URI of the embedded resource that carries the whole identity of each row of a page.
 DOC_REFS_URI = "hoover4://doc-refs"
+#: The URI of the embedded resource that carries the image references of a result.
+IMAGE_REFS_URI = "hoover4://image-refs"
 #: The characters of a file hash that a page shows.
 HASH_START = 16
 #: The key under which a local tool's result carries the doc refs of its rows.
@@ -244,6 +250,21 @@ def _note_refs(refs: list[dict[str, Any]] | None) -> None:
     kept = _CALL_REFS.get()
     if kept is not None and refs:
         kept.extend(refs)
+
+
+#: The image references of the current tool call, or `None` outside a call that
+#: `measure_middleware` wraps.
+_CALL_IMAGES: contextvars.ContextVar[list[dict[str, Any]] | None] = contextvars.ContextVar(
+    "call_images", default=None,
+)
+
+
+def note_images(refs: list[dict[str, Any]]) -> None:
+    """Set the image references of the current tool call. A later window of the same call
+    replaces them, so a page that is built again does not repeat an image."""
+    kept = _CALL_IMAGES.get()
+    if kept is not None:
+        kept[:] = refs
 
 
 def page_doc_refs(text: str, refs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -399,13 +420,16 @@ class MeasureMiddleware(Middleware):
     async def on_call_tool(self, context: MiddlewareContext, call_next):
         measures: list[PageMeasure] = []
         refs: list[dict[str, Any]] = []
+        images: list[dict[str, Any]] = []
         token = _CALL_MEASURES.set(measures)
         refs_token = _CALL_REFS.set(refs)
+        images_token = _CALL_IMAGES.set(images)
         try:
             result = await call_next(context)
         finally:
             _CALL_MEASURES.reset(token)
             _CALL_REFS.reset(refs_token)
+            _CALL_IMAGES.reset(images_token)
         content = list(getattr(result, "content", None) or [])
         if len(content) != 1 or getattr(content[0], "type", "") != "text":
             return result
@@ -413,7 +437,7 @@ class MeasureMiddleware(Middleware):
         if text != content[0].text:
             content[0] = content[0].model_copy(update={"text": text})
             result.content = content
-        if not measures and not refs:
+        if not measures and not refs and not images:
             return result
         if measures:
             measure = call_measure(content[0].text, measures)
@@ -428,6 +452,10 @@ class MeasureMiddleware(Middleware):
         if doc_refs:
             content.append(EmbeddedResource(type="resource", resource=TextResourceContents(
                 uri=DOC_REFS_URI, mimeType="application/json", text=canonical_json(doc_refs),
+            )))
+        if images:
+            content.append(EmbeddedResource(type="resource", resource=TextResourceContents(
+                uri=IMAGE_REFS_URI, mimeType="application/json", text=canonical_json(images),
             )))
         result.content = content
         return result

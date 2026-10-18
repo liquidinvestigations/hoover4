@@ -436,6 +436,36 @@ pub struct AgentDocumentText {
     /// The archive facts of a document that is an archive or a mail store.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archive: Option<DocumentArchiveSourceItem>,
+    /// The image of an image document, or the stored first frame of a video document.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<AgentDocumentImage>,
+}
+
+/// The image that a read of an image or a video document gives the model. The route
+/// `images/document` serves its bytes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentDocumentImage {
+    /// `image`, or `video` for the stored first frame of a video.
+    pub kind: String,
+    pub width: u32,
+    pub height: u32,
+    /// The worker stored a JPEG preview, which the route serves in place of the file.
+    #[serde(default)]
+    pub preview: bool,
+}
+
+/// The request of `images/document`: the image of one document, from its stored preview
+/// or from the original file.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DocumentImageRequest {
+    pub collectionname: String,
+    pub file_hash: String,
+}
+
+/// The request of `images/capture`: the screenshot of one page capture of the caller.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CaptureImageRequest {
+    pub artifact_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

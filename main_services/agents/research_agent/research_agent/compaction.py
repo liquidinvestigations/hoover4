@@ -50,6 +50,16 @@ text in the bracket (`attribute_quotes`).
 **A failed summary is not retention.** When the summary request fails or gives no text, the
 record has the status `failed` and changes no message. The caller sends the previous list
 only when it fits. A later plan over the same prefix does not ask the summary model again.
+
+**Images of the replaced steps.** The images of tool results (`images.py`) count in each
+estimate. The summary request sends the images of the replaced results after the
+transcript, each after a label line, and asks for a description of each image that the task
+needs. Images share at most half of the summary model's input with the transcript. The
+images that do not fit go in at most `IMAGE_SUMMARY_REQUESTS` more requests, whose text is
+added to the summary. When the summary model takes no images, or refuses them with status
+400, the request holds the label lines only, and each line says that the model did not see
+the image. The summary is text, so no image returns after a compaction. The index names
+each replaced image, so the agent can read the document or the page again.
 """
 
 from __future__ import annotations
@@ -66,7 +76,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import httpx
 
-from research_agent import model_params, thread_index
+from research_agent import images, model_params, thread_index
 from research_agent.run_messages import RunMessage, apply_record
 
 log = logging.getLogger(__name__)
@@ -160,6 +170,23 @@ The agent's task:
 """
 PREVIOUS_SUMMARY_LINE = ("The history starts with the previous summary. Keep every fact of it "
                          "that still bears on the task.")
+#: The end of a summary request that sends images.
+IMAGES_LINE = ("The images of the replaced results follow, each after its label line. Add the "
+               "section \"## Images\" after \"## Sources to read again\", with one line for each "
+               "image that the task needs: its label and what it shows that bears on the task. "
+               "Copy every number, name and date that it shows exactly.")
+#: The end of a summary request whose images the model does not see.
+IMAGE_LABELS_LINE = ("The replaced results also held the images below. The summary model did not "
+                     "see them. Under \"## Images\", list each label and write only what the "
+                     "history says about the image.")
+#: The request for the images that do not fit in the summary request.
+DESCRIBE_IMAGES_PROMPT = """You describe images for a research agent, which continues its work after you. The agent cannot see these images again unless it reads the source again. The agent's task:
+{task}
+
+For each image below, write one line: its label, then what it shows that bears on the task. Copy every number, name and date that it shows exactly. Invent nothing.
+"""
+#: The most requests after the summary request that describe the images that did not fit.
+IMAGE_SUMMARY_REQUESTS = 3
 #: The task in the summary request is cut to this many characters.
 TASK_CHARS = 2_000
 #: The end of a result that the summary request holds in part.
@@ -331,12 +358,14 @@ class Estimator:
             prompt = int((m.usage or {}).get("input_tokens") or 0) if m.role == "ai" else 0
             if prompt > 0:
                 chars = base + sum(msg_chars(x) for x in applied[:k])
+                # The billed prompt also counts the images, which hold no characters.
+                prompt = max(1, prompt - images.list_tokens(applied[:k]))
                 ratio = min(1 / 1.5, max(1 / 6, prompt / max(chars, 1)))
                 break
         return cls(ratio, math.ceil(base * ratio * MARGIN))
 
     def tokens(self, m: RunMessage) -> int:
-        return math.ceil(msg_chars(m) * self.ratio * MARGIN)
+        return math.ceil(msg_chars(m) * self.ratio * MARGIN) + images.message_tokens(m)
 
     def tokens_text(self, text: str) -> int:
         return math.ceil(len(text or "") * self.ratio * MARGIN)
@@ -592,12 +621,90 @@ def summarise_with_model(prompt: str, *, model_id: str, max_tokens: int) -> str:
     Thinking is off: a thinking model given a transcript reasons about its content and
     starts to answer the task (`research_agent/thinking.py`).
     """
+    return _summary_request(prompt, model_id=model_id, max_tokens=max_tokens)[1]
+
+
+def image_labels(refs: Sequence[Dict[str, Any]], *, start: int = 1) -> str:
+    """One label line for each image, numbered from `start`."""
+    return "\n".join(f"Image {start + n}: {images.describe(ref)}" for n, ref in enumerate(refs))
+
+
+def _image_groups(refs: Sequence[Dict[str, Any]], first: int, later: int
+                  ) -> List[List[int]]:
+    """The positions of `refs` for the summary request and each later request, in order.
+    The first group holds what fits in `first` tokens, and each later group what fits in
+    `later` tokens. An image that fits in no request is left out."""
+    groups: List[List[int]] = [[]]
+    room = first
+    for position, ref in enumerate(refs):
+        cost = images.ref_tokens(ref)
+        if cost > room:
+            if cost > later:
+                continue
+            groups.append([])
+            room = later
+        groups[-1].append(position)
+        room -= cost
+    return groups
+
+
+def summarise_with_images(plan: "CompactionPlan", max_tokens: int) -> str:
+    """The summary of a prefix whose results held images, with a description of each image
+    that the task needs. An empty string when the summary request fails."""
+    model = summary_model(plan.model_id)
+    refs = list(plan.images)
+    loaded = (images.load_all(refs, username=plan.username, collections=plan.collections)
+              if images.supports_vision(model) else [])
+    seen = [n for n, item in enumerate(loaded) if item.data_url]
+    groups = _image_groups([refs[n] for n in seen], plan.image_room, plan.later_room)
+    groups = [[seen[k] for k in group] for group in groups]
+    first, later = groups[0], [g for g in groups[1:] if g][:IMAGE_SUMMARY_REQUESTS]
+    shown = set(first) | {n for g in later for n in g}
+    unseen = [n for n in range(len(refs)) if n not in shown]
+    labels_text = (f"{plan.prompt}\n{IMAGE_LABELS_LINE}\n"
+                   + "\n".join(f"Image {n + 1}: {images.describe(refs[n])}" for n in range(len(refs))))
+    if first:
+        text = plan.prompt + "\n" + IMAGES_LINE
+        if unseen:
+            text += "\n" + IMAGE_LABELS_LINE + "\n" + "\n".join(
+                f"Image {n + 1}: {images.describe(refs[n])}" for n in unseen)
+        content: Any = [{"type": "text", "text": text}]
+        for n in first:
+            content.append({"type": "text", "text": f"Image {n + 1}: {images.describe(refs[n])}"})
+            content.append({"type": "image_url", "image_url": {"url": loaded[n].data_url}})
+        status, summary = _summary_request(content, model_id=plan.model_id, max_tokens=max_tokens)
+        if status == 400:
+            log.warning("the summary model refused the images, the request holds their labels")
+            later = []
+            status, summary = _summary_request(labels_text, model_id=plan.model_id,
+                                               max_tokens=max_tokens)
+    else:
+        status, summary = _summary_request(labels_text, model_id=plan.model_id,
+                                           max_tokens=max_tokens)
+    if not summary:
+        return ""
+    task = next((m.content for m in plan.applied if m.role == "human" and not is_record(m)), "")
+    for group in later:
+        content = [{"type": "text", "text": DESCRIBE_IMAGES_PROMPT.format(task=task[:TASK_CHARS])}]
+        for n in group:
+            content.append({"type": "text", "text": f"Image {n + 1}: {images.describe(refs[n])}"})
+            content.append({"type": "image_url", "image_url": {"url": loaded[n].data_url}})
+        _status, described = _summary_request(content, model_id=plan.model_id,
+                                              max_tokens=max_tokens)
+        if described:
+            summary += "\n" + described
+    return summary
+
+
+def _summary_request(content: Any, *, model_id: str, max_tokens: int) -> Tuple[Optional[int], str]:
+    """Send one request to the compaction model. Return the status, or None when no
+    response came, and the text, which is empty on any failure."""
     from research_agent.endpoints import endpoint_for
 
     endpoint = endpoint_for(summary_model(model_id))
     base, api_key = endpoint.base_url, endpoint.api_key
     if not base:
-        return ""
+        return None, ""
     try:
         with httpx.Client(timeout=summariser_timeout()) as client:
             response = client.post(
@@ -608,7 +715,7 @@ def summarise_with_model(prompt: str, *, model_id: str, max_tokens: int) -> str:
                     # `temperature` only when the provider accepts it. The output cap of
                     # `sampling_params` is left out, because this body sets its own.
                     **_without_cap(model_params.sampling_params(0)),
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": [{"role": "user", "content": content}],
                     "max_tokens": int(max_tokens),
                     "chat_template_kwargs": {"enable_thinking": False},
                 },
@@ -616,12 +723,13 @@ def summarise_with_model(prompt: str, *, model_id: str, max_tokens: int) -> str:
             if response.status_code >= 300:
                 log.warning("the summariser refused: status=%s body=%s",
                             response.status_code, response.text[:200])
-                return ""
+                return response.status_code, ""
             choices = response.json().get("choices") or []
-            return str((choices[0].get("message") or {}).get("content") or "").strip()
+            return response.status_code, str(
+                (choices[0].get("message") or {}).get("content") or "").strip()
     except Exception as exc:  # noqa: BLE001 -- no summary is a valid answer
         log.warning("the summariser could not be reached: %s", exc)
-        return ""
+        return None, ""
 
 
 # ------------------------------------------------------------------------ report
@@ -711,6 +819,14 @@ class CompactionPlan:
     unchanged_failure: bool = False
     #: The texts that the prefix read, with their sources, for `attribute_quotes`.
     read_sources: List[ReadSource] = field(default_factory=list)
+    #: The image references of the replaced results, in list order.
+    images: List[Dict[str, Any]] = field(default_factory=list)
+    #: The image tokens that the summary request holds, and that one later request holds.
+    image_room: int = 0
+    later_room: int = 0
+    #: The identity of the run, which the image routes check.
+    username: str = ""
+    collections: List[str] = field(default_factory=list)
 
     @property
     def parts(self) -> int:
@@ -746,7 +862,8 @@ def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *
                     estimator: Optional[Estimator] = None, measured: Optional[int] = None,
                     safe_input: int = 0, force: bool = False,
                     summary_window: Optional[int] = None,
-                    allow_oversized_newest: bool = False) -> Optional[CompactionPlan]:
+                    allow_oversized_newest: bool = False, username: str = "",
+                    collections: Sequence[str] = ()) -> Optional[CompactionPlan]:
     """The plan of a compaction, with no model call. `None` when the trigger does not fire or
     no complete group is older than the newest one that must stay.
 
@@ -756,7 +873,8 @@ def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *
     newest billed call. `safe_input` is the window less the output reserve. The trigger is
     never above it. `force` plans a compaction under the trigger, after the provider refused
     the request as too large. `summary_window` is the window of the summary model, read from
-    the catalog when it is not given.
+    the catalog when it is not given. `username` and `collections` are the identity of the
+    run, which the image routes check.
 
     Raises `ContextError` when the fixed input and the newest group pass the safe input.
     """
@@ -819,8 +937,17 @@ def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *
         s_window = resolved if name == model_id else (context_window(name) or resolved)
     skeleton = render_prompt([], task, SUMMARY_TOKENS, previous)
     budget = max(0, int(s_window) - SUMMARY_TOKENS - est.tokens_text(skeleton))
-    texts, extracts = fit_blocks(summary_blocks(applied, prefix), est.chars_for(budget))
+    names = _names(applied)
+    replaced = [ref for i in prefix if applied[i].role == "tool" and names.get(i) not in TEXT_TOOLS
+                for ref in applied[i].image_refs]
+    labels = est.tokens_text(image_labels(replaced))
+    image_room = min(sum(images.ref_tokens(ref) for ref in replaced), max(0, budget // 2 - labels))
+    texts, extracts = fit_blocks(summary_blocks(applied, prefix),
+                                 est.chars_for(max(0, budget - image_room - labels)))
     prompt = render_prompt(texts, task, SUMMARY_TOKENS, previous)
+    if replaced:
+        index += ("\n\nImages that the summary replaces. Read the document or the page again "
+                  "to see one:\n" + image_labels(replaced))
 
     failed_before = next((r for r in reversed(_record_rows(rows))
                           if r.get("version") == RECORD_VERSION), None)
@@ -835,7 +962,10 @@ def plan_compaction(applied: Sequence[RunMessage], rows: Sequence[RunMessage], *
                "index": est.tokens_text(index), "summary_input": est.tokens_text(prompt),
                "summary_window": int(s_window)},
         extracts=extracts, unchanged_failure=unchanged,
-        read_sources=read_sources(applied, prefix))
+        read_sources=read_sources(applied, prefix), images=replaced, image_room=image_room,
+        later_room=max(0, int(s_window) - 2 * SUMMARY_TOKENS
+                       - est.tokens_text(DESCRIBE_IMAGES_PROMPT + task[:TASK_CHARS])),
+        username=username, collections=list(collections))
 
 
 def finish_compaction(plan: CompactionPlan, summariser: Optional[Summariser] = None
@@ -846,8 +976,11 @@ def finish_compaction(plan: CompactionPlan, summariser: Optional[Summariser] = N
     changes no message. The caller decides whether the previous list fits.
     """
     est = plan.est
-    call = summariser or (lambda prompt, cap: summarise_with_model(
-        prompt, model_id=plan.model_id, max_tokens=cap))
+    if summariser is None and plan.images:
+        call: Summariser = lambda prompt, cap: summarise_with_images(plan, cap)
+    else:
+        call = summariser or (lambda prompt, cap: summarise_with_model(
+            prompt, model_id=plan.model_id, max_tokens=cap))
     text, error = "", ""
     if plan.unchanged_failure:
         error = "the summary of this prefix failed before, and the prefix did not change"

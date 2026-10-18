@@ -58,6 +58,8 @@ services:
       # (research_agent/endpoints.py). Empty: LLM_BASE_URL serves every model.
       - LLM_QUALITY_BASE_URL=${LLM_QUALITY_BASE_URL:-}
       - LLM_QUALITY_MODEL=${LLM_QUALITY_MODEL:-}
+      # The agent routes that serve the images of tool results (research_agent/images.py).
+      - AGENT_API_BASE_URL=${AGENT_API_BASE_URL:-http://hoover4-website:8080}
       - AGENT_NAME=${INTERNAL_SEARCH_AGENT_NAME:-Internal Search Agent}
       - AGENT_PROFILE=internal_search
       # The tool packs of each kind of agent run, rendered by deploy.py from
@@ -152,6 +154,8 @@ services:
       # (research_agent/endpoints.py). Empty: LLM_BASE_URL serves every model.
       - LLM_QUALITY_BASE_URL=${LLM_QUALITY_BASE_URL:-}
       - LLM_QUALITY_MODEL=${LLM_QUALITY_MODEL:-}
+      # The agent routes that serve the images of tool results (research_agent/images.py).
+      - AGENT_API_BASE_URL=${AGENT_API_BASE_URL:-http://hoover4-website:8080}
       - AGENT_NAME=${FULL_RESEARCH_AGENT_NAME:-Full Research Agent}
       - AGENT_PROFILE=full_research
       # The tool packs of each kind of agent run, rendered by deploy.py from

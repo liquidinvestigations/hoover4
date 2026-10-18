@@ -20,6 +20,7 @@ durable research path is [main_services/processing/tasks/P_agent/](../../main_se
 - [Language-model access](#language-model-access)
 - [Allocating a message sequence](#allocating-a-message-sequence)
 - [Tool-event payload shapes](#tool-rows)
+- [Images in tool results](#images-in-tool-results)
 
 Routes (see [website/frontend/src/routes.rs](../../website/frontend/src/routes.rs)):
 
@@ -501,6 +502,31 @@ The third level requires an answer. Six further model steps end the turn through
 Classifier signals require measured score thresholds. A failed request supplies no signal.
 Each classifier request writes metadata to `systemone_call_events` and traffic to `ai_service_telemetry`.
 The admin report reads these rows only when an administrator selects Run report.
+
+## Images in tool results
+
+The agent model reads images in tool results when the catalog marks it
+`supports_vision`. A tool result names its images in the embedded resource
+`hoover4://image-refs`, beside `hoover4://doc-refs`. A reference holds the source and no
+bytes: `collection` and `file_hash` of a document, or `artifact_id` of a page capture.
+
+The references move through these layers.
+
+1. `read_documents` names the image of each image or video document, at most 4 in one
+   call. `read_page` names the screenshot of each page.
+2. `/tool_call` of the agent service returns them as `image_refs`.
+3. `tool_call` of the worker stores them in the usage of the tool message, and in the
+   `usage_json` of the transcript row.
+4. `stream_writer.run_message` sends them with the message in each step request.
+5. `images.parts_for` reads each image from `images/document` or `images/capture`, with
+   the identity of the run, and appends a label line and an `image_url` part after the
+   text of the tool message.
+
+The content of the message stays text, so a restart builds the same image input from the
+stored references. The website checks collection access or capture ownership on each read,
+also for an image that the agent service has in its cache.
+[research_agent/images.py](../../main_services/agents/research_agent/research_agent/images.py) describes the size limits, the cost estimate
+and the model without images. [compaction.py](../../main_services/agents/research_agent/research_agent/compaction.py) describes the images of a summary.
 
 ## A turn persists tool work and citations.
 

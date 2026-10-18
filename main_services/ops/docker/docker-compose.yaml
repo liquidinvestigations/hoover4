@@ -592,6 +592,8 @@ services:
       # (tasks/llm_endpoints.py).
       - "LLM_QUALITY_BASE_URL=${LLM_QUALITY_BASE_URL:-}"
       - "LLM_QUALITY_MODEL=${LLM_QUALITY_MODEL:-}"
+      # The models that the catalog marks `supports_vision`, comma separated.
+      - "LLM_VISION_MODELS=${LLM_VISION_MODELS:-}"
       # false when the active provider rejects `temperature`: the title request leaves it out.
       - "LLM_SEND_TEMPERATURE=${LLM_SEND_TEMPERATURE:-true}"
       # The structured server of the selfhosted model for the chat policy checks, and
@@ -784,6 +786,8 @@ services:
       # The model of agent turns when it is set, else LLM_MODEL (api/admin/llm.rs
       # `agent_model`). hoover4.ini sets it as quality_model of the selfhosted provider.
       - LLM_QUALITY_MODEL=${LLM_QUALITY_MODEL:-}
+      # The models that the catalog refresh marks `supports_vision`, comma separated.
+      - LLM_VISION_MODELS=${LLM_VISION_MODELS:-}
       # The chat gate uses this name to decide whether an API key is required.
       - LLM_PROVIDER_NAME=${LLM_PROVIDER_NAME:-}
       # The API key is a bind-mounted file, never an env value: hoover4.ini stores

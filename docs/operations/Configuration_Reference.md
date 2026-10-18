@@ -433,6 +433,11 @@ this provider, or a placeholder when it has none. The worker and both
 agent services apply the rule ([tasks/llm_endpoints.py](../../main_services/processing/tasks/llm_endpoints.py), [research_agent/endpoints.py](../../main_services/agents/research_agent/research_agent/endpoints.py)), and
 `main.py refresh-llm-catalog` lists the quality endpoint as a provider of its own.
 
+`vision_models` names the models of the selfhosted provider that read images, comma
+separated. Empty names the quality model. Both catalog refreshes mark the named models
+`supports_vision`, and an agent turn on such a model sends the images of tool results.
+The value is rendered as `LLM_VISION_MODELS`.
+
 This file is the only place that chooses a model. Agent turns, of chats and of board
 explores, use `quality_model` when it is set and `model` when it is not. Titles, summaries,
 board labels and board assessments use `model`. No page and no `server_settings` key
@@ -537,7 +542,7 @@ Deployment renders this value into the server override XML.
 ### `[llm_provider.selfhosted]`
 
 - `enabled`, `base_url`, `model`, `api_key_file`, `send_temperature`, `decision_url`,
-  `quality_base_url`, `quality_model`
+  `quality_base_url`, `quality_model`, `vision_models`
 
 ### `[llm_provider.nvidia]`
 

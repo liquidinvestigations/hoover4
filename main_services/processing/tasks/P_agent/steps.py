@@ -359,10 +359,12 @@ def _chat_row(row):
 
 def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, status: str,
                        measure: Any = None, error_class: str = "", doc_refs: Any = None,
-                       shared_from: str = "") -> None:
+                       shared_from: str = "", image_refs: Any = None) -> None:
     """The `tool` message of one call, and for a run that writes the transcript, its
     finished tool row at the call's seq and the final stream row. `doc_refs` is the list
-    that the `/tool_call` response carried beside the result, or None.
+    that the `/tool_call` response carried beside the result, or None. `image_refs` names
+    the images of the result. The usage of the message and of the tool row keeps them, so
+    each later step request sends the images again and the tool card shows them.
 
     The usage of the message holds the typed evidence of the result (`reports.normalize`)
     at every run depth. The evidence is metadata: the model reads the content only. A call
@@ -381,16 +383,21 @@ def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, sta
              "error_class": error_class, "evidence": evidence, "doc_refs": doc_refs or []}
     if shared_from:
         usage["shared_from"] = shared_from
+    if image_refs:
+        usage["image_refs"] = image_refs
     agent_runs.write_message(
         row.username, row.session_id, row.thread_id, row.run_id,
         agent_runs.RunMessageRow(
             idx=idx, role="tool", content=content,
             tool_call_id=call.call_id, tool_name=call.name, run_id=row.run_id,
             usage_json=json.dumps(usage, default=str)))
-    origin = {}
+    row_usage = {}
     if ai.usage.get("origin") == "policy" or shared_from:
-        origin = {"usage_json": json.dumps({k: v for k, v in (
-            ("origin", ai.usage.get("origin") or "model"), ("shared_from", shared_from)) if v})}
+        row_usage = {k: v for k, v in (
+            ("origin", ai.usage.get("origin") or "model"), ("shared_from", shared_from)) if v}
+    if image_refs:
+        row_usage["image_refs"] = image_refs
+    origin = {"usage_json": json.dumps(row_usage)} if row_usage else {}
     _chat_row(row)(call.seq, "tool", **tool_row_fields(call.name, entry.get("args"), content, doc_refs),
                    **origin)
     ToolCallWriter(row, turn_uuid, call.seq, call.name, entry.get("args")).finish()
@@ -1008,7 +1015,8 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
                 # attempt `record_step_failure` stores `tool_unavailable`.
                 raise ToolTransportFailure(f"{call.name}: {content[:300]}")
             _write_tool_result(row, params.turn_uuid, ai, call, content, status,
-                               result.get("measure"), error_class, result.get("doc_refs"))
+                               result.get("measure"), error_class, result.get("doc_refs"),
+                               image_refs=result.get("image_refs"))
             # A result with an error code only in its text, such as not_found, is a result.
             event.ok = status != "error"
             event.error_class = error_class

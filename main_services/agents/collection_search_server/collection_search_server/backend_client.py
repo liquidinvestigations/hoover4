@@ -414,6 +414,7 @@ class DocumentText(AgentModel):
     count_state: str
     next_position: AgentPosition | None = None
     archive: dict[str, Any] | None = None
+    image: dict[str, Any] | None = None
 
 
 class TextHit(AgentModel):

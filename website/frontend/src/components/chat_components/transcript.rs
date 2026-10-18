@@ -14,7 +14,7 @@ use crate::components::chat_components::{
     doc_ref_card::{ChatDocRefCard, ChatDocRefRow},
     markdown_text::{MarkdownishText, referenced_handles},
     web_page::WebPageCard,
-    tool_cards::{ElapsedCounter, ToolCard, result_cards::{BoardFactSummary, TodoSummary}},
+    tool_cards::{ElapsedCounter, ToolCard, ToolImages, result_cards::{BoardFactSummary, TodoSummary}},
     tool_run_summary::{run_duration_ms, timestamp_ms, tool_run_summary},
 };
 
@@ -1184,6 +1184,7 @@ fn MessageEntry(
                         read_more_source: read_more_source.clone(),
                         draft: Some(draft),
                     }
+                    ToolImages { refs: message.image_refs() }
                     if !refs.is_empty() && message.tool_name != "cite_documents" {
                         DocRefsDisclosure { tool_name: message.tool_name.clone(), refs }
                     }

@@ -482,6 +482,36 @@ pub fn strip_artifact_marker(text: &str) -> String {
     }
 }
 
+/// Small previews of the document images that the agent model received after a tool
+/// result. A page screenshot is left out, because the browser card shows it.
+#[component]
+pub fn ToolImages(refs: Vec<common::chat_types::ChatImageRef>) -> Element {
+    let shown: Vec<(String, String)> = refs
+        .iter()
+        .filter(|r| r.kind == "document")
+        .filter_map(|r| {
+            let what = if r.video { "First frame of the video" } else { "Image" };
+            r.url().map(|url| (url, format!("{what} {} that the model received", r.label)))
+        })
+        .collect();
+    if shown.is_empty() {
+        return rsx! {};
+    }
+    rsx! {
+        div { class: "x-tool-images", style: "display: flex; flex-wrap: wrap; gap: 6px;",
+            for (index, (url, title)) in shown.into_iter().enumerate() {
+                img {
+                    key: "{index}",
+                    src: "{url}",
+                    alt: "{title}",
+                    title: "{title}",
+                    style: "max-width: 160px; max-height: 120px; border: 1px solid; border-color: var(--x-border); border-radius: 4px;",
+                }
+            }
+        }
+    }
+}
+
 pub fn artifact_url(artifact_id: &str, asset: &str) -> String {
     format!("/_chat_artifact/{artifact_id}/{asset}")
 }

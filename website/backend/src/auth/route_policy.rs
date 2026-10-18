@@ -104,6 +104,8 @@ mod tests {
             "/api/agent/v1/folders/overview",
             "/api/agent/v1/folders/list",
             "/api/agent/v1/folders/search",
+            "/api/agent/v1/images/document",
+            "/api/agent/v1/images/capture",
         ] {
             assert!(requires_session(path), "{path} must require a session");
             assert!(is_agent_route(path), "{path} must carry the agent prefix");

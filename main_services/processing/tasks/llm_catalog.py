@@ -181,8 +181,16 @@ def _is_reasoning(model_id: str) -> bool:
     return bool(re.search(r"nemotron|reason|thinking|deepseek-r", model_id, re.IGNORECASE))
 
 
+def vision_models() -> set:
+    """The models that read images, from `LLM_VISION_MODELS` (`[llm_provider.selfhosted]
+    vision_models`). The catalog marks them `supports_vision`."""
+    return {name.strip() for name in (os.getenv("LLM_VISION_MODELS") or "").split(",")
+            if name.strip()}
+
+
 def _prior_state(client, provider: str) -> Dict[str, tuple]:
-    """`{model_id: (is_allowed, context_window)}` as the table stands now, for one provider.
+    """`{model_id: (is_allowed, context_window, supports_vision)}` as the table stands now,
+    for one provider.
 
     `llm_models` is a ReplacingMergeTree read through `argMax(..., updated_at)`, and
     `is_allowed` defaults to 1. So an insert that omits the column writes a fresher
@@ -193,17 +201,19 @@ def _prior_state(client, provider: str) -> Dict[str, tuple]:
     `context_window` is carried for a quieter version of the same reason: a provider that
     listed a window once and omits it on the next refresh would otherwise blank the only
     denominator anything has, and every percentage computed from it disappears.
+    `supports_vision` is carried for the same reason: a listing does not state it.
 
     The website's own refresh (`api/admin/llm.rs`) carries the same state forward for the
     same reason. Both writers must, or whichever runs last wins.
     """
     rows = client.query(
         "SELECT model_id, argMax(is_allowed, updated_at) AS is_allowed, "
-        "argMax(context_window, updated_at) AS context_window "
+        "argMax(context_window, updated_at) AS context_window, "
+        "argMax(supports_vision, updated_at) AS supports_vision "
         "FROM llm_models WHERE provider = %(provider)s GROUP BY model_id LIMIT 5000",
         parameters={"provider": provider},
     ).result_rows
-    return {row[0]: (int(row[1]), int(row[2])) for row in rows}
+    return {row[0]: (int(row[1]), int(row[2]), int(row[3])) for row in rows}
 
 
 def store_models(result: RefreshResult, base_url: str) -> int:
@@ -221,6 +231,7 @@ def store_models(result: RefreshResult, base_url: str) -> int:
     count = len(result.models)
     with get_global_client() as client:
         prior = _prior_state(client, result.provider)
+        vision = vision_models()
         client.insert_arrow("llm_models", pa.table({
             "provider": pa.array([result.provider] * count, type=pa.string()),
             "model_id": pa.array(result.models, type=pa.string()),
@@ -229,14 +240,19 @@ def store_models(result: RefreshResult, base_url: str) -> int:
             # unknown. Nothing downstream may substitute a default: a token-budget
             # percentage against a made-up denominator reads as a measurement.
             "context_window": pa.array(
-                [result.context_windows.get(m) or prior.get(m, (1, 0))[1]
+                [result.context_windows.get(m) or prior.get(m, (1, 0, 0))[1]
                  for m in result.models],
                 type=pa.uint32(),
+            ),
+            # A configured vision model, else what was already stored.
+            "supports_vision": pa.array(
+                [1 if m in vision else prior.get(m, (1, 0, 0))[2] for m in result.models],
+                type=pa.uint8(),
             ),
             "is_reasoning": pa.array([1 if _is_reasoning(m) else 0 for m in result.models],
                                      type=pa.uint8()),
             # Carried forward, never re-defaulted. A model nobody has ruled on is allowed.
-            "is_allowed": pa.array([prior.get(m, (1, 0))[0] for m in result.models],
+            "is_allowed": pa.array([prior.get(m, (1, 0, 0))[0] for m in result.models],
                                    type=pa.uint8()),
             "fetched_at": pa.array([now] * count, type=pa.timestamp("s")),
             "updated_at": pa.array([now] * count, type=pa.timestamp("s")),

@@ -62,6 +62,8 @@ class RunMessage(BaseModel):
     #: The persisted model view. The complete evidence stays in `content`.
     model_content: Optional[str] = None
     doc_refs: List[Dict[str, Any]] = Field(default_factory=list)
+    #: `tool` only: the images of the result (`images.py`). Each request reads them again.
+    image_refs: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 def _usage_metadata(usage: Optional[Dict[str, int]]) -> Optional[Dict[str, int]]:
@@ -73,10 +75,13 @@ def _usage_metadata(usage: Optional[Dict[str, int]]) -> Optional[Dict[str, int]]
     return {"input_tokens": input_tokens, "output_tokens": output_tokens, "total_tokens": total}
 
 
-def to_langchain(messages: Sequence[RunMessage]) -> List[BaseMessage]:
-    """Convert stored run messages to langchain messages, in the same order."""
+def to_langchain(messages: Sequence[RunMessage],
+                 parts: Optional[Dict[int, List[Dict[str, Any]]]] = None) -> List[BaseMessage]:
+    """Convert stored run messages to langchain messages, in the same order. `parts` gives
+    the content parts of a tool message by its position, for a result with images
+    (`images.parts_for`)."""
     out: List[BaseMessage] = []
-    for message in messages:
+    for position, message in enumerate(messages):
         if message.role == "compaction":
             # A record for `apply_compactions`, never a message of the model input.
             continue
@@ -99,7 +104,7 @@ def to_langchain(messages: Sequence[RunMessage]) -> List[BaseMessage]:
                 raise ValueError("a tool message needs its tool_call_id")
             out.append(
                 ToolMessage(
-                    content=message.content,
+                    content=(parts or {}).get(position) or message.content,
                     tool_call_id=message.tool_call_id,
                     name=message.name,
                     status="error" if message.status == "error" else "success",

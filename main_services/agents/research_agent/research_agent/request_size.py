@@ -21,6 +21,9 @@ sends the same value as its output cap. When it is not set, the reserve is
 `ESTIMATED_OUTPUT_RESERVE`, and its source is `estimate`: the service sends no cap, so the
 fit of a reply is not guaranteed. An unknown window (0) has no safe input.
 
+**Images.** The images of tool results (`images.py`) are not text, so both methods add
+`images.list_tokens`, the estimate from the area of each image.
+
 `RequestSize.record()` is the `request_size` object that the `model_turn` frame carries in
 its usage. The worker stores it with the reply.
 """
@@ -35,7 +38,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Sequence
 
 from agent_common.result_pages import TokenCounter
-from research_agent import compaction, model_params
+from research_agent import compaction, images, model_params
 from research_agent.run_messages import RunMessage
 
 log = logging.getLogger(__name__)
@@ -142,7 +145,8 @@ def measure(system_text: str, schemas_json: str, messages: Sequence[RunMessage],
             try:
                 counter = (counter_for or _default_counter)(model_id)
                 tokens = counter.count(request_text(system_text, schemas_json, messages))
-                return RequestSize(int(tokens) + MESSAGE_FRAME_TOKENS * len(messages),
+                return RequestSize(int(tokens) + MESSAGE_FRAME_TOKENS * len(messages)
+                                   + images.list_tokens(messages),
                                    "tokenizer", window, reserve, source, model_id)
             except Exception as exc:  # noqa: BLE001 - every count failure uses the estimate
                 _tokenizer_down[base] = clock + TOKENIZER_RETRY_SECONDS

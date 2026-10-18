@@ -1010,6 +1010,22 @@
       "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
     },
     {
+      "id": "F-chat-03f",
+      "source": [
+        "main_services/agents/research_agent/research_agent/images.py",
+        "main_services/agents/research_agent/research_agent/compaction.py",
+        "website/backend/src/api/agent/images.rs",
+        "main_services/agents/collection_search_server/collection_search_server/tools_document.py",
+        "main_services/agents/browser_use_server/browser_use_server/read_page.py"
+      ],
+      "docs": [
+        "docs/technical-specification/Capability_Contracts.md#f-chat-03f",
+        "docs/architecture/Chat_And_Agents.md#images-in-tool-results"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This feature defines agent execution, configuration, or data handling. Conversation screenshots do not verify that internal contract."
+    },
+    {
       "id": "F-chat-03e",
       "source": [
         "website/backend/src/api/agent/documents.rs",

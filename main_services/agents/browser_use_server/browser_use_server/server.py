@@ -18,7 +18,7 @@ from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.server.middleware import Middleware
 from fastmcp.tools.tool import Tool, ToolResult
-from mcp.types import TextContent
+from mcp.types import EmbeddedResource, TextContent, TextResourceContents
 
 from agent_common import artifacts, telemetry
 
@@ -525,7 +525,26 @@ class ReadPageTool(Tool):
             content=[TextContent(type="text", text=read_page.render(outcome))],
             structured_content=None,
         )
-        return _append_marker(result, outcome.artifacts, failed=failed)
+        return _with_images(_append_marker(result, outcome.artifacts, failed=failed),
+                            [page.image for page in outcome.pages if page.image])
+
+
+#: The URI of the embedded resource that carries the image references of a result. The
+#: agent service sends each image to the model after the result text.
+IMAGE_REFS_URI = "hoover4://image-refs"
+
+
+def _with_images(result: ToolResult, images: list[dict]) -> ToolResult:
+    """`result` with one embedded resource of image references after its text blocks. The
+    MCP adapter of the agent puts it in the artifact, so the text marker stays the final
+    text block."""
+    if not images:
+        return result
+    content = list(result.content or [])
+    content.append(EmbeddedResource(type="resource", resource=TextResourceContents(
+        uri=IMAGE_REFS_URI, mimeType="application/json",
+        text=json.dumps(images[:read_page.MAX_URLS], ensure_ascii=False, sort_keys=True))))
+    return ToolResult(content=content, structured_content=result.structured_content)
 
 
 class CitePagesTool(Tool):

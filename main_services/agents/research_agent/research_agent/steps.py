@@ -48,7 +48,7 @@ from langchain_core.messages import AIMessage, BaseMessage, SystemMessage, ToolM
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from pydantic import BaseModel, Field, model_validator
 
-from research_agent import compaction, endpoints, llm_events, request_size, skill_store, stumbles
+from research_agent import compaction, endpoints, images, llm_events, request_size, skill_store, stumbles
 from research_agent.chat_model import ThinkingChatOpenAI
 from research_agent.execution import (
     ORDERED_TOOLS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
@@ -439,7 +439,8 @@ async def _prepare(request: ModelStepRequest, context: Any, system_text: str,
         compaction.plan_compaction, applied, rows, system_text=system_text,
         schemas_json=schemas_json, model_id=context.model_id, window=window,
         measured=size.tokens, safe_input=size.safe_input, force=force,
-        allow_oversized_newest=True)
+        allow_oversized_newest=True, username=request.username,
+        collections=request.allowed_collections)
     report = None
     compacted = list(applied)
     sent_size = size.record()
@@ -520,6 +521,9 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
     # tool result in full, and the `compaction` row of the reply records what was replaced.
     rows, applied = model_input_rows(request.earlier, request.messages)
     window = await asyncio.to_thread(compaction.context_window, context.model_id)
+    if any(m.image_refs for m in applied) and not await asyncio.to_thread(
+            images.supports_vision, context.model_id):
+        rows, applied = images.hide(rows), images.hide(applied)
 
     llm: Any = ThinkingChatOpenAI(
         **context.llm_kwargs,
@@ -547,7 +551,10 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
                 "The model provider refused the request as too large, and a new preparation "
                 "gave the same request. The run stops. The transcript keeps every step."))
         compacted, report, sent_size = prepared.messages, prepared.report, prepared.size
-        model_input = [SystemMessage(content=system_text)] + to_langchain(compacted)
+        image_parts = await asyncio.to_thread(
+            images.parts_for, compacted, username=request.username,
+            collections=request.allowed_collections)
+        model_input = [SystemMessage(content=system_text)] + to_langchain(compacted, image_parts)
 
         timer = llm_events.CallTimer()
         message: Any = None
@@ -710,11 +717,13 @@ def _tool_response(request: ToolCallRequest, content: str, status: str = "ok",
                    error_class: str = "", measure: Optional[Dict[str, Any]] = None,
                    matched: Optional[List[str]] = None,
                    doc_refs: Optional[List[Dict[str, Any]]] = None,
-                   retryable: bool = False) -> Dict[str, Any]:
+                   retryable: bool = False,
+                   image_refs: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """The `/tool_call` response. `doc_refs` is the whole identity of each row of a
-    result page, or None when the tool sent none. `retryable` is true for a transport
-    failure that a second attempt can change, and the worker then raises before it stores
-    a result (`TRANSPORT_FAILURE`)."""
+    result page, or None when the tool sent none. `image_refs` names the images of the
+    result (`images.py`). `retryable` is true for a transport failure that a second
+    attempt can change, and the worker then raises before it stores a result
+    (`TRANSPORT_FAILURE`)."""
     return {
         "tool_call_id": request.call.id,
         "name": request.call.name,
@@ -724,6 +733,7 @@ def _tool_response(request: ToolCallRequest, content: str, status: str = "ok",
         "measure": measure,
         "matched_names": matched or [],
         "doc_refs": doc_refs,
+        "image_refs": image_refs or [],
         "retryable": bool(retryable),
     }
 
@@ -946,10 +956,12 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
 
     measure = None
     doc_refs = None
+    image_refs = None
     status = "ok"
     if isinstance(result, ToolMessage):
         content = _text_of(result.content)
         measure, doc_refs, _ = split_resources(result.artifact)
+        image_refs = images.image_refs_of(result.artifact)
         if result.status == "error":
             status = "error"
     else:
@@ -959,7 +971,7 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
                               _with_repairs(measure, repairs), [], doc_refs, retryable=True)
     return _tool_response(
         request, content, status, "tool_error" if status == "error" else "",
-        _with_repairs(measure, repairs), [], doc_refs
+        _with_repairs(measure, repairs), [], doc_refs, image_refs=image_refs
     )
 
 

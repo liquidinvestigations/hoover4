@@ -47,6 +47,26 @@ def _document_entities(request: DocumentEntitiesRequest) -> dict[str, Any]:
     return response.model_dump(mode="json")
 
 
+#: The most images that one `read_documents` call attaches.
+MAX_READ_IMAGES = 4
+IMAGE_ATTACHED = "The image of this document follows the result."
+IMAGE_NOT_ATTACHED = "Image not attached: read this document alone to see it."
+
+
+def image_ref(row: dict[str, Any], image: dict[str, Any]) -> dict[str, Any]:
+    """The image reference of one document row: the source identity, the label and the
+    size. It holds no bytes. `video` is true for the first frame of a video. `dataset` and
+    `preview` select the route of the transcript preview."""
+    ref = {"kind": "document", "collection": row.get("collectionname", ""),
+           "dataset": row.get("collection_dataset", ""), "file_hash": row.get("file_hash", ""),
+           "label": row.get("title") or row.get("path") or row.get("file_hash", ""),
+           "width": int(image.get("width") or 0), "height": int(image.get("height") or 0),
+           "preview": bool(image.get("preview"))}
+    if image.get("kind") == "video":
+        ref["video"] = True
+    return ref
+
+
 class ReadDocumentsTool(PagedTool):
     """Give each document an equal part of the result page."""
 
@@ -57,14 +77,28 @@ class ReadDocumentsTool(PagedTool):
 
     def window(self, result: dict[str, Any], request: BaseModel | None = None) -> paging.Window:
         result = {**result, "documents": [dict(row) for row in result.get("documents", [])]}
+        images = []
         for row in result.get("documents", []):
+            image = row.pop("image", None)
+            seen = ""
+            if isinstance(image, dict):
+                if len(images) < MAX_READ_IMAGES:
+                    images.append(image_ref(row, image))
+                    seen = IMAGE_ATTACHED
+                else:
+                    seen = IMAGE_NOT_ATTACHED
             if row.get("page") is None:
                 if isinstance(row.get("archive"), dict):
                     row["note"] = paging.archive_note(row.pop("archive"))
                     continue
+                if seen:
+                    row["note"] = f"The document has no extracted text. {seen}"
+                    continue
                 row["error"] = ("The document read timed out." if row.get("count_state") == "timed_out"
                                 else "The document has no extracted text.")
                 continue
+            if seen:
+                row["note"] = seen
             start, end, total = row["text_start"], row["text_end"], row["text_length"]
             length = getattr(request, "length", None) or 6_000
             base = {"collection": row["collectionname"], "file_hash": [paging.hash_start(row["file_hash"])],
@@ -78,6 +112,7 @@ class ReadDocumentsTool(PagedTool):
             row["page_complete"] = start == 0 and end == total
             for key in ("text_start", "text_end", "text_length"):
                 row.pop(key)
+        paging.note_images(images)
         return super().window(result, request)
 
 

@@ -94,6 +94,8 @@ class CaptureResult:
     url: str = ""
     title: str = ""
     elapsed_ms: float = 0.0
+    #: True when the capture stored a screenshot.
+    screenshot: bool = False
 
 
 def should_capture(tool_name: str) -> bool:
@@ -232,6 +234,7 @@ async def _capture(
     result.artifact_id = artifact_id
     result.status = status
     result.detail = detail
+    result.screenshot = thumb is not None
     return result
 
 
