@@ -183,17 +183,67 @@ def _model() -> str:
     return short_model()
 
 
-def _post(endpoint, body: dict):
+def _post(endpoint, body: dict, timeout=None):
     """One completion request to `endpoint` (`tasks.llm_endpoints.Endpoint`). Raises only
-    what the caller already catches."""
+    what the caller already catches. `timeout` is a `(connect, read)` pair in seconds, and
+    `REQUEST_TIMEOUT` when it is None."""
     import requests
 
     return requests.post(
         f"{endpoint.base_url}/chat/completions",
         headers={"Authorization": f"Bearer {endpoint.api_key}"},
         json=body,
-        timeout=REQUEST_TIMEOUT,
+        timeout=timeout or REQUEST_TIMEOUT,
     )
+
+
+class TransportFailure(RuntimeError):
+    """A model request that ended before a usable reply, for a reason that a second request
+    can change: a connection error, a timeout, or the HTTP status 408, 429 or 5xx. An
+    activity raises it, so Temporal sends the request again (`tasks/Readme.md`, retries)."""
+
+
+def retryable_status(code: int) -> bool:
+    """Whether an HTTP status of a model request can change in a second request."""
+    return code in (408, 429) or code >= 500
+
+
+def post_or_raise(endpoint, body: dict, timeout=None):
+    """`_post`, with a transport failure raised as `TransportFailure`. Any other response,
+    a 4xx refusal included, is returned."""
+    import requests
+
+    try:
+        response = _post(endpoint, body, timeout)
+    except requests.RequestException as exc:
+        raise TransportFailure(f"{type(exc).__name__}: {exc}"[:500]) from exc
+    if retryable_status(response.status_code):
+        raise TransportFailure(f"HTTP {response.status_code}: {response.text[:200]}")
+    return response
+
+
+def record_call(username: str, session_id: str, kind: str, model: str, usage: dict,
+                latency_ms: int, ok: bool, error: str, reply_bytes: int) -> None:
+    """One `llm_call_events` row of a short model call. A failed write is logged."""
+    from datetime import datetime, timezone
+
+    from database.clickhouse import get_global_client
+    from tasks.llm_endpoints import endpoint_for
+
+    try:
+        with get_global_client() as client:
+            client.insert(
+                "llm_call_events",
+                [[datetime.now(timezone.utc).replace(tzinfo=None), username, session_id, kind,
+                  endpoint_for(model).label, model, int(usage.get("prompt_tokens") or 0),
+                  int(usage.get("completion_tokens") or 0), 0, reply_bytes, latency_ms,
+                  1 if ok else 0, error[:500]]],
+                column_names=["event_time", "username", "session_id", "kind", "provider",
+                              "model_id", "prompt_tokens", "completion_tokens",
+                              "reasoning_tokens", "reply_bytes", "latency_ms", "ok", "error"],
+            )
+    except Exception:  # noqa: BLE001 - telemetry never costs the call
+        log.warning("could not record the %s call", kind, exc_info=True)
 
 
 @dataclass

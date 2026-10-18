@@ -96,6 +96,10 @@ AGENT_RUN_PAYLOAD_BYTES = 4096
 #: The limits of the short activities on `chat-queue`, except the ending and the title.
 _SHORT_TIMEOUT = timedelta(seconds=30)
 
+#: The retry of an activity that sends one external request: a model call or a tool call.
+#: Temporal sends the request once more after one second (`tasks/Readme.md`, retries).
+EXTERNAL_RETRY = RetryPolicy(maximum_attempts=2, initial_interval=timedelta(seconds=1))
+
 
 def _was_cancelled(exc: BaseException) -> bool:
     """Whether this failure is a cancellation wearing another exception's clothes.
@@ -238,7 +242,7 @@ class AgentRun:
                     RunRef(run_id=inp.run_id, username=inp.username, session_id=inp.session_id),
                     start_to_close_timeout=TIMEOUTS.title_activity,
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                    retry_policy=RetryPolicy(maximum_attempts=1),
+                    retry_policy=EXTERNAL_RETRY,
                     task_queue=CHAT_MODEL_TASK_QUEUE,
                 )
             except asyncio.CancelledError:

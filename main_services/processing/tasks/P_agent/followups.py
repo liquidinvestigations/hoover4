@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 from temporalio import activity
@@ -15,10 +16,13 @@ log = logging.getLogger(__name__)
 
 
 def parse_prompts(text: str) -> list[str]:
-    """Accept three distinct questions from JSON or three plain lines."""
+    """Accept three distinct questions from a JSON array, fenced or bare, or from three plain
+    lines."""
+    from tasks.llm_json import extract_json
+
     text = summarize.strip_think_blocks(text).strip()
     try:
-        prompts = json.loads(text)
+        prompts = extract_json(text, "array")
     except ValueError:
         prompts = [re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line).strip()
                    for line in text.splitlines() if line.strip()]
@@ -30,8 +34,17 @@ def parse_prompts(text: str) -> list[str]:
     return prompts if len({prompt.casefold() for prompt in prompts}) == 3 else []
 
 
-def generate_prompts(question: str, answer: str, model: str) -> dict:
-    """Make one tool-free completion request without changing the answer."""
+#: The `llm_call_events.kind` of a follow-up suggestion call.
+FOLLOW_UP_KIND = "follow_up"
+
+
+def generate_prompts(question: str, answer: str, model: str, username: str = "",
+                     session_id: str = "") -> dict:
+    """Make one tool-free completion request without changing the answer, and record it in
+    `llm_call_events` with the kind `follow_up`.
+
+    A transport failure raises `summarize.TransportFailure`, so Temporal sends the request
+    again. A reply that gives no three questions returns the error in the result."""
     from tasks.llm_endpoints import endpoint_for
 
     model = model or summarize._model()
@@ -57,18 +70,38 @@ def generate_prompts(question: str, answer: str, model: str) -> dict:
     }
     if summarize._send_temperature():
         body["temperature"] = 0.2
+    started = time.monotonic()
+
+    def record(usage: dict, error: str, reply_bytes: int = 0) -> None:
+        summarize.record_call(username, session_id, FOLLOW_UP_KIND, model, usage,
+                              int((time.monotonic() - started) * 1000), not error, error,
+                              reply_bytes)
+
     try:
-        response = summarize._post(endpoint, body)
-        response.raise_for_status()
+        response = summarize.post_or_raise(endpoint, body)
+    except summarize.TransportFailure as exc:
+        record({}, str(exc))
+        raise
+    if response.status_code >= 400:
+        error = f"HTTP {response.status_code}: {response.text[:200]}"
+        record({}, error)
+        return {"follow_up_prompts": [], "follow_up_error": "The suggestions could not be generated."}
+    try:
         reply = response.json()
         choice = reply["choices"][0]
-        prompts = [] if choice.get("finish_reason") == "length" else parse_prompts(
-            choice.get("message", {}).get("content") or "")
-        return {"follow_up_prompts": prompts, "follow_up_usage": summarize.usage_tokens(reply),
-                "follow_up_error": "" if prompts else "The model did not return three questions."}
-    except Exception as exc:
-        log.warning("[P_agent] follow-up generation failed: %s", type(exc).__name__)
+    except (ValueError, KeyError, IndexError, TypeError) as exc:
+        record({}, f"unparseable body: {exc}")
         return {"follow_up_prompts": [], "follow_up_error": "The suggestions could not be generated."}
+    usage = summarize.usage_tokens(reply)
+    content = choice.get("message", {}).get("content") or ""
+    if choice.get("finish_reason") == "length":
+        prompts, error = [], "hit max_tokens"
+    else:
+        prompts = parse_prompts(content)
+        error = "" if prompts else "the reply gives no three distinct questions"
+    record(usage, error, len(content))
+    return {"follow_up_prompts": prompts, "follow_up_usage": usage,
+            "follow_up_error": "" if prompts else "The model did not return three questions."}
 
 
 @activity.defn
@@ -98,7 +131,8 @@ def write_followups(ref: RunRef) -> None:
     if "follow_up_prompts" in usage:
         return
     question = _user_row_text(run.username, run.session_id, run.turn_seq)
-    usage.update(generate_prompts(question, run.result, row["model"]))
+    usage.update(generate_prompts(question, run.result, row["model"], ref.username,
+                                  ref.session_id))
     current = agent_runs.read_run(ref.username, ref.session_id, ref.run_id)
     if (current is None or agent_runs.is_terminal(current)
             or agent_runs.turn_is_stopped(ref.username, ref.session_id, run.turn_seq)

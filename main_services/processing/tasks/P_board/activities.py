@@ -423,23 +423,10 @@ def _record_llm_call(owner: str, board_id: str, model: str, usage: dict, latency
                      ok: bool, error: str, reply_bytes: int, kind: str = "board_reason") -> None:
     """One `llm_call_events` row of a board model call. `kind` is `board_reason`,
     `board_label` or `board_summary`."""
-    from database.clickhouse import get_global_client
-    from database import boards
-    from tasks.llm_endpoints import endpoint_for
+    from tasks.P_agent.summarize import record_call
 
-    try:
-        with get_global_client() as client:
-            client.insert(
-                "llm_call_events",
-                [[boards.now(), owner, f"{m.SESSION_PREFIX}{board_id}", kind, endpoint_for(model).label,
-                  model, int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0),
-                  0, reply_bytes, latency_ms, 1 if ok else 0, error[:500]]],
-                column_names=["event_time", "username", "session_id", "kind", "provider", "model_id",
-                              "prompt_tokens", "completion_tokens", "reasoning_tokens",
-                              "reply_bytes", "latency_ms", "ok", "error"],
-            )
-    except Exception:  # noqa: BLE001 - telemetry never costs a reason
-        log.warning("[P_board] could not record the %s call", kind, exc_info=True)
+    record_call(owner, f"{m.SESSION_PREFIX}{board_id}", kind, model, usage, latency_ms, ok,
+                error, reply_bytes)
 
 
 def _read(board) -> tuple[list, list, object]:

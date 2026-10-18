@@ -8,17 +8,13 @@ dropped intent or a downgraded fact is visible in the board events.
 import json
 import re
 
+from tasks.llm_json import THINK_PATTERN, extract_json
 from tasks.P_board import model as m
 
-THINK_PATTERN = re.compile(r"<think>.*?</think>", re.S)
 FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.S)
-#: A fenced body that does not start with a brace: the model left out the opening brace.
-OPEN_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\"[^`]*?)\s*```", re.S)
 #: A tool call that the model wrote as text, `[submit_board_fact]{...}`, in place of a call.
 TEXT_CALL_PATTERN = re.compile(r"\[(?:%s)\]\s*(?=\{)" % re.escape(m.SUBMIT_FACT_TOOL))
 LABEL_PATTERN = re.compile(r"\[([DW]\d+)\]")
-#: A comma before a closing bracket, which JSON does not allow and the model sometimes writes.
-TRAILING_COMMA = re.compile(r",(\s*[}\]])")
 WORD_PATTERN = re.compile(r"[a-z0-9]{3,}")
 STOP_WORDS = {"the", "and", "for", "with", "from", "that", "this", "what", "which", "their",
               "emails", "email", "documents", "document", "find", "search", "identify", "any",
@@ -30,26 +26,9 @@ DUPLICATE_OVERLAP = 0.8
 
 def extract_json_object(text: str) -> dict:
     """The JSON object of a reply, from a fence or the outermost braces. A fenced body that
-    starts with a key, because the model left out the opening brace, gets that brace."""
-    text = THINK_PATTERN.sub("", text or "").strip()
-    fenced = FENCE_PATTERN.findall(text)
-    keyed = OPEN_FENCE_PATTERN.findall(text)
-    if fenced:
-        text = fenced[-1]
-    elif keyed:
-        body = keyed[-1].strip()
-        text = "{" + body + ("" if body.endswith("}") else "}")
-    start, end = text.find("{"), text.rfind("}")
-    if start < 0 or end < start:
-        raise ValueError("the reply holds no JSON object")
-    candidate = text[start:end + 1]
-    try:
-        value = json.loads(candidate)
-    except json.JSONDecodeError:
-        value = json.loads(TRAILING_COMMA.sub(r"\1", candidate))
-    if not isinstance(value, dict):
-        raise ValueError("the reply is not a JSON object")
-    return value
+    starts with a key, because the model left out the opening brace, gets that brace
+    (`tasks.llm_json.extract_json`)."""
+    return extract_json(text, "object")
 
 
 def _stem(word: str) -> str:
