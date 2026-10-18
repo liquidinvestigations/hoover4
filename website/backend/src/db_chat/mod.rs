@@ -877,6 +877,48 @@ pub async fn turn_runs(
     Ok(rows)
 }
 
+/// The model steps of one chat turn: every `ai` row of the threads of the turn's runs, in
+/// thread and index order. The transcript places each step's text above its first call.
+pub async fn turn_narration(
+    username: &str,
+    session_id: &str,
+    turn_seq: u32,
+) -> anyhow::Result<Vec<common::chat_types::NarrationStep>> {
+    let rows: Vec<(String, u32, String, String, String, String)> = get_global_client()
+        .query(
+            "SELECT toString(m.thread_id), m.idx, m.content, m.reasoning, m.tool_calls_json, m.usage_json \
+             FROM agent_run_messages AS m FINAL \
+             WHERE m.username = ? AND m.session_id = ? AND m.role = 'ai' \
+               AND m.run_id IN (SELECT run_id FROM agent_runs FINAL \
+                                WHERE username = ? AND session_id = ? AND turn_seq = ?) \
+             ORDER BY m.thread_id, m.idx",
+        )
+        .bind(username)
+        .bind(session_id)
+        .bind(username)
+        .bind(session_id)
+        .bind(turn_seq)
+        .fetch_all()
+        .await?;
+    Ok(rows.into_iter().map(|(thread_id, idx, text, reasoning, calls, usage)| narration_step(thread_id, idx, text, reasoning, &calls, &usage)).collect())
+}
+
+/// One step from its stored columns. A call entry carries its transcript `seq`, and a step
+/// of a policy hook has `origin` `policy` in its usage.
+fn narration_step(thread_id: String, idx: u32, text: String, reasoning: String, calls: &str, usage: &str)
+    -> common::chat_types::NarrationStep {
+    let calls: Vec<serde_json::Value> = serde_json::from_str(calls).unwrap_or_default();
+    let usage: serde_json::Value = serde_json::from_str(usage).unwrap_or_default();
+    common::chat_types::NarrationStep {
+        thread_id,
+        idx,
+        text,
+        reasoning,
+        call_seqs: calls.iter().filter_map(|call| call["seq"].as_u64().map(|seq| seq as u32)).collect(),
+        policy: usage["origin"].as_str() == Some("policy"),
+    }
+}
+
 /// Each finished citation result stored in the conversation's run threads.
 pub async fn session_citation_outputs(username: &str, session_id: &str) -> anyhow::Result<Vec<String>> {
     let rows = get_global_client()
@@ -935,5 +977,20 @@ async fn delete_session_runs(username: &str, session_id: &str) {
         if let Err(e) = result {
             tracing::error!("could not delete the {table} rows of session {session_id}: {e}");
         }
+    }
+}
+
+#[cfg(test)]
+mod narration_step_tests {
+    use super::narration_step;
+
+    #[test]
+    fn a_step_takes_its_call_seqs_and_its_origin() {
+        let step = narration_step("t".into(), 4, "Searching.".into(), "r".into(),
+                                  r#"[{"id": "a", "name": "search", "seq": 7}, {"id": "b", "name": "read", "seq": 8}]"#,
+                                  r#"{"origin": "policy"}"#);
+        assert_eq!((step.call_seqs, step.policy), (vec![7, 8], true));
+        let plain = narration_step("t".into(), 6, "Done.".into(), String::new(), "[]", "{}");
+        assert!(plain.call_seqs.is_empty() && !plain.policy);
     }
 }

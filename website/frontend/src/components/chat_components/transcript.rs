@@ -4,7 +4,8 @@ use std::collections::{HashMap, HashSet};
 
 use common::chat_todos::todo_summaries;
 use common::chat_types::{
-    CITATION_NOTE_NAME, ChatDocRef, ChatMessageItem, ChatRole, StreamTurn, merge_citations,
+    CITATION_NOTE_NAME, ChatDocRef, ChatMessageItem, ChatRole, NarrationStep, StreamTurn, merge_citations,
+    narration_fragments, reasoning_without_narration,
 };
 use common::storage_tree::compose_collection_dataset;
 use dioxus::prelude::*;
@@ -42,8 +43,56 @@ pub fn ChatTranscript(
     /// `data-chat-turn`, so a browser test reads the turn state from the page.
     #[props(default)]
     turn: String,
+    /// The session, whose turn narration the transcript reads (`chat_turn_narration`).
+    /// Empty reads none.
+    #[props(default)]
+    session_id: String,
 ) -> Element {
     let stream_live = stream_live.unwrap_or(true);
+    // The model steps of each turn, by `(session, turn seq)`. A finished turn is read once.
+    // The newest turn is read again at each step boundary of the stream (a new answer seq
+    // or a changed tool row), so a reload or a missed poll recovers every finished step.
+    let mut narration = use_signal(HashMap::<(String, u32), Vec<NarrationStep>>::new);
+    let turn_seqs: Vec<u32> = messages.iter().filter(|m| m.role == ChatRole::User).map(|m| m.seq).collect();
+    let live_key = stream.as_ref().map(|turn| {
+        let rows: Vec<String> = turn.tool_rows.iter().map(|row| format!("{}:{}", row.seq, row.done)).collect();
+        format!("{}|{}", turn.answer_seq, rows.join(","))
+    }).unwrap_or_default();
+    let message_count = messages.len();
+    let narration_session = session_id.clone();
+    let _narration_reader = use_resource(use_reactive!(|(narration_session, turn_seqs, live_key, message_count)| async move {
+        let _ = (&live_key, message_count);
+        if narration_session.is_empty() {
+            return;
+        }
+        let newest = turn_seqs.last().copied();
+        for turn_seq in turn_seqs {
+            let key = (narration_session.clone(), turn_seq);
+            if narration.peek().contains_key(&key) && Some(turn_seq) != newest {
+                continue;
+            }
+            if let Ok(steps) = crate::api::chat_api::chat_turn_narration(narration_session.clone(), turn_seq).await {
+                if narration.peek().get(&key) != Some(&steps) {
+                    narration.write().insert(key, steps);
+                }
+            }
+        }
+    }));
+    let narration_map = narration.read().clone();
+    let steps_of = |turn_seq: Option<u32>| -> Vec<NarrationStep> {
+        turn_seq.and_then(|seq| narration_map.get(&(session_id.clone(), seq)).cloned()).unwrap_or_default()
+    };
+    // The narration fragment above each call seq, over every turn.
+    let mut fragments: HashMap<u32, String> = HashMap::new();
+    for turn_seq in messages.iter().filter(|m| m.role == ChatRole::User).map(|m| m.seq) {
+        let mut answer = turn_answers(&messages, turn_seq);
+        if Some(turn_seq) == messages.iter().filter(|m| m.role == ChatRole::User).map(|m| m.seq).last() {
+            if let Some(turn) = stream.as_ref() {
+                answer.push_str(&turn.content);
+            }
+        }
+        fragments.extend(narration_fragments(&steps_of(Some(turn_seq)), &answer));
+    }
     let q = find_query.read().clone().to_lowercase();
     let matches: Vec<usize> = if q.is_empty() {
         Vec::new()
@@ -111,8 +160,12 @@ pub fn ChatTranscript(
             && !m.content.is_empty();
         let reasoning_in_group = group_reasoning.values().any(|answer| *answer == i);
         let board_fact = if m.role == ChatRole::Assistant { submitted_fact(&messages[..i]) } else { None };
+        let fragment = if m.role == ChatRole::Tool { fragments.get(&m.seq).cloned() } else { None };
         rsx! {
             div { "data-chat-message": "{m.seq}", style: "display: contents;",
+            if let Some(text) = fragment {
+                NarrationLine { key: "narration-{m.seq}", text }
+            }
             MessageEntry {
                 key: "{m.seq}",
                 message: m.clone(),
@@ -201,6 +254,12 @@ pub fn ChatTranscript(
                         force_open: active_msg.is_some_and(|a| (start..end).contains(&a)),
                         live: live_group_start == Some(start),
                         elapsed_ms: if live_group_start == Some(start) { live_elapsed } else { None },
+                        narration: newest_fragment(
+                            &fragments,
+                            messages[start..end].iter().map(|m| m.seq).chain(
+                                if live_group_start == Some(start) { live_tools[..joined_live_end].iter().map(|t| t.seq).collect::<Vec<_>>() } else { Vec::new() },
+                            ),
+                        ),
                         for i in start..end {
                             {entry(i)}
                         }
@@ -209,6 +268,9 @@ pub fn ChatTranscript(
                                 div {
                                     key: "stream-tool-{tool.seq}",
                                     style: "display: flex; flex-direction: column; gap: 8px;",
+                                    if let Some(text) = fragments.get(&tool.seq).cloned() {
+                                        NarrationLine { text }
+                                    }
                                     ToolCard {
                                         tool_name: tool.tool_name.clone(),
                                         tool_input: tool.summary.clone(),
@@ -224,14 +286,14 @@ pub fn ChatTranscript(
                         if let Some(answer) = group_reasoning.get(&start).copied() {
                             ReasoningDisclosure {
                                 key: "reasoning-{messages[answer].seq}",
-                                reasoning: messages[answer].reasoning.clone(),
+                                reasoning: reasoning_without_narration(&messages[answer].reasoning, &steps_of(turn_of(&messages, answer))),
                             }
                         }
                         if live_reasoning_group == Some(ReasoningPlace::Stored(start)) {
                             if let Some(turn) = stream.as_ref() {
                                 ReasoningDisclosure {
                                     key: "reasoning-{turn.answer_seq}",
-                                    reasoning: turn.reasoning.clone(),
+                                    reasoning: reasoning_without_narration(&turn.reasoning, &steps_of(turn_seqs_last(&messages))),
                                 }
                             }
                         }
@@ -252,7 +314,11 @@ pub fn ChatTranscript(
                         force_open: true,
                         live: true,
                         elapsed_ms: live_elapsed,
+                        narration: newest_fragment(&fragments, turn.tool_rows.iter().map(|t| t.seq)),
                         for tool in turn.tool_rows.clone() {
+                            if let Some(text) = fragments.get(&tool.seq).cloned() {
+                                NarrationLine { key: "narration-{tool.seq}", text }
+                            }
                             ToolCard {
                                 key: "stream-tool-{tool.seq}",
                                 tool_name: tool.tool_name.clone(),
@@ -267,7 +333,7 @@ pub fn ChatTranscript(
                         if live_reasoning_group == Some(ReasoningPlace::Live) {
                             ReasoningDisclosure {
                                 key: "reasoning-{turn.answer_seq}",
-                                reasoning: turn.reasoning.clone(),
+                                reasoning: reasoning_without_narration(&turn.reasoning, &steps_of(turn_seqs_last(&messages))),
                             }
                         }
                     }
@@ -276,7 +342,7 @@ pub fn ChatTranscript(
                     div {
                         key: "stream-reasoning-{turn.answer_seq}",
                         style: "align-self: stretch; max-width: 96%; padding: 4px 2px 0;",
-                        ReasoningDisclosure { key: "reasoning-{turn.answer_seq}", reasoning: turn.reasoning.clone() }
+                        ReasoningDisclosure { key: "reasoning-{turn.answer_seq}", reasoning: reasoning_without_narration(&turn.reasoning, &steps_of(turn_seqs_last(&messages))) }
                     }
                 }
                 if !turn.content.is_empty() {
@@ -489,6 +555,8 @@ fn ToolRunGroup(
     force_open: bool,
     #[props(default)] live: bool,
     #[props(default)] elapsed_ms: Option<u32>,
+    /// The newest narration fragment of the group, shown above the closed group.
+    #[props(default)] narration: String,
     children: Element,
 ) -> Element {
     let mut open = use_signal(|| false);
@@ -505,6 +573,9 @@ fn ToolRunGroup(
         div {
             class: "x-chat-tool-run",
             style: "display: flex; flex-direction: column; gap: 8px;",
+            if !shown && !narration.is_empty() {
+                NarrationLine { text: narration.clone() }
+            }
             button {
                 class: "x-chat-tool-run-toggle",
                 "aria-expanded": "{shown}",
@@ -529,6 +600,47 @@ fn ToolRunGroup(
             }
         }
     }
+}
+
+/// The model's text before a tool call, in gray (`common::chat_types::narration_fragments`).
+#[component]
+fn NarrationLine(text: String) -> Element {
+    rsx! {
+        div {
+            class: "x-chat-narration",
+            style: "color: var(--x-ink-muted); font-size: var(--x-text-sm); line-height: var(--x-line-detail); \
+                    white-space: pre-wrap; overflow-wrap: anywhere;",
+            "{text}"
+        }
+    }
+}
+
+/// The fragment of the highest call seq among `seqs`, or empty.
+fn newest_fragment(fragments: &HashMap<u32, String>, seqs: impl Iterator<Item = u32>) -> String {
+    seqs.filter(|seq| fragments.contains_key(seq)).max().and_then(|seq| fragments.get(&seq).cloned()).unwrap_or_default()
+}
+
+/// The seq of the user message that opened the turn of row `index`.
+fn turn_of(messages: &[ChatMessageItem], index: usize) -> Option<u32> {
+    messages[..=index.min(messages.len().saturating_sub(1))].iter().rev().find(|m| m.role == ChatRole::User).map(|m| m.seq)
+}
+
+/// The seq of the newest user message.
+fn turn_seqs_last(messages: &[ChatMessageItem]) -> Option<u32> {
+    messages.iter().rev().find(|m| m.role == ChatRole::User).map(|m| m.seq)
+}
+
+/// The text of the stored answers of one turn, which holds the plan prose of its rounds.
+fn turn_answers(messages: &[ChatMessageItem], turn_seq: u32) -> String {
+    messages
+        .iter()
+        .skip_while(|m| m.seq != turn_seq)
+        .skip(1)
+        .take_while(|m| m.role != ChatRole::User)
+        .filter(|m| m.role == ChatRole::Assistant)
+        .map(|m| m.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 /// Every document hash this conversation has named a dataset for.

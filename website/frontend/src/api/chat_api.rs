@@ -49,6 +49,14 @@ pub async fn chat_get_session(session_id: String) -> Result<ChatSessionDetail, S
 }
 
 #[server]
+pub async fn chat_turn_narration(session_id: String, turn_seq: u32) -> Result<Vec<common::chat_types::NarrationStep>, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::chat::turn_narration(&user, session_id, turn_seq)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+#[server]
 pub async fn chat_delete_session(session_id: String) -> Result<(), ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::chat::delete_chat_session(&user, session_id)

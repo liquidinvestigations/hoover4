@@ -231,6 +231,13 @@ When a turn ends, the page refreshes all its rows once.
 This receives earlier tool results and citation metadata that incremental polling can miss.
 The agent run sweep closes running rows whose workflows have ended.
 
+The transcript reads the narration of each turn through `chat_turn_narration`.
+It returns each `ai` row of the turn's threads with its text, its reasoning and the transcript seqs of its calls.
+The text of a step with calls shows in gray above the card of its first call. A closed group shows its newest step text above its line.
+A step text that the answer holds is plan prose and shows only in the answer.
+The page reads a finished turn once. It reads the running turn again at each new answer seq or changed tool row, so a reload recovers every finished step.
+The reasoning view removes each narration text at its own position in the joined reasoning, and keeps a sentence of the reasoning that repeats it.
+
 
 ## Timeouts and retries
 

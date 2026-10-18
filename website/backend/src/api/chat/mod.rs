@@ -69,6 +69,20 @@ pub async fn create_chat_session(
     db_chat::create_session(username, "New chat", &selected).await
 }
 
+/// The model steps of one turn of a session that the caller owns, for the narration of the
+/// transcript. A session of another account is "not found", as in `get_chat_session`.
+pub async fn turn_narration(
+    user: &CurrentUser,
+    session_id: String,
+    turn_seq: u32,
+) -> anyhow::Result<Vec<common::chat_types::NarrationStep>> {
+    let username = user.username.as_str();
+    db_chat::get_session(username, &session_id)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("chat session not found"))?;
+    db_chat::turn_narration(username, &session_id, turn_seq).await
+}
+
 pub async fn get_chat_session(
     user: &CurrentUser,
     session_id: String,

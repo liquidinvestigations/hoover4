@@ -483,6 +483,68 @@ pub struct StreamToolRow {
     pub elapsed_ms: u32,
 }
 
+/// One model step of a turn that the transcript reads for its narration
+/// (`api::chat::turn_narration`). The step is an `ai` row of `agent_run_messages`.
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub struct NarrationStep {
+    /// The thread and the index of the row, the identity of the step.
+    pub thread_id: String,
+    pub idx: u32,
+    /// The text of the step. With calls, it is the narration fragment above the first call.
+    pub text: String,
+    /// The model's own reasoning of the step.
+    pub reasoning: String,
+    /// The transcript seqs of the step's calls, in call order. Empty for a step without calls.
+    pub call_seqs: Vec<u32>,
+    /// A step that a policy hook wrote, which is not a reply of the model.
+    #[serde(default)]
+    pub policy: bool,
+}
+
+/// The narration fragment shown above each call: the first call seq of each step with text
+/// and calls, to its text. A fragment that the answer `answer` already holds (plan prose)
+/// is left out, so no text shows twice.
+pub fn narration_fragments(steps: &[NarrationStep], answer: &str) -> std::collections::HashMap<u32, String> {
+    steps
+        .iter()
+        .filter(|step| !step.policy)
+        .filter_map(|step| {
+            let text = step.text.trim();
+            let first = *step.call_seqs.first()?;
+            (!text.is_empty() && !answer.contains(text)).then(|| (first, text.to_string()))
+        })
+        .collect()
+}
+
+/// `joined`, the reasoning of a round as the worker joins it (each step's reasoning and each
+/// narration fragment, with blank lines between), without the narration fragments.
+///
+/// The parts are matched in step order at the start of the remaining text, so a fragment
+/// is removed only at its own position, and a sentence of the reasoning that repeats a
+/// fragment stays. A step that does not match at the current position is a step of an
+/// earlier round, or plan prose, which the worker does not join. Text after the last
+/// matched part, such as the reasoning of a step that still streams, stays.
+pub fn reasoning_without_narration(joined: &str, steps: &[NarrationStep]) -> String {
+    let mut rest = joined.trim_start();
+    let mut kept: Vec<&str> = Vec::new();
+    for step in steps.iter().filter(|step| !step.policy) {
+        let parts = [(step.reasoning.trim(), false), (step.text.trim(), !step.call_seqs.is_empty())];
+        for (part, narration) in parts {
+            if part.is_empty() || !rest.starts_with(part) {
+                continue;
+            }
+            if !narration {
+                kept.push(part);
+            }
+            rest = rest[part.len()..].trim_start();
+        }
+    }
+    if !rest.is_empty() {
+        kept.push(rest);
+    }
+    kept.join("\n\n")
+}
+
 /// The turn currently being produced, reconstructed from `chat_message_stream`.
 ///
 /// Read-path rules, and neither can be dropped: the stream table is read with `argMax`, never a
@@ -1962,5 +2024,34 @@ mod tests {
             let refs = extract_doc_refs(tool, &output);
             assert_eq!(refs.iter().map(|r| r.file_hash.as_str()).collect::<Vec<_>>(), vec!["a1", "b2"], "{tool}");
         }
+    }
+}
+
+#[cfg(test)]
+mod narration_tests {
+    use super::*;
+
+    fn step(idx: u32, reasoning: &str, text: &str, calls: &[u32]) -> NarrationStep {
+        NarrationStep { thread_id: "t".into(), idx, text: text.into(), reasoning: reasoning.into(),
+                        call_seqs: calls.to_vec(), policy: false }
+    }
+
+    #[test]
+    fn a_fragment_goes_above_the_first_call_unless_the_answer_holds_it() {
+        let steps = vec![step(1, "r1", "I will plan the search.", &[3]), step(3, "r2", "Now the second search.", &[5, 6]),
+                         step(5, "r3", "", &[8]), step(7, "r4", "The answer.", &[])];
+        let fragments = narration_fragments(&steps, "I will plan the search.\n\nThe answer.");
+        assert_eq!(fragments.len(), 1);
+        assert_eq!(fragments[&5], "Now the second search.");
+    }
+
+    #[test]
+    fn narration_leaves_the_reasoning_at_its_own_position_only() {
+        let steps = vec![step(1, "Check the memo.", "Searching now.", &[3]),
+                         step(3, "Searching now. The memo is short.", "Reading it.", &[5])];
+        let joined = "Check the memo.\n\nSearching now.\n\nSearching now. The memo is short.\n\nReading it.\n\nLive step thinks";
+        assert_eq!(reasoning_without_narration(joined, &steps),
+                   "Check the memo.\n\nSearching now. The memo is short.\n\nLive step thinks");
+        assert_eq!(reasoning_without_narration("other text", &steps), "other text", "no match keeps the text");
     }
 }

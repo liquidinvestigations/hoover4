@@ -642,6 +642,7 @@ fn ChatConversationPanel(
                 run_cited_refs: run_cited_refs.read().clone(),
                 todo_versions: todo_versions.read().clone(),
                 turn: turn_state(*sending.read(), &queued_for.read(), *interrupted.read()).to_string(),
+                session_id: session_id.read().clone(),
             }
             if *interrupted.read() {
                 div {
