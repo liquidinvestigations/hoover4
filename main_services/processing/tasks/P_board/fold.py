@@ -28,6 +28,12 @@ The rules:
   causal event. A review decision or a reopening that names another identity does nothing,
   so a late retry cannot decide a newer review. A legacy decision without an identity
   applies as before.
+* **Review entry.** A `reason_result` with `semantics` 2 or more enters review only when no
+  intent is open or running after it. So the intents of the same reply run first. An older
+  result keeps rule 1, which ignores intents, so its stored decisions keep their meaning.
+* **Unanswered goals.** A `review_accepted` lists the goals without a proposal in
+  `unanswered`, and they are `not_answered`. A hint or a move back to active opens them
+  again. An older `review_accepted` has no list, and those goals stay open.
 * **Goal answers.** An assessment proposes answers for some goals or for all. New proposals
   replace the proposal of their goal and keep the others. A proposal has the identity
   `<reason_result event id>:<goal>`, and a decision names it. A legacy assessment of outcome
@@ -64,13 +70,18 @@ The rules:
   to the board that has received the fewest explores and reasons.
 """
 
+import re
 from dataclasses import dataclass, field
+from datetime import timezone
 
 from tasks.P_board import model as m
 from tasks.P_board.prompts import goal_ids
 
 #: The assessment results that the next reason prompt reports.
 RECENT_REASONS = 3
+
+#: The goal of a dropped answer in a problem of a `reason_result` without `dropped_answers`.
+DROPPED_ANSWER_PATTERN = re.compile(r"^the answer of (\S+?)(?: from .*)? names ")
 
 #: The event types that can change the budget. Each keeps its actual grant.
 BUDGET_EVENTS = (m.HINT_ADDED, m.QUESTION_EXPLORED, m.FACT_REJECTED, m.REVIEW_REJECTED,
@@ -172,6 +183,12 @@ class Folded:
     review_reason: str = ""
     #: The decision ids that a reopening has used.
     extended: set = field(default_factory=set)
+    #: The goals that a person finished without an answer (`review_accepted` with
+    #: `unanswered`), in goal order. A hint or a move back to active opens them again.
+    not_answered: list[str] = field(default_factory=list)
+    #: Goal id to the numbers of the assessments after its current proposal that dropped an
+    #: answer for it.
+    answer_drops: dict = field(default_factory=dict)
     #: Assessed budget to its final assessment: `assessment_id`, `reason_no`, `state`
     #: (`running` or `terminal`) and `outcome`.
     final_ops: dict = field(default_factory=dict)
@@ -318,6 +335,8 @@ class _Fold:
                                         self.event.created_at,
                                         _int((self.event.payload or {}).get("seq"))))
         f.status = new
+        if new == m.ACTIVE:
+            f.not_answered = []
         if new in (m.REVIEW, m.COMPLETED):
             f.decision_id = self.event.event_id
         else:
@@ -371,6 +390,7 @@ def _apply(run: _Fold, event, data: dict, concluded: set) -> None:
     kind = event.event_type
     if kind == m.HINT_ADDED:
         folded.hints.append(str(data.get("text", "")))
+        folded.not_answered = []
         for intent in folded.intents.values():
             if intent.state == m.QUESTION:
                 intent.state = m.OPEN
@@ -384,6 +404,9 @@ def _apply(run: _Fold, event, data: dict, concluded: set) -> None:
         folded.accepted.update(folded.proposed)
         folded.proposed = {}
         run.status(m.COMPLETED)
+        # An older decision has no `unanswered`, and its goals without an answer stay open.
+        unanswered = {str(g) for g in data.get("unanswered") or []}
+        folded.not_answered = [g for g in folded.goal_ids if g in unanswered and g not in folded.accepted]
     elif (kind == m.REVIEW_REJECTED and folded.status in (m.REVIEW, m.COMPLETED)
           and run.names_decision(data)):
         folded.proposed = {}
@@ -523,13 +546,38 @@ def _decides(folded: Folded, goal: str, data: dict) -> bool:
     return answer.get("reason_no") == _int(str(data.get("reason_no", "")))
 
 
+def _millis(at) -> int:
+    """Milliseconds since the epoch of a stored time, which ClickHouse returns without a zone
+    in UTC. Zero for no time."""
+    if at is None:
+        return 0
+    return int((at if at.tzinfo else at.replace(tzinfo=timezone.utc)).timestamp() * 1000)
+
+
 def _proposal(event, goal: dict, reason_no: int) -> dict:
     name = str(goal.get("goal", ""))
     return {"goal": name, "from": [str(f) for f in goal.get("from") or []],
             "statement": str(goal.get("statement", "")), "reason_no": reason_no,
             "proposal_id": f"{event.event_id}:{name}",
             "answer_kind": str(goal.get("answer_kind", "")),
-            "commentary": str(goal.get("commentary", ""))}
+            "commentary": str(goal.get("commentary", "")),
+            "proposed_ms": _millis(event.created_at)}
+
+
+def _dropped_goals(data: dict) -> set[str]:
+    """The goals whose answer the checks of a result dropped. An older result names them only
+    in its problems."""
+    if "dropped_answers" in data:
+        return {str(g) for g in data.get("dropped_answers") or []}
+    found = (DROPPED_ANSWER_PATTERN.match(str(p)) for p in data.get("problems") or [])
+    return {match.group(1) for match in found if match}
+
+
+def _count_drops(folded: Folded, data: dict, reason_no: int) -> None:
+    """Add the assessment to the later drops of each proposed goal whose answer it dropped."""
+    for goal in _dropped_goals(data):
+        if goal in folded.proposed:
+            folded.answer_drops.setdefault(goal, []).append(reason_no)
 
 
 def _material(old: dict | None, new: dict) -> bool:
@@ -573,6 +621,8 @@ def _apply_reason(run: _Fold, event) -> None:
             proposal = _proposal(event, goal, reason_no)
             if proposal["goal"] in folded.goal_ids and proposal["goal"] not in folded.accepted:
                 folded.proposed[proposal["goal"]] = proposal
+                folded.answer_drops.pop(proposal["goal"], None)
+        _count_drops(folded, data, reason_no)
         op = folded.final_ops.get(str(_int(data.get("assessed_budget"))))
         if op is not None:
             op.update(state="terminal", outcome=outcome)
@@ -587,6 +637,7 @@ def _apply_reason(run: _Fold, event) -> None:
                 continue
             changed += _material(folded.proposed.get(name), proposal)
             folded.proposed[name] = proposal
+            folded.answer_drops.pop(name, None)
     elif outcome == "review":
         # A legacy review replaces every earlier proposal and moves an active board to
         # review even when it leaves a goal out, as it did when it was written.
@@ -596,10 +647,16 @@ def _apply_reason(run: _Fold, event) -> None:
         for goal in review.get("goals") or []:
             if isinstance(goal, dict) and str(goal.get("goal", "")) not in folded.accepted:
                 folded.proposed[str(goal.get("goal", ""))] = _proposal(event, goal, reason_no)
+        folded.answer_drops = {}
         changed = 1
+    _count_drops(folded, data, reason_no)
     legacy_review = "proposals" not in data and outcome == "review"
     covered = bool(folded.open_goals) and all(g in folded.proposed for g in folded.open_goals)
-    if legacy_review or (covered and (changed or outcome == "review")):
+    # From rule 2, intents of the reply or open work keep the board active, and the
+    # assessment after that work ends can enter review.
+    waits = _int(data.get("semantics")) >= 2 and bool(
+        folded.by_state(m.OPEN) or folded.by_state(m.RUNNING))
+    if legacy_review or (covered and (changed or outcome == "review") and not waits):
         folded.checkpoint = dict(data.get("situation") or {}, had_work=False)
         folded.clear_stalls()
         if folded.status == m.ACTIVE:

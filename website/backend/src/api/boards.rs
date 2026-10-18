@@ -448,6 +448,11 @@ fn answers(summary: &serde_json::Value, key: &str) -> Vec<BoardReviewGoal> {
                     proposal_id: g["proposal_id"].as_str().unwrap_or("").to_string(),
                     answer_kind: g["answer_kind"].as_str().unwrap_or("").to_string(),
                     commentary: g["commentary"].as_str().unwrap_or("").to_string(),
+                    proposed_ms: g["proposed_ms"].as_i64().unwrap_or(0),
+                    later_drops: g["later_drops"]
+                        .as_array()
+                        .map(|a| a.iter().filter_map(|n| n.as_u64().map(|n| n as u32)).collect())
+                        .unwrap_or_default(),
                 })
                 .filter(|g| !g.goal.is_empty())
                 .collect()
@@ -609,6 +614,7 @@ pub async fn list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardListItem
                     facts: board_facts,
                     answers_proposed: answers(&summary, "answers_proposed"),
                     answers_accepted: answers(&summary, "answers_accepted"),
+                    not_answered: strings(&summary["not_answered"]),
                 },
                 status,
                 board_id: b.board_id,
@@ -823,7 +829,11 @@ fn summarise(event_type: &str, subject: &str, payload: &serde_json::Value,
         "fact_rejected" => (format!("Rejected {}{grown}", slug(subject)), text("reason")),
         "pause_requested" => fixed("A pause was requested.".to_string()),
         "resume_requested" => fixed("A resume was requested.".to_string()),
-        "review_accepted" => fixed("The board was finished. It is complete.".to_string()),
+        "review_accepted" => match payload["unanswered"].as_array().map(|a| a.len()).unwrap_or(0) {
+            0 => fixed("The board was finished. It is complete.".to_string()),
+            1 => fixed("The board was finished. It is complete, and 1 goal is not answered.".to_string()),
+            n => fixed(format!("The board was finished. It is complete, and {n} goals are not answered.")),
+        },
         "review_rejected" => (format!("Continued the board with a correction{grown}"), text("correction")),
         "goal_answer_accepted" => fixed(format!("Accepted the answer of {}.", slug(subject))),
         "goal_answer_rejected" => (format!("Rejected the answer of {}{grown}", slug(&text("goal"))), text("correction")),
@@ -999,6 +1009,7 @@ async fn read_snapshot(board: BoardRow) -> anyhow::Result<BoardSnapshot> {
     Ok(BoardSnapshot {
         review_id,
         review_reason: summary["review_reason"].as_str().unwrap_or("").to_string(),
+        not_answered: strings(&summary["not_answered"]),
         limit_reached,
         reopen_grant,
         final_running,
@@ -1318,12 +1329,13 @@ mod tests {
     #[test]
     fn the_summary_gives_the_proposed_and_the_accepted_answers() {
         let summary = serde_json::json!({
-            "answers_proposed": [{"goal": "goal-2", "from": ["f1.2"], "statement": "b", "reason_no": 4}],
+            "answers_proposed": [{"goal": "goal-2", "from": ["f1.2"], "statement": "b", "reason_no": 4,
+                                  "proposed_ms": 1_000, "later_drops": [6, 7]}],
             "answers_accepted": [{"goal": "goal", "from": ["f1.1"], "statement": "a", "reason_no": 3}],
         });
         assert_eq!(answers(&summary, "answers_proposed"), vec![BoardReviewGoal {
             goal: "goal-2".into(), from: vec!["f1.2".into()], statement: "b".into(), reason_no: 4,
-            ..Default::default()
+            proposed_ms: 1_000, later_drops: vec![6, 7], ..Default::default()
         }]);
         assert_eq!(answers(&summary, "answers_accepted")[0].goal, "goal");
         assert!(answers(&serde_json::json!({}), "answers_accepted").is_empty());

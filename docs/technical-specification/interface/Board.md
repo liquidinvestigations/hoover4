@@ -27,7 +27,7 @@
 ## States
 
 A selected node that is not wholly in the graph pane scrolls to the middle of the pane at the first load and after a detail pane link selects it.
-A card shows its type in the bottom-left corner and the statuses that the type does not say in the bottom-right corner. A goal card shows its slug in place of its type, and `answered` or `answer proposed`.
+A card shows its type in the bottom-left corner and the statuses that the type does not say in the bottom-right corner. A goal card shows its slug in place of its type, and `answered`, `answer proposed` or `not answered`. The goal pane shows the assessment number and date of an answer. It links each later assessment that dropped an answer for the goal while its proposal waited.
 The page header items share one middle line with the logo of the left bar.
 A button of a person action stays disabled until the board's command writer decides the action. A refused action shows its reason above the board.
 A board that used 300 explores shows a notice with a link to the create form. Its answer decisions stay available.

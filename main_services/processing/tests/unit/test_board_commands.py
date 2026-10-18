@@ -431,3 +431,22 @@ def test_a_verified_web_citation_resolves_its_handle():
     index = activities._citation_index(rows)
     assert sorted(index) == ["D1", "W4"]
     assert index["W4"] == {"url": "http://a.example/y", "quote": "the exact phrase", "quote_verified": True}
+
+
+def test_finishing_a_review_lists_the_goals_without_a_proposal(store):
+    slugs(store)
+    create(store, goals=("First?", "Second?"))
+    reason(store, 1, [intent("Find the memo", 1, slug="find-memo")])
+    fact = explore(store, "intent-find-memo")
+    reason(store, 2, [], outcome="partial",
+           proposals=[{"goal": "goal-01", "from": [fact], "statement": "s"}])
+    store.submit("b1", "review_proposed:budget:9", cmd.REVIEW_PROPOSED, "dispatcher", {"why": "budget"})
+    store.run_commands("b1")
+    f = folded(store)
+    assert f.status == m.REVIEW
+    store.submit("b1", "finish", cmd.REVIEW_DECISION, OWNER, {"review_id": f.decision_id, "accept": True})
+    store.run_commands("b1")
+    [accepted] = [e for e in store.read_events("b1") if e.event_type == m.REVIEW_ACCEPTED]
+    assert accepted.payload["unanswered"] == ["goal-02"]
+    f = folded(store)
+    assert (f.status, f.not_answered) == (m.COMPLETED, ["goal-02"])

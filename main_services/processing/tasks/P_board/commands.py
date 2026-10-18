@@ -306,7 +306,9 @@ def _review_decision(ctx: Context, body: dict, alloc: Allocator, prepared: Prepa
     if review_id != f.decision_id:
         raise Rejected("A newer review replaced this one. Read the board again.")
     if body.get("accept"):
-        _event(ctx, prepared, m.REVIEW_ACCEPTED, "", {"review_id": review_id},
+        # The goals without a proposal stay without an answer, and the fold marks them.
+        unanswered = [g for g in f.open_goals if g not in f.proposed]
+        _event(ctx, prepared, m.REVIEW_ACCEPTED, "", {"review_id": review_id, "unanswered": unanswered},
                f"{m.REVIEW_ACCEPTED}:{ctx.request_id}")
         return
     correction = _text(body, "correction")

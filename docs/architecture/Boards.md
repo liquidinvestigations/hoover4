@@ -267,13 +267,17 @@ stateDiagram-v2
   person decides.
 - An assessment can propose answers for some goals and declare intents for the others. A new
   proposal replaces the proposal of its goal and keeps the others. The board goes to review
-  when every goal without an accepted answer has a proposal. A proposal has the identity
+  when every goal without an accepted answer has a proposal and no intent is open or running,
+  so the intents of the same reply run first. A `reason_result` written before this rule has
+  no `semantics` value, and it keeps the earlier rule, which ignores intents. A proposal has the identity
   `{reason_result event id}:{goal}`, and an answer decision names it, so a decision on a
   replaced answer does nothing. An accepted answer stays in every later state. The board is
   complete when every goal has an accepted answer. A rejected answer moves a board in review
   to active at once, and the other proposals wait for their decision.
 - Entering review or completion sets the review identity to the id of the causal event. "Finish
-  the board" (`review_accepted`) accepts every proposal and completes the board, and "Continue
+  the board" (`review_accepted`) accepts every proposal and completes the board. It lists the
+  goals without a proposal in `unanswered`, and they show "not answered". A hint or a move back
+  to active opens them again. An older `review_accepted` has no list. "Continue
   with a correction" (`review_rejected`) drops the proposals and continues. Both name the
   review identity, so a late request cannot decide a newer review. A stored legacy assessment
   of outcome `review` keeps its first effect: it replaces every proposal and moves an active
@@ -435,7 +439,7 @@ writer decides it. A refused command shows its reason above the board.
 | Pause and resume | `set_paused` writes `pause_requested` or `resume_requested`. A pause cancels running explores and does not use their attempts. |
 | Accept answer | `answer_decision` with the proposal identity writes `goal_answer_accepted`. When every goal has an accepted answer, the board is complete. |
 | Reject answer | `answer_decision` writes a correction fact and `goal_answer_rejected`, whose `from` names the facts of the answer. The board continues at once. |
-| Finish the board | `review_decision` with the review identity writes `review_accepted`. Every proposed answer is accepted, and the board is complete. |
+| Finish the board | `review_decision` with the review identity writes `review_accepted` with the goals without a proposal in `unanswered`. Every proposed answer is accepted, and the board is complete. The board card shows how many goals are not answered. |
 | Continue with a correction | `review_decision` writes a correction fact and `review_rejected`, whose `from` names the facts of the proposed answers. The board is active again. |
 | Reopen | `extend_budget` with the review identity writes `budget_extended` with its prior status and its actual grant. See [Budget](#budget). |
 | Drop | The website sets `is_deleted` on the `boards` row, cancels the command writer and the running explores, deletes the board's chat sessions as the chat history deletes a chat, and deletes the rows of the other nine board tables. |
@@ -471,7 +475,7 @@ in gray monospace with the type of the node on the left and its statuses on the 
 | Node | Left | Right |
 |---|---|---|
 | background context | `background` | none |
-| goal | its slug, `goal-01` | `answered` or `answer proposed` |
+| goal | its slug, `goal-01` | `answered`, `answer proposed` or `not answered` |
 | fact | `fact` | `sourced`, `inferred` or `not found`, and `rejected` |
 | correction | `correction` | `rejected` when rejected |
 | intent | `intent` | its state |

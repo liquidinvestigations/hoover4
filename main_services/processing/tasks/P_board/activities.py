@@ -217,8 +217,10 @@ def _state_rows(board, folded) -> tuple[dict, list[dict]]:
     summary = {"intents": by_kind, "facts": folded.fact_count, "sourced": folded.sourced_count,
                "hints": len(folded.hints), "rejected": len(folded.rejected),
                "review_statement": folded.review_statement,
-               "answers_proposed": _answers(folded, folded.proposed),
+               "answers_proposed": [dict(a, later_drops=folded.answer_drops.get(a["goal"], []))
+                                    for a in _answers(folded, folded.proposed)],
                "answers_accepted": _answers(folded, folded.accepted),
+               "not_answered": folded.not_answered,
                "max_explores": folded.max_explores,
                "explore_steps": folded.explore_steps,
                "explore_limit": m.EXPLORE_LIMIT,
@@ -524,6 +526,7 @@ def board_reason(task: ReasonTask) -> str:
                                set(folded.accepted),
                                {key for key, _q in open_question_keys(folded, facts)}, task.final)
     payload.update(situation=folded.situation(), model=model, latency_ms=latency_ms,
+                   semantics=m.REASON_SEMANTICS,
                    prompt_tokens=int(usage.get("prompt_tokens") or 0),
                    completion_tokens=int(usage.get("completion_tokens") or 0),
                    stalled=task.stalled)

@@ -73,7 +73,7 @@ pub struct GraphNode {
     pub depth: u32,
     pub dimmed: bool,
     pub rejected: bool,
-    /// For a goal: `answered`, `answer proposed`, or empty.
+    /// For a goal: `answered`, `answer proposed`, `not answered`, or empty.
     pub answer: String,
 }
 
@@ -201,6 +201,8 @@ pub fn build_graph(input: &BoardGraphInput) -> Graph {
             node.answer = "answered".to_string();
         } else if has(&input.answers_proposed) {
             node.answer = "answer proposed".to_string();
+        } else if input.not_answered.contains(&goal.fact_id) {
+            node.answer = "not answered".to_string();
         }
         nodes.push(node);
     }
@@ -643,7 +645,8 @@ mod tests {
     }
 
     fn input(facts: Vec<BoardFact>, intents: Vec<BoardIntent>) -> BoardGraphInput {
-        BoardGraphInput { status: "active".into(), facts, intents, answers_proposed: vec![], answers_accepted: vec![] }
+        BoardGraphInput { status: "active".into(), facts, intents, answers_proposed: vec![], answers_accepted: vec![],
+                          not_answered: vec![] }
     }
 
     #[test]
@@ -691,6 +694,13 @@ mod tests {
         assert_eq!(kinds, vec![("f1.1", "goal", EdgeKind::Answers), ("f1.2", "goal-2", EdgeKind::Proposed)]);
         let answer_of = |id: &str| active.nodes.iter().find(|n| n.id == id).unwrap().answer.clone();
         assert_eq!((answer_of("goal"), answer_of("goal-2")), ("answered".to_string(), "answer proposed".to_string()));
+        // A finished board with goal-2 without an answer.
+        let mut finished = data.clone();
+        finished.answers_proposed = vec![];
+        finished.not_answered = vec!["goal-2".into()];
+        let graph = build_graph(&finished);
+        let word = graph.nodes.iter().find(|n| n.id == "goal-2").unwrap().answer.clone();
+        assert_eq!(word, "not answered");
         let corrects: Vec<_> = active.edges.iter().filter(|e| e.kind == EdgeKind::Corrects).collect();
         assert_eq!(corrects.len(), 1);
         assert_eq!((corrects[0].src.as_str(), corrects[0].dst.as_str()), ("f1.1", "c1"));

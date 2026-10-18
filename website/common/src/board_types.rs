@@ -227,6 +227,14 @@ pub struct BoardReviewGoal {
     /// The model's text of a `not_established` answer. The statement stays the fixed text.
     #[serde(default)]
     pub commentary: String,
+    /// Milliseconds since the epoch of the assessment that proposed the answer. 0 when the
+    /// state summary was written before this field.
+    #[serde(default)]
+    pub proposed_ms: i64,
+    /// The numbers of the later assessments that dropped an answer for this goal while this
+    /// proposal waited. Empty for an accepted answer.
+    #[serde(default)]
+    pub later_drops: Vec<u32>,
 }
 
 /// What the graph of a board is drawn from. The explorer and the overview thumbnail build
@@ -239,6 +247,9 @@ pub struct BoardGraphInput {
     /// The answers that wait for the person, and the answers that the person accepted.
     pub answers_proposed: Vec<BoardReviewGoal>,
     pub answers_accepted: Vec<BoardReviewGoal>,
+    /// The goals that the person finished without an answer.
+    #[serde(default)]
+    pub not_answered: Vec<String>,
 }
 
 /// One intent.
@@ -361,6 +372,10 @@ pub struct BoardSnapshot {
     /// A final assessment of the used budget runs.
     #[serde(default)]
     pub final_running: bool,
+    /// The goals that the person finished without an answer. A hint or a reopening opens
+    /// them again.
+    #[serde(default)]
+    pub not_answered: Vec<String>,
 }
 
 impl BoardSnapshot {
@@ -427,6 +442,7 @@ impl BoardSnapshot {
             intents: self.intents.clone(),
             answers_proposed: self.answers_proposed.clone(),
             answers_accepted: self.answers_accepted.clone(),
+            not_answered: self.not_answered.clone(),
         }
     }
 }
@@ -519,6 +535,7 @@ mod tests {
             facts: vec![fact("f1.1", "fact-raptor"), fact("f1.2", "f1.1")],
             intents: vec![], events: vec![], summary: String::new(), review_id: String::new(),
             review_reason: String::new(), limit_reached: false, reopen_grant: None, final_running: false,
+            not_answered: vec![],
         }
     }
 

@@ -72,9 +72,12 @@ def _answer_entries(data: dict, goal_ids: list[str]) -> list | None:
 
 
 def _parse_answers(entries: list, valid_ids: set, sourced_ids: set, not_found_ids: set,
-                   goal_ids: list[str], goal_texts: dict, closed_ids: set, problems: list) -> list[dict]:
-    """The checked goal answers of a reply. See `parse_reason`."""
+                   goal_ids: list[str], goal_texts: dict, closed_ids: set, problems: list,
+                   dropped: list | None = None) -> list[dict]:
+    """The checked goal answers of a reply. See `parse_reason`. The goals whose answer the
+    checks dropped go to `dropped`."""
     answers = []
+    dropped = dropped if dropped is not None else []
     for entry in entries:
         if not isinstance(entry, dict):
             problems.append("an answer is not an object")
@@ -98,8 +101,10 @@ def _parse_answers(entries: list, valid_ids: set, sourced_ids: set, not_found_id
             problems.append(f"an answer names the unknown goal {goal!r}")
         elif not from_ids:
             problems.append(f"the answer of {goal} names no fact")
+            dropped.append(goal)
         elif not set(from_ids) <= answerable:
             problems.append(f"the answer of {goal} from {from_ids} names no sourced or not_found fact")
+            dropped.append(goal)
         elif goal in {a["goal"] for a in answers}:
             problems.append(f"dropped a second answer of {goal}")
         else:
@@ -137,6 +142,8 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
     background, a correction or an id that is no fact) are dropped with a note, and the
     answer stays.
 
+    `dropped_answers` lists the goals whose only answer the checks dropped.
+
     An intent keeps its position in the reply (`position`, from 1), so a dropped intent does
     not renumber the others. Its `slug` is a candidate name. Its `questions` keep only keys
     that the prompt listed. A final reply proposes answers only, and its intents are dropped.
@@ -156,8 +163,11 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
         return payload
     problems = payload["problems"]
     entries = _answer_entries(data, goal_ids)
+    dropped: list[str] = []
     answers = _parse_answers(entries or [], set(valid_ids), set(sourced_ids), set(not_found_ids or ()),
-                             goal_ids, goal_texts or {}, closed, problems)
+                             goal_ids, goal_texts or {}, closed, problems, dropped)
+    if dropped:
+        payload["dropped_answers"] = sorted(set(dropped) - {a["goal"] for a in answers})
     items = data.get("intents")
     if items is None and isinstance(data.get("intent"), dict):
         items = [data["intent"]]

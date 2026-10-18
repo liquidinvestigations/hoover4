@@ -4,7 +4,7 @@ Every function under test is pure, so the rows are built here and no service run
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -702,3 +702,95 @@ def test_a_checkpoint_without_goals_added_keeps_a_board_idle():
     assert seen == f.situation()
     log.add(m.GOAL_ADDED, "goal-2", text="g2")
     assert reason_due(fold(board(), log.events, facts(("f1.1", m.SOURCED))), in_flight=False)
+
+
+# ------------------------------------------------------------------ review entry rule 2
+
+
+def _covering(r, semantics=None, n=1, **extra):
+    """A reason result that proposes an answer for the only goal and declares `n` intents."""
+    payload = {"proposals": [{"goal": "goal", "from": ["f1.1"], "statement": "s"}],
+               "intents": [{"from": ["origin"], "objective": f"objective {r}.{k}", "brief": ""}
+                           for k in range(1, n + 1)]}
+    if semantics is not None:
+        payload["semantics"] = semantics
+    payload.update(extra)
+    return payload
+
+
+def test_a_legacy_result_with_answers_and_intents_keeps_its_review_and_decision():
+    log = Log().add(m.BOARD_CREATED).reason(1, outcome="partial", **_covering(1))
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
+    assert f.status == m.REVIEW, "rule 1 ignores the intents of the reply"
+    log.add(m.REVIEW_ACCEPTED, "", review_id=f.decision_id)
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
+    assert f.status == m.COMPLETED and sorted(f.accepted) == ["goal"]
+    assert f.not_answered == [], "an older decision has no unanswered list"
+
+
+def test_rule_two_runs_the_intents_of_the_reply_before_review():
+    rows = facts(("f1.1", m.SOURCED))
+    log = Log().add(m.BOARD_CREATED).reason(1, outcome="partial", **_covering(1, semantics=2))
+    f = fold(board(), log.events, rows)
+    assert f.status == m.ACTIVE and f.by_state(m.OPEN), "the intent runs first"
+    log.add(m.EXPLORE_STARTED, "i1.1", attempt=1)
+    log.reason(2, outcome="review", n=0, semantics=2,
+               proposals=[{"goal": "goal", "from": ["f1.1"], "statement": "s2"}])
+    assert fold(board(), log.events, rows).status == m.ACTIVE, "a running explore keeps it active"
+    log.add(m.EXPLORE_CONCLUDED, "i1.1", attempt=1, fact_id="f1.2", kind=m.SOURCED)
+    rows = facts(("f1.1", m.SOURCED), ("f1.2", m.SOURCED))
+    log.reason(3, outcome="review", n=0, semantics=2,
+               proposals=[{"goal": "goal", "from": ["f1.1", "f1.2"], "statement": "s3"}])
+    f = fold(board(), log.events, rows)
+    assert f.status == m.REVIEW and f.review_reason == "answers"
+
+
+def test_a_finished_board_marks_the_goals_without_an_answer():
+    b = board()
+    log = Log().add(m.BOARD_CREATED, goals=["goal", "goal-2"])
+    log.reason(1, outcome="partial", n=0, proposals=[{"goal": "goal", "from": ["f1.1"], "statement": "s"}])
+    log.add(m.REVIEW_PROPOSED, "budget", reason="budget", statement="The explore budget is used.")
+    rows = facts(("f1.1", m.SOURCED), ("goal-2", m.GOAL))
+    f = fold(b, log.events, rows)
+    assert f.status == m.REVIEW
+    log.add(m.REVIEW_ACCEPTED, "", review_id=f.decision_id, unanswered=["goal-2"])
+    f = fold(b, log.events, rows)
+    assert (f.status, sorted(f.accepted), f.not_answered) == (m.COMPLETED, ["goal"], ["goal-2"])
+    log.add(m.BUDGET_EXTENDED, "", review_id=f.decision_id)
+    f = fold(b, log.events, rows)
+    assert (f.status, f.not_answered) == (m.ACTIVE, []), "a reopening opens the goal again"
+
+
+def test_a_hint_opens_a_goal_without_an_answer_again():
+    log = Log().add(m.BOARD_CREATED, goals=["goal", "goal-2"])
+    log.reason(1, outcome="partial", n=0, proposals=[{"goal": "goal", "from": ["f1.1"], "statement": "s"}])
+    log.add(m.REVIEW_PROPOSED, "budget", reason="budget")
+    rows = facts(("f1.1", m.SOURCED), ("goal-2", m.GOAL))
+    f = fold(board(), log.events, rows)
+    log.add(m.REVIEW_ACCEPTED, "", review_id=f.decision_id, unanswered=["goal-2"])
+    log.add(m.HINT_ADDED, "", text="look at 2002")
+    assert fold(board(), log.events, rows).not_answered == []
+
+
+def test_a_proposal_counts_the_later_assessments_that_dropped_an_answer():
+    rows = facts(("f1.1", m.SOURCED), ("goal-2", m.GOAL))
+    log = Log().add(m.BOARD_CREATED, goals=["goal", "goal-2"])
+    log.reason(1, outcome="partial", proposals=[{"goal": "goal", "from": ["f1.1"], "statement": "s"}])
+    log.reason(2, outcome="noop", n=0, idle=True, dropped_answers=["goal"],
+               problems=["the answer of goal names no fact"])
+    log.reason(3, outcome="noop", n=0, idle=True,
+               problems=["the answer of goal from ['f9'] names a fact that is not sourced or not found",
+                         "the answer of goal-2 names no fact"])
+    f = fold(board(), log.events, rows)
+    assert f.answer_drops == {"goal": [2, 3]}, "a goal without a proposal counts nothing"
+    assert f.proposed["goal"]["proposed_ms"] == int(T0.replace(tzinfo=timezone.utc).timestamp() * 1000) + 2000, (
+        "the result is the third event, 2 s after T0")
+    log.reason(4, outcome="partial", n=0, proposals=[{"goal": "goal", "from": ["f1.1"], "statement": "s4"}])
+    assert fold(board(), log.events, rows).answer_drops == {}, "a new proposal starts the count again"
+
+
+def test_the_parser_lists_the_goals_whose_answer_it_dropped():
+    reply = json.dumps({"answers": [{"goal": "goal", "from": ["f1.2"], "statement": "s"},
+                                    {"goal": "goal-2", "from": [], "statement": "s"}]})
+    out = parse_reason(reply, {"f1.2"}, set(), [], True, ["goal", "goal-2"])
+    assert out["dropped_answers"] == ["goal", "goal-2"]

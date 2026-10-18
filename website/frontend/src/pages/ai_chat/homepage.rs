@@ -213,13 +213,15 @@ fn BoardsOverview() -> Element {
 
 #[component]
 fn BoardCard(board: BoardListItem) -> Element {
-    let status = match board.status.as_str() {
-        "active" => "Active",
-        "paused" => "Paused",
-        "review" => "Waits for review",
-        "completed" => "Completed",
-        "dropped" => "Dropped",
-        _ => "Unknown",
+    let status = match (board.status.as_str(), board.graph.not_answered.len()) {
+        ("active", _) => "Active".to_string(),
+        ("paused", _) => "Paused".to_string(),
+        ("review", _) => "Waits for review".to_string(),
+        ("completed", 0) => "Completed".to_string(),
+        ("completed", 1) => "Completed, 1 goal not answered".to_string(),
+        ("completed", n) => format!("Completed, {n} goals not answered"),
+        ("dropped", _) => "Dropped".to_string(),
+        _ => "Unknown".to_string(),
     };
     // The generated summary of the board. Before its first label pass, the first goal.
     let summary = if board.summary.is_empty() {

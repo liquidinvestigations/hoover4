@@ -731,6 +731,7 @@ fn BoardOverview(
                                 from,
                                 zoom: zoom.clone(),
                                 dropped,
+                                not_answered: snap.not_answered.contains(&goal.fact_id),
                                 snapshot,
                                 error,
                             }
@@ -1248,7 +1249,7 @@ fn FactDetail(
                 slug: fact.slug.clone(),
                 rejected: fact.rejected,
                 chat: fact.session_id.clone(),
-                answer: answer_word(&answer),
+                answer: answer_word(&answer, snap.not_answered.contains(&fact.fact_id)),
             }
             if fact.rejected {
                 div { class: "x-board-fact-rejection", style: "border-left: 3px solid; border-left-color: var(--x-danger); padding: 4px 10px; margin: 6px 0;",
@@ -1280,6 +1281,7 @@ fn FactDetail(
                     from: answer.as_ref().map(|(a, _)| a.from.iter().map(|f| snap.slug_of(f)).collect()).unwrap_or_default(),
                     zoom: zoom.clone(),
                     dropped,
+                    not_answered: snap.not_answered.contains(&fact.fact_id),
                     snapshot,
                     error,
                 }
@@ -1389,10 +1391,11 @@ fn goal_answer(snap: &BoardSnapshot, goal: &str) -> Option<(BoardReviewGoal, boo
 }
 
 /// The word of the goal card corner for an answer (`board_graph::GraphNode::answer`).
-fn answer_word(answer: &Option<(BoardReviewGoal, bool)>) -> String {
+fn answer_word(answer: &Option<(BoardReviewGoal, bool)>, not_answered: bool) -> String {
     match answer {
         Some((_, true)) => "answered".to_string(),
         Some((_, false)) => "answer proposed".to_string(),
+        None if not_answered => "not answered".to_string(),
         None => String::new(),
     }
 }
@@ -1416,13 +1419,31 @@ fn GoalAnswer(
     from: Vec<String>,
     zoom: String,
     dropped: bool,
+    not_answered: bool,
     snapshot: Signal<Option<BoardSnapshot>>,
     error: Signal<Option<String>>,
 ) -> Element {
     let mut correction = use_signal(String::new);
     let mut busy = use_signal(|| false);
     let Some((answer, accepted)) = answer else {
+        if not_answered {
+            return rsx! {
+                p { class: "x-board-goal-answer", "data-answer": "not-answered", style: HELP_TEXT,
+                    "Not answered. The board was finished without an answer for this goal. A hint or a reopening opens it again."
+                }
+            };
+        }
         return rsx! { p { class: "x-board-goal-answer", style: HELP_TEXT, "No answer yet." } };
+    };
+    let proposed_by = if answer.proposed_ms > 0 {
+        format!("From assessment {} on {}.", answer.reason_no, format_utc_ms(answer.proposed_ms))
+    } else {
+        format!("From assessment {}.", answer.reason_no)
+    };
+    let drops = if accepted { Vec::new() } else { answer.later_drops.clone() };
+    let drop_count = match drops.len() {
+        1 => "1 later assessment dropped an answer for this goal:".to_string(),
+        n => format!("{n} later assessments dropped an answer for this goal:"),
     };
     let link_board = board_id.clone();
     let (goal, proposal_id) = (answer.goal.clone(), answer.proposal_id.clone());
@@ -1456,6 +1477,28 @@ fn GoalAnswer(
                 }
             }
             p { style: "margin: 2px 0; white-space: pre-wrap;", "{answer.statement}" }
+            p { class: "x-board-answer-age", style: HELP_TEXT, "{proposed_by}" }
+            if !drops.is_empty() {
+                p { class: "x-board-answer-drops", style: HELP_TEXT,
+                    "{drop_count} "
+                    for (i, number) in drops.iter().enumerate() {
+                        span { key: "{number}",
+                            if i > 0 { ", " }
+                            Link {
+                                to: Route::AiBoardPage {
+                                    board_id: link_board.clone(),
+                                    selected: goal_slug.clone(),
+                                    zoom: zoom.clone(),
+                                    assessment: number.to_string(),
+                                },
+                                style: LINK,
+                                "assessment {number}"
+                            }
+                        }
+                    }
+                    ". Open an assessment to read why."
+                }
+            }
             if !from.is_empty() {
                 p { style: HELP_TEXT,
                     "From the findings "
@@ -1771,6 +1814,7 @@ mod tests {
             facts: vec![fact("f1.1", "sourced", "board-b-i1.1"), fact("c1", "correction", "")],
             intents: vec![], events: vec![], summary: String::new(), review_id: String::new(),
             review_reason: String::new(), limit_reached: false, reopen_grant: None, final_running: false,
+            not_answered: vec![],
         };
         assert_eq!(event_link(&snap, &event("reason_result", "4")), EventLink::Assessment(4));
         assert_eq!(event_link(&snap, &event("fact_rejected", "f1.1")), EventLink::Chat("board-b-i1.1".into()));

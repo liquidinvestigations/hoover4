@@ -115,6 +115,11 @@ STALL_THRESHOLD = 4
 #: to review.
 INVALID_REASON_LIMIT = 3
 
+#: The version of the review-entry rule that a `reason_result` payload carries in
+#: `semantics`. From 2, an assessment enters review only when its reply declares no intent
+#: and no intent is open or running. An older result has no `semantics` and keeps rule 1.
+REASON_SEMANTICS = 2
+
 #: The `reason_result` outcome of an assessment whose model request failed in every attempt,
 #: or was refused. Older results of a failed request have the outcome `invalid`.
 MODEL_FAILURE = "model_failure"
