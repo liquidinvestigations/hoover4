@@ -37,11 +37,14 @@ impl From<VersionRow> for WorkspaceVersion {
 pub async fn files(username: &str, session_id: &str) -> anyhow::Result<Vec<WorkspaceFile>> {
     let rows = get_global_client()
         .query(
-            "SELECT name, max(version) AS version, argMax(length(content), version) AS chars, \
-                    toString(argMax(created_at, version)) AS updated_at \
-             FROM chat_workspace_files FINAL \
-             WHERE username = ? AND session_id = ? AND is_deleted = 0 \
-             GROUP BY name ORDER BY name",
+            // The inner alias is `top`, because an alias named `version` would replace the
+            // column inside `argMax`.
+            "SELECT name, top AS version, chars, updated_at FROM ( \
+                SELECT name, max(version) AS top, argMax(lengthUTF8(content), version) AS chars, \
+                       toString(argMax(created_at, version)) AS updated_at \
+                FROM chat_workspace_files FINAL \
+                WHERE username = ? AND session_id = ? AND is_deleted = 0 \
+                GROUP BY name) ORDER BY name",
         )
         .bind(username)
         .bind(session_id)

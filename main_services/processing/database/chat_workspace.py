@@ -158,7 +158,9 @@ def list_files(username: str, session_id: str) -> list[dict]:
     version, by name."""
     with _client() as client:
         result = client.query(
-            "SELECT name, max(version) AS version, argMax(length(content), version) AS chars, "
+            # `top`, not `version`: an alias with the column name would replace the column
+            # inside `argMax`.
+            "SELECT name, max(version) AS top, argMax(lengthUTF8(content), version) AS chars, "
             "argMax(created_at, version) AS updated FROM chat_workspace_files FINAL "
             "WHERE username = {u:String} AND session_id = {s:String} AND is_deleted = 0 "
             "GROUP BY name ORDER BY name",

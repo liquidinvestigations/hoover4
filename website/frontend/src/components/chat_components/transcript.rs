@@ -1168,8 +1168,10 @@ fn MessageEntry(
                             }
                         }
                         if let Some(report) = report.as_ref().filter(|r| r.found && !r.acknowledgement.trim().is_empty()) {
+                            // The Markdown text takes its colour from `--x-ink-strong`, so the
+                            // note sets that variable to the muted colour.
                             div { class: "x-chat-report-note", "data-chat-report-note": "{message.seq}",
-                                style: "margin-top: 6px; font-size: var(--x-text-sm); color: var(--x-ink-muted);",
+                                style: "margin-top: 6px; --x-ink-strong: var(--x-ink-muted);",
                                 MarkdownishText { text: report.acknowledgement.clone(), citation_links: false }
                             }
                         }
