@@ -22,11 +22,11 @@ When was the Fontys international open day in Venlo and what was on the programm
 
 ## Expected tool calls
 
-1. If it uses a todo list, it calls `write_todo`.
+1. If it uses a todo list, it calls `update_plan`.
 2. It calls `search_passages` with no `collectionname` and `["Fontys open day Venlo", "\"International Open Day\"", "campusvenlo invitation", "Fontys \"2nd of February\""]`.
 3. It calls `read_documents` on the PDF and the email.
 4. It calls `cite_documents` for the PDF, with the programme lines as the quote, and for the email.
-5. If it uses a todo list, it calls `mark_todo` before it answers.
+5. If it uses a todo list, it sends the ended steps as done with `update_plan` before it answers.
 
 ## Expected result
 

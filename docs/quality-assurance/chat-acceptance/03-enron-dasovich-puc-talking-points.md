@@ -26,13 +26,13 @@ The same email is stored in more than one datasets, because `maildir` holds the 
 
 ## Expected tool calls
 
-1. If it uses a todo list, it calls `write_todo`.
+1. If it uses a todo list, it calls `update_plan`.
 2. It calls `search_collections` with `{"collectionname": ["enron"], "query": "\"talking points\" PUC Dasovich", "sort": {"field": "date", "direction": "asc"}}`. The user narrowed the scope, so a collection list is correct here.
 3. It calls `search_histogram` or a date filter from 2000-12-20 to 2001-01-05, when the first search returns many hits.
 4. It calls `doc_email` or `read_documents` on the 15:15, 15:20 and 11:07 versions.
 5. `doc_diff_sources` is not the tool for two emails, so it is not called. The agent reads both and compares them in prose.
 6. It calls `cite_documents` for each version and the reply.
-7. If it uses a todo list, it calls `mark_todo` before it answers.
+7. If it uses a todo list, it sends the ended steps as done with `update_plan` before it answers.
 
 ## Expected result
 

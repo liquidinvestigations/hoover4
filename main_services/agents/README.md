@@ -21,7 +21,7 @@ metasearch and whois come up only when `internet_tools_enabled` is on, via
 | Metasearch | [`metasearch_server/`](metasearch_server/README.md) | 21931 | full research | **The** web search: `web_search` over a list of queries across the scrapers, DuckDuckGo and GDELT news, Wikipedia, Wikidata, Crossref and two web archives, fused with RRF and reranked once by the GPU cross-encoder |
 | Browser | [`browser_use_server/`](browser_use_server/README.md) | 21932 | full research | `read_page` over a list of URLs, plus six tools for driving a page, routed to one Chromium **per chat**, with automatic page capture |
 | WHOIS | [`whois_search_server/`](whois_search_server/) | 21934 | full research | `whois_lookup` over a list of domains |
-| Todo | [`agent_todo_server/`](agent_todo_server/Readme.md) | 21935 | both agents | `read_todo` / `write_todo` / `edit_todo` / `mark_todo` over one plan per conversation |
+| Todo | [`agent_todo_server/`](agent_todo_server/Readme.md) | 21935 | both agents | `update_plan` over one plan per conversation, and the workspace tools `read_file` / `write_file` / `patch_file` |
 
 **There is exactly one web-search tool, and it must stay that way.** Choosing between
 three overlapping "search the web" tools is something a small model does badly and

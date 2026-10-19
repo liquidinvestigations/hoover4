@@ -23,7 +23,7 @@ The consulate files have a folder called greenvelope. What is that service, who 
 
 ## Expected tool calls
 
-1. If it uses a todo list, it calls `write_todo`.
+1. If it uses a todo list, it calls `update_plan`.
 2. It calls `folder_overview` on `consulate`, then `folder_list` on the `greenvelope` folder, to count the campaigns.
 3. It calls `search_collections` with no `collectionname` and the query `greenvelope.com`, to find the collections that hold the files.
 4. It calls `whois_lookup` with `["greenvelope.com"]`.

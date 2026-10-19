@@ -75,8 +75,8 @@ ROLE_LINES: Dict[str, str] = {
 #: The longest summary of one tool in the tool lists.
 SUMMARY_MAX_CHARS = 160
 
-#: The todo tools. The todo rule renders when the run has all four.
-TODO_TOOLS = ("read_todo", "write_todo", "edit_todo", "mark_todo")
+#: The plan tool. The plan rule renders when the run has it.
+TODO_TOOLS = ("update_plan",)
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s")
 

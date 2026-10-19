@@ -27,7 +27,7 @@ No document in the test corpora names the later name of the company. That part o
 
 ## Expected tool calls
 
-1. If it uses a todo list, it calls `write_todo` with one item for each part: the people on the emails, the proposal, the roles, and the later history of the company.
+1. If it uses a todo list, it calls `update_plan` with one item for each part: the people on the emails, the proposal, the roles, and the later history of the company.
 2. It works through the parts in one chat turn.
 3. It searches with no `collectionname`, for example `search_passages` with `["Reporty", "\"Reporty Homeland Security\"", "ireporty Elichai", "Reporty Junkermann Indyke"]`.
 4. It calls `doc_email` on the four emails above.

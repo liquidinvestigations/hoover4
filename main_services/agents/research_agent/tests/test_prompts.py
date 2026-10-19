@@ -151,10 +151,12 @@ def test_the_prompt_stays_inside_its_size_budget(profile):
     assert len(text) <= MAX_PROMPT_CHARS, len(text)
 
 
-def test_a_run_with_no_todo_writers_has_no_todo_rule():
+def test_a_run_without_the_plan_tool_has_no_plan_rule():
     narrow = rendered("full_research", packs="collections,web")
-    assert "Your todo list" not in narrow
-    assert "Your todo list" in rendered("full_research")
+    assert "Your plan" not in narrow
+    full = rendered("full_research")
+    assert "Your plan" in full
+    assert "`update_plan` only keeps the plan. Write a report or another file with `write_file`." in full
 
 
 

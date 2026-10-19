@@ -42,10 +42,10 @@ def test_a_read_by_file_name_gets_the_document_ids_line_in_its_message():
     assert data["error"] == "invalid_argument"
 
 
-def test_a_todo_refusal_of_a_quoted_id_gets_the_todo_upkeep_line():
+def test_a_plan_refusal_gets_the_todo_upkeep_line():
     content = json.dumps({"success": False, "goal": "g", "items": [], "version": 1,
-                          "error": 'no item has the id "1"'})
-    out = with_skill_line(response("write_todo", content), {"ids": ['"1"']}, LISTED)
+                          "error": "step 1 has no text"})
+    out = with_skill_line(response("update_plan", content), {"steps": [{}]}, LISTED)
     assert json.loads(out["content"])["error"].endswith(line("todo_upkeep"))
 
 
@@ -103,7 +103,7 @@ def test_a_plain_text_error_gets_the_line_after_a_blank_line_once():
 
 def test_a_json_error_with_no_text_gets_the_line_under_next():
     content = json.dumps({"success": False, "error": {"code": 3}})
-    out = with_skill_line(response("mark_todo", content), {}, LISTED)
+    out = with_skill_line(response("update_plan", content), {}, LISTED)
     assert json.loads(out["content"])["next"] == line("todo_upkeep")
 
 

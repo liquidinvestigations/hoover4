@@ -38,7 +38,7 @@ impl Kind {
             "list_document_entities" => Kind::Entities,
             "cite_documents" => Kind::Cite,
             "cite_pages" => Kind::WebCite,
-            "write_todo" | "edit_todo" | "mark_todo" | "read_todo" => Kind::Todo,
+            "update_plan" | "write_todo" | "edit_todo" | "mark_todo" | "read_todo" => Kind::Todo,
             "search_skills" | "read_skill" | "read_tool" | "search_agent_tools" => Kind::Skill,
             "write_note" => Kind::Note,
             name if name.starts_with("browser_") => Kind::Browser,

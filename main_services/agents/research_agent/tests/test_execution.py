@@ -116,12 +116,11 @@ def test_the_measure_and_the_doc_refs_are_taken_out_of_the_artifact():
     assert execution.split_resources(None) == (None, None, None)
 
 
-def test_the_ordered_tools_are_the_todo_tools():
+def test_the_ordered_tools_are_the_plan_and_file_tools():
     """The worker runs `STATE_TOOLS` of `processing/tasks/P_agent/steps.py` in reply order.
     This list is the same set, so the stored kind says what the worker does."""
     assert execution.ORDERED_TOOLS == frozenset({
-        "write_todo", "edit_todo", "mark_todo", "read_todo",
-        "workspace_read", "workspace_write", "workspace_patch",
+        "update_plan", "read_file", "write_file", "patch_file",
     })
 
 

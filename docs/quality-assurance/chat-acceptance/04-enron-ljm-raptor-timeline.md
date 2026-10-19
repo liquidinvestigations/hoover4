@@ -28,7 +28,7 @@ A full ingest of `enron` can hold more documents than these facts name, so a rev
 
 ## Expected tool calls
 
-1. If it uses a todo list, it calls `write_todo` with one item for each question: the research group, the legal work, the timeline, and the web context.
+1. If it uses a todo list, it calls `update_plan` with one item for each question: the research group, the legal work, the timeline, and the web context.
 2. It works through the questions in one chat turn.
 3. It searches with no `collectionname` or with `["enron"]`, for example `search_collections` with `{"query": "LJM | Raptor", "sort": {"field": "date", "direction": "asc"}}` and `search_passages` with `{"queries": ["LJM put valuation", "Raptor hedges", "Project Raptor warrants", "Rhythms LJM"]}`. A todo list is optional.
 4. It calls `doc_email` or `read_documents` on each email the timeline cites.

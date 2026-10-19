@@ -26,12 +26,12 @@ The data is in `tables`, which the name does not suggest. An agent that searches
 
 ## Expected tool calls
 
-1. If it uses a todo list, it calls `write_todo`.
+1. If it uses a todo list, it calls `update_plan`.
 2. It calls `search_passages` with no `collectionname` and the variants `["\"Nili Priell Barak\" Fortress", "nilipriell Fortress", "\"Fortress consulting agreement\"", "Priell Barak agreement"]`.
 3. It calls `read_documents` or `doc_email` on the three emails of 12/24/2014.
 4. It calls `cite_documents` with the three emails, each with a quote.
 5. It calls `web_search` only for who she is, for example `["\"Nili Priell\" Barak"]`, and the answer marks that part as from the web.
-6. If it uses a todo list, it calls `mark_todo` before it answers.
+6. If it uses a todo list, it sends the ended steps as done with `update_plan` before it answers.
 
 ## Expected result
 

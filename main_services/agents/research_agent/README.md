@@ -55,17 +55,18 @@ renders the system prompt of every profile ([research_agent/prompts/__init__.py]
 role line of the profile and the role text of the run kind, which is the rendered role skill
 (`skill_store.role_method`). The run's skills by name and description and the run's tools by
 name and summary follow. A chat run then gets the `ask_user` rule. Every run with
-`workspace_write` gets the routing text of the `report` skill under "Reports and other
+`write_file` gets the routing text of the `report` skill under "Reports and other
 documents" (`skill_store.report_rules`): a requested report, list, table or draft, and every
 answer with citations, goes into a workspace file, an edit of a report patches that file, and
 the chat holds questions, progress and a short note about the file. The `report` skill that
 `read_skill` returns holds the same text and then the examples, from one template. The
 initial web role names `read_page` and its `find` field for supporting passages. It requires `cite_pages` after each source read. The returned web handles identify captured source versions. Bare source URLs are replaced with the returned handles.
-It requires comparative evidence for a size ranking. The todo text
-follows when the run has the four todo tools. It says
-that the list is optional, that a step stays pending until its work ends and is then done
-with a short reason, that done steps stay in the list, that a new step that replaces an
-old one gets a replacement entry, and that an open item does not stop an answer. When the
+It requires comparative evidence for a size ranking. The plan text
+follows when the run has `update_plan`. It says
+that the plan is optional, that a call sends the goal and the whole step list with
+statuses, that a step stays pending until its work ends and is then done with a short note,
+that `update_plan` only keeps the plan and `write_file` writes a report, and that an open
+item does not stop an answer. When the
 run has a citation tool, the citation text gives the order of the work once: read the
 passage, call the citation tool with exact text, copy the returned handle beside the
 claim, write the report after the needed calls succeed, and state the requested parts
@@ -218,7 +219,7 @@ A call entry is one call of the reply as the service classifies it:
 | `name`, `args` | the call, with its arguments after `tool_args.normalize_arguments`. Damaged arguments stay as the model wrote them |
 | `argument_repairs` | one line for each change that the normalization made |
 | `argument_error` | set when the model client could not read the arguments as JSON (`steps.unreadable_call`). `args` is then empty |
-| `kind` | `ordered` for the todo tools, `parallel` for every other call |
+| `kind` | `ordered` for `update_plan` and the workspace tools, `parallel` for every other call |
 | `page_share` | the call's share of the batch result budget, in bytes |
 | `retry` | false for each browser tool that can change the page: every `browser_` tool except the reads in `steps.BROWSER_READS`. The worker gives such a call one attempt |
 
@@ -244,12 +245,10 @@ response is JSON:
 | `measure` | the call measure of a broker tool, or `null`. When `/tool_call` changed the arguments itself, `argument_repairs` lists each change. A call that `/model_step` normalized holds its changes in its call entry |
 | `matched_names` | the names that a `search_agent_tools` result matched, or the name that a `read_tool` result described |
 
-A `tool_unavailable` result names the unavailable tool and at most two close names of
-the run. `search_agent_tools` can list available names.
-
-A `write_todo` result that returns `unchanged` gets a `note`. The note tells the model to do
-the next open step, and it names `workspace_write` when the run has that tool. A model that
-means to write its report can otherwise call `write_todo` again until the step limit.
+A `tool_unavailable` result names the unavailable tool and at most two tools of the run
+(`steps.closest_names`). A tool whose schema shares more argument names with the call comes
+first, then a tool with a closer spelling, so a `write_report` call with `name` and
+`content` gets `write_file`. `search_agent_tools` can list available names.
 
 **A failed result names the skill of its fix.** `stumbles.with_skill_line` reads each result
 before the service returns it. When the result shows a known stumble, and the run lists the

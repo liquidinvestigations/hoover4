@@ -22,11 +22,11 @@ Find the 2012 declaration of assets of Ehud Barak. The documents may write his n
 
 ## Expected tool calls
 
-1. If it uses a todo list, it calls `write_todo`.
+1. If it uses a todo list, it calls `update_plan`.
 2. It calls `search_passages` with no `collectionname` and both scripts in one call, for example `["\"אהוד ברק\" 2012", "הצהרת הון", "\"Ehud Barak\" declaration of assets 2012", "ehbarak 2012"]`.
 3. It calls `read_documents` on the email and its `.eml.meta` record.
 4. It calls `cite_documents` with the Hebrew subject line as the quote.
-5. If it uses a todo list, it calls `mark_todo` before it answers.
+5. If it uses a todo list, it sends the ended steps as done with `update_plan` before it answers.
 
 ## Expected result
 

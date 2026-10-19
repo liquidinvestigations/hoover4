@@ -98,8 +98,8 @@ class Handler:
                                       "signal fired" if streak >= needed else "no signal", freeze({"threshold": threshold})))
         repeats = sum(f.repeated for f in context.batch)
         refused = sum(f.status == "refused" for f in context.batch)
-        todo = [f for f in context.batch if f.name in ("write_todo", "edit_todo", "mark_todo")]
-        churn = sum(f.name == "write_todo" and bool(previous.get("todo_goal"))
+        todo = [f for f in context.batch if f.name == "update_plan"]
+        churn = sum(bool(previous.get("todo_goal"))
                     and f.todo_goal == previous.get("todo_goal", "")
                     and f.todo_closed <= previous.get("todo_closed", 0) for f in todo)
         progress_seen = set(previous.get("progress_seen", []))

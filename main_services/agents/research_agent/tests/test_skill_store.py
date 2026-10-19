@@ -283,11 +283,11 @@ def test_the_internal_chat_lists_no_browser_and_no_web_skill():
     assert {"spreadsheets", "emails", "document_ids", "todo_upkeep"} <= names
 
 
-def test_todo_upkeep_shows_a_plain_id_and_one_status_per_call():
+def test_todo_upkeep_shows_the_whole_list_with_statuses():
     text = normalised(render_skill("todo_upkeep", context("full_research")))
-    assert 'Write ids ["1", "2"].' in text
-    assert 'Do not write ids ["\\"1\\""].' in text
-    assert "Give one status in each `mark_todo` call" in text
+    assert "Send the whole list in every call, in order." in text
+    assert '{"text":"Find the message.","status":"done","note":"found"}' in text
+    assert "Write a report or another file with `write_file`." in text
 
 
 def test_document_ids_names_the_hash_and_the_supported_path():
@@ -316,7 +316,7 @@ def test_web_citation_role_does_not_request_bare_source_links():
 def test_the_system_prompt_holds_the_report_routing_text_and_the_skill_adds_the_details():
     rules = skill_store.report_rules(context())
     body = render_skill("report", context())
-    assert "Write a file with `workspace_write`" in rules
+    assert "Write a file with `write_file`" in rules
     assert "Example." not in rules
     assert rules in body and "Example." in body
     assert skill_store.report_rules(context(tools={"cite_documents"})) == ""

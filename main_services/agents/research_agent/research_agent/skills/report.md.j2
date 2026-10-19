@@ -2,7 +2,7 @@
 name: report
 group: general
 description: where a report, a list, a table, a draft or an answer with citations goes, and how to edit it
-tools: workspace_write
+tools: write_file
 ---
 {# The output rules of every chat and board run.
 
@@ -11,11 +11,11 @@ tools: workspace_write
    examples. One source, so the two copies cannot differ.
 #}
 Answer an ordinary question in the chat when it needs no citation and no document output.
-Write a file with {{ tool('workspace_write') }} for each requested report, list, table, draft or other document.
+Write a file with {{ tool('write_file') }} for each requested report, list, table, draft or other document.
 Put sourced claims, quotations with their source, and citation handles in a file, also when the answer is short.
 A cited summary of three sentences is a report of three sentences.
 Keep the length, the language and the structure that the person asks for. Add no fixed sections.
-When the person asks to change a report, edit that file with {{ tool('workspace_patch') }}.
+When the person asks to change a report, edit that file with {{ tool('patch_file') }}.
 When a write or a patch returns findings, correct the file with the workspace tools.
 After a file is written, tell the person in one or two sentences what the file holds. Do not repeat the report in the chat.
 Use the chat for questions, progress and explanations of incomplete work.
@@ -38,9 +38,9 @@ and write `lease-approval.md` with three sentences and the returned handles, suc
 "The board approved the lease on 4 May [D1]."
 
 Example. The person then asks: "The date is wrong, it was 5 May." Read the file with
-{{ tool('workspace_read') }}, check the date in the source, and call {{ tool('workspace_patch') }}
+{{ tool('read_file') }}, check the date in the source, and call {{ tool('patch_file') }}
 with the exact current sentence in old_string and the corrected sentence in new_string.
-To replace the whole file, call {{ tool('workspace_write') }} with expected_version, the
+To replace the whole file, call {{ tool('write_file') }} with expected_version, the
 version that the last read or write returned.
 
 Write a bibliography or a list of sources when the person asks for one.

@@ -148,7 +148,7 @@ def test_a_repeated_patch_is_already_applied_and_stores_nothing():
 
 def test_a_patch_of_a_missing_file_is_refused():
     prepared = mutations.prepare(command("patch", old_string="a", new_string="b"), None, [])
-    assert not prepared.ok and "workspace_write" in prepared.result["error"]
+    assert not prepared.ok and "write_file" in prepared.result["error"]
 
 
 def test_a_large_file_is_refused():
@@ -160,12 +160,12 @@ def test_a_write_that_keeps_most_lines_gets_the_patch_hint():
     old = "\n".join(f"line {n} of the report text" for n in range(1000))
     new = old.replace("line 5 of", "line five of")
     prepared = mutations.prepare(command(content=new, expected_version=1), head(old), [])
-    assert prepared.ok and "workspace_patch" in prepared.result["hint"]
+    assert prepared.ok and "patch_file" in prepared.result["hint"]
 
 
-def test_the_upstream_names_are_rewritten():
+def test_the_upstream_punctuation_is_rewritten_and_the_tool_names_stay():
     dash = " " + chr(0x2014) + " "
-    assert mutations.ours(f"use read_file{dash}then write_file") == "use workspace_read, then workspace_write"
+    assert mutations.ours(f"use read_file{dash}then write_file") == "use read_file, then write_file"
 
 
 # Writer activities ---------------------------------------------------------------------
@@ -242,7 +242,7 @@ def tool_row(idx, name, body, status="ok"):
 def test_the_report_is_the_last_successful_mutation():
     rows = [
         tool_row(3, "workspace_write", {"success": True, "name": "a.md", "version": 1, "citations": ["[D1]"]}),
-        tool_row(5, "workspace_patch", {"success": True, "name": "b.md", "version": 2, "citations": []}),
+        tool_row(5, "patch_file", {"success": True, "name": "b.md", "version": 2, "citations": []}),
         tool_row(7, "workspace_write", {"success": False, "name": "c.md"}, status="error"),
         tool_row(8, "workspace_read", {"name": "a.md", "version": 1}),
     ]

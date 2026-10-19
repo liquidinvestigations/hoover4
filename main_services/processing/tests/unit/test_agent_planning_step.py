@@ -123,8 +123,8 @@ def test_the_next_index_is_the_index_after_the_last_row_of_the_reply(
 # ---------------------------------------------------------------- the todo store
 
 
-def test_edit_steps_with_no_plan_is_refused_as_write_todo_refuses_an_empty_goal(monkeypatch):
+def test_a_plan_without_a_goal_is_refused(monkeypatch):
     monkeypatch.setattr(chat_todos, "read_todo",
                         lambda u, s: {"goal": "", "items": [], "version": 0})
     with pytest.raises(chat_todos.TodoError, match="the goal is empty"):
-        chat_todos.edit_steps("u", "s", ["a step"])
+        chat_todos.update_plan("u", "s", "", [{"text": "a step"}])

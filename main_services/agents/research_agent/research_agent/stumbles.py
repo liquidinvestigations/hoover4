@@ -25,7 +25,7 @@ SKILL_LINE = "The skill `{skill}` shows how to fix this."
 NEXT_KEY = "next"
 
 
-TODO_TOOLS = frozenset({"read_todo", "write_todo", "edit_todo", "mark_todo"})
+TODO_TOOLS = frozenset({"update_plan"})
 #: The tools whose `not_found` error means a document id that no readable dataset holds.
 DOCUMENT_TOOLS = frozenset({"read_documents", "list_document_entities"})
 

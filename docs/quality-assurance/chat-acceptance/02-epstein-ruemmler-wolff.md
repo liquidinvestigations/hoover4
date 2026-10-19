@@ -24,12 +24,12 @@ What did Kathy Ruemmler and Jeffrey Epstein write to each other about Michael Wo
 
 ## Expected tool calls
 
-1. If it uses a todo list, it calls `write_todo` with a goal and three or four items.
+1. If it uses a todo list, it calls `update_plan` with a goal and three or four items.
 2. One `search_passages` call with no `collectionname`, for example `{"queries": ["Ruemmler Wolff book", "\"Kathy Ruemmler\" publisher", "Ruemmler \"Michael Wolff\"", "jeevacation Ruemmler"]}`.
 3. It calls `search_collections` with a phrase and a date sort, for example `{"query": "\"Kathy Ruemmler\" Wolff", "sort": {"field": "date", "direction": "asc"}}`, when the answer needs dates in order.
 4. It calls `read_documents` on the hits with the best quotes.
 5. It calls `cite_documents` with each quoted document.
-6. If it uses a todo list, it calls `mark_todo` as the items land before it answers.
+6. If it uses a todo list, it sends each step as done with `update_plan` when its work ends, before it answers.
 
 ## Expected result
 

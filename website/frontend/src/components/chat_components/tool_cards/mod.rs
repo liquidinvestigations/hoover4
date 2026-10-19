@@ -126,7 +126,7 @@ pub fn ToolCard(
         "submit_board_fact" => rsx! {
             result_cards::BoardFactCard { tool_input, tool_output, running }
         },
-        "read_todo" | "write_todo" | "edit_todo" | "mark_todo" => rsx! {
+        "update_plan" | "read_todo" | "write_todo" | "edit_todo" | "mark_todo" => rsx! {
             result_cards::TodoCard { tool_name, tool_input, tool_output, running, content_summary, todo_versions }
         },
         "list_document_entities" => rsx! {

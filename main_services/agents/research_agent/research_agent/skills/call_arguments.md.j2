@@ -35,18 +35,18 @@ It returns the description and full input schema, including allowed values, defa
 {"name":"read_documents"}
 ```
 After an unknown-argument error, read the failing tool's schema before retrying.
-{% if has('read_todo') %}
-For example, this {{ tool('read_todo') }} call fails because `todo_list` is not an argument.
+{% if has('update_plan') %}
+For example, this {{ tool('update_plan') }} call fails because `plan` is not an argument.
 ```json
-{"todo_list":"current"}
+{"plan":["Find the message."]}
 ```
 Read its schema with {{ tool('read_tool') }}.
 ```json
-{"name":"read_todo"}
+{"name":"update_plan"}
 ```
-Then call {{ tool('read_todo') }} without arguments.
+Then call {{ tool('update_plan') }} with goal and steps.
 ```json
-{}
+{"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"pending"}]}
 ```
 {% endif %}
 {% if has('read_documents') %}

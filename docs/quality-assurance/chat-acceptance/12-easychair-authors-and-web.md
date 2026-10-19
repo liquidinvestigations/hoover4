@@ -22,12 +22,12 @@ Who wrote the EasyChair guide that is in my test data, and where did they work? 
 
 ## Expected tool calls
 
-1. If it uses a todo list, it calls `write_todo` with a document step and a web step.
+1. If it uses a todo list, it calls `update_plan` with a document step and a web step.
 2. It calls `search_passages` with no `collectionname` and `["EasyChair guide author", "Voronkov Hoder", "\"Andrei Voronkov\""]`.
 3. It calls `read_documents` on the ODT file.
 4. It calls `cite_documents` with the author line as the quote.
 5. It calls `web_search` with `["\"Andrei Voronkov\" Manchester", "\"Andrei Voronkov\" Vampire theorem prover"]`.
-6. It calls `read_page` of one result, before it answers. If it uses a todo list, it calls `mark_todo` before the answer.
+6. It calls `read_page` of one result, before it answers. If it uses a todo list, it sends the ended steps as done with `update_plan` before the answer.
 
 ## Expected result
 

@@ -23,7 +23,7 @@ Give each required category PASS, FAIL or PARTIAL. Give each optional todo categ
 
 | category | verdict | seq | what the reviewer saw |
 |---|---|---|---|
-| Optional first todo write. If the agent creates a list, its first `write_todo` is accepted with plain ids. | | | |
+| Optional first plan call. If the agent creates a plan, its first `update_plan` call is accepted. | | | |
 | Optional todo upkeep. If a list exists, its items change state as the work happens. | | | |
 | Search scope. The first search covers every collection in scope, in one call, with no collection named unless the user narrowed the scope. | | | |
 | Query variants. One call carries the variants the story needs: quotes and no quotes, spellings, scripts, the address and the name. | | | |

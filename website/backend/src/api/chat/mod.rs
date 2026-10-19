@@ -139,7 +139,7 @@ async fn run_citations(
 fn todo_versions_in(messages: &[common::chat_types::ChatMessageItem]) -> Vec<u32> {
     let mut versions = Vec::new();
     for message in messages.iter().filter(|message| {
-        matches!(message.tool_name.as_str(), "read_todo" | "write_todo" | "edit_todo" | "mark_todo")
+        matches!(message.tool_name.as_str(), "update_plan" | "read_todo" | "write_todo" | "edit_todo" | "mark_todo")
     }) {
         let value = serde_json::from_str::<serde_json::Value>(&message.tool_output).unwrap_or_default();
         let content = value.get("output").and_then(|value| value.get("content")).unwrap_or(&value);

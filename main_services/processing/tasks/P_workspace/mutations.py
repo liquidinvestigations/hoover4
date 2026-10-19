@@ -37,12 +37,12 @@ REWRITE_HINT_MIN_CHARS = 20_000
 REWRITE_HINT_MIN_UNCHANGED = 0.80
 REWRITE_HINT_MAX_CHARS = 400_000
 
-WRITE = "workspace_write"
-PATCH = "workspace_patch"
-READ = "workspace_read"
-#: The upstream tool names and punctuation in the Hermes messages, and what the agent reads.
-UPSTREAM_NAMES = (("write_file", WRITE), ("read_file", READ),
-                  ("replace_all=True", "replace_all true"), (" " + chr(0x2014) + " ", ", "))
+WRITE = "write_file"
+PATCH = "patch_file"
+READ = "read_file"
+#: The upstream punctuation in the Hermes messages, and what the agent reads. The tool names
+#: `write_file` and `read_file` are the same as upstream.
+UPSTREAM_NAMES = (("replace_all=True", "replace_all true"), (" " + chr(0x2014) + " ", ", "))
 
 
 @dataclass

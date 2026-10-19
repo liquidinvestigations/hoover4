@@ -27,7 +27,8 @@ COLLECTION_TOOLS = [
     for name in sorted(PACKS["collections"])
 ]
 OTHER_TOOLS = [
-    FakeTool("read_todo", "Read the plan of this conversation."),
+    FakeTool("update_plan", "Set the plan of this conversation."),
+    FakeTool("write_file", "Create or replace a workspace file."),
     FakeTool("web_search", "Search the open web."),
 ]
 EVERY_PACK = allowed_tools("chat", "all")
@@ -45,7 +46,7 @@ def test_every_snapshot_tool_is_callable():
     assert {
         "list_collections", "search_collections", "search_passages", "read_documents",
         "cite_documents", "search_agent_tools", "search_skills", "read_skill", "read_tool",
-        "read_todo",
+        "update_plan", "write_file",
         "doc_search_text", "table_cell", "web_search",
     } <= set(snap.callable_names())
     assert {tool.name for tool in snap.tools_for()} == set(snap.callable_names())
@@ -169,4 +170,4 @@ async def test_the_search_query_takes_one_to_160_characters(query, error):
 def test_no_snapshot_has_the_board_tool():
     board = snapshot("board", allowed_tools("board", "all"))
     assert "submit_board_fact" not in board.tools_by_name
-    assert "workspace_write" in allowed_tools("board", "all")
+    assert "write_file" in allowed_tools("board", "all")

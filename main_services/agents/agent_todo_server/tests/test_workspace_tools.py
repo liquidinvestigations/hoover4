@@ -105,7 +105,7 @@ def test_a_write_signals_the_session_writer_with_the_idempotency_key(monkeypatch
     client = FakeClient(receipts, outcome)
     use_client(monkeypatch, client)
 
-    result = json.loads(asyncio.run(tools["workspace_write"]("report.md", "Text.")))
+    result = json.loads(asyncio.run(tools["write_file"]("report.md", "Text.")))
 
     assert result == {"success": True, "name": "report.md", "version": 1}
     [(workflow, start, kwargs)] = client.starts
@@ -125,7 +125,7 @@ def test_a_stored_receipt_answers_a_repeated_call_without_a_command(monkeypatch,
     client = FakeClient(receipts)
     use_client(monkeypatch, client)
 
-    result = json.loads(asyncio.run(tools["workspace_patch"]("report.md", "a", "b")))
+    result = json.loads(asyncio.run(tools["patch_file"]("report.md", "a", "b")))
 
     assert result["version"] == 2
     assert client.starts == []
@@ -136,13 +136,13 @@ def test_a_failed_receipt_is_a_tool_error_with_its_result(monkeypatch, headers, 
     client = FakeClient(receipts, lambda c: store.Receipt(c["operation_id"], c["name"], 3, False, body))
     use_client(monkeypatch, client)
 
-    assert refusal(tools["workspace_write"], "report.md", "Text.", 1) == body
+    assert refusal(tools["write_file"], "report.md", "Text.", 1) == body
 
 
 def test_an_unreachable_writer_is_a_retryable_failure(monkeypatch, headers, receipts, tools):
     use_client(monkeypatch, FakeClient(receipts, error=RuntimeError("down")))
 
-    body = refusal(tools["workspace_write"], "report.md", "Text.")
+    body = refusal(tools["write_file"], "report.md", "Text.")
 
     assert body["success"] is False and body["retryable"] is True
 
@@ -150,7 +150,7 @@ def test_an_unreachable_writer_is_a_retryable_failure(monkeypatch, headers, rece
 def test_a_writer_without_a_receipt_in_time_is_a_retryable_failure(monkeypatch, headers, receipts, tools):
     use_client(monkeypatch, FakeClient(receipts))
 
-    body = refusal(tools["workspace_write"], "report.md", "Text.")
+    body = refusal(tools["write_file"], "report.md", "Text.")
 
     assert body["retryable"] is True and "no result" in body["error"]
 
@@ -158,7 +158,7 @@ def test_a_writer_without_a_receipt_in_time_is_a_retryable_failure(monkeypatch, 
 def test_a_call_without_the_session_header_is_refused(monkeypatch, headers, receipts, tools):
     del headers["x-hoover4-chat-session"]
 
-    assert refusal(tools["workspace_read"])["success"] is False
+    assert refusal(tools["read_file"])["success"] is False
 
 
 def test_a_read_lists_the_files_or_renders_one_with_the_gutter(monkeypatch, headers, tools):
@@ -167,9 +167,9 @@ def test_a_read_lists_the_files_or_renders_one_with_the_gutter(monkeypatch, head
         {"name": "report.md", "version": 2, "chars": 9, "updated": "t"}])
     monkeypatch.setattr(store, "read_version", lambda u, s, n, v=None: version if n == "report.md" else None)
 
-    listed = json.loads(tools["workspace_read"]())
-    read = json.loads(tools["workspace_read"]("report.md"))
-    missing = refusal(tools["workspace_read"], "notes.md")
+    listed = json.loads(tools["read_file"]())
+    read = json.loads(tools["read_file"]("report.md"))
+    missing = refusal(tools["read_file"], "notes.md")
 
     assert listed == {"files": [{"name": "report.md", "version": 2, "chars": 9}]}
     assert read["content"] == "1|One.\n2|Two." and read["version"] == 2

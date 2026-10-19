@@ -1,7 +1,7 @@
 //! The task summaries of a chat transcript.
 //!
-//! A todo mutation row (`write_todo`, `edit_todo`, `mark_todo`) names the stored version
-//! it produced. [`todo_summaries`] decides which of those rows show a task summary: a
+//! A plan row (`update_plan`, or `write_todo`, `edit_todo` and `mark_todo` in rows written
+//! before `update_plan` replaced them) names the stored version it produced. [`todo_summaries`] decides which of those rows show a task summary: a
 //! successful row whose version is stored and whose visible state differs from the last
 //! summary shown. Every todo call stays an inspectable tool row whether it shows a summary
 //! or not.
@@ -14,8 +14,8 @@ use std::collections::HashMap;
 
 use crate::chat_types::{ChatMessageItem, ChatRole, TodoItemView, TodoSnapshot};
 
-/// The todo tools whose rows can change the list.
-pub const TODO_MUTATIONS: [&str; 3] = ["write_todo", "edit_todo", "mark_todo"];
+/// The tools whose rows can change the list. The last three are in older rows only.
+pub const TODO_MUTATIONS: [&str; 4] = ["update_plan", "write_todo", "edit_todo", "mark_todo"];
 
 /// The most words of a completion reason that a summary shows.
 pub const REASON_WORDS: usize = 3;
@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn a_reason_change_and_a_goal_change_are_visible() {
         let rows = vec![versioned(1, "write_todo", 1), versioned(2, "mark_todo", 2),
-                        versioned(3, "mark_todo", 3), versioned(4, "write_todo", 4)];
+                        versioned(3, "mark_todo", 3), versioned(4, "update_plan", 4)];
         let snapshots = vec![
             snapshot(1, "g", vec![item("1", "a", "pending", "")]),
             snapshot(2, "g", vec![item("1", "a", "done", "found")]),

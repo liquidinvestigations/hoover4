@@ -34,10 +34,9 @@ log = logging.getLogger(__name__)
 
 #: The tool calls a plan-first opening is made of. Prose in front of any of them, before
 #: any other tool has run, is the plan being proposed and belongs in the answer -- see
-#: `_keeps_preamble`. `read_todo` is in the list because the protocol tells the model to
-#: check whether a plan is needed before writing one, so a plan-first turn opens with a
-#: read and not a write.
-PLAN_FIRST_TOOLS = ("read_todo", "write_todo", "edit_todo", "mark_todo")
+#: `_keeps_preamble`. The four todo tool names are those of rows written before
+#: `update_plan` replaced them.
+PLAN_FIRST_TOOLS = ("update_plan", "read_todo", "write_todo", "edit_todo", "mark_todo")
 
 
 def _tool_name(content: Any) -> str:

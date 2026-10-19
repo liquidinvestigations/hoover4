@@ -140,12 +140,13 @@ def render_brief(board, facts, citations, hints, intent, collections, steps: int
         "- Do not repeat findings that the known facts already state.\n"
         f"- This is a focused task. Use at most {call_guidance(steps)} tool calls. "
         "Do not read a document twice.\n\n"
-        "Write the result of the task as a report file, also when the result is short, an "
+        "Write the result of the task as a report file with `write_file`, also when the result is short, an "
         "inference or an absence. The report keeps the names, dates and numbers that the task "
         "asks for. For an absence, name the searches and the documents examined, and do not "
         "claim that no such record exists elsewhere. At the end of the report, list at most 3 "
         "questions that the task leaves open. Known answers and source caveats are not open "
-        "questions. The board reads the finding from the report after your turn ends."
+        "questions. The board reads the finding only from that file after your turn ends. Text "
+        "in the chat reply does not reach the board."
     )
 
 

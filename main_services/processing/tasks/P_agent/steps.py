@@ -67,12 +67,11 @@ NOTE_ROLE = "nag"
 #: `CITATION_NOTE_NAME` in `website/common/src/chat_types.rs`.
 CITATION_NOTE_NAME = "citation_check"
 
-#: The tools that read or change the todo list or the workspace files. The calls of one
+#: The tools that change the plan or read or change the workspace files. The calls of one
 #: reply to these tools run one after the other, in the order of the reply, because each one
 #: reads the state that the call before it wrote.
 STATE_TOOLS = frozenset({
-    "write_todo", "edit_todo", "mark_todo", "read_todo",
-    "workspace_read", "workspace_write", "workspace_patch",
+    "update_plan", "read_file", "write_file", "patch_file",
 })
 
 

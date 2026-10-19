@@ -1,13 +1,9 @@
-"""FastMCP server exposing one agent todo list and one workspace per chat conversation.
+"""FastMCP server exposing one agent plan and one workspace per chat conversation.
 
 Tools:
-    ``read_todo``   the whole list, cheap, callable any time
-    ``write_todo``  sets the goal and the steps, the plan-first call
-    ``edit_todo``   revises the steps and keeps the goal and the done steps
-    ``mark_todo``   pending, or done with a reason, for a list of step ids
+    ``update_plan``  sets the goal and the whole step list with the status of each step
 
-The workspace tools ``workspace_read``, ``workspace_write`` and ``workspace_patch`` are in
-`workspace.py`.
+The workspace tools ``read_file``, ``write_file`` and ``patch_file`` are in `workspace.py`.
 
 **This server holds no rules of its own.** Every shape, every limit and every rule
 about statuses, reasons and identities lives in `database.chat_todos`, which the
@@ -17,11 +13,9 @@ the workflow reads a list that never changed. What this module adds is exactly t
 things: the caller's identity out of the request headers, typed arguments, and a
 refusal the model can read.
 
-Four tools rather than one dispatch tool with a `mode` argument. Each has a different
-argument shape (no arguments, a goal and a list of step strings, a list of step strings
-with optional replacement entries, a list of step ids with one status and a reason), and
-a typed schema is what makes a model call it correctly the first time. The store gives
-every id. The only object argument is the optional replacement entry of `edit_todo`.
+One plan tool takes the whole list and returns the whole list. With four todo tools, the
+agent model called `write_todo` when it meant to write a report file, and it read the
+short results of the list tools as a fault. The store gives every id.
 """
 
 from __future__ import annotations
@@ -33,7 +27,7 @@ from typing import Annotated, Any, Literal, NoReturn, Optional
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
-from pydantic import BaseModel, Field, PrivateAttr, model_serializer
+from pydantic import BaseModel, Field, model_serializer
 
 from agent_todo_server import workspace
 from agent_todo_server.identity import Caller, CallerUnknown, parse_caller
@@ -50,16 +44,10 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 SERVER_INSTRUCTIONS = (
-    "Keep the plan for this conversation. Call `read_todo` to see it. The call is cheap "
-    "and you can make it at any point. When `needs_plan` is true there is no live plan, "
-    "so write one with `write_todo`: a goal of one or two sentences and `steps`, a list "
-    "of the steps you intend to take. The server gives each step its id. A step is "
-    "pending until its work ends. Then call `mark_todo` with its `ids`, status done and "
-    "a short reason in `note`, such as found, not found or replaced. Done steps stay in "
-    "the list. To revise the steps for the same goal, call `edit_todo` with the full "
-    "list of `steps`. When a new step replaces an old one, add a replacement entry with "
-    "the old id, the new text and the reason. When the goal changes, call `write_todo` "
-    "again."
+    "Keep the plan for this conversation with `update_plan`. Send the goal in one or two "
+    "sentences and the whole list of steps, each with its text and its status, pending or "
+    "done. Give a done step a short note, such as found or not found. Send the whole list "
+    "again when a step ends or the plan changes. The result shows the whole plan."
 )
 
 
@@ -73,18 +61,18 @@ class TodoItem(BaseModel):
     replaces_id: str = Field(default="", description="The id of the step this step replaces")
 
 
-class Replacement(BaseModel):
-    """One replacement entry of `edit_todo`."""
+class PlanStep(BaseModel):
+    """One step of an `update_plan` call."""
 
-    id: str = Field(description="The id of the step that the new step replaces.")
-    text: str = Field(description="The new step text. It must also be in steps.")
-    note: str = Field(description="Why the old step ended, such as replaced by a narrower search.")
+    text: str = Field(description="The step, as a short sentence.")
+    status: Literal["pending", "done"] = Field(default="pending", description="pending, or done when the work of the step ended.")
+    note: str = Field(default="", description="For a done step, a short reason, such as found or not found.")
 
 
 class TodoResponse(BaseModel):
-    """The whole list after the call, whether the call changed it or not.
+    """The whole plan after the call, whether the call changed it or not.
 
-    A refusal is a tool error whose text is this response, with the *unchanged* list
+    A refusal is a tool error whose text is this response, with the *unchanged* plan
     beside its `error`: the model has just been told its write did not happen and the
     next thing it needs is what the plan actually says.
     """
@@ -95,41 +83,20 @@ class TodoResponse(BaseModel):
     version: int = Field(
         default=0, description="Update counter. 0 means nothing has ever been written"
     )
-    needs_plan: bool = Field(
-        default=True,
-        description="True when there is no plan yet or every item is settled",
-    )
     summary: str = Field(default="", description="How much of the plan is resolved")
     unchanged: bool = Field(default=False, description="True when the call changed nothing")
     error: Optional[str] = Field(
         default=None, description="Why the call was refused, in words to act on"
     )
-    _result_kind: str = PrivateAttr(default="read")
 
     @model_serializer
     def _slim_result(self) -> dict[str, Any]:
         items = [item.model_dump(exclude_defaults=True) for item in self.items]
         if not self.success:
             return {"success": False, "error": self.error, "version": self.version, "items": items}
-        if self._result_kind == "write":
-            out = {"version": self.version, "ids": [item.id for item in self.items],
-                   "summary": self.summary}
-            if self.unchanged:
-                out["unchanged"] = True
-            return out
-        if self._result_kind in ("edit", "mark"):
-            opened = [{"id": item.id, "text": item.text, "status": item.status}
-                      for item in self.items if item.status != "done"]
-            out = {"version": self.version, "summary": self.summary, "open": opened}
-            if self.unchanged:
-                out["unchanged"] = True
-            if self.needs_plan:
-                out["needs_plan"] = True
-            return out
-        out = {"goal": self.goal, "items": items, "version": self.version,
-               "summary": self.summary}
-        if self.needs_plan:
-            out["needs_plan"] = True
+        out = {"goal": self.goal, "items": items, "version": self.version, "summary": self.summary}
+        if self.unchanged:
+            out["unchanged"] = True
         return out
 
 
@@ -144,33 +111,21 @@ def _caller() -> Caller:
     return parse_caller(dict(get_http_headers()))
 
 
-def _response(todo: dict, error: str | None = None, kind: str = "read") -> TodoResponse:
-    """One snapshot rendered for the model, with the derived facts it acts on.
+def _response(todo: dict, error: str | None = None) -> TodoResponse:
+    """One snapshot rendered for the model.
 
     The items carry display statuses, so a legacy `in_progress` reads as pending and a
     legacy `cancelled` as done with its note. The stored row is unchanged.
     """
-    response = TodoResponse(
+    return TodoResponse(
         success=error is None,
         goal=todo.get("goal", ""),
         items=[TodoItem(**item) for item in chat_todos.display_items(todo.get("items", []))],
         version=int(todo.get("version", 0)),
-        needs_plan=chat_todos.needs_plan(todo),
         summary=chat_todos.summarise(todo),
         unchanged=bool(todo.get("unchanged")),
         error=error,
     )
-    response._result_kind = kind
-    return response
-
-
-# The step lists are typed lists of strings. The agent decodes a JSON string argument
-# against this schema before the call (`research_agent/tool_args.py`), so a parser that
-# sends a list as a string still reaches the store.
-
-
-#: The refusal of `edit_todo` in a conversation that has no plan yet.
-NO_PLAN_ERROR = "No plan exists yet. Call write_todo first."
 
 
 def _refused(caller: Caller | None, message: str) -> NoReturn:
@@ -188,131 +143,36 @@ def _refused(caller: Caller | None, message: str) -> NoReturn:
 
 
 @mcp.tool(
-    name="read_todo",
+    name="update_plan",
     description=(
-        "Read the plan for this conversation: the goal, every step and its status. "
-        "Cheap and safe to call at any time. `needs_plan` is true when there is no "
-        "plan yet or every step is already settled, which is when you should write one."
+        "Set the plan of this conversation: the goal and the whole list of steps, each "
+        "with its status. Use it for work with several steps. Send the whole list again "
+        "when a step ends or the plan changes. A step with the same text keeps its id. "
+        "The result shows the whole plan. This tool only keeps the plan. It writes no "
+        "file and no answer."
     ),
 )
-def read_todo() -> TodoResponse:
+def update_plan(
+    goal: Annotated[str, Field(description="The task goal in one or two sentences.")],
+    steps: Annotated[list[PlanStep], Field(description="The whole ordered list of steps, each with text and status.")],
+) -> TodoResponse:
     try:
         caller = _caller()
     except CallerUnknown as exc:
         return _refused(None, str(exc))
-    todo = chat_todos.read_todo(caller.username, caller.session_id)
+    try:
+        todo = chat_todos.update_plan(caller.username, caller.session_id, goal,
+                                      [step.model_dump() for step in steps])
+    except chat_todos.TodoError as exc:
+        return _refused(caller, str(exc))
     log.info(
-        "read_todo user=%s session=%s %s",
+        "update_plan user=%s session=%s v%s %s",
         caller.username,
         caller.session_id,
+        todo["version"],
         chat_todos.summarise(todo),
     )
     return _response(todo)
-
-
-@mcp.tool(
-    name="write_todo",
-    description=(
-        "Write the plan for this conversation, as a goal and a list of steps. Call it at "
-        "the start of a piece of work, and again when the goal changes. Give goal as one "
-        "or two sentences. Give steps as a list of short sentences, in the order you mean "
-        "to do them. A new goal starts a new list: the server numbers the steps 1, 2, 3, "
-        "and each step starts as pending. The same goal again keeps the done steps, as "
-        "edit_todo does."
-    ),
-)
-def write_todo(goal: Annotated[str, Field(description='The task goal in one or two sentences.')], steps: Annotated[list[str], Field(description='The complete ordered list of step sentences.')]) -> TodoResponse:
-    try:
-        caller = _caller()
-    except CallerUnknown as exc:
-        return _refused(None, str(exc))
-    try:
-        todo = chat_todos.write_steps(caller.username, caller.session_id, goal, steps)
-    except chat_todos.TodoError as exc:
-        return _refused(caller, str(exc))
-    log.info(
-        "write_todo user=%s session=%s v%s %s",
-        caller.username,
-        caller.session_id,
-        todo["version"],
-        chat_todos.summarise(todo),
-    )
-    return _response(todo, kind="write")
-
-
-@mcp.tool(
-    name="edit_todo",
-    description=(
-        "Revise the steps of the plan and keep the goal. This tool takes steps and an "
-        "optional replacements argument. steps is a list of short sentences, the full list "
-        "of steps you want, in order. Each step is a plain sentence, with no id and no "
-        "status. A step with the same text as before keeps its id and its status. Done "
-        "steps stay in the list. An open step you leave out becomes done with the reason "
-        "removed from plan. When a new step replaces an old one, give a replacements "
-        "entry with id, the old step id, text, the new step text from steps, and note, "
-        "why the old step ended. The old step becomes done and stays directly above the "
-        "new one. This tool takes no goal. Only write_todo takes a goal. To set a status, "
-        "use mark_todo."
-    ),
-)
-def edit_todo(
-    steps: Annotated[list[str], Field(description='The complete ordered list of current step sentences. Matching text retains its identity and status.')],
-    replacements: Annotated[list[Replacement], Field(description='Optional. One entry for each old step that a new step replaces.')] = [],
-) -> TodoResponse:
-    try:
-        caller = _caller()
-    except CallerUnknown as exc:
-        return _refused(None, str(exc))
-    if not chat_todos.read_todo(caller.username, caller.session_id).get("version"):
-        return _refused(caller, NO_PLAN_ERROR)
-    try:
-        todo = chat_todos.edit_steps(caller.username, caller.session_id, steps,
-                                     [entry.model_dump() for entry in replacements])
-    except chat_todos.TodoError as exc:
-        return _refused(caller, str(exc))
-    log.info(
-        "edit_todo user=%s session=%s v%s %s",
-        caller.username,
-        caller.session_id,
-        todo["version"],
-        chat_todos.summarise(todo),
-    )
-    return _response(todo, kind="edit")
-
-
-@mcp.tool(
-    name="mark_todo",
-    description=(
-        "Set the status of one or more steps in one call. This tool takes three "
-        "arguments. ids is a list of step ids from the plan, such as 1 and 2. status is "
-        "one status for all of them: pending or done. note is a short reason, such as "
-        "found, not found or replaced. A done step needs a note, and the call is refused "
-        "without it. This tool takes no goal and no steps. Only write_todo takes a goal, "
-        "and only write_todo and edit_todo take steps. Mark a step done when its work "
-        "ends."
-    ),
-)
-def mark_todo(
-    ids: Annotated[list[str], Field(description='Copy returned step identifiers as a list of strings.')],
-    status: Annotated[Literal["pending", "done"], Field(description='One status for every selected step. Done requires a note.')],
-    note: Annotated[str, Field(description='A short reason, such as found or not found. Required when status is done.')] = "",
-) -> TodoResponse:
-    try:
-        caller = _caller()
-    except CallerUnknown as exc:
-        return _refused(None, str(exc))
-    try:
-        todo = chat_todos.mark_steps(caller.username, caller.session_id, ids, status, note)
-    except chat_todos.TodoError as exc:
-        return _refused(caller, str(exc))
-    log.info(
-        "mark_todo user=%s session=%s v%s %s",
-        caller.username,
-        caller.session_id,
-        todo["version"],
-        chat_todos.summarise(todo),
-    )
-    return _response(todo, kind="mark")
 
 
 workspace.register(mcp)

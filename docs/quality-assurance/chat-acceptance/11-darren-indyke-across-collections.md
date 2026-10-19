@@ -25,7 +25,7 @@ In which of my collections does Darren Indyke appear, and in what role in each? 
 
 ## Expected tool calls
 
-1. If it uses a todo list, it calls `write_todo` with one item for each collection that holds the name, after one search with no `collectionname`.
+1. If it uses a todo list, it calls `update_plan` with one item for each collection that holds the name, after one search with no `collectionname`.
 2. It calls `search_collections` with no `collectionname` and the query `Indyke | lndyke | dkiesq`. The facet `collection_dataset` in the result gives the count per dataset.
 3. It reads two documents of each collection with `read_documents` and cites them.
 4. The report gives a table of collection, count and role, with cards.

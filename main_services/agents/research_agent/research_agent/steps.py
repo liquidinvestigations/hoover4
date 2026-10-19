@@ -814,24 +814,20 @@ def _successful_repeat_result(message: RunMessage) -> bool:
         return True
 
 
-#: The note of a `write_todo` result that changed nothing. A model that means to write its
-#: report can call `write_todo` again and again, so the note names the file tool.
-UNCHANGED_TODO_NOTE = ("The list did not change. write_todo only plans the steps. "
-                       "Do the next open step now.")
-UNCHANGED_TODO_FILE_NOTE = " To write a report or another file, call workspace_write."
-
-
-def _unchanged_todo_note(content: str, allowed: FrozenSet[str]) -> str:
-    """The `write_todo` result with a `note` when the call changed nothing, or the result
-    as it was."""
-    try:
-        body = json.loads(content)
-    except (TypeError, ValueError):
-        return content
-    if not isinstance(body, dict) or body.get("unchanged") is not True:
-        return content
-    note = UNCHANGED_TODO_NOTE + (UNCHANGED_TODO_FILE_NOTE if "workspace_write" in allowed else "")
-    return json.dumps({**body, "note": note}, ensure_ascii=False)
+def closest_names(name: str, args: Any, snapshot: Any, allowed: Sequence[str]) -> List[str]:
+    """At most two tools of the run for an unknown tool name. A tool whose schema shares
+    more argument names with the call comes first, then a tool with a closer spelling. A
+    tool that shares no argument name and whose spelling ratio is under 0.6 is left out."""
+    keys = set(args) if isinstance(args, dict) else set()
+    ranked = []
+    for candidate in sorted(allowed):
+        tool = snapshot.tools_by_name.get(candidate)
+        properties = set((tool_schema(tool) or {}).get("properties") or {}) if tool is not None else set()
+        shared = len(keys & properties)
+        ratio = difflib.SequenceMatcher(None, name, candidate).ratio()
+        if shared or ratio >= 0.6:
+            ranked.append((-shared, -ratio, candidate))
+    return [candidate for _, _, candidate in sorted(ranked)[:2]]
 
 
 async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, Any]:
@@ -854,9 +850,9 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
         ), "error", "invalid_arguments")
 
     if name not in allowed:
-        # A misspelled name, such as `write_write` for `workspace_write`, gets the closest
-        # names of the run, so the next call can use the right one.
-        close = difflib.get_close_matches(name, sorted(allowed), n=2, cutoff=0.6)
+        # A misspelled name, such as `write_write` for `write_file`, gets the closest names
+        # of the run, so the next call can use the right one.
+        close = closest_names(name, request.call.args, snapshot, allowed)
         hint = f" The closest names are {', '.join(close)}." if close else ""
         return _tool_response(request, _error(
             "tool_unavailable", f"No tool of this run is named {name!r}.{hint} "
@@ -994,8 +990,6 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     if retryable_result(content):
         return _tool_response(request, content, "error", TRANSPORT_FAILURE,
                               _with_repairs(measure, repairs), [], doc_refs, retryable=True)
-    if name == "write_todo":
-        content = _unchanged_todo_note(content, allowed)
     return _tool_response(
         request, content, status, "tool_error" if status == "error" else "",
         _with_repairs(measure, repairs), [], doc_refs, image_refs=image_refs

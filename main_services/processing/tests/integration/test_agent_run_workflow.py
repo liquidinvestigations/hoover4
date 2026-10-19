@@ -43,7 +43,7 @@ LONG_ID_A = "chatcmpl-tool-a5ca7d0e11f2" * 9
 LONG_ID_B = "chatcmpl-tool-b71c3e9d04aa" * 9
 
 #: The tools that the agent service gives the kind `ordered`.
-ORDERED = ("write_todo",)
+ORDERED = ("update_plan",)
 
 
 def _frame(kind, **fields):
@@ -661,35 +661,35 @@ def test_two_tool_transport_failures_store_tool_unavailable(monkeypatch):
                           tool=lambda r, n: _transport_then_ok(r, 1)))
 
 
-def test_todo_calls_of_one_reply_run_in_the_order_of_the_reply(monkeypatch):
+def test_plan_calls_of_one_reply_run_in_the_order_of_the_reply(monkeypatch):
     def script(request, n):
         if n == 1:
-            return _reply(request, calls=[_call("mark_todo", {"ids": ["1"], "status": "done"}),
-                                          _call("mark_todo", {"ids": ["2"], "status": "done"}),
-                                          _call("read_todo", {})])
+            return _reply(request, calls=[_call("update_plan", {"goal": "1", "steps": []}),
+                                          _call("update_plan", {"goal": "2", "steps": []}),
+                                          _call("read_file", {})])
         return _reply(request, "done")
 
     def tool(request, n):
         # The first call is the slowest, so a parallel run would end it last.
-        time.sleep(1.5 if request["call"]["args"].get("ids") == ["1"] else 0.1)
+        time.sleep(1.5 if request["call"]["args"].get("goal") == "1" else 0.1)
         return _ok_tool(request, n)
 
     async def body(client, case, stub, queue, titled):
         assert await (await _start(client, case, queue)).result() == "completed"
         spans = [(name, json.dumps(args), s, e) for name, args, s, e in stub.tool_log]
         assert [(n, a) for n, a, _, _ in spans] == [
-            ("mark_todo", '{"ids": ["1"], "status": "done"}'),
-            ("mark_todo", '{"ids": ["2"], "status": "done"}'), ("read_todo", "{}")]
+            ("update_plan", '{"goal": "1", "steps": []}'),
+            ("update_plan", '{"goal": "2", "steps": []}'), ("read_file", "{}")]
         for (_, _, _, end), (_, _, start, _) in zip(spans, spans[1:]):
             assert end <= start, spans
 
     asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 
 
-def test_read_todo_twice_forces_no_answer(monkeypatch):
+def test_a_plan_call_twice_forces_no_answer(monkeypatch):
     def script(request, n):
         if n <= 2:
-            return _reply(request, calls=[_call("read_todo", {})])
+            return _reply(request, calls=[_call("update_plan", {"goal": "g", "steps": []})])
         return _reply(request, "done")
 
     async def body(client, case, stub, queue, titled):
@@ -951,7 +951,7 @@ def test_ask_user_ends_after_all_calls_without_a_todo_nag(monkeypatch):
     def script(request, n):
         frames = _reply(request, calls=[
             _call("ask_user", {"question": questions[0], "options": ["bigger", "smaller"]}),
-            _call("read_todo", {}),
+            _call("read_file", {}),
             _call("ask_user", {"question": questions[1], "options": []}),
         ])
         # The agent service names the model of the reply in `model_turn`.
@@ -968,7 +968,8 @@ def test_ask_user_ends_after_all_calls_without_a_todo_nag(monkeypatch):
                      "measure": None, "error_class": ""}
 
     async def body(client, case, stub, queue, titled):
-        chat_todos.write_steps(case.username, case.session_id, "guess", ["one", "two", "three"])
+        chat_todos.update_plan(case.username, case.session_id, "guess",
+                               [{"text": "one"}, {"text": "two"}, {"text": "three"}])
         handle = await _start(client, case, queue)
         assert await handle.result() == "completed"
         assert case.run_row().result == questions[0]

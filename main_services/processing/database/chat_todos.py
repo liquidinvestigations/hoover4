@@ -1,11 +1,10 @@
 """The agent's todo lists and the rules the nag protocol reads.
 
 The list is a goal plus items, stored as whole-list snapshots in `chat_todos` and
-versioned on an update counter. Four operations write it -- `write` sets the goal and the
-plan, `edit` changes rows without touching the goal, `mark` sets one status on a batch of
-rows -- and `read` returns the current snapshot. Each is a distinct argument shape on
-purpose: a model calls a typed tool correctly far more often than it fills a dispatch
-envelope.
+versioned on an update counter. One operation writes it: [`update_plan`] takes the goal and
+the whole step list with statuses. [`read_todo`] returns the current snapshot. One tool
+with the whole list keeps the model from mixing up several plan tools, and its result
+shows the whole list.
 
 A new write uses two statuses, `pending` and `done`. Stored snapshots can also hold the
 legacy `in_progress` and `cancelled`, and they stay readable: [`display_status`] reads
@@ -13,14 +12,14 @@ legacy `in_progress` and `cancelled`, and they stay readable: [`display_status`]
 
 These rules must hold, and none is apparent from the schema:
 
-* **A new completion needs a reason.** An item that a write moves to `done` must carry a
-  nonempty `note`, such as `found`, `not found` or `replaced`. The rule applies only to the
-  transition, so an older done item without a note stays readable and unchanged.
-* **An item keeps its identity.** Completed and replaced items stay in the list. An edit
-  that omits an open item ends it with the note [`REMOVED_NOTE`]. A new item gets a
-  number above every identity in the list, so no identity is used twice for one goal.
-  A replacement is explicit: the new item records `replaces_id`, and the old item ends
-  with the stated reason, directly above it.
+* **A done step has a reason.** An item that a write moves to `done` must carry a
+  nonempty `note`, such as `found`, `not found` or `replaced`. [`update_plan`] gives
+  [`DONE_NOTE`] to a done step that the call sent without a note. The rule applies only
+  to the transition, so an older done item without a note stays readable and unchanged.
+* **An item keeps its identity.** With the same goal, a step with the same text keeps
+  its id, and a new step gets a number above every identity in the list. A step that the
+  call leaves out is not in the new version. The earlier versions keep it. Older
+  snapshots can hold `replaces_id`, which stays readable.
 * **An identical write changes nothing.** [`_write_version`] compares the new state with
   the current one and returns the current version when they are equal, so a repeated
   call adds no snapshot.
@@ -54,9 +53,6 @@ LEGACY_STATUSES = {"in_progress": "pending", "cancelled": "done"}
 #: Statuses that count as finished for the purposes of the nag. `cancelled` is here
 #: because an item abandoned with a reason is a decision, not an omission.
 RESOLVED_STATUSES = ("done", "cancelled")
-
-#: The reason an edit stores on an open item that its new step list omits.
-REMOVED_NOTE = "removed from plan"
 
 #: Caps. A todo is a plan the model has to keep in its head, not a work queue, and an
 #: unbounded list is how a plan stops being read.
@@ -353,23 +349,15 @@ def write_todo(username: str, session_id: str, goal: str, items) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# The step list operations of the todo tools
+# The plan tool
 # ---------------------------------------------------------------------------
 #
-# The todo tools take a goal and a list of step strings. The store gives each step its
-# id, so the model never writes an id. The item rules above still apply to every
+# `update_plan` takes the goal and the whole step list with statuses. The store gives each
+# step its id, so the model never writes an id. The item rules above still apply to every
 # written list.
 
-
-def _step_texts(steps) -> list[str]:
-    """The step strings, stripped, with the empty ones left out."""
-    if steps is None:
-        steps = []
-    if isinstance(steps, str):
-        steps = [steps]
-    if not isinstance(steps, (list, tuple)):
-        raise TodoError("steps must be a list of strings")
-    return [str(step).strip() for step in steps if str(step).strip()]
+#: The note of a done step that the call gave without a note.
+DONE_NOTE = "done"
 
 
 def _folded(text: str) -> str:
@@ -382,187 +370,60 @@ def _next_id(items: list[dict]) -> int:
     return max(numbers, default=0) + 1
 
 
-def _replacements(raw, items: list[dict], texts: list[str]) -> dict[str, dict]:
-    """The checked replacement entries that are not yet applied, by folded new text.
-
-    Each entry names the `id` of the replaced step, the new step `text`, which must occur
-    once in `texts`, and the `note` that ends the old step. An entry whose replacement
-    already exists, with the same text, is skipped, so a repeated call gives the same
-    list. Every other conflict is refused before anything is written.
-    """
-    if raw is None:
-        raw = []
-    if not isinstance(raw, (list, tuple)):
-        raise TodoError("replacements must be a list of objects with id, text and note")
-    by_id = {item["id"]: item for item in items}
-    successor = {item["replaces_id"]: item for item in items if item.get("replaces_id")}
-    folded = [_folded(text) for text in texts]
-    known = ", ".join(item["id"] for item in items)
-    planned: dict[str, dict] = {}
-    named: set[str] = set()
-    for entry in raw:
-        if not isinstance(entry, dict):
-            raise TodoError("each replacement must be an object with id, text and note")
-        old_id = str(entry.get("id") or "").strip()
-        text = _folded(str(entry.get("text") or ""))
-        note = str(entry.get("note") or "").strip()
-        if old_id not in by_id:
-            raise TodoError(f"replacement names step {old_id!r}, which does not exist. The steps are {known}.")
-        if old_id in named:
-            raise TodoError(f"step {old_id!r} has more than one replacement.")
-        named.add(old_id)
-        if folded.count(text) != 1:
-            raise TodoError(f"the replacement text {text!r} must occur exactly once in steps.")
-        if text in planned:
-            raise TodoError(f"two replacements give the same text {text!r}.")
-        earlier = successor.get(old_id)
-        if earlier is not None:
-            if _folded(earlier["text"]) != text:
-                raise TodoError(f"step {old_id!r} was already replaced by step {earlier['id']!r}.")
-            continue
-        if by_id[old_id]["status"] in RESOLVED_STATUSES:
-            raise TodoError(f"step {old_id!r} is already done. Add the new step without a replacement.")
-        if any(_folded(item["text"]) == text for item in items):
-            raise TodoError(f"the replacement text {text!r} is already the text of a step.")
-        if not note:
-            raise TodoError(f"the replacement of step {old_id!r} needs a note that says why the old step ended.")
-        planned[text] = {"id": old_id, "note": note}
-    return planned
+def _plan_step(raw, index: int) -> tuple[str, str, str]:
+    """The text, the status and the note of one step of an `update_plan` call. A plain
+    string is a pending step. A legacy status is normalized as a stored one reads."""
+    if isinstance(raw, str):
+        raw = {"text": raw}
+    if not isinstance(raw, dict):
+        raise TodoError(f"step {index + 1} is not an object with text and status")
+    text = str(raw.get("text") or raw.get("step") or "").strip()
+    if not text:
+        raise TodoError(f"step {index + 1} has no text")
+    given = str(raw.get("status") or "pending").strip().lower()
+    status = LEGACY_STATUSES.get(given, given)
+    if status not in WRITE_STATUSES:
+        raise TodoError(f"step {index + 1} has status {given!r}. Use pending or done.")
+    return text, status, str(raw.get("note") or "").strip()
 
 
-def _reconciled(items: list[dict], texts: list[str], replacements) -> list[dict]:
-    """The list after an edit to `texts`, with every earlier item retained.
+def update_plan(username: str, session_id: str, goal, steps) -> dict:
+    """Set the plan to `goal` and `steps`, the whole list with the status of each step.
 
-    A step whose text equals a current item's text, with whitespace folded, keeps that
-    item's id, status and note. A replacement ends the old item with its note and puts it
-    directly above the new item, which records `replaces_id`. Any other new step gets the
-    next free number. A current item that no step names stays in the list near its old
-    position: a done item as it was, an open item done with [`REMOVED_NOTE`].
-    """
-    planned = _replacements(replacements, items, texts)
-    by_id = {item["id"]: item for item in items}
-    unused = [item["id"] for item in items]
-    next_id = _next_id(items)
-    built: list[dict] = []
-    for text in texts:
-        key = _folded(text)
-        if key in planned:
-            entry = planned[key]
-            unused.remove(entry["id"])
-            built.append({**by_id[entry["id"]], "status": "done", "note": entry["note"]})
-            built.append({"id": str(next_id), "text": text, "status": "pending", "note": "",
-                          "replaces_id": entry["id"]})
-            next_id += 1
-            continue
-        matches = [by_id[i] for i in unused if _folded(by_id[i]["text"]) == key]
-        kept = next((m for m in matches if m["status"] not in RESOLVED_STATUSES), None) or next(iter(matches), None)
-        if kept is not None:
-            unused.remove(kept["id"])
-            built.append(dict(kept))
-            continue
-        built.append({"id": str(next_id), "text": text, "status": "pending", "note": ""})
-        next_id += 1
-    for index, item in enumerate(items):
-        if item["id"] not in unused:
-            continue
-        kept = dict(item)
-        if kept["status"] not in RESOLVED_STATUSES:
-            kept.update(status="done", note=REMOVED_NOTE)
-        following = next((i for i, b in enumerate(built) if b.get("replaces_id") == kept["id"]), None)
-        if following is not None:
-            built.insert(following, kept)
-            continue
-        earlier = {i["id"] for i in items[:index]}
-        position = max((i + 1 for i, b in enumerate(built) if b["id"] in earlier), default=0)
-        while 0 < position < len(built) and built[position].get("replaces_id") == built[position - 1]["id"]:
-            position += 1
-        built.insert(position, kept)
-    if len(built) > MAX_ITEMS:
-        raise TodoError(
-            f"the plan would hold {len(built)} steps, counting done and removed steps, and a "
-            f"plan holds at most {MAX_ITEMS}. Give fewer new steps, or start a new goal with write_todo."
-        )
-    return normalise_items(built)
-
-
-def write_steps(username: str, session_id: str, goal, steps) -> dict:
-    """Set the plan to `goal` and `steps`.
-
-    A new goal starts a new list, and its steps get the ids 1, 2, 3. The earlier snapshots
-    keep the earlier goal. The same goal as the current one reconciles the steps as
-    [`edit_steps`] does, so a repeated write keeps the done steps and their notes. An
-    empty goal or an empty step list is refused, because a plan with neither is not a plan
-    the nag protocol can read.
+    The stored list is the given list, in its order. With the same goal as the current
+    plan, a step with the same text, with whitespace folded, keeps its id, and a new step
+    gets the next free number. A new goal numbers the steps 1, 2, 3. A done step without
+    a note gets [`DONE_NOTE`], or its earlier note when it was already done. An identical
+    call adds no version (`_write_version`). An empty goal or an empty list is refused.
     """
     goal = normalise_goal(goal)
     if not goal:
         raise TodoError("the goal is empty. Write one or two sentences.")
-    texts = _step_texts(steps)
-    if not texts:
+    if isinstance(steps, (str, dict)):
+        steps = [steps]
+    if not isinstance(steps, (list, tuple)) or not steps:
         raise TodoError("steps is empty. Give at least one step.")
+    parsed = [_plan_step(raw, index) for index, raw in enumerate(steps)]
     current = read_todo(username, session_id)
-    if current["items"] and _folded(normalise_goal(current["goal"])) == _folded(goal):
-        items = _reconciled(current["items"], texts, [])
-        return _write_version(username, session_id, current["goal"], items, current)
-    items = normalise_items(
-        [{"id": str(i), "text": text, "status": "pending", "note": ""} for i, text in enumerate(texts, 1)]
-    )
-    return _write_version(username, session_id, goal, items, current)
-
-
-def edit_steps(username: str, session_id: str, steps, replacements=None) -> dict:
-    """Revise the steps and keep the goal. See [`_reconciled`] for what each step keeps.
-
-    `replacements` is an optional list of `{id, text, note}` entries, one for each step
-    that a new step replaces. A session with no plan, or a plan with an empty goal, is
-    refused with the error of `write_steps`, because this call keeps the goal.
-    """
-    texts = _step_texts(steps)
-    if not texts:
-        raise TodoError("steps is empty. Give at least one step.")
-    current = read_todo(username, session_id)
-    if not normalise_goal(current["goal"]):
-        raise TodoError("the goal is empty. Write one or two sentences.")
-    items = _reconciled(current["items"], texts, replacements)
-    return _write_version(username, session_id, current["goal"], items, current)
-
-
-def mark_steps(username: str, session_id: str, ids, status: str, note: str = "") -> dict:
-    """Set one status on each step in `ids`: `pending`, or `done` with a reason in `note`.
-
-    A legacy status is normalized first: `in_progress` to pending and `cancelled` to done.
-    A step that already reads as pending stays as it is when the status is pending, so
-    the legacy in-progress mark adds no snapshot. An id that is not in the plan is refused
-    with the ids that are.
-    """
-    wanted = _step_texts(ids)
-    if not wanted:
-        raise TodoError("ids is empty. Give at least one step id.")
-    given = str(status or "").strip().lower()
-    status = LEGACY_STATUSES.get(given, given)
-    if status != given:
-        log.info("chat_todos: mark status %s normalized to %s", given, status)
-    if status not in WRITE_STATUSES:
-        raise TodoError(f"status {given!r} is not allowed. Use pending or done.")
-    note = str(note or "").strip()
-    if status == "done" and not note:
-        raise TodoError("a done step needs a short reason in note, such as found, not found or replaced.")
-    current = read_todo(username, session_id)
-    by_id = {item["id"]: dict(item) for item in current["items"]}
-    if not by_id:
-        raise TodoError("there is no plan to mark yet. Call write_todo first.")
-    known = ", ".join(item["id"] for item in current["items"])
-    for item_id in wanted:
-        if item_id not in by_id:
-            raise TodoError(f"step {item_id!r} does not exist. The steps are {known}.")
-    for item_id in wanted:
-        item = by_id[item_id]
-        if status == "pending" and display_status(item["status"]) == "pending":
-            continue
-        item["status"] = status
-        item["note"] = note
-    items = normalise_items([by_id[item["id"]] for item in current["items"]])
-    return _write_version(username, session_id, current["goal"], items, current)
+    same_goal = bool(current["items"]) and _folded(normalise_goal(current["goal"])) == _folded(goal)
+    earlier = list(current["items"]) if same_goal else []
+    next_id = _next_id(earlier)
+    items = []
+    for text, status, note in parsed:
+        prior = next((i for i in earlier if _folded(i["text"]) == _folded(text)), None)
+        if prior is not None:
+            earlier.remove(prior)
+            item_id = prior["id"]
+        else:
+            item_id = str(next_id)
+            next_id += 1
+        if status == "done" and not note:
+            note = prior["note"] if prior is not None and prior["status"] in RESOLVED_STATUSES and prior["note"] else DONE_NOTE
+        items.append({"id": item_id, "text": text, "status": status, "note": note if status == "done" else ""})
+    if len(items) > MAX_ITEMS:
+        raise TodoError(f"a plan holds at most {MAX_ITEMS} steps, got {len(items)}")
+    return _write_version(username, session_id, current["goal"] if same_goal else goal,
+                          normalise_items(items), current)
 
 
 def delete_todos(username: str, session_id: str) -> None:

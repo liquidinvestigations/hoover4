@@ -152,12 +152,14 @@ holds the rule, and the system prompt of every run holds its routing text, so co
 cannot remove it. An ordinary question that needs no citation and no document gets a chat
 answer.
 
-The session tool server serves three tools. `workspace_read` reads a file with a `N|` line
-gutter, or lists the files. `workspace_write` creates or replaces a whole file, and an
-existing file needs `expected_version`, the version that the agent read. `workspace_patch`
-replaces one region through the matcher of the Hermes agent file tools, which reports the
+The session tool server serves three file tools, with the names of the Hermes agent file
+tools. `read_file` reads a file with a `N|` line gutter, or lists the files. `write_file`
+creates or replaces a whole file, and an existing file needs `expected_version`, the version
+that the agent read. `patch_file` replaces one region through the matcher of the Hermes agent file tools, which reports the
 strategy that matched, refuses an ambiguous match, and shows the closest lines when nothing
 matches. A patch whose new text is already present succeeds and stores nothing.
+The same server serves `update_plan`, which sets the plan of the conversation: the goal and
+the whole step list with the status of each step. It writes no file.
 
 Every write and patch of a session goes through one workflow, `WorkspaceWriter`, with the id
 `workspace-<session id>` on `chat-queue`. ClickHouse has no compare-and-write, so the one
@@ -173,7 +175,7 @@ does not change. The check does not show that a claim follows from its source.
 flowchart TD
     accTitle: The report of a turn
     accDescr: The agent writes a file through the session writer. A checked version is stored. At the end of the turn the last successful write or patch is the report of the answer.
-    A[Agent calls workspace_write or workspace_patch] --> B[WorkspaceWriter checks version, gutter and handles]
+    A[Agent calls write_file or patch_file] --> B[WorkspaceWriter checks version, gutter and handles]
     B -->|finding| C[Tool result with findings, file unchanged]
     C --> A
     B -->|valid| D[Immutable version and receipt in ClickHouse]

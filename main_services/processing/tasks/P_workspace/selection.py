@@ -12,7 +12,8 @@ from __future__ import annotations
 import json
 from typing import Iterable, Optional
 
-MUTATION_TOOLS = ("workspace_write", "workspace_patch")
+#: The write and patch tools. Rows written before the rename hold the `workspace_` names.
+MUTATION_TOOLS = ("write_file", "patch_file", "workspace_write", "workspace_patch")
 
 
 def mutation_result(message) -> Optional[dict]:

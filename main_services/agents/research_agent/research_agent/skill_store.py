@@ -224,10 +224,10 @@ def render_skill(name: str, ctx: SkillContext, *, strict: bool = False,
 def report_rules(ctx: SkillContext, *, strict: bool = False,
                  skills: Optional[Dict[str, Skill]] = None) -> str:
     """The routing text of the `report` skill, for the system prompt of every run that
-    has the workspace tools. Empty when the run has no `workspace_write`. The system prompt
+    has the workspace tools. Empty when the run has no `write_file`. The system prompt
     holds it, so compaction cannot remove it, and no skill load is needed."""
     store = SKILLS if skills is None else skills
-    if REPORT_SKILL not in store or "workspace_write" not in ctx.tool_names:
+    if REPORT_SKILL not in store or "write_file" not in ctx.tool_names:
         return ""
     return environment().from_string(store[REPORT_SKILL].body).render(
         **skill_variables(ctx, strict, routing_only=True)).strip()

@@ -50,12 +50,11 @@ from agent_common.result_pages import SAFE_MODE_BATCH_BYTES, ByteLimit, PageInpu
 
 log = logging.getLogger(__name__)
 
-#: The calls that the worker runs in reply order, in one chain: the todo tools and the
+#: The calls that the worker runs in reply order, in one chain: the plan tool and the
 #: workspace tools, because each one reads or changes state that the next one reads.
 #: `/model_step` gives them the kind `ordered`. The worker's copy is `STATE_TOOLS` in
 #: `processing/tasks/P_agent/steps.py`, and the two lists change in one patch.
-ORDERED_TOOLS = frozenset({"write_todo", "edit_todo", "mark_todo", "read_todo",
-                           "workspace_read", "workspace_write", "workspace_patch"})
+ORDERED_TOOLS = frozenset({"update_plan", "read_file", "write_file", "patch_file"})
 
 #: The browser server's own tool, and the name prefix of every tool it routes to the
 #: browser (`BROWSER_EXPOSED_TOOLS` chooses which of them it lists).

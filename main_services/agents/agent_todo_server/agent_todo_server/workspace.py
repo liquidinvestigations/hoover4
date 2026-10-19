@@ -1,8 +1,8 @@
 """The workspace tools: the text files that the agent writes in a conversation.
 
-``workspace_read``   one file with a ``N|`` line gutter, or the list of files
-``workspace_write``  create or replace a whole file
-``workspace_patch``  replace one region of a file
+``read_file``   one file with a ``N|`` line gutter, or the list of files
+``write_file``  create or replace a whole file
+``patch_file``  replace one region of a file
 
 The rules live in the pipeline: storage and the read format in `database.chat_workspace`,
 and the write and patch rules in `tasks/P_workspace`. A read goes to storage directly. A
@@ -112,14 +112,16 @@ def register(mcp) -> None:
     """Add the three workspace tools to the server."""
 
     @mcp.tool(
-        name="workspace_read",
+        name="read_file",
         description=(
             "Read a file of this conversation's workspace. Each line starts with its number "
             "and |. The result gives the version, total_lines, and next_offset when the file "
-            "continues. Leave out name to list the files and their current versions."
+            "continues. Leave out name to list the files and their current versions. It "
+            "reads only the files that this conversation wrote. Read collection documents "
+            "with read_documents."
         ),
     )
-    def workspace_read(
+    def read_file(
         name: Annotated[Optional[str], Field(description="The file name, such as report.md. Leave it out to list the files.")] = None,
         version: Annotated[Optional[int], Field(description="An earlier version to read. Leave it out for the current version.")] = None,
         offset: Annotated[int, Field(description="The first line to read, from 1.")] = 1,
@@ -142,7 +144,7 @@ def register(mcp) -> None:
         return json.dumps(store.render_read(found, offset, limit), ensure_ascii=False)
 
     @mcp.tool(
-        name="workspace_write",
+        name="write_file",
         description=(
             "Create or replace a whole text file in this conversation's workspace, such as "
             "report.md. Write every requested report, list, table or draft, and every answer "
@@ -152,7 +154,7 @@ def register(mcp) -> None:
             "changes nothing and returns the findings."
         ),
     )
-    async def workspace_write(
+    async def write_file(
         name: Annotated[str, Field(description="The file name, such as report.md or sources.txt.")],
         content: Annotated[str, Field(description="The whole text of the file. Markdown is shown formatted.")],
         expected_version: Annotated[Optional[int], Field(description="The current version of an existing file. Leave it out for a new file.")] = None,
@@ -160,7 +162,7 @@ def register(mcp) -> None:
         return await submit("write", name, content=content, expected_version=expected_version)
 
     @mcp.tool(
-        name="workspace_patch",
+        name="patch_file",
         description=(
             "Replace one region of an existing workspace file. old_string is the current "
             "text, with enough context to be unique, and new_string the replacement. Use "
@@ -168,7 +170,7 @@ def register(mcp) -> None:
             "with a problem changes nothing and returns the error."
         ),
     )
-    async def workspace_patch(
+    async def patch_file(
         name: Annotated[str, Field(description="The file name, such as report.md.")],
         old_string: Annotated[str, Field(description="The current text to replace.")],
         new_string: Annotated[str, Field(description="The text that replaces it.")],

@@ -7,9 +7,9 @@
 
    `role_line` is the rendered role line of the profile (`ROLE_LINES`). `role_method` is the
    rendered role skill of the profile, or empty. `skills` holds the listed skills. `tools`
-   holds (name, summary) pairs. `todo_rule` is true when the run has the four todo tools.
+   holds (name, summary) pairs. `todo_rule` is true when the run has the plan tool.
    `report_rules` is the routing text of the `report` skill (`skill_store.report_rules`),
-   which says what goes into a workspace file. The todo text, when the run has it, follows.
+   which says what goes into a workspace file. The plan text, when the run has it, follows.
    The citation text gives the order of the work once, and says that only a returned handle
    labels a source. The `citation` skill holds the arguments of each citation tool and the
    examples of failed calls.
@@ -53,11 +53,11 @@ Reports and other documents
 {% endif %}
 {% if todo_rule %}
 
-Your todo list
+Your plan
 
-Use a todo list for work with several steps. A quick reply needs no list.
-Keep a step pending until its work ends. Then mark it done with a short reason, such as found or not found.
-Done steps stay in the list. Use `edit_todo` with a replacement entry when a new step replaces an old step.
+Use `update_plan` for work with several steps. A quick reply needs no plan.
+Send the goal and the whole list of steps with their statuses. A step is pending until its work ends. Then send it as done with a short note, such as found or not found.
+`update_plan` only keeps the plan. Write a report or another file with `write_file`.
 Open items do not stop answers.
 {% endif %}
 

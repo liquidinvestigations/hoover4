@@ -167,20 +167,20 @@ async def test_a_streamed_reply_sends_the_same_frames(model, monkeypatch):
 
 
 async def test_a_reply_with_three_calls_is_classified(model):
-    names = ["search_collections", "write_todo"]
+    names = ["search_collections", "update_plan"]
     tools = [dict_tool(n, EMPTY_SCHEMA, []) for n in names]
     agent = FakeAgent(tools, set(names) | {"read_tool"}, kind="chat")
     # The thread binds the plan tool with an earlier `read_tool` call.
     thread = [
         {"role": "human", "content": "Find the lease."},
         {"role": "ai", "content": "", "tool_calls": [
-            {"id": "r1", "name": "read_tool", "args": {"name": "write_todo"}}]},
-        {"role": "tool", "content": '{"tool": "write_todo"}', "tool_call_id": "r1",
+            {"id": "r1", "name": "read_tool", "args": {"name": "update_plan"}}]},
+        {"role": "tool", "content": '{"tool": "update_plan"}', "tool_call_id": "r1",
          "name": "read_tool"},
     ]
     model.replies.append(AIMessage(content="", tool_calls=[
         {"id": "a", "name": "search_collections", "args": {"query": "lease"}},
-        {"id": "b", "name": "write_todo", "args": {}},
+        {"id": "b", "name": "update_plan", "args": {}},
         {"id": "c", "name": "unknown_tool", "args": {"tasks": [{"objective": "A"}]}},
     ]))
     entries = turn_of(await frames_of(agent, step_request(thread, step_no=2)))["tool_calls"]
@@ -328,11 +328,11 @@ async def test_the_arguments_are_normalized_before_the_call_is_classified_and_st
     """The worker reads the question of `ask_user` from the stored call, so the stored call
     holds the normalized arguments, and the changes are named with it."""
     agent = FakeAgent([dict_tool("ask_user", ASK_SCHEMA, []),
-                       dict_tool("mark_todo", MARK_SCHEMA, [])], {"ask_user", "mark_todo"})
+                       dict_tool("update_plan", MARK_SCHEMA, [])], {"ask_user", "update_plan"})
     model.replies.append(AIMessage(content="", tool_calls=[
         {"id": "a", "name": "ask_user",
          "args": {"question": 'Which lease?<|"|>', "options": "L-17"}},
-        {"id": "b", "name": "mark_todo", "args": {"ids": "1", "status": '"done"'}},
+        {"id": "b", "name": "update_plan", "args": {"ids": "1", "status": '"done"'}},
     ]))
     entries = turn_of(await frames_of(agent, step_request()))["tool_calls"]
     assert entries[0]["args"] == {"question": "Which lease?", "options": ["L-17"]}
@@ -567,25 +567,21 @@ async def test_a_misspelled_name_gets_the_closest_names_of_the_run():
     chat = pack_agent("chat", "all", [])
     message = refusal_of(await steps.run_tool_call(chat, tool_request("write_write")))
     assert message.startswith("No tool of this run is named 'write_write'. The closest names are ")
-    assert "workspace_write" in message and message.endswith("Find tools with search_agent_tools.")
-
-
-def test_an_unchanged_todo_list_gets_a_note_that_names_the_file_tool():
-    unchanged = json.dumps({"version": 4, "ids": ["1"], "summary": "0/1 items resolved", "unchanged": True})
-    body = json.loads(steps._unchanged_todo_note(unchanged, frozenset({"write_todo", "workspace_write"})))
-    assert body["version"] == 4 and body["unchanged"] is True
-    assert body["note"] == steps.UNCHANGED_TODO_NOTE + steps.UNCHANGED_TODO_FILE_NOTE
-    body = json.loads(steps._unchanged_todo_note(unchanged, frozenset({"write_todo"})))
-    assert body["note"] == steps.UNCHANGED_TODO_NOTE
-    changed = json.dumps({"version": 5, "ids": ["1"], "summary": "0/1 items resolved"})
-    assert steps._unchanged_todo_note(changed, frozenset({"workspace_write"})) == changed
-    assert steps._unchanged_todo_note("Error: x", frozenset({"workspace_write"})) == "Error: x"
+    assert "write_file" in message and message.endswith("Find tools with search_agent_tools.")
+    # A call whose arguments name the schema of a tool gets that tool first.
+    file_schema = {"type": "object", "properties": {"name": {"type": "string"}, "content": {"type": "string"}}}
+    name_schema = {"type": "object", "properties": {"name": {"type": "string"}}}
+    agent = FakeAgent([dict_tool("write_file", file_schema, []), dict_tool("read_tool", name_schema, []),
+                       dict_tool("write_note", EMPTY_SCHEMA, [])], {"write_file", "read_tool", "write_note"})
+    message = refusal_of(await steps.run_tool_call(agent, tool_request(
+        "write_report", {"name": "report.md", "content": "text"})))
+    assert "The closest names are write_file, read_tool." in message
 
 
 def test_the_refusal_text_of_an_unavailable_tool_names_no_skill():
     for text in ("No tool of this run is named 'x'.",):
         content = json.dumps({"success": False, "message": text})
-        assert stumbles.stumble_skill("write_todo", content, "error", {}) is None, text
+        assert stumbles.stumble_skill("update_plan", content, "error", {}) is None, text
 
 
 async def test_the_mcp_server_receives_the_idempotency_key_and_the_share():
