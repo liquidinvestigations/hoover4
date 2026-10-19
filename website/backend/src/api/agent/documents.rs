@@ -5,6 +5,8 @@ use super::*;
 use common::document_sources::DocumentArchiveSourceItem;
 use crate::api::documents::search_document_itemcount::SourceCount;
 use crate::api::documents::search_document_text::DOCUMENT_HIT_ROW_LIMIT;
+use crate::api::documents::document_text::{self, MATCH_BATCH_ROWS, MatchBatch, MatchPages as _};
+use common::document_text_pages::MatchDirection;
 
 #[cfg(test)]
 #[path = "document_pages_tests.rs"]
@@ -50,6 +52,10 @@ trait TextPages {
     async fn page_after(&self, extracted_by: &str, page_id: u32) -> Result<Option<u32>, AgentError>;
     /// Reads the query hit spans of one page.
     async fn page_hits(&self, extracted_by: &str, page_id: u32, query: &str) -> Result<Vec<HighlightTextSpan>, AgentError>;
+    /// Reads one batch of the stored pages of one source that match `query`, ascending
+    /// after `after`. Only this source's index rows count against the batch, and a row
+    /// whose page has no stored text is dropped.
+    async fn matching_pages(&self, extracted_by: &str, query: &str, after: Option<u32>) -> Result<MatchBatch, AgentError>;
 }
 
 /// [`TextPages`] over `text_content` and the document's Manticore shard.
@@ -74,16 +80,11 @@ impl TextPages for StoredTextPages<'_> {
     }
 
     async fn page_text(&self, extracted_by: &str, page_id: u32) -> Result<Option<String>, AgentError> {
-        self.deadline
-            .collection_client(self.collectionname)
-            .query("SELECT text FROM text_content WHERE collection_dataset = ? AND file_hash = ? AND extracted_by = ? AND page_id = ? ORDER BY version DESC LIMIT 1")
-            .bind(&self.identifier.collection_dataset)
-            .bind(&self.identifier.file_hash)
-            .bind(extracted_by)
-            .bind(page_id)
-            .fetch_optional()
+        let client = self.deadline.collection_client(self.collectionname);
+        document_text::page_body(&client, self.identifier, extracted_by, page_id)
             .await
-            .map_err(AgentError::from_clickhouse)
+            .map(|body| body.map(|(text, _version)| text))
+            .map_err(AgentError::from_anyhow)
     }
 
     async fn page_after(&self, extracted_by: &str, page_id: u32) -> Result<Option<u32>, AgentError> {
@@ -110,6 +111,15 @@ impl TextPages for StoredTextPages<'_> {
         .await
         .map_err(AgentError::from_anyhow)?;
         Ok(rows.into_iter().next().map(|row| row.highlight_text_spans).unwrap_or_default())
+    }
+
+    async fn matching_pages(&self, extracted_by: &str, query: &str, after: Option<u32>) -> Result<MatchBatch, AgentError> {
+        let client = self.deadline.collection_client(self.collectionname);
+        let pages = document_text::StoredMatchPages { client: &client, identifier: self.identifier, extracted_by, find_query: query };
+        let mut batch = pages.batch(after, MatchDirection::Forward, MATCH_BATCH_ROWS).await.map_err(AgentError::from_anyhow)?;
+        let stored = pages.stored(&batch.pages).await.map_err(AgentError::from_anyhow)?;
+        batch.pages.retain(|page| stored.contains(page));
+        Ok(batch)
     }
 }
 
@@ -202,44 +212,64 @@ fn hits_from_spans(page: u32, spans: &[HighlightTextSpan]) -> Vec<AgentTextHit> 
     hits
 }
 
-/// One page of at most `limit` hits after `after`, in page order. It reads only the
-/// pages that hold the hits it returns. The position is absent when no hit remains.
+/// One page of at most `limit` hits after `after`, in page order.
+///
+/// It walks the matching stored pages of this one source in batches of
+/// [`MATCH_BATCH_ROWS`], so a source with more than [`DOCUMENT_HIT_ROW_LIMIT`] matching
+/// pages continues to its last hit and other sources take no part of the allowance. It
+/// reads the hits of the pages it returns, plus the page of `after` to find the hits left
+/// on it. The position is absent when no hit remains.
 async fn text_hits_page<P: TextPages>(
     pages: &P,
     extracted_by: &str,
     query: &str,
-    counts: &[(u32, u64)],
     after: Option<(u32, u32)>,
     limit: usize,
 ) -> Result<(Vec<AgentTextHit>, Option<AgentPosition>), AgentError> {
     let mut hits: Vec<AgentTextHit> = Vec::new();
-    for (index, &(page_id, count)) in counts.iter().enumerate() {
-        let first = match after {
-            Some((after_page, _)) if page_id < after_page => continue,
-            Some((after_page, ordinal)) if page_id == after_page => {
-                if u64::from(ordinal) + 1 >= count {
-                    continue;
-                }
-                ordinal as usize + 1
-            }
-            _ => 0,
-        };
-        let spans = pages.page_hits(extracted_by, page_id, query).await?;
-        let page_hits = hits_from_spans(page_id, &spans);
+    let position = |hits: &[AgentTextHit]| {
+        let last = hits.last().map(|hit| (hit.page, hit.ordinal)).unwrap_or_default();
+        Some(AgentPosition::HitKey { page_id: last.0, ordinal: last.1 })
+    };
+    if let Some((after_page, ordinal)) = after {
+        let spans = pages.page_hits(extracted_by, after_page, query).await?;
+        let page_hits = hits_from_spans(after_page, &spans);
         let available = page_hits.len();
-        for hit in page_hits.into_iter().skip(first) {
+        for hit in page_hits.into_iter().skip(ordinal as usize + 1) {
             hits.push(hit);
             if hits.len() == limit {
-                let last = hits.last().map(|hit| (hit.page, hit.ordinal)).unwrap_or_default();
-                let more_here = (last.1 as usize) + 1 < available;
-                let more_later = counts[index + 1..].iter().any(|(_, count)| *count > 0);
-                let next = (more_here || more_later)
-                    .then_some(AgentPosition::HitKey { page_id: last.0, ordinal: last.1 });
-                return Ok((hits, next));
+                let more_here = hits.last().is_some_and(|hit| (hit.ordinal as usize) + 1 < available);
+                if more_here {
+                    return Ok((hits.clone(), position(&hits)));
+                }
+                let later = pages.matching_pages(extracted_by, query, Some(after_page)).await?;
+                let more_later = !later.pages.is_empty() || later.continue_after.is_some();
+                return Ok((hits.clone(), if more_later { position(&hits) } else { None }));
             }
         }
     }
-    Ok((hits, None))
+    let mut boundary = after.map(|(page, _)| page);
+    loop {
+        let batch = pages.matching_pages(extracted_by, query, boundary).await?;
+        for (index, &page_id) in batch.pages.iter().enumerate() {
+            let spans = pages.page_hits(extracted_by, page_id, query).await?;
+            let page_hits = hits_from_spans(page_id, &spans);
+            let available = page_hits.len();
+            for hit in page_hits {
+                hits.push(hit);
+                if hits.len() == limit {
+                    let more_here = hits.last().is_some_and(|hit| (hit.ordinal as usize) + 1 < available);
+                    let more_later = index + 1 < batch.pages.len() || batch.continue_after.is_some();
+                    let next = if more_here || more_later { position(&hits) } else { None };
+                    return Ok((hits, next));
+                }
+            }
+        }
+        match batch.continue_after {
+            Some(next) => boundary = Some(next),
+            None => return Ok((hits, None)),
+        }
+    }
 }
 
 // ===================================================================================
@@ -573,7 +603,7 @@ async fn documents_search_text_body(
 
     let (counts, partial) = source_hit_counts(user, &identifier, &chosen.extracted_by, &body.query).await?;
     let (hits, next_position) =
-        text_hits_page(&pages, &chosen.extracted_by, &body.query, &counts, after, TEXT_HITS_PAGE_SIZE).await?;
+        text_hits_page(&pages, &chosen.extracted_by, &body.query, after, TEXT_HITS_PAGE_SIZE).await?;
     let hit_count = counts.iter().map(|(_, count)| count).sum();
     Ok(DocumentsSearchTextResponse {
         source_used: chosen.extracted_by.clone(),

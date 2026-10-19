@@ -1,6 +1,7 @@
 use common::{
     current_user::CurrentUser,
     document_sources::{DocumentPdfSourceItem, DocumentSourceItem, DocumentTextSourceHitCount, ItemHitCounts},
+    document_text_pages::HitCountState,
     search_result::DocumentIdentifier,
 };
 
@@ -35,7 +36,8 @@ pub struct SourceCounts {
 }
 
 /// The hit count of every source, for the website's source selector. A count that fails
-/// or does not finish in [`PDF_SEARCH_TIMEOUT`] counts 0 here.
+/// or does not finish in [`PDF_SEARCH_TIMEOUT`] keeps that state, and a count that
+/// stopped at the text read's row limit is a lower bound.
 pub async fn search_document_item_count(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
@@ -49,10 +51,7 @@ pub async fn search_document_item_count(
         counts
             .counts
             .into_iter()
-            .map(|(source, count)| match count {
-                SourceCount::Counted { hits, .. } => (source, hits),
-                SourceCount::TimedOut | SourceCount::Failed => (source, 0),
-            })
+            .map(|(source, count)| (source, hit_count_state(count)))
             .collect(),
     ))
 }
@@ -148,6 +147,16 @@ pub async fn search_document_item_count_with_timeout(
 
     let text = text_hits.as_ref().map(|(hits, stopped_at_limit)| (hits.as_slice(), *stopped_at_limit));
     Ok(SourceCounts { counts: assemble_counts(sources, text, table_count, &pdf_counts), text_error })
+}
+
+/// The selector state of one source count.
+pub fn hit_count_state(count: SourceCount) -> HitCountState {
+    match count {
+        SourceCount::Counted { hits, stopped_at_limit: false } => HitCountState::Exact(hits),
+        SourceCount::Counted { hits, stopped_at_limit: true } => HitCountState::AtLeast(hits),
+        SourceCount::TimedOut => HitCountState::TimedOut,
+        SourceCount::Failed => HitCountState::Failed,
+    }
 }
 
 fn is_timeout(error: &anyhow::Error) -> bool {
@@ -261,6 +270,14 @@ mod tests {
             counts,
             vec![(text, SourceCount::Failed), (email_source(), SourceCount::Failed), (table_source(), counted(4))]
         );
+    }
+
+    #[test]
+    fn the_selector_keeps_partial_timed_out_and_failed_counts_apart_from_zero() {
+        assert_eq!(hit_count_state(counted(0)), HitCountState::Exact(0));
+        assert_eq!(hit_count_state(SourceCount::Counted { hits: 7, stopped_at_limit: true }), HitCountState::AtLeast(7));
+        assert_eq!(hit_count_state(SourceCount::TimedOut), HitCountState::TimedOut);
+        assert_eq!(hit_count_state(SourceCount::Failed), HitCountState::Failed);
     }
 
     #[test]

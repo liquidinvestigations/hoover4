@@ -646,8 +646,10 @@ impl Ord for DocumentSourceItem {
     }
 }
 
+/// The hit count of each source for the source selector. A source without an entry has
+/// no count yet. A failed or timed-out count keeps its state and never reads as zero.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, PartialOrd, Default)]
-pub struct ItemHitCounts(pub Vec<(DocumentSourceItem, u64)>);
+pub struct ItemHitCounts(pub Vec<(DocumentSourceItem, crate::document_text_pages::HitCountState)>);
 
 #[cfg(test)]
 mod archive_kind_tests {

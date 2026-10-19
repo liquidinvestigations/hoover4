@@ -10,7 +10,9 @@
 
 Reads one document. `doc_viewer_state` stores the selected source and its view state.
 `viewer_right_tab_state` stores the selected right-side tab. The table source stores its
-sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
+sheet, sort, filters, hidden columns and page in `doc_viewer_state`. A text source stores
+its explicit stored page identifier in `selected_source_page`, and its selected match in
+`selected_match`. That match applies only to its own source, page and find query.
 
 ## Controls
 
@@ -22,7 +24,11 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 | `.table.sheet` | sheet chooser dialog | selects a workbook sheet, and shows the matching rows of each sheet while the find box holds a search | it clears sheet-specific columns, sorting and filters. With a search and no chosen sheet, the viewer opens on the first sheet with matches |
 | `.table.cell` | table cell text | it shows selectable text spans without a click action | each cell shows an excerpt of at most five lines in a monospaced font |
 | `.table.cell_full` | `Open full cell` control | opens a modal over the page area with the raw value and the cell details | it appears on a cell whose value uses three or more lines |
-| `.source.dropdown` | source selector | selects a stored document source | it appears in the search preview; the full viewer uses the source list; a change resets the selected page. PDF sources use stored document ranges and preserve their identity after manifest refresh. |
+| `.source.dropdown` | source selector | selects a stored document source | it appears in the search preview; the full viewer uses the source list; a change resets the selected page and match. PDF sources use stored document ranges and preserve their identity after manifest refresh. A source count shows an exact count, a lower bound with `+`, or a failure mark. A failed or timed-out count never shows as zero. |
+| `.text.page` | text page group: previous and next arrows, the unit with an editable identifier, and the stored position | opens a stored page of the selected text source | it appears in every text viewer, including the email body. The unit is Page for PDF text and PDF OCR text, Text segment for size-based segments, and Entry for unknown numbering. Enter or leaving the field commits a valid identifier once, Escape restores the shown identifier, and an invalid entry stays for correction. An identifier without stored text stays selected and offers its stored neighbours. The position counts stored entries, so identifiers 3, 7 and 12 show page 12 as 3 of 3 |
+| `.text.match` | match group: previous and next match arrows and the editable match number of the page | selects a find-query match | the number counts the matches of the displayed page. At the first or last match of a page, the arrows open the nearest matching page of the same source in page order, and they stop at both ends of the source |
+| `.text.content_pages` | `Previous` and `Next` page buttons after the text | open the adjacent stored page | they use the targets of the page group, and the unavailable one is disabled |
+| `.text.retry` | retry button beside a failed text request | requests the same page again | the previous page text stays visible |
 | `.find.clear` | clear search button | clears the in-document query | the main search, document find, and folder search share the input control |
 | `.table.clear_filters` | clear filters button | clears the document query and column filters | it appears when filters return zero rows |
 | `.source.retry` | retry button | requests document sources again | it appears when the source request fails |
@@ -33,6 +39,10 @@ sheet, sort, filters, hidden columns and page in `doc_viewer_state`.
 | state | when | what the page shows |
 |---|---|---|
 | table loading | the table overview or page request is pending | a loading indicator |
+| text page loading | a requested text page has not loaded | the previous page stays, and a status beside the page group names the requested page. Before the first page loads, a loading indicator |
+| text page failure | a text page request fails | the previous page stays, with the error and the retry button above it |
+| text page absent | the requested identifier has no stored text | a statement that no text is stored there, with the page group and the page buttons on its stored neighbours |
+| text match failure | a match search or highlight read fails | the error appears beside the match group or above the text, and page navigation and raw text stay usable |
 | no visible columns | every sheet column is hidden | a message that directs the reader to the visible-column control |
 | column modal | a visibility or filter control is open | one named modal above the grid, with keyboard focus inside it |
 | full-cell modal | the full-cell control is open | the raw value in a scrolling area, with column, row, sheet, type, exact integer, formula, link, dataset and document hash; empty values are omitted |
@@ -76,6 +86,13 @@ A matching header value opens the details panel.
 Entity cards show the value before the category.
 Entity counts state that they include all sources.
 Text hit navigation finds the current rendered span after query, source, or page changes.
+A link without a text page opens the first matching page for a find query, and otherwise the first stored page.
+An explicit text page takes precedence over automatic match selection, and clearing the query keeps it.
+Explicit page navigation moves the text to its start. Match navigation moves the selected match into view after its page renders.
+Count updates and ordinary renders do not move the text.
+A late response for an earlier document, source, page or query does not replace the displayed page.
+A match step reads index rows of the selected source only, in batches, so the matches after the first 1,000 matching pages stay reachable.
+A match step skips index rows whose page has no stored text and returns each page once.
 PDF pointer coordinates remain correct at each browser zoom.
 The email headers, expanded details, attachments and body share one scroll container.
 A filename-only search match opens the table without a row filter.

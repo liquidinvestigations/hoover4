@@ -33,7 +33,7 @@ struct DocumentHits {
 
 /// The `<shard>_pages` table holding this document, plus the cache salt for its
 /// collection. `Ok(None)` means the document has not been indexed yet.
-async fn pages_table_for_document(
+pub(crate) async fn pages_table_for_document(
     document_identifier: &DocumentIdentifier,
 ) -> anyhow::Result<Option<(String, String)>> {
     let collectionname = resolve_collection(&document_identifier.collection_dataset).await?;
@@ -59,7 +59,7 @@ async fn pages_table_for_document(
 /// keystroke and per entity value, so a query that cannot match is an ordinary state,
 /// not a failure to report. (The main search box is the opposite, there an empty query
 /// means *every* document, which is why it does not share this helper.)
-fn find_query_match_argument(find_query: &str) -> Option<String> {
+pub(crate) fn find_query_match_argument(find_query: &str) -> Option<String> {
     match prepare_match_query(find_query) {
         Ok(prepared) => Some(prepared.quoted()),
         Err(e) => {
@@ -118,10 +118,21 @@ pub async fn search_document_text_for_hits(
 ) -> anyhow::Result<Vec<DocumentTextSourceHit>> {
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
-    let Some((pages_table, salt)) = pages_table_for_document(&document_identifier).await? else {
+    page_hit_rows(&document_identifier, &find_query, &extracted_by, page_id).await
+}
+
+/// The highlighted index rows of one page. The caller has verified read access. A page
+/// can have more than one index row, so a caller that shows one page takes the first.
+pub(crate) async fn page_hit_rows(
+    document_identifier: &DocumentIdentifier,
+    find_query: &str,
+    extracted_by: &str,
+    page_id: u32,
+) -> anyhow::Result<Vec<DocumentTextSourceHit>> {
+    let Some((pages_table, salt)) = pages_table_for_document(document_identifier).await? else {
         return Ok(vec![]);
     };
-    let Some(match_argument) = find_query_match_argument(&find_query) else {
+    let Some(match_argument) = find_query_match_argument(find_query) else {
         return Ok(vec![]);
     };
     let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, 1000);
@@ -148,7 +159,7 @@ pub async fn search_document_text_for_hits(
         "#,
         quoted_manticore_string(&document_identifier.file_hash),
         quoted_manticore_string(&document_identifier.collection_dataset),
-        quoted_manticore_string(&extracted_by),
+        quoted_manticore_string(extracted_by),
         page_id,
     );
     let response = manticore_search_sql::<DocumentHits>(sql, &salt).await?;

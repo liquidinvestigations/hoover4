@@ -97,13 +97,17 @@ pub fn DocViewerRoot(
     let on_source_selected = Callback::new(move |source: DocumentSourceItem| {
         let mut state = control.doc_viewer_state.read().clone().unwrap_or_default();
         state.selected_source = Some(source.route_identity());
+        // Source numbering can describe different units, so the page and match reset.
         state.selected_source_page = None;
+        state.selected_match = None;
         control.set_doc_viewer_state.call(state);
     });
 
     let on_find_query_changed = Callback::new(move |query: String| {
         let mut state = control.doc_viewer_state.read().clone().unwrap_or_default();
         state.find_query = query;
+        // An explicit text page stays. Its match selection belonged to the old query.
+        state.selected_match = None;
         if let Some(table) = &mut state.table_state {
             table.page = 0;
         }

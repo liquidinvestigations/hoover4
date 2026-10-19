@@ -43,6 +43,25 @@ An ended operation gives stopped and its recorded state.
 A query failure remains an error beside any sources that loaded.
 Table value and match queries exclude cells outside the current sheet dimensions.
 
+## Text page reading
+
+[document_text.rs](src/api/documents/document_text.rs) reads the stored pages of one text source for the website viewer and the agent document routes.
+A page request reads page identities with one aggregate over `text_content`, then the latest version of one page body.
+It never reads every body of a source or enumerates the range from the lowest to the highest identifier.
+Stored identifiers can have gaps, so the stored count and position count distinct identifiers.
+An identifier without stored text returns an absent body and the stored identifiers on both sides.
+The source revision holds the stored count, the identifier range and the highest writer version.
+
+A match step queries the index rows of one source in page order and continues strictly after the last identifier of each batch.
+It folds duplicate index rows and drops rows whose page has no stored text in `text_content`.
+Another source of the same document takes no part of its row allowance.
+A step that reads its allowance without a result returns a position to resume from.
+The ClickHouse and Manticore reads are separate requests and do not form a transactional snapshot.
+Each website function verifies read access before its first query. The agent routes verify collection access before they call the helpers.
+
+The source selector receives each count with its state.
+A count that stopped at the 1,000-row text read is a lower bound, and a failed or timed-out count keeps that state.
+
 ## PDF source reading
 
 PDF sources carry document page ranges from the current manifest.

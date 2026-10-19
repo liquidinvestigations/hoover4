@@ -1,6 +1,7 @@
-//! Route tests of the document page reads on a fixture of 1,200 page ids. The local
-//! corpus holds no document with more than 1,000 pages, so an in-memory [`TextPages`]
-//! stands in for `text_content` and the Manticore shard, and counts every read.
+//! Route tests of the document page reads on a fixture of 1,200 page ids. An in-memory
+//! [`TextPages`] stands in for `text_content` and the Manticore shard, and counts every
+//! read. The live `p63pages` fixture collection checks the same reads in
+//! `tests/stack_integration.rs`.
 
 use std::cell::Cell;
 
@@ -13,11 +14,12 @@ const FIXTURE_PAGES: u32 = 1_200;
 struct FixturePages {
     text_reads: Cell<usize>,
     hit_reads: Cell<usize>,
+    batch_reads: Cell<usize>,
 }
 
 impl FixturePages {
     fn new() -> Self {
-        Self { text_reads: Cell::new(0), hit_reads: Cell::new(0) }
+        Self { text_reads: Cell::new(0), hit_reads: Cell::new(0), batch_reads: Cell::new(0) }
     }
 
     fn stored(page_id: u32) -> bool {
@@ -58,6 +60,20 @@ impl TextPages for FixturePages {
             return Ok(Vec::new());
         }
         Ok(vec![span("a ", false), span("needle", true), span(" and ", false), span("needle", true), span(" end", false)])
+    }
+
+    /// Only `pdftotext` holds matching pages. Another source has none of its own, so it
+    /// shows that one source's matches do not fill another source's batch.
+    async fn matching_pages(&self, extracted_by: &str, _query: &str, after: Option<u32>) -> Result<MatchBatch, AgentError> {
+        self.batch_reads.set(self.batch_reads.get() + 1);
+        if extracted_by != "pdftotext" {
+            return Ok(MatchBatch::default());
+        }
+        let rows: Vec<u32> = (after.map_or(1, |page| page + 1)..=FIXTURE_PAGES)
+            .filter(|page| Self::hits_on(*page) > 0)
+            .take(MATCH_BATCH_ROWS + 1)
+            .collect();
+        Ok(document_text::fold_match_rows(&rows, MATCH_BATCH_ROWS))
     }
 }
 
@@ -108,13 +124,17 @@ async fn search_text_pages_every_hit_and_reads_only_the_pages_it_returns() {
     let mut seen = Vec::new();
     loop {
         let before = pages.hit_reads.get();
-        let (hits, next) = text_hits_page(&pages, "pdftotext", "needle", &counts, after, TEXT_HITS_PAGE_SIZE)
+        let (hits, next) = text_hits_page(&pages, "pdftotext", "needle", after, TEXT_HITS_PAGE_SIZE)
             .await
             .ok()
             .expect("hits read");
         let mut returned_pages: Vec<u32> = hits.iter().map(|hit| hit.page).collect();
         returned_pages.dedup();
-        assert_eq!(pages.hit_reads.get() - before, returned_pages.len(), "a call reads only the pages of its hits");
+        let resumed = usize::from(after.is_some());
+        assert!(
+            pages.hit_reads.get() - before <= returned_pages.len() + resumed,
+            "a call reads the pages of its hits and the page it resumes on"
+        );
         assert!(hits.len() <= TEXT_HITS_PAGE_SIZE);
         seen.extend(hits.iter().map(|hit| (hit.page, hit.ordinal)));
         match next {
@@ -129,6 +149,17 @@ async fn search_text_pages_every_hit_and_reads_only_the_pages_it_returns() {
     assert_eq!(seen.len() as u64, expected);
     assert_eq!(unique.len(), seen.len());
     assert_eq!(unique, seen, "hits come in page order");
+    assert!(counts.len() > MATCH_BATCH_ROWS, "the walk crosses a match batch boundary");
+    assert_eq!(seen.last().map(|hit| hit.0), counts.last().map(|count| count.0), "the walk reaches the last matching page");
+    assert!(pages.hit_reads.get() <= counts.len() * 2, "no page body is highlighted more than twice");
+}
+
+#[tokio::test]
+async fn another_source_takes_no_part_of_the_match_batches() {
+    let pages = FixturePages::new();
+    let (hits, next) = text_hits_page(&pages, "extractous", "needle", None, TEXT_HITS_PAGE_SIZE).await.ok().expect("hits read");
+    assert!(hits.is_empty() && next.is_none());
+    assert_eq!(pages.hit_reads.get(), 0, "a source with no matching rows reads no page");
 }
 
 #[test]
@@ -213,6 +244,9 @@ impl TextPages for LongTextPage {
     async fn page_after(&self, _: &str, _: u32) -> Result<Option<u32>, AgentError> { Ok(None) }
     async fn page_hits(&self, _: &str, _: u32, _: &str) -> Result<Vec<HighlightTextSpan>, AgentError> {
         Ok(vec![span(&"é".repeat(50_000), false), span("needle", true), span(&"z".repeat(10_000), false)])
+    }
+    async fn matching_pages(&self, _: &str, _: &str, after: Option<u32>) -> Result<MatchBatch, AgentError> {
+        Ok(MatchBatch { pages: if after.is_none() { vec![7] } else { Vec::new() }, continue_after: None })
     }
 }
 

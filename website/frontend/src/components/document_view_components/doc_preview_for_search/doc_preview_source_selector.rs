@@ -200,7 +200,8 @@ fn SourceItemRow(
     let source = source.read().clone();
     let item_hit_counts = item_hit_counts.read().clone();
     let item_hit_counts = std::collections::BTreeMap::from_iter(item_hit_counts.0);
-    let count = item_hit_counts.get(&source).unwrap_or(&0);
+    // A source without an entry has no count yet. A failed count is not a zero count.
+    let count = item_hit_counts.get(&source).copied();
     let (icon, label) = match source {
         // Rendered through the shared formatter, never as the raw `extracted_by` key.
         // With OCR fanning out over engines and languages a document has 6-10 text
@@ -240,11 +241,8 @@ fn SourceItemRow(
         _item_icon_rsx(MdRadioButtonUnchecked)
     };
 
-    let count = if *count == 0 {
-        "".to_string()
-    } else {
-        count.to_string()
-    };
+    let count_description = count.map(|count| count.description()).unwrap_or_default();
+    let count = count.map(|count| count.display()).unwrap_or_default();
 
     rsx! {
         if !in_trigger {
@@ -252,7 +250,13 @@ fn SourceItemRow(
         }
         div { style: "width: 19px; flex-shrink: 0;", {icon} }
         div { "data-source-label": "{label}", title: "{label}", style: "flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; color: {text_color}; {text_role}", "{label}" }
-        div { style: "flex-shrink: 0; color: var(--x-link); font-weight: 600; {text_role} margin-left: 4px;", "{count}" }
+        div {
+            "data-source-count": "{count}",
+            title: "{count_description}",
+            "aria-label": "{count_description}",
+            style: "flex-shrink: 0; color: var(--x-link); font-weight: 600; {text_role} margin-left: 4px;",
+            "{count}"
+        }
     }
 }
 

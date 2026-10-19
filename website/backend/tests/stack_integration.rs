@@ -1882,8 +1882,12 @@ async fn slow_qa_pdf_sources_match_bytes_in_both_orders_and_keep_individual_coun
         DocumentSourceItem::Pdf(ocr.clone()), DocumentSourceItem::Pdf(missing.clone()),
         DocumentSourceItem::Pdf(original.clone()),
     ]).await.unwrap();
+    use common::document_text_pages::HitCountState;
+    // A count that failed keeps its state and does not read as zero matches.
     for (source, expected_count) in [
-        (ocr.clone(), expected[1]["total"].as_u64().unwrap()), (missing.clone(), 0), (original, 7),
+        (ocr.clone(), HitCountState::Exact(expected[1]["total"].as_u64().unwrap())),
+        (missing.clone(), HitCountState::Failed),
+        (original, HitCountState::Exact(7)),
     ] {
         assert_eq!(counts.0.iter().find(|(item, _)| item == &DocumentSourceItem::Pdf(source.clone()))
             .map(|(_, count)| *count), Some(expected_count));
@@ -2852,5 +2856,223 @@ async fn email_headers_with_an_apostrophe_highlight() {
     assert!(
         subject.iter().any(|span| span.is_highlighted && span.text.contains("OBA")),
         "the subject highlights the find query: {subject:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------------
+// Text pages and source-scoped match steps.
+//
+// The `p63pages` collection holds three synthetic documents. `sparse-pages.pdf` stores
+// native PDF text on pages 3, 7 and 12 only. `long-matches.pdf` stores 1,200 PDF pages
+// and every page except 1000 to 1009 holds the word `quokka`. `segments.txt` stores four
+// raw-text segments. Its index also holds two duplicate rows for page 1,100 of the long
+// document, a duplicate row for page 7 of the sparse document, and an obsolete row for
+// sparse page 9, which has no stored text. These tests skip when the collection is absent.
+// ---------------------------------------------------------------------------------
+
+use common::document_text_pages::{HitCountState, MatchDirection, TextMatchStep, TextPageBody, TextSourceUnit};
+
+const P63_DATASET: &str = "p63pages_boundaries";
+const P63_SPARSE: &str = "0d9bdddd2ea5c29dc546002a54dfcf23d8da52c4e88b9e1330a480cc931499e2";
+const P63_LONG: &str = "ff8711f947e495ca21bf4c5a312051c8cea7c46ada91fd4747b91f9df0e7a877";
+const P63_SEGMENTS: &str = "540b4d4e38c0c0637782493c95543907fa7b11e0be9e7a6357bb2711b9c9ae3a";
+
+fn p63_document(file_hash: &str) -> common::search_result::DocumentIdentifier {
+    common::search_result::DocumentIdentifier { collection_dataset: P63_DATASET.into(), file_hash: file_hash.into() }
+}
+
+async fn p63_view(
+    file_hash: &str,
+    extracted_by: &str,
+    page: Option<u32>,
+    query: &str,
+) -> common::document_text_pages::TextPageView {
+    backend::api::documents::document_text::get_text_page_view(
+        &admin_user(), p63_document(file_hash), extracted_by.into(), page, query.into(), None,
+    )
+    .await
+    .unwrap()
+}
+
+async fn p63_step(file_hash: &str, extracted_by: &str, query: &str, from: Option<u32>, direction: MatchDirection) -> TextMatchStep {
+    backend::api::documents::document_text::find_text_match_page(
+        &admin_user(), p63_document(file_hash), extracted_by.into(), query.into(), from, direction,
+    )
+    .await
+    .unwrap()
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn text_pages_follow_sparse_stored_identifiers() {
+    skip_unless_dataset!(P63_DATASET);
+    let _budget = Budget::start("text_pages_follow_sparse_stored_identifiers");
+    let first = p63_view(P63_SPARSE, "pdftotext", None, "").await;
+    let nav = &first.navigation;
+    assert_eq!(nav.unit, TextSourceUnit::DocumentPage);
+    assert_eq!((nav.requested_page, nav.page, nav.position, nav.stored_count), (None, Some(3), Some(1), 3));
+    assert_eq!((nav.previous_page, nav.next_page, nav.last_page), (None, Some(7), Some(12)));
+    assert!(matches!(first.body, TextPageBody::Text { page_id: 3, .. }));
+
+    let last = p63_view(P63_SPARSE, "pdftotext", Some(12), "").await;
+    assert_eq!((last.navigation.position, last.navigation.stored_count), (Some(3), 3), "page 12 is the third of three");
+    assert_eq!((last.navigation.previous_page, last.navigation.next_page), (Some(7), None));
+
+    let absent = p63_view(P63_SPARSE, "pdftotext", Some(9), "").await;
+    assert_eq!(absent.body, TextPageBody::Absent, "page 9 has no stored text and is not replaced");
+    assert_eq!((absent.navigation.requested_page, absent.navigation.page), (Some(9), None));
+    assert_eq!((absent.navigation.previous_page, absent.navigation.next_page), (Some(7), Some(12)));
+    let below = p63_view(P63_SPARSE, "pdftotext", Some(1), "").await;
+    assert_eq!((below.body, below.navigation.previous_page, below.navigation.next_page), (TextPageBody::Absent, None, Some(3)));
+
+    let segments = p63_view(P63_SEGMENTS, "raw_text", Some(2), "").await;
+    assert_eq!(segments.navigation.unit, TextSourceUnit::TextSegment);
+    assert_eq!((segments.navigation.position, segments.navigation.stored_count), (Some(2), 4));
+    assert_eq!((segments.navigation.previous_page, segments.navigation.next_page), (Some(1), Some(3)));
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn a_text_page_reads_the_latest_version_and_reports_a_changed_source() {
+    skip_unless_dataset!(P63_DATASET);
+    let _budget = Budget::start("a_text_page_reads_the_latest_version_and_reports_a_changed_source");
+    let client = get_client_for_dataset(P63_DATASET).await.unwrap();
+    let (latest, text): (u64, String) = client
+        .query("SELECT version, text FROM text_content WHERE collection_dataset = ? AND file_hash = ? AND extracted_by = 'pdftotext' AND page_id = 7 ORDER BY version DESC LIMIT 1")
+        .bind(P63_DATASET)
+        .bind(P63_SPARSE)
+        .fetch_one()
+        .await
+        .unwrap();
+    let view = p63_view(P63_SPARSE, "pdftotext", Some(7), "").await;
+    let TextPageBody::Text { page_id, version, spans, highlight_error } = &view.body else { panic!("page 7 is stored: {view:?}") };
+    assert_eq!((*page_id, *version), (7, latest));
+    assert_eq!(spans.iter().map(|span| span.text.as_str()).collect::<String>(), text);
+    assert!(highlight_error.is_none());
+
+    let same = backend::api::documents::document_text::get_text_page_view(
+        &admin_user(), p63_document(P63_SPARSE), "pdftotext".into(), Some(7), String::new(), Some(view.navigation.revision.clone()),
+    ).await.unwrap();
+    assert!(!same.source_changed);
+    let changed = backend::api::documents::document_text::get_text_page_view(
+        &admin_user(), p63_document(P63_SPARSE), "pdftotext".into(), Some(7), String::new(), Some("2:3-7:1".into()),
+    ).await.unwrap();
+    assert!(changed.source_changed, "a different revision is reported, and the page still loads");
+    assert!(matches!(changed.body, TextPageBody::Text { page_id: 7, .. }));
+
+    let highlighted = p63_view(P63_SPARSE, "pdftotext", Some(7), "quokka").await;
+    assert_eq!(highlighted.body.match_count(), 1);
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn text_pages_and_match_steps_refuse_a_user_without_access() {
+    skip_unless_dataset!(P63_DATASET);
+    let _budget = Budget::start("text_pages_and_match_steps_refuse_a_user_without_access");
+    let denied = CurrentUser {
+        username: "p63-denied-user".into(), fullname: String::new(), email: String::new(), is_admin: false, groups: vec![],
+    };
+    let page = backend::api::documents::document_text::get_text_page_view(
+        &denied, p63_document(P63_SPARSE), "pdftotext".into(), Some(3), "quokka".into(), None,
+    ).await.unwrap_err();
+    assert!(backend::auth::guard::is_forbidden(&page), "{page}");
+    let step = backend::api::documents::document_text::find_text_match_page(
+        &denied, p63_document(P63_SPARSE), "pdftotext".into(), "quokka".into(), None, MatchDirection::Forward,
+    ).await.unwrap_err();
+    assert!(backend::auth::guard::is_forbidden(&step), "{step}");
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn match_batches_continue_past_a_thousand_rows_to_the_final_page() {
+    skip_unless_dataset!(P63_DATASET);
+    let _budget = Budget::start("match_batches_continue_past_a_thousand_rows_to_the_final_page");
+    use backend::api::documents::document_text::{MATCH_BATCH_ROWS, matching_page_batch};
+    let document = p63_document(P63_LONG);
+    for direction in [MatchDirection::Forward, MatchDirection::Backward] {
+        let mut after = None;
+        let mut seen = Vec::new();
+        let mut batches = 0;
+        loop {
+            let batch = matching_page_batch(&document, "pdftotext", "quokka", after, direction, MATCH_BATCH_ROWS).await.unwrap();
+            batches += 1;
+            seen.extend(batch.pages);
+            match batch.continue_after {
+                Some(boundary) => after = Some(boundary),
+                None => break,
+            }
+        }
+        if direction == MatchDirection::Backward {
+            seen.reverse();
+        }
+        let expected: Vec<u32> = (1..=1_200).filter(|page| !(1_000..=1_009).contains(page)).collect();
+        assert_eq!(seen, expected, "{direction:?}: every matching page once, duplicates folded, in page order");
+        assert!(batches >= 6, "{direction:?}: {batches} bounded batches");
+    }
+    // The old document-wide read stops at its row limit before the final pages.
+    let (_, returned) = backend::api::documents::search_document_text::search_document_text_hit_count_rows(
+        &admin_user(), document.clone(), "quokka".into(),
+    ).await.unwrap();
+    assert_eq!(returned, backend::api::documents::search_document_text::DOCUMENT_HIT_ROW_LIMIT);
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn match_steps_cross_gaps_fold_duplicates_skip_obsolete_rows_and_stop_at_the_ends() {
+    skip_unless_dataset!(P63_DATASET);
+    let _budget = Budget::start("match_steps_cross_gaps_fold_duplicates_skip_obsolete_rows_and_stop_at_the_ends");
+    use MatchDirection::{Backward, Forward};
+    assert_eq!(p63_step(P63_LONG, "pdftotext", "quokka", Some(999), Forward).await, TextMatchStep::Found { page_id: 1_010 });
+    assert_eq!(p63_step(P63_LONG, "pdftotext", "quokka", Some(1_005), Backward).await, TextMatchStep::Found { page_id: 999 });
+    assert_eq!(p63_step(P63_LONG, "pdftotext", "quokka", Some(1_100), Forward).await, TextMatchStep::Found { page_id: 1_101 });
+    assert_eq!(p63_step(P63_LONG, "pdftotext", "quokka", None, Backward).await, TextMatchStep::Found { page_id: 1_200 });
+    assert_eq!(p63_step(P63_LONG, "pdftotext", "quokka", Some(1_200), Forward).await, TextMatchStep::NoMore);
+    assert_eq!(p63_step(P63_LONG, "pdftotext", "quokka", Some(1), Backward).await, TextMatchStep::NoMore);
+    // Another source of the same document has its own matches. The 1,190 PDF pages do
+    // not take its allowance.
+    assert_eq!(p63_step(P63_LONG, "extractous", "quokka", None, Forward).await, TextMatchStep::Found { page_id: 1 });
+    // Page 9 of the sparse document has an index row and no stored text.
+    assert_eq!(p63_step(P63_SPARSE, "pdftotext", "quokka", Some(7), Forward).await, TextMatchStep::Found { page_id: 12 });
+    assert_eq!(p63_step(P63_SPARSE, "pdftotext", "quokka", Some(12), Backward).await, TextMatchStep::Found { page_id: 7 });
+    // Segment 4 has no match. A step from it goes back to segment 3.
+    assert_eq!(p63_step(P63_SEGMENTS, "raw_text", "quokka", Some(4), Backward).await, TextMatchStep::Found { page_id: 3 });
+    assert_eq!(p63_step(P63_SEGMENTS, "raw_text", "quokka", Some(3), Forward).await, TextMatchStep::NoMore);
+    assert_eq!(p63_step(P63_SEGMENTS, "raw_text", "", None, Forward).await, TextMatchStep::NoMore);
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn an_initial_query_opens_the_first_matching_page_even_after_the_old_row_limit() {
+    skip_unless_dataset!(P63_DATASET);
+    let _budget = Budget::start("an_initial_query_opens_the_first_matching_page_even_after_the_old_row_limit");
+    let last = p63_view(P63_LONG, "pdftotext", None, "finalzebra").await;
+    assert_eq!((last.navigation.requested_page, last.navigation.page), (None, Some(1_200)));
+    assert_eq!(last.navigation.position, Some(1_200));
+    assert_eq!(last.body.match_count(), 1);
+    assert!(last.match_error.is_none());
+    let none = p63_view(P63_SEGMENTS, "raw_text", None, "nosuchwordanywhere").await;
+    assert_eq!(none.navigation.page, Some(1), "no match opens the first stored segment");
+    let explicit = p63_view(P63_SEGMENTS, "raw_text", Some(4), "quokka").await;
+    assert_eq!((explicit.navigation.page, explicit.body.match_count()), (Some(4), 0), "an explicit page stays exact");
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn a_capped_text_count_reaches_the_selector_as_a_lower_bound() {
+    skip_unless_dataset!(P63_DATASET);
+    let _budget = Budget::start("a_capped_text_count_reaches_the_selector_as_a_lower_bound");
+    let sources = backend::api::documents::get_document_sources::get_document_sources(&admin_user(), p63_document(P63_LONG))
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|source| matches!(source, common::document_sources::DocumentSourceItem::Text(_)))
+        .collect::<Vec<_>>();
+    assert!(!sources.is_empty());
+    let counts = backend::api::documents::search_document_itemcount::search_document_item_count(
+        &admin_user(), p63_document(P63_LONG), "quokka".into(), sources,
+    ).await.unwrap();
+    assert!(
+        counts.0.iter().all(|(_, count)| matches!(count, HitCountState::AtLeast(_))),
+        "every text count stopped at the document-wide row limit: {counts:?}"
     );
 }

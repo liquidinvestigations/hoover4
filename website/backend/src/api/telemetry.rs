@@ -221,14 +221,13 @@ const DOCUMENT_FUNCTIONS: &[&str] = &[
     "get_document_entities",
     "get_document_sources",
     "get_document_first_vfs_path",
-    "get_document_text_by_id_and_source",
+    "find_text_match_page",
     "get_file_locations",
     "get_file_path",
     "get_raw_metadata",
+    "get_text_page_view",
     "search_document_item_hit_counts",
     "search_document_pdf",
-    "search_document_text_for_hit_count",
-    "search_document_text_for_hits",
 ];
 
 /// Every other server-function name we know. Anything under `/api/` that is not

@@ -17,6 +17,7 @@ pub mod document_metadata;
 pub mod document_provenance;
 pub mod document_sources;
 pub mod document_tables;
+pub mod document_text_pages;
 pub mod email_graph;
 pub mod entity_cards;
 pub mod entity_stoplist;

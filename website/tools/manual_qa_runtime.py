@@ -244,12 +244,16 @@ return result;
     async def find(self, term, count):
         await self.type(FIND, term, True)
         label = f"1 / {count}" if count else "- / -"
-        await self.text(label)
+        await self.counter(label)
         return await self.check("const q=document.querySelector(%s);return {ok:q?.value===%s,query:q?.value};" % (json.dumps(FIND), json.dumps(term)))
 
+    async def counter(self, label):
+        """Wait for a match counter: the text match group's counter or a PDF counter."""
+        await self.check("const root=document.querySelector('#x-search-results-right-panel')||document;const text=root.querySelector('[data-match-counter]')?.getAttribute('data-match-counter');const leaf=[...root.querySelectorAll('h1,div')].some(x=>x.children.length===0&&x.textContent.trim()===%s);return {ok:text===%s||leaf,counter:text};" % (json.dumps(label), json.dumps(label)))
+
     async def hit(self, direction, number, total):
-        await self.action("eval", "const root=document.querySelector('#x-search-results-right-panel')||document;const h=[...root.querySelectorAll('h1,div')].find(x=>x.children.length===0&&/^\\d+ \\/ \\d+$/.test(x.textContent.trim()));if(!h)throw Error('hit counter unavailable');let p=h.parentElement;while(p&&p.querySelectorAll('button').length<2)p=p.parentElement;const b=p?.querySelectorAll('button')[%d];if(!b||b.disabled)throw Error('hit navigation unavailable');b.click();return {clicked:true};" % (1 if direction == "next" else 0))
-        await self.text(f"{number} / {total}")
+        await self.action("eval", "const root=document.querySelector('#x-search-results-right-panel')||document;const group=root.querySelector('[data-text-match-controls]');if(group){const b=group.querySelector('button[aria-label=%s]');if(!b||b.disabled)throw Error('hit navigation unavailable');b.click();return {clicked:true};}const h=[...root.querySelectorAll('h1,div')].find(x=>x.children.length===0&&/^\\d+ \\/ \\d+$/.test(x.textContent.trim()));if(!h)throw Error('hit counter unavailable');let p=h.parentElement;while(p&&p.querySelectorAll('button').length<2)p=p.parentElement;const b=p?.querySelectorAll('button')[%d];if(!b||b.disabled)throw Error('hit navigation unavailable');b.click();return {clicked:true};" % (json.dumps("Next Hit" if direction == "next" else "Previous Hit"), 1 if direction == "next" else 0))
+        await self.counter(f"{number} / {total}")
 
     async def pdf_source(self, label, preview=False):
         if preview:

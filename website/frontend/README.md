@@ -38,6 +38,19 @@ target="_blank">` rather than `Link`) and a button that copies the path. These a
 descriptions of a document rather than renderings of it, which is why neither this nor the
 metadata panel is offered as a preview source in the source dropdown.
 
+## The shared text viewer
+
+[text_preview_with_search.rs](src/components/document_view_components/doc_preview_for_search/text_preview_with_search.rs) serves every text source, including the email body, in the full viewer and in each preview.
+Its request key is the document, the source, the explicit page from `selected_source_page`, and the find query.
+The last page that loaded for the same document and source stays visible while a request runs and after it fails.
+A response for another key never replaces it.
+[text_data_viewer.rs](src/components/document_view_components/doc_preview_for_search/text_data_viewer.rs) renders highlighted and raw text from the same page view, so the raw text always belongs to the selected page.
+
+The match number counts the matches of the displayed page. `selected_match` names its source, page and query, and another scope selects the first match.
+At the end of a page, the match arrows use the nearest matching page that the backend returns for the same source.
+A scroll intent records why the viewport moves. The viewer applies it once after the requested page renders, so count updates do not scroll.
+Scroll scripts select the viewer by its `data-text-viewer-key`, so two viewers on one screen do not move each other.
+
 ## The Collections filter is composed client-side
 
 The storage tree retains child pages and resolved paths while its dataset remains mounted.

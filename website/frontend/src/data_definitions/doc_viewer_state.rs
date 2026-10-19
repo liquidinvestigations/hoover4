@@ -42,10 +42,37 @@ impl DocTableState {
     }
 }
 
+/// The selected find-query match of a text page.
+///
+/// Its scope is one source, one stored page and one query. A state whose scope differs
+/// from the displayed page selects the first match of that page.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TextMatchSelection {
+    pub extracted_by: String,
+    pub page_id: u32,
+    pub find_query: String,
+    /// 0-based match number on the page. [`TextMatchSelection::LAST`] selects the last
+    /// match, which a backward step to an earlier page asks for before it knows the count.
+    pub ordinal: u32,
+}
+
+impl TextMatchSelection {
+    pub const LAST: u32 = u32::MAX;
+
+    /// The 0-based match on the page `page_id` of `extracted_by` under `find_query`, when
+    /// this selection names that scope, clamped to the `count` matches the page shows.
+    pub fn ordinal_for(&self, extracted_by: &str, page_id: u32, find_query: &str, count: u32) -> Option<u32> {
+        (self.extracted_by == extracted_by && self.page_id == page_id && self.find_query == find_query && count > 0)
+            .then(|| self.ordinal.min(count - 1))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DocViewerState {
     pub find_query: String,
     pub selected_source: Option<DocumentSourceItem>,
+    /// The explicit stored page identifier of the selected text source. `None` lets the
+    /// viewer choose: the first matching page for a query, otherwise the first stored page.
     pub selected_source_page: Option<u32>,
     /// Absent means "the default view", which is what a URL written before the table
     /// browser existed describes, the same reasoning as
@@ -71,6 +98,10 @@ pub struct DocViewerState {
     /// The version of `workspace_file`, or `None` for its current version.
     #[serde(default)]
     pub workspace_version: Option<u32>,
+    /// The selected match of the text page. A link written before the field existed
+    /// takes `None` and selects the first match of the page.
+    #[serde(default)]
+    pub selected_match: Option<TextMatchSelection>,
 }
 
 impl DocViewerState {
@@ -84,6 +115,7 @@ impl DocViewerState {
             web_artifact_id: None,
             workspace_file: None,
             workspace_version: None,
+            selected_match: None,
         }
     }
 
@@ -122,6 +154,7 @@ impl Default for DocViewerState {
             web_artifact_id: None,
             workspace_file: None,
             workspace_version: None,
+            selected_match: None,
         }
     }
 }
@@ -259,12 +292,46 @@ mod tests {
             web_artifact_id: None,
             workspace_file: None,
             workspace_version: None,
+            selected_match: None,
         };
         let encoded = UrlParam(state.clone()).to_string();
         let parsed = UrlParam::<DocViewerState>::from_str(&encoded)
             .expect("a URL this build wrote must parse")
             .0;
         assert_eq!(parsed, state);
+    }
+
+    /// A copied link restores the explicit text page and the selected match. A link
+    /// written before the match field existed still opens its page.
+    #[test]
+    fn a_text_page_and_match_survive_the_url_and_an_older_url_keeps_its_page() {
+        let state = DocViewerState {
+            find_query: "quokka".into(),
+            selected_source_page: Some(12),
+            selected_match: Some(TextMatchSelection {
+                extracted_by: "pdftotext".into(), page_id: 12, find_query: "quokka".into(), ordinal: 2,
+            }),
+            ..Default::default()
+        };
+        let encoded = UrlParam(state.clone()).to_string();
+        assert_eq!(UrlParam::<DocViewerState>::from_str(&encoded).unwrap().0, state);
+        let older = UrlParam(LegacyDocViewerState {
+            find_query: "quokka".into(), selected_source: None, selected_source_page: Some(7),
+        }).to_string();
+        let parsed = UrlParam::<DocViewerState>::from_str(&older).unwrap().0;
+        assert_eq!((parsed.selected_source_page, parsed.selected_match), (Some(7), None));
+    }
+
+    #[test]
+    fn a_match_selection_applies_only_to_its_own_scope_and_clamps_to_the_page() {
+        let selection = TextMatchSelection {
+            extracted_by: "pdftotext".into(), page_id: 7, find_query: "quokka".into(), ordinal: TextMatchSelection::LAST,
+        };
+        assert_eq!(selection.ordinal_for("pdftotext", 7, "quokka", 4), Some(3));
+        assert_eq!(selection.ordinal_for("pdftotext", 8, "quokka", 4), None);
+        assert_eq!(selection.ordinal_for("extractous", 7, "quokka", 4), None);
+        assert_eq!(selection.ordinal_for("pdftotext", 7, "other", 4), None);
+        assert_eq!(selection.ordinal_for("pdftotext", 7, "quokka", 0), None);
     }
 
     /// Why the open card is in the address: a card reached from a
