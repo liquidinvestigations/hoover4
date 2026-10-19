@@ -815,18 +815,20 @@ def _successful_repeat_result(message: RunMessage) -> bool:
 
 
 def closest_names(name: str, args: Any, snapshot: Any, allowed: Sequence[str]) -> List[str]:
-    """At most two tools of the run for an unknown tool name. A tool whose schema shares
-    more argument names with the call comes first, then a tool with a closer spelling. A
-    tool that shares no argument name and whose spelling ratio is under 0.6 is left out."""
+    """At most two tools of the run for an unknown tool name. A tool comes first when its
+    schema shares more argument names with the call, less the required arguments that the
+    call lacks, then when its spelling is closer. A tool that shares no argument name and
+    whose spelling ratio is under 0.6 is left out."""
     keys = set(args) if isinstance(args, dict) else set()
     ranked = []
     for candidate in sorted(allowed):
         tool = snapshot.tools_by_name.get(candidate)
-        properties = set((tool_schema(tool) or {}).get("properties") or {}) if tool is not None else set()
-        shared = len(keys & properties)
+        schema = (tool_schema(tool) or {}) if tool is not None else {}
+        shared = len(keys & set(schema.get("properties") or {}))
+        missing = len(set(schema.get("required") or []) - keys)
         ratio = difflib.SequenceMatcher(None, name, candidate).ratio()
         if shared or ratio >= 0.6:
-            ranked.append((-shared, -ratio, candidate))
+            ranked.append((missing - shared if keys else 0, -ratio, candidate))
     return [candidate for _, _, candidate in sorted(ranked)[:2]]
 
 

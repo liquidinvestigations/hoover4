@@ -246,9 +246,10 @@ response is JSON:
 | `matched_names` | the names that a `search_agent_tools` result matched, or the name that a `read_tool` result described |
 
 A `tool_unavailable` result names the unavailable tool and at most two tools of the run
-(`steps.closest_names`). A tool whose schema shares more argument names with the call comes
-first, then a tool with a closer spelling, so a `write_report` call with `name` and
-`content` gets `write_file`. `search_agent_tools` can list available names.
+(`steps.closest_names`). A tool comes first when its schema shares more argument names with
+the call, less the required arguments that the call lacks, then when its spelling is closer.
+A `write_report` call with `name` and `content` gets `write_file`, and a `workspace_read`
+call with only `name` gets `read_file` first. `search_agent_tools` can list available names.
 
 **A failed result names the skill of its fix.** `stumbles.with_skill_line` reads each result
 before the service returns it. When the result shows a known stumble, and the run lists the

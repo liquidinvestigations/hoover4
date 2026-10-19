@@ -576,6 +576,13 @@ async def test_a_misspelled_name_gets_the_closest_names_of_the_run():
     message = refusal_of(await steps.run_tool_call(agent, tool_request(
         "write_report", {"name": "report.md", "content": "text"})))
     assert "The closest names are write_file, read_tool." in message
+    # A call that lacks a required argument of a tool ranks that tool lower.
+    read_schema = {"type": "object", "properties": {"name": {"type": "string"}}, "required": []}
+    write_schema = {**file_schema, "required": ["name", "content"]}
+    agent = FakeAgent([dict_tool("write_file", write_schema, []), dict_tool("read_file", read_schema, [])],
+                      {"write_file", "read_file"})
+    message = refusal_of(await steps.run_tool_call(agent, tool_request("workspace_read", {"name": "a.md"})))
+    assert "The closest names are read_file, write_file." in message
 
 
 def test_the_refusal_text_of_an_unavailable_tool_names_no_skill():
