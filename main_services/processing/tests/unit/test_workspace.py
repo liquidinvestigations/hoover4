@@ -257,3 +257,59 @@ def test_a_report_sets_the_answer_metadata():
                     "report": {"name": "report.md", "version": 3}}
     plain = citations.answer_metadata("No sources needed.", [], True, None)
     assert plain == {"tool_scope": "documents_and_web", "citation_status": "none"}
+
+
+def test_the_delivered_files_keep_first_order_and_the_last_version():
+    rows = [
+        tool_row(2, "write_file", {"success": True, "name": "a.md", "version": 1, "citations": []}),
+        tool_row(3, "write_file", {"success": True, "name": "b.md", "version": 1, "citations": ["[W1]"]}),
+        tool_row(4, "read_file", {"name": "c.md", "version": 4}),
+        tool_row(5, "write_file", {"success": False, "name": "d.md"}, status="error"),
+        tool_row(6, "patch_file", {"success": True, "name": "a.md", "version": 3, "citations": ["[D1]"]}),
+        tool_row(7, "patch_file", {"success": True, "name": "b.md", "version": 1,
+                                   "unchanged": True, "citations": ["[W1]"]}),
+    ]
+    assert selection.delivered_reports(rows) == [
+        {"name": "a.md", "version": 3, "citations": ["[D1]"]},
+        {"name": "b.md", "version": 1, "citations": ["[W1]"]}]
+    assert selection.manifest(rows) == {
+        "report": {"name": "b.md", "version": 1},
+        "reports": [{"name": "a.md", "version": 3, "citations": ["[D1]"]},
+                    {"name": "b.md", "version": 1, "citations": ["[W1]"]}]}
+    assert selection.manifest(rows[2:4]) == {}
+
+
+def test_a_repeated_tool_message_of_one_call_counts_once():
+    first = RunMessageRow(idx=2, role="tool", tool_name="write_file", tool_call_id="c1",
+                          content=json.dumps({"success": True, "name": "a.md", "version": 1}),
+                          usage_json=json.dumps({"status": "ok"}))
+    again = RunMessageRow(idx=9, role="tool", tool_name="write_file", tool_call_id="c1",
+                          content=json.dumps({"success": True, "name": "z.md", "version": 1}),
+                          usage_json=json.dumps({"status": "ok"}))
+    assert [r["name"] for r in selection.delivered_reports([first, again])] == ["a.md"]
+
+
+def test_handles_in_code_are_literal_and_listed_apart():
+    text = "Kept `Web [W1]` and\n```\nsee [D2]\n```\nand \\`x\\` and [D3]."
+    assert references.code_handles(text) == ["[W1]", "[D2]"]
+    assert [h for h, _ in references.handles(text)] == ["[D3]"]
+
+
+def test_a_file_with_only_code_formatted_handles_is_stored_with_a_note():
+    prepared = mutations.prepare(command(content="The plant closed `[W1]`."), None, [])
+    assert prepared.ok and prepared.result["citations"] == []
+    assert "[W1] is inside code formatting" in prepared.result["note"]
+    linked = mutations.prepare(command(content="Approved [D1]. Example: `[D9]`."), None,
+                               [cite("[D1]")])
+    assert linked.ok and "note" not in linked.result
+    plain = mutations.prepare(command(content="No sources."), None, [])
+    assert plain.ok and "note" not in plain.result
+
+
+def test_answer_metadata_lists_the_delivered_files():
+    report = {"name": "b.md", "version": 2, "citations": []}
+    files = [{"name": "a.md", "version": 1, "citations": ["[D1]"]},
+             {"name": "b.md", "version": 2, "citations": []}]
+    meta = citations.answer_metadata("Two files.", [], False, report, files)
+    assert meta["report"] == {"name": "b.md", "version": 2}
+    assert meta["reports"] == files and meta["citation_status"] == "none"

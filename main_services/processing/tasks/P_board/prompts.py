@@ -189,6 +189,10 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
                   "different kind of direction, or answer the goals with a statement of what was "
                   "searched.\n" if stalled else "")
     first_goal = folded.goal_ids[0] if folded.goal_ids else m.FIRST_GOAL_ID
+    from tasks.P_board.fold import available_corrections
+
+    corrections = list(available_corrections(folded))
+    texts = {f.fact_id: f.text for f in facts}
     background = next((f.fact_id for f in live if f.kind == m.ORIGIN), m.ORIGIN)
     if final:
         task = (
@@ -214,7 +218,8 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
             "\"statement\": \"what these facts establish for this goal, and what they do not "
             "cover\"}], \"intents\": [{\"from\": [\"<fact id>\"], \"goal\": \"<goal id>\", "
             "\"objective\": \"what to establish\", \"brief\": \"what to search and what to "
-            "return\", \"slug\": \"two to four words\", \"questions\": [\"<question key>\"]}]}\n"
+            "return\", \"slug\": \"two to four words\", \"questions\": [\"<question key>\"], "
+            "\"correction\": \"<correction id, or leave out>\"}]}\n"
             "Give an answer for each goal that the facts answer, and intents for the goals that "
             "they do not answer yet. When every goal that is not accepted has an answer, the "
             "investigator reviews the answers.\n"
@@ -232,7 +237,11 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
             "- `slug` names the direction of an intent in two to four lowercase English words.\n"
             "- `questions` lists the keys of the open questions below that the intent explores. "
             "It is optional. Use only listed keys.\n"
-            "- Direct each intent at one goal, and give that goal in its `goal` field.\n")
+            "- Direct each intent at one goal, and give that goal in its `goal` field.\n"
+            "- A correction listed under Corrections that allow one revised intent allows one "
+            "intent that revises earlier work. Change its objective as the correction asks, and "
+            "give the correction id in its `correction` field. Each listed correction allows one "
+            "intent. Without a listed correction, an intent must not repeat earlier work.\n")
     return (
         task +
         "- Name goals and facts by their ids in `from` and `goal` fields only. Do not write ids "
@@ -260,6 +269,9 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
         f"{fact_block(live, citations, set())}\n</facts>\n\n"
         "Facts rejected by the investigator:\n" + ("\n".join(rejected_lines) or "- none") + "\n\n"
         "Hints from the investigator:\n" + ("\n".join(f"- {h}" for h in folded.hints) or "- none") + "\n\n"
+        + ("" if final else "Corrections that allow one revised intent, as id: correction:\n"
+           + ("\n".join(f"- {cid}: {strip_labels(texts.get(cid, ''))}" for cid in corrections) or "- none")
+           + "\n\n") +
         "Open intents:\n" + ("\n".join(open_lines) or "- none") + "\n\n"
         "Finished intents:\n" + ("\n".join(done_lines) or "- none") + "\n\n"
         "Open questions of earlier explores, newest first, as key: question:\n"

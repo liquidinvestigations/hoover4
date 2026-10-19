@@ -1,4 +1,7 @@
-"""Which prose reaches the transcript, and which is folded behind the disclosure.
+"""Which prose of a round is plan prose, and which is other narration.
+
+Both reach the reasoning of the answer row, plan prose first, and neither reaches the answer
+text (`steps._write_answer`).
 
 `round_view` decides this from the stored `ai` messages of the round, because no step keeps
 state. The tests build the thread in memory, so no database is involved.
@@ -25,7 +28,7 @@ def _thread(*replies):
     return messages
 
 
-def test_the_prose_that_opens_a_plan_first_turn_stays_in_the_answer():
+def test_the_prose_that_opens_a_plan_first_turn_is_plan_prose():
     prose, reasoning, _ = round_view(_thread(
         ("I understand the task as X. Two approaches: A, or B.", ["read_todo"]),
         ("", ["write_todo"])))

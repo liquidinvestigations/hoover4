@@ -6,6 +6,19 @@ trigger fires on the first event that makes a method necessary, for example the 
 successful read for the citation skill. Code decides both from structured result fields,
 so no classifier request is made.
 
+The events:
+
+* `first_read`: the first successful read of the turn.
+* `web_search`: a successful web search.
+* `browser`: a call of a browser tool.
+* `first_write`: the first successful workspace write or patch of the turn, so later edits
+  have the file method.
+* `workspace_error`: a failed workspace write or patch, such as a citation finding or a
+  version mismatch.
+* `argument_error`: a call that the argument check refused.
+* `unknown_document`: a document or table call that named no readable document.
+
+
 The handler proposes the load. The coordinator drops a skill whose pinned text is still
 visible in the model input, and merges two proposals for one skill. A policy batch can load
 a skill, and it never starts another batch.
@@ -19,7 +32,16 @@ from tasks.P_agent.control import facts as F
 from tasks.P_agent.control.model import API_VERSION, Action, CheckResult, PolicyResult, freeze
 
 OBJECTS = {"table": F.is_table_hit, "email": F.is_email_hit}
-EVENTS = ("first_read", "web_search", "browser")
+EVENTS = ("first_read", "web_search", "browser", "first_write", "workspace_error",
+          "argument_error", "unknown_document")
+#: The tools that name a document by its hash.
+DOCUMENT_TOOLS = ("read_documents", "doc_metadata", "doc_email", "doc_sources", "doc_search_text",
+                  "list_document_entities", "cite_documents", "table_overview", "table_page",
+                  "table_cell", "table_column_values", "table_search_cells")
+
+
+def _writes(facts) -> list:
+    return [f for f in facts if f.name in F.MUTATION_TOOLS and f.status == "ok" and f.file_version]
 
 
 def _event(kind: str, batch, earlier) -> bool:
@@ -29,6 +51,14 @@ def _event(kind: str, batch, earlier) -> bool:
         return any(f.name == "web_search" and f.status == "ok" for f in batch)
     if kind == "browser":
         return any(f.name.startswith("browser_") for f in batch)
+    if kind == "first_write":
+        return bool(_writes(batch)) and not _writes(earlier)
+    if kind == "workspace_error":
+        return any(f.name in F.MUTATION_TOOLS and f.status in ("error", "refused") for f in batch)
+    if kind == "argument_error":
+        return any(f.status == "refused" or f.error_code == "invalid_argument" for f in batch)
+    if kind == "unknown_document":
+        return any(f.name in DOCUMENT_TOOLS and f.error_code == "not_found" for f in batch)
     return False
 
 
@@ -40,9 +70,11 @@ class Handler:
             unknown = set(kinds) - set(OBJECTS)
             if unknown:
                 raise ValueError(f"skill {name!r} names unknown object kinds {sorted(unknown)}")
-        for name, kind in (parameters.get("events") or {}).items():
-            if kind not in EVENTS:
-                raise ValueError(f"skill {name!r} names the unknown event {kind!r}")
+        for name, kinds in (parameters.get("events") or {}).items():
+            kinds = [kinds] if isinstance(kinds, str) else list(kinds)
+            unknown = [k for k in kinds if k not in EVENTS]
+            if unknown or not kinds:
+                raise ValueError(f"skill {name!r} names the unknown event {unknown or kinds!r}")
 
     async def evaluate(self, event, context, parameters, services) -> PolicyResult:
         batch = list(context.batch)
@@ -55,8 +87,10 @@ class Handler:
             if hit:
                 actions.append(Action("load_skill", name, freeze({"skill": name, "trigger": hit})))
                 checks.append(CheckResult(event.id, f"skill:{name}", "pass", None, (), f"object {hit}"))
-        for name, kind in (parameters.get("events") or {}).items():
-            if name in context.listed_skills and _event(kind, batch, earlier):
+        for name, kinds in (parameters.get("events") or {}).items():
+            kinds = [kinds] if isinstance(kinds, str) else list(kinds)
+            kind = next((k for k in kinds if _event(k, batch, earlier)), None)
+            if name in context.listed_skills and kind:
                 actions.append(Action("load_skill", name, freeze({"skill": name, "trigger": kind})))
                 checks.append(CheckResult(event.id, f"skill:{name}", "pass", None, (), f"event {kind}"))
         searches = [f for f in context.results if f.name in ("search_collections", "search_passages", "web_search")

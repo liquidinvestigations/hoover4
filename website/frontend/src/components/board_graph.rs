@@ -74,7 +74,8 @@ pub struct GraphNode {
     pub depth: u32,
     pub dimmed: bool,
     pub rejected: bool,
-    /// For a goal: `answered`, `answer proposed`, `not answered`, or empty.
+    /// For a goal: `answered`, `answer proposed`, `not answered`, or empty. For a finding:
+    /// `unreviewed` when it arrived after the review or the completion, or empty.
     pub answer: String,
 }
 
@@ -194,6 +195,11 @@ pub fn build_graph(input: &BoardGraphInput) -> Graph {
         }
     }
 
+    for node in nodes.iter_mut() {
+        if matches!(node.kind, NodeKind::Fact(_)) && input.unreviewed.contains(&node.id) {
+            node.answer = "unreviewed".to_string();
+        }
+    }
     let last = nodes.iter().map(|n| n.depth).max().unwrap_or(0) + 1;
     for goal in &goals {
         let mut node = fact_node(goal, last);
@@ -654,7 +660,7 @@ mod tests {
 
     fn input(facts: Vec<BoardFact>, intents: Vec<BoardIntent>) -> BoardGraphInput {
         BoardGraphInput { status: "active".into(), facts, intents, answers_proposed: vec![], answers_accepted: vec![],
-                          not_answered: vec![] }
+                          not_answered: vec![], unreviewed: vec![] }
     }
 
     #[test]
@@ -674,6 +680,23 @@ mod tests {
         assert_eq!((depth["goal"], depth["goal-2"]), (5, 5));
         // origin to i1.1, i1.1 to f1.1, f1.1 to i2.1, i2.1 to f2.1. The goal gets no edge.
         assert_eq!(graph.edges.len(), 4);
+    }
+
+    #[test]
+    fn a_late_finding_is_marked_unreviewed_and_its_goal_keeps_its_answer() {
+        let mut data = input(
+            vec![fact("origin", "origin", ""), fact("goal", "goal", ""),
+                 fact("f1.1", "sourced", "i1.1"), fact("f2.1", "sourced", "i2.1")],
+            vec![intent("i1.1", &["origin"], 1), intent("i2.1", &["origin"], 2)],
+        );
+        data.answers_accepted = vec![BoardReviewGoal { goal: "goal".into(), from: vec!["f1.1".into()],
+                                                       reason_no: 1, ..Default::default() }];
+        data.unreviewed = vec!["f2.1".into()];
+        let graph = build_graph(&data);
+        let answer = |id: &str| graph.nodes.iter().find(|n| n.id == id).unwrap().answer.clone();
+        assert_eq!(answer("f2.1"), "unreviewed");
+        assert_eq!(answer("f1.1"), "");
+        assert_eq!(answer("goal"), "answered");
     }
 
     #[test]

@@ -371,9 +371,10 @@ class ModelStepWriter(ResearchStreamWriter):
 
     It writes the assistant partial into `chat_message_stream` at `seq`, one seq after the
     last tool row, and the `ai` partial into `agent_run_messages` at `idx`, as the reply
-    streams. `plan_prose` and `reasoning` are the round so far (`round_view`), so the
-    partial row shows the whole round and not only this step. A keepalive thread rewrites
-    the open rows every `KEEPALIVE_SECONDS`.
+    streams. `reasoning` is the round so far, its plan prose first (`round_view`), so the
+    partial row shows the whole round and not only this step. `model_step` passes no
+    `plan_prose`, so the answer text of the partial row holds the reply only. A keepalive
+    thread rewrites the open rows every `KEEPALIVE_SECONDS`.
     """
 
     def __init__(self, row, turn_uuid: str, seq: int, idx: int, plan_prose: str = "",
@@ -491,7 +492,8 @@ def round_view(messages) -> tuple[str, str, bool]:
     * the opening holds while every call so far is in `PLAN_FIRST_TOOLS`, and only in the
       round that the first `human` message of the thread opens. A round that a note opens
       has no opening. The text of an `ai` message whose first call is inside the opening is plan
-      prose, which the answer shows (`ResearchStreamWriter._keeps_preamble` gives the rule).
+      prose (`ResearchStreamWriter._keeps_preamble` gives the rule). The answer row and the
+      partial rows store it first in the reasoning, and never in the answer text.
     * the text of any other `ai` message with calls is narration, which moves to the
       reasoning. The reasoning of every `ai` message of the round is kept too.
 

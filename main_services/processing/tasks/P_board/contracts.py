@@ -48,6 +48,28 @@ def is_duplicate(objective: str, earlier: str) -> bool:
     return len(a & b) / min(len(a), len(b)) >= DUPLICATE_OVERLAP
 
 
+def same_objective(objective: str, earlier: str) -> bool:
+    """Whether two objectives have the same words in the same order, without regard to case,
+    spacing and punctuation. A correction allows a revised objective, never this one."""
+    return WORD_PATTERN.findall((objective or "").lower()) == WORD_PATTERN.findall((earlier or "").lower())
+
+
+NUMBER_PATTERN = re.compile(r"(?<![\w-])\d+(?:[.,]\d+)*(?![\w-])")
+
+
+def numbers_of(text: str) -> set[str]:
+    """The numbers of a text, with thousands separators removed. A number inside a word or
+    an id, such as goal-01 or D1, is not a number of the text."""
+    return {n.replace(",", "") for n in NUMBER_PATTERN.findall(text or "")}
+
+
+def new_numbers(text: str, sources: list[str]) -> list[str]:
+    """The numbers of `text` that none of `sources` holds, in order. A conversion or an
+    assessment that changes a count shows here."""
+    held = set().union(*(numbers_of(s) for s in sources)) if sources else set()
+    return sorted(numbers_of(text) - held, key=lambda n: (len(n), n))
+
+
 def _answer_entries(data: dict, goal_ids: list[str]) -> list | None:
     """The goal answers of a reply, or None when it has none. The reply names them as
     `answers`, as `review.goals`, as `complete.goals` or as a top-level `goals`. A review
@@ -69,7 +91,7 @@ def _answer_entries(data: dict, goal_ids: list[str]) -> list | None:
 
 def _parse_answers(entries: list, valid_ids: set, sourced_ids: set, not_found_ids: set,
                    goal_ids: list[str], goal_texts: dict, closed_ids: set, problems: list,
-                   dropped: list | None = None) -> list[dict]:
+                   dropped: list | None = None, fact_texts: dict | None = None) -> list[dict]:
     """The checked goal answers of a reply. See `parse_reason`. The goals whose answer the
     checks dropped go to `dropped`."""
     answers = []
@@ -105,6 +127,11 @@ def _parse_answers(entries: list, valid_ids: set, sourced_ids: set, not_found_id
             problems.append(f"dropped a second answer of {goal}")
         else:
             statement = str(entry.get("statement") or "").strip()
+            if fact_texts is not None:
+                changed = new_numbers(statement, [str(fact_texts.get(f) or "") for f in from_ids])
+                if changed:
+                    problems.append(f"the answer of {goal} states numbers that its facts do not "
+                                    f"hold: {', '.join(changed)}")
             if set(from_ids) & sourced_ids:
                 answers.append({"goal": goal, "from": from_ids, "statement": statement,
                                 "answer_kind": m.SUPPORTED, "commentary": ""})
@@ -120,7 +147,8 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
                  idle: bool, goal_ids: list[str] | None = None,
                  not_found_ids: set | None = None, goal_texts: dict | None = None,
                  closed_ids: set | None = None, question_keys: set | None = None,
-                 final: bool = False) -> dict:
+                 final: bool = False, corrections: dict | None = None,
+                 fact_texts: dict | None = None) -> dict:
     """The `reason_result` payload of one reply.
 
     `valid_ids` are the live fact ids, `sourced_ids` the live sourced ones, `earlier` the
@@ -128,6 +156,14 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
     `goal_ids` the goal fact ids, `not_found_ids` the live not-found facts, `goal_texts` the
     goal id of each goal text, `closed_ids` the goals with an accepted answer, and
     `question_keys` the question keys that the prompt listed.
+
+    `corrections` maps each person correction that still allows one revised intent to its
+    text (`fold.available_corrections`). An intent that names one in `correction` may repeat
+    the work of an earlier intent with a changed objective, once. An objective with the same
+    words as an earlier one stays a repeat. An intent that names another correction loses
+    it, and a repeat without a valid correction is dropped. `fact_texts` maps fact ids to
+    their texts. An answer statement whose numbers its facts do not hold gets a problem,
+    and stays.
 
     A reply can hold answers for some goals and intents for the others. An answer names its
     goal, the facts it rests on and a statement. An answer that names a sourced fact is
@@ -162,7 +198,7 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
     entries = _answer_entries(data, goal_ids)
     dropped: list[str] = []
     answers = _parse_answers(entries or [], set(valid_ids), set(sourced_ids), set(not_found_ids or ()),
-                             goal_ids, goal_texts or {}, closed, problems, dropped)
+                             goal_ids, goal_texts or {}, closed, problems, dropped, fact_texts)
     if dropped:
         payload["dropped_answers"] = sorted(set(dropped) - {a["goal"] for a in answers})
     items = data.get("intents")
@@ -171,6 +207,8 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
     kept = []
     seen = list(earlier)
     allowed = set(question_keys or ())
+    open_corrections = dict(corrections or {})
+    claimed_corrections: set = set()
     if final and items:
         problems.append(f"a final assessment starts no explore: dropped {len(items)} intents")
         items = []
@@ -186,9 +224,17 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
         if not set(from_ids) <= valid_ids:
             problems.append(f"intent from {from_ids} names an unknown or rejected fact")
             continue
-        if any(is_duplicate(objective, other) for other in seen):
+        correction = str(item.get("correction") or "").strip()
+        if correction and (correction not in open_corrections or correction in claimed_corrections):
+            problems.append(f"discarded the correction {correction} of an intent: it is not a "
+                            "correction that allows a revised intent")
+            correction = ""
+        repeats = [other for other in seen if is_duplicate(objective, other)]
+        if repeats and (not correction or any(same_objective(objective, o) for o in repeats)):
             problems.append(f"dropped as a repeat: {objective[:160]}")
             continue
+        if correction:
+            claimed_corrections.add(correction)
         named = list(dict.fromkeys(str(k) for k in item.get("questions") or []))
         stray = [k for k in named if k not in allowed]
         if stray:
@@ -200,7 +246,8 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
                      "goal": goal if goal in goal_ids else "",
                      "brief": str(item.get("brief") or "").strip(), "position": position,
                      "slug": str(item.get("slug") or "").strip()[:80],
-                     "questions": [k for k in named if k in allowed]})
+                     "questions": [k for k in named if k in allowed],
+                     **({"correction": correction} if correction else {})})
         if len(kept) >= m.MAX_INTENTS:
             break
     open_goals = [g for g in goal_ids if g not in closed]

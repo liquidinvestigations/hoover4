@@ -27,7 +27,7 @@ from typing import Any, Callable, Dict, Mapping, Optional
 
 import requests
 
-from tasks.P_agent.control.model import ClassifierResult, freeze
+from tasks.P_agent.control.model import ClassifierResult, digest, freeze
 
 log = logging.getLogger(__name__)
 
@@ -157,19 +157,21 @@ class Classifier:
                     "questions": {q: json.loads(json.dumps(questions[q])) for q in chunk}}
             if instructions:
                 body["instructions"] = instructions
+            # The digest of the actual input, stored with each result of the request.
+            trace_in = {**(trace or {}), "input_digest": digest({k: v for k, v in body.items() if k != "model"})}
             started = time.monotonic()
             try:
                 status, payload, ms, error = await self._request(SYSTEMONE_PATH, body)
             except asyncio.CancelledError:
                 elapsed = int((time.monotonic() - started) * 1000)
-                self.events.append(self._event(seq, chunk, questions, "cancelled", None, elapsed, budget, "", trace))
+                self.events.append(self._event(seq, chunk, questions, "cancelled", None, elapsed, budget, "", trace_in))
                 raise
             got = payload.get("answers") if isinstance(payload, Mapping) else None
             malformed = status == "ok" and (not isinstance(got, Mapping) or
                         any(q not in got or not _valid(questions[q], got[q]) for q in chunk) or
                         bool(set(got) - set(chunk)))
             outcome = "malformed" if malformed else status
-            event = self._event(seq, chunk, questions, outcome, payload, ms, budget, error, trace)
+            event = self._event(seq, chunk, questions, outcome, payload, ms, budget, error, trace_in)
             self.events.append(event)
             return status, payload, ms, error
 
@@ -215,6 +217,7 @@ class Classifier:
         self._request_seq += 1
         seq = self._request_seq
         budget = int(self.deadline.remaining() * 1000)
+        trace = {**(trace or {}), "input_digest": digest({"prompt": prompt, "max_tokens": int(max_tokens)})}
         started = time.monotonic()
         try:
             status, payload, ms, error = await self._request(RAW_PATH, body)

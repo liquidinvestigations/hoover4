@@ -250,6 +250,10 @@ pub struct BoardGraphInput {
     /// The goals that the person finished without an answer.
     #[serde(default)]
     pub not_answered: Vec<String>,
+    /// The findings that arrived after the board entered review or completion, which no
+    /// acceptance covered. They change no accepted answer.
+    #[serde(default)]
+    pub unreviewed: Vec<String>,
 }
 
 impl BoardGraphInput {
@@ -391,6 +395,11 @@ pub struct BoardSnapshot {
     /// them again.
     #[serde(default)]
     pub not_answered: Vec<String>,
+    /// The findings concluded after the board entered review or completion, which no later
+    /// acceptance covered (`fold.Folded.unreviewed` in the worker). They change no accepted
+    /// answer, and the board does not reopen for them.
+    #[serde(default)]
+    pub unreviewed: Vec<String>,
 }
 
 impl BoardSnapshot {
@@ -463,6 +472,7 @@ impl BoardSnapshot {
             answers_proposed: self.answers_proposed.clone(),
             answers_accepted: self.answers_accepted.clone(),
             not_answered: self.not_answered.clone(),
+            unreviewed: self.unreviewed.clone(),
         }
     }
 }
@@ -555,7 +565,7 @@ mod tests {
             facts: vec![fact("f1.1", "fact-raptor"), fact("f1.2", "f1.1")],
             intents: vec![], events: vec![], summary: String::new(), review_id: String::new(),
             review_reason: String::new(), limit_reached: false, reopen_grant: None, final_running: false,
-            not_answered: vec![],
+            not_answered: vec![], unreviewed: vec![],
         }
     }
 

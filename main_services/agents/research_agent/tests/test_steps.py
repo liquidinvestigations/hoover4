@@ -1115,3 +1115,40 @@ async def test_a_retryable_backend_error_reaches_the_worker(model, body, retryab
     result = await steps.run_tool_call(agent, tool_request("search_collections", {"query": "q"}))
     assert result["retryable"] is retryable
     assert result["error_class"] == (steps.TRANSPORT_FAILURE if retryable else "")
+
+
+# ------------------------------------------------------- on-demand page images
+
+CAPTURE = {"kind": "capture", "artifact_id": "cap-1", "label": "Page (https://p.example)",
+           "width": 1280, "height": 720}
+READ_SCHEMA = {"type": "object", "properties": {
+    "urls": {"type": "array", "items": {"type": "string"}},
+    "version": {"type": "string"}, "screenshot": {"type": "boolean"}}}
+
+
+def page_tool():
+    """A `read_page` stub that returns text and one screenshot reference."""
+    from research_agent import images
+
+    async def call(**arguments):
+        resource = EmbeddedResource(type="resource", resource=TextResourceContents(
+            uri=images.IMAGE_REFS_URI, mimeType="application/json", text=json.dumps([CAPTURE])))
+        return "## Page\nhttps://p.example\n\nThe plant closed in 2019.", [resource]
+
+    return StructuredTool(name="read_page", description="read page stub.", args_schema=READ_SCHEMA,
+                          coroutine=call, response_format="content_and_artifact")
+
+
+@pytest.mark.parametrize("mode, args, selected, kept", [
+    (None, {"urls": ["https://p.example"]}, [CAPTURE], []),
+    ("attach", {"urls": ["https://p.example"]}, [CAPTURE], []),
+    ("on_demand", {"urls": ["https://p.example"]}, [], [CAPTURE]),
+    ("on_demand", {"urls": ["https://p.example"], "version": "v1", "screenshot": True}, [CAPTURE], []),
+])
+async def test_a_page_read_sends_its_screenshot_by_the_pinned_setting(model, mode, args, selected, kept):
+    agent = FakeAgent([page_tool()], {"read_page"})
+    control = None if mode is None else {"system_prompt": "s", "model_images": mode}
+    result = await steps.run_tool_call(agent, tool_request("read_page", args, control=control))
+    assert result["status"] == "ok"
+    assert result["image_refs"] == selected and result["capture_refs"] == kept
+    assert ("screenshot of 1 page(s) is kept" in result["content"]) == bool(kept)

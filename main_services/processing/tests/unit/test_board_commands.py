@@ -438,3 +438,89 @@ def test_finishing_a_review_lists_the_goals_without_a_proposal(store):
     assert accepted.payload["unanswered"] == ["goal-02"]
     f = folded(store)
     assert (f.status, f.not_answered) == (m.COMPLETED, ["goal-02"])
+
+
+# ------------------------------------------- correction revisions, late findings
+
+
+def _rejected_answer(store):
+    """A slug board with one finding, its proposed answer, and a person's rejection of it."""
+    slugs(store)
+    create(store, goals=("Who led the delegation?",))
+    reason(store, 1, [intent("Find the delegation leader", 1, slug="delegation-leader")])
+    fact = explore(store, "intent-delegation-leader")
+    reason(store, 2, [], outcome="review",
+           proposals=[{"goal": "goal-01", "from": [fact], "statement": "Lee led it [D1]."}])
+    f = folded(store)
+    proposal = f.proposed["goal-01"]["proposal_id"]
+    store.submit("b1", "reject:1", cmd.ANSWER_DECISION, OWNER,
+                 {"goal": "goal-01", "proposal_id": proposal, "accept": False,
+                  "correction": "Use the 2001 minutes, not the press release."})
+    store.run_commands("b1")
+    [correction] = list(folded(store).corrections)
+    return correction
+
+
+def test_an_explicit_correction_allows_one_revised_intent_and_a_retry_adds_none(store):
+    correction = _rejected_answer(store)
+    revised = dict(intent("Find the delegation leader in the 2001 minutes", 1, slug="leader-minutes"),
+                   correction=correction)
+    reason(store, 3, [revised])
+    f = folded(store)
+    [new] = [i for i in f.intents.values() if i.correction]
+    assert new.correction == correction and f.corrections_used == {correction: new.intent_id}
+    # A retried result of the same assessment is one command: no second revision.
+    before = len(f.intents)
+    store.submit("b1", "reason_result:3", cmd.REASON_RESULT, "reason",
+                 {"reason_no": 3, "payload": {"outcome": "intents", "intents": [revised], "problems": [],
+                                              "situation": {"facts": 0, "hints": 0, "rejected": 0, "goals_added": 0}}})
+    store.run_commands("b1")
+    assert len(folded(store).intents) == before
+    # A later assessment that names the used correction for a repeat gets no intent.
+    reason(store, 4, [dict(intent("Find the delegation leader in the minutes of 2001", 1), correction=correction)])
+    f = folded(store)
+    assert len(f.intents) == before
+    [result] = [e for e in store.read_events("b1") if e.event_type == m.REASON_RESULT and e.subject == "4"]
+    assert any("allows no further revised intent" in p for p in result.payload["problems"])
+    assert any(p.startswith("dropped as a repeat") for p in result.payload["problems"])
+
+
+def test_a_correction_that_no_person_wrote_allows_nothing(store):
+    _rejected_answer(store)
+    reason(store, 3, [dict(intent("Find the delegation leader again", 1), correction="correction-invented")])
+    [result] = [e for e in store.read_events("b1") if e.event_type == m.REASON_RESULT and e.subject == "3"]
+    assert not [i for i in folded(store).intents.values() if i.correction]
+    assert any("correction-invented" in p for p in result.payload["problems"])
+
+
+def test_an_acceptance_records_its_coverage_and_a_late_finding_stays_unreviewed(store):
+    slugs(store)
+    create(store, goals=("Who led the delegation?",))
+    reason(store, 1, [intent("Find the delegation leader", 1, slug="leader"),
+                      intent("Find the travel dates", 2, slug="dates")])
+    fact = explore(store, "intent-leader")
+    store.submit("b1", "explore_started:intent-dates:1", cmd.START_EXPLORE, "dispatcher",
+                 {"intent_id": "intent-dates", "attempt": 1})
+    store.run_commands("b1")
+    reason(store, 2, [], outcome="partial",
+           proposals=[{"goal": "goal-01", "from": [fact], "statement": "Lee led it."}])
+    f = folded(store)
+    store.submit("b1", "accept:1", cmd.ANSWER_DECISION, OWNER,
+                 {"goal": "goal-01", "proposal_id": f.proposed["goal-01"]["proposal_id"], "accept": True})
+    store.run_commands("b1")
+    f = folded(store)
+    assert f.status == m.COMPLETED and f.unreviewed == []
+    [accepted] = [e for e in store.read_events("b1") if e.event_type == m.GOAL_ANSWER_ACCEPTED]
+    assert accepted.payload["covered_unreviewed"] == [] and accepted.payload["covers_seq"] > 0
+    # The running explore concludes after the acceptance, and is retried once.
+    for _ in range(2):
+        store.submit("b1", "explore_end:intent-dates:1", cmd.EXPLORE_END, "explore", {
+            "intent_id": "intent-dates", "attempt": 1, "end": m.EXPLORE_CONCLUDED,
+            "fact": {"kind": m.SOURCED, "text": "They travelled on 4 May 2001 [D1].", "slug": "dates"}})
+        store.run_commands("b1")
+    f = folded(store)
+    late = f.intents["intent-dates"].fact_id
+    assert f.unreviewed == [late]
+    assert f.status == m.COMPLETED and f.accepted["goal-01"]["statement"] == "Lee led it."
+    state, _intents = activities._state_rows(store.read_board("b1"), f)
+    assert json.loads(state["summary_json"])["unreviewed"] == [late]

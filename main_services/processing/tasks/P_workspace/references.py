@@ -65,6 +65,36 @@ def handles(text: str) -> list[tuple[str, int]]:
     return out
 
 
+CODE_HANDLE = re.compile(r"\[\s*[DW]\d+(?:\s*,\s*[DW]\d+)*\s*\]")
+
+
+def code_handles(text: str) -> list[str]:
+    """The handle-like brackets of `text` that a code block or an inline code span holds, in
+    text order. They are literal text, so the page shows no citation for them."""
+    out: list[str] = []
+    fenced = False
+    for line in text.splitlines():
+        if FENCE.match(line):
+            fenced = not fenced
+            continue
+        if fenced:
+            out.extend(CODE_HANDLE.findall(line))
+            continue
+        i = 0
+        while i < len(line):
+            if line[i] == "\\" and i + 1 < len(line):
+                i += 2
+                continue
+            if line[i] == "`":
+                end = line.find("`", i + 1)
+                if end != -1:
+                    out.extend(CODE_HANDLE.findall(line[i + 1:end]))
+                    i = end + 1
+                    continue
+            i += 1
+    return out
+
+
 def _source(reference: dict) -> str:
     if reference.get("url") and reference.get("version"):
         return f"web:{reference['url']}:{reference['version']}"
@@ -121,4 +151,4 @@ def check(name: str, text: str, entries: Iterable[dict]) -> tuple[list[dict], li
     return findings, resolved
 
 
-__all__ = ["check", "handles"]
+__all__ = ["check", "code_handles", "handles"]

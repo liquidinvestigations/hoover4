@@ -1,0 +1,113 @@
+{
+  "id": "chat-advisory",
+  "schema_version": 1,
+  "profile": "*",
+  "description": "The deterministic controls of chat-deterministic, and advisory classification for the policy comparison. The preparation classifier proposes skills. The progress classifier adds one advice note, which names the chat check as its origin, when the searches repeat or the results do not hold the task. A classifier answer declares no completion, ends no turn and sets no quota.",
+  "rules": [
+    {
+      "id": "prepare",
+      "hook": "turn_started",
+      "handler": "preparation",
+      "priority": 10,
+      "frequency": "turn",
+      "parameters": {
+        "classifier": true,
+        "report_skill": true,
+        "max_loads": 3,
+        "skills": {
+          "web_research": {
+            "threshold": 0.5
+          },
+          "browser_use": {
+            "threshold": 0.5
+          },
+          "emails": {
+            "threshold": 0.5
+          },
+          "spreadsheets": {
+            "threshold": 0.9
+          },
+          "folders_and_files": {
+            "threshold": 0.9
+          },
+          "passages": {
+            "threshold": 0.9
+          },
+          "entities": {
+            "threshold": 0.9
+          }
+        },
+        "source_skills": {
+          "web_research": [
+            "web",
+            "both"
+          ],
+          "browser_use": [
+            "browser",
+            "web",
+            "both"
+          ]
+        },
+        "source_note": false,
+        "names": false,
+        "requirements": false
+      }
+    },
+    {
+      "id": "result-skills",
+      "hook": "tool_batch_completed",
+      "handler": "result_skills",
+      "priority": 20,
+      "frequency": "visible_revision",
+      "parameters": {
+        "objects": {
+          "spreadsheets": [
+            "table"
+          ],
+          "emails": [
+            "email"
+          ]
+        },
+        "events": {
+          "citation": "first_read",
+          "report": [
+            "first_write",
+            "workspace_error"
+          ],
+          "call_arguments": "argument_error",
+          "document_ids": "unknown_document"
+        }
+      }
+    },
+    {
+      "id": "web-reads",
+      "hook": "tool_batch_completed",
+      "handler": "web_reads",
+      "priority": 30,
+      "frequency": "event",
+      "parameters": {
+        "mode": "rank",
+        "max_urls": 6,
+        "pool": 10
+      },
+      "requires_tools": [
+        "read_page"
+      ]
+    },
+    {
+      "id": "progress",
+      "hook": "tool_batch_completed",
+      "handler": "progress",
+      "priority": 60,
+      "frequency": "event",
+      "parameters": {
+        "units_per_level": 3,
+        "steps_after_strongest": 6,
+        "signals": true,
+        "completion": "none",
+        "advice": true,
+        "end_turn": true
+      }
+    }
+  ]
+}

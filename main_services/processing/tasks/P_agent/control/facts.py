@@ -21,6 +21,8 @@ from typing import Any, Iterable, Optional
 TABLE_EXTENSIONS = (".xlsx", ".xls", ".xlsm", ".ods", ".csv", ".tsv", ".sqlite", ".db")
 EMAIL_EXTENSIONS = (".eml", ".msg", ".mbox")
 READ_TOOLS = ("read_page", "read_documents", "read_more", "table_page", "table_cell")
+#: The workspace write and patch tools, with the names that older rows hold.
+MUTATION_TOOLS = ("write_file", "patch_file", "workspace_write", "workspace_patch")
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,11 @@ class ResultFact:
     todo_closed: int = 0
     todo_goal: str = ""
     verified_citations: int = 0
+    #: The error code of a failed result, such as `not_found` or `invalid_argument`.
+    error_code: str = ""
+    #: `(name, version, changed)` of a successful workspace write or patch. `changed` is
+    #: false for a result that names the unchanged current version.
+    file_version: tuple = ()
 
 
 def _parse(content: str) -> Any:
@@ -122,6 +129,11 @@ def result_facts(messages: Iterable) -> list[ResultFact]:
             todo_closed = int(resolved.group(1))
         continuation = isinstance(parsed, dict) and bool(parsed.get("more") or parsed.get("continuation"))
         skill = str(args.get("name") or "") if name == "read_skill" and not failed else ""
+        error_code = str(field("error") or "") if failed and isinstance(field("error"), str) else ""
+        file_version: tuple = ()
+        if name in MUTATION_TOOLS and not failed and isinstance(parsed, dict) and parsed.get("success") is True:
+            if isinstance(parsed.get("name"), str) and isinstance(parsed.get("version"), int):
+                file_version = (parsed["name"], parsed["version"], not parsed.get("unchanged"))
         out.append(ResultFact(
             call_id=str(m.tool_call_id or ""), name=name,
             ai_idx=ai.idx if ai is not None else -1, idx=m.idx,
@@ -133,7 +145,8 @@ def result_facts(messages: Iterable) -> list[ResultFact]:
             keyword_sources=tuple(sources), word_counts=tuple(field("word_counts", [])),
             repeated=refused or (isinstance(m.content, str) and m.content.startswith("This call repeats call ")),
             todo_closed=todo_closed, todo_goal=str(args.get("goal") or field("goal", "")),
-            verified_citations=sum(e.get("kind") == "citation" and e.get("status") == "ok" for e in evidence)))
+            verified_citations=sum(e.get("kind") == "citation" and e.get("status") == "ok" for e in evidence),
+            error_code=error_code[:80], file_version=file_version))
     return out
 
 
@@ -177,6 +190,58 @@ def fact_dict(fact: ResultFact) -> dict:
 
 def first(items: Iterable, default: Optional[Any] = None) -> Any:
     return next(iter(items), default)
+
+
+#: The task fields of a structured task, in the order that a classifier request shows them.
+TASK_FIELDS = ("objective", "corrections", "constraints", "deliverables", "allowed_sources",
+               "brief", "goals")
+
+
+def task_of(opening) -> dict:
+    """The structured task of a turn: each field with its `text` and its `source`.
+
+    A board explore turn stores its fields in the usage of the opening message (`task`),
+    built from the stored intent before the long brief is rendered. A chat turn has the
+    request of the person as its objective. A field holds original text only. A classifier
+    answer never becomes a field.
+    """
+    task = opening.usage.get("task") if opening is not None else None
+    if isinstance(task, dict) and task:
+        out = {}
+        for key, value in task.items():
+            if isinstance(value, dict) and isinstance(value.get("text"), str):
+                out[str(key)] = {"text": value["text"], "source": str(value.get("source") or "")}
+            elif isinstance(value, list):
+                items = [{"text": v["text"], "source": str(v.get("source") or "")}
+                         for v in value if isinstance(v, dict) and isinstance(v.get("text"), str)]
+                if items:
+                    out[str(key)] = items
+        if out:
+            return out
+    return {"objective": {"text": (opening.content or "") if opening is not None else "",
+                          "source": "user"}}
+
+
+def task_text(task: dict, limit: int) -> tuple[str, int]:
+    """The text of a structured task for a classifier request, and the characters left out.
+
+    The objective and the corrections come first, so a cut never removes the focused task.
+    A cut text ends with a line that names the count of omitted characters, so the request
+    never shows a cut task as complete."""
+    from collections.abc import Mapping
+
+    parts = []
+    for key in TASK_FIELDS + tuple(k for k in task if k not in TASK_FIELDS):
+        value = task.get(key)
+        if isinstance(value, Mapping):
+            parts.append(f"{key}: {value['text']}")
+        elif isinstance(value, (list, tuple)) and value:
+            parts.append(f"{key}:\n" + "\n".join(f"- {v['text']}" for v in value))
+    text = "\n\n".join(parts)
+    if len(text) <= limit:
+        return text, 0
+    omitted = len(text) - limit
+    return text[:limit] + f"\n[{omitted} characters of the task are omitted here]", omitted
 
 
 def render_steps(messages, limit: int = 5) -> str:

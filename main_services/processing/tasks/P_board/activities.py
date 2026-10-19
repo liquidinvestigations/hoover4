@@ -35,6 +35,7 @@ from tasks.P_board import model as m
 from tasks.P_board import commands as cmd
 from tasks.P_board.contracts import parse_reason
 from tasks.P_board.fold import (
+    available_corrections,
     canonical_events,
     earlier_objectives,
     fold,
@@ -236,6 +237,9 @@ def _state_rows(board, folded) -> tuple[dict, list[dict]]:
                                     for a in _answers(folded, folded.proposed)],
                "answers_accepted": _answers(folded, folded.accepted),
                "not_answered": folded.not_answered,
+               # Findings concluded after the board entered review or completion, which no
+               # acceptance covered (`fold.Folded.unreviewed`).
+               "unreviewed": list(folded.unreviewed),
                "max_explores": folded.max_explores,
                "explore_steps": folded.explore_steps,
                "explore_limit": m.EXPLORE_LIMIT,
@@ -551,12 +555,15 @@ def board_reason(task: ReasonTask) -> str:
     if error:
         payload = {"outcome": m.MODEL_FAILURE, "error": error, "raw": "", "problems": []}
     else:
+        texts = {f.fact_id: f.text for f in facts}
         payload = parse_reason(text, {f.fact_id for f in live},
                                {f.fact_id for f in live if f.kind == m.SOURCED},
                                earlier_objectives(folded), idle, folded.open_goals,
                                {f.fact_id for f in live if f.kind == m.NOT_FOUND}, goal_texts(facts),
                                set(folded.accepted),
-                               {key for key, _q in open_question_keys(folded, facts)}, task.final)
+                               {key for key, _q in open_question_keys(folded, facts)}, task.final,
+                               corrections={c: texts.get(c, "") for c in available_corrections(folded)},
+                               fact_texts=texts)
     payload.update(situation=folded.situation(), model=model, latency_ms=latency_ms,
                    semantics=m.REASON_SEMANTICS,
                    prompt_tokens=int(usage.get("prompt_tokens") or 0),
@@ -648,7 +655,34 @@ def _next_seq(owner: str, session_id: str) -> int:
     return int(top) + 1 if count else 1
 
 
-def _write_turn_rows(owner: str, session_id: str, seq: int, text: str, turn_uuid: str) -> None:
+def explore_task(intent, facts, folded, collections: list[str], web: bool) -> dict:
+    """The structured task of an explore turn, from the stored intent and board facts.
+
+    Each field keeps its original text and names its source, so the chat controls read the
+    focused objective apart from the long brief (`P_agent.control.facts.task_of`). No
+    classifier answer enters a field."""
+    texts = {f.fact_id: f.text for f in facts}
+    task: dict = {"objective": {"text": intent.objective, "source": f"intent:{intent.intent_id}"}}
+    named = [c for c in [getattr(intent, "correction", "")] + list(intent.from_facts)
+             if c in folded.corrections]
+    corrections = [{"text": texts[c], "source": f"correction:{c}"}
+                   for c in dict.fromkeys(named) if texts.get(c)]
+    if corrections:
+        task["corrections"] = corrections
+    task["allowed_sources"] = {"text": "collections: " + ", ".join(collections)
+                               + ("; the web is allowed" if web else "; the web is not allowed"),
+                               "source": "board"}
+    if intent.brief:
+        task["brief"] = {"text": intent.brief, "source": f"intent:{intent.intent_id}"}
+    goals = [{"text": texts[g], "source": g} for g in folded.goal_ids
+             if g in texts and g not in folded.accepted]
+    if goals:
+        task["goals"] = goals
+    return task
+
+
+def _write_turn_rows(owner: str, session_id: str, seq: int, text: str, turn_uuid: str,
+                     usage_json: str = "") -> None:
     from database import boards
     from database.clickhouse import get_global_client, insert_durable
 
@@ -656,9 +690,10 @@ def _write_turn_rows(owner: str, session_id: str, seq: int, text: str, turn_uuid
     with get_global_client() as client:
         insert_durable(client, "chat_messages",
                        [[session_id, owner, seq, "user", text, now.replace(microsecond=0),
-                         now.replace(microsecond=0), now, turn_uuid]],
+                         now.replace(microsecond=0), now, turn_uuid, usage_json]],
                        column_names=["session_id", "username", "seq", "role", "content",
-                                     "created_at", "updated_at", "created_ms", "message_uuid"])
+                                     "created_at", "updated_at", "created_ms", "message_uuid",
+                                     "usage_json"])
         insert_durable(client, "chat_message_stream",
                        [[session_id, owner, seq + 1, "assistant", "", 0, now, turn_uuid]],
                        column_names=["session_id", "username", "seq", "role", "content",
@@ -691,11 +726,13 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
     seq = _existing_user_seq(board.owner, session_id, turn_uuid)
     if seq is None:
         seq = _next_seq(board.owner, session_id)
+        web = effective_internet_tools(bool(board.internet_tools))
         text = render_brief(board, facts, boards.read_citations(board.board_id),
                             folded.hints, intent, collections, folded.explore_steps,
-                            boards.read_labels([board.board_id]),
-                            effective_internet_tools(bool(board.internet_tools)))
-        _write_turn_rows(board.owner, session_id, seq, text, turn_uuid)
+                            boards.read_labels([board.board_id]), web)
+        task = explore_task(intent, facts, folded, collections, web)
+        _write_turn_rows(board.owner, session_id, seq, text, turn_uuid,
+                         json.dumps({"task": task}, ensure_ascii=False))
     steps = folded.explore_steps
     run_input = AgentRunInput(
         run_id=str(uuid.uuid5(BOARD_NAMESPACE, turn_uuid)), username=board.owner,
@@ -946,6 +983,7 @@ def convert_explore_report(req: TurnRequest) -> str:
                          len(response.text), kind="board_convert")
         _write_conversion_row(board.owner, session_id, turn_uuid, args, report, model)
     kind, citations, problems = conversion.resolve(args, version.citations)
+    problems += conversion.number_problems(args["fact"], version.content)
     if not boards.board_is_live(board.board_id):
         return "skipped"
     fact = {"kind": kind, "claimed_kind": args["kind"], "text": args["fact"],

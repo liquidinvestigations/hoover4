@@ -27,6 +27,18 @@ it. So a caller that lost access gets no cached image.
 **A model that takes no images.** `supports_vision` reads `llm_models.supports_vision`.
 For a model with 0, `hide` removes the references and adds `NO_VISION_TEXT` to the result.
 
+**Selection.** The pinned control definition of the turn gives `model_images`. With
+`attach`, the default and the behavior of a history without the setting, every reference of
+a result goes to the model. With `on_demand`, `select` keeps the screenshot of a `read_page`
+result out of the model input unless the call asked for it (`screenshot` true). The result
+then names the kept screenshots (`CAPTURES_TEXT`), and the worker stores them as
+`capture_refs`, apart from `image_refs`. A person still opens every capture from the tool
+card. Interactive browser tools and document images keep their images.
+
+**Duplicates.** One request sends each source identity once. A later reference to the same
+capture or document gives a label line in place of a second image (`parts_for`), and the
+estimate counts it once (`list_tokens`).
+
 **Cost.** `ref_tokens` estimates the tokens of one image from its area after the size
 limit: `ceil(w / 32) * ceil(h / 32)` and `IMAGE_FRAME_TOKENS`. Request sizing, the
 compaction trigger, the retained-history selection and the summary request use it.
@@ -70,6 +82,14 @@ VISION_TTL_SECONDS = 300
 
 NO_VISION_TEXT = "Image not shown: the model of this chat takes no images."
 
+#: The values of the `model_images` setting of a pinned control definition.
+ATTACH, ON_DEMAND = "attach", "on_demand"
+#: The tool whose page screenshot a call can ask for.
+PAGE_READ_TOOL = "read_page"
+#: The line after a page read whose screenshots the model did not receive.
+CAPTURES_TEXT = ("[A screenshot of {count} page(s) is kept and was not sent to you. To view "
+                 "it, call read_page with the same url, its version and screenshot true.]")
+
 
 class ImageError(ValueError):
     """An image that cannot be decoded. The message is the reason that the model reads."""
@@ -101,6 +121,19 @@ def image_refs_of(artifact: Any) -> Optional[List[Dict[str, Any]]]:
         refs = [ref for ref in value if isinstance(ref, dict)] if isinstance(value, list) else []
         return refs or None
     return None
+
+
+def select(name: str, args: Any, refs: Sequence[Dict[str, Any]],
+           mode: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """`(selected, kept)`: the references that the model receives with a result, and the
+    page screenshots that stay available without being sent. See the module text."""
+    refs = list(refs or [])
+    if mode != ON_DEMAND or name != PAGE_READ_TOOL:
+        return refs, []
+    if isinstance(args, dict) and args.get("screenshot") is True:
+        return refs, []
+    kept = [r for r in refs if r.get("kind") == "capture"]
+    return [r for r in refs if r.get("kind") != "capture"], kept
 
 
 def describe(ref: Dict[str, Any]) -> str:
@@ -141,7 +174,20 @@ def message_tokens(message: RunMessage) -> int:
 
 
 def list_tokens(messages: Sequence[RunMessage]) -> int:
-    return sum(message_tokens(m) for m in messages)
+    """The estimated tokens of the images of `messages`, each source identity once."""
+    seen = set()
+    total = 0
+    for m in messages:
+        if m.role != "tool":
+            continue
+        for ref in m.image_refs:
+            key = ref_key(ref)
+            if key is not None and key in seen:
+                continue
+            if key is not None:
+                seen.add(key)
+            total += ref_tokens(ref)
+    return total
 
 
 def hide(messages: Sequence[RunMessage]) -> List[RunMessage]:
@@ -351,11 +397,23 @@ def parts_for(messages: Sequence[RunMessage], *, username: str,
               collections: Sequence[str]) -> Dict[int, List[Dict[str, Any]]]:
     """The content parts of each tool message with images, by its position in `messages`."""
     out: Dict[int, List[Dict[str, Any]]] = {}
+    seen = set()
     for index, m in enumerate(messages):
         if m.role != "tool" or not m.image_refs:
             continue
-        loaded = load_all(m.image_refs, username=username, collections=collections)
-        out[index] = parts(m.content, m.image_refs, loaded)
+        fresh, repeated = [], []
+        for ref in m.image_refs:
+            key = ref_key(ref)
+            if key is not None and key in seen:
+                repeated.append(ref)
+                continue
+            if key is not None:
+                seen.add(key)
+            fresh.append(ref)
+        loaded = load_all(fresh, username=username, collections=collections)
+        items = parts(m.content, fresh, loaded)
+        items.extend({"type": "text", "text": f"Image shown above: {describe(ref)}"} for ref in repeated)
+        out[index] = items
     return out
 
 
@@ -363,5 +421,5 @@ __all__ = [
     "CACHE_BYTES", "IMAGE_FRAME_TOKENS", "IMAGE_REFS_URI", "ImageError", "Loaded", "MAX_BYTES",
     "MAX_SIDE", "NO_VISION_TEXT", "describe", "hide", "image_refs_of", "list_tokens", "load",
     "load_all", "message_tokens", "parts", "parts_for", "prepare", "ref_key", "ref_tokens",
-    "supports_vision",
+    "select", "supports_vision", "ATTACH", "ON_DEMAND", "CAPTURES_TEXT",
 ]

@@ -151,7 +151,8 @@ class Requirement:
 class PolicyContext:
     """A read-only view of one turn for one event.
 
-    `request` contains the original user message. `results` contains the current thread's
+    `request` contains the original user message, and `task` its structured fields. A
+    classifier request shows `task` first (`facts.task_text`). `results` contains the current thread's
     result facts, from `facts.result_facts`. `batch` contains this event's result facts.
     `turn` contains earlier decision facts and bounded prior conversation context.
     Handlers read large texts through `PolicyServices` references.
@@ -175,6 +176,9 @@ class PolicyContext:
     recent_steps: str = ""
     #: `chat`, or `board` for an explore turn of an investigation board.
     run_kind: str = "chat"
+    #: The structured task of the turn (`facts.task_of`): the focused objective, the
+    #: corrections and the other fields, each with its original text and its source.
+    task: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
 
 
 class PolicyServices(Protocol):

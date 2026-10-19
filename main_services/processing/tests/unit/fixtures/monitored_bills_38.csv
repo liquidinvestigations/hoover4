@@ -1,0 +1,39 @@
+bill_id,state,title,status
+SYN-001,MO,Synthetic bill 1,in committee
+SYN-002,GA,Synthetic bill 2,passed
+SYN-003,GA,Synthetic bill 3,introduced
+SYN-004,GA,Synthetic bill 4,in committee
+SYN-005,MO,Synthetic bill 5,passed
+SYN-006,WV,Synthetic bill 6,introduced
+SYN-007,GA,Synthetic bill 7,in committee
+SYN-008,MO,Synthetic bill 8,passed
+SYN-009,GA,Synthetic bill 9,introduced
+SYN-010,GA,Synthetic bill 10,in committee
+SYN-011,MO,Synthetic bill 11,passed
+SYN-012,SC,Synthetic bill 12,introduced
+SYN-013,MO,Synthetic bill 13,in committee
+SYN-014,GA,Synthetic bill 14,passed
+SYN-015,SC,Synthetic bill 15,introduced
+SYN-016,TN,Synthetic bill 16,in committee
+SYN-017,GA,Synthetic bill 17,passed
+SYN-018,TN,Synthetic bill 18,introduced
+SYN-019,MO,Synthetic bill 19,in committee
+SYN-020,SC,Synthetic bill 20,passed
+SYN-021,GA,Synthetic bill 21,introduced
+SYN-022,GA,Synthetic bill 22,in committee
+SYN-023,TN,Synthetic bill 23,passed
+SYN-024,KY,Synthetic bill 24,introduced
+SYN-025,GA,Synthetic bill 25,in committee
+SYN-026,TN,Synthetic bill 26,passed
+SYN-027,TN,Synthetic bill 27,introduced
+SYN-028,MO,Synthetic bill 28,in committee
+SYN-029,NC,Synthetic bill 29,passed
+SYN-030,SC,Synthetic bill 30,introduced
+SYN-031,TN,Synthetic bill 31,in committee
+SYN-032,MO,Synthetic bill 32,passed
+SYN-033,MO,Synthetic bill 33,introduced
+SYN-034,GA,Synthetic bill 34,in committee
+SYN-035,NC,Synthetic bill 35,passed
+SYN-036,TN,Synthetic bill 36,introduced
+SYN-037,GA,Synthetic bill 37,in committee
+SYN-038,SC,Synthetic bill 38,passed

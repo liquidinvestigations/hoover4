@@ -18,14 +18,15 @@
 | Workspace | Open the workspace pane with the files that the assistant wrote in the conversation. | It is in the title row. The pane is read-only. Its file and version are in the address. |
 | Workspace file | Show the current version of the file in the workspace pane. | The list shows each file with its current version and length. |
 | Open in the workspace | Open the pinned report version of an answer in the workspace pane. | It is in the line above an answer that shows a report. |
+| Delivered file | Open one delivered file version of the turn in the workspace pane. | The Files line under an answer lists each file of the turn when the turn delivered two or more. A stopped, failed or cancelled turn lists its files too. |
 | Close the workspace | Close the workspace pane. | The conversation stays open. |
 | Follow-up suggestion | Fill and focus the composer with the selected prompt. | The user edits or sends it explicitly. |
 | Send | Submit the composer text. | Empty text and a closed chat gate disable Send. The navigation arrow button includes a Send tooltip. |
 | Tool group | Show or hide the tools, instructions, superseded answers, and the reasoning of the round. | Completed groups start closed. |
 | Todo call card | Expand the stored arguments, the result or failure, and the list after the call. | Every todo call has one card inside its group. |
 | Reasoning | Show or hide the model's reasoning for the answer. | It is inside the group before the answer, or beside an answer that has no group. |
-| Tool images | Show each document image and each `read_page` screenshot that the model received after a tool result. | The previews are under the tool card. A browser tool shows its screenshot on its own card. |
-| Narration | Show the model's text before a tool call, in gray above the card of that call. | A closed group shows its newest narration above its line. The reasoning view leaves the narration out. A board explore chat shows it too. |
+| Tool images | Show each document image and each `read_page` screenshot of a tool result. | The previews are under the tool card. A browser tool shows its screenshot on its own card. With the `on_demand` image setting, a page screenshot shows to the person and the model does not receive it. |
+| Narration | Show the model's text before a tool call, in gray above the card of that call. | A closed group shows its newest narration above its line. The reasoning view leaves the narration out. A board explore chat shows it too. The answer holds the final reply only. |
 | Show / Hide | Show the full text of a user message, or cut it to three lines again. | The toggle is in the top-right corner of the message and shows only when the message is longer than three lines. |
 | Internet tools | Show the internet tools option only when `internet_tools_enabled` is true. Show it in the composer before locking and beside the title afterwards. | The checkbox is disabled after the first turn. Its tooltip is "Start a new chat to change this setting." |
 
@@ -54,6 +55,7 @@ A replaced task stays struck through directly above the task that replaces it.
 A failed, unchanged, or unstored todo call shows no new summary.
 An answer whose turn wrote a workspace file shows the last file version of the turn as its text, under a line with the file name and the version. The chat text of the answer follows it in a muted colour. Its citation handles are chips that scroll to the source cards of the report, and it shows no second set of cards.
 An answer whose report version cannot be read shows its chat text and says so.
+The Files line names each delivered file as "name, version N", in the order of the first delivery, with the last version of each file.
 The board writes a "Submitted by the board" finding card after the answer of a board explore turn.
 An active turn shows one line with a turning icon and the text "The bot is working...".
 A queued turn adds the slot that it waits for under that line.

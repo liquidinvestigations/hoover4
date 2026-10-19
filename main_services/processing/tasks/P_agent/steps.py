@@ -358,12 +358,16 @@ def _chat_row(row):
 
 def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, status: str,
                        measure: Any = None, error_class: str = "", doc_refs: Any = None,
-                       shared_from: str = "", image_refs: Any = None) -> None:
+                       shared_from: str = "", image_refs: Any = None,
+                       capture_refs: Any = None) -> None:
     """The `tool` message of one call, and for a run that writes the transcript, its
     finished tool row at the call's seq and the final stream row. `doc_refs` is the list
     that the `/tool_call` response carried beside the result, or None. `image_refs` names
-    the images of the result. The usage of the message and of the tool row keeps them, so
-    each later step request sends the images again and the tool card shows them.
+    the images that the model receives with the result. The usage of the message and of the
+    tool row keeps them, so each later step request sends the images again and the tool
+    card shows them. `capture_refs` names the page screenshots that the result made
+    available and that the model did not receive (`model_images` `on_demand`). The usage
+    keeps them apart, so no request, estimate or summary reads them as model input.
 
     The usage of the message holds the typed evidence of the result (`reports.normalize`)
     at every run depth. The evidence is metadata: the model reads the content only. A call
@@ -384,6 +388,8 @@ def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, sta
         usage["shared_from"] = shared_from
     if image_refs:
         usage["image_refs"] = image_refs
+    if capture_refs:
+        usage["capture_refs"] = capture_refs
     agent_runs.write_message(
         row.username, row.session_id, row.thread_id, row.run_id,
         agent_runs.RunMessageRow(
@@ -396,6 +402,8 @@ def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, sta
             ("origin", ai.usage.get("origin") or "model"), ("shared_from", shared_from)) if v}
     if image_refs:
         row_usage["image_refs"] = image_refs
+    if capture_refs:
+        row_usage["capture_refs"] = capture_refs
     origin = {"usage_json": json.dumps(row_usage)} if row_usage else {}
     _chat_row(row)(call.seq, "tool", **tool_row_fields(call.name, entry.get("args"), content, doc_refs),
                    **origin)
@@ -404,18 +412,22 @@ def _write_tool_result(row, turn_uuid: str, ai, call: CallRef, content: str, sta
 
 def pinned_control(messages) -> Optional[dict]:
     """The pinned assets of the turn for a step request, from the opening row: the system
-    prompt, the text of each listed skill, and their revision. None for a turn that has none,
-    and the agent service then renders its current defaults."""
+    prompt, the text of each listed skill, their revision, and the image setting of the
+    pinned definition (`model_images`, `attach` when the definition has none). None for a
+    turn that has none, and the agent service then renders its current defaults and
+    attaches every image."""
     if not messages:
         return None
     control = messages[0].usage.get("control") if messages[0].role == "human" else None
     assets = (control or {}).get("assets") if isinstance(control, dict) else None
     if not isinstance(assets, dict) or not assets.get("system_prompt"):
         return None
+    definition = control.get("definition") if isinstance(control.get("definition"), dict) else {}
     return {"revision": str(control.get("revision") or assets.get("revision") or ""),
             "system_prompt": assets["system_prompt"],
             "skills": {name: (skill or {}).get("text") or ""
-                       for name, skill in (assets.get("skills") or {}).items()}}
+                       for name, skill in (assets.get("skills") or {}).items()},
+            "model_images": str(definition.get("model_images") or "attach")}
 
 
 def _read_thread(row):
@@ -572,20 +584,22 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
     `model_steps` at this step, and writes the answer row again at the same seq. The
     result's `next_idx` is the index after the last row of the reply.
 
-    The answer row holds the text of the reply and the plan prose of the round, and never
-    the reasoning. When the run wrote or changed a workspace file, the metadata names the
-    last such version as the report of the turn (`P_workspace.selection`), and the page
-    shows that version as the response.
+    The answer row holds the text of the final reply only. The plan prose and the
+    narration of the round go to its reasoning, with the reasoning of every reply, so the
+    narration stays beside the tool activity and outside the answer. When the run wrote or
+    changed workspace files, the metadata lists every delivered file version and names the
+    last one as the report of the turn (`P_workspace.selection.manifest`). The page shows
+    that version as the response and links the other files.
     """
     from database import agent_runs
     from tasks.P_agent import citations, reports
     from tasks.P_agent.stream_writer import context_window_for, round_view, starts_round
-    from tasks.P_workspace.selection import selected_report
+    from tasks.P_workspace.selection import delivered_reports, selected_report
 
     first = row.next_seq if seq0 is None else seq0
     plan_prose, round_reasoning, _ = round_view(earlier)
-    answer = "\n\n".join(p for p in (plan_prose, (ai.content or "").strip()) if p)
-    reasoning = "\n\n".join(p for p in (round_reasoning, (ai.reasoning or "").strip()) if p)
+    answer = (ai.content or "").strip()
+    reasoning = "\n\n".join(p for p in (plan_prose, round_reasoning, (ai.reasoning or "").strip()) if p)
     start = 0
     for i, m in enumerate(earlier):
         if starts_round(m):
@@ -594,8 +608,11 @@ def _write_answer(row, params: ModelStepParams, earlier, ai, writer,
                 and m.usage.get("origin") != "policy"] + [ai]
     entries = reports.session_citation_entries(row.username, row.session_id)
     report = selected_report(earlier)
+    delivered = [{"name": r["name"], "version": int(r["version"]), "citations": list(r["citations"])}
+                 for r in delivered_reports(earlier)]
     metadata = citations.answer_metadata(answer, entries,
-                                         effective_internet_tools(params.internet_tools), report)
+                                         effective_internet_tools(params.internet_tools), report,
+                                         delivered)
     if any(m.usage.get("summarised") for m in round_ai):
         answer = answer + SUMMARY_NOTICE
     ai = replace(ai, usage_json=json.dumps({**ai.usage, **metadata}))
@@ -768,8 +785,10 @@ def model_step(params: ModelStepParams) -> ModelStepResult:
             "earlier": earlier_turns,
             "control": pinned_control(messages),
         }
-        stream = ModelStepWriter(row, params.turn_uuid, row.next_seq, next_idx, plan_prose,
-                                 round_reasoning)
+        # The plan prose of the round is narration: the partial row shows it with the
+        # reasoning, as the answer row does (`_write_answer`).
+        stream = ModelStepWriter(row, params.turn_uuid, row.next_seq, next_idx, "",
+                                 "\n\n".join(p for p in (plan_prose, round_reasoning) if p))
         writer.start_keepalive()
         try:
             stream.start()
@@ -950,7 +969,8 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
                 raise ToolTransportFailure(f"{call.name}: {content[:300]}")
             _write_tool_result(row, params.turn_uuid, ai, call, content, status,
                                result.get("measure"), error_class, result.get("doc_refs"),
-                               image_refs=result.get("image_refs"))
+                               image_refs=result.get("image_refs"),
+                               capture_refs=result.get("capture_refs"))
             # A result with an error code only in its text, such as not_found, is a result.
             event.ok = status != "error"
             event.error_class = error_class
@@ -1085,13 +1105,13 @@ def write_incomplete(params: IncompleteParams) -> int:
 
     The result is `thread_facts.incomplete_text`: the reason, the newest text that the
     model wrote in the thread, and the documents and searches of the stored results. The
-    result is the assistant row at `row.next_seq`. When the run wrote or changed a workspace
-    file, the row metadata names the last such version as the report of the turn, as an
-    answer row does. The run row gets the result and `end_reason`. A retry after the run row
+    result is the assistant row at `row.next_seq`. When the run wrote or changed workspace
+    files, the row metadata lists them and names the last one as the report of the turn, as
+    an answer row does (`P_workspace.selection.manifest`). The run row gets the result and `end_reason`. A retry after the run row
     write finds `end_reason` and writes nothing. Returns the next free seq.
     """
     from database import agent_runs
-    from tasks.P_workspace.selection import selected_report
+    from tasks.P_workspace.selection import manifest
 
     row = _read_row(params)
     if agent_runs.is_terminal(row) or row.end_reason == params.reason:
@@ -1105,8 +1125,7 @@ def write_incomplete(params: IncompleteParams) -> int:
     if True:
         last = _last_ai(messages)
         model = str(last.usage.get("model") or "") if last is not None else ""
-        report = selected_report(messages)
-        metadata = {"report": {"name": report["name"], "version": report["version"]}} if report else {}
+        metadata = manifest(messages)
         _chat_row(row)(seq, "assistant", content=text, model=model,
                        usage_json=json.dumps(metadata) if metadata else "")
         _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid,

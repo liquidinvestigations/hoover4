@@ -53,6 +53,10 @@ Cache entries belong to one caller and agent run.
 A global character limit bounds the retained text across callers.
 The cache also preserves the selected route and link mode.
 PDF reads retain the page and byte limits defined in `read_page.py`.
+One PDF read extracts at most 50 pages, from the `page_start` argument.
+The result, a find result and the stored capture name the extracted pages and the page count.
+The cache keeps each page window apart.
+A read of a kept text returns its screenshot only when the call sets `screenshot` true.
 Captures use the attempt's explicit tab and retain caller and run ownership.
 The shared artifact writer applies screenshot and snapshot size limits.
 

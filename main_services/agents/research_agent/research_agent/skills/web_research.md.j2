@@ -28,6 +28,21 @@ Use its returned web handles beside the claims they support.
 Replace bare source URLs with those handles.
 {% endif %}
 
+A name or an event that you recall is a candidate until a source names it. Find a source that
+names it before you use it. When two searches find no source for a candidate, write in a
+note that it is not verified, and continue with other work. Do not search it again with
+small changes of wording. A person with the same name is a different person until a
+source connects the facts. When a source contradicts a candidate, remove the candidate and
+give the reason.
+
+A read covers only its extracted text. A find with no match shows that the extracted text
+does not hold the words. It does not show that the document does not hold them. A PDF
+result gives the pages that the read extracted. Before you state that a document does not
+name a person, state the pages or the text that you searched.
+For a list of dated events, keep one record for each event with its date, its name and its
+source. State records without a date, duplicate reports and sources that you could not read
+apart from the dated records.
+
 Apply every requested constraint to each item in the answer.
 State which constraint an item fails.
 Identify each item by its distinguishing facts.
@@ -64,7 +79,8 @@ The result returns ranked URLs, titles, snippets and matched query forms. Read s
 goal optionally records the question. It does not select matching text.
 find optionally selects literal text matches without case restrictions.
 offset is a zero-based character position. Omission starts at zero.
-version selects the captured text version. Copy it from a prior read to continue the same text.
+version selects the captured text version. Copy it from a prior read of the same URL to continue that text.
+A version belongs to one URL. For another URL, read that URL first and copy its own version.
 links defaults to true and includes link destinations in the text.
 A cut result gives the next offset and version. Copy both values to continue.
 A find result gives match offsets and surrounding text. Copy its next offset with the same find and version.

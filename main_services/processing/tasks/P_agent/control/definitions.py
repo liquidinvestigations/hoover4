@@ -8,6 +8,11 @@ the configured control directory (`registry.CONTROL_DIR_ENV`):
      "rules": [{"id": "prepare", "hook": "turn_started", "handler": "preparation",
                 "priority": 10, "frequency": "turn", "parameters": {...}}]}
 
+A definition can set `model_images`: `attach`, the default, sends every image of a tool
+result to the model, and `on_demand` sends a page screenshot only to a read that asks for it
+(`steps.pinned_control`, the agent's `images.select`). The digest of a definition includes
+the value only when it is not the default, so an older definition keeps its revision.
+
 `active.json` maps a profile name to a definition id. The configured directory's
 `active.json` wins over the built-in one, key by key. `resolve` validates the active
 definition of a profile and returns it with its revision: the digest of the definition and
@@ -31,6 +36,10 @@ from tasks.P_agent.control.model import (
 from tasks.P_agent.control.registry import ControlConfigError
 
 SCHEMA_VERSION = 1
+
+#: The values of `model_images`. The first one is the default and the behavior of a run
+#: whose pinned definition has no value.
+MODEL_IMAGES = ("attach", "on_demand")
 
 #: The limits of a definition and their defaults. The preparation deadline is 15 seconds.
 #: `repair_rounds`, `answer_seconds`, `discovery_notes`, `paragraph_repair` and `edit_rounds`
@@ -58,6 +67,7 @@ class Definition:
     limits: Mapping[str, float]
     runtime_identity: str
     source: str
+    model_images: str = MODEL_IMAGES[0]
 
     def rules_for(self, hook: str) -> list[Rule]:
         """The rules of one hook, by priority and then by id."""
@@ -70,6 +80,7 @@ class Definition:
             "id": self.id, "revision": self.revision, "schema_version": self.schema_version,
             "profile": self.profile, "limits": dict(self.limits),
             "runtime_identity": self.runtime_identity, "source": self.source,
+            "model_images": self.model_images,
             "rules": [{"id": r.id, "hook": r.hook, "priority": r.priority,
                        "frequency": r.frequency, "revision": r.revision,
                        "requires_tools": list(r.requires_tools),
@@ -162,13 +173,18 @@ def validate(raw: Mapping[str, Any], source: str = "") -> Definition:
         revision = digest([[ref.name, ref.api_version, ref.code_digest], plain(parameters),
                            hook, frequency, list(required)])
         rules.append(Rule(rid, hook, ref, parameters, priority, frequency, revision, tuple(required)))
+    images = raw.get("model_images", MODEL_IMAGES[0])
+    if images not in MODEL_IMAGES:
+        raise ControlConfigError(f"{where}: model_images must be one of {', '.join(MODEL_IMAGES)}")
     body = {"id": raw.get("id"), "schema_version": SCHEMA_VERSION,
             "profile": raw.get("profile") or "*", "limits": limits,
             "rules": [[r.id, r.revision, r.priority] for r in rules]}
+    if images != MODEL_IMAGES[0]:
+        body["model_images"] = images
     return Definition(
         id=str(raw.get("id")), revision=digest(body), schema_version=SCHEMA_VERSION,
         profile=str(raw.get("profile") or "*"), rules=tuple(rules), limits=freeze(limits),
-        runtime_identity=registry.runtime_identity(), source=source)
+        runtime_identity=registry.runtime_identity(), source=source, model_images=images)
 
 
 def resolve(profile: str) -> Definition:
@@ -203,7 +219,8 @@ def pinned(record: Mapping[str, Any]) -> Definition:
         schema_version=int(record.get("schema_version") or SCHEMA_VERSION),
         profile=record.get("profile", "*"), rules=tuple(rules),
         limits=freeze({**DEFAULT_LIMITS, **(record.get("limits") or {})}),
-        runtime_identity=record.get("runtime_identity", ""), source=record.get("source", ""))
+        runtime_identity=record.get("runtime_identity", ""), source=record.get("source", ""),
+        model_images=str(record.get("model_images") or MODEL_IMAGES[0]))
 
 
 def stale_rules(definition: Definition) -> list[str]:

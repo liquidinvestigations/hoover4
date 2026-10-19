@@ -57,16 +57,19 @@ def store_read(owner: str, session: str, page) -> str:
     """Store successful source text before returning its preview identifier."""
     if not owner or not session or page.error or page.blocked or not page.full_text:
         return ""
+    extent = dict(getattr(page, "extent", None) or {})
     body = canonical_json({"url": page.url, "final_url": page.final_url,
                            "title": page.title, "version": page.version,
-                           "markdown": page.full_text}).encode("utf-8")
+                           "markdown": page.full_text,
+                           **({"extent": extent} if extent else {})}).encode("utf-8")
     if len(body) > MAX_BODY_BYTES:
         raise ValueError("The captured page exceeds the citation storage limit.")
     artifact_id = _id(owner, session, KIND_PAGE_TEXT, page.url, page.version)
     artifacts.write_required(
         artifacts.ArtifactRequest(username=owner, session_id=session, kind=KIND_PAGE_TEXT,
                                   tool_name="read_page", url=page.url, title=page.title,
-                                  detail=canonical_json({"version": page.version, "read_ns": time.time_ns()})),
+                                  detail=canonical_json({"version": page.version, "read_ns": time.time_ns(),
+                                                         **({"extent": extent} if extent else {})})),
         artifact_id, artifact_id, body, "application/json",
     )
     return artifact_id
@@ -230,6 +233,10 @@ def _cite(owner: str, session: str, pages: list) -> dict:
                    "artifact_id": row["artifact_id"], "terms": terms,
                    "quotes": quotes, "spans": spans, "quote_verified": True,
                    "why": str(item.get("why") or "")[:300]}
+            if isinstance(source.get("extent"), dict) and source["extent"]:
+                # The cited text is one extracted window of a PDF. Its extent stays with
+                # the citation, so a report can state the limit of the search.
+                ref["extent"] = source["extent"]
             artifact_id = _id(owner, session, KIND_PAGE_CITATION, *key)
             artifacts.write_required(
                 artifacts.ArtifactRequest(username=owner, session_id=session,

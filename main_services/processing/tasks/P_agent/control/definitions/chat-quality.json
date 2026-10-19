@@ -2,7 +2,7 @@
   "id": "chat-quality",
   "schema_version": 1,
   "profile": "*",
-  "description": "chat-default for a model that searches, reads and cites without guidance notes. It keeps the skill loads, the web read ranking and the answer review. It has no progress, discovery or capture rule, and a paragraph without a label causes no repair round. A claim that the answer keeps without a source gets one edit round, which edits the answer and does not rewrite it.",
+  "description": "chat-default without the progress, discovery and capture rules. It keeps the preparation, the result-triggered skills and the ranked web reads. The limits repair_rounds, answer_seconds, discovery_notes, paragraph_repair and edit_rounds are kept for validation, and no code reads them.",
   "limits": {
     "repair_rounds": 2,
     "preparation_seconds": 15,
@@ -65,7 +65,7 @@
           "sort": "Does the request ask for the items in a specific order?",
           "compare": "Does the request ask to compare sources, drafts or accounts?"
         },
-        "requirements": true
+        "requirements": false
       }
     },
     {

@@ -5,6 +5,7 @@ The website resolves the caller's collection permissions before submission.
 These activities use that collection list and the submitted model selection.
 """
 
+import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -452,19 +453,28 @@ def _insert_chat_row(username: str, session_id: str, seq: int, role: str, **fiel
                                          role=role, **fields))
 
 
-def _user_row_text(username: str, session_id: str, seq: int) -> str:
-    """The text of the user row at `seq`, the opening message of a chat lead."""
+def _user_row(username: str, session_id: str, seq: int) -> tuple[str, dict]:
+    """The text and the metadata of the user row at `seq`, the opening message of a turn."""
     from database.clickhouse import get_global_client
 
     with get_global_client() as client:
         rows = client.query(
-            "SELECT content FROM chat_messages FINAL WHERE username = {u:String} "
+            "SELECT content, usage_json FROM chat_messages FINAL WHERE username = {u:String} "
             "AND session_id = {s:String} AND seq = {q:UInt32} AND role = 'user'",
             parameters={"u": username, "s": session_id, "q": seq},
         ).result_rows
     if not rows:
         raise RuntimeError(f"no user row at seq {seq} in session {session_id}")
-    return str(rows[0][0])
+    try:
+        usage = json.loads(rows[0][1] or "{}")
+    except ValueError:
+        usage = {}
+    return str(rows[0][0]), usage if isinstance(usage, dict) else {}
+
+
+def _user_row_text(username: str, session_id: str, seq: int) -> str:
+    """The text of the user row at `seq`, the opening message of a chat lead."""
+    return _user_row(username, session_id, seq)[0]
 
 
 def _earlier_user_rows(username: str, session_id: str, turn_seq: int) -> int:
@@ -496,7 +506,8 @@ def open_run(inp: AgentRunInput) -> OpenedRun:
     """Create a new top-level run, or read an existing one, and close a stopped turn.
 
     1. When the row does not exist, write the opening message at `idx` 0 and then the row.
-       Both keys come from the run id, so a retry writes the same rows.
+       Both keys come from the run id, so a retry writes the same rows. The opening message
+       keeps the structured task of the user row (`task`), when the row has one.
     2. A terminal row returns `closed`.
     3. When the turn has a stop row, write the `cancelled` ending and return `closed`, so a
        workflow that starts after a stop never calls the agent.
@@ -507,10 +518,13 @@ def open_run(inp: AgentRunInput) -> OpenedRun:
 
     row = agent_runs.read_run(inp.username, inp.session_id, inp.run_id)
     if row is None:
-        text = _user_row_text(inp.username, inp.session_id, inp.turn_seq)
+        text, row_usage = _user_row(inp.username, inp.session_id, inp.turn_seq)
+        # The structured task of a board explore turn (`P_board.activities.explore_task`).
+        task = row_usage.get("task") if isinstance(row_usage.get("task"), dict) else None
         agent_runs.write_message(
             inp.username, inp.session_id, inp.run_id, inp.run_id,
-            agent_runs.RunMessageRow(idx=0, role="human", content=text, run_id=inp.run_id),
+            agent_runs.RunMessageRow(idx=0, role="human", content=text, run_id=inp.run_id,
+                                     usage_json=json.dumps({"task": task}) if task else ""),
         )
         agent_runs.create_run(agent_runs.RunRow(
             run_id=inp.run_id, username=inp.username, session_id=inp.session_id,
@@ -567,16 +581,31 @@ def _write_ending(params: WriteEndingParams) -> None:
     x = agent_runs.read_run(params.username, params.session_id, params.run_id)
     if x is None or agent_runs.is_terminal(x):
         return
-    if params.state == agent_runs.FAILED:
-        _insert_chat_row(x.username, x.session_id, x.next_seq, "error",
-                         content=FAILED_TEXT.format(error=params.error))
-    elif params.state == agent_runs.CANCELLED:
-        _insert_chat_row(x.username, x.session_id, x.next_seq, "error", content=STOPPED_TEXT)
+    if params.state in (agent_runs.FAILED, agent_runs.CANCELLED):
+        # The files that the turn delivered before it stopped stay listed under the ending
+        # row, with the same selection as an answer row (`P_workspace.selection.manifest`).
+        files = _delivered_files(x)
+        text = (FAILED_TEXT.format(error=params.error) if params.state == agent_runs.FAILED
+                else STOPPED_TEXT)
+        _insert_chat_row(x.username, x.session_id, x.next_seq, "error", content=text,
+                         usage_json=json.dumps(files))
     if params.turn_uuid:
         _finish_stream_rows_from(x.username, x.session_id, params.turn_uuid, x.start_seq)
     release_browser(x.run_id)
     next_seq = x.next_seq + (1 if params.state != agent_runs.COMPLETED else 0)
     agent_runs.write_run_terminal(x, params.state, error=params.error, next_seq=next_seq)
+
+
+def _delivered_files(row) -> dict:
+    """The file manifest of the run thread of `row`, or an empty dict."""
+    from database import agent_runs
+    from tasks.P_agent.stream_writer import prepare_thread
+    from tasks.P_workspace.selection import manifest
+
+    if not getattr(row, "thread_id", ""):
+        return {}
+    return manifest(prepare_thread(agent_runs.read_messages(row.username, row.session_id,
+                                                            row.thread_id)))
 
 
 @activity.defn

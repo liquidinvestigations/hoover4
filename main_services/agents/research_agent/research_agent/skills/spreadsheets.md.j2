@@ -22,6 +22,15 @@ with {{ tool('table_page') }} when the match needs context.
 
 Give a sheet, row and column when the reader needs to find a value again.
 
+To count rows by a value, call {{ tool('table_column_values') }} on that column. Do not count
+the rows of a page of text yourself. State the total rows, the filters and the column, and
+check that the counts add up to the total.
+For example, a sheet of 38 bills has a state column. The values call gives GA 13, MO 9,
+TN 7, SC 5, NC 2, WV 1 and KY 1. These counts add up to 38. Counts that add up to 44 for
+38 rows show a counting error.
+A JSON file or a text file has no sheets. When {{ tool('table_overview') }} gives no sheet,
+read the document as text.
+
 Every table call requires collection and file_hash from the same document result.
 {{ tool('table_overview') }} returns sheet and column identifiers.
 The other table tools require sheet. Copy its identifier from the overview.

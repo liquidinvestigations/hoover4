@@ -18,6 +18,12 @@ When you are not sure of the arguments of a tool, call {{ tool('read_tool') }} w
 4. Where the tool asks for a number or true or false, give the value with no quotes. Write filename_only true. Do not write filename_only "true".
 5. Do not put quotes inside a text value. Write status done. Do not write status "\"done\"".
 6. Keep each value inside the limits of its tool, such as the most items of a list.
+7. Where the tool asks for a list of objects, give a list of objects. Do not give a text
+   that holds JSON. Write citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
+   Do not write citations "[{\"collection\": ...}]".
+{% if has('write_file') %}
+8. Give the name of the file in every {{ tool('write_file') }} and {{ tool('patch_file') }} call.
+{% endif %}
 
 When a call is refused, the error names the argument and what is wrong with it. Correct that argument, and then send the call.
 

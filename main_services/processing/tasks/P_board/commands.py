@@ -32,8 +32,11 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from tasks.P_board import model as m
-from tasks.P_board.contracts import STOP_WORDS, TYPE_WORDS, slug_words
-from tasks.P_board.fold import Folded, canonical_events, explores_left, fold, may_explore, visible_facts
+from tasks.P_board.contracts import STOP_WORDS, TYPE_WORDS, is_duplicate, slug_words
+from tasks.P_board.fold import (
+    Folded, available_corrections, canonical_events, earlier_objectives, explores_left, fold,
+    may_explore, visible_facts,
+)
 from tasks.P_board.prompts import strip_labels
 
 log = logging.getLogger(__name__)
@@ -236,6 +239,13 @@ def _correction_id(ctx: Context, alloc: Allocator, text: str) -> str:
     return alloc.take(key, "c" + hashlib.sha256(ctx.request_id.encode()).hexdigest()[:8])
 
 
+def _coverage(f: Folded) -> dict:
+    """The findings that an acceptance covers: the last sequence number that the person's
+    state held, and the unreviewed findings at that point. The fold derives the same
+    coverage from the event order, so the record serves readers and audits."""
+    return {"covers_seq": f.last_seq, "covered_unreviewed": list(f.unreviewed)}
+
+
 # ------------------------------------------------------------------------ person commands
 
 
@@ -308,7 +318,8 @@ def _review_decision(ctx: Context, body: dict, alloc: Allocator, prepared: Prepa
     if body.get("accept"):
         # The goals without a proposal stay without an answer, and the fold marks them.
         unanswered = [g for g in f.open_goals if g not in f.proposed]
-        _event(ctx, prepared, m.REVIEW_ACCEPTED, "", {"review_id": review_id, "unanswered": unanswered},
+        _event(ctx, prepared, m.REVIEW_ACCEPTED, "", {"review_id": review_id, "unanswered": unanswered,
+                                                      **_coverage(f)},
                f"{m.REVIEW_ACCEPTED}:{ctx.request_id}")
         return
     correction = _text(body, "correction")
@@ -336,7 +347,7 @@ def _answer_decision(ctx: Context, body: dict, alloc: Allocator, prepared: Prepa
     decided = {"proposal_id": proposal_id, "reason_no": answer["reason_no"], "from": answer["from"],
                "statement": answer["statement"], "answer_kind": answer.get("answer_kind", "")}
     if body.get("accept"):
-        _event(ctx, prepared, m.GOAL_ANSWER_ACCEPTED, goal, decided,
+        _event(ctx, prepared, m.GOAL_ANSWER_ACCEPTED, goal, {**decided, **_coverage(f)},
                f"{m.GOAL_ANSWER_ACCEPTED}:{ctx.request_id}")
         return
     correction = _text(body, "correction")
@@ -462,8 +473,25 @@ def _reason_result(ctx: Context, body: dict, alloc: Allocator, prepared: Prepare
     problems = list(payload.get("problems") or [])
     claimed: set = set()
     intents = []
+    open_corrections = available_corrections(f)
+    used: set = set()
+    seen = earlier_objectives(f)
     for kept, item in enumerate(payload.get("intents") or [], start=1):
         item = dict(item)
+        # The state can change after the model reply, so the correction is checked again
+        # here: a real correction of a person, not consumed, named once in this reply.
+        correction = str(item.get("correction") or "")
+        objective = str(item.get("objective") or "")
+        if correction and (correction not in open_corrections or correction in used):
+            problems.append(f"the correction {correction} allows no further revised intent")
+            item.pop("correction", None)
+            correction = ""
+            if any(is_duplicate(objective, other) for other in seen):
+                problems.append(f"dropped as a repeat: {objective[:160]}")
+                continue
+        if correction:
+            used.add(correction)
+        seen.append(objective)
         key = f"assessment:{reason_no}:{int(item.get('position') or kept)}"
         if alloc.slugs:
             intent_id = alloc.claim("intent", str(item.get("slug") or ""), str(item.get("objective") or ""), key)
@@ -481,7 +509,8 @@ def _reason_result(ctx: Context, body: dict, alloc: Allocator, prepared: Prepare
         item.update(intent_id=intent_id, origin=m.ORIGIN_ASSESSMENT, creation_key=key, questions=questions)
         intents.append(item)
         _label(alloc, prepared, intent_id, "intent")
-    if intents:
+    if intents or "intents" in payload:
+        # Every intent that the checks of this command dropped leaves the payload too.
         payload["intents"] = intents
     payload["problems"] = problems
     _event(ctx, prepared, m.REASON_RESULT, str(reason_no), payload, f"{m.REASON_RESULT}:{reason_no}",

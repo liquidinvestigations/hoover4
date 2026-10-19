@@ -44,11 +44,18 @@ Do not quote "Subject: Re: DRAFT talking points", because it is a header line. D
 Line breaks, punctuation and the `>` marks of a quoted e-mail do not need to match.
 Missing or absent quotes allocate no handle. Copy 5 to 6 words of the candidate text that the error gives into quote and retry.
 Only a returned handle labels a source. Never write your own label in square brackets.
+Write the handle as text beside the claim. Do not put it in backticks. `[D1]` in backticks links nothing.
 Reuse the returned document handle for additional verified passages. The document has one card.
 {% if citation_resolver == "lead" %}
 The lead researcher resolves them, so a handle you never allocated is no use to anyone.
 {% endif %}
 {% endif %}
+A handle supports only the claim of its own quote. Do not put a handle beside a claim about
+another event, person, date or document. When a citation fails, do not put another handle
+in its place. Leave out the claim, or say that the sources read do not confirm it.
+When an error gives candidate text, copy it character for character, with its quotation
+marks, apostrophes and dashes. When the second call for one passage also fails, stop
+quoting that passage.
 {% if has('cite_pages') %}
 Search for each web source and read its supporting passage with {{ tool('read_page') }}.
 Call {{ tool('cite_pages') }} with the read URL and exact source wording in `terms`.

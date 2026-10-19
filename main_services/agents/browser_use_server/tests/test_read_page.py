@@ -125,7 +125,7 @@ def _loader(monkeypatch, texts):
     the URLs it loaded."""
     calls = []
 
-    async def load(_chat, url, _goal, _limit, _username, _deadline, links=True):
+    async def load(_chat, url, _goal, _limit, _username, _deadline, links=True, **_):
         calls.append(url)
         return PageRead(url=url, title="T", final_url=url, full_text=texts[url])
 

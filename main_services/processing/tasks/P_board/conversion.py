@@ -14,6 +14,9 @@ earlier explore tool: a fact of 1 to 4,000 characters, a known kind, at most 3 o
 questions of 1 to 300 characters, and a slug of at most 80 characters. A reply that fails
 them raises `MalformedConversion`, so the activity can use its second attempt.
 
+`number_problems` names each number of the finding that the report does not hold, so a
+changed count or date is visible in the problems of the fact. It refuses nothing.
+
 `resolve` binds each handle of the finding to a citation of the report. A handle that the
 report does not hold is dropped and named in the problems. A sourced finding without a
 verified citation becomes inferred.
@@ -175,6 +178,14 @@ def labels(text: str) -> list[str]:
     return [label.strip("[]") for label in answer_labels(text)]
 
 
+def number_problems(fact: str, report_text: str) -> list[str]:
+    """A problem for the numbers of a finding that its report does not hold, or none."""
+    from tasks.P_board.contracts import new_numbers
+
+    changed = new_numbers(fact, [report_text])
+    return [f"numbers that the report does not hold: {', '.join(changed)}"] if changed else []
+
+
 def resolve(args: dict, citations: list[dict]) -> tuple[str, list[dict], list[str]]:
     """The kind, the board citation rows and the problems of a finding.
 
@@ -205,4 +216,4 @@ def resolve(args: dict, citations: list[dict]) -> tuple[str, list[dict], list[st
 
 
 __all__ = ["CONVERSION_MAX_TOKENS", "INSTRUCTIONS", "MalformedConversion", "SUBMIT_FACT_SCHEMA",
-           "check_args", "labels", "parse_reply", "request_body", "resolve"]
+           "check_args", "labels", "number_problems", "parse_reply", "request_body", "resolve"]

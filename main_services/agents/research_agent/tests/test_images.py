@@ -228,3 +228,29 @@ def test_images_that_do_not_fit_go_in_later_requests(monkeypatch):
     assert len(sent) == 2
     assert sent[1][1]["text"] == "Image 2: image document scan.png"
     assert report.summary.endswith("## Findings\nx\nImage 2: image document scan.png: a signature")
+
+
+# ------------------------------------------------------------- on-demand selection
+
+
+def test_on_demand_keeps_a_page_screenshot_out_unless_the_read_asks_for_it():
+    assert images.select("read_page", {"urls": ["u"]}, [PAGE], images.ATTACH) == ([PAGE], [])
+    assert images.select("read_page", {"urls": ["u"]}, [PAGE], images.ON_DEMAND) == ([], [PAGE])
+    assert images.select("read_page", {"urls": ["u"], "screenshot": True}, [PAGE],
+                         images.ON_DEMAND) == ([PAGE], [])
+    # Interactive browser tools and document images keep their images.
+    assert images.select("browser_take_screenshot", {}, [PAGE], images.ON_DEMAND) == ([PAGE], [])
+    assert images.select("read_documents", {}, [DOC], images.ON_DEMAND) == ([DOC], [])
+    assert images.select("read_page", {}, [], images.ON_DEMAND) == ([], [])
+
+
+def test_one_request_sends_each_capture_once_and_counts_it_once(monkeypatch):
+    loaded = []
+    monkeypatch.setattr(images, "load_all", lambda refs, **k: loaded.append(list(refs)) or [
+        images.Loaded(data_url="data:image/png;base64,AA") for _ in refs])
+    rows = [RunMessage(role="tool", content="first", tool_call_id="a", name="read_page", image_refs=[PAGE]),
+            RunMessage(role="tool", content="again", tool_call_id="b", name="read_page", image_refs=[PAGE, DOC])]
+    parts = images.parts_for(rows, username="u", collections=["c"])
+    assert loaded == [[PAGE], [DOC]]
+    assert {"type": "text", "text": "Image shown above: read_page screenshot of Lease (https://x.org)"} in parts[1]
+    assert images.list_tokens(rows) == images.ref_tokens(PAGE) + images.ref_tokens(DOC)

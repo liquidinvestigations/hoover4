@@ -1255,7 +1255,11 @@ fn FactDetail(
                 slug: fact.slug.clone(),
                 rejected: fact.rejected,
                 chat: fact.session_id.clone(),
-                answer: answer_word(&answer, snap.not_answered.contains(&fact.fact_id)),
+                answer: if snap.unreviewed.contains(&fact.fact_id) {
+                    "unreviewed".to_string()
+                } else {
+                    answer_word(&answer, snap.not_answered.contains(&fact.fact_id))
+                },
             }
             if fact.rejected {
                 div { class: "x-board-fact-rejection", style: "border-left: 3px solid; border-left-color: var(--x-danger); padding: 4px 10px; margin: 6px 0;",
@@ -1863,7 +1867,7 @@ mod tests {
             facts: vec![fact("f1.1", "sourced", "board-b-i1.1"), fact("c1", "correction", "")],
             intents: vec![], events: vec![], summary: String::new(), review_id: String::new(),
             review_reason: String::new(), limit_reached: false, reopen_grant: None, final_running: false,
-            not_answered: vec![],
+            not_answered: vec![], unreviewed: vec![],
         };
         assert_eq!(event_link(&snap, &event("reason_result", "4")), EventLink::Assessment(4));
         assert_eq!(event_link(&snap, &event("fact_rejected", "f1.1")), EventLink::Chat("board-b-i1.1".into()));

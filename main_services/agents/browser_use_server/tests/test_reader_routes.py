@@ -34,7 +34,7 @@ def test_cache_isolates_users_and_runs_and_bounds_total_text(monkeypatch):
 def test_parallel_reads_preserve_url_order_and_release_cancelled_jobs(monkeypatch):
     active = set()
     peak = []
-    async def fresh(reader, url, goal, limit, username, deadline, links=True):
+    async def fresh(reader, url, goal, limit, username, deadline, links=True, **_):
         active.add(url)
         peak.append(len(active))
         try:

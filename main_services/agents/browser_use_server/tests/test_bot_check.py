@@ -126,8 +126,9 @@ def fast(monkeypatch):
     # The test host does not resolve, and the URL check is not what these tests cover.
     monkeypatch.setattr(read_page, "check_url", lambda url: None)
 
-    async def fresh(chat, url, goal, limit, username, deadline, links=True):
-        return await read_page._read_one(chat, url, goal, limit, username, links=links)
+    async def fresh(chat, url, goal, limit, username, deadline, links=True, page_start=1):
+        return await read_page._read_one(chat, url, goal, limit, username, links=links,
+                                         page_start=page_start)
     monkeypatch.setattr(read_page, "_read_fresh", fresh)
 
 
@@ -275,7 +276,7 @@ def test_a_pdf_over_the_limit_is_not_read(monkeypatch):
     monkeypatch.setattr(read_page, "PDF_MAX_BYTES", 400)
     assert len(data) > 400
     parsed = []
-    monkeypatch.setattr(read_page, "pdf_text", lambda b: parsed.append(b) or ("", "", ""))
+    monkeypatch.setattr(read_page, "pdf_text", lambda b, start=1: parsed.append(b) or ("", "", "", {}))
     client = PdfClient(data)
     page, _ = _read(client)
     assert page.error == (
@@ -289,7 +290,7 @@ def test_a_pdf_over_the_limit_is_not_read(monkeypatch):
 
 def test_a_cut_pdf_gives_an_error_and_no_text():
     data = _text_pdf("Neural Network Topologies")
-    title, text, error = read_page.pdf_text(data[: len(data) // 2])
+    title, text, error, _extent = read_page.pdf_text(data[: len(data) // 2])
     assert error and text == ""
 
 

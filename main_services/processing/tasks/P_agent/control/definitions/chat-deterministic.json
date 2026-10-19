@@ -1,0 +1,75 @@
+{
+  "id": "chat-deterministic",
+  "schema_version": 1,
+  "profile": "*",
+  "description": "Deterministic controls only, for the policy comparison. Typed result triggers load the table, e-mail, citation, report, argument and document-identity skills. A task that names a file loads the report skill at the start. Search results are read by rank. Progress notes come from operation facts: reads, citations, new file versions and repeated calls. No classifier request is made.",
+  "rules": [
+    {
+      "id": "prepare",
+      "hook": "turn_started",
+      "handler": "preparation",
+      "priority": 10,
+      "frequency": "turn",
+      "parameters": {
+        "classifier": false,
+        "report_skill": true
+      }
+    },
+    {
+      "id": "result-skills",
+      "hook": "tool_batch_completed",
+      "handler": "result_skills",
+      "priority": 20,
+      "frequency": "visible_revision",
+      "parameters": {
+        "objects": {
+          "spreadsheets": [
+            "table"
+          ],
+          "emails": [
+            "email"
+          ]
+        },
+        "events": {
+          "citation": "first_read",
+          "report": [
+            "first_write",
+            "workspace_error"
+          ],
+          "call_arguments": "argument_error",
+          "document_ids": "unknown_document"
+        }
+      }
+    },
+    {
+      "id": "web-reads",
+      "hook": "tool_batch_completed",
+      "handler": "web_reads",
+      "priority": 30,
+      "frequency": "event",
+      "parameters": {
+        "mode": "rank",
+        "max_urls": 6,
+        "pool": 10
+      },
+      "requires_tools": [
+        "read_page"
+      ]
+    },
+    {
+      "id": "progress",
+      "hook": "tool_batch_completed",
+      "handler": "progress",
+      "priority": 60,
+      "frequency": "event",
+      "parameters": {
+        "units_per_level": 3,
+        "steps_after_strongest": 6,
+        "signals": false,
+        "completion": "none",
+        "advice": false,
+        "end_turn": true
+      }
+    }
+  ]
+}

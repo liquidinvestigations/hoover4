@@ -17,7 +17,8 @@ succeeds as already applied and stores no version.
 
 **Validation** checks every citation handle of the candidate (`references.check`). A
 finding leaves the file unchanged and is the result of the call. A content without handles
-passes.
+passes. A stored version without a resolved handle whose code formatting holds handle-like
+text gets a note that names that text (`references.code_handles`). The note refuses nothing.
 """
 
 from __future__ import annotations
@@ -188,6 +189,14 @@ def prepare(cmd: Command, head: Optional[FileVersion], entries: Iterable[dict]) 
         note = fuzzy_match.boundary_note([record["strategy"]])
         if note:
             result["note"] = ours(note)
+    literal = references.code_handles(content) if not resolved else []
+    if literal:
+        # A narrow notice: the file is stored, and the notice names the handles that the
+        # page shows as text. Code stays literal, so nothing is converted.
+        result["note"] = " ".join(p for p in (result.get("note"), (
+            f"The file has no linked citation. {', '.join(dict.fromkeys(literal))} is inside code "
+            "formatting, so the page shows it as text. Write a returned handle such as [D1] or "
+            "[W1] outside backticks beside its claim to link the source.")) if p)
     hint = rewrite_hint(head.content, content) if head is not None and cmd.op == "write" else ""
     if hint:
         result["hint"] = hint

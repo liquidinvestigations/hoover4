@@ -462,6 +462,15 @@ class RetiredNames(Middleware):
         )
 
 
+def _positive_int(value: Any, default: int) -> int:
+    """`value` as an integer of 1 or more, else `default`."""
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return number if number >= 1 else default
+
+
 class ReadPageTool(Tool):
     """`read_page(urls=[…], goal=…)`, the batched ninety-percent case.
 
@@ -485,6 +494,8 @@ class ReadPageTool(Tool):
             find=str(arguments.get("find") or ""),
             version=str(arguments.get("version") or "").strip(),
             ceiling=ceiling, links=arguments.get("links", True) is not False,
+            page_start=_positive_int(arguments.get("page_start"), 1),
+            screenshot=arguments.get("screenshot") is True,
         )
 
         chat_session = _header(SESSION_HEADER)
@@ -634,8 +645,22 @@ READ_PAGE_SCHEMA = {
         "version": {
             "type": "string",
             "description": (
-                "The version that a cut line or a find result gives. With it, the call reads "
-                "the same kept text and does not load the page again."
+                "The version that a cut line or a find result gives for this URL. With it, "
+                "the call reads the same kept text and does not load the page again."
+            ),
+        },
+        "page_start": {
+            "type": "integer", "minimum": 1, "default": 1,
+            "description": (
+                "For a PDF, the first page to extract. One read extracts at most 50 pages. "
+                "The result names the extracted pages and the page count."
+            ),
+        },
+        "screenshot": {
+            "type": "boolean", "default": False,
+            "description": (
+                "True to receive the page screenshot as an image. With the version of a kept "
+                "text, the call returns the screenshot of that read and does not load the page again."
             ),
         },
     },

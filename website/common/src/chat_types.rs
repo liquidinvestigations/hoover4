@@ -401,6 +401,40 @@ impl ChatMessageItem {
             .filter(|report| !report.name.is_empty() && report.version > 0)
     }
 
+    /// Every file version that the turn of this row delivered, in the order of first
+    /// delivery: the `reports` list of the row metadata, else the single `report` of an
+    /// older answer row. An answer row and the ending row of a stopped or failed turn carry
+    /// it. Each entry opens its own pinned version.
+    pub fn report_refs(&self) -> Vec<ReportRef> {
+        if !matches!(self.role, ChatRole::Assistant | ChatRole::Error) {
+            return Vec::new();
+        }
+        let Ok(usage) = serde_json::from_str::<serde_json::Value>(&self.usage_json) else {
+            return Vec::new();
+        };
+        let listed: Vec<ReportRef> = usage
+            .get("reports")
+            .and_then(|items| items.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| serde_json::from_value::<ReportRef>(item.clone()).ok())
+                    .filter(|report| !report.name.is_empty() && report.version > 0)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !listed.is_empty() {
+            return listed;
+        }
+        usage
+            .get("report")
+            .cloned()
+            .and_then(|report| serde_json::from_value::<ReportRef>(report).ok())
+            .filter(|report| !report.name.is_empty() && report.version > 0)
+            .into_iter()
+            .collect()
+    }
+
     /// The images that the agent model received after this tool result.
     pub fn image_refs(&self) -> Vec<ChatImageRef> {
         if self.role != ChatRole::Tool {
@@ -739,8 +773,10 @@ pub struct ChatSessionDetail {
     pub reports: Vec<WorkspaceVersion>,
 }
 
-/// The workspace file version that an answer row shows as its report: the last file that
-/// the turn wrote or changed. The worker stores it in the row metadata (`report`).
+/// One delivered workspace file version of a turn. The worker stores the last file that the
+/// turn wrote or changed as `report`, the file that the answer shows, and every delivered
+/// file as `reports`. Extra fields of a `reports` entry, such as its citation handles, are
+/// ignored here.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct ReportRef {
     pub name: String,
@@ -1479,6 +1515,26 @@ mod tests {
             "The report includes source citations. The run uses documents only.");
         row.role = ChatRole::Tool;
         assert!(row.report_ref().is_none());
+    }
+
+    #[test]
+    fn an_answer_row_lists_every_delivered_file_and_an_older_row_lists_its_report() {
+        let mut row = counted(0, 0, 0);
+        assert!(row.report_refs().is_empty());
+        row.usage_json = r#"{"report":{"name":"b.md","version":2}}"#.into();
+        assert_eq!(row.report_refs(), vec![ReportRef { name: "b.md".into(), version: 2 }]);
+        row.usage_json = r#"{"report":{"name":"b.md","version":2},
+            "reports":[{"name":"a.md","version":4,"citations":["[D1]"]},
+                       {"name":"b.md","version":2,"citations":[]},
+                       {"name":"","version":1},{"name":"c.md","version":0}]}"#.into();
+        assert_eq!(row.report_refs(), vec![ReportRef { name: "a.md".into(), version: 4 },
+                                           ReportRef { name: "b.md".into(), version: 2 }]);
+        assert_eq!(row.report_ref(), Some(ReportRef { name: "b.md".into(), version: 2 }));
+        row.role = ChatRole::Error;
+        assert_eq!(row.report_refs().len(), 2);
+        assert!(row.report_ref().is_none());
+        row.role = ChatRole::Tool;
+        assert!(row.report_refs().is_empty());
     }
 
     #[test]

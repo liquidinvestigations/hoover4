@@ -75,7 +75,7 @@ def retry(page) -> bool:
 
 
 async def read_fresh(reader, url: str, goal: str, limit: int, username: str,
-                     deadline: float, links: bool = True):
+                     deadline: float, links: bool = True, page_start: int = 1):
     """Read one URL before the call deadline and release every owned context."""
     from browser_use_server import read_page
 
@@ -83,7 +83,7 @@ async def read_fresh(reader, url: str, goal: str, limit: int, username: str,
         await asyncio.to_thread(check_url, url)
         async with reader.pool.lease(deadline) as lease:
             reading = asyncio.create_task(_routes(reader, lease, url, goal, limit,
-                                                  username, deadline, links))
+                                                  username, deadline, links, page_start))
             died = asyncio.create_task(lease.died.wait())
             try:
                 done, _ = await asyncio.wait(
@@ -108,7 +108,7 @@ async def read_fresh(reader, url: str, goal: str, limit: int, username: str,
         return read_page.PageRead(url=url, error=f"The page could not be read: {exc}")
 
 
-async def _routes(reader, lease, url, goal, limit, username, deadline, links):
+async def _routes(reader, lease, url, goal, limit, username, deadline, links, page_start=1):
     from browser_use_server import read_page
 
     host = (urlsplit(url).hostname or "").lower()
@@ -124,7 +124,8 @@ async def _routes(reader, lease, url, goal, limit, username, deadline, links):
             async with reader.pool.context_tab(lease, relay.proxy_server, "<-loopback>") as tab:
                 chat = SimpleNamespace(client=TabClient(tab), tab=tab, session_id=reader.session_id)
                 page = await read_page._read_one(chat, url, goal, limit, username,
-                                                 links=links, capture_result=False)
+                                                 links=links, capture_result=False,
+                                                 page_start=page_start)
                 page.route = name
                 tor_routes.record(host, name, page.blocked)
                 try_next = retry(page) and index + 1 < len(names) and deadline - time.monotonic() >= TOR_MIN_LEFT_S

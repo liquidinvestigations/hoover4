@@ -24,6 +24,17 @@ hex characters of the SHA-256 of the text. A cut page names the next offset and 
 version. A call with `version` reads that same text, and it reports a text that has expired
 or changed in place of the text. It never navigates for a continuation.
 
+**A PDF read names its extent.** Only `PDF_MAX_PAGES` pages of a PDF are extracted in one
+read. The result names the extracted pages and the page count of the document, apart from
+the cut of the shown text, so an extracted window is never shown as the whole document.
+`page_start` selects a later window. The kept text, its version and its offsets belong to
+one URL and one window: a version of one window cannot address another.
+
+**A screenshot can be asked for again.** A read that loads the page captures it. A call
+with `screenshot` true and the version of a kept text returns the screenshot of the capture
+that made that text, with no new navigation. A call on a kept text without `screenshot`
+returns no image, as before.
+
 **`find` searches the kept text.** It returns each match of the literal text, in any case,
 with the text around it and the absolute character offsets, from `offset` on. When the
 share cannot hold every match, the result names the offset and the version of the next
@@ -197,6 +208,11 @@ class PageRead:
     shown_matches: int = 0
     #: The offset of the first match that was not shown, or None.
     next_offset: int | None = None
+    #: The first page that a PDF read asked for, from 1.
+    page_start: int = 1
+    #: The extent of a PDF read: `{"pages": total pages or 0 when unknown, "first": first
+    #: extracted page, "last": last extracted page}`. Empty for another page.
+    extent: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -298,12 +314,28 @@ def text_version(text: str) -> str:
 FIND_SHORT_PAGE_CHARS = 1_000
 
 
+def extent_text(page: PageRead) -> str:
+    """The sentence that names the extracted pages of a PDF read, or empty."""
+    extent = page.extent or {}
+    first, last, total = (int(extent.get(k) or 0) for k in ("first", "last", "pages"))
+    if not first or not last:
+        return ""
+    if total and first == 1 and last >= total:
+        return f"The text covers all {total} pages of the PDF."
+    of = f" of {total}" if total else ""
+    text = f"The text covers PDF pages {first} to {last}{of} only."
+    if not total or last < total:
+        text += f" Call read_page with page_start {last + 1} for the next pages."
+    return text
+
+
 def _find_block(page: PageRead) -> str:
     """The text of a `find` result for one page."""
     literal = json.dumps(page.find, ensure_ascii=False)
     kept = f" Version {page.version}." if page.version else ""
+    extent = extent_text(page)
     tail = (f"The page has {page.total_matches} matches in {page.full_chars:,} characters."
-            f"{kept}]")
+            f"{kept}{' ' + extent if extent else ''}]")
     if not page.matches_after:
         block = f"[find {literal}: no match from offset {page.offset}. {tail}"
         if 0 < page.full_chars <= FIND_SHORT_PAGE_CHARS:
@@ -360,6 +392,11 @@ def render(result: ReadResult) -> str:
         version = f", with version {page.version}" if page.version else ""
         if not page.links:
             version += ", links false"
+        if page.page_start > 1:
+            version += f", page_start {page.page_start}"
+        extent = extent_text(page)
+        if extent:
+            head = f"{head}\n[{extent}]"
         tail = (
             f"\n\n[cut: this call read {len(page.text):,} of the page's "
             f"{page.full_chars:,} characters. Call read_page with offset "
@@ -460,10 +497,19 @@ def fit(result: ReadResult, ceiling: int, reserved: int = 0) -> None:
             _fill(page, 0)
 
 
+#: The fields of one kept read, by position in its cache entry. Position 3 is the text,
+#: which the reader pool's size bound reads.
+_KEPT = ("expires", "title", "final_url", "full_text", "version", "route", "image", "extent")
+
+
 async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0,
                find: str = "", version: str = "",
-               ceiling: int = DEFAULT_PAGE_BYTES, links: bool = True) -> ReadResult:
-    """Read pages in parallel through bounded reader slots and keep scoped continuations."""
+               ceiling: int = DEFAULT_PAGE_BYTES, links: bool = True,
+               page_start: int = 1, screenshot: bool = False) -> ReadResult:
+    """Read pages in parallel through bounded reader slots and keep scoped continuations.
+
+    The kept text of a page is keyed by its URL, `links` and `page_start`."""
+    page_start = max(1, int(page_start or 1))
     deadline = time.monotonic() + CALL_TIMEOUT_S
     to_read, _repeats, _over, note = plan(raw_urls)
     result = ReadResult(note=note)
@@ -486,7 +532,7 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
         for old_url, stored in list(chat.page_reads.items()):
             if stored[0] <= now:
                 del chat.page_reads[old_url]
-        cached = chat.page_reads.get((url, links))
+        cached = chat.page_reads.get((url, links, page_start))
         if version and (not cached or cached[4] != version):
             page = PageRead(url=url, find=find, offset=offset)
             if cached:
@@ -504,12 +550,17 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
             outcomes.append(page)
             continue
         if cached:
-            _, title, final_url, full_text, kept_version, *kept_route = cached
-            page = PageRead(url=url, title=title, final_url=final_url, full_text=full_text,
-                            version=kept_version, route=kept_route[0] if kept_route else "direct")
+            kept = dict(zip(_KEPT, cached))
+            page = PageRead(url=url, title=kept["title"], final_url=kept["final_url"],
+                            full_text=kept["full_text"], version=kept["version"],
+                            route=kept.get("route") or "direct", page_start=page_start,
+                            extent=dict(kept.get("extent") or {}))
+            if screenshot and kept.get("image"):
+                page.image = dict(kept["image"])
         else:
             outcomes.append(asyncio.create_task(
-                _read_fresh(chat, url, goal, per_page, username, deadline, links=links)))
+                _read_fresh(chat, url, goal, per_page, username, deadline, links=links,
+                            page_start=page_start)))
             continue
         outcomes.append(page)
 
@@ -536,9 +587,9 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
             valid_page(page)
             if page.full_text and len(page.full_text.encode("utf-8")) <= PDF_MAX_BYTES:
                 page.version = text_version(page.full_text)
-                chat.page_reads[(url, links)] = (
+                chat.page_reads[(url, links, page_start)] = (
                     time.monotonic() + KEEP_SECONDS, page.title, page.final_url,
-                    page.full_text, page.version, page.route,
+                    page.full_text, page.version, page.route, page.image, dict(page.extent),
                 )
         valid_page(page)
         page.links = links
@@ -550,6 +601,10 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
             page.offset = offset
             page.find = find
             page.full_chars = len(page.full_text)
+        page.page_start = page_start
+        if page_start > 1 and not page.extent and not page.error:
+            page.note = batching.corrective_note(
+                page.note, f"{url} is not a PDF, so page_start {page_start} selects nothing.")
         result.pages.append(page)
         result.note = batching.corrective_note(result.note, page.note)
         if page.artifact:
@@ -558,8 +613,9 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
 
 
 async def _read_one(chat, url: str, goal: str, limit: int, username: str,
-                    links: bool = True, capture_result: bool = True) -> PageRead:
-    page = PageRead(url=url)
+                    links: bool = True, capture_result: bool = True,
+                    page_start: int = 1) -> PageRead:
+    page = PageRead(url=url, page_start=page_start)
     try:
         await asyncio.to_thread(check_url, url)
     except UrlNotAllowed as exc:
@@ -597,7 +653,7 @@ async def _read_one(chat, url: str, goal: str, limit: int, username: str,
             await _capture_read(chat, page, url, goal, username)
         return page
     if first and first.get("type") == "application/pdf":
-        await _read_pdf(chat, page, url, goal, limit, first)
+        await _read_pdf(chat, page, url, goal, limit, first, page_start)
     elif (blocked_at := await _wait_out_check(chat, first)) is not None:
         # The check text is never returned as page text.
         page.blocked = True
@@ -699,8 +755,9 @@ async def _wait_out_check(chat, probe: dict | None) -> str | None:
     return last_url
 
 
-async def _read_pdf(chat, page: PageRead, url: str, goal: str, limit: int, probe: dict) -> None:
-    """Read the text of the PDF the page shows, into `page`."""
+async def _read_pdf(chat, page: PageRead, url: str, goal: str, limit: int, probe: dict,
+                    page_start: int = 1) -> None:
+    """Read the text of the PDF the page shows, from page `page_start`, into `page`."""
     page.final_url = str(probe.get("url") or url)
     page.error = _http_error(probe)
     if page.error:
@@ -727,8 +784,9 @@ async def _read_pdf(chat, page: PageRead, url: str, goal: str, limit: int, probe
         data.extend(chunk)
         if not chunk or len(data) >= total:
             break
-    title, text, error = await asyncio.to_thread(pdf_text, bytes(data))
+    title, text, error, extent = await asyncio.to_thread(pdf_text, bytes(data), page_start)
     page.title = title
+    page.extent = extent
     if error:
         page.error = error
     else:
@@ -736,25 +794,32 @@ async def _read_pdf(chat, page: PageRead, url: str, goal: str, limit: int, probe
         page.text, page.truncated = focus(text, goal or "", limit)
 
 
-def pdf_text(data: bytes) -> tuple[str, str, str]:
-    """`(title, text, error)` of the first `PDF_MAX_PAGES` pages of a PDF."""
+def pdf_text(data: bytes, page_start: int = 1) -> tuple[str, str, str, dict]:
+    """`(title, text, error, extent)` of at most `PDF_MAX_PAGES` pages of a PDF, from page
+    `page_start`. `extent` holds the page count and the first and last extracted page."""
     from pypdf import PdfReader
 
     # pypdf logs a warning for each font it cannot parse in full, many for each page.
     logging.getLogger("pypdf").setLevel(logging.ERROR)
+    start = max(1, int(page_start or 1))
     try:
         reader = PdfReader(io.BytesIO(data), strict=False)
-        pages = [
-            (reader.pages[i].extract_text() or "").strip()
-            for i in range(min(PDF_MAX_PAGES, len(reader.pages)))
-        ]
+        total = len(reader.pages)
+        if start > total:
+            return ("", "", f"the PDF has {total} pages, so page_start {start} is past its end",
+                    {"pages": total, "first": 0, "last": 0})
+        last = min(total, start - 1 + PDF_MAX_PAGES)
+        pages = [(reader.pages[i].extract_text() or "").strip() for i in range(start - 1, last)]
         title = str((reader.metadata or {}).get("/Title") or "")
     except Exception as exc:  # noqa: BLE001 - a damaged or cut PDF raises many types
-        return ("", "", f"the PDF could not be read: {exc}")
+        return ("", "", f"the PDF could not be read: {exc}", {})
+    extent = {"pages": total, "first": start, "last": last}
     text = "\n\n".join(p for p in pages if p)
     if not text:
-        return (title, "", "the PDF has no text layer")
-    return (title, text, "")
+        whole = start == 1 and last >= total
+        return (title, "", "the PDF has no text layer" if whole
+                else f"PDF pages {start} to {last} have no text layer", extent)
+    return (title, text, "", extent)
 
 
 async def _call(chat, tool: str, arguments: dict) -> tuple[str, str]:
@@ -822,6 +887,8 @@ __all__ = [
     "plan",
     "read",
     "render",
+    "extent_text",
+    "pdf_text",
     "text_version",
 ]
 

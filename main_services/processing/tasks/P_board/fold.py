@@ -61,6 +61,16 @@ The rules:
   assessment for that budget. It proposes answers from the facts and starts no explore. Its
   result or its recorded failure ends it, and the next pass proposes the budget review when
   that budget is still used.
+* **Correction revisions.** A person's rejected review or rejected answer names its
+  correction fact. Each such correction allows one revised intent. An intent of a
+  `reason_result` that names the correction in `correction` consumes it, in event order.
+  A later intent that names a consumed correction keeps no correction. An older event has
+  no `correction` field and consumes nothing.
+* **Unreviewed findings.** A finding whose `explore_concluded` event comes while the board is
+  in review or complete is unreviewed. A later acceptance of a review or of an answer covers
+  every finding concluded before it, and a move back to active covers them too, because the
+  next assessment reads them. An unreviewed finding changes no accepted answer and no status.
+  The order of the events decides it, so an older board reads the same way.
 * **Question bindings.** An assessment intent can name open questions by key
   (`<fact id>#<1-based index>`). A key is bound while an intent that is not failed holds it.
   The fold keeps the first holder in event order. A failed intent releases its keys.
@@ -112,6 +122,8 @@ class Intent:
     own: bool = False
     #: The fact that the question of a person question intent belongs to.
     source_fact: str = ""
+    #: The person correction that this intent revises the work for, or empty.
+    correction: str = ""
 
 
 @dataclass
@@ -196,6 +208,14 @@ class Folded:
     bindings: dict = field(default_factory=dict)
     #: The highest canonical sequence number.
     last_seq: int = 0
+    #: Correction fact id to `{"goal", "event_id"}`: the corrections of a person's rejected
+    #: review or rejected answer, which each allow one revised intent.
+    corrections: dict = field(default_factory=dict)
+    #: Correction fact id to the intent that consumed its revision.
+    corrections_used: dict = field(default_factory=dict)
+    #: The findings concluded while the board was in review or complete, which no later
+    #: acceptance covered, in event order.
+    unreviewed: list[str] = field(default_factory=list)
 
     def clear_stalls(self) -> None:
         """Progress or a person's action: no assessment without progress is counted."""
@@ -337,6 +357,8 @@ class _Fold:
         f.status = new
         if new == m.ACTIVE:
             f.not_answered = []
+            # The next assessment reads the findings, so none stays unreviewed.
+            f.unreviewed = []
         if new in (m.REVIEW, m.COMPLETED):
             f.decision_id = self.event.event_id
         else:
@@ -403,12 +425,14 @@ def _apply(run: _Fold, event, data: dict, concluded: set) -> None:
     elif kind == m.REVIEW_ACCEPTED and folded.status == m.REVIEW and run.names_decision(data):
         folded.accepted.update(folded.proposed)
         folded.proposed = {}
+        folded.unreviewed = []
         run.status(m.COMPLETED)
         # An older decision has no `unanswered`, and its goals without an answer stay open.
         unanswered = {str(g) for g in data.get("unanswered") or []}
         folded.not_answered = [g for g in folded.goal_ids if g in unanswered and g not in folded.accepted]
     elif (kind == m.REVIEW_REJECTED and folded.status in (m.REVIEW, m.COMPLETED)
           and run.names_decision(data)):
+        folded.corrections.setdefault(event.subject, {"goal": "", "event_id": event.event_id})
         folded.proposed = {}
         folded.review_rejections += 1
         run.status(m.ACTIVE)
@@ -417,6 +441,7 @@ def _apply(run: _Fold, event, data: dict, concluded: set) -> None:
     elif kind == m.GOAL_ANSWER_ACCEPTED:
         if _decides(folded, event.subject, data):
             folded.accepted[event.subject] = folded.proposed.pop(event.subject)
+            folded.unreviewed = []
             if folded.status in (m.ACTIVE, m.REVIEW) and folded.all_answered:
                 run.status(m.COMPLETED)
             elif folded.status == m.REVIEW and not folded.proposed:
@@ -425,6 +450,7 @@ def _apply(run: _Fold, event, data: dict, concluded: set) -> None:
     elif kind == m.GOAL_ANSWER_REJECTED:
         goal = str(data.get("goal", ""))
         if _decides(folded, goal, data):
+            folded.corrections.setdefault(event.subject, {"goal": goal, "event_id": event.event_id})
             del folded.proposed[goal]
             folded.review_rejections += 1
             if folded.status == m.REVIEW:
@@ -478,6 +504,9 @@ def _apply(run: _Fold, event, data: dict, concluded: set) -> None:
         if intent is not None:
             intent.state = m.CONCLUDED
             intent.fact_id = str(data.get("fact_id", ""))
+            if (folded.status in (m.REVIEW, m.COMPLETED) and intent.fact_id
+                    and intent.fact_id not in folded.unreviewed):
+                folded.unreviewed.append(intent.fact_id)
             if data.get("kind") == m.SOURCED:
                 folded.stall_count = 0
             else:
@@ -599,6 +628,11 @@ def _add_intents(folded: Folded, event, data: dict, reason_no: int) -> int:
             created_at=event.created_at, origin=str(item.get("origin") or m.ORIGIN_ASSESSMENT))
         folded.intents[intent_id] = intent
         intent.questions = _bind(folded, intent, [str(k) for k in item.get("questions") or []])
+        correction = str(item.get("correction") or "")
+        if (correction and correction in folded.corrections
+                and correction not in folded.corrections_used):
+            intent.correction = correction
+            folded.corrections_used[correction] = intent_id
         added += 1
     return added
 
@@ -710,6 +744,12 @@ def earlier_objectives(folded: Folded) -> list[str]:
     """The objectives that a new intent must not repeat. An intent whose fact a person
     rejected is left out, so a reason can declare its work again."""
     return [i.objective for i in folded.intents.values() if not (i.fact_id and i.fact_id in folded.rejected)]
+
+
+def available_corrections(folded: Folded) -> dict:
+    """The corrections whose one revised intent is not used yet, with their goal."""
+    return {fact_id: info for fact_id, info in folded.corrections.items()
+            if fact_id not in folded.corrections_used and fact_id not in folded.rejected}
 
 
 def may_explore(folded: Folded, intent_id: str) -> bool:

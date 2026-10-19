@@ -25,12 +25,14 @@ def is_citation_note(message) -> bool:
 
 
 def answer_metadata(answer: str, session_entries, internet_tools: bool,
-                    report: dict | None = None) -> dict:
-    """Return the citation status, the available tool scope and the report of an answer.
+                    report: dict | None = None, files: list | None = None) -> dict:
+    """Return the citation status, the available tool scope and the files of an answer.
 
     `report` is the report of the turn (`tasks.P_workspace.selection.selected_report`), or
-    None. With a report, the status describes that file version: `cited` when it holds
-    resolved citation handles, else `none`, and `report` names the version. Without a
+    None. `files` is every file that the turn delivered
+    (`tasks.P_workspace.selection.manifest`). With a report, the status describes that file
+    version: `cited` when it holds resolved citation handles, else `none`, `report` names
+    the version, and `reports` lists `files`. Without a
     report, the status describes the chat text: `invalid` for a handle that no successful
     citation gives or that names more than one source, `cited` for resolved handles, else
     `none`. No rule asks a paragraph for a citation.
@@ -41,6 +43,8 @@ def answer_metadata(answer: str, session_entries, internet_tools: bool,
     if report:
         out["citation_status"] = "cited" if report.get("citations") else "none"
         out["report"] = {"name": report["name"], "version": int(report["version"])}
+        if files:
+            out["reports"] = list(files)
         return out
     check = reports.check_labels(answer, reports.label_bindings(session_entries), session_entries)
     if check["unresolved"] or check["conflicting"]:

@@ -109,6 +109,9 @@ class ControlAssets(BaseModel):
     revision: str = ""
     system_prompt: str = ""
     skills: Dict[str, str] = Field(default_factory=dict)
+    #: The image setting of the pinned definition (`images.select`). A request without it
+    #: attaches every image, as before the setting existed.
+    model_images: str = "attach"
 
 
 class StepRun(BaseModel):
@@ -719,12 +722,14 @@ def _tool_response(request: ToolCallRequest, content: str, status: str = "ok",
                    matched: Optional[List[str]] = None,
                    doc_refs: Optional[List[Dict[str, Any]]] = None,
                    retryable: bool = False,
-                   image_refs: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+                   image_refs: Optional[List[Dict[str, Any]]] = None,
+                   capture_refs: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """The `/tool_call` response. `doc_refs` is the whole identity of each row of a
-    result page, or None when the tool sent none. `image_refs` names the images of the
-    result (`images.py`). `retryable` is true for a transport failure that a second
-    attempt can change, and the worker then raises before it stores a result
-    (`TRANSPORT_FAILURE`)."""
+    result page, or None when the tool sent none. `image_refs` names the images that the
+    model receives with the result, and `capture_refs` the page screenshots that stay
+    available without being sent (`images.select`). `retryable` is true for a transport
+    failure that a second attempt can change, and the worker then raises before it stores
+    a result (`TRANSPORT_FAILURE`)."""
     return {
         "tool_call_id": request.call.id,
         "name": request.call.name,
@@ -735,6 +740,7 @@ def _tool_response(request: ToolCallRequest, content: str, status: str = "ok",
         "matched_names": matched or [],
         "doc_refs": doc_refs,
         "image_refs": image_refs or [],
+        "capture_refs": capture_refs or [],
         "retryable": bool(retryable),
     }
 
@@ -992,9 +998,13 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     if retryable_result(content):
         return _tool_response(request, content, "error", TRANSPORT_FAILURE,
                               _with_repairs(measure, repairs), [], doc_refs, retryable=True)
+    mode = request.control.model_images if request.control is not None else images.ATTACH
+    selected, kept = images.select(name, args, image_refs or [], mode)
+    if kept:
+        content = f"{content}\n\n{images.CAPTURES_TEXT.format(count=len(kept))}"
     return _tool_response(
         request, content, status, "tool_error" if status == "error" else "",
-        _with_repairs(measure, repairs), [], doc_refs, image_refs=image_refs
+        _with_repairs(measure, repairs), [], doc_refs, image_refs=selected, capture_refs=kept
     )
 
 

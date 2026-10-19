@@ -975,3 +975,141 @@ def test_no_progress_ending_reads_text_from_the_stored_decision(store):
     from tasks.P_agent.control_steps import ControlOutcome
     assert _payload_bytes(ControlOutcome(end_turn=True)) < 1024
     assert "text" not in {f.name for f in fields(steps.IncompleteParams)}
+
+
+# ------------------------------------------------- delivered files and narration
+
+
+def _mutation(idx, call_id, name, version, success=True, tool="write_file"):
+    body = ({"success": True, "name": name, "version": version, "citations": []} if success
+            else {"success": False, "name": name, "error": "rejected"})
+    return agent_runs.RunMessageRow(
+        idx=idx, role="tool", tool_call_id=call_id, tool_name=tool, run_id=RUN_ID,
+        content=json.dumps(body), usage_json=json.dumps({"status": "ok" if success else "error"}))
+
+
+def _five_files(store):
+    """One reply that writes five files, a failed write, and a later patch of the first."""
+    names = ["a.md", "b.md", "c.md", "d.md", "e.md"]
+    entries = [dict(_entry(f"w{i}", "write_file", {"name": n}), position=i, seq=5 + i)
+               for i, n in enumerate(names)]
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=1, role="ai", run_id=RUN_ID, content="", usage_json=json.dumps({"step_no": 1}),
+        tool_calls_json=json.dumps(entries)))
+    for i, n in enumerate(names):
+        store["messages"].append(_mutation(2 + i, f"w{i}", n, 1))
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=7, role="ai", run_id=RUN_ID, content="", usage_json=json.dumps({"step_no": 2}),
+        tool_calls_json=json.dumps([
+            dict(_entry("p0", "patch_file", {"name": "a.md"}), position=0, seq=10),
+            dict(_entry("x0", "write_file", {"name": "f.md"}), position=1, seq=11)])))
+    store["messages"].append(_mutation(8, "p0", "a.md", 2, tool="patch_file"))
+    store["messages"].append(_mutation(9, "x0", "f.md", 0, success=False))
+    store["row"] = _row(next_seq=12, model_steps=2)
+
+
+def test_an_answer_lists_every_delivered_file_and_expands_the_last(store, monkeypatch):
+    _five_files(store)
+    _serve(monkeypatch, store, _frames(text="The five files are written."))
+    _step(step_no=3)
+    [answer] = [r for r in store["chat"] if r["role"] == "assistant"]
+    usage = json.loads(answer["usage_json"])
+    assert usage["report"] == {"name": "a.md", "version": 2}
+    assert [(r["name"], r["version"]) for r in usage["reports"]] == [
+        ("a.md", 2), ("b.md", 1), ("c.md", 1), ("d.md", 1), ("e.md", 1)]
+    assert answer["content"] == "The five files are written."
+
+
+def test_a_retried_answer_writes_the_same_file_list(store, monkeypatch):
+    _five_files(store)
+    _serve(monkeypatch, store, _frames(text="Done."))
+    _step(step_no=3)
+    first = [r for r in store["chat"] if r["role"] == "assistant"][-1]
+    # The run row write happened. The retry reads the stored reply and makes no model call.
+    store["row"] = _row(next_seq=13, model_steps=3)
+    monkeypatch.setattr(steps, "_lines", lambda *a: pytest.fail("no model call"))
+    _step(step_no=3)
+    second = [r for r in store["chat"] if r["role"] == "assistant"][-1]
+    assert second["seq"] == first["seq"] == 12
+    assert json.loads(second["usage_json"]) == json.loads(first["usage_json"])
+
+
+def test_a_stopped_turn_lists_its_delivered_files_under_the_ending_row(store, monkeypatch):
+    _five_files(store)
+    monkeypatch.setattr(stream_writer, "release_browser", lambda run_id: None)
+    monkeypatch.setattr(agent_runs, "write_run_terminal", lambda *a, **k: None)
+    activities._write_ending(WriteEndingParams(RUN_ID, "u", "s", agent_runs.CANCELLED))
+    [row] = [r for r in store["chat"] if r["role"] == "error"]
+    assert row["content"] == activities.STOPPED_TEXT
+    usage = json.loads(row["usage_json"])
+    assert [r["name"] for r in usage["reports"]] == ["a.md", "b.md", "c.md", "d.md", "e.md"]
+    assert usage["report"] == {"name": "a.md", "version": 2}
+
+
+def test_a_stopped_turn_without_files_keeps_its_plain_ending_row(store, monkeypatch):
+    monkeypatch.setattr(stream_writer, "release_browser", lambda run_id: None)
+    monkeypatch.setattr(agent_runs, "write_run_terminal", lambda *a, **k: None)
+    activities._write_ending(WriteEndingParams(RUN_ID, "u", "s", agent_runs.CANCELLED))
+    [row] = [r for r in store["chat"] if r["role"] == "error"]
+    assert json.loads(row["usage_json"]) == {}
+
+
+def test_write_incomplete_lists_the_delivered_files(store, monkeypatch):
+    _five_files(store)
+    params = steps.IncompleteParams(run_id=RUN_ID, username="u", session_id="s",
+                                    reason="step_budget", limit=600)
+    ActivityEnvironment().run(steps.write_incomplete, params)
+    [row] = [r for r in store["chat"] if r["role"] == "assistant"]
+    usage = json.loads(row["usage_json"])
+    assert len(usage["reports"]) == 5 and usage["report"]["name"] == "a.md"
+
+
+@pytest.mark.parametrize("opening", ["read_todo", "update_plan", "search_collections"])
+def test_the_answer_holds_no_opening_narration(store, monkeypatch, opening):
+    """Plan-first prose, search-first narration and repeated narration go to the reasoning
+    of the answer row. The live partial row shows no narration in its answer text."""
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=1, role="ai", run_id=RUN_ID, content="I understand the task. I will search first.",
+        usage_json=json.dumps({"step_no": 1}),
+        tool_calls_json=json.dumps([dict(_entry("o", opening, {}), position=0, seq=5)])))
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=2, role="tool", tool_call_id="o", usage_json=json.dumps({"status": "ok"})))
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=3, role="ai", run_id=RUN_ID, content="I understand the task. I will search first.",
+        usage_json=json.dumps({"step_no": 2}),
+        tool_calls_json=json.dumps([dict(_entry("s", "search_collections", {"query": "q"}),
+                                         position=0, seq=6)])))
+    store["messages"].append(agent_runs.RunMessageRow(
+        idx=4, role="tool", tool_call_id="s", usage_json=json.dumps({"status": "ok"})))
+    store["row"] = _row(next_seq=7, model_steps=2)
+    _serve(monkeypatch, store, _frames(text="The answer is 4."))
+    _step(step_no=3)
+    [answer] = [r for r in store["chat"] if r["role"] == "assistant"]
+    assert answer["content"] == "The answer is 4."
+    assert "I understand the task" in answer["reasoning"]
+    partials = [a for a, _ in store["stream"] if a[1] == "assistant"]
+    assert partials and all("I understand the task" not in a[2] for a in partials)
+
+
+def test_open_run_keeps_the_structured_task_of_the_user_row(store, monkeypatch):
+    task = {"objective": {"text": "Count the bills by state.", "source": "intent:intent-bills"}}
+    store["messages"] = []
+    store["row"] = None
+    created = []
+
+    def create_run(row):
+        created.append(row)
+        store["row"] = row
+    monkeypatch.setattr(agent_runs, "create_run", create_run)
+    monkeypatch.setattr(agent_runs, "turn_is_stopped", lambda *a: False)
+    monkeypatch.setattr(activities, "_user_row", lambda *a: ("The long brief.", {"task": task}))
+    inp = activities.AgentRunInput(run_id=RUN_ID, username="u", session_id="s", turn_seq=4,
+                                   start_seq=5, board_turn=True)
+    ActivityEnvironment().run(activities.open_run, inp)
+    [opening] = store["messages"]
+    assert opening.content == "The long brief." and opening.usage["task"] == task
+    # A chat turn has no task in its user row, and its opening row keeps no usage.
+    store["messages"], store["row"] = [], None
+    monkeypatch.setattr(activities, "_user_row", lambda *a: ("Find the lease.", {}))
+    ActivityEnvironment().run(activities.open_run, inp)
+    assert store["messages"][0].usage_json == ""

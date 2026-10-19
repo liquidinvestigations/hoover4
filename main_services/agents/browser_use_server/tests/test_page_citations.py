@@ -298,3 +298,17 @@ def test_tool_accepts_flat_and_list_arguments_with_reasons(store, monkeypatch, n
     payload = json.loads(result.content[0].text)
     assert payload["citations"][0]["why"] == page["why"]
     assert payload["citations"][0]["handle"] == "[W1]"
+
+
+def test_a_pdf_window_keeps_its_extent_in_the_source_and_the_citation(store):
+    extent = {"pages": 212, "first": 1, "last": 50}
+    artifact_id = read_source(extent=extent)
+    assert json.loads(store.bodies[artifact_id])["extent"] == extent
+    assert json.loads(store.rows[artifact_id]["detail"])["extent"] == extent
+    assert cite()["citations"][0]["extent"] == extent
+
+
+def test_a_web_page_without_extent_keeps_its_former_source_shape(store):
+    artifact_id = read_source()
+    assert "extent" not in json.loads(store.bodies[artifact_id])
+    assert "extent" not in cite()["citations"][0]

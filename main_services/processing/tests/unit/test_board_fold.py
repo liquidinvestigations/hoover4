@@ -786,3 +786,113 @@ def test_an_intent_keeps_a_goal_field_that_names_a_goal():
         {"from": ["origin"], "goal": "goal-9", "objective": "Find the bank that paid"}]})
     out = parse_reason(reply, {"origin"}, set(), [], True, ["goal-01"])
     assert [i["goal"] for i in out["intents"]] == ["goal-01", ""]
+
+
+# ---------------------------------------------- corrections and late findings
+
+
+def _corrected() -> Log:
+    """A board whose proposed answer a person rejected with correction `c1`."""
+    log = _review(_explored(), 2)
+    return log.add(m.GOAL_ANSWER_REJECTED, "c1", goal="goal", reason_no=2, correction="use 2001")
+
+
+def test_a_correction_allows_one_revised_intent_in_event_order():
+    log = _corrected()
+    rows = facts(("f1.1", m.SOURCED)) + [FactRow("b1", "c1", m.CORRECTION, "use 2001")]
+    from tasks.P_board.fold import available_corrections
+    assert available_corrections(fold(board(), log.events, rows)) == {"c1": {"goal": "goal", "event_id": log.events[-1].event_id}}
+    log.add(m.REASON_STARTED, "3")
+    log.add(m.REASON_RESULT, "3", outcome="intents", intents=[
+        {"from": ["c1"], "objective": "objective 1.1 in 2001", "correction": "c1"},
+        {"from": ["c1"], "objective": "objective 1.1 in the 2001 minutes", "correction": "c1"}])
+    f = fold(board(), log.events, rows)
+    assert f.intents["i3.1"].correction == "c1" and f.intents["i3.2"].correction == ""
+    assert f.corrections_used == {"c1": "i3.1"} and available_corrections(f) == {}
+
+
+def test_an_older_intent_without_a_correction_consumes_nothing():
+    log = _corrected().reason(3, n=1)
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
+    assert f.corrections_used == {} and list(f.corrections) == ["c1"]
+
+
+def test_parse_reason_allows_one_revision_for_a_listed_correction():
+    earlier = ["Find the delegation leader"]
+    reply = json.dumps({"intents": [
+        {"from": ["c1"], "objective": "Find the delegation leader in the 2001 minutes", "correction": "c1"},
+        {"from": ["c1"], "objective": "Find the delegation leader in the minutes", "correction": "c1"},
+        {"from": ["c1"], "objective": "find the DELEGATION leader!", "correction": "c2"},
+        {"from": ["c1"], "objective": "Find the delegation leader", "correction": "c9"}]})
+    payload = parse_reason(reply, {"c1", "origin"}, set(), earlier, idle=True,
+                           corrections={"c1": "use 2001", "c2": "use the minutes"})
+    assert [(i["objective"], i.get("correction")) for i in payload["intents"]] == [
+        ("Find the delegation leader in the 2001 minutes", "c1")]
+    problems = payload["problems"]
+    assert sum(p.startswith("dropped as a repeat") for p in problems) == 3
+    assert any("discarded the correction c9" in p for p in problems)
+    # Without a correction, an unchanged repeat stays dropped.
+    plain = parse_reason(json.dumps({"intents": [{"from": ["c1"], "objective": "Find the delegation leader"}]}),
+                         {"c1"}, set(), earlier, idle=True)
+    assert "intents" not in plain
+
+
+def test_a_finding_after_completion_is_unreviewed_and_changes_no_answer():
+    log = _completed()
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED)))
+    accepted = dict(f.accepted)
+    log.reason(3, n=1).add(m.EXPLORE_STARTED, "i3.1", attempt=1)
+    log.add(m.EXPLORE_CONCLUDED, "i3.1", attempt=1, fact_id="f3.1", kind=m.SOURCED)
+    log.add(m.EXPLORE_CONCLUDED, "i3.1", attempt=1, fact_id="f3.1", kind=m.SOURCED)
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED), ("f3.1", m.SOURCED)))
+    assert f.status == m.COMPLETED and f.accepted == accepted
+    assert f.unreviewed == ["f3.1"]
+
+
+def test_an_acceptance_after_a_finding_in_review_covers_it():
+    log = _review(_explored(), 2)
+    log.reason(3, n=1).add(m.EXPLORE_STARTED, "i3.1", attempt=1)
+    log.add(m.EXPLORE_CONCLUDED, "i3.1", attempt=1, fact_id="f3.1", kind=m.SOURCED)
+    rows = facts(("f1.1", m.SOURCED), ("f3.1", m.SOURCED))
+    assert fold(board(), log.events, rows).unreviewed == ["f3.1"]
+    log.add(m.REVIEW_ACCEPTED, "x")
+    f = fold(board(), log.events, rows)
+    assert f.status == m.COMPLETED and f.unreviewed == []
+
+
+def test_a_rejected_review_returns_the_late_findings_to_the_assessment():
+    log = _review(_explored(), 2).reason(3, n=1).add(m.EXPLORE_STARTED, "i3.1", attempt=1)
+    log.add(m.EXPLORE_CONCLUDED, "i3.1", attempt=1, fact_id="f3.1", kind=m.SOURCED)
+    log.add(m.REVIEW_REJECTED, "c1", correction="look again")
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED), ("f3.1", m.SOURCED)))
+    assert f.status == m.ACTIVE and f.unreviewed == [] and "c1" in f.corrections
+
+
+def test_a_cancel_after_a_late_conclusion_keeps_the_finding():
+    log = _completed().reason(3, n=1).add(m.EXPLORE_STARTED, "i3.1", attempt=1)
+    log.add(m.EXPLORE_CONCLUDED, "i3.1", attempt=1, fact_id="f3.1", kind=m.SOURCED)
+    log.add(m.EXPLORE_CANCELLED, "i3.1", attempt=1)
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED), ("f3.1", m.SOURCED)))
+    assert f.intents["i3.1"].state == m.CONCLUDED and f.unreviewed == ["f3.1"]
+
+
+def test_an_answer_with_changed_counts_is_marked_and_kept():
+    fact_text = ("The 38 monitored bills by state: GA 13, MO 9, TN 7, SC 5, NC 2, WV 1, KY 1 [D1].")
+    reply = json.dumps({"answers": [
+        {"goal": "goal", "from": ["f1"], "statement": "Of 38 bills, GA 13, MO 9, TN 7, SC 5, NC 2, WV 1 and KY 1."},
+        {"goal": "goal-2", "from": ["f1"], "statement": "Of 44 bills, GA 20, MO 9, TN 6, SC 6."}]})
+    payload = parse_reason(reply, {"f1"}, {"f1"}, [], idle=True, goal_ids=["goal", "goal-2"],
+                           fact_texts={"f1": fact_text})
+    assert len(payload["proposals"]) == 2
+    assert payload["problems"] == ["the answer of goal-2 states numbers that its facts do not hold: 6, 20, 44"]
+
+
+@pytest.mark.parametrize("statement", [
+    "The exports record 15 events from 2021 to 2024 \u2014 two receptions.",
+    "The path C:\\\\data\\\\u2014 stays literal, and `\\\\[D9]` stays code.",
+])
+def test_an_assessment_statement_keeps_its_characters_through_storage(statement):
+    reply = json.dumps({"answers": [{"goal": "goal", "from": ["f1"], "statement": statement}]})
+    payload = parse_reason(reply, {"f1"}, {"f1"}, [], idle=True)
+    stored = json.loads(json.dumps(payload, sort_keys=True))
+    assert stored["proposals"][0]["statement"] == statement

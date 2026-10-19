@@ -411,7 +411,8 @@ def _context(row, params, messages, control, event, anchor) -> PolicyContext:
         capabilities=frozenset(control.get("capabilities") or capabilities_of(assets.get("callable_tools") or [])),
         collections=tuple(control.get("collections", params.allowed_collections) or []),
         recent_steps=F.render_steps(messages),
-        run_kind="board" if getattr(params, "board_turn", False) else "chat")
+        run_kind="board" if getattr(params, "board_turn", False) else "chat",
+        task=freeze(F.task_of(messages[0])))
     return context
 
 
@@ -450,6 +451,7 @@ def _decide(row, params, messages, control, anchor, samples) -> dict:
         "definition_revision": definition.revision,
         "rules": [{"id": rule.id, "revision": rule.revision, **record}
                   for rule, _, record in evaluated],
+        "task_digest": digest(plain(context.task)),
         "checks": checks, "facts": facts, "classifier": classifier.log,
         "evaluated_ms": int((time.monotonic() - started) * 1000),
         "status": "prepared", "round": False, "rows": {"ai_idx": None, "calls": [], "note": None},

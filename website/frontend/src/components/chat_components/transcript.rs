@@ -830,6 +830,9 @@ pub struct ReportView {
     pub acknowledgement: String,
     /// False when the version could not be read. The row then shows its chat text.
     pub found: bool,
+    /// Every file version that the turn delivered, the shown one included
+    /// (`ChatMessageItem::report_refs`). Only the shown version's text is loaded.
+    pub files: Vec<common::chat_types::ReportRef>,
 }
 
 /// The messages with the report version as the text of each answer that names one, and the
@@ -846,8 +849,10 @@ fn with_reports(
             Some(version) => std::mem::replace(&mut message.content, version.content.clone()),
             None => String::new(),
         };
+        let files = message.report_refs();
         views.insert(message.seq, ReportView {
             name: report.name, version: report.version, acknowledgement, found: found.is_some(),
+            files,
         });
     }
     (messages, views)
@@ -1292,6 +1297,7 @@ fn MessageEntry(
                             max-width: 88%; border: 1px solid #FECACA; padding: 10px 14px; \
                             border-radius: 12px; {ring}",
                     div { "{message.content}" }
+                    DeliveredFiles { files: message.report_refs() }
                     // The final error is often the least informative of the set. A
                     // timeout that followed a real 500 says much less than the 500 did.
                     // The list is every attempt including the one quoted above, so it is
@@ -1704,6 +1710,32 @@ mod tests {
         ]
     }
 
+    #[test]
+    fn an_answer_shows_its_last_file_and_lists_every_delivered_version() {
+        let mut answer = row(9, ChatRole::Assistant, "", "", "Five files are written.");
+        answer.usage_json = r#"{"report":{"name":"e.md","version":1},"reports":[
+            {"name":"a.md","version":2},{"name":"b.md","version":1},{"name":"c.md","version":1},
+            {"name":"d.md","version":1},{"name":"e.md","version":1}]}"#.into();
+        let older = {
+            let mut older = row(3, ChatRole::Assistant, "", "", "One file.");
+            older.usage_json = r#"{"report":{"name":"a.md","version":1}}"#.into();
+            older
+        };
+        let version = |name: &str, version: u32, content: &str| common::chat_types::WorkspaceVersion {
+            name: name.into(), version, content: content.into(), created_at: String::new() };
+        let (messages, views) = with_reports(vec![older, answer],
+            &[version("a.md", 1, "first text"), version("e.md", 1, "case five")]);
+        let view = &views[&9];
+        assert_eq!((view.name.as_str(), view.version, view.found), ("e.md", 1, true));
+        assert_eq!(view.files.len(), 5);
+        assert_eq!((view.files[0].name.as_str(), view.files[0].version), ("a.md", 2));
+        assert_eq!(messages[1].content, "case five");
+        assert_eq!(view.acknowledgement, "Five files are written.");
+        // An older answer keeps its own pinned version after the later edit of a.md.
+        assert_eq!((views[&3].version, views[&3].files.len()), (1, 1));
+        assert_eq!(messages[0].content, "first text");
+    }
+
     fn citation_note(seq: u32) -> ChatMessageItem {
         row(seq, ChatRole::Nag, CITATION_NOTE_NAME, "", "Call cite_documents")
     }
@@ -1989,6 +2021,46 @@ fn ReportHeader(report: ReportView) -> Element {
             }
             if !report.found {
                 span { "This version could not be read. The chat text of the answer follows." }
+            }
+        }
+        if report.files.len() > 1 {
+            DeliveredFiles { files: report.files.clone() }
+        }
+    }
+}
+
+/// The list of the file versions that a turn delivered. Each entry opens its own pinned
+/// version in the workspace pane, never the latest version of the file. Nothing renders
+/// for an empty list.
+#[component]
+fn DeliveredFiles(files: Vec<common::chat_types::ReportRef>) -> Element {
+    let open = try_use_context::<ChatWorkspaceOpen>();
+    if files.is_empty() {
+        return rsx! {};
+    }
+    let count = files.len();
+    rsx! {
+        div { class: "x-chat-report-files", "data-chat-files": "{count}",
+            style: "display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; \
+                    margin: 4px 0; font-size: var(--x-text-sm); color: var(--x-ink-muted);",
+            span { "Files" }
+            for file in files.into_iter() {
+                if let Some(open) = open {
+                    button {
+                        key: "{file.name}:{file.version}",
+                        "data-chat-file": "{file.name}:{file.version}",
+                        style: "background: none; border: none; padding: 0; cursor: pointer; \
+                                color: var(--x-link); font-size: var(--x-text-sm);",
+                        onclick: {
+                            let (name, version) = (file.name.clone(), file.version);
+                            move |_| open.open.call((name.clone(), Some(version)))
+                        },
+                        "{file.name}, version {file.version}"
+                    }
+                } else {
+                    span { key: "{file.name}:{file.version}", "data-chat-file": "{file.name}:{file.version}",
+                        "{file.name}, version {file.version}" }
+                }
             }
         }
     }

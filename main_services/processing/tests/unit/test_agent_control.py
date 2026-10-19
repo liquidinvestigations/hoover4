@@ -263,7 +263,9 @@ def test_a_handler_with_another_interface_version_is_a_configuration_error(tmp_p
         registry.load(refresh=True)
 
 
-def test_the_built_in_definitions_resolve():
+def test_the_built_in_definitions_resolve(monkeypatch):
+    # The built-in activation only: a deployment's control directory can select another.
+    monkeypatch.delenv(registry.CONTROL_DIR_ENV, raising=False)
     assert definitions.resolve("full_research").id == "chat-default"
     assert definitions.resolve("internal_search").id == "chat-default"
     record = definitions.resolve("full_research").record()
@@ -310,7 +312,8 @@ def test_preparation_loads_picked_skills_and_pins_assets(store, monkeypatch, rou
     assert [c["args"]["name"] for c in ai.tool_calls] == ["spreadsheets", "emails"]
     assert [c.seq for c in outcome.calls] == [5, 6]
     assert store["row"].next_seq == 8
-    assert "3 to 10 calls" in store["chat"][-1]["content"]
+    assert "Search the permitted document collections first" in store["chat"][-1]["content"]
+    assert "calls" not in store["chat"][-1]["content"]
     control = store["messages"][0].usage["control"]
     assert control["assets"]["system_prompt"] == "PROMPT dated 2026-10-08"
     assert steps.pinned_control(store["messages"])["skills"]["spreadsheets"].startswith("Skill")
@@ -395,8 +398,12 @@ def test_a_missing_action_row_is_written_at_its_reserved_position(store, monkeyp
     assert (again.idx, again.tool_calls) == (ai.idx, ai.tool_calls)
 
 
+def _with_requirements(rule):
+    return {**rule, "parameters": {**rule["parameters"], "requirements": True}}
+
+
 def test_a_failed_sibling_request_keeps_the_other_result(store, monkeypatch, route):
-    _pin(store, monkeypatch, _definition([PREPARE]))
+    _pin(store, monkeypatch, _definition([_with_requirements(PREPARE)]))
 
     class Split(_Route):
         def __call__(self, session, url, body, key, timeout):
@@ -420,7 +427,7 @@ def test_an_absent_route_proceeds_with_no_load(store, monkeypatch):
 
 
 def test_an_invented_requirement_stays_inferred(store, monkeypatch, route):
-    _pin(store, monkeypatch, _definition([PREPARE]))
+    _pin(store, monkeypatch, _definition([_with_requirements(PREPARE)]))
     route["route"] = _Route(raw=json.dumps([
         {"condition": "rank by production volume", "scope": "whole", "basis": "evidence",
          "words": "production volume"},
@@ -629,7 +636,8 @@ def test_a_turn_closed_after_evaluation_preserves_request_samples(store, monkeyp
     outcome = _hook("turn_started", 0)
     assert outcome.closed
     assert len(recorded) == 1
-    assert len(recorded[0]["classifier_events"]) == 3
+    # The skill request and the name request. No requirement request is made by default.
+    assert len(recorded[0]["classifier_events"]) == 2
     assert all(event["actions"] == 0 for event in recorded[0]["classifier_events"])
     assert store["chat"] == []
 
@@ -641,7 +649,7 @@ def test_a_completed_hook_writes_samples_once_across_a_retry(store, monkeypatch,
     _hook("turn_started", 0)
     _hook("turn_started", 0)
     assert len(recorded) == 1
-    assert len(recorded[0]["classifier_events"]) == 3
+    assert len(recorded[0]["classifier_events"]) == 2
     assert sum(event["actions"] for event in recorded[0]["classifier_events"]) == 1
 
 
@@ -1063,3 +1071,277 @@ def test_the_quality_definition_resolves_from_a_control_folder(monkeypatch, tmp_
         monkeypatch.delenv(registry.CONTROL_DIR_ENV)
         registry.load(refresh=True)
     assert definitions.resolve("internal_search").limits["paragraph_repair"] == 1
+
+
+# ------------------------------------------------------- policies and repairs
+
+
+def _fact(name, status="ok", args=None, **fields):
+    from tasks.P_agent.control.facts import ResultFact
+    return ResultFact(fields.pop("call_id", "c"), name, 1, 2, fields.pop("origin", "model"), status,
+                      args or {}, **fields)
+
+
+def _event(origin="model"):
+    from tasks.P_agent.control.model import ControlEvent
+    return ControlEvent("batch", "tool_batch_completed", 1, origin)
+
+
+def test_a_policy_batch_changes_no_progress_count():
+    from tasks.P_agent.control.handlers.progress import Handler
+    previous = {"level": 2, "units": 2, "sources": ["x"]}
+    batch = (_fact("read_skill", origin="policy"),)
+    result = asyncio.run(Handler().evaluate(_event("policy"), _progress_context(previous, batch, 4),
+                                            {"signals": False}, object()))
+    assert result.actions == () and plain_facts(result) == previous
+
+
+def plain_facts(result):
+    from tasks.P_agent.control.model import plain
+    return plain(result.facts)
+
+
+def test_new_file_versions_are_progress_and_an_unchanged_patch_is_not():
+    from tasks.P_agent.control.handlers.progress import Handler
+    handler, previous = Handler(), {"level": 1, "units": 2}
+    patch = _fact("patch_file", file_version=("report.md", 2, True))
+    first = asyncio.run(handler.evaluate(_event(), _progress_context(previous, (patch,), 3),
+                                         {"signals": False}, object()))
+    assert first.facts["level"] == 0 and first.facts["units"] == 0
+    assert list(first.facts["file_versions"]) == ["report.md@2"]
+    # Several valid patches never count as a stalled search.
+    second_patch = _fact("patch_file", file_version=("report.md", 3, True))
+    second = asyncio.run(handler.evaluate(_event(), _progress_context(plain_facts(first), (second_patch,), 4),
+                                          {"signals": False}, object()))
+    assert second.facts["units"] == 0
+    unchanged = _fact("patch_file", file_version=("report.md", 3, False))
+    third = asyncio.run(handler.evaluate(_event(), _progress_context(plain_facts(second), (unchanged,), 5),
+                                         {"signals": False}, object()))
+    assert third.facts["units"] == 1
+    failed = _fact("write_file", status="error", error_code="invalid_argument")
+    fourth = asyncio.run(handler.evaluate(_event(), _progress_context(plain_facts(third), (failed,), 6),
+                                          {"signals": False}, object()))
+    assert fourth.facts["units"] == 2
+
+
+class _Signals:
+    """Answers every progress question with one score and records the request state."""
+
+    def __init__(self, score):
+        self.score = score
+        self.states = []
+
+    async def ask(self, state, questions, instructions=""):
+        from tasks.P_agent.control.model import ClassifierResult
+        self.states.append(state)
+        return ClassifierResult("ok", freeze({q: {"noul": self.score} for q in questions}))
+
+
+def test_the_answered_signal_is_not_kept_from_an_earlier_batch():
+    from tasks.P_agent.control.handlers.progress import Handler
+    previous = {"answered": True, "signals": {"answered": {"streak": 3}}}
+    result = asyncio.run(Handler().evaluate(_event(), _progress_context(previous, (), 2), {},
+                                            _Signals(0.0)))
+    assert result.facts["answered"] is False
+
+
+def test_completion_advice_needs_delivery_evidence():
+    from tasks.P_agent.control.handlers.progress import COMPLETION_ADVICE, Handler
+    stalled = {"level": 0, "units": 2}
+    search = _fact("search_collections", item_count=0, args={"query": "x"})
+    bare = asyncio.run(Handler().evaluate(_event(), _progress_context(stalled, (search,), 2), {},
+                                          _Signals(0.95)))
+    note = next(a for a in bare.actions if a.kind == "append_note")
+    assert COMPLETION_ADVICE not in note.arguments["text"]
+    assert "already gives what the request asks for" not in note.arguments["text"]
+    write = _fact("write_file", file_version=("report.md", 1, True), call_id="w")
+    context = replace(_progress_context(stalled, (search,), 2), results=(write, search))
+    evidenced = asyncio.run(Handler().evaluate(_event(), context, {}, _Signals(0.95)))
+    note = next(a for a in evidenced.actions if a.kind == "append_note")
+    assert COMPLETION_ADVICE in note.arguments["text"]
+    off = asyncio.run(Handler().evaluate(_event(), context, {"completion": "none"}, _Signals(0.95)))
+    assert all(COMPLETION_ADVICE not in a.arguments.get("text", "") for a in off.actions)
+
+
+def test_advisory_progress_names_its_origin_once_and_never_ends_the_turn():
+    from tasks.P_agent.control.handlers.progress import STUCK_ADVICE, Handler
+    handler, previous = Handler(), {"signals": {"stuck": {"streak": 1}, "absent": {"streak": 1}}}
+    search = _fact("search_collections", item_count=0, args={"query": "x"})
+    params = {"completion": "none", "advice": True, "end_turn": False}
+    first = asyncio.run(handler.evaluate(_event(), _progress_context(previous, (search,), 2), params,
+                                         _Signals(0.95)))
+    advice = [a for a in first.actions if a.target_id == "progress-advice"]
+    assert len(advice) == 1 and advice[0].arguments["text"].startswith("A chat check estimates")
+    assert STUCK_ADVICE in advice[0].arguments["text"]
+    again = asyncio.run(handler.evaluate(_event(), _progress_context(plain_facts(first), (search,), 3),
+                                         params, _Signals(0.95)))
+    assert not [a for a in again.actions if a.target_id == "progress-advice"]
+    ledger = plain_facts(again)
+    for step in range(4, 30):
+        result = asyncio.run(handler.evaluate(_event(), _progress_context(ledger, (search,), step),
+                                              params, _Signals(0.95)))
+        ledger = plain_facts(result)
+        assert all(a.kind != "end_turn" for a in result.actions)
+
+
+def test_the_progress_request_shows_the_focused_task_first():
+    from tasks.P_agent.control.handlers.progress import Handler
+    brief = "Background. " * 400
+    task = {"objective": {"text": "Count the monitored bills by state.", "source": "intent"},
+            "brief": {"text": brief, "source": "intent"}}
+    context = replace(_progress_context(), request=brief + "Count the monitored bills by state.",
+                      task=freeze(task))
+    signals = _Signals(0.0)
+    asyncio.run(Handler().evaluate(_event(), context, {"request_chars": 1500}, signals))
+    shown = signals.states[0]["request"]
+    assert shown.startswith("objective: Count the monitored bills by state.")
+    assert "characters of the task are omitted here" in shown
+
+
+def test_the_task_of_a_turn_comes_from_its_opening_usage():
+    from tasks.P_agent.control import facts as F
+    plain_turn = agent_runs.RunMessageRow(idx=0, role="human", content="Find the lease.")
+    assert F.task_of(plain_turn) == {"objective": {"text": "Find the lease.", "source": "user"}}
+    board = replace(plain_turn, content="Long brief.", usage_json=json.dumps({"task": {
+        "objective": {"text": "Name the leader.", "source": "intent"},
+        "corrections": [{"text": "Use the 2001 minutes.", "source": "correction-minutes"}],
+        "bad": "not a field"}}))
+    task = F.task_of(board)
+    assert task["objective"]["text"] == "Name the leader." and "bad" not in task
+    text, omitted = F.task_text(task, 10_000)
+    assert text.index("Name the leader") < text.index("Use the 2001 minutes") and omitted == 0
+
+
+def test_the_result_triggers_load_the_recovery_skills():
+    from tasks.P_agent.control.handlers.result_skills import Handler
+    params = {"events": {"report": ["first_write", "workspace_error"],
+                         "call_arguments": "argument_error", "document_ids": "unknown_document"}}
+    listed = freeze({name: {} for name in ("report", "call_arguments", "document_ids")})
+
+    def loads(batch, earlier=()):
+        context = replace(_progress_context(), listed_skills=listed,
+                          results=tuple(earlier) + tuple(batch), batch=tuple(batch))
+        result = asyncio.run(Handler().evaluate(_event(), context, params, object()))
+        return sorted(a.target_id for a in result.actions)
+
+    write = _fact("write_file", file_version=("a.md", 1, True))
+    assert loads([write]) == ["report"]
+    earlier = replace(write, ai_idx=0)
+    assert loads([_fact("patch_file", file_version=("a.md", 2, True))], [earlier]) == []
+    assert loads([_fact("write_file", status="error", error_code="")]) == ["report"]
+    assert loads([_fact("read_documents", status="refused", error_code="invalid_argument")]) == ["call_arguments"]
+    assert loads([_fact("read_documents", status="error", error_code="not_found")]) == ["document_ids"]
+    assert loads([_fact("search_collections")]) == []
+
+
+def test_result_facts_name_the_file_version_and_the_error_code():
+    from tasks.P_agent.control.facts import result_facts
+    messages = [_ai(1, [("w", "write_file", {"name": "a.md"}), ("p", "patch_file", {"name": "a.md"}),
+                        ("r", "read_documents", {"file_hash": "0" * 64})]),
+                _tool(2, "w", "write_file", {"success": True, "name": "a.md", "version": 1}),
+                _tool(3, "p", "patch_file", {"success": True, "name": "a.md", "version": 1, "unchanged": True}),
+                _tool(4, "r", "read_documents", {"success": False, "error": "not_found"}, status="error")]
+    facts = {f.call_id: f for f in result_facts(messages)}
+    assert facts["w"].file_version == ("a.md", 1, True)
+    assert facts["p"].file_version == ("a.md", 1, False)
+    assert facts["r"].error_code == "not_found" and facts["r"].file_version == ()
+
+
+def test_deterministic_preparation_loads_the_report_skill_with_no_request(store, monkeypatch, route):
+    rule = {**PREPARE, "parameters": {"classifier": False, "report_skill": True}}
+    _pin(store, monkeypatch, _definition([rule]))
+    store["agent"].requests.clear()
+    skills = dict(SKILLS, report={"text": "Skill `report`.", "description": "files", "group": "general",
+                                  "tools": ["write_file"], "terms": "", "not_for": ""})
+    original = store["agent"]
+
+    def agent(params, path, body, seconds):
+        response = original(params, path, body, seconds)
+        if path == "/control_snapshot" and not body.get("visibility_only"):
+            response = dict(response, skills=skills)
+        return response
+    monkeypatch.setattr(coordinator, "_agent_post", agent)
+    store["messages"][0] = replace(store["messages"][0], content="Write a report on the Fortress payments.")
+    outcome = _hook("turn_started", 0)
+    assert [c.name for c in outcome.calls] == ["read_skill"]
+    assert route["route"].bodies == []
+    decision = store["messages"][0].usage["control"]["decisions"]["turn_started"]
+    assert decision["facts"]["preparation"]["children"]["ask"] == {"status": "disabled"}
+    assert decision["task_digest"]
+
+
+def test_a_blocked_name_request_keeps_the_skill_picks_and_a_retry_reuses_them(store, monkeypatch, route):
+    """The skill request returns, the name request outlives the hook. The decision keeps the
+    skill load, records the timeout of the name child, and a worker restart after the decision
+    write reuses the decision with no new request."""
+    _pin(store, monkeypatch, _definition([PREPARE], {"preparation_seconds": 3}))
+
+    class Blocked(_Route):
+        def __call__(self, session, url, body, key, timeout):
+            import time
+            if "names=" in body.get("questions", {}):
+                time.sleep(min(timeout[1], 3))
+                return 200, {"answers": {"names=": {"items": [{"text": "late name"}]}}}, ""
+            return super().__call__(session, url, body, key, timeout)
+
+    route["route"] = Blocked({"skill_spreadsheets=": {"noul": 0.97}})
+    outcome = _hook("turn_started", 0, seconds=3.0)
+    assert [c.name for c in outcome.calls] == ["read_skill"]
+    decision = store["messages"][0].usage["control"]["decisions"]["turn_started"]
+    children = decision["facts"]["preparation"]["children"]
+    assert children["ask"]["status"] == "ok" and children["names"]["status"] == "timeout"
+    assert decision["facts"]["preparation"]["names"] == []
+    asked = len(route["route"].bodies)
+    again = _hook("turn_started", 0, seconds=3.0)
+    assert len(route["route"].bodies) == asked
+    assert [c.call_id for c in again.calls] == [c.call_id for c in outcome.calls]
+
+
+def test_the_classifier_records_a_digest_of_its_input():
+    client = C.Classifier(C.Deadline(2), base_url="http://route.invalid", api_key="k", model="m", post=_Route())
+    asyncio.run(client.ask({"request": "a"}, {"q=": {"type": "noul", "instructions": "?"}}))
+    asyncio.run(client.ask({"request": "b"}, {"q=": {"type": "noul", "instructions": "?"}}))
+    first, second = client.events
+    assert len(first["input_digest"]) == 64 and first["input_digest"] != second["input_digest"]
+
+
+def test_model_images_is_validated_pinned_and_sent_to_the_agent():
+    plain_def = definitions.validate(_definition([]))
+    images = definitions.validate({**_definition([]), "model_images": "on_demand"})
+    assert plain_def.model_images == "attach" and images.model_images == "on_demand"
+    assert plain_def.revision != images.revision
+    with pytest.raises(registry.ControlConfigError, match="model_images"):
+        definitions.validate({**_definition([]), "model_images": "sometimes"})
+    record = images.record()
+    assert definitions.pinned(record).model_images == "on_demand"
+    old = {k: v for k, v in plain_def.record().items() if k != "model_images"}
+    assert definitions.pinned(old).model_images == "attach"
+    opening = agent_runs.RunMessageRow(idx=0, role="human", content="q", usage_json=json.dumps(
+        {"control": {"definition": record, "assets": {"system_prompt": "P", "skills": {}}}}))
+    assert steps.pinned_control([opening])["model_images"] == "on_demand"
+    legacy = replace(opening, usage_json=json.dumps(
+        {"control": {"definition": old, "assets": {"system_prompt": "P", "skills": {}}}}))
+    assert steps.pinned_control([legacy])["model_images"] == "attach"
+
+
+def test_an_unchanged_definition_keeps_its_revision_without_the_image_setting():
+    raw = _definition([PREPARE])
+    assert definitions.validate(raw).revision == definitions.validate({**raw, "model_images": "attach"}).revision
+
+
+@pytest.mark.parametrize("ident", ["chat-deterministic", "chat-advisory", "chat-repaired"])
+def test_the_comparison_definitions_validate_and_hold_page_reads_constant(ident, monkeypatch):
+    monkeypatch.delenv(registry.CONTROL_DIR_ENV, raising=False)
+    path = Path(definitions.__file__).parent / "definitions" / f"{ident}.json"
+    definition = definitions.validate(json.loads(path.read_text()), path.name)
+    assert definition.id == ident and definition.model_images == "attach"
+    reads = next(r for r in definition.rules if r.handler.name == "web_reads")
+    assert dict(reads.parameters) == {"mode": "rank", "max_urls": 6, "pool": 10}
+    prepare = next(r for r in definition.rules if r.handler.name == "preparation")
+    progress = next(r for r in definition.rules if r.handler.name == "progress")
+    if ident == "chat-deterministic":
+        assert prepare.parameters["classifier"] is False and progress.parameters["signals"] is False
+    else:
+        assert prepare.parameters["classifier"] is True and progress.parameters["signals"] is True
+    if ident == "chat-advisory":
+        assert progress.parameters["completion"] == "none" and progress.parameters["advice"] is True

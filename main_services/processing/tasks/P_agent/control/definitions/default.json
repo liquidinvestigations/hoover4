@@ -2,7 +2,7 @@
   "id": "chat-default",
   "schema_version": 1,
   "profile": "*",
-  "description": "Preparation, result-triggered skills, discovery notes, automatic web reads, capture checks and the combined answer review.",
+  "description": "Preparation, result-triggered skills, ranked automatic web reads, capture checks, discovery notes and search progress notes.",
   "limits": {
     "repair_rounds": 2,
     "preparation_seconds": 15,
@@ -63,7 +63,7 @@
           "sort": "Does the request ask for the items in a specific order?",
           "compare": "Does the request ask to compare sources, drafts or accounts?"
         },
-        "requirements": true
+        "requirements": false
       }
     },
     {

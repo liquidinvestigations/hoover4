@@ -246,3 +246,64 @@ def test_the_brief_gives_full_text_to_the_from_facts_and_labels_to_the_others():
     assert m.SUBMIT_FACT_TOOL not in text and "report" in text
     web = render_brief(board, facts, [], [], intent, ["enron"], m.BASE_EXPLORE_STEPS, labels, True)
     assert "Use the web when" in web and "[W1]" in web
+
+
+# ---------------------------------------------- counts through report and answer
+
+BILLS = __import__("pathlib").Path(__file__).parent / "fixtures" / "monitored_bills_38.csv"
+EXPECTED = {"GA": 13, "MO": 9, "TN": 7, "SC": 5, "NC": 2, "WV": 1, "KY": 1}
+
+
+def _state_counts() -> dict:
+    import csv
+    from collections import Counter
+
+    with BILLS.open() as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 38
+    return dict(Counter(row["state"] for row in rows))
+
+
+def _count_text(counts: dict) -> str:
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return ", ".join(f"{state} {count}" for state, count in ordered)
+
+
+def test_the_38_row_fixture_counts_survive_report_finding_and_answer():
+    """The synthetic 38-row table gives the retained counts. A report that states them, a
+    finding that keeps them and an answer that keeps them raise no number problem. A
+    finding or an answer that changes them is marked, and keeps its text."""
+    from tasks.P_board.contracts import parse_reason
+
+    counts = _state_counts()
+    assert counts == EXPECTED and sum(counts.values()) == 38
+    report = (f"# Monitored bills\n\nThe table holds 38 bills. By state: {_count_text(counts)} [D1]. "
+              "The counts come from the state column of all 38 rows, with no filter.")
+    finding = f"Of the 38 monitored bills, the states are {_count_text(counts)} [D1]."
+    assert conversion.number_problems(finding, report) == []
+    wrong = "Of the 44 monitored bills, the states are GA 20, MO 9, TN 6, SC 6 [D1]."
+    assert conversion.number_problems(wrong, report) == ["numbers that the report does not hold: 6, 20, 44"]
+    reply = json.dumps({"answers": [{"goal": "goal-01", "from": ["fact-bills"],
+                                     "statement": f"The 38 bills by state: {_count_text(counts)}."}]})
+    payload = parse_reason(reply, {"fact-bills"}, {"fact-bills"}, [], idle=True, goal_ids=["goal-01"],
+                           fact_texts={"fact-bills": finding})
+    assert payload["problems"] == [] and payload["outcome"] == "review"
+    assert payload["proposals"][0]["statement"].endswith("GA 13, MO 9, TN 7, SC 5, NC 2, KY 1, WV 1.")
+
+
+def test_the_explore_task_keeps_the_focused_objective_apart_from_the_brief():
+    from tasks.P_board.fold import Folded, Intent
+
+    folded = Folded(board_id="b1", goal_ids=["goal-01"])
+    folded.corrections = {"correction-minutes": {"goal": "goal-01", "event_id": "e"}}
+    intent = Intent(intent_id="intent-leader-minutes", reason_no=3, from_facts=["background"],
+                    objective="Find the delegation leader in the 2001 minutes",
+                    brief="Search the minutes. " * 200, correction="correction-minutes")
+    rows = [FactRow("b1", "goal-01", m.GOAL, "Who led the delegation?"),
+            FactRow("b1", "correction-minutes", m.CORRECTION, "Use the 2001 minutes.")]
+    task = activities.explore_task(intent, rows, folded, ["enron"], web=False)
+    assert task["objective"] == {"text": intent.objective, "source": "intent:intent-leader-minutes"}
+    assert task["corrections"] == [{"text": "Use the 2001 minutes.", "source": "correction:correction-minutes"}]
+    assert task["goals"] == [{"text": "Who led the delegation?", "source": "goal-01"}]
+    assert task["allowed_sources"]["text"] == "collections: enron; the web is not allowed"
+    assert list(task)[0] == "objective"

@@ -174,22 +174,31 @@ does not change. The check does not show that a claim follows from its source.
 ```mermaid
 flowchart TD
     accTitle: The report of a turn
-    accDescr: The agent writes a file through the session writer. A checked version is stored. At the end of the turn the last successful write or patch is the report of the answer.
+    accDescr: The agent writes a file through the session writer. A checked version is stored. At the end of the turn the answer lists every delivered file, and the last successful write or patch is its report.
     A[Agent calls write_file or patch_file] --> B[WorkspaceWriter checks version, gutter and handles]
     B -->|finding| C[Tool result with findings, file unchanged]
     C --> A
     B -->|valid| D[Immutable version and receipt in ClickHouse]
     D --> E{Turn ends}
-    E -->|a successful write or patch| F[Answer row names the last such version as its report]
+    E -->|one or more successful writes or patches| F[Answer row lists each delivered file and names the last version as its report]
     E -->|no write or patch| G[Ordinary chat answer]
 ```
 
 When the turn ends, the last successful write or patch of its run, in call order, is the
-report of the turn. The answer row stores its name and version (`report` in `usage_json`), and
-the transcript shows that version as the answer with its citation cards. The chat text of the
-answer shows muted under it. A later edit of the file does not change an earlier answer. A
-turn that stops before its answer names its report in the same way. A turn that asks the
-person a question shows the question, and its files stay in the workspace. The Workspace
+report of the turn. The answer row stores its name and version (`report` in `usage_json`).
+It also lists each file that the run wrote or changed, in the order of the first delivery,
+with the last version of each file (`reports` in `usage_json`). A retried call with the same
+call id counts once. The transcript shows the report version as the answer with its citation
+cards. The chat text of the answer shows muted under it. When the turn delivered two or more
+files, a Files line under the answer has one button for each file version. A row without
+`reports` shows its `report` only. A later edit of a file does not change an earlier answer.
+A turn that stops before its answer, fails or is cancelled stores the same list on its row,
+and the transcript shows the list there. A turn that asks the person a question shows the
+question, and its files stay in the workspace.
+
+A write whose text holds handles only inside code formatting, such as `` `[W1]` ``, links no
+citation. The file is stored, and the result gets a note that names the handle and tells the
+agent to write it without backticks. The Workspace
 button of the conversation opens a read-only pane with the file list and the content of one
 version. The pane state is in the URL. Deleting the conversation writes a tombstone for each
 version and cancels the writer, and the writer refuses a command for a deleted session.
@@ -211,12 +220,32 @@ starts, the worker stores a copy of its assets on the opening row of the run. Th
 the definition, the digest of each handler file, the rendered system prompt and the skill
 texts. The turn uses that copy until it ends, so a later change affects new turns only.
 
-Three definitions are built in. `chat-default` is active for every profile. It loads skills
-at the turn start and after the first read, ranks web reads, and writes progress, discovery
-and capture notes. `chat-quality` is for a model that searches, reads and cites without
-guidance notes. It has no progress, discovery or capture rule. `chat-null` has no rule. A
-board explore turn gets no effort note, because its brief gives its own call limit. A deployment selects a
-definition with [definitions/active.json](../../main_services/processing/tasks/P_agent/control/definitions/active.json) in the `chat_control_dir` folder.
+These definitions are built in.
+
+| Definition | Rules |
+|---|---|
+| `chat-default` | Active in the repository for every profile. It loads skills at the turn start and after a result, ranks web reads, and writes progress, discovery and capture notes. |
+| `chat-quality` | For a model that searches, reads and cites without guidance notes. It loads skills and ranks web reads. It has no progress, discovery or capture rule. |
+| `chat-null` | No rule. |
+| `chat-deterministic` | No classifier request. Skills load from the report trigger and from result facts. Progress notes count operations only. |
+| `chat-advisory` | The classifier selects skills at the turn start. The progress signals give advice notes that name the chat check as their origin. They end no turn. |
+| `chat-repaired` | The `chat-default` rules with the corrected progress, completion and preparation behavior. |
+
+The last three definitions are versioned comparison policies. Each has its own revision. A
+deployment selects a definition with
+[definitions/active.json](../../main_services/processing/tasks/P_agent/control/definitions/active.json) in the `chat_control_dir` folder.
+
+A definition can set `model_images`. `attach` is the default and sends each named image to
+the model. `on_demand` sends an image only for a document read. A page read keeps its
+screenshots as capture references for the person, and the result tells the model that they
+exist. The setting is part of the revision only when it is not the default, so the revision
+of an older definition does not change.
+
+The opening row of a run stores the structured task of the turn (`task` in `usage_json`)
+when the user row has one. A board explore turn has one: the objective, the context, the
+known facts, the scope and the expected output. The checks read the task through
+`facts.task_text`, which puts the objective first and marks a cut text with the number of
+omitted characters. Each decision records the digest of the task that it read.
 
 For each event the worker stores one decision before it writes any row of it. A retry reads
 the stored decision and writes the same rows at the same keys. An action is a note, a skill
@@ -230,11 +259,18 @@ and the turn continues as it would without the check. Scores are recorded at ful
 precision. They are not calibrated probabilities.
 Cancellation preserves completed request samples without applying policy actions.
 
-The built-in definition has these rules:
+The `chat-default` definition has these rules:
 
-- At the turn start, the preparation check classes the request sources. It scores the
-  listed skills and the request constraints, and loads at most three skills in 15 seconds.
-  It uses bounded context from the last two ended turns to resolve references in a follow-up request.
+- At the turn start, the preparation check classes the request sources and scores the
+  listed skills. It loads at most three skills in 15 seconds. It uses bounded context from
+  the last two ended turns to resolve references in a follow-up request. A request that
+  names a file, a report or a draft as its output loads the `report` skill without a
+  classifier request. The classifier request, the name check and the requirement list run
+  as independent children. Each child records `ok`, `timeout`, `error`, `cancelled`,
+  `skipped` or `disabled`, so a slow child does not discard the result of another. The
+  requirement list is off unless a definition enables it.
+- A chat turn gets one source note: search the permitted collections first, and the web
+  after them when the turn has web tools. No effort question or call quota applies.
 - After a tool batch, a result that needs the table, email or citation method loads that
   skill. A skill text that is still visible to the model is not loaded again.
 - After a web search batch of the model, the worker reads the unread result addresses in
@@ -265,7 +301,7 @@ The agent run sweep closes running rows whose workflows have ended.
 The transcript reads the narration of each turn through `chat_turn_narration`.
 It returns each `ai` row of the turn's threads with its text, its reasoning and the transcript seqs of its calls.
 The text of a step with calls shows in gray above the card of its first call. A closed group shows its newest step text above its line.
-A step text that the answer holds is plan prose and shows only in the answer.
+The answer row holds the text of the final reply only. The plan prose of the round goes to the reasoning of the answer row, so it shows as narration beside the tool activity.
 The page reads a finished turn once. It reads the running turn again at each new answer seq or changed tool row, so a reload recovers every finished step.
 The reasoning view removes each narration text at its own position in the joined reasoning, and keeps a sentence of the reasoning that repeats it.
 
@@ -521,15 +557,20 @@ change the shape, change both.
 ### Search progress and classifier traffic
 
 The turn pins capabilities from callable tools and permitted collections. Rules skip when their required tools are unavailable.
-Preparation classifies effort and names. It verifies absent names with indexed counts and suggests a clarification through `ask_user`.
+Preparation classifies sources and names. It verifies absent names with indexed counts and suggests a clarification through `ask_user`.
 Name lookups use the collections of earlier tool calls, or the collections explicitly named in the request before those calls.
 Without either scope, they use all permitted collections. A string collection argument remains one collection name.
 Code also retains names after "folder called", "folder named", "collection called" and "collection named" when the classifier omits them.
 A progress decision records distinct keyword sources, empty results, repeated calls, refusals, todo churn and word counts.
 Document-text, PDF and table-cell searches include their resolved document identity when the query has matches. Continuation pages retain that identity.
-Three units raise the note level. A new keyword source resets the current units. The level does not decrease.
-The third level requires an answer. Six further model steps end the turn through `write_incomplete` with the search summary.
+A policy batch, such as a skill load or an automatic page read, changes no count.
+Progress is a new keyword source, a successful read, a useful metadata listing, a verified citation or a new file version.
+Three batches without progress raise the note level. A batch with progress sets the level to 0.
+Six model steps without progress at the third level end the turn through `write_incomplete` with the search summary and the delivered files.
+No fixed search count or call budget applies.
 Classifier signals require measured score thresholds. A failed request supplies no signal.
+The `answered` signal is computed again for each batch. It adds advice only when the thread holds a stored file version or a verified citation of a successful read.
+A signal never ends a turn.
 Each classifier request writes metadata to `systemone_call_events` and traffic to `ai_service_telemetry`.
 The admin report reads these rows only when an administrator selects Run report.
 
@@ -543,7 +584,8 @@ bytes: `collection` and `file_hash` of a document, or `artifact_id` of a page ca
 The references move through these layers.
 
 1. `read_documents` names the image of each image or video document, at most 4 in one
-   call. `read_page` names the screenshot of each page.
+   call. `read_page` names the screenshot of each page that it loads. A read of a kept
+   text names its screenshot only when the call sets `screenshot` true.
 2. `/tool_call` of the agent service returns them as `image_refs`.
 3. `tool_call` of the worker stores them in the usage of the tool message, and in the
    `usage_json` of the transcript row.
@@ -551,6 +593,11 @@ The references move through these layers.
 5. `images.parts_for` reads each image from `images/document` or `images/capture`, with
    the identity of the run, and appends a label line and an `image_url` part after the
    text of the tool message.
+
+With `model_images` `on_demand`, step 2 moves the screenshots of a page read to
+`capture_refs`. The worker stores them apart from `image_refs`, so no step request, token
+estimate or summary reads them. The tool card shows them to the person. An image that one
+message names twice is sent once.
 
 The content of the message stays text, so a restart builds the same image input from the
 stored references. The website checks collection access or capture ownership on each read,
