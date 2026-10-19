@@ -368,9 +368,11 @@ links to the create form, and the answer decisions stay available.
 
 `board_reason` sends one model call on `chat-model-queue`. It uses the agent model of the
 explores (`llm_endpoints.chat_model`), which is the `quality_model` of `hoover4.ini` when it is
-set. The request turns off the reasoning phase of the model. With reasoning, the model spent all
-16,000 output tokens on most assessments of a board with history. A provider that refuses the
-hint gets the request without it. The prompt holds the goals, the live facts without their citation
+set. The first request keeps the reasoning phase and has at most 8,000 output tokens
+(`REASON_THINKING_TOKENS`). A new board needs that reasoning to declare its first intents. On a
+board with history the model can reason until the cap and give no reply. A cut or empty reply
+goes to a second request without reasoning, with at most 16,000 output tokens. A provider that
+refuses the hint that turns reasoning off gets that request without the hint. The prompt holds the goals, the live facts without their citation
 labels, the hints, the rejected facts, the intents, and at most 20 open questions of the live
 explore facts that no intent explores, newest fact first, each with its key
 `{fact id}#{1-based index}`. The activity writes the prompt and the whole reply to

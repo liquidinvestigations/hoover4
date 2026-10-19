@@ -507,26 +507,37 @@ def board_reason(task: ReasonTask) -> str:
     prompt = render_reason(board, folded, facts, citations, task.stalled, final=task.final)
     # An assessment decides the next work of the board, so it uses the agent model of the
     # explores and the report conversion. Titles, summaries and board labels use the
-    # short-call model. The request turns off the reasoning phase: with it, the agent model
-    # spent all 16,000 tokens on reasoning for most assessments of a board with history.
+    # short-call model. The first request keeps the reasoning phase, which a new board needs
+    # to declare its first intents. On a board with history the model can reason until the
+    # cap, so a cut or empty reply goes to a second request without reasoning.
     from tasks.llm_endpoints import chat_model, endpoint_for
 
     model = chat_model()
     endpoint = endpoint_for(model)
-    body = {"model": model, "max_tokens": m.REASON_MAX_TOKENS,
-            "messages": [{"role": "user", "content": prompt}]}
+    body = {"model": model, "messages": [{"role": "user", "content": prompt}]}
     timeout = (REASON_CONNECT_SECONDS, TIMEOUTS.board_reason_request_seconds)
     started = time.monotonic()
     text, usage, error = "", {}, ""
     try:
-        response = summarize.post_or_raise(endpoint, {**body, **summarize.NO_THINKING}, timeout=timeout)
-        if 400 <= response.status_code < 500:
-            # A provider that does not accept the hint refuses the request, so the request
-            # goes again without the hint.
-            response = summarize.post_or_raise(endpoint, body, timeout=timeout)
+        response = summarize.post_or_raise(
+            endpoint, {**body, "max_tokens": m.REASON_THINKING_TOKENS}, timeout=timeout)
         response.raise_for_status()
         reply = response.json()
-        text = reply["choices"][0]["message"].get("content") or ""
+        choice = reply["choices"][0]
+        text = choice["message"].get("content") or ""
+        if choice.get("finish_reason") == "length" or not text.strip():
+            _record_llm_call(board.owner, board.board_id, model, reply.get("usage") or {},
+                             int((time.monotonic() - started) * 1000), False,
+                             "the reasoning reached the token limit before a reply", len(response.text))
+            plain = {**body, "max_tokens": m.REASON_MAX_TOKENS}
+            response = summarize.post_or_raise(endpoint, {**plain, **summarize.NO_THINKING}, timeout=timeout)
+            if 400 <= response.status_code < 500:
+                # A provider that does not accept the hint refuses the request, so the
+                # request goes again without the hint.
+                response = summarize.post_or_raise(endpoint, plain, timeout=timeout)
+            response.raise_for_status()
+            reply = response.json()
+            text = reply["choices"][0]["message"].get("content") or ""
         usage = reply.get("usage") or {}
     except summarize.TransportFailure as exc:
         _record_llm_call(board.owner, board.board_id, model, {},

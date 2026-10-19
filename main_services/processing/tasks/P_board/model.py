@@ -144,6 +144,10 @@ STALL_REVIEW_REASONS = {CAUSE_NO_DIRECTION: STALLED_NO_DIRECTION, CAUSE_INVALID:
 #: replies of 3,000 to 4,000 tokens with a short JSON object are common, so a lower cap cuts
 #: the object off and the reply is invalid.
 REASON_MAX_TOKENS = 16000
+#: Output tokens of the first reason request, which keeps the reasoning phase. On a board
+#: with history the agent model can reason until the cap and give no reply. A reply cut at
+#: this cap, or an empty one, goes to a second request without reasoning.
+REASON_THINKING_TOKENS = 8000
 # The explore budget of a board. The base covers the first goal. Each further goal, at
 # creation or later, adds `GOAL_EXPLORES`. Each hint, explored question, own question,
 # rejected fact and rejected answer or review adds `ACTION_EXPLORES`, and each reopening

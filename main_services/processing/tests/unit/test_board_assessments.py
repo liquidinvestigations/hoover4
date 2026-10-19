@@ -18,16 +18,18 @@ T0 = datetime(2026, 10, 14, 8, 0, 0)
 
 
 class _Reply:
-    def __init__(self, text, status_code=200):
+    def __init__(self, text, status_code=200, finish="stop"):
         self.text = text
         self.status_code = status_code
+        self.finish = finish
 
     def raise_for_status(self):
         if self.status_code >= 400:
             raise RuntimeError(f"HTTP {self.status_code}")
 
     def json(self):
-        return {"choices": [{"message": {"content": self.text}}], "usage": {"prompt_tokens": 7}}
+        return {"choices": [{"message": {"content": self.text}, "finish_reason": self.finish}],
+                "usage": {"prompt_tokens": 7}}
 
 
 def _patch(monkeypatch, live=True):
@@ -42,20 +44,34 @@ def _patch(monkeypatch, live=True):
     return store
 
 
-def test_a_reason_turns_off_reasoning_and_drops_a_refused_hint(monkeypatch):
+def test_a_reason_cut_in_its_reasoning_goes_again_without_reasoning(monkeypatch):
     _patch(monkeypatch)
     sent = []
+    good = '{"intents": [{"from": ["origin"], "objective": "find the memo", "brief": "b"}]}'
 
     def post(endpoint, body, timeout=None):
         sent.append(body)
+        if len(sent) == 1:
+            return _Reply("", finish="length")
         if "chat_template_kwargs" in body:
             return _Reply("refused", status_code=400)
-        return _Reply('{"intents": [{"from": ["origin"], "objective": "find the memo", "brief": "b"}]}')
+        return _Reply(good)
 
     monkeypatch.setattr(summarize, "_post", post)
     assert activities.board_reason(activities.ReasonTask("b1", 1)) == "intents"
-    assert sent[0]["chat_template_kwargs"] == {"enable_thinking": False}
-    assert len(sent) == 2 and "chat_template_kwargs" not in sent[1]
+    assert sent[0]["max_tokens"] == m.REASON_THINKING_TOKENS and "chat_template_kwargs" not in sent[0]
+    assert sent[1]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert sent[1]["max_tokens"] == m.REASON_MAX_TOKENS
+    assert len(sent) == 3 and "chat_template_kwargs" not in sent[2]
+
+
+def test_a_reason_with_a_reply_sends_one_request(monkeypatch):
+    _patch(monkeypatch)
+    sent = []
+    good = '{"intents": [{"from": ["origin"], "objective": "find the memo", "brief": "b"}]}'
+    monkeypatch.setattr(summarize, "_post", lambda endpoint, body, timeout=None: sent.append(body) or _Reply(good))
+    assert activities.board_reason(activities.ReasonTask("b1", 1)) == "intents"
+    assert len(sent) == 1
 
 
 def test_a_reason_stores_its_prompt_and_reply(monkeypatch):
