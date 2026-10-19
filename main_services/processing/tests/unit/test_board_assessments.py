@@ -37,8 +37,25 @@ def _patch(monkeypatch, live=True):
     store.publish_facts([FactRow("b1", "origin", m.ORIGIN, "o", created_at=T0),
                          FactRow("b1", "goal", m.GOAL, "g", created_at=T0)], [])
     monkeypatch.setenv("LLM_MODEL", "short-model")
+    monkeypatch.setenv("LLM_QUALITY_MODEL", "agent-model")
     monkeypatch.setattr(activities, "_record_llm_call", lambda *a, **k: None)
     return store
+
+
+def test_a_reason_turns_off_reasoning_and_drops_a_refused_hint(monkeypatch):
+    _patch(monkeypatch)
+    sent = []
+
+    def post(endpoint, body, timeout=None):
+        sent.append(body)
+        if "chat_template_kwargs" in body:
+            return _Reply("refused", status_code=400)
+        return _Reply('{"intents": [{"from": ["origin"], "objective": "find the memo", "brief": "b"}]}')
+
+    monkeypatch.setattr(summarize, "_post", post)
+    assert activities.board_reason(activities.ReasonTask("b1", 1)) == "intents"
+    assert sent[0]["chat_template_kwargs"] == {"enable_thinking": False}
+    assert len(sent) == 2 and "chat_template_kwargs" not in sent[1]
 
 
 def test_a_reason_stores_its_prompt_and_reply(monkeypatch):
@@ -47,7 +64,8 @@ def test_a_reason_stores_its_prompt_and_reply(monkeypatch):
     monkeypatch.setattr(summarize, "_post", lambda endpoint, body, timeout=None: _Reply(reply))
     assert activities.board_reason(activities.ReasonTask("b1", 1)) == "intents"
     (board_id, reason_no, prompt, text, error, model), = store.assessments
-    assert (board_id, reason_no, text, error, model) == ("b1", 1, reply, "", "short-model")
+    # An assessment uses the agent model, not the short-call model.
+    assert (board_id, reason_no, text, error, model) == ("b1", 1, reply, "", "agent-model")
     assert "You are the reasoning step" in prompt and "Goals:" in prompt
     [command] = store.read_inputs("b1")
     assert (command.request_id, command.kind, command.body["reason_no"]) == (

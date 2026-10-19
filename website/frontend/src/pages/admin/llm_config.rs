@@ -140,17 +140,17 @@ fn ModelsPanel(
                 table { class: "x-admin-llm-models", style: TABLE,
                     tbody {
                         tr {
-                            td { style: TD, "Agent turns" }
+                            td { style: TD, "Agent turns, board assessments and report conversions" }
                             td { style: "{TD} font-family: monospace;", "{agent}" }
                         }
                         tr {
-                            td { style: TD, "Titles, summaries, board labels and assessments" }
+                            td { style: TD, "Titles, summaries and board labels" }
                             td { style: "{TD} font-family: monospace;", "{short}" }
                         }
                     }
                 }
                 p { style: "{HELP_TEXT} margin: 8px 0 14px;",
-                    "hoover4.ini sets these models: quality_model of the LLM provider for agent turns when it is set, and its model for the rest."
+                    "hoover4.ini sets these models: quality_model of the LLM provider for agent turns, board assessments and report conversions when it is set, and its model for the rest."
                 }
                 label { style: "display: flex; gap: 8px; align-items: center; font-weight: 600; margin-bottom: 4px;",
                     input {

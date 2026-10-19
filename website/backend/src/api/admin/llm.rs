@@ -73,7 +73,7 @@ fn agent_model_from(quality: &str, base: &str) -> String {
     if quality.is_empty() { base.trim().to_string() } else { quality.to_string() }
 }
 
-/// The model of short calls (titles, summaries, board labels and assessments): `LLM_MODEL`.
+/// The model of short calls (titles, summaries and board labels): `LLM_MODEL`.
 pub fn short_call_model() -> String {
     std::env::var("LLM_MODEL").unwrap_or_default().trim().to_string()
 }

@@ -1,9 +1,9 @@
 """The language-model endpoint of each model name.
 
 The selfhosted provider can have a second, quality endpoint beside its base endpoint.
-`LLM_BASE_URL` serves `LLM_MODEL` and every short call: titles, summaries, board labels and
-assessments. `LLM_QUALITY_BASE_URL` serves `LLM_QUALITY_MODEL`, the model of agent turns when
-it is set (`chat_model`). A request goes to the quality endpoint when it names the quality
+`LLM_BASE_URL` serves `LLM_MODEL` and every short call: titles, summaries and board labels.
+`LLM_QUALITY_BASE_URL` serves `LLM_QUALITY_MODEL`, the model of agent turns, board
+assessments and report conversions when it is set (`chat_model`). A request goes to the quality endpoint when it names the quality
 model, and to the base endpoint otherwise.
 
 The research agent applies the same rule in `research_agent/endpoints.py`. Both read the
@@ -42,7 +42,7 @@ def chat_model() -> str:
 
 
 def short_model() -> str:
-    """The model of short calls: titles, summaries, board labels and assessments."""
+    """The model of short calls: titles, summaries, follow-up suggestions and board labels."""
     return (os.getenv("LLM_MODEL") or "").strip()
 
 

@@ -366,8 +366,11 @@ links to the create form, and the answer decisions stay available.
 
 ## Assessment
 
-`board_reason` sends one model call on `chat-model-queue`, with the short-call model of
-`hoover4.ini` (`LLM_MODEL`). The prompt holds the goals, the live facts without their citation
+`board_reason` sends one model call on `chat-model-queue`. It uses the agent model of the
+explores (`llm_endpoints.chat_model`), which is the `quality_model` of `hoover4.ini` when it is
+set. The request turns off the reasoning phase of the model. With reasoning, the model spent all
+16,000 output tokens on most assessments of a board with history. A provider that refuses the
+hint gets the request without it. The prompt holds the goals, the live facts without their citation
 labels, the hints, the rejected facts, the intents, and at most 20 open questions of the live
 explore facts that no intent explores, newest fact first, each with its key
 `{fact id}#{1-based index}`. The activity writes the prompt and the whole reply to

@@ -32,11 +32,11 @@ pub struct LlmProviderHealth {
 pub struct AdminLlmPage {
     pub providers: Vec<LlmProviderHealth>,
     pub models: Vec<LlmModelItem>,
-    /// The model of agent turns from `hoover4.ini`: the quality model when it is set, else
-    /// the provider model.
+    /// The model of agent turns, board assessments and report conversions from
+    /// `hoover4.ini`: the quality model when it is set, else the provider model.
     #[serde(default)]
     pub agent_model: String,
-    /// The model of titles, summaries, board labels and assessments: the provider model.
+    /// The model of titles, summaries and board labels: the provider model.
     #[serde(default)]
     pub short_call_model: String,
     /// True when a catalog refresh is currently running in-process.

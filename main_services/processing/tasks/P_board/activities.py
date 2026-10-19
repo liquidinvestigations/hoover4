@@ -505,19 +505,25 @@ def board_reason(task: ReasonTask) -> str:
     if folded.status != m.ACTIVE and not task.final:
         return "skipped"
     prompt = render_reason(board, folded, facts, citations, task.stalled, final=task.final)
-    # A reason is a short decision call, so it uses the summarisation model, as titles
-    # and follow-up suggestions do. The board's model is the model of its explores.
-    model = summarize._model()
-    from tasks.llm_endpoints import endpoint_for
+    # An assessment decides the next work of the board, so it uses the agent model of the
+    # explores and the report conversion. Titles, summaries and board labels use the
+    # short-call model. The request turns off the reasoning phase: with it, the agent model
+    # spent all 16,000 tokens on reasoning for most assessments of a board with history.
+    from tasks.llm_endpoints import chat_model, endpoint_for
 
+    model = chat_model()
     endpoint = endpoint_for(model)
+    body = {"model": model, "max_tokens": m.REASON_MAX_TOKENS,
+            "messages": [{"role": "user", "content": prompt}]}
+    timeout = (REASON_CONNECT_SECONDS, TIMEOUTS.board_reason_request_seconds)
     started = time.monotonic()
     text, usage, error = "", {}, ""
     try:
-        response = summarize.post_or_raise(
-            endpoint, {"model": model, "max_tokens": m.REASON_MAX_TOKENS,
-                       "messages": [{"role": "user", "content": prompt}]},
-            timeout=(REASON_CONNECT_SECONDS, TIMEOUTS.board_reason_request_seconds))
+        response = summarize.post_or_raise(endpoint, {**body, **summarize.NO_THINKING}, timeout=timeout)
+        if 400 <= response.status_code < 500:
+            # A provider that does not accept the hint refuses the request, so the request
+            # goes again without the hint.
+            response = summarize.post_or_raise(endpoint, body, timeout=timeout)
         response.raise_for_status()
         reply = response.json()
         text = reply["choices"][0]["message"].get("content") or ""
