@@ -13,7 +13,8 @@ copy of these rules at this layer is how the tool and the workflow start disagre
 about the state of a plan.
 
 `update_plan` takes a `goal` and `steps`, the whole ordered list of steps. Each step has
-`text`, `status` (`pending` by default, or `done`) and `note`. The stored plan is the given
+`text`, `status` (`pending` by default, or `done`, and `in_progress` counts as `pending`)
+and `note`. The stored plan is the given
 list. With the same goal, a step with the same text keeps its id, and a new step gets an id
 above every id in the list. A new goal numbers the steps `1`, `2`, `3`. A done step without
 a note gets the note `done`, or its earlier note. An empty goal or an empty step list is

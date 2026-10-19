@@ -160,6 +160,10 @@ class TestUpdatePlan:
         result = call(server.update_plan, goal="g", steps=[step("a", "done")])
         assert (result.success, result.items[0].note) == (True, chat_todos.DONE_NOTE)
 
+    def test_in_progress_is_accepted_and_kept_as_pending(self):
+        result = call(server.update_plan, goal="g", steps=[step("a", "in_progress")])
+        assert (result.success, result.items[0].status) == (True, "pending")
+
     def test_a_new_goal_starts_a_new_plan(self):
         call(server.update_plan, goal="g", steps=[step("a"), step("b")])
         result = call(server.update_plan, goal="other", steps=[step("c")])
@@ -211,7 +215,7 @@ EXPECTED_PROPERTIES = {
     "goal": {"type": "string"},
     "steps": {"type": "array", "items": {"type": "object", "required": ["text"], "properties": {
         "text": {"type": "string"},
-        "status": {"type": "string", "enum": ["pending", "done"], "default": "pending"},
+        "status": {"type": "string", "enum": ["pending", "in_progress", "done"], "default": "pending"},
         "note": {"type": "string", "default": ""}}}},
 }
 

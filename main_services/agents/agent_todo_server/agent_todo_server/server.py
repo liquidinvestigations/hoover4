@@ -65,7 +65,7 @@ class PlanStep(BaseModel):
     """One step of an `update_plan` call."""
 
     text: str = Field(description="The step, as a short sentence.")
-    status: Literal["pending", "done"] = Field(default="pending", description="pending, or done when the work of the step ended.")
+    status: Literal["pending", "in_progress", "done"] = Field(default="pending", description="pending, or done when the work of the step ended. in_progress counts as pending.")
     note: str = Field(default="", description="For a done step, a short reason, such as found or not found.")
 
 
