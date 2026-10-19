@@ -804,7 +804,7 @@ fn BoardOverview(
                 if !snap.answers_proposed.is_empty() {
                     p { style: HELP_TEXT, "Accept or reject the proposed answer of each goal above. A rejected answer lets the board continue at once." }
                 } else if snap.review_statement.is_empty() || stall_review {
-                    p { style: HELP_TEXT, "The board stopped without answers." }
+                    p { style: HELP_TEXT, "No proposed answer waits for your decision." }
                 } else {
                     p { "{snap.review_statement}" }
                 }
