@@ -1169,10 +1169,19 @@ fn MessageEntry(
                         }
                         if let Some(report) = report.as_ref().filter(|r| r.found && !r.acknowledgement.trim().is_empty()) {
                             // The Markdown text takes its colour from `--x-ink-strong`, so the
-                            // note sets that variable to the muted colour.
+                            // note sets that variable to the muted colour. Its handles link to
+                            // the citations of the report, and the source cards stay under the
+                            // report only.
                             div { class: "x-chat-report-note", "data-chat-report-note": "{message.seq}",
                                 style: "margin-top: 6px; --x-ink-strong: var(--x-ink-muted);",
-                                MarkdownishText { text: report.acknowledgement.clone(), citation_links: false }
+                                MarkdownishText {
+                                    text: report.acknowledgement.clone(),
+                                    cited_handles: Some(cited_handles.clone()),
+                                    conflicting_handles: conflicting_handles.clone(),
+                                    sources: sources.clone(),
+                                    pages: web_pages.clone(),
+                                    card_handles: Some(Vec::new()),
+                                }
                             }
                         }
                     } else {

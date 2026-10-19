@@ -52,7 +52,7 @@ It uses the neutral surface colour, fits its text, and takes at most 80% of the 
 A done task is struck through and followed by the first three words of its reason in bold.
 A replaced task stays struck through directly above the task that replaces it.
 A failed, unchanged, or unstored todo call shows no new summary.
-An answer whose turn wrote a workspace file shows the last file version of the turn as its text, under a line with the file name and the version. The chat text of the answer follows it in a muted colour.
+An answer whose turn wrote a workspace file shows the last file version of the turn as its text, under a line with the file name and the version. The chat text of the answer follows it in a muted colour. Its citation handles are chips that scroll to the source cards of the report, and it shows no second set of cards.
 An answer whose report version cannot be read shows its chat text and says so.
 The board writes a "Submitted by the board" finding card after the answer of a board explore turn.
 An active turn shows one line with a turning icon and the text "The bot is working...".
