@@ -49,6 +49,21 @@ than driven through the UI because typing into the home box and waiting for a
 navigation is three failure modes to reach a page that a URL reaches in one. See
 [frontend/src/data_definitions/url_param.rs](../frontend/src/data_definitions/url_param.rs). `9g==` is `None`.
 
+## Scenarios outside the default run
+
+A run reads the numbered files of this directory. Two subdirectories hold scenarios that a
+default run does not read.
+
+| directory | wrapper option | what the scenarios need |
+|---|---|---|
+| [dispatch/](dispatch) | `--dispatch` | They dispatch server work, such as a chat turn or a stop. |
+| [fixture-build/](fixture-build) | `--fixture-build` | They open the harness pages of a website build with the cargo feature `browser-fixtures`. [../tools/serve_fixture_build.sh](../tools/serve_fixture_build.sh) starts that build and gives its target. |
+
+`533-ai-chat-stop-after-written-file` in `dispatch/` needs a held turn.
+`main_services/processing/tests/integration/test_agent_run_browser_stop.py` holds it.
+Run that test with `HOOVER4_BROWSER_STOP_USER` set to the signed-in account.
+When it prints `BARRIER REACHED`, run the scenario with `--dispatch`.
+
 ## Procedures
 
 [procedures/](procedures) holds one Python file per manual procedure. The file name is the procedure

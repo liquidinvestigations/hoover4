@@ -148,6 +148,7 @@ PDF, image, email, text, metadata, file locations, and entity cards.
 | `222-view-doc-dividers` | Drags both dividers of the document view and restores their widths after a reload. | `testdata_testfiles` | `--names view-doc-dividers` |
 | `223-view-doc-heic-image` | Opens a HEIC image without a source error and checks the rail hints beside their icons. | `testdata_diskfiles` | `--names view-doc-heic-image` |
 | `224-view-doc-image-previews` | Shows the JPEG previews of a HEIC image and an SVG, and the poster frame of a video. | `testdata_previews` | `--names view-doc-image-previews` |
+| `fixture-build/240-view-doc-two-previews` | Mounts two document previews on one harness page and checks that sources, find queries, pending match steps, focus, scrolling and page inputs stay apart. | `p65tables_continuation_long`, `testdata_manualqa` | `--fixture-build --names view-doc-two-previews` |
 
 ## Storage and folder tree
 
@@ -230,6 +231,8 @@ A case that opens the newest conversation needs that conversation in the named s
 | `521-ai-chat-question-card` | Selects the named question chat and checks an option fills the reply box. | none named | `--names ai-chat-question-card` |
 | `524-ai-chat-pane-divider` | Drags the divider of the chat side pane and restores its width when the pane opens again. | none named | `--names ai-chat-pane-divider` |
 | `525-ai-chat-follow-ups` | Verifies the suggested question buttons and that a click fills the composer. | none named | `--names ai-chat-follow-ups` |
+| `532-ai-chat-kept-captures` | Shows two page screenshots kept only for the person and one screenshot sent to the model, with the same artifacts after a reload. | none named | `--names ai-chat-kept-captures` |
+| `dispatch/533-ai-chat-stop-after-written-file` | Presses the stop button while a held turn waits before its second file write, and shows only the first written file in the ending row. | none named | `--dispatch --names ai-chat-stop-after-written-file` |
 
 ## Admin
 

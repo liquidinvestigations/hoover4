@@ -5,6 +5,7 @@
 # Usage: ./take-screenshots.sh [--target URL] [--out DIR] [--only SUBSTRING] [--names CSV]
 #                               [--login-env FILE] [--remote-target] [--operation-id ID]
 #                               [--resolutions LIST] [--shards N] [--dispatch]
+#                               [--fixture-build]
 # Credentials come from HOOVER4_TEST_USERNAME/HOOVER4_TEST_PASSWORD or --login-env.
 # Credential values are not accepted as wrapper arguments and are not placed in
 # Docker or Python argument lists.
@@ -33,7 +34,9 @@
 # `browser-tests/`, `admin-dataset-rescan-dispatch` and `admin-operations-rerun`, name a
 # control that dispatches server work; both capture the control's state without engaging
 # it. The scenarios in `browser-tests/dispatch/` dispatch server work, and a run reads
-# them only with `--dispatch`. A page whose dataset is
+# them only with `--dispatch`. The scenarios in `browser-tests/fixture-build/` open the
+# harness pages of a website build with the cargo feature `browser-fixtures`, and a run
+# reads them only with `--fixture-build`. A page whose dataset is
 # absent is incomplete_execution; other pages still run.
 #
 # How it works, and why it looks like this
@@ -81,6 +84,7 @@ OPERATION_ID=""
 RESOLUTIONS_ARG=""
 SHARDS=4
 DISPATCH=0
+FIXTURE_BUILD=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -100,9 +104,15 @@ while [ $# -gt 0 ]; do
             DISPATCH=1
             shift
             ;;
+        --fixture-build) FIXTURE_BUILD=1; shift ;;
         *) echo "error: unknown argument '$1'" >&2; exit 2 ;;
     esac
 done
+
+if [ "$DISPATCH" -eq 1 ] && [ "$FIXTURE_BUILD" -eq 1 ]; then
+    echo "error: --dispatch and --fixture-build select different scenario folders" >&2
+    exit 2
+fi
 
 case "$SHARDS" in
     ''|*[!0-9]*)
@@ -266,6 +276,8 @@ run_capture_python() {
     local scenario_dir="$REMOTE_DIR/browser-tests"
     if [ "$DISPATCH" -eq 1 ]; then
         scenario_dir="$scenario_dir/dispatch"
+    elif [ "$FIXTURE_BUILD" -eq 1 ]; then
+        scenario_dir="$scenario_dir/fixture-build"
     fi
     docker exec "${PASS_THROUGH_ENV[@]}" "$BROWSER_CONTAINER" python "$REMOTE_DIR/capture_screenshots.py" \
         --ini "$scenario_dir" \

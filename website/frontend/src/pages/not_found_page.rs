@@ -5,6 +5,9 @@
 //! `GlobalErrorBoundary` gives them a red "Error" heading over a `ParseRouteError` debug
 //! dump. The boundary is for genuine panics; this route takes the traffic that is not a
 //! panic in the first place.
+//!
+//! A build with the cargo feature `browser-fixtures` also serves the harness pages of
+//! [`crate::pages::browser_fixtures`] here. A default build does not.
 
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
@@ -41,6 +44,10 @@ const LINK_STYLE: &str = "
 pub fn NotFoundPage(segments: Vec<String>) -> Element {
     // Reconstructed rather than read from the location: the router hands this component
     // the segments it matched, which is exactly the part of the URL that named nothing.
+    #[cfg(feature = "browser-fixtures")]
+    if let Some(page) = crate::pages::browser_fixtures::fixture_page(&segments) {
+        return page;
+    }
     let path = format!("/{}", segments.join("/"));
 
     rsx! {

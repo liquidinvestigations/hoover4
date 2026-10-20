@@ -68,6 +68,9 @@ web = ["dioxus/web"]
 desktop = ["dioxus/desktop"]
 mobile = ["dioxus/mobile"]
 server = ["dioxus/server", "dep:backend", "dep:tokio", "dep:axum"]
+# Harness-only pages for the browser tests, in `src/pages/browser_fixtures.rs`. A default
+# build has none of them.
+browser-fixtures = []
 
 [lints]
 workspace = true

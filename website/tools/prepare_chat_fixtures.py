@@ -355,6 +355,33 @@ def compaction(_name: str, _username: str) -> dict:
     ]}
 
 
+def captures(name: str, username: str) -> dict:
+    """Two `read_page` results. The first kept two page screenshots for the person and sent
+    none to the model, as `model_images` `on_demand` stores them in `capture_refs`. The
+    second sent one screenshot to the model in `image_refs`. Each screenshot is a
+    `page_capture` artifact with a WebP thumbnail."""
+    shots = []
+    for number in (1, 2, 3):
+        url = f"https://example.org/capture-{number}"
+        title = f"Captured source {number}"
+        artifact_id = fixture_uuid(name, username, f"capture-{number}")
+        shots.append((artifact_id, url, title))
+    refs = [{"kind": "capture", "artifact_id": artifact_id, "label": f"{title} ({url})",
+             "width": 320, "height": 180} for artifact_id, url, title in shots]
+    pages = [{"url": url, "title": title, "text": f"{title} contains the source text.",
+              "blocked": False, "error": None} for _, url, title in shots]
+    kept = tool("read_page", {"urls": [pages[0]["url"], pages[1]["url"]]}, {"pages": pages[:2]})
+    kept["usage_json"] = {"capture_refs": refs[:2]}
+    sent = tool("read_page", {"urls": [pages[2]["url"]]}, {"pages": pages[2:]})
+    sent["usage_json"] = {"image_refs": refs[2:]}
+    return {"title": "Browser fixture: kept page screenshots", "internet": True, "rows": [
+        user("Read the three captured sources."),
+        kept,
+        sent,
+        answer("The three captured sources contain the source text."),
+    ], "captures": shots}
+
+
 def question(name: str, username: str) -> dict:
     text = "Which period of the unit tables do you want the research to cover?"
     options = ["Tables from 2007", "All tables"]
@@ -384,6 +411,7 @@ FIXTURES = {
     "compaction": compaction,
     "question": question,
     "policy": policy,
+    "captures": captures,
 }
 
 
@@ -420,6 +448,8 @@ def write_fixture(client, name: str, username: str, now: datetime) -> str:
                                      "updated_at"])
     for artifact_id, kind, tool_name, title, detail in spec.get("artifacts", []):
         write_artifact(client, sid, username, artifact_id, kind, tool_name, title, detail, now)
+    for position, (artifact_id, url, title) in enumerate(spec.get("captures", [])):
+        write_capture(client, sid, username, artifact_id, url, title, position, now)
     return sid
 
 
@@ -442,6 +472,36 @@ def write_artifact(client, sid, username, artifact_id, kind, tool_name, title, d
                       "created_at", "updated_at", "is_deleted"])
 
 
+
+
+#: The thumbnail colour of each captured page, so the three screenshots differ.
+CAPTURE_COLOURS = [(37, 99, 235), (22, 163, 74), (217, 119, 6)]
+
+
+def write_capture(client, sid, username, artifact_id, url, title, position, now):
+    """One `page_capture` artifact with a WebP thumbnail, as the browser server stores a
+    page screenshot. The website serves it at `/_chat_artifact/{id}/thumb.webp`."""
+    from PIL import Image, ImageDraw
+    from database import s3
+    from database.clickhouse import insert_durable
+
+    image = Image.new("RGB", (320, 180), CAPTURE_COLOURS[position % len(CAPTURE_COLOURS)])
+    ImageDraw.Draw(image).text((16, 16), title, fill=(255, 255, 255))
+    buffer = io.BytesIO()
+    image.save(buffer, "WEBP")
+    data = buffer.getvalue()
+    key = f"derived/chat-artifacts/{sid}/{artifact_id}/thumb.webp"
+    store = s3.get_s3_client()
+    if not store.bucket_exists(s3.SYSTEM_BUCKET):
+        store.make_bucket(s3.SYSTEM_BUCKET)
+    store.put_object(s3.SYSTEM_BUCKET, key, io.BytesIO(data), length=len(data),
+                     content_type="image/webp")
+    insert_durable(client, "chat_artifacts", [[
+        artifact_id, sid, username, "page_capture", "read_page", url, title, key, len(data),
+        "ok", artifact_id, now, now, 0,
+    ]], column_names=["artifact_id", "session_id", "username", "kind", "tool_name", "url",
+                      "title", "thumb_key", "thumb_bytes", "status", "idempotency_key",
+                      "created_at", "updated_at", "is_deleted"])
 
 
 def main() -> int:

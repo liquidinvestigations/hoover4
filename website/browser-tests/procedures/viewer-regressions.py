@@ -55,14 +55,17 @@ async def run(r):
     await r.phase("email-header-highlights", "A matching header value is highlighted and opens email details.", headers)
 
     async def hits():
+        # The ODT opens on its PDF preview. The phase reads the extracted text source.
         await r.full("easychair_odt")
+        await r.pdf_source("Extracted text")
+        await r.action("wait_css", "#x-document-text-viewer")
         await r.find("Mac", 2)
         await r.hit("next", 2, 2)
         await r.check("const hit=document.querySelector('[data-text-hit=\"1\"]');const root=document.querySelector('#x-document-text-viewer');if(!hit||!root)return false;const a=hit.getBoundingClientRect(),b=root.getBoundingClientRect();return {ok:a.bottom>=b.top&&a.top<=b.bottom,hit:[a.top,a.bottom],viewer:[b.top,b.bottom]};")
         await r.find(ABSENT, 0)
         await r.find("Mac", 2)
         return await r.check("const active=document.querySelector('.x-hit-span-active-match');return {ok:!!active,text:active?.textContent};")
-    await r.phase("text-hit-scroll", "Text hit navigation scrolls the current span after the query changes.", hits)
+    await r.phase("text-hit-scroll", "With the Extracted text source selected, text hit navigation scrolls the current span after the query changes.", hits)
 
     async def table():
         await r.preview("manual_table_substitute")

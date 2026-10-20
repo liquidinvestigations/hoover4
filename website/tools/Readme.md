@@ -9,6 +9,8 @@ These tools prepare fixtures, drive browser workflows, and write verification ev
 | [capture_credentials.sh](capture_credentials.sh) | sourced by the capture wrappers after the login file path is set |
 | [chat_observer.py](chat_observer.py) | observes chat turns and saved plans, then writes screenshots, DOM snapshots and history checks |
 | [prepare_chat_fixtures.py](prepare_chat_fixtures.py) | writes the stored chat sessions that the chat screenshot cases open by name; [prepare_chat_fixtures.sh](prepare_chat_fixtures.sh) runs it in the worker container |
+| [serve_fixture_build.sh](serve_fixture_build.sh) | starts and stops a website build with the cargo feature `browser-fixtures` beside the stack website, for the scenarios in `browser-tests/fixture-build/` |
+| [identity_proxy.py](identity_proxy.py) | forwards requests to the fixture build and adds the identity headers of one account. `serve_fixture_build.sh` starts it in the browser container |
 | [prepare_table_fixtures.py](prepare_table_fixtures.py) | writes the synthetic table, text and match-continuation fixtures of the stack tests under `testdata/`; `--check` verifies them and `--ingest` ingests each missing dataset |
 | [count_whoami.py](count_whoami.py) | how many identity requests one navigation costs |
 | [check_session_gate.py](check_session_gate.py) | which of the session gate's three states a page settled in |

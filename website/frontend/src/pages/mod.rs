@@ -2,6 +2,8 @@
 
 pub mod admin;
 pub mod ai_chat;
+#[cfg(feature = "browser-fixtures")]
+pub mod browser_fixtures;
 pub mod email_graph_page;
 pub mod file_browser_page;
 pub mod home_page;
