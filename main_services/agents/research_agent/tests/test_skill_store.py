@@ -320,3 +320,33 @@ def test_the_system_prompt_holds_the_report_routing_text_and_the_skill_adds_the_
     assert "Example." not in rules
     assert rules in body and "Example." in body
     assert skill_store.report_rules(context(tools={"cite_documents"})) == ""
+
+
+#: Fixed recovery counts that end a recovery before a different method runs.
+RECOVERY_QUOTAS = re.compile(
+    r"(?<!into )\b(?:two|three|2|3) (?:searches|calls|attempts|tries)\b|\bsecond call\b|\bfails? twice\b"
+    r"|\bretry limit\b|\bthird (?:search|call|attempt)\b", re.IGNORECASE)
+
+
+@pytest.mark.parametrize("profile", PROFILES)
+@pytest.mark.parametrize("name", sorted(load_skills()))
+def test_no_skill_states_a_fixed_recovery_count(profile, name):
+    """Recovery continues while a different method remains. A batch size of a tool stays,
+    because it is a limit of the accepted input."""
+    text = re.sub(r"\s+", " ", render_skill(name, context(profile)))
+    found = RECOVERY_QUOTAS.search(text)
+    assert not found, found.group(0) if found else ""
+
+
+def test_the_recovery_skills_show_a_correction_and_a_terminal_lack_of_support():
+    def flat(text):
+        return re.sub(r"\s+", " ", text)
+    web = flat(render_skill("web_research", context("full_research")))
+    assert "Do not send a search again with the same words" in web
+    assert "the candidate is verified" in web and "do not name it as a case" in web
+    citation = flat(render_skill("citation", context("full_research")))
+    assert "Do not send a failed call again with the same arguments" in citation
+    assert "curly apostrophe" in citation and "the board’s decision was final" in citation
+    assert "sources read do not confirm" in citation
+    assert "Send the next call with the third page only" in citation
+    assert "When a citation fails, do not put another handle in its place." in citation

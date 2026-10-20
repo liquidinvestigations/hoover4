@@ -54,8 +54,19 @@ A handle supports only the claim of its own quote. Do not put a handle beside a 
 another event, person, date or document. When a citation fails, do not put another handle
 in its place. Leave out the claim, or say that the sources read do not confirm it.
 When an error gives candidate text, copy it character for character, with its quotation
-marks, apostrophes and dashes. When the second call for one passage also fails, stop
-quoting that passage.
+marks, apostrophes and dashes. Do not send a failed call again with the same arguments. A
+next call must change something that the error names: the candidate text, the returned
+retry arguments, or another passage of the same source that you read. When no exact
+wording of a source that you read supports the claim, leave out the claim or say that the
+sources read do not confirm it.
+
+For example, the source says "the board’s decision" with a curly apostrophe, and the quote
+"the board's decision was final" fails. The error gives the candidate "the board’s decision
+was final". Copy that candidate with its curly apostrophe, and the citation succeeds.
+For example, the quote "approved the sale in March" fails, and the error gives no
+candidate. The text that you read says only that the sale was discussed in March. No
+wording of the source supports the approval, so write that the sources read do not confirm
+it.
 {% if has('cite_pages') %}
 Search for each web source and read its supporting passage with {{ tool('read_page') }}.
 Call {{ tool('cite_pages') }} with the read URL and exact source wording in `terms`.
@@ -77,7 +88,9 @@ Keep each handle with the URL and quotes from its returned citation object.
 An error does not allocate a handle. Omit that source's claims until its citation succeeds.
 For absent wording, copy exact text from the returned candidate and call the tool again.
 When an error includes `errors[i].retry_arguments`, copy that object unchanged into the next call.
-Keep successful citations from a partial result. Retry only the failed pages within the existing retry limit.
+Keep successful citations from a partial result. Retry only the failed pages.
+For example, a call cites three pages and two succeed with [W1] and [W2]. Use those two
+handles. Send the next call with the third page only, and use its retry arguments.
 For example, this call joins words across a source line break and fails.
 ```json
 {"url":"https://example.org/report","terms":["The plant closed in March 2019"]}
