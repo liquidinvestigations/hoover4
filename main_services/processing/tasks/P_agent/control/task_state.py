@@ -23,9 +23,11 @@ that the record read, and each rule records the position of its message in `mess
 Every field holds the original words of a user message or of the structured board task, with
 its turn and its span. A computed value never becomes a requirement of the person.
 
-**Recognition.** Only the explicit forms below are recognized. Another message keeps its
-original text, and the record is `unresolved`, so no handler presents an old restriction or
-an old objective as the current instruction.
+**Recognition.** Only the explicit forms below are recognized. The first message of a session
+starts the objective. A later message that no rule recognizes is unresolved: it becomes an
+amendment with its original text, the active objective and its outputs stay, and the record
+supports no completion claim. So no handler presents an old restriction or an old objective
+as the complete current instruction, and no message silently replaces the objective.
 
 * A continuation only asks to continue, such as `Continue.` It keeps the active objective
   and its unfinished outputs.
@@ -36,10 +38,15 @@ an old objective as the current instruction.
   the whole group. A cancellation that identifies no group is unresolved.
 * An amendment holds only rules, cancellations, continuations and output requests that refer
   to the earlier work (`Now write it as a file.`). It keeps the active objective.
-* A short follow-up question (`And the second one?`) is unresolved. Its text becomes the
-  objective, and the earlier objective stays recorded beside it.
-* Another message starts a new objective. It keeps the session rules and drops the outputs
-  of the earlier objective.
+* An explicit new objective (`explicit_new_objective`) starts a new task. It keeps the
+  session rules and drops the outputs of the earlier objective. It names a new task (`New
+  question:`), or each of its content sentences starts with a question word or a research
+  verb or requests an output with its own subject. No sentence refers to the earlier work
+  (`it`, `the second one`, `as well`, `instead`, `the report`), and the message does not start
+  with a follow-up word (`And`, `Also`, `What about`).
+* Another message is unresolved, such as `Make the second one shorter.` or `Include the dates
+  as well.` Its output clauses become uncertain groups, which add no requirement. A later
+  continuation keeps the record unresolved, and an explicit new objective resolves it.
 
 **Outputs.** An output group comes from one affirmative output clause: an output verb with a
 file noun (`write two memos`), a file destination (`in a short report`) or a file name
@@ -47,7 +54,8 @@ file noun (`write two memos`), a file destination (`in a short report`) or a fil
 negated clause (`Do not write a report.`), a quoted span and an example (`for example`) are
 no output. A clause after `if` gives an uncertain group, which loads the report skill and
 counts as no requirement. A count is exact only when the clause states it (`a`, `two`, `3`)
-or names the files. A plural noun without a count, `several` and an upper bound (`up to
+or names the files. A singular count for each item of a set (`a report for each company`,
+`one memo per customer`) gives no exact count, and a numeral count before the noun stays exact. A plural noun without a count, `several` and an upper bound (`up to
 three`) give no exact count. The names of the clause of a counted group belong to that group.
 A file name that a later clause gives to `it` names the output of the previous group. A
 structured deliverable gives its count from its own words (`Three reports`).
@@ -138,6 +146,9 @@ NAMED_OUTPUT = re.compile(
 CONJOINED = re.compile(r"\s*,?\s*\band\s+(?P<count>" + COUNT + r")\s+(?:" + MODIFIERS + r"\s+){0,2}(?P<noun>"
                        + FILE_NOUNS + r")\b", re.IGNORECASE)
 ANY_FILE_NAME = re.compile(r"\b" + FILE_NAME + r"\b", re.IGNORECASE)
+#: A phrase after a singular count that gives one output for each item of a set.
+DISTRIBUTIVE = re.compile(r"\b(?:for\s+(?:each|every|all)|per|on\s+each|about\s+each|of\s+each|each\s+of|"
+                          r"for\s+any)\b", re.IGNORECASE)
 NEGATION = re.compile(
     r"\b(?:do\s+not|don'?t|does\s+not|doesn'?t|never|no\s+need\s+to|without|must\s+not|mustn'?t|"
     r"should\s+not|shouldn'?t|not|cannot|can'?t|avoid|instead\s+of)\b(?:\s+\w+){0,2}\s*$", re.IGNORECASE)
@@ -241,8 +252,12 @@ def output_groups(text: str, turn: Optional[int], source: str = "user",
                 items.append((_count(extra.group("count"), extra.group("noun")), extra.group("noun"), True, ""))
             evidence = {"turn": turn, "source": source, "start": s_start + clause["start"],
                         "end": s_start + limit, "text": sentence[clause["start"]:limit].strip()[:MAX_ITEM_CHARS]}
+            distributive = bool(DISTRIBUTIVE.search(clean[clause["end"]:limit]))
             for index, (count, noun, counted, bound) in enumerate(items):
                 own = names if index == 0 else []
+                if count == 1 and distributive:
+                    # "a report for each company": one file for each item, of no stated count.
+                    count = None
                 if not own and not counted:
                     continue
                 if own:
@@ -276,6 +291,8 @@ def structured_groups(items: Iterable[Mapping], turn: Optional[int], first_id: i
         if not names and not noun:
             continue
         count = _count(noun.group("count") or "", noun.group("noun")) if noun else None
+        if count == 1 and DISTRIBUTIVE.search(clean[noun.end():]):
+            count = None
         if names:
             count = max(count or 0, len(names))
         groups.append({"names": names, "count": count,
@@ -406,6 +423,9 @@ def _sentence_kind(sentence: str, has_groups: bool) -> str:
     if clauses:
         rest = ANY_FILE_NAME.sub(" ", clean)
         words = [w for w in re.findall(r"[a-z][a-z'-]*", rest.lower()) if w not in FILLER]
+        if re.search(r"\binstead\b", clean, re.I):
+            # A replacement of an earlier output names no identified group.
+            return "content"
         return "follow" if not words else "output"
     return "content"
 
@@ -420,9 +440,39 @@ def classify(request: str, has_objective: bool, has_groups: bool) -> str:
         return CONTINUATION
     if all(k in ("continue", "rule", "cancel", "follow") for k in kinds):
         return AMENDMENT
-    if FOLLOW_UP.match(request.strip()) and len(re.findall(r"\w+", request)) <= 15 and "output" not in kinds:
-        return UNRESOLVED
-    return NEW
+    return NEW if explicit_new_objective(request, kinds) else UNRESOLVED
+
+
+#: The words that name a new task explicitly.
+NEW_TASK = re.compile(r"^(?:(?:ok(?:ay)?|thanks|thank\s+you|good|great)[,.!\s]+)?(?:(?:a|one|my)\s+)?"
+                      r"(?:new|next|different|separate|unrelated|another)\s+(?:task|question|request|topic)\b"
+                      r"|^(?:forget|ignore)\s+(?:that|this|the\s+(?:previous|last|earlier)\b)", re.I)
+#: The first words of a request that states its own subject: a question word or a research verb.
+OWN_SUBJECT = re.compile(r"^(?:who|whom|whose|what|which|when|where|why|how|is|are|was|were|did|does|do|"
+                         r"can|could|find|search|look\s+up|list|count|compare|identify|summari[sz]e|explain|"
+                         r"tell\s+me|show\s+me|give\s+me)\b", re.I)
+#: Words that refer to the earlier work or add to it.
+REFERS_BACK = re.compile(r"\b(?:it|its|this|these|those|them|they|the\s+same|the\s+(?:first|second|third|"
+                         r"fourth|fifth|last|other|next|previous)\b|one|ones|as\s+well|also|too|instead|again|"
+                         r"more|another|rest|above|earlier|previous|before)\b|\b(?:the|your)\s+(?:report|file|memo|"
+                         r"document|answer|results?|findings?|list|table|summary|draft|reports|files|memos)\b", re.I)
+
+
+def explicit_new_objective(request: str, kinds: list[str]) -> bool:
+    """Whether a message that the record already has an objective for starts a new task.
+
+    The deterministic rule: the message names a new task (`New question:`, `Forget that.`),
+    or every content sentence starts with a question word or a research verb, or is an
+    output request with its own subject, and no sentence refers to the earlier work (`it`,
+    `the second one`, `as well`, `the report`). A message that starts with a follow-up word
+    (`And`, `Also`, `What about`) is never new. Another message is unresolved."""
+    text = request.strip()
+    if NEW_TASK.match(text):
+        return True
+    if FOLLOW_UP.match(text) or REFERS_BACK.search(_blank_quotes(request)):
+        return False
+    content = [(s, k) for (_a, _b, s), k in zip(spans(request), kinds) if k in ("content", "output")]
+    return bool(content) and all(k == "output" or OWN_SUBJECT.match(s) for s, k in content)
 
 
 def _cancel(state: dict, sentence: str, turn: Optional[int]) -> bool:
@@ -526,15 +576,11 @@ def derive(request: str, turn: Optional[int], base: Optional[Mapping] = None,
         for rule in state["source_rules"]:
             if rule["status"] == "active" and rule.get("scope") == "task":
                 rule["status"], rule["superseded_by"] = "expired", turn
-    elif kind == UNRESOLVED:
-        objective["text"] = _bounded(state, "objective", request, MAX_OBJECTIVE_CHARS, turn)
-        earlier_groups = state["output_spec"]["groups"]
-        state.update(earlier_objective=state["objective"], objective=objective,
-                     interpretation_state="unresolved",
-                     output_spec={**_new_spec(), "earlier_groups": earlier_groups})
+    if kind == UNRESOLVED:
+        state["interpretation_state"] = "unresolved"
         state["unresolved"].append({"turn": turn, "text": request[:MAX_ITEM_CHARS],
-                                    "reason": "a short follow-up can continue or replace the earlier objective"})
-    else:
+                                    "reason": "the message can amend or replace the active objective"})
+    if kind in (CONTINUATION, AMENDMENT, UNRESOLVED):
         state["amendments"].append({"text": _bounded(state, "amendments", request, MAX_ITEM_CHARS, turn),
                                     "turn": turn, "source": source, "kind": kind, "message": message})
         if len(state["amendments"]) > MAX_AMENDMENTS:
@@ -542,7 +588,11 @@ def derive(request: str, turn: Optional[int], base: Optional[Mapping] = None,
                   "the oldest amendments beyond the stored bound")
             state["amendments"] = state["amendments"][-MAX_AMENDMENTS:]
     _apply_rules(state, [{**rule, "message": message} for rule in source_rules(request, turn, source)])
-    if kind != CONTINUATION:
+    if kind == UNRESOLVED:
+        # An unresolved message adds no requirement. Its output clauses stay uncertain.
+        groups, uncertain = output_groups(request, turn, source, _next_group_id(state))
+        state["output_spec"]["uncertain"].extend(groups + uncertain)
+    elif kind != CONTINUATION:
         if kind == AMENDMENT:
             for _a, _b, sentence in spans(request):
                 if _sentence_kind(sentence, True) == "cancel" and not _cancel(state, sentence, turn):

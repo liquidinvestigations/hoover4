@@ -284,9 +284,12 @@ The `chat-default` definition has these rules:
   exact counts. A continuation such as "Continue." keeps the objective and its
   unfinished outputs. A permission supersedes the restrictions that it conflicts with, and
   a later rule replaces an earlier rule of its subject. A cancellation removes the output
-  that it identifies. A new objective keeps the session rules and drops the earlier
-  outputs. A message that the rules cannot classify keeps its text, and the record is
-  unresolved. The text task (`control["task"]`) is derived from the record: the objective,
+  that it identifies. An explicit new objective keeps the session rules and drops the
+  earlier outputs. It names a new task, or asks its own question or research request, and
+  refers to no earlier work. A later message that the rules do not recognize, such as
+  "Make the second one shorter.", becomes an amendment. The objective and its outputs
+  stay, the record is unresolved, and it gives no completion evidence. A singular count
+  for each item of a set, such as "a report for each company", is no exact count. The text task (`control["task"]`) is derived from the record: the objective,
   the amendments, the active restrictions and the active permissions, without the
   sentences of superseded rules. The preparation and progress checks and the web read
   ranking read this task, objective first. The record reads earlier turns back to the

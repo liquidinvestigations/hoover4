@@ -161,10 +161,84 @@ def test_a_short_follow_up_question_is_unresolved_and_keeps_the_earlier_objectiv
     first = _state("Write two memos on the loans.")
     follow = TS.derive("And the second one?", 2, first)
     assert follow["interpretation_state"] == "unresolved"
-    assert follow["objective"]["text"] == "And the second one?"
-    assert follow["earlier_objective"]["text"] == "Write two memos on the loans."
-    assert TS.text_task(follow)["earlier_objective"]["turn"] == 1
-    assert TS.delivery(follow, ["a.md", "b.md"])["state"] == "unknown"
+    assert follow["objective"]["text"] == "Write two memos on the loans."
+    assert TS.text_task(follow)["amendments"] == [{"text": "And the second one?", "source": "user", "turn": 2}]
+    assert _groups(follow) == _groups(first)
+    assert TS.delivery(follow, ["a.md", "b.md"]) == {**TS.delivery(follow, ["a.md", "b.md"]),
+                                                    "state": "unknown", "evidence": False}
+
+
+UNRECOGNIZED = [
+    ("Write three reports, a.md, b.md and c.md, about the Enron trades.", "Make the second one shorter.",
+     [("report", ["a.md", "b.md", "c.md"], 3)]),
+    ("Write a report on the 2001 trades.", "Include the dates of each trade as well.", [("report", [], 1)]),
+    ("Write a report on the 2001 trades.", "Also include the dates of each trade.", [("report", [], 1)]),
+    ("Write report.md. Do not use the web.", "Please write it into notes.md instead.", [("report", ["report.md"], 1)]),
+    ("Write a report on the 2001 trades.", "Use a table with one row per trade.", [("report", [], 1)]),
+]
+
+
+@pytest.mark.parametrize("first,second,groups", UNRECOGNIZED)
+def test_an_unrecognized_message_keeps_the_objective_and_its_outputs_unresolved(first, second, groups):
+    """The verification probe: an amendment that the rules do not recognize became a new
+    objective and dropped the report group."""
+    state = TS.derive(second, 2, TS.record_delivery(_state(first), [{"name": "a.md", "version": 1}], 1))
+    assert (state["request"]["kind"], state["interpretation_state"]) == ("unresolved", "unresolved")
+    assert state["objective"]["text"] == first and _groups(state) == groups
+    task = TS.text_task(state)
+    assert task["objective"]["turn"] == 1 and task["amendments"][-1]["text"] == second
+    for delivered in ([], ["b.md", "c.md", "report.md", "notes.md"]):
+        out = TS.delivery(state, delivered)
+        assert (out["state"], out["evidence"]) == ("unknown", False)
+    text, _ = F.task_text(task, 6000)
+    assert second in text and "objective:" in text
+    # A later continuation keeps the record unresolved.
+    assert TS.derive("Continue.", 3, state)["interpretation_state"] == "unresolved"
+
+
+@pytest.mark.parametrize("request_text", [
+    "What is the capital of France?",
+    "Who signed the 2001 lease with Fortress Holdings?",
+    "Find the emails of Kenneth Lay about Raptor.",
+    "New question: which banks financed the LJM partnerships?",
+    "Write a memo on the California power contracts.",
+])
+def test_an_explicit_new_objective_starts_a_resolved_task_and_keeps_session_rules(request_text):
+    first = _state("Use only the enron collection. Write three reports, a.md, b.md and c.md, about the trades.")
+    state = TS.derive(request_text, 2, first)
+    assert (state["request"]["kind"], state["interpretation_state"]) == ("new", "resolved")
+    assert state["objective"]["text"] == request_text
+    assert [g["noun"] for g in TS.requirements(state)["groups"]] == (["memo"] if "memo" in request_text else [])
+    assert TS.text_task(state)["constraints"][0]["text"] == "Use only the enron collection."
+
+
+def test_a_new_objective_after_an_unresolved_message_is_resolved_again():
+    state = TS.derive("Make it shorter.", 2, _state("Write a report on the 2001 trades."))
+    after = TS.derive("What is the capital of France?", 3, state)
+    assert after["interpretation_state"] == "resolved" and after["unresolved"] == []
+    assert TS.delivery(after, [])["state"] == "none"
+
+
+@pytest.mark.parametrize("request_text", [
+    "Write a report for each of the three companies.",
+    "Write one memo per customer.",
+    "Write a short report on each document in the folder.",
+    "Create a file for every person named in the emails.",
+])
+def test_a_singular_count_for_each_item_is_no_exact_count(request_text):
+    state = _state(request_text)
+    required = TS.requirements(state)
+    assert required["file"] and not required["exact"] and required["count"] == 0
+    out = TS.delivery(state, ["one.md"])
+    assert (out["state"], out["evidence"]) == ("unknown", False)
+
+
+def test_a_numeral_count_with_each_stays_exact():
+    assert _groups(_state("Write three reports, one for each company.")) == [("report", [], 3)]
+    assert _groups(_state("Write a report for Alice and a report for Bob.")) == [("report", [], 1), ("report", [], 1)]
+    structured = TS.from_structured({"objective": {"text": "x", "source": "intent"},
+                                     "deliverables": [{"text": "A report for each company", "source": "intent"}]})
+    assert _groups(structured) == [("report", [], None)]
 
 
 def test_long_tasks_keep_every_rule_and_name_their_omissions():
