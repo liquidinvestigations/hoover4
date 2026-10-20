@@ -133,7 +133,14 @@ def requested_output(task: Mapping[str, Any], state: Mapping[str, Any] | None = 
 
 
 def asks_for_file(task: Mapping[str, Any], state: Mapping[str, Any] | None = None) -> bool:
-    """Whether a task asks for a file as its output (`requested_output`)."""
+    """Whether the report skill loads before the first write. With a task record, an
+    unresolved record loads it only for an output clause of its newest unresolved message
+    (`task_state.proactive_file`). Without one, the task asks for a file as its output
+    (`requested_output`)."""
+    from tasks.P_agent.control import task_state
+
+    if state:
+        return task_state.proactive_file(state)
     return requested_output(task, state)["file"]
 
 

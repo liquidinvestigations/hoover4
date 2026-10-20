@@ -214,7 +214,7 @@ def first(items: Iterable, default: Optional[Any] = None) -> Any:
 #: The task fields of a structured task, in the order that a classifier request shows them.
 #: The objective, the corrections and the amendments come first, so a cut text keeps them.
 TASK_FIELDS = ("objective", "corrections", "amendments", "constraints", "allowed_sources",
-               "deliverables", "earlier_objective", "brief", "goals")
+               "deliverables", "earlier_objective", "earlier_amendments", "brief", "goals")
 
 
 def task_of(opening, control: Optional[dict] = None) -> dict:
@@ -299,22 +299,36 @@ def task_text(task: dict, limit: int) -> tuple[str, int]:
 
     The objective and the corrections come first, so a cut never removes the focused task.
     A cut text ends with a line that names the count of omitted characters, so the request
-    never shows a cut task as complete."""
+    never shows a cut task as complete. When the task has amendments, the newest one is the
+    current message of the person. A cut then keeps that message whole after the omission
+    line, and the earlier fields are cut first."""
     from collections.abc import Mapping
 
-    parts = []
-    for key in TASK_FIELDS + tuple(k for k in task if k not in TASK_FIELDS):
-        value = task.get(key)
-        if isinstance(value, Mapping):
-            if value["text"]:
-                parts.append(f"{key}: {value['text']}")
-        elif isinstance(value, (list, tuple)) and value:
-            parts.append(f"{key}:\n" + "\n".join(f"- {v['text']}" for v in value))
-    text = "\n\n".join(parts)
+    def render(source: dict) -> str:
+        parts = []
+        for key in TASK_FIELDS + tuple(k for k in source if k not in TASK_FIELDS):
+            value = source.get(key)
+            if isinstance(value, Mapping):
+                if value["text"]:
+                    parts.append(f"{key}: {value['text']}")
+            elif isinstance(value, (list, tuple)) and value:
+                parts.append(f"{key}:\n" + "\n".join(f"- {v['text']}" for v in value))
+        return "\n\n".join(parts)
+
+    text = render(task)
     if len(text) <= limit:
         return text, 0
-    omitted = len(text) - limit
-    return text[:limit] + f"\n[{omitted} characters of the task are omitted here]", omitted
+    amendments = task.get("amendments")
+    if not isinstance(amendments, (list, tuple)) or not amendments:
+        omitted = len(text) - limit
+        return text[:limit] + f"\n[{omitted} characters of the task are omitted here]", omitted
+    current = str(amendments[-1]["text"])
+    others = render({**task, "amendments": list(amendments[:-1])})
+    label = "\n\nnewest amendment: "
+    kept = current[:max(0, limit - len(label))]
+    head = others[:max(0, limit - len(label) - len(kept))]
+    omitted = (len(others) - len(head)) + (len(current) - len(kept))
+    return head + f"\n[{omitted} characters of the task are omitted here]" + label + kept, omitted
 
 
 def task_request(context, limit: int) -> str:

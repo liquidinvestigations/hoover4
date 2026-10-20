@@ -162,7 +162,9 @@ def test_a_short_follow_up_question_is_unresolved_and_keeps_the_earlier_objectiv
     follow = TS.derive("And the second one?", 2, first)
     assert follow["interpretation_state"] == "unresolved"
     assert follow["objective"]["text"] == "Write two memos on the loans."
-    assert TS.text_task(follow)["amendments"] == [{"text": "And the second one?", "source": "user", "turn": 2}]
+    projected = TS.text_task(follow)
+    assert projected["objective"] == {"text": "And the second one?", "source": "user", "turn": 2}
+    assert projected["earlier_objective"]["text"] == "Write two memos on the loans."
     assert _groups(follow) == _groups(first)
     assert TS.delivery(follow, ["a.md", "b.md"]) == {**TS.delivery(follow, ["a.md", "b.md"]),
                                                     "state": "unknown", "evidence": False}
@@ -186,12 +188,12 @@ def test_an_unrecognized_message_keeps_the_objective_and_its_outputs_unresolved(
     assert (state["request"]["kind"], state["interpretation_state"]) == ("unresolved", "unresolved")
     assert state["objective"]["text"] == first and _groups(state) == groups
     task = TS.text_task(state)
-    assert task["objective"]["turn"] == 1 and task["amendments"][-1]["text"] == second
+    assert task["objective"]["text"] == second and task["earlier_objective"]["turn"] == 1
     for delivered in ([], ["b.md", "c.md", "report.md", "notes.md"]):
         out = TS.delivery(state, delivered)
         assert (out["state"], out["evidence"]) == ("unknown", False)
     text, _ = F.task_text(task, 6000)
-    assert second in text and "objective:" in text
+    assert text.startswith(f"objective: {second}") and f"earlier_objective: {first}" in text
     # A later continuation keeps the record unresolved.
     assert TS.derive("Continue.", 3, state)["interpretation_state"] == "unresolved"
 
@@ -459,3 +461,85 @@ def test_one_written_file_is_no_evidence_for_a_three_report_deliverable():
     ledger = plain(result.facts)
     assert ledger["delivery"]["state"] == "incomplete" and ledger["delivery_evidence"] is False
     assert all(COMPLETION_ADVICE not in a.arguments.get("text", "") for a in result.actions)
+
+
+# ----------------------------------------------- B2: new questions after a task with a file
+
+REPORT_TASK = "Write a short report on the 2001 Enron energy trades in the enron collection. Do not use the web."
+NEW_QUESTIONS = [
+    "Who signed the 2001 lease renewal?",
+    "Search the web for the date of the Enron bankruptcy filing.",
+    "What is the capital of Australia?",
+    "Find emails that mention Project Raptor and summarize them.",
+    "Which documents mention more than one bank?",
+    "Is there any evidence of fraud before 2001?",
+    "Please find all invoices from Acme Corp.",
+    "I need the list of Enron board members in 2000.",
+    "Look at the folder /legal and tell me what is in it.",
+    "Thanks. Now, who was the CFO of Enron in 2001?",
+]
+
+
+def _after_report(question):
+    first = TS.record_delivery(_state(REPORT_TASK), [{"name": "report.md", "version": 1}], 1)
+    return TS.derive(question, 2, first)
+
+
+@pytest.mark.parametrize("question", NEW_QUESTIONS)
+def test_an_ordinary_new_question_after_a_report_task_is_a_new_objective(question):
+    """The verification probe: 7 of these 10 questions were unresolved, the classifier read
+    the report task first, and the report skill loaded for a plain question."""
+    from tasks.P_agent.control.handlers.preparation import asks_for_file
+    state = _after_report(question)
+    assert (state["request"]["kind"], state["interpretation_state"]) == ("new", "resolved")
+    text, omitted = F.task_text(TS.text_task(state), 6000)
+    assert text.startswith(f"objective: {question}") and omitted == 0
+    assert asks_for_file(TS.text_task(state), state) is False
+    assert TS.text_task(state)["constraints"][0]["text"] == "Do not use the web."
+
+
+@pytest.mark.parametrize("message", ["Make the second one shorter.", "Include the dates of each trade as well.",
+                                     "Please write it into notes.md instead.", "Which clause of it mentions the governing law?",
+                                     "Tell me more about the second one.", "And the 2002 trades?"])
+def test_a_message_that_refers_to_the_earlier_work_stays_unresolved(message):
+    from tasks.P_agent.control.handlers.preparation import asks_for_file
+    state = _after_report(message)
+    assert state["interpretation_state"] == "unresolved"
+    text, _ = F.task_text(TS.text_task(state), 6000)
+    assert text.startswith(f"objective: {message}")
+    assert "earlier_objective: Write a short report on the 2001 Enron energy trades" in text
+    # Only an output clause of the message itself loads the report skill.
+    assert asks_for_file(TS.text_task(state), state) is ("notes.md" in message)
+    assert TS.delivery(state, ["report.md", "notes.md"])["evidence"] is False
+
+
+def test_an_unresolved_message_with_its_own_output_clause_loads_the_report_skill():
+    from tasks.P_agent.control.handlers.preparation import asks_for_file
+    state = _after_report("Put the second one in a short report instead.")
+    assert state["interpretation_state"] == "unresolved" and state["request"]["own_output"] is True
+    assert asks_for_file(TS.text_task(state), state) is True
+    assert TS.requirements(state)["groups"][0]["noun"] == "report"
+    # A record stored before `own_output` existed gives the same answer from its text.
+    legacy = {**state, "request": {"turn": 2, "kind": "unresolved"}}
+    assert TS.proactive_file(legacy) is True
+
+
+LONG = "Summarize this pasted contract and write the result to summary.md. " + "The parties agree to the terms below. " * 180
+
+
+@pytest.mark.parametrize("second,kind", [("Which clause of it mentions the governing law?", "unresolved"),
+                                         ("Now write it into notes.md as well.", "unresolved"),
+                                         ("Continue.", "continuation"),
+                                         ("Now save it as summary.md.", "amendment")])
+def test_the_classifier_text_keeps_the_current_message_within_the_limit(second, kind):
+    state = TS.derive(second, 2, TS.derive(LONG, 1, None))
+    assert len(LONG) > 6000 and state["request"]["kind"] == kind
+    text, omitted = F.task_text(TS.text_task(state), 6000)
+    assert second in text and omitted > 0
+    assert f"[{omitted} characters of the task are omitted here]" in text
+    assert len(text) <= 6000 + len(f"\n[{omitted} characters of the task are omitted here]")
+    if kind == "unresolved":
+        assert text.startswith(f"objective: {second}")
+    else:
+        assert text.startswith("objective: Summarize this pasted contract")
+        assert text.endswith(f"newest amendment: {second}")

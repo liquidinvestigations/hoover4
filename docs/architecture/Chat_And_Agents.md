@@ -285,14 +285,18 @@ The `chat-default` definition has these rules:
   unfinished outputs. A permission supersedes the restrictions that it conflicts with, and
   a later rule replaces an earlier rule of its subject. A cancellation removes the output
   that it identifies. An explicit new objective keeps the session rules and drops the
-  earlier outputs. It names a new task, or asks its own question or research request, and
-  refers to no earlier work. A later message that the rules do not recognize, such as
-  "Make the second one shorter.", becomes an amendment. The objective and its outputs
-  stay, the record is unresolved, and it gives no completion evidence. A singular count
+  earlier outputs. It names a new task, or asks its own question or research request after
+  an optional courtesy word, and refers to no earlier work. A later message that the rules
+  do not recognize, such as "Make the second one shorter.", becomes an amendment. The
+  objective and its outputs stay, the record is unresolved, and it gives no completion
+  evidence. The text task of an unresolved record shows that message first as its
+  objective, and the earlier objective after it. Its report skill loads only for an output
+  clause of that message. A singular count
   for each item of a set, such as "a report for each company", is no exact count. The text task (`control["task"]`) is derived from the record: the objective,
   the amendments, the active restrictions and the active permissions, without the
   sentences of superseded rules. The preparation and progress checks and the web read
-  ranking read this task, objective first. The record reads earlier turns back to the
+  ranking read this task, objective first. A cut of the task text keeps the newest
+  amendment whole and cuts the earlier fields first. The record reads earlier turns back to the
   newest stored record, at most 12 turns, and names an incomplete reconstruction. A board
   explore keeps its structured task as its record. An opening row without the record is
   read as a legacy task, which supports no completion evidence.

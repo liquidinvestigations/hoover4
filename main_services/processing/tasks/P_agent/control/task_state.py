@@ -398,7 +398,7 @@ CANCEL = re.compile(
     r"(?:the\s+|a\s+|an\s+)?(?:(?P<ordinal>first|second|third|fourth|fifth|sixth|last|\d+(?:st|nd|rd|th))\s+)?"
     r"(?:" + MODIFIERS + r"\s+)?(?:(?P<noun>" + FILE_NOUNS + r")|(?P<name>" + FILE_NAME + r"))\b", re.IGNORECASE)
 ORDINALS = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5, "sixth": 6}
-FOLLOW_UP = re.compile(r"^(?:and|also|now|then|what\s+about|how\s+about|same\s+for)\b", re.I)
+FOLLOW_UP = re.compile(r"^(?:and|also|what\s+about|how\s+about|same\s+for)\b", re.I)
 #: The words of an output request that refers to the earlier work and adds no subject.
 FILLER = {"now", "please", "also", "then", "and", "it", "this", "that", "them", "these", "those", "the",
           "a", "an", "as", "in", "into", "to", "for", "me", "us", "results", "result", "answer",
@@ -447,32 +447,69 @@ def classify(request: str, has_objective: bool, has_groups: bool) -> str:
 NEW_TASK = re.compile(r"^(?:(?:ok(?:ay)?|thanks|thank\s+you|good|great)[,.!\s]+)?(?:(?:a|one|my)\s+)?"
                       r"(?:new|next|different|separate|unrelated|another)\s+(?:task|question|request|topic)\b"
                       r"|^(?:forget|ignore)\s+(?:that|this|the\s+(?:previous|last|earlier)\b)", re.I)
-#: The first words of a request that states its own subject: a question word or a research verb.
+#: The first words of a request that states its own subject: a question word, a research
+#: verb or a statement of need.
 OWN_SUBJECT = re.compile(r"^(?:who|whom|whose|what|which|when|where|why|how|is|are|was|were|did|does|do|"
-                         r"can|could|find|search|look\s+up|list|count|compare|identify|summari[sz]e|explain|"
-                         r"tell\s+me|show\s+me|give\s+me)\b", re.I)
-#: Words that refer to the earlier work or add to it.
-REFERS_BACK = re.compile(r"\b(?:it|its|this|these|those|them|they|the\s+same|the\s+(?:first|second|third|"
-                         r"fourth|fifth|last|other|next|previous)\b|one|ones|as\s+well|also|too|instead|again|"
-                         r"more|another|rest|above|earlier|previous|before)\b|\b(?:the|your)\s+(?:report|file|memo|"
-                         r"document|answer|results?|findings?|list|table|summary|draft|reports|files|memos)\b", re.I)
+                         r"has|have|had|can|could|find|search|look\s+(?:up|at|for|into|through)|list|count|"
+                         r"compare|identify|summari[sz]e|explain|check|get|read|open|tell\s+me|show\s+me|"
+                         r"give\s+me|i\s+(?:need|want|would\s+like|am\s+looking\s+for)|we\s+need)\b", re.I)
+#: A courtesy or transitional start that a request with its own subject can have.
+COURTESY = re.compile(r"^(?:(?:please|kindly|now|so|ok(?:ay)?|right|next)\b[,\s]*|"
+                      r"(?:could|can|would|will)\s+you\s+(?:please\s+)?)+", re.I)
+#: A sentence of courtesy only, such as `Thanks.`
+COURTESY_ONLY = re.compile(r"^(?:ok(?:ay)?|thanks|thank\s+you(?:\s+very\s+much)?|great|good|perfect|fine|"
+                           r"got\s+it|understood|nice\s+work)[.!,\s]*$", re.I)
+#: Phrases that refer to the earlier work or add to it, whatever the rest of the message is.
+REFERS_BACK = re.compile(
+    r"\b(?:as\s+well|instead|again|the\s+same|the\s+rest|the\s+above|above\s+(?:list|answer|report)|"
+    r"(?:the|that|this|which)\s+(?:first|second|third|fourth|fifth|last|other|next|previous|earlier|same\s+)?ones?\b|"
+    r"the\s+(?:first|second|third|fourth|fifth|last|other|previous|earlier)\b|one\s+more|tell\s+me\s+more|"
+    r"more\s+(?:about|on|detail|details)\b|(?:earlier|previous|last)\s+(?:answer|report|result|results|message|"
+    r"question|turn|list|search)|(?:you|we)\s+(?:found|wrote|said|listed|mentioned)|too[.!?]?$)"
+    r"|\b(?:the|your|my)\s+(?:report|file|memo|document|answer|results?|findings?|list|table|summary|draft|"
+    r"reports|files|memos)\b(?!\s+(?:of|on|about|for|from|in|that|which|with|named|called)\b)", re.I)
+#: A pronoun or a demonstrative that needs an antecedent.
+PRONOUN = re.compile(r"\b(?:it|its|them|they|their|this|these|those|that\s+(?:one|document|file|report|email|page))\b", re.I)
+#: An antecedent inside the message: a determiner with a noun, a name inside the sentence,
+#: a path, an address, a file name or a year.
+ANTECEDENT = re.compile(r"\b(?:the|a|an|all|any|some|each|every|no)\s+[A-Za-z][\w-]{2,}|(?-i:(?<=[a-z,]\s)[A-Z][\w-]{2,})|"
+                        r"/[\w./-]+|https?://|\b[\w-]+\.[a-z]{2,4}\b|\b\d{4}\b|\b(?:emails?|documents?|files?|"
+                        r"invoices?|pages?|folders?|records?|messages?|contracts?|reports?)\b", re.I)
+
+
+def _refers_back(text: str) -> bool:
+    """Whether a message plausibly refers to the earlier work: a phrase of `REFERS_BACK`, or a
+    pronoun without an antecedent before it in the message (`Which clause of it ...?`)."""
+    clean = _blank_quotes(text)
+    if REFERS_BACK.search(clean):
+        return True
+    for match in PRONOUN.finditer(clean):
+        if not ANTECEDENT.search(clean[:match.start()]):
+            return True
+    return False
 
 
 def explicit_new_objective(request: str, kinds: list[str]) -> bool:
     """Whether a message that the record already has an objective for starts a new task.
 
-    The deterministic rule: the message names a new task (`New question:`, `Forget that.`),
-    or every content sentence starts with a question word or a research verb, or is an
-    output request with its own subject, and no sentence refers to the earlier work (`it`,
-    `the second one`, `as well`, `the report`). A message that starts with a follow-up word
-    (`And`, `Also`, `What about`) is never new. Another message is unresolved."""
+    The deterministic rule: the message names a new task (`New question:`, `Forget that.`), or
+    each of its content sentences states its own subject. Such a sentence starts, after a
+    courtesy start such as `Please` or `Now,`, with a question word, a research verb or a
+    statement of need (`I need`), or it requests an output with its own subject. A courtesy
+    sentence such as `Thanks.` is no content. The message must not refer to the earlier work:
+    no phrase such as `the second one`, `as well`, `instead` or `the report`, and no pronoun
+    without an antecedent in the message (`Which clause of it ...?`). A message that starts
+    with a follow-up word (`And`, `Also`, `What about`) is never new. Another message is
+    unresolved."""
     text = request.strip()
     if NEW_TASK.match(text):
         return True
-    if FOLLOW_UP.match(text) or REFERS_BACK.search(_blank_quotes(request)):
+    if FOLLOW_UP.match(text) or _refers_back(request):
         return False
-    content = [(s, k) for (_a, _b, s), k in zip(spans(request), kinds) if k in ("content", "output")]
-    return bool(content) and all(k == "output" or OWN_SUBJECT.match(s) for s, k in content)
+    content = [(s, k) for (_a, _b, s), k in zip(spans(request), kinds)
+               if k in ("content", "output") and not COURTESY_ONLY.match(s.strip())]
+    return bool(content) and all(k == "output" or OWN_SUBJECT.match(COURTESY.sub("", s.strip()))
+                                 for s, k in content)
 
 
 def _cancel(state: dict, sentence: str, turn: Optional[int]) -> bool:
@@ -592,6 +629,7 @@ def derive(request: str, turn: Optional[int], base: Optional[Mapping] = None,
         # An unresolved message adds no requirement. Its output clauses stay uncertain.
         groups, uncertain = output_groups(request, turn, source, _next_group_id(state))
         state["output_spec"]["uncertain"].extend(groups + uncertain)
+        state["request"]["own_output"] = bool(groups)
     elif kind != CONTINUATION:
         if kind == AMENDMENT:
             for _a, _b, sentence in spans(request):
@@ -711,9 +749,22 @@ def text_task(state: Mapping) -> dict:
     rule, so a classifier never reads an old restriction as current. The record keeps the
     whole message."""
     rules = list(state.get("source_rules") or [])
-    task: dict = {"objective": _without_inactive_rules(state.get("objective") or {}, rules)}
-    if state.get("amendments"):
-        task["amendments"] = [_without_inactive_rules(a, rules) for a in state["amendments"]]
+    amendments = [_without_inactive_rules(a, rules) for a in state.get("amendments") or []]
+    unresolved = [n for n, a in enumerate(state.get("amendments") or []) if a.get("kind") == UNRESOLVED]
+    if state.get("interpretation_state") == "unresolved" and unresolved:
+        # The newest unresolved message leads, as the person's current request. The active
+        # objective and its earlier amendments follow as the earlier task.
+        last = unresolved[-1]
+        task: dict = {"objective": amendments[last]}
+        if amendments[last + 1:]:
+            task["amendments"] = amendments[last + 1:]
+        task["earlier_objective"] = _without_inactive_rules(state.get("objective") or {}, rules)
+        if amendments[:last]:
+            task["earlier_amendments"] = amendments[:last]
+    else:
+        task = {"objective": _without_inactive_rules(state.get("objective") or {}, rules)}
+        if amendments:
+            task["amendments"] = amendments
     active = [r for r in rules if r.get("status") == "active"]
     restrictions = [_field(r) for r in reversed(active) if r["effect"] == "restrict"]
     if restrictions:
@@ -721,9 +772,27 @@ def text_task(state: Mapping) -> dict:
     permissions = [_field(r) for r in reversed(active) if r["effect"] == "allow"]
     if permissions:
         task["allowed_sources"] = permissions
-    if state.get("earlier_objective"):
+    if state.get("earlier_objective") and "earlier_objective" not in task:
+        # A record of 5873a3c3 stored the earlier objective of an unresolved follow-up.
         task["earlier_objective"] = _field(state["earlier_objective"])
     return task
+
+
+def proactive_file(state: Optional[Mapping]) -> bool:
+    """Whether the report skill loads before the first write. A resolved record loads it when
+    an active or uncertain group requests a file (`requirements`). An unresolved record loads
+    it only when the newest unresolved message has its own affirmative output clause, so the
+    outputs of an earlier objective never load it for a new question."""
+    state = state or {}
+    if state.get("interpretation_state") != "unresolved":
+        return requirements(state)["file"]
+    request = state.get("request") or {}
+    if "own_output" in request:
+        return bool(request["own_output"])
+    unresolved = [a for a in state.get("amendments") or [] if a.get("kind") == UNRESOLVED]
+    if not unresolved:
+        return requirements(state)["file"]
+    return bool(output_groups(str(unresolved[-1].get("text") or ""), None)[0])
 
 
 def complete_interpretation(state: Optional[Mapping]) -> bool:
@@ -840,6 +909,6 @@ def from_text_tasks(earlier: Iterable[Mapping]) -> dict:
     return reconstruct(records, complete=True)
 
 
-__all__ = ["SCHEMA_VERSION", "classify", "complete_interpretation", "delivery", "derive",
+__all__ = ["SCHEMA_VERSION", "proactive_file", "classify", "complete_interpretation", "delivery", "derive",
            "from_structured", "from_text_tasks", "output_groups", "reconstruct", "record_delivery",
            "requirements", "source_rules", "source_scope", "structured_groups", "text_task", "urls"]
