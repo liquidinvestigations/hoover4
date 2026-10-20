@@ -10,6 +10,22 @@ restore the earlier one from the version.
 
 A citation with a `version` reads that capture only. When it is no longer kept, the error
 says so and the caller reads the page again. It never falls back to the newest capture.
+
+**Aliases.** A read of one URL can end at another address after a redirect, and the result
+shows that final address. The capture keeps its identity under the requested URL. Its detail
+records `aliases`, the requested URL and the final URL that this read observed. It records
+no other form. A citation resolves its URL in this order, within the owner and the session.
+
+1. A capture stored under that URL, the newest first, as before.
+2. A capture whose `aliases` hold that URL.
+3. A capture without `aliases`, written before the field, whose stored body has that
+   `final_url`. At most `MAX_LEGACY_ALIAS_READS` bodies are read.
+
+An explicit version applies inside each step. An alias can name captures with different
+versions. Without a version, that citation is refused with the versions, so it never selects
+another pinned source. The handle binds to the resolved capture identity, which is the URL
+that the capture is stored under and its version. A citation through an alias therefore gets
+the handle of the capture. The citation names the cited URL in `cited_url`.
 """
 
 from __future__ import annotations
@@ -36,6 +52,9 @@ NAMESPACE = uuid.UUID("cbf403e2-2084-4ced-8432-4458745a459e")
 MAX_BODY_BYTES = 64 * 1024 * 1024
 MAX_CITATIONS = 200
 MAX_PAGES_PER_CALL = 12
+#: The captures without alias metadata whose bodies a citation reads at most to resolve an
+#: alias.
+MAX_LEGACY_ALIAS_READS = 16
 _lock = asyncio.Lock()
 
 
@@ -80,11 +99,14 @@ def store_read(owner: str, session: str, page) -> str:
     if len(body) > MAX_BODY_BYTES:
         raise ValueError("The captured page exceeds the citation storage limit.")
     artifact_id = _id(owner, session, KIND_PAGE_TEXT, page.url, page.version)
+    # The addresses that this read observed for the capture: the requested URL and the
+    # final URL after redirects.
+    aliases = sorted({u for u in (page.url, getattr(page, "final_url", "") or "") if u})
     artifacts.write_required(
         artifacts.ArtifactRequest(username=owner, session_id=session, kind=KIND_PAGE_TEXT,
                                   tool_name="read_page", url=page.url, title=page.title,
                                   detail=canonical_json({"version": page.version, "read_ns": time.time_ns(),
-                                                         **formatted})),
+                                                         "aliases": aliases, **formatted})),
         artifact_id, artifact_id, body, "application/json",
     )
     return artifact_id
@@ -96,6 +118,42 @@ def _details(row: dict) -> dict:
     except (ValueError, TypeError):
         return {}
     return value if isinstance(value, dict) else {}
+
+
+def _resolve(owner: str, session: str, rows: list[dict], url: str, version: str,
+             bindings: dict) -> dict | None:
+    """The capture row that a cited URL and version name (see the module text), or None."""
+    def versioned(found):
+        return [r for r in found if not version or _details(r).get("version") == version]
+
+    exact = versioned([r for r in rows if r["url"] == url])
+    if exact:
+        return exact[0]
+    found = versioned([r for r in rows if url in (_details(r).get("aliases") or [])])
+    if not found:
+        legacy = [r for r in rows if "aliases" not in _details(r)][:MAX_LEGACY_ALIAS_READS]
+        for row in versioned(legacy):
+            body, size = artifacts.read_range(owner, session, row["artifact_id"], 0, MAX_BODY_BYTES)
+            if size <= MAX_BODY_BYTES and len(body) == size:
+                try:
+                    stored = json.loads(body)
+                except ValueError:
+                    continue
+                if isinstance(stored, dict) and stored.get("final_url") == url:
+                    found.append(row)
+    if not found:
+        return None
+    versions = sorted({str(_details(r).get("version") or "") for r in found})
+    if len(versions) > 1:
+        raise ValueError(f"The address {url} names {len(versions)} kept page versions: "
+                         f"{', '.join(versions)}. Cite this page with one of these versions, as "
+                         "read_page returned it.")
+    # One version, so one text and one extent. The capture with the first allocated handle
+    # keeps it, and else the newest capture is cited.
+    bound = [r for r in found if (r["url"], versions[0]) in bindings]
+    if bound:
+        return min(bound, key=lambda r: int(bindings[(r["url"], versions[0])][2:-1]))
+    return found[0]
 
 
 def _references(value):
@@ -215,8 +273,7 @@ def _cite(owner: str, session: str, pages: list) -> dict:
                     or any(not isinstance(t, str) or not t or len(t) > 200 for t in terms)):
                 raise ValueError("Give one to eight exact terms of one to 200 characters.")
             version = item.get("version", "")
-            row = next((row for row in rows if row["url"] == url
-                        and (not version or _details(row).get("version") == version)), None)
+            row = _resolve(owner, session, rows, url, version, bindings)
             if row is None and version:
                 raise ValueError(f"The text of version {version} of this page is not kept. Call "
                                  "read_page for the page, then cite the version that it returns.")
@@ -239,18 +296,21 @@ def _cite(owner: str, session: str, pages: list) -> dict:
                                                 "terms": suggestions}
                 errors.append(error)
                 continue
-            key = (url, source["version"])
+            # The capture identity: the URL that the capture is stored under, and its version.
+            key = (row["url"], source["version"])
             handle = bindings.get(key)
             if handle is None:
                 number = next((n for n in range(1, MAX_CITATIONS + 1) if n not in reserved), None)
                 if number is None:
                     raise ValueError("This conversation has reached its web citation limit.")
                 handle = f"[W{number}]"
-            ref = {"handle": handle, "url": url, "final_url": source["final_url"],
+            ref = {"handle": handle, "url": row["url"], "final_url": source["final_url"],
                    "title": source["title"], "version": source["version"],
                    "artifact_id": row["artifact_id"], "terms": terms,
                    "quotes": quotes, "spans": spans, "quote_verified": True,
                    "why": str(item.get("why") or "")[:300]}
+            if url != row["url"]:
+                ref["cited_url"] = url
             if isinstance(source.get("extent"), dict) and source["extent"]:
                 # The cited text is one extracted window of a PDF. Its extent stays with
                 # the citation, so a report can state the limit of the search.
@@ -259,7 +319,7 @@ def _cite(owner: str, session: str, pages: list) -> dict:
             artifacts.write_required(
                 artifacts.ArtifactRequest(username=owner, session_id=session,
                                           kind=KIND_PAGE_CITATION, tool_name="cite_pages",
-                                          title=handle, url=url,
+                                          title=handle, url=row["url"],
                                           detail=canonical_json({k: ref[k] for k in
                                                                  ("handle", "url", "version")})),
                 artifact_id, artifact_id, canonical_json(ref).encode("utf-8"), "application/json",

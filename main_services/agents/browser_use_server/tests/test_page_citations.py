@@ -350,3 +350,120 @@ def test_a_legacy_capture_without_a_format_stays_citable(store):
                                             "version": version, "markdown": text}).encode()
     cited = cite(version=version)["citations"][0]
     assert cited["version"] == version and "extent" not in cited
+
+
+# ------------------------------------------------------------------------------ aliases
+
+REQUESTED = "https://source.example/page"
+FINAL = "https://www.source.example/page/"
+
+
+def read_redirect(url=REQUESTED, final_url=FINAL, text="Source α contains a verified statement.", **extra):
+    from browser_use_server import read_page
+    version = read_page.text_version(text, extra.get("extent"))
+    return read_source(text, version=version, url=url, final_url=final_url, **extra), version
+
+
+def cite_at(url, owner="owner", session="chat", **extra):
+    return asyncio.run(citations.cite(owner, session, [{"url": url, "terms": ["verified statement"], **extra}]))
+
+
+def test_a_redirected_capture_keeps_its_identity_and_resolves_its_final_url(store):
+    artifact_id, version = read_redirect()
+    detail = json.loads(store.rows[artifact_id]["detail"])
+    assert detail["aliases"] == sorted([REQUESTED, FINAL])
+    by_final = cite_at(FINAL)["citations"][0]
+    assert (by_final["handle"], by_final["artifact_id"], by_final["version"]) == ("[W1]", artifact_id, version)
+    assert by_final["url"] == REQUESTED and by_final["cited_url"] == FINAL
+    by_request = cite_at(REQUESTED)["citations"][0]
+    assert by_request["handle"] == "[W1]" and "cited_url" not in by_request
+    binding = [r for r in store.rows.values() if r["kind"] == citations.KIND_PAGE_CITATION]
+    assert [r["url"] for r in binding] == [REQUESTED]
+
+
+@pytest.mark.parametrize("other", ["https://www.source.example/page", "http://www.source.example/page/",
+                                   "https://www.source.example/page/?ref=1", "https://www.source.example/"])
+def test_an_address_that_no_read_observed_is_not_an_alias(store, other):
+    read_redirect()
+    result = cite_at(other)
+    assert not result["citations"] and "Read this page successfully" in result["errors"][0]["error"]
+
+
+def test_two_requested_urls_with_one_text_resolve_to_one_existing_handle(store):
+    first, version = read_redirect(url="https://a.example/x")
+    second, _ = read_redirect(url="https://b.example/y")
+    assert first != second
+    assert cite_at("https://a.example/x")["citations"][0]["handle"] == "[W1]"
+    assert cite_at("https://b.example/y")["citations"][0]["handle"] == "[W2]"
+    ref = cite_at(FINAL)["citations"][0]
+    assert (ref["handle"], ref["artifact_id"]) == ("[W1]", first)
+    assert not any(r["title"] == "[W3]" for r in store.rows.values())
+
+
+def test_an_alias_of_different_versions_needs_its_version(store):
+    _a, one = read_redirect(url="https://a.example/x", text="Version one holds a verified statement.")
+    _b, two = read_redirect(url="https://b.example/y", text="Version two holds a verified statement.")
+    refused = cite_at(FINAL)
+    assert not refused["citations"] and "2 kept page versions" in refused["errors"][0]["error"]
+    assert one in refused["errors"][0]["error"] and two in refused["errors"][0]["error"]
+    assert not any(r["kind"] == citations.KIND_PAGE_CITATION for r in store.rows.values())
+    chosen = cite_at(FINAL, version=two)["citations"][0]
+    assert chosen["version"] == two and chosen["url"] == "https://b.example/y"
+
+
+def test_pdf_windows_of_one_redirect_stay_distinct_through_the_alias(store):
+    text = "Source α contains a verified statement."
+    first, one = read_redirect(text=text, extent={"pages": 100, "first": 1, "last": 50})
+    second, two = read_redirect(text=text, extent={"pages": 100, "first": 51, "last": 100})
+    assert first != second and one != two
+    assert not cite_at(FINAL)["citations"]
+    early = cite_at(FINAL, version=one)["citations"][0]
+    late = cite_at(FINAL, version=two)["citations"][0]
+    assert (early["extent"]["first"], late["extent"]["first"]) == (1, 51)
+    assert early["handle"] != late["handle"]
+    assert cite_at(REQUESTED, version=one)["citations"][0]["handle"] == early["handle"]
+
+
+def test_a_missing_version_of_an_alias_never_falls_back_to_the_newest_capture(store):
+    read_redirect()
+    result = cite_at(FINAL, version="0000000000000000")
+    assert not result["citations"] and "is not kept" in result["errors"][0]["error"]
+
+
+@pytest.mark.parametrize("owner,session", [("other", "chat"), ("owner", "other")])
+def test_another_owner_or_chat_cannot_resolve_an_alias(store, owner, session):
+    read_redirect()
+    assert not cite_at(FINAL, owner=owner, session=session)["citations"]
+
+
+def test_a_legacy_capture_resolves_its_final_url_from_its_body(store):
+    from browser_use_server import read_page
+    text = "Source α contains a verified statement."
+    version = read_page.text_version(text)
+    artifact_id = citations._id("owner", "chat", citations.KIND_PAGE_TEXT, REQUESTED, version)
+    store.rows[artifact_id] = {"artifact_id": artifact_id, "title": "Source title", "url": REQUESTED,
+                               "detail": json.dumps({"version": version, "read_ns": 1}),
+                               "kind": citations.KIND_PAGE_TEXT, "owner": "owner", "session": "chat"}
+    store.bodies[artifact_id] = json.dumps({"url": REQUESTED, "final_url": FINAL, "title": "Source title",
+                                            "version": version, "markdown": text}).encode()
+    ref = cite_at(FINAL)["citations"][0]
+    assert (ref["artifact_id"], ref["url"], ref["handle"]) == (artifact_id, REQUESTED, "[W1]")
+
+
+def test_a_committed_handle_keeps_its_binding_through_an_alias_after_a_restart(store):
+    read_redirect()
+    first = cite_at(REQUESTED)["citations"][0]
+    store.committed.append({"citations": [first]})
+    for key, row in list(store.rows.items()):
+        if row["kind"] == citations.KIND_PAGE_CITATION:
+            del store.rows[key]
+    again = cite_at(FINAL)["citations"][0]
+    assert again["handle"] == first["handle"] and again["version"] == first["version"]
+    repeated = cite_at(FINAL)["citations"][0]
+    assert repeated["handle"] == first["handle"]
+
+
+def test_a_repeated_read_rewrites_one_capture(store):
+    one, _ = read_redirect()
+    two, _ = read_redirect()
+    assert one == two and len([r for r in store.rows.values() if r["kind"] == citations.KIND_PAGE_TEXT]) == 1

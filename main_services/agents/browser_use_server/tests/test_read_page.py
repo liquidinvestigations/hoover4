@@ -347,3 +347,26 @@ def test_the_rendered_page_shape_matches_the_worker_parser():
     from browser_use_server.server import ARTIFACT_MARKER
 
     assert ARTIFACT_MARKER == "[hoover4:artifacts]"
+
+
+def test_a_version_read_by_the_final_url_of_a_redirect_reads_the_kept_capture(monkeypatch):
+    """The result shows the final URL. A continuation that names it with the version reads
+    the kept text of the requested URL, and names that URL again."""
+    requested, final = "https://a.example/old", "https://a.example/new/"
+    chat = SimpleNamespace(page_reads={})
+    calls = []
+
+    async def load(_chat, url, _goal, _limit, _username, _deadline, links=True, **_):
+        calls.append(url)
+        return PageRead(url=url, title="T", final_url=final, full_text="a" * 3000)
+
+    monkeypatch.setattr(read_page, "_read_fresh", load)
+    first = _read(chat, [requested], 2000)
+    version = first.pages[0].version
+    assert first.pages[0].final_url == final
+    again = _read(chat, [final], 2000, offset=100, version=version)
+    page = again.pages[0]
+    assert calls == [requested] and not page.error
+    assert (page.url, page.version, page.offset) == (requested, version, 100)
+    other = _read(chat, [final], 2000, version="0000000000000000")
+    assert "is no longer kept" in other.pages[0].error and calls == [requested]

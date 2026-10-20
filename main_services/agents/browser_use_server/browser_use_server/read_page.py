@@ -24,7 +24,9 @@ hex characters of a SHA-256 (`text_version`). A web page hashes its text alone, 
 earlier version did. A PDF window hashes a canonical value of the capture format
 (`CAPTURE_FORMAT`), the whole extracted text and the extent, so equal text in two windows
 has two versions. A call with `version` reads that same text, and it reports a text that has
-expired or changed in place of the text. It never navigates for a continuation.
+expired or changed in place of the text. It never navigates for a continuation. A redirected
+read keeps its text under the requested URL. A call with the final URL that the result shows
+and the same version reads that kept text, with the requested URL and the same capture.
 
 **A continuation is one argument object.** `continuation_arguments` builds the `read_page`
 arguments of the next part, the next matches, the next PDF window and the screenshot of a
@@ -624,6 +626,14 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
             if stored[0] <= now:
                 del chat.page_reads[old_url]
         cached = chat.page_reads.get((url, links, page_start))
+        kept_url = url
+        if version and (not cached or cached[4] != version):
+            # The final URL of a redirected read, with its version, names that kept read.
+            alias = next((key for key, stored in chat.page_reads.items()
+                          if key[0] != url and key[1:] == (links, page_start)
+                          and stored[2] == url and stored[4] == version), None)
+            if alias is not None:
+                kept_url, cached = alias[0], chat.page_reads[alias]
         if version and (not cached or cached[4] != version):
             page = PageRead(url=url, find=find, offset=offset)
             # The version can belong to another kept window of the same URL.
@@ -652,7 +662,7 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
             continue
         if cached:
             kept = dict(zip(_KEPT, cached))
-            page = PageRead(url=url, title=kept["title"], final_url=kept["final_url"],
+            page = PageRead(url=kept_url, title=kept["title"], final_url=kept["final_url"],
                             full_text=kept["full_text"], version=kept["version"],
                             route=kept.get("route") or "direct", page_start=page_start,
                             extent=dict(kept.get("extent") or {}))

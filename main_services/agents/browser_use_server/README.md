@@ -133,6 +133,10 @@ An unread source requires a successful read followed by another citation call.
 Successful citations return verified quotes, source offsets, a stored page identifier, and a stable `[Wn]` handle.
 A changed text version receives a different handle.
 A version field selects earlier stored text without another page request.
+A capture records the requested URL and the final URL after redirects as its aliases.
+A citation of the final URL resolves to the same capture, version, page window and handle.
+An alias of captures with different versions needs the version field.
+A `read_page` call with the final URL and a kept version reads the kept text of the requested URL.
 Required artifacts store each binding before the tool returns it.
 Committed citation results keep earlier handles reserved after binding retention.
 The service has one allocating process. Multiple allocating processes require a shared allocation authority.
