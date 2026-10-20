@@ -65,6 +65,15 @@ pub struct TableSheet {
 }
 
 impl TableSheet {
+    /// The `row_id` of the last stored row of the sheet. Stored rows count from `row_id` 1
+    /// and include the header row and any rows above it. [`Self::row_count`] counts only
+    /// the data rows after the header, so a query that bounds `row_id` by `row_count`
+    /// drops the last data rows. The value is correct when `header_row` is at or below the
+    /// stored row count, which the overview reader gives.
+    pub fn last_row_id(&self) -> u64 {
+        self.row_count + self.header_row
+    }
+
     /// What the sheet picker shows. A delimited file's sheet has no name of its own, and
     /// an empty entry in a dropdown is unclickable in practice.
     pub fn label(&self) -> String {
@@ -441,6 +450,23 @@ pub struct TableColumnValue {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sheet(row_count: u64, header_row: u64) -> TableSheet {
+        TableSheet { row_count, header_row, column_count: 3, ..Default::default() }
+    }
+
+    #[test]
+    fn the_last_stored_row_includes_the_header_and_the_rows_above_it() {
+        // A header and 38 data rows: stored rows 1 to 39.
+        assert_eq!(sheet(38, 1).last_row_id(), 39);
+        // No header: the data rows are the stored rows.
+        assert_eq!(sheet(38, 0).last_row_id(), 38);
+        // Two title rows, then the header in row 3, then 10 data rows: stored rows 1 to 13.
+        assert_eq!(sheet(10, 3).last_row_id(), 13);
+        // A header without data rows, and an empty sheet.
+        assert_eq!(sheet(0, 1).last_row_id(), 1);
+        assert_eq!(sheet(0, 0).last_row_id(), 0);
+    }
 
     #[test]
     fn a_zero_limit_is_the_default_page_not_an_empty_one() {

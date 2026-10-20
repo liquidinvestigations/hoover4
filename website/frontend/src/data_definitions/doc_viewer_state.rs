@@ -2,6 +2,8 @@
 
 use common::document_sources::DocumentSourceItem;
 use common::document_tables::{TableColumnFilter, TableSort};
+use common::document_text_pages::{MatchDirection, TextMatchStep};
+use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -64,6 +66,88 @@ impl TextMatchSelection {
     pub fn ordinal_for(&self, extracted_by: &str, page_id: u32, find_query: &str, count: u32) -> Option<u32> {
         (self.extracted_by == extracted_by && self.page_id == page_id && self.find_query == find_query && count > 0)
             .then(|| self.ordinal.min(count - 1))
+    }
+}
+
+/// The identity of one match operation of a text viewer: the page, the source and the
+/// query that it starts from, the source revision of that page, and the navigation
+/// generation. The viewer applies a neighbour result, a continuation result, an error or a
+/// match selection only while this key is still the current key. A changed document,
+/// source, query, page or revision gives a new key.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchOperationKey {
+    pub document: DocumentIdentifier,
+    pub extracted_by: String,
+    pub find_query: String,
+    pub anchor: u32,
+    pub revision: String,
+    /// Advances when the person changes the document, the source, the query or the page.
+    pub generation: u64,
+}
+
+/// What a bounded match continuation knows now.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ContinuationPhase {
+    /// A server step runs.
+    Running,
+    /// The action read its limit of server steps. The next action resumes at `boundary`.
+    Incomplete,
+    /// A server step failed, or did not move its boundary. A retry resumes at `boundary`.
+    Failed(String),
+    /// No stored page beyond the start matches in this direction.
+    Exhausted,
+}
+
+/// The continuation of a cross-page match step whose server steps read their whole
+/// allowance. `boundary` is the exclusive page boundary that the next server step starts
+/// after.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchContinuation {
+    pub key: MatchOperationKey,
+    pub direction: MatchDirection,
+    pub boundary: u32,
+    pub phase: ContinuationPhase,
+}
+
+/// The server steps that one person's match action runs before it keeps its boundary.
+pub const STEPS_PER_MATCH_ACTION: usize = 4;
+
+/// What a continuation does with one server step result.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ContinuationOutcome {
+    /// Select the first or last match of this stored page.
+    Select(u32),
+    /// Run the next server step after this boundary.
+    Continue(u32),
+    /// Stop in this phase at this boundary.
+    Stop(ContinuationPhase, u32),
+}
+
+impl MatchContinuation {
+    /// The outcome of one server step result of this continuation when `current` is the
+    /// current operation key. `None` discards the result of an obsolete operation, even
+    /// when its cancellation came too late.
+    pub fn outcome(&self, current: Option<&MatchOperationKey>, result: Result<TextMatchStep, String>) -> Option<ContinuationOutcome> {
+        if current != Some(&self.key) {
+            return None;
+        }
+        Some(match result {
+            Ok(TextMatchStep::Found { page_id }) => ContinuationOutcome::Select(page_id),
+            Ok(TextMatchStep::NoMore) => ContinuationOutcome::Stop(ContinuationPhase::Exhausted, self.boundary),
+            Ok(TextMatchStep::Incomplete { resume_after }) => {
+                let advances = match self.direction {
+                    MatchDirection::Forward => resume_after > self.boundary,
+                    MatchDirection::Backward => resume_after < self.boundary,
+                };
+                if advances {
+                    ContinuationOutcome::Continue(resume_after)
+                } else {
+                    let message = format!("The match search did not move past page {}.", self.boundary);
+                    ContinuationOutcome::Stop(ContinuationPhase::Failed(message), self.boundary)
+                }
+            }
+            Err(message) => ContinuationOutcome::Stop(ContinuationPhase::Failed(message), self.boundary),
+        })
     }
 }
 
@@ -369,6 +453,82 @@ mod tests {
                 .expect("an old URL must still parse");
             assert_eq!(parsed.0.selected_tab, expected);
         }
+    }
+}
+
+#[cfg(test)]
+mod match_continuation_tests {
+    use super::*;
+
+    fn key(anchor: u32, generation: u64) -> MatchOperationKey {
+        MatchOperationKey {
+            document: DocumentIdentifier { collection_dataset: "d".into(), file_hash: "h".into() },
+            extracted_by: "pdftotext".into(),
+            find_query: "quokka".into(),
+            anchor,
+            revision: "3:1-9:5".into(),
+            generation,
+        }
+    }
+
+    fn continuation(direction: MatchDirection, boundary: u32) -> MatchContinuation {
+        MatchContinuation { key: key(1, 1), direction, boundary, phase: ContinuationPhase::Running }
+    }
+
+    #[test]
+    fn an_obsolete_operation_changes_nothing_with_its_success_or_its_failure() {
+        let running = continuation(MatchDirection::Forward, 100);
+        for current in [Some(key(1, 2)), Some(key(7, 1)), Some(MatchOperationKey { find_query: "other".into(), ..key(1, 1) }),
+                        Some(MatchOperationKey { revision: "4:1-9:6".into(), ..key(1, 1) }), None] {
+            assert_eq!(running.outcome(current.as_ref(), Ok(TextMatchStep::Found { page_id: 40 })), None);
+            assert_eq!(running.outcome(current.as_ref(), Err("timeout".into())), None);
+        }
+        assert_eq!(running.outcome(Some(&key(1, 1)), Ok(TextMatchStep::Found { page_id: 40 })), Some(ContinuationOutcome::Select(40)));
+    }
+
+    #[test]
+    fn a_boundary_must_move_in_its_direction_and_a_failure_keeps_it() {
+        let forward = continuation(MatchDirection::Forward, 100);
+        let current = Some(key(1, 1));
+        assert_eq!(forward.outcome(current.as_ref(), Ok(TextMatchStep::Incomplete { resume_after: 300 })), Some(ContinuationOutcome::Continue(300)));
+        assert!(matches!(forward.outcome(current.as_ref(), Ok(TextMatchStep::Incomplete { resume_after: 100 })),
+                         Some(ContinuationOutcome::Stop(ContinuationPhase::Failed(_), 100))));
+        let backward = continuation(MatchDirection::Backward, 100);
+        assert_eq!(backward.outcome(current.as_ref(), Ok(TextMatchStep::Incomplete { resume_after: 40 })), Some(ContinuationOutcome::Continue(40)));
+        assert!(matches!(backward.outcome(current.as_ref(), Ok(TextMatchStep::Incomplete { resume_after: 120 })),
+                         Some(ContinuationOutcome::Stop(ContinuationPhase::Failed(_), 100))));
+        assert_eq!(forward.outcome(current.as_ref(), Err("timeout".into())),
+                   Some(ContinuationOutcome::Stop(ContinuationPhase::Failed("timeout".into()), 100)));
+        assert_eq!(forward.outcome(current.as_ref(), Ok(TextMatchStep::NoMore)),
+                   Some(ContinuationOutcome::Stop(ContinuationPhase::Exhausted, 100)));
+    }
+
+    /// A server whose steps each move 200 pages past obsolete rows, with the next stored
+    /// match at page 3,050. Each person's action runs [`STEPS_PER_MATCH_ACTION`] steps,
+    /// and the next action resumes at the kept boundary until the match is found.
+    #[test]
+    fn bounded_actions_resume_at_their_boundary_and_reach_a_later_match() {
+        let server = |after: u32| if after + 200 >= 3_050 { TextMatchStep::Found { page_id: 3_050 } } else { TextMatchStep::Incomplete { resume_after: after + 200 } };
+        let current = Some(key(1, 1));
+        let mut boundary = 1;
+        let mut actions = 0;
+        let found = loop {
+            actions += 1;
+            let mut state = MatchContinuation { boundary, ..continuation(MatchDirection::Forward, boundary) };
+            let mut selected = None;
+            for _ in 0..STEPS_PER_MATCH_ACTION {
+                match state.outcome(current.as_ref(), Ok(server(state.boundary))).unwrap() {
+                    ContinuationOutcome::Select(page) => { selected = Some(page); break; }
+                    ContinuationOutcome::Continue(next) => state.boundary = next,
+                    ContinuationOutcome::Stop(phase, _) => panic!("{phase:?}"),
+                }
+            }
+            if let Some(page) = selected { break page; }
+            assert!(state.boundary > boundary, "each action moves the kept boundary");
+            boundary = state.boundary;
+            assert!(actions < 10);
+        };
+        assert_eq!((found, actions), (3_050, 4));
     }
 }
 

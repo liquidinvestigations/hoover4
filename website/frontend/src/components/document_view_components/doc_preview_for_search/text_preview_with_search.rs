@@ -23,7 +23,9 @@ use crate::components::{
     document_view_components::doc_preview_for_search::text_data_viewer,
     search_components::search_result_list_controls::NavigationButton,
 };
-use crate::data_definitions::doc_viewer_state::TextMatchSelection;
+use crate::data_definitions::doc_viewer_state::{
+    ContinuationOutcome, ContinuationPhase, MatchContinuation, MatchOperationKey, STEPS_PER_MATCH_ACTION, TextMatchSelection,
+};
 use crate::pages::search_page::DocViewerStateControl;
 
 /// What one page request asks for. A response under another key belongs to an obsolete
@@ -45,12 +47,11 @@ pub enum ScrollIntent {
     Match,
 }
 
-/// The nearest matching pages on both sides of the displayed page.
+/// The nearest matching pages on both sides of the displayed page, for one operation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchNeighbours {
-    /// The page the steps start from, and the query they used.
-    pub anchor: u32,
-    pub find_query: String,
+    /// The operation that the steps belong to: its anchor page, query and generation.
+    pub key: MatchOperationKey,
     pub previous: TextMatchStep,
     pub next: TextMatchStep,
 }
@@ -69,9 +70,21 @@ pub struct DocumentViewerResultStore {
     pub request: ReadSignal<TextRequestKey>,
     /// The current page request failed.
     pub request_error: ReadSignal<Option<ServerFnError>>,
+    /// The displayed page answers the current request, so its highlights belong to the
+    /// current query. Match actions wait while it is false.
+    pub body_current: ReadSignal<bool>,
+    /// The highlighted matches of the displayed page under the current query, 0 while
+    /// another request loads.
+    pub match_count: ReadSignal<u32>,
     /// The selected 0-based match of the displayed page.
     pub current_match: ReadSignal<u32>,
+    /// The neighbour steps of the current operation only.
     pub match_neighbours: ReadSignal<Option<Result<Option<MatchNeighbours>, ServerFnError>>>,
+    /// The continuation of the current operation only.
+    pub continuation: ReadSignal<Option<MatchContinuation>>,
+    /// The search for the first matching page read its allowance, and the first match is
+    /// still unknown.
+    pub initial_incomplete: ReadSignal<bool>,
     /// A match step that crosses pages is running.
     pub match_step_pending: ReadSignal<bool>,
     pub match_step_error: ReadSignal<Option<String>>,
@@ -167,14 +180,17 @@ pub fn DocumentPreviewTextWithSearch(
             displayed.set(Some((key, view)));
         }
     });
-    let shown: Memo<Option<TextPageView>> = use_memo(move || {
+    // The last page of the current document and source, with the request it answered.
+    let shown_entry: Memo<Option<(TextRequestKey, TextPageView)>> = use_memo(move || {
         let (document, extracted_by) = source_identity();
         displayed
             .read()
             .as_ref()
             .filter(|(key, _)| key.document == document && key.extracted_by == extracted_by)
-            .map(|(_, view)| view.clone())
+            .cloned()
     });
+    let shown: Memo<Option<TextPageView>> = use_memo(move || shown_entry().map(|(_, view)| view));
+    let body_current = use_memo(move || shown_entry().is_some_and(|(key, _)| key == request()));
     let pending = use_memo(move || {
         let key = request();
         let running = matches!(*page_request.state().read(), UseResourceState::Pending);
@@ -190,49 +206,102 @@ pub fn DocumentPreviewTextWithSearch(
     });
 
     // ================ MATCH SELECTION ================
+    let match_count = use_memo(move || if body_current() { shown().map_or(0, |view| view.body.match_count()) } else { 0 });
     let current_match = use_memo(move || {
+        if !body_current() {
+            return 0;
+        }
         let Some(view) = shown() else { return 0 };
         let TextPageBody::Text { page_id, .. } = &view.body else { return 0 };
-        let count = view.body.match_count();
         selected_match()
-            .and_then(|selection| selection.ordinal_for(&view.navigation.extracted_by, *page_id, &find_query(), count))
+            .and_then(|selection| selection.ordinal_for(&view.navigation.extracted_by, *page_id, &find_query(), match_count()))
             .unwrap_or(0)
     });
 
-    let mut match_neighbours = use_resource(move || {
+    // A new document, source, query or page starts a new generation, so the results of
+    // earlier match operations never apply.
+    let mut generation = use_signal(|| 0u64);
+    let operation_key = use_memo(move || {
+        let generation = generation();
         let query = find_query();
+        if query.trim().is_empty() || !body_current() {
+            return None;
+        }
         let (document, extracted_by) = source_identity();
-        let anchor = shown().as_ref().and_then(anchor_page);
+        let view = shown()?;
+        let anchor = anchor_page(&view)?;
+        Some(MatchOperationKey { document, extracted_by, find_query: query, anchor, revision: view.navigation.revision, generation })
+    });
+
+    let mut match_neighbours = use_resource(move || {
+        let key = operation_key();
         async move {
-            if query.trim().is_empty() {
-                return Ok(None);
-            }
-            let Some(anchor) = anchor else { return Ok(None) };
-            let previous =
-                find_text_match_page(document.clone(), extracted_by.clone(), query.clone(), Some(anchor), MatchDirection::Backward).await?;
-            let next = find_text_match_page(document, extracted_by, query.clone(), Some(anchor), MatchDirection::Forward).await?;
-            Ok(Some(MatchNeighbours { anchor, find_query: query, previous, next }))
+            let Some(key) = key else { return (None, Ok(None)) };
+            let steps = async {
+                let previous = find_text_match_page(
+                    key.document.clone(), key.extracted_by.clone(), key.find_query.clone(), Some(key.anchor), MatchDirection::Backward,
+                ).await?;
+                let next = find_text_match_page(
+                    key.document.clone(), key.extracted_by.clone(), key.find_query.clone(), Some(key.anchor), MatchDirection::Forward,
+                ).await?;
+                Ok(Some(MatchNeighbours { key: key.clone(), previous, next }))
+            };
+            let result = steps.await;
+            (Some(key), result)
         }
     });
-    let neighbours = use_memo(move || match_neighbours.read().clone());
+    let neighbours = use_memo(move || {
+        let current = operation_key();
+        match match_neighbours.read().clone() {
+            Some((key, result)) if key == current => Some(result),
+            _ => None,
+        }
+    });
 
     let mut scroll_intent = use_signal(|| Some(ScrollIntent::Match));
-    let mut match_step_pending = use_signal(|| false);
-    let mut match_step_error = use_signal(|| None::<String>);
+    let mut continuation_state = use_signal(|| None::<MatchContinuation>);
+    let mut match_task = use_signal(|| None::<dioxus_core::Task>);
+    let continuation = use_memo(move || {
+        let current = operation_key();
+        continuation_state.read().clone().filter(|c| Some(&c.key) == current.as_ref())
+    });
+    let match_step_pending = use_memo(move || continuation().is_some_and(|c| c.phase == ContinuationPhase::Running));
+    let match_step_error = use_memo(move || match continuation() {
+        Some(MatchContinuation { phase: ContinuationPhase::Failed(message), .. }) => Some(message),
+        _ => None,
+    });
+    let initial_incomplete = use_memo(move || {
+        body_current()
+            && shown_entry().is_some_and(|(key, view)| {
+                key.page.is_none() && matches!(view.initial_match, Some(TextMatchStep::Incomplete { .. }))
+            })
+    });
 
     // A new query or source moves to its first match once it renders.
     use_effect(move || {
         let _ = find_query();
         let _ = source_identity();
         scroll_intent.set(Some(ScrollIntent::Match));
-        match_step_error.set(None);
+        *generation.write() += 1;
+    });
+    // Work of an obsolete operation stops. A result that arrives after the cancellation is
+    // still discarded by its key.
+    use_effect(move || {
+        let current = operation_key();
+        let obsolete = continuation_state.peek().as_ref().is_some_and(|c| Some(&c.key) != current.as_ref());
+        if obsolete {
+            if let Some(task) = match_task.write().take() {
+                task.cancel();
+            }
+            continuation_state.set(None);
+        }
     });
 
     let go_to_page = Callback::new(move |page: u32| {
         let mut next = state.peek().clone().unwrap_or_default();
         next.selected_source_page = Some(page);
         next.selected_match = None;
-        match_step_error.set(None);
+        *generation.write() += 1;
         scroll_intent.set(Some(ScrollIntent::Top));
         set_state.call(next);
     });
@@ -249,25 +318,78 @@ pub fn DocumentPreviewTextWithSearch(
         set_state.call(next);
     });
     let select_match = Callback::new(move |ordinal: u32| {
+        if !*body_current.peek() {
+            return;
+        }
         if let Some(page_id) = shown.peek().as_ref().and_then(anchor_page) {
             select_on_page.call((page_id, ordinal));
         }
     });
+    // Runs at most `STEPS_PER_MATCH_ACTION` server steps from `boundary`, and keeps the
+    // last boundary for the next action.
+    let run_continuation = Callback::new(move |(key, direction, boundary): (MatchOperationKey, MatchDirection, u32)| {
+        let ordinal = match direction {
+            MatchDirection::Forward => 0,
+            MatchDirection::Backward => TextMatchSelection::LAST,
+        };
+        if let Some(task) = match_task.write().take() {
+            task.cancel();
+        }
+        continuation_state.set(Some(MatchContinuation { key: key.clone(), direction, boundary, phase: ContinuationPhase::Running }));
+        let task = spawn(async move {
+            let mut state = MatchContinuation { key: key.clone(), direction, boundary, phase: ContinuationPhase::Running };
+            for _ in 0..STEPS_PER_MATCH_ACTION {
+                let result = find_text_match_page(
+                    key.document.clone(), key.extracted_by.clone(), key.find_query.clone(), Some(state.boundary), direction,
+                )
+                .await
+                .map_err(|error| crate::api::error_util::user_facing_message(&error));
+                let Some(outcome) = state.outcome(operation_key.peek().as_ref(), result) else { return };
+                match outcome {
+                    ContinuationOutcome::Select(page_id) => {
+                        continuation_state.set(None);
+                        select_on_page.call((page_id, ordinal));
+                        return;
+                    }
+                    ContinuationOutcome::Continue(next) => {
+                        state.boundary = next;
+                        continuation_state.set(Some(state.clone()));
+                    }
+                    ContinuationOutcome::Stop(phase, at) => {
+                        continuation_state.set(Some(MatchContinuation { boundary: at, phase, ..state }));
+                        return;
+                    }
+                }
+            }
+            continuation_state.set(Some(MatchContinuation { phase: ContinuationPhase::Incomplete, ..state }));
+        });
+        match_task.set(Some(task));
+    });
     let step_match = Callback::new(move |direction: MatchDirection| {
-        let Some(view) = shown.peek().clone() else { return };
-        let Some(anchor) = anchor_page(&view) else { return };
-        let count = view.body.match_count();
+        let Some(key) = operation_key.peek().clone() else { return };
+        let count = *match_count.peek();
         let current = *current_match.peek();
         match direction {
-            MatchDirection::Forward if count > 0 && current + 1 < count => return select_on_page.call((anchor, current + 1)),
-            MatchDirection::Backward if count > 0 && current > 0 => return select_on_page.call((anchor, current - 1)),
+            MatchDirection::Forward if count > 0 && current + 1 < count => return select_on_page.call((key.anchor, current + 1)),
+            MatchDirection::Backward if count > 0 && current > 0 => return select_on_page.call((key.anchor, current - 1)),
             _ => {}
         }
-        let query = find_query.peek().clone();
-        let Some(Ok(Some(found))) = neighbours.peek().clone() else { return };
-        if found.anchor != anchor || found.find_query != query {
-            return;
+        // An earlier action of this operation kept its boundary.
+        if let Some(kept) = continuation.peek().clone().filter(|c| c.direction == direction) {
+            match kept.phase {
+                ContinuationPhase::Incomplete | ContinuationPhase::Failed(_) => {
+                    return run_continuation.call((key, direction, kept.boundary));
+                }
+                ContinuationPhase::Running | ContinuationPhase::Exhausted => return,
+            }
         }
+        // The initial search of this page stopped at its allowance. It continues there.
+        if direction == MatchDirection::Forward && *initial_incomplete.peek() {
+            if let Some(TextMatchStep::Incomplete { resume_after }) = shown.peek().as_ref().and_then(|view| view.initial_match.clone()) {
+                return run_continuation.call((key, direction, resume_after));
+            }
+        }
+        let Some(Ok(Some(found))) = neighbours.peek().clone() else { return };
         let first = match direction {
             MatchDirection::Forward => found.next,
             MatchDirection::Backward => found.previous,
@@ -279,43 +401,20 @@ pub fn DocumentPreviewTextWithSearch(
         match first {
             TextMatchStep::Found { page_id } => select_on_page.call((page_id, ordinal)),
             TextMatchStep::NoMore => {}
-            TextMatchStep::Incomplete { resume_after } => {
-                let (document, extracted_by) = source_identity.peek().clone();
-                match_step_pending.set(true);
-                match_step_error.set(None);
-                spawn(async move {
-                    let mut from = resume_after;
-                    // Each step reads a bounded allowance. A source with many obsolete
-                    // index rows needs more than one.
-                    for _ in 0..20 {
-                        match find_text_match_page(document.clone(), extracted_by.clone(), query.clone(), Some(from), direction).await {
-                            Ok(TextMatchStep::Found { page_id }) => {
-                                match_step_pending.set(false);
-                                select_on_page.call((page_id, ordinal));
-                                return;
-                            }
-                            Ok(TextMatchStep::NoMore) => break,
-                            Ok(TextMatchStep::Incomplete { resume_after }) => from = resume_after,
-                            Err(error) => {
-                                match_step_error.set(Some(crate::api::error_util::user_facing_message(&error)));
-                                break;
-                            }
-                        }
-                    }
-                    match_step_pending.set(false);
-                });
-            }
+            TextMatchStep::Incomplete { resume_after } => run_continuation.call((key, direction, resume_after)),
         }
     });
 
     // Moves the viewport once the requested page has rendered, then forgets the intent,
-    // so a count update or an ordinary render never scrolls.
+    // so a count update or an ordinary render never scrolls. The intent waits while the
+    // displayed body answers an earlier request.
     use_effect(move || {
         let view = shown();
         let current = current_match();
         let waiting = pending();
+        let current_body = body_current();
         let Some(intent) = *scroll_intent.peek() else { return };
-        if waiting || view.is_none() {
+        if waiting || view.is_none() || !current_body {
             return;
         }
         let script = match intent {
@@ -345,8 +444,12 @@ pub fn DocumentPreviewTextWithSearch(
         pending: pending.into(),
         request: request.into(),
         request_error: request_error.into(),
+        body_current: body_current.into(),
+        match_count: match_count.into(),
         current_match: current_match.into(),
         match_neighbours: neighbours.into(),
+        continuation: continuation.into(),
+        initial_incomplete: initial_incomplete.into(),
         match_step_pending: match_step_pending.into(),
         match_step_error: match_step_error.into(),
         go_to_page,
@@ -356,7 +459,17 @@ pub fn DocumentPreviewTextWithSearch(
             retry_count += 1;
             page_request.restart();
         }),
-        retry_matches: Callback::new(move |_| match_neighbours.restart()),
+        // A failed continuation resumes at its boundary. Its error clears when the retry
+        // starts, and only for this operation.
+        retry_matches: Callback::new(move |_| {
+            let Some(key) = operation_key.peek().clone() else { return };
+            match continuation.peek().clone() {
+                Some(MatchContinuation { direction, boundary, phase: ContinuationPhase::Failed(_), .. }) => {
+                    run_continuation.call((key, direction, boundary))
+                }
+                _ => match_neighbours.restart(),
+            }
+        }),
         viewer_key,
         flow_layout,
     });
@@ -556,35 +669,40 @@ fn TextPageControls() -> Element {
 
 /// Previous and next match, and the editable match number of the displayed page. The
 /// number counts the matches of this page only. The arrows continue to the nearest
-/// matching page of this source in page order and stop at both ends.
+/// matching page of this source in page order and stop at both ends. A search that read
+/// its allowance keeps its boundary, and the next step continues it.
 #[component]
 fn TextMatchControls() -> Element {
     let store = use_context::<DocumentViewerResultStore>();
-    let count = use_memo(move || store.displayed.read().as_ref().map_or(0, |view| view.body.match_count()));
+    let count = store.match_count;
     let current = store.current_match;
-    let neighbours = use_memo(move || {
-        let view = store.displayed.read().clone();
-        let anchor = view.as_ref().and_then(anchor_page);
-        let query = store.request.read().find_query.clone();
-        match store.match_neighbours.read().clone() {
-            Some(Ok(Some(found))) if Some(found.anchor) == anchor && found.find_query == query => Some(found),
-            _ => None,
-        }
+    let neighbours = use_memo(move || match store.match_neighbours.read().clone() {
+        Some(Ok(Some(found))) => Some(found),
+        _ => None,
     });
     let neighbour_error = use_memo(move || match store.match_neighbours.read().clone() {
         Some(Err(error)) => Some(crate::api::error_util::user_facing_message(&error)),
         _ => None,
     });
-    let busy = store.match_step_pending;
+    let busy = use_memo(move || store.match_step_pending.read().clone() || !*store.body_current.read());
+    // A direction whose continuation found no further match has no step.
+    let exhausted = move |direction: MatchDirection| {
+        store.continuation.read().as_ref().is_some_and(|c| c.direction == direction && c.phase == ContinuationPhase::Exhausted)
+    };
     let disable_previous = use_memo(move || {
         let local = count() > 0 && current() > 0;
-        let earlier = neighbours().is_some_and(|found| step_available(&found.previous));
+        let earlier = neighbours().is_some_and(|found| step_available(&found.previous)) && !exhausted(MatchDirection::Backward);
         busy() || !(local || earlier)
     });
     let disable_next = use_memo(move || {
         let local = count() > 0 && current() + 1 < count();
-        let later = neighbours().is_some_and(|found| step_available(&found.next));
+        let later = (neighbours().is_some_and(|found| step_available(&found.next)) || *store.initial_incomplete.read())
+            && !exhausted(MatchDirection::Forward);
         busy() || !(local || later)
+    });
+    let incomplete = use_memo(move || {
+        let kept = store.continuation.read().as_ref().is_some_and(|c| c.phase == ContinuationPhase::Incomplete);
+        kept || (*store.initial_incomplete.read() && count() == 0)
     });
 
     let mut draft = use_signal(String::new);
@@ -614,6 +732,7 @@ fn TextMatchControls() -> Element {
     };
     let input_border = if invalid() { "var(--x-danger)" } else { "var(--x-border-strong)" };
     let step_error = store.match_step_error.read().clone().or(neighbour_error());
+    let searching = *store.match_step_pending.read();
 
     rsx! {
         div {
@@ -662,6 +781,17 @@ fn TextMatchControls() -> Element {
                 }
             }
             NavigationButton { icon: MdArrowDownward, label: "Next Hit", disabled: disable_next, onclick: move |_| store.step_match.call(MatchDirection::Forward) }
+            span {
+                role: "status",
+                "aria-busy": if searching { "true" } else { "false" },
+                "data-text-match-status": if searching { "searching" } else if incomplete() { "incomplete" } else { "" },
+                style: "white-space: nowrap; color: var(--x-ink-muted); font-size: var(--x-text-sm);",
+                if searching {
+                    "Searching"
+                } else if incomplete() {
+                    "Search incomplete"
+                }
+            }
             if let Some(error) = step_error {
                 span {
                     role: "alert",

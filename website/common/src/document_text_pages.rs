@@ -96,12 +96,15 @@ pub struct TextPageNavigation {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TextPageBody {
     /// The latest stored version of the page. `spans` hold the find-query highlights when
-    /// the query matched this page, and one plain span otherwise.
+    /// the query matched this page and the matching index row holds this stored text, and
+    /// one plain span of the stored text otherwise. The spans never show index text that
+    /// differs from the stored text.
     Text {
         page_id: u32,
         version: u64,
         spans: Vec<HighlightTextSpan>,
-        /// The highlight read failed. `spans` then hold the raw stored text.
+        /// The highlight read failed, or the index holds another version of the page.
+        /// `spans` then hold the raw stored text.
         highlight_error: Option<String>,
     },
     /// The requested identifier has no stored text. Navigation names its neighbours.
@@ -132,6 +135,12 @@ pub struct TextPageView {
     /// The caller named a revision and the source no longer has it.
     #[serde(default)]
     pub source_changed: bool,
+    /// The search for the first matching page when the request named no page and had a
+    /// query. [`TextMatchStep::Incomplete`] means the first match is still unknown, and
+    /// the view shows the first stored page. `None` without that search, after its
+    /// failure (`match_error`), and in a response written before this field.
+    #[serde(default)]
+    pub initial_match: Option<TextMatchStep>,
 }
 
 /// The direction of a match step.
@@ -156,14 +165,19 @@ pub enum TextMatchStep {
 /// A source hit count in the source selector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub enum HitCountState {
-    /// The count finished. Zero is a successful empty result.
+    /// The count finished over index rows that each hold the stored text of their page.
+    /// Zero is a successful empty result.
     Exact(u64),
-    /// The count stopped at a read limit, so the source holds at least this many.
+    /// The count stopped at a read limit. The rows read hold the stored text of their
+    /// pages, so the stored text holds at least this many.
     AtLeast(u64),
     /// The count did not finish in its time limit.
     TimedOut,
     /// The count failed.
     Failed,
+    /// The index holds another version of a counted page, so no count of the stored text
+    /// is known.
+    Unavailable,
 }
 
 impl HitCountState {
@@ -174,6 +188,7 @@ impl HitCountState {
             Self::Exact(hits) => hits.to_string(),
             Self::AtLeast(hits) => format!("{hits}+"),
             Self::TimedOut | Self::Failed => "!".to_string(),
+            Self::Unavailable => "?".to_string(),
         }
     }
 
@@ -184,6 +199,7 @@ impl HitCountState {
             Self::AtLeast(hits) => format!("At least {hits} matches. The count stopped at its read limit."),
             Self::TimedOut => "The match count did not finish in time.".to_string(),
             Self::Failed => "The match count failed.".to_string(),
+            Self::Unavailable => "No match count. The search index holds another version of this text.".to_string(),
         }
     }
 }
@@ -210,6 +226,7 @@ mod tests {
         assert_eq!(HitCountState::Exact(4).display(), "4");
         assert_eq!(HitCountState::AtLeast(900).display(), "900+");
         assert_eq!(HitCountState::Failed.display(), "!");
+        assert_eq!(HitCountState::Unavailable.display(), "?");
         assert_ne!(HitCountState::Failed.description(), HitCountState::Exact(0).description());
     }
 

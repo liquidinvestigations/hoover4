@@ -121,6 +121,67 @@ pub async fn search_document_text_for_hits(
     page_hit_rows(&document_identifier, &find_query, &extracted_by, page_id).await
 }
 
+const START_MARK: &str = "<hoover4_strong>";
+const END_MARK: &str = "</hoover4_strong>";
+
+/// The spans of one highlighted index text, when that text is the stored text `stored`
+/// with only the highlight markers added. The comparison is exact: no whitespace or
+/// character is normalised, so the spans and their offsets describe the stored text.
+/// Adjacent marked parts form one span, as in [`decompose_text_into_spans`]. `None` when
+/// the index text differs from the stored text, or its markers do not pair.
+pub fn exact_highlight_spans(highlighted: &str, stored: &str) -> Option<Vec<common::text_highlight::HighlightTextSpan>> {
+    use common::text_highlight::HighlightTextSpan;
+    let mut spans: Vec<HighlightTextSpan> = Vec::new();
+    let mut rest = highlighted;
+    let mut marked = false;
+    let mut plain = String::with_capacity(stored.len());
+    while !rest.is_empty() {
+        let (mark, next) = if marked { (END_MARK, START_MARK) } else { (START_MARK, END_MARK) };
+        let end = rest.find(mark).unwrap_or(rest.len());
+        let part = &rest[..end];
+        if part.contains(next) {
+            return None;
+        }
+        if !part.is_empty() {
+            plain.push_str(part);
+            match spans.last_mut() {
+                Some(last) if last.is_highlighted == marked => last.text.push_str(part),
+                _ => spans.push(HighlightTextSpan { text: part.to_string(), is_highlighted: marked, index: 0 }),
+            }
+        }
+        if end == rest.len() {
+            break;
+        }
+        rest = &rest[end + mark.len()..];
+        marked = !marked;
+    }
+    if marked || plain != stored {
+        return None;
+    }
+    let mut index = 0;
+    for span in spans.iter_mut().filter(|span| span.is_highlighted) {
+        span.index = index;
+        index += 1;
+    }
+    Some(spans)
+}
+
+/// The raw highlighted texts of the index rows of one page, in index order, markers
+/// included. A page can have more than one index row, and an index row can hold an older
+/// text than `text_content`. The caller compares each with the stored text.
+pub(crate) async fn page_highlight_texts(
+    document_identifier: &DocumentIdentifier,
+    find_query: &str,
+    extracted_by: &str,
+    page_id: u32,
+) -> anyhow::Result<Vec<String>> {
+    Ok(page_hit_documents(document_identifier, find_query, extracted_by, page_id)
+        .await?
+        .into_iter()
+        .map(|hit| hit.text)
+        .collect())
+}
+
 /// The highlighted index rows of one page. The caller has verified read access. A page
 /// can have more than one index row, so a caller that shows one page takes the first.
 pub(crate) async fn page_hit_rows(
@@ -129,6 +190,23 @@ pub(crate) async fn page_hit_rows(
     extracted_by: &str,
     page_id: u32,
 ) -> anyhow::Result<Vec<DocumentTextSourceHit>> {
+    Ok(page_hit_documents(document_identifier, find_query, extracted_by, page_id)
+        .await?
+        .into_iter()
+        .map(|hit| DocumentTextSourceHit {
+            extracted_by: hit.extracted_by,
+            page_id: hit.page_id,
+            highlight_text_spans: decompose_text_into_spans(hit.text),
+        })
+        .collect())
+}
+
+async fn page_hit_documents(
+    document_identifier: &DocumentIdentifier,
+    find_query: &str,
+    extracted_by: &str,
+    page_id: u32,
+) -> anyhow::Result<Vec<DocumentHits>> {
     let Some((pages_table, salt)) = pages_table_for_document(document_identifier).await? else {
         return Ok(vec![]);
     };
@@ -163,17 +241,7 @@ pub(crate) async fn page_hit_rows(
         page_id,
     );
     let response = manticore_search_sql::<DocumentHits>(sql, &salt).await?;
-    let hits = response.hits.hits;
-    let result = hits
-        .into_iter()
-        .map(|hit| DocumentTextSourceHit {
-            extracted_by: hit._source.extracted_by,
-            page_id: hit._source.page_id,
-            highlight_text_spans: decompose_text_into_spans(hit._source.text),
-        })
-        .collect::<Vec<_>>();
-
-    Ok(result)
+    Ok(response.hits.hits.into_iter().map(|hit| hit._source).collect())
 }
 
 /// The most rows that one read of a document's hits returns. A read that returns this
@@ -194,10 +262,28 @@ pub async fn search_document_text_all_hits(
 ) -> anyhow::Result<Vec<DocumentTextSourceHit>> {
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_GET_DOCUMENT, "");
     permissions::assert_can_read(user, &document_identifier.collection_dataset).await?;
-    let Some((pages_table, salt)) = pages_table_for_document(&document_identifier).await? else {
+    Ok(document_hit_texts(&document_identifier, &find_query)
+        .await?
+        .into_iter()
+        .map(|(extracted_by, page_id, text)| DocumentTextSourceHit {
+            extracted_by,
+            page_id,
+            highlight_text_spans: decompose_text_into_spans(text),
+        })
+        .collect())
+}
+
+/// Every matching index row of one document as `(extracted_by, page_id, highlighted
+/// text)`, markers included, up to [`DOCUMENT_HIT_ROW_LIMIT`] rows. The caller has
+/// verified read access.
+pub(crate) async fn document_hit_texts(
+    document_identifier: &DocumentIdentifier,
+    find_query: &str,
+) -> anyhow::Result<Vec<(String, u32, String)>> {
+    let Some((pages_table, salt)) = pages_table_for_document(document_identifier).await? else {
         return Ok(vec![]);
     };
-    let Some(match_argument) = find_query_match_argument(&find_query) else {
+    let Some(match_argument) = find_query_match_argument(find_query) else {
         return Ok(vec![]);
     };
     let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Pages, DOCUMENT_HIT_ROW_LIMIT as u64);
@@ -226,17 +312,12 @@ pub async fn search_document_text_all_hits(
         quoted_manticore_string(&document_identifier.collection_dataset),
     );
     let response = manticore_search_sql::<DocumentHits>(sql, &salt).await?;
-    let hits = response.hits.hits;
-    let result = hits
+    Ok(response
+        .hits
+        .hits
         .into_iter()
-        .map(|hit| DocumentTextSourceHit {
-            extracted_by: hit._source.extracted_by,
-            page_id: hit._source.page_id,
-            highlight_text_spans: decompose_text_into_spans(hit._source.text),
-        })
-        .collect::<Vec<_>>();
-
-    Ok(result)
+        .map(|hit| (hit._source.extracted_by, hit._source.page_id, hit._source.text))
+        .collect())
 }
 
 pub async fn search_document_text_for_hit_count(
@@ -318,5 +399,38 @@ pub async fn get_document_text_by_id_and_source(
         Ok(row)
     }  else {
         anyhow::bail!("document not found!")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parts(spans: &[common::text_highlight::HighlightTextSpan]) -> Vec<(&str, bool, u64)> {
+        spans.iter().map(|span| (span.text.as_str(), span.is_highlighted, span.index)).collect()
+    }
+
+    #[test]
+    fn the_exact_spans_keep_every_character_of_the_stored_text() {
+        let stored = "  Știință — the quokka,\n\nthe  QUOKKA.  ";
+        let marked = "  Știință — the <hoover4_strong>quokka</hoover4_strong>,\n\nthe  <hoover4_strong>QUOKKA</hoover4_strong>.  ";
+        let spans = exact_highlight_spans(marked, stored).expect("the index text is the stored text");
+        assert_eq!(spans.iter().map(|span| span.text.as_str()).collect::<String>(), stored);
+        assert_eq!(parts(&spans), vec![
+            ("  Știință — the ", false, 0), ("quokka", true, 0), (",\n\nthe  ", false, 0), ("QUOKKA", true, 1), (".  ", false, 0),
+        ]);
+        let adjacent = exact_highlight_spans("<hoover4_strong>a</hoover4_strong><hoover4_strong>b</hoover4_strong> c", "ab c").unwrap();
+        assert_eq!(parts(&adjacent), vec![("ab", true, 0), (" c", false, 0)]);
+    }
+
+    #[test]
+    fn an_older_or_normalised_index_text_gives_no_spans() {
+        let stored = "The new harbour quokka.";
+        assert!(exact_highlight_spans("The old harbour <hoover4_strong>quokka</hoover4_strong>.", stored).is_none());
+        // A whitespace difference is a difference.
+        assert!(exact_highlight_spans("The new  harbour <hoover4_strong>quokka</hoover4_strong>.", stored).is_none());
+        assert!(exact_highlight_spans("The new harbour <hoover4_strong>quokka.", stored).is_none());
+        assert!(exact_highlight_spans("The new harbour quokka</hoover4_strong>.", stored).is_none());
+        assert_eq!(exact_highlight_spans("", "").unwrap(), vec![]);
     }
 }

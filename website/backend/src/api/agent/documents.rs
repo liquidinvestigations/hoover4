@@ -682,6 +682,7 @@ fn source_count_state(count: SourceCount) -> (Option<u64>, &'static str) {
         SourceCount::Counted { hits, stopped_at_limit: true } => (Some(hits), "partial"),
         SourceCount::TimedOut => (None, "timed_out"),
         SourceCount::Failed => (None, "failed"),
+        SourceCount::Unavailable => (None, "unavailable"),
     }
 }
 

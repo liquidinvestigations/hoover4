@@ -90,7 +90,9 @@ count stops at the viewer's 1,000-page limit and then sets `partial`. `documents
 every source kind with the viewer's hit counts. A PDF count that does not finish before the
 deadline answers `count_state` `timed_out` for that source only. A count that fails answers
 `failed`, and a text or Email count whose read stopped at the 1,000-row limit answers
-`partial`. Each of these sets `partial` on the response. A query that the index refuses is
+`partial`. A text or Email count counts only index rows that hold the stored text of their
+page. A source with a page whose index rows hold another text answers `unavailable`. Each of
+these sets `partial` on the response. A query that the index refuses is
 `400`, as in `documents/search_text`. `documents/metadata` cuts a
 value over 2,000 characters and marks it with `cut`. `documents/email` takes `node`, the graph
 centre, and pages the attachments 50 at a time with `Offset` positions.
@@ -120,7 +122,7 @@ table viewer reads it. A cell over 2,000 characters is cut and marked with `cut`
 `tables/cell` reads one cell by its `row_id` and column id, 2,000 characters a page, with
 `Offset` positions. `tables/column_values` takes the filter popover's `search` and continues
 past 200 values with `ValueKey` positions. `tables/search_cells` pages 200 hits with `Offset`
-positions.
+positions. Both read up to the last stored row of the sheet, whose `row_id` counts the header row.
 
 [scripts/test-agent-api-contract.sh](../scripts/test-agent-api-contract.sh) calls every route against the running site, plus the four
 identity refusals, one forbidden-collection case, and the search, folder, document and table

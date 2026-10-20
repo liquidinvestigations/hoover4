@@ -93,6 +93,10 @@ Count updates and ordinary renders do not move the text.
 A late response for an earlier document, source, page or query does not replace the displayed page.
 A match step reads index rows of the selected source only, in batches, so the matches after the first 1,000 matching pages stay reachable.
 A match step skips index rows whose page has no stored text and returns each page once.
+A match action reads at most 4 match steps. An action that reads its allowance shows "Search incomplete", and the next action in that direction continues from its boundary. A step in progress shows "Searching", and a failed step shows "Match search failed" with Retry.
+A change of document, source, query or page stops the match steps of the earlier state, and their late results change nothing.
+Highlights come from an index row only when its text without the highlight markers equals the stored page. Otherwise the stored page shows without highlights, with the note "The search index holds another version of this page."
+A source match count counts only index rows whose text equals the stored page. A source whose index holds another version shows `?` in place of a count.
 PDF pointer coordinates remain correct at each browser zoom.
 The email headers, expanded details, attachments and body share one scroll container.
 A filename-only search match opens the table without a row filter.

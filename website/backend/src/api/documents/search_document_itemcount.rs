@@ -1,3 +1,5 @@
+use std::collections::{BTreeSet, HashMap};
+
 use common::{
     current_user::CurrentUser,
     document_sources::{DocumentPdfSourceItem, DocumentSourceItem, DocumentTextSourceHitCount, ItemHitCounts},
@@ -7,9 +9,10 @@ use common::{
 
 use crate::api::documents::{
     search_document_pdf::{PDF_SEARCH_TIMEOUT, search_document_pdf_with_timeout},
-    search_document_text::{DOCUMENT_HIT_ROW_LIMIT, search_document_text_hit_count_rows},
+    search_document_text::{DOCUMENT_HIT_ROW_LIMIT, document_hit_texts, exact_highlight_spans},
 };
 use crate::auth::permissions;
+use crate::db_utils::clickhouse_utils::get_client_for_dataset;
 
 /// The text source that holds an email's parsed body. The Email source takes its count.
 const EMAIL_BODY_EXTRACTED_BY: &str = "email_parser";
@@ -25,6 +28,85 @@ pub enum SourceCount {
     /// A text or table count that failed, or a PDF count that failed for a cause other
     /// than its time limit.
     Failed,
+    /// A text or Email count whose index rows hold another version of a stored page, so
+    /// the count of the stored text is not known.
+    Unavailable,
+}
+
+/// The text hits of one document read, after each index row is checked against the
+/// stored text of its page.
+#[derive(Debug, Default, PartialEq)]
+pub struct TextCounts {
+    /// The matches of each page whose first stored-text row was found, once per page.
+    pub hits: Vec<DocumentTextSourceHitCount>,
+    /// The read returned [`DOCUMENT_HIT_ROW_LIMIT`] rows, so more pages can match.
+    pub stopped_at_limit: bool,
+    /// The sources with a page whose index rows all hold another text than the stored one.
+    pub differs: BTreeSet<String>,
+}
+
+/// The validated text hits of a document. `rows` are the index rows as
+/// `(extracted_by, page_id, highlighted text)`, and `stored` maps each stored page to the
+/// SHA-256 of its latest text. A row of a page without stored text is obsolete and counts
+/// nothing. Each page counts once, from its first row whose text is the stored text, with
+/// the match semantics of the viewer highlights ([`exact_highlight_spans`]).
+pub fn count_validated(rows: &[(String, u32, String)], stored: &HashMap<(String, u32), String>, stopped_at_limit: bool) -> TextCounts {
+    let mut counted: HashMap<(String, u32), u64> = HashMap::new();
+    let mut unmatched: BTreeSet<(String, u32)> = BTreeSet::new();
+    for (extracted_by, page_id, text) in rows {
+        let key = (extracted_by.clone(), *page_id);
+        let Some(digest) = stored.get(&key) else { continue };
+        if counted.contains_key(&key) {
+            continue;
+        }
+        let plain = text.replace("<hoover4_strong>", "").replace("</hoover4_strong>", "");
+        let spans = (sha256::digest(plain.as_str()) == *digest).then(|| exact_highlight_spans(text, &plain)).flatten();
+        match spans {
+            Some(spans) => {
+                unmatched.remove(&key);
+                counted.insert(key, spans.iter().filter(|span| span.is_highlighted).count() as u64);
+            }
+            None => {
+                unmatched.insert(key);
+            }
+        }
+    }
+    let mut hits: Vec<DocumentTextSourceHitCount> = counted
+        .into_iter()
+        .map(|((extracted_by, page_id), hit_count)| DocumentTextSourceHitCount { extracted_by, page_id, hit_count })
+        .collect();
+    hits.sort_by(|a, b| (&a.extracted_by, a.page_id).cmp(&(&b.extracted_by, b.page_id)));
+    TextCounts { hits, stopped_at_limit, differs: unmatched.into_iter().map(|(extracted_by, _)| extracted_by).collect() }
+}
+
+/// The text hits of a document, checked against `text_content`. One index read and one
+/// digest read of the matching pages. The caller has verified read access.
+async fn validated_text_counts(identifier: &DocumentIdentifier, find_query: &str) -> anyhow::Result<TextCounts> {
+    let rows = document_hit_texts(identifier, find_query).await?;
+    let stopped_at_limit = rows.len() >= DOCUMENT_HIT_ROW_LIMIT;
+    if rows.is_empty() {
+        return Ok(TextCounts { stopped_at_limit, ..Default::default() });
+    }
+    let sources: Vec<String> = rows.iter().map(|row| row.0.clone()).collect::<BTreeSet<_>>().into_iter().collect();
+    let pages: Vec<u32> = rows.iter().map(|row| row.1).collect::<BTreeSet<_>>().into_iter().collect();
+    let client = get_client_for_dataset(&identifier.collection_dataset).await?;
+    let stored = client
+        .query(
+            "SELECT extracted_by, page_id, lower(hex(SHA256(argMax(text, version)))) AS body_digest
+            FROM text_content
+            WHERE collection_dataset = ? AND file_hash = ? AND has(?, extracted_by) AND has(?, page_id)
+            GROUP BY extracted_by, page_id",
+        )
+        .bind(&identifier.collection_dataset)
+        .bind(&identifier.file_hash)
+        .bind(&sources)
+        .bind(&pages)
+        .fetch_all::<(String, u32, String)>()
+        .await?
+        .into_iter()
+        .map(|(extracted_by, page_id, digest)| ((extracted_by, page_id), digest))
+        .collect();
+    Ok(count_validated(&rows, &stored, stopped_at_limit))
 }
 
 /// The hit count of every source, one entry for each source in the order given, and the
@@ -37,7 +119,9 @@ pub struct SourceCounts {
 
 /// The hit count of every source, for the website's source selector. A count that fails
 /// or does not finish in [`PDF_SEARCH_TIMEOUT`] keeps that state, and a count that
-/// stopped at the text read's row limit is a lower bound.
+/// stopped at the text read's row limit is a lower bound. A text count counts only index
+/// rows that hold the stored text of their page, and a source with a page whose rows hold
+/// another text has no count ([`SourceCount::Unavailable`]).
 pub async fn search_document_item_count(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
@@ -109,9 +193,9 @@ pub async fn search_document_item_count_with_timeout(
 
     let text_count = async {
         if needs_text {
-            search_document_text_hit_count_rows(user, document_identifier.clone(), find_query.clone()).await
+            validated_text_counts(&document_identifier, &find_query).await
         } else {
-            Ok((Vec::new(), 0))
+            Ok(TextCounts::default())
         }
     };
     // Cells whose text contains the find query, across every sheet of the document. The
@@ -128,7 +212,7 @@ pub async fn search_document_item_count_with_timeout(
     };
     let (text_read, table_count) = tokio::join!(text_count, table_count);
     let (text_hits, text_error) = match text_read {
-        Ok((hits, returned_rows)) => (Some((hits, returned_rows >= DOCUMENT_HIT_ROW_LIMIT)), None),
+        Ok(counts) => (Some(counts), None),
         Err(error) => (None, Some(error)),
     };
 
@@ -145,8 +229,7 @@ pub async fn search_document_item_count_with_timeout(
         pdf_counts.push((source, count));
     }
 
-    let text = text_hits.as_ref().map(|(hits, stopped_at_limit)| (hits.as_slice(), *stopped_at_limit));
-    Ok(SourceCounts { counts: assemble_counts(sources, text, table_count, &pdf_counts), text_error })
+    Ok(SourceCounts { counts: assemble_counts(sources, text_hits.as_ref(), table_count, &pdf_counts), text_error })
 }
 
 /// The selector state of one source count.
@@ -156,6 +239,7 @@ pub fn hit_count_state(count: SourceCount) -> HitCountState {
         SourceCount::Counted { hits, stopped_at_limit: true } => HitCountState::AtLeast(hits),
         SourceCount::TimedOut => HitCountState::TimedOut,
         SourceCount::Failed => HitCountState::Failed,
+        SourceCount::Unavailable => HitCountState::Unavailable,
     }
 }
 
@@ -164,20 +248,20 @@ fn is_timeout(error: &anyhow::Error) -> bool {
 }
 
 /// One entry for each source, in the order given. An Email source takes the hits of the
-/// `email_parser` text, and appears once. `text` is the text hits and whether the read
-/// stopped at its row limit, and is `None` when the read failed. `table_count` is `None`
-/// when the table count failed.
+/// `email_parser` text, and appears once. `text` is the validated text hits, and is
+/// `None` when the read failed. `table_count` is `None` when the table count failed.
 fn assemble_counts(
     sources: Vec<DocumentSourceItem>,
-    text: Option<(&[DocumentTextSourceHitCount], bool)>,
+    text: Option<&TextCounts>,
     table_count: Option<u64>,
     pdf_counts: &[(DocumentPdfSourceItem, SourceCount)],
 ) -> Vec<(DocumentSourceItem, SourceCount)> {
     let text_total = |extracted_by: &str| -> SourceCount {
         match text {
-            Some((hits, stopped_at_limit)) => SourceCount::Counted {
-                hits: hits.iter().filter(|hit| hit.extracted_by == extracted_by).map(|hit| hit.hit_count).sum(),
-                stopped_at_limit,
+            Some(counts) if counts.differs.contains(extracted_by) => SourceCount::Unavailable,
+            Some(counts) => SourceCount::Counted {
+                hits: counts.hits.iter().filter(|hit| hit.extracted_by == extracted_by).map(|hit| hit.hit_count).sum(),
+                stopped_at_limit: counts.stopped_at_limit,
             },
             None => SourceCount::Failed,
         }
@@ -224,6 +308,10 @@ mod tests {
         DocumentTextSourceHitCount { extracted_by: extracted_by.into(), page_id, hit_count }
     }
 
+    fn texts(hits: &[DocumentTextSourceHitCount], stopped_at_limit: bool) -> TextCounts {
+        TextCounts { hits: hits.to_vec(), stopped_at_limit, differs: BTreeSet::new() }
+    }
+
     fn counted(hits: u64) -> SourceCount {
         SourceCount::Counted { hits, stopped_at_limit: false }
     }
@@ -240,7 +328,7 @@ mod tests {
     fn an_email_source_appears_once_with_its_body_count() {
         let text = text_source("email_parser");
         let hits = [hit("email_parser", 1, 2), hit("email_parser", 2, 3), hit("raw_text", 1, 7)];
-        let counts = assemble_counts(vec![email_source(), text.clone()], Some((&hits, false)), Some(0), &[]);
+        let counts = assemble_counts(vec![email_source(), text.clone()], Some(&texts(&hits, false)), Some(0), &[]);
         assert_eq!(counts, vec![(email_source(), counted(5)), (text, counted(5))]);
     }
 
@@ -249,7 +337,7 @@ mod tests {
         let pdf = DocumentPdfSourceItem { page_count: 3, engine: String::new(), languages: String::new(), ..Default::default() };
         let counts = assemble_counts(
             vec![DocumentSourceItem::Pdf(pdf.clone())],
-            Some((&[], false)),
+            Some(&TextCounts::default()),
             Some(0),
             &[(pdf.clone(), SourceCount::TimedOut)],
         );
@@ -258,7 +346,7 @@ mod tests {
 
     #[test]
     fn a_failed_table_count_is_failed() {
-        let counts = assemble_counts(vec![table_source()], Some((&[], false)), None, &[]);
+        let counts = assemble_counts(vec![table_source()], Some(&TextCounts::default()), None, &[]);
         assert_eq!(counts, vec![(table_source(), SourceCount::Failed)]);
     }
 
@@ -284,7 +372,7 @@ mod tests {
     fn a_text_read_at_its_row_limit_marks_the_text_and_email_counts() {
         let text = text_source("raw_text");
         let hits = [hit("raw_text", 1, 2), hit("email_parser", 1, 1)];
-        let counts = assemble_counts(vec![text.clone(), email_source(), table_source()], Some((&hits, true)), Some(4), &[]);
+        let counts = assemble_counts(vec![text.clone(), email_source(), table_source()], Some(&texts(&hits, true)), Some(4), &[]);
         assert_eq!(
             counts,
             vec![
@@ -293,5 +381,44 @@ mod tests {
                 (table_source(), counted(4)),
             ]
         );
+    }
+
+    fn stored(pages: &[(&str, u32, &str)]) -> HashMap<(String, u32), String> {
+        pages.iter().map(|(source, page, text)| (((*source).to_string(), *page), sha256::digest(*text))).collect()
+    }
+
+    fn row(source: &str, page: u32, text: &str) -> (String, u32, String) {
+        (source.to_string(), page, text.to_string())
+    }
+
+    #[test]
+    fn a_count_reads_only_rows_that_hold_the_stored_text_and_counts_a_page_once() {
+        let m = |word: &str| format!("<hoover4_strong>{word}</hoover4_strong>");
+        let bodies = stored(&[("raw_text", 1, "quokka and quokka"), ("raw_text", 2, "one quokka"), ("ocr", 1, "new text quokka")]);
+        let rows = vec![
+            row("raw_text", 1, &format!("{} and {}", m("quokka"), m("quokka"))),
+            // A duplicate row of the same page counts nothing more.
+            row("raw_text", 1, &format!("{} and {}", m("quokka"), m("quokka"))),
+            row("raw_text", 2, &format!("one {}", m("quokka"))),
+            // A page without stored text is obsolete and counts nothing.
+            row("raw_text", 9, &format!("gone {}", m("quokka"))),
+            // An older text of a stored page leaves its source without a count.
+            row("ocr", 1, &format!("old text {}", m("quokka"))),
+        ];
+        let counts = count_validated(&rows, &bodies, false);
+        assert_eq!(counts.hits, vec![hit("raw_text", 1, 2), hit("raw_text", 2, 1)]);
+        assert_eq!(counts.differs, BTreeSet::from(["ocr".to_string()]));
+        let sources = vec![text_source("raw_text"), text_source("ocr")];
+        assert_eq!(
+            assemble_counts(sources.clone(), Some(&counts), Some(0), &[]),
+            vec![(sources[0].clone(), counted(3)), (sources[1].clone(), SourceCount::Unavailable)]
+        );
+        assert_eq!(hit_count_state(SourceCount::Unavailable), HitCountState::Unavailable);
+        // A second row that holds the stored text gives the count.
+        let mut fixed = rows.clone();
+        fixed.push(row("ocr", 1, &format!("new text {}", m("quokka"))));
+        let counts = count_validated(&fixed, &bodies, true);
+        assert!(counts.differs.is_empty() && counts.stopped_at_limit);
+        assert_eq!(hit_count_state(assemble_counts(vec![text_source("ocr")], Some(&counts), Some(0), &[])[0].1), HitCountState::AtLeast(1));
     }
 }

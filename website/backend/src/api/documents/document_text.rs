@@ -11,7 +11,9 @@
 //!
 //! ClickHouse holds the stored text and Manticore holds its index. The two are separate
 //! requests and do not form a transactional snapshot. A match step therefore checks its
-//! candidate pages against `text_content` before it returns one.
+//! candidate pages against `text_content` before it returns one. The stored text is the
+//! body of a page. A highlight applies only when the index text of its row, without the
+//! markers, equals that body exactly ([`exact_highlight_spans`]).
 
 use std::collections::BTreeSet;
 
@@ -22,7 +24,9 @@ use common::{
 };
 use serde::Deserialize;
 
-use crate::api::documents::search_document_text::{find_query_match_argument, page_hit_rows, pages_table_for_document};
+use crate::api::documents::search_document_text::{
+    exact_highlight_spans, find_query_match_argument, page_highlight_texts, pages_table_for_document,
+};
 use crate::api::search::search_sql::{QueryTable, sql_options_clause};
 use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils::get_client_for_dataset;
@@ -308,15 +312,41 @@ pub async fn next_matching_page<M: MatchPages>(
     Ok(after.map_or(TextMatchStep::NoMore, |resume_after| TextMatchStep::Incomplete { resume_after }))
 }
 
-/// The highlighted spans of one page, or `None` when the find query does not match it.
+/// The highlights of one page against its stored body.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PageHighlights {
+    /// No index row of the page matches the find query.
+    NoMatch,
+    /// The spans of the first index row whose text is the stored body.
+    Spans(Vec<common::text_highlight::HighlightTextSpan>),
+    /// Index rows match, and none of them holds the stored body. The index is older or
+    /// newer than the stored text.
+    IndexDiffers,
+}
+
+/// The highlights of one page from its raw highlighted index texts, in index order. Rows
+/// are never merged: the first row that holds the stored body gives every span.
+pub fn highlights_for_body(rows: &[String], stored: &str) -> PageHighlights {
+    if rows.is_empty() {
+        return PageHighlights::NoMatch;
+    }
+    rows.iter()
+        .find_map(|row| exact_highlight_spans(row, stored))
+        .map_or(PageHighlights::IndexDiffers, PageHighlights::Spans)
+}
+
+/// The message of a highlight that the index cannot give for the stored body.
+pub const INDEX_DIFFERS: &str = "The search index holds another version of this page.";
+
 async fn page_highlights(
     identifier: &DocumentIdentifier,
     extracted_by: &str,
     find_query: &str,
     page_id: u32,
-) -> anyhow::Result<Option<Vec<common::text_highlight::HighlightTextSpan>>> {
-    let rows = page_hit_rows(identifier, find_query, extracted_by, page_id).await?;
-    Ok(rows.into_iter().next().map(|row| row.highlight_text_spans))
+    stored: &str,
+) -> anyhow::Result<PageHighlights> {
+    let rows = page_highlight_texts(identifier, find_query, extracted_by, page_id).await?;
+    Ok(highlights_for_body(&rows, stored))
 }
 
 /// One plain span holding the raw stored text.
@@ -329,8 +359,11 @@ fn plain_spans(text: String) -> Vec<common::text_highlight::HighlightTextSpan> {
 ///
 /// An explicit `requested` page stays exact. Without one, a non-empty query opens the
 /// first matching stored page in ascending order, and otherwise the first stored page.
-/// A failed match search opens the first stored page and reports the error. A failed
-/// highlight read shows the raw stored text of the same page and reports the error.
+/// `initial_match` records that search, so a search that read its whole allowance stays
+/// [`TextMatchStep::Incomplete`] with its boundary. A failed match search opens the first
+/// stored page and reports the error. A failed highlight read, and an index row that holds
+/// another version of the page, show the stored text of the same page and report the
+/// error.
 /// `expected_revision` names the revision the caller displayed. A different current
 /// revision sets `source_changed`.
 pub async fn get_text_page_view(
@@ -347,12 +380,17 @@ pub async fn get_text_page_view(
     let query = find_query.trim();
 
     let mut match_error = None;
+    let mut initial_match = None;
     let mut wanted = requested;
     if wanted.is_none() && !query.is_empty() {
         let pages = StoredMatchPages { client: &client, identifier: &identifier, extracted_by: &extracted_by, find_query: query };
         match next_matching_page(&pages, None, MatchDirection::Forward, MATCH_STEP_BATCHES, MATCH_BATCH_ROWS).await {
-            Ok(TextMatchStep::Found { page_id }) => wanted = Some(page_id),
-            Ok(_) => {}
+            Ok(step) => {
+                if let TextMatchStep::Found { page_id } = step {
+                    wanted = Some(page_id);
+                }
+                initial_match = Some(step);
+            }
             Err(error) => match_error = Some(error.to_string()),
         }
     }
@@ -370,9 +408,10 @@ pub async fn get_text_page_view(
                 let (spans, highlight_error) = if query.is_empty() {
                     (plain_spans(text), None)
                 } else {
-                    match page_highlights(&identifier, &extracted_by, query, page_id).await {
-                        Ok(Some(spans)) => (spans, None),
-                        Ok(None) => (plain_spans(text), None),
+                    match page_highlights(&identifier, &extracted_by, query, page_id, &text).await {
+                        Ok(PageHighlights::Spans(spans)) => (spans, None),
+                        Ok(PageHighlights::NoMatch) => (plain_spans(text), None),
+                        Ok(PageHighlights::IndexDiffers) => (plain_spans(text), Some(INDEX_DIFFERS.to_string())),
                         Err(error) => (plain_spans(text), Some(error.to_string())),
                     }
                 };
@@ -380,7 +419,7 @@ pub async fn get_text_page_view(
             }
         },
     };
-    Ok(TextPageView { navigation, body, match_error, source_changed })
+    Ok(TextPageView { navigation, body, match_error, source_changed, initial_match })
 }
 
 /// One source-scoped match step for the website viewer: the nearest stored page beyond
@@ -449,6 +488,20 @@ mod tests {
         let empty = navigation_from_stats("raw_text", None, &stats(&[], 0, 0));
         assert_eq!((empty.page, empty.first_page, empty.stored_count), (None, None, 0));
         assert_ne!(source_revision(&stats(&[1, 2], 1, 5)), source_revision(&stats(&[1, 2], 1, 6)));
+    }
+
+    #[test]
+    fn a_highlight_applies_only_from_a_row_that_holds_the_stored_body() {
+        let stored = "Current text: the quokka  report.";
+        let old = "Older text: the <hoover4_strong>quokka</hoover4_strong> report.".to_string();
+        let current = "Current text: the <hoover4_strong>quokka</hoover4_strong>  report.".to_string();
+        assert_eq!(highlights_for_body(&[], stored), PageHighlights::NoMatch);
+        assert_eq!(highlights_for_body(std::slice::from_ref(&old), stored), PageHighlights::IndexDiffers);
+        let PageHighlights::Spans(spans) = highlights_for_body(&[old.clone(), current.clone(), current], stored) else {
+            panic!("the second row holds the stored body");
+        };
+        assert_eq!(spans.iter().map(|span| span.text.as_str()).collect::<String>(), stored);
+        assert_eq!(spans.iter().filter(|span| span.is_highlighted).count(), 1, "duplicate rows are not merged");
     }
 
     #[test]

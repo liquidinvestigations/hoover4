@@ -421,7 +421,7 @@ async fn tables_column_values_body(
              WHERE file_hash = ? AND sheet_id = ? AND column_id = ?{floor} AND row_id <= {} AND column_id <= {} \
                AND (? = '' OR positionCaseInsensitiveUTF8(cell_text, ?) > 0) \
              GROUP BY cell_text{having} ORDER BY n DESC, cell_text ASC LIMIT {limit}",
-            sheet.row_count, sheet.column_count
+            sheet.last_row_id(), sheet.column_count
         ))
         .bind(&body.file_hash)
         .bind(body.sheet)
@@ -486,7 +486,7 @@ async fn tables_search_cells_body(
         .query("SELECT count() FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND row_id <= ? AND column_id <= ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0 AND row_id NOT IN (SELECT header_row FROM table_sheets FINAL WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? AND header_row > 0)")
         .bind(&body.file_hash)
         .bind(body.sheet)
-        .bind(sheet.row_count)
+        .bind(sheet.last_row_id())
         .bind(sheet.column_count)
         .bind(&body.query)
         .bind(dataset)
@@ -503,7 +503,7 @@ async fn tables_search_cells_body(
         .query("SELECT source_row, row_id, column_id, cell_text FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND row_id <= ? AND column_id <= ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0 AND row_id NOT IN (SELECT header_row FROM table_sheets FINAL WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? AND header_row > 0) ORDER BY row_id, column_id LIMIT ? OFFSET ?")
         .bind(&body.file_hash)
         .bind(body.sheet)
-        .bind(sheet.row_count)
+        .bind(sheet.last_row_id())
         .bind(sheet.column_count)
         .bind(&body.query)
         .bind(dataset)

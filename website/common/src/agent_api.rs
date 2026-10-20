@@ -547,8 +547,9 @@ pub struct AgentDocumentSource {
     /// Counts the query hits in this source. It is absent with no query, and when the
     /// count did not finish.
     pub hit_count: Option<u64>,
-    /// `counted`, `no_query`, `timed_out`, `failed`, or `partial` when the text read
-    /// stopped at its 1,000-row limit.
+    /// `counted`, `no_query`, `timed_out`, `failed`, `partial` when the text read
+    /// stopped at its 1,000-row limit, or `unavailable` when the index holds another
+    /// version of a counted page.
     pub count_state: String,
     #[serde(default)]
     pub min_page: Option<u32>,

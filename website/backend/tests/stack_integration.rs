@@ -3050,8 +3050,10 @@ async fn an_initial_query_opens_the_first_matching_page_even_after_the_old_row_l
     assert_eq!(last.navigation.position, Some(1_200));
     assert_eq!(last.body.match_count(), 1);
     assert!(last.match_error.is_none());
+    assert_eq!(last.initial_match, Some(TextMatchStep::Found { page_id: 1_200 }));
     let none = p63_view(P63_SEGMENTS, "raw_text", None, "nosuchwordanywhere").await;
     assert_eq!(none.navigation.page, Some(1), "no match opens the first stored segment");
+    assert_eq!(none.initial_match, Some(TextMatchStep::NoMore), "a finished search without a match");
     let explicit = p63_view(P63_SEGMENTS, "raw_text", Some(4), "quokka").await;
     assert_eq!((explicit.navigation.page, explicit.body.match_count()), (Some(4), 0), "an explicit page stays exact");
 }
@@ -3075,4 +3077,409 @@ async fn a_capped_text_count_reaches_the_selector_as_a_lower_bound() {
         counts.0.iter().all(|(_, count)| matches!(count, HitCountState::AtLeast(_))),
         "every text count stopped at the document-wide row limit: {counts:?}"
     );
+}
+
+// ---------------------------------------------------------------------------------
+// Agent table tools on a delimited file with a header row.
+//
+// The `p64evals` collection holds `monitored_bills_38.csv`: a header row and 38 data
+// rows, stored as `row_id` 1 to 39. The last data row is `SYN-038` in state SC. A sheet's
+// `row_count` leaves out the header row, so a bound of `row_id <= row_count` drops that
+// row. The `p65tables` collection holds `office_values_250.csv`, whose office column needs
+// two value pages. `website/tools/prepare_table_fixtures.py --ingest` writes and ingests
+// both. These tests fail when a dataset is absent, because a skip proves no count.
+// ---------------------------------------------------------------------------------
+
+const P64_DATASET: &str = "p64evals_fixtures";
+const P64_COLLECTION: &str = "p64evals";
+const P64_BILLS: &str = "d1ed78d2b98c3a31db5f4671c1c91a792d39ad389f40727ab21319f9fcc667c9";
+const P65_DATASET: &str = "p65tables_fixtures";
+const P65_COLLECTION: &str = "p65tables";
+const P65_OFFICES: &str = "dcefc40ee45969cc0c3a3242d60d56fb5bd616f4b16911201f3c3e6406139de8";
+
+/// Fails the calling test when a table fixture dataset is absent.
+async fn require_table_fixture(dataset: &str) {
+    let present = dataset_present(dataset).await.unwrap_or_else(|error| panic!("{error}"));
+    assert!(
+        present,
+        "the fixture dataset {dataset} is absent: run website/tools/prepare_table_fixtures.py --ingest"
+    );
+}
+
+/// Serve the agent routes on a local port, with the admin caller set as the session layer
+/// sets it, and post one JSON body to `path`.
+async fn agent_post(path: &str, body: serde_json::Value) -> serde_json::Value {
+    let app = backend::api::agent::router().layer(axum::Extension(admin_user()));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let response = reqwest::Client::new()
+        .post(format!("http://{address}{path}"))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    let status = response.status();
+    let value: serde_json::Value = response.json().await.unwrap();
+    server.abort();
+    assert!(status.is_success(), "{path} answered {status}: {value}");
+    value
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn table_column_values_count_the_last_data_row() {
+    require_table_fixture(P64_DATASET).await;
+    let _budget = Budget::start("table_column_values_count_the_last_data_row");
+    let reply = agent_post(
+        "/api/agent/v1/tables/column_values",
+        serde_json::json!({"collectionname": P64_COLLECTION, "file_hash": P64_BILLS, "sheet": 0, "column": 2}),
+    )
+    .await;
+    let values = reply["values"].as_array().expect("a values list");
+    let count_of = |state: &str| {
+        values.iter().find(|v| v["value"] == state).and_then(|v| v["count"].as_u64()).unwrap_or(0)
+    };
+    let total: u64 = values.iter().filter_map(|v| v["count"].as_u64()).sum();
+    assert_eq!(total, 38, "every data row is counted once and the header row is not: {values:?}");
+    assert_eq!(count_of("SC"), 5, "the last data row, SYN-038, is in SC");
+    assert_eq!(count_of("state"), 0, "the header cell is not a value");
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn table_search_cells_finds_the_last_data_row() {
+    require_table_fixture(P64_DATASET).await;
+    let _budget = Budget::start("table_search_cells_finds_the_last_data_row");
+    let reply = agent_post(
+        "/api/agent/v1/tables/search_cells",
+        serde_json::json!({"collectionname": P64_COLLECTION, "file_hash": P64_BILLS, "sheet": 0, "query": "SYN-038"}),
+    )
+    .await;
+    assert_eq!(reply["hit_count"], 1, "the last data row is searched: {reply}");
+    assert_eq!(reply["hits"][0]["row_id"], 39, "{reply}");
+    let header = agent_post(
+        "/api/agent/v1/tables/search_cells",
+        serde_json::json!({"collectionname": P64_COLLECTION, "file_hash": P64_BILLS, "sheet": 0, "query": "bill_id"}),
+    )
+    .await;
+    assert_eq!(header["hit_count"], 0, "the header row stays out of the hits: {header}");
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn table_column_values_continue_until_every_value_is_counted_once() {
+    require_table_fixture(P65_DATASET).await;
+    let _budget = Budget::start("table_column_values_continue_until_every_value_is_counted_once");
+    let mut position = serde_json::Value::Null;
+    let mut counts: std::collections::BTreeMap<String, u64> = Default::default();
+    let mut pages = 0;
+    loop {
+        let reply = agent_post(
+            "/api/agent/v1/tables/column_values",
+            serde_json::json!({"collectionname": P65_COLLECTION, "file_hash": P65_OFFICES, "sheet": 0,
+                               "column": 2, "position": position}),
+        )
+        .await;
+        pages += 1;
+        for value in reply["values"].as_array().expect("a values list") {
+            let name = value["value"].as_str().expect("a value").to_string();
+            let count = value["count"].as_u64().expect("a count");
+            assert!(counts.insert(name.clone(), count).is_none(), "{name} is on two pages");
+        }
+        position = reply["next_position"].clone();
+        if position.is_null() {
+            break;
+        }
+        assert!(pages < 5, "the value pages do not end: {reply}");
+    }
+    assert_eq!(pages, 2, "214 values need two pages of 200");
+    assert_eq!(counts.len(), 214, "each distinct office is listed once");
+    // 250 data rows less 9 blank cells. A blank cell is not stored, so it has no value.
+    assert_eq!(counts.values().sum::<u64>(), 241);
+    assert_eq!(counts.get("Harbour Annex"), Some(&1), "the last data row is counted");
+    assert_eq!(counts.get("office"), None, "the header cell is not a value");
+    let filtered = agent_post(
+        "/api/agent/v1/tables/column_values",
+        serde_json::json!({"collectionname": P65_COLLECTION, "file_hash": P65_OFFICES, "sheet": 0,
+                           "column": 2, "search": "annex"}),
+    )
+    .await;
+    assert_eq!(filtered["values"], serde_json::json!([{"value": "Harbour Annex", "count": 1}]), "{filtered}");
+    assert!(filtered["next_position"].is_null(), "{filtered}");
+}
+
+// ---------------------------------------------------------------------------------
+// Text viewer bodies against an older index row.
+//
+// The `p65tables_text` dataset holds two one-segment text files. Each test writes a newer
+// stored version of the `raw_text` segment, so the index row holds the older text, as during
+// reprocessing or index lag. `duplicate_page.txt` also gets a second index row with the
+// newer text. The writes are idempotent, so the tests can run again on the same stack.
+// ---------------------------------------------------------------------------------
+
+const P65_TEXT_DATASET: &str = "p65tables_text";
+const P65_STALE: &str = "0d2362dcd7a90dae54ba7402b8827679861e74fac6ba4d7fee3d51b2df51786b";
+const P65_DUPLICATE: &str = "ede987805ad672852e372b697b5e9cbd3437ca01ae3cc8a2e361854ef34272c3";
+/// A writer version above every version that an ingestion writes.
+const P65_NEWER_VERSION: u64 = 9_000_000_000_000_000_000;
+
+fn p65_document(file_hash: &str) -> common::search_result::DocumentIdentifier {
+    common::search_result::DocumentIdentifier { collection_dataset: P65_TEXT_DATASET.into(), file_hash: file_hash.into() }
+}
+
+/// Store `text` as the newer version of segment 1 of the `raw_text` source of `file_hash`.
+async fn write_newer_body(file_hash: &str, text: &str) {
+    get_client_for_dataset(P65_TEXT_DATASET)
+        .await
+        .unwrap()
+        .with_option("async_insert", "1")
+        .with_option("wait_for_async_insert", "1")
+        .query(
+            "INSERT INTO text_content (collection_dataset, file_hash, extracted_by, page_id, text, text_bytes, version) \
+             VALUES (?, ?, 'raw_text', 1, ?, ?, ?)",
+        )
+        .bind(P65_TEXT_DATASET)
+        .bind(file_hash)
+        .bind(text)
+        .bind(text.len() as u64)
+        .bind(P65_NEWER_VERSION)
+        .execute()
+        .await
+        .unwrap();
+}
+
+async fn p65_view(file_hash: &str, query: &str) -> common::document_text_pages::TextPageView {
+    backend::api::documents::document_text::get_text_page_view(
+        &admin_user(), p65_document(file_hash), "raw_text".into(), Some(1), query.into(), None,
+    )
+    .await
+    .unwrap()
+}
+
+async fn p65_raw_text_count(file_hash: &str) -> HitCountState {
+    let source = common::document_sources::DocumentSourceItem::Text(common::document_sources::DocumentTextSourceItem {
+        extracted_by: "raw_text".into(), min_page: 1, max_page: 1,
+    });
+    let counts = backend::api::documents::search_document_itemcount::search_document_item_count(
+        &admin_user(), p65_document(file_hash), "quokka".into(), vec![source],
+    )
+    .await
+    .unwrap();
+    counts.0[0].1
+}
+
+/// The index table of the shard that holds one fixture document.
+async fn fixture_index_table(dataset: &str, file_hash: &str) -> String {
+    let collection = resolve_collection(dataset).await.unwrap();
+    let shard = backend::db_utils::clickhouse_utils::find_shard_for_document(&collection, dataset, file_hash)
+        .await
+        .unwrap()
+        .expect("the fixture is indexed");
+    backend::api::search::search_sql::shard_table_name(&shard).unwrap()
+}
+
+/// The columns of one indexed row of a fixture page, as SQL values, without `id`, `page_id`
+/// and `page_text`. A copied row keeps the date, type and size attributes of the indexed
+/// row, so the filters of the corpus tests count the file as before. `skip_id` excludes
+/// the rows that an earlier run of the caller wrote.
+async fn copied_index_columns(table: &str, file_hash: &str, extracted_by: &str, page_id: u32, skip_id: u64) -> Vec<(String, String)> {
+    let base = std::env::var("MANTICORE_URL").unwrap();
+    let raw = backend::db_utils::manticore_utils::manticore_raw_sql;
+    let types = raw(&base, &format!("DESCRIBE {table}")).await.unwrap();
+    let source = raw(&base, &format!(
+        "SELECT * FROM {table} WHERE file_hash = '{file_hash}' AND extracted_by = '{extracted_by}' \
+         AND page_id = {page_id} AND id != {skip_id} LIMIT 1"
+    ))
+    .await
+    .unwrap();
+    let source = source.first().expect("the fixture page has an index row");
+    let mut columns = Vec::new();
+    for column in &types {
+        let (Some(name), Some(kind)) = (column["Field"].as_str(), column["Type"].as_str()) else { continue };
+        if matches!(name, "id" | "page_id" | "page_text") {
+            continue;
+        }
+        let stored = &source[name];
+        let text = stored.as_str().map(str::to_string).unwrap_or_else(|| stored.to_string());
+        let value = match kind {
+            "mva" | "mva64" => format!("({text})"),
+            "string" | "text" | "json" => format!("'{}'", text.replace('\\', "\\\\").replace('\'', "\\'")),
+            _ => text,
+        };
+        columns.push((name.to_string(), value));
+    }
+    columns
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn a_newer_stored_body_is_shown_without_the_highlights_of_an_older_index_row() {
+    require_table_fixture(P65_TEXT_DATASET).await;
+    let newer = "Știință — the quokka report names  the new harbour.";
+    write_newer_body(P65_STALE, newer).await;
+    let _budget = Budget::start("a_newer_stored_body_is_shown_without_the_highlights_of_an_older_index_row");
+    let view = p65_view(P65_STALE, "quokka").await;
+    let common::document_text_pages::TextPageBody::Text { version, spans, highlight_error, .. } = view.body else {
+        panic!("the stored segment has text: {view:?}");
+    };
+    assert_eq!(version, P65_NEWER_VERSION, "the version names the stored body");
+    assert_eq!(spans.iter().map(|s| s.text.as_str()).collect::<String>(), newer, "the stored text, unchanged");
+    assert!(spans.iter().all(|s| !s.is_highlighted), "no span comes from the older index text");
+    assert!(!spans.iter().any(|s| s.text.contains("old harbour")));
+    assert_eq!(highlight_error.as_deref(), Some(backend::api::documents::document_text::INDEX_DIFFERS));
+    assert_eq!(p65_raw_text_count(P65_STALE).await, HitCountState::Unavailable, "an older index row gives no count");
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn an_index_row_with_the_stored_body_gives_the_highlights_and_the_count() {
+    require_table_fixture(P65_TEXT_DATASET).await;
+    let newer = "Știință — the quokka memo names the new pier, and the quokka signed it.";
+    write_newer_body(P65_DUPLICATE, newer).await;
+    let table = fixture_index_table(P65_TEXT_DATASET, P65_DUPLICATE).await;
+    // A second index row of the same segment with the newer text. The fixed id keeps it one row.
+    let base = std::env::var("MANTICORE_URL").unwrap();
+    let copied = copied_index_columns(&table, P65_DUPLICATE, "raw_text", 1, 6565656565656565).await;
+    let names: Vec<&str> = copied.iter().map(|(name, _)| name.as_str()).collect();
+    let values: Vec<&str> = copied.iter().map(|(_, value)| value.as_str()).collect();
+    // A write returns no result rows, which the reader of the raw endpoint reports as an
+    // error. The read below verifies the row.
+    let _ = backend::db_utils::manticore_utils::manticore_raw_sql(&base, &format!(
+        "REPLACE INTO {table} (id, page_id, page_text, {}) VALUES (6565656565656565, 1, '{newer}', {})",
+        names.join(", "), values.join(", "),
+    ))
+    .await;
+    let rows = backend::db_utils::manticore_utils::manticore_raw_sql(
+        &base, &format!("SELECT page_text FROM {table} WHERE id = 6565656565656565"),
+    )
+    .await
+    .unwrap();
+    assert_eq!(rows.first().and_then(|row| row["page_text"].as_str()), Some(newer), "the second index row is stored");
+    let _budget = Budget::start("an_index_row_with_the_stored_body_gives_the_highlights_and_the_count");
+    let view = p65_view(P65_DUPLICATE, "quokka").await;
+    let common::document_text_pages::TextPageBody::Text { version, spans, highlight_error, .. } = view.body else {
+        panic!("the stored segment has text: {view:?}");
+    };
+    assert_eq!((version, highlight_error), (P65_NEWER_VERSION, None));
+    assert_eq!(spans.iter().map(|s| s.text.as_str()).collect::<String>(), newer);
+    let marked: Vec<&str> = spans.iter().filter(|s| s.is_highlighted).map(|s| s.text.as_str()).collect();
+    assert_eq!(marked, vec!["quokka", "quokka"], "the highlights of one row, not merged with the older row");
+    assert_eq!(p65_raw_text_count(P65_DUPLICATE).await, HitCountState::Exact(2));
+}
+
+// `continuation_pages.pdf` stores PDF text on its first and last page only. The test adds
+// an obsolete index row with `quokka` for every page between them, so one match step
+// reads its whole allowance without a stored match.
+const P65_CONTINUATION_DATASET: &str = "p65tables_continuation_long";
+const P65_CONTINUATION: &str = "5909a559f67a2bc5c3364e7a5b4b497924c1ec4c0951e0514b3b21c44b17727d";
+const P65_CONTINUATION_LAST: u32 = 6602;
+/// The id of the obsolete row of page `n` is this value plus `n`.
+const P65_OBSOLETE_ID_BASE: u64 = 6565000000000000;
+
+/// Writes the obsolete index rows of pages 2 to 6,601. The fixed ids make a rerun write
+/// the same rows.
+async fn write_obsolete_continuation_rows() {
+    let table = fixture_index_table(P65_CONTINUATION_DATASET, P65_CONTINUATION).await;
+    let base = std::env::var("MANTICORE_URL").unwrap();
+    let copied = copied_index_columns(&table, P65_CONTINUATION, "pdftotext", 1, 0).await;
+    let names: Vec<&str> = copied.iter().map(|(name, _)| name.as_str()).collect();
+    let values: Vec<&str> = copied.iter().map(|(_, value)| value.as_str()).collect();
+    let pages: Vec<u32> = (2..P65_CONTINUATION_LAST).collect();
+    for chunk in pages.chunks(400) {
+        let rows: Vec<String> = chunk
+            .iter()
+            .map(|page| format!(
+                "({}, {page}, 'Obsolete index row of page {page} names the quokka.', {})",
+                P65_OBSOLETE_ID_BASE + u64::from(*page), values.join(", "),
+            ))
+            .collect();
+        // A write returns no result rows, which the reader of the raw endpoint reports as
+        // an error. The count below verifies the rows.
+        let _ = backend::db_utils::manticore_utils::manticore_raw_sql(&base, &format!(
+            "REPLACE INTO {table} (id, page_id, page_text, {}) VALUES {}", names.join(", "), rows.join(", "),
+        ))
+        .await;
+    }
+    let counted = backend::db_utils::manticore_utils::manticore_raw_sql(&base, &format!(
+        "SELECT COUNT(*) AS n FROM {table} WHERE id > {P65_OBSOLETE_ID_BASE} AND id < {}",
+        P65_OBSOLETE_ID_BASE + u64::from(P65_CONTINUATION_LAST),
+    ))
+    .await
+    .unwrap();
+    assert_eq!(counted.first().and_then(|row| row["n"].as_u64()), Some(u64::from(P65_CONTINUATION_LAST) - 2), "every obsolete row is stored");
+}
+
+async fn p65_continuation_step(from: u32, direction: MatchDirection) -> TextMatchStep {
+    backend::api::documents::document_text::find_text_match_page(
+        &admin_user(),
+        common::search_result::DocumentIdentifier {
+            collection_dataset: P65_CONTINUATION_DATASET.into(),
+            file_hash: P65_CONTINUATION.into(),
+        },
+        "pdftotext".into(),
+        "quokka".into(),
+        Some(from),
+        direction,
+    )
+    .await
+    .unwrap()
+}
+
+/// Steps from `start` over the obsolete rows to `target`, and checks that each incomplete
+/// step advances its boundary. One server step reads 1,000 index rows, so 6,600 obsolete
+/// rows give six incomplete steps.
+async fn step_over_obsolete_rows(start: u32, direction: MatchDirection, target: u32) {
+    use backend::api::documents::document_text::{MATCH_BATCH_ROWS, MATCH_STEP_BATCHES};
+    let per_step = (MATCH_BATCH_ROWS * MATCH_STEP_BATCHES) as u32;
+    let mut from = start;
+    let mut boundaries = Vec::new();
+    let found = loop {
+        match p65_continuation_step(from, direction).await {
+            TextMatchStep::Incomplete { resume_after } => {
+                let advanced = match direction {
+                    MatchDirection::Forward => resume_after > from,
+                    MatchDirection::Backward => resume_after < from,
+                };
+                assert!(advanced, "{direction:?}: the boundary {resume_after} advances from {from}");
+                boundaries.push(resume_after);
+                from = resume_after;
+            }
+            TextMatchStep::Found { page_id } => break page_id,
+            TextMatchStep::NoMore => panic!("{direction:?}: the stored match {target} is beyond {from}"),
+        }
+        assert!(boundaries.len() < 10, "{direction:?}: the steps reach the stored match");
+    };
+    assert_eq!(found, target, "{direction:?}: the obsolete rows are skipped");
+    assert_eq!(boundaries.len() as u32, (P65_CONTINUATION_LAST - 2) / per_step, "{direction:?}: {boundaries:?}");
+}
+
+// Each direction is its own test, so a run with a cold search cache stays in the fast budget.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn forward_steps_over_obsolete_index_rows_keep_their_boundary_until_the_stored_match() {
+    require_table_fixture(P65_CONTINUATION_DATASET).await;
+    write_obsolete_continuation_rows().await;
+    let _budget = Budget::start("forward_steps_over_obsolete_index_rows_keep_their_boundary_until_the_stored_match");
+    step_over_obsolete_rows(1, MatchDirection::Forward, P65_CONTINUATION_LAST).await;
+    let view = backend::api::documents::document_text::get_text_page_view(
+        &admin_user(),
+        common::search_result::DocumentIdentifier { collection_dataset: P65_CONTINUATION_DATASET.into(), file_hash: P65_CONTINUATION.into() },
+        "pdftotext".into(),
+        None,
+        "quokka".into(),
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(view.navigation.page, Some(1), "the first match is on the first page");
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn backward_steps_over_obsolete_index_rows_keep_their_boundary_until_the_stored_match() {
+    require_table_fixture(P65_CONTINUATION_DATASET).await;
+    write_obsolete_continuation_rows().await;
+    let _budget = Budget::start("backward_steps_over_obsolete_index_rows_keep_their_boundary_until_the_stored_match");
+    step_over_obsolete_rows(P65_CONTINUATION_LAST, MatchDirection::Backward, 1).await;
 }
