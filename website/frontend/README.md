@@ -51,6 +51,11 @@ At the end of a page, the match arrows use the nearest matching page that the ba
 A scroll intent records why the viewport moves. The viewer applies it once after the requested page renders, so count updates do not scroll.
 Scroll scripts select the viewer by its `data-text-viewer-key`, so two viewers on one screen do not move each other.
 
+The toolbar holds the match group only. The page control is one overlay in the lower-right corner of each viewer, a sibling of its scroll container, so it keeps its place while the text and the email headers scroll.
+It renders only after a page view has loaded and its source has more than one stored entry, so no generic unit name shows while the metadata loads.
+While it shows, the text has bottom padding, so the last line scrolls clear of it.
+A source with one entry has no overlay. Its absent-page text links the sole stored identifier.
+
 ## The Collections filter is composed client-side
 
 The storage tree retains child pages and resolved paths while its dataset remains mounted.

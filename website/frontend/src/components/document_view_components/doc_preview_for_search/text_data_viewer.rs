@@ -1,17 +1,15 @@
-//! The text body of the shared text viewer, with the page controls at its end.
+//! The text body of the shared text viewer. The page overlay of
+//! [`super::text_preview_with_search`] covers its lower-right corner, so the body keeps
+//! space below its last line while the overlay shows.
 //!
 //! It renders the page that [`DocumentViewerResultStore::displayed`] holds. Highlighted
 //! and raw text come from the same page view, so both always show the selected page.
 
 use common::document_text_pages::{TextPageBody, TextPageView};
 use dioxus::prelude::*;
-use dioxus_free_icons::{
-    Icon,
-    icons::md_navigation_icons::{MdArrowBack, MdArrowForward},
-};
 
 use crate::components::{
-    document_view_components::doc_preview_for_search::text_preview_with_search::DocumentViewerResultStore,
+    document_view_components::doc_preview_for_search::text_preview_with_search::{DocumentViewerResultStore, OVERLAY_CLEARANCE},
     error_boundary::ServerErrorDisplay, suspend_boundary::LoadingIndicator,
 };
 
@@ -20,11 +18,13 @@ pub fn TextDataViewer() -> Element {
     let store = use_context::<DocumentViewerResultStore>();
     // In the flow layout the enclosing container scrolls, so the text takes its natural
     // height. Otherwise the text is its own scroll container.
-    let viewer_style = if store.flow_layout {
-        "width: 100%;"
+    let layout_style = if store.flow_layout {
+        "width: 100%; box-sizing: border-box;"
     } else {
-        "height: 100%; width: 100%; overflow-y: auto;"
+        "height: 100%; width: 100%; box-sizing: border-box; overflow-y: auto;"
     };
+    let clearance = if *store.page_overlay.read() { OVERLAY_CLEARANCE } else { "" };
+    let viewer_style = format!("{layout_style} {clearance}");
     let viewer_key = store.viewer_key;
     let view = store.displayed.read().clone();
     let error = store.request_error.read().clone();
@@ -59,6 +59,18 @@ pub fn TextDataViewer() -> Element {
                         "data-text-absent": "true",
                         style: "margin: 0; padding: 12px 2px; color: var(--x-ink-muted);",
                         "No text is stored for {view.navigation.unit.label()} {view.navigation.requested_page.unwrap_or_default()}."
+                        // A source with one entry has no page overlay, so its sole stored
+                        // identifier is the way back from an old link.
+                        if let (1, Some(sole)) = (view.navigation.stored_count, view.navigation.first_page) {
+                            " Open "
+                            button {
+                                "data-text-sole-page": "{sole}",
+                                style: "background: none; border: none; padding: 0; cursor: pointer; font: inherit; color: var(--x-link); text-decoration: underline;",
+                                onclick: move |_| store.go_to_page.call(sole),
+                                "{view.navigation.unit.label()} {sole}"
+                            }
+                            "."
+                        }
                     }
                 },
                 TextPageBody::EmptySource => rsx! {
@@ -67,9 +79,6 @@ pub fn TextDataViewer() -> Element {
                         "This source has no stored text."
                     }
                 },
-            }
-            if !matches!(view.body, TextPageBody::EmptySource) {
-                ContentPageNavigation { view: view.clone() }
             }
         }
     }
@@ -143,44 +152,6 @@ fn RetryButton() -> Element {
         }
     }
 }
-
-/// Previous and next stored page after the text, aligned to the start and the end. They
-/// use the toolbar's targets, and the unavailable one stays in place, disabled.
-#[component]
-fn ContentPageNavigation(view: TextPageView) -> Element {
-    let store = use_context::<DocumentViewerResultStore>();
-    let unit = view.navigation.unit.label();
-    let previous = view.navigation.previous_page;
-    let next = view.navigation.next_page;
-    // A disabled button is dimmed and shows the not-allowed cursor, so its state does not
-    // depend on colour alone.
-    let state_style = |enabled: bool| if enabled { "cursor: pointer; opacity: 1;" } else { "cursor: not-allowed; opacity: 0.45;" };
-    let previous_style = format!("{CONTENT_BUTTON_STYLE} {}", state_style(previous.is_some()));
-    let next_style = format!("{CONTENT_BUTTON_STYLE} {}", state_style(next.is_some()));
-    rsx! {
-        nav {
-            "aria-label": "{unit} navigation at the end of the text",
-            "data-text-content-navigation": "true",
-            style: "display: flex; justify-content: space-between; gap: 12px; padding: 12px 0 4px 0;",
-            button {
-                style: "{previous_style}",
-                disabled: previous.is_none(),
-                onclick: move |_| if let Some(page) = previous { store.go_to_page.call(page) },
-                Icon { icon: MdArrowBack, style: "width: 16px; height: 16px;" }
-                "Previous {unit}"
-            }
-            button {
-                style: "{next_style}",
-                disabled: next.is_none(),
-                onclick: move |_| if let Some(page) = next { store.go_to_page.call(page) },
-                "Next {unit}"
-                Icon { icon: MdArrowForward, style: "width: 16px; height: 16px;" }
-            }
-        }
-    }
-}
-
-const CONTENT_BUTTON_STYLE: &str = "display: inline-flex; align-items: center; gap: 4px; background-color: white; color: var(--x-ink-strong); border: 1px solid; border-color: var(--x-border-strong); border-radius: 16px; padding: 3px 12px; font: inherit; font-size: var(--x-text-body);";
 
 #[component]
 fn TextSpans(page_id: u32, spans: Vec<common::text_highlight::HighlightTextSpan>) -> Element {

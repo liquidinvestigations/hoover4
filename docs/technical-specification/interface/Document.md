@@ -25,23 +25,24 @@ its explicit stored page identifier in `selected_source_page`, and its selected 
 | `.table.cell` | table cell text | it shows selectable text spans without a click action | each cell shows an excerpt of at most five lines in a monospaced font |
 | `.table.cell_full` | `Open full cell` control | opens a modal over the page area with the raw value and the cell details | it appears on a cell whose value uses three or more lines |
 | `.source.dropdown` | source selector | selects a stored document source | it appears in the search preview; the full viewer uses the source list; a change resets the selected page and match. PDF sources use stored document ranges and preserve their identity after manifest refresh. A source count shows an exact count, a lower bound with `+`, or a failure mark. A failed or timed-out count never shows as zero. |
-| `.text.page` | text page group: previous and next arrows, the unit with an editable identifier, and the stored position | opens a stored page of the selected text source | it appears in every text viewer, including the email body. The unit is Page for PDF text and PDF OCR text, Text segment for size-based segments, and Entry for unknown numbering. Enter or leaving the field commits a valid identifier once, Escape restores the shown identifier, and an invalid entry stays for correction. An identifier without stored text stays selected and offers its stored neighbours. The position counts stored entries, so identifiers 3, 7 and 12 show page 12 as 3 of 3 |
+| `.text.page` | page overlay in the lower-right corner of the text viewport: the editable identifier, the stored position, and the previous and next icon buttons, in a vertical stack | opens a stored page of the selected text source | it appears in every text viewer, including the email body, when the loaded source has more than one stored entry. It does not appear before the source metadata loads, for an empty source, or for a source with one entry. The unit is Page for PDF text and PDF OCR text, Text segment for size-based segments, and Entry for unknown numbering, and it names the field and the buttons for a screen reader. Enter or leaving the field commits a valid identifier once, Escape restores the shown identifier, and an invalid entry stays for correction. The buttons open the stored predecessor and successor. The position counts stored entries, so identifiers 3, 7 and 12 show identifier 7 as `2/3`. An identifier without stored text stays selected with the position `-/3`. The text keeps space below its last line, so the overlay does not cover it at the end of the scroll |
 | `.text.match` | match group: previous and next match arrows and the editable match number of the page | selects a find-query match | the number counts the matches of the displayed page. At the first or last match of a page, the arrows open the nearest matching page of the same source in page order, and they stop at both ends of the source |
-| `.text.content_pages` | `Previous` and `Next` page buttons after the text | open the adjacent stored page | they use the targets of the page group, and the unavailable one is disabled |
+| `.text.sole_page` | link to the sole stored identifier in the absent-page text | opens the only stored entry of the source | it appears when a link selects an absent identifier of a source with one stored entry, which has no page overlay |
 | `.text.retry` | retry button beside a failed text request | requests the same page again | the previous page text stays visible |
 | `.find.clear` | clear search button | clears the in-document query | the main search, document find, and folder search share the input control |
 | `.table.clear_filters` | clear filters button | clears the document query and column filters | it appears when filters return zero rows |
 | `.source.retry` | retry button | requests document sources again | it appears when the source request fails |
-| `.archive.browse` | `Browse the archive` link on the Archive or Email Archive tab | opens the file browser inside the archive | it appears when the extraction created the archive's folder |
+| `.archive.browse` | `Browse the archive` link on the Archive or Email Archive tab | opens the file browser inside the archive in a new tab | it appears when the extraction created the archive's folder |
+| `.archive.search` | search link after `Browse the archive` | opens the search page in a new tab, filtered to the archive folder as the `file_paths` parent and to the dataset of the archive | it appears when the archive folder has a search term. The text is `search inside this zip file` when the canonical MIME type of the file is ZIP, and `search inside this archive` otherwise |
 
 ## States
 
 | state | when | what the page shows |
 |---|---|---|
 | table loading | the table overview or page request is pending | a loading indicator |
-| text page loading | a requested text page has not loaded | the previous page stays, and a status beside the page group names the requested page. Before the first page loads, a loading indicator |
+| text page loading | a requested text page has not loaded | the previous page stays, and a status in the page overlay names the requested page to a screen reader. Before the first page loads, a loading indicator and no page overlay |
 | text page failure | a text page request fails | the previous page stays, with the error and the retry button above it |
-| text page absent | the requested identifier has no stored text | a statement that no text is stored there, with the page group and the page buttons on its stored neighbours |
+| text page absent | the requested identifier has no stored text | a statement that no text is stored there. The page overlay opens its stored neighbours. A source with one entry has no overlay, and the statement links its sole stored identifier |
 | text match failure | a match search or highlight read fails | the error appears beside the match group or above the text, and page navigation and raw text stay usable |
 | no visible columns | every sheet column is hidden | a message that directs the reader to the visible-column control |
 | column modal | a visibility or filter control is open | one named modal above the grid, with keyboard focus inside it |
@@ -49,7 +50,7 @@ its explicit stored page identifier in `selected_source_page`, and its selected 
 | email without body | the email parser stores no readable body | the envelope, attachments, and source selector remain available |
 | source failure | the source request fails | one row above the viewer holds the error and the retry button, and the sources that loaded stay available |
 | image preview | the image format has a stored JPEG preview | the viewer shows the preview |
-| archive | the document is an archive or a mail store | the Archive or Email Archive tab opens first, with the extracted file count and size, the archive file size and dates, and the dates inside. The empty-source message is not shown |
+| archive | the document is an archive or a mail store | the Archive or Email Archive tab opens first, with one metadata section titled with the archive kind. Its rows give the extracted file count and size, the archive file size and dates, the dates inside, and the processing errors. Counts and sizes show in `code`, and an unknown value shows as `Unknown`. The empty-source message is not shown |
 | image not shown | the browser cannot show the image and no preview exists | a note and a link that downloads the file |
 | processing pending | no operation has reached the document | the page states that processing has not reached this document |
 | processing active | its unfinished plan belongs to an active operation | the page states that processing runs |

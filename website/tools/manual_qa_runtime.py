@@ -217,7 +217,7 @@ return result;
         token = route(identity)
         selector = f'a[href^="/view_document/{token}/"]'
         await self.action("wait_css", selector)
-        await self.action("eval", "const a=document.querySelector(%s);let e=a;while(e&&!e.style.height.includes('148px'))e=e.parentElement;if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText};" % json.dumps(selector))
+        await self.action("eval", "const a=document.querySelector(%s);const e=a&&a.closest('.x-result-item-card');if(!e)throw Error('result card unavailable');e.click();return {selected:e.innerText,file_hash:e.getAttribute('data-file-hash')};" % json.dumps(selector))
         await self.action("wait_css", FIND)
         return identity
 

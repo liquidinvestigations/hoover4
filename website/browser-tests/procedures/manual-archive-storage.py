@@ -14,7 +14,7 @@ PROCEDURE_NAME = 'manual-archive-storage'
 async def run(r):
     async def baseline():
         identity = await r.preview("directory_archive", "the-directory.zip")
-        await r.action("eval", "const a=document.querySelector(%s);let row=a;while(row&&!row.style.height.includes('148px'))row=row.parentElement;const more=row?.querySelector('a')?.parentElement.querySelector('button');if(!more)throw Error('result more control unavailable');more.click();return true;" % json.dumps(f'a[href^="/view_document/{route(identity)}/"]'))
+        await r.action("eval", "const a=document.querySelector(%s);const row=a&&a.closest('.x-result-item-card');const more=row?.querySelector('a')?.parentElement.querySelector('button');if(!more)throw Error('result more control unavailable');more.click();return true;" % json.dumps(f'a[href^="/view_document/{route(identity)}/"]'))
         await r.click("Open in File Browser")
         await r.check("return location.pathname.startsWith('/file_browser/');")
         await r.text("the-directory.zip")

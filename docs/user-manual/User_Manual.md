@@ -442,7 +442,7 @@ One file can be readable in several ways, and each way is a source you can switc
 | **Office XML** | a `.docx` / `.odt` rendered from its XML |
 | **Image** / **OCR · Tesseract · eng** | the picture, and the text read out of it |
 | **Table** | a spreadsheet or delimited-text grid with sheet and column controls |
-| **Archive** / **Email Archive** | an archive or a mail store: the number and size of the extracted files, the dates of the archive and of the files inside, and **Browse the archive**, which opens the file browser inside it |
+| **Archive** / **Email Archive** | an archive or a mail store: the number and size of the extracted files, the dates of the archive and of the files inside, **Browse the archive**, which opens the file browser inside it in a new tab, and **search inside this zip file** or **search inside this archive**, which opens the search page for the files inside it in a new tab |
 | **File Locations tab** | every path in the collection where this exact content appears |
 
 A PDF gets the full viewer, page navigation, zoom, and the page counter at the bottom right:

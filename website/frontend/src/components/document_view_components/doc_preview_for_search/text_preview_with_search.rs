@@ -3,6 +3,9 @@
 //!
 //! The full viewer, the search and Storage previews, the chat preview and the email
 //! preview all render this component, so they offer the same page and match controls.
+//! The match controls are in the toolbar. The page controls are one overlay in the
+//! lower-right corner of the text viewport, shown only when the loaded source has more
+//! than one stored entry.
 //!
 //! One request key names what the reader asked for. It holds the document, the source,
 //! the explicit page and the find query. The last page that loaded for the current
@@ -12,11 +15,11 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use common::document_sources::DocumentTextSourceItem;
-use common::document_text_pages::{MatchDirection, TextMatchStep, TextPageBody, TextPageNavigation, TextPageView, TextSourceUnit};
+use common::document_text_pages::{MatchDirection, TextMatchStep, TextPageBody, TextPageNavigation, TextPageView};
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
 
-use dioxus_free_icons::icons::md_navigation_icons::{MdArrowBack, MdArrowDownward, MdArrowForward, MdArrowUpward};
+use dioxus_free_icons::icons::md_navigation_icons::{MdArrowDownward, MdArrowUpward};
 
 use crate::components::document_view_components::doc_preview_shared::PreviewWrapper;
 use crate::components::{
@@ -93,6 +96,8 @@ pub struct DocumentViewerResultStore {
     pub step_match: Callback<MatchDirection>,
     pub retry: Callback<()>,
     pub retry_matches: Callback<()>,
+    /// The page overlay shows, so the text keeps space below its last line.
+    pub page_overlay: ReadSignal<bool>,
     pub viewer_key: u64,
     /// True when the preamble and the text share one scroll container. See
     /// [`DocumentPreviewTextWithSearch`].
@@ -439,6 +444,8 @@ pub fn DocumentPreviewTextWithSearch(
         scroll_intent.set(None);
     });
 
+    let page_overlay = use_memo(move || has_page_overlay(shown.read().as_ref()));
+
     use_context_provider(move || DocumentViewerResultStore {
         displayed: shown.into(),
         pending: pending.into(),
@@ -470,6 +477,7 @@ pub fn DocumentPreviewTextWithSearch(
                 _ => match_neighbours.restart(),
             }
         }),
+        page_overlay: page_overlay.into(),
         viewer_key,
         flow_layout,
     });
@@ -477,31 +485,39 @@ pub fn DocumentPreviewTextWithSearch(
     rsx! {
         PreviewWrapper {
             controls: rsx! {
-                TextNavigationControls {}
+                TextMatchControls {}
             },
+            // The overlay is a sibling of the scroll container, so it keeps its place in the
+            // viewport while the text scrolls.
             page: rsx! {
-                if flow_layout {
-                    div {
-                        id: "x-document-flow-scroll",
-                        "data-text-flow-key": "{viewer_key}",
-                        style: "height: 100%; width: 100%; overflow-y: auto;",
-                        {preamble}
-                        text_data_viewer::TextDataViewer {}
-                    }
-                } else {
-                    div {
-                        style: "
-                            height: 100%;
-                            width: 100%;
-                            display: flex;
-                            flex-direction: column;
-                            overflow: hidden;
-                        ",
-                        {preamble}
+                div {
+                    style: "position: relative; height: 100%; width: 100%;",
+                    if flow_layout {
                         div {
-                            style: "flex: 1; min-height: 0;",
+                            id: "x-document-flow-scroll",
+                            "data-text-flow-key": "{viewer_key}",
+                            style: "height: 100%; width: 100%; overflow-y: auto;",
+                            {preamble}
                             text_data_viewer::TextDataViewer {}
                         }
+                    } else {
+                        div {
+                            style: "
+                                height: 100%;
+                                width: 100%;
+                                display: flex;
+                                flex-direction: column;
+                                overflow: hidden;
+                            ",
+                            {preamble}
+                            div {
+                                style: "flex: 1; min-height: 0;",
+                                text_data_viewer::TextDataViewer {}
+                            }
+                        }
+                    }
+                    if page_overlay() {
+                        TextPageOverlay {}
                     }
                 }
             }
@@ -509,51 +525,46 @@ pub fn DocumentPreviewTextWithSearch(
     }
 }
 
-/// The page group and the match group, each kept whole when the toolbar wraps.
-#[component]
-fn TextNavigationControls() -> Element {
-    rsx! {
-        div {
-            class: "x-text-navigation",
-            style: "
-                display: flex;
-                flex-direction: row;
-                flex-wrap: wrap;
-                align-items: center;
-                justify-content: flex-start;
-                gap: 6px 10px;
-                min-width: 0;
-                padding: 0;
-            ",
-            TextPageControls {}
-            TextMatchControls {}
-        }
-    }
+/// Whether the page overlay shows: the loaded source has more than one stored entry. It
+/// stays hidden while the first metadata loads, so no unit shows before the source names it.
+fn has_page_overlay(view: Option<&TextPageView>) -> bool {
+    view.is_some_and(|view| view.navigation.stored_count > 1)
 }
 
-/// The text of the position beside the page field. The identifier and the position are
-/// combined only when every stored identifier equals its position.
+/// The compact stored position under the page field, and its accessible name. `2/3` is
+/// the second of three stored entries. An identifier with no stored text has no position.
 fn position_text(navigation: &TextPageNavigation) -> (String, String) {
-    let contiguous = navigation.first_page == Some(1) && navigation.last_page == Some(navigation.stored_count as u32);
     let count = navigation.stored_count;
     match navigation.position {
-        Some(_) if contiguous => (format!("of {count}"), format!("{count} stored in total")),
-        Some(position) => (format!("{position} of {count} stored"), format!("Stored entry {position} of {count}")),
-        None => ("not stored".to_string(), format!("No stored text. {count} stored entries")),
+        Some(position) => (format!("{position}/{count}"), format!("Stored entry {position} of {count}")),
+        None => (format!("-/{count}"), format!("No stored text. {count} stored entries")),
     }
 }
 
-/// Previous and next stored page, the unit and editable identifier, and the stored
-/// position. Enter or leaving the field commits a valid identifier once. Escape restores
-/// the displayed identifier. An invalid entry stays in the field for correction.
+/// The width of the page field in characters: the longest stored or requested identifier.
+fn identifier_width(navigation: &TextPageNavigation) -> usize {
+    [navigation.last_page, navigation.requested_page, navigation.page]
+        .into_iter()
+        .flatten()
+        .map(|page| page.to_string().len())
+        .max()
+        .unwrap_or(1)
+        .max(2)
+}
+
+/// The page control in the lower-right corner of the text viewport, arranged as the PDF
+/// overlay: the editable identifier, the stored position, then the previous and next
+/// stored entry. Enter or leaving the field commits a valid identifier once. Escape
+/// restores the displayed identifier. An invalid entry stays in the field for correction.
 #[component]
-fn TextPageControls() -> Element {
+fn TextPageOverlay() -> Element {
     let store = use_context::<DocumentViewerResultStore>();
     let navigation = use_memo(move || store.displayed.read().as_ref().map(|view| view.navigation.clone()));
     let shown_page = use_memo(move || navigation().and_then(|nav| nav.page.or(nav.requested_page)));
-    let unit = use_memo(move || navigation().map_or(TextSourceUnit::StoredEntry, |nav| nav.unit));
     let previous = use_memo(move || navigation().and_then(|nav| nav.previous_page));
     let next = use_memo(move || navigation().and_then(|nav| nav.next_page));
+    let no_previous = use_memo(move || previous().is_none());
+    let no_next = use_memo(move || next().is_none());
     let mut draft = use_signal(String::new);
     let mut invalid = use_signal(|| false);
     let mut committed = use_signal(|| None::<String>);
@@ -584,13 +595,13 @@ fn TextPageControls() -> Element {
         (*store.pending.read() && store.displayed.read().is_some()).then(|| request.page).flatten()
     });
 
+    let Some(nav) = navigation() else { return rsx! {} };
     let viewer_key = store.viewer_key;
-    let label = unit().label();
-    let description = unit().description();
-    let (position, position_label) = navigation().as_ref().map(position_text).unwrap_or_default();
+    let label = nav.unit.label();
+    let description = nav.unit.description();
+    let (position, position_label) = position_text(&nav);
+    let width = identifier_width(&nav);
     let input_border = if invalid() { "var(--x-danger)" } else { "var(--x-border-strong)" };
-    let previous_label = format!("Previous {label}");
-    let next_label = format!("Next {label}");
     let loading_text = pending_destination().map(|page| format!("Loading {label} {page}")).unwrap_or_default();
 
     rsx! {
@@ -598,74 +609,77 @@ fn TextPageControls() -> Element {
             role: "group",
             "aria-label": "{label} navigation",
             "data-text-page-controls": "true",
-            style: "display: flex; flex-direction: row; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0; max-width: 100%;",
+            style: "position: absolute; right: {OVERLAY_INSET_PX}px; bottom: {OVERLAY_INSET_PX}px; z-index: 5; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px; min-width: 40px; box-sizing: border-box; background-color: white; border: 1px solid; border-color: var(--x-border-strong); border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); font-size: var(--x-text-sm); line-height: var(--x-line-body);",
+            input {
+                r#type: "text",
+                inputmode: "numeric",
+                title: "{description}",
+                "aria-label": "{label}",
+                "data-text-page-input": "true",
+                "aria-invalid": if invalid() { "true" } else { "false" },
+                "aria-describedby": "x-text-unit-{viewer_key}",
+                style: "width: calc({width}ch + 12px); box-sizing: border-box; text-align: center; padding: 2px 4px; border: 1px solid; border-color: {input_border}; border-radius: 6px; font: inherit; font-weight: 600;",
+                value: "{draft}",
+                oninput: move |event| {
+                    draft.set(event.value());
+                    invalid.set(false);
+                    committed.set(None);
+                },
+                onkeydown: move |event| {
+                    if event.key() == Key::Enter {
+                        event.prevent_default();
+                        commit();
+                    } else if event.key() == Key::Escape {
+                        event.prevent_default();
+                        let page = (*shown_page.peek()).map(|page| page.to_string()).unwrap_or_default();
+                        committed.set(Some(page.clone()));
+                        draft.set(page);
+                        invalid.set(false);
+                    }
+                },
+                onblur: move |_| commit(),
+            }
+            span {
+                "data-text-page-position": "true",
+                "aria-label": "{position_label}",
+                style: "white-space: nowrap; color: var(--x-ink-muted); padding-bottom: 2px; border-bottom: 1px solid; border-bottom-color: var(--x-border); width: 100%; text-align: center;",
+                "{position}"
+            }
+            span {
+                id: "x-text-unit-{viewer_key}",
+                style: VISUALLY_HIDDEN,
+                "{description}"
+            }
+            span {
+                role: "status",
+                "data-text-page-status": "true",
+                style: VISUALLY_HIDDEN,
+                "{loading_text}"
+            }
             NavigationButton {
-                icon: MdArrowBack,
-                label: previous_label,
-                disabled: previous().is_none(),
+                icon: MdArrowUpward,
+                label: format!("Previous {label}"),
+                disabled: no_previous,
                 onclick: move |_| if let Some(page) = previous() { store.go_to_page.call(page) },
             }
-            div {
-                style: "display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; column-gap: 4px; flex: 0 1 auto; min-width: 0; font-size: var(--x-text-body); line-height: var(--x-line-body);",
-                label {
-                    style: "display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; min-width: 0;",
-                    title: "{description}",
-                    span { style: "white-space: nowrap;", "{label}" }
-                    input {
-                        r#type: "text",
-                        inputmode: "numeric",
-                        "data-text-page-input": "true",
-                        "aria-invalid": if invalid() { "true" } else { "false" },
-                        "aria-describedby": "x-text-unit-{viewer_key}",
-                        style: "width: 48px; box-sizing: border-box; text-align: center; padding: 2px 4px; border: 1px solid; border-color: {input_border}; border-radius: 6px; font: inherit;",
-                        value: "{draft}",
-                        oninput: move |event| {
-                            draft.set(event.value());
-                            invalid.set(false);
-                            committed.set(None);
-                        },
-                        onkeydown: move |event| {
-                            if event.key() == Key::Enter {
-                                event.prevent_default();
-                                commit();
-                            } else if event.key() == Key::Escape {
-                                event.prevent_default();
-                                let page = (*shown_page.peek()).map(|page| page.to_string()).unwrap_or_default();
-                                committed.set(Some(page.clone()));
-                                draft.set(page);
-                                invalid.set(false);
-                            }
-                        },
-                        onblur: move |_| commit(),
-                    }
-                }
-                span {
-                    "data-text-page-position": "true",
-                    "aria-label": "{position_label}",
-                    style: "white-space: nowrap; color: var(--x-ink-muted);",
-                    "{position}"
-                }
-                span {
-                    id: "x-text-unit-{viewer_key}",
-                    style: "position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;",
-                    "{description}"
-                }
-                span {
-                    role: "status",
-                    "data-text-page-status": "true",
-                    style: "white-space: nowrap; color: var(--x-ink-muted);",
-                    "{loading_text}"
-                }
-            }
             NavigationButton {
-                icon: MdArrowForward,
-                label: next_label,
-                disabled: next().is_none(),
+                icon: MdArrowDownward,
+                label: format!("Next {label}"),
+                disabled: no_next,
                 onclick: move |_| if let Some(page) = next() { store.go_to_page.call(page) },
             }
         }
     }
 }
+
+/// The distance of the page overlay from the lower-right corner of the text viewport.
+const OVERLAY_INSET_PX: u32 = 16;
+
+/// The space below the text that keeps its last line clear of the page overlay at the end
+/// of the scroll: the overlay height of about 140 px, its inset, and one line of margin.
+pub const OVERLAY_CLEARANCE: &str = "padding-bottom: 176px;";
+
+const VISUALLY_HIDDEN: &str = "position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;";
 
 /// Previous and next match, and the editable match number of the displayed page. The
 /// number counts the matches of this page only. The arrows continue to the nearest
@@ -739,7 +753,7 @@ fn TextMatchControls() -> Element {
             role: "group",
             "aria-label": "Matches",
             "data-text-match-controls": "true",
-            style: "display: flex; flex-direction: row; align-items: center; gap: 4px; flex: 0 0 auto; padding-left: 10px; border-left: 1px solid; border-left-color: var(--x-border);",
+            style: "display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0;",
             NavigationButton { icon: MdArrowUpward, label: "Previous Hit", disabled: disable_previous, onclick: move |_| store.step_match.call(MatchDirection::Backward) }
             if count() > 0 {
                 label {

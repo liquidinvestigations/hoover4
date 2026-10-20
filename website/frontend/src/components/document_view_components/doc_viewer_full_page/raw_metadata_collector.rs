@@ -310,7 +310,7 @@ async fn get_raw_metadata_tables(
 
 // ---------- Curated provenance sections ----------
 
-const SECTION_STYLE: &str = "
+pub(crate) const SECTION_STYLE: &str = "
     border: 1px solid black;
     border-radius: 20px;
     padding: 11px;
@@ -318,7 +318,7 @@ const SECTION_STYLE: &str = "
     font-size: var(--x-text-detail);
 ";
 
-const SECTION_HEADER_STYLE: &str = "
+pub(crate) const SECTION_HEADER_STYLE: &str = "
     font-size: var(--x-text-section); line-height: var(--x-line-section);
     display: flex;
     flex-direction: row;
@@ -614,7 +614,7 @@ fn TableSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
     }
 }
 
-const METADATA_KEY_STYLE: &str =
+pub(crate) const METADATA_KEY_STYLE: &str =
     "padding: 4px 12px 4px 0; color: rgba(0,0,0,0.6); vertical-align: top; white-space: nowrap;";
 
 #[server]
