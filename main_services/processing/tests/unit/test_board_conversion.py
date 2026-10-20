@@ -307,3 +307,48 @@ def test_the_explore_task_keeps_the_focused_objective_apart_from_the_brief():
     assert task["goals"] == [{"text": "Who led the delegation?", "source": "goal-01"}]
     assert task["allowed_sources"]["text"] == "collections: enron; the web is not allowed"
     assert list(task)[0] == "objective"
+
+
+# ------------------------------------------------------- escapes and number diagnostics
+
+
+def test_the_call_arguments_are_decoded_once_and_keep_literal_backslashes():
+    """The function arguments are one JSON text. Its escapes decode once: a `\\u2019`
+    escape is an apostrophe, a written backslash stays one backslash, and a written
+    backslash-u stays text. No global unescape runs on the fact."""
+    raw = ('{"fact": "The memo\\u2019s path is C:\\\\Reports\\\\2021 and the text shows \\\\u2019 as written [D1].",'
+           ' "kind": "sourced", "open_questions": []}')
+    reply = {"choices": [{"message": {"tool_calls": [
+        {"function": {"name": m.SUBMIT_FACT_TOOL, "arguments": raw}}]}}]}
+    fact = conversion.parse_reply(reply)["fact"]
+    assert fact == "The memo’s path is C:\\Reports\\2021 and the text shows \\u2019 as written [D1]."
+    assert "\\\\" not in fact
+    same = conversion.parse_reply(call_reply({"fact": fact, "kind": "sourced", "open_questions": []}))
+    assert same["fact"] == fact
+
+
+def test_the_number_check_is_a_diagnostic_that_misses_swaps_and_flags_valid_totals():
+    """The number tokens of a finding are compared as a set. A swap of two values that the
+    report holds gives no problem, and a correct derived total gives one. Neither refuses
+    the finding, so the check cannot prove or disprove numerical accuracy."""
+    report = "Northside recorded 42 complaints and Riverside recorded 17 complaints [D1]."
+    swapped = "Northside recorded 17 complaints and Riverside recorded 42 complaints [D1]."
+    assert conversion.number_problems(swapped, report) == []
+    total = "The two offices recorded 59 complaints together, 42 and 17 [D1]."
+    assert conversion.number_problems(total, report) == ["numbers that the report does not hold: 59"]
+    args = conversion.check_args({"fact": total, "kind": "inferred", "open_questions": []})
+    assert args["fact"] == total and args["kind"] == "inferred"
+    dated = "Approval rose from 40% in March 2020 to 55% on 4 May 2021 [D1]."
+    assert conversion.number_problems(dated, dated) == []
+
+
+def test_a_wrapper_tag_line_of_the_request_is_removed_from_the_fact():
+    """A model copied `</fact>` after the finding. The tag line goes, and a tag inside a
+    sentence stays as written."""
+    tagged = "No document read states who approved the transfers [D1].\n</fact>"
+    assert conversion.check_args({"fact": tagged, "kind": "sourced"})["fact"] == (
+        "No document read states who approved the transfers [D1].")
+    inline = "The memo quotes the text <report> as written [D1]."
+    assert conversion.check_args({"fact": inline, "kind": "sourced"})["fact"] == inline
+    with pytest.raises(conversion.MalformedConversion):
+        conversion.check_args({"fact": "<fact>\n</fact>", "kind": "sourced"})

@@ -15,7 +15,13 @@ questions of 1 to 300 characters, and a slug of at most 80 characters. A reply t
 them raises `MalformedConversion`, so the activity can use its second attempt.
 
 `number_problems` names each number of the finding that the report does not hold, so a
-changed count or date is visible in the problems of the fact. It refuses nothing.
+changed count or date is visible in the problems of the fact. It refuses nothing. It is a
+diagnostic: it compares sets of number tokens, so it misses two values that change places
+and names a correct derived total that the report does not state.
+
+The call arguments are one JSON text and are decoded once. A line of the fact that holds
+only a wrapper tag of the request, such as `</fact>` or `</report>`, is removed. No other
+text of the fact changes, so a backslash or an escape that the model wrote stays as it is.
 
 `resolve` binds each handle of the finding to a citation of the report. A handle that the
 report does not hold is dropped and named in the problems. A sourced finding without a
@@ -25,8 +31,12 @@ verified citation becomes inferred.
 from __future__ import annotations
 
 import json
+import re
 
 from tasks.P_board import model as m
+
+#: A line that holds only a wrapper tag, which a model can copy from the request.
+WRAPPER_TAG_LINE = re.compile(r"^\s*</?(?:fact|report|task)>\s*$", re.IGNORECASE)
 
 MAX_FACT_CHARS = 4000
 MAX_QUESTIONS = 3
@@ -151,7 +161,8 @@ def check_args(args) -> dict:
     """The arguments of a fact call, within the field limits, or `MalformedConversion`."""
     if not isinstance(args, dict):
         raise MalformedConversion("the call arguments are not an object")
-    fact = str(args.get("fact") or "").strip()
+    fact = "\n".join(line for line in str(args.get("fact") or "").split("\n")
+                     if not WRAPPER_TAG_LINE.match(line)).strip()
     kind = str(args.get("kind") or "").strip()
     questions = args.get("open_questions")
     questions = [] if questions is None else questions
