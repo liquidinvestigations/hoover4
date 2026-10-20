@@ -15,7 +15,16 @@ and names the searches.
 
 **Classifier signals.** With `signals` true, three classifier questions read the structured
 task (`facts.task_text`) and the recent steps: `stuck`, `answered` and `absent`. A signal
-fires after its number of consecutive positive answers. The signals never end a turn.
+fires after its number of consecutive positive answers. The deterministic ledger (units,
+level, progress identities, the strongest-note step and the ending) is computed from the
+operation facts before any signal is read.
+
+* `stuck_units` true lets a fired `stuck` signal add one unit to a batch without progress,
+  so the classifier advances the levels and the ending. Its default is `not advice`. An
+  advisory definition (`advice` true) therefore never changes the ledger, and identical
+  operation facts give identical levels and endings for every classifier answer. The
+  ledger records the units that the signal added in `signal_units`, and the cause of an
+  ending in `stop_cause`.
 
 * `completion` selects what the `answered` signal can do. `none` ignores it. `evidence`
   adds advice to a level note only when the thread holds delivery evidence: a stored file
@@ -127,6 +136,8 @@ class Handler:
         for key in ("signals", "advice", "end_turn"):
             if not isinstance(parameters.get(key, key != "advice"), bool):
                 raise ValueError(f"{key} must be true or false")
+        if not isinstance(parameters.get("stuck_units", False), bool):
+            raise ValueError("stuck_units must be true or false")
         if not isinstance(parameters.get("request_chars", 6000), int):
             raise ValueError("request_chars must be an integer")
 
@@ -182,7 +193,10 @@ class Handler:
         gained_results = (useful - progress_seen) | versions
         progress_seen.update(useful - progress_seen)
         made_progress = bool(new or gained_results)
-        gained = 0 if made_progress else 1 + refused + churn + int(signals["stuck"]["fired"])
+        # Only a definition that lets the classifier control the ledger adds its unit.
+        stuck_units = parameters.get("stuck_units", not parameters.get("advice", False))
+        signal_unit = int(bool(stuck_units) and signals["stuck"]["fired"] and not made_progress)
+        gained = 0 if made_progress else 1 + refused + churn + signal_unit
         units = 0 if made_progress else units + gained
         if made_progress:
             level = 0
@@ -216,8 +230,11 @@ class Handler:
         strongest = None if made_progress else previous.get("strongest_step")
         if level == 3 and strongest is None:
             strongest = model_steps
+        stop_cause = ""
         if (parameters.get("end_turn", True) and level == 3 and strongest is not None
                 and model_steps - strongest >= parameters.get("steps_after_strongest", 6)):
+            stop_cause = ("operations and classifier" if int(previous.get("signal_units", 0)) + signal_unit
+                          else "operations")
             source_text = ("No keyword-matched source was found." if not seen else
                            f"The searches found {len(seen)} keyword-matched sources. The agent did not complete its answer.")
             actions.append(Action("end_turn", "progress-end", freeze({"text": "The run ended after repeated searches without progress. " + source_text + "\n\nSearches run:\n" + summary(searches)})))
@@ -237,6 +254,9 @@ class Handler:
                   "todo_goal": todo[-1].todo_goal if todo else previous.get("todo_goal", ""),
                   "todo_closed": todo[-1].todo_closed if todo else previous.get("todo_closed", 0),
                   "signals": signals, "strongest_step": strongest,
+                  # The units that a classifier signal added since the last progress.
+                  "signal_units": 0 if made_progress else int(previous.get("signal_units", 0)) + signal_unit,
+                  "stop_cause": stop_cause,
                   # Recomputed for each batch. An earlier positive answer is not kept.
                   "answered": bool(signals["answered"]["fired"]),
                   "delivery_evidence": evidence, "task_omitted_chars": omitted,

@@ -2,7 +2,7 @@
   "id": "chat-advisory",
   "schema_version": 1,
   "profile": "*",
-  "description": "The deterministic controls of chat-deterministic, and advisory classification for the policy comparison. The preparation classifier proposes skills. The progress classifier adds one advice note, which names the chat check as its origin, when the searches repeat or the results do not hold the task. A classifier answer declares no completion, ends no turn and sets no quota.",
+  "description": "The deterministic controls of chat-deterministic, and advisory classification for the policy comparison. The preparation classifier proposes skills. The progress classifier adds one advice note, which names the chat check as its origin, when the searches repeat or the results do not hold the task. A classifier answer declares no completion, adds no progress unit, ends no turn and sets no quota (`stuck_units` false).",
   "rules": [
     {
       "id": "prepare",
@@ -106,7 +106,8 @@
         "signals": true,
         "completion": "none",
         "advice": true,
-        "end_turn": true
+        "end_turn": true,
+        "stuck_units": false
       }
     }
   ]

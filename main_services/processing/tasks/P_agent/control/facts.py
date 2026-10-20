@@ -49,7 +49,9 @@ class ResultFact:
     todo_closed: int = 0
     todo_goal: str = ""
     verified_citations: int = 0
-    #: The error code of a failed result, such as `not_found` or `invalid_argument`.
+    #: The error code of a failed result, such as `not_found` or `invalid_argument`. A
+    #: tool validation text (`VALIDATION_TEXT`) gives `invalid_arguments`. A result with
+    #: a code of `ARGUMENT_ERRORS` has the status `refused`.
     error_code: str = ""
     #: `(name, version, changed)` of a successful workspace write or patch. `changed` is
     #: false for a result that names the unchanged current version.
@@ -68,6 +70,16 @@ def origin_of(message) -> str:
     return "policy" if message.usage.get("origin") == "policy" else "model"
 
 
+#: The error codes of a call whose arguments were wrong. The agent service writes
+#: `invalid_arguments` (`research_agent.steps`), and the website agent routes write
+#: `invalid_argument`.
+ARGUMENT_ERRORS = ("invalid_argument", "invalid_arguments")
+
+#: The plain text that a tool server returns when its own argument validation refuses a
+#: call, for example `Error: 1 validation error for call[table_page]`.
+VALIDATION_TEXT = re.compile(r"Error: \d+ validation errors? for call\[")
+
+
 def result_facts(messages: Iterable) -> list[ResultFact]:
     """One fact for each answered call of the thread, in thread order."""
     messages = list(messages)
@@ -84,7 +96,10 @@ def result_facts(messages: Iterable) -> list[ResultFact]:
         name = str(entry.get("name") or m.tool_name or "")
         args = entry.get("args") if isinstance(entry.get("args"), dict) else {}
         parsed = _parse(m.content)
-        failed = (m.usage.get("status") == "error"
+        # A tool server's own argument validation answers with plain text and can leave no
+        # error status in the usage. Only that exact prefix of an unparsed reply counts.
+        validation = parsed is None and isinstance(m.content, str) and bool(VALIDATION_TEXT.match(m.content))
+        failed = (m.usage.get("status") == "error" or validation
                   or (isinstance(parsed, dict) and (parsed.get("success") is False
                                                     or bool(parsed.get("error")))))
         evidence = [e for e in (m.usage.get("evidence") or []) if isinstance(e, dict)]
@@ -120,7 +135,12 @@ def result_facts(messages: Iterable) -> list[ResultFact]:
                        if isinstance(r, dict) and r.get("file_hash")]
         if name == "web_search":
             sources = urls
-        refused = field("status") == "refused" or (failed and field("error") in ("invalid_argument", "forbidden"))
+        error_code = str(field("error") or "") if failed and isinstance(field("error"), str) else ""
+        if not error_code and validation:
+            error_code = "invalid_arguments"
+        # Every argument error is a refused call, whichever service wrote its code.
+        refused = (field("status") == "refused"
+                   or (failed and (error_code in ARGUMENT_ERRORS or error_code == "forbidden")))
         todo_items = field("todos", field("items", []))
         todo_items = todo_items if isinstance(todo_items, list) else []
         todo_closed = sum(1 for t in todo_items if isinstance(t, dict) and t.get("status") in ("completed", "done", "cancelled"))
@@ -129,7 +149,6 @@ def result_facts(messages: Iterable) -> list[ResultFact]:
             todo_closed = int(resolved.group(1))
         continuation = isinstance(parsed, dict) and bool(parsed.get("more") or parsed.get("continuation"))
         skill = str(args.get("name") or "") if name == "read_skill" and not failed else ""
-        error_code = str(field("error") or "") if failed and isinstance(field("error"), str) else ""
         file_version: tuple = ()
         if name in MUTATION_TOOLS and not failed and isinstance(parsed, dict) and parsed.get("success") is True:
             if isinstance(parsed.get("name"), str) and isinstance(parsed.get("version"), int):

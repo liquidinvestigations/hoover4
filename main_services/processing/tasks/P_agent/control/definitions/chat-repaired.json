@@ -2,7 +2,7 @@
   "id": "chat-repaired",
   "schema_version": 1,
   "profile": "*",
-  "description": "chat-default with the repaired semantic controls, for the policy comparison. The classifiers read the structured task. The preparation children keep their own results. Progress counts new file versions, and a completion estimate adds advice only with delivery evidence and is recomputed for each batch. It keeps the source note, the name check, the ranked web reads, the capture check and the discovery note.",
+  "description": "chat-default with the repaired semantic controls, for the policy comparison. The classifiers read the structured task. The preparation children keep their own results. Progress counts new file versions, a fired stuck signal adds one progress unit and can lead to the ending (`stuck_units` true), and a completion estimate adds advice only with delivery evidence and is recomputed for each batch. It keeps the source note, the name check, the ranked web reads, the capture check and the discovery note.",
   "rules": [
     {
       "id": "prepare",
@@ -144,7 +144,8 @@
         "signals": true,
         "completion": "evidence",
         "advice": false,
-        "end_turn": true
+        "end_turn": true,
+        "stuck_units": true
       }
     }
   ]

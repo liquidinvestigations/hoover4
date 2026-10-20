@@ -23,11 +23,16 @@ with {{ tool('table_page') }} when the match needs context.
 Give a sheet, row and column when the reader needs to find a value again.
 
 To count rows by a value, call {{ tool('table_column_values') }} on that column. Do not count
-the rows of a page of text yourself. State the total rows, the filters and the column, and
-check that the counts add up to the total.
-For example, a sheet of 38 bills has a state column. The values call gives GA 13, MO 9,
-TN 7, SC 5, NC 2, WV 1 and KY 1. These counts add up to 38. Counts that add up to 44 for
-38 rows show a counting error.
+the rows of a page of text yourself. State the total rows, the filters and the column.
+One values call gives up to 200 values. When the result has a continuation, call read_more
+until no continuation remains. A partial value list gives no complete distribution.
+The value counts add up to the row total only for the same sheet, the same rows and the
+same filters. A blank cell has no value, so blank cells make the sum smaller than the
+row total. State the number of blank cells when you compare the sum with the total.
+For example, a sheet of 24 building permits has a type column. The values call gives
+fence 9, roof 7, deck 5 and pool 3, and no continuation. These counts add up to 24. Counts
+that add up to 27 for 24 rows show a counting error. Counts that add up to 21 show 3 rows
+with a blank type.
 A JSON file or a text file has no sheets. When {{ tool('table_overview') }} gives no sheet,
 read the document as text.
 

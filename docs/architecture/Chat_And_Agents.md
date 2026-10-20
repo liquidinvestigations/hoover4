@@ -228,8 +228,8 @@ These definitions are built in.
 | `chat-quality` | For a model that searches, reads and cites without guidance notes. It loads skills and ranks web reads. It has no progress, discovery or capture rule. |
 | `chat-null` | No rule. |
 | `chat-deterministic` | No classifier request. Skills load from the report trigger and from result facts. Progress notes count operations only. |
-| `chat-advisory` | The classifier selects skills at the turn start. The progress signals give advice notes that name the chat check as their origin. They end no turn. |
-| `chat-repaired` | The `chat-default` rules with the corrected progress, completion and preparation behavior. |
+| `chat-advisory` | The classifier selects skills at the turn start. The progress signals give advice notes that name the chat check as their origin. They change no progress count and end no turn (`stuck_units` false). |
+| `chat-repaired` | The `chat-default` rules with the corrected progress, completion and preparation behavior. A fired `stuck` signal adds a progress unit (`stuck_units` true), and the progress record names the cause of an ending in `stop_cause`. |
 
 The last three definitions are versioned comparison policies. Each has its own revision. A
 deployment selects a definition with

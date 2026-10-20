@@ -618,6 +618,31 @@ async def test_arguments_that_do_not_match_the_schema_are_refused_before_the_cal
     assert result["error_class"] == "invalid_arguments" and seen == []
 
 
+#: The argument part of the browser server's `read_page` schema that the call checks.
+READ_PAGE_URLS_SCHEMA = {
+    "type": "object",
+    "properties": {"urls": {"type": "array", "items": {"type": "string"}},
+                   "page_start": {"type": "integer", "minimum": 1}, "version": {"type": "string"}},
+    "required": ["urls"],
+}
+
+
+async def test_a_url_for_the_urls_list_is_refused_and_the_corrected_call_runs():
+    """`url` in place of the required list `urls` is refused before the tool runs, with the
+    error that the worker's argument trigger reads. The corrected call runs the tool once."""
+    seen: List[Any] = []
+    agent = FakeAgent([dict_tool("read_page", READ_PAGE_URLS_SCHEMA, seen)], {"read_page"})
+    wrong = await steps.run_tool_call(agent, tool_request("read_page", {"url": "https://a.example/x"}))
+    assert (wrong["status"], wrong["error_class"], wrong["retryable"]) == ("error", "invalid_arguments", False)
+    body = json.loads(wrong["content"])
+    assert (body["success"], body["error"], body["tool"]) == (False, "invalid_arguments", "read_page")
+    assert "urls" in body["message"] and seen == []
+    right = await steps.run_tool_call(agent, tool_request(
+        "read_page", {"urls": ["https://a.example/x"]}, idempotency_key="key-2"))
+    assert (right["status"], right["error_class"]) == ("ok", "")
+    assert [(name, arguments) for name, arguments, _ in seen] == [("read_page", {"urls": ["https://a.example/x"]})]
+
+
 MARK_SCHEMA = {
     "type": "object",
     "properties": {"ids": {"type": "array", "items": {"type": "string"}},

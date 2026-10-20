@@ -15,7 +15,8 @@ The events:
   have the file method.
 * `workspace_error`: a failed workspace write or patch, such as a citation finding or a
   version mismatch.
-* `argument_error`: a call that the argument check refused.
+* `argument_error`: a call whose arguments the agent service, a tool server or a website
+  route refused (`facts.ARGUMENT_ERRORS`, `facts.VALIDATION_TEXT`).
 * `unknown_document`: a document or table call that named no readable document.
 
 
@@ -56,7 +57,7 @@ def _event(kind: str, batch, earlier) -> bool:
     if kind == "workspace_error":
         return any(f.name in F.MUTATION_TOOLS and f.status in ("error", "refused") for f in batch)
     if kind == "argument_error":
-        return any(f.status == "refused" or f.error_code == "invalid_argument" for f in batch)
+        return any(f.error_code in F.ARGUMENT_ERRORS for f in batch)
     if kind == "unknown_document":
         return any(f.name in DOCUMENT_TOOLS and f.error_code == "not_found" for f in batch)
     return False

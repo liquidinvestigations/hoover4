@@ -785,6 +785,87 @@ def test_signal_streak_requires_two_scores_and_resets_on_failure():
     assert failed.facts["signals"]["stuck"]["streak"] == 0
 
 
+ADVISORY = {"signals": True, "completion": "none", "advice": True, "end_turn": True}
+
+
+def _trace(params, scores):
+    """Run one fixed operation trace through the progress handler with classifier answers
+    `scores` (a score for every question, or None for a failed request). Returns the ledger
+    after each batch and every action."""
+    from tasks.P_agent.control.facts import ResultFact
+    from tasks.P_agent.control.handlers.progress import Handler
+    from tasks.P_agent.control.model import ClassifierResult, ControlEvent, plain
+
+    class Scores:
+        async def ask(self, state, questions, instructions=""):
+            if scores is None:
+                return ClassifierResult("timeout", freeze({}))
+            return ClassifierResult("ok", freeze({q: {"noul": scores} for q in questions}))
+
+    search = ResultFact("s", "search_collections", 1, 2, "model", "ok", {"query": '"missing"'}, item_count=0)
+    write = ResultFact("w", "write_file", 1, 2, "model", "ok", {"name": "a.md"}, file_version=("a.md", 1, True))
+    same = replace(write, file_version=("a.md", 1, False))
+    failed = replace(write, status="error", file_version=())
+    batches = [search] * 4 + [write, write, same, failed] + [search] * 12
+    previous, ledgers, actions = {}, [], []
+    for step, fact in enumerate(batches):
+        event = ControlEvent(f"b{step}", "tool_batch_completed", 1, "model")
+        result = asyncio.run(Handler().evaluate(event, _progress_context(previous, (fact,), step), params, Scores()))
+        previous = plain(result.facts)
+        ledgers.append(previous)
+        actions.append([(a.kind, a.target_id) for a in result.actions])
+    return ledgers, actions
+
+
+DETERMINISTIC_KEYS = ("level", "units", "strongest_step", "progress_seen", "file_versions", "sources",
+                      "stop_cause", "signal_units", "refused_repeats", "repeats")
+
+
+@pytest.mark.parametrize("scores", [0.99, 0.0, None])
+def test_advisory_scores_change_no_level_no_ending_and_only_the_advice_note(scores):
+    """The same operations give the same deterministic ledger and ending for every
+    classifier answer. Only the advice note and the recorded signals differ."""
+    base_ledgers, base_actions = _trace({**ADVISORY, "signals": False}, None)
+    ledgers, actions = _trace(ADVISORY, scores)
+    for got, want in zip(ledgers, base_ledgers):
+        assert {k: got[k] for k in DETERMINISTIC_KEYS} == {k: want[k] for k in DETERMINISTIC_KEYS}
+    without_advice = [[a for a in batch if a[1] != "progress-advice"] for batch in actions]
+    assert without_advice == base_actions
+    assert ("end_turn", "progress-end") in [a for batch in actions for a in batch]
+    assert ledgers[-1]["stop_cause"] == "operations" and ledgers[-1]["signal_units"] == 0
+    advised = [a for batch in actions for a in batch if a[1] == "progress-advice"]
+    assert len(advised) == (1 if scores == 0.99 else 0)
+
+
+def test_new_file_versions_reset_the_level_and_unchanged_or_failed_writes_do_not():
+    ledgers, _actions = _trace({**ADVISORY, "signals": False}, None)
+    assert ledgers[3]["level"] == 1 and ledgers[4]["level"] == 0 and ledgers[4]["units"] == 0
+    assert [ledger["file_versions"] for ledger in ledgers[4:8]] == [["a.md@1"]] * 4
+    # The repeated identity, the unchanged write and the failed write each add a unit.
+    assert [ledger["units"] for ledger in ledgers[5:8]] == [1, 2, 0] and ledgers[7]["level"] == 1
+
+
+def test_a_repaired_definition_lets_the_stuck_signal_end_the_turn_earlier_and_names_it():
+    deterministic, plain_actions = _trace({**ADVISORY, "advice": False, "signals": False}, None)
+    repaired, repaired_actions = _trace({**ADVISORY, "advice": False, "stuck_units": True}, 0.99)
+    end = lambda actions: next(i for i, batch in enumerate(actions) if ("end_turn", "progress-end") in batch)
+    assert end(repaired_actions) < end(plain_actions)
+    assert repaired[end(repaired_actions)]["stop_cause"] == "operations and classifier"
+    assert deterministic[end(plain_actions)]["stop_cause"] == "operations"
+
+
+def test_a_policy_batch_changes_no_progress_state():
+    from tasks.P_agent.control.facts import ResultFact
+    from tasks.P_agent.control.handlers.progress import Handler
+    from tasks.P_agent.control.model import ControlEvent, plain
+
+    previous = {"level": 2, "units": 1, "strongest_step": None, "signal_units": 0}
+    fact = ResultFact("p", "read_page", 1, 2, "policy", "ok", {"urls": ["https://a.example"]})
+    event = ControlEvent("policy", "tool_batch_completed", 1, "policy")
+    result = asyncio.run(Handler().evaluate(event, _progress_context(previous, (fact,), 5), ADVISORY, object()))
+    assert plain(result.facts) == previous and not result.actions
+
+
 def test_absence_uses_counts_across_table_kinds():
     from tasks.P_agent.control.handlers.absence import check_names, note_action
     class Suggestions:
@@ -1230,8 +1311,115 @@ def test_the_result_triggers_load_the_recovery_skills():
     assert loads([_fact("patch_file", file_version=("a.md", 2, True))], [earlier]) == []
     assert loads([_fact("write_file", status="error", error_code="")]) == ["report"]
     assert loads([_fact("read_documents", status="refused", error_code="invalid_argument")]) == ["call_arguments"]
+    assert loads([_fact("read_page", status="error", error_code="invalid_arguments")]) == ["call_arguments"]
     assert loads([_fact("read_documents", status="error", error_code="not_found")]) == ["document_ids"]
     assert loads([_fact("search_collections")]) == []
+
+
+def test_the_argument_trigger_matches_the_stored_argument_errors():
+    """The result shapes are copies of stored tool messages: the agent service error, the
+    website route error, and the validation text of a tool server, with and without a
+    status in the usage. A refused address and a missing document are not argument errors."""
+    from tasks.P_agent.control.facts import result_facts
+    from tasks.P_agent.control.handlers.result_skills import Handler
+
+    def raw(idx, call_id, name, text, usage):
+        return agent_runs.RunMessageRow(idx=idx, role="tool", content=text, tool_call_id=call_id,
+                                        tool_name=name, run_id=RUN_ID, usage_json=json.dumps(usage))
+
+    agent_error = json.dumps({"success": False, "error": "invalid_arguments", "message":
+                              "arguments: 'urls' is a required property.", "tool": "read_page"})
+    route_error = json.dumps({"error": "invalid_argument", "success": False,
+                              "message": "sheet 0 has no column id 0. Its column ids are 1 to 4."})
+    validation = ("Error: 1 validation error for call[table_page]\ncolumn\n  Unexpected keyword "
+                  "argument [type=unexpected_keyword_argument, input_value='0', input_type=str]")
+    validations = ("Error: 2 validation errors for call[cite_documents]\ncitations.list[Citation].0.why2\n"
+                   "  Extra inputs are not permitted [type=extra_forbidden]")
+    refused = json.dumps({"success": False, "error": "refused: browser_navigate: 'javascript:void(0)' "
+                          "is not an http or https URL"})
+    cases = {
+        "agent": (raw(2, "agent", "read_page", agent_error, {"status": "error", "error_class": "invalid_arguments"}), True),
+        "agent-no-usage": (raw(2, "agent-no-usage", "cite_pages", agent_error, {}), True),
+        "route": (raw(2, "route", "table_page", route_error, {"status": "ok", "error_class": ""}), True),
+        "text": (raw(2, "text", "table_page", validation, {"status": "error", "error_class": "tool_error"}), True),
+        "text-no-usage": (raw(2, "text-no-usage", "cite_documents", validations, {}), True),
+        "refused": (raw(2, "refused", "browser_navigate", refused, {"status": "ok"}), False),
+        "missing": (_tool(2, "missing", "read_documents", {"success": False, "error": "not_found"}, status="error"), False),
+    }
+    params = {"events": {"call_arguments": "argument_error"}}
+    listed = freeze({"call_arguments": {}})
+    for call_id, (message, expected) in cases.items():
+        facts = result_facts([_ai(1, [(call_id, message.tool_name, {})]), message])
+        context = replace(_progress_context(), listed_skills=listed, results=tuple(facts), batch=tuple(facts))
+        result = asyncio.run(Handler().evaluate(_event(), context, params, object()))
+        loaded = [a.target_id for a in result.actions] == ["call_arguments"]
+        assert loaded is expected, (call_id, facts[0].error_code, facts[0].status)
+
+
+#: The `/tool_call` reply of the agent service for `read_page` with `url` in place of the
+#: required list `urls` (`research_agent` test `test_a_url_for_the_urls_list_is_refused_
+#: and_the_corrected_call_runs`).
+URL_FOR_URLS = {"success": False, "error": "invalid_arguments", "tool": "read_page",
+                "message": "arguments: 'urls' is a required property."}
+
+
+def test_an_argument_error_loads_the_argument_skill_once_while_it_is_visible(store, monkeypatch, route):
+    """A wrong argument name loads `call_arguments`. A second wrong call while the skill is
+    visible loads nothing, and the corrected successful call loads nothing."""
+    rule = {**OBJECTS, "id": "arguments", "parameters": {"events": {"call_arguments": "argument_error"}}}
+    _pin(store, monkeypatch, _definition([rule]))
+    monkeypatch.setitem(SKILLS, "call_arguments", {
+        "text": "Skill `call_arguments`.\n\nCopy the argument names.", "description": "arguments",
+        "group": "general", "tools": [], "terms": "", "not_for": ""})
+    _hook("turn_started", 0)
+    store["messages"] += [
+        _ai(1, [("bad", "read_page", {"url": "https://a.example/x"})]),
+        agent_runs.RunMessageRow(idx=2, role="tool", content=json.dumps(URL_FOR_URLS), tool_call_id="bad",
+                                 tool_name="read_page", run_id=RUN_ID,
+                                 usage_json=json.dumps({"status": "error", "error_class": "invalid_arguments"}))]
+    loaded = _hook("tool_batch_completed", anchor_idx=1)
+    assert [c.name for c in loaded.calls] == ["read_skill"]
+    policy = max(m.idx for m in store["messages"])
+    written = next(m for m in store["messages"] if m.idx == loaded.calls[0].ai_idx)
+    assert [e["args"] for e in written.tool_calls] == [{"name": "call_arguments"}]
+    store["messages"].append(_tool(policy + 1, loaded.calls[0].call_id, "read_skill",
+                                   SKILLS["call_arguments"]["text"]))
+    store["agent"].visible = ["call_arguments"]
+    store["messages"] += [
+        _ai(policy + 2, [("bad2", "read_page", {"url": "https://a.example/y"})]),
+        agent_runs.RunMessageRow(idx=policy + 3, role="tool", content=json.dumps(URL_FOR_URLS), tool_call_id="bad2",
+                                 tool_name="read_page", run_id=RUN_ID, usage_json=json.dumps({}))]
+    assert _hook("tool_batch_completed", anchor_idx=policy + 2).calls == []
+    store["messages"] += [
+        _ai(policy + 4, [("good", "read_page", {"urls": ["https://a.example/x"]})]),
+        _tool(policy + 5, "good", "read_page", "## A\nhttps://a.example/x\nText.")]
+    assert _hook("tool_batch_completed", anchor_idx=policy + 4).calls == []
+
+
+def test_argument_errors_have_one_status_and_source_text_stays_a_result():
+    """Both argument codes and the validation text give the status `refused`, with or
+    without a status in the usage. A successful result that quotes the validation text is
+    an ordinary result, and a missing document keeps its own code."""
+    from tasks.P_agent.control.facts import result_facts
+
+    def fact(content, usage):
+        message = agent_runs.RunMessageRow(idx=2, role="tool", content=content, tool_call_id="c",
+                                           tool_name="read_documents", run_id=RUN_ID, usage_json=json.dumps(usage))
+        return result_facts([_ai(1, [("c", "read_documents", {})]), message])[0]
+
+    validation = "Error: 1 validation error for call[read_page]\nurls\n  Field required [type=missing]"
+    for content in (json.dumps({"success": False, "error": "invalid_arguments"}),
+                    json.dumps({"success": False, "error": "invalid_argument"}), validation):
+        for usage in ({}, {"status": "error"}, {"status": "ok"}):
+            got = fact(content, usage)
+            assert (got.status, got.error_code in ("invalid_argument", "invalid_arguments")) == ("refused", True), (content, usage)
+    quoted = json.dumps({"success": True, "documents": [{"file_hash": "h", "text": validation}]})
+    assert (fact(quoted, {}).status, fact(quoted, {}).error_code) == ("ok", "")
+    assert fact("The log says " + validation, {}).status == "ok"
+    missing = fact(json.dumps({"success": False, "error": "not_found"}), {})
+    assert (missing.status, missing.error_code) == ("error", "not_found")
+    forbidden = fact(json.dumps({"success": False, "error": "forbidden"}), {})
+    assert (forbidden.status, forbidden.error_code) == ("refused", "forbidden")
 
 
 def test_result_facts_name_the_file_version_and_the_error_code():
