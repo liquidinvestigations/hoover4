@@ -30,11 +30,14 @@ READ_SKILL = "read_skill"
 READ_TOOL = "read_tool"
 CITE_DOCUMENTS = "cite_documents"
 READ_PAGE = "read_page"
-#: The cut line of a `read_page` result, which names the offset of the next part.
-NEXT_OFFSET = re.compile(r"Call read_page with offset (\d+) for the next part")
-PAGE_VERSION = re.compile(r"\b[Vv]ersion ([0-9a-f]{16})\b")
+#: The cut line of a `read_page` result, which names the offset of the next part. An older
+#: result names the offset in words, and a newer one prints the argument object.
+NEXT_OFFSET = re.compile(r'Call read_page with (?:offset (\d+)|\{[^{}]*"offset": (\d+)[^{}]*\}) for the next part')
+PAGE_VERSION = re.compile(r'\b[Vv]ersion"?:? "?([0-9a-f]{16})\b')
 FIND_RESULT = re.compile(r'^\[find .*?: (?:\d+ of \d+ matches|no match) from offset')
 FIND_MORE = re.compile(r"\[more: \d+ matches from offset (\d+)\. Call read_page")
+#: The argument object of a newer continuation line, which keeps the PDF window.
+CONTINUATION = re.compile(r"Call read_page with (\{[^{}]*\}) for the next (?:part|matches)")
 #: The separator of the pages of one `read_page` result.
 PAGE_SEPARATOR = "\n\n---\n\n"
 
@@ -233,9 +236,13 @@ def pages_read(rows: Sequence[Any], hidden: Set[Key]) -> List[str]:
                 continue
             match = FIND_MORE.search(body) if FIND_RESULT.match(body) else NEXT_OFFSET.search(body)
             version = PAGE_VERSION.search(body)
+            arguments = CONTINUATION.search(body) if match else None
             pages.pop(url, None)
-            detail = (f". version {version.group(1)}" if version else "") + (
-                f". unread continuation at offset {match.group(1)}" if match else "")
+            detail = f". version {version.group(1)}" if version else ""
+            if arguments:
+                detail += f". unread continuation: call read_page with {arguments.group(1)}"
+            elif match:
+                detail += f". unread continuation at offset {match.group(1) or match.group(2)}"
             pages[url] = detail
     return [f"- {url}{detail}" for url, detail in pages.items()][-PAGE_LINES:]
 

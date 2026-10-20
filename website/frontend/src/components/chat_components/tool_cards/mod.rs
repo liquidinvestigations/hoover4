@@ -482,20 +482,24 @@ pub fn strip_artifact_marker(text: &str) -> String {
     }
 }
 
-/// Small previews of the images that the agent model received after a tool result: the
-/// document images, and the page screenshots of a tool that is not a browser tool.
+/// Small previews of the images of a tool result: the document images, and the page
+/// screenshots of a tool that is not a browser tool. The images that the agent model
+/// received and the screenshots kept only for the person both show. Only a received
+/// image says so in its title.
 #[component]
-pub fn ToolImages(refs: Vec<common::chat_types::ChatImageRef>, #[props(default)] tool_name: String) -> Element {
+pub fn ToolImages(refs: Vec<common::chat_types::ShownImage>, #[props(default)] tool_name: String) -> Element {
     // A browser card shows the thumbnail of its own capture, so only another tool, such as
     // `read_page`, shows a page screenshot here.
     let browser_card = tool_name.starts_with("browser_");
     let shown: Vec<(String, String)> = refs
         .iter()
-        .filter(|r| r.kind == "document" || (r.kind == "capture" && !browser_card))
-        .filter_map(|r| {
+        .filter(|s| s.image.kind == "document" || (s.image.kind == "capture" && !browser_card))
+        .filter_map(|s| {
+            let r = &s.image;
             let what = if r.video { "First frame of the video" }
                 else if r.kind == "capture" { "Screenshot of" } else { "Image" };
-            r.url().map(|url| (url, format!("{what} {} that the model received", r.label)))
+            let received = if s.sent_to_model { " that the model received" } else { "" };
+            r.url().map(|url| (url, format!("{what} {}{received}", r.label)))
         })
         .collect();
     if shown.is_empty() {

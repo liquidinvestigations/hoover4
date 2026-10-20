@@ -1,4 +1,16 @@
-"""Store read-page Markdown and bind web citations to a chat and source version."""
+"""Store read-page Markdown and bind web citations to a chat and source version.
+
+The artifact of a read is keyed by owner, session, URL and version. A PDF window has a
+version of its text and its extent (`read_page.text_version`), so two windows with equal
+text get two artifacts, and a later read never changes the extent of an earlier capture. Its
+detail and body record `capture_format` 2. A capture without the field is a legacy capture:
+its version hashes the text alone, and its rows stay as they were written. A legacy row that
+a later read of another window replaced keeps only that later extent, and no reader can
+restore the earlier one from the version.
+
+A citation with a `version` reads that capture only. When it is no longer kept, the error
+says so and the caller reads the page again. It never falls back to the newest capture.
+"""
 
 from __future__ import annotations
 
@@ -15,6 +27,8 @@ import requests
 
 from agent_common import artifacts
 from agent_common.result_pages import canonical_json
+
+from browser_use_server.read_page import CAPTURE_FORMAT
 
 KIND_PAGE_TEXT = artifacts.KIND_WEB_PAGE_TEXT
 KIND_PAGE_CITATION = artifacts.KIND_WEB_PAGE_CITATION
@@ -58,10 +72,11 @@ def store_read(owner: str, session: str, page) -> str:
     if not owner or not session or page.error or page.blocked or not page.full_text:
         return ""
     extent = dict(getattr(page, "extent", None) or {})
+    # A PDF window records the format of its version, which hashes the text and the extent.
+    formatted = {"extent": extent, "capture_format": CAPTURE_FORMAT} if extent else {}
     body = canonical_json({"url": page.url, "final_url": page.final_url,
                            "title": page.title, "version": page.version,
-                           "markdown": page.full_text,
-                           **({"extent": extent} if extent else {})}).encode("utf-8")
+                           "markdown": page.full_text, **formatted}).encode("utf-8")
     if len(body) > MAX_BODY_BYTES:
         raise ValueError("The captured page exceeds the citation storage limit.")
     artifact_id = _id(owner, session, KIND_PAGE_TEXT, page.url, page.version)
@@ -69,7 +84,7 @@ def store_read(owner: str, session: str, page) -> str:
         artifacts.ArtifactRequest(username=owner, session_id=session, kind=KIND_PAGE_TEXT,
                                   tool_name="read_page", url=page.url, title=page.title,
                                   detail=canonical_json({"version": page.version, "read_ns": time.time_ns(),
-                                                         **({"extent": extent} if extent else {})})),
+                                                         **formatted})),
         artifact_id, artifact_id, body, "application/json",
     )
     return artifact_id
@@ -202,6 +217,9 @@ def _cite(owner: str, session: str, pages: list) -> dict:
             version = item.get("version", "")
             row = next((row for row in rows if row["url"] == url
                         and (not version or _details(row).get("version") == version)), None)
+            if row is None and version:
+                raise ValueError(f"The text of version {version} of this page is not kept. Call "
+                                 "read_page for the page, then cite the version that it returns.")
             if row is None:
                 raise ValueError("Read this page successfully with read_page before citing it.")
             body, size = artifacts.read_range(owner, session, row["artifact_id"], 0, MAX_BODY_BYTES)

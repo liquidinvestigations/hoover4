@@ -596,8 +596,11 @@ The references move through these layers.
 
 With `model_images` `on_demand`, step 2 moves the screenshots of a page read to
 `capture_refs`. The worker stores them apart from `image_refs`, so no step request, token
-estimate or summary reads them. The tool card shows them to the person. An image that one
-message names twice is sent once.
+estimate or summary reads them. The result gives the exact `read_page` arguments that
+return each kept screenshot. The tool card shows the images of both lists to the person,
+also after a reload, and names only the images of `image_refs` as received by the model. An
+image that one message names twice is sent once. A later reference to an image that could
+not be read is read again.
 
 The content of the message stays text, so a restart builds the same image input from the
 stored references. The website checks collection access or capture ownership on each read,

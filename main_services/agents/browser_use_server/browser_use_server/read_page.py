@@ -20,15 +20,26 @@ marker, stays inside that share. Each page gets an equal part. URLs beyond what 
 can carry are named in the note rather than silently dropped. See `agent_common.batching`.
 
 **The extracted text is kept for 30 minutes and has a version.** The version is the first 16
-hex characters of the SHA-256 of the text. A cut page names the next offset and the
-version. A call with `version` reads that same text, and it reports a text that has expired
-or changed in place of the text. It never navigates for a continuation.
+hex characters of a SHA-256 (`text_version`). A web page hashes its text alone, as every
+earlier version did. A PDF window hashes a canonical value of the capture format
+(`CAPTURE_FORMAT`), the whole extracted text and the extent, so equal text in two windows
+has two versions. A call with `version` reads that same text, and it reports a text that has
+expired or changed in place of the text. It never navigates for a continuation.
+
+**A continuation is one argument object.** `continuation_arguments` builds the `read_page`
+arguments of the next part, the next matches, the next PDF window and the screenshot of a
+kept read: `urls`, `page_start`, `links`, `version` and the operation's `offset`, `find` or
+`screenshot`. The result prints that object, so a copied continuation reads the same URL,
+window and text. `call_arguments` turns the arguments of a call into the arguments of
+`read`, for the server and the tests alike.
 
 **A PDF read names its extent.** Only `PDF_MAX_PAGES` pages of a PDF are extracted in one
 read. The result names the extracted pages and the page count of the document, apart from
 the cut of the shown text, so an extracted window is never shown as the whole document.
-`page_start` selects a later window. The kept text, its version and its offsets belong to
-one URL and one window: a version of one window cannot address another.
+`page_start` selects a later window. A window without a text layer keeps its extent and
+names the next window, because one window cannot show that the PDF lacks a text. The kept
+text, its version and its offsets belong to one URL and one window: a version of one window
+cannot address another.
 
 **A screenshot can be asked for again.** A read that loads the page captures it. A call
 with `screenshot` true and the version of a kept text returns the screenshot of the capture
@@ -303,9 +314,88 @@ def focus(text: str, goal: str, limit: int) -> tuple[str, bool]:
     return (kept, True)
 
 
-def text_version(text: str) -> str:
-    """The version of an extracted text: the first 16 hex characters of its SHA-256."""
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+#: The format of a PDF capture whose version hashes its text with its extent. A capture
+#: without the field is a legacy capture, whose version hashes its text alone.
+CAPTURE_FORMAT = 2
+
+
+def capture_extent(extent: dict | None) -> dict:
+    """The normalized extent of a PDF read: the page count and the first and last extracted
+    page, as integers. Empty for a read without an extent."""
+    if not extent:
+        return {}
+    return {key: int((extent or {}).get(key) or 0) for key in ("pages", "first", "last")}
+
+
+def text_version(text: str, extent: dict | None = None) -> str:
+    """The version of an extracted text: the first 16 hex characters of a SHA-256. Without
+    an extent, the hash of the text, the legacy form that web pages keep. With the extent of
+    a PDF window, the hash of the canonical JSON of the capture format, the text and the
+    extent."""
+    normalized = capture_extent(extent)
+    if not normalized:
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    value = json.dumps({"format": CAPTURE_FORMAT, "text": text, "extent": normalized},
+                       ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
+
+#: The `read_page` arguments, with the type of each.
+READ_ARGUMENTS = {"urls": list, "goal": str, "offset": int, "find": str, "links": bool,
+                  "version": str, "page_start": int, "screenshot": bool}
+
+
+def continuation_arguments(page: "PageRead", *, offset: int | None = None, find: str = "",
+                           screenshot: bool = False, page_start: int | None = None) -> dict:
+    """The `read_page` arguments that continue `page`. They keep its URL, its PDF window,
+    its links mode and its version, and add the operation: `offset` for the next part or
+    match, `find`, or `screenshot`. `page_start` names another PDF window, which has no
+    kept version yet."""
+    window = page.page_start if page_start is None else page_start
+    arguments: dict = {"urls": [page.url]}
+    if window > 1:
+        arguments["page_start"] = window
+    if not page.links:
+        arguments["links"] = False
+    if page.version and page_start is None:
+        arguments["version"] = page.version
+    if find:
+        arguments["find"] = find
+    if offset is not None:
+        arguments["offset"] = offset
+    if screenshot:
+        arguments["screenshot"] = True
+    for key, value in arguments.items():
+        if key not in READ_ARGUMENTS or not isinstance(value, READ_ARGUMENTS[key]):
+            raise ValueError(f"read_page has no argument {key} of type {type(value).__name__}")
+    return arguments
+
+
+def arguments_text(arguments: dict) -> str:
+    """The argument object as the result prints it."""
+    return json.dumps(arguments, ensure_ascii=False, separators=(", ", ": "))
+
+
+def _positive_int(value: object, default: int) -> int:
+    """`value` as an integer of 1 or more, else `default`."""
+    try:
+        number = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return default
+    return number if number >= 1 else default
+
+
+def call_arguments(arguments: dict) -> dict:
+    """The keyword arguments of `read` for the arguments of one `read_page` call."""
+    return {
+        "raw_urls": arguments.get("urls"), "goal": str(arguments.get("goal") or ""),
+        "offset": max(0, int(arguments.get("offset") or 0)),
+        "find": str(arguments.get("find") or ""),
+        "version": str(arguments.get("version") or "").strip(),
+        "links": arguments.get("links", True) is not False,
+        "page_start": _positive_int(arguments.get("page_start"), 1),
+        "screenshot": arguments.get("screenshot") is True,
+    }
 
 
 #: A find with no match in a page of at most this many characters shows the whole text. A
@@ -325,7 +415,8 @@ def extent_text(page: PageRead) -> str:
     of = f" of {total}" if total else ""
     text = f"The text covers PDF pages {first} to {last}{of} only."
     if not total or last < total:
-        text += f" Call read_page with page_start {last + 1} for the next pages."
+        text += (" Call read_page with "
+                 f"{arguments_text(continuation_arguments(page, page_start=last + 1))} for the next pages.")
     return text
 
 
@@ -348,12 +439,9 @@ def _find_block(page: PageRead) -> str:
                      f"{page.full_text[start:end]}")
     if page.next_offset is not None:
         left = page.matches_after - page.shown_matches
-        fields = (f"find {literal}, offset {page.next_offset} and version {page.version}"
-                  if page.version else f"find {literal} and offset {page.next_offset}")
-        if not page.links:
-            fields += ", links false"
+        arguments = continuation_arguments(page, find=page.find, offset=page.next_offset)
         parts.append(f"[more: {left} matches from offset {page.next_offset}. Call read_page "
-                     f"with this URL, {fields} for the next matches]")
+                     f"with {arguments_text(arguments)} for the next matches]")
     return "\n\n".join(parts)
 
 
@@ -373,6 +461,14 @@ def render(result: ReadResult) -> str:
                 '["wayback"], or another page.'
             )
             continue
+        if page.error and page.extent and page.extent.get("first"):
+            # One window without text says nothing of the other pages of the PDF.
+            blocks.append(
+                f"{head}\n\nCOULD NOT READ: {page.error}\n[{extent_text(page)}]\n\n"
+                "This call gives no text from these pages. The other pages of the PDF can "
+                "have text."
+            )
+            continue
         if page.error:
             blocks.append(
                 f"{head}\n\nCOULD NOT READ: {page.error}\n\n"
@@ -389,19 +485,14 @@ def render(result: ReadResult) -> str:
                 f"{page.full_chars:,} characters]"
             )
             continue
-        version = f", with version {page.version}" if page.version else ""
-        if not page.links:
-            version += ", links false"
-        if page.page_start > 1:
-            version += f", page_start {page.page_start}"
         extent = extent_text(page)
         if extent:
             head = f"{head}\n[{extent}]"
+        following = continuation_arguments(page, offset=page.offset + len(page.text))
         tail = (
             f"\n\n[cut: this call read {len(page.text):,} of the page's "
-            f"{page.full_chars:,} characters. Call read_page with offset "
-            f"{page.offset + len(page.text)} for the next part{version}. To find a text "
-            "anywhere in the page, call read_page with find]"
+            f"{page.full_chars:,} characters. Call read_page with {arguments_text(following)} "
+            "for the next part. To find a text anywhere in the page, call read_page with find]"
             if page.truncated else ""
         )
         blocks.append(f"{head}\n\n{page.text}{tail}")
@@ -535,7 +626,17 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
         cached = chat.page_reads.get((url, links, page_start))
         if version and (not cached or cached[4] != version):
             page = PageRead(url=url, find=find, offset=offset)
-            if cached:
+            # The version can belong to another kept window of the same URL.
+            other = next((key for key, stored in chat.page_reads.items()
+                          if key[0] == url and key[1] == links and stored[4] == version), None)
+            if other is not None:
+                window = PageRead(url=url, links=links, page_start=other[2], version=version)
+                page.error = (
+                    f"version {version} is the text of another PDF window. Call read_page with "
+                    f"{arguments_text(continuation_arguments(window, offset=offset, find=find))} to "
+                    "read it, or without version to read this window"
+                )
+            elif cached:
                 page.error = (
                     f"the page changed: the kept text is version {cached[4]}, not version "
                     f"{version}. Its offsets differ, so read it again from offset 0 with "
@@ -586,7 +687,7 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
             page = outcome.result()
             valid_page(page)
             if page.full_text and len(page.full_text.encode("utf-8")) <= PDF_MAX_BYTES:
-                page.version = text_version(page.full_text)
+                page.version = text_version(page.full_text, page.extent)
                 chat.page_reads[(url, links, page_start)] = (
                     time.monotonic() + KEEP_SECONDS, page.title, page.final_url,
                     page.full_text, page.version, page.route, page.image, dict(page.extent),
@@ -602,6 +703,9 @@ async def read(chat, raw_urls: object, goal: str, username: str, offset: int = 0
             page.find = find
             page.full_chars = len(page.full_text)
         page.page_start = page_start
+        if page.image and page.version:
+            # The arguments that return this screenshot without a new navigation.
+            page.image["retry_arguments"] = continuation_arguments(page, screenshot=True)
         if page_start > 1 and not page.extent and not page.error:
             page.note = batching.corrective_note(
                 page.note, f"{url} is not a PDF, so page_start {page_start} selects nothing.")
@@ -890,6 +994,10 @@ __all__ = [
     "extent_text",
     "pdf_text",
     "text_version",
+    "CAPTURE_FORMAT",
+    "call_arguments",
+    "capture_extent",
+    "continuation_arguments",
 ]
 
 

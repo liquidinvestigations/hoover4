@@ -312,3 +312,41 @@ def test_a_web_page_without_extent_keeps_its_former_source_shape(store):
     artifact_id = read_source()
     assert "extent" not in json.loads(store.bodies[artifact_id])
     assert "extent" not in cite()["citations"][0]
+
+
+def test_a_citation_keeps_the_extent_of_its_window_after_a_read_of_another_window(store):
+    """Two PDF windows with equal text are two captures. A citation of the first window keeps
+    its extent after the second window is read, and a missing version is not replaced by
+    the newest capture."""
+    from browser_use_server import read_page
+
+    text = "Source α contains a verified statement."
+    first = {"pages": 100, "first": 1, "last": 50}
+    second = {"pages": 100, "first": 51, "last": 100}
+    one = read_page.text_version(text, first)
+    two = read_page.text_version(text, second)
+    assert read_source(text, version=one, extent=first) != read_source(text, version=two, extent=second)
+    cited = cite(version=one)["citations"][0]
+    assert (cited["version"], cited["extent"]) == (one, first)
+    assert cite(version=two)["citations"][0]["extent"] == second
+    missing = cite(version="0000000000000000")
+    assert not missing["citations"] and "is not kept" in missing["errors"][0]["error"]
+
+
+def test_a_legacy_capture_without_a_format_stays_citable(store):
+    """A capture written before the format field: its version hashes the text alone, and
+    its rows hold no `capture_format`."""
+    text = "Source α contains a verified statement."
+    from browser_use_server import read_page
+
+    version = read_page.text_version(text)
+    artifact_id = citations._id("owner", "chat", citations.KIND_PAGE_TEXT, "https://source.example/page", version)
+    store.rows[artifact_id] = {"artifact_id": artifact_id, "title": "Source title",
+                               "url": "https://source.example/page",
+                               "detail": json.dumps({"version": version, "read_ns": 1}),
+                               "kind": citations.KIND_PAGE_TEXT, "owner": "owner", "session": "chat"}
+    store.bodies[artifact_id] = json.dumps({"url": "https://source.example/page",
+                                            "final_url": "https://source.example/page", "title": "Source title",
+                                            "version": version, "markdown": text}).encode()
+    cited = cite(version=version)["citations"][0]
+    assert cited["version"] == version and "extent" not in cited

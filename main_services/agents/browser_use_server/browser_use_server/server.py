@@ -462,15 +462,6 @@ class RetiredNames(Middleware):
         )
 
 
-def _positive_int(value: Any, default: int) -> int:
-    """`value` as an integer of 1 or more, else `default`."""
-    try:
-        number = int(value)
-    except (TypeError, ValueError):
-        return default
-    return number if number >= 1 else default
-
-
 class ReadPageTool(Tool):
     """`read_page(urls=[…], goal=…)`, the batched ninety-percent case.
 
@@ -488,15 +479,11 @@ class ReadPageTool(Tool):
 
         ceiling = page_share()
         reader = Reader(router.reader, username, session_id)
-        outcome = await read_page.read(
-            reader, arguments.get("urls"), str(arguments.get("goal") or ""), username,
-            max(0, int(arguments.get("offset") or 0)),
-            find=str(arguments.get("find") or ""),
-            version=str(arguments.get("version") or "").strip(),
-            ceiling=ceiling, links=arguments.get("links", True) is not False,
-            page_start=_positive_int(arguments.get("page_start"), 1),
-            screenshot=arguments.get("screenshot") is True,
-        )
+        # The same mapping as the tests, so an emitted continuation object reads what the
+        # tests read (`read_page.call_arguments`).
+        called = read_page.call_arguments(arguments)
+        outcome = await read_page.read(reader, called.pop("raw_urls"), called.pop("goal"), username,
+                                       ceiling=ceiling, **called)
 
         chat_session = _header(SESSION_HEADER)
         if username and chat_session:

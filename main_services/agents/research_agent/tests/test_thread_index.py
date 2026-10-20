@@ -208,6 +208,32 @@ def test_page_index_keeps_cut_version_and_find_continuation():
     ]
 
 
+def test_page_index_keeps_the_argument_object_of_a_newer_continuation():
+    """A newer result prints the continuation as an argument object. The index keeps the
+    object, so the window of a PDF read survives the compaction."""
+    t = Thread()
+    t.human("Read the report.")
+    text = (
+        "## Report\nhttps://example.org/report.pdf\n[The text covers PDF pages 51 to 100 of 120 only.]\n\n"
+        "Pages 51 on.\n\n[cut: this call read 100 of the page's 300 characters. Call read_page with "
+        '{"urls": ["https://example.org/report.pdf"], "page_start": 51, "version": "0123456789abcdef", '
+        '"offset": 100} for the next part. To find a text anywhere in the page, call read_page with find]'
+        "\n\n---\n\n## Other\nhttps://example.org/other\n\n"
+        '[find "lease": 1 of 2 matches from offset 0 are shown. '
+        "The page has 2 matches in 300 characters. Version fedcba9876543210.]\n\n"
+        "[match at 10, text from 0 to 25]\nlease\n\n"
+        '[more: 1 matches from offset 80. Call read_page with {"urls": ["https://example.org/other"], '
+        '"version": "fedcba9876543210", "find": "lease", "offset": 80} for the next matches]'
+    )
+    t.step(ok("read_page", {"urls": ["https://example.org/report.pdf"]}, text))
+    assert thread_index.pages_read(t.rows, {(THREAD, 2)}) == [
+        '- https://example.org/report.pdf. version 0123456789abcdef. unread continuation: call read_page with '
+        '{"urls": ["https://example.org/report.pdf"], "page_start": 51, "version": "0123456789abcdef", "offset": 100}',
+        '- https://example.org/other. version fedcba9876543210. unread continuation: call read_page with '
+        '{"urls": ["https://example.org/other"], "version": "fedcba9876543210", "find": "lease", "offset": 80}',
+    ]
+
+
 def test_page_index_records_cut_page_without_copying_its_body():
     t = Thread()
     t.human("Read the lease template.")

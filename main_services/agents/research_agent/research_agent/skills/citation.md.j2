@@ -90,6 +90,10 @@ Call {{ tool('cite_pages') }} with that returned object, including its actual ve
 ```json
 {"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}
 ```
+A PDF window has its own version. To cite a passage of pages 51 to 100, copy the version of that read.
+```json
+{"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]}
+```
 If a call exceeds eight terms, split its terms into groups of at most eight and cite each group separately.
 Keep the URL and source version with each group. Changing the call structure does not reduce its term count.
 The handle opens the captured page text and its verified quotes.

@@ -31,13 +31,18 @@ For a model with 0, `hide` removes the references and adds `NO_VISION_TEXT` to t
 `attach`, the default and the behavior of a history without the setting, every reference of
 a result goes to the model. With `on_demand`, `select` keeps the screenshot of a `read_page`
 result out of the model input unless the call asked for it (`screenshot` true). The result
-then names the kept screenshots (`CAPTURES_TEXT`), and the worker stores them as
-`capture_refs`, apart from `image_refs`. A person still opens every capture from the tool
-card. Interactive browser tools and document images keep their images.
+then names the kept screenshots (`captures_text`), with the exact `read_page` arguments
+that return each one (`retry_arguments` of the reference, which the browser server writes).
+The worker stores them as `capture_refs`, apart from `image_refs`. No request, estimate,
+compaction or summary reads `capture_refs`. The website shows both lists to the person,
+each source once, and names only the images of `image_refs` as received by the model.
+Interactive browser tools and document images keep their images. A call with `screenshot`
+true sends the screenshot of its kept read to the model.
 
-**Duplicates.** One request sends each source identity once. A later reference to the same
-capture or document gives a label line in place of a second image (`parts_for`), and the
-estimate counts it once (`list_tokens`).
+**Duplicates.** One request sends each source identity once. A later reference to an image
+that loaded gives a label line in place of a second image (`parts_for`), and the estimate
+counts it once (`list_tokens`). An image that could not be read is not shown above, so a
+later reference to it is read again.
 
 **Cost.** `ref_tokens` estimates the tokens of one image from its area after the size
 limit: `ceil(w / 32) * ceil(h / 32)` and `IMAGE_FRAME_TOKENS`. Request sizing, the
@@ -89,6 +94,21 @@ PAGE_READ_TOOL = "read_page"
 #: The line after a page read whose screenshots the model did not receive.
 CAPTURES_TEXT = ("[A screenshot of {count} page(s) is kept and was not sent to you. To view "
                  "it, call read_page with the same url, its version and screenshot true.]")
+#: The line of one kept screenshot whose reference names its retry arguments.
+CAPTURE_RETRY_TEXT = "[A screenshot of this page is kept and was not sent to you. To view it, call read_page with {arguments}.]"
+
+
+def captures_text(kept: Sequence[Dict[str, Any]]) -> str:
+    """The lines after a page read whose screenshots the model did not receive. A reference
+    with `retry_arguments` gives its exact argument object. Another reference gives the
+    general line."""
+    lines = [CAPTURE_RETRY_TEXT.format(arguments=json.dumps(ref["retry_arguments"], ensure_ascii=False,
+                                                            separators=(", ", ": ")))
+             for ref in kept if isinstance(ref.get("retry_arguments"), dict)]
+    rest = sum(1 for ref in kept if not isinstance(ref.get("retry_arguments"), dict))
+    if rest:
+        lines.append(CAPTURES_TEXT.format(count=rest))
+    return "\n".join(lines)
 
 
 class ImageError(ValueError):
@@ -397,22 +417,27 @@ def parts_for(messages: Sequence[RunMessage], *, username: str,
               collections: Sequence[str]) -> Dict[int, List[Dict[str, Any]]]:
     """The content parts of each tool message with images, by its position in `messages`."""
     out: Dict[int, List[Dict[str, Any]]] = {}
-    seen = set()
+    # The identities of the images that a part above holds.
+    shown = set()
     for index, m in enumerate(messages):
         if m.role != "tool" or not m.image_refs:
             continue
-        fresh, repeated = [], []
+        fresh, repeated, keys = [], [], set()
         for ref in m.image_refs:
             key = ref_key(ref)
-            if key is not None and key in seen:
+            if key is not None and (key in shown or key in keys):
                 repeated.append(ref)
                 continue
             if key is not None:
-                seen.add(key)
+                keys.add(key)
             fresh.append(ref)
         loaded = load_all(fresh, username=username, collections=collections)
+        shown.update(ref_key(ref) for ref, item in zip(fresh, loaded) if item.data_url and ref_key(ref))
         items = parts(m.content, fresh, loaded)
-        items.extend({"type": "text", "text": f"Image shown above: {describe(ref)}"} for ref in repeated)
+        for ref in repeated:
+            text = (f"Image shown above: {describe(ref)}" if ref_key(ref) in shown
+                    else f"Image not attached: {describe(ref)}: the image could not be read")
+            items.append({"type": "text", "text": text})
         out[index] = items
     return out
 
@@ -421,5 +446,5 @@ __all__ = [
     "CACHE_BYTES", "IMAGE_FRAME_TOKENS", "IMAGE_REFS_URI", "ImageError", "Loaded", "MAX_BYTES",
     "MAX_SIDE", "NO_VISION_TEXT", "describe", "hide", "image_refs_of", "list_tokens", "load",
     "load_all", "message_tokens", "parts", "parts_for", "prepare", "ref_key", "ref_tokens",
-    "select", "supports_vision", "ATTACH", "ON_DEMAND", "CAPTURES_TEXT",
+    "select", "supports_vision", "ATTACH", "ON_DEMAND", "CAPTURES_TEXT", "captures_text",
 ]

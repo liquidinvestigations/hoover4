@@ -254,3 +254,40 @@ def test_one_request_sends_each_capture_once_and_counts_it_once(monkeypatch):
     assert loaded == [[PAGE], [DOC]]
     assert {"type": "text", "text": "Image shown above: read_page screenshot of Lease (https://x.org)"} in parts[1]
     assert images.list_tokens(rows) == images.ref_tokens(PAGE) + images.ref_tokens(DOC)
+
+
+def test_a_failed_image_is_not_shown_above_and_a_later_reference_reads_it_again(monkeypatch):
+    attempts = []
+
+    def load_all(refs, **_kwargs):
+        if not refs:
+            return []
+        attempts.append([ref["artifact_id"] for ref in refs])
+        # The first read of the capture fails, and the second succeeds.
+        return [images.Loaded(reason="the image could not be read: timeout") if len(attempts) == 1
+                else images.Loaded(data_url="data:image/png;base64,AA") for _ in refs]
+
+    monkeypatch.setattr(images, "load_all", load_all)
+    rows = [RunMessage(role="tool", content="first", tool_call_id="a", name="read_page", image_refs=[PAGE, PAGE]),
+            RunMessage(role="tool", content="again", tool_call_id="b", name="read_page", image_refs=[PAGE]),
+            RunMessage(role="tool", content="third", tool_call_id="c", name="read_page", image_refs=[PAGE])]
+    parts = images.parts_for(rows, username="u", collections=["c"])
+    assert attempts == [["a1"], ["a1"]]
+    texts = lambda index: [p.get("text", "") for p in parts[index]]
+    assert "Image not attached: read_page screenshot of Lease (https://x.org): the image could not be read" in texts(0)
+    assert not any(t.startswith("Image shown above") for t in texts(0))
+    assert any(p["type"] == "image_url" for p in parts[1])
+    assert "Image shown above: read_page screenshot of Lease (https://x.org)" in texts(2)
+
+
+def test_a_kept_screenshot_names_its_exact_retry_arguments_and_costs_nothing():
+    retry = {"urls": ["https://x.org/report.pdf"], "page_start": 51, "version": "0123456789abcdef",
+             "screenshot": True}
+    kept = dict(PAGE, retry_arguments=retry)
+    text = images.captures_text([kept, PAGE])
+    assert ('call read_page with {"urls": ["https://x.org/report.pdf"], "page_start": 51, '
+            '"version": "0123456789abcdef", "screenshot": true}') in text
+    assert images.CAPTURES_TEXT.format(count=1) in text
+    # A kept reference is not model input: a row holds it outside `image_refs`.
+    row = RunMessage(role="tool", content=text, tool_call_id="c", name="read_page", image_refs=[])
+    assert images.list_tokens([row]) == 0 and images.parts_for([row], username="u", collections=[]) == {}

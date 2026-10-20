@@ -147,6 +147,24 @@ impl ChatImageRef {
             _ => None,
         }
     }
+
+    /// The source identity of the image: the capture, or the dataset and file of the
+    /// document. `None` when the reference names no source.
+    pub fn source_key(&self) -> Option<(String, String, String)> {
+        match self.kind.as_str() {
+            "capture" if !self.artifact_id.is_empty() => Some(("capture".into(), self.artifact_id.clone(), String::new())),
+            "document" if !self.file_hash.is_empty() => Some(("document".into(), self.dataset.clone(), self.file_hash.clone())),
+            _ => None,
+        }
+    }
+}
+
+/// One image that a tool card shows to the person, and whether the agent model received
+/// it with the result.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShownImage {
+    pub image: ChatImageRef,
+    pub sent_to_model: bool,
 }
 
 /// One document a tool step surfaced. Enough to render a search-result card and open
@@ -437,12 +455,39 @@ impl ChatMessageItem {
 
     /// The images that the agent model received after this tool result.
     pub fn image_refs(&self) -> Vec<ChatImageRef> {
+        self.stored_images("image_refs")
+    }
+
+    /// The page screenshots that the result kept for the person and did not send to the
+    /// model (`model_images` `on_demand`).
+    pub fn capture_refs(&self) -> Vec<ChatImageRef> {
+        self.stored_images("capture_refs")
+    }
+
+    /// Every image of this tool result for the person: the images that the model received,
+    /// then the kept screenshots, each source once. An image in both lists counts as sent.
+    pub fn shown_images(&self) -> Vec<ShownImage> {
+        let mut shown: Vec<ShownImage> = Vec::new();
+        let lists = [(self.image_refs(), true), (self.capture_refs(), false)];
+        for (refs, sent_to_model) in lists {
+            for image in refs {
+                let key = image.source_key();
+                if key.is_some() && shown.iter().any(|s| s.image.source_key() == key) {
+                    continue;
+                }
+                shown.push(ShownImage { image, sent_to_model });
+            }
+        }
+        shown
+    }
+
+    fn stored_images(&self, field: &str) -> Vec<ChatImageRef> {
         if self.role != ChatRole::Tool {
             return Vec::new();
         }
         serde_json::from_str::<serde_json::Value>(&self.usage_json)
             .ok()
-            .and_then(|usage| usage.get("image_refs").cloned())
+            .and_then(|usage| usage.get(field).cloned())
             .and_then(|refs| serde_json::from_value(refs).ok())
             .unwrap_or_default()
     }
@@ -1554,6 +1599,29 @@ mod tests {
         ]);
         row.role = ChatRole::Assistant;
         assert!(row.image_refs().is_empty());
+    }
+
+    #[test]
+    fn a_kept_screenshot_is_shown_to_the_person_and_not_named_as_sent() {
+        let mut row = counted(0, 0, 0);
+        row.role = ChatRole::Tool;
+        row.usage_json = r#"{"image_refs":[{"kind":"document","dataset":"c_d","file_hash":"h","label":"a.png"}],
+            "capture_refs":[{"kind":"capture","artifact_id":"a1","label":"Page"},
+                            {"kind":"capture","artifact_id":"a1","label":"Page"},
+                            {"kind":"document","dataset":"c_d","file_hash":"h","label":"a.png"}]}"#.into();
+        let shown: Vec<(String, bool)> = row
+            .shown_images()
+            .into_iter()
+            .map(|s| (s.image.url().unwrap_or_default(), s.sent_to_model))
+            .collect();
+        assert_eq!(shown, vec![
+            ("/_download_document/c_d/h".to_string(), true),
+            ("/_chat_artifact/a1/thumb.webp".to_string(), false),
+        ]);
+        // A row written before `capture_refs` shows its model images as before.
+        row.usage_json = r#"{"image_refs":[{"kind":"capture","artifact_id":"a2","label":"Page"}]}"#.into();
+        assert_eq!(row.shown_images().len(), 1);
+        assert!(row.capture_refs().is_empty());
     }
 
     #[test]

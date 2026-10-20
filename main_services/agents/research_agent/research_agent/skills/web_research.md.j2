@@ -82,14 +82,22 @@ offset is a zero-based character position. Omission starts at zero.
 version selects the captured text version. Copy it from a prior read of the same URL to continue that text.
 A version belongs to one URL. For another URL, read that URL first and copy its own version.
 links defaults to true and includes link destinations in the text.
-A cut result gives the next offset and version. Copy both values to continue.
-A find result gives match offsets and surrounding text. Copy its next offset with the same find and version.
+page_start selects the first page of a PDF window. One read extracts at most 50 PDF pages.
+A cut result, a find result with more matches and a PDF window give the arguments of the next call.
+Copy that argument object unchanged. It keeps the URL, the PDF window, the links setting and the version.
+A version belongs to one URL and one PDF window.
+A window without text does not show that the other pages of the PDF have no text.
 Repeating the first call reads the first text again.
 ```json
 {"urls":["COPY_SEARCH_RESULT_URL"]}
 ```
 ```json
 {"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
+```
+For example, a PDF result says "The text covers PDF pages 1 to 50 of 120 only" and gives the next window.
+A find in that window gives more matches with this object. Copy it as the next call.
+```json
+{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200}
 ```
 {% endif %}
 {% if has('whois_lookup') %}

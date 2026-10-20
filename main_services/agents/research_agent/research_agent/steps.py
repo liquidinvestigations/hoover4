@@ -1001,7 +1001,7 @@ async def _run_tool_call(context: Any, request: ToolCallRequest) -> Dict[str, An
     mode = request.control.model_images if request.control is not None else images.ATTACH
     selected, kept = images.select(name, args, image_refs or [], mode)
     if kept:
-        content = f"{content}\n\n{images.CAPTURES_TEXT.format(count=len(kept))}"
+        content = f"{content}\n\n{images.captures_text(kept)}"
     return _tool_response(
         request, content, status, "tool_error" if status == "error" else "",
         _with_repairs(measure, repairs), [], doc_refs, image_refs=selected, capture_refs=kept
