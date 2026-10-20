@@ -6,9 +6,12 @@ checks them in the indexes. `requirements` is a completion that lists answer con
 runs only when the definition enables it, because no live hook reads its result.
 
 Each child records a typed outcome in the facts (`children`): `ok`, `timeout`, `error`,
-`cancelled`, `skipped` or `disabled`. The handler waits for the children until shortly
-before the hook deadline, then cancels and awaits the unfinished ones, and returns the
-results of the completed ones. So a slow child cannot discard the skill picks of another.
+`cancelled`, `skipped` or `disabled`. A child that returns a classifier result with
+another status than `ok` records that status: `timeout` and `skipped` as they are, and
+`malformed`, `unavailable` or `http_error` as `error` with the status in `error`. The
+handler waits for the children until shortly before the hook deadline, then cancels and
+awaits the unfinished ones, and returns the results of the completed ones. So a slow child
+cannot discard the skill picks of another.
 
 The handler proposes at most `max_loads` skills whose scores reach their thresholds.
 It sorts by full-precision score and then by name.
@@ -16,8 +19,17 @@ A skill tied to source classes is proposed only when its classes include the sel
 A documents-only request receives no web skill. A failed request proposes nothing.
 
 With `classifier` false the handler makes no classifier request. The deterministic report
-trigger (`report_skill`) applies in both modes: a task that names a file, a report or a
-draft as its output loads the `report` skill before the first write.
+trigger (`report_skill`) applies in both modes: a task that asks for a file as its output
+loads the `report` skill before the first write (`asks_for_file`). A deliverable of a
+structured task decides first. Otherwise the request must name an output action, such as
+"write a report", or a file destination, such as "save it as notes.md". A report title, a
+draft agreement or a question about the files of a folder names an input and loads nothing.
+The `first_write` and `workspace_error` result triggers stay the fallback for other forms.
+
+The web capability comes from the callable tools of the turn. When the turn has no web
+tool and the classifier estimates that the request asks for public information, a note
+states that this turn has no web tools. The note states no deployment setting and asks for
+no refusal, and the source choice of the classifier stays as it is.
 
 The classifier input is the structured task of the turn (`facts.task_text`), so the focused
 objective of a board explore comes first and a cut request is marked as cut.
@@ -62,10 +74,39 @@ REQUIREMENT_PROMPT = (
 SCOPES = ("whole", "item", "relation")
 BASES = ("output_form", "source", "evidence")
 
-#: The words of a task that asks for a file as its output. The match is deterministic.
-REPORT_REQUEST = re.compile(
-    r"\b(?:reports?|files?|memos?|drafts?|write-?ups?|markdown|dossiers?|briefing notes?)\b"
-    r"|\.md\b", re.IGNORECASE)
+#: These nouns name a file output.
+FILE_NOUNS = (r"(?:reports?|files?|memos?|documents?|dossiers?|briefs?|briefing\s+notes?|"
+              r"write-?ups?|markdown(?:\s+files?)?|spreadsheets?|csv\s+files?)")
+#: These words give the count before a file noun, such as "three files".
+COUNT_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+               "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+#: An output action with its file noun: "write a report", "draft two short memos",
+#: "create separate files". At most three modifiers stand between, and none of them is a
+#: preposition, so "make a list of the files" names no output.
+OUTPUT_ACTION = re.compile(
+    r"\b(?:write|create|draft|prepare|produce|compose|compile|generate|make|save|deliver|export|put\s+together)"
+    r"\s+(?:(?:me|us)\s+)?(?:(?P<count>a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2}|several|separate|the|this|these|my|our)\s+)?"
+    r"(?:(?!(?:of|in|on|about|from|for|with|that|which|the)\b)[\w-]+\s+){0,3}?"
+    r"(?P<noun>" + FILE_NOUNS + r")\b", re.IGNORECASE)
+#: A file destination after an output verb: "put the results in a file", "list them in
+#: two markdown files". A question such as "is a password in a file" has no output verb.
+FILE_DESTINATION = re.compile(
+    r"\b(?:write|put|save|store|place|list|record|collect|keep|summari[sz]e|export|output|give|return|compile|split)\b"
+    r"[^.!?\n]{0,60}?\b(?:in|into|to|as)\s+(?:(?P<count>a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2}|several|separate)\s+)?"
+    r"(?:new\s+|separate\s+|markdown\s+|workspace\s+)?(?P<noun>files?|reports?|documents?)\b", re.IGNORECASE)
+#: A named output path: "save it as notes.md", "write summary.md", "a file called a.md".
+FILE_NAME = r"[\w][\w.-]*\.(?:md|markdown|txt|csv|json|html)"
+NAMED_OUTPUT = re.compile(
+    r"\b(?:save|write|create|export|store|put|produce|name|call)\b[^.!?\n]{0,60}?\b(?P<name>" + FILE_NAME + r")\b"
+    r"|\b(?:as|into|named|called)\s+[`\"']?(?P<name2>[\w][\w.-]*\.(?:md|markdown))\b", re.IGNORECASE)
+#: These patterns find a file name in a deliverable and a file noun anywhere.
+ANY_FILE_NAME = re.compile(r"\b" + FILE_NAME + r"\b", re.IGNORECASE)
+FILE_NOUN = re.compile(r"\b" + FILE_NOUNS + r"\b", re.IGNORECASE)
+
+#: The note of a turn whose callable tools have no web tool, for a request that the
+#: classifier estimates to ask for public information.
+WEB_TOOLS_ABSENT = ("This turn has no web tools, so it cannot read public web pages. Use the "
+                    "selected collections, and state which part of the request they do not answer.")
 
 #: The seconds before the hook deadline at which the handler stops waiting for children.
 RETURN_MARGIN_SECONDS = 0.75
@@ -95,16 +136,52 @@ def _requirements(text: str, request: str) -> list[dict]:
     return out[:6]
 
 
-def asks_for_file(task: Mapping[str, Any]) -> bool:
-    """Whether the objective, the deliverables or the corrections of a task name a file."""
+def _texts(task: Mapping[str, Any], keys) -> list[str]:
     texts = []
-    for key in ("objective", "deliverables", "corrections"):
+    for key in keys:
         value = task.get(key)
         if isinstance(value, Mapping):
             texts.append(str(value.get("text") or ""))
         elif isinstance(value, (list, tuple)):
             texts.extend(str(v.get("text") or "") for v in value if isinstance(v, Mapping))
-    return any(REPORT_REQUEST.search(t) for t in texts)
+    return texts
+
+
+def requested_output(task: Mapping[str, Any]) -> dict:
+    """The file outputs that a task requests: `{"file": bool, "names": [...], "count": n}`.
+
+    A deliverable of a structured task is an output, so a file noun or a file name in it
+    counts. In the objective and the corrections, only an output action, a file destination
+    or a named output path counts. `count` is the largest stated number of requested files,
+    or 0 when the task states none. `names` are the requested file names in text order."""
+    names: list[str] = []
+    count = 0
+    file = False
+    for text in _texts(task, ("deliverables",)):
+        found = ANY_FILE_NAME.findall(text)
+        names.extend(found)
+        file = file or bool(found) or bool(FILE_NOUN.search(text))
+    for text in _texts(task, ("objective", "corrections")):
+        # A sentence with an output action names its output files after that action.
+        for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+            start = None
+            for pattern in (OUTPUT_ACTION, FILE_DESTINATION):
+                for match in pattern.finditer(sentence):
+                    word = (match.group("count") or "").lower()
+                    count = max(count, COUNT_WORDS.get(word) or (int(word) if word.isdigit() else 0))
+                    start = match.start() if start is None else min(start, match.start())
+            for match in NAMED_OUTPUT.finditer(sentence):
+                start = match.start() if start is None else min(start, match.start())
+            if start is not None:
+                file = True
+                names.extend(ANY_FILE_NAME.findall(sentence[start:]))
+    names = list(dict.fromkeys(names))
+    return {"file": file, "names": names, "count": max(count, len(names))}
+
+
+def asks_for_file(task: Mapping[str, Any]) -> bool:
+    """Whether a task asks for a file as its output (`requested_output`)."""
+    return requested_output(task)["file"]
 
 
 async def gather_children(children: dict, services, margin: float = RETURN_MARGIN_SECONDS):
@@ -151,8 +228,20 @@ async def gather_children(children: dict, services, margin: float = RETURN_MARGI
                               "error": f"{type(exc).__name__}: {exc}"[:300]}
         else:
             results[name] = task.result()
-            outcomes[name] = {"status": "ok", "duration_ms": ms}
+            outcomes[name] = {**child_status(task.result()), "duration_ms": ms}
     return results, outcomes
+
+
+def child_status(value) -> dict:
+    """The typed outcome of a child that returned `value`. A classifier result, or a tuple
+    whose last item is one, gives its own status. Another value is `ok`."""
+    result = value[-1] if isinstance(value, tuple) and value else value
+    status = getattr(result, "status", "ok")
+    if not isinstance(status, str) or status == "ok":
+        return {"status": "ok"}
+    if status in ("timeout", "skipped", "cancelled"):
+        return {"status": status}
+    return {"status": "error", "error": status[:80]}
 
 
 class Handler:
@@ -257,7 +346,7 @@ class Handler:
                 found.append((match.group(1) or match.group(2)).rstrip("."))
             found = list(dict.fromkeys(found))[:8]
             records = await check_names(found, context, services) if hasattr(services, "suggestions") else []
-            return found, records
+            return found, records, named
 
         children = {"ask": ask()}
         if parameters.get("names", True):
@@ -294,15 +383,15 @@ class Handler:
                 facts["requested_web_score"] = web_only
                 checks.append(CheckResult(event.id, "web_only", "pass" if web_only is not None else "unknown",
                                           web_only, (), asked.status))
+            # The callable tools of this turn establish the capability. The classifier score
+            # only selects whether the note is relevant to the request.
             if "web" not in context.capabilities and web_only is not None and web_only >= 0.9:
-                facts["web_unavailable"] = True
-                facts["sources"] = {"choice": "none", "probabilities": {"none": 1.0}}
-                actions.append(Action("append_note", "web-unavailable", freeze({"text":
-                    "This deployment has no web access. Tell the person that this request needs web access."})))
+                facts["web_tools_absent"] = True
+                actions.append(Action("append_note", "web-unavailable", freeze({"text": WEB_TOOLS_ABSENT})))
             choice = (facts["sources"] or {}).get("choice")
             # The source order of a chat turn. A board brief gives its own source rules.
             if (parameters.get("source_note", True) and choice in ("documents", "both")
-                    and not facts.get("web_unavailable") and context.run_kind != "board"):
+                    and context.run_kind != "board"):
                 text = "Search the permitted document collections first. Read their relevant documents."
                 if "web" in context.capabilities:
                     text += " Read those documents before using the web."

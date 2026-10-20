@@ -292,6 +292,7 @@ def test_a_repeated_tool_message_of_one_call_counts_once():
 def test_handles_in_code_are_literal_and_listed_apart():
     text = "Kept `Web [W1]` and\n```\nsee [D2]\n```\nand \\`x\\` and [D3]."
     assert references.code_handles(text) == ["[W1]", "[D2]"]
+    assert references.code_handle_places(text) == [("[W1]", False), ("[D2]", True)]
     assert [h for h, _ in references.handles(text)] == ["[D3]"]
 
 
@@ -299,9 +300,17 @@ def test_a_file_with_only_code_formatted_handles_is_stored_with_a_note():
     prepared = mutations.prepare(command(content="The plant closed `[W1]`."), None, [])
     assert prepared.ok and prepared.result["citations"] == []
     assert "[W1] is inside code formatting" in prepared.result["note"]
-    linked = mutations.prepare(command(content="Approved [D1]. Example: `[D9]`."), None,
+    # A handle in an inline code span of the prose gets the note beside a linked handle.
+    linked = mutations.prepare(command(content="Approved [D1]. The transfer `[D9]`."), None,
                                [cite("[D1]")])
-    assert linked.ok and "note" not in linked.result
+    assert linked.ok and linked.result["citations"] == ["[D1]"]
+    assert linked.result["note"].startswith("[D9] is inside code formatting in the text")
+    assert "no linked citation" not in linked.result["note"]
+    assert linked.version.content == "Approved [D1]. The transfer `[D9]`."
+    # A fenced example beside a linked handle is an example and gets no note.
+    example = "Approved [D1].\n\n```\nWrite [D2] beside the claim.\n```\n"
+    fenced = mutations.prepare(command(content=example), None, [cite("[D1]")])
+    assert fenced.ok and "note" not in fenced.result and fenced.version.content == example
     plain = mutations.prepare(command(content="No sources."), None, [])
     assert plain.ok and "note" not in plain.result
 

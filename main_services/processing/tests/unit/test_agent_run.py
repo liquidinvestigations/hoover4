@@ -1046,6 +1046,23 @@ def test_a_stopped_turn_lists_its_delivered_files_under_the_ending_row(store, mo
     assert usage["report"] == {"name": "a.md", "version": 2}
 
 
+def test_a_failed_turn_lists_its_delivered_files_and_a_retry_writes_the_same_row(store, monkeypatch):
+    """A turn that fails after its writes keeps the manifest under the failure row. A retry
+    of the ending activity before the terminal row write writes the same seq and files."""
+    _five_files(store)
+    monkeypatch.setattr(stream_writer, "release_browser", lambda run_id: None)
+    monkeypatch.setattr(agent_runs, "write_run_terminal", lambda *a, **k: None)
+    params = WriteEndingParams(RUN_ID, "u", "s", agent_runs.FAILED, error="model unavailable")
+    activities._write_ending(params)
+    activities._write_ending(params)
+    rows = [r for r in store["chat"] if r["role"] == "error"]
+    assert len({r["seq"] for r in rows}) == 1
+    usage = json.loads(rows[-1]["usage_json"])
+    assert [(r["name"], r["version"]) for r in usage["reports"]] == [
+        ("a.md", 2), ("b.md", 1), ("c.md", 1), ("d.md", 1), ("e.md", 1)]
+    assert "f.md" not in json.dumps(usage)
+
+
 def test_a_stopped_turn_without_files_keeps_its_plain_ending_row(store, monkeypatch):
     monkeypatch.setattr(stream_writer, "release_browser", lambda run_id: None)
     monkeypatch.setattr(agent_runs, "write_run_terminal", lambda *a, **k: None)

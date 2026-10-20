@@ -17,8 +17,11 @@ succeeds as already applied and stores no version.
 
 **Validation** checks every citation handle of the candidate (`references.check`). A
 finding leaves the file unchanged and is the result of the call. A content without handles
-passes. A stored version without a resolved handle whose code formatting holds handle-like
-text gets a note that names that text (`references.code_handles`). The note refuses nothing.
+passes. A stored version whose code formatting holds handle-like text gets a note that names
+that text (`references.code_handle_places`). An inline code span of a prose line gets the
+note also when other handles of the file resolve. A fenced code block holds an example, so
+it gets the note only when no handle of the file resolves. The note refuses nothing, and
+the stored text stays as it was written.
 """
 
 from __future__ import annotations
@@ -189,14 +192,18 @@ def prepare(cmd: Command, head: Optional[FileVersion], entries: Iterable[dict]) 
         note = fuzzy_match.boundary_note([record["strategy"]])
         if note:
             result["note"] = ours(note)
-    literal = references.code_handles(content) if not resolved else []
+    places = references.code_handle_places(content)
+    literal = [handle for handle, fenced in places if not fenced or not resolved]
     if literal:
         # A narrow notice: the file is stored, and the notice names the handles that the
         # page shows as text. Code stays literal, so nothing is converted.
-        result["note"] = " ".join(p for p in (result.get("note"), (
-            f"The file has no linked citation. {', '.join(dict.fromkeys(literal))} is inside code "
-            "formatting, so the page shows it as text. Write a returned handle such as [D1] or "
-            "[W1] outside backticks beside its claim to link the source.")) if p)
+        named = ", ".join(dict.fromkeys(literal))
+        notice = (f"The file has no linked citation. {named} is inside code formatting, so the "
+                  "page shows it as text. Write a returned handle such as [D1] or [W1] outside "
+                  "backticks beside its claim to link the source." if not resolved else
+                  f"{named} is inside code formatting in the text, so the page shows it as text. "
+                  "If it cites a source, write the returned handle outside backticks beside its claim.")
+        result["note"] = " ".join(p for p in (result.get("note"), notice) if p)
     hint = rewrite_hint(head.content, content) if head is not None and cmd.op == "write" else ""
     if hint:
         result["hint"] = hint

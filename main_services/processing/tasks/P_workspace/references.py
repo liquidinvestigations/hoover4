@@ -68,17 +68,20 @@ def handles(text: str) -> list[tuple[str, int]]:
 CODE_HANDLE = re.compile(r"\[\s*[DW]\d+(?:\s*,\s*[DW]\d+)*\s*\]")
 
 
-def code_handles(text: str) -> list[str]:
-    """The handle-like brackets of `text` that a code block or an inline code span holds, in
-    text order. They are literal text, so the page shows no citation for them."""
-    out: list[str] = []
+def code_handle_places(text: str) -> list[tuple[str, bool]]:
+    """`(handle, fenced)` for each handle-like bracket of `text` in code, in text order.
+
+    `fenced` is true inside a fenced code block, which holds an example, and false inside an
+    inline code span of a prose line. Both are literal text, so the page shows no citation
+    for them."""
+    out: list[tuple[str, bool]] = []
     fenced = False
     for line in text.splitlines():
         if FENCE.match(line):
             fenced = not fenced
             continue
         if fenced:
-            out.extend(CODE_HANDLE.findall(line))
+            out.extend((handle, True) for handle in CODE_HANDLE.findall(line))
             continue
         i = 0
         while i < len(line):
@@ -88,11 +91,17 @@ def code_handles(text: str) -> list[str]:
             if line[i] == "`":
                 end = line.find("`", i + 1)
                 if end != -1:
-                    out.extend(CODE_HANDLE.findall(line[i + 1:end]))
+                    out.extend((handle, False) for handle in CODE_HANDLE.findall(line[i + 1:end]))
                     i = end + 1
                     continue
             i += 1
     return out
+
+
+def code_handles(text: str) -> list[str]:
+    """The handle-like brackets of `text` that a code block or an inline code span holds, in
+    text order. They are literal text, so the page shows no citation for them."""
+    return [handle for handle, _ in code_handle_places(text)]
 
 
 def _source(reference: dict) -> str:
@@ -151,4 +160,4 @@ def check(name: str, text: str, entries: Iterable[dict]) -> tuple[list[dict], li
     return findings, resolved
 
 
-__all__ = ["check", "code_handles", "handles"]
+__all__ = ["check", "code_handle_places", "code_handles", "handles"]

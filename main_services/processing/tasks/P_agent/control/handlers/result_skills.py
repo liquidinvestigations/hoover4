@@ -9,8 +9,12 @@ so no classifier request is made.
 The events:
 
 * `first_read`: the first successful read of the turn.
-* `web_search`: a successful web search.
-* `browser`: a call of a browser tool.
+* `web_search`: a successful web search of the model.
+* `browser`: a call of a browser tool by the model.
+* `page_read_recovery`: a `read_page` result that failed, or that holds a page without
+  text, a cut page or a find result, so the next call needs the web method. It includes
+  the automatic page reads of a policy, which the model did not request. A refused
+  argument error is not one.
 * `first_write`: the first successful workspace write or patch of the turn, so later edits
   have the file method.
 * `workspace_error`: a failed workspace write or patch, such as a citation finding or a
@@ -19,6 +23,13 @@ The events:
   route refused (`facts.ARGUMENT_ERRORS`, `facts.VALIDATION_TEXT`).
 * `unknown_document`: a document or table call that named no readable document.
 
+
+**Method events.** Every definition maps the tool results of a method to its skill
+(`METHOD_EVENTS`): a successful web search and a page read that needs recovery load
+`web_research`, and a browser call loads `browser_use`. A definition can map the same skill
+in `events`, which replaces the method mapping of that skill, and `methods` false turns the
+method mapping off. A skill loads only when the turn lists it, so a turn without the tool of
+a method loads none of its text.
 
 The handler proposes the load. The coordinator drops a skill whose pinned text is still
 visible in the model input, and merges two proposals for one skill. A policy batch can load
@@ -33,8 +44,10 @@ from tasks.P_agent.control import facts as F
 from tasks.P_agent.control.model import API_VERSION, Action, CheckResult, PolicyResult, freeze
 
 OBJECTS = {"table": F.is_table_hit, "email": F.is_email_hit}
-EVENTS = ("first_read", "web_search", "browser", "first_write", "workspace_error",
-          "argument_error", "unknown_document")
+EVENTS = ("first_read", "web_search", "browser", "page_read_recovery", "first_write",
+          "workspace_error", "argument_error", "unknown_document")
+#: The skill of each method and the result events that make it necessary.
+METHOD_EVENTS = {"web_research": ("web_search", "page_read_recovery"), "browser_use": ("browser",)}
 #: The tools that name a document by its hash.
 DOCUMENT_TOOLS = ("read_documents", "doc_metadata", "doc_email", "doc_sources", "doc_search_text",
                   "list_document_entities", "cite_documents", "table_overview", "table_page",
@@ -49,9 +62,14 @@ def _event(kind: str, batch, earlier) -> bool:
     if kind == "first_read":
         return bool(F.satisfactory_reads(batch)) and not F.satisfactory_reads(earlier)
     if kind == "web_search":
-        return any(f.name == "web_search" and f.status == "ok" for f in batch)
+        return any(f.name == "web_search" and f.status == "ok" and f.origin == "model" for f in batch)
     if kind == "browser":
-        return any(f.name.startswith("browser_") for f in batch)
+        return any(f.name.startswith("browser_") and f.origin == "model" for f in batch)
+    if kind == "page_read_recovery":
+        # An argument error is `refused` and loads the argument skill instead.
+        return any(f.name == "read_page" and (f.status == "error" or any(status in ("error", "partial")
+                                                                          for _, status in f.reads))
+                   for f in batch)
     if kind == "first_write":
         return bool(_writes(batch)) and not _writes(earlier)
     if kind == "workspace_error":
@@ -76,6 +94,8 @@ class Handler:
             unknown = [k for k in kinds if k not in EVENTS]
             if unknown or not kinds:
                 raise ValueError(f"skill {name!r} names the unknown event {unknown or kinds!r}")
+        if not isinstance(parameters.get("methods", True), bool):
+            raise ValueError("methods must be true or false")
 
     async def evaluate(self, event, context, parameters, services) -> PolicyResult:
         batch = list(context.batch)
@@ -88,7 +108,9 @@ class Handler:
             if hit:
                 actions.append(Action("load_skill", name, freeze({"skill": name, "trigger": hit})))
                 checks.append(CheckResult(event.id, f"skill:{name}", "pass", None, (), f"object {hit}"))
-        for name, kinds in (parameters.get("events") or {}).items():
+        events = dict(METHOD_EVENTS) if parameters.get("methods", True) else {}
+        events.update(parameters.get("events") or {})
+        for name, kinds in events.items():
             kinds = [kinds] if isinstance(kinds, str) else list(kinds)
             kind = next((k for k in kinds if _event(k, batch, earlier)), None)
             if name in context.listed_skills and kind:

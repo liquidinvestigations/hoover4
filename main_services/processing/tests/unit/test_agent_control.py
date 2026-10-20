@@ -1063,9 +1063,13 @@ def test_unavailable_public_sources_do_not_request_document_searches(score):
     assert result.facts["requested_web_score"] == score
     assert next(c for c in result.checks if c.target_id == "web_only").score == score
     if score >= 0.9:
-        assert result.facts["sources"]["choice"] == "none"
-        assert "This deployment has no web access" in text
-        assert "Search the permitted document collections" not in text
+        # The note names the tools of this turn. The source choice and the document order
+        # stay, and no note asks for a refusal or names the deployment.
+        assert result.facts["sources"]["choice"] == "documents"
+        assert result.facts["web_tools_absent"] is True
+        assert "This turn has no web tools" in text
+        assert "deployment" not in text and "needs web access" not in text
+        assert "Search the permitted document collections" in text
         assert "at least 4 distinct searches" not in text
     else:
         assert result.facts["sources"]["choice"] == "documents"
@@ -1533,3 +1537,259 @@ def test_the_comparison_definitions_validate_and_hold_page_reads_constant(ident,
         assert prepare.parameters["classifier"] is True and progress.parameters["signals"] is True
     if ident == "chat-advisory":
         assert progress.parameters["completion"] == "none" and progress.parameters["advice"] is True
+
+
+# ------------------------------------------------- output intent, methods and task context
+
+
+REPORT_REQUESTS = {
+    "Write a report on the Fortress payments.": True,
+    "Write three files: a.md, b.md and c.md, one for each supplier.": True,
+    "Create separate markdown files for each year.": True,
+    "Save the list as suppliers.md.": True,
+    "Put the results in a file.": True,
+    "Draft a memo to the board.": True,
+    "Read budget.csv and write a summary to summary.md.": True,
+    "Summarize the report titled 'Annual Report 2019'.": False,
+    "Find the draft agreement between Enron and Dynegy.": False,
+    "Which files are in the folder /archives?": False,
+    "List the files in the archive parent.zip.": False,
+    "Is there a password in a file in this collection?": False,
+    "Make a list of the files that mention Fortress.": False,
+    "What does budget.csv say about rent?": False,
+    "Who wrote the report on California?": False,
+}
+
+
+@pytest.mark.parametrize("request_text,expected", sorted(REPORT_REQUESTS.items()))
+def test_the_report_skill_follows_the_requested_output(request_text, expected):
+    """An output action, a file destination or a named output path loads `report`. A report
+    title, a draft agreement or a question about files names an input and loads nothing."""
+    from tasks.P_agent.control.handlers.preparation import Handler
+    from tasks.P_agent.control.model import ControlEvent
+    context = replace(_progress_context(), request=request_text,
+                      listed_skills=freeze({"report": {}}),
+                      task=freeze({"objective": {"text": request_text, "source": "user"}}))
+    result = asyncio.run(Handler().evaluate(ControlEvent("start", "turn_started", 0, "runtime"),
+                                            context, {"classifier": False}, object()))
+    assert [a.target_id for a in result.actions] == (["report"] if expected else [])
+
+
+def test_the_requested_files_come_from_deliverables_first():
+    from tasks.P_agent.control.handlers.preparation import requested_output
+    board = {"objective": {"text": "Find the dated events.", "source": "intent"},
+             "deliverables": [{"text": "A report file events.md", "source": "intent"}]}
+    assert requested_output(board) == {"file": True, "names": ["events.md"], "count": 1}
+    several = {"objective": {"text": "Write three files: a.md, b.md and c.md.", "source": "user"}}
+    assert requested_output(several) == {"file": True, "names": ["a.md", "b.md", "c.md"], "count": 3}
+    inventory = {"objective": {"text": "Which report files are in /archives?", "source": "user"}}
+    assert requested_output(inventory)["file"] is False
+
+
+def _read_page_fact(status="ok", reads=(("https://a.example", "ok"),)):
+    return _fact("read_page", status=status, args={"urls": ["https://a.example"]}, reads=reads)
+
+
+@pytest.mark.parametrize("batch,expected", [
+    ([lambda: _fact("web_search", urls=("https://a.example",))], ["web_research"]),
+    ([lambda: _fact("web_search", status="error")], []),
+    ([lambda: _fact("web_search", origin="policy")], []),
+    ([lambda: replace(_read_page_fact(reads=(("https://a.example", "partial"),)), origin="policy")], ["web_research"]),
+    ([lambda: _fact("browser_navigate", args={"url": "https://a.example"})], ["browser_use"]),
+    ([lambda: _read_page_fact(status="error", reads=())], ["web_research"]),
+    ([lambda: _read_page_fact(status="refused", reads=())], []),
+    ([lambda: _read_page_fact(reads=(("https://a.example", "partial"),))], ["web_research"]),
+    ([lambda: _read_page_fact(reads=(("https://a.example", "error"),))], ["web_research"]),
+    ([lambda: _read_page_fact()], []),
+    ([lambda: _fact("search_collections")], []),
+])
+def test_the_method_events_load_the_web_and_browser_skills(batch, expected):
+    """The tool results of a method load its skill in every definition, with no classifier.
+    A full page read needs no recovery method."""
+    from tasks.P_agent.control.handlers.result_skills import Handler
+    facts = tuple(make() for make in batch)
+    listed = freeze({"web_research": {}, "browser_use": {}})
+    context = replace(_progress_context(), listed_skills=listed, results=facts, batch=facts)
+    result = asyncio.run(Handler().evaluate(_event(), context, {}, object()))
+    assert sorted(a.target_id for a in result.actions) == expected
+    off = asyncio.run(Handler().evaluate(_event(), context, {"methods": False}, object()))
+    assert [a.target_id for a in off.actions] == []
+    unlisted = replace(context, listed_skills=freeze({}))
+    assert asyncio.run(Handler().evaluate(_event(), unlisted, {}, object())).actions == ()
+
+
+def test_a_definition_event_replaces_the_method_mapping_of_its_skill():
+    from tasks.P_agent.control.handlers.result_skills import Handler
+    search = (_fact("web_search"),)
+    context = replace(_progress_context(), listed_skills=freeze({"web_research": {}}),
+                      results=search, batch=search)
+    only_browser = {"events": {"web_research": "browser"}}
+    assert asyncio.run(Handler().evaluate(_event(), context, only_browser, object())).actions == ()
+    with pytest.raises(ValueError, match="methods"):
+        Handler().validate({"methods": "yes"})
+
+
+def test_a_web_method_loads_once_while_its_text_is_visible(store, monkeypatch, route):
+    """A successful web search loads `web_research` through the stored rule. A second web
+    search while the skill text is visible loads nothing."""
+    rule = {**OBJECTS, "id": "methods", "parameters": {}}
+    _pin(store, monkeypatch, _definition([rule]))
+    _hook("turn_started", 0)
+    store["messages"].extend([
+        _ai(1, [("w1", "web_search", {"queries": ["mill closure"]})]),
+        _tool(2, "w1", "web_search", {"results": [{"url": "https://a.example/1"}]}),
+    ])
+    first = _hook("tool_batch_completed", 1)
+    assert [c.name for c in first.calls] == ["read_skill"]
+    written = next(m for m in store["messages"] if m.idx == first.calls[0].ai_idx)
+    assert [e["args"] for e in written.tool_calls] == [{"name": "web_research"}]
+    store["messages"].append(_tool(max(m.idx for m in store["messages"]) + 1, first.calls[0].call_id,
+                                   "read_skill", SKILLS["web_research"]["text"]))
+    store["agent"].visible = ["web_research"]
+    policy = max(m.idx for m in store["messages"])
+    store["messages"].extend([
+        _ai(policy + 1, [("w2", "web_search", {"queries": ["mill owner"]})]),
+        _tool(policy + 2, "w2", "web_search", {"results": [{"url": "https://a.example/2"}]}),
+    ])
+    assert list(_hook("tool_batch_completed", policy + 1).calls) == []
+
+
+def test_a_child_that_returns_a_failed_classifier_result_records_its_status():
+    from tasks.P_agent.control.handlers.preparation import child_status, gather_children
+    from tasks.P_agent.control.model import ClassifierResult
+
+    async def returns(value):
+        return value
+    results, outcomes = asyncio.run(gather_children({
+        "ask": returns(ClassifierResult("ok")),
+        "names": returns((["x"], [], ClassifierResult("timeout"))),
+        "requirements": returns(ClassifierResult("http_error")),
+    }, object()))
+    assert outcomes["ask"]["status"] == "ok"
+    assert outcomes["names"]["status"] == "timeout"
+    assert outcomes["requirements"] == {**outcomes["requirements"], "status": "error", "error": "http_error"}
+    assert set(results) == {"ask", "names", "requirements"}
+    assert child_status(ClassifierResult("skipped")) == {"status": "skipped"}
+    assert child_status(("plain",)) == {"status": "ok"}
+
+
+def test_a_failed_skill_request_beside_a_finished_name_request_keeps_both_outcomes(store, monkeypatch, route):
+    """Through the activity: the skill request fails with an HTTP error, the name request
+    finishes. The decision records `error` for the skill child and `ok` for the name child."""
+    _pin(store, monkeypatch, _definition([PREPARE]))
+
+    class Split(_Route):
+        def __call__(self, session, url, body, key, timeout):
+            if "names=" in body.get("questions", {}):
+                return 200, {"answers": {"names=": {"items": []}}}, ""
+            return 500, {"error": "x"}, ""
+
+    route["route"] = Split()
+    _hook("turn_started", 0)
+    children = store["messages"][0].usage["control"]["decisions"]["turn_started"]["facts"]["preparation"]["children"]
+    assert children["ask"]["status"] == "error" and children["names"]["status"] == "ok"
+
+
+def test_a_chat_task_keeps_an_earlier_source_restriction_with_its_turn():
+    from tasks.P_agent.control import facts as F
+    first = F.chat_task("Search only the enron collection. Who approved the talking points?", 1, [])
+    assert first["constraints"] == [{"text": "Search only the enron collection.", "source": "user", "turn": 1}]
+    follow = F.chat_task("Now write it as a file.", 3, [first])
+    assert follow["objective"] == {"text": "Now write it as a file.", "source": "user", "turn": 3}
+    assert follow["constraints"] == [{"text": "Search only the enron collection.", "source": "user", "turn": 1}]
+    newer = F.chat_task("Do not use the web for this one.", 5, [first, follow])
+    assert [c["turn"] for c in newer["constraints"]] == [5, 1]
+    legacy = F.chat_task("And the second one?", 2, [{"objective": {"text": "Use only documents from 2001 in the archive.", "source": "user"}}])
+    assert legacy["constraints"] == [{"text": "Use only documents from 2001 in the archive.", "source": "user"}]
+    assert "constraints" not in F.chat_task("Who approved the talking points?", 1, [])
+
+
+def test_a_long_task_shows_the_objective_and_the_constraints_before_the_background():
+    from tasks.P_agent.control import facts as F
+    task = {"objective": {"text": "Write the second file.", "source": "user", "turn": 3},
+            "brief": {"text": "Background. " * 600, "source": "intent"},
+            "constraints": [{"text": "Search only the enron collection.", "source": "user", "turn": 1}]}
+    text, omitted = F.task_text(task, 400)
+    assert text.index("Write the second file.") < text.index("Search only the enron collection.") < text.index("Background.")
+    assert omitted > 0 and f"[{omitted} characters of the task are omitted here]" in text
+    opening = agent_runs.RunMessageRow(idx=0, role="human", content="Write the second file.",
+                                       usage_json=json.dumps({"control": {"task": task}}))
+    assert F.task_of(opening)["constraints"][0]["turn"] == 1
+
+
+def test_a_follow_up_turn_records_its_task_and_the_classifier_reads_the_constraint(store, monkeypatch, route):
+    """The earlier turn restricted the collection. The short follow-up keeps that
+    restriction in its recorded task and in the input of the preparation request."""
+    earlier = [agent_runs.RunMessageRow(idx=0, role="human", run_id="earlier",
+                                        content="Search only the testdata collection. Who approved the transfer?"),
+               agent_runs.RunMessageRow(idx=1, role="ai", run_id="earlier", content="Kim approved it [D1].")]
+    current = list(store["messages"])
+    monkeypatch.setattr(agent_runs, "read_earlier_threads", lambda *a: ["earlier"])
+    monkeypatch.setattr(agent_runs, "read_messages",
+                        lambda u, s, thread: earlier if thread == "earlier" else list(store["messages"]))
+    store["messages"][0] = replace(current[0], content="Now write two files, a.md and b.md.")
+    _pin(store, monkeypatch, _definition([PREPARE]))
+    _hook("turn_started", 0)
+    control = store["messages"][0].usage["control"]
+    assert control["task"]["objective"]["text"] == "Now write two files, a.md and b.md."
+    assert control["task"]["constraints"][0]["text"] == "Search only the testdata collection."
+    asked = [body for url, body in route["route"].bodies if "sources=" in body.get("questions", {})]
+    assert asked and "Search only the testdata collection." in asked[0]["state"]["request"]
+    assert asked[0]["state"]["request"].startswith("objective: Now write two files")
+
+
+def test_one_file_of_three_requested_files_is_no_delivery_evidence():
+    """The classifier answer stays an observation. With one of three named files stored, the
+    level note has no completion advice, and the ledger names the missing files."""
+    from tasks.P_agent.control.handlers.progress import COMPLETION_ADVICE, Handler
+    task = freeze({"objective": {"text": "Write three files: a.md, b.md and c.md.", "source": "user"}})
+    stalled = {"level": 0, "units": 2}
+    search = _fact("search_collections", item_count=0, args={"query": "x"})
+    one = _fact("write_file", file_version=("a.md", 1, True), call_id="w1")
+    context = replace(_progress_context(stalled, (search,), 2), results=(one, search), task=task)
+    partial = asyncio.run(Handler().evaluate(_event(), context, {}, _Signals(0.95)))
+    note = next(a for a in partial.actions if a.kind == "append_note")
+    assert COMPLETION_ADVICE not in note.arguments["text"]
+    ledger = plain_facts(partial)
+    assert ledger["delivery"]["state"] == "incomplete" and ledger["delivery"]["missing"] == ["b.md", "c.md"]
+    assert ledger["answered"] is True and ledger["delivery_evidence"] is False
+    writes = tuple(_fact("write_file", file_version=(n, 1, True), call_id=f"w-{n}") for n in ("a.md", "b.md", "c.md"))
+    complete = asyncio.run(Handler().evaluate(_event(), replace(context, results=writes + (search,)), {}, _Signals(0.95)))
+    note = next(a for a in complete.actions if a.kind == "append_note")
+    assert COMPLETION_ADVICE in note.arguments["text"]
+    assert plain_facts(complete)["delivery"]["state"] == "complete"
+    # A file write still counts as progress for the deterministic ledger.
+    progress = asyncio.run(Handler().evaluate(_event(), replace(_progress_context(stalled, (one,), 2), results=(one,), task=task), {}, _Signals(0.0)))
+    assert plain_facts(progress)["level"] == 0 and plain_facts(progress)["units"] == 0
+
+
+def test_a_cancelled_preparation_keeps_its_samples_and_applies_no_action(store, monkeypatch, route):
+    """The run stops while the name request blocks. The activity raises the cancellation
+    after the children end, stores no decision and starts no call, and the request samples
+    are written with no applied action."""
+    import threading
+
+    _pin(store, monkeypatch, _definition([PREPARE], {"preparation_seconds": 3}))
+    written = []
+    monkeypatch.setattr(C, "write_events", lambda row, record: written.append(record))
+
+    class Blocked(_Route):
+        def __call__(self, session, url, body, key, timeout):
+            import time
+            if "names=" in body.get("questions", {}):
+                time.sleep(1.5)
+            return super().__call__(session, url, body, key, timeout)
+
+    route["route"] = Blocked({"skill_spreadsheets=": {"noul": 0.97}})
+    env = ActivityEnvironment()
+    threading.Timer(0.4, env.cancel).start()
+    with pytest.raises(BaseException) as raised:
+        env.run(control_steps.control_event, control_steps.ControlParams(
+            run_id=RUN_ID, username="u", session_id="s", hook="turn_started", anchor_idx=0,
+            allowed_collections=["testdata"], internet_tools=True, deadline_seconds=3.0))
+    assert type(raised.value).__name__ == "CancelledError"
+    control = store["messages"][0].usage["control"]
+    assert "turn_started" not in (control.get("decisions") or {})
+    assert len(store["messages"]) == 1
+    assert written and all(e["actions"] == 0 for e in written[-1]["classifier_events"])
+    assert written[-1]["classifier_events"], "the request samples are kept"

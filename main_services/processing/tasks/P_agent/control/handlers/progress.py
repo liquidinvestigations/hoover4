@@ -27,9 +27,13 @@ operation facts before any signal is read.
   ending in `stop_cause`.
 
 * `completion` selects what the `answered` signal can do. `none` ignores it. `evidence`
-  adds advice to a level note only when the thread holds delivery evidence: a stored file
-  version, or a verified citation of a successful read. The signal is recomputed for every
-  batch and is never kept from an earlier batch.
+  adds advice to a level note only when the thread holds delivery evidence. When the task
+  names its output files or their count (`preparation.requested_output`), the evidence is
+  a successful new version of every named file, or of as many distinct files as the count.
+  One file of three is not evidence. When the task names no file, completeness stays
+  unknown, and a stored file version or a verified citation of a successful read is the
+  evidence. The signal is recomputed for every batch and is never kept from an earlier
+  batch. The ledger records the comparison in `delivery`.
 * `advice` true adds an advice note, whose text names the chat check as its origin, the
   first time in the turn that `stuck` or `absent` fires. The advice proposes a method. It
   states no completion and no quota.
@@ -107,12 +111,34 @@ def summary(searches):
                      f"{s['items']} items, {s['keyword_matches']} keyword matches." for s in searches[-30:])
 
 
-def delivery_evidence(results) -> bool:
-    """Whether the thread holds observable delivery evidence: a stored new file version, or
-    a verified citation together with a successful read."""
-    if any(f.file_version and f.file_version[2] for f in results if f.status == "ok"):
-        return True
-    return bool(F.satisfactory_reads(results)) and any(f.verified_citations for f in results)
+def delivery(task, results) -> dict:
+    """The requested file outputs of `task` compared with the stored file versions.
+
+    `state` is `complete` when the task names its files or their count and the thread
+    stored a new version of each, `incomplete` when one is missing, and `unknown` when the
+    task names no file or no count. `evidence` is what the completion advice may rely on.
+    """
+    from tasks.P_agent.control.handlers.preparation import requested_output
+
+    requested = requested_output(task or {})
+    delivered = list(dict.fromkeys(f.file_version[0] for f in results
+                                   if f.status == "ok" and f.file_version and f.file_version[2]))
+    names, count = requested["names"], requested["count"]
+    if names or count:
+        missing = [n for n in names if n not in delivered]
+        complete = not missing and len(delivered) >= count
+        return {"state": "complete" if complete else "incomplete", "requested": names,
+                "requested_count": count, "delivered": delivered, "missing": missing,
+                "evidence": complete}
+    evidence = bool(delivered) or (bool(F.satisfactory_reads(results))
+                                   and any(f.verified_citations for f in results))
+    return {"state": "unknown", "requested": [], "requested_count": 0, "delivered": delivered,
+            "missing": [], "evidence": evidence}
+
+
+def delivery_evidence(results, task=None) -> bool:
+    """Whether the thread holds the delivery evidence of `delivery`."""
+    return delivery(task, results)["evidence"]
 
 
 def new_versions(batch, seen: set) -> set:
@@ -202,7 +228,9 @@ class Handler:
             level = 0
         seen.update(new)
         actions = []
-        evidence = delivery_evidence(context.results)
+        delivered = delivery(context.task or {"objective": {"text": context.request, "source": "user"}},
+                             context.results)
+        evidence = delivered["evidence"]
         raised = units >= parameters.get("units_per_level", 3)
         if raised and level < 3:
             level += 1
@@ -259,7 +287,7 @@ class Handler:
                   "stop_cause": stop_cause,
                   # Recomputed for each batch. An earlier positive answer is not kept.
                   "answered": bool(signals["answered"]["fired"]),
-                  "delivery_evidence": evidence, "task_omitted_chars": omitted,
+                  "delivery_evidence": evidence, "delivery": delivered, "task_omitted_chars": omitted,
                   "absent_checked": absent_checked, "absence_records": absence_records,
                   "absent_advised": bool(previous.get("absent_advised")
                                          or (parameters.get("advice", False) and signals["absent"]["fired"])),

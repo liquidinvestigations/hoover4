@@ -216,22 +216,29 @@ TASK_FIELDS = ("objective", "corrections", "constraints", "deliverables", "allow
                "brief", "goals")
 
 
-def task_of(opening) -> dict:
+def task_of(opening, control: Optional[dict] = None) -> dict:
     """The structured task of a turn: each field with its `text` and its `source`.
 
     A board explore turn stores its fields in the usage of the opening message (`task`),
-    built from the stored intent before the long brief is rendered. A chat turn has the
-    request of the person as its objective. A field holds original text only. A classifier
-    answer never becomes a field.
+    built from the stored intent before the long brief is rendered. A chat turn stores its
+    effective task in the control record of the opening message (`control["task"]`,
+    `chat_task`). An older opening row without either has the request of the person as its
+    objective. A field holds original text only. A classifier answer never becomes a field.
     """
     task = opening.usage.get("task") if opening is not None else None
+    if not (isinstance(task, dict) and task):
+        recorded = (control or {}).get("task") if isinstance(control, dict) else None
+        if recorded is None and opening is not None and isinstance(opening.usage.get("control"), dict):
+            recorded = opening.usage["control"].get("task")
+        task = recorded
     if isinstance(task, dict) and task:
         out = {}
         for key, value in task.items():
             if isinstance(value, dict) and isinstance(value.get("text"), str):
-                out[str(key)] = {"text": value["text"], "source": str(value.get("source") or "")}
+                out[str(key)] = {"text": value["text"], "source": str(value.get("source") or ""),
+                                 **_turn_of(value)}
             elif isinstance(value, list):
-                items = [{"text": v["text"], "source": str(v.get("source") or "")}
+                items = [{"text": v["text"], "source": str(v.get("source") or ""), **_turn_of(v)}
                          for v in value if isinstance(v, dict) and isinstance(v.get("text"), str)]
                 if items:
                     out[str(key)] = items
@@ -239,6 +246,65 @@ def task_of(opening) -> dict:
             return out
     return {"objective": {"text": (opening.content or "") if opening is not None else "",
                           "source": "user"}}
+
+
+def _turn_of(value: dict) -> dict:
+    """The originating turn of a task field, when the field records one."""
+    turn = value.get("turn")
+    return {"turn": turn} if isinstance(turn, int) and not isinstance(turn, bool) else {}
+
+
+#: A sentence that restricts the sources of the work: a collection, a folder, the web or a
+#: kind of document, with a restricting word. The match is deterministic and keeps the
+#: original wording.
+SOURCE_RESTRICTION = re.compile(
+    r"\b(?:only|just|exclusively|solely|limit(?:ed)? (?:it |this |yourself |the search )?to|restrict(?:ed)?(?: it| this| yourself)? to|stick to|"
+    r"do not|don't|never|without|except|exclud(?:e|ing)|must not|no)\b[^.!?\n]{0,80}?"
+    r"\b(?:collections?|datasets?|folders?|documents?|e-?mails?|files?|archives?|web|internet|online|"
+    r"websites?|sites?|sources?|google|search engines?|news)\b", re.IGNORECASE)
+
+#: The constraints that a chat task carries, newest first.
+MAX_CARRIED_CONSTRAINTS = 8
+
+
+def restriction_sentences(text: str) -> list[str]:
+    """The sentences of `text` that restrict the sources, in text order."""
+    sentences = re.split(r"(?<=[.!?])\s+|\n+", text or "")
+    return [s.strip()[:300] for s in sentences if s.strip() and SOURCE_RESTRICTION.search(s)]
+
+
+def chat_task(request: str, turn_seq: int, earlier: Iterable[dict]) -> dict:
+    """The effective task of an ordinary chat turn.
+
+    The objective is the request of this turn. `constraints` holds the source restrictions
+    that the person wrote in this turn and in earlier turns of the session, each with the
+    turn that wrote it, newest first. `earlier` holds the effective tasks of the earlier
+    turns, oldest first, and an earlier turn without a recorded task gives its request as
+    its objective. A short follow-up therefore keeps an earlier restriction. A restriction
+    of this turn comes first, so it takes precedence for a reader that reads in order.
+    """
+    constraints: list[dict] = [{"text": text, "source": "user", "turn": turn_seq}
+                               for text in restriction_sentences(request)]
+    for task in reversed(list(earlier)):
+        objective = task.get("objective") if isinstance(task, dict) else None
+        if isinstance(objective, dict) and isinstance(objective.get("text"), str):
+            turn = objective.get("turn")
+            constraints.extend({"text": text, "source": "user", **({"turn": turn} if isinstance(turn, int) else {})}
+                               for text in restriction_sentences(objective["text"]))
+        for item in (task.get("constraints") if isinstance(task, dict) else None) or []:
+            if isinstance(item, dict) and isinstance(item.get("text"), str):
+                constraints.append({"text": item["text"], "source": str(item.get("source") or "user"),
+                                    **_turn_of(item)})
+    seen, kept = set(), []
+    for item in constraints:
+        key = item["text"].casefold()
+        if key not in seen:
+            seen.add(key)
+            kept.append(item)
+    task: dict = {"objective": {"text": request or "", "source": "user", "turn": turn_seq}}
+    if kept:
+        task["constraints"] = kept[:MAX_CARRIED_CONSTRAINTS]
+    return task
 
 
 def task_text(task: dict, limit: int) -> tuple[str, int]:

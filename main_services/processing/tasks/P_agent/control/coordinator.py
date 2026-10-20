@@ -254,20 +254,27 @@ def _pin(row, messages, params) -> dict:
     services = Services(Classifier(Deadline(2)), messages, row, params)
     listing = services._backend("collections/list", {}) if params.allowed_collections else {"collections": []}
     collections = [c["collectionname"] for c in listing.get("collections", []) if c.get("collectionname")]
+    conversation, earlier_tasks = _conversation(row)
     control = {"definition": definition.record(), "assets": assets,
                "capabilities": sorted(capabilities), "collections": collections,
-               "conversation": _conversation(row),
+               "conversation": conversation,
                "revision": digest([definition.revision, assets.get("revision")]),
                "decisions": {}}
+    # The effective task of a chat turn. A board explore turn has its own task on the
+    # opening message, which `facts.task_of` reads first.
+    if not isinstance(opening.usage.get("task"), dict):
+        control["task"] = F.chat_task(opening.content or "", int(row.turn_seq), earlier_tasks)
     write_control(row, opening, control)
     return control
 
 
-def _conversation(row) -> list[dict]:
-    """Return bounded context from the last two ended turns of this session."""
+def _conversation(row) -> tuple[list[dict], list[dict]]:
+    """Return bounded context from the last two ended turns of this session, and the
+    effective tasks of those turns, oldest first. An earlier opening row without a recorded
+    task gives its request as its objective."""
     from database import agent_runs
 
-    out = []
+    out, tasks = [], []
     for thread in agent_runs.read_earlier_threads(row.username, row.session_id, row.turn_seq)[-2:]:
         previous = agent_runs.read_messages(row.username, row.session_id, thread)
         if not previous:
@@ -277,7 +284,8 @@ def _conversation(row) -> list[dict]:
         preparation = _turn_facts(previous).get("preparation") or {}
         out.append({"request": (previous[0].content or "")[:2000], "answer": answer[:3000],
                     "sources": (preparation.get("sources") or {}).get("choice")})
-    return out
+        tasks.append(F.task_of(previous[0]))
+    return out, tasks
 
 
 def _anchor(params, messages):
@@ -412,7 +420,7 @@ def _context(row, params, messages, control, event, anchor) -> PolicyContext:
         collections=tuple(control.get("collections", params.allowed_collections) or []),
         recent_steps=F.render_steps(messages),
         run_kind="board" if getattr(params, "board_turn", False) else "chat",
-        task=freeze(F.task_of(messages[0])))
+        task=freeze(F.task_of(messages[0], control)))
     return context
 
 

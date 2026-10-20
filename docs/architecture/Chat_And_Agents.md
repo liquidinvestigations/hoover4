@@ -263,16 +263,30 @@ The `chat-default` definition has these rules:
 
 - At the turn start, the preparation check classes the request sources and scores the
   listed skills. It loads at most three skills in 15 seconds. It uses bounded context from
-  the last two ended turns to resolve references in a follow-up request. A request that
-  names a file, a report or a draft as its output loads the `report` skill without a
-  classifier request. The classifier request, the name check and the requirement list run
+  the last two ended turns to resolve references in a follow-up request. A task that asks
+  for a file as its output loads the `report` skill without a classifier request: a
+  deliverable that names a file, an output action such as "write a report", a file
+  destination such as "put the results in a file", or a named output path such as
+  "save it as notes.md". A report title, a draft agreement and a question about the files
+  of a folder name an input and load nothing, and the first workspace write loads the skill
+  for another form. The classifier request, the name check and the requirement list run
   as independent children. Each child records `ok`, `timeout`, `error`, `cancelled`,
-  `skipped` or `disabled`, so a slow child does not discard the result of another. The
-  requirement list is off unless a definition enables it.
+  `skipped` or `disabled`, and a child whose classifier result failed records its status,
+  so a slow or failed child does not discard the result of another. The requirement list
+  is off unless a definition enables it.
+- The opening row of a chat turn records the effective task of the turn in its control
+  record (`facts.chat_task`): the request as the objective, and the source restrictions
+  that the person wrote in this turn and in earlier turns, each with its turn, newest
+  first. A short follow-up therefore keeps an earlier restriction. The preparation and
+  progress checks read this task, objective first. An opening row without the record reads
+  its request as before.
 - A chat turn gets one source note: search the permitted collections first, and the web
   after them when the turn has web tools. No effort question or call quota applies.
 - After a tool batch, a result that needs the table, email or citation method loads that
-  skill. A skill text that is still visible to the model is not loaded again.
+  skill. A successful web search of the model, and a page read that failed or holds a cut
+  page, a find result or a page without text, load `web_research`. A browser call of the
+  model loads `browser_use`. A skill text that is still visible to the model is not loaded
+  again, and a skill that the turn does not list is not loaded.
 - After a web search batch of the model, the worker reads the unread result addresses in
   search-rank order. It uses one `read_page` call of at most six addresses.
 - A short page capture with no article text gets a note that names the page.
@@ -280,7 +294,8 @@ The `chat-default` definition has these rules:
 
 An absent-name note requires the person's choice before the agent searches a suggested spelling.
 Without web tools, preparation records whether the request asks for public sources, including past events.
-A public-source request gets the unavailable-access note without document-search guidance.
+The callable tools of the turn establish the capability. A public-source request gets a note that this turn has no web tools.
+The note names no deployment setting and asks for no refusal, and the source choice and the document guidance stay.
 The chat system prompt requires the name choice before candidate searches and the capability explanation before the answer.
 
 ## Streaming a turn
