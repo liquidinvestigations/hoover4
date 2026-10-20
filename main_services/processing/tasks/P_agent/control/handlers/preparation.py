@@ -20,11 +20,12 @@ A documents-only request receives no web skill. A failed request proposes nothin
 
 With `classifier` false the handler makes no classifier request. The deterministic report
 trigger (`report_skill`) applies in both modes: a task that asks for a file as its output
-loads the `report` skill before the first write (`asks_for_file`). A deliverable of a
-structured task decides first. Otherwise the request must name an output action, such as
-"write a report", or a file destination, such as "save it as notes.md". A report title, a
-draft agreement or a question about the files of a folder names an input and loads nothing.
-The `first_write` and `workspace_error` result triggers stay the fallback for other forms.
+loads the `report` skill before the first write (`asks_for_file`). The output groups of the
+task record decide (`task_state`): a deliverable of a structured task, an output action such
+as "write a report", a file destination such as "in a short report", or a named output such
+as "save it as notes.md". A report title, an input file, a prohibited write or a question
+about the files of a folder loads nothing. The `first_write` and `workspace_error` result
+triggers stay the fallback for the requests that the record cannot interpret.
 
 The web capability comes from the callable tools of the turn. When the turn has no web
 tool and the classifier estimates that the request asks for public information, a note
@@ -74,35 +75,6 @@ REQUIREMENT_PROMPT = (
 SCOPES = ("whole", "item", "relation")
 BASES = ("output_form", "source", "evidence")
 
-#: These nouns name a file output.
-FILE_NOUNS = (r"(?:reports?|files?|memos?|documents?|dossiers?|briefs?|briefing\s+notes?|"
-              r"write-?ups?|markdown(?:\s+files?)?|spreadsheets?|csv\s+files?)")
-#: These words give the count before a file noun, such as "three files".
-COUNT_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
-               "seven": 7, "eight": 8, "nine": 9, "ten": 10}
-#: An output action with its file noun: "write a report", "draft two short memos",
-#: "create separate files". At most three modifiers stand between, and none of them is a
-#: preposition, so "make a list of the files" names no output.
-OUTPUT_ACTION = re.compile(
-    r"\b(?:write|create|draft|prepare|produce|compose|compile|generate|make|save|deliver|export|put\s+together)"
-    r"\s+(?:(?:me|us)\s+)?(?:(?P<count>a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2}|several|separate|the|this|these|my|our)\s+)?"
-    r"(?:(?!(?:of|in|on|about|from|for|with|that|which|the)\b)[\w-]+\s+){0,3}?"
-    r"(?P<noun>" + FILE_NOUNS + r")\b", re.IGNORECASE)
-#: A file destination after an output verb: "put the results in a file", "list them in
-#: two markdown files". A question such as "is a password in a file" has no output verb.
-FILE_DESTINATION = re.compile(
-    r"\b(?:write|put|save|store|place|list|record|collect|keep|summari[sz]e|export|output|give|return|compile|split)\b"
-    r"[^.!?\n]{0,60}?\b(?:in|into|to|as)\s+(?:(?P<count>a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d{1,2}|several|separate)\s+)?"
-    r"(?:new\s+|separate\s+|markdown\s+|workspace\s+)?(?P<noun>files?|reports?|documents?)\b", re.IGNORECASE)
-#: A named output path: "save it as notes.md", "write summary.md", "a file called a.md".
-FILE_NAME = r"[\w][\w.-]*\.(?:md|markdown|txt|csv|json|html)"
-NAMED_OUTPUT = re.compile(
-    r"\b(?:save|write|create|export|store|put|produce|name|call)\b[^.!?\n]{0,60}?\b(?P<name>" + FILE_NAME + r")\b"
-    r"|\b(?:as|into|named|called)\s+[`\"']?(?P<name2>[\w][\w.-]*\.(?:md|markdown))\b", re.IGNORECASE)
-#: These patterns find a file name in a deliverable and a file noun anywhere.
-ANY_FILE_NAME = re.compile(r"\b" + FILE_NAME + r"\b", re.IGNORECASE)
-FILE_NOUN = re.compile(r"\b" + FILE_NOUNS + r"\b", re.IGNORECASE)
-
 #: The note of a turn whose callable tools have no web tool, for a request that the
 #: classifier estimates to ask for public information.
 WEB_TOOLS_ABSENT = ("This turn has no web tools, so it cannot read public web pages. Use the "
@@ -136,52 +108,33 @@ def _requirements(text: str, request: str) -> list[dict]:
     return out[:6]
 
 
-def _texts(task: Mapping[str, Any], keys) -> list[str]:
-    texts = []
-    for key in keys:
-        value = task.get(key)
-        if isinstance(value, Mapping):
-            texts.append(str(value.get("text") or ""))
-        elif isinstance(value, (list, tuple)):
-            texts.extend(str(v.get("text") or "") for v in value if isinstance(v, Mapping))
-    return texts
+def task_record(context) -> Mapping[str, Any]:
+    """The task record of the turn (`task_state`), or the record of its structured task
+    when the context holds no record."""
+    from tasks.P_agent.control import task_state
+
+    if context.task_state:
+        return context.task_state
+    task = context.task or {"objective": {"text": context.request, "source": "user"}}
+    return task_state.from_structured(task)
 
 
-def requested_output(task: Mapping[str, Any]) -> dict:
+def requested_output(task: Mapping[str, Any], state: Mapping[str, Any] | None = None) -> dict:
     """The file outputs that a task requests: `{"file": bool, "names": [...], "count": n}`.
 
-    A deliverable of a structured task is an output, so a file noun or a file name in it
-    counts. In the objective and the corrections, only an output action, a file destination
-    or a named output path counts. `count` is the largest stated number of requested files,
-    or 0 when the task states none. `names` are the requested file names in text order."""
-    names: list[str] = []
-    count = 0
-    file = False
-    for text in _texts(task, ("deliverables",)):
-        found = ANY_FILE_NAME.findall(text)
-        names.extend(found)
-        file = file or bool(found) or bool(FILE_NOUN.search(text))
-    for text in _texts(task, ("objective", "corrections")):
-        # A sentence with an output action names its output files after that action.
-        for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
-            start = None
-            for pattern in (OUTPUT_ACTION, FILE_DESTINATION):
-                for match in pattern.finditer(sentence):
-                    word = (match.group("count") or "").lower()
-                    count = max(count, COUNT_WORDS.get(word) or (int(word) if word.isdigit() else 0))
-                    start = match.start() if start is None else min(start, match.start())
-            for match in NAMED_OUTPUT.finditer(sentence):
-                start = match.start() if start is None else min(start, match.start())
-            if start is not None:
-                file = True
-                names.extend(ANY_FILE_NAME.findall(sentence[start:]))
-    names = list(dict.fromkeys(names))
-    return {"file": file, "names": names, "count": max(count, len(names))}
+    The output groups of the task record decide (`task_state.requirements`). Without
+    `state`, the record of the structured task `task` is used. `count` is the sum of the
+    exact counts of the active groups, at least the count of the names, and 0 when no group
+    states an exact count. `names` are the requested file names in text order."""
+    from tasks.P_agent.control import task_state
+
+    required = task_state.requirements(state if state else task_state.from_structured(task or {}))
+    return {"file": required["file"], "names": required["names"], "count": required["count"]}
 
 
-def asks_for_file(task: Mapping[str, Any]) -> bool:
+def asks_for_file(task: Mapping[str, Any], state: Mapping[str, Any] | None = None) -> bool:
     """Whether a task asks for a file as its output (`requested_output`)."""
-    return requested_output(task)["file"]
+    return requested_output(task, state)["file"]
 
 
 async def gather_children(children: dict, services, margin: float = RETURN_MARGIN_SECONDS):
@@ -275,7 +228,7 @@ class Handler:
         actions: list = []
         picks: list = []
         if (parameters.get("report_skill", True) and "report" in context.listed_skills
-                and asks_for_file(task)):
+                and asks_for_file(task, task_record(context))):
             picks.append(("report", 1.0))
             checks.append(CheckResult(event.id, "skill:report", "pass", None, (), "the task names a file"))
         if not parameters.get("classifier", True):

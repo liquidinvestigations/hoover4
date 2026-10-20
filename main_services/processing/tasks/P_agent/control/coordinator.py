@@ -22,7 +22,7 @@ import time
 from dataclasses import replace
 from typing import Any, Optional
 
-from tasks.P_agent.control import definitions, facts as F, registry
+from tasks.P_agent.control import definitions, facts as F, registry, task_state as TS
 from tasks.P_agent.control.classifier import Classifier, Deadline
 from tasks.P_agent.control.model import (
     Action, CheckResult, ControlEvent, PolicyContext, PolicyResult, action_id, check_dict,
@@ -254,38 +254,72 @@ def _pin(row, messages, params) -> dict:
     services = Services(Classifier(Deadline(2)), messages, row, params)
     listing = services._backend("collections/list", {}) if params.allowed_collections else {"collections": []}
     collections = [c["collectionname"] for c in listing.get("collections", []) if c.get("collectionname")]
-    conversation, earlier_tasks = _conversation(row)
+    conversation, earlier = _conversation(row)
     control = {"definition": definition.record(), "assets": assets,
                "capabilities": sorted(capabilities), "collections": collections,
                "conversation": conversation,
                "revision": digest([definition.revision, assets.get("revision")]),
                "decisions": {}}
-    # The effective task of a chat turn. A board explore turn has its own task on the
-    # opening message, which `facts.task_of` reads first.
-    if not isinstance(opening.usage.get("task"), dict):
-        control["task"] = F.chat_task(opening.content or "", int(row.turn_seq), earlier_tasks)
+    # The task record of the turn, derived once here and read by every hook of the turn.
+    # A board explore turn has its own structured task on the opening message, which stays
+    # authoritative (`facts.task_of`).
+    if isinstance(opening.usage.get("task"), dict):
+        control["task_state"] = TS.from_structured(F.task_of(opening), int(row.turn_seq))
+    else:
+        state = TS.derive(opening.content or "", int(row.turn_seq), earlier)
+        control["task_state"] = state
+        control["task"] = TS.text_task(state)
     write_control(row, opening, control)
     return control
 
 
-def _conversation(row) -> tuple[list[dict], list[dict]]:
-    """Return bounded context from the last two ended turns of this session, and the
-    effective tasks of those turns, oldest first. An earlier opening row without a recorded
-    task gives its request as its objective."""
-    from database import agent_runs
+#: The earlier turns that a pin reads at most to rebuild the task of a session whose
+#: turns have no stored task record. A stored record ends the read.
+MAX_TASK_THREADS = 12
 
-    out, tasks = [], []
-    for thread in agent_runs.read_earlier_threads(row.username, row.session_id, row.turn_seq)[-2:]:
+
+def _conversation(row) -> tuple[list[dict], dict]:
+    """Return bounded context from the last two ended turns of this session, oldest first,
+    and the task record of the earlier turns (`task_state.reconstruct`).
+
+    The read goes back from the newest earlier turn. It ends at a turn with a stored task
+    record, at the first turn of the session, or after `MAX_TASK_THREADS` turns. An older
+    turn gives its request and its delivered files. When the read ends at the bound, the
+    record states that its reconstruction is incomplete."""
+    from database import agent_runs
+    from tasks.P_agent.stream_writer import prepare_thread
+    from tasks.P_workspace.selection import delivered_reports
+
+    threads = agent_runs.read_earlier_threads(row.username, row.session_id, row.turn_seq)
+    out, records = [], []
+    stored = False
+    for position, thread in enumerate(reversed(threads)):
+        if position >= MAX_TASK_THREADS:
+            break
         previous = agent_runs.read_messages(row.username, row.session_id, thread)
         if not previous:
+            records.append({"request": "", "turn": None})
             continue
-        answer = next((m.content for m in reversed(previous)
-                       if m.role == "ai" and m.content and not m.tool_calls), "")
-        preparation = _turn_facts(previous).get("preparation") or {}
-        out.append({"request": (previous[0].content or "")[:2000], "answer": answer[:3000],
-                    "sources": (preparation.get("sources") or {}).get("choice")})
-        tasks.append(F.task_of(previous[0]))
-    return out, tasks
+        if position < 2:
+            answer = next((m.content for m in reversed(previous)
+                           if m.role == "ai" and m.content and not m.tool_calls), "")
+            preparation = _turn_facts(previous).get("preparation") or {}
+            out.insert(0, {"request": (previous[0].content or "")[:2000], "answer": answer[:3000],
+                           "sources": (preparation.get("sources") or {}).get("choice")})
+        opening = previous[0]
+        delivered = [{"name": r["name"], "version": r["version"]}
+                     for r in delivered_reports(prepare_thread(previous))]
+        recorded = control_of(opening).get("task_state")
+        if isinstance(recorded, dict) and recorded.get("schema_version") == TS.SCHEMA_VERSION:
+            records.append({"state": recorded, "delivered": delivered,
+                            "turn": (recorded.get("request") or {}).get("turn")})
+            stored = True
+            break
+        task = F.task_of(opening, control_of(opening))
+        records.append({"request": opening.content or "", "task": task, "delivered": delivered,
+                        "turn": (task.get("objective") or {}).get("turn")})
+    complete = stored or len(records) >= len(threads)
+    return out, TS.reconstruct(list(reversed(records)), complete)
 
 
 def _anchor(params, messages):
@@ -420,7 +454,8 @@ def _context(row, params, messages, control, event, anchor) -> PolicyContext:
         collections=tuple(control.get("collections", params.allowed_collections) or []),
         recent_steps=F.render_steps(messages),
         run_kind="board" if getattr(params, "board_turn", False) else "chat",
-        task=freeze(F.task_of(messages[0], control)))
+        task=freeze(F.task_of(messages[0], control)),
+        task_state=freeze(F.task_state_of(messages[0], control)))
     return context
 
 
@@ -460,6 +495,7 @@ def _decide(row, params, messages, control, anchor, samples) -> dict:
         "rules": [{"id": rule.id, "revision": rule.revision, **record}
                   for rule, _, record in evaluated],
         "task_digest": digest(plain(context.task)),
+        "task_state_digest": digest(plain(context.task_state)),
         "checks": checks, "facts": facts, "classifier": classifier.log,
         "evaluated_ms": int((time.monotonic() - started) * 1000),
         "status": "prepared", "round": False, "rows": {"ai_idx": None, "calls": [], "note": None},

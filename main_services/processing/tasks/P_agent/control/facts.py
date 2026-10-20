@@ -212,8 +212,9 @@ def first(items: Iterable, default: Optional[Any] = None) -> Any:
 
 
 #: The task fields of a structured task, in the order that a classifier request shows them.
-TASK_FIELDS = ("objective", "corrections", "constraints", "deliverables", "allowed_sources",
-               "brief", "goals")
+#: The objective, the corrections and the amendments come first, so a cut text keeps them.
+TASK_FIELDS = ("objective", "corrections", "amendments", "constraints", "allowed_sources",
+               "deliverables", "earlier_objective", "brief", "goals")
 
 
 def task_of(opening, control: Optional[dict] = None) -> dict:
@@ -221,9 +222,10 @@ def task_of(opening, control: Optional[dict] = None) -> dict:
 
     A board explore turn stores its fields in the usage of the opening message (`task`),
     built from the stored intent before the long brief is rendered. A chat turn stores its
-    effective task in the control record of the opening message (`control["task"]`,
-    `chat_task`). An older opening row without either has the request of the person as its
-    objective. A field holds original text only. A classifier answer never becomes a field.
+    text task in the control record of the opening message (`control["task"]`), derived from
+    its task record (`task_state.text_task`). An older opening row without either has the
+    request of the person as its objective. A field holds original text only. A classifier
+    answer never becomes a field.
     """
     task = opening.usage.get("task") if opening is not None else None
     if not (isinstance(task, dict) and task):
@@ -248,63 +250,48 @@ def task_of(opening, control: Optional[dict] = None) -> dict:
                           "source": "user"}}
 
 
+def task_state_of(opening, control: Optional[dict] = None) -> dict:
+    """The task record of a turn (`task_state`). A board explore turn without a stored
+    record gets the record of its structured task. A chat turn pinned before the record
+    existed gets a record of its stored text task, marked as legacy, so it supports no
+    completion claim that its missing evidence would need."""
+    from tasks.P_agent.control import task_state
+
+    stored = (control or {}).get("task_state") if isinstance(control, dict) else None
+    if stored is None and opening is not None and isinstance(opening.usage.get("control"), dict):
+        stored = opening.usage["control"].get("task_state")
+    if isinstance(stored, dict) and stored.get("schema_version") == task_state.SCHEMA_VERSION:
+        return stored
+    board = opening is not None and isinstance(opening.usage.get("task"), dict)
+    return task_state.from_structured(task_of(opening, control), legacy=not board)
+
+
 def _turn_of(value: dict) -> dict:
     """The originating turn of a task field, when the field records one."""
     turn = value.get("turn")
     return {"turn": turn} if isinstance(turn, int) and not isinstance(turn, bool) else {}
 
 
-#: A sentence that restricts the sources of the work: a collection, a folder, the web or a
-#: kind of document, with a restricting word. The match is deterministic and keeps the
-#: original wording.
-SOURCE_RESTRICTION = re.compile(
-    r"\b(?:only|just|exclusively|solely|limit(?:ed)? (?:it |this |yourself |the search )?to|restrict(?:ed)?(?: it| this| yourself)? to|stick to|"
-    r"do not|don't|never|without|except|exclud(?:e|ing)|must not|no)\b[^.!?\n]{0,80}?"
-    r"\b(?:collections?|datasets?|folders?|documents?|e-?mails?|files?|archives?|web|internet|online|"
-    r"websites?|sites?|sources?|google|search engines?|news)\b", re.IGNORECASE)
-
-#: The constraints that a chat task carries, newest first.
-MAX_CARRIED_CONSTRAINTS = 8
-
-
 def restriction_sentences(text: str) -> list[str]:
-    """The sentences of `text` that restrict the sources, in text order."""
-    sentences = re.split(r"(?<=[.!?])\s+|\n+", text or "")
-    return [s.strip()[:300] for s in sentences if s.strip() and SOURCE_RESTRICTION.search(s)]
+    """The sentences of `text` that state a source permission or restriction, in text
+    order, each complete (`task_state.source_rules`)."""
+    from tasks.P_agent.control import task_state
+
+    return [rule["text"] for rule in task_state.source_rules(text, None)]
 
 
 def chat_task(request: str, turn_seq: int, earlier: Iterable[dict]) -> dict:
-    """The effective task of an ordinary chat turn.
+    """The text task of an ordinary chat turn (`task_state.text_task`).
 
-    The objective is the request of this turn. `constraints` holds the source restrictions
-    that the person wrote in this turn and in earlier turns of the session, each with the
-    turn that wrote it, newest first. `earlier` holds the effective tasks of the earlier
-    turns, oldest first, and an earlier turn without a recorded task gives its request as
-    its objective. A short follow-up therefore keeps an earlier restriction. A restriction
-    of this turn comes first, so it takes precedence for a reader that reads in order.
-    """
-    constraints: list[dict] = [{"text": text, "source": "user", "turn": turn_seq}
-                               for text in restriction_sentences(request)]
-    for task in reversed(list(earlier)):
-        objective = task.get("objective") if isinstance(task, dict) else None
-        if isinstance(objective, dict) and isinstance(objective.get("text"), str):
-            turn = objective.get("turn")
-            constraints.extend({"text": text, "source": "user", **({"turn": turn} if isinstance(turn, int) else {})}
-                               for text in restriction_sentences(objective["text"]))
-        for item in (task.get("constraints") if isinstance(task, dict) else None) or []:
-            if isinstance(item, dict) and isinstance(item.get("text"), str):
-                constraints.append({"text": item["text"], "source": str(item.get("source") or "user"),
-                                    **_turn_of(item)})
-    seen, kept = set(), []
-    for item in constraints:
-        key = item["text"].casefold()
-        if key not in seen:
-            seen.add(key)
-            kept.append(item)
-    task: dict = {"objective": {"text": request or "", "source": "user", "turn": turn_seq}}
-    if kept:
-        task["constraints"] = kept[:MAX_CARRIED_CONSTRAINTS]
-    return task
+    `earlier` holds the text tasks or the task records of the earlier turns, oldest first.
+    The record keeps the active objective through a continuation or an amendment, keeps the
+    rules of the session with the turn that wrote each, and drops a rule that a later turn
+    superseded. The coordinator derives the record itself (`coordinator._pin`). This
+    function gives the same text task for callers that hold text tasks."""
+    from tasks.P_agent.control import task_state
+
+    base = task_state.from_text_tasks(list(earlier))
+    return task_state.text_task(task_state.derive(request or "", turn_seq, base))
 
 
 def task_text(task: dict, limit: int) -> tuple[str, int]:
@@ -319,7 +306,8 @@ def task_text(task: dict, limit: int) -> tuple[str, int]:
     for key in TASK_FIELDS + tuple(k for k in task if k not in TASK_FIELDS):
         value = task.get(key)
         if isinstance(value, Mapping):
-            parts.append(f"{key}: {value['text']}")
+            if value["text"]:
+                parts.append(f"{key}: {value['text']}")
         elif isinstance(value, (list, tuple)) and value:
             parts.append(f"{key}:\n" + "\n".join(f"- {v['text']}" for v in value))
     text = "\n\n".join(parts)
@@ -327,6 +315,14 @@ def task_text(task: dict, limit: int) -> tuple[str, int]:
         return text, 0
     omitted = len(text) - limit
     return text[:limit] + f"\n[{omitted} characters of the task are omitted here]", omitted
+
+
+def task_request(context, limit: int) -> str:
+    """The task text of a policy context for a classifier request of at most `limit`
+    characters: the text task (`task_text`) when the context has one, else the request."""
+    if context.task:
+        return task_text(context.task, limit)[0]
+    return (context.request or "")[:limit]
 
 
 def render_steps(messages, limit: int = 5) -> str:

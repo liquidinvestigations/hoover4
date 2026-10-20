@@ -70,7 +70,7 @@ class Handler:
         checks = []
         if mode == "classifier":
             details = web_results(services, pool)
-            state = {"request": context.request[:1500],
+            state = {"request": F.task_request(context, 1500),
                      "results": {f"r{k + 1}": details[k] for k in range(len(pool))}}
             questions = {f"r{k + 1}_read=": {"type": "noul",
                                             "instructions": QUESTION.format(rid=f"r{k + 1}")}

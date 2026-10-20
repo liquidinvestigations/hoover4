@@ -30,6 +30,7 @@ import difflib
 import re
 from typing import Any, Mapping
 
+from tasks.P_agent.control import facts as F
 from tasks.P_agent.control.facts import justified_absence
 from tasks.P_agent.control.handlers_common import answer_blocks
 from tasks.P_agent.control.model import (
@@ -133,7 +134,7 @@ class Handler:
                     text = f"Do the verified passages establish that the answer meets the condition '{req['text']}'?"
                 questions[qid] = {"type": "noul", "instructions": text}
                 targets[qid] = ("requirements", {"id": f"req{k + 1}", "text": req["text"]}, [])
-        state = {"request": context.request[:1500],
+        state = {"request": F.task_request(context, 1500),
                  "answer_blocks": {b["id"]: b["text"][:900] for b in blocks},
                  "verified_passages": [{"handle": p.get("handle"), "source": p.get("source"),
                                         "quotes": list(p.get("quotes") or [])[:4]}

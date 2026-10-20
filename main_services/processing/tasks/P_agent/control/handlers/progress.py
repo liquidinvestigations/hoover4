@@ -27,18 +27,25 @@ operation facts before any signal is read.
   ending in `stop_cause`.
 
 * `completion` selects what the `answered` signal can do. `none` ignores it. `evidence`
-  adds advice to a level note only when the thread holds delivery evidence. When the task
-  names its output files or their count (`preparation.requested_output`), the evidence is
-  a successful new version of every named file, or of as many distinct files as the count.
-  One file of three is not evidence. When the task names no file, completeness stays
-  unknown, and a stored file version or a verified citation of a successful read is the
-  evidence. The signal is recomputed for every batch and is never kept from an earlier
-  batch. The ledger records the comparison in `delivery`.
+  adds advice to a level note only when the thread holds delivery evidence (`delivery`) and
+  the classifier read the whole task text. When the task record requests files
+  (`task_state.requirements`), the evidence is a successful new version of every named
+  file, and of as many further distinct files as each output group counts. One file of
+  three is not evidence. A group without an exact count, or an unresolved task, gives no
+  evidence. When the task requests no file, a stored file version or a verified citation of
+  a successful read is the evidence. The signal is recomputed for every batch and is never
+  kept from an earlier batch. The ledger records the comparison in `delivery`.
 * `advice` true adds an advice note, whose text names the chat check as its origin, the
   first time in the turn that `stuck` or `absent` fires. The advice proposes a method. It
   states no completion and no quota.
 * With `completion` `evidence`, a fired `absent` signal at level 2 or above checks the named
   things of the preparation in the indexes (`absence.check_names`).
+
+**Method advice.** A level note names only the search steps of the relevant methods
+(`methods`): the source rules of the task record, the operations of the turn and the source
+choice of the preparation decide them, and the callable tools alone decide nothing. A turn
+that read a web page gets no collection step, and a turn whose task forbids the web gets no
+web step. A turn without method evidence gets no step list.
 
 No fixed search count or call budget applies.
 """
@@ -72,37 +79,84 @@ COMPLETION_ADVICE = ("A chat check estimates that the results can answer the tas
                      "requested part with the sources that you read before you answer.")
 
 
-def ladder(context, results):
-    """The available search steps that the stored calls have not yet covered."""
+#: The tools of each method, for the method evidence of a turn.
+WEB_TOOLS = {"web_search", "read_page", "cite_pages"}
+COLLECTION_TOOLS = {"search_collections", "search_passages", "folder_search", "folder_list",
+                    "folder_overview", "search_facet_values", "search_histogram",
+                    "search_entity_explainer", "read_documents", "doc_search_text", "pdf_search",
+                    "table_overview", "table_page", "table_cell", "table_search_cells",
+                    "table_column_values", "cite_documents", "list_collections"}
+
+
+def methods(context, results) -> set:
+    """The methods that the advice of a turn may name: `collections`, `web`, both or none.
+
+    The active source rules of the task record decide first: a forbidden source gets no
+    step. Then the operations of the turn decide: a method that the turn used is relevant.
+    A web address in the task, an explicit permission, the source choice of the preparation,
+    or a rule that forbids the only other method also selects a method. Callable tools alone select none, so an
+    uncertain turn gets no method advice and keeps its tool results as they are."""
+    from tasks.P_agent.control import task_state
+
+    state = context.task_state or {}
+    scope = task_state.source_scope(state)
     tools = context.callable_tools
+    web_ok = bool(tools & {"web_search", "read_page"}) and scope["web"] != "forbidden"
+    collections_ok = "search_collections" in tools and scope["collections"] != "forbidden"
+    web_used = any(f.name in WEB_TOOLS or f.name.startswith("browser_") for f in results)
+    collections_used = any(f.name in COLLECTION_TOOLS for f in results)
+    choice = ((context.turn.get("preparation") or {}).get("sources") or {}).get("choice")
+    direct = bool(task_state.urls(state))
+    out = set()
+    if web_ok and (web_used or direct or scope["web"] == "allowed" or choice in ("web", "both", "browser")
+                   or (scope["collections"] == "forbidden" and not collections_ok)):
+        out.add("web")
+    if collections_ok and (collections_used or (not web_used and not direct and choice in ("documents", "both", "overview"))
+                           or scope["collections"] == "allowed" or scope["web"] == "forbidden"):
+        out.add("collections")
+    return out
+
+
+def ladder(context, results):
+    """The available search steps of the relevant methods (`methods`) that the stored calls
+    have not yet covered."""
+    tools = context.callable_tools
+    relevant = methods(context, results)
     searches = [f for f in results if f.name in SEARCH_TOOLS]
     forms = [str(q) for f in searches for q in (list(f.args.get("queries") or []) + [f.args.get("query", "")]) if q]
     pending = []
-    if "search_collections" in tools:
-        if not any('"' in q for q in forms):
-            pending.append("Search each name as a quoted phrase with search_collections.")
-        if not any('"' not in q for q in forms):
-            pending.append("Search unquoted words and name variants. Read word counts and spelling candidates.")
-        filtered = any(any(f.args.get(k) for k in ("facet_filters", "date_after", "date_before", "size_min", "folder_term_id")) for f in searches)
-        if not searches or (filtered and not any(not any(f.args.get(k) for k in ("facet_filters", "date_after", "date_before", "size_min", "size_max", "folder_term_id", "filename_only")) for f in searches)):
-            pending.append("Remove filters one at a time and run a search without filters.")
-        if "search_facet_values" in tools and filtered and not any(f.name == "search_facet_values" for f in searches):
-            pending.append("Verify filter values with search_facet_values.")
-        if "search_histogram" in tools and any(f.args.get("date_after") or f.args.get("date_before") for f in searches) and not any(f.name == "search_histogram" for f in searches):
-            pending.append("Verify dates with search_histogram.")
-    if "search_passages" in tools and not any(f.name == "search_passages" for f in searches):
-        pending.append("Search a content description with search_passages.")
-    folder_request = any(w in context.request.lower() for w in ("folder", "path", "file"))
-    for name in ("folder_search", "folder_list"):
-        if folder_request and name in tools and not any(f.name == name for f in results):
-            pending.append(f"Use {name} for the requested folder, path or file.")
-    if any(f.keyword_sources for f in searches) and not any(f.reads for f in results):
-        reader = next((t for t in ("read_documents", "doc_search_text") if t in tools), None)
-        if reader:
-            pending.append(f"Read the best 1 to 3 hits with {reader}.")
-    source = ((context.turn.get("preparation") or {}).get("sources") or {}).get("choice")
-    if source in ("web", "both", "browser") and "web_search" in tools and not any(f.name == "web_search" for f in searches):
-        pending.append("Search the web and read the best pages when the request allows the web.")
+    collection_searches = [f for f in searches if f.name in COLLECTION_TOOLS]
+    if "collections" in relevant:
+        if "search_collections" in tools:
+            if not any('"' in q for q in forms):
+                pending.append("Search each name as a quoted phrase with search_collections.")
+            if not any('"' not in q for q in forms):
+                pending.append("Search unquoted words and name variants. Read word counts and spelling candidates.")
+            filtered = any(any(f.args.get(k) for k in ("facet_filters", "date_after", "date_before", "size_min", "folder_term_id")) for f in collection_searches)
+            if not collection_searches or (filtered and not any(not any(f.args.get(k) for k in ("facet_filters", "date_after", "date_before", "size_min", "size_max", "folder_term_id", "filename_only")) for f in collection_searches)):
+                pending.append("Remove filters one at a time and run a search without filters.")
+            if "search_facet_values" in tools and filtered and not any(f.name == "search_facet_values" for f in searches):
+                pending.append("Verify filter values with search_facet_values.")
+            if "search_histogram" in tools and any(f.args.get("date_after") or f.args.get("date_before") for f in collection_searches) and not any(f.name == "search_histogram" for f in searches):
+                pending.append("Verify dates with search_histogram.")
+        if "search_passages" in tools and not any(f.name == "search_passages" for f in searches):
+            pending.append("Search a content description with search_passages.")
+        folder_request = any(w in context.request.lower() for w in ("folder", "path", "file"))
+        for name in ("folder_search", "folder_list"):
+            if folder_request and name in tools and not any(f.name == name for f in results):
+                pending.append(f"Use {name} for the requested folder, path or file.")
+        if any(f.keyword_sources for f in collection_searches) and not any(f.reads for f in results if f.name in COLLECTION_TOOLS):
+            reader = next((t for t in ("read_documents", "doc_search_text") if t in tools), None)
+            if reader:
+                pending.append(f"Read the best 1 to 3 hits with {reader}.")
+    if "web" in relevant:
+        pages = [f for f in results if f.name == "read_page"]
+        if "web_search" in tools and not any(f.name == "web_search" for f in searches):
+            pending.append("Search the web with web_search and read the best result pages.")
+        if any(f.continuation for f in pages) and not any(f.args.get("find") for f in pages):
+            pending.append("Search the kept text of a long page with read_page and find.")
+        if any(f.status == "error" or any(status == "error" for _, status in f.reads) for f in pages):
+            pending.append("Read another result address, or the archived copy of a failed page.")
     return pending
 
 
@@ -111,34 +165,35 @@ def summary(searches):
                      f"{s['items']} items, {s['keyword_matches']} keyword matches." for s in searches[-30:])
 
 
-def delivery(task, results) -> dict:
-    """The requested file outputs of `task` compared with the stored file versions.
+def delivery(state, results) -> dict:
+    """The requested file outputs of the task record `state` compared with the stored file
+    versions (`task_state.delivery`).
 
-    `state` is `complete` when the task names its files or their count and the thread
-    stored a new version of each, `incomplete` when one is missing, and `unknown` when the
-    task names no file or no count. `evidence` is what the completion advice may rely on.
+    A delivered file is a successful write or patch that stored a new version. A retry that
+    names the unchanged version delivers nothing more. The files that earlier turns of the
+    same objective delivered count as well. `state` is `complete`, `incomplete`, `unknown`
+    or `none` (no file requested). `evidence` is what the completion advice may rely on: a
+    complete delivery, or for a task that requests no file, a stored file version or a
+    verified citation of a successful read. A group without an exact count, an unresolved
+    interpretation or incomplete task evidence gives `unknown` and no evidence, so one file
+    never stands for an unknown requirement.
     """
-    from tasks.P_agent.control.handlers.preparation import requested_output
+    from tasks.P_agent.control import task_state
 
-    requested = requested_output(task or {})
-    delivered = list(dict.fromkeys(f.file_version[0] for f in results
-                                   if f.status == "ok" and f.file_version and f.file_version[2]))
-    names, count = requested["names"], requested["count"]
-    if names or count:
-        missing = [n for n in names if n not in delivered]
-        complete = not missing and len(delivered) >= count
-        return {"state": "complete" if complete else "incomplete", "requested": names,
-                "requested_count": count, "delivered": delivered, "missing": missing,
-                "evidence": complete}
-    evidence = bool(delivered) or (bool(F.satisfactory_reads(results))
-                                   and any(f.verified_citations for f in results))
-    return {"state": "unknown", "requested": [], "requested_count": 0, "delivered": delivered,
-            "missing": [], "evidence": evidence}
+    if state and not state.get("schema_version"):
+        state = task_state.from_structured(state)
+    delivered = [f.file_version[0] for f in results
+                 if f.status == "ok" and f.file_version and f.file_version[2]]
+    out = task_state.delivery(state or task_state.empty(), delivered)
+    if out["state"] == "none":
+        out["evidence"] = bool(out["delivered"]) or (bool(F.satisfactory_reads(results))
+                                                     and any(f.verified_citations for f in results))
+    return out
 
 
-def delivery_evidence(results, task=None) -> bool:
+def delivery_evidence(results, state=None) -> bool:
     """Whether the thread holds the delivery evidence of `delivery`."""
-    return delivery(task, results)["evidence"]
+    return delivery(state, results)["evidence"]
 
 
 def new_versions(batch, seen: set) -> set:
@@ -228,19 +283,23 @@ class Handler:
             level = 0
         seen.update(new)
         actions = []
-        delivered = delivery(context.task or {"objective": {"text": context.request, "source": "user"}},
-                             context.results)
-        evidence = delivered["evidence"]
+        from tasks.P_agent.control.handlers.preparation import task_record
+
+        delivered = delivery(task_record(context), context.results)
+        # A cut task text cannot establish that the results answer the whole task.
+        evidence = delivered["evidence"] and not omitted
         raised = units >= parameters.get("units_per_level", 3)
         if raised and level < 3:
             level += 1
             units = 0
             pending = ladder(context, context.results)
             text = f"Search progress level {level}.\nSearches already run:\n{summary(searches)}\n"
-            if level == 1:
-                text += "Search steps still available:\n" + ("\n".join(pending) or "The available search steps are complete.")
+            if level == 1 and pending:
+                text += "Search steps still available:\n" + "\n".join(pending)
+            elif level == 1 and methods(context, context.results):
+                text += "The available search steps are complete."
             elif level == 2:
-                text += (pending[0] if pending else "Write the answer or the report now. State what the collections do not hold and name the searches.")
+                text += (pending[0] if pending else "Write the answer or the report now. State what the sources read do not hold and name the searches.")
             else:
                 text += "The next reply must be the answer. State the missing facts and the searches that you ran."
             if completion == "evidence" and signals["answered"]["fired"] and evidence:

@@ -117,6 +117,9 @@ them.
 `read_page` stores successful Markdown under the owner and chat session.
 `cite_pages` verifies exact supporting terms against that captured text.
 Its `[Wn]` handles identify source versions and survive browser service replacement.
+A capture records the requested URL and the final URL after redirects as its aliases.
+A citation of either URL resolves to the same capture, version and PDF window, and gets its handle.
+An alias that names captures of different versions needs the version, so no other source is cited.
 Unread pages and absent terms return individual errors.
 Case differences return literal source terms for an explicit retry.
 The failed call allocates no handle and keeps exact matching unchanged.
@@ -263,23 +266,33 @@ The `chat-default` definition has these rules:
 
 - At the turn start, the preparation check classes the request sources and scores the
   listed skills. It loads at most three skills in 15 seconds. It uses bounded context from
-  the last two ended turns to resolve references in a follow-up request. A task that asks
-  for a file as its output loads the `report` skill without a classifier request: a
+  the last two ended turns to resolve references in a follow-up request. A task whose
+  record requests a file loads the `report` skill without a classifier request: a
   deliverable that names a file, an output action such as "write a report", a file
-  destination such as "put the results in a file", or a named output path such as
-  "save it as notes.md". A report title, a draft agreement and a question about the files
-  of a folder name an input and load nothing, and the first workspace write loads the skill
-  for another form. The classifier request, the name check and the requirement list run
+  destination such as "in a short report", or a named output path such as
+  "save it as notes.md". An input file name, a prohibited write, a report title and a
+  question about the files of a folder load nothing, and the first workspace write loads
+  the skill for another form. The classifier request, the name check and the requirement list run
   as independent children. Each child records `ok`, `timeout`, `error`, `cancelled`,
   `skipped` or `disabled`, and a child whose classifier result failed records its status,
   so a slow or failed child does not discard the result of another. The requirement list
   is off unless a definition enables it.
-- The opening row of a chat turn records the effective task of the turn in its control
-  record (`facts.chat_task`): the request as the objective, and the source restrictions
-  that the person wrote in this turn and in earlier turns, each with its turn, newest
-  first. A short follow-up therefore keeps an earlier restriction. The preparation and
-  progress checks read this task, objective first. An opening row without the record reads
-  its request as before.
+- The opening row of a chat turn records the task record of the turn in its control
+  record (`control["task_state"]`, `task_state.py`), derived once when the turn is pinned.
+  It holds the active objective, the amendments of later turns, and each source rule with
+  its turn and status. It also holds the requested output groups with their names and
+  exact counts. A continuation such as "Continue." keeps the objective and its
+  unfinished outputs. A permission supersedes the restrictions that it conflicts with, and
+  a later rule replaces an earlier rule of its subject. A cancellation removes the output
+  that it identifies. A new objective keeps the session rules and drops the earlier
+  outputs. A message that the rules cannot classify keeps its text, and the record is
+  unresolved. The text task (`control["task"]`) is derived from the record: the objective,
+  the amendments, the active restrictions and the active permissions, without the
+  sentences of superseded rules. The preparation and progress checks and the web read
+  ranking read this task, objective first. The record reads earlier turns back to the
+  newest stored record, at most 12 turns, and names an incomplete reconstruction. A board
+  explore keeps its structured task as its record. An opening row without the record is
+  read as a legacy task, which supports no completion evidence.
 - A chat turn gets one source note: search the permitted collections first, and the web
   after them when the turn has web tools. No effort question or call quota applies.
 - After a tool batch, a result that needs the table, email or citation method loads that
@@ -584,7 +597,11 @@ Three batches without progress raise the note level. A batch with progress sets 
 Six model steps without progress at the third level end the turn through `write_incomplete` with the search summary and the delivered files.
 No fixed search count or call budget applies.
 Classifier signals require measured score thresholds. A failed request supplies no signal.
-The `answered` signal is computed again for each batch. It adds advice only when the thread holds a stored file version or a verified citation of a successful read.
+The `answered` signal is computed again for each batch. It adds advice only with delivery evidence of the task record.
+A task that requests files needs every output group with its names and its exact count of new versions.
+A task that requests no file needs a stored file version or a verified citation of a successful read.
+A level note lists only the search steps of the relevant methods (`progress.methods`).
+The source rules, the operations of the turn and the source choice decide them, and the callable tools alone decide nothing.
 A signal never ends a turn.
 Each classifier request writes metadata to `systemone_call_events` and traffic to `ai_service_telemetry`.
 The admin report reads these rows only when an administrator selects Run report.

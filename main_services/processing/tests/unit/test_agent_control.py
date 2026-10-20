@@ -1695,7 +1695,10 @@ def test_a_chat_task_keeps_an_earlier_source_restriction_with_its_turn():
     first = F.chat_task("Search only the enron collection. Who approved the talking points?", 1, [])
     assert first["constraints"] == [{"text": "Search only the enron collection.", "source": "user", "turn": 1}]
     follow = F.chat_task("Now write it as a file.", 3, [first])
-    assert follow["objective"] == {"text": "Now write it as a file.", "source": "user", "turn": 3}
+    # An output request that refers to the earlier work amends the active objective.
+    assert follow["objective"] == {"text": "Search only the enron collection. Who approved the talking points?",
+                                   "source": "user", "turn": 1}
+    assert follow["amendments"] == [{"text": "Now write it as a file.", "source": "user", "turn": 3}]
     assert follow["constraints"] == [{"text": "Search only the enron collection.", "source": "user", "turn": 1}]
     newer = F.chat_task("Do not use the web for this one.", 5, [first, follow])
     assert [c["turn"] for c in newer["constraints"]] == [5, 1]
@@ -1731,11 +1734,17 @@ def test_a_follow_up_turn_records_its_task_and_the_classifier_reads_the_constrai
     _pin(store, monkeypatch, _definition([PREPARE]))
     _hook("turn_started", 0)
     control = store["messages"][0].usage["control"]
-    assert control["task"]["objective"]["text"] == "Now write two files, a.md and b.md."
+    # The follow-up amends the earlier objective, which stays the objective of the turn.
+    assert control["task"]["objective"]["text"] == "Search only the testdata collection. Who approved the transfer?"
+    assert control["task"]["amendments"][0]["text"] == "Now write two files, a.md and b.md."
     assert control["task"]["constraints"][0]["text"] == "Search only the testdata collection."
+    state = control["task_state"]
+    assert state["request"] == {"turn": 4, "kind": "amendment"}
+    assert [(g["names"], g["count"]) for g in state["output_spec"]["groups"]] == [(["a.md", "b.md"], 2)]
     asked = [body for url, body in route["route"].bodies if "sources=" in body.get("questions", {})]
     assert asked and "Search only the testdata collection." in asked[0]["state"]["request"]
-    assert asked[0]["state"]["request"].startswith("objective: Now write two files")
+    assert asked[0]["state"]["request"].startswith("objective: Search only the testdata collection. Who approved")
+    assert "amendments:\n- Now write two files, a.md and b.md." in asked[0]["state"]["request"]
 
 
 def test_one_file_of_three_requested_files_is_no_delivery_evidence():
@@ -1793,3 +1802,112 @@ def test_a_cancelled_preparation_keeps_its_samples_and_applies_no_action(store, 
     assert len(store["messages"]) == 1
     assert written and all(e["actions"] == 0 for e in written[-1]["classifier_events"])
     assert written[-1]["classifier_events"], "the request samples are kept"
+
+
+# ------------------------------------------------------------------ the pinned task record
+
+
+def _earlier_turn(thread, request, state=None, files=()):
+    """The rows of one ended earlier turn: its opening row, with a stored task record when
+    `state` is given, and one successful write for each file name."""
+    usage = {"control": {"task_state": state}} if state is not None else {}
+    rows = [agent_runs.RunMessageRow(idx=0, role="human", run_id=thread, content=request,
+                                     usage_json=json.dumps(usage))]
+    for n, name in enumerate(files):
+        rows.append(agent_runs.RunMessageRow(idx=1 + 2 * n, role="ai", run_id=thread, content="",
+                                             tool_calls_json=json.dumps([{"id": f"w{n}", "name": "write_file",
+                                                                          "args": {"name": name}}])))
+        rows.append(agent_runs.RunMessageRow(idx=2 + 2 * n, role="tool", run_id=thread, tool_call_id=f"w{n}",
+                                             tool_name="write_file",
+                                             content=json.dumps({"success": True, "name": name, "version": 1}),
+                                             usage_json=json.dumps({"status": "ok"})))
+    rows.append(agent_runs.RunMessageRow(idx=99, role="ai", run_id=thread, content="Done."))
+    return rows
+
+
+def _session(store, monkeypatch, turns, request):
+    """Pin the current turn after the earlier `turns` ({thread: rows}). Returns the threads
+    that the pin read."""
+    read = []
+
+    def messages(u, s, thread):
+        if thread in turns:
+            read.append(thread)
+            return turns[thread]
+        return list(store["messages"])
+
+    monkeypatch.setattr(agent_runs, "read_earlier_threads", lambda *a: list(turns))
+    monkeypatch.setattr(agent_runs, "read_messages", messages)
+    store["messages"][0] = replace(store["messages"][0], content=request)
+    _pin(store, monkeypatch, _definition([PREPARE]))
+    _hook("turn_started", 0)
+    return read
+
+
+def test_the_pin_stores_one_task_record_and_a_retry_or_a_code_change_keeps_it(store, monkeypatch, route):
+    from tasks.P_agent.control import task_state as TS
+    store["messages"][0] = replace(store["messages"][0], content="Write two memos. Create three reports.")
+    _pin(store, monkeypatch, _definition([PREPARE, {**OBJECTS, "id": "objects"}]))
+    _hook("turn_started", 0)
+    control = store["messages"][0].usage["control"]
+    state = control["task_state"]
+    assert state["schema_version"] == TS.SCHEMA_VERSION and control["task"] == TS.text_task(state)
+    assert [(g["noun"], g["count"]) for g in state["output_spec"]["groups"]] == [("memo", 2), ("report", 3)]
+
+    def changed(*args, **kwargs):
+        raise AssertionError("a pinned turn is not interpreted again")
+
+    monkeypatch.setattr(TS, "derive", changed)
+    _hook("turn_started", 0)
+    assert store["messages"][0].usage["control"]["task_state"] == state
+    store["messages"].extend([_ai(1, [("s1", "search_collections", {"query": "x"})]),
+                              _tool(2, "s1", "search_collections", {"items": []})])
+    _hook("tool_batch_completed", 1)
+    decision = store["messages"][1].usage["control"]["decisions"]["tool_batch_completed"]
+    assert decision["task_state_digest"] == digest(state)
+
+
+def test_a_continuation_reads_the_stored_record_of_the_last_turn_and_its_files(store, monkeypatch, route):
+    from tasks.P_agent.control import task_state as TS
+    earlier = TS.derive("Write two memos on the loans.", 3, None)
+    turns = {"t1": _earlier_turn("t1", "Find the lease."),
+             "t3": _earlier_turn("t3", "Write two memos on the loans.", earlier, files=("memo-1.md",))}
+    read = _session(store, monkeypatch, turns, "Continue.")
+    assert read == ["t3"], "a stored record ends the read"
+    state = store["messages"][0].usage["control"]["task_state"]
+    assert state["request"] == {"turn": 4, "kind": "continuation"} and state["objective"]["turn"] == 3
+    assert state["output_spec"]["delivered_before"] == [{"name": "memo-1.md", "version": 1, "turn": 3}]
+    assert state["reconstruction"]["complete"] is True
+    assert TS.delivery(state, ["memo-2.md"])["state"] == "complete"
+
+
+def test_a_legacy_session_is_rebuilt_from_its_requests_within_the_bound(store, monkeypatch, route):
+    from tasks.P_agent.control import coordinator as CO, task_state as TS
+    turns = {"t1": _earlier_turn("t1", "Use only the enron collection. Do not use the web. Who signed the lease?"),
+             "t2": _earlier_turn("t2", "You may now use the web. Write a report.")}
+    _session(store, monkeypatch, turns, "Continue.")
+    state = store["messages"][0].usage["control"]["task_state"]
+    assert state["reconstruction"] == {"turns_read": 2, "complete": True, "source": "records"}
+    assert TS.source_scope(state)["web"] == "allowed"
+    assert [g["noun"] for g in state["output_spec"]["groups"]] == ["report"]
+    assert "Do not use the web." not in json.dumps(store["messages"][0].usage["control"]["task"])
+    many = {f"t{n}": _earlier_turn(f"t{n}", f"Find payment {n}.") for n in range(CO.MAX_TASK_THREADS + 3)}
+    store["messages"][0] = replace(store["messages"][0], usage_json="{}")
+    read = _session(store, monkeypatch, many, "Continue.")
+    assert len(read) == CO.MAX_TASK_THREADS
+    state = store["messages"][0].usage["control"]["task_state"]
+    assert state["reconstruction"]["complete"] is False
+    assert not TS.complete_interpretation(state)
+
+
+def test_a_board_turn_keeps_its_structured_task_as_its_record(store, monkeypatch, route):
+    task = {"objective": {"text": "Name the leader.", "source": "intent"},
+            "deliverables": [{"text": "A report file leader.md", "source": "intent"}]}
+    store["messages"][0] = replace(store["messages"][0], content="Long brief. Write two memos.",
+                                   usage_json=json.dumps({"task": task}))
+    _pin(store, monkeypatch, _definition([PREPARE]))
+    _hook("turn_started", 0)
+    control = store["messages"][0].usage["control"]
+    assert "task" not in control
+    assert control["task_state"]["objective"]["text"] == "Name the leader."
+    assert [g["names"] for g in control["task_state"]["output_spec"]["groups"]] == [["leader.md"]]

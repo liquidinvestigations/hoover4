@@ -1144,3 +1144,158 @@ def test_a_stop_during_followups_preserves_the_answer_and_closes_the_run(monkeyp
         assert "follow_up_prompts" not in json.loads(rows[0][1])
 
     asyncio.run(_run_case(monkeypatch, lambda r, n: _reply(r, "done"), body))
+
+
+# ------------------------------------------------------- workspace writes and their lifecycle
+
+
+class _Barrier:
+    """A test barrier inside one stub tool call. The tool call waits at the barrier until
+    the test releases it or cancels it, so the test controls the boundary with no sleep.
+    `cancel` makes the waiting call return without its write."""
+
+    def __init__(self):
+        self.reached = threading.Event()
+        self._decided = threading.Event()
+        self._release = False
+
+    def wait(self, seconds=120) -> bool:
+        self.reached.set()
+        assert self._decided.wait(seconds), "the test decided nothing at the barrier"
+        return self._release
+
+    def release(self):
+        self._release = True
+        self._decided.set()
+
+    def cancel(self):
+        self._release = False
+        self._decided.set()
+
+
+def _workspace_write(request):
+    """Run one `write_file` call through the real workspace activities: the receipt of the
+    call key, then the prepared version and its commit. A repeated key replays the receipt."""
+    from temporalio.testing import ActivityEnvironment
+    from tasks.P_workspace import mutations, workflows as workspace
+
+    call = request["call"]
+    command = mutations.Command(username=request["username"], session_id=request["session_id"],
+                                operation_id=request["idempotency_key"], run_id=request["run_id"],
+                                op="write", name=call["args"]["name"], content=call["args"]["content"])
+    env = ActivityEnvironment()
+    prepared = env.run(workspace.prepare_workspace_mutation, command)
+    if not prepared.replay:
+        env.run(workspace.commit_workspace_mutation, workspace.CommitInput(command, prepared))
+    return prepared.result
+
+
+def _write_tool(request, result):
+    call = request["call"]
+    return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "ok",
+                 "content": json.dumps(result), "error_class": ""}
+
+
+def _write_script(*names):
+    """One model step for each file name, each a `write_file` call, then the answer."""
+    def script(request, n):
+        if n <= len(names):
+            return _reply(request, calls=[_call("write_file", {"name": names[n - 1],
+                                                                "content": f"Text of {names[n - 1]}."})])
+        return _reply(request, "The files are written.")
+    return script
+
+
+def _versions(case):
+    with get_global_client() as client:
+        return client.query(
+            "SELECT name, version, operation_id FROM chat_workspace_files FINAL "
+            "WHERE username = {u:String} AND session_id = {s:String} AND is_deleted = 0 "
+            "ORDER BY name, version", parameters={"u": case.username, "s": case.session_id}).result_rows
+
+
+def _ending_files(case):
+    with get_global_client() as client:
+        rows = client.query(
+            "SELECT usage_json FROM chat_messages FINAL WHERE username = {u:String} "
+            "AND session_id = {s:String} AND role = 'error' ORDER BY seq",
+            parameters={"u": case.username, "s": case.session_id}).result_rows
+    return [json.loads(r[0] or "{}") for r in rows]
+
+
+def _delete_workspace(case):
+    with get_global_client() as client:
+        for table in ("chat_workspace_files", "chat_workspace_receipts"):
+            client.command(f"DELETE FROM {table} WHERE username = {{u:String}}",
+                           parameters={"u": case.username})
+
+
+def test_a_stop_after_one_written_file_keeps_it_while_the_next_file_is_pending(monkeypatch):
+    """Two requested files. The first write commits. The second write waits at the test
+    barrier, and the stop arrives there. The turn ends cancelled, its ending row lists the
+    first file, and no version of the second file exists."""
+    barrier = _Barrier()
+    holder = {}
+
+    def tool(request, n):
+        if request["call"]["args"]["name"] == "b.md" and not barrier.wait():
+            return 503, {"detail": "the test barrier cancelled this call before its write"}
+        return _write_tool(request, _workspace_write(request))
+
+    async def body(client, case, stub, queue, titled):
+        holder["case"] = case
+        handle = await _start(client, case, queue)
+        assert await asyncio.to_thread(barrier.reached.wait, 60), "the second write did not start"
+        assert [r[:2] for r in _versions(case)] == [("a.md", 1)]
+        agent_runs.write_turn_stop(case.username, case.session_id, case.turn_seq)
+        await handle.cancel()
+        barrier.cancel()
+        lead = await _wait_terminal(case, seconds=60)
+        assert lead.state == "cancelled"
+        with pytest.raises(WorkflowFailureError):
+            await handle.result()
+        assert [r[:2] for r in _versions(case)] == [("a.md", 1)]
+        [files] = _ending_files(case)
+        assert files["report"] == {"name": "a.md", "version": 1}
+        assert [(r["name"], r["version"]) for r in files["reports"]] == [("a.md", 1)]
+        assert len(stub.requests) == 2
+
+    try:
+        asyncio.run(_run_case(monkeypatch, _write_script("a.md", "b.md"), body, tool=tool))
+    finally:
+        if "case" in holder:
+            _delete_workspace(holder["case"])
+
+
+def test_a_write_retried_after_its_commit_stores_one_version(monkeypatch):
+    """The first attempt of the write commits its version and then fails in transport. The
+    worker sends the call again with the same key, the receipt replays the result, and the
+    file has one version, which the answer lists once."""
+    holder = {}
+
+    def tool(request, n):
+        result = _workspace_write(request)
+        if n == 1:
+            return 503, {"detail": "the response was lost after the commit"}
+        return _write_tool(request, result)
+
+    async def body(client, case, stub, queue, titled):
+        holder["case"] = case
+        assert await (await _start(client, case, queue)).result() == "completed"
+        keys = [r["idempotency_key"] for r in stub.tool_requests]
+        assert len(keys) == 2 and keys[0] == keys[1]
+        assert [r[:2] for r in _versions(case)] == [("a.md", 1)]
+        tools = [m for m in case.messages() if m.role == "tool"]
+        assert len(tools) == 1 and json.loads(tools[0].content)["version"] == 1
+        with get_global_client() as ch:
+            usage = [json.loads(r[0] or "{}") for r in ch.query(
+                "SELECT usage_json FROM chat_messages FINAL WHERE username = {u:String} "
+                "AND session_id = {s:String} AND role = 'assistant'",
+                parameters={"u": case.username, "s": case.session_id}).result_rows]
+        assert [(r["name"], r["version"]) for r in usage[-1]["reports"]] == [("a.md", 1)]
+
+    try:
+        asyncio.run(_run_case(monkeypatch, _write_script("a.md"), body, tool=tool))
+    finally:
+        if "case" in holder:
+            _delete_workspace(holder["case"])
