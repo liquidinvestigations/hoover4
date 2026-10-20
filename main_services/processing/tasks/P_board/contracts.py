@@ -148,7 +148,7 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
                  not_found_ids: set | None = None, goal_texts: dict | None = None,
                  closed_ids: set | None = None, question_keys: set | None = None,
                  final: bool = False, corrections: dict | None = None,
-                 fact_texts: dict | None = None) -> dict:
+                 fact_texts: dict | None = None, correction_goals: dict | None = None) -> dict:
     """The `reason_result` payload of one reply.
 
     `valid_ids` are the live fact ids, `sourced_ids` the live sourced ones, `earlier` the
@@ -161,7 +161,9 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
     text (`fold.available_corrections`). An intent that names one in `correction` may repeat
     the work of an earlier intent with a changed objective, once. An objective with the same
     words as an earlier one stays a repeat. An intent that names another correction loses
-    it, and a repeat without a valid correction is dropped. `fact_texts` maps fact ids to
+    it, and a repeat without a valid correction is dropped. `correction_goals` maps a
+    correction to the goals that it may revise. An intent whose `goal` is outside a nonempty
+    list loses the correction. `fact_texts` maps fact ids to
     their texts. An answer statement whose numbers its facts do not hold gets a problem,
     and stays.
 
@@ -224,10 +226,18 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
         if not set(from_ids) <= valid_ids:
             problems.append(f"intent from {from_ids} names an unknown or rejected fact")
             continue
+        goal = str(item.get("goal") or "").strip()
+        goal = (goal_texts or {}).get(goal, goal)
+        goal = goal if goal in goal_ids else ""
         correction = str(item.get("correction") or "").strip()
         if correction and (correction not in open_corrections or correction in claimed_corrections):
             problems.append(f"discarded the correction {correction} of an intent: it is not a "
                             "correction that allows a revised intent")
+            correction = ""
+        scope = (correction_goals or {}).get(correction) or []
+        if correction and scope and goal not in scope:
+            problems.append(f"discarded the correction {correction} of an intent: the correction "
+                            f"concerns {', '.join(scope)}, and the intent names goal {goal or 'none'}")
             correction = ""
         repeats = [other for other in seen if is_duplicate(objective, other)]
         if repeats and (not correction or any(same_objective(objective, o) for o in repeats)):
@@ -240,10 +250,8 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
         if stray:
             problems.append(f"discarded question keys {stray}: not listed in the prompt")
         seen.append(objective)
-        goal = str(item.get("goal") or "").strip()
-        goal = (goal_texts or {}).get(goal, goal)
         kept.append({"from": from_ids, "objective": objective,
-                     "goal": goal if goal in goal_ids else "",
+                     "goal": goal,
                      "brief": str(item.get("brief") or "").strip(), "position": position,
                      "slug": str(item.get("slug") or "").strip()[:80],
                      "questions": [k for k in named if k in allowed],

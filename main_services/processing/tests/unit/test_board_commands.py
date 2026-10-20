@@ -60,9 +60,9 @@ def reason(store, number, intents, board_id="b1", **payload):
     store.run_commands(board_id)
 
 
-def intent(objective, position, slug="", questions=()):
+def intent(objective, position, slug="", questions=(), goal=""):
     return {"from": ["background"], "objective": objective, "brief": "", "position": position,
-            "slug": slug, "questions": list(questions)}
+            "slug": slug, "questions": list(questions), "goal": goal}
 
 
 def explore(store, intent_id, fact="Kaminski refused [D1].", slug="", board_id="b1", attempt=1):
@@ -461,10 +461,18 @@ def _rejected_answer(store):
     return correction
 
 
+def shown(store, board_id="b1"):
+    """The coverage fields of a decision on the board state that the page shows: the
+    `snapshot_seq` and the unreviewed findings of the state summary."""
+    state, _intents = activities._state_rows(store.read_board(board_id), folded(store, board_id))
+    summary = json.loads(state["summary_json"])
+    return {"seen_seq": summary["snapshot_seq"], "seen_unreviewed": summary["unreviewed"]}
+
+
 def test_an_explicit_correction_allows_one_revised_intent_and_a_retry_adds_none(store):
     correction = _rejected_answer(store)
-    revised = dict(intent("Find the delegation leader in the 2001 minutes", 1, slug="leader-minutes"),
-                   correction=correction)
+    revised = dict(intent("Find the delegation leader in the 2001 minutes", 1, slug="leader-minutes",
+                          goal="goal-01"), correction=correction)
     reason(store, 3, [revised])
     f = folded(store)
     [new] = [i for i in f.intents.values() if i.correction]
@@ -477,7 +485,8 @@ def test_an_explicit_correction_allows_one_revised_intent_and_a_retry_adds_none(
     store.run_commands("b1")
     assert len(folded(store).intents) == before
     # A later assessment that names the used correction for a repeat gets no intent.
-    reason(store, 4, [dict(intent("Find the delegation leader in the minutes of 2001", 1), correction=correction)])
+    reason(store, 4, [dict(intent("Find the delegation leader in the minutes of 2001", 1, goal="goal-01"),
+                           correction=correction)])
     f = folded(store)
     assert len(f.intents) == before
     [result] = [e for e in store.read_events("b1") if e.event_type == m.REASON_RESULT and e.subject == "4"]
@@ -505,13 +514,16 @@ def test_an_acceptance_records_its_coverage_and_a_late_finding_stays_unreviewed(
     reason(store, 2, [], outcome="partial",
            proposals=[{"goal": "goal-01", "from": [fact], "statement": "Lee led it."}])
     f = folded(store)
+    seen = shown(store)
     store.submit("b1", "accept:1", cmd.ANSWER_DECISION, OWNER,
-                 {"goal": "goal-01", "proposal_id": f.proposed["goal-01"]["proposal_id"], "accept": True})
+                 {"goal": "goal-01", "proposal_id": f.proposed["goal-01"]["proposal_id"], "accept": True,
+                  **seen})
     store.run_commands("b1")
     f = folded(store)
     assert f.status == m.COMPLETED and f.unreviewed == []
     [accepted] = [e for e in store.read_events("b1") if e.event_type == m.GOAL_ANSWER_ACCEPTED]
-    assert accepted.payload["covered_unreviewed"] == [] and accepted.payload["covers_seq"] > 0
+    assert accepted.payload["covered_unreviewed"] == [] and accepted.payload["covers_seq"] == seen["seen_seq"] > 0
+    assert (accepted.payload["coverage_version"], accepted.payload["coverage_scope"]) == (2, "goal-01")
     # The running explore concludes after the acceptance, and is retried once.
     for _ in range(2):
         store.submit("b1", "explore_end:intent-dates:1", cmd.EXPLORE_END, "explore", {
@@ -524,3 +536,172 @@ def test_an_acceptance_records_its_coverage_and_a_late_finding_stays_unreviewed(
     assert f.status == m.COMPLETED and f.accepted["goal-01"]["statement"] == "Lee led it."
     state, _intents = activities._state_rows(store.read_board("b1"), f)
     assert json.loads(state["summary_json"])["unreviewed"] == [late]
+
+
+def _two_goals_in_review(store):
+    """A slug board with two goals in review and one explore of goal-01 that still runs."""
+    slugs(store)
+    create(store, goals=("Who led the delegation?", "When did they travel?"))
+    reason(store, 1, [intent("Find the delegation leader", 1, slug="leader", goal="goal-01"),
+                      intent("Find the travel dates", 2, slug="dates", goal="goal-02"),
+                      intent("Find the deputy of the delegation", 3, slug="deputy", goal="goal-01")])
+    leader = explore(store, "intent-leader", fact="Lee led it [D1].")
+    dates = explore(store, "intent-dates", fact="They travelled in May [D1].")
+    store.submit("b1", "explore_started:intent-deputy:1", cmd.START_EXPLORE, "dispatcher",
+                 {"intent_id": "intent-deputy", "attempt": 1})
+    store.run_commands("b1")
+    reason(store, 2, [], outcome="review",
+           proposals=[{"goal": "goal-01", "from": [leader], "statement": "Lee led it."},
+                      {"goal": "goal-02", "from": [dates], "statement": "In May."}])
+    assert folded(store).status == m.REVIEW
+    return leader, dates
+
+
+def _conclude_deputy(store):
+    store.submit("b1", "explore_end:intent-deputy:1", cmd.EXPLORE_END, "explore", {
+        "intent_id": "intent-deputy", "attempt": 1, "end": m.EXPLORE_CONCLUDED,
+        "fact": {"kind": m.SOURCED, "text": "Kim was the deputy [D1].", "slug": "deputy"}})
+    store.run_commands("b1")
+    return folded(store).intents["intent-deputy"].fact_id
+
+
+def _late_question(store, about):
+    """A person's question about fact `about`, explored to a finding while in review."""
+    store.submit("b1", f"q:{about}", cmd.EXPLORE_QUESTION, OWNER, {"fact_id": about, "index": 0})
+    store.run_commands("b1")
+    intent_id = receipt(store, f"q:{about}").result["intent_id"]
+    return explore(store, intent_id, fact="Kim replied to the memo [D1].", slug="memo reply")
+
+
+def _decide(store, request_id, goal, accept=True, **extra):
+    proposal = folded(store).proposed[goal]["proposal_id"]
+    store.submit("b1", request_id, cmd.ANSWER_DECISION, OWNER,
+                 {"goal": goal, "proposal_id": proposal, "accept": accept, **extra})
+    store.run_commands("b1")
+    return receipt(store, request_id)
+
+
+def test_a_finding_after_the_shown_state_stays_unreviewed_after_an_acceptance(store):
+    _two_goals_in_review(store)
+    seen = shown(store)
+    assert seen["seen_unreviewed"] == []
+    deputy = _conclude_deputy(store)
+    assert folded(store).unreviewed == [deputy]
+    # The page still shows the earlier state. The proposal is the same, so it is accepted.
+    assert _decide(store, "accept:1", "goal-01", **seen).state == bc.COMMITTED
+    f = folded(store)
+    assert "goal-01" in f.accepted and f.unreviewed == [deputy]
+    # A page that lists the finding with a stale sequence number does not cover it either.
+    assert _decide(store, "accept:2", "goal-02", seen_seq=seen["seen_seq"], seen_unreviewed=[deputy]).state == bc.COMMITTED
+    f = folded(store)
+    assert f.status == m.COMPLETED and f.unreviewed == [deputy]
+
+
+def test_an_answer_decision_covers_the_findings_of_its_own_goal_only(store):
+    _leader, dates = _two_goals_in_review(store)
+    deputy = _conclude_deputy(store)
+    reply = _late_question(store, dates)
+    assert folded(store).finding_goals == {**folded(store).finding_goals, deputy: ["goal-01"], reply: ["goal-02"]}
+    seen = shown(store)
+    assert seen["seen_unreviewed"] == [deputy, reply]
+    _decide(store, "accept:2", "goal-02", **seen)
+    [event] = [e for e in store.read_events("b1") if e.event_type == m.GOAL_ANSWER_ACCEPTED]
+    assert event.payload["covered_unreviewed"] == [reply]
+    assert folded(store).unreviewed == [deputy]
+    # A board review covers every finding that its page showed.
+    store.submit("b1", "review:1", cmd.REVIEW_DECISION, OWNER,
+                 {"review_id": folded(store).decision_id, "accept": True, **shown(store)})
+    store.run_commands("b1")
+    f = folded(store)
+    assert f.status == m.COMPLETED and f.unreviewed == []
+
+
+def test_a_move_back_to_active_and_a_failed_assessment_keep_the_findings_unreviewed(store):
+    _two_goals_in_review(store)
+    deputy = _conclude_deputy(store)
+    _decide(store, "reject:1", "goal-01", accept=False, correction="Name the deputy too.")
+    f = folded(store)
+    assert f.status == m.ACTIVE and f.unreviewed == [deputy]
+    store.submit("b1", "reason_started:3", cmd.START_REASON, "dispatcher", {"reason_no": 3, "stalled": False})
+    store.submit("b1", "reason_result:3", cmd.REASON_RESULT, "reason", {"reason_no": 3, "payload": {
+        "outcome": m.MODEL_FAILURE, "error": "timeout", "problems": [], "situation": {}}})
+    store.run_commands("b1")
+    assert folded(store).unreviewed == [deputy]
+    state, _intents = activities._state_rows(store.read_board("b1"), folded(store))
+    assert json.loads(state["summary_json"])["unreviewed"] == [deputy]
+
+
+def test_a_decision_without_coverage_covers_nothing_and_a_future_state_is_refused(store):
+    _two_goals_in_review(store)
+    deputy = _conclude_deputy(store)
+    last = folded(store).last_seq
+    refused = _decide(store, "accept:future", "goal-01", seen_seq=last + 1, seen_unreviewed=[deputy])
+    assert refused.state == bc.REJECTED and "does not exist" in refused.error
+    for bad in ("7", -1, True, 1.5):
+        assert _decide(store, f"accept:{bad}", "goal-01", seen_seq=bad).state == bc.REJECTED
+    # A client without the fields: the answer is accepted and no finding is covered.
+    assert _decide(store, "accept:old", "goal-01").state == bc.COMMITTED
+    [event] = [e for e in store.read_events("b1") if e.event_type == m.GOAL_ANSWER_ACCEPTED]
+    assert (event.payload["covers_seq"], event.payload["covered_unreviewed"]) == (0, [])
+    # An unrelated id and a finding that is not unreviewed get no coverage.
+    _decide(store, "accept:2", "goal-02", seen_seq=folded(store).last_seq,
+            seen_unreviewed=["fact-unrelated", "fact-lee-led"])
+    assert folded(store).unreviewed == [deputy]
+
+
+def test_a_replaced_proposal_refuses_a_decision_on_the_shown_state(store):
+    leader, _dates = _two_goals_in_review(store)
+    seen = shown(store)
+    old = folded(store).proposed["goal-01"]["proposal_id"]
+    _decide(store, "reject:1", "goal-02", accept=False, correction="Give the day.")
+    reason(store, 3, [], outcome="partial",
+           proposals=[{"goal": "goal-01", "from": [leader], "statement": "Lee led the delegation."}])
+    store.submit("b1", "accept:old", cmd.ANSWER_DECISION, OWNER,
+                 {"goal": "goal-01", "proposal_id": old, "accept": True, **seen})
+    store.run_commands("b1")
+    assert receipt(store, "accept:old").state == bc.REJECTED
+    assert "goal-01" not in folded(store).accepted
+
+
+def test_a_prepared_acceptance_replays_its_coverage_once(store):
+    _two_goals_in_review(store)
+    deputy = _conclude_deputy(store)
+    seen = shown(store)
+    proposal = folded(store).proposed["goal-01"]["proposal_id"]
+    store.submit("b1", "accept:1", cmd.ANSWER_DECISION, OWNER,
+                 {"goal": "goal-01", "proposal_id": proposal, "accept": True, **seen})
+    store.fail_on = "write_events"
+    with pytest.raises(RuntimeError):
+        cmd.step("b1")
+    prepared = receipt(store, "accept:1").prepared["events"][0]["payload"]
+    assert prepared["covered_unreviewed"] == [deputy]
+    # The same input delivered again is one command.
+    store.submit("b1", "accept:1", cmd.ANSWER_DECISION, OWNER,
+                 {"goal": "goal-01", "proposal_id": proposal, "accept": True, **seen})
+    store.run_commands("b1")
+    events = [e for e in store.read_events("b1") if e.event_type == m.GOAL_ANSWER_ACCEPTED]
+    assert len(events) == 1 and events[0].payload == prepared
+    assert folded(store).unreviewed == []
+
+
+def test_a_correction_of_one_goal_allows_no_revision_for_another(store):
+    _two_goals_in_review(store)
+    _decide(store, "reject:1", "goal-01", accept=False, correction="Use the 2001 minutes.")
+    [correction] = list(folded(store).corrections)
+    assert folded(store).corrections[correction]["goals"] == ["goal-01"]
+    # Another goal: the correction is dropped, and the repeat with it.
+    reason(store, 3, [dict(intent("Find the travel dates in the minutes", 1, goal="goal-02"),
+                           correction=correction)])
+    f = folded(store)
+    assert not [i for i in f.intents.values() if i.correction] and correction not in f.corrections_used
+    [result] = [e for e in store.read_events("b1") if e.event_type == m.REASON_RESULT and e.subject == "3"]
+    assert any("allows no further revised intent" in p for p in result.payload["problems"])
+    # An unchanged objective with the right goal stays a repeat.
+    reason(store, 4, [dict(intent("Find the delegation leader", 1, goal="goal-01"), correction=correction)])
+    assert correction not in folded(store).corrections_used
+    # A changed objective for the goal of the correction uses it once.
+    reason(store, 5, [dict(intent("Find the delegation leader in the 2001 minutes", 1, goal="goal-01"),
+                           correction=correction)])
+    assert correction in folded(store).corrections_used
+    rejection = [e for e in store.read_events("b1") if e.event_type == m.GOAL_ANSWER_REJECTED][0]
+    assert rejection.payload["revision_allowance_version"] == m.REVISION_ALLOWANCE_VERSION

@@ -240,6 +240,9 @@ def _state_rows(board, folded) -> tuple[dict, list[dict]]:
                # Findings concluded after the board entered review or completion, which no
                # acceptance covered (`fold.Folded.unreviewed`).
                "unreviewed": list(folded.unreviewed),
+               # The last event sequence number of this fold. A person's decision names it,
+               # so the writer knows which findings the page showed.
+               "snapshot_seq": folded.last_seq,
                "max_explores": folded.max_explores,
                "explore_steps": folded.explore_steps,
                "explore_limit": m.EXPLORE_LIMIT,
@@ -563,7 +566,9 @@ def board_reason(task: ReasonTask) -> str:
                                set(folded.accepted),
                                {key for key, _q in open_question_keys(folded, facts)}, task.final,
                                corrections={c: texts.get(c, "") for c in available_corrections(folded)},
-                               fact_texts=texts)
+                               fact_texts=texts,
+                               correction_goals={c: info.get("goals") or []
+                                                 for c, info in available_corrections(folded).items()})
     payload.update(situation=folded.situation(), model=model, latency_ms=latency_ms,
                    semantics=m.REASON_SEMANTICS,
                    prompt_tokens=int(usage.get("prompt_tokens") or 0),

@@ -24,6 +24,19 @@ after the closed workflow history is gone.
 `-3` and so on. The words come from the model's candidate, else from the node text, else
 from a word of the node kind. Version 1, the value of an absent setting, keeps the legacy
 forms. Existing nodes keep their ids in both versions.
+
+**Review coverage.** A person's acceptance can name the board state that the page showed:
+`seen_seq`, the `snapshot_seq` of that state, and `seen_unreviewed`, its unreviewed
+findings. The writer refuses a sequence number above the committed state. The acceptance
+covers the named findings that are still unreviewed, concluded at or before `seen_seq`, and,
+for an answer, belong to its goal. An acceptance without `seen_seq` covers no finding. Every
+new event carries `review_semantics` (`model.REVIEW_SEMANTICS`), and the fold reads it.
+
+**Revision allowances.** A rejection records `revision_allowance_version` and the goals
+that its correction may revise. An intent that names a correction keeps it only when the
+correction is available, not named by an earlier intent of the reply, in the scope of the
+intent's goal, and the objective differs from every earlier objective. A prepared receipt
+keeps its payload, so a retry consumes the same allowance once.
 """
 
 import hashlib
@@ -32,10 +45,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from tasks.P_board import model as m
-from tasks.P_board.contracts import STOP_WORDS, TYPE_WORDS, is_duplicate, slug_words
+from tasks.P_board.contracts import STOP_WORDS, TYPE_WORDS, is_duplicate, same_objective, slug_words
 from tasks.P_board.fold import (
     Folded, available_corrections, canonical_events, earlier_objectives, explores_left, fold,
-    may_explore, visible_facts,
+    in_scope, may_explore, visible_facts,
 )
 from tasks.P_board.prompts import strip_labels
 
@@ -239,11 +252,20 @@ def _correction_id(ctx: Context, alloc: Allocator, text: str) -> str:
     return alloc.take(key, "c" + hashlib.sha256(ctx.request_id.encode()).hexdigest()[:8])
 
 
-def _coverage(f: Folded) -> dict:
-    """The findings that an acceptance covers: the last sequence number that the person's
-    state held, and the unreviewed findings at that point. The fold derives the same
-    coverage from the event order, so the record serves readers and audits."""
-    return {"covers_seq": f.last_seq, "covered_unreviewed": list(f.unreviewed)}
+def _coverage(f: Folded, body: dict, goal: str = "") -> dict:
+    """The findings that an acceptance covers. See the module rules. `goal` is the goal of
+    an answer decision, and empty for a board review."""
+    seen_seq = body.get("seen_seq")
+    scope = {"coverage_version": m.COVERAGE_VERSION, "coverage_scope": goal or "board"}
+    if seen_seq is None:
+        return {**scope, "covers_seq": 0, "covered_unreviewed": []}
+    if isinstance(seen_seq, bool) or not isinstance(seen_seq, int) or not 0 <= seen_seq <= f.last_seq:
+        raise Rejected("The decision names a board state that does not exist. Read the board again.")
+    seen = {str(x) for x in body.get("seen_unreviewed") or []}
+    covered = [x for x in f.unreviewed
+               if x in seen and f.concluded_seq.get(x, seen_seq + 1) <= seen_seq
+               and (not goal or goal in f.finding_goals.get(x, ()))]
+    return {**scope, "covers_seq": seen_seq, "covered_unreviewed": covered}
 
 
 # ------------------------------------------------------------------------ person commands
@@ -319,7 +341,7 @@ def _review_decision(ctx: Context, body: dict, alloc: Allocator, prepared: Prepa
         # The goals without a proposal stay without an answer, and the fold marks them.
         unanswered = [g for g in f.open_goals if g not in f.proposed]
         _event(ctx, prepared, m.REVIEW_ACCEPTED, "", {"review_id": review_id, "unanswered": unanswered,
-                                                      **_coverage(f)},
+                                                      **_coverage(f, body)},
                f"{m.REVIEW_ACCEPTED}:{ctx.request_id}")
         return
     correction = _text(body, "correction")
@@ -330,7 +352,9 @@ def _review_decision(ctx: Context, body: dict, alloc: Allocator, prepared: Prepa
     _fact(ctx, prepared, fact_id, m.CORRECTION, correction, ctx.actor)
     _label(alloc, prepared, fact_id, "correction")
     _event(ctx, prepared, m.REVIEW_REJECTED, fact_id,
-           {"correction": correction, "from": corrected, "review_id": review_id},
+           {"correction": correction, "from": corrected, "review_id": review_id,
+            "revision_allowance_version": m.REVISION_ALLOWANCE_VERSION,
+            "allowance_goals": [g for g in f.goal_ids if g in f.proposed]},
            f"{m.REVIEW_REJECTED}:{ctx.request_id}")
 
 
@@ -347,7 +371,7 @@ def _answer_decision(ctx: Context, body: dict, alloc: Allocator, prepared: Prepa
     decided = {"proposal_id": proposal_id, "reason_no": answer["reason_no"], "from": answer["from"],
                "statement": answer["statement"], "answer_kind": answer.get("answer_kind", "")}
     if body.get("accept"):
-        _event(ctx, prepared, m.GOAL_ANSWER_ACCEPTED, goal, {**decided, **_coverage(f)},
+        _event(ctx, prepared, m.GOAL_ANSWER_ACCEPTED, goal, {**decided, **_coverage(f, body, goal)},
                f"{m.GOAL_ANSWER_ACCEPTED}:{ctx.request_id}")
         return
     correction = _text(body, "correction")
@@ -358,7 +382,8 @@ def _answer_decision(ctx: Context, body: dict, alloc: Allocator, prepared: Prepa
     _label(alloc, prepared, fact_id, "correction")
     _event(ctx, prepared, m.GOAL_ANSWER_REJECTED, fact_id,
            {"goal": goal, "proposal_id": proposal_id, "reason_no": answer["reason_no"],
-            "from": answer["from"], "correction": correction},
+            "from": answer["from"], "correction": correction,
+            "revision_allowance_version": m.REVISION_ALLOWANCE_VERSION},
            f"{m.GOAL_ANSWER_REJECTED}:{ctx.request_id}")
 
 
@@ -479,10 +504,13 @@ def _reason_result(ctx: Context, body: dict, alloc: Allocator, prepared: Prepare
     for kept, item in enumerate(payload.get("intents") or [], start=1):
         item = dict(item)
         # The state can change after the model reply, so the correction is checked again
-        # here: a real correction of a person, not consumed, named once in this reply.
+        # here: a real correction of a person with an allowance, not consumed, named once in
+        # this reply, for a goal in its scope, with a changed objective.
         correction = str(item.get("correction") or "")
         objective = str(item.get("objective") or "")
-        if correction and (correction not in open_corrections or correction in used):
+        if correction and (correction not in open_corrections or correction in used
+                           or not in_scope(open_corrections[correction], str(item.get("goal") or ""))
+                           or any(same_objective(objective, other) for other in seen)):
             problems.append(f"the correction {correction} allows no further revised intent")
             item.pop("correction", None)
             correction = ""
@@ -675,7 +703,8 @@ def prepare(ctx: Context, kind: str, body: dict, seq_start: int) -> Prepared:
     handler(ctx, body, alloc, prepared)
     stamp = ctx.now.isoformat()
     for offset, event in enumerate(prepared.events):
-        event["payload"].update(seq=seq_start + offset, request_id=ctx.request_id)
+        event["payload"].update(seq=seq_start + offset, request_id=ctx.request_id,
+                                review_semantics=m.REVIEW_SEMANTICS)
         event["created_at"] = stamp
     for fact in prepared.facts:
         fact.update(created_at=stamp, request_id=ctx.request_id)

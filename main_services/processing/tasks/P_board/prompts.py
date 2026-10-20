@@ -191,7 +191,7 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
     first_goal = folded.goal_ids[0] if folded.goal_ids else m.FIRST_GOAL_ID
     from tasks.P_board.fold import available_corrections
 
-    corrections = list(available_corrections(folded))
+    corrections = available_corrections(folded)
     texts = {f.fact_id: f.text for f in facts}
     background = next((f.fact_id for f in live if f.kind == m.ORIGIN), m.ORIGIN)
     if final:
@@ -239,13 +239,21 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
             "It is optional. Use only listed keys.\n"
             "- Direct each intent at one goal, and give that goal in its `goal` field.\n"
             "- A correction listed under Corrections that allow one revised intent allows one "
-            "intent that revises earlier work. Change its objective as the correction asks, and "
-            "give the correction id in its `correction` field. Each listed correction allows one "
-            "intent. Without a listed correction, an intent must not repeat earlier work.\n")
+            "intent that revises earlier work for the goal of the correction. Change its objective "
+            "as the correction asks, give the correction id in its `correction` field, and give "
+            "the goal of the correction in its `goal` field. Give the correction id also when the "
+            "revised objective uses other words. Each listed correction allows one intent. Without "
+            "a listed correction, an intent must not repeat earlier work.\n"
+            "  For example, the investigator rejected the answer of goal-01 with correction-minutes: "
+            "\"Use the 2001 minutes, not the press release.\" The revised intent is "
+            "{\"from\": [\"correction-minutes\", \"fact-press-release\"], \"goal\": \"goal-01\", "
+            "\"objective\": \"Find who led the delegation in the 2001 meeting minutes\", "
+            "\"brief\": \"Search the minutes of 2001 for the delegation and its leader\", "
+            "\"slug\": \"leader in minutes\", \"correction\": \"correction-minutes\"}.\n")
     return (
         task +
-        "- Name goals and facts by their ids in `from` and `goal` fields only. Do not write ids "
-        "in statements or objectives.\n"
+        "- Name goals, facts and corrections by their ids in `from`, `goal` and `correction` "
+        "fields only. Do not write ids in statements or objectives.\n"
         "- An answer lists the sourced facts that state it. An inferred fact cannot support an "
         "answer.\n"
         "- When the documents do not hold the answer of a goal, list only the not_found facts of "
@@ -269,8 +277,9 @@ def render_reason(board, folded, facts, citations, stalled: bool, final: bool = 
         f"{fact_block(live, citations, set())}\n</facts>\n\n"
         "Facts rejected by the investigator:\n" + ("\n".join(rejected_lines) or "- none") + "\n\n"
         "Hints from the investigator:\n" + ("\n".join(f"- {h}" for h in folded.hints) or "- none") + "\n\n"
-        + ("" if final else "Corrections that allow one revised intent, as id: correction:\n"
-           + ("\n".join(f"- {cid}: {strip_labels(texts.get(cid, ''))}" for cid in corrections) or "- none")
+        + ("" if final else "Corrections that allow one revised intent, as id (goals): correction:\n"
+           + ("\n".join(f"- {cid} ({', '.join(info.get('goals') or []) or 'any goal'}): "
+                        f"{strip_labels(texts.get(cid, ''))}" for cid, info in corrections.items()) or "- none")
            + "\n\n") +
         "Open intents:\n" + ("\n".join(open_lines) or "- none") + "\n\n"
         "Finished intents:\n" + ("\n".join(done_lines) or "- none") + "\n\n"

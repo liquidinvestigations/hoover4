@@ -122,6 +122,17 @@ INVALID_REASON_LIMIT = 3
 #: and no intent is open or running. An older result has no `semantics` and keeps rule 1.
 REASON_SEMANTICS = 2
 
+#: The review format that the command writer gives every new event in `review_semantics`.
+#: From 2, a move back to active keeps the unreviewed findings. An event without the field
+#: keeps the older rule, which clears them.
+REVIEW_SEMANTICS = 2
+#: The coverage format of a new acceptance (`coverage_version`). From 2, the acceptance
+#: covers only its `covered_unreviewed` findings. An older acceptance covers every finding.
+COVERAGE_VERSION = 2
+#: The allowance format of a new rejection (`revision_allowance_version`). Only a rejection
+#: with this field allows one revised intent.
+REVISION_ALLOWANCE_VERSION = 1
+
 #: The `reason_result` outcome of an assessment whose model request failed in every attempt,
 #: or was refused. Older results of a failed request have the outcome `invalid`.
 MODEL_FAILURE = "model_failure"

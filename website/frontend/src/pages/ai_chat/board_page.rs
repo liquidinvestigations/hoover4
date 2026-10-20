@@ -672,6 +672,9 @@ fn BoardOverview(
     let dropped = snap.status == "dropped";
     let links = node_links(&snap, &zoom);
     let review_id = snap.review_id.clone();
+    // A decision names the snapshot that this render shows, so an acceptance covers only the
+    // unreviewed findings that the person saw.
+    let (seen_seq, seen_unreviewed) = (snap.snapshot_seq, snap.unreviewed.clone());
     // Run one action from this pane. Every button of the pane is disabled while it runs.
     let run = {
         let board_id = board_id.clone();
@@ -708,6 +711,7 @@ fn BoardOverview(
     let mut continue_with = run.clone();
     let finish_id = review_id.clone();
     let correction_id = review_id.clone();
+    let finish_seen = seen_unreviewed.clone();
     let events_shown = if show_all_events() { snap.events.len() } else { EVENT_ROWS.min(snap.events.len()) };
     rsx! {
         if snap.limit_reached && !dropped {
@@ -736,6 +740,8 @@ fn BoardOverview(
                                 zoom: zoom.clone(),
                                 dropped,
                                 not_answered: snap.not_answered.contains(&goal.fact_id),
+                                seen_seq,
+                                seen_unreviewed: seen_unreviewed.clone(),
                                 links: links.clone(),
                                 snapshot,
                                 error,
@@ -786,6 +792,7 @@ fn BoardOverview(
                     disabled: busy() || correction.read().trim().is_empty(),
                     onclick: move |_| continue_with(BoardAction::Review {
                         review_id: correction_id.clone(), accept: false, correction: correction.read().clone(),
+                        seen_seq: Some(seen_seq), seen_unreviewed: Vec::new(),
                     }, Some(correction)),
                     "Continue with a correction"
                 }
@@ -819,7 +826,10 @@ fn BoardOverview(
                     button {
                         style: if budget_review && reopen.is_some() { BTN } else { BTN_PRIMARY },
                         disabled: busy(),
-                        onclick: move |_| finish(BoardAction::Review { review_id: finish_id.clone(), accept: true, correction: String::new() }, None),
+                        onclick: move |_| finish(BoardAction::Review {
+                            review_id: finish_id.clone(), accept: true, correction: String::new(),
+                            seen_seq: Some(seen_seq), seen_unreviewed: finish_seen.clone(),
+                        }, None),
                         "Close the board"
                     }
                 }
@@ -1292,6 +1302,8 @@ fn FactDetail(
                     zoom: zoom.clone(),
                     dropped,
                     not_answered: snap.not_answered.contains(&fact.fact_id),
+                    seen_seq: snap.snapshot_seq,
+                    seen_unreviewed: snap.unreviewed.clone(),
                     links: links.clone(),
                     snapshot,
                     error,
@@ -1433,6 +1445,9 @@ fn GoalAnswer(
     zoom: String,
     dropped: bool,
     not_answered: bool,
+    /// The `snapshot_seq` and the unreviewed findings of the snapshot that this render shows.
+    seen_seq: u64,
+    seen_unreviewed: Vec<String>,
     links: NodeLinks,
     snapshot: Signal<Option<BoardSnapshot>>,
     error: Signal<Option<String>>,
@@ -1464,9 +1479,12 @@ fn GoalAnswer(
     let decide = move |accept: bool| {
         let (board_id, goal, proposal_id) = (board_id.clone(), goal.clone(), proposal_id.clone());
         let text = correction.read().clone();
+        let seen_unreviewed = if accept { seen_unreviewed.clone() } else { Vec::new() };
         busy.set(true);
         spawn(async move {
-            let action = BoardAction::Answer { goal, proposal_id, accept, correction: text };
+            let action = BoardAction::Answer {
+                goal, proposal_id, accept, correction: text, seen_seq: Some(seen_seq), seen_unreviewed,
+            };
             if act(board_id, action, snapshot, error).await.is_some() {
                 correction.set(String::new());
             }
@@ -1867,7 +1885,7 @@ mod tests {
             facts: vec![fact("f1.1", "sourced", "board-b-i1.1"), fact("c1", "correction", "")],
             intents: vec![], events: vec![], summary: String::new(), review_id: String::new(),
             review_reason: String::new(), limit_reached: false, reopen_grant: None, final_running: false,
-            not_answered: vec![], unreviewed: vec![],
+            not_answered: vec![], unreviewed: vec![], snapshot_seq: 0,
         };
         assert_eq!(event_link(&snap, &event("reason_result", "4")), EventLink::Assessment(4));
         assert_eq!(event_link(&snap, &event("fact_rejected", "f1.1")), EventLink::Chat("board-b-i1.1".into()));

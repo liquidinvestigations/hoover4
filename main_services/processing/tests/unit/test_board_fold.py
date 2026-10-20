@@ -774,8 +774,8 @@ def test_the_prompt_asks_for_ids_only_in_from_and_goal_fields():
     rows = facts(("f1.1", m.SOURCED))
     prompt = render_reason(board(), fold(board(), Log().add(m.BOARD_CREATED).events, rows), rows, [],
                            stalled=False)
-    assert ("Name goals and facts by their ids in `from` and `goal` fields only. Do not write ids "
-            "in statements or objectives.") in prompt
+    assert ("Name goals, facts and corrections by their ids in `from`, `goal` and `correction` "
+            "fields only. Do not write ids in statements or objectives.") in prompt
     assert "give that goal in its `goal` field" in prompt
     assert "name that goal in its objective" not in prompt
 
@@ -791,24 +791,63 @@ def test_an_intent_keeps_a_goal_field_that_names_a_goal():
 # ---------------------------------------------- corrections and late findings
 
 
-def _corrected() -> Log:
-    """A board whose proposed answer a person rejected with correction `c1`."""
+def _corrected(allowance=True) -> Log:
+    """A board whose proposed answer a person rejected with correction `c1`. Without
+    `allowance`, the rejection is an older event without the allowance format."""
     log = _review(_explored(), 2)
-    return log.add(m.GOAL_ANSWER_REJECTED, "c1", goal="goal", reason_no=2, correction="use 2001")
+    marked = {"revision_allowance_version": m.REVISION_ALLOWANCE_VERSION} if allowance else {}
+    return log.add(m.GOAL_ANSWER_REJECTED, "c1", goal="goal", reason_no=2, correction="use 2001", **marked)
 
 
 def test_a_correction_allows_one_revised_intent_in_event_order():
     log = _corrected()
     rows = facts(("f1.1", m.SOURCED)) + [FactRow("b1", "c1", m.CORRECTION, "use 2001")]
     from tasks.P_board.fold import available_corrections
-    assert available_corrections(fold(board(), log.events, rows)) == {"c1": {"goal": "goal", "event_id": log.events[-1].event_id}}
+    assert available_corrections(fold(board(), log.events, rows)) == {"c1": {
+        "goal": "goal", "event_id": log.events[-1].event_id, "allowance": True, "goals": ["goal"]}}
     log.add(m.REASON_STARTED, "3")
     log.add(m.REASON_RESULT, "3", outcome="intents", intents=[
-        {"from": ["c1"], "objective": "objective 1.1 in 2001", "correction": "c1"},
-        {"from": ["c1"], "objective": "objective 1.1 in the 2001 minutes", "correction": "c1"}])
+        {"from": ["c1"], "goal": "goal", "objective": "objective 1.1 in 2001", "correction": "c1"},
+        {"from": ["c1"], "goal": "goal", "objective": "objective 1.1 in the 2001 minutes", "correction": "c1"}])
     f = fold(board(), log.events, rows)
     assert f.intents["i3.1"].correction == "c1" and f.intents["i3.2"].correction == ""
     assert f.corrections_used == {"c1": "i3.1"} and available_corrections(f) == {}
+
+
+def test_an_older_rejection_allows_no_revision_and_keeps_its_correction_fact():
+    """A rejection written before the allowance format keeps its correction for the explore
+    task and the prompt, and gives no allowance however many intents follow it."""
+    log = _corrected(allowance=False)
+    rows = facts(("f1.1", m.SOURCED)) + [FactRow("b1", "c1", m.CORRECTION, "use 2001")]
+    from tasks.P_board.fold import available_corrections
+    log.add(m.REASON_STARTED, "3")
+    log.add(m.REASON_RESULT, "3", outcome="intents", intents=[
+        {"from": ["c1"], "goal": "goal", "objective": "objective 1.1 in 2001", "correction": "c1"}])
+    f = fold(board(), log.events, rows)
+    assert list(f.corrections) == ["c1"] and f.corrections["c1"]["allowance"] is False
+    assert available_corrections(f) == {} and f.corrections_used == {} and f.intents["i3.1"].correction == ""
+
+
+def test_a_correction_of_one_goal_is_not_consumed_by_an_intent_of_another():
+    log = _review(_explored(), 2, goals=("goal", "goal-2"))
+    log.add(m.GOAL_ANSWER_REJECTED, "c1", goal="goal-2", reason_no=2, correction="use 2001",
+            revision_allowance_version=1)
+    log.add(m.REASON_STARTED, "3")
+    log.add(m.REASON_RESULT, "3", outcome="intents", intents=[
+        {"from": ["c1"], "goal": "goal", "objective": "objective 1.1 in 2001", "correction": "c1"},
+        {"from": ["c1"], "objective": "objective 1.1 in the minutes", "correction": "c1"}])
+    rows = facts(*TWO_GOALS) + [FactRow("b1", "c1", m.CORRECTION, "use 2001")]
+    f = fold(board(), log.events, rows)
+    assert f.corrections_used == {} and not any(i.correction for i in f.intents.values())
+    # The reply parser drops the correction of an intent for another goal before the writer.
+    reply = json.dumps({"intents": [
+        {"from": ["c1"], "goal": "goal", "objective": "Find the delegation leader in 2001", "correction": "c1"},
+        {"from": ["c1"], "goal": "goal-2", "objective": "Find the delegation leader in the minutes", "correction": "c1"}]})
+    out = parse_reason(reply, {"c1", "origin"}, set(), ["Find the delegation leader"], idle=True,
+                       goal_ids=["goal", "goal-2"], corrections={"c1": "use 2001"},
+                       correction_goals={"c1": ["goal-2"]})
+    assert [(i["goal"], i.get("correction")) for i in out["intents"]] == [("goal-2", "c1")]
+    assert any("the correction concerns goal-2" in p for p in out["problems"])
 
 
 def test_an_older_intent_without_a_correction_consumes_nothing():
@@ -866,6 +905,42 @@ def test_a_rejected_review_returns_the_late_findings_to_the_assessment():
     log.add(m.REVIEW_REJECTED, "c1", correction="look again")
     f = fold(board(), log.events, facts(("f1.1", m.SOURCED), ("f3.1", m.SOURCED)))
     assert f.status == m.ACTIVE and f.unreviewed == [] and "c1" in f.corrections
+
+
+def test_an_older_prefix_keeps_its_review_rule_and_newer_events_keep_unseen_findings():
+    """Unmarked events clear the findings on a move back to active and on an acceptance.
+    Marked events keep a finding through active, review and completion until an acceptance
+    with coverage names it."""
+    log = _review(_explored(), 2).reason(3, n=2).add(m.EXPLORE_STARTED, "i3.1", attempt=1)
+    log.add(m.EXPLORE_STARTED, "i3.2", attempt=1)
+    log.add(m.EXPLORE_CONCLUDED, "i3.1", attempt=1, fact_id="f3.1", kind=m.SOURCED)
+    log.add(m.REVIEW_REJECTED, "c1", correction="look again")
+    rows = facts(("f1.1", m.SOURCED), ("f3.1", m.SOURCED), ("f3.2", m.SOURCED))
+    assert fold(board(), log.events, rows).unreviewed == []
+    marked = {"review_semantics": m.REVIEW_SEMANTICS}
+    seq = iter(range(100, 200))
+    log.add(m.REVIEW_PROPOSED, "budget", reason="budget", seq=next(seq), **marked)
+    log.add(m.EXPLORE_CONCLUDED, "i3.2", attempt=1, fact_id="f3.2", kind=m.SOURCED, seq=next(seq), **marked)
+    f = fold(board(), log.events, rows)
+    assert (f.status, f.unreviewed, f.concluded_seq["f3.2"]) == (m.REVIEW, ["f3.2"], 101)
+    log.add(m.REVIEW_REJECTED, "c2", correction="again", seq=next(seq), **marked)
+    f = fold(board(), log.events, rows)
+    assert (f.status, f.unreviewed) == (m.ACTIVE, ["f3.2"])
+    log.add(m.REVIEW_PROPOSED, "budget", event_id="rp2", reason="budget", seq=next(seq), **marked)
+    log.add(m.REVIEW_ACCEPTED, "", review_id="rp2", seq=next(seq), coverage_version=2, covers_seq=100,
+            covered_unreviewed=[], **marked)
+    f = fold(board(), log.events, rows)
+    assert (f.status, f.unreviewed) == (m.COMPLETED, ["f3.2"])
+
+
+def test_an_acceptance_with_coverage_removes_only_the_findings_that_it_names():
+    log = _review(_explored(), 2).reason(3, n=2).add(m.EXPLORE_STARTED, "i3.1", attempt=1)
+    log.add(m.EXPLORE_STARTED, "i3.2", attempt=1)
+    log.add(m.EXPLORE_CONCLUDED, "i3.1", attempt=1, fact_id="f3.1", kind=m.SOURCED)
+    log.add(m.EXPLORE_CONCLUDED, "i3.2", attempt=1, fact_id="f3.2", kind=m.SOURCED)
+    log.add(m.REVIEW_ACCEPTED, "", coverage_version=2, covered_unreviewed=["f3.1"])
+    f = fold(board(), log.events, facts(("f1.1", m.SOURCED), ("f3.1", m.SOURCED), ("f3.2", m.SOURCED)))
+    assert (f.status, f.unreviewed) == (m.COMPLETED, ["f3.2"])
 
 
 def test_a_cancel_after_a_late_conclusion_keeps_the_finding():

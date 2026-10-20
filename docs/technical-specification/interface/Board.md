@@ -32,5 +32,5 @@ The page header items share one middle line with the logo of the left bar.
 A button of a person action stays disabled until the board's command writer decides the action. A refused action shows its reason above the board.
 A board that used 300 explores shows a notice with a link to the create form. Its answer decisions stay available.
 A proposed answer whose findings are all not-found findings says that the records do not answer the goal.
-A finding that arrives while the board waits for review or after its completion shows `unreviewed` on its card and in its detail pane. It changes no answer and does not reopen the board. A decision that accepts an answer marks the findings up to that decision as reviewed.
-A rejection with a correction allows the board one revised intent with an objective that repeats an earlier one. An unchanged repeat with the same words stays refused.
+A finding that arrives while the board waits for review or after its completion shows `unreviewed` on its card and in its detail pane. It changes no answer and does not reopen the board. An acceptance marks as reviewed only the unreviewed findings that the page showed when the person decided. An accepted answer marks only the findings of its goal. A finding that arrives after the page loaded stays unreviewed.
+A rejection with a correction allows the board one revised intent for the goal of that rejection, with an objective that repeats an earlier one. An unchanged repeat with the same words stays refused, and an intent of another goal cannot use the correction.

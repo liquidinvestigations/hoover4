@@ -730,11 +730,13 @@ pub async fn board_command(user: &CurrentUser, board_id: String, request_id: Str
         }
         BoardAction::SetPaused { paused } => ("set_paused", serde_json::json!({"paused": paused})),
         BoardAction::SetInternetTools { on } => return set_internet_tools(user, board, &request_id, on).await,
-        BoardAction::Review { review_id, accept, correction } => ("review_decision", serde_json::json!({
+        BoardAction::Review { review_id, accept, correction, seen_seq, seen_unreviewed } => ("review_decision", serde_json::json!({
             "review_id": review_id, "accept": accept, "correction": clip(&correction),
+            "seen_seq": seen_seq, "seen_unreviewed": seen_unreviewed,
         })),
-        BoardAction::Answer { goal, proposal_id, accept, correction } => ("answer_decision", serde_json::json!({
+        BoardAction::Answer { goal, proposal_id, accept, correction, seen_seq, seen_unreviewed } => ("answer_decision", serde_json::json!({
             "goal": goal, "proposal_id": proposal_id, "accept": accept, "correction": clip(&correction),
+            "seen_seq": seen_seq, "seen_unreviewed": seen_unreviewed,
         })),
         BoardAction::AddGoal { text } => {
             let text = clip(&text);
@@ -1012,6 +1014,7 @@ async fn read_snapshot(board: BoardRow) -> anyhow::Result<BoardSnapshot> {
         review_reason: summary["review_reason"].as_str().unwrap_or("").to_string(),
         not_answered: strings(&summary["not_answered"]),
         unreviewed: strings(&summary["unreviewed"]),
+        snapshot_seq: summary["snapshot_seq"].as_u64().unwrap_or(0),
         limit_reached,
         reopen_grant,
         final_running,

@@ -400,6 +400,11 @@ pub struct BoardSnapshot {
     /// answer, and the board does not reopen for them.
     #[serde(default)]
     pub unreviewed: Vec<String>,
+    /// The last event sequence number of the fold that gave the proposals, the review and
+    /// [`Self::unreviewed`]. A decision names it as `seen_seq`. 0 for a state summary that
+    /// was written before this field.
+    #[serde(default)]
+    pub snapshot_seq: u64,
 }
 
 impl BoardSnapshot {
@@ -486,10 +491,31 @@ pub enum BoardAction {
     RejectFact { fact_id: String, reason: String },
     SetPaused { paused: bool },
     SetInternetTools { on: bool },
-    /// Finish the review `review_id`, or continue it with a correction.
-    Review { review_id: String, accept: bool, correction: String },
-    /// Accept or reject the proposed answer `proposal_id` of goal `goal`.
-    Answer { goal: String, proposal_id: String, accept: bool, correction: String },
+    /// Finish the review `review_id`, or continue it with a correction. `seen_seq` and
+    /// `seen_unreviewed` are the [`BoardSnapshot::snapshot_seq`] and the unreviewed findings
+    /// of the shown snapshot. An acceptance covers only those findings, and an acceptance
+    /// without `seen_seq` covers none.
+    Review {
+        review_id: String,
+        accept: bool,
+        correction: String,
+        #[serde(default)]
+        seen_seq: Option<u64>,
+        #[serde(default)]
+        seen_unreviewed: Vec<String>,
+    },
+    /// Accept or reject the proposed answer `proposal_id` of goal `goal`. The coverage
+    /// fields are those of [`BoardAction::Review`], for the findings of this goal.
+    Answer {
+        goal: String,
+        proposal_id: String,
+        accept: bool,
+        correction: String,
+        #[serde(default)]
+        seen_seq: Option<u64>,
+        #[serde(default)]
+        seen_unreviewed: Vec<String>,
+    },
     AddGoal { text: String },
     /// Explore open question `index` of a fact, or the person's own `question` about it.
     /// Exactly one of the two is set.
@@ -565,7 +591,7 @@ mod tests {
             facts: vec![fact("f1.1", "fact-raptor"), fact("f1.2", "f1.1")],
             intents: vec![], events: vec![], summary: String::new(), review_id: String::new(),
             review_reason: String::new(), limit_reached: false, reopen_grant: None, final_running: false,
-            not_answered: vec![], unreviewed: vec![],
+            not_answered: vec![], unreviewed: vec![], snapshot_seq: 0,
         }
     }
 
