@@ -564,7 +564,8 @@ def board_reason(task: ReasonTask) -> str:
                                earlier_objectives(folded), idle, folded.open_goals,
                                {f.fact_id for f in live if f.kind == m.NOT_FOUND}, goal_texts(facts),
                                set(folded.accepted),
-                               {key for key, _q in open_question_keys(folded, facts)}, task.final,
+                               {key: m.parse_question_key(key)[0]
+                                for key, _q in open_question_keys(folded, facts)}, task.final,
                                corrections={c: texts.get(c, "") for c in available_corrections(folded)},
                                fact_texts=texts,
                                correction_goals={c: info.get("goals") or []

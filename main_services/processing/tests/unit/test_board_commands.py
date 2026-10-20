@@ -705,3 +705,24 @@ def test_a_correction_of_one_goal_allows_no_revision_for_another(store):
     assert correction in folded(store).corrections_used
     rejection = [e for e in store.read_events("b1") if e.event_type == m.GOAL_ANSWER_REJECTED][0]
     assert rejection.payload["revision_allowance_version"] == m.REVISION_ALLOWANCE_VERSION
+
+
+def test_a_recovered_question_key_binds_once(store):
+    """A key that the parser moved from `from` to `questions` binds like a listed key: the
+    first intent holds it, and a person question for the same key is refused."""
+    from tasks.P_board.contracts import parse_reason
+    slugs(store)
+    create(store)
+    reason(store, 1, [intent("Find the memo", 1, slug="memo")])
+    fact_id = explore(store, "intent-memo")
+    key = m.question_key(fact_id, 1)
+    reply = json.dumps({"intents": [{"from": [key], "objective": "Which bank paid the money", "slug": "bank"}]})
+    payload = parse_reason(reply, {fact_id, "background"}, set(), ["Find the memo"], True,
+                           question_keys={key: fact_id})
+    assert payload["intents"][0]["from"] == [fact_id] and payload["intents"][0]["questions"] == [key]
+    reason(store, 2, payload["intents"], problems=payload["problems"])
+    f = folded(store)
+    assert f.holder(key).intent_id == "intent-bank"
+    store.submit("b1", "q:1", cmd.EXPLORE_QUESTION, OWNER, {"fact_id": fact_id, "index": 1})
+    store.run_commands("b1")
+    assert receipt(store, "q:1").state == bc.REJECTED

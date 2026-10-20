@@ -971,3 +971,75 @@ def test_an_assessment_statement_keeps_its_characters_through_storage(statement)
     payload = parse_reason(reply, {"f1"}, {"f1"}, [], idle=True)
     stored = json.loads(json.dumps(payload, sort_keys=True))
     assert stored["proposals"][0]["statement"] == statement
+
+
+# ------------------------------------------------- question keys in the from list of an intent
+
+
+def _intent_reply(*intents):
+    return json.dumps({"intents": list(intents)})
+
+
+QUESTIONS = {"fact-raptor-2001#2": "fact-raptor-2001", "fact-raptor-2001#1": "fact-raptor-2001"}
+
+
+@pytest.mark.parametrize("keys", [QUESTIONS, set(QUESTIONS)])
+def test_a_listed_question_key_in_from_moves_to_questions_with_its_fact(keys):
+    """The captured reply named the question key in `from`. The intent keeps its listed key
+    in `questions` and its fact in `from`, and the problems name the move."""
+    reply = _intent_reply({"from": ["fact-raptor-2001#2", "background"], "goal": "goal-01",
+                           "objective": "Find who approved the Raptor transfer", "slug": "raptor approval"})
+    out = parse_reason(reply, {"fact-raptor-2001", "background"}, set(), [], True, ["goal-01"],
+                       question_keys=keys)
+    [kept] = out["intents"]
+    assert kept["from"] == ["fact-raptor-2001", "background"]
+    assert kept["questions"] == ["fact-raptor-2001#2"] and kept["goal"] == "goal-01"
+    assert any(p.startswith("moved the question keys ['fact-raptor-2001#2']") for p in out["problems"])
+
+
+@pytest.mark.parametrize("from_ids,valid", [
+    (["fact-raptor-2001#3"], {"fact-raptor-2001"}),
+    (["fact-raptor-2001#2"], {"background"}),
+    (["fact-raptor-2001-extra"], {"fact-raptor-2001"}),
+    (["fact-raptor-2001#2", "fact-unknown"], {"fact-raptor-2001"}),
+])
+def test_an_unlisted_key_a_rejected_fact_or_another_unknown_id_keeps_the_rejection(from_ids, valid):
+    reply = _intent_reply({"from": from_ids, "objective": "Find the approval"})
+    out = parse_reason(reply, valid, set(), [], True, question_keys=QUESTIONS)
+    assert "intents" not in out
+    assert any("names an unknown or rejected fact" in p for p in out["problems"])
+
+
+def test_a_moved_key_is_listed_once_and_the_question_checks_apply_after_the_move():
+    reply = _intent_reply({"from": ["fact-raptor-2001#2"], "objective": "Find the approval",
+                           "questions": ["fact-raptor-2001#2", "fact-other#1"]})
+    out = parse_reason(reply, {"fact-raptor-2001"}, set(), [], True, question_keys=QUESTIONS)
+    assert out["intents"][0]["questions"] == ["fact-raptor-2001#2"]
+    assert any("discarded question keys ['fact-other#1']" in p for p in out["problems"])
+
+
+def test_the_correction_allowance_and_the_repeat_check_apply_after_the_move():
+    earlier = ["Find who approved the Raptor transfer"]
+    reply = _intent_reply(
+        {"from": ["fact-raptor-2001#2"], "goal": "goal-02", "objective": "Find who approved the Raptor transfer in 2001",
+         "correction": "c1"},
+        {"from": ["fact-raptor-2001#1"], "goal": "goal-01", "objective": "Find who approved the Raptor transfer in the minutes",
+         "correction": "c1"},
+        {"from": ["fact-raptor-2001#1"], "goal": "goal-01", "objective": "Find who approved the Raptor transfer in the board minutes",
+         "correction": "c1"})
+    out = parse_reason(reply, {"fact-raptor-2001", "c1"}, set(), earlier, True, ["goal-01", "goal-02"],
+                       question_keys=QUESTIONS, corrections={"c1": "use the 2001 minutes"},
+                       correction_goals={"c1": ["goal-01"]})
+    # The first intent names another goal, so it loses the correction and is a repeat. The
+    # allowance goes to the second intent once, and the third is a repeat.
+    assert [(i["goal"], i.get("correction"), i["questions"]) for i in out["intents"]] == [
+        ("goal-01", "c1", ["fact-raptor-2001#1"])]
+    assert sum(p.startswith("dropped as a repeat") for p in out["problems"]) == 2
+
+
+def test_the_reason_prompt_shows_a_question_key_beside_its_fact():
+    from tasks.P_board import prompts
+    import inspect
+    source = inspect.getsource(prompts.render_reason)
+    assert "A question key goes in `questions` only" in source
+    assert '\\"questions\\": [\\"fact-lease-terms#2\\"]' in source and '[\\"fact-lease-terms\\"]' in source

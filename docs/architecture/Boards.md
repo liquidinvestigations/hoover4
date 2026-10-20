@@ -396,7 +396,10 @@ assessment that fails in both attempts ends its operation through `record_final_
   dropped. At most 3 intents are kept, and each keeps its position in the reply, so a dropped
   intent changes no creation key. An intent can name open questions by key in `questions`.
   A key that the prompt did not list, or that an earlier intent of the reply or another live
-  intent holds, is dropped with a note.
+  intent holds, is dropped with a note. A listed key in `from` moves to `questions`, and the
+  fact that holds the question takes its place in `from` when that fact is live. The note
+  names the move. Another unknown id in `from` still drops the intent, and the goal,
+  correction, repeat and question checks apply after the move.
 - An answer names its goal, the facts it rests on and a statement. An answer with a sourced
   fact is `supported`. An answer whose facts are all not-found facts is `not_established`:
   its statement is the fixed text "The cited records do not establish an answer to this

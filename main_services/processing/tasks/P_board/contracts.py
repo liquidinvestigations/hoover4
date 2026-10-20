@@ -155,7 +155,15 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
     objectives of every intent the board has, `idle` whether no intent is open or running,
     `goal_ids` the goal fact ids, `not_found_ids` the live not-found facts, `goal_texts` the
     goal id of each goal text, `closed_ids` the goals with an accepted answer, and
-    `question_keys` the question keys that the prompt listed.
+    `question_keys` the question keys that the prompt listed: a mapping of each key to the
+    fact that holds the question, or a set of keys, whose facts `model.parse_question_key`
+    gives.
+
+    An intent whose `from` names a listed question key in place of a fact is recovered: the
+    key moves to `questions`, and the fact that holds the question takes its place in `from`,
+    when that fact is valid. The problems name the move. Another unknown id in `from` still
+    drops the intent, and a suffix is never removed from an unlisted id. The goal, correction,
+    repeat and question checks apply after the move.
 
     `corrections` maps each person correction that still allows one revised intent to its
     text (`fold.available_corrections`). An intent that names one in `correction` may repeat
@@ -208,7 +216,11 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
         items = [data["intent"]]
     kept = []
     seen = list(earlier)
-    allowed = set(question_keys or ())
+    if isinstance(question_keys, dict):
+        question_facts = {str(k): str(v) for k, v in question_keys.items()}
+    else:
+        question_facts = {str(k): (m.parse_question_key(str(k)) or ("",))[0] for k in question_keys or ()}
+    allowed = set(question_facts)
     open_corrections = dict(corrections or {})
     claimed_corrections: set = set()
     if final and items:
@@ -223,6 +235,14 @@ def parse_reason(text: str, valid_ids: set, sourced_ids: set, earlier: list[str]
         if not objective or not from_ids:
             problems.append("an intent lacks an objective or its from list")
             continue
+        moved = [f for f in from_ids if f not in valid_ids and question_facts.get(f) in valid_ids]
+        if moved and set(from_ids) - set(moved) <= valid_ids:
+            # A listed question key in `from`: its fact supports the intent, and the key
+            # names the question that the intent explores.
+            from_ids = list(dict.fromkeys(question_facts[f] if f in moved else f for f in from_ids))
+            item = {**item, "questions": list(item.get("questions") or []) + moved}
+            problems.append(f"moved the question keys {moved} from the from list of an intent to its "
+                            f"questions, with their facts {[question_facts[f] for f in moved]}")
         if not set(from_ids) <= valid_ids:
             problems.append(f"intent from {from_ids} names an unknown or rejected fact")
             continue
