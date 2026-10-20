@@ -4,8 +4,7 @@
 use super::*;
 use common::document_sources::DocumentArchiveSourceItem;
 use crate::api::documents::search_document_itemcount::SourceCount;
-use crate::api::documents::search_document_text::DOCUMENT_HIT_ROW_LIMIT;
-use crate::api::documents::document_text::{self, MATCH_BATCH_ROWS, MatchBatch, MatchPages as _};
+use crate::api::documents::document_text::{self, MATCH_BATCH_ROWS, MatchBatch, MatchPages as _, PageHighlights};
 use common::document_text_pages::MatchDirection;
 
 #[cfg(test)]
@@ -40,43 +39,49 @@ async fn text_sources_of(
     get_document_sources::get_text_sources(user, identifier.clone()).await.map_err(AgentError::from_anyhow)
 }
 
+/// The revision of one text source: its stored page count, and the revision string of the
+/// website text viewer ([`document_text::source_revision`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SourceRevision {
+    stored_count: u64,
+    revision: String,
+}
+
 /// The stored text pages of one document, as the document routes read them. Each
 /// method reads at most one page, so a call costs the same on a document of any length.
 trait TextPages {
-    /// Counts the stored pages of a source, and gives its highest page id. It loads no
-    /// page text.
-    async fn extent(&self, extracted_by: &str) -> Result<(u64, u32), AgentError>;
+    /// Gives the revision of a source: the stored page count, the page range and the
+    /// highest writer version. It loads no page text.
+    async fn revision(&self, extracted_by: &str) -> Result<SourceRevision, AgentError>;
     /// Reads one page, or `None` when the page id has no stored row.
     async fn page_text(&self, extracted_by: &str, page_id: u32) -> Result<Option<String>, AgentError>;
     /// Gives the lowest stored page id above `page_id`.
     async fn page_after(&self, extracted_by: &str, page_id: u32) -> Result<Option<u32>, AgentError>;
-    /// Reads the query hit spans of one page.
-    async fn page_hits(&self, extracted_by: &str, page_id: u32, query: &str) -> Result<Vec<HighlightTextSpan>, AgentError>;
+    /// Reads the query hit spans of one page against its stored body, with the rule of
+    /// the website text viewer ([`document_text::highlights_for_body`]). An index row
+    /// that holds another text of the page gives [`PageHighlights::IndexDiffers`].
+    async fn page_hits(&self, extracted_by: &str, page_id: u32, query: &str) -> Result<PageHighlights, AgentError>;
     /// Reads one batch of the stored pages of one source that match `query`, ascending
     /// after `after`. Only this source's index rows count against the batch, and a row
     /// whose page has no stored text is dropped.
     async fn matching_pages(&self, extracted_by: &str, query: &str, after: Option<u32>) -> Result<MatchBatch, AgentError>;
 }
 
-/// [`TextPages`] over `text_content` and the document's Manticore shard.
+/// [`TextPages`] over `text_content` and the document's Manticore shard. The route has
+/// checked the caller's access to the document.
 struct StoredTextPages<'a> {
-    user: &'a CurrentUser,
     identifier: &'a DocumentIdentifier,
     collectionname: &'a str,
     deadline: Deadline,
 }
 
 impl TextPages for StoredTextPages<'_> {
-    async fn extent(&self, extracted_by: &str) -> Result<(u64, u32), AgentError> {
-        self.deadline
-            .collection_client(self.collectionname)
-            .query("SELECT uniqExact(page_id), max(page_id) FROM text_content WHERE collection_dataset = ? AND file_hash = ? AND extracted_by = ?")
-            .bind(&self.identifier.collection_dataset)
-            .bind(&self.identifier.file_hash)
-            .bind(extracted_by)
-            .fetch_one()
+    async fn revision(&self, extracted_by: &str) -> Result<SourceRevision, AgentError> {
+        let client = self.deadline.collection_client(self.collectionname);
+        let stats = document_text::page_stats(&client, self.identifier, extracted_by, 0)
             .await
-            .map_err(AgentError::from_clickhouse)
+            .map_err(AgentError::from_anyhow)?;
+        Ok(SourceRevision { stored_count: stats.stored_count, revision: document_text::source_revision(&stats) })
     }
 
     async fn page_text(&self, extracted_by: &str, page_id: u32) -> Result<Option<String>, AgentError> {
@@ -100,17 +105,14 @@ impl TextPages for StoredTextPages<'_> {
             .map_err(AgentError::from_clickhouse)
     }
 
-    async fn page_hits(&self, extracted_by: &str, page_id: u32, query: &str) -> Result<Vec<HighlightTextSpan>, AgentError> {
-        let rows = search_document_text::search_document_text_for_hits(
-            self.user,
-            self.identifier.clone(),
-            query.to_string(),
-            extracted_by.to_string(),
-            page_id,
-        )
-        .await
-        .map_err(AgentError::from_anyhow)?;
-        Ok(rows.into_iter().next().map(|row| row.highlight_text_spans).unwrap_or_default())
+    async fn page_hits(&self, extracted_by: &str, page_id: u32, query: &str) -> Result<PageHighlights, AgentError> {
+        let Some(stored) = self.page_text(extracted_by, page_id).await? else {
+            return Ok(PageHighlights::NoMatch);
+        };
+        let rows = search_document_text::page_highlight_texts(self.identifier, query, extracted_by, page_id)
+            .await
+            .map_err(AgentError::from_anyhow)?;
+        Ok(document_text::highlights_for_body(&rows, &stored))
     }
 
     async fn matching_pages(&self, extracted_by: &str, query: &str, after: Option<u32>) -> Result<MatchBatch, AgentError> {
@@ -123,10 +125,12 @@ impl TextPages for StoredTextPages<'_> {
     }
 }
 
-/// The `source` of one document text source: its page count and highest page id change
-/// when the document is parsed again.
-fn text_source_fingerprint(file_hash: &str, extracted_by: &str, extent: (u64, u32)) -> String {
-    format!("{file_hash}:{extracted_by}:{}:{}", extent.0, extent.1)
+/// The `source` of one document text source: the revision of the website text viewer,
+/// which changes when a page is added or removed and when a writer stores a newer body of a
+/// page. A source string of the older form, with the page count and the highest page id
+/// only, never equals it, so an older continuation gets the `source_changed` answer.
+fn text_source_fingerprint(file_hash: &str, extracted_by: &str, revision: &SourceRevision) -> String {
+    format!("{file_hash}:{extracted_by}:{}", revision.revision)
 }
 
 /// Reads the one page `page_id`, and the id of the stored page after it.
@@ -144,27 +148,61 @@ async fn read_text_page<P: TextPages>(
     Ok((text, next))
 }
 
-/// The query hits of one text source, page by page in page order, and whether the count
-/// stopped at the website's [`DOCUMENT_HIT_ROW_LIMIT`]. The limit applies to the rows the
-/// index returned, before duplicates are removed.
+/// The checked query hits of one text source, page by page in page order.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct SourceHitCounts {
+    /// `(page_id, hits)` of each page whose index row holds its stored text.
+    pages: Vec<(u32, u64)>,
+    /// True when the index read stayed under [`search_document_text::DOCUMENT_HIT_ROW_LIMIT`] and every matching
+    /// index row of the source holds the stored text of its page.
+    exact: bool,
+}
+
+impl SourceHitCounts {
+    fn hits(&self) -> u64 {
+        self.pages.iter().map(|(_, count)| count).sum()
+    }
+
+    /// `exact` or `lower_bound`, the `count_state` of a counted read.
+    fn state(&self) -> &'static str {
+        if self.exact { COUNT_EXACT } else { COUNT_LOWER_BOUND }
+    }
+}
+
+/// Every matching index row was checked against the stored text.
+const COUNT_EXACT: &str = "exact";
+/// The count holds the checked hits only.
+const COUNT_LOWER_BOUND: &str = "lower_bound";
+
+/// The query hits of one text source, checked against the stored text with the count of
+/// the website source selector ([`search_document_itemcount::validated_text_counts`]). Each
+/// page counts once, from its first index row that holds its stored text. The count is
+/// exact when the index read stayed under [`search_document_text::DOCUMENT_HIT_ROW_LIMIT`] rows and no matching
+/// index row of the source holds another text. A query that the index refuses is an
+/// error, which is not an empty count.
 async fn source_hit_counts(
     user: &CurrentUser,
     identifier: &DocumentIdentifier,
     extracted_by: &str,
     query: &str,
-) -> Result<(Vec<(u32, u64)>, bool), AgentError> {
-    let (rows, returned_rows) =
-        search_document_text::search_document_text_hit_count_rows(user, identifier.clone(), query.to_string())
-            .await
-            .map_err(AgentError::from_anyhow)?;
-    let partial = returned_rows >= DOCUMENT_HIT_ROW_LIMIT;
-    let mut pages: Vec<(u32, u64)> = rows
-        .into_iter()
+) -> Result<SourceHitCounts, AgentError> {
+    permissions::assert_can_read(user, &identifier.collection_dataset).await.map_err(AgentError::from_anyhow)?;
+    let counts = search_document_itemcount::validated_text_counts(identifier, query)
+        .await
+        .map_err(AgentError::from_anyhow)?;
+    Ok(source_counts_of(&counts, extracted_by))
+}
+
+/// The hits of one source among the checked hits of a document.
+fn source_counts_of(counts: &search_document_itemcount::TextCounts, extracted_by: &str) -> SourceHitCounts {
+    let mut pages: Vec<(u32, u64)> = counts
+        .hits
+        .iter()
         .filter(|row| row.extracted_by == extracted_by && row.hit_count > 0)
         .map(|row| (row.page_id, row.hit_count))
         .collect();
     pages.sort_unstable();
-    Ok((pages, partial))
+    SourceHitCounts { pages, exact: !counts.stopped_at_limit && !counts.differs.contains(extracted_by) }
 }
 
 /// The page that a `page` argument asks for. No page and page 0 ask for no page: an
@@ -212,27 +250,55 @@ fn hits_from_spans(page: u32, spans: &[HighlightTextSpan]) -> Vec<AgentTextHit> 
     hits
 }
 
+/// One page of the hits of a source, its next position, and whether a page it read had
+/// an index row with another text than its stored body.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+struct TextHitsPage {
+    hits: Vec<AgentTextHit>,
+    next_position: Option<AgentPosition>,
+    /// A page whose index rows all hold another text gave no hit, so the hits that the
+    /// source has are not all known.
+    unverified: bool,
+}
+
+/// The checked spans of one page, and whether its index rows hold another text.
+async fn checked_spans<P: TextPages>(
+    pages: &P,
+    extracted_by: &str,
+    page_id: u32,
+    query: &str,
+) -> Result<(Vec<HighlightTextSpan>, bool), AgentError> {
+    Ok(match pages.page_hits(extracted_by, page_id, query).await? {
+        PageHighlights::Spans(spans) => (spans, false),
+        PageHighlights::NoMatch => (Vec::new(), false),
+        PageHighlights::IndexDiffers => (Vec::new(), true),
+    })
+}
+
 /// One page of at most `limit` hits after `after`, in page order.
 ///
 /// It walks the matching stored pages of this one source in batches of
-/// [`MATCH_BATCH_ROWS`], so a source with more than [`DOCUMENT_HIT_ROW_LIMIT`] matching
+/// [`MATCH_BATCH_ROWS`], so a source with more than [`search_document_text::DOCUMENT_HIT_ROW_LIMIT`] matching
 /// pages continues to its last hit and other sources take no part of the allowance. It
 /// reads the hits of the pages it returns, plus the page of `after` to find the hits left
-/// on it. The position is absent when no hit remains.
+/// on it. A hit comes only from an index row that holds the stored body of its page. The
+/// position is absent when no hit remains.
 async fn text_hits_page<P: TextPages>(
     pages: &P,
     extracted_by: &str,
     query: &str,
     after: Option<(u32, u32)>,
     limit: usize,
-) -> Result<(Vec<AgentTextHit>, Option<AgentPosition>), AgentError> {
+) -> Result<TextHitsPage, AgentError> {
     let mut hits: Vec<AgentTextHit> = Vec::new();
+    let mut unverified = false;
     let position = |hits: &[AgentTextHit]| {
         let last = hits.last().map(|hit| (hit.page, hit.ordinal)).unwrap_or_default();
         Some(AgentPosition::HitKey { page_id: last.0, ordinal: last.1 })
     };
     if let Some((after_page, ordinal)) = after {
-        let spans = pages.page_hits(extracted_by, after_page, query).await?;
+        let (spans, differs) = checked_spans(pages, extracted_by, after_page, query).await?;
+        unverified |= differs;
         let page_hits = hits_from_spans(after_page, &spans);
         let available = page_hits.len();
         for hit in page_hits.into_iter().skip(ordinal as usize + 1) {
@@ -240,11 +306,13 @@ async fn text_hits_page<P: TextPages>(
             if hits.len() == limit {
                 let more_here = hits.last().is_some_and(|hit| (hit.ordinal as usize) + 1 < available);
                 if more_here {
-                    return Ok((hits.clone(), position(&hits)));
+                    let next_position = position(&hits);
+                    return Ok(TextHitsPage { hits, next_position, unverified });
                 }
                 let later = pages.matching_pages(extracted_by, query, Some(after_page)).await?;
                 let more_later = !later.pages.is_empty() || later.continue_after.is_some();
-                return Ok((hits.clone(), if more_later { position(&hits) } else { None }));
+                let next_position = if more_later { position(&hits) } else { None };
+                return Ok(TextHitsPage { hits, next_position, unverified });
             }
         }
     }
@@ -252,7 +320,8 @@ async fn text_hits_page<P: TextPages>(
     loop {
         let batch = pages.matching_pages(extracted_by, query, boundary).await?;
         for (index, &page_id) in batch.pages.iter().enumerate() {
-            let spans = pages.page_hits(extracted_by, page_id, query).await?;
+            let (spans, differs) = checked_spans(pages, extracted_by, page_id, query).await?;
+            unverified |= differs;
             let page_hits = hits_from_spans(page_id, &spans);
             let available = page_hits.len();
             for hit in page_hits {
@@ -260,14 +329,14 @@ async fn text_hits_page<P: TextPages>(
                 if hits.len() == limit {
                     let more_here = hits.last().is_some_and(|hit| (hit.ordinal as usize) + 1 < available);
                     let more_later = index + 1 < batch.pages.len() || batch.continue_after.is_some();
-                    let next = if more_here || more_later { position(&hits) } else { None };
-                    return Ok((hits, next));
+                    let next_position = if more_here || more_later { position(&hits) } else { None };
+                    return Ok(TextHitsPage { hits, next_position, unverified });
                 }
             }
         }
         match batch.continue_after {
             Some(next) => boundary = Some(next),
-            None => return Ok((hits, None)),
+            None => return Ok(TextHitsPage { hits, next_position: None, unverified }),
         }
     }
 }
@@ -290,7 +359,7 @@ struct PlannedRead {
     file_hash: String,
     identifier: DocumentIdentifier,
     chosen: Option<common::document_sources::DocumentTextSourceItem>,
-    extent: (u64, u32),
+    revision: SourceRevision,
     /// The archive facts of a document without a text source that is an archive.
     archive: Option<DocumentArchiveSourceItem>,
     /// The image of an image or a video document.
@@ -337,22 +406,22 @@ async fn documents_read_body(
                 .or_else(|| sources.first())
                 .cloned(),
         };
-        let pages = StoredTextPages { user, identifier: &identifier, collectionname: &body.collectionname, deadline };
-        let extent = match &chosen {
-            Some(source) => pages.extent(&source.extracted_by).await?,
-            None => (0, 0),
+        let pages = StoredTextPages { identifier: &identifier, collectionname: &body.collectionname, deadline };
+        let revision = match &chosen {
+            Some(source) => pages.revision(&source.extracted_by).await?,
+            None => SourceRevision { stored_count: 0, revision: String::new() },
         };
         let archive = match &chosen {
             Some(_) => None,
             None => get_document_sources::archive_info_for(user, &identifier).await,
         };
         let image = get_document_sources::image_info_for(user, &identifier).await;
-        planned.push(PlannedRead { file_hash: file_hash.clone(), identifier, chosen, extent, archive, image });
+        planned.push(PlannedRead { file_hash: file_hash.clone(), identifier, chosen, revision, archive, image });
     }
     let source = planned
         .iter()
         .map(|plan| match &plan.chosen {
-            Some(chosen) => text_source_fingerprint(&plan.file_hash, &chosen.extracted_by, plan.extent),
+            Some(chosen) => text_source_fingerprint(&plan.file_hash, &chosen.extracted_by, &plan.revision),
             None => format!("{}:no_text", plan.file_hash),
         })
         .collect::<Vec<_>>()
@@ -394,14 +463,14 @@ async fn documents_read_body(
         }
     }
     let (next_position, total) = match (documents.as_slice(), planned.as_slice()) {
-        ([document], [plan]) => (document.next_position.clone(), Some(plan.extent.0)),
+        ([document], [plan]) => (document.next_position.clone(), Some(plan.revision.stored_count)),
         _ => (None, None),
     };
     Ok(DocumentsReadResponse { documents, page_info: AgentPageInfo { source, next_position, total, partial } })
 }
 
-/// Reads one page of one document. The second value is true when the hit count stopped
-/// at the website's row limit.
+/// Reads one page of one document. The second value is true when the hit count is a lower
+/// bound.
 async fn read_one_document(
     user: &CurrentUser,
     collectionname: &str,
@@ -441,12 +510,14 @@ async fn read_one_document(
             false,
         ));
     };
-    let (counts, stopped) = match query {
-        Some(query) => source_hit_counts(user, &plan.identifier, &chosen.extracted_by, query).await?,
-        None => (Vec::new(), false),
+    let counts = match query {
+        Some(query) => Some(source_hit_counts(user, &plan.identifier, &chosen.extracted_by, query).await?),
+        None => None,
     };
-    let page_id = chosen_page(wanted_page, &counts, chosen.min_page);
-    let pages = StoredTextPages { user, identifier: &plan.identifier, collectionname, deadline };
+    let stopped = counts.as_ref().is_some_and(|counts| !counts.exact);
+    let count_pages = counts.as_ref().map(|counts| counts.pages.as_slice()).unwrap_or_default();
+    let page_id = chosen_page(wanted_page, count_pages, chosen.min_page);
+    let pages = StoredTextPages { identifier: &plan.identifier, collectionname, deadline };
     let (text, text_start, text_end, text_length, next_position) =
         read_text_range(&pages, &chosen.extracted_by, page_id, query, wanted_offset, length).await?;
     Ok((
@@ -461,10 +532,10 @@ async fn read_one_document(
             min_page: Some(chosen.min_page),
             max_page: Some(chosen.max_page),
             text, text_start, text_end, text_length,
-            source_version: text_source_fingerprint(&plan.file_hash, &chosen.extracted_by, plan.extent),
-            hit_count: counts.iter().map(|(_, count)| count).sum(),
-            hit_pages: counts.iter().take(MAX_HIT_PAGES).map(|(page, _)| *page).collect(),
-            count_state: "read".to_string(),
+            source_version: text_source_fingerprint(&plan.file_hash, &chosen.extracted_by, &plan.revision),
+            hit_count: counts.as_ref().map_or(0, SourceHitCounts::hits),
+            hit_pages: count_pages.iter().take(MAX_HIT_PAGES).map(|(page, _)| *page).collect(),
+            count_state: counts.as_ref().map_or("read", SourceHitCounts::state).to_string(),
             next_position,
             archive: None,
             image: plan.image.clone(),
@@ -486,7 +557,7 @@ async fn read_text_range<P: TextPages>(
     let offset = match (wanted_offset, query) {
         (Some(offset), _) => offset,
         (None, Some(query)) => {
-            let spans = pages.page_hits(extracted_by, page_id, query).await?;
+            let (spans, _) = checked_spans(pages, extracted_by, page_id, query).await?;
             matching_passage(&spans, length).map(|(start, end)| {
                 let before = 1_000.min(length.saturating_sub(end - start));
                 start.saturating_sub(before)
@@ -589,6 +660,7 @@ async fn documents_search_text_body(
                 return Ok(DocumentsSearchTextResponse {
                     source_used: String::new(),
                     hit_count: 0,
+                    count_state: COUNT_EXACT.to_string(),
                     hits: Vec::new(),
                     archive: Some(archive),
                     page_info: AgentPageInfo { source, next_position: None, total: Some(0), partial: false },
@@ -596,22 +668,36 @@ async fn documents_search_text_body(
             }
         },
     };
-    let pages = StoredTextPages { user, identifier: &identifier, collectionname: &body.collectionname, deadline };
-    let extent = pages.extent(&chosen.extracted_by).await?;
-    let source = text_source_fingerprint(&body.file_hash, &chosen.extracted_by, extent);
+    let pages = StoredTextPages { identifier: &identifier, collectionname: &body.collectionname, deadline };
+    let revision = pages.revision(&chosen.extracted_by).await?;
+    let source = text_source_fingerprint(&body.file_hash, &chosen.extracted_by, &revision);
     verify_expected_source(body.expected_source.as_deref(), &source)?;
 
-    let (counts, partial) = source_hit_counts(user, &identifier, &chosen.extracted_by, &body.query).await?;
-    let (hits, next_position) =
-        text_hits_page(&pages, &chosen.extracted_by, &body.query, after, TEXT_HITS_PAGE_SIZE).await?;
-    let hit_count = counts.iter().map(|(_, count)| count).sum();
-    Ok(DocumentsSearchTextResponse {
-        source_used: chosen.extracted_by.clone(),
+    let mut counts = source_hit_counts(user, &identifier, &chosen.extracted_by, &body.query).await?;
+    let page = text_hits_page(&pages, &chosen.extracted_by, &body.query, after, TEXT_HITS_PAGE_SIZE).await?;
+    // A page of hits that met an index row with another text makes the count a lower
+    // bound too, so the count and the hits agree.
+    counts.exact &= !page.unverified;
+    Ok(search_text_response(chosen.extracted_by.clone(), &counts, page, source))
+}
+
+/// The `documents/search_text` response of one page of checked hits. `total` is the hit
+/// count only when the count is exact. A lower bound is `partial`.
+fn search_text_response(source_used: String, counts: &SourceHitCounts, page: TextHitsPage, source: String) -> DocumentsSearchTextResponse {
+    let hit_count = counts.hits();
+    DocumentsSearchTextResponse {
+        source_used,
         hit_count,
-        hits,
+        count_state: counts.state().to_string(),
+        hits: page.hits,
         archive: None,
-        page_info: AgentPageInfo { source, next_position, total: Some(hit_count), partial },
-    })
+        page_info: AgentPageInfo {
+            source,
+            next_position: page.next_position,
+            total: counts.exact.then_some(hit_count),
+            partial: !counts.exact,
+        },
+    }
 }
 
 // ===================================================================================
@@ -1066,14 +1152,14 @@ async fn documents_diff_sources_body(
 ) -> Result<DocumentsDiffSourcesResponse, AgentError> {
     let identifier = document_identifier(user, headers, &body.collectionname, &body.file_hash, DatasetRow::Any).await?;
     let sources = text_sources_of(user, &identifier).await?;
-    let pages = StoredTextPages { user, identifier: &identifier, collectionname: &body.collectionname, deadline };
+    let pages = StoredTextPages { identifier: &identifier, collectionname: &body.collectionname, deadline };
     let mut fingerprints = Vec::with_capacity(2);
     let mut chosen_pages = Vec::with_capacity(2);
     for (wanted, page) in [(&body.source_a, body.page_a), (&body.source_b, body.page_b)] {
         let Some(found) = sources.iter().find(|source| &source.extracted_by == wanted) else {
             return Err(AgentError::not_found(format!("no text source {wanted:?}")));
         };
-        fingerprints.push(text_source_fingerprint(&body.file_hash, wanted, pages.extent(wanted).await?));
+        fingerprints.push(text_source_fingerprint(&body.file_hash, wanted, &pages.revision(wanted).await?));
         chosen_pages.push(page.unwrap_or(found.min_page));
     }
     let source = format!("{}:diff", fingerprints.join("|"));

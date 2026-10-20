@@ -58,24 +58,36 @@
 //! and drawing it a second time as row 1 of the data shows it twice while making every
 //! count disagree with the statistics the filter popovers and type marks come from.
 //!
-//! Everything reader-facing here therefore starts **after** `header_row`: the row floor
-//! [`data_row_floor`] is spliced into every cell query, the totals subtract it, and the
-//! unfiltered window's arithmetic is offset by it. `header_row = 0` means the sheet has no
-//! header row and nothing is skipped. It is a `row_id` (dense within the sheet) not a
-//! `source_row`, so it must never be compared against the file's own row numbers.
+//! Everything reader-facing here therefore starts **after** the header row of the reading:
+//! the row floor [`data_row_floor`] is spliced into every cell query, the totals subtract
+//! it, and the unfiltered window's arithmetic is offset by it. A header row of `0` means
+//! the reading has no header row and nothing is skipped. It is a `row_id` (dense within the
+//! sheet) not a `source_row`, so it must never be compared against the file's own row
+//! numbers.
+//!
+//! # One resolver chooses the reading of row 1
+//!
+//! `table_sheets.header_row` is the display choice of the website grid.
+//! `header_state`, `header_basis` and `header_candidates` record every plausible reading.
+//! [`resolve_read`] turns a [`TableRead`] into a
+//! [`SheetInterpretation`] with the shared rules of `common::document_tables`, and every
+//! read below takes its header row from that value. The website grid reads the display
+//! choice. An agent route reads the reading that its request names, or the `auto`
+//! reading. No query derives a header row of its own.
 
 use common::current_user::CurrentUser;
 use common::document_tables::{
-    MAX_TABLE_COLUMN_VALUES, TableCell, TableClamps, TableColumnClass, TableColumnFilter,
-    TableColumnInfo, TableColumnValue, TableFilterKind, TableOverview, TablePage, TableRow,
-    TableSheet, TableTruncation, TableViewQuery, clamp_table_page_rows,
-    clamp_table_visible_columns, table_find_text,
+    MAX_TABLE_COLUMN_VALUES, SheetInterpretation, TableCell, TableClamps, TableColumnClass,
+    TableColumnFilter, TableColumnInfo, TableColumnValue, TableFilterKind, TableOverview,
+    TablePage, TableRow, TableSheet, TableTruncation, TableViewQuery, clamp_table_page_rows,
+    clamp_table_visible_columns, column_type_of, display_sheet_interpretation,
+    resolve_sheet_interpretation, table_find_text,
 };
 use common::search_result::DocumentIdentifier;
 use common::table_cell_preview::cell_preview;
 
 use crate::api::documents::search_document_text::search_document_text_all_hits;
-use crate::auth::guard::NOT_FOUND;
+use crate::auth::guard::{InvalidInput, NOT_FOUND};
 use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils::get_client_for_dataset;
 
@@ -117,6 +129,101 @@ struct SheetRow {
     column_count: u32,
     header_row: u64,
     truncated: u8,
+    header_state: String,
+    header_basis: String,
+    header_candidates: Vec<u64>,
+}
+
+impl SheetRow {
+    /// The sheet as the website grid shows it: its data rows are the stored rows after the
+    /// display choice of header row.
+    fn into_sheet(self) -> TableSheet {
+        TableSheet {
+            sheet_id: self.sheet_id,
+            name: self.name,
+            row_count: self.row_count.saturating_sub(self.header_row),
+            column_count: self.column_count,
+            header_row: self.header_row,
+            truncated: self.truncated == 1,
+            header_state: self.header_state,
+            header_basis: self.header_basis,
+            header_candidates: self.header_candidates,
+        }
+    }
+}
+
+/// The columns of `table_sheets` that [`SheetRow`] reads, in its field order.
+const SHEET_COLUMNS: &str = "sheet_id, name, row_count, column_count, header_row, truncated, \
+                             header_state, header_basis, header_candidates";
+
+/// Which reading of row 1 a table read takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TableRead<'a> {
+    /// The display choice of the website grid, `table_sheets.header_row`.
+    Display,
+    /// The reading that an agent request names: `auto` when `None`.
+    Agent(Option<&'a str>),
+}
+
+/// The reading of one read of `sheet`. A request for a reading that the sheet does not
+/// have is an [`InvalidInput`], which the agent routes answer with 400.
+pub fn resolve_read(sheet: &TableSheet, reader: &str, read: TableRead<'_>) -> anyhow::Result<SheetInterpretation> {
+    match read {
+        TableRead::Display => Ok(display_sheet_interpretation(sheet, reader)),
+        TableRead::Agent(requested) => resolve_sheet_interpretation(sheet, reader, requested)
+            .map_err(|message| anyhow::Error::new(InvalidInput(message))),
+    }
+}
+
+/// The sheets of one document for one dataset, in sheet order. The caller holds the
+/// manifest of the document.
+async fn sheets_of(client: &clickhouse::Client, document_identifier: &DocumentIdentifier) -> anyhow::Result<Vec<TableSheet>> {
+    let rows: Vec<SheetRow> = client
+        .query(&format!(
+            "SELECT {SHEET_COLUMNS} FROM table_sheets FINAL \
+             WHERE collection_dataset = ? AND hash = ? ORDER BY sheet_id"
+        ))
+        .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
+        .bind(&document_identifier.collection_dataset)
+        .bind(&document_identifier.file_hash)
+        .fetch_all()
+        .await?;
+    Ok(rows.into_iter().map(SheetRow::into_sheet).collect())
+}
+
+/// The data rows of each sheet in its reading, as one predicate over the `table_cells`
+/// alias `alias` (with its dot). `extents` also bounds each sheet by its stored rows and
+/// columns. `None` when no sheet has a data row.
+fn sheet_bounds(alias: &str, sheets: &[(TableSheet, SheetInterpretation)], extents: bool) -> Option<String> {
+    let parts: Vec<String> = sheets
+        .iter()
+        .filter(|(_, interpretation)| interpretation.selected_rows() > 0)
+        .map(|(sheet, interpretation)| {
+            let extent = if extents {
+                format!(" AND {alias}row_id <= {} AND {alias}column_id <= {}", interpretation.stored_rows, sheet.column_count)
+            } else {
+                String::new()
+            };
+            format!("({alias}sheet_id = {} AND {alias}row_id > {}{extent})", sheet.sheet_id, interpretation.selected)
+        })
+        .collect();
+    (!parts.is_empty()).then(|| format!("({})", parts.join(" OR ")))
+}
+
+/// Every sheet of a document with the display reading of the website grid.
+async fn display_sheets(
+    client: &clickhouse::Client,
+    document_identifier: &DocumentIdentifier,
+    manifest: &TableManifest,
+) -> anyhow::Result<Vec<(TableSheet, SheetInterpretation)>> {
+    Ok(sheets_of(client, document_identifier)
+        .await?
+        .into_iter()
+        .map(|sheet| {
+            let interpretation = display_sheet_interpretation(&sheet, &manifest.reader);
+            (sheet, interpretation)
+        })
+        .collect())
 }
 
 #[derive(Debug, clickhouse::Row, serde::Deserialize)]
@@ -260,18 +367,7 @@ pub async fn get_table_overview(
     };
     let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
 
-    let sheet_rows: Vec<SheetRow> = client
-        .query(
-            "SELECT sheet_id, name, row_count, column_count, header_row, truncated \
-             FROM table_sheets FINAL \
-             WHERE collection_dataset = ? AND hash = ? \
-             ORDER BY sheet_id",
-        )
-        .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
-        .bind(&document_identifier.collection_dataset)
-        .bind(&document_identifier.file_hash)
-        .fetch_all()
-        .await?;
+    let sheets = sheets_of(&client, &document_identifier).await?;
 
     let column_rows: Vec<ColumnRow> = client
         .query(
@@ -287,10 +383,11 @@ pub async fn get_table_overview(
         .fetch_all()
         .await?;
 
-    // Every row count a reader sees is a DATA row count, so the header rows come off it
-    // here, once per sheet, and only where a sheet has one. The stored figures are still
-    // in the raw dumps of `table_documents` and `table_sheets` for anyone who wants them.
-    let header_rows: u64 = sheet_rows.iter().map(|row| row.header_row).sum();
+    // Every row count a reader sees is a DATA row count, so the header rows of the display
+    // choice come off it here, once per sheet, and only where a sheet has one. The stored
+    // figures are still in the raw dumps of `table_documents` and `table_sheets` for
+    // anyone who wants them.
+    let header_rows: u64 = sheets.iter().map(|sheet| sheet.header_row).sum();
 
     Ok(Some(TableOverview {
         reader: manifest.reader,
@@ -302,17 +399,7 @@ pub async fn get_table_overview(
         stored_bytes: manifest.stored_bytes,
         // Sheet ordinals are the workbook's own and are not contiguous; the picker is
         // built from these rows and never from a range.
-        sheets: sheet_rows
-            .into_iter()
-            .map(|row| TableSheet {
-                sheet_id: row.sheet_id,
-                name: row.name,
-                row_count: row.row_count.saturating_sub(row.header_row),
-                column_count: row.column_count,
-                header_row: row.header_row,
-                truncated: row.truncated == 1,
-            })
-            .collect(),
+        sheets,
         columns: column_rows
             .into_iter()
             .map(|row| TableColumnInfo {
@@ -435,60 +522,182 @@ fn sort_expression(class: TableColumnClass, desc: bool) -> String {
     format!("{typed} {direction} NULLS LAST, cell_text {direction}, row_id ASC")
 }
 
+/// One column of a sheet in one reading of row 1.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ViewColumn {
+    pub column_id: u32,
+    pub letter: String,
+    /// The header text of the reading, empty in the reading with no header row.
+    pub header: String,
+    /// The type that the column sorts and filters as in the reading.
+    pub column_type: String,
+    /// The cell count of each kind in the data rows of the reading, most frequent first.
+    pub kinds: Vec<(String, u64)>,
+}
+
+impl ViewColumn {
+    /// The name of the column: its header text, else `Column <letter>`, as
+    /// [`TableColumnInfo::label`] gives it.
+    pub fn label(&self) -> String {
+        if self.header.trim().is_empty() { format!("Column {}", self.letter) } else { self.header.clone() }
+    }
+}
+
+#[derive(Debug, clickhouse::Row, serde::Deserialize)]
+struct ViewColumnRow {
+    column_id: u32,
+    letter: String,
+    header: String,
+    column_type: String,
+    kind_names: Vec<String>,
+    kind_counts: Vec<u64>,
+}
+
+#[derive(Debug, clickhouse::Row, serde::Deserialize)]
+struct BoundaryCellRow {
+    column_id: u32,
+    row_id: u64,
+    cell_kind: String,
+    cell_text: String,
+}
+
+/// The columns of `sheet` in `interpretation`, in ordinal order.
+///
+/// `table_columns` describes the data rows of the display choice. A reading with that
+/// header row uses the stored header, type and kind counts. Another reading moves the rows
+/// between the two header rows into or out of its data rows: it adds or removes the kinds
+/// of their cells, takes its header text from its own header row, and computes the type
+/// from the kinds that result. One query reads those cells, at most one row of each column
+/// for the readings that the reader records.
+pub async fn view_columns(
+    client: &clickhouse::Client,
+    document_identifier: &DocumentIdentifier,
+    sheet: &TableSheet,
+    interpretation: &SheetInterpretation,
+) -> anyhow::Result<Vec<ViewColumn>> {
+    let rows: Vec<ViewColumnRow> = client
+        .query(
+            "SELECT column_id, letter, header, column_type, kind_names, kind_counts FROM table_columns FINAL \
+             WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? ORDER BY column_id",
+        )
+        .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
+        .bind(&document_identifier.collection_dataset)
+        .bind(&document_identifier.file_hash)
+        .bind(sheet.sheet_id)
+        .fetch_all()
+        .await?;
+    let mut columns: Vec<ViewColumn> = rows
+        .into_iter()
+        .map(|row| ViewColumn {
+            column_id: row.column_id,
+            letter: row.letter,
+            header: row.header,
+            column_type: row.column_type,
+            kinds: row.kind_names.into_iter().zip(row.kind_counts).collect(),
+        })
+        .collect();
+    let (display, selected) = (sheet.header_row, interpretation.selected);
+    if selected == display {
+        return Ok(columns);
+    }
+    let (low, high) = (display.min(selected), display.max(selected));
+    let cells: Vec<BoundaryCellRow> = client
+        .query(&format!(
+            "SELECT column_id, row_id, cell_kind, cell_text FROM table_cells FINAL \
+             WHERE file_hash = ? AND sheet_id = {} AND column_id <= {} \
+             AND ((row_id > {low} AND row_id <= {high}) OR row_id = {selected})",
+            sheet.sheet_id, sheet.column_count
+        ))
+        .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
+        .bind(&document_identifier.file_hash)
+        .fetch_all()
+        .await?;
+    apply_reading(&mut columns, &cells, display, selected);
+    Ok(columns)
+}
+
+/// Moves the rows between the display header row and the selected header row into or out
+/// of the data rows of `columns`, as [`view_columns`] describes.
+fn apply_reading(columns: &mut [ViewColumn], cells: &[BoundaryCellRow], display: u64, selected: u64) {
+    let (low, high) = (display.min(selected), display.max(selected));
+    for column in columns.iter_mut() {
+        column.header = String::new();
+        let mut kinds: std::collections::BTreeMap<String, i64> =
+            column.kinds.iter().map(|(kind, count)| (kind.clone(), *count as i64)).collect();
+        for cell in cells.iter().filter(|cell| cell.column_id == column.column_id) {
+            if cell.row_id == selected && selected > 0 {
+                column.header = cell.cell_text.clone();
+            }
+            if cell.row_id > low && cell.row_id <= high {
+                // A smaller header row gives more data rows.
+                let change = if selected < display { 1 } else { -1 };
+                *kinds.entry(cell.cell_kind.clone()).or_insert(0) += change;
+            }
+        }
+        let mut counted: Vec<(String, u64)> =
+            kinds.into_iter().filter(|(_, count)| *count > 0).map(|(kind, count)| (kind, count as u64)).collect();
+        counted.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        column.column_type = column_type_of(&counted);
+        column.kinds = counted;
+    }
+}
+
 /// One window of one sheet: the rows, the total after filtering, and what was clamped.
+/// The website grid reads the display choice of row 1.
 pub async fn get_table_page(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
     query: TableViewQuery,
 ) -> anyhow::Result<TablePage> {
-    let _manifest = require_table_manifest(user, &document_identifier).await?;
+    Ok(read_table_page(user, document_identifier, query, TableRead::Display).await?.page)
+}
+
+/// A window of one sheet in one reading of row 1, with that reading and its columns.
+#[derive(Debug, Clone)]
+pub struct TablePageRead {
+    pub page: TablePage,
+    pub sheet: TableSheet,
+    pub interpretation: SheetInterpretation,
+    pub columns: Vec<ViewColumn>,
+}
+
+/// [`get_table_page`] in the reading that `read` selects.
+pub async fn read_table_page(
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier,
+    query: TableViewQuery,
+    read: TableRead<'_>,
+) -> anyhow::Result<TablePageRead> {
+    let manifest = require_table_manifest(user, &document_identifier).await?;
     let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
     let hash = document_identifier.file_hash.clone();
-    let dataset = document_identifier.collection_dataset.clone();
 
     // The sheet and its extents, from the manifest's own tables. A request naming a sheet
     // that does not exist is a 404 rather than an empty grid: sheet ordinals are the
     // workbook's, not indices, so "sheet 1" of a two-sheet workbook is often absent and
     // an empty grid would read as "this sheet is empty".
-    let sheets: Vec<(u16, u64, u32, u64)> = client
-        .query(
-            "SELECT sheet_id, row_count, column_count, header_row FROM table_sheets FINAL \
-             WHERE collection_dataset = ? AND hash = ? ORDER BY sheet_id",
-        )
-        .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
-        .bind(&dataset)
-        .bind(&hash)
-        .fetch_all()
-        .await?;
-    let Some(&(sheet_id, stored_rows, _sheet_columns, header_row)) =
-        sheets.iter().find(|(id, _, _, _)| *id == query.sheet_id)
-    else {
+    let sheets = sheets_of(&client, &document_identifier).await?;
+    let Some(sheet) = sheets.into_iter().find(|sheet| sheet.sheet_id == query.sheet_id) else {
         anyhow::bail!("{NOT_FOUND}: this document has no sheet {}", query.sheet_id);
     };
-    // The header row is drawn as the column labels, so the data begins after it and every
-    // count below is a count of data rows. See the module docstring.
+    let interpretation = resolve_read(&sheet, &manifest.reader, read)?;
+    let sheet_id = sheet.sheet_id;
+    let stored_rows = interpretation.stored_rows;
+    // The header row of the reading is not a data row, so the data begins after it and
+    // every count below is a count of data rows. See the module docstring.
+    let header_row = interpretation.selected;
     let floor = data_row_floor(header_row);
-    let sheet_rows = stored_rows.saturating_sub(header_row);
+    let sheet_rows = interpretation.selected_rows();
 
-    // Column types, so the comparator and every filter predicate are chosen from what the
-    // pipeline recorded rather than from what the caller claims.
-    let column_rows: Vec<(u32, String)> = client
-        .query(
-            "SELECT column_id, column_type FROM table_columns FINAL \
-             WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? ORDER BY column_id",
-        )
-        .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
-        .bind(&dataset)
-        .bind(&hash)
-        .bind(sheet_id)
-        .fetch_all()
-        .await?;
-    let known_columns: Vec<u32> = column_rows.iter().map(|(id, _)| *id).collect();
+    // Column types of the reading, so the comparator and every filter predicate are chosen
+    // from what the pipeline recorded rather than from what the caller claims.
+    let columns = view_columns(&client, &document_identifier, &sheet, &interpretation).await?;
+    let known_columns: Vec<u32> = columns.iter().map(|column| column.column_id).collect();
     let class_of = |column_id: u32| -> TableColumnClass {
-        column_rows
+        columns
             .iter()
-            .find(|(id, _)| *id == column_id)
-            .map(|(_, t)| TableColumnClass::of(t))
+            .find(|column| column.column_id == column_id)
+            .map(|column| TableColumnClass::of(&column.column_type))
             .unwrap_or(TableColumnClass::Text)
     };
 
@@ -642,15 +851,8 @@ pub async fn get_table_page(
     };
 
     if window_rows.is_empty() || visible_columns.is_empty() {
-        return Ok(TablePage {
-            rows: Vec::new(),
-            total_rows,
-            columns: visible_columns,
-            offset,
-            limit,
-            clamps,
-            find_terms: search,
-        });
+        let page = TablePage { rows: Vec::new(), total_rows, columns: visible_columns, offset, limit, clamps, find_terms: search };
+        return Ok(TablePageRead { page, sheet, interpretation, columns });
     }
 
     // ---- phase 2: the cells of exactly those rows -----------------------------------
@@ -710,15 +912,8 @@ pub async fn get_table_page(
         })
         .collect();
 
-    Ok(TablePage {
-        rows,
-        total_rows,
-        columns: visible_columns,
-        offset,
-        limit,
-        clamps,
-        find_terms: search,
-    })
+    let page = TablePage { rows, total_rows, columns: visible_columns, offset, limit, clamps, find_terms: search };
+    Ok(TablePageRead { page, sheet, interpretation, columns })
 }
 
 /// Fill the inline excerpt of every cell of a page for the website grid. The excerpt marks
@@ -855,22 +1050,21 @@ pub async fn get_table_sheet_hits(
     if table_find_text(&search).is_empty() {
         return Ok(Vec::new());
     }
-    let _manifest = require_table_manifest(user, &document_identifier).await?;
+    let manifest = require_table_manifest(user, &document_identifier).await?;
     let search = table_find_terms(user, &document_identifier, &search).await;
     let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+    // The grid's own search count bounds a sheet by its header row only, so this does too.
+    let Some(bounds) = sheet_bounds("c.", &display_sheets(&client, &document_identifier, &manifest).await?, false) else {
+        return Ok(Vec::new());
+    };
     Ok(client
-        .query(
+        .query(&format!(
             "SELECT c.sheet_id, uniqExact(c.row_id) FROM table_cells AS c FINAL \
-             LEFT JOIN (SELECT sheet_id, header_row FROM table_sheets FINAL \
-                        WHERE collection_dataset = ? AND hash = ?) AS s \
-             ON s.sheet_id = c.sheet_id \
-             WHERE c.file_hash = ? AND c.row_id > s.header_row \
+             WHERE c.file_hash = ? AND {bounds} \
              AND multiSearchAnyCaseInsensitiveUTF8(translate(c.cell_text, '\\t\\r\\n', '   '), ?) \
-             GROUP BY c.sheet_id ORDER BY c.sheet_id",
-        )
+             GROUP BY c.sheet_id ORDER BY c.sheet_id"
+        ))
         .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
-        .bind(&document_identifier.collection_dataset)
-        .bind(&document_identifier.file_hash)
         .bind(&document_identifier.file_hash)
         .bind(search)
         .fetch_all()
@@ -886,7 +1080,7 @@ pub async fn get_table_column_values(
     search: String,
 ) -> anyhow::Result<Vec<TableColumnValue>> {
     let search = table_find_text(&search);
-    let _manifest = require_table_manifest(user, &document_identifier).await?;
+    let manifest = require_table_manifest(user, &document_identifier).await?;
     let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
 
     // The column has to exist on that sheet before a cell query runs, for the same reason
@@ -910,20 +1104,14 @@ pub async fn get_table_column_values(
     // The header row's text is this column's LABEL, not one of its values, and the column
     // statistics beside this list already exclude it. Offering it as a filterable value
     // would let a reader pick a value that matches no data row.
-    let (header_row, row_count, column_count): (u64, u64, u32) = client
-        .query(
-            "SELECT header_row, row_count, column_count FROM table_sheets FINAL \
-             WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? LIMIT 1",
-        )
-        .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
-        .bind(&document_identifier.collection_dataset)
-        .bind(&document_identifier.file_hash)
-        .bind(sheet_id)
-        .fetch_all::<(u64, u64, u32)>()
+    let (header_row, row_count, column_count) = match display_sheets(&client, &document_identifier, &manifest)
         .await?
         .into_iter()
-        .next()
-        .unwrap_or((0, 0, 0));
+        .find(|(sheet, _)| sheet.sheet_id == sheet_id)
+    {
+        Some((sheet, interpretation)) => (interpretation.selected, interpretation.stored_rows, sheet.column_count),
+        None => (0, 0, 0),
+    };
     let floor = data_row_floor(header_row);
 
     // The search string is BOUND. See the module docstring: the Manticore escaping next
@@ -964,25 +1152,22 @@ pub async fn count_table_cell_matches(
     if table_find_text(find_query).is_empty() {
         return Ok(0);
     }
-    let _manifest = require_table_manifest(user, document_identifier).await?;
+    let manifest = require_table_manifest(user, document_identifier).await?;
     let find_terms = table_find_terms(user, document_identifier, find_query).await;
     let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
     // Header rows are excluded, so this number counts the same cells the grid can show a
     // reader. A term that only appears in a header would otherwise promise matches that
     // no row of the grid contains. The header is drawn once, as the column label.
+    let Some(bounds) = sheet_bounds("c.", &display_sheets(&client, document_identifier, &manifest).await?, true) else {
+        return Ok(0);
+    };
     let count: u64 = client
-        .query(
+        .query(&format!(
             "SELECT count() FROM table_cells AS c FINAL \
-             INNER JOIN (SELECT sheet_id, row_count, column_count, header_row FROM table_sheets FINAL \
-                         WHERE collection_dataset = ? AND hash = ?) AS s ON s.sheet_id = c.sheet_id \
-             WHERE c.file_hash = ? \
-               AND multiSearchAnyCaseInsensitiveUTF8(translate(c.cell_text, '\\t\\r\\n', '   '), ?) \
-               AND c.row_id <= s.row_count AND c.column_id <= s.column_count \
-               AND c.row_id > s.header_row",
-        )
+             WHERE c.file_hash = ? AND {bounds} \
+               AND multiSearchAnyCaseInsensitiveUTF8(translate(c.cell_text, '\\t\\r\\n', '   '), ?)"
+        ))
         .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
-        .bind(&document_identifier.collection_dataset)
-        .bind(&document_identifier.file_hash)
         .bind(&document_identifier.file_hash)
         .bind(find_terms)
         .fetch_one()
@@ -1046,6 +1231,93 @@ mod tests {
         assert_eq!(data_row_floor(0), "");
         assert_eq!(data_row_floor(1), " AND row_id > 1");
         assert_eq!(data_row_floor(4), " AND row_id > 4");
+    }
+
+    fn column(id: u32, header: &str, kinds: &[(&str, u64)]) -> ViewColumn {
+        let kinds: Vec<(String, u64)> = kinds.iter().map(|(k, n)| (k.to_string(), *n)).collect();
+        ViewColumn {
+            column_id: id,
+            letter: ["A", "B", "C"][id as usize - 1].into(),
+            header: header.into(),
+            column_type: column_type_of(&kinds),
+            kinds,
+        }
+    }
+
+    fn cell(id: u32, row: u64, kind: &str, text: &str) -> BoundaryCellRow {
+        BoundaryCellRow { column_id: id, row_id: row, cell_kind: kind.into(), cell_text: text.into() }
+    }
+
+    /// The display choice took row 1 as the header. The reading with every row adds row 1
+    /// to the data: its text cell shows in the kinds of a numeric column, and the columns
+    /// lose their header text.
+    #[test]
+    fn every_row_adds_the_header_cells_to_the_kinds() {
+        let mut columns = vec![column(1, "office", &[("text", 18)]), column(2, "amount", &[("int", 18)])];
+        apply_reading(&mut columns, &[cell(1, 1, "text", "office"), cell(2, 1, "text", "amount")], 1, 0);
+        assert_eq!(columns[0].kinds, vec![("text".to_string(), 19)]);
+        assert_eq!(columns[1].kinds, vec![("int".to_string(), 18), ("text".to_string(), 1)]);
+        assert_eq!(columns[1].column_type, "int");
+        assert!(columns.iter().all(|c| c.header.is_empty()));
+        assert_eq!(columns[1].label(), "Column B");
+    }
+
+    /// The display choice read row 1 as data. The reading with row 1 as header takes its
+    /// names from row 1 and removes its cells from the kinds, so a year header leaves a
+    /// numeric column with the data rows only.
+    #[test]
+    fn a_first_row_header_takes_its_names_and_removes_its_kinds() {
+        let mut columns = vec![column(1, "", &[("text", 4)]), column(2, "", &[("int", 4)]), column(3, "", &[("int", 3)])];
+        let cells = [cell(1, 1, "text", "region"), cell(2, 1, "int", "2018"), cell(3, 1, "int", "2020")];
+        apply_reading(&mut columns, &cells, 0, 1);
+        assert_eq!(columns.iter().map(ViewColumn::label).collect::<Vec<_>>(), vec!["region", "2018", "2020"]);
+        assert_eq!(columns[1].kinds, vec![("int".to_string(), 3)]);
+        assert_eq!(columns[2].kinds, vec![("int".to_string(), 2)]);
+        assert_eq!(columns[0].column_type, "text");
+    }
+
+    /// A column whose only stored cells are in row 1 has no data cell in the reading with
+    /// row 1 as header, and reads as text.
+    #[test]
+    fn a_column_without_a_data_cell_reads_as_text() {
+        let mut columns = vec![column(1, "", &[("int", 1)])];
+        apply_reading(&mut columns, &[cell(1, 1, "int", "7")], 0, 1);
+        assert!(columns[0].kinds.is_empty());
+        assert_eq!((columns[0].column_type.as_str(), columns[0].header.as_str()), ("text", "7"));
+    }
+
+    #[test]
+    fn the_sheet_bounds_follow_each_reading() {
+        let interpretation = |selected, stored_rows| SheetInterpretation { selected, stored_rows, ..Default::default() };
+        let sheets = vec![
+            (TableSheet { sheet_id: 0, column_count: 3, ..Default::default() }, interpretation(1, 39)),
+            (TableSheet { sheet_id: 2, column_count: 5, ..Default::default() }, interpretation(0, 7)),
+            (TableSheet { sheet_id: 4, column_count: 1, ..Default::default() }, interpretation(1, 1)),
+        ];
+        assert_eq!(
+            sheet_bounds("c.", &sheets, true).unwrap(),
+            "((c.sheet_id = 0 AND c.row_id > 1 AND c.row_id <= 39 AND c.column_id <= 3) OR \
+             (c.sheet_id = 2 AND c.row_id > 0 AND c.row_id <= 7 AND c.column_id <= 5))"
+        );
+        assert_eq!(
+            sheet_bounds("", &sheets, false).unwrap(),
+            "((sheet_id = 0 AND row_id > 1) OR (sheet_id = 2 AND row_id > 0))"
+        );
+        assert_eq!(sheet_bounds("c.", &sheets[2..], true), None, "a sheet with no data row matches nothing");
+    }
+
+    #[test]
+    fn a_request_for_a_reading_the_sheet_lacks_is_invalid_input() {
+        let sheet = TableSheet {
+            row_count: 38,
+            header_row: 1,
+            header_state: common::document_tables::HEADER_ESTABLISHED.into(),
+            header_candidates: vec![1],
+            ..Default::default()
+        };
+        let error = resolve_read(&sheet, "csv", TableRead::Agent(Some("all_rows"))).unwrap_err();
+        assert!(crate::auth::guard::is_bad_request(&error), "{error}");
+        assert_eq!(resolve_read(&sheet, "csv", TableRead::Display).unwrap().selected, 1);
     }
 
     #[test]

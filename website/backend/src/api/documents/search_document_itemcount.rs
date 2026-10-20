@@ -81,7 +81,7 @@ pub fn count_validated(rows: &[(String, u32, String)], stored: &HashMap<(String,
 
 /// The text hits of a document, checked against `text_content`. One index read and one
 /// digest read of the matching pages. The caller has verified read access.
-async fn validated_text_counts(identifier: &DocumentIdentifier, find_query: &str) -> anyhow::Result<TextCounts> {
+pub(crate) async fn validated_text_counts(identifier: &DocumentIdentifier, find_query: &str) -> anyhow::Result<TextCounts> {
     let rows = document_hit_texts(identifier, find_query).await?;
     let stopped_at_limit = rows.len() >= DOCUMENT_HIT_ROW_LIMIT;
     if rows.is_empty() {

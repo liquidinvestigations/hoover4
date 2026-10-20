@@ -85,7 +85,17 @@ READER_CALAMINE = "calamine"
 #: Bumped when a reader changes what it produces. A claim carrying an older version is
 #: not trusted and the document is re-read. Version 2 reads row 1 of a delimited sheet as
 #: data when its cells have the kinds of the rows below it (`parse_table.first_row_is_data`).
-READER_VERSION = 2
+#: Version 3 also records every plausible reading of row 1 in `table_sheets`
+#: (`parse_table.header_reading`).
+READER_VERSION = 3
+
+#: How a reader read row 1 of a sheet, as `table_sheets.header_state` stores it.
+HEADER_ESTABLISHED = "established"
+HEADER_AMBIGUOUS = "ambiguous"
+#: The basis of that reading, as `table_sheets.header_basis` stores it. A workbook reader
+#: follows the convention of its format. A delimited reader has the cell kinds only.
+HEADER_BASIS_FORMAT = "format"
+HEADER_BASIS_HEURISTIC = "heuristic"
 
 #: The cap set. Above any of these the document is stored up to the cap and the cap is
 #: recorded in `TruncationRecord`, a cap that is invisible in the UI reads as "this file

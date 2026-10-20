@@ -1,7 +1,14 @@
 //! The table routes: `tables/overview`, `tables/page`, `tables/column_values` and
 //! `tables/search_cells`.
+//!
+//! Every sheet read takes the reading of row 1 that `table_browse::resolve_read` selects
+//! for the request's `interpretation`, and returns it as [`AgentTableInterpretation`]
+//! beside its counts. Its `source` adds the header row of the reading to the document
+//! source, so a continuation cannot resume in another reading.
 
 use super::*;
+use common::document_tables::{SheetInterpretation, VIEW_AUTO, table_view_name};
+use crate::api::documents::table_browse::{TableRead, ViewColumn};
 
 // ===================================================================================
 // tables: the shared reads
@@ -22,18 +29,19 @@ struct TableContext {
     identifier: DocumentIdentifier,
     overview: common::document_tables::TableOverview,
     source: String,
+    reader_version: u16,
 }
 
 /// Resolves the dataset, checks the permission and reads the manifest. The source is the
 /// file hash, the reader version and the latest manifest write time over every dataset
 /// of the collection that holds the hash, because `table_cells` is keyed by the hash
-/// alone. No cell is read.
+/// alone. No cell is read. A route that reads one sheet compares the expected source
+/// after it selects the reading ([`sheet_source`]).
 async fn table_context(
     user: &CurrentUser,
     headers: &HeaderMap,
     collectionname: &str,
     file_hash: &str,
-    expected_source: Option<&str>,
     deadline: Deadline,
 ) -> Result<TableContext, AgentError> {
     let header = requested_collections_header(headers);
@@ -51,17 +59,62 @@ async fn table_context(
         .fetch_one()
         .await
         .map_err(AgentError::from_clickhouse)?;
-    let source = format!(
-        "{file_hash}:table:{}:{}",
-        reader_version.max(manifest.reader_version),
-        updated_at.max(manifest.updated_at)
-    );
-    verify_expected_source(expected_source, &source)?;
+    let reader_version = reader_version.max(manifest.reader_version);
+    let source = format!("{file_hash}:table:{reader_version}:{}", updated_at.max(manifest.updated_at));
     let overview = table_browse::get_table_overview(user, identifier.clone())
         .await
         .map_err(AgentError::from_anyhow)?
         .ok_or_else(|| AgentError::not_found("this document has no browsable table"))?;
-    Ok(TableContext { identifier, overview, source })
+    Ok(TableContext { identifier, overview, source, reader_version })
+}
+
+/// The sheet `sheet` and the reading of row 1 that `requested` selects. A reading that
+/// the sheet does not have is a 400 `invalid_argument`.
+fn sheet_reading<'a>(
+    context: &'a TableContext,
+    sheet: u16,
+    requested: Option<&str>,
+) -> Result<(&'a common::document_tables::TableSheet, SheetInterpretation), AgentError> {
+    let found = require_sheet(context, sheet)?;
+    let interpretation = table_browse::resolve_read(found, &context.overview.reader, TableRead::Agent(requested))
+        .map_err(AgentError::from_anyhow)?;
+    Ok((found, interpretation))
+}
+
+/// The source of one sheet read: the document source and the header row of the reading.
+fn sheet_source(context: &TableContext, interpretation: &SheetInterpretation) -> String {
+    format!("{}:h{}", context.source, interpretation.selected)
+}
+
+/// The reading of a response, with every candidate and its unfiltered row count.
+fn interpretation_body(context: &TableContext, interpretation: &SheetInterpretation) -> AgentTableInterpretation {
+    AgentTableInterpretation {
+        state: interpretation.state.clone(),
+        basis: interpretation.basis.clone(),
+        selected: table_view_name(interpretation.selected),
+        selected_by: if interpretation.requested { "request" } else { "auto" }.to_string(),
+        candidates: interpretation
+            .candidates
+            .iter()
+            .map(|row| AgentTableCandidate { view: table_view_name(*row), header_row: *row, rows: interpretation.rows_of(*row) })
+            .collect(),
+        established_rows: interpretation.is_established().then(|| interpretation.selected_rows()),
+        reader: context.overview.reader.clone(),
+        reader_version: context.reader_version,
+    }
+}
+
+/// The columns of a sheet in one reading, for a response.
+async fn reading_columns(
+    context: &TableContext,
+    collectionname: &str,
+    sheet: &common::document_tables::TableSheet,
+    interpretation: &SheetInterpretation,
+    deadline: Deadline,
+) -> Result<Vec<ViewColumn>, AgentError> {
+    table_browse::view_columns(&deadline.table_client(collectionname), &context.identifier, sheet, interpretation)
+        .await
+        .map_err(AgentError::from_anyhow)
 }
 
 /// Cuts a cell text over [`MAX_TABLE_CELL_CHARS`] characters with the marker. `field`
@@ -107,8 +160,9 @@ fn require_column_id(sheet_column_ids: &[u32], sheet: u16, column: u32) -> Resul
     Err(AgentError::invalid_argument(format!("sheet {sheet} has no column id {column}. {range}")))
 }
 
-fn column_info(column: &common::document_tables::TableColumnInfo) -> AgentTableColumnInfo {
-    AgentTableColumnInfo { column_id: column.column_id, name: column.label(), column_type: column.column_type.clone() }
+fn column_info(column: &ViewColumn) -> AgentTableColumnInfo {
+    let kinds = if column.kinds.len() > 1 { column.kinds.iter().cloned().collect() } else { BTreeMap::new() };
+    AgentTableColumnInfo { column_id: column.column_id, name: column.label(), column_type: column.column_type.clone(), kinds }
 }
 
 // ===================================================================================
@@ -135,31 +189,32 @@ async fn tables_overview_body(
         Some(AgentPosition::Offset { offset }) => *offset,
         Some(other) => return Err(wrong_position_kind("tables/overview", other, "Offset")),
     };
-    let context =
-        table_context(user, headers, &body.collectionname, &body.file_hash, body.expected_source.as_deref(), deadline).await?;
+    let context = table_context(user, headers, &body.collectionname, &body.file_hash, deadline).await?;
+    let requested = body.interpretation.as_deref();
+    let source = format!("{}:{}", context.source, requested.unwrap_or(VIEW_AUTO));
+    verify_expected_source(body.expected_source.as_deref(), &source)?;
     let total = context.overview.sheets.len() as u64;
     if offset > 0 && offset >= total {
         return Err(AgentError::invalid_argument("position is past the last sheet"));
     }
-    let sheets: Vec<AgentTableSheet> = context
-        .overview
-        .sheets
-        .iter()
-        .skip(offset as usize)
-        .take(TABLE_OVERVIEW_SHEETS_PAGE_SIZE)
-        .map(|sheet| AgentTableSheet {
+    let mut sheets: Vec<AgentTableSheet> = Vec::new();
+    for sheet in context.overview.sheets.iter().skip(offset as usize).take(TABLE_OVERVIEW_SHEETS_PAGE_SIZE) {
+        let (sheet, interpretation) = sheet_reading(&context, sheet.sheet_id, requested)?;
+        let columns = reading_columns(&context, &body.collectionname, sheet, &interpretation, deadline).await?;
+        sheets.push(AgentTableSheet {
             sheet: sheet.sheet_id,
             name: sheet.label(),
-            row_count: sheet.row_count,
+            row_count: interpretation.selected_rows(),
             column_count: sheet.column_count,
-            columns: context.overview.columns_of(sheet.sheet_id).into_iter().map(column_info).collect(),
-        })
-        .collect();
+            columns: columns.iter().map(column_info).collect(),
+            interpretation: interpretation_body(&context, &interpretation),
+        });
+    }
     let end = offset + sheets.len() as u64;
     let next_position = (end < total).then_some(AgentPosition::Offset { offset: end });
     Ok(TablesOverviewResponse {
         sheets,
-        page_info: AgentPageInfo { source: context.source, next_position, total: Some(total), partial: false },
+        page_info: AgentPageInfo { source, next_position, total: Some(total), partial: false },
     })
 }
 
@@ -242,9 +297,10 @@ async fn tables_page_body(
         (Some(other), true) => return Err(wrong_position_kind("tables/page", other, "Rows")),
         (Some(other), false) => return Err(wrong_position_kind("tables/page", other, "Offset")),
     };
-    let context =
-        table_context(user, headers, &body.collectionname, &body.file_hash, body.expected_source.as_deref(), deadline).await?;
-    let sheet = require_sheet(&context, body.sheet)?;
+    let context = table_context(user, headers, &body.collectionname, &body.file_hash, deadline).await?;
+    let (_, interpretation) = sheet_reading(&context, body.sheet, body.interpretation.as_deref())?;
+    let source = sheet_source(&context, &interpretation);
+    verify_expected_source(body.expected_source.as_deref(), &source)?;
     let sheet_column_ids: Vec<u32> = context.overview.columns_of(body.sheet).iter().map(|c| c.column_id).collect();
     let requested_columns = body
         .columns
@@ -255,7 +311,7 @@ async fn tables_page_body(
     for column in requested_columns {
         require_column_id(&sheet_column_ids, body.sheet, column)?;
     }
-    if row_start > 0 && row_start >= sheet.row_count && windowed {
+    if row_start > 0 && row_start >= interpretation.selected_rows() && windowed {
         return Err(AgentError::invalid_argument("row_start is past the last row of the sheet"));
     }
     let limit = common::document_tables::DEFAULT_TABLE_PAGE_ROWS;
@@ -272,15 +328,16 @@ async fn tables_page_body(
         offset: row_start,
         limit,
     };
-    let page = table_browse::get_table_page(user, context.identifier.clone(), view_query)
+    let read = table_browse::read_table_page(user, context.identifier.clone(), view_query, TableRead::Agent(body.interpretation.as_deref()))
         .await
         .map_err(AgentError::from_anyhow)?;
+    let page = read.page;
 
-    let sheet_columns = context.overview.columns_of(body.sheet);
+    let sheet_columns = read.columns;
     let columns: Vec<AgentTableColumnInfo> = page
         .columns
         .iter()
-        .filter_map(|id| sheet_columns.iter().find(|c| c.column_id == *id).map(|c| column_info(c)))
+        .filter_map(|id| sheet_columns.iter().find(|c| c.column_id == *id).map(column_info))
         .collect();
     let column_names: HashMap<u32, String> = sheet_columns.iter().map(|c| (c.column_id, c.label())).collect();
     let rows: Vec<AgentTableRow> = page
@@ -317,7 +374,8 @@ async fn tables_page_body(
             columns_requested: page.clamps.columns_requested,
             columns_applied: page.clamps.columns_applied,
         },
-        page_info: AgentPageInfo { source: context.source, next_position, total: Some(page.total_rows), partial: false },
+        interpretation: interpretation_body(&context, &read.interpretation),
+        page_info: AgentPageInfo { source, next_position, total: Some(page.total_rows), partial: false },
     })
 }
 
@@ -345,8 +403,9 @@ async fn tables_cell_body(
         Some(AgentPosition::Offset { offset }) => *offset,
         Some(other) => return Err(wrong_position_kind("tables/cell", other, "Offset")),
     };
-    let context =
-        table_context(user, headers, &body.collectionname, &body.file_hash, body.expected_source.as_deref(), deadline).await?;
+    // A cell is read by its stored row and column identity, in every reading.
+    let context = table_context(user, headers, &body.collectionname, &body.file_hash, deadline).await?;
+    verify_expected_source(body.expected_source.as_deref(), &context.source)?;
     require_sheet(&context, body.sheet)?;
     let column = column_label(&context, body.sheet, body.column)?;
     // A full primary-key read of one cell.
@@ -404,11 +463,13 @@ async fn tables_column_values_body(
         Some(AgentPosition::ValueKey { count, value }) => Some((*count, value.clone())),
         Some(other) => return Err(wrong_position_kind("tables/column_values", other, "ValueKey")),
     };
-    let context =
-        table_context(user, headers, &body.collectionname, &body.file_hash, body.expected_source.as_deref(), deadline).await?;
-    let sheet = require_sheet(&context, body.sheet)?;
-    let header_row = sheet.header_row;
+    let context = table_context(user, headers, &body.collectionname, &body.file_hash, deadline).await?;
+    let (sheet, interpretation) = sheet_reading(&context, body.sheet, body.interpretation.as_deref())?;
+    let source = sheet_source(&context, &interpretation);
+    verify_expected_source(body.expected_source.as_deref(), &source)?;
     column_label(&context, body.sheet, body.column)?;
+    // The header row of the reading names the columns and holds no value.
+    let header_row = interpretation.selected;
     let floor = if header_row > 0 { format!(" AND row_id > {header_row}") } else { String::new() };
     // The website's order, `n DESC, cell_text ASC`, is total, so the `HAVING` key
     // continues after the last value of the previous page with no `OFFSET`.
@@ -421,7 +482,7 @@ async fn tables_column_values_body(
              WHERE file_hash = ? AND sheet_id = ? AND column_id = ?{floor} AND row_id <= {} AND column_id <= {} \
                AND (? = '' OR positionCaseInsensitiveUTF8(cell_text, ?) > 0) \
              GROUP BY cell_text{having} ORDER BY n DESC, cell_text ASC LIMIT {limit}",
-            sheet.last_row_id(), sheet.column_count
+            interpretation.stored_rows, sheet.column_count
         ))
         .bind(&body.file_hash)
         .bind(body.sheet)
@@ -442,7 +503,8 @@ async fn tables_column_values_body(
         .collect();
     Ok(TablesColumnValuesResponse {
         values,
-        page_info: AgentPageInfo { source: context.source, next_position, total: None, partial: false },
+        interpretation: interpretation_body(&context, &interpretation),
+        page_info: AgentPageInfo { source, next_position, total: None, partial: false },
     })
 }
 
@@ -474,24 +536,24 @@ async fn tables_search_cells_body(
         Some(AgentPosition::Offset { offset }) => *offset,
         Some(other) => return Err(wrong_position_kind("tables/search_cells", other, "Offset")),
     };
-    let context =
-        table_context(user, headers, &body.collectionname, &body.file_hash, body.expected_source.as_deref(), deadline).await?;
-    let column_names: HashMap<u32, String> =
-        context.overview.columns_of(body.sheet).into_iter().map(|c| (c.column_id, c.label())).collect();
-    let dataset = &context.identifier.collection_dataset;
-    let sheet = require_sheet(&context, body.sheet)?;
+    let context = table_context(user, headers, &body.collectionname, &body.file_hash, deadline).await?;
+    let (sheet, interpretation) = sheet_reading(&context, body.sheet, body.interpretation.as_deref())?;
+    let source = sheet_source(&context, &interpretation);
+    verify_expected_source(body.expected_source.as_deref(), &source)?;
+    let columns = reading_columns(&context, &body.collectionname, sheet, &interpretation, deadline).await?;
+    let column_names: HashMap<u32, String> = columns.iter().map(|c| (c.column_id, c.label())).collect();
+    // The header row of the reading names the columns, so its cells are not hits.
+    let header_row = interpretation.selected;
 
     let hit_count: u64 = deadline
         .table_client(&body.collectionname)
-        .query("SELECT count() FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND row_id <= ? AND column_id <= ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0 AND row_id NOT IN (SELECT header_row FROM table_sheets FINAL WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? AND header_row > 0)")
+        .query("SELECT count() FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND row_id > ? AND row_id <= ? AND column_id <= ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0")
         .bind(&body.file_hash)
         .bind(body.sheet)
-        .bind(sheet.last_row_id())
+        .bind(header_row)
+        .bind(interpretation.stored_rows)
         .bind(sheet.column_count)
         .bind(&body.query)
-        .bind(dataset)
-        .bind(&body.file_hash)
-        .bind(body.sheet)
         .fetch_one()
         .await
         .map_err(AgentError::from_clickhouse)?;
@@ -500,15 +562,13 @@ async fn tables_search_cells_body(
     }
     let rows: Vec<(u64, u64, u32, String)> = deadline
         .table_client(&body.collectionname)
-        .query("SELECT source_row, row_id, column_id, cell_text FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND row_id <= ? AND column_id <= ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0 AND row_id NOT IN (SELECT header_row FROM table_sheets FINAL WHERE collection_dataset = ? AND hash = ? AND sheet_id = ? AND header_row > 0) ORDER BY row_id, column_id LIMIT ? OFFSET ?")
+        .query("SELECT source_row, row_id, column_id, cell_text FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND row_id > ? AND row_id <= ? AND column_id <= ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0 ORDER BY row_id, column_id LIMIT ? OFFSET ?")
         .bind(&body.file_hash)
         .bind(body.sheet)
-        .bind(sheet.last_row_id())
+        .bind(header_row)
+        .bind(interpretation.stored_rows)
         .bind(sheet.column_count)
         .bind(&body.query)
-        .bind(dataset)
-        .bind(&body.file_hash)
-        .bind(body.sheet)
         .bind(common::document_tables::MAX_TABLE_PAGE_ROWS)
         .bind(offset)
         .fetch_all()
@@ -531,7 +591,8 @@ async fn tables_search_cells_body(
     Ok(TablesSearchCellsResponse {
         hit_count,
         hits,
-        page_info: AgentPageInfo { source: context.source, next_position, total: Some(hit_count), partial: false },
+        interpretation: interpretation_body(&context, &interpretation),
+        page_info: AgentPageInfo { source, next_position, total: Some(hit_count), partial: false },
     })
 }
 

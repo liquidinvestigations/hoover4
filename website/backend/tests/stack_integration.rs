@@ -3086,7 +3086,9 @@ async fn a_capped_text_count_reaches_the_selector_as_a_lower_bound() {
 // rows, stored as `row_id` 1 to 39. The last data row is `SYN-038` in state SC. A sheet's
 // `row_count` leaves out the header row, so a bound of `row_id <= row_count` drops that
 // row. The `p65tables` collection holds `office_values_250.csv`, whose office column needs
-// two value pages. `website/tools/prepare_table_fixtures.py --ingest` writes and ingests
+// two value pages. An older table reader stored both, so each sheet reads as `legacy`
+// with two readings of row 1. The tests name the `first_row_header` reading for the
+// header counts. `website/tools/prepare_table_fixtures.py --ingest` writes and ingests
 // both. These tests fail when a dataset is absent, because a skip proves no count.
 // ---------------------------------------------------------------------------------
 
@@ -3107,8 +3109,8 @@ async fn require_table_fixture(dataset: &str) {
 }
 
 /// Serve the agent routes on a local port, with the admin caller set as the session layer
-/// sets it, and post one JSON body to `path`.
-async fn agent_post(path: &str, body: serde_json::Value) -> serde_json::Value {
+/// sets it, and post one JSON body to `path`. Returns the status and the JSON body.
+async fn agent_call(path: &str, body: serde_json::Value) -> (reqwest::StatusCode, serde_json::Value) {
     let app = backend::api::agent::router().layer(axum::Extension(admin_user()));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -3122,6 +3124,12 @@ async fn agent_post(path: &str, body: serde_json::Value) -> serde_json::Value {
     let status = response.status();
     let value: serde_json::Value = response.json().await.unwrap();
     server.abort();
+    (status, value)
+}
+
+/// [`agent_call`] for a request that must succeed.
+async fn agent_post(path: &str, body: serde_json::Value) -> serde_json::Value {
+    let (status, value) = agent_call(path, body).await;
     assert!(status.is_success(), "{path} answered {status}: {value}");
     value
 }
@@ -3133,17 +3141,37 @@ async fn table_column_values_count_the_last_data_row() {
     let _budget = Budget::start("table_column_values_count_the_last_data_row");
     let reply = agent_post(
         "/api/agent/v1/tables/column_values",
-        serde_json::json!({"collectionname": P64_COLLECTION, "file_hash": P64_BILLS, "sheet": 0, "column": 2}),
+        serde_json::json!({"collectionname": P64_COLLECTION, "file_hash": P64_BILLS, "sheet": 0, "column": 2,
+                           "interpretation": "first_row_header"}),
     )
     .await;
     let values = reply["values"].as_array().expect("a values list");
-    let count_of = |state: &str| {
+    let count_of = |values: &[serde_json::Value], state: &str| {
         values.iter().find(|v| v["value"] == state).and_then(|v| v["count"].as_u64()).unwrap_or(0)
     };
     let total: u64 = values.iter().filter_map(|v| v["count"].as_u64()).sum();
     assert_eq!(total, 38, "every data row is counted once and the header row is not: {values:?}");
-    assert_eq!(count_of("SC"), 5, "the last data row, SYN-038, is in SC");
-    assert_eq!(count_of("state"), 0, "the header cell is not a value");
+    assert_eq!(count_of(values, "SC"), 5, "the last data row, SYN-038, is in SC");
+    assert_eq!(count_of(values, "state"), 0, "the header cell is not a value");
+    assert_eq!(reply["interpretation"]["selected"], "first_row_header", "{reply}");
+    assert_eq!(reply["interpretation"]["selected_by"], "request", "{reply}");
+    // The older reader stored no reading, so the default reading counts row 1 as data and
+    // names both readings.
+    let auto = agent_post(
+        "/api/agent/v1/tables/column_values",
+        serde_json::json!({"collectionname": P64_COLLECTION, "file_hash": P64_BILLS, "sheet": 0, "column": 2}),
+    )
+    .await;
+    let reading = &auto["interpretation"];
+    assert_eq!((reading["state"].as_str(), reading["selected"].as_str()), (Some("legacy"), Some("all_rows")), "{auto}");
+    assert_eq!(
+        reading["candidates"],
+        serde_json::json!([{"view": "all_rows", "header_row": 0, "rows": 39}, {"view": "first_row_header", "header_row": 1, "rows": 38}])
+    );
+    assert!(reading.get("established_rows").is_none(), "a legacy reading has no established count: {auto}");
+    let values = auto["values"].as_array().expect("a values list");
+    assert_eq!(count_of(values, "state"), 1, "row 1 is data in the reading of every row");
+    assert_eq!(values.iter().filter_map(|v| v["count"].as_u64()).sum::<u64>(), 39);
 }
 
 #[tokio::test]
@@ -3160,10 +3188,17 @@ async fn table_search_cells_finds_the_last_data_row() {
     assert_eq!(reply["hits"][0]["row_id"], 39, "{reply}");
     let header = agent_post(
         "/api/agent/v1/tables/search_cells",
-        serde_json::json!({"collectionname": P64_COLLECTION, "file_hash": P64_BILLS, "sheet": 0, "query": "bill_id"}),
+        serde_json::json!({"collectionname": P64_COLLECTION, "file_hash": P64_BILLS, "sheet": 0, "query": "bill_id",
+                           "interpretation": "first_row_header"}),
     )
     .await;
     assert_eq!(header["hit_count"], 0, "the header row stays out of the hits: {header}");
+    let every_row = agent_post(
+        "/api/agent/v1/tables/search_cells",
+        serde_json::json!({"collectionname": P64_COLLECTION, "file_hash": P64_BILLS, "sheet": 0, "query": "bill_id"}),
+    )
+    .await;
+    assert_eq!((every_row["hit_count"].as_u64(), every_row["hits"][0]["row_id"].as_u64()), (Some(1), Some(1)), "{every_row}");
 }
 
 #[tokio::test]
@@ -3178,10 +3213,11 @@ async fn table_column_values_continue_until_every_value_is_counted_once() {
         let reply = agent_post(
             "/api/agent/v1/tables/column_values",
             serde_json::json!({"collectionname": P65_COLLECTION, "file_hash": P65_OFFICES, "sheet": 0,
-                               "column": 2, "position": position}),
+                               "column": 2, "position": position, "interpretation": "first_row_header"}),
         )
         .await;
         pages += 1;
+        assert!(reply["source"].as_str().is_some_and(|source| source.ends_with(":h1")), "{reply}");
         for value in reply["values"].as_array().expect("a values list") {
             let name = value["value"].as_str().expect("a value").to_string();
             let count = value["count"].as_u64().expect("a count");
@@ -3202,11 +3238,199 @@ async fn table_column_values_continue_until_every_value_is_counted_once() {
     let filtered = agent_post(
         "/api/agent/v1/tables/column_values",
         serde_json::json!({"collectionname": P65_COLLECTION, "file_hash": P65_OFFICES, "sheet": 0,
-                           "column": 2, "search": "annex"}),
+                           "column": 2, "search": "annex", "interpretation": "first_row_header"}),
     )
     .await;
     assert_eq!(filtered["values"], serde_json::json!([{"value": "Harbour Annex", "count": 1}]), "{filtered}");
     assert!(filtered["next_position"].is_null(), "{filtered}");
+}
+
+// ---------------------------------------------------------------------------------
+// Readings of row 1 of a delimited file.
+//
+// The `p66tables` collection holds the files of `prepare_table_fixtures.py`, parsed by table
+// reader version 3, which records every plausible reading of row 1. A label above typed data
+// establishes the header. A row 1 that can be a header or data keeps both readings, which
+// share one set of stored cells and row ids.
+// ---------------------------------------------------------------------------------
+
+const P66_DATASET: &str = "p66tables_fixtures";
+const P66_COLLECTION: &str = "p66tables";
+const P66_LABELLED: &str = "9a7220d3c97c0395fc82c81fbe89521b824b1817b9bc000a5596392e096e0510";
+const P66_PEOPLE: &str = "ef5e3684b832d90b6a4f17177dcf6cb6bee48ba3b87caacab68b9c4b5d8e01fe";
+const P66_YEARS: &str = "65af4a62c19cdd7fb61631f826c4f09eff401b9623e7bf5a5d262376d19c6322";
+const P66_DIGITS: &str = "1c4ea644ad9b3f36ce97fcf71fd7b60c75a26c8d9ed1255dea75c6dadee2073b";
+const P66_PAIRS: &str = "99091f25b2aad798cf2e1e3c9f41de48d1141fcaffb2dc60a4b53aaa3c912b25";
+const P66_DATED: &str = "be7033574b9cd7e12a3a7778e95b8123d7b5dfd130e096f1ec995e6007dc4fa4";
+
+/// One agent table call on a `p66tables` file. `extra` adds request fields.
+async fn p66_call(route: &str, file_hash: &str, extra: serde_json::Value) -> (reqwest::StatusCode, serde_json::Value) {
+    let mut body = serde_json::json!({"collectionname": P66_COLLECTION, "file_hash": file_hash});
+    for (key, value) in extra.as_object().cloned().unwrap_or_default() {
+        body[key] = value;
+    }
+    agent_call(&format!("/api/agent/v1/tables/{route}"), body).await
+}
+
+async fn p66(route: &str, file_hash: &str, extra: serde_json::Value) -> serde_json::Value {
+    let (status, value) = p66_call(route, file_hash, extra).await;
+    assert!(status.is_success(), "{route} answered {status}: {value}");
+    value
+}
+
+fn names(columns: &serde_json::Value) -> Vec<String> {
+    columns.as_array().expect("columns").iter().map(|c| c["name"].as_str().unwrap_or_default().to_string()).collect()
+}
+
+fn value_count(reply: &serde_json::Value, value: &str) -> u64 {
+    reply["values"].as_array().expect("values").iter().find(|v| v["value"] == value).and_then(|v| v["count"].as_u64()).unwrap_or(0)
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn every_fixture_reading_reaches_the_table_overview() {
+    require_table_fixture(P66_DATASET).await;
+    let _budget = Budget::start("every_fixture_reading_reaches_the_table_overview");
+    // (file, state, rows of each candidate, selected reading, established rows)
+    let cases: [(&str, &str, &[(u64, u64)], &str, Option<u64>); 6] = [
+        (P66_LABELLED, "established", &[(1, 30)], "first_row_header", Some(30)),
+        (P66_PEOPLE, "ambiguous", &[(0, 12), (1, 11)], "all_rows", None),
+        (P66_YEARS, "ambiguous", &[(0, 7), (1, 6)], "all_rows", None),
+        (P66_DIGITS, "ambiguous", &[(0, 15), (1, 14)], "all_rows", None),
+        (P66_PAIRS, "ambiguous", &[(0, 10), (1, 9)], "all_rows", None),
+        (P66_DATED, "established", &[(1, 8)], "first_row_header", Some(8)),
+    ];
+    for (file_hash, state, candidates, selected, established) in cases {
+        let reply = p66("overview", file_hash, serde_json::json!({})).await;
+        let sheet = &reply["sheets"][0];
+        let reading = &sheet["interpretation"];
+        assert_eq!(reading["state"], state, "{file_hash}: {reply}");
+        assert_eq!(reading["basis"], "heuristic", "{reply}");
+        assert_eq!((reading["reader"].as_str(), reading["reader_version"].as_u64()), (Some("csv"), Some(3)), "{reply}");
+        assert_eq!(reading["selected"], selected, "{reply}");
+        assert_eq!(reading["selected_by"], "auto", "{reply}");
+        let rows: Vec<(u64, u64)> = reading["candidates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| (c["header_row"].as_u64().unwrap(), c["rows"].as_u64().unwrap()))
+            .collect();
+        assert_eq!(rows, candidates.to_vec(), "{reply}");
+        assert_eq!(reading.get("established_rows").and_then(|v| v.as_u64()), established, "{reply}");
+        let selected_rows = candidates.iter().find(|(row, _)| (*row == 0) == (selected == "all_rows")).unwrap().1;
+        assert_eq!(sheet["row_count"].as_u64(), Some(selected_rows), "the row count is the selected reading's: {reply}");
+    }
+    let labelled = p66("overview", P66_LABELLED, serde_json::json!({})).await;
+    assert_eq!(names(&labelled["sheets"][0]["columns"]), vec!["case_id", "office", "amount"]);
+    assert_eq!(labelled["sheets"][0]["columns"][2]["type"], "int");
+    let people = p66("overview", P66_PEOPLE, serde_json::json!({})).await;
+    assert_eq!(names(&people["sheets"][0]["columns"]), vec!["Column A", "Column B"], "every row is data: {people}");
+    // The year header names the columns, and its cells leave the data rows.
+    let years = p66("overview", P66_YEARS, serde_json::json!({"interpretation": "first_row_header"})).await;
+    let sheet = &years["sheets"][0];
+    assert_eq!(names(&sheet["columns"]), vec!["region", "2018", "2020"], "{years}");
+    assert_eq!((sheet["row_count"].as_u64(), sheet["columns"][1]["type"].as_str()), (Some(6), Some("int")), "{years}");
+    assert_eq!(sheet["interpretation"]["selected_by"], "request");
+    // A label above dates, a quoted comma, blank cells, and integers beside decimals.
+    let dated = p66("overview", P66_DATED, serde_json::json!({})).await;
+    let columns = &dated["sheets"][0]["columns"];
+    assert_eq!(names(columns), vec!["opened", "title", "amount"]);
+    assert_eq!(columns[0]["type"], "date", "{dated}");
+    assert_eq!((columns[2]["type"].as_str(), &columns[2]["kinds"]), (Some("int"), &serde_json::json!({"float": 2, "int": 5})), "{dated}");
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn an_established_header_reaches_its_final_row_and_refuses_the_other_reading() {
+    require_table_fixture(P66_DATASET).await;
+    let _budget = Budget::start("an_established_header_reaches_its_final_row_and_refuses_the_other_reading");
+    let last = p66("page", P66_LABELLED, serde_json::json!({"sheet": 0, "row_start": 29})).await;
+    assert_eq!((last["total_rows"].as_u64(), last["rows"][0]["row_id"].as_u64()), (Some(30), Some(31)), "{last}");
+    assert_eq!(last["rows"][0]["cells"]["case_id"], "C-030", "{last}");
+    assert!(last["next_position"].is_null(), "{last}");
+    assert_eq!(last["interpretation"]["established_rows"], 30);
+    let offices = p66("column_values", P66_LABELLED, serde_json::json!({"sheet": 0, "column": 2})).await;
+    assert_eq!(value_count(&offices, "Harbour Annex"), 1, "the final row is counted: {offices}");
+    assert_eq!(value_count(&offices, "office"), 0, "the header is not a value");
+    assert_eq!(offices["values"].as_array().unwrap().iter().filter_map(|v| v["count"].as_u64()).sum::<u64>(), 30);
+    for route in ["page", "column_values", "search_cells", "overview"] {
+        let extra = serde_json::json!({"sheet": 0, "column": 2, "query": "Office", "interpretation": "all_rows"});
+        let (status, refused) = p66_call(route, P66_LABELLED, extra).await;
+        assert_eq!(status, reqwest::StatusCode::BAD_REQUEST, "{route}: {refused}");
+        assert_eq!(refused["error"], "invalid_argument");
+        assert!(refused["message"].as_str().is_some_and(|m| m.contains("has no all_rows reading")), "{refused}");
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn both_readings_of_an_ambiguous_sheet_count_from_the_same_cells() {
+    require_table_fixture(P66_DATASET).await;
+    let _budget = Budget::start("both_readings_of_an_ambiguous_sheet_count_from_the_same_cells");
+    let header = serde_json::json!({"sheet": 0, "interpretation": "first_row_header"});
+    let every = p66("page", P66_PEOPLE, serde_json::json!({"sheet": 0})).await;
+    let named = p66("page", P66_PEOPLE, header.clone()).await;
+    assert_eq!((every["total_rows"].as_u64(), named["total_rows"].as_u64()), (Some(12), Some(11)));
+    assert_eq!(every["rows"][0]["row_id"], 1);
+    assert_eq!(every["rows"][0]["cells"]["Column A"], "Alice Moreau", "{every}");
+    assert_eq!(named["rows"][0]["row_id"], 2, "the header row is not a data row");
+    assert_eq!(named["rows"][0]["cells"]["Alice Moreau"], "Bruno Keller", "{named}");
+    // The final stored row keeps its row id in both readings.
+    for page in [&every, &named] {
+        let last = page["rows"].as_array().unwrap().last().unwrap();
+        assert_eq!((last["row_id"].as_u64(), last["row_number"].as_u64()), (Some(12), Some(12)), "{page}");
+    }
+    assert!(every["source"].as_str().unwrap().ends_with(":h0") && named["source"].as_str().unwrap().ends_with(":h1"));
+    assert_eq!((every["interpretation"]["selected_by"].as_str(), named["interpretation"]["selected_by"].as_str()), (Some("auto"), Some("request")));
+    // The first row's name occurs again in row 7. Each reading counts its own rows: neither
+    // count is the other less one.
+    let names_every = p66("column_values", P66_PEOPLE, serde_json::json!({"sheet": 0, "column": 1})).await;
+    let names_named = p66("column_values", P66_PEOPLE, serde_json::json!({"sheet": 0, "column": 1, "interpretation": "first_row_header"})).await;
+    assert_eq!((value_count(&names_every, "Alice Moreau"), value_count(&names_named, "Alice Moreau")), (2, 1));
+    assert_eq!(names_every["values"].as_array().unwrap().len(), 11, "11 distinct names in 12 rows");
+    assert_eq!(names_named["values"].as_array().unwrap().len(), 11, "11 distinct names in 11 rows");
+    let cities_every = p66("column_values", P66_PEOPLE, serde_json::json!({"sheet": 0, "column": 2})).await;
+    let cities_named = p66("column_values", P66_PEOPLE, serde_json::json!({"sheet": 0, "column": 2, "interpretation": "first_row_header"})).await;
+    assert_eq!((value_count(&cities_every, "Paris"), value_count(&cities_named, "Paris")), (3, 2));
+    let hits_every = p66("search_cells", P66_PEOPLE, serde_json::json!({"sheet": 0, "query": "Alice"})).await;
+    let hits_named = p66("search_cells", P66_PEOPLE, serde_json::json!({"sheet": 0, "query": "Alice", "interpretation": "first_row_header"})).await;
+    let rows = |reply: &serde_json::Value| reply["hits"].as_array().unwrap().iter().map(|h| h["row_id"].as_u64().unwrap()).collect::<Vec<_>>();
+    assert_eq!((rows(&hits_every), rows(&hits_named)), (vec![1, 7], vec![7]));
+    assert_eq!(hits_named["hits"][0]["column"], "Alice Moreau", "the header text names the column");
+    assert_eq!(hits_every["interpretation"]["candidates"][1]["rows"], 11);
+    // A physical cell reads the same in every reading.
+    let cell = p66("cell", P66_PEOPLE, serde_json::json!({"sheet": 0, "row": 1, "column": 1})).await;
+    assert_eq!(cell["text"], "Alice Moreau", "{cell}");
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn a_table_continuation_keeps_its_reading() {
+    require_table_fixture(P66_DATASET).await;
+    let _budget = Budget::start("a_table_continuation_keeps_its_reading");
+    let first = p66("page", P66_DIGITS, serde_json::json!({"sheet": 0, "search": "item"})).await;
+    assert_eq!(first["total_rows"], 15, "{first}");
+    let source = first["source"].as_str().unwrap().to_string();
+    // Another reading, or the source of a continuation from before the reading was bound,
+    // is the source-changed answer.
+    let other = serde_json::json!({"sheet": 0, "search": "item", "interpretation": "first_row_header", "expected_source": source});
+    let (status, refused) = p66_call("page", P66_DIGITS, other).await;
+    assert_eq!((status, refused["error"].as_str()), (reqwest::StatusCode::CONFLICT, Some("source_changed")), "{refused}");
+    let older = source.trim_end_matches(":h0").to_string();
+    let (status, refused) = p66_call("page", P66_DIGITS, serde_json::json!({"sheet": 0, "search": "item", "expected_source": older})).await;
+    assert_eq!((status, refused["error"].as_str()), (reqwest::StatusCode::CONFLICT, Some("source_changed")), "{refused}");
+    let again = p66("page", P66_DIGITS, serde_json::json!({"sheet": 0, "search": "item", "expected_source": source})).await;
+    assert_eq!(again["total_rows"], 15);
+    let named = p66("page", P66_DIGITS, serde_json::json!({"sheet": 0, "search": "item", "interpretation": "first_row_header"})).await;
+    assert_eq!(named["total_rows"], 14, "{named}");
+    // A sort of the reading with a header leaves row 1 out of the order.
+    let sort = serde_json::json!({"column": 1, "direction": "asc"});
+    let every = p66("page", P66_DIGITS, serde_json::json!({"sheet": 0, "sort": sort})).await;
+    let named = p66("page", P66_DIGITS, serde_json::json!({"sheet": 0, "sort": sort, "interpretation": "first_row_header"})).await;
+    assert_eq!((every["rows"][0]["row_id"].as_u64(), named["rows"][0]["row_id"].as_u64()), (Some(1), Some(2)), "{every} {named}");
+    // The next window of the reading of every row starts after its 15 rows only.
+    let windows = p66("page", P66_PAIRS, serde_json::json!({"sheet": 0})).await;
+    assert_eq!((windows["total_rows"].as_u64(), windows["next_position"].is_null()), (Some(10), true), "{windows}");
 }
 
 // ---------------------------------------------------------------------------------
@@ -3331,11 +3555,13 @@ async fn a_newer_stored_body_is_shown_without_the_highlights_of_an_older_index_r
     assert_eq!(p65_raw_text_count(P65_STALE).await, HitCountState::Unavailable, "an older index row gives no count");
 }
 
-#[tokio::test]
-#[ignore = "needs live stack"]
-async fn an_index_row_with_the_stored_body_gives_the_highlights_and_the_count() {
-    require_table_fixture(P65_TEXT_DATASET).await;
-    let newer = "Știință — the quokka memo names the new pier, and the quokka signed it.";
+/// The newer stored body of `duplicate_page.txt`.
+const P65_DUPLICATE_NEWER: &str = "Știință — the quokka memo names the new pier, and the quokka signed it.";
+
+/// Stores [`P65_DUPLICATE_NEWER`] as the newer body of `duplicate_page.txt`, and adds a
+/// second index row of the same segment that holds it. Returns the newer text.
+async fn write_duplicate_fixture() -> &'static str {
+    let newer = P65_DUPLICATE_NEWER;
     write_newer_body(P65_DUPLICATE, newer).await;
     let table = fixture_index_table(P65_TEXT_DATASET, P65_DUPLICATE).await;
     // A second index row of the same segment with the newer text. The fixed id keeps it one row.
@@ -3356,6 +3582,14 @@ async fn an_index_row_with_the_stored_body_gives_the_highlights_and_the_count() 
     .await
     .unwrap();
     assert_eq!(rows.first().and_then(|row| row["page_text"].as_str()), Some(newer), "the second index row is stored");
+    newer
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn an_index_row_with_the_stored_body_gives_the_highlights_and_the_count() {
+    require_table_fixture(P65_TEXT_DATASET).await;
+    let newer = write_duplicate_fixture().await;
     let _budget = Budget::start("an_index_row_with_the_stored_body_gives_the_highlights_and_the_count");
     let view = p65_view(P65_DUPLICATE, "quokka").await;
     let common::document_text_pages::TextPageBody::Text { version, spans, highlight_error, .. } = view.body else {
@@ -3366,6 +3600,67 @@ async fn an_index_row_with_the_stored_body_gives_the_highlights_and_the_count() 
     let marked: Vec<&str> = spans.iter().filter(|s| s.is_highlighted).map(|s| s.text.as_str()).collect();
     assert_eq!(marked, vec!["quokka", "quokka"], "the highlights of one row, not merged with the older row");
     assert_eq!(p65_raw_text_count(P65_DUPLICATE).await, HitCountState::Exact(2));
+}
+
+// The agent text routes count the same checked hits as the source selector. A stale index
+// row gives a lower bound with no total, and the source names the stored writer version.
+
+const P65_TEXT_COLLECTION: &str = "p65tables";
+
+async fn p65_agent_text(route: &str, file_hash: &str, extra: serde_json::Value) -> (reqwest::StatusCode, serde_json::Value) {
+    let file_hash = if route == "read" { serde_json::json!([file_hash]) } else { serde_json::json!(file_hash) };
+    let mut body = serde_json::json!({"collectionname": P65_TEXT_COLLECTION, "file_hash": file_hash, "source": "raw_text", "query": "quokka"});
+    for (key, value) in extra.as_object().cloned().unwrap_or_default() {
+        body[key] = value;
+    }
+    agent_call(&format!("/api/agent/v1/documents/{route}"), body).await
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn an_agent_text_count_over_an_older_index_row_is_a_lower_bound() {
+    require_table_fixture(P65_TEXT_DATASET).await;
+    write_newer_body(P65_STALE, "Știință — the quokka report names  the new harbour.").await;
+    let _budget = Budget::start("an_agent_text_count_over_an_older_index_row_is_a_lower_bound");
+    let (status, search) = p65_agent_text("search_text", P65_STALE, serde_json::json!({})).await;
+    assert!(status.is_success(), "{search}");
+    assert_eq!((search["hit_count"].as_u64(), search["count_state"].as_str()), (Some(0), Some("lower_bound")), "{search}");
+    assert!(search["total"].is_null() && search["partial"] == true, "a lower bound has no total: {search}");
+    assert!(search["hits"].as_array().unwrap().is_empty(), "no hit comes from the older index text: {search}");
+    let source = search["source"].as_str().unwrap();
+    assert!(source.ends_with(&format!(":{P65_NEWER_VERSION}")), "the source names the stored writer version: {source}");
+    let (status, read) = p65_agent_text("read", P65_STALE, serde_json::json!({})).await;
+    assert!(status.is_success(), "{read}");
+    let document = &read["documents"][0];
+    assert_eq!((document["hit_count"].as_u64(), document["count_state"].as_str()), (Some(0), Some("lower_bound")), "{read}");
+    assert!(document["text"].as_str().unwrap().contains("new harbour"), "the read shows the stored text: {read}");
+    // The source of the earlier form names the page count and the highest page id only.
+    let older = serde_json::json!({"expected_source": format!("{P65_STALE}:raw_text:1:1")});
+    let (status, refused) = p65_agent_text("search_text", P65_STALE, older).await;
+    assert_eq!((status, refused["error"].as_str()), (reqwest::StatusCode::CONFLICT, Some("source_changed")), "{refused}");
+}
+
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn an_agent_text_count_from_the_row_that_holds_the_stored_body_is_exact() {
+    require_table_fixture(P65_TEXT_DATASET).await;
+    let newer = write_duplicate_fixture().await;
+    let _budget = Budget::start("an_agent_text_count_from_the_row_that_holds_the_stored_body_is_exact");
+    let (status, search) = p65_agent_text("search_text", P65_DUPLICATE, serde_json::json!({})).await;
+    assert!(status.is_success(), "{search}");
+    assert_eq!((search["hit_count"].as_u64(), search["count_state"].as_str(), search["total"].as_u64()), (Some(2), Some("exact"), Some(2)), "{search}");
+    assert_eq!(search["partial"], false);
+    let hits = search["hits"].as_array().unwrap();
+    assert_eq!(hits.len(), 2, "one index row gives the hits, the duplicate adds none: {search}");
+    assert!(hits.iter().all(|hit| newer.contains(hit["snippet"].as_str().unwrap())), "every snippet is the stored text: {search}");
+    let (status, read) = p65_agent_text("read", P65_DUPLICATE, serde_json::json!({})).await;
+    assert!(status.is_success(), "{read}");
+    let document = &read["documents"][0];
+    assert_eq!((document["hit_count"].as_u64(), document["count_state"].as_str()), (Some(2), Some("exact")), "{read}");
+    // A source that the route issued continues.
+    let same = serde_json::json!({"expected_source": search["source"]});
+    let (status, again) = p65_agent_text("search_text", P65_DUPLICATE, same).await;
+    assert!(status.is_success(), "{again}");
 }
 
 // `continuation_pages.pdf` stores PDF text on its first and last page only. The test adds

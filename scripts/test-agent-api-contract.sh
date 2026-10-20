@@ -538,14 +538,20 @@ READ = {"collectionname": "testdata", "file_hash": [PDF_DOC], "source": "pdftote
 status, first = post("documents/read", {**READ, "query": "the"})
 assert status == 200, first
 doc = first["documents"][0]
-assert doc["min_page"] == 1 and doc["max_page"] == 30 and doc["count_state"] == "read", doc
+# The read counts with the checker of the source selector. A source that the selector cannot
+# count gives a lower bound.
+status, listed = post("documents/sources", {"collectionname": "testdata", "file_hash": PDF_DOC, "query": "the"})
+selector = next(s for s in listed["sources"] if s["kind"] == "text" and s["source"] == "pdftotext")
+expected = "exact" if selector["count_state"] == "counted" else "lower_bound"
+assert doc["min_page"] == 1 and doc["max_page"] == 30 and doc["count_state"] == expected, (doc["count_state"], selector)
 assert doc["hit_pages"] == sorted(doc["hit_pages"]) and 0 < len(doc["hit_pages"]) <= 50, doc["hit_pages"]
 assert doc["page"] in doc["hit_pages"] and doc["hit_count"] > 0, doc
 pages = walk("documents/read", READ, "documents")
 read = [page["documents"][0]["page"] for page in pages]
-assert read == list(range(1, 31)) and pages[0]["total"] == 30, read
+# A page longer than one character window is read in more than one part.
+assert read == sorted(read) and sorted(set(read)) == list(range(1, 31)) and pages[0]["total"] == 30, read
 assert all(page["documents"][0]["text"] for page in pages)
-assert pages[0]["next_position"] == {"kind": "TextPage", "source": "pdftotext", "page_id": 2}, pages[0]["next_position"]
+assert pages[0]["next_position"] == {"kind": "TextPage", "source": "pdftotext", "page_id": 2, "offset": 0}, pages[0]["next_position"]
 refused(*post("documents/read", {**READ, "expected_source": "stale"}), 409, "source_changed")
 refused(*post("documents/read", {**READ, "page": 999}), 404, "not_found")
 refused(*post("documents/read", {**READ, "position": {"kind": "Offset", "offset": 1}}), 400, "invalid_argument")
@@ -557,7 +563,12 @@ SEARCH = {"collectionname": "testdata", "file_hash": PDF_DOC, "source": "pdftote
 pages = walk("documents/search_text", SEARCH, "hits")
 hits = [(hit["page"], hit["ordinal"]) for page in pages for hit in page["hits"]]
 assert len(pages) > 1 and all(len(page["hits"]) <= 50 for page in pages), len(pages)
-assert hits == sorted(hits) and len(hits) == len(set(hits)) == pages[0]["hit_count"] == pages[0]["total"], (len(hits), pages[0]["hit_count"])
+assert hits == sorted(hits) and len(hits) == len(set(hits)) == pages[0]["hit_count"], (len(hits), pages[0]["hit_count"])
+# An exact count gives the total. A lower bound gives no total and marks the result partial.
+if pages[0]["count_state"] == "exact":
+    assert pages[0]["total"] == len(hits) and pages[0]["partial"] is False, pages[0]
+else:
+    assert pages[0]["count_state"] == "lower_bound" and pages[0]["total"] is None and pages[0]["partial"] is True, pages[0]
 assert pages[-1]["next_position"] is None and pages[0]["next_position"]["kind"] == "HitKey"
 refused(*post("documents/search_text", {**SEARCH, "expected_source": "stale"}), 409, "source_changed")
 refused(*post("documents/search_text", {**SEARCH, "position": {"kind": "Page", "page": 1}}), 400, "invalid_argument")

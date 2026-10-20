@@ -86,7 +86,12 @@ first stored page of the source, which can be above 1. Page ids can have gaps, a
 with no stored page is `404`.
 It continues with `TextPage` positions. `documents/search_text` lists the hits of one source in
 page order, 50 a page, with `HitKey` positions, and reads only the pages that hold them. A hit
-count stops at the viewer's 1,000-page limit and then sets `partial`. `documents/sources` lists
+and a hit count come only from an index row that holds the stored text of its page, with
+the rule of the viewer. `count_state` is `exact` when every matching index row was checked,
+and `lower_bound` when the index read stopped at the viewer's 1,000-row limit or an index row
+of the source holds another text. A `lower_bound` search has no `total` and sets `partial`.
+The `source` of a text read is the viewer's source revision, with the stored page count, the
+page range and the highest writer version. `documents/sources` lists
 every source kind with the viewer's hit counts. A PDF count that does not finish before the
 deadline answers `count_state` `timed_out` for that source only. A count that fails answers
 `failed`, and a text or Email count whose read stopped at the 1,000-row limit answers
@@ -108,6 +113,10 @@ A failed source request shows an error and a retry button.
 
 A table route reads a window of a sheet, and its `source` comes from the table manifest,
 the reader version and the latest manifest write time, so no read scans the cells for it.
+A sheet read selects a reading of row 1 with `interpretation`: `auto`, `all_rows` or
+`first_row_header`. It answers with `interpretation`, which names the reading that its counts
+describe and every candidate reading with its row count. Its `source` adds the header row of
+the reading.
 Three reads grow with the sheet and run under the 30 s deadline. `tables/search_cells` scans
 every cell of the sheet, `tables/column_values` groups the whole column, and a sorted,
 filtered or searched `tables/page` reads every matching row of the sheet.

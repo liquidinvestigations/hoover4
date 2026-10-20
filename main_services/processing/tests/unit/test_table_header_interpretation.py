@@ -1,8 +1,10 @@
-"""Row 1 of a delimited sheet: the header, or the first data row (`first_row_is_data`).
+"""Row 1 of a delimited sheet: the header, or the first data row.
 
 Each case writes a small CSV, reads it with the production reader and collector, and
 reads the sheet and column rows that the parser would store. Every row stays stored in
-both readings. Only `header_row`, the column headers and the column statistics change.
+both readings. `header_row`, the column headers and the column statistics follow the
+display choice (`first_row_is_data`). `header_state`, `header_basis` and
+`header_candidates` record every plausible reading (`header_reading`).
 """
 
 from __future__ import annotations
@@ -10,8 +12,8 @@ from __future__ import annotations
 import pytest
 
 from tasks.P3_parse_files import parse_table
-from tasks.P3_parse_files.table_formats import READER_CSV, READER_VERSION
-from tasks.P3_parse_files.table_readers import read_csv_cells
+from tasks.P3_parse_files.table_formats import READER_CSV, READER_VERSION, READER_XLSX_STREAM
+from tasks.P3_parse_files.table_readers import RawCell, read_csv_cells
 
 
 def _parse(tmp_path, text: str, name: str = "table.csv"):
@@ -94,4 +96,76 @@ def test_an_empty_file_has_no_sheet(tmp_path):
 
 def test_a_new_reading_has_a_new_reader_version():
     """A parse of the earlier version is not reused for another dataset (`_existing_parse`)."""
-    assert READER_VERSION == 2
+    assert READER_VERSION == 3
+
+
+def _reading(sheet):
+    return sheet["header_state"], sheet["header_basis"], sheet["header_candidates"], sheet["header_row"]
+
+
+@pytest.mark.parametrize("text,display", [
+    # Text-only records: the cells cannot show whether row 1 is a header.
+    ("Alice,Paris\nBob,Rome\nCarol,Oslo\n", 1),
+    # Identifiers whose digit count changes below row 1.
+    ("9,alpha\n10,beta\n11,gamma\n", 1),
+    # Consecutive numeric data reads like a header of periods.
+    ("1,2\n3,4\n5,6\n", 1),
+    # A header of years that are not consecutive, above numbers with as many digits.
+    ("region,2018,2020\nNorth,1500,2000\nSouth,1700,2200\n", 0),
+    # Years above numbers with another digit count.
+    ("region,2019,2020\nNorth,15,20\nSouth,17,22\n", 1),
+    # A headerless export with seven-digit identifiers.
+    (_events(20), 0),
+    # Text labels above text columns.
+    ("name,city\nAlice,Paris\nBob,Rome\n", 1),
+])
+def test_a_delimited_row_one_that_can_be_either_keeps_both_readings(tmp_path, text, display):
+    sheets, _ = _parse(tmp_path, text)
+    assert _reading(sheets[0]) == ("ambiguous", "heuristic", [0, 1], display)
+
+
+@pytest.mark.parametrize("text", [
+    "id,title\n1001,Alpha\n1002,Beta\n1003,Gamma\n",
+    "id,value\n1,abc\n2,3.5\n3,x\n",
+    # A label above a column of integers and decimals.
+    "amount,label\n1,a\n2.5,b\n3,c\n",
+    # A label above dates, with a quoted comma and a blank cell in the data.
+    'opened,title\n2021-01-05,"Opening, North"\n2021-02-07,\n2021-03-09,Reception\n',
+])
+def test_a_text_label_above_typed_data_is_an_established_header(tmp_path, text):
+    sheets, columns = _parse(tmp_path, text)
+    assert _reading(sheets[0]) == ("established", "heuristic", [1], 1)
+    assert columns[0]["header"] in ("id", "amount", "opened")
+
+
+def test_a_number_in_row_one_never_establishes_a_header(tmp_path):
+    """One numeric cell in row 1 can be data, so the header label beside it does not decide."""
+    sheets, _ = _parse(tmp_path, "N/A,3\n5,4\n6,7\n")
+    assert _reading(sheets[0])[:3] == ("ambiguous", "heuristic", [0, 1])
+
+
+def test_a_blank_cell_in_row_one_leaves_the_other_labels_to_decide(tmp_path):
+    sheets, columns = _parse(tmp_path, ",amount\nNorth,10\nSouth,20\n")
+    assert _reading(sheets[0]) == ("established", "heuristic", [1], 1)
+    assert [c["header"] for c in columns] == ["", "amount"]
+
+
+def test_the_final_row_and_the_first_row_value_stay_stored(tmp_path):
+    """The first row value occurs again in a later row. Both readings keep every stored row,
+    so neither the final row nor the repeated value is lost."""
+    sheets, _ = _parse(tmp_path, "Paris,x\nRome,y\nParis,z\nOslo,w\n")
+    assert _reading(sheets[0])[:3] == ("ambiguous", "heuristic", [0, 1])
+    assert sheets[0]["row_count"] == 4 and sheets[0]["max_source_row"] == 4
+
+
+def test_a_workbook_sheet_reads_row_one_as_its_header_by_format(tmp_path):
+    params = parse_table.ParseTableParams(collectionname="c", collection_dataset="c_d",
+                                          file_hash="h" * 64, file_path=str(tmp_path / "book.xlsx"), timeout_seconds=60)
+    collector = parse_table._Collector(params, READER_XLSX_STREAM)
+    for row in range(1, 4):
+        for column in (1, 2):
+            text = f"r{row}c{column}"
+            assert collector._accept(0, "Sheet1", RawCell(row, column, "text", text), None)
+    collector.settle_headers()
+    sheets = parse_table._sheet_rows(params, collector).to_pylist()
+    assert _reading(sheets[0]) == ("established", "format", [1], 1)

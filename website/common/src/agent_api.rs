@@ -5,10 +5,11 @@
 //!
 //! Every response that a search, document, table or folder read produces carries
 //! `source`, the fingerprint a later `read_more` call compares against. A document text
-//! route uses the file hash, the source name, and the page count and highest page id of
-//! that source. A table route uses the file hash, the reader version and the latest
-//! manifest write time. A search
-//! or folder route uses the searched collections or requested folder tree.
+//! route uses the file hash, the source name and the source revision of the text viewer:
+//! the stored page count, the page range and the highest writer version. A table route
+//! uses the file hash, the reader version and the latest manifest write time, and a
+//! sheet read adds its reading of row 1. A search or folder route uses the searched
+//! collections or requested folder tree.
 
 use std::collections::BTreeMap;
 
@@ -423,12 +424,16 @@ pub struct AgentDocumentText {
     pub text_length: u32,
     /// Binds explicit range reads to the selected text source.
     pub source_version: String,
-    /// Counts the query hits in the source, over at most 1,000 pages.
+    /// Counts the query hits in the stored text of the source. Only an index row that holds
+    /// the stored text of its page counts, once per page.
     pub hit_count: u64,
-    /// Holds the first [`MAX_HIT_PAGES`] page ids with hits, ascending.
+    /// Holds the first [`MAX_HIT_PAGES`] page ids with counted hits, ascending.
     pub hit_pages: Vec<u32>,
-    /// `read`, `no_text` when the document has no text source, or `timed_out` when the
-    /// route deadline stopped this document.
+    /// `exact` when every matching index row was checked, `lower_bound` when the index
+    /// read stopped at its 1,000-row limit or an index row holds another version of a
+    /// page, `read` for a read without a query, `no_text` when the document has no text
+    /// source, or `timed_out` when the route deadline stopped this document. A
+    /// `lower_bound` count of 0 does not establish that the source has no hit.
     pub count_state: String,
     /// Continues the character range, then advances to the next stored page.
     /// It is absent after the final character of the final page.
@@ -511,7 +516,12 @@ pub struct AgentTextHit {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DocumentsSearchTextResponse {
     pub source_used: String,
+    /// Counts the hits in the stored text of the source, as [`AgentDocumentText::hit_count`].
     pub hit_count: u64,
+    /// `exact` or `lower_bound`, as [`AgentDocumentText::count_state`]. `total` is absent
+    /// and `partial` is true for `lower_bound`.
+    #[serde(default)]
+    pub count_state: String,
     pub hits: Vec<AgentTextHit>,
     /// The archive facts of a document that is an archive and has no text source. The
     /// route then answers with no hits in place of "the document has no text source".
@@ -561,6 +571,8 @@ pub struct AgentDocumentSource {
     pub parts: Vec<crate::document_sources::DocumentPdfPart>,
     #[serde(default)]
     pub sheet_count: Option<u16>,
+    /// The stored rows of a table, summed across its sheets, with any header row.
+    /// `tables/overview` gives the data rows of each reading of row 1.
     #[serde(default)]
     pub row_count: Option<u64>,
     #[serde(default)]
@@ -857,6 +869,10 @@ pub struct TablesOverviewRequest {
     pub expected_source: Option<String>,
     pub collectionname: String,
     pub file_hash: String,
+    /// Holds the reading of row 1 of each sheet: `auto`, `all_rows` or `first_row_header`.
+    /// Absent is `auto`. See [`AgentTableInterpretation`].
+    #[serde(default)]
+    pub interpretation: Option<String>,
     /// Holds an `Offset` position, counted in sheets.
     #[serde(default)]
     pub position: Option<AgentPosition>,
@@ -866,9 +882,49 @@ pub struct TablesOverviewRequest {
 pub struct AgentTableColumnInfo {
     /// The value that `columns`, `sort`, `filters` and `tables/cell` take.
     pub column_id: u32,
+    /// The text of the header cell in a reading with a header row, else `Column <letter>`.
     pub name: String,
+    /// The type of the column in the selected reading.
     #[serde(rename = "type")]
     pub column_type: String,
+    /// The cell count of each kind in the selected reading, when the column holds more
+    /// than one kind.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub kinds: BTreeMap<String, u64>,
+}
+
+/// One reading of the first row of a sheet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentTableCandidate {
+    /// `all_rows` or `first_row_header`.
+    pub view: String,
+    /// The `row_id` of the header row of this reading, `0` for no header.
+    pub header_row: u64,
+    /// The data rows of the sheet in this reading, without filters.
+    pub rows: u64,
+}
+
+/// How a table response read the first row of a sheet. Every row, value and hit count of
+/// the response describes the `selected` reading.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentTableInterpretation {
+    /// `established` when the reader established the reading, `ambiguous` when row 1 can
+    /// be a header or data, or `legacy` for a sheet stored before the reader recorded it.
+    pub state: String,
+    /// `format`, `heuristic` or `missing`.
+    pub basis: String,
+    /// The reading that the counts of the response describe.
+    pub selected: String,
+    /// `request` when the call named the reading, else `auto`.
+    pub selected_by: String,
+    /// Every plausible reading, with its unfiltered row count.
+    pub candidates: Vec<AgentTableCandidate>,
+    /// The data rows of an established reading. Absent unless `state` is `established`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub established_rows: Option<u64>,
+    /// The table reader and its version, as `table_documents` records them.
+    pub reader: String,
+    pub reader_version: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -876,9 +932,11 @@ pub struct AgentTableSheet {
     /// The value that the other table routes take as `sheet`.
     pub sheet: u16,
     pub name: String,
+    /// The data rows of the selected reading.
     pub row_count: u64,
     pub column_count: u32,
     pub columns: Vec<AgentTableColumnInfo>,
+    pub interpretation: AgentTableInterpretation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -944,6 +1002,9 @@ pub struct TablesPageRequest {
     /// Holds the 0-based data row where the first window starts. A `position` replaces it.
     #[serde(default)]
     pub row_start: Option<u64>,
+    /// Holds the reading of row 1, as in [`TablesOverviewRequest::interpretation`].
+    #[serde(default)]
+    pub interpretation: Option<String>,
     /// Holds a `Rows` position with no sort, filter or search, else an `Offset` position.
     #[serde(default)]
     pub position: Option<AgentPosition>,
@@ -975,8 +1036,10 @@ pub struct TablesPageResponse {
     pub rows: Vec<AgentTableRow>,
     /// The 0-based data row of the first row of this window.
     pub row_start: u64,
+    /// The rows of the selected reading that match the filters and the search.
     pub total_rows: u64,
     pub clamps: AgentTableClamps,
+    pub interpretation: AgentTableInterpretation,
     /// `total` equals `total_rows`. `next_position` is `Rows` or `Offset`.
     #[serde(flatten)]
     pub page_info: AgentPageInfo,
@@ -1030,6 +1093,9 @@ pub struct TablesColumnValuesRequest {
     /// Keeps the values that contain this text, as the filter popover's search box.
     #[serde(default)]
     pub search: String,
+    /// Holds the reading of row 1, as in [`TablesOverviewRequest::interpretation`].
+    #[serde(default)]
+    pub interpretation: Option<String>,
     /// Holds a `ValueKey` position.
     #[serde(default)]
     pub position: Option<AgentPosition>,
@@ -1043,7 +1109,9 @@ pub struct AgentColumnValue {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TablesColumnValuesResponse {
+    /// The values of the selected reading's data rows.
     pub values: Vec<AgentColumnValue>,
+    pub interpretation: AgentTableInterpretation,
     /// `next_position` is a `ValueKey` after the last value of a full page.
     #[serde(flatten)]
     pub page_info: AgentPageInfo,
@@ -1061,6 +1129,9 @@ pub struct TablesSearchCellsRequest {
     pub file_hash: String,
     pub sheet: u16,
     pub query: String,
+    /// Holds the reading of row 1, as in [`TablesOverviewRequest::interpretation`].
+    #[serde(default)]
+    pub interpretation: Option<String>,
     /// Holds an `Offset` position, counted in hits.
     #[serde(default)]
     pub position: Option<AgentPosition>,
@@ -1077,8 +1148,10 @@ pub struct AgentCellHit {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TablesSearchCellsResponse {
+    /// The matching cells in the selected reading's data rows.
     pub hit_count: u64,
     pub hits: Vec<AgentCellHit>,
+    pub interpretation: AgentTableInterpretation,
     /// `total` equals `hit_count`. `next_position` is an `Offset` in hits.
     #[serde(flatten)]
     pub page_info: AgentPageInfo,

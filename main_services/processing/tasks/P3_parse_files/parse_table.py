@@ -34,6 +34,10 @@ from tasks.P3_parse_files.table_formats import (
     MIN_BINARY_CELLS,
     MIN_DELIMITED_COLUMNS,
     MIN_DELIMITED_ROWS,
+    HEADER_AMBIGUOUS,
+    HEADER_BASIS_FORMAT,
+    HEADER_BASIS_HEURISTIC,
+    HEADER_ESTABLISHED,
     NUMERIC_KINDS,
     READER_VERSION,
     TEMPORAL_KINDS,
@@ -121,11 +125,17 @@ class _SheetStats:
     min_source_row: int = 0
     max_source_row: int = 0
     header_row: int = 0
+    #: How row 1 reads: `table_sheets.header_state`, `header_basis` and `header_candidates`.
+    #: `header_row` is the display choice among the candidates.
+    header_state: str = HEADER_ESTABLISHED
+    header_basis: str = HEADER_BASIS_FORMAT
+    header_candidates: list = None  # type: ignore[assignment]
     truncated: bool = False
     columns: dict = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         self.columns = {}
+        self.header_candidates = []
 
 
 def _sort_key(cell) -> Any:
@@ -194,6 +204,44 @@ def first_row_is_data(sheet: _SheetStats) -> bool:
     periods = (len(numbers) >= 2 and all(float(v).is_integer() for v in numbers)
                and all(b - a == 1 for a, b in zip(numbers, numbers[1:])))
     return bool(agreeing) and not periods
+
+
+def first_row_labels_typed_data(sheet: _SheetStats) -> bool:
+    """Whether row 1 of a delimited sheet is a header by its cells: every non-empty cell of
+    row 1 is text, and at least one of them is above a column whose other cells are all
+    numbers or all dates.
+
+    A label above typed data is the one shape that only a header gives. A text row above
+    text rows, a row of numbers, and a row of years above numbers can each be a header or a
+    data row, so none of them establishes a reading.
+    """
+    labelled = False
+    for stats in sheet.columns.values():
+        first = stats.first
+        if first is None or not stats.first_text.strip():
+            continue
+        if first.kind != KIND_TEXT:
+            return False
+        kinds = set(stats.kinds)
+        if kinds and (kinds <= NUMERIC_KINDS or kinds <= TEMPORAL_KINDS):
+            labelled = True
+    return labelled
+
+
+def header_reading(sheet: _SheetStats, delimited: bool) -> tuple[str, str, list[int]]:
+    """`(state, basis, candidates)` of row 1 of a sheet, while row 1 is still its header.
+
+    A workbook, a markup table and a database table read row 1 as the header by the
+    convention of their format, which is established. A delimited sheet states no header.
+    Its row 1 is an established header when it labels typed data
+    (`first_row_labels_typed_data`). Every other delimited sheet keeps both readings:
+    candidate 0 reads row 1 as data, and candidate 1 reads it as the header.
+    """
+    if not delimited:
+        return HEADER_ESTABLISHED, HEADER_BASIS_FORMAT, [sheet.header_row]
+    if sheet.row_count >= 2 and first_row_labels_typed_data(sheet):
+        return HEADER_ESTABLISHED, HEADER_BASIS_HEURISTIC, [1]
+    return HEADER_AMBIGUOUS, HEADER_BASIS_HEURISTIC, [0, 1]
 
 
 def _add_body_cell(stats: _ColumnStats, cell, text: str, first: bool = False) -> None:
@@ -348,12 +396,18 @@ class _Collector:
         _add_body_cell(stats, cell, text)
 
     def settle_headers(self) -> None:
-        """Read row 1 of a delimited sheet as data when its cells have the kinds of the
-        rows below it (`first_row_is_data`). Every stored row stays stored either way."""
-        if not is_delimited_reader(self.reader):
+        """Record the readings of row 1 of each sheet (`header_reading`), then read row 1 of
+        a delimited sheet as data when its cells have the kinds of the rows below it
+        (`first_row_is_data`). That choice is the display choice of the website grid. Every
+        stored row stays stored either way."""
+        delimited = is_delimited_reader(self.reader)
+        for sheet in self.sheets.values():
+            sheet.header_state, sheet.header_basis, sheet.header_candidates = header_reading(sheet, delimited)
+        if not delimited:
             return
         for sheet in self.sheets.values():
-            if sheet.header_row != 1 or sheet.row_count < 2 or not first_row_is_data(sheet):
+            if sheet.header_row != 1 or sheet.row_count < 2 or sheet.header_state == HEADER_ESTABLISHED \
+                    or not first_row_is_data(sheet):
                 continue
             sheet.header_row = 0
             for stats in sheet.columns.values():
@@ -459,6 +513,9 @@ def _sheet_rows(params: ParseTableParams, collector: _Collector):
         "cell_count": pa.array([s.cell_count for s in sheets], type=pa.uint64()),
         "header_row": pa.array([s.header_row for s in sheets], type=pa.uint64()),
         "truncated": pa.array([1 if s.truncated else 0 for s in sheets], type=pa.uint8()),
+        "header_state": pa.array([s.header_state for s in sheets], type=pa.string()),
+        "header_basis": pa.array([s.header_basis for s in sheets], type=pa.string()),
+        "header_candidates": pa.array([s.header_candidates for s in sheets], type=pa.list_(pa.uint64())),
     })
 
 

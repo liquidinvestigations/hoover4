@@ -387,9 +387,21 @@ or dates has a row 1 cell of the same kind: a number with the integer digit coun
 column values, or a date. Consecutive integers across row 1, such as 2019, 2020 and 2021,
 are a header of periods. A sheet of text columns keeps row 1 as its header, because text
 cells cannot show the difference. A data row 1 gets `header_row` 0, empty column headers,
-and a place in the column statistics. Every row is stored in both readings. This reading
-is reader version 2 (`table_formats.READER_VERSION`). A table that version 1 read keeps its
-stored reading until the file is parsed again.
+and a place in the column statistics. Every row is stored in both readings. That choice is
+the display choice of the website grid.
+
+`header_reading` records every plausible reading of row 1 in `table_sheets`, with the sheet
+row and before the final manifest. A workbook, markup or database sheet has the state
+`established` and the basis `format`, with row 1 as its header. A delimited sheet has an
+established header, with the basis `heuristic`, in one case only. Every non-empty cell of
+row 1 is text, and one of them is above a column of numbers or dates
+(`first_row_labels_typed_data`). A text row above text rows, a row of numbers, and a row of
+years above numbers can each be a header or data. Such a sheet has the state `ambiguous`.
+Its candidates are `0` (row 1 is data) and `1` (row 1 is the header). The agent table routes
+read either candidate from the same cells. This reading is reader version 3
+(`table_formats.READER_VERSION`). A sheet that an earlier version read has the state
+`legacy` until the file is parsed again, and `_existing_parse` does not reuse its parse for
+another dataset.
 
 The manifest row is written **before** the cells, which is the opposite of
 [parse_ocr_pdf.py](parse_ocr_pdf.py)'s object-before-row rule and is the mirrored reason: a cell with no

@@ -117,8 +117,13 @@ RESPONSE_MODELS: dict[str, type[AgentModel]] = {
 }
 #: The fields of a unit that the broker never moves out of a stored unit, as JSON
 #: pointers. A row without them cannot be read on or cited, so a cut row keeps them and
-#: loses its snippet or its text.
-IDENTITY_FIELDS = frozenset({"/file_hash", "/path", "/collectionname", "/collection", "/dataset", "/collection_dataset"})
+#: loses its snippet or its text. The count state of a document read and the reading of a
+#: table sheet stay with the counts that they qualify.
+IDENTITY_FIELDS = frozenset({
+    "/file_hash", "/path", "/collectionname", "/collection", "/dataset", "/collection_dataset",
+    "/count_state", "/interpretation/state", "/interpretation/basis", "/interpretation/selected",
+    "/interpretation/selected_by",
+})
 #: The keys a route tool's continuation position may hold.
 POSITION_KEYS = frozenset({"window", "next", "artifact", "head", "start", "stop", "total", "cut", "blob", "part"})
 
@@ -140,7 +145,10 @@ HASH_START = 16
 #: The key under which a local tool's result carries the doc refs of its rows.
 REFS_KEY = "__refs"
 #: The row keys of `read_documents` that a page does not show.
-READ_DROPPED_KEYS = frozenset({"collection_dataset", "title", "count_state", "next_position"})
+READ_DROPPED_KEYS = frozenset({"collection_dataset", "title", "next_position"})
+#: The `count_state` values of a `read_documents` row that qualify no count, so a page
+#: does not show them. `exact` and `lower_bound` stay beside `hit_count`.
+READ_UNCOUNTED_STATES = frozenset({"read", "no_text", "timed_out"})
 #: The namespace of the artifact ids of stored continuations.
 MORE_NAMESPACE = uuid.UUID("5f0c8a4e-2b7d-4c61-9e3a-7d1f0b6c2a95")
 _HANDLE_RE = re.compile(r"^[0-9a-f]{12}$")
@@ -212,7 +220,8 @@ def archive_note(archive: dict[str, Any]) -> str:
 def slim_items(tool_name: str, items: list[Any]) -> tuple[list[Any], list[dict[str, Any]]]:
     """The units of a page as the model reads them, and the doc ref of each unit that names a
     document. A unit's `file_hash` becomes its first `HASH_START` characters. A
-    `read_documents` unit also loses the keys of `READ_DROPPED_KEYS` and every empty value."""
+    `read_documents` unit also loses the keys of `READ_DROPPED_KEYS`, a `count_state` of
+    `READ_UNCOUNTED_STATES`, and every empty value except the `hit_count` of a counted read."""
     out: list[Any] = []
     refs: list[dict[str, Any]] = []
     for item in items:
@@ -231,8 +240,11 @@ def slim_items(tool_name: str, items: list[Any]) -> tuple[list[Any], list[dict[s
         refs.append(ref)
         slim = {**item, "file_hash": hash_start(item["file_hash"])}
         if tool_name == "read_documents":
+            counted = slim.get("count_state") not in READ_UNCOUNTED_STATES
             slim = {key: value for key, value in slim.items()
-                    if key not in READ_DROPPED_KEYS and (key in ("text", "page_complete") or value not in (None, False, "", [], {}))}
+                    if key not in READ_DROPPED_KEYS and not (key == "count_state" and not counted)
+                    and (key in ("text", "page_complete") or (counted and key == "hit_count")
+                         or value not in (None, False, "", [], {}))}
         if "collectionname" in slim:
             slim["collection"] = slim.pop("collectionname")
         out.append(slim)

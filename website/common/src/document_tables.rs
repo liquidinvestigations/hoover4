@@ -59,9 +59,23 @@ pub struct TableSheet {
     pub row_count: u64,
     pub column_count: u32,
     /// `row_id` the column headers came from, `0` when the sheet has no usable header.
+    /// It is the display choice of the website grid. [`Self::header_candidates`] gives
+    /// every reading of the first row that the reader found plausible.
     pub header_row: u64,
     /// A cap fired while reading this sheet.
     pub truncated: bool,
+    /// [`HEADER_ESTABLISHED`], [`HEADER_AMBIGUOUS`] or [`HEADER_LEGACY`]. Empty in a value
+    /// from before the field existed, which reads as legacy.
+    #[serde(default)]
+    pub header_state: String,
+    /// [`HEADER_BASIS_FORMAT`], [`HEADER_BASIS_HEURISTIC`] or [`HEADER_BASIS_MISSING`].
+    #[serde(default)]
+    pub header_basis: String,
+    /// The header `row_id` of each plausible reading, `0` for the reading with no header.
+    /// Empty for a legacy sheet. [`resolve_sheet_interpretation`] derives the legacy
+    /// candidates.
+    #[serde(default)]
+    pub header_candidates: Vec<u64>,
 }
 
 impl TableSheet {
@@ -82,6 +96,175 @@ impl TableSheet {
         } else {
             self.name.clone()
         }
+    }
+}
+
+/// The reader established how the first row of the sheet reads.
+pub const HEADER_ESTABLISHED: &str = "established";
+/// The first row of the sheet can be a header or data. Both readings are candidates.
+pub const HEADER_AMBIGUOUS: &str = "ambiguous";
+/// A sheet stored before the reader recorded its reading. It is the column default.
+pub const HEADER_LEGACY: &str = "legacy";
+
+/// The reading follows the convention of the file format, as for a workbook sheet.
+pub const HEADER_BASIS_FORMAT: &str = "format";
+/// The reading follows the cell kinds of the rows, as for a delimited file.
+pub const HEADER_BASIS_HEURISTIC: &str = "heuristic";
+/// No reader recorded a basis. It is the column default.
+pub const HEADER_BASIS_MISSING: &str = "missing";
+
+/// The reading with no header row: row 1 is data.
+pub const VIEW_ALL_ROWS: &str = "all_rows";
+/// The reading with row 1 as the column names.
+pub const VIEW_FIRST_ROW_HEADER: &str = "first_row_header";
+/// The request value that selects the reading for the caller.
+pub const VIEW_AUTO: &str = "auto";
+
+/// The reader of a delimited file, as `table_documents.reader` stores it.
+pub const READER_DELIMITED: &str = "csv";
+
+/// The name of the reading whose header is `header_row`.
+pub fn table_view_name(header_row: u64) -> String {
+    match header_row {
+        0 => VIEW_ALL_ROWS.to_string(),
+        1 => VIEW_FIRST_ROW_HEADER.to_string(),
+        n => format!("header_row_{n}"),
+    }
+}
+
+/// How one read of a sheet takes its first row: the reading that its counts describe,
+/// with every plausible reading beside it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct SheetInterpretation {
+    pub state: String,
+    pub basis: String,
+    /// The header `row_id` of each plausible reading, ascending.
+    pub candidates: Vec<u64>,
+    /// The header `row_id` of the selected reading. Rows after it are the data rows.
+    pub selected: u64,
+    /// True when the caller named the reading, false when `auto` or the display chose it.
+    pub requested: bool,
+    /// The stored rows of the sheet, which bound every read. The header row is one of them.
+    pub stored_rows: u64,
+}
+
+impl SheetInterpretation {
+    /// The data rows of the reading whose header is `header_row`.
+    pub fn rows_of(&self, header_row: u64) -> u64 {
+        self.stored_rows.saturating_sub(header_row)
+    }
+
+    /// The data rows of the selected reading.
+    pub fn selected_rows(&self) -> u64 {
+        self.rows_of(self.selected)
+    }
+
+    /// True when the reader established the reading of the first row.
+    pub fn is_established(&self) -> bool {
+        self.state == HEADER_ESTABLISHED
+    }
+}
+
+/// The plausible readings of a sheet, as `(state, basis, candidates)`.
+///
+/// A stored reading keeps its state and its candidates. A legacy sheet of a delimited file
+/// has the reading with no header and the reading with row 1 as header, because the
+/// legacy reader decided between them from cell kinds alone. A legacy sheet of another
+/// reader keeps its display choice as its one reading.
+pub fn sheet_candidates(sheet: &TableSheet, reader: &str) -> (String, String, Vec<u64>) {
+    let stored_rows = sheet.last_row_id();
+    let legacy = sheet.header_state.is_empty() || sheet.header_state == HEADER_LEGACY;
+    let mut candidates: Vec<u64> = if legacy {
+        if reader == READER_DELIMITED && stored_rows >= 2 {
+            vec![0, 1]
+        } else {
+            vec![sheet.header_row]
+        }
+    } else {
+        sheet.header_candidates.clone()
+    };
+    candidates.retain(|row| *row <= stored_rows);
+    candidates.sort_unstable();
+    candidates.dedup();
+    if candidates.is_empty() {
+        candidates.push(sheet.header_row.min(stored_rows));
+    }
+    let (state, basis) = if legacy {
+        (HEADER_LEGACY.to_string(), HEADER_BASIS_MISSING.to_string())
+    } else {
+        let basis = if sheet.header_basis.is_empty() { HEADER_BASIS_MISSING.to_string() } else { sheet.header_basis.clone() };
+        (sheet.header_state.clone(), basis)
+    };
+    (state, basis, candidates)
+}
+
+/// Selects the reading of one sheet read. `None` and [`VIEW_AUTO`] select the one reading
+/// of a sheet with one candidate, and the reading with no header otherwise, so the first
+/// row stays visible. [`VIEW_ALL_ROWS`] and [`VIEW_FIRST_ROW_HEADER`] select their reading
+/// when the sheet has it. `Err` holds the message of a request for another reading.
+pub fn resolve_sheet_interpretation(
+    sheet: &TableSheet,
+    reader: &str,
+    requested: Option<&str>,
+) -> Result<SheetInterpretation, String> {
+    let (state, basis, candidates) = sheet_candidates(sheet, reader);
+    let stored_rows = sheet.last_row_id();
+    let wanted = match requested {
+        None => None,
+        Some(name) if name == VIEW_AUTO => None,
+        Some(name) if name == VIEW_ALL_ROWS => Some(0),
+        Some(name) if name == VIEW_FIRST_ROW_HEADER => Some(1),
+        Some(other) => {
+            return Err(format!(
+                "interpretation {other:?} is not a reading: use {VIEW_AUTO}, {VIEW_ALL_ROWS} or {VIEW_FIRST_ROW_HEADER}"
+            ));
+        }
+    };
+    let selected = match wanted {
+        Some(row) if candidates.contains(&row) => row,
+        Some(row) => {
+            let names: Vec<String> = candidates.iter().map(|row| table_view_name(*row)).collect();
+            return Err(format!(
+                "sheet {} has no {} reading. Its readings are {}.",
+                sheet.sheet_id,
+                table_view_name(row),
+                names.join(", ")
+            ));
+        }
+        None if candidates.len() == 1 => candidates[0],
+        None if candidates.contains(&0) => 0,
+        None => candidates[0],
+    };
+    Ok(SheetInterpretation { state, basis, candidates, selected, requested: wanted.is_some(), stored_rows })
+}
+
+/// The reading of the website grid: the stored display choice, with the stored candidates.
+pub fn display_sheet_interpretation(sheet: &TableSheet, reader: &str) -> SheetInterpretation {
+    let (state, basis, mut candidates) = sheet_candidates(sheet, reader);
+    if !candidates.contains(&sheet.header_row) {
+        candidates.push(sheet.header_row);
+        candidates.sort_unstable();
+    }
+    SheetInterpretation {
+        state,
+        basis,
+        candidates,
+        selected: sheet.header_row,
+        requested: false,
+        stored_rows: sheet.last_row_id(),
+    }
+}
+
+/// The type a column sorts and filters as, from the count of each cell kind: its most
+/// common kind, and `text` on a tie or with no cell. The pipeline's
+/// `parse_table._column_type` uses the same rule.
+pub fn column_type_of(kinds: &[(String, u64)]) -> String {
+    let mut ordered: Vec<&(String, u64)> = kinds.iter().filter(|(_, count)| *count > 0).collect();
+    ordered.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    match ordered.as_slice() {
+        [] => "text".to_string(),
+        [first, second, ..] if first.1 == second.1 => "text".to_string(),
+        [first, ..] => first.0.clone(),
     }
 }
 
@@ -466,6 +649,85 @@ mod tests {
         // A header without data rows, and an empty sheet.
         assert_eq!(sheet(0, 1).last_row_id(), 1);
         assert_eq!(sheet(0, 0).last_row_id(), 0);
+    }
+
+    fn stored(state: &str, candidates: &[u64], header_row: u64, stored_rows: u64) -> TableSheet {
+        TableSheet {
+            sheet_id: 0,
+            row_count: stored_rows - header_row,
+            header_row,
+            header_state: state.into(),
+            header_basis: if state.is_empty() { String::new() } else { HEADER_BASIS_HEURISTIC.into() },
+            header_candidates: candidates.to_vec(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn an_ambiguous_sheet_reads_every_row_unless_a_reading_is_named() {
+        let sheet = stored(HEADER_AMBIGUOUS, &[0, 1], 1, 19);
+        let auto = resolve_sheet_interpretation(&sheet, READER_DELIMITED, None).unwrap();
+        assert_eq!((auto.selected, auto.selected_rows(), auto.requested), (0, 19, false));
+        assert_eq!(auto.candidates, vec![0, 1]);
+        assert_eq!((auto.rows_of(0), auto.rows_of(1)), (19, 18));
+        assert!(!auto.is_established());
+        assert_eq!(resolve_sheet_interpretation(&sheet, READER_DELIMITED, Some(VIEW_AUTO)).unwrap(), auto);
+        let header = resolve_sheet_interpretation(&sheet, READER_DELIMITED, Some(VIEW_FIRST_ROW_HEADER)).unwrap();
+        assert_eq!((header.selected, header.selected_rows(), header.requested), (1, 18, true));
+        let rows = resolve_sheet_interpretation(&sheet, READER_DELIMITED, Some(VIEW_ALL_ROWS)).unwrap();
+        assert_eq!((rows.selected, rows.requested), (0, true));
+    }
+
+    #[test]
+    fn an_established_sheet_has_one_reading_and_refuses_the_other() {
+        let sheet = stored(HEADER_ESTABLISHED, &[1], 1, 39);
+        let auto = resolve_sheet_interpretation(&sheet, READER_DELIMITED, None).unwrap();
+        assert_eq!((auto.selected, auto.selected_rows()), (1, 38));
+        assert!(auto.is_established());
+        let refused = resolve_sheet_interpretation(&sheet, READER_DELIMITED, Some(VIEW_ALL_ROWS)).unwrap_err();
+        assert_eq!(refused, "sheet 0 has no all_rows reading. Its readings are first_row_header.");
+        let unknown = resolve_sheet_interpretation(&sheet, READER_DELIMITED, Some("header")).unwrap_err();
+        assert!(unknown.contains("auto, all_rows or first_row_header"), "{unknown}");
+    }
+
+    #[test]
+    fn a_legacy_delimited_sheet_has_both_readings_and_keeps_its_display_choice() {
+        // Reader version 1 took the first row as the header.
+        let header = stored("", &[], 1, 19);
+        let auto = resolve_sheet_interpretation(&header, READER_DELIMITED, None).unwrap();
+        assert_eq!((auto.state.as_str(), auto.basis.as_str()), (HEADER_LEGACY, HEADER_BASIS_MISSING));
+        assert_eq!((auto.candidates.clone(), auto.selected), (vec![0, 1], 0));
+        assert_eq!(display_sheet_interpretation(&header, READER_DELIMITED).selected, 1);
+        // Reader version 2 read the first row as data. Row 1 can still be named the header.
+        let data = stored(HEADER_LEGACY, &[], 0, 19);
+        let named = resolve_sheet_interpretation(&data, READER_DELIMITED, Some(VIEW_FIRST_ROW_HEADER)).unwrap();
+        assert_eq!((named.selected, named.selected_rows()), (1, 18));
+        assert_eq!(display_sheet_interpretation(&data, READER_DELIMITED).selected, 0);
+    }
+
+    #[test]
+    fn a_legacy_workbook_sheet_keeps_its_one_reading() {
+        let sheet = stored("", &[], 1, 5);
+        let auto = resolve_sheet_interpretation(&sheet, "xlsx_stream", None).unwrap();
+        assert_eq!((auto.candidates.clone(), auto.selected, auto.selected_rows()), (vec![1], 1, 4));
+        assert!(resolve_sheet_interpretation(&sheet, "xlsx_stream", Some(VIEW_ALL_ROWS)).is_err());
+    }
+
+    #[test]
+    fn a_candidate_past_the_stored_rows_is_not_a_reading() {
+        let sheet = stored(HEADER_AMBIGUOUS, &[0, 1, 7], 1, 3);
+        assert_eq!(resolve_sheet_interpretation(&sheet, READER_DELIMITED, None).unwrap().candidates, vec![0, 1]);
+    }
+
+    #[test]
+    fn the_column_type_is_the_most_common_kind_and_text_on_a_tie() {
+        let kinds = |pairs: &[(&str, u64)]| pairs.iter().map(|(k, n)| (k.to_string(), *n)).collect::<Vec<_>>();
+        assert_eq!(column_type_of(&kinds(&[("int", 18), ("text", 1)])), "int");
+        assert_eq!(column_type_of(&kinds(&[("int", 1), ("text", 1)])), "text");
+        assert_eq!(column_type_of(&kinds(&[("int", 0), ("float", 2)])), "float");
+        assert_eq!(column_type_of(&[]), "text");
+        assert_eq!(table_view_name(0), VIEW_ALL_ROWS);
+        assert_eq!(table_view_name(1), VIEW_FIRST_ROW_HEADER);
     }
 
     #[test]

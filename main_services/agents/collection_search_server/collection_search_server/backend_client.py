@@ -161,6 +161,12 @@ class AgentTableFilter(AgentRequest):
         return self
 
 
+#: The readings of a table sheet that a table request can select. `auto` selects the
+#: established reading, and reads every row of a sheet whose first row can be a header or
+#: data. The route refuses a reading that is not a candidate of the sheet.
+TableInterpretationName = Literal["auto", "all_rows", "first_row_header"]
+
+
 class AgentError(AgentModel):
     success: bool = False
     error: str
@@ -268,6 +274,7 @@ class DocumentsPdfSearchRequest(DocumentsMetadataRequest):
 
 
 class TablesOverviewRequest(DocumentsMetadataRequest):
+    interpretation: TableInterpretationName | None = None
     position: AgentPosition | None = None
 
 
@@ -278,6 +285,7 @@ class TablesPageRequest(DocumentsMetadataRequest):
     columns: list[int] = Field(default_factory=list, max_length=300)
     search: str = ""
     row_start: int | None = Field(default=None, ge=0)
+    interpretation: TableInterpretationName | None = None
     position: AgentPosition | None = None
 
 
@@ -292,12 +300,14 @@ class TablesColumnValuesRequest(DocumentsMetadataRequest):
     sheet: int = Field(ge=0)
     column: int = Field(ge=0)
     search: str = ""
+    interpretation: TableInterpretationName | None = None
     position: AgentPosition | None = None
 
 
 class TablesSearchCellsRequest(DocumentsMetadataRequest):
     sheet: int = Field(ge=0)
     query: str
+    interpretation: TableInterpretationName | None = None
     position: AgentPosition | None = None
 
 
@@ -530,6 +540,31 @@ class TableColumnInfo(AgentModel):
     column_id: int
     name: str
     column_type: str = Field(alias="type")
+    #: The cell kinds of the column in the selected reading, when there is more than one.
+    kinds: dict[str, int] = Field(default_factory=dict)
+
+
+class TableCandidate(AgentModel):
+    """One reading of a sheet: `all_rows` or `first_row_header`."""
+
+    view: str
+    header_row: int
+    rows: int
+
+
+class TableInterpretation(AgentModel):
+    """How a table response read the first row of a sheet. Its row and value counts are
+    counts of the `selected` reading. `established_rows` is absent unless the reading is
+    established."""
+
+    state: str
+    basis: str
+    selected: str
+    selected_by: str
+    candidates: list[TableCandidate]
+    established_rows: int | None = None
+    reader: str = ""
+    reader_version: int = 0
 
 
 class TableSheet(AgentModel):
@@ -538,6 +573,7 @@ class TableSheet(AgentModel):
     row_count: int
     column_count: int
     columns: list[TableColumnInfo]
+    interpretation: TableInterpretation | None = None
 
 
 class CutMarker(AgentModel):
@@ -685,6 +721,9 @@ class DocumentsReadResponse(AgentModel):
 class DocumentsSearchTextResponse(AgentModel):
     source_used: str
     hit_count: int
+    #: `exact` when every hit of the source was checked against its stored text, or
+    #: `lower_bound` when `hit_count` counts the checked hits only.
+    count_state: str | None = None
     hits: list[TextHit]
     archive: dict[str, Any] | None = None
     source: str
@@ -761,6 +800,7 @@ class TablesPageResponse(AgentModel):
     row_start: int
     total_rows: int
     clamps: TableClamps
+    interpretation: TableInterpretation | None = None
     source: str
     next_position: AgentPosition | None = None
     total: int | None = None
@@ -780,6 +820,7 @@ class TablesCellResponse(AgentModel):
 
 class TablesColumnValuesResponse(AgentModel):
     values: list[ColumnValue]
+    interpretation: TableInterpretation | None = None
     source: str
     next_position: AgentPosition | None = None
     total: int | None = None
@@ -789,6 +830,7 @@ class TablesColumnValuesResponse(AgentModel):
 class TablesSearchCellsResponse(AgentModel):
     hit_count: int
     hits: list[CellHit]
+    interpretation: TableInterpretation | None = None
     source: str
     next_position: AgentPosition | None = None
     total: int | None = None

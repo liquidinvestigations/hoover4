@@ -245,13 +245,25 @@ and are appended after the sorted rows in `row_id` order, in both directions.
 **The header row is not a data row.** The reader writes the first row that produces cells
 into `table_columns.header`, records its `row_id` as `table_sheets.header_row`, and leaves
 it out of every column statistic, but it is also stored as ordinary cells. So every read
-here starts *after* `header_row`, and every row count a reader sees subtracts it: otherwise
-the grid draws that row twice, once as its column labels and once as row 1, and disagrees
-with the statistics the filter popovers and column type marks come from. `header_row = 0`
-is a sheet with no header row and nothing is skipped. A delimited file whose row 1 has the
-cell kinds of the rows below gets `header_row = 0` from table reader version 2. For
-another headerless file the first data row becomes the column labels. Its values are still
-on screen, and it is what a spreadsheet application shows too.
+here starts *after* the header row of its reading, and every row count a reader sees
+subtracts it: otherwise the grid draws that row twice, once as its column labels and once
+as row 1, and disagrees with the statistics the filter popovers and column type marks come
+from. A header row of `0` is a reading with no header row and nothing is skipped. A
+delimited file whose row 1 has the cell kinds of the rows below gets `header_row = 0` from
+table reader version 2. For another headerless file the first data row becomes the column
+labels. Its values are still on screen, and it is what a spreadsheet application shows too.
+
+**One resolver selects the reading of row 1.** `header_row` is the display choice of the
+grid. From table reader version 3, `table_sheets.header_state`, `header_basis` and
+`header_candidates` record every plausible reading. A delimited sheet whose row 1 can be a
+header or data has the candidates `0` and `1` and the state `ambiguous`. A sheet stored
+before version 3 reads as `legacy`, and a legacy delimited sheet has both candidates.
+`table_browse::resolve_read` gives every table read its header row with the shared rules of
+`common::document_tables`. The grid reads the display choice. An agent route reads the
+reading that its `interpretation` names, or `auto`, which reads every row when the sheet
+has two candidates. `table_browse::view_columns` gives the column names, types and kind
+counts of a reading from `table_columns` and the cells of the rows between the two header
+rows. Both readings share one set of cells, row ids and column ids.
 
 The grid draws `source_row`, the row number the file itself gives, in its `#` column,
 not the dense `row_id`, which is pagination arithmetic and would be off by every empty row

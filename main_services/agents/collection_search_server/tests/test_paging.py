@@ -23,6 +23,13 @@ TOOLS = {
 }
 
 
+#: The reading of a CSV sheet whose first row can be a header or data.
+INTERPRETATION = {"state": "ambiguous", "basis": "heuristic", "selected": "all_rows", "selected_by": "auto",
+                  "candidates": [{"view": "all_rows", "header_row": 0, "rows": 2},
+                                 {"view": "first_row_header", "header_row": 1, "rows": 1}],
+                  "reader": "csv", "reader_version": 3}
+
+
 SAMPLES = {
     "list_collections": {"collections": [{"collectionname": "c", "document_count": 1, "datasets": [{"name": "d", "document_count": 1}]}]},
     "search_collections": {"documents": [{"collectionname": "c", "file_hash": "h", "path": "/h", "title": "h", "snippet": "h", "canonical_file_type": "text", "size": 1, "document_date": None, "dataset": "d", "collection_dataset": "c_d"}], "total_count": 3, "facet_counts": {"file_types": [{"value": "pdf", "id": 7, "count": 2}]}, "page": 0, "has_more": True, "query_notes": [], "next_position": None, "total": 3, "partial": False},
@@ -30,17 +37,17 @@ SAMPLES = {
     "search_histogram": {"buckets": [{"start": 1, "end": 2, "count": 1, "label": None}], "date_field": "date"},
     "search_entity_explainer": {"explanation": {"title": "person", "subtitle": "", "body": "", "facts": [], "references": []}, "documents": [{"file_hash": "h", "path": "/h", "title": "h", "snippet": "h"}]},
     "read_documents": {"documents": [{"collectionname": "c", "collection_dataset": "c_d", "file_hash": "h", "path": "/h", "title": "h", "source_used": "raw_text", "page": 1, "min_page": 1, "max_page": 3, "text": "a", "text_start": 0, "text_end": 1, "text_length": 1, "source_version": "h:raw_text:3:3", "hit_count": 1, "hit_pages": [1], "count_state": "read", "next_position": {"kind": "TextPage", "source": "raw_text", "page_id": 2}}], "next_position": {"kind": "TextPage", "source": "raw_text", "page_id": 2}, "total": 3, "partial": False},
-    "doc_search_text": {"source_used": "raw_text", "hit_count": 1, "hits": [{"page": 1, "ordinal": 0, "start": 0, "end": 1, "snippet": "a"}], "archive": None, "next_position": None, "total": 1, "partial": False},
+    "doc_search_text": {"source_used": "raw_text", "hit_count": 1, "count_state": "exact", "hits": [{"page": 1, "ordinal": 0, "start": 0, "end": 1, "snippet": "a"}], "archive": None, "next_position": None, "total": 1, "partial": False},
     "doc_sources": {"sources": [{"kind": "text", "source": "raw_text", "label": "Plain text", "hit_count": 1, "count_state": "counted", "min_page": 1, "max_page": 1, "page_count": None, "parts": [], "sheet_count": None, "row_count": None, "column_count": None}], "archive": None, "next_position": None, "total": 1, "partial": False},
     "doc_metadata": {"raw_metadata": {"author": ["a"]}, "dates": [{"value": 1, "kind": "created", "provenance": "tika"}], "file_locations": [{"path": "p", "container_hash": "", "container_chain": ["/", "p"]}], "file_locations_total": 1, "path": "p", "canonical_file_type": "pdf", "download_links": {"original": "/x", "ocr_pdf": None, "pdf_sources": []}, "archive": None},
     "doc_email": {"envelope": {"subject": "s", "date": None, "from": [], "to": [], "cc": [], "bcc": []}, "parent": None, "cluster_size": 1, "headers": {"x": "y"}, "attachments": [{"file_hash": "h", "name": "a", "size": 1, "coarse_type": "pdf"}], "graph": {"nodes": [{"file_hash": "h", "subject": "s", "from": "a", "date": None, "truncated": False, "is_centre": True}], "edges": [], "cluster_size": 1, "truncated": False}, "next_position": None, "total": 1, "partial": False},
     "doc_diff_sources": {"source_a": "a", "source_b": "b", "page_a": 1, "page_b": 1, "unified_diff": "-a\n+b"},
     "pdf_search": {"source_used": "", "pdf_url": "/x", "hit_positions": [{"page": 1, "start": 0, "end": 2}], "hit_count": 1, "next_position": None, "total": 1, "partial": False},
-    "table_overview": {"sheets": [{"sheet": 0, "name": "s", "row_count": 1, "column_count": 1, "columns": [{"column_id": 1, "name": "a", "type": "text"}]}], "next_position": None, "total": 1, "partial": False},
-    "table_page": {"columns": [{"column_id": 1, "name": "a", "type": "text"}], "rows": [{"row_number": 1, "row_id": 1, "cells": {"a": "x", "b": {"text": "y", "cut": {"field": "/rows/0/cells/b", "returned_bytes": 1, "total_bytes": 3}}}}], "row_start": 0, "total_rows": 1, "clamps": {"rows_requested": 50, "rows_applied": 50, "columns_requested": 1, "columns_applied": 1}, "next_position": None, "total": 1, "partial": False},
+    "table_overview": {"sheets": [{"sheet": 0, "name": "s", "row_count": 1, "column_count": 1, "columns": [{"column_id": 1, "name": "a", "type": "text"}], "interpretation": INTERPRETATION}], "next_position": None, "total": 1, "partial": False},
+    "table_page": {"columns": [{"column_id": 1, "name": "a", "type": "text"}], "rows": [{"row_number": 1, "row_id": 1, "cells": {"a": "x", "b": {"text": "y", "cut": {"field": "/rows/0/cells/b", "returned_bytes": 1, "total_bytes": 3}}}}], "row_start": 0, "total_rows": 1, "clamps": {"rows_requested": 50, "rows_applied": 50, "columns_requested": 1, "columns_applied": 1}, "interpretation": INTERPRETATION, "next_position": None, "total": 1, "partial": False},
     "table_cell": {"row_number": 1, "column": "a", "offset": 0, "text": "x", "next_position": None, "total": 1, "partial": False},
-    "table_column_values": {"values": [{"value": "x", "count": 1}], "next_position": None, "total": None, "partial": False},
-    "table_search_cells": {"hit_count": 1, "hits": [{"row_number": 1, "row_id": 1, "column": "a", "column_id": 1, "value": "x"}], "next_position": None, "total": 1, "partial": False},
+    "table_column_values": {"values": [{"value": "x", "count": 1}], "interpretation": INTERPRETATION, "next_position": None, "total": None, "partial": False},
+    "table_search_cells": {"hit_count": 1, "hits": [{"row_number": 1, "row_id": 1, "column": "a", "column_id": 1, "value": "x"}], "interpretation": INTERPRETATION, "next_position": None, "total": 1, "partial": False},
     "folder_overview": {"datasets": [{"name": "d", "document_count": 2}], "folder_count": 1, "file_count": 2, "total_bytes": 3, "indexed_count": 2, "error_count": 0},
     "folder_list": {"breadcrumb": [{"node_id": "r", "name": "root"}], "container_root": "r", "children": [{"node_id": "a", "name": "a", "kind": "dir", "child_count": 1, "term_id": None}], "files": [{"node_id": "b", "file_hash": "h", "name": "b", "size": 1, "date": None, "canonical_file_type": "text", "is_container": False, "term_id": None}], "dataset": "d", "next_position": None, "total": 2, "partial": False},
     "folder_search": {"matches": [{"node_id": "a", "parent_id": "r", "name": "a", "kind": "dir", "path": "/a", "term_id": None}], "dataset": "d", "next_position": None, "total": 1, "partial": False},

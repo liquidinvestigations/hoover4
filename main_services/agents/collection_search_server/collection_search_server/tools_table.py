@@ -7,18 +7,46 @@ from typing import Annotated, Any
 from pydantic import Field, ValidationError
 
 from agent_common.result_pages import canonical_json
-from collection_search_server.backend_client import AgentTableFilter, AgentTableSort, TablesCellRequest, TablesColumnValuesRequest, TablesOverviewRequest, TablesPageRequest, TablesSearchCellsRequest
-from collection_search_server import server
+from collection_search_server.backend_client import AgentTableFilter, AgentTableSort, TableInterpretationName, TablesCellRequest, TablesColumnValuesRequest, TablesOverviewRequest, TablesPageRequest, TablesSearchCellsRequest
+from collection_search_server import paging, server
 from collection_search_server.paging import PagedTool
 from collection_search_server.tools_document import DocumentSearchTool
 from collection_search_server.server import mcp
 
 
-TABLE_OVERVIEW = PagedTool(TablesOverviewRequest, "tables/overview", "table_overview", "rows", "sheets")
-TABLE_PAGE = PagedTool(TablesPageRequest, "tables/page", "table_page", "table", "rows", "columns")
+def compact_interpretation(value: Any) -> Any:
+    """`value` without the empty `kinds` of a column and the absent `established_rows` of
+    an interpretation. The other fields stay, so a count keeps its reading."""
+    if isinstance(value, list):
+        return [compact_interpretation(item) for item in value]
+    if isinstance(value, dict):
+        return {key: compact_interpretation(item) for key, item in value.items()
+                if not ((key == "kinds" and item == {}) or (key == "established_rows" and item is None))}
+    return value
+
+
+class TableTool(PagedTool):
+    """A table route. Its response is compacted before the route paging policy splits it."""
+
+    def window(self, result: dict[str, Any], request=None) -> paging.Window:
+        return super().window(compact_interpretation(result), request)
+
+
+class TableSearchTool(DocumentSearchTool):
+    def window(self, result: dict[str, Any], request=None) -> paging.Window:
+        return super().window(compact_interpretation(result), request)
+
+
+TABLE_OVERVIEW = TableTool(TablesOverviewRequest, "tables/overview", "table_overview", "rows", "sheets")
+TABLE_PAGE = TableTool(TablesPageRequest, "tables/page", "table_page", "table", "rows", "columns")
 TABLE_CELL = PagedTool(TablesCellRequest, "tables/cell", "table_cell", "blob", "text")
-TABLE_COLUMN_VALUES = PagedTool(TablesColumnValuesRequest, "tables/column_values", "table_column_values", "rows", "values")
-TABLE_SEARCH_CELLS = DocumentSearchTool(TablesSearchCellsRequest, "tables/search_cells", "table_search_cells", "rows", "hits")
+TABLE_COLUMN_VALUES = TableTool(TablesColumnValuesRequest, "tables/column_values", "table_column_values", "rows", "values")
+TABLE_SEARCH_CELLS = TableSearchTool(TablesSearchCellsRequest, "tables/search_cells", "table_search_cells", "rows", "hits")
+
+INTERPRETATION_TEXT = ("Reading of row 1. Omission or auto uses the established reading. When row 1 of a CSV "
+                       "can be a header or data, auto reads it as data, and `interpretation` names both readings "
+                       "and their row counts. all_rows reads row 1 as data. first_row_header reads row 1 as the "
+                       "column names. A reading that the sheet does not have is refused.")
 PAGED_TOOLS = {"table_overview": TABLE_OVERVIEW, "table_page": TABLE_PAGE, "table_cell": TABLE_CELL, "table_column_values": TABLE_COLUMN_VALUES, "table_search_cells": TABLE_SEARCH_CELLS}
 
 
@@ -38,13 +66,13 @@ def _render(tool: PagedTool, values: dict[str, Any]) -> str:
 
 
 @mcp.tool(name="table_overview", description="List sheets and columns in one table document. Use it before reading a sheet.")
-def table_overview(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str, Field(description='Copy the document hash from a result in this collection.')]) -> str:
-    return _render(TABLE_OVERVIEW, {"collectionname": collection, "file_hash": file_hash})
+def table_overview(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str, Field(description='Copy the document hash from a result in this collection.')], interpretation: Annotated[TableInterpretationName | None, Field(description=INTERPRETATION_TEXT)] = None) -> str:
+    return _render(TABLE_OVERVIEW, {"collectionname": collection, "file_hash": file_hash, "interpretation": interpretation})
 
 
 @mcp.tool(name="table_page", description="Return one window of 50 table rows, sorted and filtered as asked. Use it to read rows. Pass `columns` (column ids, at most 60) to read columns after the 60th, and `row_start` (0-based) to jump into a large sheet. A cell over 2,000 characters is cut: read it whole with table_cell.")
-def table_page(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str, Field(description='Copy the document hash from a result in this collection.')], sheet: Annotated[int, Field(description='Copy the sheet identifier returned by table_overview.')], sort: Annotated[AgentTableSort | None, Field(description='Sort field and direction. Omission uses the backend default order.')] = None, filters: Annotated[list[AgentTableFilter] | None, Field(description='Table predicates using returned column identifiers. All predicates must match.')] = None, columns: Annotated[list[int] | None, Field(description='Column identifiers to return. Omission uses the first available columns.')] = None, search: Annotated[str, Field(description='Optional text filter for returned rows or values. Omission applies no text filter.')] = "", row_start: Annotated[int | None, Field(description='Zero-based position in the requested row order. Omission starts at the first row.')] = None) -> str:
-    return _render(TABLE_PAGE, {"collectionname": collection, "file_hash": file_hash, "sheet": sheet, "sort": sort, "filters": filters or [], "columns": columns or [], "search": search, "row_start": row_start})
+def table_page(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str, Field(description='Copy the document hash from a result in this collection.')], sheet: Annotated[int, Field(description='Copy the sheet identifier returned by table_overview.')], sort: Annotated[AgentTableSort | None, Field(description='Sort field and direction. Omission uses the backend default order.')] = None, filters: Annotated[list[AgentTableFilter] | None, Field(description='Table predicates using returned column identifiers. All predicates must match.')] = None, columns: Annotated[list[int] | None, Field(description='Column identifiers to return. Omission uses the first available columns.')] = None, search: Annotated[str, Field(description='Optional text filter for returned rows or values. Omission applies no text filter.')] = "", row_start: Annotated[int | None, Field(description='Zero-based position in the requested row order. Omission starts at the first row.')] = None, interpretation: Annotated[TableInterpretationName | None, Field(description=INTERPRETATION_TEXT)] = None) -> str:
+    return _render(TABLE_PAGE, {"collectionname": collection, "file_hash": file_hash, "sheet": sheet, "sort": sort, "filters": filters or [], "columns": columns or [], "search": search, "row_start": row_start, "interpretation": interpretation})
 
 
 @mcp.tool(name="table_cell", description="Read one whole table cell, in slices of 2,000 characters. Use it when table_page cut a long cell. `row` is the row_id of the table_page row, and `column` is the column id.")
@@ -53,10 +81,10 @@ def table_cell(collection: Annotated[str, Field(description='Copy the collection
 
 
 @mcp.tool(name="table_column_values", description="List values and counts for one table column, most frequent first. Use it to choose a table filter. `search` keeps the values that contain its text.")
-def table_column_values(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str, Field(description='Copy the document hash from a result in this collection.')], sheet: Annotated[int, Field(description='Copy the sheet identifier returned by table_overview.')], column: Annotated[int, Field(description='Copy the column identifier returned by table_overview.')], search: Annotated[str, Field(description='Optional text filter for returned rows or values. Omission applies no text filter.')] = "") -> str:
-    return _render(TABLE_COLUMN_VALUES, {"collectionname": collection, "file_hash": file_hash, "sheet": sheet, "column": column, "search": search})
+def table_column_values(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str, Field(description='Copy the document hash from a result in this collection.')], sheet: Annotated[int, Field(description='Copy the sheet identifier returned by table_overview.')], column: Annotated[int, Field(description='Copy the column identifier returned by table_overview.')], search: Annotated[str, Field(description='Optional text filter for returned rows or values. Omission applies no text filter.')] = "", interpretation: Annotated[TableInterpretationName | None, Field(description=INTERPRETATION_TEXT)] = None) -> str:
+    return _render(TABLE_COLUMN_VALUES, {"collectionname": collection, "file_hash": file_hash, "sheet": sheet, "column": column, "search": search, "interpretation": interpretation})
 
 
 @mcp.tool(name="table_search_cells", description="Find matching cells in one table sheet. Use it to locate values before reading rows.")
-def table_search_cells(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str, Field(description='Copy the document hash from a result in this collection.')], sheet: Annotated[int, Field(description='Copy the sheet identifier returned by table_overview.')], query: Annotated[str, Field(description='Text or query syntax to match. An empty search_collections query lists filter matches.')]) -> str:
-    return _render(TABLE_SEARCH_CELLS, {"collectionname": collection, "file_hash": file_hash, "sheet": sheet, "query": query})
+def table_search_cells(collection: Annotated[str, Field(description='Copy the collection name from a result. A document call requires one collection.')], file_hash: Annotated[str, Field(description='Copy the document hash from a result in this collection.')], sheet: Annotated[int, Field(description='Copy the sheet identifier returned by table_overview.')], query: Annotated[str, Field(description='Text or query syntax to match. An empty search_collections query lists filter matches.')], interpretation: Annotated[TableInterpretationName | None, Field(description=INTERPRETATION_TEXT)] = None) -> str:
+    return _render(TABLE_SEARCH_CELLS, {"collectionname": collection, "file_hash": file_hash, "sheet": sheet, "query": query, "interpretation": interpretation})

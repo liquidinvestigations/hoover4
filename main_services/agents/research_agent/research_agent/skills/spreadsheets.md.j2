@@ -33,13 +33,20 @@ For example, a sheet of 24 building permits has a type column. The values call g
 fence 9, roof 7, deck 5 and pool 3, and no continuation. These counts add up to 24. Counts
 that add up to 27 for 24 rows show a counting error. Counts that add up to 21 show 3 rows
 with a blank type.
+A CSV file states no header row. Each table result gives `interpretation`, the reading of
+row 1 that its counts describe. With state `established`, the reading is known. With state
+`ambiguous` or `legacy` and two `candidates`, row 1 can be the header or the first data row.
+Each candidate gives its row count. The result reads every row, `all_rows`, unless the
+call gives `interpretation`. Give each count with its reading, or read the other reading
+with interpretation `all_rows` or `first_row_header`. Do not report one reading's count as
+the established row count.
 A JSON file or a text file has no sheets. When {{ tool('table_overview') }} gives no sheet,
 read the document as text.
 
 Every table call requires collection and file_hash from the same document result.
 {{ tool('table_overview') }} returns sheet and column identifiers.
 The other table tools require sheet. Copy its identifier from the overview.
-{{ tool('table_page') }} optionally accepts sort, filters, columns, search and row_start.
+{{ tool('table_page') }} optionally accepts sort, filters, columns, search, row_start and interpretation.
 sort requires column and direction, asc or desc. Omission uses the stored row order.
 filters is a list of column predicates. Each predicate uses one test type.
 A numeric or date range can include both lower and upper bounds.
@@ -67,6 +74,10 @@ This page call uses copied sheet and column identifiers.
 This values call narrows one column.
 ```json
 {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"}
+```
+This values call reads row 1 of an ambiguous CSV sheet as the column names.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"}
 ```
 This cell search locates a requested value.
 ```json
