@@ -379,6 +379,18 @@ is a 404, because permissions here are resolved per `collection_dataset` and a h
 lookup key rather than a capability. `table_sheets` and `table_columns` carry the extents,
 the headers and the per-column statistics.
 
+Row 1 of a sheet is its header row, with one exception. A delimited file states no
+header, so at the end of a delimited sheet `first_row_is_data` compares row 1 with the
+rows below it. A text cell above a column of numbers or dates is a label, and row 1 stays
+the header. Row 1 is a data row when no column has such a label and a column of numbers
+or dates has a row 1 cell of the same kind: a number with the integer digit count of the
+column values, or a date. Consecutive integers across row 1, such as 2019, 2020 and 2021,
+are a header of periods. A sheet of text columns keeps row 1 as its header, because text
+cells cannot show the difference. A data row 1 gets `header_row` 0, empty column headers,
+and a place in the column statistics. Every row is stored in both readings. This reading
+is reader version 2 (`table_formats.READER_VERSION`). A table that version 1 read keeps its
+stored reading until the file is parsed again.
+
 The manifest row is written **before** the cells, which is the opposite of
 [parse_ocr_pdf.py](parse_ocr_pdf.py)'s object-before-row rule and is the mirrored reason: a cell with no
 manifest row is invisible to the permission check and to `sweep_orphan_table_cells` alike.

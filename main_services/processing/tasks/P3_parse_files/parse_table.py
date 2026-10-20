@@ -100,6 +100,10 @@ class _ColumnStats:
     bounds: dict = None  # type: ignore[assignment]
     min_text: str = ""
     max_text: str = ""
+    #: The cell of row 1 and its stored text, kept until `_Collector.settle_headers`
+    #: decides whether row 1 is the header or the first data row.
+    first: Any = None
+    first_text: str = ""
 
     def __post_init__(self) -> None:
         self.kinds = Counter()
@@ -145,6 +149,83 @@ def _column_type(kinds: Counter) -> str:
     if len(ordered) > 1 and ordered[0][1] == ordered[1][1]:
         return KIND_TEXT
     return ordered[0][0]
+
+
+def _uniform_kind(stats: _ColumnStats) -> str:
+    """The one kind of every non-empty data cell of a column, or empty when they differ."""
+    return next(iter(stats.kinds)) if len(stats.kinds) == 1 else ""
+
+
+def _digits(value: float) -> int:
+    return len(str(int(abs(value))))
+
+
+def first_row_is_data(sheet: _SheetStats) -> bool:
+    """Whether row 1 of a delimited sheet is a data row and not a header.
+
+    A delimited file states no header. A header labels numbers with text, so row 1 is the
+    header when a column whose data cells are all numbers or all dates has a text cell in
+    row 1. Row 1 is data when no column has such a label, and at least one such column has
+    a row 1 cell of the same kind: a number with as many integer digits as the smallest or
+    the largest number below it, or a date. A run of consecutive integers across the
+    columns of row 1, such as 2019, 2020 and 2021, is a header of periods. A sheet of text
+    columns only keeps row 1 as its header, because its cells cannot show the difference.
+    """
+    agreeing: list[float] = []
+    for stats in sheet.columns.values():
+        kind = _uniform_kind(stats)
+        if kind not in NUMERIC_KINDS and kind not in TEMPORAL_KINDS:
+            continue
+        first = stats.first
+        if first is None or not stats.first_text.strip():
+            continue
+        if first.kind == KIND_TEXT:
+            return False
+        if first.kind != kind:
+            continue
+        if kind in TEMPORAL_KINDS:
+            agreeing.append(float("nan"))
+            continue
+        bounds = stats.bounds.get("number")
+        if bounds and first.float_value is not None and _digits(first.float_value) in (
+                _digits(bounds[0]), _digits(bounds[2])):
+            agreeing.append(first.float_value)
+    numbers = sorted(v for v in agreeing if v == v)
+    periods = (len(numbers) >= 2 and all(float(v).is_integer() for v in numbers)
+               and all(b - a == 1 for a, b in zip(numbers, numbers[1:])))
+    return bool(agreeing) and not periods
+
+
+def _add_body_cell(stats: _ColumnStats, cell, text: str, first: bool = False) -> None:
+    """Count one data cell in the statistics of its column. `first` puts its sample before
+    the samples of the later rows."""
+    stats.kinds[cell.kind] += 1
+    stats.non_empty += 1
+    if first:
+        stats.samples = [text] + stats.samples[:MAX_COLUMN_SAMPLES - 1]
+    elif len(stats.samples) < MAX_COLUMN_SAMPLES:
+        stats.samples.append(text)
+    if not stats.distinct_overflow:
+        stats.distinct.add(text)
+        if len(stats.distinct) > MAX_COLUMN_DISTINCT:
+            stats.distinct_overflow = True
+            stats.distinct.clear()
+    key = _sort_key(cell)
+    if key is None:
+        if not stats.min_text or text < stats.min_text:
+            stats.min_text = text
+        if text > stats.max_text:
+            stats.max_text = text
+    else:
+        family = "number" if cell.float_value is not None else "time"
+        bounds = stats.bounds.get(family)
+        if bounds is None:
+            stats.bounds[family] = [key, text, key, text]
+        else:
+            if key < bounds[0]:
+                bounds[0:2] = [key, text]
+            if key > bounds[2]:
+                bounds[2:4] = [key, text]
 
 
 class _Collector:
@@ -256,37 +337,30 @@ class _Collector:
     def _observe(self, sheet: _SheetStats, stats: _ColumnStats, row_id: int, cell,
                  text: str) -> None:
         # The first row that produces cells is the header row, and its text is the header
-        # of every column it touches. A sheet whose first row is data gets headers that
+        # of every column it touches. A delimited sheet can change this decision at its
+        # end (`settle_headers`). Another sheet whose first row is data gets headers that
         # are data, which is what a spreadsheet application shows too.
         if row_id == 1:
             sheet.header_row = 1
             stats.header = text
+            stats.first, stats.first_text = cell, text
             return
-        stats.kinds[cell.kind] += 1
-        stats.non_empty += 1
-        if len(stats.samples) < MAX_COLUMN_SAMPLES:
-            stats.samples.append(text)
-        if not stats.distinct_overflow:
-            stats.distinct.add(text)
-            if len(stats.distinct) > MAX_COLUMN_DISTINCT:
-                stats.distinct_overflow = True
-                stats.distinct.clear()
-        key = _sort_key(cell)
-        if key is None:
-            if not stats.min_text or text < stats.min_text:
-                stats.min_text = text
-            if text > stats.max_text:
-                stats.max_text = text
-        else:
-            family = "number" if cell.float_value is not None else "time"
-            bounds = stats.bounds.get(family)
-            if bounds is None:
-                stats.bounds[family] = [key, text, key, text]
-            else:
-                if key < bounds[0]:
-                    bounds[0:2] = [key, text]
-                if key > bounds[2]:
-                    bounds[2:4] = [key, text]
+        _add_body_cell(stats, cell, text)
+
+    def settle_headers(self) -> None:
+        """Read row 1 of a delimited sheet as data when its cells have the kinds of the
+        rows below it (`first_row_is_data`). Every stored row stays stored either way."""
+        if not is_delimited_reader(self.reader):
+            return
+        for sheet in self.sheets.values():
+            if sheet.header_row != 1 or sheet.row_count < 2 or not first_row_is_data(sheet):
+                continue
+            sheet.header_row = 0
+            for stats in sheet.columns.values():
+                stats.header = ""
+                if stats.first is not None:
+                    _add_body_cell(stats, stats.first, stats.first_text, first=True)
+
 
     def _flush(self, client, *, final=False) -> None:
         if not self.batch or not self.meets_threshold():
@@ -655,6 +729,7 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
 
         collector.commit_spool(client)
 
+        collector.settle_headers()
         insert_parser_arrow(client, "table_sheets", _sheet_rows(params, collector))
         columns = _column_rows(params, collector)
         if columns.num_rows:

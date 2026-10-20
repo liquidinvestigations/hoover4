@@ -83,8 +83,9 @@ READER_ODS_STREAM = "ods_stream"
 READER_CALAMINE = "calamine"
 
 #: Bumped when a reader changes what it produces. A claim carrying an older version is
-#: not trusted and the document is re-read.
-READER_VERSION = 1
+#: not trusted and the document is re-read. Version 2 reads row 1 of a delimited sheet as
+#: data when its cells have the kinds of the rows below it (`parse_table.first_row_is_data`).
+READER_VERSION = 2
 
 #: The cap set. Above any of these the document is stored up to the cap and the cap is
 #: recorded in `TruncationRecord`, a cap that is invisible in the UI reads as "this file

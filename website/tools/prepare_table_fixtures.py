@@ -8,8 +8,9 @@ Every file is synthetic. The script copies no conversation and no demo document.
 * `monitored_bills_38.csv`: a header row and 38 bills, stored as `row_id` 1 to 39. It is a
   copy of the tracked unit-test fixture `main_services/processing/tests/unit/fixtures/`.
   The last data row, `SYN-038`, is the fifth bill in state SC.
-* `events_headerless.csv`: 19 dated event rows and no header row. The table parser takes
-  the first row as the header (`parse_table._observe`).
+* `events_headerless.csv`: 19 dated event rows and no header row. Table reader version 1
+  took the first row as the header. Version 2 reads it as a data row, because its id and
+  date cells have the kinds of the rows below (`parse_table.first_row_is_data`).
 * `events_with_header.csv`: the same rows after a header row.
 * `project_export.json`: a JSON project export with 12 tasks. It has no sheet.
 * `long_report.pdf`: 60 pages. Page 57 alone holds the name "Quillon Varga".
