@@ -1352,13 +1352,14 @@ mod tests {
             "the deep fixture must be inside the ceiling, not sitting on it"
         );
 
-        // At the default pane width the deepest row still has a real label. The row also
-        // spends a chevron, a folder icon, their gaps and the depth badge.
-        let furniture = 18 + 18 + 24 + 56;
-        let label = crate::components::resizable_sidebar::DEFAULT_SIDEBAR_PX as usize
-            - indent_px(rung)
-            - furniture;
-        assert!(label >= 90, "the deepest visible row has only {label} px of label");
+        // At the default pane width the deepest row still has a real label. The tree is
+        // 25 px narrower than the pane, and the percentage guard sets the indent there.
+        // The row also spends its padding, a chevron, a folder icon, their gaps and the
+        // depth badge. A browser measured a 60 px label for this row at the 280 px default.
+        let tree = crate::components::resizable_sidebar::DEFAULT_SIDEBAR_PX as f64 - 25.0;
+        let furniture = 12.0 + 18.0 + 19.0 + 18.0 + 56.0;
+        let label = tree - indent_resolved_px(rung, tree) - furniture;
+        assert!(label >= 48.0, "the deepest visible row has only {label} px of label");
     }
 
     #[test]

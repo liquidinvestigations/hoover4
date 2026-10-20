@@ -512,9 +512,10 @@ mod tests {
 
     #[test]
     fn the_node_key_is_quoted_not_interpolated() {
-        // A key carries unit separators and arbitrary path text; it is data.
+        // A key carries unit separators and arbitrary path text; it is data. Manticore
+        // takes a backslash before a quote, and a doubled quote is a syntax error there.
         let sql = children_sql("t_vfs", "ds", "ds\u{1f}\u{1f}/it's", 10, 0, true, "");
-        assert!(sql.contains("'ds\u{1f}\u{1f}/it''s'"), "{sql}");
+        assert!(sql.contains("'ds\u{1f}\u{1f}/it\\'s'"), "{sql}");
     }
 
     #[test]

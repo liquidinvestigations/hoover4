@@ -2338,7 +2338,8 @@ mod tests {
         // the call site, and a chip row that knows nothing about it, giving a list of names
         // next to a chip of `#229645745`.
         for field in FilterCategory::ALL.iter().flat_map(|c| c.facet_fields()) {
-            let expected = !matches!(*field, "collection_dataset" | "struct_flags");
+            // These facets store their values as strings or bits, not as term ids.
+            let expected = !matches!(*field, "collection_dataset" | "struct_flags" | "extracted_by");
             assert_eq!(
                 term_field_of(field).is_some(),
                 expected,
