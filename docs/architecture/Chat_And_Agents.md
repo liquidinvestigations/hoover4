@@ -287,10 +287,14 @@ The `chat-default` definition has these rules:
   suspends an earlier rule that forbids that source until the next new objective, and the
   rule then applies again. Only narrow forms count: the web as the place or the instrument
   of a search ("Search the web for ...", "Look it up online."), "use the web", a web address
-  to read, or a search of a named collection. A web word in a topic phrase, such as "emails
-  about the online trading desk", and a negated source, such as "not the web", request
-  nothing. Another mention of a forbidden source keeps the rule and leaves the record
-  unresolved. A cancellation removes the output
+  after an imperative verb or alone, or a search of a named collection. A request for the
+  rest of the session, such as "From now on, use the web.", is a permission. A web word in a topic phrase, such as "emails about the online trading desk"
+  or "the web server migration", and a negated source, such as "not the web", request
+  nothing. A sentence with a search verb and a source word that gives no recognized rule or
+  request leaves the record unresolved when a rule forbids that source. Another mention of
+  a forbidden source also keeps the rule and leaves the record unresolved. A phrase such as
+  "Never mind the documents" adds no restriction and leaves the record unresolved. A
+  later permission or restriction supersedes a suspended rule. A cancellation removes the output
   that it identifies. An explicit new objective keeps the session rules and drops the
   earlier outputs. It names a new task, or asks its own question or research request after
   an optional courtesy word, and refers to no earlier work. A later message that the rules

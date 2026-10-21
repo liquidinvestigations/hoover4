@@ -13,8 +13,8 @@ and the turn that stated it. `request` gives the turn of the current message and
 read: `new`, `continuation`, `amendment` or `unresolved`. `amendments` holds the messages of
 later turns that changed the active objective, in turn order. `source_rules` holds each
 source permission and restriction with its turn, its character span and its status:
-`active`, `superseded` (by a later turn) or `expired` (a rule for one task that a new
-objective ended). `output_spec` holds the requested output groups. `interpretation_state` is
+`active`, `superseded` (by a later turn), `suspended` (by a use request of one task) or
+`expired` (a rule for one task that a new objective ended). `output_spec` holds the requested output groups. `interpretation_state` is
 `resolved` or `unresolved`, and `unresolved` names each message that the rules below could
 not classify. `omissions` names the evidence that the stored record leaves out because of
 its bounds. `reconstruction` states how the earlier turns were read. `messages` counts the messages
@@ -37,8 +37,13 @@ as the complete current instruction, and no message silently replaces the object
 * An explicit request to use a source (`Search the web for ...`, `Read https://...`,
   `Search the enron collection for ...`) suspends a rule that forbids that source until the
   next new objective. Then the rule is active again, with the turn in `reactivated`. Only
-  the narrow forms of `WEB_REQUEST` and `COLLECTION_REQUEST` count. A topic phrase and a
-  negated source are no request, and another mention of a forbidden source is unresolved.
+  the narrow forms of `WEB_REQUEST` and `COLLECTION_REQUEST` count. A request for the rest
+  of the session (`From now on, use the web.`, `Please use the web.`) is a permission. A
+  topic phrase and a negated source are no request. A source verb with a source word and
+  no recognized rule (`Search the web archives ...`), another mention of a forbidden source
+  and a source set aside (`Never mind the documents`) are unresolved
+  (`mentioned_forbidden_sources`). A later permission or restriction supersedes a
+  suspended rule.
 * A cancellation (`Skip the second report.`) removes one output of an identified group, or
   the whole group. A cancellation that identifies no group is unresolved.
 * An amendment holds only rules, cancellations, continuations and output requests that refer
@@ -314,7 +319,7 @@ def structured_groups(items: Iterable[Mapping], turn: Optional[int], first_id: i
 
 SOURCE_RESTRICTION = re.compile(
     r"\b(?:only|just|exclusively|solely|limit(?:ed)? (?:it |this |yourself |the search )?to|restrict(?:ed)?(?: it| this| yourself)? to|stick to|"
-    r"do not|don't|never|without|except|exclud(?:e|ing)|must not|no)\b[^.!?\n]{0,80}?"
+    r"(?:do not|don't|never)(?!\s+(?:mind|bother)\b)|without|except|exclud(?:e|ing)|must not|no)\b[^.!?\n;]{0,80}?"
     r"\b(?:collections?|datasets?|folders?|documents?|e-?mails?|files?|archives?|web|internet|online|"
     r"websites?|sites?|sources?|google|search engines?|news)\b", re.IGNORECASE)
 PERMISSION = re.compile(
@@ -331,34 +336,69 @@ EXCLUSIVE = re.compile(r"\b(?:only|just|exclusively|solely|limit(?:ed)?\b[^.!?\n
 TASK_SCOPE = re.compile(r"\b(?:for\s+this\s+(?:one|question|task|request|answer)|this\s+time|for\s+now)\b", re.I)
 
 
-#: The nouns after a web word that make the word a topic, such as `online trading`.
-WEB_TOPIC_NOUNS = r"(?:archive|archives|page|pages|site|sites|address|usage|use|policy|policies|redesign|trading|" \
-                  r"platform|desk|business|team|division|sales|banking|access|account|accounts|presence|portal|" \
-                  r"service|services|traffic|domain|history)"
+#: The nouns after a web word that make the word a topic, such as `online trading`. A plural
+#: form is also a topic.
+WEB_TOPIC_NOUNS = r"(?:archive|page|site|address|usage|use|policy|policies|redesign|trading|" \
+                  r"platform|desk|business|team|division|sales|banking|access|account|presence|portal|" \
+                  r"service|traffic|domain|history)s?"
+#: The function words with a noun suffix, such as `whether` and `rather`. They are no topic.
+SUFFIX_FUNCTION_WORDS = (r"(?:whether|rather|after|other|either|neither|ever|never|over|under|later|"
+                         r"further|together|however|whenever|wherever|whichever|whatever)\b")
+#: A topic after a web word: a topic noun, or a word with a noun suffix (`online reactions`,
+#: `web server`).
+TOPIC_SUFFIX = r"(?!" + SUFFIX_FUNCTION_WORDS + r")[a-z]+(?:ing|ment|ion|er)s?"
+WEB_TOPIC_AFTER = r"(?!\s+(?:" + WEB_TOPIC_NOUNS + r"|" + TOPIC_SUFFIX + r")\b)"
 #: The narrow explicit forms of a request to use the web. The web is the place or the
 #: instrument of a search verb (`search the web`, `look it up online`, `find it on the
-#: internet`), the direct object of `use`, or a web address to read (`Read https://...`).
+#: internet`), the direct object of `use`, or a web address after an imperative verb or alone
+#: (`Read https://...`). A web word before a topic is no request in each form.
 WEB_REQUEST = re.compile(
     r"\b(?:search|look\s+up|look|check|browse|research)\s+(?:(?:it|this|that|them)\s+)?(?:up\s+)?"
-    r"(?:(?:on|across|through|using)\s+)?(?:the\s+)?(?:web|internet)\b(?!\s+" + WEB_TOPIC_NOUNS + r"\b)"
-    r"|\b(?:search|look|check|find|research)\s+(?:(?:it|this|that|them)\s+)?(?:up\s+)?online\b"
-    r"(?!\s+(?:" + WEB_TOPIC_NOUNS + r"|[a-z]+(?:ing|ment|ion|er))\b)"
-    r"|\b(?:search|look|check|find|research|get)\b[^.!?\n]{0,60}?\b(?:on|from)\s+the\s+(?:web|internet)\b"
-    r"(?!\s+" + WEB_TOPIC_NOUNS + r"\b)"
-    r"|\buse\s+(?:the\s+)?(?:web|internet)\b(?!\s+" + WEB_TOPIC_NOUNS + r"\b)"
-    r"|(?:^|\b(?:read|open|browse\s+to|visit|go\s+to|fetch|summari[sz]e|check)\s+)<?https?://", re.I)
+    r"(?:(?:on|across|through|using)\s+)?(?:the\s+)?(?:web|internet)\b" + WEB_TOPIC_AFTER +
+    r"|\b(?:search|look|check|find|research)\s+(?:(?:it|this|that|them)\s+)?(?:up\s+)?online\b" + WEB_TOPIC_AFTER +
+    r"|\b(?:search|look|check|find|research|get)\b[^.!?\n]{0,60}?\b(?:on|from)\s+the\s+(?:web|internet)\b" + WEB_TOPIC_AFTER +
+    r"|\buse\s+(?:the\s+)?(?:web|internet)\b" + WEB_TOPIC_AFTER +
+    r"|\b(?:read|open|browse\s+to|visit|go\s+to|fetch|summari[sz]e|check|look\s+at|see)\s+<?https?://"
+    r"|^<?https?://\S+?>?[.!]?$", re.I)
+#: A request to use the web for the rest of the session, such as `From now on, use the web.`
+#: or a message that only asks to use the web (`Please use the web.`). It is a permission.
+SESSION_REQUEST = re.compile(
+    r"\b(?:from\s+now\s+on|for\s+the\s+rest\s+of\s+(?:this|the)\s+(?:chat|conversation|session)|"
+    r"going\s+forward|in\s+(?:the\s+)?future|from\s+here\s+on)\b"
+    r"|^(?:(?:ok(?:ay)?|then)[,\s]+)*(?:please|now)[,\s]+(?:use|search)\s+(?:the\s+)?(?:web|internet)"
+    r"(?:\s+(?:again|now|please|too|as\s+well))*\s*[.!]*$", re.I)
 #: The narrow explicit forms of a request to use the collections: a search verb whose
 #: object or place is a collection (`Search the enron collection for ...`).
 COLLECTION_REQUEST = re.compile(
     r"\b(?:search|look\s+(?:in|through)|check|browse|use)\s+(?:in\s+|through\s+)?(?:the\s+)?"
     r"(?:(?:selected|stored|[\w-]+)\s+)?(?:collections?|datasets?)\b", re.I)
-#: A sentence that negates a source anywhere, such as `Search the documents, not the web.`
+#: A clause that negates a source, such as `Search the documents, not the web.` The negation
+#: and the source word are inside one clause.
+_NEGATOR = r"\b(?:not|never|without|no|rather\s+than|instead\s+of|except|don'?t|do\s+not|avoid)\b[^.!?\n,;:]{0,30}?"
 NEGATED_SOURCE = {
-    "web": re.compile(r"\b(?:not|never|without|no|rather\s+than|instead\s+of|except|don'?t|do\s+not|avoid)\b"
-                      r"[^.!?\n]{0,30}?\b(?:the\s+)?(?:web|internet|online|websites?|google)\b", re.I),
-    "collections": re.compile(r"\b(?:not|never|without|no|rather\s+than|instead\s+of|except|don'?t|do\s+not|avoid)\b"
-                              r"[^.!?\n]{0,30}?\b(?:the\s+)?(?:collections?|datasets?|archives?|documents)\b", re.I),
+    "web": re.compile(_NEGATOR + r"\b(?:the\s+)?(?:web|internet|online|websites?|google)\b", re.I),
+    "collections": re.compile(_NEGATOR + r"\b(?:the\s+)?(?:collections?|datasets?|archives?|documents)\b", re.I),
 }
+#: A phrase that sets a source aside without a rule, such as `Never mind the documents`.
+DISMISSED_SOURCE = {
+    "web": re.compile(r"\b(?:never\s+mind|(?:don'?t|do\s+not)\s+bother\s+with|forget\s+about)\s+"
+                      r"(?:the\s+)?(?:web|internet|online|websites?|google)\b", re.I),
+    "collections": re.compile(r"\b(?:never\s+mind|(?:don'?t|do\s+not)\s+bother\s+with|forget\s+about)\s+"
+                              r"(?:the\s+)?(?:[\w-]+\s+)?(?:collections?|datasets?|archives?|documents|files|e-?mails)\b", re.I),
+}
+#: A verb that acts on a source: a sentence with this verb and a source word names the source
+#: as a place to search, unless a recognized rule states it.
+SOURCE_VERB = re.compile(r"\b(?:search(?:es|ed|ing)?|use|using|check|research|look|find|browse|consult|google|"
+                         r"read|open|visit|fetch|get)\b", re.I)
+#: The source words of `SOURCE_VERB`, for each subject.
+VERB_SOURCE_WORDS = {
+    "web": re.compile(r"\b(?:web|internet|online|websites?|google|search\s+engines?)\b|https?://", re.I),
+    "collections": re.compile(r"\b(?:collections?|datasets?|archives?|documents)\b", re.I),
+}
+#: A word before a source word that makes it the topic of the search (`emails about the
+#: website redesign`, `emails that link to https://...`).
+TOPIC_WORDS = re.compile(r"\b(?:about|regarding|concerning|re|on\s+the\s+topic\s+of|links?\s+to|linking\s+to|"
+                         r"linked\s+to|mention(?:s|ed|ing)?|cites?|cited|contains?|contained)\b", re.I)
 
 
 def _use_request(clean: str) -> Optional[tuple[str, re.Match]]:
@@ -378,7 +418,8 @@ def source_rules(text: str, turn: Optional[int], source: str = "user") -> list[d
     """The source permissions, restrictions and use requests of `text`, in text order.
 
     A permission (`You may now use the web.`) and a restriction (`Do not use the web.`)
-    come first. Another sentence that explicitly asks to use a source (`Search the web for
+    come first. A request for the rest of the session (`From now on, use the web.`, `Please
+    use the web.`) is a permission. Another sentence that explicitly asks to use a source (`Search the web for
     the filing date.`, a web address, `Search the enron collection for ...`) gives an `allow`
     rule with `basis` `request` for that one task. It suspends an earlier rule that forbids
     its subject until the task ends (`_apply_rules`). It never replaces a rule of the same
@@ -396,12 +437,15 @@ def source_rules(text: str, turn: Optional[int], source: str = "user") -> list[d
             subject = request[0]
         else:
             subject = "web" if permission or WEB_WORDS.search(restriction.group(0)) else "collections"
+        # A request for the rest of the session (`From now on, use the web.`) is a permission.
+        session = bool(request and SESSION_REQUEST.search(clean))
+        basis = ("permission" if session else "request") if request else "permission" if permission else "restriction"
         out.append({"text": sentence[:MAX_ITEM_CHARS], "turn": turn, "source": source,
                     "start": start, "end": end, "subject": subject,
                     "effect": "restrict" if restriction else "allow",
-                    "basis": "request" if request else "permission" if permission else "restriction",
+                    "basis": basis,
                     "exclusive": bool(restriction and EXCLUSIVE.search(clean)),
-                    "scope": "task" if request or TASK_SCOPE.search(clean) else "session",
+                    "scope": "task" if basis == "request" or TASK_SCOPE.search(clean) else "session",
                     "status": "active", "superseded_by": None})
     return out
 
@@ -421,26 +465,48 @@ def _web_mention(clean: str) -> bool:
         if TOPIC_BEFORE.search(clean[:match.start()]):
             continue
         after = clean[match.end():]
-        if re.match(r"\s+" + WEB_TOPIC_NOUNS + r"\b", after, re.I) or re.match(r"\s+[a-z]+(?:ing|ment|ion|er)\b", after, re.I):
+        if re.match(r"\s+" + WEB_TOPIC_NOUNS + r"\b", after, re.I) or re.match(r"\s+" + TOPIC_SUFFIX + r"\b", after, re.I):
             continue
         return True
     return False
 
 
+def _verb_source(clean: str, subject: str) -> bool:
+    """Whether a sentence has a source verb and a source word of `subject` that is no topic
+    of the search (`Search the web archives ...`, `Find the emails on the web server ...`)."""
+    if not SOURCE_VERB.search(clean):
+        return False
+    return any(not TOPIC_WORDS.search(clean[:match.start()])
+               for match in VERB_SOURCE_WORDS[subject].finditer(clean))
+
+
 def mentioned_forbidden_sources(state: Mapping, text: str) -> list[str]:
-    """The subjects that an active rule forbids and that a sentence of `text` names as a
-    source, with no rule and no use request of its own, such as `What does the web say about
-    the merger?` or `Please google the filing date.` after `Do not use the web.` A sentence
-    that negates the source agrees with the rule, and a topic phrase names no source."""
+    """The subjects that a sentence of `text` names as a source with no recognized rule or
+    request of that subject, where the record cannot choose a reading.
+
+    * An active rule forbids the subject, and the sentence names it with a source verb
+      (`Search the web archives for ...`) or names it as a source (`What does the web say
+      about the merger?`, `Please google the filing date.`).
+    * The sentence sets the subject aside without a rule (`Never mind the documents`).
+
+    A sentence that negates the source agrees with the rule, and a topic phrase names no
+    source."""
     scope = source_scope(state)
     out = []
     for _start, _end, sentence in spans(text):
         clean = _blank_quotes(sentence)
-        if source_rules(sentence, None):
-            continue
-        for subject, named in (("web", _web_mention(clean)), ("collections", bool(COLLECTION_WORDS.search(clean)))):
-            if (scope[subject] == "forbidden" and named and not NEGATED_SOURCE[subject].search(clean)
-                    and subject not in out):
+        ruled = set()
+        for rule in source_rules(sentence, None):
+            ruled |= {rule["subject"]} | _forbids(rule)
+        for subject in ("web", "collections"):
+            if subject in ruled or subject in out:
+                continue
+            if DISMISSED_SOURCE[subject].search(clean):
+                out.append(subject)
+                continue
+            named = _verb_source(clean, subject) or (
+                _web_mention(clean) if subject == "web" else bool(COLLECTION_WORDS.search(clean)))
+            if scope[subject] == "forbidden" and named and not NEGATED_SOURCE[subject].search(clean):
                 out.append(subject)
     return out
 
@@ -457,10 +523,13 @@ def _forbids(rule: Mapping) -> set:
 def _apply_rules(state: dict, new: list[dict]) -> None:
     """Add the rules of a later turn. Each one supersedes the active rules of earlier turns
     that it replaces or conflicts with. A use request (`basis` `request`) only suspends a
-    conflicting rule, and the rule is active again when the request expires (`derive`)."""
+    conflicting rule, and the rule is active again when the request expires (`derive`). A
+    later permission or restriction also supersedes a suspended rule."""
     for rule in new:
         for old in state["source_rules"]:
-            if old["status"] != "active" or old.get("message") == rule.get("message"):
+            if old["status"] not in ("active", "suspended") or old.get("message") == rule.get("message"):
+                continue
+            if old["status"] == "suspended" and rule.get("basis") == "request":
                 continue
             # A narrower restriction of the collections keeps an exclusive one, whose web
             # prohibition it does not state.
@@ -739,11 +808,12 @@ def derive(request: str, turn: Optional[int], base: Optional[Mapping] = None,
     mentioned = mentioned_forbidden_sources(state, request)
     _apply_rules(state, [{**rule, "message": message} for rule in source_rules(request, turn, source)])
     if mentioned:
-        # The message names a source that an earlier rule forbids, and asks to use none.
-        # The rule stays, and the record does not choose between the two.
+        # The message names a source with no recognized rule or request of it. The earlier
+        # rules stay, and the record does not choose a reading.
         state["interpretation_state"] = "unresolved"
         state["unresolved"].append({"turn": turn, "text": request[:MAX_ITEM_CHARS],
-                                    "reason": f"the message mentions {', '.join(mentioned)}, which an earlier rule forbids"})
+                                    "reason": f"the message names {', '.join(mentioned)} as a source "
+                                              "without a recognized rule or request"})
     if kind == UNRESOLVED:
         # An unresolved message adds no requirement. Its output clauses stay uncertain.
         groups, uncertain = output_groups(request, turn, source, _next_group_id(state))

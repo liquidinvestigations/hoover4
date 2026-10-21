@@ -580,7 +580,7 @@ def test_a_mention_of_a_forbidden_source_keeps_the_rule_and_is_unresolved():
     state = _after_report("What does the web say about the Enron merger?")
     assert TS.source_scope(state)["web"] == "forbidden"
     assert state["interpretation_state"] == "unresolved"
-    assert "an earlier rule forbids" in state["unresolved"][-1]["reason"]
+    assert "names web as a source" in state["unresolved"][-1]["reason"]
     assert TS.delivery(state, ["a.md"])["evidence"] is False
 
 
@@ -682,3 +682,85 @@ def test_method_advice_follows_the_web_request():
     from tasks.P_agent.control.handlers.progress import methods
     assert "web" not in methods(_context("Who signed the 2001 lease renewal?", (search,), state=restricted), (search,))
     assert "web" in methods(_context(question, (search,), state=state), (search,))
+
+
+# A web word before a topic, with a source verb: no request, and the record is unresolved.
+TOPIC_WITH_VERB = ["Find the emails on the web server migration.",
+                   "Research online reactions to the bankruptcy in the emails.",
+                   "Search the web archives for the filing date.",
+                   "Search the internet archives, not the documents."]
+
+
+@pytest.mark.parametrize("message", TOPIC_WITH_VERB)
+def test_a_source_verb_with_a_web_topic_keeps_the_restriction_and_is_unresolved(message):
+    state = _after_report(message)
+    assert TS.source_scope(state)["web"] == "forbidden"
+    assert not [r for r in state["source_rules"] if r.get("basis") == "request"]
+    assert state["interpretation_state"] == "unresolved"
+
+
+@pytest.mark.parametrize("message", ["https://www.sec.gov appears in which emails?",
+                                     "https://www.sec.gov/litigation has the complaint. Summarize it.",
+                                     "Find emails that link to https://enron.com."])
+def test_a_web_address_without_an_imperative_verb_is_a_topic(message):
+    state = _after_report(message)
+    assert TS.source_scope(state)["web"] == "forbidden"
+    assert not [r for r in state["source_rules"] if r.get("basis") == "request"]
+
+
+@pytest.mark.parametrize("message", ["https://en.wikipedia.org/wiki/Enron", "Check https://www.sec.gov for the filing date."])
+def test_a_bare_web_address_or_one_after_an_imperative_verb_is_a_request(message):
+    assert TS.source_scope(_after_report(message))["web"] == "allowed"
+
+
+@pytest.mark.parametrize("message", ["Check online whether Enron filed in December.",
+                                     "Search the web rather than the documents.",
+                                     "Look it up online later."])
+def test_a_function_word_after_the_web_word_is_no_topic(message):
+    state = _after_report(message)
+    assert TS.source_scope(state)["web"] == "allowed"
+    assert [r["basis"] for r in state["source_rules"]][-1] == "request"
+
+
+@pytest.mark.parametrize("message", ["Never mind the documents, search the web.",
+                                     "Don't bother with the documents; search the web for the date."])
+def test_a_dismissed_source_adds_no_restriction_and_is_unresolved(message):
+    state = _after_report(message)
+    assert TS.source_scope(state) == {"web": "allowed", "collections": "unstated"}
+    assert [r["basis"] for r in state["source_rules"]] == ["restriction", "request"]
+    assert state["interpretation_state"] == "unresolved"
+    assert "names collections as a source" in state["unresolved"][-1]["reason"]
+
+
+@pytest.mark.parametrize("message", ["From now on, use the web.", "Please use the web.",
+                                     "You may use the web from now on.",
+                                     "For the rest of this chat, search the web for every question."])
+def test_a_session_form_is_a_permission_that_lasts_after_the_task(message):
+    state = _after_report(message)
+    rule = state["source_rules"][-1]
+    assert (rule["basis"], rule["scope"]) == ("permission", "session")
+    assert state["source_rules"][0]["status"] == "superseded"
+    later = TS.derive("Who signed the 2001 lease renewal?", 3, state)
+    assert TS.source_scope(later)["web"] == "allowed"
+
+
+def test_a_task_request_without_a_session_form_stays_one_task():
+    state = _after_report("Search the web.")
+    assert state["source_rules"][-1]["basis"] == "request"
+    assert TS.source_scope(TS.derive("Who signed the 2001 lease renewal?", 3, state))["web"] == "forbidden"
+
+
+def test_a_permission_after_a_request_supersedes_the_suspended_rule():
+    asked = _after_report("Search the web for the filing date.")
+    allowed = TS.derive("You may now use the web.", 3, asked)
+    assert allowed["source_rules"][0]["status"] == "superseded"
+    later = TS.derive("Who signed the 2001 lease renewal?", 4, allowed)
+    assert TS.source_scope(later)["web"] == "allowed"
+    assert later["source_rules"][0]["status"] == "superseded"
+
+
+def test_a_collection_search_under_an_exclusive_web_rule_is_unresolved():
+    first = _state("Only use the web. Write a short note on the Enron bankruptcy.")
+    state = TS.derive("Search the documents for the filing date.", 2, first)
+    assert TS.source_scope(state)["collections"] == "forbidden"
+    assert state["interpretation_state"] == "unresolved"
