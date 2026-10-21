@@ -2673,6 +2673,18 @@
       ],
       "audience": "developer",
       "no_screenshot_reason": "This feature defines identity resolution, access checks, or request limits. It has no independent screenshot state."
+    },
+    {
+      "id": "F-qa-10",
+      "source": [
+        "scripts/chat_review"
+      ],
+      "docs": [
+        "scripts/chat_review/README.md",
+        "docs/technical-specification/Capability_Contracts.md#f-qa-10"
+      ],
+      "audience": "developer",
+      "no_screenshot_reason": "This offline command writes evaluation artifacts and changes no interface."
     }
   ],
   "routes": {

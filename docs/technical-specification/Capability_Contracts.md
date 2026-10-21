@@ -326,3 +326,21 @@ Source ownership uses [website/backend/src/api/admin](../../website/backend/src/
 Resolve a caller of `/api/agent/v1/` from `X-Hoover4-User`, refuse a request carrying a proxy identity header or a session cookie, and expose the site's read surface to a tool-calling agent as 23 typed routes over collections, search, documents, tables, folders and images. `images/document` and `images/capture` answer with image bytes and an etag, and the other routes answer with JSON. A document route reads one explicit character range within a text page, one page of hits, or one page of a kept PDF search result. `documents/pdf_search` searches the whole PDF when no kept result matches, and `documents/sources` with a query counts the hits of every source over the whole document, so those two reads grow with the document under the 30 s deadline. A table route reads one window of 50 rows and at most 60 chosen columns from any row, or one 2,000-character slice of a cell, and takes its source from the table manifest. A sheet read takes `interpretation` `auto`, `all_rows` or `first_row_header`. `auto` selects the one reading of a sheet with one candidate, and reads every row of a sheet with two. A reading that the sheet does not have is `400` `invalid_argument`. Each sheet response gives the reading, its state and basis, every candidate with its row count, and `established_rows` only for an established reading. Its row, value and hit counts, column names and column types describe the selected reading. A column with more than one cell kind lists its `kinds`. Row and column ids stay the stored ones in every reading. The source of a sheet read adds the header row of its reading, so a continuation cannot resume in another reading. `tables/search_cells` scans every cell of the sheet, `tables/column_values` groups the whole column, and a sorted, filtered or searched `tables/page` reads every matching row of the sheet, so those reads grow with the sheet under the 30 s deadline
 
 Source ownership uses [website/backend/src/auth/session_middleware.rs](../../website/backend/src/auth/session_middleware.rs), [website/backend/src/api/agent](../../website/backend/src/api/agent), [website/common/src/agent_api.rs](../../website/common/src/agent_api.rs).
+
+## F-qa-10
+
+The [offline review tool](../../scripts/chat_review/README.md) exports one completed turn through owner-scoped storage readers.
+It preserves published closing text and exact delivered report versions.
+It records source completeness, missing evidence, message identities, and original tool content.
+Export compares successful mutation receipts with published metadata and rechecks mutable records before completion.
+
+Review uses an explicit model configuration and an immutable scope.
+Invalid spans, malformed responses, output truncation, and unresolved evidence prevent review completion.
+Local correction replay cannot publish an answer or change workspace storage.
+Fresh verification excludes earlier verdicts and correction explanations.
+
+Independent grading requires complete text-region coverage, output coverage, source-bound labels, and valid citation identities.
+Agent-authored references need a separate source-review record.
+A model verdict cannot establish delivery acceptance.
+Comparison records execution, quality, and cost separately.
+This capability does not enable automatic review in production chat turns.

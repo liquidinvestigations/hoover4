@@ -117,6 +117,8 @@ add "main_services/agents/whois_search_server/tests" "$V/pytest-agents.sh (hoove
     'grep -q "hoover4-mcp-whois" '"$V"'/pytest-agents.sh'
 add "main_services/agents/research_agent/tests" "$V/pytest-research-agent.sh" \
     'grep -q "target=\"\${1:-tests}\"" '"$V"'/pytest-research-agent.sh'
+add "scripts/chat_review/tests" "scripts/chat_review/test.sh" \
+    'grep -q "pytest scripts/chat_review/tests" scripts/chat_review/test.sh'
 add "main_services/processing/tests/unit" "$V/pytest-unit.sh (default target tests/unit)" \
     'grep -q "target=\"\${1:-tests/unit}\"" '"$V"'/pytest-unit.sh'
 add "main_services/regex_entity_scanner/tests" "main_services/regex_entity_scanner/test.sh" \
