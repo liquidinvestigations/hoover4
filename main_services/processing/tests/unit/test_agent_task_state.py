@@ -557,7 +557,7 @@ def test_a_later_web_request_supersedes_an_earlier_web_restriction():
     question = "Search the web for the date of the Enron bankruptcy filing."
     state = _after_report(question)
     [old, new] = state["source_rules"]
-    assert (old["text"], old["status"], old["superseded_by"]) == ("Do not use the web.", "superseded", 2)
+    assert (old["text"], old["status"], old["suspended_by"]) == ("Do not use the web.", "suspended", 2)
     assert (new["effect"], new["basis"], new["subject"], new["turn"]) == ("allow", "request", "web", 2)
     assert (new["start"], new["end"]) == (0, len(question))
     assert TS.source_scope(state)["web"] == "allowed"
@@ -593,18 +593,83 @@ def test_a_web_address_or_an_online_lookup_is_a_web_request(request_text):
 def test_a_collection_request_supersedes_only_a_collection_exclusion():
     web_only = TS.derive("Search the enron collection for the 2001 lease.", 2, _state("Use only the web. Find the CEO."))
     assert TS.source_scope(web_only)["collections"] == "allowed"
-    assert web_only["source_rules"][0]["status"] == "superseded"
+    assert web_only["source_rules"][0]["status"] == "suspended"
     selected = TS.derive("Search the testdata collection for the lease.", 2,
                          _state("Use only the enron collection. Who approved the loan?"))
     assert selected["source_rules"][0]["status"] == "active"
     assert TS.source_scope(selected)["web"] == "forbidden"
 
 
-def test_a_web_request_expires_with_its_task_and_the_old_restriction_stays_superseded():
-    state = TS.derive("Who signed the 2001 lease renewal?", 3,
-                      _after_report("Search the web for the date of the Enron bankruptcy filing."))
-    assert [r["status"] for r in state["source_rules"]] == ["superseded", "expired"]
-    assert TS.source_scope(state)["web"] == "unstated"
+def test_a_web_request_suspends_the_restriction_for_its_task_only():
+    """The verification probe of F2: the restriction stayed superseded after the request
+    expired, so later turns had no web constraint."""
+    state = _after_report("Search the web for the date of the Enron bankruptcy filing.")
+    follow = TS.derive("Continue.", 3, state)
+    assert TS.source_scope(follow)["web"] == "allowed"
+    later = TS.derive("Who signed the 2001 lease renewal?", 4, follow)
+    restriction, request = later["source_rules"]
+    assert (restriction["status"], restriction["suspended_by"], restriction["reactivated"]) == ("active", 2, [4])
+    assert request["status"] == "expired"
+    assert TS.source_scope(later)["web"] == "forbidden"
+    assert TS.text_task(later)["constraints"] == [{"text": "Do not use the web.", "source": "user", "turn": 1}]
+    again = TS.derive("Who was the CFO of Enron in 2001?", 5, later)
+    assert TS.source_scope(again)["web"] == "forbidden"
+
+
+def test_a_web_request_inside_an_amendment_lasts_until_the_next_new_objective():
+    state = _after_report("Also search the web for the filing date and add it to the report.")
+    # The message adds to the report, which no rule recognizes, so the record is unresolved.
+    assert state["request"]["kind"] == "unresolved" and TS.source_scope(state)["web"] == "allowed"
+    assert TS.source_scope(TS.derive("Continue.", 3, state))["web"] == "allowed"
+    assert TS.source_scope(TS.derive("What is the capital of Australia?", 3, state))["web"] == "forbidden"
+
+
+TOPIC_QUESTIONS = ["Find documents about the website redesign.",
+                   "Find emails about EnronOnline, the online trading platform.",
+                   "Read the memo about internet usage policy.",
+                   "Use the documents to find who ran the online trading desk."]
+NEGATED = ["Search the documents, not the web.", "Search the documents and not the web for the filing date.",
+           "Find the filing date without searching the web.", "Do not search the web for the filing date.",
+           "Don't look online for it.", "Never check the web for this.",
+           "Search the documents rather than online sources."]
+BETWEEN = ["What does the web say about the merger?", "Please google the filing date.",
+           "Which emails mention the news sites that covered the bankruptcy?",
+           "Check whether the emails mention any websites."]
+
+
+@pytest.mark.parametrize("message", TOPIC_QUESTIONS + NEGATED + BETWEEN)
+def test_no_topic_negated_or_unclear_web_word_lifts_the_restriction(message):
+    state = _after_report(message)
+    assert TS.source_scope(state)["web"] == "forbidden"
+    assert not [r for r in state["source_rules"] if r.get("basis") == "request"]
+    assert any("web" in c["text"] or "online" in c["text"] for c in TS.text_task(state)["constraints"])
+    if message in BETWEEN:
+        assert state["interpretation_state"] == "unresolved"
+    if message in TOPIC_QUESTIONS[:3] + NEGATED[:2]:
+        assert state["interpretation_state"] == "resolved"
+
+
+@pytest.mark.parametrize("message", ["Search the web for the date of the Enron bankruptcy filing.",
+                                     "Read https://en.wikipedia.org/wiki/Enron and summarize it.",
+                                     "Look it up online.", "Use the web to find the filing date.",
+                                     "Find the filing date on the internet."])
+def test_the_narrow_web_request_forms_suspend_the_restriction(message):
+    state = _after_report(message)
+    assert TS.source_scope(state)["web"] == "allowed"
+    assert [r["status"] for r in state["source_rules"]] == ["suspended", "active"]
+
+
+def test_the_collection_subject_follows_the_same_structure():
+    first = _state("Only use the web. Write a short note on the Enron bankruptcy.")
+    asked = TS.derive("Search the enron collection for the filing date.", 2, first)
+    assert TS.source_scope(asked)["collections"] == "allowed"
+    later = TS.derive("Who signed the 2001 lease renewal?", 3, asked)
+    assert TS.source_scope(later)["collections"] == "forbidden"
+    assert later["source_rules"][0]["reactivated"] == [3]
+    unclear = TS.derive("Check the archives for the filing date.", 2, first)
+    assert TS.source_scope(unclear)["collections"] == "forbidden" and unclear["interpretation_state"] == "unresolved"
+    negated = TS.derive("Search the web, not the collections, for the filing date.", 2, first)
+    assert TS.source_scope(negated)["collections"] == "forbidden"
 
 
 def test_method_advice_follows_the_web_request():

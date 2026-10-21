@@ -34,6 +34,11 @@ as the complete current instruction, and no message silently replaces the object
 * A permission (`You may now use the web.`) supersedes the earlier restrictions that it
   conflicts with. A later rule supersedes an earlier rule of the same subject. An exclusive
   restriction (`Use only the selected collections.`) also forbids the web.
+* An explicit request to use a source (`Search the web for ...`, `Read https://...`,
+  `Search the enron collection for ...`) suspends a rule that forbids that source until the
+  next new objective. Then the rule is active again, with the turn in `reactivated`. Only
+  the narrow forms of `WEB_REQUEST` and `COLLECTION_REQUEST` count. A topic phrase and a
+  negated source are no request, and another mention of a forbidden source is unresolved.
 * A cancellation (`Skip the second report.`) removes one output of an identified group, or
   the whole group. A cancellation that identifies no group is unresolved.
 * An amendment holds only rules, cancellations, continuations and output requests that refer
@@ -314,7 +319,7 @@ SOURCE_RESTRICTION = re.compile(
     r"websites?|sites?|sources?|google|search engines?|news)\b", re.IGNORECASE)
 PERMISSION = re.compile(
     r"\b(?:you\s+(?:may|can|are\s+allowed\s+to|are\s+free\s+to|are\s+permitted\s+to)|fe{2}l\s+free\s+to|"
-    r"it\s+is\s+(?:fine|ok(?:ay)?|allowed)\s+to|go\s+ahead\s+and|please|now|also)\s+(?:now\s+|also\s+)?"
+    r"it\s+is\s+(?:fine|ok(?:ay)?|allowed)\s+to)\s+(?:now\s+|also\s+)?"
     r"(?:use|search|browse|check|consult|read|look\s+(?:at|on))\b[^.!?\n]{0,60}?"
     r"\b(?:web|internet|online|websites?|google|news|public\s+sources?)\b"
     r"|\b(?:web|internet)(?:\s+(?:search(?:es)?|use|access|sources?))?\s+(?:is|are)\s+(?:now\s+)?"
@@ -326,19 +331,43 @@ EXCLUSIVE = re.compile(r"\b(?:only|just|exclusively|solely|limit(?:ed)?\b[^.!?\n
 TASK_SCOPE = re.compile(r"\b(?:for\s+this\s+(?:one|question|task|request|answer)|this\s+time|for\s+now)\b", re.I)
 
 
-#: An explicit request to use the web: a search, read or check verb with the web as its
-#: place, or a web address.
-USE_WEB = re.compile(r"\b(?:search|look\s+up|look|check|browse|find|read|consult|google|use|open|visit)\b"
-                     r"[^.!?\n]{0,50}?(?:\b(?:web|internet|online|websites?|news\s+sites?)\b|https?://)", re.I)
-#: An explicit request to use the collections.
-USE_COLLECTIONS = re.compile(r"\b(?:search|look|check|find|read|use|browse)\b[^.!?\n]{0,50}?"
-                             r"\b(?:collections?|datasets?|archives?|stored\s+documents)\b", re.I)
+#: The nouns after a web word that make the word a topic, such as `online trading`.
+WEB_TOPIC_NOUNS = r"(?:archive|archives|page|pages|site|sites|address|usage|use|policy|policies|redesign|trading|" \
+                  r"platform|desk|business|team|division|sales|banking|access|account|accounts|presence|portal|" \
+                  r"service|services|traffic|domain|history)"
+#: The narrow explicit forms of a request to use the web. The web is the place or the
+#: instrument of a search verb (`search the web`, `look it up online`, `find it on the
+#: internet`), the direct object of `use`, or a web address to read (`Read https://...`).
+WEB_REQUEST = re.compile(
+    r"\b(?:search|look\s+up|look|check|browse|research)\s+(?:(?:it|this|that|them)\s+)?(?:up\s+)?"
+    r"(?:(?:on|across|through|using)\s+)?(?:the\s+)?(?:web|internet)\b(?!\s+" + WEB_TOPIC_NOUNS + r"\b)"
+    r"|\b(?:search|look|check|find|research)\s+(?:(?:it|this|that|them)\s+)?(?:up\s+)?online\b"
+    r"(?!\s+(?:" + WEB_TOPIC_NOUNS + r"|[a-z]+(?:ing|ment|ion|er))\b)"
+    r"|\b(?:search|look|check|find|research|get)\b[^.!?\n]{0,60}?\b(?:on|from)\s+the\s+(?:web|internet)\b"
+    r"(?!\s+" + WEB_TOPIC_NOUNS + r"\b)"
+    r"|\buse\s+(?:the\s+)?(?:web|internet)\b(?!\s+" + WEB_TOPIC_NOUNS + r"\b)"
+    r"|(?:^|\b(?:read|open|browse\s+to|visit|go\s+to|fetch|summari[sz]e|check)\s+)<?https?://", re.I)
+#: The narrow explicit forms of a request to use the collections: a search verb whose
+#: object or place is a collection (`Search the enron collection for ...`).
+COLLECTION_REQUEST = re.compile(
+    r"\b(?:search|look\s+(?:in|through)|check|browse|use)\s+(?:in\s+|through\s+)?(?:the\s+)?"
+    r"(?:(?:selected|stored|[\w-]+)\s+)?(?:collections?|datasets?)\b", re.I)
+#: A sentence that negates a source anywhere, such as `Search the documents, not the web.`
+NEGATED_SOURCE = {
+    "web": re.compile(r"\b(?:not|never|without|no|rather\s+than|instead\s+of|except|don'?t|do\s+not|avoid)\b"
+                      r"[^.!?\n]{0,30}?\b(?:the\s+)?(?:web|internet|online|websites?|google)\b", re.I),
+    "collections": re.compile(r"\b(?:not|never|without|no|rather\s+than|instead\s+of|except|don'?t|do\s+not|avoid)\b"
+                              r"[^.!?\n]{0,30}?\b(?:the\s+)?(?:collections?|datasets?|archives?|documents)\b", re.I),
+}
 
 
 def _use_request(clean: str) -> Optional[tuple[str, re.Match]]:
-    """The subject of an affirmative request to use a source in one sentence, or None. A
-    negated verb (`Do not search the web`) requests nothing."""
-    for subject, pattern in (("web", USE_WEB), ("collections", USE_COLLECTIONS)):
+    """The subject of an explicit request to use a source in one sentence, or None. Only the
+    narrow forms of `WEB_REQUEST` and `COLLECTION_REQUEST` count. A sentence that negates the
+    source anywhere requests nothing."""
+    for subject, pattern in (("web", WEB_REQUEST), ("collections", COLLECTION_REQUEST)):
+        if NEGATED_SOURCE[subject].search(clean):
+            continue
         for match in pattern.finditer(clean):
             if not NEGATION.search(clean[:match.start()][-40:]):
                 return subject, match
@@ -351,8 +380,10 @@ def source_rules(text: str, turn: Optional[int], source: str = "user") -> list[d
     A permission (`You may now use the web.`) and a restriction (`Do not use the web.`)
     come first. Another sentence that explicitly asks to use a source (`Search the web for
     the filing date.`, a web address, `Search the enron collection for ...`) gives an `allow`
-    rule with `basis` `request` for that one task. It supersedes an earlier rule that forbids
-    its subject. It never replaces a rule of the same subject that forbids another source."""
+    rule with `basis` `request` for that one task. It suspends an earlier rule that forbids
+    its subject until the task ends (`_apply_rules`). It never replaces a rule of the same
+    subject that forbids another source. A web word inside a topic phrase (`emails about the
+    online trading desk`) and a negated source (`not the web`) are no request."""
     out = []
     for start, end, sentence in spans(text):
         clean = _blank_quotes(sentence)
@@ -379,18 +410,37 @@ def source_rules(text: str, turn: Optional[int], source: str = "user") -> list[d
 COLLECTION_WORDS = re.compile(r"\b(?:collections?|datasets?|archives?)\b", re.I)
 
 
+#: A word before a web word that makes it the topic of a search, such as `about`.
+TOPIC_BEFORE = re.compile(r"\b(?:about|regarding|concerning|re|on\s+the\s+topic\s+of)\s+(?:the\s+|a\s+|an\s+|any\s+|its\s+)?$", re.I)
+
+
+def _web_mention(clean: str) -> bool:
+    """Whether a sentence names the web as a source: a web word that is no topic. A word
+    after `about` and a word before a topic noun (`online trading`) are topics."""
+    for match in WEB_WORDS.finditer(clean):
+        if TOPIC_BEFORE.search(clean[:match.start()]):
+            continue
+        after = clean[match.end():]
+        if re.match(r"\s+" + WEB_TOPIC_NOUNS + r"\b", after, re.I) or re.match(r"\s+[a-z]+(?:ing|ment|ion|er)\b", after, re.I):
+            continue
+        return True
+    return False
+
+
 def mentioned_forbidden_sources(state: Mapping, text: str) -> list[str]:
-    """The subjects that an active rule forbids and that a sentence of `text` mentions with
-    no rule and no use request of its own, such as `What does the web say about the merger?`
-    after `Do not use the web.`"""
+    """The subjects that an active rule forbids and that a sentence of `text` names as a
+    source, with no rule and no use request of its own, such as `What does the web say about
+    the merger?` or `Please google the filing date.` after `Do not use the web.` A sentence
+    that negates the source agrees with the rule, and a topic phrase names no source."""
     scope = source_scope(state)
     out = []
     for _start, _end, sentence in spans(text):
         clean = _blank_quotes(sentence)
         if source_rules(sentence, None):
             continue
-        for subject, words in (("web", WEB_WORDS), ("collections", COLLECTION_WORDS)):
-            if scope[subject] == "forbidden" and words.search(clean) and subject not in out:
+        for subject, named in (("web", _web_mention(clean)), ("collections", bool(COLLECTION_WORDS.search(clean)))):
+            if (scope[subject] == "forbidden" and named and not NEGATED_SOURCE[subject].search(clean)
+                    and subject not in out):
                 out.append(subject)
     return out
 
@@ -406,7 +456,8 @@ def _forbids(rule: Mapping) -> set:
 
 def _apply_rules(state: dict, new: list[dict]) -> None:
     """Add the rules of a later turn. Each one supersedes the active rules of earlier turns
-    that it replaces or conflicts with."""
+    that it replaces or conflicts with. A use request (`basis` `request`) only suspends a
+    conflicting rule, and the rule is active again when the request expires (`derive`)."""
     for rule in new:
         for old in state["source_rules"]:
             if old["status"] != "active" or old.get("message") == rule.get("message"):
@@ -417,7 +468,11 @@ def _apply_rules(state: dict, new: list[dict]) -> None:
                 old["effect"] == rule["effect"] == "restrict" and old["exclusive"] and not rule["exclusive"])
             conflicts = ((rule["effect"] == "allow" and rule["subject"] in _forbids(old))
                          or (old["effect"] == "allow" and old["subject"] in _forbids(rule)))
-            if replaces or conflicts:
+            if conflicts and rule.get("basis") == "request":
+                # A request of one task suspends the rule for that task only.
+                old.update(status="suspended", suspended_by=rule.get("turn"),
+                           suspended_by_message=rule.get("message"))
+            elif replaces or conflicts:
                 old["status"], old["superseded_by"] = "superseded", rule.get("turn")
         state["source_rules"].append(rule)
 
@@ -660,9 +715,16 @@ def derive(request: str, turn: Optional[int], base: Optional[Mapping] = None,
         state.update(objective=objective, amendments=[], output_spec=_new_spec(),
                      interpretation_state="resolved", unresolved=[])
         state.pop("earlier_objective", None)
+        ended = set()
         for rule in state["source_rules"]:
             if rule["status"] == "active" and rule.get("scope") == "task":
                 rule["status"], rule["superseded_by"] = "expired", turn
+                ended.add(rule.get("message"))
+        for rule in state["source_rules"]:
+            if rule["status"] == "suspended" and rule.get("suspended_by_message") in ended:
+                # The task of the request ended, so the suspended rule applies again.
+                rule["status"] = "active"
+                rule.setdefault("reactivated", []).append(turn)
     if kind == UNRESOLVED:
         state["interpretation_state"] = "unresolved"
         state["unresolved"].append({"turn": turn, "text": request[:MAX_ITEM_CHARS],
