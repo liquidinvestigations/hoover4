@@ -326,22 +326,72 @@ EXCLUSIVE = re.compile(r"\b(?:only|just|exclusively|solely|limit(?:ed)?\b[^.!?\n
 TASK_SCOPE = re.compile(r"\b(?:for\s+this\s+(?:one|question|task|request|answer)|this\s+time|for\s+now)\b", re.I)
 
 
+#: An explicit request to use the web: a search, read or check verb with the web as its
+#: place, or a web address.
+USE_WEB = re.compile(r"\b(?:search|look\s+up|look|check|browse|find|read|consult|google|use|open|visit)\b"
+                     r"[^.!?\n]{0,50}?(?:\b(?:web|internet|online|websites?|news\s+sites?)\b|https?://)", re.I)
+#: An explicit request to use the collections.
+USE_COLLECTIONS = re.compile(r"\b(?:search|look|check|find|read|use|browse)\b[^.!?\n]{0,50}?"
+                             r"\b(?:collections?|datasets?|archives?|stored\s+documents)\b", re.I)
+
+
+def _use_request(clean: str) -> Optional[tuple[str, re.Match]]:
+    """The subject of an affirmative request to use a source in one sentence, or None. A
+    negated verb (`Do not search the web`) requests nothing."""
+    for subject, pattern in (("web", USE_WEB), ("collections", USE_COLLECTIONS)):
+        for match in pattern.finditer(clean):
+            if not NEGATION.search(clean[:match.start()][-40:]):
+                return subject, match
+    return None
+
+
 def source_rules(text: str, turn: Optional[int], source: str = "user") -> list[dict]:
-    """The source permissions and restrictions of `text`, in text order."""
+    """The source permissions, restrictions and use requests of `text`, in text order.
+
+    A permission (`You may now use the web.`) and a restriction (`Do not use the web.`)
+    come first. Another sentence that explicitly asks to use a source (`Search the web for
+    the filing date.`, a web address, `Search the enron collection for ...`) gives an `allow`
+    rule with `basis` `request` for that one task. It supersedes an earlier rule that forbids
+    its subject. It never replaces a rule of the same subject that forbids another source."""
     out = []
     for start, end, sentence in spans(text):
         clean = _blank_quotes(sentence)
         permission = PERMISSION.search(clean)
         restriction = None if permission else SOURCE_RESTRICTION.search(clean)
-        if not permission and not restriction:
+        request = None if permission or restriction else _use_request(clean)
+        if not permission and not restriction and not request:
             continue
-        subject = "web" if permission or WEB_WORDS.search(restriction.group(0)) else "collections"
+        if request:
+            subject = request[0]
+        else:
+            subject = "web" if permission or WEB_WORDS.search(restriction.group(0)) else "collections"
         out.append({"text": sentence[:MAX_ITEM_CHARS], "turn": turn, "source": source,
                     "start": start, "end": end, "subject": subject,
-                    "effect": "allow" if permission else "restrict",
+                    "effect": "restrict" if restriction else "allow",
+                    "basis": "request" if request else "permission" if permission else "restriction",
                     "exclusive": bool(restriction and EXCLUSIVE.search(clean)),
-                    "scope": "task" if TASK_SCOPE.search(clean) else "session",
+                    "scope": "task" if request or TASK_SCOPE.search(clean) else "session",
                     "status": "active", "superseded_by": None})
+    return out
+
+
+#: The words that mention a source without asking to use it.
+COLLECTION_WORDS = re.compile(r"\b(?:collections?|datasets?|archives?)\b", re.I)
+
+
+def mentioned_forbidden_sources(state: Mapping, text: str) -> list[str]:
+    """The subjects that an active rule forbids and that a sentence of `text` mentions with
+    no rule and no use request of its own, such as `What does the web say about the merger?`
+    after `Do not use the web.`"""
+    scope = source_scope(state)
+    out = []
+    for _start, _end, sentence in spans(text):
+        clean = _blank_quotes(sentence)
+        if source_rules(sentence, None):
+            continue
+        for subject, words in (("web", WEB_WORDS), ("collections", COLLECTION_WORDS)):
+            if scope[subject] == "forbidden" and words.search(clean) and subject not in out:
+                out.append(subject)
     return out
 
 
@@ -363,7 +413,7 @@ def _apply_rules(state: dict, new: list[dict]) -> None:
                 continue
             # A narrower restriction of the collections keeps an exclusive one, whose web
             # prohibition it does not state.
-            replaces = old["subject"] == rule["subject"] and not (
+            replaces = rule.get("basis") != "request" and old["subject"] == rule["subject"] and not (
                 old["effect"] == rule["effect"] == "restrict" and old["exclusive"] and not rule["exclusive"])
             conflicts = ((rule["effect"] == "allow" and rule["subject"] in _forbids(old))
                          or (old["effect"] == "allow" and old["subject"] in _forbids(rule)))
@@ -418,7 +468,7 @@ def _sentence_kind(sentence: str, has_groups: bool) -> str:
     if has_groups and CANCEL.match(clean):
         return "cancel"
     clauses = _affirmative(clean, _clause_matches(clean))
-    if source_rules(sentence, None) and not clauses:
+    if [r for r in source_rules(sentence, None) if r.get("basis") != "request"] and not clauses:
         return "rule"
     if clauses:
         rest = ANY_FILE_NAME.sub(" ", clean)
@@ -624,7 +674,14 @@ def derive(request: str, turn: Optional[int], base: Optional[Mapping] = None,
             _omit(state, "amendments", len(state["amendments"]) - MAX_AMENDMENTS,
                   "the oldest amendments beyond the stored bound")
             state["amendments"] = state["amendments"][-MAX_AMENDMENTS:]
+    mentioned = mentioned_forbidden_sources(state, request)
     _apply_rules(state, [{**rule, "message": message} for rule in source_rules(request, turn, source)])
+    if mentioned:
+        # The message names a source that an earlier rule forbids, and asks to use none.
+        # The rule stays, and the record does not choose between the two.
+        state["interpretation_state"] = "unresolved"
+        state["unresolved"].append({"turn": turn, "text": request[:MAX_ITEM_CHARS],
+                                    "reason": f"the message mentions {', '.join(mentioned)}, which an earlier rule forbids"})
     if kind == UNRESOLVED:
         # An unresolved message adds no requirement. Its output clauses stay uncertain.
         groups, uncertain = output_groups(request, turn, source, _next_group_id(state))
@@ -769,7 +826,8 @@ def text_task(state: Mapping) -> dict:
     restrictions = [_field(r) for r in reversed(active) if r["effect"] == "restrict"]
     if restrictions:
         task["constraints"] = list({r["text"].casefold(): r for r in reversed(restrictions)}.values())[::-1]
-    permissions = [_field(r) for r in reversed(active) if r["effect"] == "allow"]
+    # A use request stays in the text of its message, so it is no separate permission line.
+    permissions = [_field(r) for r in reversed(active) if r["effect"] == "allow" and r.get("basis") != "request"]
     if permissions:
         task["allowed_sources"] = permissions
     if state.get("earlier_objective") and "earlier_objective" not in task:

@@ -283,7 +283,10 @@ The `chat-default` definition has these rules:
   its turn and status. It also holds the requested output groups with their names and
   exact counts. A continuation such as "Continue." keeps the objective and its
   unfinished outputs. A permission supersedes the restrictions that it conflicts with, and
-  a later rule replaces an earlier rule of its subject. A cancellation removes the output
+  a later rule replaces an earlier rule of its subject. An explicit request to use a source,
+  such as "Search the web for ..." or a web address, supersedes an earlier rule that forbids
+  that source, for its own task. A mention of a forbidden source without such a request
+  keeps the rule and leaves the record unresolved. A cancellation removes the output
   that it identifies. An explicit new objective keeps the session rules and drops the
   earlier outputs. It names a new task, or asks its own question or research request after
   an optional courtesy word, and refers to no earlier work. A later message that the rules

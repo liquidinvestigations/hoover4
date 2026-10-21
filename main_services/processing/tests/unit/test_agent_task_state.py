@@ -495,7 +495,11 @@ def test_an_ordinary_new_question_after_a_report_task_is_a_new_objective(questio
     text, omitted = F.task_text(TS.text_task(state), 6000)
     assert text.startswith(f"objective: {question}") and omitted == 0
     assert asks_for_file(TS.text_task(state), state) is False
-    assert TS.text_task(state)["constraints"][0]["text"] == "Do not use the web."
+    if "web" in question:
+        # An explicit web request supersedes the restriction of the report task (F1).
+        assert "constraints" not in TS.text_task(state)
+    else:
+        assert TS.text_task(state)["constraints"][0]["text"] == "Do not use the web."
 
 
 @pytest.mark.parametrize("message", ["Make the second one shorter.", "Include the dates of each trade as well.",
@@ -543,3 +547,73 @@ def test_the_classifier_text_keeps_the_current_message_within_the_limit(second, 
     else:
         assert text.startswith("objective: Summarize this pasted contract")
         assert text.endswith(f"newest amendment: {second}")
+
+
+# ---------------------------------------------- F1: a later request for a forbidden source
+
+def test_a_later_web_request_supersedes_an_earlier_web_restriction():
+    """The verification probe: `Do not use the web.` stayed active after `Search the web
+    for ...`, so the scope forbade the web and the classifier read both."""
+    question = "Search the web for the date of the Enron bankruptcy filing."
+    state = _after_report(question)
+    [old, new] = state["source_rules"]
+    assert (old["text"], old["status"], old["superseded_by"]) == ("Do not use the web.", "superseded", 2)
+    assert (new["effect"], new["basis"], new["subject"], new["turn"]) == ("allow", "request", "web", 2)
+    assert (new["start"], new["end"]) == (0, len(question))
+    assert TS.source_scope(state)["web"] == "allowed"
+    assert state["interpretation_state"] == "resolved"
+    text, _ = F.task_text(TS.text_task(state), 6000)
+    assert text == f"objective: {question}"
+
+
+@pytest.mark.parametrize("question", ["Who signed the 2001 lease renewal?", "What is the capital of Australia?",
+                                      "Do not search the web. Who signed the lease?",
+                                      'Which email says "search the web for leases"?'])
+def test_a_question_without_a_web_request_keeps_the_restriction(question):
+    state = _after_report(question)
+    assert TS.source_scope(state)["web"] == "forbidden"
+    assert any("web" in c["text"] for c in TS.text_task(state)["constraints"])
+    assert state["interpretation_state"] == "resolved"
+
+
+def test_a_mention_of_a_forbidden_source_keeps_the_rule_and_is_unresolved():
+    state = _after_report("What does the web say about the Enron merger?")
+    assert TS.source_scope(state)["web"] == "forbidden"
+    assert state["interpretation_state"] == "unresolved"
+    assert "an earlier rule forbids" in state["unresolved"][-1]["reason"]
+    assert TS.delivery(state, ["a.md"])["evidence"] is False
+
+
+@pytest.mark.parametrize("request_text", ["Read https://example.org/filing.pdf and give its date.",
+                                          "Look it up online and give the filing date."])
+def test_a_web_address_or_an_online_lookup_is_a_web_request(request_text):
+    assert TS.source_scope(_after_report(request_text))["web"] == "allowed"
+
+
+def test_a_collection_request_supersedes_only_a_collection_exclusion():
+    web_only = TS.derive("Search the enron collection for the 2001 lease.", 2, _state("Use only the web. Find the CEO."))
+    assert TS.source_scope(web_only)["collections"] == "allowed"
+    assert web_only["source_rules"][0]["status"] == "superseded"
+    selected = TS.derive("Search the testdata collection for the lease.", 2,
+                         _state("Use only the enron collection. Who approved the loan?"))
+    assert selected["source_rules"][0]["status"] == "active"
+    assert TS.source_scope(selected)["web"] == "forbidden"
+
+
+def test_a_web_request_expires_with_its_task_and_the_old_restriction_stays_superseded():
+    state = TS.derive("Who signed the 2001 lease renewal?", 3,
+                      _after_report("Search the web for the date of the Enron bankruptcy filing."))
+    assert [r["status"] for r in state["source_rules"]] == ["superseded", "expired"]
+    assert TS.source_scope(state)["web"] == "unstated"
+
+
+def test_method_advice_follows_the_web_request():
+    question = "Search the web for the date of the Enron bankruptcy filing."
+    state = _after_report(question)
+    search = _fact("web_search", args={"queries": ["enron bankruptcy"]}, item_count=0)
+    note = _level_note(_context(question, (search,), state=state), {"signals": False})
+    assert "Search steps still available" in note or "search steps are complete" in note
+    restricted = _after_report("Who signed the 2001 lease renewal?")
+    from tasks.P_agent.control.handlers.progress import methods
+    assert "web" not in methods(_context("Who signed the 2001 lease renewal?", (search,), state=restricted), (search,))
+    assert "web" in methods(_context(question, (search,), state=state), (search,))
