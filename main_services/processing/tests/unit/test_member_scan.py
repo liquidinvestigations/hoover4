@@ -1,7 +1,7 @@
 """The member scan of one group: each container folder is scanned in process, then removed.
 
 The first tests patch the two disk scan functions and check the loop and the folder rules.
-The last tests run the real `scan_folder_range` over a temporary folder inside an activity
+The last tests run the real `scan_folder_range_v2` over a temporary folder inside an activity
 context, and check that its file cursor goes through the batch heartbeat.
 """
 
@@ -12,7 +12,7 @@ from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 
 from tasks.P0_scan_disk import activities as disk
-from tasks.P0_scan_disk.activities import FolderRanges, RangeResult
+from tasks.P0_scan_disk.activities import FolderRanges, RangeNamesResult
 from tasks.P3_parse_files import batch_runner, member_scan
 from tasks.P3_parse_files.batch_runner import ContainerFolder, ScanContainerFoldersParams
 
@@ -30,7 +30,7 @@ def _folder(path, container_hash="h1", member_count=0):
 
 @pytest.fixture
 def scan_calls(monkeypatch):
-    """Patch plan and scan. The folder "/" has one subfolder "/sub"."""
+    """Patch plan and scan. The folder "/" has one subfolder name "sub"."""
     calls = []
 
     def plan(params):
@@ -41,10 +41,10 @@ def scan_calls(monkeypatch):
         folder = params.folder
         calls.append(("scan", folder.folder_path, folder.after_name, params.until_name,
                       folder.dataset_path, folder.container_hash))
-        return RangeResult(["/sub"] if folder.folder_path == "/" else [], 1, 0)
+        return RangeNamesResult(["sub"] if folder.folder_path == "/" else [], 1, 0)
 
     monkeypatch.setattr(member_scan, "plan_folder_ranges", plan)
-    monkeypatch.setattr(member_scan, "scan_folder_range", scan)
+    monkeypatch.setattr(member_scan, "scan_folder_range_v2", scan)
     return calls
 
 
@@ -116,7 +116,7 @@ def test_failed_scan_leaves_the_folder(tmp_path, monkeypatch):
     def scan(_params):
         raise ApplicationError("unreadable member", type="ScanFailed", non_retryable=True)
 
-    monkeypatch.setattr(member_scan, "scan_folder_range", scan)
+    monkeypatch.setattr(member_scan, "scan_folder_range_v2", scan)
     batch = member_scan.scan_container_folders(_params(_folder(out_dir)))
 
     result = batch.results[0]
@@ -141,12 +141,28 @@ def test_plan_continues_from_its_last_boundary(tmp_path, monkeypatch):
     ranges = []
     monkeypatch.setattr(member_scan, "plan_folder_ranges", lambda _p: next(plans))
     monkeypatch.setattr(
-        member_scan, "scan_folder_range",
-        lambda p: ranges.append((p.folder.after_name, p.until_name)) or RangeResult([], 0, 0))
+        member_scan, "scan_folder_range_v2",
+        lambda p: ranges.append((p.folder.after_name, p.until_name)) or RangeNamesResult([], 0, 0))
 
     member_scan.scan_folder_tree("c", "c_d", str(tmp_path), "h1")
 
     assert ranges == [("", "b"), ("b", "d"), ("d", "")]
+
+
+def test_subfolder_names_join_their_own_folder_path(tmp_path, monkeypatch):
+    """Each name joins the path of the folder whose range returned it."""
+    names = {"/": ["a", "b"], "/a": ["deep"], "/a/deep": [], "/b": []}
+    scanned = []
+    monkeypatch.setattr(member_scan, "plan_folder_ranges", lambda _p: FolderRanges([], ""))
+
+    def scan(params):
+        scanned.append(params.folder.folder_path)
+        return RangeNamesResult(names[params.folder.folder_path], 0, 0)
+
+    monkeypatch.setattr(member_scan, "scan_folder_range_v2", scan)
+    member_scan.scan_folder_tree("c", "c_d", str(tmp_path), "h1")
+
+    assert sorted(scanned) == ["/", "/a", "/a/deep", "/b"]
 
 
 def test_folder_budget_follows_the_member_count():
@@ -155,7 +171,7 @@ def test_folder_budget_follows_the_member_count():
     assert large - small == batch_runner.MEMBER_SCAN_RANGE_SECONDS
 
 
-# The file cursor of the real scan_folder_range.
+# The file cursor of the real scan_folder_range_v2.
 
 def _members(path, names):
     path.mkdir(parents=True, exist_ok=True)
@@ -165,7 +181,7 @@ def _members(path, names):
 
 @pytest.fixture
 def ingested(monkeypatch):
-    """Patch the two writers of scan_folder_range, and record the file paths it ingests."""
+    """Patch the two writers of the range scan, and record the file paths it ingests."""
     paths = []
     monkeypatch.setattr(disk, "insert_vfs_directories", lambda _p: 0)
     monkeypatch.setattr(disk, "ingest_files_batch",
@@ -202,7 +218,7 @@ def test_retry_of_another_folder_scans_its_whole_range(tmp_path, ingested):
                                    heartbeat_details=[stage_detail, {"last_file_name": "m"}])
     folder = disk.ListDiskFolderParams("c", "c_d", str(tmp_path), "/", "", "h1", "")
 
-    result = env.run(disk.scan_folder_range, disk.ScanFolderRangeParams(folder, ""))
+    result = env.run(disk.scan_folder_range_v2, disk.ScanFolderRangeParams(folder, ""))
 
     assert result.files_ingested == 3
     assert ingested == ["/a", "/n", "/z"]

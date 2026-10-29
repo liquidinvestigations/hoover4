@@ -46,6 +46,8 @@ _INDEX_FIXTURES = json.loads((Path(__file__).parent / "fixtures" /
                              "index_activity_contract_histories.json").read_text())
 _CURSOR_FIXTURES = json.loads((Path(__file__).parent / "fixtures" /
                               "pdf_cursor_contract_histories.json").read_text())
+_SCAN_FIXTURES = json.loads((Path(__file__).parent / "fixtures" /
+                            "scan_folder_range_histories.json").read_text())
 
 
 @pytest.mark.parametrize("entry", [pytest.param(entry, id=name)
@@ -60,13 +62,24 @@ def test_cursor_continuation_and_interrupted_histories_replay(entry):
     _replay_history(entry)
 
 
+@pytest.mark.parametrize("entry", [pytest.param(entry, id=name)
+                                  for name, entry in _SCAN_FIXTURES.items()])
+def test_folder_scan_histories_of_both_range_results_replay(entry):
+    """`HandleFolders` histories of `scan_folder_range` (paths) and `scan_folder_range_v2` (names).
+
+    Each first run continues as new from a planned boundary. The two `paths-*-in-flight`
+    histories end while a range scan or a child runs, as at a worker restart.
+    """
+    _replay_history(entry)
+
+
 def _replay_history(entry):
     from temporalio.client import WorkflowHistory
     from temporalio.worker import Replayer
 
     from tasks.P_admin.workflows import OcrRunPlan, RerunOcr, ChangeOcrLanguages
     from tasks.P_ops.workflows import Operation
-    from tasks.P0_scan_disk.workflows import IngestAndProcessDataset, IngestDiskDataset
+    from tasks.P0_scan_disk.workflows import HandleFolders, IngestAndProcessDataset, IngestDiskDataset
     from tasks.P1_compute_plans.workflows import ComputePlans
     from tasks.P2_execute_plan.workflows import ExecutePlans, ExecuteSinglePlan, ProcessItemsBatched
     from tasks.P4_extract_entities.workflows import ExtractEntitiesForPlan, ScanRegexEntitiesForPlan
@@ -76,7 +89,7 @@ def _replay_history(entry):
     from tasks.run_worker import sandboxed_runner
 
     replayer = Replayer(
-        workflows=[RerunOcr, OcrRunPlan, ChangeOcrLanguages, Operation, IngestAndProcessDataset, IngestDiskDataset, ComputePlans, ExecutePlans, ExecuteSinglePlan, ProcessItemsBatched,
+        workflows=[RerunOcr, OcrRunPlan, ChangeOcrLanguages, Operation, IngestAndProcessDataset, IngestDiskDataset, HandleFolders, ComputePlans, ExecutePlans, ExecuteSinglePlan, ProcessItemsBatched,
                    ExtractEntitiesForPlan, ScanRegexEntitiesForPlan, ChunkEmbedForPlan,
                    IndexDatasetPlan, PdfPartGroup],
         workflow_runner=sandboxed_runner(),

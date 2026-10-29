@@ -328,6 +328,14 @@ them with the `HOOVER4_REPLAY_HISTORIES` case of
 `IngestUploadBatches` have no versioning either. A change to their command sequence needs no
 running execution of them.
 
+`HandleFolders` selects its range scan activity with the `scan-folder-range-names` patch, so
+its running executions need no drain for that change. A history without the marker replays
+the first activity version and its full-path results. [P0_scan_disk/Readme.md](P0_scan_disk/Readme.md) describes
+both versions. The `HandleFolders` histories of `IngestDiskDataset` replay with the same
+`HOOVER4_REPLAY_HISTORIES` case. A history of a failed run also holds the
+`capture_operation_failure` activity of the `OperationFailureInterceptor`. The replayer of
+that test does not install the interceptor, so the replay of such a history fails.
+
 **The board drain.** A change to [P_board/workflows.py](P_board/workflows.py) needs no live `BoardDispatcher` or
 `BoardExplore`. Terminate `board-dispatcher`, cancel each `board-explore-*` workflow, and then
 restart the worker, which starts the dispatcher again. [docs/architecture/Boards.md](../../../docs/architecture/Boards.md) says how

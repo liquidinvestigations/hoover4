@@ -16,7 +16,7 @@ with workflow.unsafe.imports_passed_through():
     from tasks.heartbeat import ACTIVITY_MAX_ATTEMPTS, HEARTBEAT_TIMEOUT
     from tasks.workflow_window import run_with_window
     from tasks.P0_scan_disk.activities import (
-        plan_folder_ranges, scan_folder_range,
+        plan_folder_ranges, scan_folder_range, scan_folder_range_v2, subfolder_path,
         reconcile_deleted_files,
         ListDiskFolderParams, ScanFolderRangeParams,
         ReconcileDeletedFilesParams,
@@ -50,6 +50,11 @@ def _child_workflow_id(prefix: str, params: Any) -> str:
 RANGE_WINDOW = 8
 SUBFOLDER_WINDOW = 16
 HISTORY_EVENTS_PER_RUN = 10_000
+
+#: The `workflow.patched` id of the range scan that returns subfolder names. A run that
+#: records it schedules `scan_folder_range_v2`. A history without it schedules
+#: `scan_folder_range`, and its results hold full paths.
+SCAN_SUBFOLDER_NAMES_PATCH = "scan-folder-range-names"
 
 
 def _history_budget_reached() -> bool:
@@ -116,6 +121,12 @@ class HandleFolders:
     """Workflow that scans one folder through bounded name ranges."""
     @workflow.run
     async def run(self, params: HandleFoldersParams) -> str:
+        # Decided once for each run, before its first command. A history that scheduled
+        # `scan_folder_range` holds no marker, so its replay reads full paths in every
+        # range. A new run, a continued run and a child run record the marker. Each of
+        # them scans its ranges with `scan_folder_range_v2` and reads names. The input
+        # of a run holds its own folder path, never a range result.
+        subfolder_names = workflow.patched(SCAN_SUBFOLDER_NAMES_PATCH)
         plan = await workflow.execute_activity(
             plan_folder_ranges,
             ListDiskFolderParams(
@@ -134,17 +145,30 @@ class HandleFolders:
         children = asyncio.Semaphore(SUBFOLDER_WINDOW)
 
         async def one_range(after_name: str, until_name: str) -> None:
-            result = await workflow.execute_activity(
-                scan_folder_range,
-                ScanFolderRangeParams(ListDiskFolderParams(
-                    params.collectionname, params.collection_dataset, params.dataset_path,
-                    params.folder_path, after_name, params.container_hash,
-                    params.root_path_prefix, params.op_id,
-                ), until_name),
-                start_to_close_timeout=timedelta(hours=6),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-            )
+            range_params = ScanFolderRangeParams(ListDiskFolderParams(
+                params.collectionname, params.collection_dataset, params.dataset_path,
+                params.folder_path, after_name, params.container_hash,
+                params.root_path_prefix, params.op_id,
+            ), until_name)
+            if subfolder_names:
+                names_result = await workflow.execute_activity(
+                    scan_folder_range_v2,
+                    range_params,
+                    start_to_close_timeout=timedelta(hours=6),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                )
+                subfolders = [subfolder_path(params.folder_path, name)
+                              for name in names_result.subfolder_names]
+            else:
+                paths_result = await workflow.execute_activity(
+                    scan_folder_range,
+                    range_params,
+                    start_to_close_timeout=timedelta(hours=6),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                )
+                subfolders = paths_result.subfolders
 
             def child_factory(folder_path: str):
                 async def start_child():
@@ -160,7 +184,7 @@ class HandleFolders:
                 return start_child
 
             child_results = await run_with_window(
-                [child_factory(folder) for folder in result.subfolders], SUBFOLDER_WINDOW)
+                [child_factory(folder) for folder in subfolders], SUBFOLDER_WINDOW)
             for child_result in child_results:
                 if isinstance(child_result, Exception):
                     raise child_result

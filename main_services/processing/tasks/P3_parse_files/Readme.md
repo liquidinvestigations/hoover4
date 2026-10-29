@@ -361,7 +361,7 @@ is zero. The group then gives the member scan no folder for that file.
 
 Most messages in a mail corpus carry no attachment, so most email extractions write
 nothing. The member scan of a folder costs one `plan_folder_ranges` call and one
-`scan_folder_range` call, also when the folder is empty. The group skips these calls for
+`scan_folder_range_v2` call, also when the folder is empty. The group skips these calls for
 each email or archive extraction that wrote no file.
 
 ## A tabular document is read twice: as text, and as a grid

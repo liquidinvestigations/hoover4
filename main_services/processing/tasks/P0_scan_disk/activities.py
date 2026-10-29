@@ -181,9 +181,31 @@ class FolderRanges:
 
 @dataclass
 class RangeResult:
+    """`scan_folder_range` returns this result. Each subfolder is a path from the dataset root."""
     subfolders: List[str]
     files_ingested: int
     folders_seen: int
+
+
+@dataclass
+class RangeNamesResult:
+    """`scan_folder_range_v2` returns this result. Each subfolder is a name in the scanned folder.
+
+    A name has at most 255 bytes. The JSON converter writes a non-ASCII character as an
+    escape of 6 or 12 bytes. 500 names therefore give at most about 390 KB.
+    `subfolder_path` makes the path of a name.
+    """
+    subfolder_names: List[str]
+    files_ingested: int
+    folders_seen: int
+
+
+def subfolder_path(folder_path: str, name: str) -> str:
+    """Return the path from the dataset root of the subfolder `name` of `folder_path`.
+
+    The result is the path that `scan_folder_range` returns for the same subfolder.
+    """
+    return folder_path.rstrip("/") + "/" + name
 
 
 @dataclass
@@ -306,14 +328,11 @@ def _resume_after_name(after_name: str, until_name: str) -> str:
     return saved_name
 
 
-@activity.defn
-@with_heartbeat
-def scan_folder_range(params: ScanFolderRangeParams) -> RangeResult:
-    """Ingest one name range and return only the names of its subfolders.
+def _scan_range(params: ScanFolderRangeParams) -> Tuple[List[str], List[str], int]:
+    """Ingest one name range of a folder.
 
-    The disk scan starts a child folder workflow for each name. The member scan of
-    `tasks/P3_parse_files/member_scan.py` calls this function in process and scans each
-    name itself.
+    Returns the subfolder names, the subfolder paths from the dataset root, and the count
+    of ingested files. The two range scan activities share this body.
     """
     folder = params.folder
     file_after_name = _resume_after_name(folder.after_name, params.until_name)
@@ -324,6 +343,7 @@ def scan_folder_range(params: ScanFolderRangeParams) -> RangeResult:
         ),
         params.until_name,
     )
+    names: List[str] = []
     dirs: List[str] = []
     files: List[Dict[str, Any]] = []
     for _name, entry in listed:
@@ -334,6 +354,7 @@ def scan_folder_range(params: ScanFolderRangeParams) -> RangeResult:
         rel_child = os.path.relpath(entry.path, folder.dataset_path).replace(os.sep, "/")
         path = "/" + rel_child if not rel_child.startswith("/") else rel_child
         if entry.is_dir(follow_symlinks=False):
+            names.append(_name)
             dirs.append(path)
         elif entry.is_file(follow_symlinks=False) and _name > file_after_name:
             files.append({"path": path, "size": int(stat.st_size), "mtime": int(stat.st_mtime)})
@@ -359,7 +380,34 @@ def scan_folder_range(params: ScanFolderRangeParams) -> RangeResult:
         # detail stays the first detail. The cursor then is not details[0], and a retry
         # scans its range from the start. Values precede blob headers, then VFS rows.
         send_heartbeat({"last_file_name": batch[-1]["path"].rsplit("/", 1)[-1]})
+    return names, dirs, files_ingested
+
+
+@activity.defn
+@with_heartbeat
+def scan_folder_range(params: ScanFolderRangeParams) -> RangeResult:
+    """Ingest one name range and return the full path of each of its subfolders.
+
+    This is the first version of the range scan. A `HandleFolders` history recorded before
+    the `scan-folder-range-names` patch schedules it, so the worker keeps it for replay. Its
+    result can pass the gRPC message limit when the subfolder paths are long.
+    """
+    _names, dirs, files_ingested = _scan_range(params)
     return RangeResult(dirs, files_ingested, len(dirs))
+
+
+@activity.defn
+@with_heartbeat
+def scan_folder_range_v2(params: ScanFolderRangeParams) -> RangeNamesResult:
+    """Ingest one name range and return the name of each of its subfolders.
+
+    The disk scan joins each name to its folder path with `subfolder_path` and starts a
+    child folder workflow for each path. The member scan of
+    `tasks/P3_parse_files/member_scan.py` calls this function in process and joins the
+    names in the same way.
+    """
+    names, _dirs, files_ingested = _scan_range(params)
+    return RangeNamesResult(names, files_ingested, len(names))
 
 
 @dataclass

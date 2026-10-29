@@ -12,20 +12,43 @@ This stage discovers datasets on disk, enumerates directories and files, and pop
 ## Entry Points
 
 - Workflow: `IngestDiskDataset` in [workflows.py](workflows.py)
-- Activities: `plan_folder_ranges`, `scan_folder_range`, `reconcile_deleted_files` in
-  [activities.py](activities.py)
+- Activities: `plan_folder_ranges`, `scan_folder_range_v2`, `scan_folder_range` (for replay),
+  `reconcile_deleted_files` in [activities.py](activities.py)
 - CLI helper: [submit_job.py](submit_job.py) (used by `main.py add-disk-dataset`)
 
 ## Technical Details
 
 The workflow starts at the dataset root. Each `HandleFolders` run scans one folder through
 sorted name ranges. The planning activity returns range boundaries. The scan activity ingests
-file batches and returns only child folder names. A shared limit keeps at most 16 child
+file batches and returns the name of each child folder, and `HandleFolders` joins each name to
+its own folder path. A shared limit keeps at most 16 child
 workflows in flight. A run continues from its last range boundary when its history reaches its
 limit. P3 extracts archives, emails, PDFs and videos into container folders. The member scan of
 a P3 group scans those folders in process with the same two activity functions, and starts no
 `HandleFolders`. Hashing uses one streaming pass for `sha3_256`, `md5`, `sha1`, and `sha256`. Blob storage
 uses ClickHouse (`blob_values`) for small files and the collection Garage bucket for larger files.
+
+## The range scan returns names, and the first version stays for replay
+
+`scan_folder_range_v2` returns `RangeNamesResult`, with one name of at most 255 bytes for each
+subfolder. Its first version, `scan_folder_range`, returns `RangeResult` with the full path of
+each subfolder from the dataset root. 500 subfolders with long multibyte paths give a result
+of up to 6 MB. That result is larger than the gRPC message limit of 4 MB. The worker cannot
+complete the activity, and the scan of the dataset fails after its attempts. The JSON
+converter writes a non-ASCII character as an escape of 6 or 12 bytes. The largest names
+result is therefore about 390 KB.
+
+`HandleFolders` calls `workflow.patched("scan-folder-range-names")` once, before its first
+command. A run that records the marker schedules `scan_folder_range_v2` and reads names. A
+history from before the patch has no marker. Its replay schedules `scan_folder_range` and reads
+full paths. Both versions start each child with the same full path, so the child workflow ids
+do not change. A continued run and a child run carry their own folder path and cursor, and
+no range result. Each new run therefore records the marker. The common worker registers both
+activities. The member scan of a P3 group calls `scan_folder_range_v2` in process and joins
+the names with the same `subfolder_path`.
+
+[tests/unit/fixtures/scan_folder_range_histories.json](../../tests/unit/fixtures/scan_folder_range_histories.json) holds `HandleFolders` histories of both
+versions. Two of them end while a range or a child of the first version runs.
 
 ## Upload part files are skipped
 

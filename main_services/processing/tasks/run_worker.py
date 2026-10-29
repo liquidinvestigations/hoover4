@@ -252,7 +252,7 @@ async def _probe_embeddings_at_startup(worker_name: str) -> None:
 async def run_common_worker():
     # Localized imports for common worker only
     from .P0_scan_disk.activities import (
-        plan_folder_ranges, scan_folder_range,
+        plan_folder_ranges, scan_folder_range, scan_folder_range_v2,
         reconcile_deleted_files,
     )
     from .P0_scan_disk.workflows import IngestAndProcessDataset, IngestDiskDataset, HandleFolders
@@ -437,7 +437,10 @@ async def run_common_worker():
           ],
           activities=[
             plan_folder_ranges,
+            # The first version stays registered for histories recorded before the
+            # `scan-folder-range-names` patch of `HandleFolders`.
             scan_folder_range,
+            scan_folder_range_v2,
             reconcile_deleted_files,
 
             # The upload queue and the targeted upload ingest.

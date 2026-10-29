@@ -22,7 +22,8 @@ from tasks.P0_scan_disk.activities import (
     ListDiskFolderParams,
     ScanFolderRangeParams,
     plan_folder_ranges,
-    scan_folder_range,
+    scan_folder_range_v2,
+    subfolder_path,
 )
 from tasks.P3_parse_files.batch_runner import (
     BatchResult,
@@ -45,8 +46,8 @@ def scan_folder_tree(collectionname: str, collection_dataset: str, dataset_path:
 
     This is the loop of `HandleFolders.run`, with the same two activity functions and the
     same arguments, called in this process. It plans the name ranges of one folder, scans
-    each range, and adds the subfolders that a range returns. A folder whose plan stops at
-    a boundary is planned again from that boundary.
+    each range, and adds the path of each subfolder name that a range returns. A folder
+    whose plan stops at a boundary is planned again from that boundary.
     """
     pending = ["/"]
     while pending:
@@ -61,11 +62,12 @@ def scan_folder_tree(collectionname: str, collection_dataset: str, dataset_path:
             if not plan.more_after:
                 edges.append("")
             for start, until in zip(edges[:-1], edges[1:]):
-                result = scan_folder_range(ScanFolderRangeParams(ListDiskFolderParams(
+                result = scan_folder_range_v2(ScanFolderRangeParams(ListDiskFolderParams(
                     collectionname, collection_dataset, dataset_path, folder_path,
                     start, container_hash, "", op_id,
                 ), until))
-                pending.extend(result.subfolders)
+                pending.extend(subfolder_path(folder_path, name)
+                               for name in result.subfolder_names)
             if not plan.more_after:
                 break
             after_name = plan.more_after

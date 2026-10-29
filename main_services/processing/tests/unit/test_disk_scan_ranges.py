@@ -141,9 +141,107 @@ def test_handle_folders_raises_the_first_child_failure(monkeypatch):
         return [RuntimeError("child failed")]
 
     monkeypatch.setattr(workflows.workflow, "info", Info)
+    monkeypatch.setattr(workflows.workflow, "patched", lambda _patch_id: False)
     monkeypatch.setattr(workflows.workflow, "execute_activity", execute_activity)
     monkeypatch.setattr(workflows.workflow, "wait", wait)
     monkeypatch.setattr(workflows, "run_with_window", run_window)
     params = workflows.HandleFoldersParams("collection", "dataset", "/tmp/data", "/")
     with pytest.raises(RuntimeError, match="child failed"):
         asyncio.run(workflows.HandleFolders().run(params))
+
+
+def _range_tree(tmp_path):
+    (tmp_path / "x" / "sub-\u00e9").mkdir(parents=True)
+    (tmp_path / "x" / "sub-b").mkdir()
+    (tmp_path / "x" / "file.txt").write_text("f")
+
+
+def test_names_result_holds_names_and_joins_to_the_paths_result(tmp_path, monkeypatch):
+    _range_tree(tmp_path)
+    directories = []
+    batches = []
+    monkeypatch.setattr(activities, "insert_vfs_directories",
+                        lambda params: directories.append(params.dir_paths) or 0)
+    monkeypatch.setattr(activities, "ingest_files_batch",
+                        lambda params: batches.append(params.file_paths) or "ok")
+    folder = activities.ListDiskFolderParams("collection", "dataset", str(tmp_path), "/x")
+
+    paths = activities.scan_folder_range(activities.ScanFolderRangeParams(folder, ""))
+    names = activities.scan_folder_range_v2(activities.ScanFolderRangeParams(folder, ""))
+
+    assert names.subfolder_names == ["sub-b", "sub-\u00e9"]
+    assert (names.files_ingested, names.folders_seen) == (1, 2)
+    assert paths.subfolders == ["/x/sub-b", "/x/sub-\u00e9"]
+    assert [activities.subfolder_path("/x", name) for name in names.subfolder_names] == paths.subfolders
+    # Both versions write the full paths to the VFS and ingest the same files.
+    assert directories == [paths.subfolders, paths.subfolders]
+    assert batches == [["/x/file.txt"], ["/x/file.txt"]]
+
+
+def test_subfolder_path_joins_the_root_and_a_nested_folder():
+    assert activities.subfolder_path("/", "a") == "/a"
+    assert activities.subfolder_path("/a/b", "c") == "/a/b/c"
+
+
+def test_names_result_stays_small_for_the_longest_paths():
+    """500 subfolders 4,000 bytes deep give a paths result above the 2 MB blob limit."""
+    from temporalio.converter import default
+
+    from tasks.operation_failure_capture import TEMPORAL_BLOB_LIMIT_BYTES
+
+    def size(value):
+        return len(default().payload_converter.to_payloads([value])[0].data)
+
+    folder = ("/" + "\u00e9" * 125) * 15
+    names = [f"{index:03d}" + "\u00e9" * 115 for index in range(500)]
+    paths = activities.RangeResult([activities.subfolder_path(folder, n) for n in names], 0, 500)
+    assert len(paths.subfolders[0].encode()) == 3999
+    assert size(paths) > TEMPORAL_BLOB_LIMIT_BYTES
+    # The default converter escapes each non-ASCII character to 6 bytes.
+    assert size(activities.RangeNamesResult(names, 0, 500)) < 512 * 1024
+
+
+@pytest.mark.parametrize("patched", [True, False])
+def test_handle_folders_reads_the_result_of_its_activity_version(monkeypatch, patched):
+    class Info:
+        def get_current_history_length(self):
+            return 0
+
+        def is_continue_as_new_suggested(self):
+            return False
+
+    scheduled = []
+
+    async def execute_activity(fn, _params, **_kwargs):
+        scheduled.append(fn)
+        if fn is workflows.plan_folder_ranges:
+            return activities.FolderRanges([], "")
+        if fn is workflows.scan_folder_range_v2:
+            return activities.RangeNamesResult(["child"], 0, 1)
+        return activities.RangeResult(["/parent/child"], 0, 1)
+
+    async def wait(pending, **kwargs):
+        return await asyncio.wait(pending, **kwargs)
+
+    children = []
+
+    async def execute_child_workflow(_run, child_params, **kwargs):
+        children.append((child_params.folder_path, child_params.after_name, kwargs["id"]))
+        return "ok"
+
+    monkeypatch.setattr(workflows.workflow, "info", Info)
+    monkeypatch.setattr(workflows.workflow, "patched",
+                        lambda patch_id: patch_id == workflows.SCAN_SUBFOLDER_NAMES_PATCH and patched)
+    monkeypatch.setattr(workflows.workflow, "execute_activity", execute_activity)
+    monkeypatch.setattr(workflows.workflow, "execute_child_workflow", execute_child_workflow)
+    monkeypatch.setattr(workflows.workflow, "wait", wait)
+    monkeypatch.setattr(workflows, "dataset_search_attributes", lambda _dataset: None)
+    params = workflows.HandleFoldersParams("collection", "dataset", "/tmp/data", "/parent", "m")
+
+    asyncio.run(workflows.HandleFolders().run(params))
+
+    expected_scan = workflows.scan_folder_range_v2 if patched else workflows.scan_folder_range
+    assert scheduled == [workflows.plan_folder_ranges, expected_scan]
+    child = workflows.HandleFoldersParams("collection", "dataset", "/tmp/data", "/parent/child")
+    # Both versions start the same child, with the same workflow id.
+    assert children == [("/parent/child", "", workflows._child_workflow_id("HandleFolders", child))]

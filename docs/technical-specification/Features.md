@@ -23,7 +23,7 @@ languages.
 
 | id | capability | owned by |
 |---|---|---|
-| `F-ingest-01` | Ingest a disk directory tree with bounded name ranges. Store blob values before headers with waited inserts. Record unreadable files and continue the batch. Look up stored paths through an external table, so a path of any length and with any character stays out of the SQL text. | [main_services/processing/tasks/P0_scan_disk/](../../main_services/processing/tasks/P0_scan_disk) |
+| `F-ingest-01` | Ingest a disk directory tree with bounded name ranges. A range result names each subfolder without its folder path, so a folder at any depth stays below the Temporal payload limits. Store blob values before headers with waited inserts. Record unreadable files and continue the batch. Look up stored paths through an external table, so a path of any length and with any character stays out of the SQL text. | [main_services/processing/tasks/P0_scan_disk/](../../main_services/processing/tasks/P0_scan_disk) |
 | `F-ingest-02` | Deduplicate by content hash, so the same content at two paths is stored once | `P0_scan_disk/`, the blob tables |
 | `F-ingest-03` | Extract archive, PST, OST, MSG, mbox, and TNEF members as documents. [Read the contract.](Capability_Contracts.md#f-ingest-03) | `P3_parse_files/`, [P2_execute_plan/workflows.py](../../main_services/processing/tasks/P2_execute_plan/workflows.py) |
 | `F-ingest-04` | Extract text from documents, per format, recording which extractor produced each page. [Read the contract.](Capability_Contracts.md#f-ingest-04) | `P3_parse_files/` |
