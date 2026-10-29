@@ -18,9 +18,7 @@ pub struct SearchForResultsHitCountResponse {
 ///
 /// **Upper bound, not an exact total:** the same `file_hash` can exist in two
 /// collections (the same file ingested twice), so per-shard distinct counts are
-/// not strictly additive. When one or more shards fail (`partial` in the
-/// response) the failed shards' counts are missing and the total is a *lower*
-/// bound instead.
+/// not strictly additive. A shard that fails after its retries fails the count.
 pub async fn search_for_results_hit_count(user: &CurrentUser, query: SearchQuery) -> anyhow::Result<SearchResultHitCount> {
     crate::api::telemetry::record_event(&user.username, crate::api::telemetry::EVENT_USER_SEARCH, "");
     search_hit_count(user, query).await
@@ -30,12 +28,12 @@ pub async fn search_for_results_hit_count(user: &CurrentUser, query: SearchQuery
 pub(crate) async fn search_hit_count(user: &CurrentUser, query: SearchQuery) -> anyhow::Result<SearchResultHitCount> {
     let perms = permissions::resolve_permissions(user).await?;
     let Some(query) = permissions::sanitize_query(query, &perms) else {
-        return Ok(SearchResultHitCount { total: 0, partial: false });
+        return Ok(SearchResultHitCount { total: 0 });
     };
     let collections = fanout::permitted_search_collections(user, &query).await?;
-    let targets = fanout::shard_targets(&collections).await;
+    let targets = fanout::shard_targets(&collections).await?;
     if targets.is_empty() {
-        return Ok(SearchResultHitCount { total: 0, partial: false });
+        return Ok(SearchResultHitCount { total: 0 });
     }
 
     let outcome = fanout::fan_out(targets, |target: FanoutTarget| {
@@ -57,10 +55,8 @@ pub(crate) async fn search_hit_count(user: &CurrentUser, query: SearchQuery) -> 
         }
     })
     .await?;
-    let partial = outcome.is_partial();
 
     let total_count_upper_bound: u64 = outcome
-        .results
         .into_iter()
         .map(|(_, response)| {
             response
@@ -71,5 +67,5 @@ pub(crate) async fn search_hit_count(user: &CurrentUser, query: SearchQuery) -> 
                 .unwrap_or(0)
         })
         .sum();
-    Ok(SearchResultHitCount { total: total_count_upper_bound, partial })
+    Ok(SearchResultHitCount { total: total_count_upper_bound })
 }

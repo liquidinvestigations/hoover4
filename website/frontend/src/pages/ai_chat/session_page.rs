@@ -180,6 +180,7 @@ fn AiChatSessionRoot(
                 set_selected.call(id);
             }
         }),
+        retry_search: Callback::new(|_| {}),
     });
 
     // A document card opens its document at its own find query, so the find query of

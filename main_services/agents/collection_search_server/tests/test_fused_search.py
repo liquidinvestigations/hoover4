@@ -244,3 +244,60 @@ class TestVectorEndpoint:
         assert error is None
         assert [hit.match_sources for hit in hits] == [["keyword"]]
         assert notes == ["vector search unavailable: vectors daemon is unavailable"]
+
+
+class TestShardFailures:
+    """The keyword half of a passage search is complete or it fails."""
+
+    def _keyword_only(self, monkeypatch, query):
+        monkeypatch.setattr(server.embeddings_client, "endpoint", lambda: None)
+        monkeypatch.setattr(server, "_shard_tables", lambda _collection: ["coll_1_pages", "coll_2_pages"])
+        from collection_search_server import backends
+        monkeypatch.setattr(backends.time, "sleep", lambda _s: None)
+        calls: dict[str, int] = {}
+
+        def run(sql):
+            table = "coll_2_pages" if "coll_2_pages" in sql else "coll_1_pages"
+            calls[table] = calls.get(table, 0) + 1
+            return query(table, calls[table])
+
+        monkeypatch.setattr(server, "manticore_query", run)
+        return calls
+
+    @staticmethod
+    def _row(text):
+        return [{"collection_dataset": "coll_ds", "file_hash": H1, "page_id": 1, "score": 1.0, "page_text": text}]
+
+    def test_a_shard_that_fails_once_is_retried_alone(self, monkeypatch):
+        def query(table, attempt):
+            if table == "coll_2_pages" and attempt == 1:
+                raise RuntimeError("connection reset")
+            return self._row(table)
+
+        calls = self._keyword_only(monkeypatch, query)
+        hits, _notes, error = server._search_one("keyword", ["coll"], 3, [])
+        assert error is None and hits
+        assert calls == {"coll_1_pages": 1, "coll_2_pages": 2}
+
+    def test_a_shard_that_never_answers_fails_the_query(self, monkeypatch):
+        def query(table, _attempt):
+            if table == "coll_2_pages":
+                raise RuntimeError("connection refused")
+            return self._row(table)
+
+        calls = self._keyword_only(monkeypatch, query)
+        hits, notes, error = server._search_one("keyword", ["coll"], 3, [])
+        assert hits == [] and "coll_2_pages did not answer" in error
+        assert not any("partial" in note for note in notes)
+        assert calls["coll_2_pages"] == 3
+
+    def test_a_refused_query_is_not_retried(self, monkeypatch):
+        from collection_search_server.backends import ManticoreRefused
+
+        def query(_table, _attempt):
+            raise ManticoreRefused("Manticore query failed: no field 'title' found in schema")
+
+        calls = self._keyword_only(monkeypatch, query)
+        hits, _notes, error = server._search_one("keyword", ["coll"], 3, [])
+        assert hits == [] and "no field 'title'" in error
+        assert sum(calls.values()) == 1

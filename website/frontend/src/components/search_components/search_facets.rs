@@ -7,7 +7,7 @@
 //! not usable.
 //!
 //! What stayed is the part the modal reuses verbatim: the list itself, its hit counts,
-//! its partial-shard notice, and `ResolveMissingItems`.
+//! and `ResolveMissingItems`.
 
 use std::collections::BTreeSet;
 
@@ -150,23 +150,6 @@ pub fn FacetSelectorList(
         .collect::<Vec<_>>();
 
     rsx! {
-        // Partial-results notice: one or more shards could not be searched, so these
-        // buckets and counts may be missing the failed shard's contribution.
-        if search_result.partial {
-            div {
-                style: "
-                    width: 100%;
-                    padding: 6px 10px;
-                    margin-bottom: 4px;
-                    border: 1px solid rgba(200, 120, 0, 0.6);
-                    border-radius: 6px;
-                    background-color: rgba(255, 180, 60, 0.15);
-                    color: rgb(120, 70, 0);
-                    font-size: 13px;
-                ",
-                "Some collections could not be searched, so facet counts may be incomplete."
-            }
-        }
         if no_matches {
             div {
                 style: "padding: 8px; font-size: 13px; color: rgba(0,0,0,0.55);",

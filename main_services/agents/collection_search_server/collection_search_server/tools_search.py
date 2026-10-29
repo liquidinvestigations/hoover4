@@ -207,7 +207,6 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
     transport = 0
     word_counts, suggestions, query_forms = [], [], []
     keyword_sources = set()
-    suggestions_partial = False
     following: list[dict[str, Any]] = []
     for number, form in enumerate(forms):
         result = BackendClient().post("search/results", _route_request(request, form), SearchResultsResponse)
@@ -216,13 +215,12 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
             transport += result.retryable
             continue
         succeeded += 1
-        suggestions_partial |= result.suggestions_partial
         word_counts.extend({**w.model_dump(), "query": form} for w in result.word_counts)
         suggestions.extend({**g.model_dump(), "query": form} for g in result.suggestions)
         query_forms.append({"query": form, "total_count": result.total_count,
                             "word_counts": [w.model_dump() for w in result.word_counts]})
         for word in result.word_counts:
-            if word.documents != 0 or result.suggestions_partial:
+            if word.documents != 0:
                 continue
             group = next((g for g in result.suggestions if g.word == word.word), None)
             nearby = ", ".join(f"`{c.word}` ({c.documents} documents)" for c in group.candidates) if group else "none"
@@ -263,7 +261,7 @@ def _search_forms(request: SearchCollectionsRequest) -> dict[str, Any]:
         refs.append(paging.doc_ref(document, snippet=row["snippet"]))
     return {"documents": rows, "query_notes": notes, "partial": partial,
             "word_counts": word_counts, "suggestions": suggestions,
-            "suggestions_partial": suggestions_partial, "query_forms": query_forms,
+            "query_forms": query_forms,
             "keyword_sources": sorted(keyword_sources),
             "__following": {"_forms": following} if following else None, paging.REFS_KEY: refs}
 

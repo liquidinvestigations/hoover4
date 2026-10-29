@@ -12,7 +12,8 @@ import json
 import logging
 import os
 import re
-from typing import Any, NamedTuple
+import time
+from typing import Any, Callable, NamedTuple, TypeVar
 
 import requests
 
@@ -108,6 +109,37 @@ def manticore_query_options(max_matches: int, *, pages: bool = True) -> str:
     return options
 
 
+#: Attempts one search call gets before the search that needs it fails. The website
+#: search fan-out uses the same count and the same waits.
+SEARCH_ATTEMPTS = 3
+RETRY_WAITS_SECONDS = (0.25, 1.0)
+
+T = TypeVar("T")
+
+
+class ManticoreRefused(RuntimeError):
+    """Manticore answered and refused the statement. Another attempt fails the same way."""
+
+
+def with_retries(label: str, call: Callable[[], T]) -> T:
+    """Run `call` until it succeeds or uses `SEARCH_ATTEMPTS`, and raise the last error.
+
+    A refused statement and a timeout are raised at once. The first fails the same way
+    each time, and the second already used the whole search budget.
+    """
+    for attempt in range(1, SEARCH_ATTEMPTS + 1):
+        try:
+            return call()
+        except (ManticoreRefused, requests.Timeout):
+            raise
+        except Exception as exc:  # noqa: BLE001 - a transport or datastore failure can pass
+            if attempt == SEARCH_ATTEMPTS:
+                raise
+            log.warning("%s: attempt %d failed, retrying: %s", label, attempt, exc)
+            time.sleep(RETRY_WAITS_SECONDS[attempt - 1])
+    raise AssertionError("unreachable")
+
+
 def _manticore_query(url: str, sql: str) -> list[dict]:
     """Run one Manticore SQL statement against one selected endpoint."""
     response = requests.post(
@@ -118,13 +150,16 @@ def _manticore_query(url: str, sql: str) -> list[dict]:
         timeout=manticore_search_timeout_seconds() + 5,
     )
     if response.status_code != 200:
-        raise RuntimeError(f"Manticore error {response.status_code}: {response.text[:400]}")
+        message = f"Manticore error {response.status_code}: {response.text[:400]}"
+        if response.status_code < 500 and response.status_code not in (401, 403):
+            raise ManticoreRefused(message)
+        raise RuntimeError(message)
 
     payload = response.json()
     if isinstance(payload, list):
         payload = payload[0] if payload else {}
     if payload.get("error"):
-        raise RuntimeError(f"Manticore query failed: {payload['error']}")
+        raise ManticoreRefused(f"Manticore query failed: {payload['error']}")
     return payload.get("data", [])
 
 

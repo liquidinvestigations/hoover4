@@ -252,6 +252,7 @@ fn BoardExplorer(
         selected_result_hash: no_selection.into(),
         set_selected_result_hash: Callback::new(|_| {}),
         set_selected_result_hash_and_page: Callback::new(|_| {}),
+        retry_search: Callback::new(|_| {}),
     });
 
     // The read loop. It reads the id each time, so a navigation to another board shows that

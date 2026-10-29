@@ -188,8 +188,8 @@ pub async fn search_entity_terms(
     .await?;
 
     let mut hits: Vec<EntityTermHit> = Vec::new();
-    let mut truncated = outcome.is_partial();
-    for (_target, response) in outcome.results {
+    let mut truncated = false;
+    for (_target, response) in outcome {
         if response.hits.hits.len() as u64 >= TERM_HIT_LIMIT {
             truncated = true;
         }

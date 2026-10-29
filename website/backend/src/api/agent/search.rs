@@ -253,12 +253,11 @@ async fn search_source(
     Ok((collections, source))
 }
 
-/// The counts of every facet in [`SEARCH_FACETS`] for one query, read at once. The
-/// second value is true when a shard could not be read for some facet.
+/// The counts of every facet in [`SEARCH_FACETS`] for one query, read at once.
 async fn search_facet_counts(
     user: &CurrentUser,
     query: &SearchQuery,
-) -> Result<(BTreeMap<String, Vec<AgentFacetCount>>, bool), AgentError> {
+) -> Result<BTreeMap<String, Vec<AgentFacetCount>>, AgentError> {
     let reads = SEARCH_FACETS.iter().map(|(field, terms)| async move {
         let facets = search_string_facet(user, query.clone(), field.to_string(), terms.map(str::to_string), None)
             .await
@@ -267,9 +266,7 @@ async fn search_facet_counts(
     });
     let selected_datasets = query.facet_filters.get("collection_dataset");
     let mut counts = BTreeMap::new();
-    let mut partial = false;
     for (field, facets) in futures::future::try_join_all(reads).await? {
-        partial |= facets.partial;
         let values = facets
             .facet_values
             .into_iter()
@@ -290,7 +287,7 @@ async fn search_facet_counts(
             counts.insert(field.to_string(), values);
         }
     }
-    Ok((counts, partial))
+    Ok(counts)
 }
 
 /// The repairs that the full-text match builder applies to `query`, for example `OR`
@@ -336,7 +333,7 @@ async fn search_results_body(
     let (query, filter_notes) = build_search_query(user, &permitted, &body.collectionname, &body.query, &body.filters, sort).await?;
     let (collections, source) = search_source(user, &query, body.expected_source.as_deref()).await?;
 
-    let (results, hit_count, (facet_counts, facets_partial), suggestions) = tokio::try_join!(
+    let (results, hit_count, facet_counts, suggestions) = tokio::try_join!(
         async { search_for_results(user, query.clone(), page).await.map_err(AgentError::from_anyhow) },
         async { search_for_results_hit_count(user, query.clone()).await.map_err(AgentError::from_anyhow) },
         search_facet_counts(user, &query),
@@ -402,7 +399,6 @@ async fn search_results_body(
     Ok(SearchResultsResponse {
         word_counts: suggestions.word_counts,
         suggestions: suggestions.suggestions,
-        suggestions_partial: suggestions.partial,
         documents,
         total_count: hit_count.total,
         facet_counts,
@@ -413,7 +409,7 @@ async fn search_results_body(
             source,
             next_position,
             total: Some(hit_count.total),
-            partial: results.partial || hit_count.partial || facets_partial,
+            partial: false,
         },
     })
 }

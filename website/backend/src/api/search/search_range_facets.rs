@@ -1,7 +1,6 @@
 //! Counts per file-size bucket.
 //!
-//! Fans out per shard and merges exactly like the string facets, and respects the
-//! partial-shard flag. A separate endpoint from `search_string_facet` because the bucket
+//! Fans out per shard and merges exactly like the string facets. A separate endpoint from `search_string_facet` because the bucket
 //! keys are computed by Manticore rather than stored: buckets are a *presentation*
 //! choice, and pre-baking them into the index would make adding one a schema change plus
 //! a full re-index. The date equivalent is `date_histogram.rs`, which has to measure its
@@ -54,7 +53,6 @@ fn empty(query: SearchQuery, field: &str) -> SearchResultFacets {
         query,
         facet_field: field.to_string(),
         facet_values: Vec::new(),
-        partial: false,
     }
 }
 
@@ -77,7 +75,7 @@ pub async fn search_numeric_facet(
     query.range_filters.remove("file_size_bytes");
 
     let collections = fanout::permitted_search_collections(user, &query).await?;
-    let targets = fanout::shard_targets(&collections).await;
+    let targets = fanout::shard_targets(&collections).await?;
     let mut result = empty(query.clone(), "file_size_bytes");
     if targets.is_empty() {
         return Ok(result);
@@ -113,10 +111,9 @@ pub async fn search_numeric_facet(
         }
     })
     .await?;
-    result.partial = outcome.is_partial();
 
     let mut totals = [0_u64; SIZE_BUCKET_LABELS.len()];
-    for (_, response) in outcome.results {
+    for (_, response) in outcome {
         for hit in response.hits.hits {
             if let Ok(index) = usize::try_from(hit._source.bucket)
                 && index < totals.len()

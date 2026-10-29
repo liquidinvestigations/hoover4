@@ -275,7 +275,6 @@ pub fn CollectionsFacetPane(
     let list_opacity = if request_in_flight(&facets) { STALE_OPACITY } else { "1" };
     let selected = selected_ids(&pending.read());
     let groups = group_buckets(&facets_value.facet_values, &tree_value, &selected);
-    let partial = facets_value.partial;
 
     let needle_text = needle.read().trim().to_lowercase();
     // Narrowing happens on the labels, which are what is on screen. A collection matches
@@ -311,17 +310,6 @@ pub fn CollectionsFacetPane(
                 placeholder: "Search collections and datasets…",
                 value: "{needle}",
                 oninput: move |event| needle.set(event.value()),
-            }
-        }
-        if partial {
-            div {
-                style: "
-                    width: 100%; padding: 6px 10px; margin-bottom: 4px;
-                    border: 1px solid rgba(200, 120, 0, 0.6); border-radius: 6px;
-                    background-color: rgba(255, 180, 60, 0.15); color: rgb(120, 70, 0);
-                    font-size: 13px;
-                ",
-                "Some collections could not be searched, so facet counts may be incomplete."
             }
         }
         if no_matches {

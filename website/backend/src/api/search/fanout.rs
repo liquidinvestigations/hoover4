@@ -17,13 +17,12 @@
 //! the others. Serialising the panes in the frontend instead would be strictly worse:
 //! it makes the tab as slow as the sum of its parts even when the daemon is idle.
 //!
-//! **Partial-failure policy, a dropped shard and a truncated shard are different.**
-//! One broken shard must not blank the whole result page: per-target errors are logged
-//! as warnings and dropped, callers mark the response as partial, and an error is
-//! propagated only when *every* target failed. A shard that ran out of its time budget
-//! is NOT covered by that rule and fails the whole request ([`is_search_timeout`]): a
-//! connection error is visible and truthful, while a truncated count looks exactly like a
-//! correct one.
+//! **Failure policy, a search is complete or it fails.** A response never leaves out a
+//! shard. A target that fails is run again, alone, up to [`SEARCH_ATTEMPTS`] times
+//! ([`with_retries`]). The targets that answered are not queried again. When a target
+//! still fails after its last attempt, the whole request fails. A shard that ran out of
+//! its time budget ([`is_search_timeout`]) and a statement that Manticore refused fail the
+//! request at once, because another attempt costs a second budget or fails the same way.
 //!
 //! **Known ranking limitation:** BM25 statistics are per-table, so `_score` values
 //! from different shards/collections are not strictly comparable and cross-shard
@@ -35,7 +34,7 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::sync::OnceLock;
 
-use futures::stream::{self, StreamExt};
+use futures::stream::{self, StreamExt, TryStreamExt};
 use tokio::sync::Semaphore;
 
 use common::current_user::CurrentUser;
@@ -43,8 +42,56 @@ use common::search_query::{SearchQuery, SortSpec};
 use common::search_result::FacetOriginalValue;
 
 use crate::api::search::search_sql::{build_sql_where_clause, shard_table_name, sql_from_clause};
+use crate::auth::guard;
 use crate::db_utils::clickhouse_utils;
-use crate::db_utils::manticore_utils::{RawSarchResult, is_search_timeout};
+use crate::db_utils::manticore_utils::{RawSarchResult, is_manticore_refusal, is_search_timeout};
+
+/// Attempts one search call gets before the request that needs it fails.
+pub const SEARCH_ATTEMPTS: usize = 3;
+
+/// The wait before each attempt after the first. One entry per retry.
+const RETRY_WAITS: [std::time::Duration; SEARCH_ATTEMPTS - 1] =
+    [std::time::Duration::from_millis(250), std::time::Duration::from_secs(1)];
+
+/// Whether another attempt of a failed call can give a different answer.
+///
+/// A timeout already spent the whole budget, a refused statement and a bad query fail the
+/// same way each time, and a missing or forbidden resource is a complete answer. Every
+/// other error is a transport or datastore failure that can pass.
+pub fn is_retryable(err: &anyhow::Error) -> bool {
+    !(is_search_timeout(err)
+        || is_manticore_refusal(err)
+        || guard::is_bad_request(err)
+        || guard::is_not_found(err)
+        || guard::is_forbidden(err))
+}
+
+/// Run `call` until it succeeds, fails with an error that is not retryable, or uses
+/// [`SEARCH_ATTEMPTS`]. The last error is returned with the attempt count.
+///
+/// `call` runs once per attempt and must hold its resources only while it runs, so that a
+/// wait between attempts holds nothing.
+pub async fn with_retries<T, F, Fut>(label: &str, call: F) -> anyhow::Result<T>
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = anyhow::Result<T>>,
+{
+    let mut attempt = 1;
+    loop {
+        match call().await {
+            Ok(value) => return Ok(value),
+            Err(e) if attempt < SEARCH_ATTEMPTS && is_retryable(&e) => {
+                tracing::warn!("{label}: attempt {attempt} failed, retrying: {e:#}");
+                tokio::time::sleep(RETRY_WAITS[attempt - 1]).await;
+                attempt += 1;
+            }
+            Err(e) if attempt > 1 => {
+                return Err(e.context(format!("{label} failed after {attempt} attempts")));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
 
 /// Default cap on concurrent Manticore queries across the whole process.
 ///
@@ -176,90 +223,53 @@ pub async fn shard_query_parts(
     })
 }
 
-/// Outcome of a fan-out: the per-target successes plus the targets that failed
-/// (and were dropped per the partial-failure policy).
-pub struct FanoutOutcome<T> {
-    pub results: Vec<(FanoutTarget, T)>,
-    pub failed: Vec<FanoutTarget>,
-}
-
-impl<T> FanoutOutcome<T> {
-    /// Whether at least one target failed. Callers surface this as a
-    /// partial-results notice.
-    pub fn is_partial(&self) -> bool {
-        !self.failed.is_empty()
-    }
-}
-
-/// Run `run(target)` for every target, holding a permit from the process-wide gate for
-/// the duration of each one, and collect `(target, value)` pairs.
+/// Run `run(target)` for every target and collect `(target, value)` pairs, sorted by
+/// target so that merging and tests do not depend on completion order.
 ///
-/// Per-target errors are logged and dropped unless ALL targets fail, in which case
-/// the first error is propagated. A **timeout is not dropped**: it fails the whole
-/// fan-out, because the alternative is showing a count that is short by an unknown
-/// amount and saying nothing about it.
+/// Each attempt holds a permit from the process-wide gate while it runs. A target that
+/// fails is retried alone by [`with_retries`]. When any target still fails, the fan-out
+/// returns that error and cancels the targets still running. A response that leaves out a
+/// shard shows counts that are short by an unknown amount, so it is never returned.
 pub async fn fan_out<T, F, Fut>(
     targets: Vec<FanoutTarget>,
     run: F,
-) -> anyhow::Result<FanoutOutcome<T>>
+) -> anyhow::Result<Vec<(FanoutTarget, T)>>
 where
     T: Send + 'static,
     F: Fn(FanoutTarget) -> Fut,
     Fut: std::future::Future<Output = anyhow::Result<T>>,
 {
-    let had_targets = !targets.is_empty();
-    let outcomes: Vec<(FanoutTarget, anyhow::Result<T>)> = stream::iter(targets)
-        .map(|target| {
-            let label = target.clone();
-            let fut = run(target);
-            async move {
-                // Acquired INSIDE the per-target future, so a permit is held only while
-                // a query is actually running.
+    let run = &run;
+    let mut results: Vec<(FanoutTarget, T)> = stream::iter(targets)
+        .map(|target| async move {
+            let label = format!("fan_out: shard {}", target.label());
+            let value = with_retries(&label, || async {
+                // Acquired INSIDE each attempt, so a permit is held only while a query is
+                // actually running and never during the wait before a retry.
                 let _permit = query_permits().acquire().await;
-                (label, fut.await)
-            }
+                run(target.clone()).await
+            })
+            .await
+            .map_err(|e| {
+                // A query the caller malformed fails identically on every target, so it is
+                // one 400 and not N broken shards. Logged at WARN it produced a burst of
+                // shard-failure lines per keystroke.
+                if guard::is_bad_request(&e) {
+                    tracing::debug!("{label} cannot run this query: {e:#}");
+                } else {
+                    tracing::warn!("{label} failed, the request fails: {e:#}");
+                }
+                e
+            })?;
+            Ok::<_, anyhow::Error>((target, value))
         })
         // Still bounded here as well: this only decides how many futures are polled at
         // once, and the permits above decide how many of them are talking to Manticore.
         .buffer_unordered(max_parallelism())
-        .collect()
-        .await;
-
-    let mut results = Vec::new();
-    let mut failed = Vec::new();
-    let mut first_error = None;
-    for (target, outcome) in outcomes {
-        match outcome {
-            Ok(value) => results.push((target, value)),
-            Err(e) => {
-                if is_search_timeout(&e) {
-                    tracing::warn!("fan_out: target {} timed out: {e:#}", target.label());
-                    return Err(e.context(format!("shard {} timed out", target.label())));
-                }
-                // A query the caller malformed fails identically on every target, so it
-                // is one 400 and not N broken shards. Logged at WARN it produced a burst
-                // of shard-failure lines per keystroke. The exact signal this level is
-                // reserved for, spent on a normal outcome.
-                if crate::auth::guard::is_bad_request(&e) {
-                    tracing::debug!("fan_out: target {} cannot run this query: {e:#}", target.label());
-                } else {
-                    tracing::warn!("fan_out: target {} failed, dropping it from results: {e:#}", target.label());
-                }
-                if first_error.is_none() {
-                    first_error = Some(e);
-                }
-                failed.push(target);
-            }
-        }
-    }
-    // Deterministic ordering for merging and tests, independent of completion order.
+        .try_collect()
+        .await?;
     results.sort_by(|a, b| a.0.cmp(&b.0));
-    failed.sort();
-
-    if results.is_empty() && had_targets {
-        return Err(first_error.unwrap_or_else(|| anyhow::anyhow!("all fan-out targets failed")));
-    }
-    Ok(FanoutOutcome { results, failed })
+    Ok(results)
 }
 
 /// What the merge needs from a hit's `_source` to order results deterministically.
@@ -422,21 +432,26 @@ fn dataset_selection(query: &SearchQuery) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Resolve each selected dataset to its owning collection. Datasets that cannot
-/// be resolved (deleted since the UI rendered) are logged and skipped.
-async fn resolve_selected_collections<F, Fut>(selection: &[String], resolve: F) -> Vec<String>
+/// Resolve each selected dataset to its owning collection. A dataset that is not in the
+/// registry (deleted since the UI rendered) is skipped, because that is a complete answer.
+/// Any other failure is retried and then fails the search, since skipping it would
+/// search fewer collections than were selected and show the shortfall as "no results".
+async fn resolve_selected_collections<F, Fut>(selection: &[String], resolve: F) -> anyhow::Result<Vec<String>>
 where
     F: Fn(&str) -> Fut,
     Fut: std::future::Future<Output = anyhow::Result<String>>,
 {
     let mut selected = Vec::new();
     for dataset in selection {
-        match resolve(dataset).await {
+        match with_retries("fan_out: resolve dataset", || resolve(dataset)).await {
             Ok(collectionname) => selected.push(collectionname),
-            Err(e) => tracing::warn!("fan_out: cannot resolve selected dataset {dataset:?}: {e:#}"),
+            Err(e) if guard::is_not_found(&e) => {
+                tracing::debug!("fan_out: selected dataset {dataset:?} is not in the registry: {e:#}")
+            }
+            Err(e) => return Err(e.context(format!("cannot resolve selected dataset {dataset:?}"))),
         }
     }
-    selected
+    Ok(selected)
 }
 
 /// Intersect the permitted collections with the resolved selection, sorted and deduped.
@@ -463,7 +478,8 @@ pub async fn permitted_search_collections(
     user: &CurrentUser,
     query: &SearchQuery,
 ) -> anyhow::Result<Vec<String>> {
-    let collections = clickhouse_utils::list_permitted_collections(user).await?;
+    let collections =
+        with_retries("fan_out: list permitted collections", || clickhouse_utils::list_permitted_collections(user)).await?;
     let selection = dataset_selection(query);
     if selection.is_empty() {
         return Ok(collections);
@@ -472,31 +488,27 @@ pub async fn permitted_search_collections(
         let d = d.to_string();
         async move { clickhouse_utils::resolve_collection(&d).await }
     })
-    .await;
+    .await?;
     Ok(intersect_permitted_with_selection(collections, &selected_collections))
 }
 
 /// Expand collections into one [`FanoutTarget`] per shard recorded in each
 /// collection's `manticore_shards` ledger. A collection with no shards yet (never
-/// indexed) contributes no targets; a collection whose ledger cannot be read is
-/// logged and skipped, so one broken collection cannot blank the search page.
-pub async fn shard_targets(collections: &[String]) -> Vec<FanoutTarget> {
+/// indexed) contributes no targets. A ledger read is retried, and a ledger that still
+/// cannot be read fails the search instead of leaving the collection out.
+pub async fn shard_targets(collections: &[String]) -> anyhow::Result<Vec<FanoutTarget>> {
     let mut targets = Vec::new();
     for collectionname in collections {
-        match clickhouse_utils::list_shards(collectionname).await {
-            Ok(shards) => {
-                targets.extend(
-                    shards
-                        .into_iter()
-                        .map(|shard_name| FanoutTarget::shard(collectionname.clone(), shard_name)),
-                );
-            }
-            Err(e) => {
-                tracing::warn!("fan_out: cannot list shards of collection {collectionname}: {e:#}");
-            }
-        }
+        let shards = with_retries("fan_out: list shards", || clickhouse_utils::list_shards(collectionname))
+            .await
+            .map_err(|e| e.context(format!("cannot list shards of collection {collectionname}")))?;
+        targets.extend(
+            shards
+                .into_iter()
+                .map(|shard_name| FanoutTarget::shard(collectionname.clone(), shard_name)),
+        );
     }
-    targets
+    Ok(targets)
 }
 
 #[cfg(test)]
@@ -893,50 +905,103 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn fan_out_drops_single_failure() {
-        let targets = vec![
-            FanoutTarget::collection("a"),
-            FanoutTarget::collection("b"),
-        ];
-        let outcome = fan_out(targets, |t| async move {
-            if t.collectionname() == "b" {
-                anyhow::bail!("boom")
+    /// Count the calls per target, so a test can show which targets ran again.
+    fn call_counter() -> std::sync::Arc<std::sync::Mutex<BTreeMap<String, usize>>> {
+        Default::default()
+    }
+
+    fn calls(counter: &std::sync::Arc<std::sync::Mutex<BTreeMap<String, usize>>>, name: &str) -> usize {
+        counter.lock().unwrap().get(name).copied().unwrap_or(0)
+    }
+
+    /// A shard that fails once and then answers gives a complete response, and the shard
+    /// that answered the first time is not queried again.
+    #[tokio::test(start_paused = true)]
+    async fn fan_out_retries_only_the_failing_target() {
+        let counter = call_counter();
+        let targets = vec![FanoutTarget::collection("a"), FanoutTarget::collection("b")];
+        let results = fan_out(targets, |t| {
+            let counter = counter.clone();
+            async move {
+                let n = {
+                    let mut map = counter.lock().unwrap();
+                    let n = map.entry(t.collectionname().to_string()).or_insert(0);
+                    *n += 1;
+                    *n
+                };
+                if t.collectionname() == "b" && n == 1 {
+                    anyhow::bail!("connection reset")
+                }
+                Ok(t.collectionname().to_string())
             }
-            Ok(t.collectionname().to_string())
         })
         .await
         .unwrap();
-        assert_eq!(outcome.results.len(), 1);
-        assert_eq!(outcome.results[0].1, "a");
-        assert!(outcome.is_partial());
-        assert_eq!(outcome.failed, vec![FanoutTarget::collection("b")]);
+        assert_eq!(results.iter().map(|(_, v)| v.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+        assert_eq!((calls(&counter, "a"), calls(&counter, "b")), (1, 2));
     }
 
-    #[tokio::test]
-    async fn fan_out_errors_only_when_all_fail() {
-        let targets = vec![FanoutTarget::collection("a"), FanoutTarget::collection("b")];
-        let result: anyhow::Result<FanoutOutcome<String>> =
-            fan_out(targets, |_| async move { anyhow::bail!("down") }).await;
+    /// A shard that fails on every attempt fails the request after the last attempt, even
+    /// though the other shard answered.
+    #[tokio::test(start_paused = true)]
+    async fn fan_out_fails_after_the_last_attempt() {
+        let counter = call_counter();
+        let targets = vec![FanoutTarget::collection("a"), FanoutTarget::collection("down")];
+        let result = fan_out(targets, |t| {
+            let counter = counter.clone();
+            async move {
+                *counter.lock().unwrap().entry(t.collectionname().to_string()).or_insert(0) += 1;
+                if t.collectionname() == "down" {
+                    anyhow::bail!("connection refused")
+                }
+                Ok(t.collectionname().to_string())
+            }
+        })
+        .await;
+        let error = result.err().expect("a shard that never answers must fail the request");
+        assert!(format!("{error:#}").contains("after 3 attempts"), "{error:#}");
+        assert_eq!(calls(&counter, "down"), SEARCH_ATTEMPTS);
+    }
+
+    /// A refused statement fails the same way each time, so it is not run again.
+    #[tokio::test(start_paused = true)]
+    async fn fan_out_does_not_retry_a_refused_statement() {
+        let counter = call_counter();
+        let result: anyhow::Result<Vec<(FanoutTarget, String)>> =
+            fan_out(vec![FanoutTarget::collection("a")], |t| {
+                let counter = counter.clone();
+                async move {
+                    *counter.lock().unwrap().entry(t.collectionname().to_string()).or_insert(0) += 1;
+                    Err(anyhow::Error::from(crate::db_utils::manticore_utils::ManticoreRefused(
+                        "no field 'title' found in schema".to_string(),
+                    )))
+                }
+            })
+            .await;
         assert!(result.is_err());
+        assert_eq!(calls(&counter, "a"), 1);
     }
 
-    /// A shard that ran out of time fails the request even though the others answered.
-    /// Dropping it would render three shards' worth of counts as if they were all of
-    /// them. The failure mode this policy exists to prevent.
-    #[tokio::test]
-    async fn fan_out_propagates_a_timeout_instead_of_dropping_it() {
+    /// A shard that ran out of time fails the request at once. Another attempt would cost
+    /// a second whole budget.
+    #[tokio::test(start_paused = true)]
+    async fn fan_out_propagates_a_timeout_without_a_retry() {
+        let counter = call_counter();
         let targets = vec![
             FanoutTarget::collection("a"),
             FanoutTarget::collection("slow"),
         ];
-        let result: anyhow::Result<FanoutOutcome<String>> = fan_out(targets, |t| async move {
-            if t.collectionname() == "slow" {
-                return Err(anyhow::Error::from(
-                    crate::db_utils::manticore_utils::SearchTimedOut("out of budget".to_string()),
-                ));
+        let result: anyhow::Result<Vec<(FanoutTarget, String)>> = fan_out(targets, |t| {
+            let counter = counter.clone();
+            async move {
+                *counter.lock().unwrap().entry(t.collectionname().to_string()).or_insert(0) += 1;
+                if t.collectionname() == "slow" {
+                    return Err(anyhow::Error::from(
+                        crate::db_utils::manticore_utils::SearchTimedOut("out of budget".to_string()),
+                    ));
+                }
+                Ok(t.collectionname().to_string())
             }
-            Ok(t.collectionname().to_string())
         })
         .await;
         let error = match result {
@@ -944,6 +1009,7 @@ mod tests {
             Err(e) => e,
         };
         assert!(is_search_timeout(&error), "{error:#}");
+        assert_eq!(calls(&counter, "slow"), 1);
     }
 
     /// The gate is process-wide, so two concurrent fan-outs share it. Without that, the
@@ -985,11 +1051,10 @@ mod tests {
 
     #[tokio::test]
     async fn fan_out_empty_targets_is_ok() {
-        let outcome: FanoutOutcome<String> = fan_out(vec![], |_| async move { anyhow::bail!("never") })
+        let results: Vec<(FanoutTarget, String)> = fan_out(vec![], |_| async move { anyhow::bail!("never") })
             .await
             .unwrap();
-        assert!(outcome.results.is_empty());
-        assert!(!outcome.is_partial());
+        assert!(results.is_empty());
     }
 
     #[test]
@@ -1048,12 +1113,25 @@ mod tests {
             async move {
                 match d.as_str() {
                     "testdata_testfiles" => Ok("testdata".to_string()),
-                    _ => anyhow::bail!("unknown collection_dataset: {d}"),
+                    _ => anyhow::bail!("unknown collection_dataset, not found: {d}"),
                 }
             }
         })
-        .await;
+        .await
+        .unwrap();
         assert_eq!(resolved, vec!["testdata".to_string()]);
+    }
+
+    /// A registry that cannot answer fails the search. Skipping the dataset would search
+    /// nothing and show "no results" for a query that has matches.
+    #[tokio::test(start_paused = true)]
+    async fn resolve_selected_collections_fails_when_the_registry_fails() {
+        let selection = vec!["testdata_testfiles".to_string()];
+        let result = resolve_selected_collections(&selection, |_| async move {
+            anyhow::bail!("ClickHouse connection refused")
+        })
+        .await;
+        assert!(result.is_err());
     }
 
     #[test]

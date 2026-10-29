@@ -58,8 +58,10 @@ from collection_search_server.backends import (
     GLOBAL_DB,
     clickhouse_query,
     collection_db,
+    ManticoreRefused,
     manticore_query,
     prepare_match_query,
+    with_retries,
 )
 from collection_search_server.prompts import MATCH_SYNTAX, SERVER_INSTRUCTIONS
 
@@ -652,10 +654,13 @@ def search_passages(
     errors: list[str] = []
     for one in wanted:
         hits, query_notes, error = _search_one(one, targets, limit, notes)
-        per_query[one] = hits
-        if error:
-            errors.append(error)
         notes.extend(query_notes)
+        if error:
+            # A failed form keeps no hits. When other forms answer, a note names it.
+            errors.append(error)
+            notes.append(f"the query {one!r} failed: {error.splitlines()[0]}")
+            continue
+        per_query[one] = hits
 
     hits = _fuse_across_queries(per_query, ROWS_PER_FORM * len(wanted))
     _attach_paths(hits)
@@ -742,7 +747,11 @@ RRF_K = 60
 def _search_one(
     query: str, targets: list[str], limit: int, shared_notes: list[str]
 ) -> tuple[list[SearchHit], list[str], str | None]:
-    """One query's hybrid search. `(hits, notes, error)`; never raises."""
+    """One query's hybrid search. `(hits, notes, error)`; never raises.
+
+    The keyword half is complete or it fails. A shard that fails is retried, and a shard
+    that still fails returns an error and no hits.
+    """
     notes: list[str] = []
     prepared = prepare_match_query(query)
     if not prepared.expr:
@@ -771,18 +780,13 @@ def _search_one(
     per_shard_limit = max(FUSION_CANDIDATES, limit) if vector_model else limit
 
     candidates: list[_Candidate] = []
-    failed_targets: list[str] = []
-    #: Manticore's own words about a bad query. Kept so they can be returned rather than
-    #: only logged. A syntax error the model never sees is one it cannot correct.
-    shard_errors: list[str] = []
 
     for collectionname in targets:
         try:
-            tables = _shard_tables(collectionname)
-        except Exception as exc:  # noqa: BLE001
+            tables = with_retries(f"shards of {collectionname}", lambda: _shard_tables(collectionname))
+        except Exception as exc:  # noqa: BLE001 - the search fails, so the model can retry it
             log.warning("cannot list shards of %s: %s", collectionname, exc)
-            failed_targets.append(collectionname)
-            continue
+            return [], notes, f"the shards of collection {collectionname} could not be listed: {exc}"
 
         for table in tables:
             # Per-shard limit is the full limit: a shard that holds every good match
@@ -793,12 +797,16 @@ def _search_one(
                 f"ORDER BY score DESC LIMIT {per_shard_limit} {manticore_query_options(per_shard_limit * 10)}"
             )
             try:
-                rows = manticore_query(sql)
-            except Exception as exc:  # noqa: BLE001 - one bad shard must not blank the page
+                rows = with_retries(f"shard {table}", lambda: manticore_query(sql))
+            except ManticoreRefused as exc:
+                # A refused query is a query problem, and the model is the only one who can
+                # fix it. Manticore's text tells it what to change, for example
+                # `no field 'title' found in schema`.
+                log.warning("shard %s refused the query: %s", table, exc)
+                return [], notes, f"{exc}\n\n{MATCH_SYNTAX}"
+            except Exception as exc:  # noqa: BLE001 - the search fails, so the model can retry it
                 log.warning("shard %s failed: %s", table, exc)
-                failed_targets.append(table)
-                shard_errors.append(str(exc))
-                continue
+                return [], notes, f"shard {table} did not answer: {exc}"
 
             for row in rows:
                 candidates.append(
@@ -850,21 +858,9 @@ def _search_one(
             for c in keyword_list[:limit]
         ]
 
-    if failed_targets:
-        notes.append(
-            f"{len(failed_targets)} shard(s) could not be queried; results are partial"
-        )
-
-    # Every shard failing on the same query is a query problem, not an infrastructure
-    # problem, and the model is the only one who can fix it. Surface Manticore's text
-    # verbatim: `no field 'title' found in schema` tells it exactly what to change.
-    error = None
-    if shard_errors and not hits:
-        error = f"{sorted(set(shard_errors))[0]}\n\n{MATCH_SYNTAX}"
-
     for hit in hits:
         hit.matched_queries = [query]
-    return hits, notes, error
+    return hits, notes, None
 
 
 def _fused_pipeline(

@@ -678,7 +678,6 @@ class WordSuggestions(AgentModel):
 class SearchResultsResponse(AgentModel):
     word_counts: list[WordCount] = Field(default_factory=list)
     suggestions: list[WordSuggestions] = Field(default_factory=list)
-    suggestions_partial: bool = False
     documents: list[SearchDocument]
     total_count: int
     facet_counts: dict[str, list[FacetCount]]

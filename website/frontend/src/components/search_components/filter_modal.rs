@@ -4,14 +4,11 @@
 //! worked for four facets and does not for eleven, and there was nowhere to put a
 //! filter that is not a checkbox list (a size range, a date range, a folder tree).
 //!
-//! Three things carried over from the strip deliberately, because a rewrite loses them
+//! Two things carried over from the strip deliberately, because a rewrite loses them
 //! by default and each one is needed:
 //!
 //! * **Hit counts** on every row. The mockups drop them; without them a filter list is a
 //!   guess.
-//! * **The amber partial-shard notice.** When a shard could not be searched the counts
-//!   are lower than the truth, and saying so is the difference between a wrong number
-//!   and a known-incomplete one.
 //! * **`ResolveMissingItems`.** A value that is selected but absent from the current
 //!   buckets still renders, with count 0. Without it a filter that narrows to nothing
 //!   cannot be un-set, because the control that would un-set it is not on screen.
@@ -1102,9 +1099,6 @@ fn FileSizePane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
                     }
                 },
                 Some(Ok(result)) => rsx! {
-                    if result.partial {
-                        PartialNotice {}
-                    }
                     for item in result.facet_values.clone() {
                         {
                             let bucket = match item.original_value {
@@ -1382,9 +1376,6 @@ fn DatePane(
                         }
                     },
                     Some(Ok(result)) => rsx! {
-                        if result.partial {
-                            PartialNotice {}
-                        }
                         DateHistogramChart {
                             histogram: result.clone(),
                             selection: current(),
@@ -1986,7 +1977,6 @@ fn EntitiesAllPane(
         let restrict = restrict_to_ids.read().clone();
         async move {
             let mut rows: Vec<(&'static str, SearchResultFacetItem)> = Vec::new();
-            let mut partial = false;
             for field in EntitySub::VALUE_FIELDS {
                 // Each list leaves out its own selection, as its sub-list does, so the
                 // request is the sub-list's own and hits the same cache entry.
@@ -1999,13 +1989,12 @@ fn EntitiesAllPane(
                     restrict.clone(),
                 )
                 .await?;
-                partial = partial || result.partial;
                 rows.extend(result.facet_values.into_iter().map(|item| (field, item)));
             }
             // Sorted again after each response, so a selection that changes the counts
             // also changes the order.
             rows.sort_by_key(|(_, item)| (u64::MAX - item.count, item.display_string.clone()));
-            Ok::<_, ServerFnError>((rows, partial))
+            Ok::<_, ServerFnError>(rows)
         }
     });
     let list_opacity = if request_in_flight(&lists) { STALE_OPACITY } else { "1" };
@@ -2028,10 +2017,7 @@ fn EntitiesAllPane(
             // reorders itself under the reader's cursor as they arrive.
             None => rsx! { div { style: "padding: 8px; color: rgba(0,0,0,0.5);", "Loading…" } },
             Some(Err(error)) => rsx! { ServerErrorDisplay { error: error.clone() } },
-            Some(Ok((rows, partial))) => rsx! {
-                if *partial {
-                    PartialNotice {}
-                }
+            Some(Ok(rows)) => rsx! {
                 if rows.is_empty() {
                     div {
                         style: "padding: 8px 10px; font-size: 13px; color: rgba(0,0,0,0.55);",
@@ -2068,23 +2054,6 @@ fn EntitiesAllPane(
                     }
                 }
             },
-        }
-    }
-}
-
-/// The amber notice. One shard could not be searched, so every count on screen is a
-/// lower bound. Carried over from the pill strip verbatim.
-#[component]
-fn PartialNotice() -> Element {
-    rsx! {
-        div {
-            style: "
-                width: 100%; padding: 6px 10px; margin-bottom: 6px;
-                border: 1px solid rgba(200, 120, 0, 0.6); border-radius: 6px;
-                background-color: rgba(255, 180, 60, 0.15); color: rgb(120, 70, 0);
-                font-size: 13px;
-            ",
-            "Some collections could not be searched, so counts may be incomplete."
         }
     }
 }

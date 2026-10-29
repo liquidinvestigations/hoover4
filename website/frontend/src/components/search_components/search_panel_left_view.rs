@@ -31,6 +31,9 @@ pub struct SearchResultsState {
     pub selected_result_hash: ReadSignal<Option<DocumentIdentifier>>,
     pub set_selected_result_hash: Callback<Option<DocumentIdentifier>>,
     pub set_selected_result_hash_and_page: Callback<(Option<DocumentIdentifier>, u64)>,
+    /// Runs the failed search again. Pages that show no search give a callback that does
+    /// nothing.
+    pub retry_search: Callback<()>,
 }
 
 #[component]
@@ -114,6 +117,10 @@ pub fn SearchPanelLeftView(
         selected_result_hash,
         set_selected_result_hash,
         set_selected_result_hash_and_page,
+        retry_search: Callback::new(move |_| {
+            hit_count.restart();
+            search_result.restart();
+        }),
     });
 
     rsx! {
@@ -169,20 +176,12 @@ fn SearchResultsView() -> Element {
     // .suspend()?.cloned();
     let search_result = search_result.read();
     let search_result = match search_result.as_ref() {
-        Some(Err(e)) => return rsx! {ServerErrorDisplay { error: e.clone() }},
+        Some(Err(e)) => return rsx! { SearchFailure { error: e.clone(), on_retry: search_results_state.retry_search } },
         Some(Ok(s)) => s,
         None => return rsx! { LoadingIndicator{} },
     };
 
     let result_list = search_result.results.clone();
-    // Partial hit count: one or more shards failed, so the total is a lower bound.
-    let hit_count_partial = search_results_state
-        .hit_count
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .map(|h| h.partial)
-        .unwrap_or(false);
 
     rsx! {
         div {
@@ -191,26 +190,7 @@ fn SearchResultsView() -> Element {
             if let Some(notice) = common::search_query::short_infix_notice(&search_result.query.query_string) {
                 div { role: "status", style: "padding: 8px 12px;", "{notice}" }
             }
-            // Partial-results notice: one or more shards could not be searched (see the
-            // backend fan-out partial-failure policy). The list and the hit count may
-            // be incomplete.
-            if search_result.partial || hit_count_partial {
-                div {
-                    style: "
-                        width: 100%;
-                        padding: 8px 11px;
-                        margin-bottom: 4px;
-                        border: 1px solid rgba(200, 120, 0, 0.6);
-                        border-radius: 6px;
-                        background-color: rgba(255, 180, 60, 0.15);
-                        color: rgb(120, 70, 0);
-                        font-size: 13px;
-                    ",
-                    "Some collections could not be searched, so results may be incomplete."
-                }
-            }
             if result_list.is_empty() && !search_result.query.query_string.trim().is_empty()
-                && !search_result.partial && !hit_count_partial
                 && search_result.query == *search_results_state.query.read()
                 && search_results_state.hit_count.read().as_ref().is_some_and(|r| r.as_ref().is_ok_and(|h| h.total == 0)) {
                 NoResults { query: search_results_state.query }
@@ -233,6 +213,36 @@ fn SearchResultsView() -> Element {
     }
 }
 
+/// A search that failed after its retries. A query the reader can correct keeps its
+/// advice. Any other failure says that the search did not complete and offers a retry.
+#[component]
+fn SearchFailure(error: ServerFnError, on_retry: Callback<()>) -> Element {
+    if crate::api::error_util::is_user_input_error(&error) {
+        return rsx! { ServerErrorDisplay { error } };
+    }
+    let detail = crate::api::error_util::user_facing_message(&error);
+    rsx! {
+        section {
+            id: "x-search-failed",
+            role: "alert",
+            style: "padding: 24px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px;",
+            h2 { style: "font-size: var(--x-text-page); line-height: var(--x-line-page);", "The search did not complete" }
+            p { "Some collections did not answer. Select Retry to run the same search again." }
+            button {
+                style: "
+                    border: 1px solid rgba(0,0,0,0.3); background: white;
+                    border-radius: 100px; padding: 6px 16px; cursor: pointer;
+                    font-size: 15px;
+                ",
+                class: "hoover4-hover-shadow-background",
+                onclick: move |_| on_retry.call(()),
+                "Retry"
+            }
+            p { style: "font-size: 13px; color: rgba(0, 0, 0, 0.55); max-width: 560px; overflow-wrap: anywhere;", "{detail}" }
+        }
+    }
+}
+
 /// Offer checked query variants under the same filters after a zero-result search.
 #[component]
 fn NoResults(query: ReadSignal<SearchQuery>) -> Element {
@@ -249,9 +259,6 @@ fn NoResults(query: ReadSignal<SearchQuery>) -> Element {
                 None => rsx! { p { role: "status", "Loading similar words." } },
                 Some(Err(error)) => rsx! { ServerErrorDisplay { error } },
                 Some(Ok(found)) => rsx! {
-                    if found.partial {
-                        p { role: "status", "Some collections could not be searched, so suggestions may be incomplete." }
-                    }
                     if found.queries.is_empty() {
                         p { "No similar words were found in the selected collections." }
                     } else {

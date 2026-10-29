@@ -31,12 +31,13 @@ use common::{
 };
 use serde::{Deserialize, Serialize};
 
-/// Distinct day buckets read back per shard before the result is called partial.
+/// Distinct day buckets read back per shard. A shard that returns this many fails the request.
 ///
 /// A bare `SELECT` returns Manticore's implicit `LIMIT 20`, and a result set silently
 /// caps at `max_matches` (1000 by default). Either would draw a histogram of an
 /// arbitrary handful of days and render it as the whole corpus, so the limit and the
-/// `max_matches` are the same explicit number and exceeding it is reported.
+/// `max_matches` are the same explicit number. Reaching it fails the request, because
+/// the histogram would leave out an unknown number of days.
 const DAY_BUCKET_LIMIT: u64 = 100_000;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -81,22 +82,21 @@ pub async fn search_mentioned_date_histogram(
     query.range_filters.remove("mentioned_dates");
 
     let collections = fanout::permitted_search_collections(user, &query).await?;
-    let targets = fanout::shard_targets(&collections).await;
+    let targets = fanout::shard_targets(&collections).await?;
     if targets.is_empty() {
         return Ok(DateHistogram::default());
     }
 
-    let (domain, unknown_count, probe_partial) = probe_domain(&query, targets.clone()).await?;
+    let (domain, unknown_count) = probe_domain(&query, targets.clone()).await?;
     let Some(domain) = domain else {
         return Ok(DateHistogram {
             unknown_count,
-            partial: probe_partial,
             ..DateHistogram::default()
         });
     };
 
     let edges = histogram_edges(domain, &cuts);
-    let (days, days_partial) = count_days(&query, targets).await?;
+    let days = count_days(&query, targets).await?;
 
     let buckets: Vec<DateHistogramBucket> = edges
         .windows(2)
@@ -112,7 +112,6 @@ pub async fn search_mentioned_date_histogram(
         unknown_count,
         domain_start: domain.start,
         domain_end: domain.end,
-        partial: probe_partial || days_partial,
         counts_mentions: true,
     })
 }
@@ -139,7 +138,7 @@ fn sum_days_in(days: &[(i64, u64)], start: i64, end: i64) -> u64 {
 async fn probe_domain(
     query: &SearchQuery,
     targets: Vec<FanoutTarget>,
-) -> anyhow::Result<(Option<DateDomain>, u64, bool)> {
+) -> anyhow::Result<(Option<DateDomain>, u64)> {
     let outcome = fanout::fan_out(targets, |target: FanoutTarget| {
         let query = query.clone();
         async move {
@@ -188,11 +187,10 @@ async fn probe_domain(
     })
     .await?;
 
-    let partial = outcome.is_partial();
     let mut start: Option<i64> = None;
     let mut end: Option<i64> = None;
     let mut unknown_count = 0_u64;
-    for (_, (low, high, none)) in outcome.results {
+    for (_, (low, high, none)) in outcome {
         if let Some(hit) = low.hits.hits.first() {
             start = Some(start.map_or(hit._source.bound, |v: i64| v.min(hit._source.bound)));
         }
@@ -210,14 +208,14 @@ async fn probe_domain(
         }),
         _ => None,
     };
-    Ok((domain, unknown_count, partial))
+    Ok((domain, unknown_count))
 }
 
 /// `(day, mentions)` pairs merged across every shard.
 async fn count_days(
     query: &SearchQuery,
     targets: Vec<FanoutTarget>,
-) -> anyhow::Result<(Vec<(i64, u64)>, bool)> {
+) -> anyhow::Result<Vec<(i64, u64)>> {
     let outcome = fanout::fan_out(targets, |target: FanoutTarget| {
         let query = query.clone();
         async move {
@@ -242,17 +240,16 @@ async fn count_days(
     })
     .await?;
 
-    let mut partial = outcome.is_partial();
     let mut merged: std::collections::BTreeMap<i64, u64> = std::collections::BTreeMap::new();
-    for (_, response) in outcome.results {
+    for (target, response) in outcome {
         if response.hits.hits.len() as u64 >= DAY_BUCKET_LIMIT {
-            partial = true;
+            anyhow::bail!("shard {} returned {DAY_BUCKET_LIMIT} mentioned days, the most one request reads", target.label());
         }
         for hit in response.hits.hits {
             *merged.entry(hit._source.term).or_insert(0) += hit._source.mention_count;
         }
     }
-    Ok((merged.into_iter().collect(), partial))
+    Ok(merged.into_iter().collect())
 }
 
 #[cfg(test)]

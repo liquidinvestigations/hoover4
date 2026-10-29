@@ -337,8 +337,15 @@ hybrid search, two kinds x 15 is 30 hits however many were asked for. It is rais
 `max_results` when that is larger, as are the fusion pool and the per-shard fetch, so the
 cap the tool advertises is the cap it can deliver.
 
-Two more rules the fused path follows, both of which read identically to their wrong
-versions:
+Three more rules the fused path follows, each of which reads identically to its wrong
+version:
+
+* **The keyword half is complete or the query form fails.** A shard query or a shard
+  ledger read that fails gets three attempts, and only the failed shard runs again. A
+  shard that still fails returns an error for that query form and no hits. A refused
+  statement and a timeout are not retried. A call keeps the forms that answered, and a note
+  names each failed form. A vector shard that still fails after its retries fails the
+  vector ranking, and the search continues by keyword only with a note.
 
 * **The snippet of a multi-chunk page is its *nearest* chunk.** KNN returns nearest first,
   so assigning unconditionally left the farthest chunk in place. That text is also the

@@ -98,12 +98,11 @@ Cancelling the modal preserves the applied query.
 ```mermaid
 flowchart TD
     accTitle: Draft filters and search results
-    accDescr: The person applies or cancels draft filters. An applied query requests results and shows complete, empty, partial, or failed results.
+    accDescr: The person applies or cancels draft filters. An applied query requests results and shows complete, empty, or failed results.
     A[Applied query] --> D[Edit draft filters]
     D -->|Cancel| A
     D -->|Apply| L[Request results]
     L --> R[Complete results]
     L --> E[No matching documents]
-    L --> P[Partial result notice]
     L --> F[Request error and retry]
 ```

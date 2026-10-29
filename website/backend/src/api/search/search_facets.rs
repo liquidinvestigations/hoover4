@@ -176,7 +176,6 @@ async fn _search_string_facet(
             query: SearchQuery::default(),
             facet_field: column,
             facet_values: Vec::new(),
-            partial: false,
         });
     };
     if map_string_terms.is_some() {
@@ -197,12 +196,11 @@ async fn _search_string_facet(
     query.facet_filters.remove(&column);
 
     let collections = fanout::permitted_search_collections(user, &query).await?;
-    let targets = fanout::shard_targets(&collections).await;
+    let targets = fanout::shard_targets(&collections).await?;
     let mut result = SearchResultFacets {
         query: query.clone(),
         facet_field: column.clone(),
         facet_values: Vec::new(),
-        partial: false,
     };
     if targets.is_empty() {
         return Ok(result);
@@ -234,13 +232,11 @@ async fn _search_string_facet(
         }
     })
     .await?;
-    result.partial = outcome.is_partial();
 
     // Merge buckets across shards: sum doc_count per key. The aggregation name in
     // each response is the qualified column; there is exactly one aggregation per
     // response, so take the first map entry regardless of its name.
     let per_shard_buckets: Vec<Vec<(serde_json::Value, u64)>> = outcome
-        .results
         .into_iter()
         .map(|(_, response)| {
             response
@@ -314,7 +310,6 @@ pub async fn search_mva_facet(
             query: SearchQuery::default(),
             facet_field: column,
             facet_values: Vec::new(),
-            partial: false,
         });
     };
     // remove all filters on current column, as we don't want to filter out unselected
@@ -334,17 +329,15 @@ pub async fn search_mva_facet(
             query,
             facet_field: column,
             facet_values: Vec::new(),
-            partial: false,
         });
     }
 
     let collections = fanout::permitted_search_collections(user, &query).await?;
-    let targets = fanout::shard_targets(&collections).await;
+    let targets = fanout::shard_targets(&collections).await?;
     let mut result = SearchResultFacets {
         query: query.clone(),
         facet_field: column.clone(),
         facet_values: Vec::new(),
-        partial: false,
     };
     if targets.is_empty() {
         return Ok(result);
@@ -387,10 +380,8 @@ pub async fn search_mva_facet(
         }
     })
     .await?;
-    result.partial = outcome.is_partial();
 
     let per_shard_buckets: Vec<Vec<(serde_json::Value, u64)>> = outcome
-        .results
         .into_iter()
         .map(|(_, response)| {
             response
@@ -498,7 +489,7 @@ pub async fn fetch_db_terms_for_ints(
     .await?;
 
     let mut merged: HashMap<u64, String> = HashMap::new();
-    for (_target, rows) in outcome.results {
+    for (_target, rows) in outcome {
         for (term_id, term_value) in rows {
             if term_value.is_empty() {
                 continue;
@@ -554,7 +545,6 @@ mod tests {
                     count: *count,
                 })
                 .collect(),
-            partial: false,
         }
     }
 

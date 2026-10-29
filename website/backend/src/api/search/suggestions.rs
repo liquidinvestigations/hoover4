@@ -6,7 +6,7 @@ use std::time::Duration;
 use common::current_user::CurrentUser;
 use common::search_query::SearchQuery;
 use common::search_suggestions::{SearchSuggestions, SpellingCandidate, SuggestedQuery, WordCount, WordSuggestions};
-use futures::{stream, StreamExt};
+use futures::{stream, StreamExt, TryStreamExt};
 
 use super::{fanout, search_sql};
 use crate::auth::permissions;
@@ -71,17 +71,14 @@ fn keyword_counts(words: &[String], rows: &[ManticoreRawRow]) -> Vec<WordCount> 
     counts
 }
 
-/// Omit unverified zeros when some tables fail. Positive counts remain lower bounds.
-fn merge_counts(words: &[String], rows: Vec<Vec<ManticoreRawRow>>, complete: bool) -> Vec<WordCount> {
+/// Sum the counts of each word over every table.
+fn merge_counts(words: &[String], rows: Vec<Vec<ManticoreRawRow>>) -> Vec<WordCount> {
     let mut counts: Vec<_> = words.iter().map(|w| WordCount { word: w.clone(), folded: w.clone(), documents: 0 }).collect();
     for table in rows {
         for (count, entry) in counts.iter_mut().zip(keyword_counts(words, &table)) {
             count.documents += entry.documents;
             count.folded = entry.folded;
         }
-    }
-    if !complete {
-        counts.retain(|count| count.documents > 0);
     }
     counts
 }
@@ -106,82 +103,95 @@ fn ranked_candidates(original: &WordCount, distances: BTreeMap<String, u32>, che
     candidates
 }
 
-async fn tables_for(collections: &[String], kind: TableKind) -> (Vec<(String, String)>, bool) {
+/// The dictionary tables of every collection, each with its cache salt. A registry read
+/// is retried, and a collection whose tables cannot be listed fails the lookup.
+async fn tables_for(collections: &[String], kind: TableKind) -> anyhow::Result<Vec<(String, String)>> {
     let mut tables = Vec::new();
-    let mut partial = false;
     for collection in collections {
         if !crate::api::admin::collections::collectionname_valid(collection) {
-            partial = true;
-            continue;
+            anyhow::bail!("collection name {collection:?} is not valid");
         }
-        let generation = match clickhouse_utils::shard_generation(collection).await {
-            Ok(g) => g,
-            Err(_) => { partial = true; continue; }
-        };
+        let generation = fanout::with_retries("suggestions: shard generation", || clickhouse_utils::shard_generation(collection)).await?;
         let salt = format!("{collection}@{generation}");
         match kind {
-            TableKind::Pages => match clickhouse_utils::list_shards(collection).await {
-                Ok(shards) => for shard in shards {
-                    match search_sql::shard_table_name(&shard) {
-                        Ok(table) => tables.push((table, salt.clone())),
-                        Err(_) => partial = true,
-                    }
-                },
-                Err(_) => partial = true,
-            },
+            TableKind::Pages => {
+                let shards = fanout::with_retries("suggestions: list shards", || clickhouse_utils::list_shards(collection)).await?;
+                for shard in shards {
+                    tables.push((search_sql::shard_table_name(&shard)?, salt.clone()));
+                }
+            }
             TableKind::Entities => tables.push((format!("{collection}_entities"), salt)),
             TableKind::Folders => tables.push((format!("{collection}_vfs"), salt)),
         }
     }
-    (tables, partial)
+    Ok(tables)
 }
 
-async fn call_tables(tables: &[(String, String)], statement: impl Fn(&str) -> String) -> (Vec<Vec<ManticoreRawRow>>, bool) {
-    let calls: Vec<_> = tables.iter().map(|(table, salt)| (statement(table), salt.clone())).collect();
-    let results: Vec<_> = stream::iter(calls).map(|(sql, salt)| async move {
-        manticore_dictionary_sql(sql, &salt).await
-    }).buffer_unordered(fanout::max_parallelism()).collect().await;
-    let partial = results.iter().any(Result::is_err);
-    (results.into_iter().filter_map(Result::ok).collect(), partial)
+/// Run one dictionary statement on every table. A table that fails is retried alone, so
+/// a table that answered is not called again. A table that still fails fails the call.
+async fn call_tables(tables: &[(String, String)], statement: impl Fn(&str) -> String) -> anyhow::Result<Vec<Vec<ManticoreRawRow>>> {
+    let calls: Vec<_> = tables.iter().map(|(table, salt)| (table.clone(), statement(table), salt.clone())).collect();
+    stream::iter(calls).map(|(table, sql, salt)| async move {
+        let label = format!("suggestions: table {table}");
+        fanout::with_retries(&label, || manticore_dictionary_sql(sql.clone(), &salt)).await
+    }).buffer_unordered(fanout::max_parallelism()).try_collect().await
 }
 
+/// Word counts and spelling candidates for the words of `query`.
+///
+/// A failed word-count lookup returns no counts and no candidates, so that no caller
+/// reads a missing count as an absent word. A word whose candidate lookup fails gets no
+/// candidates. The other words keep theirs.
 pub async fn indexed_suggestions(collections: &[String], query: &str, kind: TableKind, gate: Gate) -> SearchSuggestions {
     let words = words_of(query);
     if words.is_empty() { return SearchSuggestions::default(); }
-    let (tables, mut partial) = tables_for(collections, kind).await;
-    if tables.is_empty() { return SearchSuggestions { partial, ..Default::default() }; }
+    let tables = match tables_for(collections, kind).await {
+        Ok(tables) => tables,
+        Err(e) => {
+            tracing::warn!("suggestions: cannot list the dictionary tables: {e:#}");
+            return SearchSuggestions::default();
+        }
+    };
+    if tables.is_empty() { return SearchSuggestions::default(); }
     let joined = quote(&words.join(" "));
-    let (rows, failed) = call_tables(&tables, |table| format!("CALL KEYWORDS({joined}, {}, 1 AS stats)", quote(table))).await;
-    partial |= failed;
-    let counts = merge_counts(&words, rows, !partial);
-    if partial {
-        return SearchSuggestions { word_counts: counts, partial: true, ..Default::default() };
-    }
+    let counts = match call_tables(&tables, |table| format!("CALL KEYWORDS({joined}, {}, 1 AS stats)", quote(table))).await {
+        Ok(rows) => merge_counts(&words, rows),
+        Err(e) => {
+            tracing::warn!("suggestions: the word-count lookup failed: {e:#}");
+            return SearchSuggestions::default();
+        }
+    };
     let mut suggestions = Vec::new();
     for count in counts.iter().filter(|count| count.documents <= 5) {
-        let (rows, failed) = call_tables(&tables, |table| format!("CALL QSUGGEST({}, {}, 10 AS limit)", quote(&count.folded), quote(table))).await;
-        partial |= failed;
-        let mut distances: BTreeMap<String, u32> = BTreeMap::new();
-        for row in rows.into_iter().flatten() {
-            let distance = number(&row, "distance") as u32;
-            if !(1..=2).contains(&distance) { continue; }
-            if let Some(word) = row.get("suggest").and_then(|v| v.as_str()) {
-                if word == count.folded { continue; }
-                distances.entry(word.to_string()).and_modify(|d| *d = (*d).min(distance)).or_insert(distance);
+        match word_candidates(&tables, count, gate).await {
+            Ok(candidates) if !candidates.is_empty() => {
+                suggestions.push(WordSuggestions { word: count.word.clone(), candidates });
             }
-        }
-        if distances.is_empty() { continue; }
-        let candidate_words: Vec<_> = distances.keys().cloned().collect();
-        let candidate_text = quote(&candidate_words.join(" "));
-        let (rows, failed) = call_tables(&tables, |table| format!("CALL KEYWORDS({candidate_text}, {}, 1 AS stats)", quote(table))).await;
-        partial |= failed;
-        let checked = merge_counts(&candidate_words, rows, !failed);
-        let candidates = ranked_candidates(count, distances, &checked, gate);
-        if !candidates.is_empty() {
-            suggestions.push(WordSuggestions { word: count.word.clone(), candidates });
+            Ok(_) => {}
+            Err(e) => tracing::warn!("suggestions: skipping the candidates of {:?}: {e:#}", count.word),
         }
     }
-    SearchSuggestions { word_counts: counts, suggestions, partial, ..Default::default() }
+    SearchSuggestions { word_counts: counts, suggestions, ..Default::default() }
+}
+
+/// The checked spelling candidates of one rare word.
+async fn word_candidates(tables: &[(String, String)], count: &WordCount, gate: Gate) -> anyhow::Result<Vec<SpellingCandidate>> {
+    let rows = call_tables(tables, |table| format!("CALL QSUGGEST({}, {}, 10 AS limit)", quote(&count.folded), quote(table))).await?;
+    let mut distances: BTreeMap<String, u32> = BTreeMap::new();
+    for row in rows.into_iter().flatten() {
+        let distance = number(&row, "distance") as u32;
+        if !(1..=2).contains(&distance) { continue; }
+        if let Some(word) = row.get("suggest").and_then(|v| v.as_str()) {
+            if word == count.folded { continue; }
+            distances.entry(word.to_string()).and_modify(|d| *d = (*d).min(distance)).or_insert(distance);
+        }
+    }
+    if distances.is_empty() { return Ok(vec![]); }
+    let candidate_words: Vec<_> = distances.keys().cloned().collect();
+    let candidate_text = quote(&candidate_words.join(" "));
+    let rows = call_tables(tables, |table| format!("CALL KEYWORDS({candidate_text}, {}, 1 AS stats)", quote(table))).await?;
+    let checked = merge_counts(&candidate_words, rows);
+    Ok(ranked_candidates(count, distances, &checked, gate))
 }
 
 fn replace_word(query: &str, word: &str, replacement: &str) -> String {
@@ -198,12 +208,25 @@ fn replace_word(query: &str, word: &str, replacement: &str) -> String {
     rewritten
 }
 
-/// Run page suggestions only after a complete zero count, preserving every filter.
+/// The time one page suggestion request may take, verified candidates included.
+const PAGE_SUGGESTION_DEADLINE: Duration = Duration::from_secs(30);
+
+/// Candidate queries the search page verifies with a hit count.
+const MAX_VERIFIED_CANDIDATES: usize = 6;
+
+/// Run page suggestions only after a zero count, preserving every filter.
+///
+/// Suggestions are optional. A step that fails or passes the deadline gives no
+/// suggestion and no error: the page already shows the zero result. A candidate query
+/// whose count fails is skipped, and the candidates verified before the deadline remain.
 pub async fn search_suggestions(user: &CurrentUser, query: SearchQuery) -> anyhow::Result<SearchSuggestions> {
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
-    match tokio::time::timeout_at(deadline, page_suggestions(user, query, deadline)).await {
-        Ok(result) => result,
-        Err(_) => Ok(SearchSuggestions { partial: true, ..Default::default() }),
+    let deadline = tokio::time::Instant::now() + PAGE_SUGGESTION_DEADLINE;
+    match page_suggestions(user, query, deadline).await {
+        Ok(response) => Ok(response),
+        Err(e) => {
+            tracing::warn!("suggestions: no suggestions for this search: {e:#}");
+            Ok(SearchSuggestions::default())
+        }
     }
 }
 
@@ -211,28 +234,33 @@ async fn page_suggestions(user: &CurrentUser, query: SearchQuery, deadline: toki
     let perms = permissions::resolve_permissions(user).await?;
     let Some(query) = permissions::sanitize_query(query, &perms) else { return Ok(SearchSuggestions::default()); };
     if query.query_string.trim().is_empty() { return Ok(SearchSuggestions::default()); }
-    let count = super::search_for_results_hit_count::search_hit_count(user, query.clone()).await?;
-    if count.total != 0 || count.partial { return Ok(SearchSuggestions { partial: count.partial, ..Default::default() }); }
+    let count = tokio::time::timeout_at(deadline, super::search_for_results_hit_count::search_hit_count(user, query.clone())).await??;
+    if count.total != 0 { return Ok(SearchSuggestions::default()); }
     let collections = fanout::permitted_search_collections(user, &query).await?;
-    let mut response = match tokio::time::timeout_at(deadline, indexed_suggestions(&collections, &query.query_string, TableKind::Pages, Gate::Page)).await {
-        Ok(result) => result,
-        Err(_) => return Ok(SearchSuggestions { partial: true, ..Default::default() }),
-    };
-    let mut candidates = BTreeSet::new();
-    let mut attempts = 0;
-    for group in response.suggestions.clone() {
-        for candidate in group.candidates {
-            if attempts >= 6 { break; }
+    let mut response = tokio::time::timeout_at(deadline, indexed_suggestions(&collections, &query.query_string, TableKind::Pages, Gate::Page)).await?;
+    let mut replacements = Vec::new();
+    for group in &response.suggestions {
+        for candidate in &group.candidates {
             let replacement = replace_word(&query.query_string, &group.word, &candidate.word);
-            if !candidates.insert(replacement.clone()) { continue; }
-            attempts += 1;
-            let mut corrected = query.clone();
-            corrected.query_string = replacement.clone();
-            match tokio::time::timeout_at(deadline, super::search_for_results_hit_count::search_hit_count(user, corrected)).await {
-                Ok(Ok(count)) if count.total > 0 && !count.partial => response.queries.push(SuggestedQuery { query: replacement, count: count.total }),
-                Ok(Ok(count)) => response.partial |= count.partial,
-                _ => response.partial = true,
+            if replacements.len() < MAX_VERIFIED_CANDIDATES && !replacements.contains(&replacement) {
+                replacements.push(replacement);
             }
+        }
+    }
+    let checks = replacements.into_iter().map(|replacement| {
+        let mut corrected = query.clone();
+        corrected.query_string = replacement.clone();
+        async move {
+            let count = tokio::time::timeout_at(deadline, super::search_for_results_hit_count::search_hit_count(user, corrected)).await;
+            (replacement, count)
+        }
+    });
+    for (replacement, count) in futures::future::join_all(checks).await {
+        match count {
+            Ok(Ok(count)) if count.total > 0 => response.queries.push(SuggestedQuery { query: replacement, count: count.total }),
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => tracing::warn!("suggestions: skipping {replacement:?}, its count failed: {e:#}"),
+            Err(_) => tracing::warn!("suggestions: skipping {replacement:?}, its count passed the deadline"),
         }
     }
     Ok(response)
@@ -262,21 +290,17 @@ mod tests {
                         json!({"qpos":"1","normalized":"koszonom","docs":"3"}),
                         json!({"qpos":0,"normalized":"invalid","docs":999})];
         let rows = rows.into_iter().map(|r| serde_json::from_value(r).unwrap()).collect::<Vec<_>>();
-        let counts = merge_counts(&words, vec![rows.clone(), rows], true);
+        let counts = merge_counts(&words, vec![rows.clone(), rows]);
         assert_eq!(counts[0].folded, "koszonom");
         assert_eq!(counts[0].documents, 6);
         assert_eq!(counts[1].documents, 8);
     }
 
     #[test]
-    fn incomplete_tables_cannot_establish_zero_counts() {
+    fn a_word_in_no_table_counts_zero() {
         let words = vec!["research".into(), "kaminsjy".into()];
         let rows = vec![serde_json::from_value(json!({"qpos":1,"normalized":"research","docs":12})).unwrap()];
-        let partial = merge_counts(&words, vec![rows.clone()], false);
-        assert_eq!(partial, vec![count("research", 12)]);
-        let complete = merge_counts(&words, vec![rows], true);
-        assert_eq!(complete, vec![count("research", 12), count("kaminsjy", 0)]);
-        assert!(merge_counts(&words, vec![], false).is_empty());
+        assert_eq!(merge_counts(&words, vec![rows]), vec![count("research", 12), count("kaminsjy", 0)]);
     }
 
     #[test]

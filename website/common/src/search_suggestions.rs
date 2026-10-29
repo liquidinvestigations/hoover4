@@ -34,6 +34,4 @@ pub struct SearchSuggestions {
     pub suggestions: Vec<WordSuggestions>,
     #[serde(default)]
     pub queries: Vec<SuggestedQuery>,
-    #[serde(default)]
-    pub partial: bool,
 }

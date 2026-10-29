@@ -41,9 +41,6 @@ pub struct DateHistogram {
     /// are no dated documents.
     pub domain_start: i64,
     pub domain_end: i64,
-    /// At least one shard could not be searched, so every count here is a lower bound.
-    #[serde(default)]
-    pub partial: bool,
     /// The bars count MENTIONS rather than documents.
     ///
     /// A document naming three days inside one bin contributes three to it. The two

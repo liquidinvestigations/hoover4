@@ -42,11 +42,10 @@ pub fn search_timeout_ms() -> u64 {
 /// A shard query that ran out of its budget, in either layer.
 ///
 /// A distinct type because the two failure modes must be handled differently and the
-/// difference is not visible in a message: a shard the fan-out could not REACH is
-/// dropped with the amber partial-results notice, because a missing collection is
-/// visible and truthful. A shard that TIMED OUT answered with truncated counts, and
-/// Manticore says so only in a flag nobody sees. Displaying or caching that is serving
-/// a wrong number as if it were right. So this fails the whole request instead.
+/// difference is not visible in a message. The fan-out retries a shard it could not
+/// REACH. A shard that TIMED OUT already used its whole budget, and Manticore reports the
+/// truncated counts only in a flag. So a timeout fails the whole request at once, and the
+/// response is never cached.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SearchTimedOut(pub String);
 
@@ -272,23 +271,36 @@ pub async fn manticore_raw_sql(base: &str, sql: &str) -> anyhow::Result<Vec<Mant
         .map_err(|e| e.context(format!("Manticore answered {status} to {sql:?}")))
 }
 
-/// Cache dictionary calls under the collection's shard generation and a short deadline.
+/// The time one dictionary call to one table may take, the cache read included.
+pub const DICTIONARY_CALL_LIMIT: Duration = Duration::from_secs(5);
+
+/// Cache dictionary calls under the collection's shard generation.
+///
+/// [`DICTIONARY_CALL_LIMIT`] covers the cache read and the Manticore call. The cache write
+/// runs after the rows are in hand and outside that limit, so a slow write cannot fail a
+/// call that already has its answer. A failed write only costs the next call a lookup.
 pub async fn manticore_dictionary_sql(sql: String, salt: &str) -> anyhow::Result<Vec<ManticoreRawRow>> {
-    tokio::time::timeout(Duration::from_millis(200), async {
-        let hash = sha256::digest(format!("dictionary-v1:{salt}\n{sql}"));
-        if let Ok(cached) = get_cached_response(&hash, &sql).await {
-            if let Ok(rows) = serde_json::from_str(&cached) {
-                return Ok(rows);
-            }
+    let hash = sha256::digest(format!("dictionary-v1:{salt}\n{sql}"));
+    let fresh = tokio::time::timeout(DICTIONARY_CALL_LIMIT, async {
+        if let Ok(cached) = get_cached_response(&hash, &sql).await
+            && let Ok(rows) = serde_json::from_str(&cached)
+        {
+            return Ok::<_, anyhow::Error>((rows, None));
         }
         let base = std::env::var("MANTICORE_URL")?;
         let rows = manticore_raw_sql(&base, &sql).await?;
         let body = serde_json::to_string(&rows)?;
-        let _ = get_global_client().with_option("async_insert", "0")
-            .query("INSERT INTO search_manticore_cache (query_hash, query_string, result_json, duration_ms) VALUES (?, ?, ?, 0)")
-            .bind(&hash).bind(&sql).bind(&body).execute().await;
-        Ok(rows)
-    }).await.map_err(|_| anyhow::anyhow!("The dictionary call exceeded its time limit."))?
+        Ok((rows, Some(body)))
+    })
+    .await
+    .map_err(|_| anyhow::anyhow!("The dictionary call exceeded its {}s time limit.", DICTIONARY_CALL_LIMIT.as_secs()))??;
+    let (rows, body) = fresh;
+    if let Some(body) = body
+        && insert_cache(&hash, &sql, &body, 0).await.is_err()
+    {
+        tracing::debug!("dictionary cache insert failed: {hash}");
+    }
+    Ok(rows)
 }
 
 /// The rows of the first result of a raw-mode body, or its error.
@@ -386,8 +398,7 @@ mod tests {
     }
 
     /// The two failure modes are told apart by TYPE. A timeout that read as an ordinary
-    /// shard failure would be dropped from the results with an amber notice, which is
-    /// how a truncated count reaches the screen looking merely incomplete.
+    /// shard failure would be retried, and each retry costs another whole budget.
     #[test]
     fn a_timeout_is_recognisable_through_the_error_chain() {
         let error =

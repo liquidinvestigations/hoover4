@@ -118,18 +118,17 @@ pub async fn search_date_histogram(
     query.range_filters.remove("dates");
 
     let collections = fanout::permitted_search_collections(user, &query).await?;
-    let targets = fanout::shard_targets(&collections).await;
+    let targets = fanout::shard_targets(&collections).await?;
     if targets.is_empty() {
         return Ok(DateHistogram::default());
     }
 
-    let (domain, unknown_count, probe_partial) = probe_domain(&query, targets.clone()).await?;
+    let (domain, unknown_count) = probe_domain(&query, targets.clone()).await?;
     let Some(domain) = domain else {
         // Every matching document is undated. There is nothing to bin, and saying so is
         // more useful than an axis over an invented range.
         return Ok(DateHistogram {
             unknown_count,
-            partial: probe_partial,
             ..DateHistogram::default()
         });
     };
@@ -155,7 +154,6 @@ pub async fn search_date_histogram(
         unknown_count,
         domain_start: domain.start,
         domain_end: domain.end,
-        partial: probe_partial || counts.partial,
         // These bars are document counts. The mentioned-date histogram is the one that
         // counts mentions, and the flag is how the pane tells them apart.
         counts_mentions: false,
@@ -171,7 +169,7 @@ pub async fn search_date_histogram(
 async fn probe_domain(
     query: &SearchQuery,
     targets: Vec<FanoutTarget>,
-) -> anyhow::Result<(Option<DateDomain>, u64, bool)> {
+) -> anyhow::Result<(Option<DateDomain>, u64)> {
     let outcome = fanout::fan_out(targets, |target: FanoutTarget| {
         let query = query.clone();
         async move {
@@ -225,11 +223,10 @@ async fn probe_domain(
     })
     .await?;
 
-    let partial = outcome.is_partial();
     let mut start: Option<i64> = None;
     let mut end: Option<i64> = None;
     let mut unknown_count = 0_u64;
-    for (_, (low, high, undated)) in outcome.results {
+    for (_, (low, high, undated)) in outcome {
         if let Some(hit) = low.hits.hits.first() {
             start = Some(start.map_or(hit._source.bound, |v: i64| v.min(hit._source.bound)));
         }
@@ -251,13 +248,12 @@ async fn probe_domain(
         }),
         _ => None,
     };
-    Ok((domain, unknown_count, partial))
+    Ok((domain, unknown_count))
 }
 
 struct BucketCounts {
     /// Indexed by `INTERVAL()` result, so index 0 is "below the first edge".
     totals: Vec<u64>,
-    partial: bool,
 }
 
 async fn count_buckets(
@@ -294,7 +290,7 @@ async fn count_buckets(
     .await?;
 
     let mut totals = vec![0_u64; edges.len() + 1];
-    for (_, response) in &outcome.results {
+    for (_, response) in &outcome {
         for hit in &response.hits.hits {
             if let Ok(index) = usize::try_from(hit._source.bucket)
                 && index < totals.len()
@@ -303,7 +299,7 @@ async fn count_buckets(
             }
         }
     }
-    Ok(BucketCounts { totals, partial: outcome.is_partial() })
+    Ok(BucketCounts { totals })
 }
 
 /// `ceil(a / b)` for positive `b`. `i64::div_ceil` is still unstable.

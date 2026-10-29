@@ -203,7 +203,8 @@ A loading line appears while the search verifies similar indexed words.
 When similar words have matches under your filters, buttons show their queries and document counts.
 Select a button to search that query with the same filters.
 When no suggestion exists, the page says that no similar words were found in the selected collections.
-A partial notice identifies incomplete suggestions or search results. An empty query shows no suggestion section.
+An empty query shows no suggestion section.
+When a search does not complete, the result area says so and shows a **Retry** button. Select **Retry** to run the same search again.
 
 ### Result actions
 

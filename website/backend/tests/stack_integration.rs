@@ -188,9 +188,9 @@ fn registry_presence_distinguishes_absence_from_failure() {
     assert_eq!(failure.unwrap_err().root_cause().to_string(), "registry read failed");
 }
 
-/// Serialises the tests that assert the global partial flag: the missing-shard
-/// test deliberately makes every search partial for its duration, which would
-/// flunk the healthy-stack assertions of tests running concurrently.
+/// Serialises the tests that need every shard to answer: the missing-shard test
+/// deliberately makes every search fail for its duration, which would flunk the
+/// healthy-stack assertions of tests running concurrently.
 static GLOBAL_SEARCH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 fn operation_detail_collection_present(collection: &str, read: anyhow::Result<bool>) -> bool {
@@ -332,7 +332,6 @@ async fn search_round_trip_returns_hits_from_fixture_collections() {
         .await
         .unwrap();
     assert!(!results.results.is_empty(), "expected search hits");
-    assert!(!results.partial, "no shard may fail on a healthy stack");
     for hit in &results.results {
         // The query selects only the canonical fixture datasets.
         assert!(
@@ -352,7 +351,6 @@ async fn search_round_trip_returns_hits_from_fixture_collections() {
     )
     .await
     .unwrap();
-    assert!(!hit_count.partial, "no shard may fail on a healthy stack");
     assert!(hit_count.total >= results.results.len() as u64);
 }
 
@@ -446,14 +444,12 @@ async fn pagination_pages_are_disjoint_and_complete() {
         "fixture corpus must span more than one page, got {}",
         hit_count.total
     );
-    assert!(!hit_count.partial);
 
     let mut seen: BTreeSet<(String, String)> = BTreeSet::new();
     for page in 0..10_u64 {
         let results = backend::api::search::search_for_results(&admin_user(), mk_query(), page)
             .await
             .unwrap();
-        assert!(!results.partial);
         if results.results.is_empty() {
             break;
         }
@@ -475,17 +471,16 @@ async fn pagination_pages_are_disjoint_and_complete() {
     );
 }
 
-/// Partial-failure round trip. Insert a bogus shard into one collection's
-/// ledger (its Manticore tables do not exist), assert the search still returns
-/// the surviving shards' hits with partial == true on results, hit count and
-/// facets, then remove the row again.
+/// Failure round trip. Insert a bogus shard into one collection's ledger (its
+/// Manticore tables do not exist), assert that results, hit count and facets fail
+/// instead of returning the surviving shards' hits, then remove the row again.
 ///
 /// `slow_`: it waits out the 30 s shard-state cache in both directions and then a
 /// ClickHouse mutation, so it costs one to two minutes and no amount of tuning will make
 /// it cheap. Run it with `./run-stack-tests.sh --slow`.
 #[tokio::test]
 #[ignore = "needs live stack"]
-async fn slow_missing_shard_degrades_to_partial_results() {
+async fn slow_missing_shard_fails_the_search() {
     skip_unless_dataset!(EMAILS);
     let _guard = GLOBAL_SEARCH_LOCK.lock().await;
     let client = backend::db_utils::clickhouse_utils::get_collection_client("other");
@@ -526,9 +521,9 @@ async fn slow_missing_shard_degrades_to_partial_results() {
         None,
     )
     .await;
-    // Restricted to the degraded collection: the surviving shard's hits must
-    // still come back (partial, not empty). The dataset selection travels as a
-    // collection_dataset facet filter (that is what prunes fan-out targets).
+    // Restricted to the degraded collection, which still targets the bogus shard. The
+    // dataset selection travels as a collection_dataset facet filter (that is what
+    // prunes fan-out targets).
     let mut restricted_query = mk_query();
     restricted_query.facet_filters.insert(
         "collection_dataset".to_string(),
@@ -567,28 +562,10 @@ async fn slow_missing_shard_degrades_to_partial_results() {
     // test's fan-out ever sees the bogus shard.
     wait_for_shard_cache("other", "other_9999", false).await;
 
-    let results = results.unwrap();
-    assert!(results.partial, "a missing shard table must mark results partial");
-    assert!(
-        !results.results.is_empty(),
-        "surviving shards' hits must still come back"
-    );
-    let hit_count = hit_count.unwrap();
-    assert!(hit_count.partial, "a missing shard table must mark the hit count partial");
-    assert!(hit_count.total > 0);
-    let facets = facets.unwrap();
-    assert!(facets.partial, "a missing shard table must mark facets partial");
-
-    let restricted = restricted.unwrap();
-    assert!(restricted.partial, "the degraded collection must be marked partial");
-    assert!(
-        !restricted.results.is_empty(),
-        "the surviving shard's hits must still come back"
-    );
-    assert!(
-        restricted.results.iter().all(|h| h.collection_dataset == "other_emails"),
-        "a dataset-restricted search may only return that dataset's hits"
-    );
+    assert!(results.is_err(), "a missing shard table must fail the results");
+    assert!(hit_count.is_err(), "a missing shard table must fail the hit count");
+    assert!(facets.is_err(), "a missing shard table must fail the facets");
+    assert!(restricted.is_err(), "a missing shard table must fail the restricted search");
 }
 
 /// Permission isolation. A non-admin user whose group has access to exactly one
@@ -701,7 +678,6 @@ async fn hits(query: SearchQuery) -> u64 {
     let count = backend::api::search::search_for_results_hit_count(&admin_user(), query)
         .await
         .unwrap();
-    assert!(!count.partial, "no shard may fail on a healthy stack");
     count.total
 }
 
@@ -816,7 +792,6 @@ async fn sort_by_size_is_monotonic_across_shards() {
         let results = backend::api::search::search_for_results(&admin_user(), query, 0)
             .await
             .unwrap();
-        assert!(!results.partial);
         assert!(results.results.len() > 3, "need several hits to see an order at all");
 
         let mut sizes = Vec::new();
@@ -908,7 +883,6 @@ async fn qa_sort_relevance_matches_raw_scores_across_shards_and_pages() {
         )
         .await
         .unwrap();
-        assert!(!results.partial);
         actual.extend(
             results
                 .results
@@ -932,7 +906,6 @@ async fn filename_only_match() {
     let results = backend::api::search::search_for_results(&admin_user(), query, 0)
         .await
         .unwrap();
-    assert!(!results.partial);
     let titles: Vec<&str> = results.results.iter().map(|h| h.title.as_str()).collect();
     assert!(
         titles.iter().any(|t| t.contains("easychair.docx")),
@@ -1517,7 +1490,6 @@ async fn date_histogram_bins_the_corpus_and_honours_the_cutoffs() {
     let unfiltered = backend::api::search::search_date_histogram(&admin_user(), canonical_query())
         .await
         .unwrap();
-    assert!(!unfiltered.partial);
     assert!(!unfiltered.buckets.is_empty(), "the fixture corpus has dated documents");
     assert!(
         unfiltered.buckets.len() <= backend::api::search::HISTOGRAM_MAX_BUCKETS,

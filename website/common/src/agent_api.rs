@@ -214,8 +214,6 @@ pub struct SearchResultsResponse {
     pub word_counts: Vec<crate::search_suggestions::WordCount>,
     #[serde(default)]
     pub suggestions: Vec<crate::search_suggestions::WordSuggestions>,
-    #[serde(default)]
-    pub suggestions_partial: bool,
     pub documents: Vec<AgentSearchDocument>,
     pub total_count: u64,
     /// Every facet the search page's filter modal lists that has at least one value, each

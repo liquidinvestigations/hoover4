@@ -43,20 +43,24 @@ and a per-call limit multiplies by four against a daemon that has a dozen worker
 Size it to the daemon, not to the shard count.
 
 Selecting datasets in the `collection_dataset` facet prunes whole collections from the
-fan-out. One failing shard degrades the response to partial (the UI shows a "some
-collections could not be searched" notice); an error is returned only when every shard
-fails.
+fan-out.
 
-**A timeout is not a partial result.** Every query carries `max_query_time` and
+**A search is complete or it fails.** No response leaves out a shard. A shard call that
+fails gets three attempts, with waits of 250 ms and 1 s, and each retry runs only the shard
+that failed. The shards that answered are not queried again. A shard that still fails after
+its third attempt fails the whole request. The same rule covers the shard ledger read and
+the dataset lookup. A dataset that is not in the registry is skipped, because that is a
+complete answer. The result list then shows that the search did not complete, with a
+Retry button, and each facet pane shows its own Retry button.
+
+Two failures are not retried. Every query carries `max_query_time` and
 `agent_query_timeout` of 30 s (`HOOVER4_SEARCH_TIMEOUT_SECONDS`, ini key
 `search_timeout_seconds`), and the HTTP client applies the same budget plus five seconds
 of grace. Manticore's own limit is best-effort and covers neither a connect nor a read
-stall. A shard that hits either limit fails the whole request, is never written to the
-search cache, and the facet pane offers a Retry button. That is deliberate asymmetry: a
-shard that could not be reached is dropped with a visible amber notice, while a shard that
-timed out answers with counts that are short by an unknown amount in a response shaped
-exactly like a correct one. The retry is never automatic. Retrying by itself doubles the
-load on a Manticore that was already too slow.
+stall. A shard that hits either limit fails the whole request at once and is never written
+to the search cache. Another attempt would cost a second whole budget on a Manticore that
+was already too slow. A statement that Manticore refuses also fails at once, because it
+fails the same way on every attempt.
 
 What is exact, and what is approximate:
 
@@ -407,11 +411,13 @@ Candidate counts come from another `CALL KEYWORDS` request. `QSUGGEST` counts ar
 Candidates need distance one or two. A rare word needs a candidate with twenty times its count.
 The agent permits any positive candidate count. The search page requires ten documents and seven letters for distance two.
 The response ranks four candidates per word by distance and checked count.
-Each dictionary call has a 200 ms limit. Failed tables cause a partial response.
-An incomplete word-count lookup omits zero counts and spelling candidates. Positive counts remain lower bounds.
-The agent emits no absence instruction from partial dictionary results.
+Each dictionary call to one table has a 5 s limit, which includes the cache read. The cache write runs after the call.
+A table that fails gets three attempts. A retry runs only the table that failed.
+A word-count lookup that still fails returns no counts and no candidates, so the agent emits no absence instruction.
+A word whose candidate lookup fails gets no candidates. The other words keep theirs.
 Dictionary responses use the search cache with the collection shard generation.
-The search page verifies at most six candidate queries with unchanged filters within two seconds.
+The search page verifies at most six candidate queries with unchanged filters, concurrently, within 30 s.
+A candidate whose count fails or passes the 30 s deadline is skipped. The page shows no warning for a skipped candidate.
 Suggestions never change the original query automatically.
 
 ## Search requests merge collection shards.
@@ -432,7 +438,7 @@ sequenceDiagram
     B->>M: Bounded shard requests
     M-->>B: Results and counts or errors
     B->>B: Merge and sort results
-    B-->>U: Results, counts and partial-state details
+    B-->>U: Complete results and counts, or a failure
 ```
 
 [The search API](../../website/backend/src/api/search/) and [query builder](../../website/backend/src/db_utils/manticore_match.rs) own this sequence.

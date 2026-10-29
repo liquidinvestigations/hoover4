@@ -206,7 +206,6 @@ pub async fn search_for_results(
             prev_hash: None,
             next_hash: None,
             page_number: current_search_result_page,
-            partial: false,
         });
     };
 
@@ -222,7 +221,7 @@ pub async fn search_for_results(
     let fetch_limit = (merge_offset + merge_limit) as u64;
 
     let collections = fanout::permitted_search_collections(user, &query).await?;
-    let targets = fanout::shard_targets(&collections).await;
+    let targets = fanout::shard_targets(&collections).await?;
     if targets.is_empty() {
         return Ok(SearchResultDocuments {
             query,
@@ -231,7 +230,6 @@ pub async fn search_for_results(
             prev_hash: None,
             next_hash: None,
             page_number: current_search_result_page,
-            partial: false,
         });
     }
 
@@ -248,9 +246,8 @@ pub async fn search_for_results(
         }
     })
     .await?;
-    let partial = outcome.is_partial();
 
-    let merged = fanout::merge_hits_sorted(outcome.results, sort, merge_offset, merge_limit);
+    let merged = fanout::merge_hits_sorted(outcome, sort, merge_offset, merge_limit);
 
     let query_string = query.query_string.clone();
     let mut search_results = merged
@@ -346,7 +343,6 @@ pub async fn search_for_results(
         prev_hash,
         next_hash,
         page_number: current_search_result_page,
-        partial,
     };
     Ok(result)
 }

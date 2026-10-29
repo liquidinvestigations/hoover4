@@ -33,6 +33,7 @@ from collection_search_server.backends import (
     collection_db,
     manticore_vectors_query,
     manticore_query_options,
+    with_retries,
 )
 
 log = logging.getLogger(__name__)
@@ -157,11 +158,10 @@ def search(query_vector: list[float], collections: list[str]) -> list[VectorCand
                 f"{{rescore=1, oversampling={VECTOR_OVERSAMPLING}}}) "
                 f"ORDER BY dist ASC LIMIT {VECTOR_PER_SHARD} {manticore_query_options(VECTOR_PER_SHARD, pages=False)}"
             )
-            try:
-                rows = manticore_vectors_query(sql)
-            except Exception as exc:  # noqa: BLE001 - one bad shard must not blank the search
-                log.warning("vector shard %s failed: %s", table, exc)
-                continue
+            # A shard that still fails after its retries fails the vector ranking. The
+            # caller then searches by keyword only and says so, instead of ranking with
+            # a shard left out.
+            rows = with_retries(f"vector shard {table}", lambda: manticore_vectors_query(sql))
             for row in rows:
                 hits.append(
                     VectorCandidate(
