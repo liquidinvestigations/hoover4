@@ -471,7 +471,10 @@ def test_a_policy_batch_loads_a_skill_and_starts_no_reads(store, monkeypatch, ro
     outcome = _hook("tool_batch_completed", anchor_idx=3)
     assert outcome.calls == []
     first = _hook("tool_batch_completed", anchor_idx=1)
-    assert [c.name for c in first.calls] == ["read_skill"]
+    # The automatic page read is the first read and the first page read of the turn.
+    assert [c.name for c in first.calls] == ["read_skill", "read_skill"]
+    ai = [m for m in store["messages"] if m.role == "ai"][-1]
+    assert sorted(c["args"]["name"] for c in ai.tool_calls) == ["citation", "web_research"]
 
 
 # ------------------------------------------------------------------ discovery
@@ -555,6 +558,21 @@ def test_named_collection_absence_does_not_require_a_document_search():
                       turn=freeze({"preparation": {"absence_records": [{"name": "epstein", "kind": "collection"}]}}))
     assert facts.justified_absence(context)
     assert not facts.justified_absence(replace(context, draft="No documents contain a different name."))
+
+
+def test_a_name_record_justifies_an_absence_until_a_search_finds_the_name():
+    """Preparation stores a name record only after a successful word count lookup of the
+    selected collections in which a word of the name has no document. That lookup is the
+    document search of the record. A later search with a keyword source defeats it."""
+    from tasks.P_agent.control import facts
+    record = {"name": "Ortwin Pell", "kind": "name", "options": [],
+              "word_counts": [{"word": "pell", "documents": 0}]}
+    context = replace(_progress_context(), draft="The documents do not contain Ortwin Pell.",
+                      turn=freeze({"preparation": {"absence_records": [record]}}))
+    assert facts.justified_absence(context)
+    hit = _fact("search_collections", keyword_sources=("h1",))
+    assert not facts.justified_absence(replace(context, results=(hit,)))
+    assert not facts.justified_absence(replace(context, turn=freeze({"preparation": {}})))
 
 
 # ------------------------------------------------------------------ repair rounds
@@ -1684,12 +1702,12 @@ def _read_page_fact(status="ok", reads=(("https://a.example", "ok"),)):
     ([lambda: _read_page_fact(status="refused", reads=())], []),
     ([lambda: _read_page_fact(reads=(("https://a.example", "partial"),))], ["web_research"]),
     ([lambda: _read_page_fact(reads=(("https://a.example", "error"),))], ["web_research"]),
-    ([lambda: _read_page_fact()], []),
+    ([lambda: _read_page_fact()], ["web_research"]),
     ([lambda: _fact("search_collections")], []),
 ])
 def test_the_method_events_load_the_web_and_browser_skills(batch, expected):
     """The tool results of a method load its skill in every definition, with no classifier.
-    A full page read needs no recovery method."""
+    The first full page read loads the web method, because it holds the web citation rules."""
     from tasks.P_agent.control.handlers.result_skills import Handler
     facts = tuple(make() for make in batch)
     listed = freeze({"web_research": {}, "browser_use": {}})
@@ -1700,6 +1718,61 @@ def test_the_method_events_load_the_web_and_browser_skills(batch, expected):
     assert [a.target_id for a in off.actions] == []
     unlisted = replace(context, listed_skills=freeze({}))
     assert asyncio.run(Handler().evaluate(_event(), unlisted, {}, object())).actions == ()
+
+
+def _document_read_fact(status="ok", reads=(("h1", "ok"),)):
+    return _fact("read_documents", status=status, args={"documents": ["h1"]}, reads=reads)
+
+
+@pytest.mark.parametrize("order,current,legacy", [
+    # A direct page read with no web search before it.
+    (["page"], [["web_research"]], [["citation", "web_research"]]),
+    (["document"], [["citation"]], [["citation"]]),
+    (["page", "document"], [["web_research"], ["citation"]], [["citation", "web_research"], []]),
+    (["document", "page"], [["citation"], ["web_research"]], [["citation"], ["web_research"]]),
+    (["page", "page"], [["web_research"], []], [["citation", "web_research"], []]),
+    (["document", "document"], [["citation"], []], [["citation"], []]),
+    (["mixed"], [["citation", "web_research"]], [["citation", "web_research"]]),
+])
+def test_the_first_document_read_loads_citation_and_the_first_page_read_loads_web_research(
+        order, current, legacy):
+    """Each batch of `order` follows the earlier ones in the same turn. `current` is the
+    built-in rule `first_document_read`. `legacy` is a configured definition of an earlier
+    revision with `first_read`, which loads `citation` on the first read of either kind. Both
+    load `web_research` on the first page read, with no web search before it."""
+    from tasks.P_agent.control.handlers.result_skills import Handler
+    listed = freeze({"citation": {}, "web_research": {}})
+    for event, expected in (("first_document_read", current), ("first_read", legacy)):
+        params = {"events": {"citation": event}}
+        Handler().validate(params)
+        earlier, got = (), []
+        for index, kind in enumerate(order):
+            batch = {"page": (_read_page_fact(),), "document": (_document_read_fact(),),
+                     "mixed": (_document_read_fact(), _read_page_fact())}[kind]
+            batch = tuple(replace(f, ai_idx=index + 1) for f in batch)
+            context = replace(_progress_context(), listed_skills=listed,
+                              results=earlier + batch, batch=batch)
+            result = asyncio.run(Handler().evaluate(_event_at(index + 1), context, params, object()))
+            got.append(sorted(a.target_id for a in result.actions))
+            earlier += batch
+        assert got == expected, event
+
+
+def test_a_web_only_turn_loads_web_research_on_a_page_read_and_no_citation_skill():
+    """A web-only run does not list `citation`, so a page read loads only `web_research`,
+    also under a legacy definition."""
+    from tasks.P_agent.control.handlers.result_skills import Handler
+    batch = (_read_page_fact(),)
+    context = replace(_progress_context(), listed_skills=freeze({"web_research": {}}),
+                      results=batch, batch=batch)
+    for events in ({"citation": "first_document_read"}, {"citation": "first_read"}):
+        result = asyncio.run(Handler().evaluate(_event(), context, {"events": events}, object()))
+        assert [a.target_id for a in result.actions] == ["web_research"]
+
+
+def _event_at(anchor_idx):
+    from tasks.P_agent.control.model import ControlEvent
+    return ControlEvent("batch", "tool_batch_completed", anchor_idx, "model")
 
 
 def test_a_definition_event_replaces_the_method_mapping_of_its_skill():

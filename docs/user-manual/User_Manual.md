@@ -889,7 +889,7 @@ Select a card to open the board.
 1. Select **New board** on the AI chat home page.
 2. Enter a title and between one and six goals.
 3. Enter background context that defines known facts, constraints, and the required result.
-4. Select the collections to search.
+4. Select the collections to search. **Collections** selects or clears every collection. A board without collections searches the web only and needs **Internet tools**.
 5. Enter initial hints when you have useful leads.
 6. Set **Internet tools** when the investigation must compare documents with online sources.
 7. Select **Create board**.

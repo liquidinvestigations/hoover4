@@ -59,12 +59,12 @@ SUBMIT_FACT_SCHEMA = {
                 "fact": {
                     "type": "string", "minLength": 1, "maxLength": MAX_FACT_CHARS,
                     "description": "One paragraph with the finding. Keep each handle of the "
-                                   "report, such as [D1], beside the claim that it supports.",
+                                   "report, such as [D1] or [W1], beside the claim that it supports.",
                 },
                 "kind": {
                     "type": "string", "enum": list(m.EXPLORE_KINDS),
-                    "description": "sourced: the cited documents state the finding. inferred: "
-                                   "the finding follows from them but no document states it. "
+                    "description": "sourced: the cited sources state the finding. inferred: "
+                                   "the finding follows from them but no source states it. "
                                    "not_found: the searches found no answer.",
                 },
                 "open_questions": {
@@ -91,12 +91,12 @@ INSTRUCTIONS = (
     "Add no fact, and do not change a name, a date or a number. Keep each handle beside the "
     "claim that it supports. When the report is long, keep the claims that answer the task.\n\n"
     "Choose the kind of the finding:\n"
-    "- sourced: the cited documents state the finding. Example: The contract of 4 May 2001 "
+    "- sourced: the cited sources state the finding. Example: The contract of 4 May 2001 "
     "names Ann Lee as the buyer [D1].\n"
     "- inferred: the finding follows from the sources, but no source states it. Example: The "
     "payment followed the approval, because the approval is dated 2 May [D1] and the payment "
     "4 May [D2].\n"
-    "- not_found: the searches found no answer. Name the searches and the documents examined. "
+    "- not_found: the searches found no answer. Name the searches and the sources examined. "
     "Example: The searched committee minutes of 2001 did not identify an approval date.\n\n"
     "Put the questions that the report names as open in open_questions, at most 3. Known "
     "answers and source caveats are not open questions.\n\n"

@@ -19,6 +19,11 @@ The role skill of a profile is not listed. The system prompt holds its text
 (`role_method`), so every run of the profile reads it before its first call, and no run reads
 it with `read_skill`. `render_skill` renders a body with the context that its caller passes,
 and it keeps no state of its own. `has()` in a body reads every tool of the run.
+
+A body can include a partial of `skills/partials/` by its file name. A partial has the
+suffix `.j2` only, so `load_skills` never reads it as a skill. An included partial reads the
+same names as the body that includes it. The `citation` and `web_research` skills include
+`citation_failures.j2`, so both give the same failure rules.
 """
 
 from __future__ import annotations
@@ -28,11 +33,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, FrozenSet, Iterable, List, Optional, Tuple
 
-from jinja2 import Environment, StrictUndefined
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from agent_common.tool_packs import pack_of
 
 SKILL_DIR = Path(__file__).parent / "skills"
+#: The texts that more than one skill includes.
+PARTIALS_DIR = SKILL_DIR / "partials"
 GROUPS = ("role", "general", "technique", "stumble")
 
 #: The longest description a skill may have.
@@ -168,8 +175,9 @@ def listed_skills(ctx: SkillContext, skills: Optional[Dict[str, Skill]] = None) 
 
 def environment() -> Environment:
     """The Jinja settings of the prompt templates. `StrictUndefined` makes a mistyped name
-    fail loudly."""
+    fail loudly. The loader reads the partials that a skill includes."""
     return Environment(
+        loader=FileSystemLoader(str(PARTIALS_DIR)),
         undefined=StrictUndefined,
         trim_blocks=True,
         lstrip_blocks=True,
@@ -303,7 +311,7 @@ def search_skills(query: str, ctx: SkillContext, limit: int = 6,
 
 __all__ = [
     "DEFAULT_PROFILE", "GROUPS", "ROLE_CONTEXT",
-    "ROLE_SKILLS", "SKILLS", "SKILL_DIR", "Skill", "SkillContext",
+    "PARTIALS_DIR", "ROLE_SKILLS", "SKILLS", "SKILL_DIR", "Skill", "SkillContext",
     "SkillFileError", "UnboundToolError", "listed_skills", "load_skills",
     "REPORT_SKILL", "rank_matches", "render_body", "render_skill", "report_rules",
     "role_method", "search_skills",

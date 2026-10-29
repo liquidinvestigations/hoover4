@@ -11,7 +11,7 @@ import pytest
 from temporalio.exceptions import ApplicationError
 
 from database import chat_workspace as store_mod
-from database.boards import FactRow, LabelRow
+from database.boards import BoardRow, FactRow, LabelRow
 from tasks.P_agent import summarize
 from tasks.P_board import activities, conversion
 from tasks.P_board import commands as cmd
@@ -249,6 +249,112 @@ def test_the_brief_gives_full_text_to_the_from_facts_and_labels_to_the_others():
     assert m.SUBMIT_FACT_TOOL not in text and "report" in text
     web = render_brief(board, facts, [], [], intent, ["enron"], m.BASE_EXPLORE_STEPS, labels, True)
     assert "Use the web when" in web and "[W1]" in web
+
+
+def test_the_brief_of_a_web_only_board_names_the_web_and_no_collection():
+    facts = [FactRow("b1", "background", m.ORIGIN, "The investigation searches the web only.")]
+    intent = SimpleNamespace(intent_id="intent-x", from_facts=[], objective="Find X", brief="")
+    board = SimpleNamespace(internet_tools=True, collections=[])
+    text = render_brief(board, facts, [], [], intent, [], m.BASE_EXPLORE_STEPS, [], True)
+    assert "- Search the web. Read the text behind each claim." in text
+    assert "[W1]" in text and "[D1]" not in text
+    assert "collection" not in text.lower()
+    assert '"not found in the sources read"' in text and "not found in the documents" not in text
+    assert "the searches and the sources examined" in text
+
+
+def test_the_reason_prompt_of_a_web_only_board_names_the_web_and_no_collection():
+    from tasks.P_board.prompts import render_reason
+
+    rows = [FactRow("b1", "goal-01", m.GOAL, "Who runs the mill?"),
+            FactRow("b1", "background", m.ORIGIN, "The investigation searches the web only.")]
+    web_only = BoardRow("b1", OWNER, "t", "g", collections=[])
+    folded = fold(web_only, [], rows)
+    prompt = render_reason(web_only, folded, rows, [], stalled=False, internet=True)
+    assert "research agents explore on the web." in prompt
+    assert "Collections: none, the explores search the web only\n" in prompt
+    assert "in the document collections" not in prompt
+    both = BoardRow("b1", OWNER, "t", "g", collections=["enron"])
+    prompt = render_reason(both, fold(both, [], rows), rows, [], stalled=False, internet=True)
+    assert "explore in the document collections and on the web." in prompt
+    assert "Collections: enron\n" in prompt
+
+
+def test_the_conversion_names_sources_and_keeps_the_web_handles_of_a_web_only_finding():
+    web = [c for c in CITATIONS if c["handle"].startswith("[W")]
+    body = conversion.request_body("q-model", "Find the approval", "report.md",
+                                   "The hedge was approved [W1].", web)
+    system = body["messages"][0]["content"]
+    schema = json.dumps(conversion.SUBMIT_FACT_SCHEMA)
+    assert "cited sources state the finding" in system and "cited documents" not in system
+    assert "cited sources state the finding" in schema and "cited documents" not in schema
+    assert "the sources examined" in system
+    args = conversion.parse_reply(call_reply({"fact": "The hedge was approved [W1].",
+                                              "kind": "sourced", "open_questions": []}))
+    kind, rows, problems = conversion.resolve(args, web)
+    assert kind == m.SOURCED and problems == []
+    assert [r["label"] for r in rows] == ["W1"]
+    assert rows[0]["path"] == "http://a.example/y" and rows[0]["quote"] == "the hedge was approved"
+    assert rows[0]["collectionname"] == "" and rows[0]["file_hash"] == ""
+
+
+# ------------------------------------------------------------- the explore turn
+
+
+@pytest.fixture
+def opening(board, monkeypatch):
+    """The writers of `open_explore_turn`, with the collections that exist."""
+    from database import clickhouse
+
+    state = {"sessions": [], "rows": [], "existing": ["enron"]}
+    monkeypatch.setattr(clickhouse, "list_collections", lambda: list(state["existing"]))
+    monkeypatch.setattr(activities, "_ensure_session",
+                        lambda b, session, title, collections: state["sessions"].append(collections))
+    monkeypatch.setattr(activities, "_existing_user_seq", lambda owner, session, uuid: None)
+    monkeypatch.setattr(activities, "_next_seq", lambda owner, session: 3)
+    monkeypatch.setattr(activities, "_write_turn_rows",
+                        lambda owner, session, seq, text, uuid, usage="": state["rows"].append((text, usage)))
+    return state
+
+
+def _set_board(board, monkeypatch, collections, internet_tools, enabled):
+    from dataclasses import replace as replace_row
+
+    board.boards["b1"] = replace_row(board.boards["b1"], collections=collections,
+                                     internet_tools=internet_tools)
+    monkeypatch.setenv("HOOVER4_INTERNET_TOOLS_ENABLED", "true" if enabled else "false")
+
+
+def test_a_web_only_board_starts_an_explore_with_no_collection(board, opening, monkeypatch):
+    _set_board(board, monkeypatch, [], 1, True)
+    opened = activities.open_explore_turn(activities.TurnRequest("b1", "intent-approval", 1))
+    assert opened.skip_kind == "" and opened.run_input is not None
+    assert opened.run_input.allowed_collections == [] and opened.run_input.internet_tools is True
+    assert opening["sessions"] == [[]]
+    text, usage = opening["rows"][0]
+    assert "- Search the web." in text and "collection" not in text.lower()
+    assert json.loads(usage)["task"]["allowed_sources"]["text"] == "collections: none; the web is allowed"
+
+
+@pytest.mark.parametrize("internet_tools,enabled", [(0, True), (1, False)])
+def test_a_web_only_board_fails_its_explore_when_the_internet_tools_are_off(
+        board, opening, monkeypatch, internet_tools, enabled):
+    _set_board(board, monkeypatch, [], internet_tools, enabled)
+    opened = activities.open_explore_turn(activities.TurnRequest("b1", "intent-approval", 1))
+    assert opened.skip_kind == m.EXPLORE_FAILED
+    assert opened.skip_reason == "the board has no collections and the internet tools are off"
+    assert opening["sessions"] == [] and opening["rows"] == []
+
+
+def test_a_board_whose_collections_are_gone_fails_and_does_not_become_web_only(
+        board, opening, monkeypatch):
+    _set_board(board, monkeypatch, ["epstein"], 1, True)
+    opened = activities.open_explore_turn(activities.TurnRequest("b1", "intent-approval", 1))
+    assert opened.skip_kind == m.EXPLORE_FAILED
+    assert opened.skip_reason == "none of the board collections exists"
+    _set_board(board, monkeypatch, ["enron", "epstein"], 0, True)
+    opened = activities.open_explore_turn(activities.TurnRequest("b1", "intent-approval", 1))
+    assert opened.run_input.allowed_collections == ["enron"] and opened.run_input.internet_tools is False
 
 
 # ---------------------------------------------- counts through report and answer

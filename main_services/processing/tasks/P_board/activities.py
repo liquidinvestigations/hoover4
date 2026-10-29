@@ -511,7 +511,8 @@ def board_reason(task: ReasonTask) -> str:
     citations = boards.read_citations(board.board_id)
     if folded.status != m.ACTIVE and not task.final:
         return "skipped"
-    prompt = render_reason(board, folded, facts, citations, task.stalled, final=task.final)
+    prompt = render_reason(board, folded, facts, citations, task.stalled, final=task.final,
+                           internet=effective_internet_tools(bool(board.internet_tools)))
     # An assessment decides the next work of the board, so it uses the agent model of the
     # explores and the report conversion. Titles, summaries and board labels use the
     # short-call model. The first request keeps the reasoning phase, which a new board needs
@@ -675,7 +676,7 @@ def explore_task(intent, facts, folded, collections: list[str], web: bool) -> di
                    for c in dict.fromkeys(named) if texts.get(c)]
     if corrections:
         task["corrections"] = corrections
-    task["allowed_sources"] = {"text": "collections: " + ", ".join(collections)
+    task["allowed_sources"] = {"text": "collections: " + (", ".join(collections) or "none")
                                + ("; the web is allowed" if web else "; the web is not allowed"),
                                "source": "board"}
     if intent.brief:
@@ -722,17 +723,22 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
         return OpenedTurn(skip_kind=m.EXPLORE_CANCELLED, skip_reason=f"the board is {folded.status}")
     if _chat_closed():
         return OpenedTurn(skip_kind=m.EXPLORE_FAILED, skip_reason="chat is closed in the settings")
+    # The board's collections are read as stored. An empty list means no document source,
+    # so a web-only board needs the internet tools of the deployment.
+    web = effective_internet_tools(bool(board.internet_tools))
     existing = set(list_collections())
     collections = [c for c in board.collections if c in existing]
-    if not collections:
+    if board.collections and not collections:
         return OpenedTurn(skip_kind=m.EXPLORE_FAILED, skip_reason="none of the board collections exists")
+    if not collections and not web:
+        return OpenedTurn(skip_kind=m.EXPLORE_FAILED,
+                          skip_reason="the board has no collections and the internet tools are off")
     session_id = m.session_id_for(board.board_id, req.intent_id)
     _ensure_session(board, session_id, f"{board.title}: {req.intent_id}", collections)
     turn_uuid = _turn_uuid(req)
     seq = _existing_user_seq(board.owner, session_id, turn_uuid)
     if seq is None:
         seq = _next_seq(board.owner, session_id)
-        web = effective_internet_tools(bool(board.internet_tools))
         text = render_brief(board, facts, boards.read_citations(board.board_id),
                             folded.hints, intent, collections, folded.explore_steps,
                             boards.read_labels([board.board_id]), web)
@@ -744,8 +750,7 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
         run_id=str(uuid.uuid5(BOARD_NAMESPACE, turn_uuid)), username=board.owner,
         session_id=session_id, turn_seq=seq, start_seq=seq + 1, turn_uuid=turn_uuid,
         allowed_collections=collections, llm_model="",  # empty: the agent model of hoover4.ini
-        internet_tools=effective_internet_tools(bool(board.internet_tools)),
-        max_model_steps=int(steps), board_turn=True)
+        internet_tools=web, max_model_steps=int(steps), board_turn=True)
     return OpenedTurn(workflow_id=f"chat-{session_id}-{seq + 1}", run_input=run_input)
 
 

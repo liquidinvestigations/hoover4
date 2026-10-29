@@ -1,6 +1,6 @@
 # Investigation boards
 
-A board is a long-running investigation of one or more goals over one or more collections.
+A board is a long-running investigation of one or more goals over its collections, the web, or both.
 The worker splits the goals into intents. Each intent runs as one chat turn, which is an
 explore, and the explore ends in one board fact with resolved citations. A person reads the
 board under AI Chat, adds hints and goals, rejects facts, starts the explore of an open
@@ -11,7 +11,7 @@ The interface calls a board fact a **finding**. Stored slugs, tool names, and pa
 The page uses display terms for several stored concepts. The **assessment** is the
 model call that reads the board and declares intents or proposes the goal answers: the code calls
 it a reason (`board_reason`, the events `reason_started` and `reason_result`, the actor
-`reason`). The **background context** is the fact of kind `origin`: the collections and the
+`reason`). The **background context** is the fact of kind `origin`: the sources and the
 context of the board. An **open question** is a question that an explore fact leaves for the
 board, stored in the fact's `open_questions`.
 
@@ -92,7 +92,7 @@ A board fact has one of six kinds.
 
 | Kind | Meaning |
 |---|---|
-| `origin` | The background context: the collections and the context, written at creation. |
+| `origin` | The background context: the sources and the context, written at creation. A board without collections says that it searches the web only. |
 | `goal` | A goal, written at creation or later by a person. A board has at most 6 goals. |
 | `sourced` | An explore finding with at least one citation whose quote the chat verified. |
 | `inferred` | An explore finding without such a citation. A `sourced` claim without a verified quote is stored as `inferred`. |
@@ -428,7 +428,16 @@ The turn then runs as an ordinary `AgentRun` of kind `board`, with the model ste
 the fold. Its model is the agent model of `hoover4.ini`, as for a chat turn. A board turn does
 not write follow-up suggestions or a session title.
 
-A board turn has the tool packs of a chat turn, with the workspace tools. The brief gives the
+A board turn has the tool packs of a chat turn, with the workspace tools. It loses the packs
+of its absent sources ([Run sources](Chat_And_Agents.md#run-sources)). The run gets the board
+collections that exist. When none of the stored collections exists, the explore fails with
+"none of the board collections exists". A board without collections needs effective internet
+tools. Without them, the explore fails with "the board has no collections and the internet
+tools are off". The intent pane shows the reason.
+
+The brief of a board without collections tells the explore to search the web. It asks for
+`[W1]` handles and for "not found in the sources read". The assessment prompt says that the
+explores search the web only. The brief gives the
 full text of the intent's `from` facts and of the background context, and the label of each
 other fact, or its first 40 words when it has no label. It asks for a report file, also for
 a short result, an inference or an absence, with at most 3 open questions at its end. A board
@@ -478,8 +487,8 @@ writer decides it. A refused command shows its reason above the board.
 
 | Action | Command and effect |
 |---|---|
-| Create | `create_board`. The website writes the definition, and the command writes the background fact, a goal fact per goal, `board_created` with the goal ids, and one `hint_added` for each first hint. Every readable collection is selected at first, and the internet tools are on. The collections cannot change later. The board id comes from the user and the request id, so a creation sent again names the same board. |
-| Settings | `set_internet_tools`. The website writes a new version of the `boards` row, and the command writes `settings_changed`. Explores that run keep the setting they started with. |
+| Create | `create_board`. The website writes the definition, and the command writes the background fact, a goal fact per goal, `board_created` with the goal ids, and one `hint_added` for each first hint. Every readable collection is selected at first, and the internet tools are on. The collections are optional, and they cannot change later. A board needs a readable collection or the internet tools. The website refuses a board with neither, and a board without collections when the deployment has no internet tools. An empty collection list is stored as it stands and means no document source. The board id comes from the user and the request id, so a creation sent again names the same board. |
+| Settings | `set_internet_tools`. The website writes a new version of the `boards` row, and the command writes `settings_changed`. Explores that run keep the setting they started with. The website refuses to turn off the internet tools of a board without collections, and it then writes no row and no command. |
 | Add hint | `add_hint` writes `hint_added`. The next assessment reads it. It also opens intents that asked a question. |
 | Add goal | `add_goal` writes the goal fact in the first free slot and `goal_added`, at any status but dropped, up to 6 goals. The next assessment reads the goal. A board in review or complete becomes active. |
 | Explore this question | `explore_question` with the fact and the index of an open question. It opens an intent that binds the question key, and the board keeps its status. A question of a rejected fact, or one that an intent explores, is refused. |

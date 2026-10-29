@@ -3,11 +3,15 @@
 //!
 //! The form has no model, explore count or step budget. The worker starts every board at the
 //! same budget and grows it with the person's corrections and hints. Every collection that
-//! the person can read is selected at first. The collections cannot change after creation,
-//! and the internet tools can when the deployment enables them (the board settings popup).
+//! the person can read is selected at first. The Sources group has a Collections checkbox
+//! that selects or clears every collection. A board needs a collection or the internet tools,
+//! so Create board stays disabled while the group shows the source error. The collections
+//! cannot change after creation, and the internet tools can when the deployment enables them
+//! (the board settings popup).
 
 use common::board_types::{BoardCreateRequest, MAX_GOALS};
 use dioxus::prelude::*;
+use dioxus_free_icons::{icons::md_navigation_icons::MdArrowBack, Icon};
 
 use crate::api::board_api::{board_command_status, create_board_command, new_request_id};
 use crate::api::error_util::user_facing_message;
@@ -16,6 +20,49 @@ use crate::components::admin_components::{ErrorBar, BTN_PRIMARY, BTN_SMALL, HELP
 use crate::routes::Route;
 
 const TEXTAREA: &str = "border: 1px solid; border-color: var(--x-border-strong); border-radius: 6px; padding: 6px 8px; font-size: var(--x-text-body); color: var(--x-ink-strong); background: white; width: 100%; box-sizing: border-box; font-family: inherit;";
+/// The visible label of a field, above the field.
+const FIELD_LABEL: &str = "display: flex; flex-direction: column; gap: 4px; font-size: var(--x-text-body); font-weight: 600; color: var(--x-ink-strong);";
+const SOURCE_ERROR: &str = "margin: 0; color: var(--x-danger); font-size: var(--x-text-detail);";
+
+/// The state of the Collections checkbox, from the selected and the listed collections.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Master {
+    All,
+    Some,
+    None,
+}
+
+/// `All` when every listed collection is selected, `Some` when some are, `None` when none are.
+pub fn master_state(listed: &[String], chosen: &[String]) -> Master {
+    let selected = listed.iter().filter(|c| chosen.contains(c)).count();
+    if selected == 0 {
+        Master::None
+    } else if selected == listed.len() {
+        Master::All
+    } else {
+        Master::Some
+    }
+}
+
+/// The selection after a click on the Collections checkbox: a click on a checked box clears
+/// every collection, and a click on a clear or indeterminate box selects every collection.
+pub fn master_click(listed: &[String], chosen: &[String]) -> Vec<String> {
+    match master_state(listed, chosen) {
+        Master::All => Vec::new(),
+        Master::Some | Master::None => listed.to_vec(),
+    }
+}
+
+/// The source error of the form, or `None` while a source is selected.
+pub fn source_error(collections: usize, internet_tools: bool, internet_tools_enabled: bool) -> Option<&'static str> {
+    if collections > 0 || (internet_tools_enabled && internet_tools) {
+        None
+    } else if internet_tools_enabled {
+        Some("Select a collection or turn on internet tools.")
+    } else {
+        Some("Select at least one collection.")
+    }
+}
 
 #[component]
 pub fn AiBoardCreatePage() -> Element {
@@ -31,6 +78,11 @@ pub fn AiBoardCreatePage() -> Element {
     let mut error_msg = use_signal(|| None::<String>);
     let mut busy = use_signal(|| false);
 
+    let listed: Vec<String> = match &*collections_res.read() {
+        Some(Ok(cols)) => cols.iter().map(|c| c.collectionname.clone()).collect(),
+        _ => Vec::new(),
+    };
+
     use_effect(move || {
         if let Some(Ok(list)) = &*collections_res.read() {
             if chosen.peek().is_none() {
@@ -39,28 +91,55 @@ pub fn AiBoardCreatePage() -> Element {
         }
     });
 
+    // HTML has no `indeterminate` attribute, so the property is set after each render.
+    let master = master_state(&listed, chosen.read().as_deref().unwrap_or_default());
+    use_effect(use_reactive!(|master| {
+        document::eval(&format!(
+            "const box = document.querySelector('.x-board-collections-all'); if (box) box.indeterminate = {};",
+            master == Master::Some
+        ));
+    }));
+
     let collection_boxes = match &*collections_res.read() {
         Some(Ok(cols)) => rsx! {
-            for c in cols.clone() {
-                label { key: "{c.collectionname}", style: LABEL,
-                    input {
-                        class: "x-board-collection",
-                        "data-collection": "{c.collectionname}",
-                        r#type: "checkbox",
-                        checked: chosen.read().as_ref().is_some_and(|list| list.contains(&c.collectionname)),
-                        onchange: {
-                            let name = c.collectionname.clone();
-                            move |e: FormEvent| {
-                                let mut list = chosen.read().clone().unwrap_or_default();
-                                list.retain(|x| *x != name);
-                                if e.checked() {
-                                    list.push(name.clone());
+            label { style: LABEL,
+                input {
+                    class: "x-board-collections-all",
+                    r#type: "checkbox",
+                    checked: master == Master::All,
+                    disabled: cols.is_empty(),
+                    onchange: {
+                        let listed = listed.clone();
+                        move |_: FormEvent| {
+                            let current = chosen.read().clone().unwrap_or_default();
+                            chosen.set(Some(master_click(&listed, &current)));
+                        }
+                    },
+                }
+                "Collections"
+            }
+            div { style: "display: flex; gap: 14px; flex-wrap: wrap; align-items: center; padding-left: 22px;",
+                for c in cols.clone() {
+                    label { key: "{c.collectionname}", style: LABEL,
+                        input {
+                            class: "x-board-collection",
+                            "data-collection": "{c.collectionname}",
+                            r#type: "checkbox",
+                            checked: chosen.read().as_ref().is_some_and(|list| list.contains(&c.collectionname)),
+                            onchange: {
+                                let name = c.collectionname.clone();
+                                move |e: FormEvent| {
+                                    let mut list = chosen.read().clone().unwrap_or_default();
+                                    list.retain(|x| *x != name);
+                                    if e.checked() {
+                                        list.push(name.clone());
+                                    }
+                                    chosen.set(Some(list));
                                 }
-                                chosen.set(Some(list));
-                            }
-                        },
+                            },
+                        }
+                        "{c.collectionname}"
                     }
-                    "{c.collectionname}"
                 }
             }
         },
@@ -68,6 +147,10 @@ pub fn AiBoardCreatePage() -> Element {
         None => rsx! { span { style: HELP_TEXT, "Loading collections\u{2026}" } },
     };
     let goal_count = goals.read().len();
+    // No error while the collections load, because every collection is selected when they arrive.
+    let missing_source = chosen.read().as_ref().and_then(|list| {
+        source_error(list.len(), internet_tools(), internet_tools_enabled)
+    });
 
     rsx! {
         Title { "Hoover Search - New board" }
@@ -75,7 +158,10 @@ pub fn AiBoardCreatePage() -> Element {
             style: "width: 100%; height: 100%; background: #F5F6F8; box-sizing: border-box; padding: 23px; overflow: auto;",
             div { style: "max-width: 760px; margin: 0 auto;",
                 div { style: "display: flex; align-items: center; gap: 15px; margin-bottom: 15px;",
-                    Link { to: Route::AiChatPage {}, style: LINK, "\u{2190} AI Chat" }
+                    Link { to: Route::AiChatPage {}, style: "{LINK} display: inline-flex; align-items: center; gap: 4px;",
+                        Icon { icon: MdArrowBack, width: 16, height: 16 }
+                        "AI Chat"
+                    }
                     h1 {
                         style: "margin: 0; font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 600; color: var(--x-ink-strong);",
                         "New investigation board"
@@ -88,27 +174,31 @@ pub fn AiBoardCreatePage() -> Element {
                     ErrorBar { message: err }
                 }
                 div { style: "display: flex; flex-direction: column; gap: 10px; background: white; border: 1px solid; border-color: var(--x-border); border-radius: 12px; padding: 16px;",
-                    input {
-                        class: "x-board-title",
-                        style: INPUT, placeholder: "Title",
-                        value: "{title}", oninput: move |e| title.set(e.value()),
+                    label { style: FIELD_LABEL,
+                        "Title"
+                        input {
+                            class: "x-board-title",
+                            style: "{INPUT} font-weight: 400;",
+                            value: "{title}", oninput: move |e| title.set(e.value()),
+                        }
                     }
-                    div { style: SUBHEADING, if goal_count == 1 { "Goal" } else { "Goals" } }
                     for index in 0..goal_count {
-                        div { key: "{index}", style: "display: flex; gap: 6px; align-items: flex-start;",
-                            textarea {
-                                class: "x-board-goal",
-                                style: TEXTAREA, rows: "3",
-                                placeholder: "The question the board must answer, with names, dates and places",
-                                value: "{goals.read()[index]}",
-                                oninput: move |e| { goals.write()[index] = e.value(); },
-                            }
-                            if goal_count > 1 {
-                                button {
-                                    style: BTN_SMALL,
-                                    title: "Remove this goal",
-                                    onclick: move |_| { goals.write().remove(index); },
-                                    "Remove"
+                        label { key: "{index}", style: FIELD_LABEL,
+                            if goal_count == 1 { "Goal" } else { {format!("Goal {}", index + 1)} }
+                            div { style: "display: flex; gap: 6px; align-items: flex-start; font-weight: 400;",
+                                textarea {
+                                    class: "x-board-goal",
+                                    style: TEXTAREA, rows: "3",
+                                    value: "{goals.read()[index]}",
+                                    oninput: move |e| { goals.write()[index] = e.value(); },
+                                }
+                                if goal_count > 1 {
+                                    button {
+                                        style: BTN_SMALL,
+                                        title: "Remove this goal",
+                                        onclick: move |_| { goals.write().remove(index); },
+                                        "Remove"
+                                    }
                                 }
                             }
                         }
@@ -123,40 +213,45 @@ pub fn AiBoardCreatePage() -> Element {
                             }
                         }
                     }
-                    p { style: HELP_TEXT, "Each goal gets its own answer. The board completes when you accept the answers of all goals." }
-                    textarea {
-                        style: TEXTAREA, rows: "2",
-                        class: "x-board-context",
-                        placeholder: "Context: what is known before the investigation starts (optional)",
-                        value: "{context}", oninput: move |e| context.set(e.value()),
+                    label { style: FIELD_LABEL,
+                        "Context (optional)"
+                        textarea {
+                            style: "{TEXTAREA} font-weight: 400;", rows: "2",
+                            class: "x-board-context",
+                            value: "{context}", oninput: move |e| context.set(e.value()),
+                        }
                     }
-                    textarea {
-                        style: TEXTAREA, rows: "2",
-                        class: "x-board-hints",
-                        placeholder: "Hints: one per line (optional)",
-                        value: "{hints}", oninput: move |e| hints.set(e.value()),
+                    label { style: FIELD_LABEL,
+                        "Hints, one per line (optional)"
+                        textarea {
+                            style: "{TEXTAREA} font-weight: 400;", rows: "2",
+                            class: "x-board-hints",
+                            value: "{hints}", oninput: move |e| hints.set(e.value()),
+                        }
                     }
-                    div { style: SUBHEADING, "Collections" }
-                    div { style: "display: flex; gap: 14px; flex-wrap: wrap; align-items: center;",
+                    div { class: "x-board-sources", style: "display: flex; flex-direction: column; gap: 8px;",
+                        div { style: SUBHEADING, "Sources" }
                         {collection_boxes}
-                    }
-                    p { style: HELP_TEXT, "The collections cannot change after the board is created." }
-                    if internet_tools_enabled {
-                        label { style: LABEL,
-                            input {
-                                class: "x-board-internet-tools",
-                                r#type: "checkbox",
-                                checked: internet_tools(),
-                                onchange: move |e: FormEvent| internet_tools.set(e.checked()),
+                        if internet_tools_enabled {
+                            label { style: LABEL,
+                                input {
+                                    class: "x-board-internet-tools",
+                                    r#type: "checkbox",
+                                    checked: internet_tools(),
+                                    onchange: move |e: FormEvent| internet_tools.set(e.checked()),
+                                }
+                                "Internet tools"
                             }
-                            "Internet tools: the explores can search the web and read web pages. You can change this later in the board settings."
+                        }
+                        if let Some(text) = missing_source {
+                            p { class: "x-board-source-error", style: SOURCE_ERROR, "{text}" }
                         }
                     }
                     div {
                         button {
                             class: "x-board-create",
                             style: BTN_PRIMARY,
-                            disabled: busy(),
+                            disabled: busy() || missing_source.is_some(),
                             onclick: move |_| {
                                 let request = BoardCreateRequest {
                                     title: title.read().clone(),
@@ -208,4 +303,32 @@ async fn create_and_wait(request: BoardCreateRequest) -> Result<String, String> 
         }
     }
     Ok(board_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn the_collections_checkbox_follows_the_selection_and_one_click_clears_or_selects_all() {
+        let listed = names(&["enron", "epstein", "tables"]);
+        assert_eq!(master_state(&listed, &listed), Master::All);
+        assert_eq!(master_state(&listed, &names(&["tables"])), Master::Some);
+        assert_eq!(master_state(&listed, &[]), Master::None);
+        assert_eq!(master_click(&listed, &listed), Vec::<String>::new());
+        assert_eq!(master_click(&listed, &names(&["tables"])), listed);
+        assert_eq!(master_click(&listed, &[]), listed);
+    }
+
+    #[test]
+    fn the_source_error_shows_only_without_a_source() {
+        assert_eq!(source_error(0, true, true), None);
+        assert_eq!(source_error(2, false, false), None);
+        assert_eq!(source_error(0, false, true), Some("Select a collection or turn on internet tools."));
+        assert_eq!(source_error(0, true, false), Some("Select at least one collection."));
+    }
 }

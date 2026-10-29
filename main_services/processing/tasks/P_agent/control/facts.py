@@ -357,7 +357,14 @@ def render_steps(messages, limit: int = 5) -> str:
 
 
 def justified_absence(context) -> bool:
-    """An explicit absence statement with successful searches and no keyword source."""
+    """An explicit absence statement with successful searches and no keyword source.
+
+    A stored absence record also justifies it without a search of the model. A collection
+    record names a collection that the person cannot read. A name record exists only after a
+    successful word count lookup of the selected collections. That lookup found no document
+    for a word of the name, so it is the search of the record. Preparation stores records only
+    for a document source choice, and a keyword source of a later search still defeats the
+    record."""
     import re
 
     searches = [f for f in context.results if f.name in ("search_collections", "search_passages", "web_search")

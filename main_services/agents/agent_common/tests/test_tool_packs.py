@@ -16,7 +16,8 @@ from types import SimpleNamespace
 import pytest
 
 from agent_common.tool_packs import (
-    ALL, PACKS, RUN_KINDS, INTERNAL_TOOLS, allowed_tools, configured_packs, env_name, pack_of, packs_for,
+    ALL, PACKS, RUN_KINDS, INTERNAL_TOOLS, SOURCE_PACKS, allowed_tools, configured_packs, env_name,
+    pack_of, packs_for, run_packs, run_tools,
 )
 
 # The image's own server sources are in the working directory, and some images import
@@ -79,6 +80,30 @@ def test_an_unknown_pack_or_kind_raises():
         packs_for("chat", "collections,browsr")
     with pytest.raises(ValueError):
         packs_for("executor", ALL)
+
+
+def test_a_run_without_documents_drops_the_collections_pack():
+    packs = run_packs("chat", ALL, frozenset({"web"}))
+    assert "collections" not in packs
+    assert {"web", "browser", "skills", "workspace"} <= packs
+    assert not run_tools("chat", ALL, frozenset({"web"})) & PACKS["collections"]
+
+
+def test_a_run_without_the_web_drops_the_web_and_browser_packs():
+    packs = run_packs("board", ALL, frozenset({"documents"}))
+    assert not packs & {"web", "browser"}
+    assert "collections" in packs
+
+
+def test_a_run_with_both_sources_keeps_its_configured_packs_and_one_with_neither_keeps_the_rest():
+    both = frozenset(SOURCE_PACKS)
+    for kind in RUN_KINDS:
+        assert run_packs(kind, ALL, both) == packs_for(kind, ALL)
+        assert run_tools(kind, ALL, both) == allowed_tools(kind, ALL)
+    assert run_packs("chat", ALL, frozenset()) == frozenset(
+        {"catalogue", "skills", "conversation", "workspace"})
+    # A source adds no pack that the setting leaves out.
+    assert run_packs("chat", "collections", both) == frozenset({"collections", "skills", "workspace"})
 
 
 def _present_server():

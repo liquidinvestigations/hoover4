@@ -69,7 +69,7 @@
           ]
         },
         "events": {
-          "citation": "first_read",
+          "citation": "first_document_read",
           "report": [
             "first_write",
             "workspace_error"

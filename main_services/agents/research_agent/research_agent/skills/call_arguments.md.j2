@@ -19,8 +19,15 @@ When you are not sure of the arguments of a tool, call {{ tool('read_tool') }} w
 5. Do not put quotes inside a text value. Write status done. Do not write status "\"done\"".
 6. Keep each value inside the limits of its tool, such as the most items of a list.
 7. Where the tool asks for a list of objects, give a list of objects. Do not give a text
+{% if has('cite_documents') %}
    that holds JSON. Write citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
    Do not write citations "[{\"collection\": ...}]".
+{% elif has('cite_pages') %}
+   that holds JSON. Write pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
+   Do not write pages "[{\"url\": ...}]".
+{% else %}
+   that holds JSON.
+{% endif %}
 {% if has('write_file') %}
 8. Give the name of the file in every {{ tool('write_file') }} and {{ tool('patch_file') }} call.
 {% endif %}

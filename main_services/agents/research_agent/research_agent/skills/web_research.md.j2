@@ -1,10 +1,12 @@
 ---
 name: web_research
 group: technique
-description: how to search the open web, read a web page or the owner record of a domain, and name the web sources in a report
+description: how to search the open web, read a web page or the owner record of a domain, and cite the web pages that support a report
 tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
 ---
-{# Each tool sentence renders when the run has that tool. #}
+{# Each tool sentence renders when the run has that tool. The web citation protocol is
+   here, and the skill `citation` holds the document protocol. Both include the failure
+   rules of `partials/citation_failures.j2`. #}
 Researching the open web
 
 Use web sources when they can answer the person's question.
@@ -23,9 +25,59 @@ lists those sources.{% endif +%}
 
 Read each source before using its claims. A search result snippet is not a source.
 {% if has('cite_pages') %}
+
+Citing web pages
+
 Call {{ tool('cite_pages') }} with each read page URL and exact supporting wording in `terms`.
 Use its returned web handles beside the claims they support.
 Replace bare source URLs with those handles.
+{{ tool('cite_pages') }} accepts url and terms for one page, or pages for up to twelve page objects.
+Each page requires url and terms. terms contains up to eight exact phrases, each at most 200 characters. Case must match.
+version optionally selects a captured version. why optionally states the supported claim, in at most 300 characters.
+The result gives verified quotes and a stable web handle. A failed page gives an error without a handle.
+
+Example. {{ tool('read_page') }} read the URL https://example.org/report. Its text says
+"The plant closed in March 2019." Call {{ tool('cite_pages') }} with flat arguments for one page:
+url, copied from the read result, terms with the exact phrase, and why.
+```json
+{"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"The report gives the closing date."}
+```
+Then write "The plant closed in March 2019 [W1]." with the handle that the call returned.
+Split a list of more than twelve pages into separate calls.
+```json
+{"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"This passage gives the approval date."}]}
+```
+Copy the returned web handle, for example `[W1]`, beside the claim it supports.
+Keep each handle with the URL and quotes from its returned citation object.
+An error does not allocate a handle. Omit that source's claims until its citation succeeds.
+For absent wording, copy exact text from the returned candidate and call the tool again.
+When an error includes `errors[i].retry_arguments`, copy that object unchanged into the next call.
+Keep successful citations from a partial result. Retry only the failed pages.
+For example, a call cites three pages and two succeed with [W1] and [W2]. Use those two
+handles. Send the next call with the third page only, and use its retry arguments.
+For example, this call joins words across a source line break and fails.
+```json
+{"url":"https://example.org/report","terms":["The plant closed in March 2019"]}
+```
+The error can return these retry arguments with the exact source text.
+```json
+{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}}
+```
+Call {{ tool('cite_pages') }} with that returned object, including its actual version and exact terms.
+```json
+{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}
+```
+A PDF window has its own version. To cite a passage of pages 51 to 100, copy the version of that read.
+```json
+{"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]}
+```
+If a call exceeds eight terms, split its terms into groups of at most eight and cite each group separately.
+Keep the URL and source version with each group. Changing the call structure does not reduce its term count.
+The handle opens the captured page text and its verified quotes.
+Use one page per call if a batch arrives damaged.
+An unread, blocked, or unverified page cannot support a claim.
+
+{% include "citation_failures.j2" %}
 {% endif %}
 
 A name or an event that you recall is a candidate until a source names it. Find a source that
@@ -121,17 +173,5 @@ A null registrant means the registry did not publish that value. The registrar s
 ```
 ```json
 {"domains":["example.org","example.com"],"domain":"example.net"}
-```
-{% endif %}
-{% if has('cite_pages') %}
-{{ tool('cite_pages') }} accepts url and terms for one page, or pages for up to twelve page objects.
-Each page requires url and terms. terms contains up to eight exact phrases, each at most 200 characters.
-version optionally selects a captured version. why optionally states the supported claim, in at most 300 characters.
-The result gives verified quotes and a stable web handle. A failed page gives an error without a handle.
-```json
-{"url":"COPY_READ_URL","terms":["COPY_EXACT_SOURCE_PHRASE"]}
-```
-```json
-{"pages":[{"url":"COPY_READ_URL","terms":["COPY_EXACT_SOURCE_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"This passage gives the approval date."}]}
 ```
 {% endif %}

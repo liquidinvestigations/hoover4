@@ -9,5 +9,7 @@ available records. A specific query can test a name, date or phrase from a resul
 Read the source text behind a claim. Stop when further searches are unlikely to
 change the answer, and state the search limit when it affects the conclusion.
 
+{% if has('search_collections') %}
 Use proximity, such as "water pollution"~10, for related words near each other.
 Use quorum, such as "water pollution plant"/2, for a topic with several relevant words.
+{% endif %}

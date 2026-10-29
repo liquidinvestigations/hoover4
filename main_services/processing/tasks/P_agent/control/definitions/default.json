@@ -82,7 +82,7 @@
           ]
         },
         "events": {
-          "citation": "first_read"
+          "citation": "first_document_read"
         }
       }
     },

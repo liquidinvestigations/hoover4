@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from agent_common.tool_packs import pack_of
+from agent_common.tool_packs import PACKS, pack_of
 from research_agent.skill_store import (
     DEFAULT_PROFILE,
     Skill,
@@ -55,18 +55,22 @@ PROFILE_KINDS: Dict[str, str] = {
 }
 
 #: The role line of each profile, as Jinja source. It reads `web_enabled` and
-#: `collections_hint`.
+#: `collections_hint`, and names only the sources that the run has.
 ROLE_LINES: Dict[str, str] = {
     "internal_search": (
+        "{% if collections_hint %}\n"
         "You are Hoover4's assistant. You can read the user's document collections.\n"
-        "{% if not collections_hint %}\n\n"
+        "{% else %}\n"
+        "You are Hoover4's assistant.{% if web_enabled %} You can search the open web.{% endif %}\n\n"
         "This conversation can read no document collections.\n"
         "{% endif %}"
     ),
     "full_research": (
+        "{% if collections_hint %}\n"
         "You are a research assistant. You can read the user's own document\n"
         "collections{% if web_enabled %} and search the open web{% endif %}.\n"
-        "{% if not collections_hint %}\n\n"
+        "{% else %}\n"
+        "You are a research assistant.{% if web_enabled %} You can search the open web.{% endif %}\n\n"
         "This conversation can read no document collections.\n"
         "{% endif %}"
     ),
@@ -116,13 +120,16 @@ def render(
     *,
     snapshot: Any,
     skills: Sequence[Skill],
-    collections_hint: bool = True,
+    collections_hint: Optional[bool] = None,
     strict: bool = False,
 ) -> str:
     """Render the system prompt of one profile for one run.
 
     `snapshot` is the run's `CatalogueSnapshot`, and `skills` are its listed skills
-    (`skill_store.listed_skills`).
+    (`skill_store.listed_skills`). `collections_hint` is true only when the snapshot holds
+    a tool of the `collections` pack. `None` takes the value from the snapshot, and a true
+    value without such a tool is false, so the role text names only a source that the run
+    can read.
 
     `strict` raises `UnboundToolError` when a listed skill names a tool that no pack holds,
     in its front matter or in its text. The tests render strict, and the running agent does
@@ -132,8 +139,9 @@ def render(
     if name not in ROLE_LINES:
         raise KeyError(f"unknown agent profile: {profile!r}")
     tool_names = frozenset(snapshot.tools_by_name)
-    ctx = SkillContext(profile=name, tool_names=tool_names,
-                       collections_hint=bool(collections_hint))
+    documents = bool(tool_names & PACKS["collections"])
+    collections_hint = documents if collections_hint is None else bool(collections_hint) and documents
+    ctx = SkillContext(profile=name, tool_names=tool_names, collections_hint=collections_hint)
     if strict:
         by_name = {skill.name: skill for skill in skills}
         for skill in skills:
@@ -142,7 +150,7 @@ def render(
                 raise UnboundToolError(f"skill {skill.name!r} names {unknown}, which no pack holds")
             render_skill(skill.name, ctx, strict=True, skills=by_name)
     role_line = environment().from_string(ROLE_LINES[name]).render(
-        web_enabled="web_search" in tool_names, collections_hint=bool(collections_hint),
+        web_enabled="web_search" in tool_names, collections_hint=collections_hint,
     ).strip()
     return _environment().get_template(AGENT_TEMPLATE).render(
         current_date=datetime.now(timezone.utc).date().isoformat(),

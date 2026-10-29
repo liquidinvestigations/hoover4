@@ -384,7 +384,8 @@ def test_a_forbidden_web_gets_no_web_step_even_after_a_web_search():
 @pytest.mark.parametrize("batch,expected", [
     ([_fact("table_page", status="refused", error_code="invalid_argument")], ["call_arguments"]),
     ([_fact("read_page", status="error", args={"urls": ["https://a.example"]})], ["web_research"]),
-    ([_fact("read_page", args={"urls": ["https://a.example"]}, reads=(("https://a.example", "ok"),))], []),
+    # The first successful page read of the turn loads the web citation rules.
+    ([_fact("read_page", args={"urls": ["https://a.example"]}, reads=(("https://a.example", "ok"),))], ["web_research"]),
 ])
 def test_result_evidence_selects_recovery_skills_without_a_classifier(batch, expected):
     from tasks.P_agent.control.handlers.result_skills import Handler

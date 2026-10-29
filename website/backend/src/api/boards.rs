@@ -644,15 +644,12 @@ pub async fn create_board_command(user: &CurrentUser, request_id: String,
     }
     // The rule of chat and search: an administrator reads every collection.
     let permitted = crate::db_utils::clickhouse_utils::list_permitted_collections(user).await?;
-    let collections: Vec<String> = request
-        .collections
-        .iter()
-        .filter(|c| permitted.contains(c))
-        .cloned()
-        .collect();
-    if collections.is_empty() {
-        anyhow::bail!("choose at least one collection that you can read");
-    }
+    let (collections, internet_tools) = board_sources(
+        &request.collections,
+        &permitted,
+        request.internet_tools,
+        super::chat::gate::internet_tools_enabled(),
+    )?;
     let board_id = sha256::digest(format!("{}\n{stored_request}", user.username).as_bytes())[..32].to_string();
     let existing = get_global_client()
         .query("SELECT ?fields FROM boards FINAL WHERE board_id = ?")
@@ -677,7 +674,7 @@ pub async fn create_board_command(user: &CurrentUser, request_id: String,
                 max_explores: BASE_EXPLORES,
                 max_parallel: MAX_PARALLEL,
                 explore_step_budget: BASE_EXPLORE_STEPS,
-                internet_tools: u8::from(request.internet_tools && super::chat::gate::internet_tools_enabled()),
+                internet_tools: u8::from(internet_tools),
                 created_at: created,
                 updated_at: created,
                 is_deleted: 0,
@@ -685,13 +682,60 @@ pub async fn create_board_command(user: &CurrentUser, request_id: String,
             insert_row("boards", &row).await?;
         }
     }
-    let origin = format!("The investigation searches the collections {}. {}", collections.join(", "), clip(&request.context));
+    let origin = origin_text(&collections, &request.context);
     let hints: Vec<String> = request.hints.iter().map(|h| clip(h)).filter(|h| !h.is_empty()).collect();
     submit(user, &board_id, &request_id, "create_board", serde_json::json!({
-        "goals": goals, "origin": origin.trim(), "hints": hints,
+        "goals": goals, "origin": origin, "hints": hints,
     }))
     .await?;
     Ok(board_id)
+}
+
+/// The collections and the internet setting of a new board, or the refusal of its sources.
+///
+/// The requested collections are kept as the person can read them. An empty list means no
+/// document source, and it is stored as it stands: it never means every permitted
+/// collection, so `chat::intersect_collections` does not apply to it. A board needs a
+/// collection or the internet tools, and the internet tools need the deployment setting.
+fn board_sources(requested: &[String], permitted: &[String], internet_requested: bool,
+                 internet_enabled: bool) -> Result<(Vec<String>, bool), guard::InvalidInput> {
+    let collections: Vec<String> = requested.iter().filter(|c| permitted.contains(c)).cloned().collect();
+    if !requested.is_empty() && collections.is_empty() {
+        return Err(guard::InvalidInput("You cannot read any of the selected collections.".into()));
+    }
+    let web = internet_requested && internet_enabled;
+    if collections.is_empty() && !web {
+        let text = if internet_enabled {
+            "Select a collection or turn on internet tools."
+        } else {
+            "Select at least one collection."
+        };
+        return Err(guard::InvalidInput(text.into()));
+    }
+    Ok((collections, web))
+}
+
+/// The background text of a new board, which names its sources.
+fn origin_text(collections: &[String], context: &str) -> String {
+    let origin = if collections.is_empty() {
+        format!("The investigation searches the web only. {}", clip(context))
+    } else {
+        format!("The investigation searches the collections {}. {}", collections.join(", "), clip(context))
+    };
+    origin.trim().to_string()
+}
+
+/// The refusal of a board without collections whose internet tools would turn off.
+const WEB_ONLY_NEEDS_INTERNET: &str = "A board without collections needs internet tools.";
+
+/// The internet setting of a board after a change to `on`, or the refusal. A board without
+/// collections keeps its internet tools, because they are its only source.
+fn internet_tools_change(board: &BoardRow, on: bool, internet_enabled: bool) -> Result<bool, guard::InvalidInput> {
+    let on = on && internet_enabled;
+    if !on && board.collections.is_empty() {
+        return Err(guard::InvalidInput(WEB_ONLY_NEEDS_INTERNET.into()));
+    }
+    Ok(on)
 }
 
 /// A page loaded before the board commands calls this. It refuses, so the page reloads.
@@ -701,9 +745,10 @@ pub async fn create_board(_user: &CurrentUser, _request: BoardCreateRequest) -> 
 
 /// Turn the internet tools of a board's later explores on or off. The board row gets a new
 /// version, which the explores read, and a command records the change for the event log.
+/// A refused change (`internet_tools_change`) writes no row and submits no command.
 async fn set_internet_tools(user: &CurrentUser, mut board: BoardRow, request_id: &str,
                             on: bool) -> anyhow::Result<BoardCommandReceipt> {
-    let on = on && super::chat::gate::internet_tools_enabled();
+    let on = internet_tools_change(&board, on, super::chat::gate::internet_tools_enabled())?;
     if (board.internet_tools != 0) != on {
         board.internet_tools = u8::from(on);
         board.updated_at = now();
@@ -1222,6 +1267,69 @@ mod tests {
             payload_json: payload.to_string(),
             created_at: OffsetDateTime::from_unix_timestamp(second).unwrap(),
         }
+    }
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn board_row(collections: &[&str], internet_tools: u8) -> BoardRow {
+        let t = OffsetDateTime::from_unix_timestamp(0).unwrap();
+        BoardRow {
+            board_id: "b".into(), owner: "alice".into(), title: "t".into(), goal: "g".into(),
+            context: String::new(), collections: names(collections), llm_model: String::new(),
+            max_explores: BASE_EXPLORES, max_parallel: MAX_PARALLEL,
+            explore_step_budget: BASE_EXPLORE_STEPS, internet_tools, created_at: t,
+            updated_at: t, is_deleted: 0,
+        }
+    }
+
+    #[test]
+    fn a_board_needs_a_readable_collection_or_the_internet_tools() {
+        let permitted = names(&["enron", "tables"]);
+        let refused = |requested: &[&str], internet: bool, enabled: bool| {
+            board_sources(&names(requested), &permitted, internet, enabled).unwrap_err().0
+        };
+        assert_eq!(refused(&[], false, true), "Select a collection or turn on internet tools.");
+        assert_eq!(refused(&[], true, false), "Select at least one collection.");
+        assert_eq!(refused(&[], false, false), "Select at least one collection.");
+        assert_eq!(refused(&["epstein"], true, true), "You cannot read any of the selected collections.");
+        // Web only: the empty list is kept as it stands, not widened to every permitted collection.
+        assert_eq!(board_sources(&[], &permitted, true, true).unwrap(), (vec![], true));
+        assert_eq!(board_sources(&names(&["enron", "epstein"]), &permitted, true, false).unwrap(),
+                   (names(&["enron"]), false));
+        assert_eq!(board_sources(&names(&["tables"]), &permitted, false, true).unwrap(),
+                   (names(&["tables"]), false));
+    }
+
+    #[test]
+    fn the_background_of_a_board_names_its_sources() {
+        assert_eq!(origin_text(&[], " The mill. "), "The investigation searches the web only. The mill.");
+        assert_eq!(origin_text(&names(&["enron", "tables"]), ""),
+                   "The investigation searches the collections enron, tables.");
+    }
+
+    #[test]
+    fn a_board_without_collections_keeps_its_internet_tools() {
+        let web_only = board_row(&[], 1);
+        assert_eq!(internet_tools_change(&web_only, false, true).unwrap_err().0, WEB_ONLY_NEEDS_INTERNET);
+        assert_eq!(internet_tools_change(&web_only, true, false).unwrap_err().0, WEB_ONLY_NEEDS_INTERNET);
+        assert!(internet_tools_change(&web_only, true, true).unwrap());
+        let documents = board_row(&["enron"], 1);
+        assert!(!internet_tools_change(&documents, false, true).unwrap());
+        assert!(!internet_tools_change(&documents, true, false).unwrap());
+    }
+
+    #[test]
+    fn a_refused_internet_change_returns_before_the_board_row_is_written() {
+        // `set_internet_tools` writes the row and submits the command only after the check.
+        let source = include_str!("boards.rs");
+        let body = &source[source.find("async fn set_internet_tools").unwrap()..];
+        let body = &body[..body.find("\n}\n").unwrap()];
+        let check = body.find("internet_tools_change(").unwrap();
+        assert!(check < body.find("insert_row(").unwrap());
+        assert!(check < body.find("submit(").unwrap());
+        assert!(body[..check].lines().all(|line| !line.contains("insert_row") && !line.contains("submit(")));
     }
 
     #[test]

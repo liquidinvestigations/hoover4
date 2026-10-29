@@ -3,12 +3,19 @@
 An object trigger fires when a result of the batch holds a hit of a named type, or a path
 with a table or e-mail extension (`facts.is_table_hit`, `facts.is_email_hit`). An event
 trigger fires on the first event that makes a method necessary, for example the first
-successful read for the citation skill. Code decides both from structured result fields,
-so no classifier request is made.
+successful document read for the citation skill. Code decides both from structured
+result fields, so no classifier request is made.
 
 The events:
 
-* `first_read`: the first successful read of the turn.
+* `first_read`: the first successful read of the turn, of a document or of a web page. A
+  definition of an earlier revision can still name it.
+* `first_document_read`: the first successful document read of the turn
+  (`DOCUMENT_READ_TOOLS`). The built-in definitions load `citation` on it, because that
+  skill holds the document citation protocol only.
+* `first_page_read`: the first successful `read_page` of the turn. It loads `web_research`,
+  which holds the web citation protocol, also when the model read a page without a web
+  search.
 * `web_search`: a successful web search of the model.
 * `browser`: a call of a browser tool by the model.
 * `page_read_recovery`: a `read_page` result that failed, or that holds a page without
@@ -25,11 +32,12 @@ The events:
 
 
 **Method events.** Every definition maps the tool results of a method to its skill
-(`METHOD_EVENTS`): a successful web search and a page read that needs recovery load
-`web_research`, and a browser call loads `browser_use`. A definition can map the same skill
-in `events`, which replaces the method mapping of that skill, and `methods` false turns the
-method mapping off. A skill loads only when the turn lists it, so a turn without the tool of
-a method loads none of its text.
+(`METHOD_EVENTS`): a successful web search, the first successful page read and a page read
+that needs recovery load `web_research`, and a browser call loads `browser_use`. A definition
+can map the same skill in `events`, which replaces the method mapping of that skill, and
+`methods` false turns the method mapping off. A skill loads only when the turn lists it, so a
+turn without the tool of a method loads none of its text. A definition that still loads `citation` on `first_read`
+changes no method mapping, so a page read loads `web_research` through `first_page_read`.
 
 The handler proposes the load. The coordinator drops a skill whose pinned text is still
 visible in the model input, and merges two proposals for one skill. A policy batch can load
@@ -44,10 +52,14 @@ from tasks.P_agent.control import facts as F
 from tasks.P_agent.control.model import API_VERSION, Action, CheckResult, PolicyResult, freeze
 
 OBJECTS = {"table": F.is_table_hit, "email": F.is_email_hit}
-EVENTS = ("first_read", "web_search", "browser", "page_read_recovery", "first_write",
-          "workspace_error", "argument_error", "unknown_document")
+EVENTS = ("first_read", "first_document_read", "first_page_read", "web_search", "browser",
+          "page_read_recovery", "first_write", "workspace_error", "argument_error",
+          "unknown_document")
 #: The skill of each method and the result events that make it necessary.
-METHOD_EVENTS = {"web_research": ("web_search", "page_read_recovery"), "browser_use": ("browser",)}
+METHOD_EVENTS = {"web_research": ("web_search", "page_read_recovery", "first_page_read"),
+                 "browser_use": ("browser",)}
+#: The read tools of a document, as distinct from `read_page` (`facts.READ_TOOLS`).
+DOCUMENT_READ_TOOLS = ("read_documents", "read_more", "table_page", "table_cell")
 #: The tools that name a document by its hash.
 DOCUMENT_TOOLS = ("read_documents", "doc_metadata", "doc_email", "doc_sources", "doc_search_text",
                   "list_document_entities", "cite_documents", "table_overview", "table_page",
@@ -58,9 +70,20 @@ def _writes(facts) -> list:
     return [f for f in facts if f.name in F.MUTATION_TOOLS and f.status == "ok" and f.file_version]
 
 
+def _first_read_of(tools, batch, earlier) -> bool:
+    """A successful read of one of `tools` in the batch, and none before it in the turn."""
+    def reads(facts):
+        return F.satisfactory_reads(f for f in facts if f.name in tools)
+    return bool(reads(batch)) and not reads(earlier)
+
+
 def _event(kind: str, batch, earlier) -> bool:
     if kind == "first_read":
         return bool(F.satisfactory_reads(batch)) and not F.satisfactory_reads(earlier)
+    if kind == "first_document_read":
+        return _first_read_of(DOCUMENT_READ_TOOLS, batch, earlier)
+    if kind == "first_page_read":
+        return _first_read_of(("read_page",), batch, earlier)
     if kind == "web_search":
         return any(f.name == "web_search" and f.status == "ok" and f.origin == "model" for f in batch)
     if kind == "browser":

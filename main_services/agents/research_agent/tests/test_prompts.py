@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_common.tool_packs import PACKS, allowed_tools
+from agent_common.tool_packs import PACKS, allowed_tools, run_tools
 from research_agent import prompts, skill_store
 from research_agent.skill_store import Skill, SkillContext, listed_skills
 from research_agent.tool_catalogue import build_snapshot
@@ -110,19 +110,68 @@ def test_every_profile_renders_strictly_and_names_only_its_tools(profile):
     assert skills <= named
 
 
+#: The skills whose tools are all in the `collections` pack.
+COLLECTION_SKILLS = {"citation", "collection_names", "document_ids", "emails", "entities",
+                     "folders_and_files", "passages", "search", "spreadsheets"}
+#: The sentence of the role line of a run without collections.
+NO_COLLECTIONS = "This conversation can read no document collections."
+
+
+def snapshot_of_sources(profile, sources):
+    """The snapshot of a run whose sources are `sources`, as the agent builds it."""
+    kind = prompts.PROFILE_KINDS[profile]
+    allowed = run_tools(kind, "all", frozenset(sources))
+    return build_snapshot(fake_tools(allowed), allowed, kind,
+                          SkillContext(profile=profile, tool_names=frozenset()))
+
+
+SOURCE_SETS = {"documents": {"documents"}, "web": {"web"}, "both": {"documents", "web"},
+               "neither": set()}
+
+
 @pytest.mark.parametrize("profile", sorted(prompts.PROFILE_KINDS))
-@pytest.mark.parametrize("web", [False, True])
-@pytest.mark.parametrize("collections", [False, True])
-def test_each_role_prompt_renders_for_web_and_collection_state(profile, web, collections):
-    packs = "all" if web else "catalogue,skills,collections,conversation"
-    snap = snapshot_for(profile, packs=packs)
-    prompt = prompts.render(profile, snapshot=snap,
-                            skills=listed_skills(snap.skill_context),
-                            collections_hint=collections, strict=True)
-    if profile in {"internal_search", "full_research"}:
-        assert bool("no document collections" in prompt) is not collections
-    assert bool("`web_search`" in prompt) is web
+@pytest.mark.parametrize("sources", sorted(SOURCE_SETS))
+def test_each_source_set_renders_strictly_and_names_only_its_sources(profile, sources):
+    """The role text, the listed skills and the callable tools come from one snapshot. A
+    run without documents names no collection and lists no collection skill. A run without
+    the web names no web tool."""
+    names = SOURCE_SETS[sources]
+    snap = snapshot_of_sources(profile, names)
+    skills = listed_skills(snap.skill_context)
+    prompt = prompts.render(profile, snapshot=snap, skills=skills, strict=True)
+    tools = set(snap.tools_by_name)
+    assert {w for w in BACKTICKED.findall(prompt) if w in EVERY_TOOL} <= tools
+    texts = [prompt] + [skill_store.render_skill(s.name, snap.skill_context, strict=True)
+                        for s in skills]
+    if "documents" in names:
+        assert NO_COLLECTIONS not in prompt
+        assert {"search", "citation"} <= {s.name for s in skills}
+    else:
+        assert not tools & PACKS["collections"]
+        assert not {s.name for s in skills} & COLLECTION_SKILLS
+        assert NO_COLLECTIONS in prompt
+        for text in texts:
+            assert "collection" not in text.replace(NO_COLLECTIONS, "").lower(), text[:200]
+            assert "not found in the documents" not in text
+    if "web" in names:
+        assert "`web_search`" in prompt and "web_research" in {s.name for s in skills}
+    else:
+        assert not tools & (PACKS["web"] | PACKS["browser"])
+        assert "search the open web" not in prompt
+    if not names:
+        # A source-free run gets no instruction to search or cite any source.
+        assert "Use the document collections" not in prompt and "Use the web" not in prompt
+        assert "cannot read the web" in prompt
+        assert "Citations\n" not in prompt
     assert "ask_user" not in prompt
+
+
+def test_the_citation_skill_is_listed_only_with_cite_documents():
+    web = listed_skills(snapshot_of_sources("full_research", {"web"}).skill_context)
+    both = listed_skills(snapshot_of_sources("full_research", {"web", "documents"}).skill_context)
+    assert "citation" not in {s.name for s in web}
+    assert {"citation", "web_research"} <= {s.name for s in both}
+    assert skill_store.SKILLS["citation"].tools == ("cite_documents",)
 
 
 def test_every_run_tool_has_one_prompt_line():
@@ -232,6 +281,65 @@ async def test_the_system_text_is_the_same_for_each_model_step(monkeypatch):
     assert "Your role" in first and "`method_chat_full`" not in first
     assert context.skill_context.profile == "full_research"
     assert context.skill_context.tool_names == frozenset(context.snapshot.tools_by_name)
+
+
+class _FakeClient:
+    tools = EVERY_TOOL
+
+    def __init__(self, servers):
+        pass
+
+    async def get_tools(self):
+        return fake_tools(self.tools)
+
+
+async def _context(monkeypatch, profile, acl, tools=EVERY_TOOL, kind="board"):
+    from research_agent import agent as agent_module
+
+    client = type("Client", (_FakeClient,), {"tools": tools})
+    monkeypatch.setattr(agent_module, "MultiServerMCPClient", client)
+    monkeypatch.setenv("LLM_API_KEY", "test")
+    monkeypatch.setenv("LLM_MODEL", "test-model")
+    monkeypatch.delenv("SYSTEM_PROMPT", raising=False)
+    monkeypatch.delenv("AGENT_PACKS_CHAT", raising=False)
+    gateway = agent_module.MCPGatewayAgent([], "test", "", profile=profile)
+    return await gateway._create_context(None, acl, kind=kind)
+
+
+@pytest.mark.parametrize("acl", [[], None])
+async def test_a_context_with_an_empty_acl_binds_no_collection_tool(monkeypatch, acl):
+    """The collection server lists its tools, and a run without collections binds none of
+    them, lists no collection skill, and says that it reads no collection."""
+    context = await _context(monkeypatch, "full_research", acl)
+    tools = set(context.snapshot.tools_by_name)
+    assert not tools & PACKS["collections"]
+    assert {"web_search", "read_page", "cite_pages"} <= tools
+    assert context.skill_context.collections_hint is False
+    listed = {s.name for s in listed_skills(context.skill_context)}
+    assert not listed & COLLECTION_SKILLS and "web_research" in listed
+    text = context.system_text_for(())
+    assert NO_COLLECTIONS in text and "`search_collections`" not in text
+    assert "You can search the open web." in text
+
+
+async def test_a_context_with_collections_binds_the_collection_tools(monkeypatch):
+    context = await _context(monkeypatch, "full_research", ["enron"])
+    assert PACKS["collections"] <= set(context.snapshot.tools_by_name)
+    assert context.skill_context.collections_hint is True
+    assert NO_COLLECTIONS not in context.system_text_for(())
+
+
+async def test_an_internal_context_without_collections_reads_no_source(monkeypatch):
+    """The internal agent connects no web server. Without collections, its run has neither
+    source, and its role text orders no collection search."""
+    tools = PACKS["collections"] | PACKS["conversation"] | PACKS["workspace"]
+    context = await _context(monkeypatch, "internal_search", [], tools=tools, kind="chat")
+    bound = set(context.snapshot.tools_by_name)
+    assert not bound & (PACKS["collections"] | PACKS["web"] | PACKS["browser"])
+    text = context.system_text_for(())
+    assert NO_COLLECTIONS in text and "cannot read the web" in text
+    assert "Use the document collections" not in text
+    assert "not found in the documents" not in text
 
 
 def test_list_constraints_apply_before_any_optional_skill_read():

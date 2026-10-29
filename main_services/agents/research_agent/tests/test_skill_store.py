@@ -36,7 +36,7 @@ PROFILES = sorted(ROLE_CONTEXT)
 GENERAL_DESCRIPTIONS = {
     "search": "how to search document collections and use the query syntax",
     "thorough": "how to choose further searches when a question needs research",
-    "citation": "how to cite documents and captured web pages that support an answer",
+    "citation": "how to cite the documents that support an answer",
     "report": ("where a report, a list, a table, a draft or an answer with citations goes, "
                "and how to edit it"),
 }
@@ -298,11 +298,30 @@ def test_document_ids_names_the_hash_and_the_supported_path():
     assert "`read_documents` can also resolve a file name or path" in text
 
 
-def test_web_only_citation_skill_keeps_page_instructions():
+def test_a_web_only_run_lists_no_citation_skill_and_web_research_holds_the_page_rules():
     context = SkillContext(profile="full_research", tool_names=frozenset({"cite_pages", "read_page", "web_search"}))
-    body = render_skill("citation", context, strict=True)
+    assert "citation" not in {s.name for s in listed_skills(context)}
+    body = render_skill("web_research", context, strict=True)
     assert "`cite_pages`" in body and "[W1]" in body
-    assert "`cite_documents`" not in body
+    assert "`cite_documents`" not in body and "collection" not in body
+    assert "When a citation fails, do not put another handle in its place." in normalised(body)
+
+
+def test_the_cite_pages_arguments_are_in_one_skill_once():
+    """A run with both sources reads the `cite_pages` arguments in `web_research` only, and
+    both citation skills give the same failure rules from one partial."""
+    tools = EVERY_TOOL
+    web = render_skill("web_research", context("full_research", tools), strict=True)
+    documents = render_skill("citation", context("full_research", tools), strict=True)
+    reference = "`cite_pages` accepts url and terms for one page"
+    assert web.count(reference) == 1 and reference not in documents
+    assert "cite_pages" not in documents and "[W1]" not in documents
+    assert "`cite_documents`" in documents and "`cite_documents`" not in web
+    partial = (skill_store.PARTIALS_DIR / "citation_failures.j2").read_text()
+    rules = normalised(skill_store.environment().from_string(partial).render(
+        **skill_store.skill_variables(context("full_research", tools))))
+    assert rules and rules in normalised(web) and rules in normalised(documents)
+    assert "citation_failures" not in load_skills()
 
 
 def test_web_citation_role_does_not_request_bare_source_links():
@@ -350,5 +369,6 @@ def test_the_recovery_skills_show_a_correction_and_a_terminal_lack_of_support():
     assert "Do not send a failed call again with the same arguments" in citation
     assert "curly apostrophe" in citation and "the board’s decision was final" in citation
     assert "sources read do not confirm" in citation
-    assert "Send the next call with the third page only" in citation
+    assert "Send the next call with the third page only" in web
     assert "When a citation fails, do not put another handle in its place." in citation
+    assert "When a citation fails, do not put another handle in its place." in web

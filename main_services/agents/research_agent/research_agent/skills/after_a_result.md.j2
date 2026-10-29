@@ -10,7 +10,7 @@ After each result
 After each result, do one of these things.
 
 1. The result holds what you need. Use it, and go on with the work.
-2. The result is empty or does not help. Change the arguments: other words, another form of a name, another collection, another page, or no filter.
+2. The result is empty or does not help. Change the arguments: other words, another form of a name,{% if has('search_collections') %} another collection,{% endif %} another page, or no filter.
 3. The result is an error. Read the error text, correct the argument that it names, and then send the call.
    When a batch has successful and failed calls, keep the successful results. Send again
    only the failed call.

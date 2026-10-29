@@ -558,6 +558,9 @@ fn BoardSettings(
     let mut error = error;
     let board_id = snap.board.board_id.clone();
     let finished = snap.status == "completed" || snap.status == "dropped";
+    // A board without collections has the web as its only source.
+    let web_only = snap.board.collections.is_empty();
+    let collections = collections_text(&snap.board.collections);
     let pause_label = match snap.status.as_str() {
         "active" => Some(("Pause the board", true)),
         "paused" => Some(("Resume the board", false)),
@@ -574,11 +577,14 @@ fn BoardSettings(
                 div { style: "font-size: var(--x-text-section); font-weight: 600; margin-bottom: 10px;", "Board settings" }
                 if internet_tools_enabled {
                     label { style: "display: flex; gap: 8px; align-items: center; font-size: var(--x-text-body);",
+                        // A disabled input shows no tooltip in some browsers, so the label holds it too.
+                        title: if web_only { "A board without collections needs internet tools." } else { "" },
                         input {
                             class: "x-board-internet-tools",
                             r#type: "checkbox",
                             checked: snap.board.internet_tools,
-                            disabled: finished || busy(),
+                            disabled: finished || busy() || web_only,
+                            title: if web_only { "A board without collections needs internet tools." } else { "" },
                             onchange: {
                                 let id = board_id.clone();
                                 move |e: FormEvent| {
@@ -597,7 +603,7 @@ fn BoardSettings(
                     p { style: HELP_TEXT, "The next explores of the board can search the web and read web pages. Running explores keep the setting they started with." }
                 }
                 div { style: SUBHEADING, "Collections" }
-                p { style: "margin: 4px 0;", "{snap.board.collections.join(\", \")}" }
+                p { style: "margin: 4px 0;", "{collections}" }
                 p { style: HELP_TEXT, "The collections are fixed when the board is created." }
                 div { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 14px;",
                     if let Some((label, paused)) = pause_label {
@@ -643,6 +649,15 @@ fn BoardSettings(
                 }
             }
         }
+    }
+}
+
+/// The collections of a board as one line, or "None" for a board without collections.
+fn collections_text(collections: &[String]) -> String {
+    if collections.is_empty() {
+        "None".to_string()
+    } else {
+        collections.join(", ")
     }
 }
 
@@ -1027,6 +1042,7 @@ fn BoardStatistics(snap: BoardSnapshot) -> Element {
         (rejected, "rejected", false),
     ]);
     let internet = if snap.board.internet_tools { "On" } else { "Off" };
+    let collections = collections_text(&snap.board.collections);
     rsx! {
         div { class: "x-board-statistics", style: PANEL,
             div { style: SECTION, "Statistics" }
@@ -1036,7 +1052,7 @@ fn BoardStatistics(snap: BoardSnapshot) -> Element {
                 dt { "Assessments" } dd { "{snap.reasons_done}" }
                 dt { "Intents" } dd { "{intent_line}" }
                 dt { "Findings" } dd { "{fact_line}" }
-                dt { "Collections" } dd { "{snap.board.collections.join(\", \")}" }
+                dt { "Collections" } dd { "{collections}" }
                 if internet_tools_enabled {
                     dt { "Internet tools" } dd { "{internet}" }
                 }
@@ -1756,6 +1772,12 @@ fn AssessmentBody(assessment: BoardAssessment, links: NodeLinks) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_board_without_collections_shows_none() {
+        assert_eq!(collections_text(&[]), "None");
+        assert_eq!(collections_text(&["enron".to_string(), "tables".to_string()]), "enron, tables");
+    }
 
     #[test]
     fn an_unknown_zoom_is_100_and_the_buttons_stop_at_the_ends() {

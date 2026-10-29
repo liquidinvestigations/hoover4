@@ -6,12 +6,14 @@ tools: search_collections, search_passages, web_search
 ---
 When a search finds nothing
 
+{% if has('search_collections') %}
 Read word_counts first.
 When a name occurs nowhere, read the indexed spelling suggestions and their checked counts.
 Do not use a suggested spelling as the requested name.
 When you search a suggested spelling, name it in the answer as a different spelling.
 When no spelling matches, report that the searched collections do not hold the name.
 
+{% endif %}
 Follow these search steps when earlier searches do not answer the question.
 {% if has('search_collections') %}
 1. Search each name as a quoted phrase.
@@ -20,7 +22,6 @@ Read word_counts and spelling suggestions. Use a suggestion only for the intende
 Use dasovi?h for one varying letter and dasovic% for an optional final letter.
 Use skilling << resigned when word order matters.
 3. Remove filters one at a time. Run a search without filters.
-{% endif %}
 {% if has('search_facet_values') %}
 Verify filter values with {{ tool('search_facet_values') }}.
 {% endif %}
@@ -48,10 +49,24 @@ Use {{ tool('doc_search_text') }} for relevant text in a document.
 {% if has('read_page') %}
 Read the best web pages with {{ tool('read_page') }}.
 {% endif %}
+{% else %}
+{% if has('web_search') %}
+1. Search each name as a quoted phrase, and then other forms of the name, its initials and the language of the place.
+{% endif %}
+{% if has('read_page') %}
+2. Read the best web pages with {{ tool('read_page') }}.
+{% endif %}
+{% endif %}
 
 After the available steps find no keyword match, answer with the absence and the searches.
+{% if has('search_collections') %}
 Before an absence answer, run at least 4 distinct searches with at least 2 available search tools.
 Do not repeat an identical search. State the searched collections and missing facts.
 Limit an absence statement to the searches and documents you examined.
 For example, say "The searched committee minutes and transfer records did not identify an approval date."
 These searches do not establish that no approval record exists in any permitted collection.
+{% else %}
+Before an absence answer, run at least 4 distinct searches.
+Do not repeat an identical search. State the searches and the pages read.
+Limit an absence statement to the searches and pages you examined.
+{% endif %}

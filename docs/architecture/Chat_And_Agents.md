@@ -10,6 +10,7 @@ durable research path is [main_services/processing/tasks/P_agent/](../../main_se
 
 - [Internet access stays fixed for a conversation.](#internet-access-stays-fixed-for-a-conversation)
 - [Reaching the agents](#reaching-the-agents)
+- [Run sources](#run-sources)
 - [Citations, and why they are not the search cards](#citations)
 - [Reports and workspace files](#reports-and-workspace-files)
 - [Chat checks](#chat-checks)
@@ -86,6 +87,36 @@ model, and it does not insert a model id of its own.
 checks that a model chosen here can call tools at all. Choosing one that cannot produces a
 turn that answers without ever searching, which reads as a bad answer rather than as a
 misconfiguration.
+
+## Run sources
+
+A run has a set of sources, and the sources decide which tool packs bind
+([agent_common/tool_packs.py](../../main_services/agents/agent_common/agent_common/tool_packs.py), `SOURCE_PACKS`).
+
+| Source | Condition | Packs |
+|---|---|---|
+| `documents` | The ACL of the run holds at least one collection. | `collections` |
+| `web` | The agent of the run lists `web_search`. Only the full research agent connects the web servers. | `web`, `browser` |
+
+`_create_context` ([research_agent/agent.py](../../main_services/agents/research_agent/research_agent/agent.py)) computes the sources and binds `run_tools`.
+These are the configured packs less the packs of each absent source. An empty ACL means no
+document source. It is never widened to every permitted collection, so a run without
+collections binds no collection tool. The role line, the role text, the listed skills and the
+callable tools come from the same snapshot. A skill whose tools are all in an absent pack is
+not listed. The role text of a run without collections says that it reads no collection. A
+run without collections and without the web gets no instruction to search a source. Only a
+chat can have neither source, when the person has no readable collection and the deployment
+has no internet tools. The ACL headers do not change. The collection server still refuses a
+call with an empty ACL.
+
+The skill `citation` holds the document citation protocol, and it is listed only with
+`cite_documents`. The skill `web_research` holds the web citation protocol. Both include the
+failure rules of one partial, `skills/partials/citation_failures.j2`. The chat checks load
+`citation` on the first successful document read of the turn (`first_document_read`). They
+load `web_research` on the first successful page read (`first_page_read`), on a successful web
+search of the model, and on a page read that needs recovery. A configured definition can
+still name `first_read`. It then loads `citation` on the first read of either kind, and
+`web_research` still loads on the first page read.
 
 ## Citations
 
@@ -315,8 +346,9 @@ The `chat-default` definition has these rules:
 - A chat turn gets one source note: search the permitted collections first, and the web
   after them when the turn has web tools. No effort question or call quota applies.
 - After a tool batch, a result that needs the table, email or citation method loads that
-  skill. A successful web search of the model, and a page read that failed or holds a cut
-  page, a find result or a page without text, load `web_research`. A browser call of the
+  skill. A successful web search of the model, the first successful page read, and a page
+  read that failed or holds a cut page, a find result or a page without text, load
+  `web_research`. A browser call of the
   model loads `browser_use`. A skill text that is still visible to the model is not loaded
   again, and a skill that the turn does not list is not loaded.
 - After a web search batch of the model, the worker reads the unread result addresses in
@@ -324,11 +356,11 @@ The `chat-default` definition has these rules:
 - A short page capture with no article text gets a note that names the page.
 - A reply that reads one page while two or more search results stay unread gets one note.
 
-An absent-name note requires the person's choice before the agent searches a suggested spelling.
+An absent-name note lists the indexed close forms with their document counts. A close form is never the requested name, and an answer that uses one names it as a different spelling.
 Without web tools, preparation records whether the request asks for public sources, including past events.
 The callable tools of the turn establish the capability. A public-source request gets a note that this turn has no web tools.
 The note names no deployment setting and asks for no refusal, and the source choice and the document guidance stay.
-The chat system prompt requires the name choice before candidate searches and the capability explanation before the answer.
+The chat system prompt requires the capability explanation before the answer.
 
 ## Streaming a turn
 

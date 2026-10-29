@@ -16,6 +16,11 @@ kind. The `board` pack holds `submit_board_fact`, which no run kind gets, also w
 The board's conversion activity sends that schema to the model on its own, after the
 explore wrote its report.
 
+A run also has a set of sources (`SOURCE_PACKS`). The `documents` source is present when the
+ACL of the run holds a collection. The `web` source is present when the agent lists
+`web_search`. `run_packs` removes the packs of each absent source, so a run without
+collections binds no collection tool, and lists no skill that needs only collection tools.
+
 Each model tool belongs to one pack.
 Internal runtime tools belong to `INTERNAL_TOOLS` and stay outside model catalogues.
 Each MCP server verifies its registered names against these sets.
@@ -63,6 +68,13 @@ ALWAYS_PACKS = frozenset({"skills", "workspace"})
 #: Removed pack names select no tools.
 RETIRED_PACKS = frozenset({"delegation", "plan"})
 
+#: The packs that only a run with the source can use. A run without the source binds none
+#: of their tools, and lists none of the skills that need only those tools.
+SOURCE_PACKS: Dict[str, FrozenSet[str]] = {
+    "documents": frozenset({"collections"}),
+    "web": frozenset({"web", "browser"}),
+}
+
 
 def env_name(kind: str) -> str:
     """Return the environment variable that holds the pack setting of one run kind."""
@@ -104,6 +116,24 @@ def allowed_tools(kind: str, configured: str) -> FrozenSet[str]:
     """Return the union of the tools of `packs_for(kind, configured)`."""
     names: set = set()
     for pack in packs_for(kind, configured):
+        names |= PACKS[pack]
+    return frozenset(names)
+
+
+def run_packs(kind: str, configured: str, sources: FrozenSet[str]) -> FrozenSet[str]:
+    """Return the packs of one run: the packs of its kind, less the packs of each source of
+    `SOURCE_PACKS` that `sources` does not hold."""
+    packs = packs_for(kind, configured)
+    for source, names in SOURCE_PACKS.items():
+        if source not in sources:
+            packs -= names
+    return packs
+
+
+def run_tools(kind: str, configured: str, sources: FrozenSet[str]) -> FrozenSet[str]:
+    """Return the union of the tools of `run_packs(kind, configured, sources)`."""
+    names: set = set()
+    for pack in run_packs(kind, configured, sources):
         names |= PACKS[pack]
     return frozenset(names)
 

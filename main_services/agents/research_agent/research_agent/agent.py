@@ -14,7 +14,7 @@ import os
 from collections import OrderedDict
 from dataclasses import dataclass
 from json import JSONDecodeError
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, FrozenSet, List, Optional, Tuple
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langfuse import Langfuse
@@ -120,6 +120,15 @@ def acl_headers(
     return headers
 
 
+def run_sources(tools: List[Any], allowed_collections: Optional[List[str]]) -> FrozenSet[str]:
+    """The sources of one run (`tool_packs.SOURCE_PACKS`). `documents` needs a collection in
+    the ACL. `web` needs `web_search` among the tools of the connected servers."""
+    sources = {"web"} if any(getattr(tool, "name", "") == "web_search" for tool in tools) else set()
+    if allowed_collections:
+        sources.add("documents")
+    return frozenset(sources)
+
+
 def _read_secret(env_var: str) -> str:
     """Read a secret from an env var, falling back to the <name>_FILE bind mount that
     deploy.py creates (hoover4.ini stores host paths, never values)."""
@@ -206,7 +215,9 @@ class MCPGatewayAgent:
 
     async def initialize(self) -> AgentContext:
         """Build one context with no ACL, so the service fails at start on an unreachable
-        MCP server or a missing model key. The context is not cached."""
+        MCP server or a missing model key. The context is not cached. It has no document
+        source, so it binds no collection tool, and `client.get_tools()` still reads every
+        server."""
         return await self._create_context(None, None)
 
     @staticmethod
@@ -336,21 +347,27 @@ class MCPGatewayAgent:
 
         log.info("%s", compaction.describe())
 
-        # The tool packs of this run kind decide what the context runs and lists in
-        # its catalogue.
+        # The tool packs of this run kind, less the packs of the sources that the run does
+        # not have (`tool_packs.SOURCE_PACKS`), decide what the context runs and lists in
+        # its catalogue. An empty ACL means no document source, so the run binds no
+        # collection tool. The web source needs a web tool from the connected servers.
+        sources = run_sources(tools, allowed_collections)
         configured = tool_packs.configured_packs(kind)
-        allowed = tool_packs.allowed_tools(kind, configured)
+        allowed = tool_packs.run_tools(kind, configured, sources)
 
         # One snapshot for this context. `/model_step` and `/tool_call` use its tools.
-        # The container's profile. `collections_hint` is the caller's ACL: an empty
-        # one means every collection search will come back empty, which the model should
-        # be told rather than left to discover.
+        # `collections_hint` is true when the snapshot holds a collection tool, so the role
+        # text, the listed skills and the callable tools come from the same snapshot.
         profile = self.profile
+        collections_hint = any(
+            tool.name in allowed and tool.name in tool_packs.PACKS["collections"]
+            for tool in tools
+        )
         snapshot = build_snapshot(
             tools, allowed, kind,
             skill_store.SkillContext(
                 profile=profile, tool_names=frozenset(),
-                collections_hint=bool(allowed_collections),
+                collections_hint=collections_hint,
             ),
         )
         skill_context = snapshot.skill_context
@@ -366,7 +383,7 @@ class MCPGatewayAgent:
             profile,
             snapshot=snapshot,
             skills=skill_store.listed_skills(skill_context),
-            collections_hint=bool(allowed_collections),
+            collections_hint=collections_hint,
         )
 
         return AgentContext(

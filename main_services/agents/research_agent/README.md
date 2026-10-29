@@ -72,8 +72,12 @@ passage, call the citation tool with exact text, copy the returned handle beside
 claim, write the report after the needed calls succeed, and state the requested parts
 that the sources do not establish. After a citation fails twice, the report leaves out the
 claim or states that the sources read do not confirm it. A document quote has 5 to 6 words of body text without
-a question mark. The `citation` skill holds the arguments of each
-citation tool, recovery examples, and the batch form. The summary of a
+a question mark. The `citation` skill holds the arguments of `cite_documents`, recovery
+examples, and the batch form. It is listed only with `cite_documents`. The `web_research`
+skill holds the arguments and the recovery examples of `cite_pages`. Both skills include the
+failure rules of one partial, `skills/partials/citation_failures.j2`, through the loader of
+`skill_store.environment`. `load_skills` reads only `*.md.j2` files, so a partial is never a
+skill. The summary of a
 tool is the first sentence of its description, at most 160 characters. `_create_context`
 renders the prompt once for each step context. The prompt cache holds the system text for
 the run.
@@ -87,7 +91,11 @@ A skill can also name `terms` and `not_for`: the words that requests use for the
 the similar requests that do not need it. The worker's turn-start check reads them with the
 description. The system prompt lists the description only.
 The role skills are `method_chat_full` and `method_chat_internal`.
-They define the role's sources and evidence requirements.
+They define the role's sources and evidence requirements. Each sentence about documents
+renders only with `search_collections` or `cite_documents`, and each sentence about the web
+only with `web_search`. A run without collections and without the web gets a role text that
+asks for no search. The role line of a run without collections says "This conversation can
+read no document collections.", and it names the web only when the run has `web_search`.
 The full chat role verifies every constraint for each listed item before an optional skill read.
 It requires reading each cited page and reports a shortage when fewer items match.
 It keeps items that fail a constraint outside the matching list.
@@ -119,6 +127,12 @@ A tool pack is a named set of tools in [agent_common/tool_packs.py](../agent_com
 `agent_packs_chat` selects chat packs. Its default is `all`.
 The available packs are `catalogue`, `skills`, `collections`, `conversation`, `web`, and `browser`.
 Every run receives the `skills` pack.
+A run also has sources (`SOURCE_PACKS`). The `documents` source needs a collection in the ACL
+of the run, and the `web` source needs `web_search` from the connected servers.
+`_create_context` binds `tool_packs.run_tools`, the selected packs less the packs of each
+absent source. An empty ACL therefore binds no collection tool, and the run lists no skill
+whose tools are all collection tools. The context that `initialize` builds has no ACL, so it
+binds no collection tool either.
 The prompt lists the tools that the selected packs permit.
 The catalogue exposes those tools with their descriptions and schemas.
 
