@@ -33,6 +33,33 @@ def test_query_options_apply_expansion_only_to_pages(monkeypatch):
     assert "expansion_limit" not in backends.manticore_query_options(42)
 
 
+@pytest.mark.parametrize("metadata", [
+    {"timed_out": True},
+    {"warning": "query time exceeded max_query_time"},
+    {"warning": "query timed out"},
+])
+@pytest.mark.parametrize("endpoint", ["text", "vectors"])
+def test_timeout_rows_fail_without_retry(monkeypatch, metadata, endpoint):
+    monkeypatch.setenv("MANTICORE_VECTORS_URL", "http://vectors.invalid")
+    calls = []
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return [{"data": [{"id": 1}], "error": "", **metadata}]
+
+    def post(*args, **kwargs):
+        calls.append((args, kwargs))
+        return Response()
+
+    monkeypatch.setattr(backends.requests, "post", post)
+    query = backends.manticore_query if endpoint == "text" else backends.manticore_vectors_query
+    with pytest.raises(backends.requests.Timeout, match="before completion"):
+        backends.with_retries("test shard", lambda: query("SELECT id FROM t"))
+    assert len(calls) == 1
+
+
 @pytest.mark.parametrize("query", ["*a*", "(*ab*)", "word | *é*", "-*xy*"])
 def test_short_infix_has_an_explanation(query):
     prepared = backends.prepare_match_query(query)

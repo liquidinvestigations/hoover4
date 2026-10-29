@@ -343,7 +343,8 @@ version:
 * **The keyword half is complete or the query form fails.** A shard query or a shard
   ledger read that fails gets three attempts, and only the failed shard runs again. A
   shard that still fails returns an error for that query form and no hits. A refused
-  statement and a timeout are not retried. A call keeps the forms that answered, and a note
+  statement and a timeout are not retried. A timeout response fails even when it contains rows.
+  Raw SQL timeout warnings also fail the call. A call keeps the forms that answered, and a note
   names each failed form. A vector shard that still fails after its retries fails the
   vector ranking, and the search continues by keyword only with a note.
 

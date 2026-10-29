@@ -118,6 +118,8 @@ pub fn SearchPanelLeftView(
         set_selected_result_hash,
         set_selected_result_hash_and_page,
         retry_search: Callback::new(move |_| {
+            hit_count.clear();
+            search_result.clear();
             hit_count.restart();
             search_result.restart();
         }),
@@ -180,6 +182,12 @@ fn SearchResultsView() -> Element {
         Some(Ok(s)) => s,
         None => return rsx! { LoadingIndicator{} },
     };
+
+    match search_results_state.hit_count.read().as_ref() {
+        Some(Err(e)) => return rsx! { SearchFailure { error: e.clone(), on_retry: search_results_state.retry_search } },
+        None => return rsx! { LoadingIndicator {} },
+        Some(Ok(_)) => {}
+    }
 
     let result_list = search_result.results.clone();
 

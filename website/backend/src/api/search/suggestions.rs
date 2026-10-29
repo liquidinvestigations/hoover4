@@ -143,6 +143,11 @@ async fn call_tables(tables: &[(String, String)], statement: impl Fn(&str) -> St
 /// reads a missing count as an absent word. A word whose candidate lookup fails gets no
 /// candidates. The other words keep theirs.
 pub async fn indexed_suggestions(collections: &[String], query: &str, kind: TableKind, gate: Gate) -> SearchSuggestions {
+    tokio::time::timeout(PAGE_SUGGESTION_DEADLINE, indexed_suggestions_inner(collections, query, kind, gate))
+        .await.unwrap_or_default()
+}
+
+async fn indexed_suggestions_inner(collections: &[String], query: &str, kind: TableKind, gate: Gate) -> SearchSuggestions {
     let words = words_of(query);
     if words.is_empty() { return SearchSuggestions::default(); }
     let tables = match tables_for(collections, kind).await {
@@ -231,12 +236,12 @@ pub async fn search_suggestions(user: &CurrentUser, query: SearchQuery) -> anyho
 }
 
 async fn page_suggestions(user: &CurrentUser, query: SearchQuery, deadline: tokio::time::Instant) -> anyhow::Result<SearchSuggestions> {
-    let perms = permissions::resolve_permissions(user).await?;
+    let perms = tokio::time::timeout_at(deadline, permissions::resolve_permissions(user)).await??;
     let Some(query) = permissions::sanitize_query(query, &perms) else { return Ok(SearchSuggestions::default()); };
     if query.query_string.trim().is_empty() { return Ok(SearchSuggestions::default()); }
     let count = tokio::time::timeout_at(deadline, super::search_for_results_hit_count::search_hit_count(user, query.clone())).await??;
     if count.total != 0 { return Ok(SearchSuggestions::default()); }
-    let collections = fanout::permitted_search_collections(user, &query).await?;
+    let collections = tokio::time::timeout_at(deadline, fanout::permitted_search_collections(user, &query)).await??;
     let mut response = tokio::time::timeout_at(deadline, indexed_suggestions(&collections, &query.query_string, TableKind::Pages, Gate::Page)).await?;
     let mut replacements = Vec::new();
     for group in &response.suggestions {

@@ -160,6 +160,12 @@ def _manticore_query(url: str, sql: str) -> list[dict]:
         payload = payload[0] if payload else {}
     if payload.get("error"):
         raise ManticoreRefused(f"Manticore query failed: {payload['error']}")
+    warning = str(payload.get("warning") or "")
+    if payload.get("timed_out") or any(
+        marker in warning.casefold()
+        for marker in ("max_query_time", "query time exceeded", "timed out", "query timedout")
+    ):
+        raise requests.Timeout(f"Manticore stopped the query before completion: {warning}")
     return payload.get("data", [])
 
 

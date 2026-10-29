@@ -51,7 +51,8 @@ that failed. The shards that answered are not queried again. A shard that still 
 its third attempt fails the whole request. The same rule covers the shard ledger read and
 the dataset lookup. A dataset that is not in the registry is skipped, because that is a
 complete answer. The result list then shows that the search did not complete, with a
-Retry button, and each facet pane shows its own Retry button.
+Retry button. A failed hit count also hides the result list and offers Retry.
+Each facet pane shows its own Retry button.
 
 Two failures are not retried. Every query carries `max_query_time` and
 `agent_query_timeout` of 30 s (`HOOVER4_SEARCH_TIMEOUT_SECONDS`, ini key
@@ -411,12 +412,15 @@ Candidate counts come from another `CALL KEYWORDS` request. `QSUGGEST` counts ar
 Candidates need distance one or two. A rare word needs a candidate with twenty times its count.
 The agent permits any positive candidate count. The search page requires ten documents and seven letters for distance two.
 The response ranks four candidates per word by distance and checked count.
-Each dictionary call to one table has a 5 s limit, which includes the cache read. The cache write runs after the call.
+Each dictionary call to one table has a 5 s limit, including cache access.
+A cache write uses the remaining time and cannot discard rows already read.
 A table that fails gets three attempts. A retry runs only the table that failed.
 A word-count lookup that still fails returns no counts and no candidates, so the agent emits no absence instruction.
 A word whose candidate lookup fails gets no candidates. The other words keep theirs.
 Dictionary responses use the search cache with the collection shard generation.
-The search page verifies at most six candidate queries with unchanged filters, concurrently, within 30 s.
+Page and agent suggestion lookups have a 30 s deadline.
+The page deadline also covers permission resolution and collection selection.
+The search page verifies at most six candidate queries concurrently, with unchanged filters, within that deadline.
 A candidate whose count fails or passes the 30 s deadline is skipped. The page shows no warning for a skipped candidate.
 Suggestions never change the original query automatically.
 

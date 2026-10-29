@@ -276,12 +276,12 @@ pub const DICTIONARY_CALL_LIMIT: Duration = Duration::from_secs(5);
 
 /// Cache dictionary calls under the collection's shard generation.
 ///
-/// [`DICTIONARY_CALL_LIMIT`] covers the cache read and the Manticore call. The cache write
-/// runs after the rows are in hand and outside that limit, so a slow write cannot fail a
-/// call that already has its answer. A failed write only costs the next call a lookup.
+/// [`DICTIONARY_CALL_LIMIT`] covers the complete call. The cache write uses the remaining
+/// time. A failed or timed-out write preserves the rows already read.
 pub async fn manticore_dictionary_sql(sql: String, salt: &str) -> anyhow::Result<Vec<ManticoreRawRow>> {
+    let deadline = tokio::time::Instant::now() + DICTIONARY_CALL_LIMIT;
     let hash = sha256::digest(format!("dictionary-v1:{salt}\n{sql}"));
-    let fresh = tokio::time::timeout(DICTIONARY_CALL_LIMIT, async {
+    let fresh = tokio::time::timeout_at(deadline, async {
         if let Ok(cached) = get_cached_response(&hash, &sql).await
             && let Ok(rows) = serde_json::from_str(&cached)
         {
@@ -295,12 +295,20 @@ pub async fn manticore_dictionary_sql(sql: String, salt: &str) -> anyhow::Result
     .await
     .map_err(|_| anyhow::anyhow!("The dictionary call exceeded its {}s time limit.", DICTIONARY_CALL_LIMIT.as_secs()))??;
     let (rows, body) = fresh;
-    if let Some(body) = body
-        && insert_cache(&hash, &sql, &body, 0).await.is_err()
-    {
-        tracing::debug!("dictionary cache insert failed: {hash}");
+    if let Some(body) = body {
+        cache_before_deadline(deadline, insert_cache(&hash, &sql, &body, 0)).await;
     }
     Ok(rows)
+}
+
+/// Preserve the lookup result when its optional cache write fails or exceeds the deadline.
+async fn cache_before_deadline(
+    deadline: tokio::time::Instant,
+    write: impl std::future::Future<Output = anyhow::Result<()>>,
+) {
+    if !matches!(tokio::time::timeout_at(deadline, write).await, Ok(Ok(()))) {
+        tracing::debug!("dictionary cache insert failed or exceeded its deadline");
+    }
 }
 
 /// The rows of the first result of a raw-mode body, or its error.
@@ -380,6 +388,21 @@ async fn insert_cache(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn dictionary_cache_write_stops_at_the_lookup_deadline() {
+        let start = tokio::time::Instant::now();
+        let deadline = start + Duration::from_secs(2);
+        cache_before_deadline(deadline, std::future::pending()).await;
+        assert_eq!(tokio::time::Instant::now(), deadline);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn dictionary_cache_failure_does_not_fail_the_lookup() {
+        cache_before_deadline(tokio::time::Instant::now() + DICTIONARY_CALL_LIMIT, async {
+            anyhow::bail!("cache unavailable")
+        }).await;
+    }
 
     #[test]
     fn the_search_budget_defaults_and_clamps() {
