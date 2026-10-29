@@ -28,7 +28,7 @@ def test_caps_default_to_two_for_every_kind(monkeypatch):
     monkeypatch.delenv("HOOVER4_OPERATION_CAPS", raising=False)
     caps = operation_caps()
     assert set(caps) == set(KINDS)
-    assert len(caps) == 17
+    assert len(caps) == 18
     assert set(caps.values()) == {DEFAULT_OPERATION_CAP} == {2}
 
 
@@ -54,9 +54,10 @@ def test_the_rendered_variable_parses_to_every_kind(monkeypatch):
     assert set(operation_caps().values()) == {3}
 
 
-def _row(state: str) -> dict:
+def _row(state: str, kind: str = "add_dataset") -> dict:
     return {
-        "op_id": "op", "kind": "add_dataset", "state": state,
+        "op_id": "op", "kind": kind, "state": state,
+        "collectionname": "c", "collection_dataset": "c_d",
         "started_at": datetime(2026, 1, 1),
         "run_started_at": datetime(1970, 1, 1),
     }
@@ -65,9 +66,10 @@ def _row(state: str) -> dict:
 @pytest.fixture
 def fake_store(monkeypatch):
     """Fake the row read, the admission count and the row write."""
-    store = {"row": None, "counts": (0, 0), "writes": []}
+    store = {"row": None, "counts": (0, 0), "writes": [], "conflicts": []}
     monkeypatch.setattr(operations, "get_operation", lambda _op_id: store["row"])
     monkeypatch.setattr(operations, "count_admission", lambda _row: store["counts"])
+    monkeypatch.setattr(operations, "running_conflicts", lambda _row: store["conflicts"])
     monkeypatch.setattr(
         operations, "update_operation",
         lambda op_id, base_row=None, **changes: store["writes"].append(changes),
@@ -114,6 +116,51 @@ def test_admission_waits_behind_an_older_row(fake_store):
     fake_store["row"] = _row("queued")
     fake_store["counts"] = (1, 1)
     assert admit_operation("op") == "queued"
+
+
+@pytest.mark.parametrize("kind, blocker", [
+    ("ingest_upload", "rescan_dataset"),
+    ("ingest_upload", "rerun_ocr"),
+    ("ingest_upload", "reindex_collection"),
+    ("ingest_upload", "delete_dataset"),
+    ("rescan_dataset", "ingest_upload"),
+    ("reindex_collection", "ingest_upload"),
+])
+def test_admission_waits_behind_a_running_overlapping_writer_of_another_kind(
+        fake_store, kind, blocker):
+    fake_store["row"] = _row("pending", kind)
+    fake_store["counts"] = (0, 0)
+    fake_store["conflicts"] = [{"op_id": "other", "kind": blocker}]
+    assert admit_operation("op") == "queued"
+    assert fake_store["writes"] == [{"state": "queued"}]
+    fake_store["conflicts"] = []
+    fake_store["row"] = _row("queued", kind)
+    fake_store["writes"].clear()
+    assert admit_operation("op") == "running"
+    assert fake_store["writes"][0]["state"] == "running"
+
+
+def test_the_conflict_query_names_running_overlapping_rows_except_itself(monkeypatch):
+    captured = []
+    monkeypatch.setattr(operations, "_select",
+                        lambda where, parameters, limit=None: captured.append((where, parameters)) or [])
+    operations.running_conflicts(_row("pending", "ingest_upload"))
+    operations.running_conflicts(_row("pending", "reindex_collection"))
+    (dataset_where, dataset_parameters), (collection_where, collection_parameters) = captured
+    assert dataset_where.startswith("state = 'running' AND op_id != {self_op_id:String} AND ")
+    assert "collection_dataset = {collection_dataset:String}" in dataset_where
+    assert "target_kind = 'collection' AND collectionname = {collectionname:String}" in dataset_where
+    assert dataset_parameters == {"collection_dataset": "c_d", "collectionname": "c",
+                                  "self_op_id": "op"}
+    assert collection_where.endswith("collectionname = {collectionname:String}")
+    assert "collection_dataset" not in collection_where
+    assert collection_parameters == {"collectionname": "c", "self_op_id": "op"}
+
+
+def test_the_lock_clause_keeps_its_live_states_and_targets():
+    where, parameters = operations.lock_clause("ingest_upload", "c", "c_d")
+    assert where.startswith("state IN ('pending', 'queued', 'running') AND (collection_dataset")
+    assert parameters == {"collection_dataset": "c_d", "collectionname": "c"}
 
 
 def test_admission_of_a_missing_row_does_not_retry(fake_store):

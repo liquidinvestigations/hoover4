@@ -27,6 +27,24 @@ a P3 group scans those folders in process with the same two activity functions, 
 `HandleFolders`. Hashing uses one streaming pass for `sha3_256`, `md5`, `sha1`, and `sha256`. Blob storage
 uses ClickHouse (`blob_values`) for small files and the collection Garage bucket for larger files.
 
+## Upload part files are skipped
+
+The website copies an upload file into the dataset folder through a temporary name,
+`.hoover4-upload-<batch_id>-<file_no>.hoover4-part`, when the upload space is on another file
+system. Both folder listings (`list_disk_folder` and `_range_entries`) skip a name with that
+prefix and that suffix in a dataset folder, so a rescan during a copy never ingests a partial
+file. A container member keeps such a name. `is_upload_part_name` in
+[database/uploads.py](../../database/uploads.py) holds the rule, and `website/common/src/uploads.rs` holds the two parts.
+
+## The targeted upload ingest reuses the ingest body
+
+`ingest_files` is the body of `ingest_files_batch`, and the activity keeps its signature and
+its result. `ingest_files` also returns the unreadable paths, and with `rehash_known` it hashes
+a path that already has a live row instead of trusting its size and mtime.
+`ingest_upload_paths` in [P_upload/activities.py](../P_upload/activities.py) calls it for the placed files of an
+upload batch, with `insert_vfs_directories` for their parent folders. It calls no listing,
+no range planning, no range scan and no `reconcile_deleted_files`.
+
 ## A rescan detects change, and it detects deletion
 
 `vfs_files` is keyed on `(collection_dataset, container_hash, path)` (no `hash`), so a

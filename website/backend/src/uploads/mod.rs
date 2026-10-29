@@ -147,6 +147,11 @@ pub trait BatchStore: Send + Sync {
     fn write_files(&self, collection: &str, rows: &[FileRecord]) -> anyhow::Result<()>;
     /// The stored state of a batch, or `None` when no row exists.
     fn batch_state(&self, collection: &str, upload_dataset: &str, batch_id: &str) -> anyhow::Result<Option<String>>;
+    /// Whether the dataset has a live registry row. The sweep stops the transfers of a
+    /// deleted dataset.
+    fn dataset_live(&self, _upload_dataset: &str) -> anyhow::Result<bool> {
+        Ok(true)
+    }
 }
 
 /// The wake-up of the queue workflow of a dataset.
@@ -262,6 +267,20 @@ pub fn service() -> UploadResult<Arc<Service>> {
         Some(Ok(service)) => Ok(service.clone()),
         Some(Err(reason)) => Err(UploadError::new(503, format!("Uploads are not available: {reason}"))),
         None => Err(UploadError::new(503, "Uploads are not available: the receiver has not started")),
+    }
+}
+
+/// Stop the transfers of an upload dataset after its deletion or purge was dispatched.
+/// Without a receiver in this process there is nothing to stop. A failure is logged,
+/// and the next sweep stops the transfers of a deleted dataset.
+pub async fn stop_dataset_transfers(upload_dataset: &str, reason: &'static str) {
+    let Ok(service) = service() else { return };
+    let dataset = upload_dataset.to_string();
+    match tokio::task::spawn_blocking(move || service.stop_dataset(&dataset, reason)).await {
+        Ok(Ok(0)) => {}
+        Ok(Ok(n)) => tracing::info!("stopped {n} upload batches of {upload_dataset}: {reason}"),
+        Ok(Err(e)) => tracing::error!("stopping the upload batches of {upload_dataset} failed: {e:#}"),
+        Err(e) => tracing::error!("stopping the upload batches of {upload_dataset} panicked: {e}"),
     }
 }
 

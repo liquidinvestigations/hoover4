@@ -500,8 +500,7 @@ DEFAULTS = {
         "import_collection_cap": "2",
         "purge_unattributed_entities_cap": "2",
         "backfill_vectors_cap": "2",
-        # The upload ingestion kind. KINDS does not name it yet, so hoover4-ops logs this
-        # pair as ignored until the worker side of uploads adds the kind.
+        # The upload ingestion kind: the operations that the upload queues start.
         "ingest_upload_cap": "2",
     },
     # The upload limits. The upload page and the `begin` route check the first three

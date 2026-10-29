@@ -30,6 +30,15 @@ releasing on a clock would start a second writer beside a live one. Cancelling t
 is how a lock is released early, and it lands the row in `cancelled`. A state of its own,
 not a failure, and re-runnable, because every pipeline stage is idempotent.
 
+Admission is the guard that holds when the check and the insert interleave. `admit_operation`
+never writes `running` while another `running` row overlaps the target of the row, whatever
+the kinds of the two rows (`running_conflicts` in [database/operations.py](../../database/operations.py)). A dataset row
+overlaps a row of its dataset and a collection row of its collection. A collection row
+overlaps every row of its collection. The row then stays `queued` and asks again every 30 s.
+No timer releases a running writer. The upload queue writes its `ingest_upload` rows without
+the dispatch check, so they wait in admission behind a rescan, an OCR run, a collection
+operation or a deletion of the same target.
+
 The lock check and the row insert are not atomic, and cannot be against ClickHouse. The
 workflow id is the second guard: two dispatches that both pass the check still mint
 different ids with a microsecond timestamp and random suffix. Both runs can proceed.
@@ -86,7 +95,8 @@ shard tables from its finished plans; `refresh_document_locations` rewrites page
 attributes for documents whose locations changed, without extraction; `ensure_collection` and `drop_collection_database`
 provision and remove a collection's database; `purge_dataset`, `delete_dataset`,
 `change_ocr_languages` and `retry_failed_files` each drive their own child workflow or
-chain of them; `export_collection` writes a backup (below). `delete_dataset` is a purge with the registry row tombstoned first, so an
+chain of them; `ingest_upload` drives `IngestUploadBatches` over the batch ids of its detail
+([P_upload/](../P_upload/Readme.md)); `export_collection` writes a backup (below). `delete_dataset` is a purge with the registry row tombstoned first, so an
 interrupted deletion leaves rows nothing routes to rather than a live dataset missing half
 its data, and the log distinguishes a dataset that was retired from one whose data was
 cleaned out from under it. Every child

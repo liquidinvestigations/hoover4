@@ -448,13 +448,13 @@ One key for each operation kind, named `<kind>_cap`, with the default `2`. A cap
 operations of that kind that run at once across the deployment. No key covers a group of
 kinds. [deploy.py](../../deploy.py) refuses a value below 1, and prints a warning for an unknown key in the
 section. It renders the 18 values into one variable, `HOOVER4_OPERATION_CAPS`, in
-`hoover4-ops`, as `kind=value` pairs joined by commas. `ingest_upload_cap` names the upload
-ingestion kind, which the operations table does not list yet, so `hoover4-ops` logs its pair as
-ignored.
+`hoover4-ops`, as `kind=value` pairs joined by commas. `ingest_upload_cap` limits the
+`ingest_upload` operations that the upload queues start, one queue for each upload dataset.
 
 An operation over its cap is stored as `queued`. It waits with no time limit, and the oldest
-queued operation of its kind starts when a slot is free. A queued operation holds its dataset
-or collection. A second operation on that target is refused until the first one ends or is
+queued operation of its kind starts when a slot is free. An operation also waits as `queued`
+while another running operation of its dataset or collection runs, whatever its kind. A queued
+operation holds its dataset or collection. A second operation on that target is refused until the first one ends or is
 cancelled. A change to a cap takes effect when `hoover4-ops` is created again,
 which `./deploy` does.
 

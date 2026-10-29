@@ -39,6 +39,7 @@ struct MemStore {
     files: Mutex<Vec<FileRecord>>,
     claimed: Mutex<HashMap<String, String>>,
     fail: AtomicBool,
+    deleted: AtomicBool,
 }
 
 impl MemStore {
@@ -94,6 +95,10 @@ impl BatchStore for MemStore {
             return Ok(Some(state.clone()));
         }
         Ok(self.latest_batch(batch_id).map(|b| b.state))
+    }
+
+    fn dataset_live(&self, _dataset: &str) -> anyhow::Result<bool> {
+        Ok(!self.deleted.load(Ordering::SeqCst))
     }
 }
 
@@ -685,6 +690,42 @@ const CRASH_POINTS: &[&str] = &[
     "finish.notified",
     "finish.notified_ms.before_rename",
 ];
+
+#[test]
+fn a_deleted_or_purged_dataset_stops_its_transfers_and_keeps_placed_files() {
+    let env = Env::new(false);
+    let service = env.service();
+    let a = service.begin(USER, &request("stop-a", &[("one", 4), ("two", 4)])).unwrap();
+    send_file(&service, &a.batch_id, 0, &content(0, 4)).unwrap();
+    let b = service.begin(USER, &request("stop-b", &[("three", 4)])).unwrap();
+    let info = service.tus_create(USER, &b.batch_id, 0, 4).unwrap();
+    assert_eq!(info.offset, 0);
+
+    let stopped = service.stop_dataset(DATASET, common::uploads::DATASET_PURGED_MESSAGE).unwrap();
+    assert_eq!(stopped, 2);
+    // A placed file stays, so its batch waits for the worker. The unsent file is not sent.
+    assert_eq!(env.store.latest_batch(&a.batch_id).unwrap().state, batch_state::QUEUED);
+    assert_eq!(env.store.latest_file(&a.batch_id, 0).unwrap().state, "placed");
+    assert_eq!(env.store.latest_file(&a.batch_id, 1).unwrap().state, "not_sent");
+    assert_eq!(read_dest(&env, "/in/one"), Some(content(0, 4)));
+    assert!(env.notifier.calls.lock().unwrap().iter().any(|(_, id)| id == &a.batch_id));
+    // No placed file: the batch is cancelled with the reason, and no byte stays.
+    let cancelled = env.store.latest_batch(&b.batch_id).unwrap();
+    assert_eq!(cancelled.state, batch_state::CANCELLED);
+    assert_eq!(cancelled.error, common::uploads::DATASET_PURGED_MESSAGE);
+    assert!(!service.space.data(&b.batch_id, 0).exists());
+    assert_eq!(service.stop_dataset(DATASET, common::uploads::DATASET_PURGED_MESSAGE).unwrap(), 0);
+
+    // The sweep stops a transfer of a dataset that was deleted elsewhere.
+    let c = service.begin(USER, &request("stop-c", &[("four", 4)])).unwrap();
+    env.store.deleted.store(true, Ordering::SeqCst);
+    assert_eq!(service.sweep_batch(&c.batch_id, false).unwrap(), commit::SweepOutcome::Stopped);
+    let swept = env.store.latest_batch(&c.batch_id).unwrap();
+    assert_eq!(swept.state, batch_state::CANCELLED);
+    assert_eq!(swept.error, common::uploads::DATASET_DELETED_MESSAGE);
+    assert_eq!(env.store.latest_file(&c.batch_id, 0).unwrap().state, "not_sent");
+    assert!(read_dest(&env, "/in/four").is_none());
+}
 
 #[test]
 fn every_crash_point_converges_to_one_placement_and_one_queued_record() {

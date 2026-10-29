@@ -22,3 +22,11 @@ def test_collection_backfill_kinds_are_registered_and_driven():
         "target_kind": "collection", "destructive": False
     }
     assert {"purge_unattributed_entities", "backfill_vectors"} <= set(DRIVEN_KINDS)
+
+
+def test_ingest_upload_is_a_driven_dataset_kind_with_plan_progress():
+    from database.operations import PROGRESS_SOURCES
+
+    assert KINDS["ingest_upload"] == {"target_kind": "dataset", "destructive": False}
+    assert PROGRESS_SOURCES["ingest_upload"] == "plans"
+    assert "ingest_upload" in DRIVEN_KINDS

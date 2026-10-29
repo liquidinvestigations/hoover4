@@ -320,6 +320,20 @@
       "no_screenshot_reason": "This feature defines ingestion or storage behavior. Visible progress and dataset actions have separate administration coverage."
     },
     {
+      "id": "F-ingest-25",
+      "source": [
+        "main_services/processing/tasks/P_upload",
+        "main_services/processing/database/uploads.py"
+      ],
+      "docs": [
+        "docs/architecture/Pipeline_Stages.md",
+        "main_services/processing/tasks/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-ingest-25"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "No page shows upload batches yet. Time-skipping queue tests, ClickHouse tests and a tus-js-client upload against the local stack cover the behavior."
+    },
+    {
       "id": "F-search-01",
       "source": [
         "website/backend/src/api/search"
@@ -872,6 +886,18 @@
       ],
       "audience": "user",
       "no_screenshot_reason": "No page sends uploads yet. The receiver routes have unit tests and a tus-js-client check against the local website."
+    },
+    {
+      "id": "F-store-14",
+      "source": [
+        "website/backend/src/uploads/commit.rs"
+      ],
+      "docs": [
+        "docs/technical-specification/interface/Administration.md",
+        "docs/technical-specification/Capability_Contracts.md#f-store-14"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "No page sends uploads yet. A receiver unit test covers the stop after a deletion and a purge."
     },
     {
       "id": "F-qa-01",

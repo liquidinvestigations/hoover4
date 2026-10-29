@@ -256,6 +256,12 @@ async def run_common_worker():
         reconcile_deleted_files,
     )
     from .P0_scan_disk.workflows import IngestAndProcessDataset, IngestDiskDataset, HandleFolders
+    from .P_upload.activities import (
+        cancel_upload_operation, finish_upload_batches, ingest_upload_paths,
+        open_upload_operation, settle_upload_operation, upload_batch_limits,
+        upload_operation_state,
+    )
+    from .P_upload.workflows import IngestUploadBatches, UploadQueue
     from .P1_compute_plans.activities import count_new_blobs, compute_plans
     from .P1_compute_plans.workflows import ComputePlans
     from .P2_execute_plan.activities import (
@@ -407,6 +413,8 @@ async def run_common_worker():
             IngestDiskDataset,
             IngestAndProcessDataset,
             HandleFolders,
+            UploadQueue,
+            IngestUploadBatches,
             ComputePlans,
             ExecutePlans,
             ExecuteSinglePlan,
@@ -431,6 +439,15 @@ async def run_common_worker():
             plan_folder_ranges,
             scan_folder_range,
             reconcile_deleted_files,
+
+            # The upload queue and the targeted upload ingest.
+            open_upload_operation,
+            upload_operation_state,
+            settle_upload_operation,
+            cancel_upload_operation,
+            upload_batch_limits,
+            ingest_upload_paths,
+            finish_upload_batches,
             count_new_blobs,
             compute_plans,
             list_pending_plans,

@@ -66,7 +66,15 @@ def record_operation_state(params: OperationStateParams) -> str:
 @activity.defn
 @with_heartbeat
 def admit_operation(op_id: str) -> str:
-    """Start the operation when its kind has a free slot, or store it as `queued`.
+    """Start the operation when its kind has a free slot and its target is free.
+
+    The target is free when no other running operation overlaps it
+    (`database.operations.running_conflicts`), whatever the kinds of the two rows. The
+    dispatch lock of `create_operation` reads and inserts in separate statements, and the
+    upload queue writes its rows without it, so this check is the one that excludes
+    concurrent writers of a dataset or a collection. Otherwise the row is stored as
+    `queued`, and the workflow asks again after `ADMISSION_POLL`. No time limit releases
+    a running writer.
 
     Returns `running`, `queued`, or the terminal state of a row that closed while it
     waited. This runs on `operations-admission-queue`, one slot in one process, so the
@@ -80,7 +88,7 @@ def admit_operation(op_id: str) -> str:
 
     from database.operations import (
         TERMINAL_STATES, _now, admission_decision, count_admission, get_operation,
-        operation_caps, update_operation,
+        operation_caps, running_conflicts, update_operation,
     )
 
     row = get_operation(op_id)
@@ -93,6 +101,11 @@ def admit_operation(op_id: str) -> str:
     cap = operation_caps()[row["kind"]]
     running, ahead = count_admission(row)
     decision = admission_decision(running, ahead, cap)
+    conflicts = running_conflicts(row) if decision == "running" else []
+    if conflicts:
+        decision = "queued"
+        log.info("operation %s (%s) waits for %s", op_id, row["kind"],
+                 ", ".join(f"{c['op_id']} ({c['kind']})" for c in conflicts[:5]))
     if decision == "running":
         update_operation(op_id, base_row=row, state="running", run_started_at=_now())
     elif row["state"] != "queued":
@@ -146,11 +159,20 @@ def supervise_operations() -> None:
 
 
 async def _supervise_operations() -> None:
-    """Use the Temporal client after the activity enters its worker thread."""
+    """Use the Temporal client after the activity enters its worker thread.
+
+    After the rows, it wakes the upload queue of every dataset with a waiting or claimed
+    upload batch, so a batch whose signal was lost, or whose queue ended, is taken again.
+    """
     from database.operations import _now, live_operations
+    from tasks.P_upload.activities import recover_upload_queues
 
     client = await Client.connect("temporal:7233")
     await supervise(client, _now(), live_operations(limit=500))
+    try:
+        await recover_upload_queues(client)
+    except Exception:
+        log.exception("upload queue recovery failed")
 
 
 async def supervise(client, now: datetime, rows: list[dict],

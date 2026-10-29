@@ -17,6 +17,10 @@ A retry completes interrupted writes without exposing a blob header that has no 
 An unreadable file records an error and does not stop readable files in the batch.
 Dataset purges delete VFS rows and blob headers before their values.
 
+The targeted upload ingest (`ingest_upload_paths` in [P_upload/](P_upload/Readme.md)) reuses the
+P0 ingest body for the placed files of an upload batch. It lists no folder and reconciles no
+deletion. Both folder listings skip the temporary part names of an upload placement copy.
+
 ### P1 - Compute Plans
 
 Builds processing plans from VFS statistics to chunk work into manageable batches.
@@ -131,6 +135,14 @@ tree of worker stack traces into the global `operation_failures` table
 ([tasks/operation_failure_capture.py](operation_failure_capture.py)). A pipeline workflow that fails an operation writes
 the same way. The group workflow `ProcessItemsBatched` records an unreadable PDF, like
 every failed file, in `processing_errors`, and does not write `operation_failures` for it.
+
+### P_upload - targeted ingest of committed uploads
+
+Not a pipeline stage. One `UploadQueue` workflow for each upload dataset takes up to 50
+committed batches at a time as one `ingest_upload` operation. The operation runs
+`IngestUploadBatches`, which ingests only the placed files of each batch, then runs
+`ComputePlans` and `ExecutePlans` and writes the batch outcome. Both workflows run on
+`processing-common-queue` and carry ids and counts only. See [P_upload/Readme.md](P_upload/Readme.md).
 
 ### P_agent - every AI agent turn
 
@@ -304,7 +316,17 @@ up, count the open workflows of these five types with `temporal workflow count -
 temporal:7233` and an `ExecutionStatus='Running'` query. Cancel each live operation with
 `main.py operations cancel <op_id>`, and cancel a workflow with no operation row by its id.
 Deploy only when the count is 0. A `queued` operation is cancelled like the others, and a
-person dispatches it again after the deploy with `main.py operations rerun <op_id>`.
+person dispatches it again after the deploy with `main.py operations rerun <op_id>`. An
+`ingest_upload` operation cannot be re-run. The upload queue settles its batches as `failed`,
+and a rescan of the dataset ingests their placed files.
+
+A change to `Operation` that only adds the branch of a new kind keeps the command sequence
+of every existing kind. Verify that claim before a deploy without the drain: fetch an
+`Operation` history of each kind with `temporal workflow show --output json`, and replay
+them with the `HOOVER4_REPLAY_HISTORIES` case of
+[tests/unit/test_ocr_workflow_replay.py](../tests/unit/test_ocr_workflow_replay.py). `UploadQueue` and
+`IngestUploadBatches` have no versioning either. A change to their command sequence needs no
+running execution of them.
 
 **The board drain.** A change to [P_board/workflows.py](P_board/workflows.py) needs no live `BoardDispatcher` or
 `BoardExplore`. Terminate `board-dispatcher`, cancel each `board-explore-*` workflow, and then

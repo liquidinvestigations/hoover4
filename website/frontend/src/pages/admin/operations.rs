@@ -490,7 +490,7 @@ fn ProgressCell(row: OperationRow) -> Element {
         return rsx! {
             span { style: HELP_TEXT,
                 if row.state == "queued" {
-                    "waiting for a free slot"
+                    "waiting for a free slot or a free target"
                 } else if row.state == "running" || row.state == "pending" {
                     "counting work…"
                 } else {

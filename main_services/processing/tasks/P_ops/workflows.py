@@ -327,6 +327,8 @@ class Operation:
                 heartbeat_timeout=timedelta(minutes=5),
             )
             return f"queued {queued} plan(s) for re-indexing"
+        if params.kind == "ingest_upload":
+            return await self._ingest_upload(params)
         if params.kind == "refresh_document_locations":
             result = await workflow.execute_child_workflow(
                 "RefreshDocumentLocations",
@@ -372,6 +374,35 @@ class Operation:
         child_result = await child
         progress = await self._sample_selector_counts(params, child_result["selector_counts"], child_result["execution_counts"])
         return (f"Ingested and processed {params.collection_dataset}. "
+                f"The operation kept {progress['failed_documents']} document failures.")
+
+    async def _ingest_upload(self, params: OperationParams) -> str:
+        """Ingest the claimed upload batches of the detail, then verify the plans.
+
+        The `UploadQueue` of the dataset writes the row and starts this workflow. The
+        child is addressed by name for the reason given in `_ingest_dataset`. Its input
+        holds ids only: the activities read paths from the upload tables.
+        """
+        batch_ids = [str(b) for b in params.detail.get("batch_ids") or []]
+        if not batch_ids:
+            raise ApplicationErrorDetail(params.kind, "batch_ids")
+        child_result = await workflow.execute_child_workflow(
+            "IngestUploadBatches",
+            {
+                "collectionname": params.collectionname,
+                "upload_dataset": params.collection_dataset,
+                "op_id": params.op_id,
+                "batch_ids": batch_ids,
+            },
+            id=f"ingest-upload-{params.op_id}",
+            task_queue="processing-common-queue",
+            search_attributes=dataset_search_attributes(params.collection_dataset),
+        )
+        progress = await self._sample_selector_counts(
+            params, child_result["selector_counts"], child_result["execution_counts"])
+        states = child_result.get("batch_states", {})
+        settled = ", ".join(f"{count} {state}" for state, count in sorted(states.items()))
+        return (f"Ingested upload batches of {params.collection_dataset}: {settled}. "
                 f"The operation kept {progress['failed_documents']} document failures.")
 
     async def _sample_selector_counts(self, params: OperationParams,

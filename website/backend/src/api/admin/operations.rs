@@ -51,6 +51,7 @@ const KINDS: &[(&str, &str, bool)] = &[
     ("import_collection", "collection", true),
     ("purge_unattributed_entities", "collection", true),
     ("backfill_vectors", "collection", false),
+    ("ingest_upload", "dataset", false),
 ];
 
 /// Kinds the operations workflow can actually drive today. The rest are registered
@@ -74,6 +75,7 @@ const DRIVEN_KINDS: &[&str] = &[
     "import_collection",
     "purge_unattributed_entities",
     "backfill_vectors",
+    "ingest_upload",
 ];
 
 const INPUT_KEYS: &[(&str, &[&str])] = &[
@@ -157,6 +159,13 @@ fn project_inputs(
                 key: "item_hashes",
             });
         }
+    } else if kind == "ingest_upload" {
+        // The upload queue claims the batches of each run. A rescan ingests the files of
+        // an ended upload again.
+        return Err(MissingOperationInput {
+            kind: kind.to_string(),
+            key: "a batch claim of its upload queue",
+        });
     } else if kind == "import_collection" {
         if !projected.get("source").and_then(|value| value.as_str()).is_some_and(|value| !value.trim().is_empty()) {
             return Err(MissingOperationInput {
@@ -762,7 +771,20 @@ pub async fn dispatch_operation(
 
     match start_operation_workflow(&op_id, kind, collectionname, collection_dataset, &detail).await
     {
-        Ok(()) => Ok(op_id),
+        Ok(()) => {
+            // The files placed so far stay in the folder. Transfers still running stop,
+            // and their bytes leave the upload space.
+            match kind {
+                "delete_dataset" => {
+                    crate::uploads::stop_dataset_transfers(collection_dataset, common::uploads::DATASET_DELETED_MESSAGE).await
+                }
+                "purge_dataset" => {
+                    crate::uploads::stop_dataset_transfers(collection_dataset, common::uploads::DATASET_PURGED_MESSAGE).await
+                }
+                _ => {}
+            }
+            Ok(op_id)
+        }
         Err(e) => {
             let mut failed = row;
             failed.state = "errored".to_string();
@@ -961,8 +983,8 @@ async fn request_cancel_finalizer(base_url: &str, op_id: &str) -> anyhow::Result
 #[cfg(test)]
 mod tests {
     use super::{
-        lock_clause, new_operation_id, project_inputs, request_cancel_finalizer, row_version,
-        to_display_row, OperationDbRow, VERSION_BITS,
+        kind_entry, lock_clause, new_operation_id, project_inputs, request_cancel_finalizer,
+        row_version, to_display_row, OperationDbRow, DRIVEN_KINDS, VERSION_BITS,
     };
 
     fn db_row(state: &str, run_started_at: i64, finished_at: i64) -> OperationDbRow {
@@ -1132,5 +1154,16 @@ mod tests {
             project_inputs("rerun_ocr", r#"{"replace_existing":true}"#, None).unwrap(),
             serde_json::json!({}),
         );
+        let refused = project_inputs("ingest_upload", r#"{"batch_ids":["a"]}"#, None).unwrap_err();
+        assert_eq!(
+            refused.to_string(),
+            "ingest_upload needs a batch claim of its upload queue, and the original row does not hold it"
+        );
+    }
+
+    #[test]
+    fn ingest_upload_mirrors_the_processing_kind() {
+        assert_eq!(kind_entry("ingest_upload"), Some(&("ingest_upload", "dataset", false)));
+        assert!(DRIVEN_KINDS.contains(&"ingest_upload"));
     }
 }

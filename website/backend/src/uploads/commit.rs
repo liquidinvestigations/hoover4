@@ -128,17 +128,25 @@ impl Service {
         ) else {
             return Ok(());
         };
-        self.finish_locked(&manifest, &mut batch)?;
+        self.finish_locked(&manifest, &mut batch, None)?;
         drop(lock);
         self.release_reservation(&manifest)
     }
 
     /// The commit work under the exclusive batch lock. The holder owns every file of the
     /// batch, so it takes no file lock.
-    fn finish_locked(&self, manifest: &Manifest, batch: &mut BatchJournal) -> anyhow::Result<()> {
+    ///
+    /// `stop_reason` names the deletion or purge of the dataset. The batch then has no
+    /// target, each complete file is rejected with that reason, and a batch without a
+    /// placed file is `cancelled` with that reason as its error.
+    fn finish_locked(&self, manifest: &Manifest, batch: &mut BatchJournal, stop_reason: Option<&str>) -> anyhow::Result<()> {
         self.flush_batch(manifest, batch)?;
         if batch.state == batch_state::COMMITTING {
-            let target = self.current_target(manifest)?;
+            let target = match stop_reason {
+                Some(_) => None,
+                None => self.current_target(manifest)?,
+            };
+            let reject_reason = stop_reason.unwrap_or(common::uploads::NO_PERMISSION_MESSAGE);
             let root = match &target {
                 Some(t) => Some(self.open_target_root(t)?),
                 None => None,
@@ -157,7 +165,7 @@ impl Service {
                         if target.is_some() {
                             self.place(manifest, &mut file, target.as_ref())?;
                         } else {
-                            self.reject(manifest, &mut file, root.as_ref(), common::uploads::NO_PERMISSION_MESSAGE)?;
+                            self.reject(manifest, &mut file, root.as_ref(), reject_reason)?;
                         }
                     }
                     FileState::Placed | FileState::Rejected | FileState::NotSent => {}
@@ -172,6 +180,9 @@ impl Service {
             } else {
                 batch.state = batch_state::CANCELLED.to_string();
                 batch.finished_ms = now;
+                if let Some(reason) = stop_reason {
+                    batch.error = reason.to_string();
+                }
             }
             batch.version += 1;
             self.save_batch(batch, "finish.state")?;
@@ -274,6 +285,13 @@ impl Service {
         self.flush_files(&manifest, &mut pending_rows)?;
 
         let now = self.clock.now_ms();
+        let in_transfer = matches!(batch.state.as_str(), batch_state::UPLOADING | batch_state::COMMITTING);
+        if in_transfer && !self.store.dataset_live(&manifest.upload_dataset)? {
+            self.stop_locked(&manifest, &mut batch, common::uploads::DATASET_DELETED_MESSAGE)?;
+            drop(lock);
+            self.release_reservation(&manifest)?;
+            return Ok(SweepOutcome::Stopped);
+        }
         let outcome = match batch.state.as_str() {
             batch_state::UPLOADING => {
                 let mut activity = batch.last_activity_ms;
@@ -296,7 +314,7 @@ impl Service {
                     self.mark_committing(&mut batch)?;
                     self.flush_batch(&manifest, &mut batch)?;
                     tracing::info!("upload batch {batch_id} had no transfer for {} hours and is committed", self.limits.abandon_hours);
-                    self.finish_locked(&manifest, &mut batch)?;
+                    self.finish_locked(&manifest, &mut batch, None)?;
                     SweepOutcome::Stopped
                 } else {
                     if activity > batch.mirrored_activity_ms {
@@ -310,7 +328,7 @@ impl Service {
             }
             batch_state::COMMITTING => {
                 if startup || now - batch.committed_ms > COMMIT_RETRY_MS {
-                    self.finish_locked(&manifest, &mut batch)?;
+                    self.finish_locked(&manifest, &mut batch, None)?;
                     SweepOutcome::Committed
                 } else {
                     SweepOutcome::Waiting
@@ -345,11 +363,62 @@ impl Service {
         Ok(outcome)
     }
 
-    /// The hook for batches that an operation claimed. The `ingest_upload` operation of
-    /// the next change settles their terminal states, including after a failed or
-    /// cancelled operation. The website keeps no transfer state for them.
+    /// The hook for batches that an operation claimed. It does nothing: the worker owns
+    /// every state after the claim. The `UploadQueue` workflow settles the batches of an
+    /// ended operation, and the operations supervisor wakes the queue of every dataset
+    /// with a waiting or claimed batch (`tasks/P_upload/activities.py`,
+    /// `recover_upload_queues`). The website keeps no transfer state for them.
     fn reconcile_claimed(&self, _manifest: &Manifest, _stored_state: Option<&str>) -> anyhow::Result<()> {
         Ok(())
+    }
+
+    /// End the transfer of a batch whose dataset was deleted or purged. The caller holds
+    /// the exclusive batch lock.
+    ///
+    /// An `uploading` batch gets the stop marker and becomes `committing`. The commit then
+    /// finishes without a target: pending files become `not_sent`, complete files are
+    /// rejected with `reason`, and their bytes leave the upload space. The batch becomes
+    /// `cancelled`, or `queued` when files were placed before the stop. The worker settles
+    /// a `queued` batch of a deleted dataset as `failed`.
+    fn stop_locked(&self, manifest: &Manifest, batch: &mut BatchJournal, reason: &str) -> anyhow::Result<()> {
+        if batch.state == batch_state::UPLOADING {
+            let marker = self.space.stopping(&manifest.batch_id);
+            if !marker.exists() {
+                std::fs::File::create(&marker)?;
+                fsutil::sync_dir(&self.space.batch_dir(&manifest.batch_id))?;
+            }
+            self.mark_committing(batch)?;
+            self.flush_batch(manifest, batch)?;
+        }
+        self.finish_locked(manifest, batch, Some(reason))?;
+        tracing::info!("upload batch {} stopped: {reason}", manifest.batch_id);
+        Ok(())
+    }
+
+    /// Stop every transfer of an upload dataset after its deletion or purge was
+    /// dispatched. It waits for the lock of each batch, so an active `PATCH` ends first.
+    /// Returns the number of stopped batches.
+    pub fn stop_dataset(&self, upload_dataset: &str, reason: &str) -> anyhow::Result<usize> {
+        let mut stopped = 0;
+        for batch_id in journal::list_names(&self.space.batches())? {
+            if !journal::valid_batch_id(&batch_id) {
+                continue;
+            }
+            let Some(manifest) = journal::read_manifest(&self.space, &batch_id)? else { continue };
+            if manifest.upload_dataset != upload_dataset {
+                continue;
+            }
+            let Some(lock) = fsutil::lock(&self.space.batch_lock(&batch_id), true, true)? else { continue };
+            let Some(mut batch) = journal::read_batch(&self.space, &batch_id)? else { continue };
+            if !matches!(batch.state.as_str(), batch_state::UPLOADING | batch_state::COMMITTING) {
+                continue;
+            }
+            self.stop_locked(&manifest, &mut batch, reason)?;
+            drop(lock);
+            self.release_reservation(&manifest)?;
+            stopped += 1;
+        }
+        Ok(stopped)
     }
 
     /// Keep a done record and remove the journal, the data and the request record of a

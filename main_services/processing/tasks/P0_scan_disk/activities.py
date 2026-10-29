@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 
 from database.clickhouse import get_collection_client
 from database.s3 import collection_bucket, get_s3_client, ensure_bucket
+from database.uploads import is_upload_part_name
 from tasks.heartbeat import HEARTBEAT_INTERVAL, HeartbeatClock, send_heartbeat, with_heartbeat
 from tasks.operation_failure_capture import TEMPORAL_BLOB_LIMIT_BYTES
 
@@ -119,6 +120,8 @@ def list_disk_folder(params: ListDiskFolderParams) -> Dict[str, Any]:
         for name, entry in entries:
             if name <= params.after_name:
                 continue
+            if not params.container_hash and is_upload_part_name(name):
+                continue
             heartbeat.beat(f"list disk folder {params.folder_path}")
             # The estimate includes the path, three integers, and JSON punctuation. The
             # page budget leaves headroom for data the estimate does not count.
@@ -190,7 +193,11 @@ class ScanFolderRangeParams:
 
 
 def _range_entries(params: ListDiskFolderParams, until_name: str = "") -> List[Tuple[str, Any]]:
-    """Return entries in `(after_name, until_name]` using the scan order."""
+    """Return entries in `(after_name, until_name]` using the scan order.
+
+    In a dataset folder (no container) the temporary file of an upload placement copy is
+    left out, so a scan during a copy never ingests a partial file.
+    """
     abs_dir = _rel_to_abs(params.dataset_path, params.folder_path)
     if not os.path.isdir(abs_dir):
         return []
@@ -202,6 +209,8 @@ def _range_entries(params: ListDiskFolderParams, until_name: str = "") -> List[T
             continue
         if until_name and name > until_name:
             break
+        if not params.container_hash and is_upload_part_name(name):
+            continue
         if re.search(r"[\uD800-\uDFFF]", entry.path):
             log.warning("Found path with non-utf8 character: '%s' -- skipping path from processing!", entry.path)
             continue
@@ -477,10 +486,31 @@ def _touch_vfs_rows(collectionname: str, collection_dataset: str, container_hash
         }))
 
 
+@dataclass
+class IngestFilesResult:
+    """What `ingest_files` did: the activity message, and each unreadable path.
+
+    `unreadable` maps a path of `file_paths` to its error text. The text is also in
+    `processing_errors`.
+    """
+    message: str
+    unreadable: Dict[str, str]
+
+
 @activity.defn
 @with_heartbeat
 def ingest_files_batch(params: IngestFilesBatchParams) -> str:
     """Activity that ingests a batch of files into blobs, types, and VFS."""
+    return ingest_files(params).message
+
+
+def ingest_files(params: IngestFilesBatchParams, *, rehash_known: bool = False) -> IngestFilesResult:
+    """Ingest a batch of files into blobs, types, and VFS. The body of `ingest_files_batch`.
+
+    `rehash_known` hashes every path that already has a live row, instead of trusting a
+    row whose size and mtime match. The targeted upload ingest sets it, because it must
+    report the hash of the bytes now at the path.
+    """
     collection_dataset: str = params.collection_dataset
     dataset_path: str = params.dataset_path
     file_paths: List[str] = list(params.file_paths or [])
@@ -543,6 +573,9 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
         if row is None:
             todo_paths.append(rel)
             continue
+        if rehash_known:
+            maybe_changed.append(rel)
+            continue
         if file_sizes_by_path.get(rel) is None or file_mtimes_by_path.get(rel) is None:
             # No stat data from the caller: fall back to the path-only behaviour rather
             # than re-hashing every known file on every scan.
@@ -557,6 +590,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
 
     errors = []
     unreadable_known = []
+    unreadable_by_path: Dict[str, str] = {}
 
     def unreadable(rel: str, exc: OSError) -> None:
         from tasks.failure_chain import failure_message
@@ -564,6 +598,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
         source = f"{info.workflow_run_id}:{info.activity_id}" if info else dataset_path
         if _prefixed(rel) in known:
             unreadable_known.append(known[_prefixed(rel)])
+        unreadable_by_path[rel] = f"Cannot read {rel}. {failure_message(exc)}"
         errors.append({
             "collection_dataset": collection_dataset, "hash": "",
             "task_name": "ingest_files_batch", "op_id": params.op_id,
@@ -609,7 +644,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
     skipped = len(unchanged) + len(touched)
     if not todo_paths:
         record_unreadable()
-        return f"0 files ({skipped} unchanged)"
+        return IngestFilesResult(f"0 files ({skipped} unchanged)", unreadable_by_path)
 
     # 2) Compute metadata for remaining files
     user_id = "system"
@@ -641,7 +676,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
     todo_paths = readable_paths
     record_unreadable()
     if not todo_paths:
-        return f"0 files ({len(errors)} unreadable)"
+        return IngestFilesResult(f"0 files ({len(errors)} unreadable)", unreadable_by_path)
 
     # 3) Dedup blobs and blob_values
     # The collection's own bucket. Named once here rather than at each upload so that a
@@ -773,7 +808,7 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
             for values in (todo_paths, hashes, hashes_md5, hashes_sha1, hashes_sha256, sizes)
         )
         if not todo_paths:
-            return f"0 files ({len(errors)} unreadable)"
+            return IngestFilesResult(f"0 files ({len(errors)} unreadable)", unreadable_by_path)
 
     # Stored values must finish before their blob headers become visible.
     with get_collection_client(params.collectionname) as client:
@@ -842,7 +877,8 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
         })
         insert_parser_arrow(client, "vfs_files", table_files)
 
-    return f"ingested {len(todo_paths)} files (skipped {skipped} unchanged)"
+    return IngestFilesResult(f"ingested {len(todo_paths)} files (skipped {skipped} unchanged)",
+                             unreadable_by_path)
 
 #: Hashes per DELETE while de-indexing. A statement naming every hash of a large deletion
 #: at once is a parse cost that grows with the deletion rather than with the table.

@@ -145,6 +145,17 @@ impl BatchStore for ClickHouseStore {
             Ok(rows.into_iter().next())
         })
     }
+
+    fn dataset_live(&self, upload_dataset: &str) -> anyhow::Result<bool> {
+        self.handle.block_on(async {
+            let live = crate::db_utils::clickhouse_utils::get_global_client()
+                .query("SELECT count() FROM dataset FINAL WHERE collection_dataset = ? AND is_deleted = 0")
+                .bind(upload_dataset)
+                .fetch_one::<u64>()
+                .await?;
+            Ok(live > 0)
+        })
+    }
 }
 
 /// The body of the signal-with-start request. It holds ids only: no path enters a

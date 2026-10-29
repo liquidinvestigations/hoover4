@@ -44,3 +44,10 @@ def test_optional_export_destination_can_be_absent():
         "export_collection", "collection", "",
         '{"stores":{},"phase":"x"}',
     ) == {}
+
+
+def test_an_upload_operation_cannot_be_re_run():
+    with pytest.raises(MissingOperationInput) as raised:
+        project_inputs("ingest_upload", "c", "c_d", '{"batch_ids": ["a"]}')
+    assert str(raised.value) == (
+        "ingest_upload needs a batch claim of its upload queue, and the original row does not hold it")

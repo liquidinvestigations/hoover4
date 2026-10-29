@@ -28,8 +28,10 @@ the row leaves `pending` or `queued` for `running`. Epoch 0 there means the oper
 not started.
 
 A row is `pending` from dispatch until its workflow asks for admission. Admission lets at
-most the configured cap of operations of one kind run at once (`operation_caps()`). A
-row over its cap is `queued`, and it waits with no time limit. The oldest waiting row of
+most the configured cap of operations of one kind run at once (`operation_caps()`), and
+it never lets a row run while another running row overlaps its target
+(`running_conflicts`). A row over its cap or behind an overlapping writer is `queued`,
+and it waits with no time limit. The oldest waiting row of
 a kind starts first, ordered by `(started_at, op_id)`. A `queued` row is live, so it holds
 its target like a running one.
 """
@@ -73,6 +75,7 @@ KINDS: dict[str, dict] = {
     "import_collection": {"target_kind": "collection", "destructive": True},
     "purge_unattributed_entities": {"target_kind": "collection", "destructive": True},
     "backfill_vectors": {"target_kind": "collection", "destructive": False},
+    "ingest_upload": {"target_kind": "dataset", "destructive": False},
 }
 
 #: The source that updates each live operation's progress. The collector owns these
@@ -96,6 +99,7 @@ PROGRESS_SOURCES = {
     "import_collection": None,
     "purge_unattributed_entities": None,
     "backfill_vectors": None,
+    "ingest_upload": "plans",
 }
 
 DRIVEN_KINDS = (
@@ -116,6 +120,7 @@ DRIVEN_KINDS = (
     "import_collection",
     "purge_unattributed_entities",
     "backfill_vectors",
+    "ingest_upload",
 )
 
 #: The columns of `operations`, in table order. One list, because a `ReplacingMergeTree`
@@ -247,13 +252,17 @@ def _insert_row(row: dict) -> None:
         insert_arrow_durable(client, "operations", table)
 
 
-def lock_clause(kind: str, collectionname: str,
-                collection_dataset: str) -> tuple[str, dict]:
-    """Return the live-row lock clause and its bound parameters."""
+def target_clause(kind: str, collectionname: str,
+                  collection_dataset: str) -> tuple[str, dict]:
+    """Return the clause of the rows whose target overlaps this target, and its parameters.
+
+    A dataset operation overlaps an operation of the same dataset and a collection
+    operation of its collection. A collection operation overlaps every operation of its
+    collection.
+    """
     target_kind = KINDS[kind]["target_kind"]
     if target_kind == "dataset":
         return (
-            f"state IN ({_LIVE_SQL}) AND "
             "(collection_dataset = {collection_dataset:String} OR "
             "(target_kind = 'collection' AND collectionname = {collectionname:String}))",
             {
@@ -263,10 +272,30 @@ def lock_clause(kind: str, collectionname: str,
         )
     if target_kind == "collection":
         return (
-            f"state IN ({_LIVE_SQL}) AND collectionname = {{collectionname:String}}",
+            "collectionname = {collectionname:String}",
             {"collectionname": collectionname},
         )
     raise ValueError(f"Unknown operation target kind: {target_kind}")
+
+
+def lock_clause(kind: str, collectionname: str,
+                collection_dataset: str) -> tuple[str, dict]:
+    """Return the live-row lock clause and its bound parameters."""
+    where, parameters = target_clause(kind, collectionname, collection_dataset)
+    return f"state IN ({_LIVE_SQL}) AND {where}", parameters
+
+
+def running_conflicts(row: dict) -> list[dict]:
+    """Running operations other than `row` whose target overlaps the target of `row`.
+
+    What admission reads before it lets a row run. Every kind writes its target, so two
+    overlapping writers of any kinds never run together. A row that stopped reporting is
+    a conflict like any other, because only a terminal row releases its target.
+    """
+    where, parameters = target_clause(row["kind"], row["collectionname"],
+                                      row["collection_dataset"])
+    return _select(f"state = 'running' AND op_id != {{self_op_id:String}} AND {where}",
+                   {**parameters, "self_op_id": row["op_id"]})
 
 
 def blocking_operations(kind: str, collectionname: str,
@@ -304,15 +333,20 @@ def open_operations_for_collection(collectionname: str) -> list[dict]:
 
 def create_operation(kind: str, collectionname: str = "", collection_dataset: str = "",
                      detail: dict | None = None, user_id: str = "system",
-                     rerun_of: str = "", op_id: str | None = None) -> dict:
+                     rerun_of: str = "", op_id: str | None = None,
+                     check_lock: bool = True) -> dict:
     """Take the lock and write the `pending` row. Returns the row.
 
     Raises `OperationLocked` if the target is already held. The lock check and row
-    insert are separate statements. Concurrent callers can both pass the check.
+    insert are separate statements. Concurrent callers can both pass the check, so
+    admission (`admit_operation`) also refuses to run a row beside a running overlapping
+    writer. `check_lock=False` skips the dispatch check: the upload queue writes its row
+    while another operation may hold the dataset, and the row then waits in admission.
     """
     if kind not in KINDS:
         raise ValueError(f"Unknown operation kind: {kind}")
-    assert_lock_free(kind, collectionname, collection_dataset)
+    if check_lock:
+        assert_lock_free(kind, collectionname, collection_dataset)
     now = _now()
     row = {
         "op_id": op_id or new_op_id(kind, collectionname, collection_dataset),

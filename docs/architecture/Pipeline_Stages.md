@@ -34,6 +34,13 @@ Two directories in the same place are **not** stages: [tasks/P_admin/](../../mai
 workflows that run on demand or as a self-scheduling singleton, and [tasks/P_agent/](../../main_services/processing/tasks/P_agent) holds
 the durable research turn.
 
+An upload enters the chain at P0 without a folder walk. [tasks/P_upload/](../../main_services/processing/tasks/P_upload) runs one
+`ingest_upload` operation for up to 50 committed batches of an upload dataset. It ingests only
+the placed files of each batch with the P0 ingest body, then runs P1 and P2 for the dataset,
+and writes the batch outcome. It runs no deletion reconciliation, so a placed file of another
+batch or of a scan keeps its row. A full rescan of an upload dataset is the ordinary P0 scan,
+and it skips the temporary part names of a placement copy.
+
 ## Preserve stored stage numbers.
 
 Indexing is `P6`, not `P5`. The embedding stage owns the number that runs before it, and

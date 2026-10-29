@@ -14,6 +14,9 @@ INPUT_KEYS: dict[str, tuple[str, ...]] = {
 
 REGISTRY_KEYS = ("add_dataset", "rescan_dataset")
 
+#: The input of `ingest_upload` that only its upload queue can supply.
+UPLOAD_CLAIM_INPUT = "a batch claim of its upload queue"
+
 
 class MissingOperationInput(ValueError):
     """A stored operation row lacks an input required for its re-run."""
@@ -77,5 +80,9 @@ def project_inputs(kind: str, collectionname: str, collection_dataset: str,
             raise MissingOperationInput(kind, "item_hashes")
     elif kind == "import_collection" and not str(projected.get("source", "")).strip():
         raise MissingOperationInput(kind, "source")
+    elif kind == "ingest_upload":
+        # The upload queue claims the batches of each run. A rescan ingests the files of
+        # an ended upload again.
+        raise MissingOperationInput(kind, UPLOAD_CLAIM_INPUT)
 
     return projected

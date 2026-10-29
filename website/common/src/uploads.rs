@@ -31,8 +31,9 @@ pub fn part_name(batch_id: &str, file_no: u32) -> String {
     format!("{PART_PREFIX}{batch_id}-{file_no}{PART_SUFFIX}")
 }
 
-/// True for a name that the placement copy reserves. The folder scan skips these names,
-/// and an upload cannot use them.
+/// True for a name with either reserved part. An upload cannot use such a name. The
+/// folder scan skips a name with both parts, the form of [`part_name`]
+/// (`is_upload_part_name` in `main_services/processing/database/uploads.py`).
 pub fn is_reserved_name(name: &str) -> bool {
     name.starts_with(PART_PREFIX) || name.ends_with(PART_SUFFIX)
 }
@@ -316,6 +317,10 @@ pub const ENDED_MESSAGE: &str = "This upload has ended.";
 pub const PATH_EXISTS_MESSAGE: &str = "The path exists in the dataset folder.";
 /// The error of a file that placement could not recover.
 pub const NOT_RECOVERED_MESSAGE: &str = "The server could not recover this file.";
+/// The error of an unplaced file and of its batch after the dataset was deleted.
+pub const DATASET_DELETED_MESSAGE: &str = "The dataset was deleted during this upload.";
+/// The error of an unplaced file and of its batch after the dataset was purged.
+pub const DATASET_PURGED_MESSAGE: &str = "The dataset was purged during this upload.";
 /// The text of a duplicate path in one manifest.
 pub const SELECTED_TWICE_MESSAGE: &str = "Selected twice.";
 /// The text of a path that is also a folder of another path of the manifest.
