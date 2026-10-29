@@ -4,6 +4,7 @@ extern crate anyhow;
 extern crate common;
 pub mod api;
 pub mod auth;
+pub mod dataset_mounts;
 pub mod db_auth;
 pub mod db_chat;
 pub mod db_utils;

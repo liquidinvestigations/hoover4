@@ -467,12 +467,9 @@ services:
     # replaces is what made the SDK's graceful period unreachable: the runtime sent
     # SIGKILL while activities were still being told to stop, so they were never told.
     stop_grace_period: ${HOOVER4_WORKER_STOP_GRACE_PERIOD:-90s}
+    # The dataset mounts and HOOVER4_DATASET_MOUNTS are in compose/generated-dataset-mounts.yaml,
+    # which deploy.py renders from the [dataset_mount.*] sections of hoover4.ini.
     volumes:
-      # Host path for ingest test data. Defaults to the in-repo (git-tracked)
-      # testdata dir so the stack comes up out of the box; override with
-      # HOOVER4_TESTDATA_DIR to point at a larger external dataset. The source
-      # must EXIST. Podman refuses to auto-create a missing bind-mount source.
-      - ${HOOVER4_TESTDATA_DIR:-../../../testdata}:/testdata
       - ../../processing:/app
       # EasyOCR's model cache (~100 MB, downloaded from the internet on first
       # use). Persisted so a container recreate does not re-download it in N
@@ -539,7 +536,7 @@ services:
       # writes a dataset_settings row for it, after which that row wins.
       - "TESSERACT_LANGUAGES=${TESSERACT_LANGUAGES:-eng}"
       - "EASYOCR_LANGUAGES=${EASYOCR_LANGUAGES:-en}"
-      # Same root the website's creation form lists, mounted from the same host dir.
+      # The container path of the first dataset mount, for readers that know one mount.
       - "DATASETS_MOUNT_PATH=${DATASETS_MOUNT_PATH:-/testdata}"
       # The OCR tier, one endpoint per engine. Empty means "this engine produces no
       # variants", which is the normal state for EasyOCR on a box with no GPU tier:
@@ -705,12 +702,6 @@ services:
       # is why recreating this container cost a multi-minute cold rebuild, during which
       # every page 500s.
       - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/hoover4-website-target:/app/target
-      # Read-only, and the same host directory the worker gets: the dataset-creation
-      # form lists the subfolders under DATASETS_MOUNT_PATH and offers their names, so
-      # the website has to be able to see them. Read-only because it never writes there,
-      # a form that could create directories in the ingest root would be a way to
-      # ingest arbitrary host paths.
-      - ${HOOVER4_TESTDATA_DIR:-../../../testdata}:/testdata:ro
       - ${LLM_API_KEY_FILE_HOST:-/dev/null}:/run/secrets/llm_api_key:ro
       # The Python copy of the Temporal readiness gate, read by the unit test in
       # backend/src/temporal_ready.rs that compares the two copies. A directory, because
@@ -746,9 +737,9 @@ services:
       # Unlike the API above this is followed by the admin's browser, so it has to be
       # an address reachable from the host, not from inside the container network.
       - TEMPORAL_UI_URL=${TEMPORAL_UI_URL:-http://localhost:21909}
-      # Root the dataset-creation form lists subfolders of. The form never accepts a
-      # free-text path: an admin picks a name from this listing, and the backend joins it
-      # here, so the ingest root cannot be pointed anywhere else from the browser.
+      # The container path of the first dataset mount. The dataset form reads the mount
+      # list from HOOVER4_DATASET_MOUNTS (compose/generated-dataset-mounts.yaml) and uses
+      # this value only when that list is empty or absent.
       - DATASETS_MOUNT_PATH=${DATASETS_MOUNT_PATH:-/testdata}
       # The OCR tier, read-only from here: the dataset OCR panel lists the languages
       # Tesseract can actually serve (from its /health, not from configuration) and

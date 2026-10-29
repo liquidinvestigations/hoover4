@@ -12,6 +12,7 @@ decides and which code reads it.
 - [`[storage]`](#storage)
 - [`[ai_services]`](#ai_services)
 - [`[main_services]`](#main_services)
+- [`[dataset_mount.*]`](#dataset_mount)
 - [`[operations]`](#operations)
 - [`[llm_provider.*]`](#llm_provider)
 - [Secrets](#secrets)
@@ -340,7 +341,9 @@ defaults and what each answers.
 
 ### Data and infrastructure versions
 
-`testdata_dir` and `datasets_mount_path` are where the corpus lives and where it is mounted.
+`testdata_dir` and `datasets_mount_path` are the host folder and the container path of the
+inferred dataset mount. They apply when the file has no `[dataset_mount.*]` section
+([below](#dataset_mount)).
 `temporal_history_shards` is the one key that **cannot be changed in place**: the persistence
 store refuses to open a keyspace initialised with a different count, so changing it requires
 `./deploy --reset-temporal`. The deploy preflights the running cluster against the file and
@@ -393,6 +396,42 @@ is reproducible. `garage_capacity` sizes the object store's advertised capacity.
 
 `serena_enabled` and `serena_port` control the symbol-navigation server, which is development
 tooling and is published on loopback only.
+
+## `[dataset_mount.*]`
+
+Each `[dataset_mount.<name>]` section names one host folder. `hoover4-worker` and
+`hoover4-website` mount it at the same container path. The admin dataset form lists the
+folders directly beneath each mount and shows the mount name. The name matches
+`[a-z0-9_]{1,32}`.
+
+| key | what it sets |
+|---|---|
+| `host_path` | The absolute host folder. It must exist. |
+| `container_path` | The absolute, normalized path in both containers. |
+| `writable` | `false` mounts the folder read-only in both services. `true` mounts it read-write in both, and lets the dataset form create a new folder in it. |
+
+`deploy.py` writes the mounts to the generated, gitignored overlay
+`main_services/ops/docker/compose/generated-dataset-mounts.yaml`. Every compose command of the
+main side includes it. The same overlay sets `HOOVER4_DATASET_MOUNTS`, a JSON list of the name,
+container path and `writable` flag of each mount, in both services.
+`DATASETS_MOUNT_PATH` keeps the container path of the first mount, by name order.
+
+A file without a `[dataset_mount.*]` section gets one inferred mount named `testdata`. Its host
+folder is `testdata_dir`, or the in-repository `testdata/` when that key is empty. Its container
+path is `datasets_mount_path`. The worker mounts it read-write and the website mounts it
+read-only, as before these sections existed. The dataset form cannot create a folder in it.
+
+`deploy.py` refuses these configurations, with a message that names the section and the key.
+
+| Rule | Reason |
+|---|---|
+| `host_path` is absolute and exists. | Podman refuses a missing bind source, and Docker creates an empty folder owned by root. |
+| `container_path` neither contains nor falls beneath a path the services use for code, scratch, secrets, mirrors or system folders, such as `/app`, `/tmp`, `/run` or `/mirror`. | A dataset mount must not cover another mount or the image. |
+| No two container paths are equal or contain each other. No two host folders are equal or contain each other after symbolic links are resolved. | An alias or a nested writable mount would make a read-only mount writable. |
+| With sections present, `testdata_dir` and `datasets_mount_path` are empty or equal to the `host_path` and `container_path` of one section. | Two sources for one mount would disagree. |
+| A writable mount accepts an exclusive create, a write, a sync and a delete in each running service, under the user of that container. | A permission error would otherwise show only at the first new folder or upload. A rootless runtime maps container users to other host users, so a host check is not sufficient. |
+
+The last rule runs after the services start. The others run before any compose command.
 
 ## `[operations]`
 
@@ -463,6 +502,10 @@ is the map back to the group above that explains it.
 ### `[storage]`: the volume folders
 
 - `volumes_path`
+
+### `[dataset_mount.<name>]`: the dataset folders
+
+- `host_path`, `container_path`, `writable`
 
 ### `[ai_services]`: the accelerated tier
 

@@ -66,8 +66,9 @@ admin_server_fn!(admin_get_dataset_operation, backend::api::admin::dataset_ocr::
 admin_server_fn!(admin_apply_ocr_languages, backend::api::admin::dataset_ocr::admin_apply_ocr_languages, (collection_dataset: String, tesseract_languages: String, easyocr_languages: String) -> String);
 admin_server_fn!(admin_get_collection_ocr_defaults, backend::api::admin::dataset_ocr::admin_get_collection_ocr_defaults, (collectionname: String) -> (String, String));
 admin_server_fn!(admin_set_collection_ocr_defaults, backend::api::admin::dataset_ocr::admin_set_collection_ocr_defaults, (collectionname: String, tesseract_languages: String, easyocr_languages: String));
-admin_server_fn!(admin_list_dataset_folders, backend::api::admin::dataset_ocr::admin_list_dataset_folders, (collectionname: String) -> Vec<DatasetFolderOption>);
-admin_server_fn!(admin_create_dataset, backend::api::admin::dataset_ocr::admin_create_dataset, (collectionname: String, folder_name: String, dataset_name: String, tesseract_languages: String, easyocr_languages: String) -> String);
+admin_server_fn!(admin_list_dataset_mounts, backend::api::admin::dataset_ocr::admin_list_dataset_mounts, () -> Vec<DatasetMountOption>);
+admin_server_fn!(admin_list_dataset_folders, backend::api::admin::dataset_ocr::admin_list_dataset_folders, (collectionname: String, mount_name: String) -> Vec<DatasetFolderOption>);
+admin_server_fn!(admin_create_dataset, backend::api::admin::dataset_ocr::admin_create_dataset, (collectionname: String, mount_name: String, folder_name: String, new_folder: bool, dataset_name: String, tesseract_languages: String, easyocr_languages: String) -> String);
 
 admin_server_fn!(admin_collection_processing, backend::api::admin::processing::admin_collection_processing, (collectionname: String) -> CollectionProcessingStatus);
 admin_server_fn!(admin_list_workflows, backend::api::admin::processing::admin_list_workflows, (collectionname: String, filter: WorkflowFilter, page_size: u32) -> Vec<WorkflowSummary>);

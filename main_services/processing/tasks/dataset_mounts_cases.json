@@ -1,0 +1,32 @@
+{
+  "description": "Cases for the HOOVER4_DATASET_MOUNTS parser. tasks/dataset_mounts.py and website/backend/src/dataset_mounts.rs both read this file in their unit tests. A case with mounts expects that list. A case with error true expects a refusal.",
+  "cases": [
+    {"id": "missing", "value": null, "legacy_path": null,
+     "mounts": [{"name": "testdata", "path": "/testdata", "writable": false}]},
+    {"id": "empty", "value": "", "legacy_path": "/corpus",
+     "mounts": [{"name": "testdata", "path": "/corpus", "writable": false}]},
+    {"id": "blank", "value": "  \n", "legacy_path": "",
+     "mounts": [{"name": "testdata", "path": "/testdata", "writable": false}]},
+    {"id": "one mount", "value": "[{\"name\":\"corpus\",\"path\":\"/testdata\",\"writable\":false}]", "legacy_path": "/other",
+     "mounts": [{"name": "corpus", "path": "/testdata", "writable": false}]},
+    {"id": "two mounts", "value": "[{\"name\":\"a\",\"path\":\"/a\",\"writable\":false},{\"name\":\"b\",\"path\":\"/b\",\"writable\":false}]", "legacy_path": null,
+     "mounts": [{"name": "a", "path": "/a", "writable": false}, {"name": "b", "path": "/b", "writable": false}]},
+    {"id": "read-only and writable", "value": "[{\"name\":\"corpus\",\"path\":\"/testdata\",\"writable\":false},{\"name\":\"uploads\",\"path\":\"/uploads\",\"writable\":true}]", "legacy_path": null,
+     "mounts": [{"name": "corpus", "path": "/testdata", "writable": false}, {"name": "uploads", "path": "/uploads", "writable": true}]},
+    {"id": "space and colon in a path", "value": "[{\"name\":\"corpus\",\"path\":\"/data sets:2026\",\"writable\":false}]", "legacy_path": null,
+     "mounts": [{"name": "corpus", "path": "/data sets:2026", "writable": false}]},
+    {"id": "not JSON", "value": "corpus=/testdata", "legacy_path": null, "error": true},
+    {"id": "an object, not a list", "value": "{\"name\":\"corpus\",\"path\":\"/testdata\",\"writable\":false}", "legacy_path": null, "error": true},
+    {"id": "an empty list", "value": "[]", "legacy_path": null, "error": true},
+    {"id": "a malformed pair", "value": "[{\"name\":\"corpus\",\"path\":\"/testdata\"},{\"name\":\"uploads\",\"path\":\"/uploads\",\"writable\":true}]", "legacy_path": null, "error": true},
+    {"id": "an unknown field", "value": "[{\"name\":\"corpus\",\"path\":\"/testdata\",\"writable\":false,\"mode\":\"ro\"}]", "legacy_path": null, "error": true},
+    {"id": "writable as a string", "value": "[{\"name\":\"corpus\",\"path\":\"/testdata\",\"writable\":\"false\"}]", "legacy_path": null, "error": true},
+    {"id": "a name with a capital", "value": "[{\"name\":\"Corpus\",\"path\":\"/testdata\",\"writable\":false}]", "legacy_path": null, "error": true},
+    {"id": "a name of 33 characters", "value": "[{\"name\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"path\":\"/testdata\",\"writable\":false}]", "legacy_path": null, "error": true},
+    {"id": "a relative path", "value": "[{\"name\":\"corpus\",\"path\":\"testdata\",\"writable\":false}]", "legacy_path": null, "error": true},
+    {"id": "a path that is not normalized", "value": "[{\"name\":\"corpus\",\"path\":\"/testdata/../app\",\"writable\":false}]", "legacy_path": null, "error": true},
+    {"id": "a trailing separator", "value": "[{\"name\":\"corpus\",\"path\":\"/testdata/\",\"writable\":false}]", "legacy_path": null, "error": true},
+    {"id": "a duplicate name", "value": "[{\"name\":\"a\",\"path\":\"/a\",\"writable\":false},{\"name\":\"a\",\"path\":\"/b\",\"writable\":false}]", "legacy_path": null, "error": true},
+    {"id": "nested paths", "value": "[{\"name\":\"a\",\"path\":\"/a\",\"writable\":false},{\"name\":\"b\",\"path\":\"/a/b\",\"writable\":true}]", "legacy_path": null, "error": true}
+  ]
+}

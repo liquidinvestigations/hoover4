@@ -1,6 +1,7 @@
 """Render tests for the deployment configuration."""
 
 import importlib.util
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -579,7 +580,11 @@ def _compose_documents():
     Loader.add_constructor("!override", lambda loader, node: None)
     Loader.add_constructor("!reset", lambda loader, node: None)
     docker_dir = REPO_ROOT / "main_services/ops/docker"
-    paths = [docker_dir / "docker-compose.yaml"] + sorted((docker_dir / "compose").glob("*.yaml"))
+    # The tracked files only. A checkout that has run deploy.py also holds the generated
+    # dataset mount overlay, which the dataset mount tests read on their own.
+    paths = [docker_dir / "docker-compose.yaml"] + sorted(
+        path for path in (docker_dir / "compose").glob("*.yaml")
+        if path.name != deploy.DATASET_MOUNTS_OVERLAY.name)
     return [(path.name, yaml.load(path.read_text(), Loader=Loader)) for path in paths]
 
 
@@ -1552,3 +1557,297 @@ def test_pdf_part_lists_and_office_preview_slots_have_independent_defaults():
 def test_pdf_activity_limits_refuse_zero(key):
     with pytest.raises(deploy.DeployError):
         _ocr_pdf_env(**{key: "0"})
+
+
+# ---- dataset mounts -----------------------------------------------------------------
+
+#: The two static lines that docker-compose.yaml held before the generated overlay.
+OLD_WORKER_TESTDATA_LINE = "${HOOVER4_TESTDATA_DIR:-../../../testdata}:/testdata"
+OLD_WEBSITE_TESTDATA_LINE = "${HOOVER4_TESTDATA_DIR:-../../../testdata}:/testdata:ro"
+
+
+def _old_line_mount(line, testdata_dir):
+    """(source, target, read_only) of an old static line, resolved the way Compose did."""
+    rest = line[line.index("}") + 1:]
+    _, target, *mode = rest.split(":")
+    source = testdata_dir or os.path.normpath(
+        os.path.join(str(deploy.MAIN_COMPOSE_DIR), "../../../testdata"))
+    return (source, target, mode == ["ro"])
+
+
+def _overlay(cfg):
+    import yaml
+
+    text = deploy.render_dataset_mounts_overlay(deploy.dataset_mounts(cfg))
+    assert text.startswith(deploy.ENV_HEADER)
+    return yaml.safe_load(text)["services"]
+
+
+def _overlay_mounts(services, service):
+    return [(v["source"], v["target"], v["read_only"]) for v in services[service]["volumes"]]
+
+
+def _overlay_env(services, service):
+    (entry,) = services[service]["environment"]
+    key, value = entry.split("=", 1)
+    assert key == "HOOVER4_DATASET_MOUNTS"
+    return json.loads(value)
+
+
+def _mount_sections(cfg, sections):
+    for name, fields in sections.items():
+        cfg.values["dataset_mount." + name] = dict(fields)
+    return cfg
+
+
+def _template(name="hoover4.ini.development"):
+    return deploy.Config(REPO_ROOT / name)
+
+
+@pytest.mark.parametrize("testdata_dir", ["", "/srv/hoover4-corpus"])
+def test_an_ini_without_mount_sections_renders_the_old_lines(testdata_dir):
+    cfg = _template()
+    cfg.values["main_services"]["testdata_dir"] = testdata_dir
+    services = _overlay(cfg)
+
+    assert _overlay_mounts(services, "hoover4-worker") == [
+        _old_line_mount(OLD_WORKER_TESTDATA_LINE, testdata_dir)]
+    assert _overlay_mounts(services, "hoover4-website") == [
+        _old_line_mount(OLD_WEBSITE_TESTDATA_LINE, testdata_dir)]
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda h: h):
+        env = deploy.render_main_env(cfg)
+    assert env["DATASETS_MOUNT_PATH"] == "/testdata"
+    expected = [{"name": "testdata", "path": "/testdata", "writable": False}]
+    assert _overlay_env(services, "hoover4-worker") == expected
+    assert _overlay_env(services, "hoover4-website") == expected
+
+
+def test_the_tracked_compose_files_hold_no_dataset_mount():
+    for _side, name, service, source, target in _mounts():
+        assert "TESTDATA" not in source and target.split(":")[0] != "/testdata", (name, service)
+
+
+def test_two_explicit_mounts_render_their_modes_and_the_value(tmp_path):
+    corpus = tmp_path / "corpus with space"
+    uploads = tmp_path / "uploads"
+    corpus.mkdir()
+    uploads.mkdir()
+    cfg = _mount_sections(_template(), {
+        "corpus": {"host_path": str(corpus), "container_path": "/testdata", "writable": "false"},
+        "uploads": {"host_path": str(uploads), "container_path": "/uploads", "writable": "true"},
+    })
+    services = _overlay(cfg)
+
+    for service in deploy.DATASET_MOUNT_SERVICES:
+        assert _overlay_mounts(services, service) == [
+            (str(corpus), "/testdata", True), (str(uploads), "/uploads", False)]
+        assert _overlay_env(services, service) == [
+            {"name": "corpus", "path": "/testdata", "writable": False},
+            {"name": "uploads", "path": "/uploads", "writable": True},
+        ]
+    with mock.patch.object(deploy, "container_reachable_host", side_effect=lambda h: h):
+        assert deploy.render_main_env(cfg)["DATASETS_MOUNT_PATH"] == "/testdata"
+    assert deploy.dataset_mount_refusals(cfg) == []
+
+
+def test_a_dollar_sign_in_a_path_is_not_interpolated(tmp_path):
+    cfg = _mount_sections(deploy.Config(None), {
+        "corpus": {"host_path": "/srv/a$HOME:b", "container_path": "/data$x",
+                   "writable": "false"},
+    })
+    services = _overlay(cfg)
+    assert _overlay_mounts(services, "hoover4-worker") == [("/srv/a$$HOME:b", "/data$$x", True)]
+    entry = services["hoover4-worker"]["environment"][0]
+    assert '"path":"/data$$x"' in entry
+
+
+def test_the_main_side_includes_the_overlay_last():
+    cfg = _config("settings-defaults.ini")
+    assert deploy.compose_files(cfg, "main")[-1] == str(deploy.DATASET_MOUNTS_OVERLAY)
+    assert str(deploy.DATASET_MOUNTS_OVERLAY) not in deploy.compose_files(cfg, "ai")
+
+
+def test_every_command_writes_the_overlay_before_compose_runs():
+    written = []
+
+    def record(path, content):
+        written.append(path)
+        return False
+
+    cfg = _storage("/srv/hoover4-volumes")
+    for argv in (["--down"], ["--reset"], ["--reset-temporal"]):
+        written.clear()
+        with mock.patch.object(deploy, "load_config", return_value=cfg), \
+                mock.patch.object(deploy.shutil, "which", return_value="docker"), \
+                mock.patch.object(deploy, "container_reachable_host", side_effect=lambda h: h), \
+                mock.patch.object(deploy, "run_preflights") as preflights, \
+                mock.patch.object(deploy, "_write_if_changed", side_effect=record), \
+                mock.patch.object(deploy, "compose_down"), \
+                mock.patch.object(deploy, "compose_reset"), \
+                mock.patch.object(deploy, "compose_reset_temporal"):
+            preflights.side_effect = lambda *a: written.append("preflights")
+            deploy.main(argv)
+        assert written.index(deploy.DATASET_MOUNTS_OVERLAY) < written.index("preflights"), argv
+
+
+def test_every_other_mount_of_the_two_services_is_service_owned():
+    targets = set()
+    for side, _name, service, _source, target in _mounts():
+        if side == "main" and service in deploy.DATASET_MOUNT_SERVICES:
+            targets.add(target.split(":")[0])
+    assert targets
+    for target in targets:
+        assert any(deploy._path_within(target, owned) for owned in deploy.SERVICE_OWNED_PATHS), target
+
+
+def _refused(cfg, *expected):
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.dataset_mounts(cfg)
+    for text in expected:
+        assert text in str(refused.value)
+
+
+@pytest.mark.parametrize(
+    ("name", "fields", "expected"),
+    [
+        pytest.param("Corpus", {}, ("[dataset_mount.Corpus]", "[a-z0-9_]{1,32}"), id="name-case"),
+        pytest.param("a" * 33, {}, ("[a-z0-9_]{1,32}",), id="name-length"),
+        pytest.param("corpus", {"host_path": "srv/corpus"},
+                     ("[dataset_mount.corpus] host_path", "not an absolute path"), id="host-relative"),
+        pytest.param("corpus", {"container_path": "data"},
+                     ("[dataset_mount.corpus] container_path", "normalized"), id="container-relative"),
+        pytest.param("corpus", {"container_path": "/data/"},
+                     ("[dataset_mount.corpus] container_path", "normalized"), id="container-trailing"),
+        pytest.param("corpus", {"container_path": "/data/../app"},
+                     ("[dataset_mount.corpus] container_path", "normalized"), id="container-dots"),
+        pytest.param("corpus", {"container_path": "/app/data"},
+                     ("[dataset_mount.corpus] container_path", "overlaps /app"), id="beneath-owned"),
+        pytest.param("corpus", {"container_path": "/"},
+                     ("[dataset_mount.corpus] container_path", "overlaps"), id="contains-owned"),
+        pytest.param("corpus", {"container_path": "/mirror"},
+                     ("[dataset_mount.corpus] container_path", "overlaps /mirror"), id="equals-owned"),
+        pytest.param("corpus", {"writable": "maybe"},
+                     ("[dataset_mount.corpus] writable", "boolean"), id="writable-not-boolean"),
+        pytest.param("corpus", {"writable": ""},
+                     ("[dataset_mount.corpus] writable", "missing or empty"), id="writable-missing"),
+        pytest.param("corpus", {"mode": "ro"},
+                     ("[dataset_mount.corpus] mode", "not a dataset mount field"), id="unknown-field"),
+    ],
+)
+def test_each_mount_field_rule_refuses_its_case(tmp_path, name, fields, expected):
+    values = {"host_path": str(tmp_path), "container_path": "/data", "writable": "false"}
+    values.update(fields)
+    _refused(_mount_sections(deploy.Config(None), {name: values}), *expected)
+
+
+def test_a_missing_host_folder_is_refused_at_start(tmp_path):
+    cfg = _mount_sections(_storage("/srv/hoover4-volumes"), {
+        "corpus": {"host_path": str(tmp_path / "absent"), "container_path": "/data",
+                   "writable": "false"}})
+    deploy.dataset_mounts(cfg)
+    problems = deploy.start_refusals(cfg, "main")
+    assert any("[dataset_mount.corpus] host_path" in p and "not an existing folder" in p
+               for p in problems)
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        pytest.param("/data", "/data", id="equal"),
+        pytest.param("/data", "/data/inner", id="beneath"),
+        pytest.param("/data/inner", "/data", id="contains"),
+    ],
+)
+def test_overlapping_container_paths_are_refused(tmp_path, first, second):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    cfg = _mount_sections(deploy.Config(None), {
+        "a": {"host_path": str(tmp_path / "a"), "container_path": first, "writable": "false"},
+        "b": {"host_path": str(tmp_path / "b"), "container_path": second, "writable": "true"},
+    })
+    _refused(cfg, "[dataset_mount.a] container_path", "[dataset_mount.b] container_path", "overlap")
+
+
+@pytest.mark.parametrize("layout", ["equal", "beneath", "contains", "symlink"])
+def test_overlapping_host_folders_are_refused(tmp_path, layout):
+    a = tmp_path / "a"
+    a.mkdir()
+    if layout == "equal":
+        b = a
+    elif layout == "beneath":
+        b = a / "inner"
+        b.mkdir()
+    elif layout == "contains":
+        b = a
+        a = a / "inner"
+        a.mkdir()
+    else:
+        b = tmp_path / "alias"
+        b.symlink_to(a / "..")
+    cfg = _mount_sections(deploy.Config(None), {
+        "a": {"host_path": str(a), "container_path": "/data", "writable": "false"},
+        "b": {"host_path": str(b), "container_path": "/uploads", "writable": "true"},
+    })
+    _refused(cfg, "[dataset_mount.a] host_path", "[dataset_mount.b] host_path", "overlap")
+
+
+def test_the_older_keys_must_match_one_section(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    sections = {
+        "a": {"host_path": str(tmp_path / "a"), "container_path": "/data", "writable": "false"},
+        "b": {"host_path": str(tmp_path / "b"), "container_path": "/uploads", "writable": "true"},
+    }
+    # The tracked templates set datasets_mount_path = /testdata explicitly.
+    _refused(_mount_sections(_template(), sections),
+             "[main_services] testdata_dir and datasets_mount_path")
+
+    cfg = _mount_sections(_template(), sections)
+    cfg.values["main_services"]["datasets_mount_path"] = "/uploads"
+    assert [m.name for m in deploy.dataset_mounts(cfg)] == ["a", "b"]
+
+    cfg.values["main_services"]["testdata_dir"] = str(tmp_path / "a")
+    cfg.explicit.add(("main_services", "testdata_dir"))
+    _refused(cfg, "[main_services] testdata_dir and datasets_mount_path")
+
+    cfg.values["main_services"]["datasets_mount_path"] = "/data"
+    assert len(deploy.dataset_mounts(cfg)) == 2
+
+    unset = _mount_sections(deploy.Config(None), sections)
+    assert len(deploy.dataset_mounts(unset)) == 2
+
+
+def test_the_write_probe_runs_in_both_services_for_each_writable_mount(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    cfg = _mount_sections(deploy.Config(None), {
+        "a": {"host_path": str(tmp_path / "a"), "container_path": "/data", "writable": "false"},
+        "b": {"host_path": str(tmp_path / "b"), "container_path": "/uploads", "writable": "true"},
+    })
+    rt = mock.Mock()
+    rt.run.return_value = subprocess.CompletedProcess([], 0, "", "")
+    deploy.verify_writable_dataset_mounts(cfg, rt)
+    calls = [c.args[0] for c in rt.run.call_args_list]
+    assert [(c[1], c[-1]) for c in calls] == [
+        ("hoover4-worker", "/uploads"), ("hoover4-website", "/uploads")]
+
+    rt.run.return_value = subprocess.CompletedProcess([], 1, "", "Permission denied")
+    with pytest.raises(deploy.DeployError) as refused:
+        deploy.verify_writable_dataset_mounts(cfg, rt)
+    assert "[dataset_mount.b] host_path" in str(refused.value)
+    assert "Permission denied" in str(refused.value)
+
+
+def test_the_write_probe_creates_writes_and_removes_one_file(tmp_path):
+    result = subprocess.run(["sh", "-c", deploy.DATASET_MOUNT_PROBE, "sh", str(tmp_path)],
+                            capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert list(tmp_path.iterdir()) == []
+    tmp_path.chmod(0o500)
+    try:
+        if os.geteuid() != 0:
+            result = subprocess.run(["sh", "-c", deploy.DATASET_MOUNT_PROBE, "sh", str(tmp_path)],
+                                    capture_output=True, text=True)
+            assert result.returncode != 0
+    finally:
+        tmp_path.chmod(0o700)

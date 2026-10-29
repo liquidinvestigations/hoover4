@@ -2,3 +2,4 @@
 .env
 nginx-proxy.conf
 temporal-dynamicconfig/generated.yaml
+compose/generated-dataset-mounts.yaml

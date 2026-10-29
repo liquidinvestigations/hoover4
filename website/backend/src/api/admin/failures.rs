@@ -178,8 +178,14 @@ fn cap_stack(stack: &str) -> (String, u32) {
     }
 }
 
-fn datasets_mount_path() -> String {
-    std::env::var("DATASETS_MOUNT_PATH").unwrap_or_else(|_| "/testdata".to_string())
+/// The container paths of every dataset mount. A malformed mount list falls back to
+/// `DATASETS_MOUNT_PATH`, so a copy is still scrubbed of the legacy mount's paths.
+fn dataset_mount_paths() -> Vec<String> {
+    match crate::dataset_mounts::dataset_mounts() {
+        Ok(mounts) => mounts.into_iter().map(|m| m.path).collect(),
+        Err(_) => vec![std::env::var("DATASETS_MOUNT_PATH")
+            .unwrap_or_else(|_| crate::dataset_mounts::LEGACY_MOUNT_PATH.to_string())],
+    }
 }
 
 fn hash_basename(path: &str) -> String {
@@ -231,21 +237,24 @@ fn elide_if_long(s: &str) -> String {
     }
 }
 
-fn scrub_value(s: &str, mount: &str) -> String {
-    elide_if_long(&replace_mount_paths(s, mount))
+fn scrub_value(s: &str, mounts: &[String]) -> String {
+    let replaced = mounts
+        .iter()
+        .fold(s.to_string(), |text, mount| replace_mount_paths(&text, mount));
+    elide_if_long(&replaced)
 }
 
-fn scrub_json(value: &mut serde_json::Value, mount: &str) {
+fn scrub_json(value: &mut serde_json::Value, mounts: &[String]) {
     match value {
-        serde_json::Value::String(s) => *s = scrub_value(s, mount),
+        serde_json::Value::String(s) => *s = scrub_value(s, mounts),
         serde_json::Value::Array(items) => {
             for item in items {
-                scrub_json(item, mount);
+                scrub_json(item, mounts);
             }
         }
         serde_json::Value::Object(map) => {
             for item in map.values_mut() {
-                scrub_json(item, mount);
+                scrub_json(item, mounts);
             }
         }
         _ => {}
@@ -279,9 +288,9 @@ fn node_json(row: &NodeDbRow) -> serde_json::Value {
 }
 
 fn scrubbed_copy(rows: &[NodeDbRow]) -> String {
-    let mount = datasets_mount_path();
+    let mounts = dataset_mount_paths();
     let mut value = serde_json::Value::Array(rows.iter().map(node_json).collect());
-    scrub_json(&mut value, &mount);
+    scrub_json(&mut value, &mounts);
     serde_json::to_string_pretty(&value).unwrap_or_else(|_| "[]".to_string())
 }
 
@@ -532,6 +541,13 @@ mod tests {
         );
         assert!(out.contains("failed on "), "{out}");
         assert!(out.contains(" during parse"), "{out}");
+    }
+
+    #[test]
+    fn scrub_replaces_the_paths_of_every_dataset_mount() {
+        let mounts = vec!["/testdata".to_string(), "/uploads".to_string()];
+        let out = scrub_value("a /testdata/x/one.doc and /uploads/y/two.doc", &mounts);
+        assert!(!out.contains("one.doc") && !out.contains("two.doc"), "{out}");
     }
 
     #[test]

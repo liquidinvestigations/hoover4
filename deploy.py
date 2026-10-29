@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """deploy.py, deploy hoover4 from one hoover4.ini.
 
-Stdlib only (collections, configparser, argparse, subprocess, pathlib, os, sys, socket, hashlib,
-shutil, stat, re, json, textwrap). Must import clean on python 3.10 and run clean on 3.14:
+Stdlib only (collections, configparser, argparse, subprocess, pathlib, os, posixpath, sys,
+socket, hashlib, shutil, stat, re, json, textwrap). Must import clean on python 3.10 and run clean on 3.14:
 no tomllib, no ExceptionGroup, no 3.11+ syntax.
 
 Secrets rule: the ini stores host PATHS to key files, never values. Those paths are
@@ -17,6 +17,7 @@ import configparser
 import hashlib
 import json
 import os
+import posixpath
 import re
 import shutil
 import socket
@@ -671,6 +672,7 @@ class Config:
     def __init__(self, ini_path):
         self.values = {section: dict(keys) for section, keys in DEFAULTS.items()}
         self.extra = {}  # ini keys unknown to DEFAULTS, kept for forward compat
+        self.explicit = set()  # (section, key) of every key the ini file sets
         if ini_path is not None:
             parser = configparser.ConfigParser(inline_comment_prefixes=(";",))
             try:
@@ -687,6 +689,7 @@ class Config:
                     if section in DEFAULTS and key not in DEFAULTS[section]:
                         self.extra.setdefault(section, []).append(key)
                     self.values[section][key] = value
+                    self.explicit.add((section, key))
 
     def get(self, section, key):
         try:
@@ -984,6 +987,241 @@ def volumes_path(cfg):
     return cfg.get("storage", "volumes_path").strip()
 
 
+# --------------------------------------------------------------------------------------
+# Dataset mounts. Each `[dataset_mount.<name>]` section names one host folder that the
+# worker and the website mount at the same container path. deploy.py renders the mounts
+# into one generated Compose overlay and one environment value, from one validated list.
+# --------------------------------------------------------------------------------------
+
+DATASET_MOUNTS_OVERLAY = MAIN_COMPOSE_DIR / "compose" / "generated-dataset-mounts.yaml"
+
+#: The two services that mount every dataset mount.
+DATASET_MOUNT_SERVICES = ("hoover4-worker", "hoover4-website")
+
+DATASET_MOUNT_NAME = re.compile(r"[a-z0-9_]{1,32}")
+
+#: Container paths that a dataset mount must neither contain nor fall beneath. They hold
+#: the service code, scratch folders, secrets, mirrors of other source trees, and system
+#: folders of the two images. A unit test verifies that every other mount target of the
+#: two services is in this list.
+SERVICE_OWNED_PATHS = (
+    "/app", "/bin", "/boot", "/control", "/dev", "/etc", "/lib", "/lib64", "/mirror",
+    "/opt", "/proc", "/root", "/run", "/sbin", "/sys", "/tmp", "/usr", "/var",
+)
+
+DatasetMount = collections.namedtuple(
+    "DatasetMount", "name host_path container_path writable inferred")
+DatasetMount.__doc__ = """One dataset mount.
+
+writable  true: both services mount it read-write, and the website may create folders
+          and accept uploads in it. Always false for the inferred mount.
+inferred  built from `testdata_dir` and `datasets_mount_path`, because the ini holds no
+          `[dataset_mount.*]` section. The inferred mount keeps the earlier modes: the
+          worker mounts it read-write and the website read-only. The website mounts it
+          read-only because a form that could create folders in the ingest root could
+          ingest any host path that a person writes there.
+"""
+
+
+def _path_within(path, root):
+    """True when `path` is `root` or a path beneath it. Both are normalized absolute."""
+    if root == "/":
+        return True
+    return path == root or path.startswith(root + "/")
+
+
+def _paths_overlap(a, b):
+    return _path_within(a, b) or _path_within(b, a)
+
+
+def _inferred_dataset_mount(cfg):
+    m = "main_services"
+    host = cfg.get(m, "testdata_dir").strip()
+    if not host:
+        host = str(REPO_ROOT / "testdata")
+    elif not os.path.isabs(host):
+        # The earlier compose line resolved a relative value from the compose folder.
+        host = os.path.normpath(os.path.join(str(MAIN_COMPOSE_DIR), host))
+    return DatasetMount("testdata", host, cfg.get(m, "datasets_mount_path").strip(),
+                        False, True)
+
+
+def _explicit_dataset_mount(cfg, section):
+    name = section.split(".", 1)[1]
+    if not DATASET_MOUNT_NAME.fullmatch(name):
+        fail("[%s] the mount name %r must match [a-z0-9_]{1,32}" % (section, name))
+    keys = cfg.values[section]
+    for key in sorted(keys):
+        if key not in ("host_path", "container_path", "writable"):
+            fail("[%s] %s is not a dataset mount field. The fields are host_path, "
+                 "container_path and writable." % (section, key))
+    for key in ("host_path", "container_path", "writable"):
+        if not keys.get(key, "").strip():
+            fail("[%s] %s is missing or empty" % (section, key))
+    return DatasetMount(name, keys["host_path"].strip(), keys["container_path"].strip(),
+                        cfg.get_bool(section, "writable"), False)
+
+
+def dataset_mounts(cfg):
+    """Return the validated dataset mounts, sorted by name. Refuses an unusable configuration
+    with a message that names the section and the field. The existence of each host
+    folder is checked separately, by dataset_mount_refusals, so `--down` still runs."""
+    sections = sorted(s for s in cfg.values if s.startswith("dataset_mount."))
+    if not sections:
+        mounts = [_inferred_dataset_mount(cfg)]
+    else:
+        mounts = [_explicit_dataset_mount(cfg, s) for s in sections]
+    labels = {mount.name: ("[main_services] testdata_dir" if mount.inferred
+                           else "[dataset_mount.%s] host_path" % mount.name)
+              for mount in mounts}
+    container_labels = {mount.name: ("[main_services] datasets_mount_path" if mount.inferred
+                                     else "[dataset_mount.%s] container_path" % mount.name)
+                        for mount in mounts}
+    for mount in mounts:
+        if not os.path.isabs(mount.host_path):
+            fail("%s = %s is not an absolute path" % (labels[mount.name], mount.host_path))
+        path = mount.container_path
+        if not path.startswith("/") or _normalized_container_path(path) != path:
+            fail("%s = %s must be an absolute, normalized container path, for example "
+                 "/testdata" % (container_labels[mount.name], path))
+        for owned in SERVICE_OWNED_PATHS:
+            if _paths_overlap(path, owned):
+                fail("%s = %s overlaps %s, which the worker or the website uses for "
+                     "another purpose" % (container_labels[mount.name], path, owned))
+    for index, first in enumerate(mounts):
+        for second in mounts[index + 1:]:
+            if _paths_overlap(first.container_path, second.container_path):
+                fail("%s = %s and %s = %s overlap. Container paths must be distinct and "
+                     "must not contain each other."
+                     % (container_labels[first.name], first.container_path,
+                        container_labels[second.name], second.container_path))
+            a = os.path.realpath(first.host_path)
+            b = os.path.realpath(second.host_path)
+            if _paths_overlap(a, b):
+                fail("%s = %s and %s = %s overlap after symlinks are resolved. Host "
+                     "folders must be distinct and must not contain each other."
+                     % (labels[first.name], first.host_path,
+                        labels[second.name], second.host_path))
+    if sections:
+        _check_legacy_mount_keys(cfg, mounts)
+    return mounts
+
+
+def _normalized_container_path(path):
+    """`path` with repeated and trailing separators and `.` and `..` parts removed."""
+    normal = posixpath.normpath(path)
+    # posixpath keeps a leading `//`, which is a distinct path in POSIX.
+    return "/" + normal.lstrip("/") if normal.startswith("//") else normal
+
+
+def _check_legacy_mount_keys(cfg, mounts):
+    """With explicit sections, the two older keys must be empty or name one section."""
+    m = "main_services"
+    host = cfg.get(m, "testdata_dir").strip() if (m, "testdata_dir") in cfg.explicit else ""
+    container = (cfg.get(m, "datasets_mount_path").strip()
+                 if (m, "datasets_mount_path") in cfg.explicit else "")
+    if not host and not container:
+        return
+    for mount in mounts:
+        if host and os.path.realpath(host) != os.path.realpath(mount.host_path):
+            continue
+        if container and container != mount.container_path:
+            continue
+        return
+    fail("[main_services] testdata_dir and datasets_mount_path must be empty or equal to "
+         "the host_path and container_path of one [dataset_mount.*] section, because "
+         "the ini declares dataset mount sections. Got testdata_dir = %s and "
+         "datasets_mount_path = %s." % (host or "(empty)", container or "(empty)"))
+
+
+def dataset_mount_refusals(cfg):
+    """Every host folder of a dataset mount that is missing, as messages. Podman refuses
+    a missing bind source, and Docker creates an empty folder owned by root."""
+    out = []
+    for mount in dataset_mounts(cfg):
+        if not os.path.isdir(mount.host_path):
+            label = ("[main_services] testdata_dir" if mount.inferred
+                     else "[dataset_mount.%s] host_path" % mount.name)
+            out.append("%s = %s is not an existing folder" % (label, mount.host_path))
+    return out
+
+
+def dataset_mounts_env_value(mounts):
+    """The JSON value of HOOVER4_DATASET_MOUNTS. The website and the worker parse it with
+    the parser in main_services/processing/tasks/dataset_mounts.py and its Rust copy."""
+    return json.dumps([{"name": mount.name, "path": mount.container_path,
+                        "writable": mount.writable} for mount in mounts],
+                      separators=(",", ":"))
+
+
+def _compose_literal(value):
+    """`value` with each `$` doubled, so Compose does not interpolate a path."""
+    return value.replace("$", "$$")
+
+
+def _mount_read_only(mount, service):
+    if mount.inferred:
+        return service == "hoover4-website"
+    return not mount.writable
+
+
+def render_dataset_mounts_overlay(mounts):
+    """The generated Compose overlay with the dataset mounts of the two services.
+
+    Each mount is a long-form bind entry. A JSON document is valid YAML, so the stdlib
+    JSON serializer writes the file, and a space or a colon in a path stays path data.
+    The same overlay sets HOOVER4_DATASET_MOUNTS, so the mounts and the value that
+    describes them always come from one list."""
+    env_entry = "HOOVER4_DATASET_MOUNTS=" + _compose_literal(dataset_mounts_env_value(mounts))
+    services = {}
+    for service in DATASET_MOUNT_SERVICES:
+        services[service] = {
+            "volumes": [{
+                "type": "bind",
+                "source": _compose_literal(mount.host_path),
+                "target": _compose_literal(mount.container_path),
+                "read_only": _mount_read_only(mount, service),
+            } for mount in mounts],
+            "environment": [env_entry],
+        }
+    return ENV_HEADER + json.dumps({"services": services}, indent=2, sort_keys=True) + "\n"
+
+
+def write_dataset_mounts_overlay(cfg):
+    changed = _write_if_changed(DATASET_MOUNTS_OVERLAY,
+                                render_dataset_mounts_overlay(dataset_mounts(cfg)))
+    print("rendered %s%s" % (DATASET_MOUNTS_OVERLAY, " (changed)" if changed else " (unchanged)"))
+
+
+#: The shell script that probes one writable dataset mount inside a running container.
+#: `set -C` makes the redirection an exclusive create. `$1` is the container path.
+DATASET_MOUNT_PROBE = (
+    'set -eu; f="$1/.hoover4-write-probe-$$"; set -C; printf probe > "$f"; '
+    'set +C; sync; rm -f "$f"'
+)
+
+
+def verify_writable_dataset_mounts(cfg, rt):
+    """Create, write, sync and delete one file in each writable dataset mount, inside each
+    running service container under its own user. A host access check is not sufficient,
+    because a rootless runtime maps container users to other host users."""
+    problems = []
+    for mount in dataset_mounts(cfg):
+        if not mount.writable:
+            continue
+        for service in DATASET_MOUNT_SERVICES:
+            result = rt.run(["exec", service, "sh", "-c", DATASET_MOUNT_PROBE, "sh",
+                             mount.container_path],
+                            capture_output=True, text=True)
+            if result.returncode != 0:
+                problems.append(
+                    "[dataset_mount.%s] host_path = %s is not writable by %s at %s: %s"
+                    % (mount.name, mount.host_path, service, mount.container_path,
+                       (result.stderr or result.stdout).strip()))
+    if problems:
+        fail("\n    ".join(problems))
+
+
 def start_refusals(cfg, side):
     """Every refusal of a command that starts containers, as messages."""
     out = []
@@ -992,6 +1230,7 @@ def start_refusals(cfg, side):
         out.append(problem)
     if side == "main":
         out.extend(cpu_host_refusals(cfg))
+        out.extend(dataset_mount_refusals(cfg))
     return out
 
 
@@ -1627,10 +1866,10 @@ def render_main_env(cfg):
     # answers on is configurable, which is the half that decides who can reach it.
     env["WEBSITE_BIND_IP"] = cfg.get(m, "website_bind_ip")
     env["INFRA_BIND_IP"] = cfg.get(m, "infra_bind_ip")
-    # Read by the website (the creation form lists its subfolders) and by the worker
-    # (the ingest walker gets the resulting absolute path). Both containers mount the
-    # same host directory there, so the one value is meaningful on both sides.
-    env["DATASETS_MOUNT_PATH"] = cfg.get(m, "datasets_mount_path")
+    # The container path of the first dataset mount, for readers that know one mount
+    # only. The mount list itself is HOOVER4_DATASET_MOUNTS, in the generated overlay.
+    # This value never authorizes a write.
+    env["DATASETS_MOUNT_PATH"] = dataset_mounts(cfg)[0].container_path
     if cfg.get(m, "testdata_dir"):
         env["HOOVER4_TESTDATA_DIR"] = cfg.get(m, "testdata_dir")
     if cfg.get(m, "mcp_shared_secret_file"):
@@ -2018,6 +2257,10 @@ def compose_files(cfg, side):
     for f in files:
         if not Path(f).exists():
             fail("compose file missing: %s" % f)
+    if side == "main":
+        # Generated from hoover4.ini by write_dataset_mounts_overlay before any compose
+        # command runs. `--print-command` names it without writing it.
+        files.append(str(DATASET_MOUNTS_OVERLAY))
     return files
 
 
@@ -2606,6 +2849,7 @@ def compose_up(cfg, side, rt, build):
     if side == "main":
         apply_temporal_retention(cfg, rt)
         report_worker_stop_timeout(cfg, rt)
+        verify_writable_dataset_mounts(cfg, rt)
 
 
 def stop_disabled_internet_tools(cfg, rt):
@@ -2978,6 +3222,9 @@ def main(argv=None):
         # The reset flags empty folders, so they need the path. The CPU keys do not
         # matter to them.
         volumes_path(cfg)
+    if side == "main":
+        # Before the preflights, because the compose YAML preflight reads every file.
+        write_dataset_mounts_overlay(cfg)
     run_preflights(cfg, side, rt, starting)
 
     # Render the generated .env next to the compose files.

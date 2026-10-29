@@ -30,6 +30,9 @@ aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio", 
 aws-smithy-types = { version = "1", features = ["byte-stream-poll-next"] }
 serde_bytes="0.11"
 base64 = "0.22"
+# Directory-descriptor access (`openat`, `mkdirat` with `O_NOFOLLOW`) beneath the dataset
+# mounts, so a symbolic link cannot move a listing or a new folder outside a mount.
+rustix = { version = "1", features = ["fs"] }
 
 [dev-dependencies]
 # `test-util` gives the paused clock the readiness gate tests drive by hand.

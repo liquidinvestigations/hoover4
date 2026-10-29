@@ -8,6 +8,7 @@
 | Route family | Controls | Constraint |
 |---|---|---|
 | Collections and datasets | Create, rename, inspect access, inspect processing, and dispatch supported actions. | A dataset belongs to its collection permanently. |
+| Dataset creation | Pick a dataset mount and a folder directly beneath it. In a writable mount, name a new folder, which the server creates. | The form takes no path. A read-only mount offers no new folder, and the server refuses one. With one mount the form shows no mount select. |
 | Processing | Inspect five stage groups, errors, throughput, and task time. | Display groups are P0, P1, P2/P3, P4, and P6. |
 | Operations | Filter states and collections, open details, repeat supported operations, and cancel active work. | Destructive actions require the displayed target confirmation. |
 | Operation detail | Inspect counts, plans, events, and failure links. | Plans and events use separate 100-row pages. |

@@ -18,8 +18,10 @@ the actual gate.
   the newest operation row a dataset page shows, the collection-level defaults new datasets
   inherit, and dataset **creation** (which was CLI-only). Two rules live here: one language
   change per dataset, refused by the operations lock rather than by a disabled button; and
-  the creation form takes a folder *name* validated against the listing of
-  `DATASETS_MOUNT_PATH`, never a path.
+  the creation form takes a mount name and a folder *name*, validated against the listing of
+  that mount, never a path. A new folder is created only in a writable mount.
+  [../../dataset_mounts.rs](../../dataset_mounts.rs) reads the mount list and opens every folder through a
+  directory descriptor that refuses symbolic links.
 - [operations.rs](operations.rs), the operations log behind `/admin/operations` and the scoped list on
   a collection page: reads of `operations FINAL`, the per-task error rates, and the
   dispatch path that writes the row and starts the `Operation` workflow on that row's id.

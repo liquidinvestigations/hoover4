@@ -10,15 +10,15 @@
 //!   button on the form is courtesy. Two admins in two browsers are stopped by the
 //!   non-terminal `operations` row, which is the same row the status strip polls, so
 //!   what refuses the second admin is exactly what the first one can see.
-//! * **The creation form never takes a path.** It takes a folder *name*, which is
-//!   validated against the listing of `DATASETS_MOUNT_PATH` and joined server-side. A
+//! * **The creation form never takes a path.** It takes a mount name and a folder *name*.
+//!   The folder is validated against the listing of that mount and joined server-side. A
 //!   free-text path in a browser form is a way to point the ingest walker at any
-//!   directory the container can see.
+//!   directory the container can see. A new folder is created only in a writable mount.
 
 use std::time::Duration;
 
 use common::admin_types::{
-    DatasetFolderOption, DatasetOcrPanel, DatasetOperationStatus, DatasetPdfVariant,
+    DatasetFolderOption, DatasetMountOption, DatasetOcrPanel, DatasetOperationStatus, DatasetPdfVariant,
     DatasetTextVariant,
 };
 use common::current_user::CurrentUser;
@@ -26,6 +26,7 @@ use common::storage_tree::compose_collection_dataset;
 use time::format_description::well_known::Rfc3339;
 
 use crate::api::admin::operations;
+use crate::dataset_mounts::{self, is_safe_folder_name, DatasetMount};
 use crate::auth::guard;
 use crate::db_utils::clickhouse_utils::{
     collection_db_name, get_collection_client, get_global_client,
@@ -476,24 +477,6 @@ pub async fn admin_set_collection_ocr_defaults(
 // Dataset creation
 // ---------------------------------------------------------------------------
 
-fn datasets_mount_path() -> String {
-    std::env::var("DATASETS_MOUNT_PATH").unwrap_or_else(|_| "/testdata".to_string())
-}
-
-/// A folder name that is safe to join onto the mount path.
-///
-/// Names come back to us through a browser, so this is the boundary: no separators, no
-/// traversal, no hidden entries. Together with "the name must be in the listing" it means
-/// the joined path is always a direct child of the mount.
-fn is_safe_folder_name(name: &str) -> bool {
-    !name.is_empty()
-        && name.len() <= 128
-        && !name.starts_with('.')
-        && !name.contains('/')
-        && !name.contains('\\')
-        && name != ".."
-}
-
 /// The pipeline's dataset-name rule, duplicated here so the form can refuse before the
 /// CLI-side check does. Lowercase alphanumerics and the underscore character.
 fn is_valid_dataset_name(name: &str) -> bool {
@@ -504,27 +487,42 @@ fn is_valid_dataset_name(name: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
+/// The dataset path of a folder: the mount's container path and the folder name.
+fn dataset_path(mount: &DatasetMount, folder_name: &str) -> String {
+    format!("{}/{}", mount.path.trim_end_matches('/'), folder_name)
+}
+
+/// The configured dataset mounts, in the order of `HOOVER4_DATASET_MOUNTS`.
+pub async fn admin_list_dataset_mounts(
+    user: &CurrentUser,
+) -> anyhow::Result<Vec<DatasetMountOption>> {
+    guard::require_admin(user)?;
+    Ok(dataset_mounts::dataset_mounts()?
+        .into_iter()
+        .map(|m| DatasetMountOption {
+            name: m.name,
+            path: m.path,
+            writable: m.writable,
+        })
+        .collect())
+}
+
 pub async fn admin_list_dataset_folders(
     user: &CurrentUser,
     collectionname: String,
+    mount_name: String,
 ) -> anyhow::Result<Vec<DatasetFolderOption>> {
     guard::require_admin(user)?;
     collection_db_name(&collectionname)?;
-    let root = datasets_mount_path();
-
-    let mut entries = match std::fs::read_dir(&root) {
-        Ok(entries) => entries,
-        Err(err) => anyhow::bail!("cannot read {root}: {err}"),
-    }
-    .filter_map(Result::ok)
-    .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
-    .filter_map(|e| e.file_name().into_string().ok())
-    .filter(|name| is_safe_folder_name(name))
-    .collect::<Vec<_>>();
-    entries.sort();
+    let mount = dataset_mounts::mount_named(&mount_name)?;
 
     // One level only, and only the immediate child count: walking the tree to report a
     // total would make listing a large corpus a multi-second page load.
+    let listed_mount = mount.clone();
+    let folders = dataset_mounts::blocking(move || dataset_mounts::list_folders(&listed_mount))
+        .await
+        .map_err(|e| anyhow::anyhow!("cannot read {}: {e}", mount.path))?;
+
     let client = get_global_client();
     let existing: Vec<String> = client
         .query("SELECT dataset_path FROM dataset FINAL WHERE collectionname = ? AND is_deleted = 0")
@@ -532,13 +530,10 @@ pub async fn admin_list_dataset_folders(
         .fetch_all::<String>()
         .await?;
 
-    Ok(entries
+    Ok(folders
         .into_iter()
-        .map(|name| {
-            let path = format!("{}/{}", root.trim_end_matches('/'), name);
-            let entry_count = std::fs::read_dir(&path)
-                .map(|d| d.filter_map(Result::ok).count() as u64)
-                .unwrap_or(0);
+        .map(|(name, entry_count)| {
+            let path = dataset_path(&mount, &name);
             DatasetFolderOption {
                 already_used: existing.iter().any(|p| p == &path),
                 name,
@@ -548,21 +543,43 @@ pub async fn admin_list_dataset_folders(
         .collect())
 }
 
+/// Create an empty folder directly beneath a writable dataset mount. Refuses a read-only
+/// mount, including the inferred one.
+pub async fn admin_create_dataset_folder(
+    user: &CurrentUser,
+    mount_name: String,
+    folder_name: String,
+) -> anyhow::Result<()> {
+    guard::require_admin(user)?;
+    let mount = dataset_mounts::mount_named(&mount_name)?;
+    dataset_mounts::blocking(move || dataset_mounts::create_folder(&mount, &folder_name)).await
+}
+
 /// Create a disk dataset from a subfolder of the datasets mount and start ingestion.
 ///
 /// The OCR settings are written **before** the ingest workflow starts, so the very first
 /// OCR activity reads them rather than the stack-wide defaults, there is no apply job to
 /// fix it up afterwards, and a first pass in the wrong languages costs a full re-OCR.
+///
+/// With `new_folder` the server creates the folder in a writable mount after every other
+/// field is valid. Without it the folder must be in the listing of the mount.
+#[allow(clippy::too_many_arguments)]
 pub async fn admin_create_dataset(
     user: &CurrentUser,
     collectionname: String,
+    mount_name: String,
     folder_name: String,
+    new_folder: bool,
     dataset_name: String,
     tesseract_languages: String,
     easyocr_languages: String,
 ) -> anyhow::Result<String> {
     guard::require_admin(user)?;
     collection_db_name(&collectionname)?;
+    let mount = dataset_mounts::mount_named(&mount_name)?;
+    if new_folder {
+        dataset_mounts::require_writable(&mount)?;
+    }
 
     if !is_safe_folder_name(&folder_name) {
         anyhow::bail!("{folder_name:?} is not a folder name");
@@ -576,13 +593,6 @@ pub async fn admin_create_dataset(
         anyhow::bail!(
             "dataset name must be lowercase letters, digits and underscores: got {dataset_name:?}"
         );
-    }
-
-    // The name has to be in the listing, not merely well-formed: that is what keeps the
-    // joined path a child of the mount even if `is_safe_folder_name` is ever loosened.
-    let folders = admin_list_dataset_folders(user, collectionname.clone()).await?;
-    if !folders.iter().any(|f| f.name == folder_name) {
-        anyhow::bail!("{folder_name:?} is not a folder under {}", datasets_mount_path());
     }
 
     let collection_dataset = compose_collection_dataset(&collectionname, &dataset_name);
@@ -599,11 +609,17 @@ pub async fn admin_create_dataset(
     let tesseract = validate_languages(&tesseract_languages, "Tesseract languages")?;
     let easyocr = validate_languages(&easyocr_languages, "EasyOCR languages")?;
 
-    let path = format!(
-        "{}/{}",
-        datasets_mount_path().trim_end_matches('/'),
-        folder_name
-    );
+    if new_folder {
+        admin_create_dataset_folder(user, mount_name.clone(), folder_name.clone()).await?;
+    }
+    // The name has to be in the listing, not merely well-formed: the listing opens each
+    // folder through the mount's descriptor and drops symbolic links, so the joined path is
+    // a real folder directly beneath the mount.
+    let folders = admin_list_dataset_folders(user, collectionname.clone(), mount_name).await?;
+    if !folders.iter().any(|f| f.name == folder_name) {
+        anyhow::bail!("{folder_name:?} is not a folder under {}", mount.path);
+    }
+    let path = dataset_path(&mount, &folder_name);
 
     #[derive(clickhouse::Row, serde::Serialize)]
     struct NewDataset<'a> {
@@ -694,11 +710,13 @@ mod tests {
     }
 
     #[test]
-    fn folder_names_cannot_escape_the_mount() {
-        assert!(is_safe_folder_name("emails"));
-        for bad in ["", "..", ".hidden", "a/b", "a\\b", "/etc"] {
-            assert!(!is_safe_folder_name(bad), "{bad:?} was accepted");
-        }
+    fn a_dataset_path_is_the_mount_path_and_the_folder() {
+        let mount = DatasetMount {
+            name: "uploads".to_string(),
+            path: "/uploads".to_string(),
+            writable: true,
+        };
+        assert_eq!(dataset_path(&mount, "case 7"), "/uploads/case 7");
     }
 
     #[test]

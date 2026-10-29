@@ -6,6 +6,7 @@ Everything [deploy.py](../../../deploy.py) feeds to compose.
 |---|---|
 | [docker-compose.yaml](docker-compose.yaml) | the always-on core of the main stack |
 | [compose/](compose) | optional overlays, selected by a configuration flag or a condition in [deploy.py](../../../deploy.py) |
+| `compose/generated-dataset-mounts.yaml` | the dataset mounts of `hoover4-worker` and `hoover4-website` and their `HOOVER4_DATASET_MOUNTS` value. [deploy.py](../../../deploy.py) renders it from the `[dataset_mount.*]` sections of `hoover4.ini`, and every compose command of the main side includes it. Git ignores it because it holds host paths |
 | [cassandra-entrypoint.sh](cassandra-entrypoint.sh) | `temporal-cassandra`'s entrypoint, which writes `file_cache_size_in_mb` and then starts the image's own entrypoint |
 | [garage/](garage) | the object store's configuration and its layout bootstrap |
 | [pdf-to-html/](pdf-to-html) | the conversion service image |

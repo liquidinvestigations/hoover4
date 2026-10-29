@@ -416,12 +416,12 @@ proxy_username     = admin
 ; matching what oauth2-proxy sends. A group named admin or superuser makes the
 ; asserted user an administrator.
 proxy_groups       = admin
-; host dir mounted at /testdata in the worker (must exist). Empty = in-repo testdata.
+; The host folder and the container path of the inferred dataset mount, named testdata.
+; They apply only when this file has no [dataset_mount.*] section. The worker mounts the
+; folder read-write and the website read-only. The host folder must exist. Empty
+; testdata_dir means the in-repository testdata/. With [dataset_mount.*] sections, both
+; keys must be empty or equal to the values of one section.
 testdata_dir       =
-; Root the dataset-creation form lists subfolders of. An IN-CONTAINER path — the host
-; side is testdata_dir above, mounted here in both the worker and (read-only) the
-; website. The form offers the names it finds one level down and never takes a
-; free-text path, so this is the boundary of what the UI can ingest.
 datasets_mount_path = /testdata
 ; shared bearer token between the research agents and the MCP servers (host path to
 ; a chmod-600 file outside the repo; empty = MCP servers serve unauthenticated)
@@ -540,6 +540,16 @@ tesseract_cpu_mem_limit    =      ; empty is 4096M plus 1024M for each tesseract
 ; Rotation of every hoover4 container log, in the json-file driver's units.
 container_log_max_size  = 100m
 container_log_max_files = 5
+
+; A dataset mount: a host folder that the worker and the website mount at the same
+; container path. The admin dataset form lists the folders directly beneath it. The
+; name after the dot matches [a-z0-9_]{1,32}. writable = false mounts it read-only in
+; both services. writable = true mounts it read-write in both, and the form can create a
+; new folder in it. See docs/operations/Configuration_Reference.md for the rules.
+; [dataset_mount.corpus]
+; host_path      = /srv/hoover4-corpus
+; container_path = /testdata
+; writable       = false
 
 [operations]
 ; The most running operations of each kind, counted across the deployment. An

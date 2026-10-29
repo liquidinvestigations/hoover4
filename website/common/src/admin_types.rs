@@ -205,7 +205,19 @@ pub struct DatasetOcrPanel {
     pub operation: Option<DatasetOperationStatus>,
 }
 
-/// One candidate folder under `datasets_mount_path`, for the creation form.
+/// One configured dataset mount, for the creation form.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DatasetMountOption {
+    /// The section name of `[dataset_mount.<name>]`, or `testdata` for the inferred mount.
+    pub name: String,
+    /// The container path.
+    pub path: String,
+    /// True when the website may create folders in the mount. Always false for the
+    /// inferred mount, which the website mounts read-only.
+    pub writable: bool,
+}
+
+/// One candidate folder directly beneath a dataset mount, for the creation form.
 ///
 /// The form offers names from this list and nothing else: a free-text path in a browser
 /// form is a way to point the ingest walker at any directory the container can see.
