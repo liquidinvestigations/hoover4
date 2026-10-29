@@ -505,6 +505,12 @@ services:
     environment:
       - "HOOVER4_INTERNET_TOOLS_ENABLED=${HOOVER4_INTERNET_TOOLS_ENABLED:-false}"
       - "NER_URL=${NER_URL}"
+      # The [uploads] limits, for the upload ingestion. Unset or empty gives the defaults.
+      - "HOOVER4_UPLOAD_MAX_BATCH_FILES=${HOOVER4_UPLOAD_MAX_BATCH_FILES:-}"
+      - "HOOVER4_UPLOAD_MAX_BATCH_BYTES=${HOOVER4_UPLOAD_MAX_BATCH_BYTES:-}"
+      - "HOOVER4_UPLOAD_MAX_FILE_BYTES=${HOOVER4_UPLOAD_MAX_FILE_BYTES:-}"
+      - "HOOVER4_UPLOAD_CHUNK_BYTES=${HOOVER4_UPLOAD_CHUNK_BYTES:-}"
+      - "HOOVER4_UPLOAD_ABANDON_HOURS=${HOOVER4_UPLOAD_ABANDON_HOURS:-}"
       - "S3_ENDPOINT=${S3_ENDPOINT:-http://garage:3900}"
       - "S3_ACCESS_KEY=${S3_ACCESS_KEY:-hoover4-blobs-rw}"
       - "S3_SECRET_KEY=${S3_SECRET_KEY:-hoover4-garage-blob-secret-key-0}"
@@ -707,6 +713,9 @@ services:
       # backend/src/temporal_ready.rs that compares the two copies. A directory, because
       # a single-file bind mount keeps the inode of a file an editor has replaced.
       - ../../processing/tasks:/mirror/processing-tasks:ro
+      # The upload space: transfer journals and the bytes of files that are still
+      # arriving or wait for placement. Only the website mounts it.
+      - ${HOOVER4_VOLUMES_PATH:?deploy.py renders it from [storage] volumes_path}/hoover4-upload-tmp:/upload-tmp
     # Publishes 12345 itself by default. The development-auth-backdoor overlay
     # (development_auth_backdoor_enabled) overrides this to no port at all, because
     # hoover4-development-auth-backdoor takes 12345 instead when it is on.
@@ -765,6 +774,12 @@ services:
       # The failure rate above which the operations page calls a task type out as a
       # possible tooling limitation rather than as ordinary corpus mess.
       - HOOVER4_ERROR_RATE_ALERT_PERCENT=${HOOVER4_ERROR_RATE_ALERT_PERCENT:-5}
+      # The [uploads] limits. Unset or empty gives the defaults of the upload receiver.
+      - HOOVER4_UPLOAD_MAX_BATCH_FILES=${HOOVER4_UPLOAD_MAX_BATCH_FILES:-}
+      - HOOVER4_UPLOAD_MAX_BATCH_BYTES=${HOOVER4_UPLOAD_MAX_BATCH_BYTES:-}
+      - HOOVER4_UPLOAD_MAX_FILE_BYTES=${HOOVER4_UPLOAD_MAX_FILE_BYTES:-}
+      - HOOVER4_UPLOAD_CHUNK_BYTES=${HOOVER4_UPLOAD_CHUNK_BYTES:-}
+      - HOOVER4_UPLOAD_ABANDON_HOURS=${HOOVER4_UPLOAD_ABANDON_HOURS:-}
       # The worker dispatches chat turns to the agent services.
       # The chat title/summary generator (api/chat/summarize.rs) calls the LLM
       # directly, not through the agent. Summarising must not drag MCP tools into

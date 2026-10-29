@@ -1851,3 +1851,76 @@ def test_the_write_probe_creates_writes_and_removes_one_file(tmp_path):
             assert result.returncode != 0
     finally:
         tmp_path.chmod(0o700)
+
+
+UPLOAD_DEFAULT_ENV = {
+    "HOOVER4_UPLOAD_MAX_BATCH_FILES": "10000",
+    "HOOVER4_UPLOAD_MAX_BATCH_BYTES": "10737418240",
+    "HOOVER4_UPLOAD_MAX_FILE_BYTES": "10737418240",
+    "HOOVER4_UPLOAD_CHUNK_BYTES": "33554432",
+    "HOOVER4_UPLOAD_ABANDON_HOURS": "24",
+}
+
+
+@pytest.mark.parametrize("source", ["settings-defaults.ini", "hoover4.ini.development",
+                                    "hoover4.ini.release"])
+def test_the_upload_limits_render_their_defaults(source):
+    cfg = _config(source) if source.endswith("defaults.ini") else _template(source)
+    assert deploy.upload_env(cfg) == UPLOAD_DEFAULT_ENV
+    assert "ingest_upload=2" in deploy.operation_caps_value(cfg).split(",")
+
+
+def test_a_set_upload_limit_renders_and_a_bad_one_is_refused():
+    cfg = _config("settings-defaults.ini")
+    cfg.values["uploads"].update(chunk_bytes="1048576", abandon_hours="0")
+    env = deploy.upload_env(cfg)
+    assert (env["HOOVER4_UPLOAD_CHUNK_BYTES"], env["HOOVER4_UPLOAD_ABANDON_HOURS"]) == ("1048576", "0")
+    for key, value in [("chunk_bytes", "0"), ("max_batch_files", "many"), ("abandon_hours", "-1")]:
+        cfg = _config("settings-defaults.ini")
+        cfg.values["uploads"][key] = value
+        with pytest.raises(deploy.DeployError) as refused:
+            deploy.upload_env(cfg)
+        assert "[uploads] %s" % key in str(refused.value)
+
+
+def test_the_upload_space_is_a_website_volume_with_the_data_reset_class():
+    (row,) = [r for r in deploy.VOLUMES if r.name == deploy.UPLOAD_SPACE_VOLUME]
+    assert (row.side, row.uid, row.gid, row.reset_class) == ("main", 0, 0, "data")
+    mounts = [(service, target) for side, _n, service, source, target in _mounts()
+              if source == VOLUMES_SOURCE + deploy.UPLOAD_SPACE_VOLUME]
+    assert mounts == [("hoover4-website", "/upload-tmp")]
+    assert "/upload-tmp" in deploy.SERVICE_OWNED_PATHS
+    cfg = _mount_sections(_config("settings-defaults.ini"), {
+        "inside": {"host_path": "/srv/x", "container_path": "/upload-tmp/x", "writable": "true"},
+    })
+    cfg.values["main_services"]["testdata_dir"] = ""
+    cfg.values["main_services"]["datasets_mount_path"] = ""
+    with pytest.raises(deploy.DeployError):
+        deploy.dataset_mounts(cfg)
+
+
+def test_the_upload_limits_reach_the_website_and_the_worker():
+    for _side, _name, document in _all_compose_documents():
+        for service in ("hoover4-website", "hoover4-worker"):
+            definition = (document.get("services") or {}).get(service)
+            if not definition or "build" not in definition:
+                continue
+            names = {entry.split("=", 1)[0].strip('"') for entry in definition.get("environment") or []}
+            assert set(UPLOAD_DEFAULT_ENV) <= names, service
+
+
+def test_a_writable_mount_on_another_file_system_prints_a_note(tmp_path):
+    cfg = _mount_sections(_storage(tmp_path), {
+        "same": {"host_path": str(tmp_path / "same"), "container_path": "/same", "writable": "true"},
+        "other": {"host_path": "/dev/shm", "container_path": "/other", "writable": "true"},
+        "readonly": {"host_path": "/proc", "container_path": "/readonly", "writable": "false"},
+    })
+    cfg.values["main_services"]["testdata_dir"] = ""
+    cfg.values["main_services"]["datasets_mount_path"] = ""
+    (tmp_path / "same").mkdir()
+    assert deploy.upload_space_notes(cfg) == []  # the volume folder does not exist yet
+    (tmp_path / deploy.UPLOAD_SPACE_VOLUME).mkdir()
+    notes = deploy.upload_space_notes(cfg)
+    if os.stat("/dev/shm").st_dev == os.stat(tmp_path).st_dev:
+        pytest.skip("/dev/shm is on the file system of the temporary folder here")
+    assert len(notes) == 1 and "[dataset_mount.other]" in notes[0] and "copies" in notes[0]

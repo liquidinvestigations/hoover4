@@ -9,6 +9,7 @@ keys that cross between stores.
 - [Content-addressed blobs](#content-addressed-blobs)
 - [ClickHouse: a database per collection](#clickhouse-a-database-per-collection)
 - [The file tree, and what deletion means](#the-file-tree-and-what-deletion-means)
+- [The upload space holds files that are still arriving.](#the-upload-space-holds-files-that-are-still-arriving)
 - [The object store: a bucket per collection](#the-object-store-a-bucket-per-collection)
 - [Derived output is never source](#derived-output-is-never-source)
 - [The search engine: one denormalised table per shard](#the-search-engine-one-denormalised-table-per-shard)
@@ -90,6 +91,35 @@ counts the bytes at the node's own container level, so an archive adds its own s
 and its members do not add theirs again. A row reads -1 for both until a tree build writes
 them. Readers that find -1, or no row, compute the values from the other rows by path
 prefix.
+
+## The upload space holds files that are still arriving.
+
+The website receives each upload into its own volume `hoover4-upload-tmp`, mounted at
+`/upload-tmp`. Only the website mounts it. It holds a durable journal of each batch, the bytes
+of files that are still arriving, and complete files that wait for placement.
+
+The journal is the source of transfer state: request-id bindings, path reservations,
+acknowledged offsets, transfer activity and placement progress. Each record is a JSON file,
+written to a temporary name, synchronized, renamed and followed by a synchronization of its
+folder. `upload_batches` and `upload_files` copy the journal. Each journal change raises the
+version of its record, and the row of that version carries it as `row_version`. A row whose
+version is below its journal version is written again before a conflicting change.
+
+`flock` locks on files of the upload space serialize the writers, also across processes. The
+lock order is request, dataset, batch, file. A transfer holds the shared batch lock and the
+exclusive file lock. A commit, the sweep and recovery hold the exclusive batch lock.
+
+Placement moves a complete file into the dataset folder and never replaces an entry. It
+opens every folder through the descriptor of its parent without following a symbolic link,
+and publishes with `renameat2(RENAME_NOREPLACE)`. The upload space and the dataset folder can be on different file
+systems. Placement then copies the bytes to the reserved name
+`.hoover4-upload-<batch_id>-<file_no>.hoover4-part` in the destination folder. It synchronizes
+the copy and renames it. An upload path cannot use the prefix `.hoover4-upload-` or the
+suffix `.hoover4-part`.
+
+A reset empties the upload space with the other `data` volumes. A batch whose files have not
+reached the dataset folder then loses those files. Placed files are ordinary files of the
+dataset and stay.
 
 ## The object store: a bucket per collection
 

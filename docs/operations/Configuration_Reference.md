@@ -14,6 +14,7 @@ decides and which code reads it.
 - [`[main_services]`](#main_services)
 - [`[dataset_mount.*]`](#dataset_mount)
 - [`[operations]`](#operations)
+- [`[uploads]`](#uploads)
 - [`[llm_provider.*]`](#llm_provider)
 - [Secrets](#secrets)
 - [Every key, by section](#every-key-by-section)
@@ -58,6 +59,14 @@ folder the owner that its service writes as, from the `VOLUMES` table in [deploy
 command that starts containers and the reset flags refuse an empty or relative value.
 `--down` runs with any value, and `--print-env` prints the refusal as a warning. The reset
 flags empty folders. They never remove a folder.
+
+The website mounts the volume folder `hoover4-upload-tmp` at `/upload-tmp` as its upload space.
+It holds the transfer journals and the bytes of files that are still arriving. It also holds
+complete files that wait for placement. Its reset class is `data`, so `--reset` empties it. A batch that has
+not placed its files then loses them, and its owner must upload them again. Placed files are
+in the dataset folder and stay. When a writable dataset mount is on another file system than
+this folder, [deploy.py](../../deploy.py) prints a note, and each placement copies the file instead of
+renaming it.
 
 Manticore uses version 29.9.0. Its data folders retain the `_v14` names for existing installations.
 Deployment creates each daemon's authentication file when it is absent and preserves an existing file.
@@ -438,14 +447,35 @@ The last rule runs after the services start. The others run before any compose c
 One key for each operation kind, named `<kind>_cap`, with the default `2`. A cap is the most
 operations of that kind that run at once across the deployment. No key covers a group of
 kinds. [deploy.py](../../deploy.py) refuses a value below 1, and prints a warning for an unknown key in the
-section. It renders the 16 values into one variable, `HOOVER4_OPERATION_CAPS`, in
-`hoover4-ops`, as `kind=value` pairs joined by commas.
+section. It renders the 18 values into one variable, `HOOVER4_OPERATION_CAPS`, in
+`hoover4-ops`, as `kind=value` pairs joined by commas. `ingest_upload_cap` names the upload
+ingestion kind, which the operations table does not list yet, so `hoover4-ops` logs its pair as
+ignored.
 
 An operation over its cap is stored as `queued`. It waits with no time limit, and the oldest
 queued operation of its kind starts when a slot is free. A queued operation holds its dataset
 or collection. A second operation on that target is refused until the first one ends or is
 cancelled. A change to a cap takes effect when `hoover4-ops` is created again,
 which `./deploy` does.
+
+## `[uploads]`
+
+The limits of one upload batch. The upload page and the `begin` route check the first three
+before any byte is sent. [deploy.py](../../deploy.py) renders each key as `HOOVER4_UPLOAD_<KEY>` into
+`hoover4-website` and `hoover4-worker`. A change takes effect when the containers are created
+again.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `max_batch_files` | `10000` | The most files in one batch. |
+| `max_batch_bytes` | `10737418240` | The most bytes in one batch. |
+| `max_file_bytes` | `10737418240` | The most bytes in one file. |
+| `chunk_bytes` | `33554432` | The most bytes of one tus `PATCH`. Keep it below the body limit of every proxy in front of the website. |
+| `abandon_hours` | `24` | A batch with no acknowledged chunk for this many hours is committed with the files that arrived. `0` commits every idle batch at the next hourly sweep. |
+
+Each value is a whole number. [deploy.py](../../deploy.py) refuses a value below 1, except `abandon_hours`,
+which may be 0, and prints a warning for an unknown key. The path limits are fixed: 64 names, 255
+bytes for one name, and 1,024 bytes for a destination path. The `begin` body is at most 16 MiB.
 
 ## `[llm_provider.*]`
 
@@ -580,7 +610,11 @@ Deployment renders this value into the server override XML.
 - `purge_dataset_cap`, `delete_dataset_cap`, `change_ocr_languages_cap`, `rerun_ocr_cap`, `reindex_collection_cap`
 - `refresh_document_locations_cap`, `retry_failed_files_cap`, `ensure_collection_cap`
 - `drop_collection_database_cap`, `export_collection_cap`, `import_collection_cap`
-- `purge_unattributed_entities_cap`, `backfill_vectors_cap`
+- `purge_unattributed_entities_cap`, `backfill_vectors_cap`, `ingest_upload_cap`
+
+### `[uploads]`: the upload limits
+
+- `max_batch_files`, `max_batch_bytes`, `max_file_bytes`, `chunk_bytes`, `abandon_hours`
 
 ### `[llm_provider.selfhosted]`
 

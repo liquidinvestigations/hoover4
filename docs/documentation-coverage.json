@@ -819,6 +819,61 @@
       "scenario": "website/browser-tests/325-storage-dataset-landing.ini"
     },
     {
+      "id": "F-store-10",
+      "source": [
+        "website/backend/src/uploads/begin.rs",
+        "website/common/src/uploads.rs"
+      ],
+      "docs": [
+        "docs/technical-specification/interface/Storage.md",
+        "docs/architecture/Storage_Model.md",
+        "website/Readme.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "No page sends uploads yet. The receiver routes have unit tests and a tus-js-client check against the local website."
+    },
+    {
+      "id": "F-store-11",
+      "source": [
+        "website/backend/src/uploads/transfer.rs",
+        "website/backend/src/server_extra/tus.rs"
+      ],
+      "docs": [
+        "docs/technical-specification/interface/Storage.md",
+        "docs/architecture/Storage_Model.md",
+        "website/Readme.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "No page sends uploads yet. The receiver routes have unit tests and a tus-js-client check against the local website."
+    },
+    {
+      "id": "F-store-12",
+      "source": [
+        "website/backend/src/uploads/placement.rs"
+      ],
+      "docs": [
+        "docs/technical-specification/interface/Storage.md",
+        "docs/architecture/Storage_Model.md",
+        "website/Readme.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "No page sends uploads yet. The receiver routes have unit tests and a tus-js-client check against the local website."
+    },
+    {
+      "id": "F-store-13",
+      "source": [
+        "website/backend/src/uploads/commit.rs"
+      ],
+      "docs": [
+        "docs/technical-specification/interface/Storage.md",
+        "docs/architecture/Storage_Model.md",
+        "website/Readme.md",
+        "docs/operations/Configuration_Reference.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "No page sends uploads yet. The receiver routes have unit tests and a tus-js-client check against the local website."
+    },
+    {
       "id": "F-qa-01",
       "source": [
         "website/tools/capture_screenshots.py",

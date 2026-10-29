@@ -11,5 +11,6 @@ pub mod db_utils;
 pub mod server_extra;
 pub mod startup;
 pub mod temporal_ready;
+pub mod uploads;
 
 pub use tokio;

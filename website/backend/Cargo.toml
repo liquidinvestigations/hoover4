@@ -33,6 +33,11 @@ base64 = "0.22"
 # Directory-descriptor access (`openat`, `mkdirat` with `O_NOFOLLOW`) beneath the dataset
 # mounts, so a symbolic link cannot move a listing or a new folder outside a mount.
 rustix = { version = "1", features = ["fs"] }
+# The upload receiver: the digests of manifests and acknowledged prefixes, and the
+# `Upload-Expires` date of the tus responses.
+sha2 = "0.10"
+hex = "0.4"
+httpdate = "1"
 
 [dev-dependencies]
 # `test-util` gives the paused clock the readiness gate tests drive by hand.

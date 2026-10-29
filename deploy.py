@@ -62,6 +62,9 @@ Volume = collections.namedtuple(
 
 CASSANDRA_IMAGE = "cassandra:${CASSANDRA_VERSION}"
 
+#: The volume folder of the upload space, which the website mounts at /upload-tmp.
+UPLOAD_SPACE_VOLUME = "hoover4-upload-tmp"
+
 VOLUMES = (
     Volume("clickhouse_data", "main", "clickhouse", 101, 101,
            "clickhouse/clickhouse-server:25.8", "data"),
@@ -94,6 +97,12 @@ VOLUMES = (
            CASSANDRA_IMAGE, "data"),
     Volume("easyocr_models_cache", "main", "temporal-cassandra", 0, 0,
            CASSANDRA_IMAGE, "cache"),
+    # The upload space of the website at /upload-tmp: the transfer journals, the bytes of
+    # files that are still arriving, and complete files that wait for placement. A reset
+    # empties it, so a batch that has not reached its dataset folder loses its files. The
+    # website writes as root.
+    Volume(UPLOAD_SPACE_VOLUME, "main", "temporal-cassandra", 0, 0,
+           CASSANDRA_IMAGE, "data"),
     Volume("serena_state", "serena", "serena", 0, 0, "hoover4-serena:local", "protected"),
     Volume("ai_models_cache", "ai", "hoover4-ai-server", 0, 0,
            "hoover4-ai-server:local", "cache"),
@@ -491,6 +500,22 @@ DEFAULTS = {
         "import_collection_cap": "2",
         "purge_unattributed_entities_cap": "2",
         "backfill_vectors_cap": "2",
+        # The upload ingestion kind. KINDS does not name it yet, so hoover4-ops logs this
+        # pair as ignored until the worker side of uploads adds the kind.
+        "ingest_upload_cap": "2",
+    },
+    # The upload limits. The upload page and the `begin` route check the first three
+    # before any byte is sent. Rendered as HOOVER4_UPLOAD_* for the website and the worker.
+    "uploads": {
+        "max_batch_files": "10000",
+        "max_batch_bytes": "10737418240",
+        "max_file_bytes": "10737418240",
+        # The bytes of one PATCH. Keep it below the body limit of every proxy in front of
+        # the website.
+        "chunk_bytes": "33554432",
+        # A batch with no transfer for this many hours is committed with the files that
+        # arrived.
+        "abandon_hours": "24",
     },
     "llm_provider.selfhosted": {
         "enabled": "false",
@@ -1006,7 +1031,8 @@ DATASET_MOUNT_NAME = re.compile(r"[a-z0-9_]{1,32}")
 #: two services is in this list.
 SERVICE_OWNED_PATHS = (
     "/app", "/bin", "/boot", "/control", "/dev", "/etc", "/lib", "/lib64", "/mirror",
-    "/opt", "/proc", "/root", "/run", "/sbin", "/sys", "/tmp", "/usr", "/var",
+    "/opt", "/proc", "/root", "/run", "/sbin", "/sys", "/tmp", "/upload-tmp", "/usr",
+    "/var",
 )
 
 DatasetMount = collections.namedtuple(
@@ -1220,6 +1246,46 @@ def verify_writable_dataset_mounts(cfg, rt):
                        (result.stderr or result.stdout).strip()))
     if problems:
         fail("\n    ".join(problems))
+
+
+def upload_space_notes(cfg):
+    """A note for each writable dataset mount on another file system than the upload
+    space. Placement then copies each file into the dataset folder instead of renaming
+    it. The notes need the created volume folder and the mount folders, so a missing
+    folder gives no note."""
+    root = cfg.get("storage", "volumes_path").strip()
+    try:
+        space_dev = os.stat(os.path.join(root, UPLOAD_SPACE_VOLUME)).st_dev
+    except OSError:
+        return []
+    notes = []
+    for mount in dataset_mounts(cfg):
+        if not mount.writable:
+            continue
+        try:
+            mount_dev = os.stat(mount.host_path).st_dev
+        except OSError:
+            continue
+        if mount_dev != space_dev:
+            notes.append(
+                "note: the upload space %s and [dataset_mount.%s] host_path = %s are on "
+                "different file systems, so each upload placement copies the file instead "
+                "of renaming it." % (os.path.join(root, UPLOAD_SPACE_VOLUME), mount.name,
+                                      mount.host_path))
+    return notes
+
+
+def upload_env(cfg):
+    """The `[uploads]` limits as HOOVER4_UPLOAD_* values. Each is a whole number. Only
+    abandon_hours may be 0, which commits every idle batch at the next sweep."""
+    env = {}
+    for key in DEFAULTS["uploads"]:
+        minimum = 0 if key == "abandon_hours" else 1
+        env["HOOVER4_UPLOAD_" + key.upper()] = str(
+            whole_number(cfg, key, minimum=minimum, section="uploads"))
+    for key in cfg.extra.get("uploads", []):
+        print("warning: [uploads] %s is not a known key, so it is ignored" % key)
+    return env
 
 
 def start_refusals(cfg, side):
@@ -1965,6 +2031,7 @@ def render_main_env(cfg):
     if volume_bytes:
         env["HOOVER4_BACKUP_OBJECT_VOLUME_BYTES"] = volume_bytes
     env["HOOVER4_OPERATION_CAPS"] = operation_caps_value(cfg)
+    env.update(upload_env(cfg))
     # Only ever used to tell a detached CLI where its operation can be watched. Not a
     # default anywhere in the tree: a deployment's address belongs to its own config.
     env["HOOVER4_ADMIN_BASE_URL"] = cfg.get(m, "admin_base_url")
@@ -3218,6 +3285,9 @@ def main(argv=None):
             fail("\n    ".join(problems))
         # Before the preflights, so that a missing bind source does not stop them.
         create_volume_folders(cfg, side)
+        if side == "main":
+            for note in upload_space_notes(cfg):
+                print(note)
     elif args.reset or args.reset_temporal:
         # The reset flags empty folders, so they need the path. The CPU keys do not
         # matter to them.

@@ -572,6 +572,22 @@ export_collection_cap           = 2
 import_collection_cap           = 2
 purge_unattributed_entities_cap = 2
 backfill_vectors_cap            = 2
+; The upload ingestion. hoover4-ops ignores this key until the upload ingestion
+; operation exists.
+ingest_upload_cap               = 2
+
+[uploads]
+; The limits of one upload. The upload page and the begin route check them before any
+; byte is sent.
+max_batch_files    = 10000
+max_batch_bytes    = 10737418240
+max_file_bytes     = 10737418240
+; The bytes of one PATCH request. Keep it below the body limit of every proxy in front
+; of the website.
+chunk_bytes        = 33554432
+; A batch with no transfer for this many hours is committed with the files that
+; arrived. 0 commits every idle batch at the next hourly sweep.
+abandon_hours      = 24
 
 # ---- LLM providers --------------------------------------------------------------
 # Repeatable by name, several active at once. main_services talks to the selfhosted

@@ -140,6 +140,26 @@ dataset: one workbook with one sheet of more than 1,000,000 rows and more than 6
 one cell longer than 2,000 characters. The testdata checkout has no such spreadsheet, so the
 fixture is generated and ingested with `add-disk-dataset testdata tables <root>`.
 
+## Upload routes
+
+The upload receiver serves these routes under `/_upload/`. The session middleware resolves the
+caller. [backend/src/uploads/](backend/src/uploads) holds the receiver, and
+[backend/src/server_extra/uploads.rs](backend/src/server_extra/uploads.rs) and [backend/src/server_extra/tus.rs](backend/src/server_extra/tus.rs) hold the handlers.
+
+| Route | Purpose |
+|---|---|
+| `GET /_upload/limits` | The limits of `[uploads]` and the upload targets of the caller. |
+| `POST /_upload/begin` | Check a JSON manifest of at most 16 MiB, reserve its paths, and record the batch. |
+| `OPTIONS`, `POST /_upload/files/` | tus 1.0 discovery and creation of the transfer of one manifest file. |
+| `HEAD`, `PATCH`, `DELETE /_upload/files/<batch_id>-<file_no>` | tus offset, append and termination. |
+| `GET /_upload/<batch_id>/prefix/<file_no>` | The SHA-256 of the acknowledged prefix, for the check of a reselected file. |
+| `POST /_upload/<batch_id>/commit` | End the transfer. Placement and the queue signal continue in the background. |
+
+Every tus request needs `Tus-Resumable: 1.0.0` and `X-Hoover-Upload: 1`. `begin` and `commit` need
+`Content-Type: application/json`. A batch id is a lookup key. A transfer change or a read of
+another owner's batch is a `403`. The `dx serve` development proxy answers `OPTIONS` itself, so
+the tus discovery headers come only from the server process.
+
 ## Testing
 
 | what | how |

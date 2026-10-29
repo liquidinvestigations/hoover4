@@ -32,6 +32,9 @@ fn main() {
             // The readiness monitor that each workflow start waits on. It runs on this
             // runtime for the life of the process.
             backend::temporal_ready::start_monitor();
+            // The upload receiver. Its startup recovery and hourly sweep run on this
+            // runtime, and their file work runs on its blocking pool.
+            backend::uploads::start();
             let _pdf_search_server = tokio::spawn(async move {
                 let res =
                     backend::server_extra::run_pdf_search_server::run_pdf_search_server().await;
@@ -52,6 +55,12 @@ fn main() {
 
 
             use dioxus::server::axum;
+            use backend::server_extra::{tus, uploads as upload_routes};
+            // `DefaultBodyLimit` of one PATCH. The tus handler also refuses a body above it
+            // while it streams, because a streamed body has no extractor limit.
+            let chunk_bytes = backend::uploads::limits_from_env()
+                .map(|l| l.chunk_bytes as usize)
+                .unwrap_or(common::uploads::UploadLimits::default().chunk_bytes as usize);
 
             Ok(dioxus::server::router(App)
                 .route(
@@ -93,6 +102,30 @@ fn main() {
                         ),
                     ),
                 )
+                // The upload receiver. The tus subset is under `/_upload/files/`. Each
+                // handler resolves the batch id to its owner, and a transfer change for
+                // another owner is a 403.
+                .route("/_upload/limits", axum::routing::get(upload_routes::limits))
+                .route(
+                    "/_upload/begin",
+                    axum::routing::post(upload_routes::begin).layer(axum::extract::DefaultBodyLimit::max(
+                        common::uploads::MANIFEST_MAX_BYTES,
+                    )),
+                )
+                .route("/_upload/files", axum::routing::options(tus::options).post(tus::create))
+                .route("/_upload/files/", axum::routing::options(tus::options).post(tus::create))
+                .route(
+                    "/_upload/files/{upload_id}",
+                    axum::routing::head(tus::head)
+                        .delete(tus::terminate)
+                        .options(tus::options)
+                        .merge(
+                            axum::routing::patch(tus::patch)
+                                .layer(axum::extract::DefaultBodyLimit::max(chunk_bytes)),
+                        ),
+                )
+                .route("/_upload/{batch_id}/commit", axum::routing::post(upload_routes::commit))
+                .route("/_upload/{batch_id}/prefix/{file_no}", axum::routing::get(upload_routes::prefix))
                 .route(
                     "/_feedback/{report_id}/{asset}",
                     axum::routing::get(backend::server_extra::feedback::feedback_asset),
