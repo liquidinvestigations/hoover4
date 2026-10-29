@@ -318,19 +318,19 @@ def test_every_browser_tool_that_can_change_the_page_gets_one_attempt():
         assert steps.retries(name) is True, name
 
 
-ASK_SCHEMA = {"type": "object", "properties": {
+OPTIONS_SCHEMA = {"type": "object", "properties": {
     "question": {"type": "string"},
     "options": {"anyOf": [{"type": "array", "items": {"type": "string"}}, {"type": "null"}],
                 "default": None}}, "required": ["question"]}
 
 
 async def test_the_arguments_are_normalized_before_the_call_is_classified_and_stored(model):
-    """The worker reads the question of `ask_user` from the stored call, so the stored call
+    """The worker reads the arguments of a call from the stored call, so the stored call
     holds the normalized arguments, and the changes are named with it."""
-    agent = FakeAgent([dict_tool("ask_user", ASK_SCHEMA, []),
-                       dict_tool("update_plan", MARK_SCHEMA, [])], {"ask_user", "update_plan"})
+    agent = FakeAgent([dict_tool("pick_option", OPTIONS_SCHEMA, []),
+                       dict_tool("update_plan", MARK_SCHEMA, [])], {"pick_option", "update_plan"})
     model.replies.append(AIMessage(content="", tool_calls=[
-        {"id": "a", "name": "ask_user",
+        {"id": "a", "name": "pick_option",
          "args": {"question": 'Which lease?<|"|>', "options": "L-17"}},
         {"id": "b", "name": "update_plan", "args": {"ids": "1", "status": '"done"'}},
     ]))
@@ -435,7 +435,7 @@ def test_missing_model_has_an_explicit_error(monkeypatch):
 
 
 async def test_the_model_is_bound_with_one_type_for_each_parameter(model):
-    agent = FakeAgent([dict_tool("search_collections", ASK_SCHEMA, [])], {"search_collections"})
+    agent = FakeAgent([dict_tool("search_collections", OPTIONS_SCHEMA, [])], {"search_collections"})
     model.replies.append(AIMessage(content="done"))
     await frames_of(agent, step_request())
     bound = {t["function"]["name"]: t["function"] for t in model.bound_tools}
@@ -443,7 +443,7 @@ async def test_the_model_is_bound_with_one_type_for_each_parameter(model):
         "type": "array", "items": {"type": "string"}, "default": None}
     # `/tool_call` still validates against the tool's own schema.
     tool = agent.context.snapshot.tools_by_name["search_collections"]
-    assert tool.args_schema is ASK_SCHEMA and "anyOf" in ASK_SCHEMA["properties"]["options"]
+    assert tool.args_schema is OPTIONS_SCHEMA and "anyOf" in OPTIONS_SCHEMA["properties"]["options"]
 
 
 def _http_error(status):

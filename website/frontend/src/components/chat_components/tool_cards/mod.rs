@@ -85,8 +85,6 @@ pub fn ToolCard(
     elapsed_ms: Option<u32>,
     #[props(default)]
     doc_refs: Vec<common::chat_types::ChatDocRef>,
-    #[props(default)]
-    draft: Option<Signal<String>>,
     /// `file_hash` to `collection_dataset`, gathered from the rest of the conversation.
     /// Only the entities card uses it, and only to address a document the tool named by
     /// collection and hash alone.
@@ -121,7 +119,7 @@ pub fn ToolCard(
             result_cards::CiteCard { tool_input, tool_output, running, doc_refs }
         },
         "ask_user" => rsx! {
-            result_cards::QuestionCard { tool_input, tool_output, running, draft }
+            result_cards::QuestionCard { tool_input, tool_output, running }
         },
         "submit_board_fact" => rsx! {
             result_cards::BoardFactCard { tool_input, tool_output, running }

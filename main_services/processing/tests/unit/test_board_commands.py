@@ -392,6 +392,22 @@ def test_an_explore_end_after_a_retry_is_one_fact(store, monkeypatch):
     assert folded(store).intents["intent-memo"].state == m.CONCLUDED
 
 
+def test_an_explore_end_with_a_question_is_an_unknown_end(store):
+    """A new explore cannot end in `question`. The fold still reads stored question events."""
+    slugs(store)
+    create(store)
+    reason(store, 1, [intent("Find the memo", 1, slug="memo")])
+    store.submit("b1", "explore_started:intent-memo:1", cmd.START_EXPLORE, "dispatcher",
+                 {"intent_id": "intent-memo", "attempt": 1})
+    store.submit("b1", "explore_end:intent-memo:1", cmd.EXPLORE_END, "explore",
+                 {"intent_id": "intent-memo", "attempt": 1, "end": m.EXPLORE_QUESTION,
+                  "question": "Which memo?"})
+    store.run_commands("b1")
+    refused = receipt(store, "explore_end:intent-memo:1")
+    assert refused.state == bc.REJECTED and refused.error == "unknown end 'explore_question'"
+    assert folded(store).intents["intent-memo"].state == m.RUNNING
+
+
 def test_a_retried_conclusion_returns_the_submitted_end(store, monkeypatch):
     slugs(store)
     create(store)

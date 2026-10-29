@@ -1,4 +1,4 @@
-"""Verify named things and prepare a clarification note from indexed close forms."""
+"""Verify named things and prepare a note with their indexed close forms."""
 from __future__ import annotations
 
 import asyncio
@@ -6,8 +6,6 @@ import difflib
 import re
 
 from tasks.P_agent.control.model import Action, freeze, plain
-
-ABSENCE_OPTION = "None of these: report that the collections do not hold it"
 
 
 def _collection_named(name, request):
@@ -17,7 +15,9 @@ def _collection_named(name, request):
 
 
 async def check_names(names, context, services):
-    """Return verified absence records. A partial lookup establishes no absence."""
+    """Return verified absence records. A partial or failed lookup establishes no absence.
+
+    The `options` of a name record are `(form, documents)` pairs, closest form first."""
     records = []
     scopes = set()
     for fact in context.results:
@@ -62,27 +62,31 @@ async def check_names(names, context, services):
                     key = (candidate["distance"], -candidate["documents"])
                     if form not in candidates or key < candidates[form]:
                         candidates[form] = key
-        options = sorted(candidates, key=lambda c: (candidates[c], c))[:4]
+        options = [(form, -candidates[form][1])
+                   for form in sorted(candidates, key=lambda c: (candidates[c], c))[:4]]
         records.append({"name": name, "kind": "name", "options": options,
                         "word_counts": plain(counts)})
     return records
 
 
 def note_action(records, context):
-    """Ask through the agent's existing clarification tool, with at most six options."""
-    if not records or "ask_user" not in context.callable_tools:
+    """A note for each name that the selected collections do not hold, with the indexed
+    close forms and their document counts."""
+    if not records:
         return ()
     lines = []
     for record in records:
-        choices = list(record["options"])
-        if choices:
-            choices.append(ABSENCE_OPTION)
-        else:
-            choices = [ABSENCE_OPTION]
+        name = record["name"]
+        if record["kind"] == "collection":
+            lines.append(f"No permitted collection is named {name!r}. "
+                         f"The permitted collections are {', '.join(context.collections)}.")
+            continue
+        forms = ", ".join(f"{form!r} ({count} documents)" for form, count in record["options"])
+        line = f"The selected collections have no indexed match for {name!r}."
+        if forms:
+            line += (f" Indexed close forms: {forms}. Do not use a close form as the requested "
+                     "name. When you search one, name it in the answer as a different spelling.")
         if "web" in context.capabilities:
-            choices.append("Search the web for this name")
-        lines.append(f"The selected collections have no indexed match for {record['name']!r}. "
-                     f"Call ask_user now with these options: {choices!r}. "
-                     "Wait for the person's choice before searching a suggested spelling. "
-                     "A suggestion does not establish which name the person means.")
+            line += " The web tools of this turn can search the name."
+        lines.append(line)
     return (Action("append_note", "absent-names", freeze({"text": "\n".join(lines)})),)

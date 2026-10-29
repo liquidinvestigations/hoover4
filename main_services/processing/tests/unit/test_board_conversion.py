@@ -136,11 +136,14 @@ def test_a_turn_without_a_report_fails(board, turn):
     assert "no report" in end_of(board)["error"]
 
 
-def test_a_question_ends_the_turn_without_a_conversion(board, turn):
+def test_a_stored_question_row_does_not_end_the_explore_in_question(board, turn):
+    """An `ask_user` row of an earlier agent version is an ordinary tool row. The report of
+    the turn decides its end."""
     turn["rows"] = [{"seq": 6, "role": "tool", "tool_name": "ask_user", "content": "", "usage_json": "",
                      "message_uuid": ""}, answer(report=REPORT)]
-    assert activities.conclude_explore(request()).outcome == "question"
-    assert end_of(board)["end"] == m.EXPLORE_QUESTION
+    concluded = activities.conclude_explore(request())
+    assert concluded.outcome == "convert" and concluded.report == REPORT
+    assert all(i.body.get("end") != m.EXPLORE_QUESTION for i in board.read_inputs("b1"))
 
 
 def test_a_failed_turn_keeps_its_report_reference_and_submits_no_fact(board, turn):

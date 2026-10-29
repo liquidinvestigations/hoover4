@@ -846,7 +846,8 @@ Refer to a document or citation label when your question depends on that source.
 If **Suggested next...** appears, select a suggestion to copy it into the composer.
 Review or change the text before sending it.
 
-When the assistant asks a question, select an offered response or enter your own answer.
+The assistant does not ask you questions.
+A conversation from an earlier version can show a question card. Its options are plain text.
 Context notices describe summaries used for long conversations.
 Expand a notice to inspect its details and displayed token counts.
 A summary can omit earlier detail. Repeat a source or requirement when it remains necessary.
@@ -988,6 +989,7 @@ A finding provides the same action for the explore that produced it.
 A finding's source card opens that explore chat with the document preview selected.
 Use the chat's tool groups and citation cards to inspect the searches and evidence.
 The **Investigation Board** link returns to the board.
+An explore chat is read-only. In place of the composer, it shows **Open the board**, which also returns to the board.
 The coloured finding summary at the end of the explore chat opens its finding on the graph.
 
 <a href="img/board-explore-chat.png"><img src="img/board-explore-chat.png" alt="A board explore conversation with source cards and its linked finding summary" width="100%"></a>
@@ -1064,7 +1066,7 @@ A correction can itself be rejected through **Reject correction**.
 <a href="img/board-correction.png"><img src="img/board-correction.png" alt="An existing correction selected on a completed investigation graph" width="100%"></a>
 
 Use **Add hint** in the overview to supply a lead for the next assessment.
-A hint can also answer an explore that asked you a question.
+A hint also opens an intent of an earlier version that waits in the question state.
 A pending action stays disabled until the board processes it.
 If the action is refused, read the reason above the board before trying again.
 A newer assessment can invalidate a decision on an older proposal.

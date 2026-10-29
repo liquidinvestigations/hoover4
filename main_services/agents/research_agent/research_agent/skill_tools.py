@@ -15,7 +15,7 @@ import json
 from typing import Any, Callable, Dict, List, Optional
 
 from langchain_core.tools import StructuredTool, ToolException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from research_agent.skill_store import (
     SkillContext,
@@ -27,8 +27,7 @@ from research_agent.skill_store import (
 SEARCH_SKILLS = "search_skills"
 READ_SKILL = "read_skill"
 READ_TOOL = "read_tool"
-ASK_USER = "ask_user"
-SKILL_TOOLS = (SEARCH_SKILLS, READ_SKILL, READ_TOOL, ASK_USER)
+SKILL_TOOLS = (SEARCH_SKILLS, READ_SKILL, READ_TOOL)
 
 #: The most characters a `search_skills` query may hold.
 QUERY_MAX_CHARS = 160
@@ -43,10 +42,6 @@ DESCRIPTIONS = {
     READ_SKILL: "Read one method skill with tool arguments, defaults and call examples.",
     READ_TOOL: (
         "Read the full text and the arguments of one tool."
-    ),
-    ASK_USER: (
-        "Ask the person one question and wait for the answer. Use this when the request "
-        "has two meanings or needs a fact that only the person knows."
     ),
 }
 
@@ -69,19 +64,6 @@ class ReadToolArgs(BaseModel):
     name: str = Field(
         min_length=1, max_length=NAME_MAX_CHARS, description="The name of one tool."
     )
-
-
-class AskUserArgs(BaseModel):
-    question: str = Field(min_length=1, max_length=500, description="One question for the person.")
-    options: List[str] = Field(default_factory=list, max_length=6,
-                               description="Up to six possible answers.")
-
-    @field_validator("options")
-    @classmethod
-    def valid_options(cls, options: List[str]) -> List[str]:
-        if any(not 1 <= len(option) <= 80 for option in options):
-            raise ValueError("Each option needs 1 to 80 characters.")
-        return options
 
 
 def _refusal(error: str, message: str) -> str:
@@ -166,10 +148,6 @@ def make_skill_tools(
             raise ToolException(json.dumps(result))
         return json.dumps(result)
 
-    async def ask_user_tool(question: str, options: List[str] | None = None) -> str:
-        return json.dumps({"success": True, "asked": True, "question": question,
-                           "options": options or []})
-
     def build(name, coroutine, schema):
         return StructuredTool.from_function(
             coroutine=coroutine,
@@ -183,12 +161,11 @@ def make_skill_tools(
         build(SEARCH_SKILLS, search_skills_tool, SearchSkillsArgs),
         build(READ_SKILL, read_skill_tool, ReadSkillArgs),
         build(READ_TOOL, read_tool_tool, ReadToolArgs),
-        build(ASK_USER, ask_user_tool, AskUserArgs),
     ]
 
 
 __all__ = [
-    "ASK_USER", "DESCRIPTIONS", "NO_SKILL_TEXT", "READ_SKILL", "READ_SKILL_HINT", "READ_TOOL",
+    "DESCRIPTIONS", "NO_SKILL_TEXT", "READ_SKILL", "READ_SKILL_HINT", "READ_TOOL",
     "SEARCH_SKILLS", "SKILL_TOOLS", "make_skill_tools", "read_skill_result",
     "read_tool_name", "read_tool_result", "search_skills_result",
 ]

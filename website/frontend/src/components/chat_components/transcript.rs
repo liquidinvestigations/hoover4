@@ -1258,7 +1258,6 @@ fn MessageEntry(
                         datasets: datasets.clone(),
                         todo_versions: todo_versions.clone(),
                         read_more_source: read_more_source.clone(),
-                        draft: Some(draft),
                     }
                     ToolImages { refs: message.shown_images(), tool_name: message.tool_name.clone() }
                     if !refs.is_empty() && message.tool_name != "cite_documents" {

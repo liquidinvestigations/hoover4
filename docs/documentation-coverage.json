@@ -1830,14 +1830,15 @@
     {
       "id": "F-chat-19y",
       "source": [
-        "main_services/agents/research_agent/research_agent/skill_tools.py"
+        "main_services/agents/research_agent/research_agent/skill_tools.py",
+        "website/frontend/src/components/chat_components/tool_cards/result_cards.rs"
       ],
       "docs": [
         "docs/user-manual/User_Manual.md#9-ai-chat",
         "docs/architecture/Chat_And_Agents.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "The selected conversations have no pending question card. The manual describes this conditional control."
+      "no_screenshot_reason": "A question card shows only in a stored conversation of an earlier agent version. The manual describes it."
     },
     {
       "id": "F-chat-20",

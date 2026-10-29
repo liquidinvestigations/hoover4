@@ -224,30 +224,12 @@ def _entry(call_id, name, args, kind="parallel", retry=True):
             "page_share": 24000, "retry": retry}
 
 
-def test_a_successful_question_writes_the_turn_answer(monkeypatch, store):
-    question = "Bigger or smaller than 50?"
-    call = activities.CallRef(ai_idx=1, position=0, call_id="ask-1", name="ask_user",
-                              kind="parallel", seq=5)
-    store["row"] = _row(next_seq=6)
-    store["messages"].extend([
-        agent_runs.RunMessageRow(idx=1, role="ai", content="", run_id=RUN_ID,
-                                 usage_json=json.dumps({"model": "asking-model"}),
-                                 tool_calls_json=json.dumps([_entry("ask-1", "ask_user",
-                                                                       {"question": question})])),
-        agent_runs.RunMessageRow(idx=2, role="tool", content=json.dumps({"asked": True}),
-                                 run_id=RUN_ID, tool_call_id="ask-1", tool_name="ask_user",
-                                 usage_json=json.dumps({"status": "ok"})),
-    ])
-    monkeypatch.setattr(agent_runs, "write_run",
-                        lambda row, **changes: store["run"].append(changes))
-    result = ActivityEnvironment().run(steps.write_asked_answer,
-                                       steps.AskedAnswerParams(run_id=RUN_ID, username="u",
-                                                              session_id="s", call=call))
-    assert result == 7
-    assert store["chat"][-1] == {"seq": 6, "role": "assistant", "content": question,
-                                  "model": "asking-model", "usage_json": json.dumps({
-                                      "citation_status": "none", "tool_scope": "documents_only"})}
-    assert store["run"][-1] == {"result": question, "next_seq": 7}
+def test_no_tool_call_ends_the_turn_as_a_question():
+    """The question tool is removed, so the worker has no activity that writes a question as
+    the turn answer."""
+    for name in ("write_asked_answer", "AskedAnswerParams", "TURN_ENDING_TOOLS"):
+        assert not hasattr(steps, name), name
+    assert "asked" not in {f.name for f in fields(activities.RunSummary)}
 
 
 def _frames(text="", entries=(), usage=None, reasoning="", model=None):

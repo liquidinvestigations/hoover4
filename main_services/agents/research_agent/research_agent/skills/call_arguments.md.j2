@@ -84,11 +84,3 @@ Include source identities and the next useful call when that context must surviv
 {"text":"The approval passage is in the returned document range. Verify its original writer before attributing it."}
 ```
 {% endif %}
-{% if has('ask_user') %}
-{{ tool('ask_user') }} requires question, with 1 to 500 characters.
-options optionally supplies up to six answers, each with 1 to 80 characters. Ask for a missing task choice that the sources cannot resolve.
-It pauses the conversation until the person replies.
-```json
-{"question":"Which collection should supply the requested report?","options":["alpha","beta"]}
-```
-{% endif %}

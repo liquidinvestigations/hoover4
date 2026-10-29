@@ -322,7 +322,9 @@ stateDiagram-v2
   `status_changed:{causal event id}:{ordinal}` and the time of its cause. `board_plan` writes
   the rows that the stored events lack, so a repeated pass writes nothing new and a pause and a
   resume between two passes both show.
-- An explore that asked a question waits. The next hint opens its intent again.
+- A stored `explore_question` event of an earlier version still sets its intent to state
+  `question`. The intent waits, and the next hint opens it again. A new explore cannot end in
+  that state.
 
 ## Budget
 
@@ -435,8 +437,8 @@ report of the turn is the last file version that it wrote ([Reports and workspac
 files](Chat_And_Agents.md#reports-and-workspace-files)), and the chat page shows it as the
 answer.
 
-`conclude_explore` reads the end of the turn. A turn that asks the person a question becomes
-an `explore_question` event. A failed turn and a turn without a report become
+`conclude_explore` reads the end of the turn. A new turn cannot ask the person a question, and
+`explore_end` refuses the end `explore_question` as unknown. A failed turn and a turn without a report become
 `explore_failed`, and the files stay in the workspace. A turn with a report returns its
 version for the conversion.
 

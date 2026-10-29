@@ -230,7 +230,7 @@ async def _run_case(monkeypatch, script, body, extra_workflows=(), tool=None,
     acts = [activities.open_run, activities.write_ending,
             activities.summarize_if_first_turn,
             steps.record_step_failure, _no_control,
-            steps.write_asked_answer, steps.write_incomplete]
+            steps.write_incomplete]
     try:
         client = await Client.connect("temporal:7233")
         with ThreadPoolExecutor(max_workers=32) as executor:
@@ -943,47 +943,36 @@ def test_a_stop_during_the_stream_writes_nothing_after_the_ending(monkeypatch, s
     asyncio.run(_run_case(monkeypatch, script, body))
 
 
-# ------------------------------------------------------------------- the question
+# ------------------------------------------------------------------- the question tool
 
-def test_ask_user_ends_after_all_calls_without_a_todo_nag(monkeypatch):
-    questions = ["Bigger or smaller than 50?", "Which range?"]
+def test_a_call_to_the_removed_question_tool_does_not_end_the_turn(monkeypatch):
+    """The research agent refuses `ask_user` as an unavailable tool. The turn goes on to the
+    next model step, and the question text is never the answer."""
+    question = "Bigger or smaller than 50?"
 
     def script(request, n):
-        frames = _reply(request, calls=[
-            _call("ask_user", {"question": questions[0], "options": ["bigger", "smaller"]}),
-            _call("read_file", {}),
-            _call("ask_user", {"question": questions[1], "options": []}),
-        ])
-        # The agent service names the model of the reply in `model_turn`.
-        turn = json.loads(frames[0][len("data: "):])
-        frames[0] = "data: " + json.dumps({**turn, "model": "asking-model"}) + "\n\n"
-        return frames
+        if n == 1:
+            return _reply(request, calls=[
+                _call("ask_user", {"question": question, "options": ["bigger", "smaller"]}),
+                _call("search_collections", {"query": "fifty"})])
+        return _reply(request, "The answer.")
 
     def tool(request, n):
         call = request["call"]
-        content = ({"success": True, "asked": True, **call["args"]}
-                   if call["name"] == "ask_user" else {"items": []})
-        return 200, {"tool_call_id": call["id"], "name": call["name"],
-                     "status": "ok", "content": json.dumps(content),
-                     "measure": None, "error_class": ""}
+        if call["name"] != "ask_user":
+            return _ok_tool(request, n)
+        refusal = {"success": False, "error": "tool_unavailable",
+                   "message": "No tool of this run is named 'ask_user'."}
+        return 200, {"tool_call_id": call["id"], "name": call["name"], "status": "error",
+                     "content": json.dumps(refusal), "measure": None, "error_class": ""}
 
     async def body(client, case, stub, queue, titled):
-        chat_todos.update_plan(case.username, case.session_id, "guess",
-                               [{"text": "one"}, {"text": "two"}, {"text": "three"}])
         handle = await _start(client, case, queue)
         assert await handle.result() == "completed"
-        assert case.run_row().result == questions[0]
+        assert case.run_row().result == "The answer."
+        assert len(stub.requests) == 2
         rows = case.chat_rows()
-        assert [r[3] for r in rows if r[1] == "tool"].count("ask_user") == 2
-        assert [r[2] for r in rows if r[1] == "assistant"] == [questions[0]]
-        assert not [r for r in rows if r[1] == "nag"]
-        # The question row names the model of the reply that asked.
-        with get_global_client() as ch:
-            models = ch.query(
-                "SELECT model FROM chat_messages FINAL WHERE username = {u:String} "
-                "AND session_id = {s:String} AND role = 'assistant'",
-                parameters={"u": case.username, "s": case.session_id}).result_rows
-        assert [m[0] for m in models] == ["asking-model"]
+        assert [r[2] for r in rows if r[1] == "assistant"] == ["The answer."]
 
     asyncio.run(_run_case(monkeypatch, script, body, tool=tool))
 

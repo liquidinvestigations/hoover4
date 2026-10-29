@@ -81,6 +81,7 @@ EXPLORE_STARTED = "explore_started"
 EXPLORE_CONCLUDED = "explore_concluded"
 EXPLORE_FAILED = "explore_failed"
 EXPLORE_CANCELLED = "explore_cancelled"
+#: Only stored events hold this end. `explore_end` refuses it, and the fold still reads it.
 EXPLORE_QUESTION = "explore_question"
 REVIEW_PROPOSED = "review_proposed"
 #: The terminal record of a final assessment that wrote no result: its call failed in every

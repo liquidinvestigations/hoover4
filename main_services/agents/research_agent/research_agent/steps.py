@@ -264,8 +264,8 @@ def classify_calls(
     depend on the calls of the reply only (`execution.batch_budget`).
 
     The arguments of a call to a tool of the run are normalized first
-    (`tool_args.normalize_arguments`), so the stored call, the worker's readers of it, such
-    as the question of `ask_user`, and `/tool_call` all see the same values. Damaged
+    (`tool_args.normalize_arguments`), so the stored call, the worker's readers of it and
+    `/tool_call` all see the same values. Damaged
     arguments stay as the model sent them, and `/tool_call` refuses them.
     """
     earlier_ids = {c.id for m in thread if m.role == "ai" for c in m.tool_calls}

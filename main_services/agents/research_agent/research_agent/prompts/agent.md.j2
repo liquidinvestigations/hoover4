@@ -41,8 +41,6 @@ Find a tool by a few words with `search_agent_tools`.
 {% endif %}
 {% if chat_lead %}
 
-Call `ask_user` once for unclear requests or facts only the person knows. Search for other facts.
-For a control note with name choices, call `ask_user` before candidate searches.
 For a note that says web access is unavailable, explain the limit, and continue with the sources that this chat can read.
 {% endif %}
 {% if report_rules %}

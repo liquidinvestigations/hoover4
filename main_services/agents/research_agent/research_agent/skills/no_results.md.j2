@@ -6,8 +6,11 @@ tools: search_collections, search_passages, web_search
 ---
 When a search finds nothing
 
-Read word_counts first. Use a suggested word only when it is the intended name.
-Ask the person before substituting another name.
+Read word_counts first.
+When a name occurs nowhere, read the indexed spelling suggestions and their checked counts.
+Do not use a suggested spelling as the requested name.
+When you search a suggested spelling, name it in the answer as a different spelling.
+When no spelling matches, report that the searched collections do not hold the name.
 
 Follow these search steps when earlier searches do not answer the question.
 {% if has('search_collections') %}

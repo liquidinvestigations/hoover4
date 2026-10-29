@@ -22,6 +22,8 @@
 | Close the workspace | Close the workspace pane. | The conversation stays open. |
 | Follow-up suggestion | Fill and focus the composer with the selected prompt. | The user edits or sends it explicitly. |
 | Send | Submit the composer text. | Empty text and a closed chat gate disable Send. The navigation arrow button includes a Send tooltip. |
+| Open the board | Open the board of a board explore chat, with the chat's intent selected. | A board explore chat has no composer. In its place, the page shows "Board explore chats are read-only." and this link. |
+| Stored question card | Show a question of an earlier agent version with its options. | The options are plain text in every chat. They are not buttons. An ordinary chat keeps its composer. |
 | Tool group | Show or hide the tools, instructions, superseded answers, and the reasoning of the round. | Completed groups start closed. |
 | Todo call card | Expand the stored arguments, the result or failure, and the list after the call. | Every todo call has one card inside its group. |
 | Reasoning | Show or hide the model's reasoning for the answer. | It is inside the group before the answer, or beside an answer that has no group. |

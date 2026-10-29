@@ -324,20 +324,16 @@ def test_preparation_loads_picked_skills_and_pins_assets(store, monkeypatch, rou
 
 def test_preparation_normalizes_a_named_collection_span(store, monkeypatch, route):
     _pin(store, monkeypatch, _definition([PREPARE]))
-    def agent(*args):
-        response = store["agent"](*args)
-        if "callable_tools" in response:
-            response["callable_tools"].append("ask_user")
-        return response
-    monkeypatch.setattr(coordinator, "_agent_post", agent)
     store["messages"][0] = replace(store["messages"][0], content=
         "How many PDF documents does the epstein collection hold? List the 10 largest.")
-    route["route"] = _Route({"names=": {"items": [{"text": "epstein collection"}]}})
+    route["route"] = _Route({"names=": {"items": [{"text": "epstein collection"}]},
+                             "sources=": {"choice": "documents", "probabilities": {"documents": 1.0}}})
     _hook("turn_started", 0)
     facts = store["messages"][0].usage["control"]["decisions"]["turn_started"]["facts"]["preparation"]
     assert facts["names"] == ["epstein"]
     assert facts["absence_records"] == [{"name": "epstein", "kind": "collection", "options": []}]
-    assert "Call ask_user" in store["chat"][-1]["content"]
+    assert "No permitted collection is named 'epstein'." in store["chat"][-1]["content"]
+    assert "ask_user" not in store["chat"][-1]["content"]
     name_question = next(body["questions"]["names="] for _, body in route["route"].bodies
                          if "names=" in body.get("questions", {}))
     assert "criteria" not in name_question
@@ -723,7 +719,7 @@ def test_only_a_complete_result_is_shared(usage, content, shared):
 def _progress_context(previous=None, batch=(), steps_count=0):
     from tasks.P_agent.control.model import PolicyContext
     return PolicyContext(run_id=RUN_ID, thread_id=RUN_ID, profile="internal_search:documents",
-                         definition_revision="test", request="Find a missing name", callable_tools=frozenset({"search_collections", "search_passages", "ask_user"}),
+                         definition_revision="test", request="Find a missing name", callable_tools=frozenset({"search_collections", "search_passages"}),
                          listed_skills=freeze({}), visible_skills=frozenset(), results=tuple(batch), batch=tuple(batch),
                          turn=freeze({"progress": previous or {}}), counters=freeze({"model_steps": steps_count}),
                          capabilities=frozenset({"documents"}), collections=("testdata",))
@@ -874,9 +870,42 @@ def test_absence_uses_counts_across_table_kinds():
                     "suggestions": [{"word": "smithx", "candidates": [{"word": "smith", "distance": 1, "documents": 8}]}]}
     context = _progress_context()
     records = asyncio.run(check_names(["John Smithx"], context, Suggestions()))
-    assert records[0]["options"] == ["John smith"]
-    assert "Search the web" not in note_action(records, context)[0].arguments["text"]
-    assert "Call ask_user now with these options" in note_action(records, context)[0].arguments["text"]
+    assert records[0]["options"] == [("John smith", 8)]
+    text = note_action(records, context)[0].arguments["text"]
+    assert text == ("The selected collections have no indexed match for 'John Smithx'. "
+                    "Indexed close forms: 'John smith' (8 documents). Do not use a close form as "
+                    "the requested name. When you search one, name it in the answer as a "
+                    "different spelling.")
+    assert "ask_user" not in text and "web" not in text
+    web = replace(context, capabilities=frozenset({"documents", "web"}))
+    assert note_action(records, web)[0].arguments["text"].endswith(
+        " The web tools of this turn can search the name.")
+
+
+def test_absence_note_names_the_permitted_collections_and_no_tool():
+    from tasks.P_agent.control.handlers.absence import note_action
+    context = replace(_progress_context(), collections=("enron", "testdata"))
+    records = [{"name": "epstein", "kind": "collection", "options": []},
+               {"name": "Ornith", "kind": "name", "options": [], "word_counts": []}]
+    text = note_action(records, context)[0].arguments["text"]
+    assert text.splitlines() == [
+        "No permitted collection is named 'epstein'. The permitted collections are enron, testdata.",
+        "The selected collections have no indexed match for 'Ornith'."]
+    assert note_action([], context) == ()
+
+
+@pytest.mark.parametrize("reply", [
+    {"word_counts": [], "suggestions": []},
+    {"partial": True, "word_counts": [], "suggestions": []},
+])
+def test_a_failed_name_lookup_establishes_no_absence(reply):
+    """The backend gives no counts for a failed lookup, and the worker client marks a failed
+    request partial. Neither reply is an absent name."""
+    from tasks.P_agent.control.handlers.absence import check_names
+    class Suggestions:
+        async def suggestions(self, names, kind, collections):
+            return reply
+    assert asyncio.run(check_names(["Vince Kaminsjy"], _progress_context(), Suggestions())) == []
 
 
 @pytest.mark.parametrize("request_text,expected", [
@@ -1020,7 +1049,9 @@ def test_explicit_name_survives_an_empty_classifier_span(request_text, name):
     from tasks.P_agent.control.model import ClassifierResult, ControlEvent
     class Answers:
         async def ask(self, state, questions, instructions=""):
-            return ClassifierResult("ok", freeze({"names=": {"items": []}}))
+            return ClassifierResult("ok", freeze({
+                "names=": {"items": []},
+                "sources=": {"choice": "documents", "probabilities": {"documents": 1.0}}}))
         async def complete(self, prompt, max_tokens):
             return ClassifierResult("unavailable")
         async def suggestions(self, names, kind, collections):
@@ -1030,7 +1061,60 @@ def test_explicit_name_survives_an_empty_classifier_span(request_text, name):
         ControlEvent("start", "turn_started", 0, "runtime"), context, {}, Answers()))
     assert result.facts["names"] == (name,)
     assert result.facts["absence_records"][0]["name"] == name
-    assert "Call ask_user" in " ".join(a.arguments.get("text", "") for a in result.actions)
+    assert f"no indexed match for {name!r}" in " ".join(a.arguments.get("text", "") for a in result.actions)
+
+
+class _SourceAnswers:
+    """A fixed classifier reply with one source choice. `choice` None gives a failed reply,
+    and `raise` a failed request. The name lookup finds no indexed match."""
+
+    def __init__(self, choice):
+        self.choice = choice
+
+    async def ask(self, state, questions, instructions=""):
+        from tasks.P_agent.control.model import ClassifierResult
+        if "names=" in questions:
+            return ClassifierResult("ok", freeze({"names=": {"items": [{"text": "VMware Tanzu"}]}}))
+        if self.choice is None:
+            return ClassifierResult("unavailable")
+        if self.choice == "raise":
+            raise RuntimeError("the classifier request failed")
+        return ClassifierResult("ok", freeze({"sources=": {"choice": self.choice,
+                                                           "probabilities": {self.choice: 1.0}}}))
+
+    async def complete(self, prompt, max_tokens):
+        from tasks.P_agent.control.model import ClassifierResult
+        return ClassifierResult("unavailable")
+
+    async def suggestions(self, names, kind, collections):
+        return {"word_counts": [{"word": "vmware", "documents": 0}, {"word": "tanzu", "documents": 0}],
+                "suggestions": []}
+
+
+@pytest.mark.parametrize("choice,noted", [
+    ("documents", True), ("both", True), ("overview", True),
+    ("none", False), ("web", False), (None, False), ("raise", False),
+])
+def test_only_a_document_source_choice_gets_the_absence_note_and_records(choice, noted):
+    """The translation request of chat c32a0159 named VMware Tanzu in pasted text. A turn
+    without a document source choice, or with a failed classifier, keeps no absence record."""
+    from tasks.P_agent.control.handlers.preparation import Handler
+    from tasks.P_agent.control.model import ControlEvent, plain
+    from tasks.P_agent.control import facts as F
+    context = replace(_progress_context(), request="translate this to romanian: VMware Tanzu with kubeadm",
+                      capabilities=frozenset({"documents", "web", "browser", "overview", "both"}))
+    result = asyncio.run(Handler().evaluate(
+        ControlEvent("start", "turn_started", 0, "runtime"), context, {}, _SourceAnswers(choice)))
+    facts = plain(result.facts)
+    assert facts["names"] == ["VMware Tanzu"]
+    notes = [a for a in result.actions if a.target_id == "absent-names"]
+    assert bool(notes) is noted
+    assert bool(facts["absence_records"]) is noted
+    if choice in (None, "raise"):
+        assert not facts.get("sources")
+    draft = replace(context, draft="The collections do not contain VMware Tanzu.",
+                    turn=freeze({"preparation": facts}))
+    assert F.justified_absence(draft) is noted
 
 
 def test_empty_pinned_collections_do_not_restore_the_requested_scope(store, monkeypatch):
@@ -1911,3 +1995,24 @@ def test_a_board_turn_keeps_its_structured_task_as_its_record(store, monkeypatch
     assert "task" not in control
     assert control["task_state"]["objective"]["text"] == "Name the leader."
     assert [g["names"] for g in control["task_state"]["output_spec"]["groups"]] == [["leader.md"]]
+
+
+@pytest.mark.parametrize("status,checked", [("ok", True), ("error", False)])
+def test_progress_checks_names_only_after_a_successful_document_search(status, checked):
+    """A failed search establishes no absence, so the late name check waits for a successful
+    `search_collections` or `search_passages` call."""
+    from tasks.P_agent.control.handlers.progress import Handler
+
+    class Services(_Signals):
+        async def suggestions(self, names, kind, collections):
+            return {"word_counts": [{"word": "kaminsjy", "documents": 0}], "suggestions": []}
+
+    previous = {"level": 2, "units": 0, "signals": {"absent": {"streak": 5}, "stuck": {"streak": 0}}}
+    search = _fact("search_collections", status=status, item_count=0, args={"query": "Kaminsjy"})
+    context = replace(_progress_context(previous, (search,), 4),
+                      turn=freeze({"progress": previous, "preparation": {"names": ["Vince Kaminsjy"]}}))
+    result = asyncio.run(Handler().evaluate(_event(), context, {}, Services(0.95)))
+    facts = plain_facts(result)
+    assert facts["absent_checked"] is checked
+    assert bool(facts["absence_records"]) is checked
+    assert bool([a for a in result.actions if a.target_id == "absent-names"]) is checked

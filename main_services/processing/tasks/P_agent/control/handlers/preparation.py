@@ -2,8 +2,9 @@
 
 Three independent children can run. `ask` is one structured request that classifies the
 sources, the skills and the flags. `names` extracts the named things of the request and
-checks them in the indexes. `requirements` is a completion that lists answer conditions. It
-runs only when the definition enables it, because no live hook reads its result.
+checks them in the indexes. The absence note and its records follow only a document source
+choice (`documents`, `both` or `overview`). `requirements` is a completion that lists answer
+conditions. It runs only when the definition enables it, because no live hook reads its result.
 
 Each child records a typed outcome in the facts (`children`): `ok`, `timeout`, `error`,
 `cancelled`, `skipped` or `disabled`. A child that returns a classifier result with
@@ -384,9 +385,15 @@ class Handler:
             facts["requirements"] = _requirements(completed.text, request) if completed.status == "ok" else []
             if omitted:
                 facts["requirements_status"] = "partial: the request was cut for the questions"
+        # The absence note and its records belong to a document request only. A failed
+        # classifier leaves no choice, so a name check gives no note and no evidence.
+        choice = (facts.get("sources") or {}).get("choice")
         named = results.get("names")
         facts["names"] = named[0] if named else []
         if named:
-            facts["absence_records"] = named[1]
-            actions.extend(note_action(named[1], context))
+            if choice in ("documents", "both", "overview"):
+                facts["absence_records"] = named[1]
+                actions.extend(note_action(named[1], context))
+            else:
+                facts["absence_records"] = []
         return PolicyResult(checks=tuple(checks), actions=tuple(actions), facts=freeze(facts))

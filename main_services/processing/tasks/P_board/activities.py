@@ -15,7 +15,7 @@ start runs nothing.
 An explore is an ordinary chat turn: `open_explore_turn` writes the session, the user row and
 the stream row that `send_message` writes for a person, and the turn runs as `AgentRun`. The
 turn writes its result as a workspace report. `conclude_explore` reads the end of the turn:
-a question, a failure, or the report to convert. `convert_explore_report` turns the pinned
+a failure, or the report to convert. `convert_explore_report` turns the pinned
 report version into the fact with one model request (`conversion.py`) and submits it.
 """
 
@@ -136,7 +136,7 @@ class TurnRequest:
 
 @dataclass
 class Concluded:
-    """The end of an explore turn. `outcome` is `fact`, `question`, `failed`, `skipped`, or
+    """The end of an explore turn. `outcome` is `fact`, `failed`, `skipped`, or
     `convert` when `report` names the report version to convert."""
 
     outcome: str
@@ -788,7 +788,7 @@ def turn_report(rows: list[dict], turn_uuid: str) -> tuple[dict, int]:
 
 
 #: The outcome of `conclude_explore` for each end of a submitted explore.
-_OUTCOMES = {m.EXPLORE_CONCLUDED: "fact", m.EXPLORE_QUESTION: "question", m.EXPLORE_FAILED: "failed"}
+_OUTCOMES = {m.EXPLORE_CONCLUDED: "fact", m.EXPLORE_FAILED: "failed"}
 
 
 def _end_request(intent_id: str, attempt: int) -> str:
@@ -810,9 +810,8 @@ def _submitted_end(board_id: str, request_id: str) -> str | None:
 def conclude_explore(req: TurnRequest) -> Concluded:
     """Read the end of one explore turn and submit it, unless its report needs a conversion.
 
-    A turn that asked the person a question ends in `question`. A failed turn and a turn
-    without a report end in `failed`. A turn with a report returns `convert` and the pinned
-    report version, and submits nothing. A retry after a submission returns the submitted
+    A failed turn and a turn without a report end in `failed`. A turn with a report returns
+    `convert` and the pinned report version, and submits nothing. A retry after a submission returns the submitted
     end, so it never reads a later answer of the session as the same end.
     """
     from database import boards
@@ -831,12 +830,6 @@ def conclude_explore(req: TurnRequest) -> Concluded:
         return Concluded("skipped")
     rows = _turn_rows(board.owner, session_id, turn_seq)
     base = {"intent_id": req.intent_id, "attempt": req.attempt}
-    asked = [r for r in rows if r["role"] == "tool" and r["tool_name"] == "ask_user"]
-    answers = [r for r in rows if r["role"] == "assistant"]
-    if asked and answers:
-        _submit(board.board_id, request_id, cmd.EXPLORE_END, "explore",
-                {**base, "end": m.EXPLORE_QUESTION, "question": answers[-1]["content"][:2000]})
-        return Concluded("question")
     report, _seq = turn_report(rows, turn_uuid)
     if req.turn_error:
         error = f"the explore turn failed: {req.turn_error}"

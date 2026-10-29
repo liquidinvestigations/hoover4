@@ -5,8 +5,8 @@ A pack is a named set of tool names. Configuration gives the chat run a set of p
 runs and lists in its catalogue only the tools of the run's packs. A tool that an MCP server lists and no pack names is refused
 for every run.
 
-The `skills` pack holds the three skill tools, `ask_user` and the notes tool `write_note` of
-the research agent. The `workspace` pack holds the file tools of the session tool server.
+The `skills` pack holds the three skill tools and the notes tool `write_note` of the research
+agent. The `workspace` pack holds the file tools of the session tool server.
 `packs_for` adds both to every run kind, also when the configured list omits them, because
 the system prompt of every run lists skills that the model can read with `read_skill`, and
 every report goes through the workspace tools.
@@ -31,7 +31,7 @@ INTERNAL_TOOLS = frozenset({"_page_tool_result"})
 
 PACKS: Dict[str, FrozenSet[str]] = {
     "catalogue": frozenset({"search_agent_tools"}),
-    "skills": frozenset({"search_skills", "read_skill", "read_tool", "ask_user", "write_note"}),
+    "skills": frozenset({"search_skills", "read_skill", "read_tool", "write_note"}),
     "collections": frozenset({
         "list_collections", "search_collections", "search_passages", "search_facet_values",
         "search_histogram", "search_entity_explainer", "read_documents", "doc_search_text",

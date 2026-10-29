@@ -4,13 +4,13 @@ import json
 
 import pytest
 
-from agent_common.tool_packs import allowed_tools
+from agent_common.tool_packs import PACKS, allowed_tools
 from research_agent import skill_tools, steps
 from research_agent.skill_store import SkillContext, listed_skills, role_method
 from research_agent.tool_catalogue import build_snapshot
 
 
-LOCAL_TOOLS = {"search_agent_tools", "search_skills", "read_skill", "read_tool", "ask_user"}
+LOCAL_TOOLS = {"search_agent_tools", "search_skills", "read_skill", "read_tool"}
 
 
 class FakeTool:
@@ -95,7 +95,7 @@ def test_each_run_kind_lists_its_tools_and_has_its_role_text(kind, profile):
     assert "read_skill" in snap.callable_names()
     assert "read_tool" in snap.callable_names()
     assert role_method(snap.skill_context)
-    assert "ask_user" in snap.callable_names()
+    assert "ask_user" not in snap.callable_names()
 
 
 async def test_the_role_skill_is_not_listed_and_is_not_read_with_read_skill():
@@ -106,22 +106,11 @@ async def test_the_role_skill_is_not_listed_and_is_not_read_with_read_skill():
     assert status == "error" and json.loads(content)["error"] == "unknown_skill"
 
 
-async def test_ask_user_returns_the_question_and_options():
-    snap = snapshot()
-    status, content = await call(snap, "ask_user", question="Bigger or smaller than 50?",
-                                 options=["bigger", "smaller"])
-    assert status == "success"
-    assert json.loads(content) == {"success": True, "asked": True,
-                                   "question": "Bigger or smaller than 50?",
-                                   "options": ["bigger", "smaller"]}
-
-
-async def test_ask_user_validates_question_and_options():
-    snap = snapshot()
-    with pytest.raises(Exception):
-        await call(snap, "ask_user", options=[])
-    with pytest.raises(Exception):
-        await call(snap, "ask_user", question="Which?", options=["x"] * 7)
+def test_no_pack_and_no_skill_tool_holds_ask_user():
+    """The person question tool is removed, so no run can call it."""
+    assert all("ask_user" not in tools for tools in PACKS.values())
+    assert "ask_user" not in skill_tools.SKILL_TOOLS
+    assert "ask_user" not in skill_tools.DESCRIPTIONS
 
 
 async def test_tool_call_route_needs_no_bound_names():

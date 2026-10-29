@@ -55,7 +55,6 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P_agent.steps import (
         EMPTY_RESPONSE,
         STEP_BUDGET,
-        AskedAnswerParams,
         IncompleteParams,
         ModelStepParams,
         ModelStepResult,
@@ -67,7 +66,6 @@ with workflow.unsafe.imports_passed_through():
         runs_in_browser,
         runs_in_order,
         tool_call,
-        write_asked_answer,
         write_incomplete,
     )
 
@@ -192,7 +190,7 @@ class AgentRun:
     policy batch before the first model step. `tool_batch_completed` follows every batch,
     and its follow-on calls run as one more batch before the next model step. Automatic
     reads follow a model batch only, so after a policy batch the hook can load skills and
-    no more. An answer or a question ends the turn. No hook reviews it and no note starts
+    no more. An answer ends the turn. No hook reviews it and no note starts
     another round: the workspace tools check the citation handles of each file when it is
     written (`tasks/P_workspace`).
 
@@ -295,9 +293,7 @@ class AgentRun:
         """
         while True:
             if pending:
-                asked = await self._run_calls(inp, pending)
-                if asked is not None:
-                    return asked
+                await self._run_calls(inp, pending)
                 after = await self._control(inp, "tool_batch_completed",
                                             anchor_idx=pending[0].ai_idx)
                 if after.closed:
@@ -387,9 +383,8 @@ class AgentRun:
         self._raise_if_stopped()
         return result
 
-    async def _run_calls(self, inp: AgentRunInput, pending: list[CallRef]) -> RunSummary | None:
-        """Run the calls of one reply. Returns the summary of a successful question, or
-        None."""
+    async def _run_calls(self, inp: AgentRunInput, pending: list[CallRef]) -> None:
+        """Run the calls of one reply."""
         ordered = sorted((c for c in pending if runs_in_order(c)), key=lambda c: c.position)
         browser = sorted((c for c in pending if runs_in_browser(c)), key=lambda c: c.position)
         parallel = sorted((c for c in pending if not runs_in_order(c) and not runs_in_browser(c)),
@@ -424,23 +419,8 @@ class AgentRun:
                 tasks[call.call_id] = asyncio.ensure_future(self._tool_call(inp, call))
             else:
                 tasks[call.call_id] = asyncio.ensure_future(shared(call, leader))
-        results = await asyncio.gather(in_order(ordered, False),
-                                       in_order(browser, not page_changes),
-                                       *(tasks[c.call_id] for c in parallel))
-        statuses = results[0] + results[1] + list(zip(parallel, results[2:]))
-        # A successful `ask_user` call ends the turn.
-        asked = next((call for call, status in sorted(statuses, key=lambda pair: pair[0].position)
-                      if call.name == "ask_user" and status == "ok"), None)
-        if asked is not None:
-            next_seq = await workflow.execute_activity(
-                write_asked_answer,
-                AskedAnswerParams(**self._ref_fields(inp), call=asked),
-                start_to_close_timeout=_SHORT_TIMEOUT, heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-                task_queue=CHAT_TASK_QUEUE,
-            )
-            return RunSummary(outcome="answered", next_seq=next_seq, asked=True)
-        return None
+        await asyncio.gather(in_order(ordered, False), in_order(browser, not page_changes),
+                             *(tasks[c.call_id] for c in parallel))
 
     async def _tool_call(self, inp: AgentRunInput, call: CallRef,
                          shared_from: CallRef | None = None) -> str:

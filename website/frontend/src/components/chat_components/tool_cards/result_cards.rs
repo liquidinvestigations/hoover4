@@ -214,8 +214,10 @@ pub fn CiteCard(tool_input: String, tool_output: String, running: bool, doc_refs
     }}
 }
 
+/// A stored question of the removed `ask_user` tool. The options are plain text in every
+/// chat, because no turn waits for an answer.
 #[component]
-pub fn QuestionCard(tool_input: String, tool_output: String, running: bool, draft: Option<Signal<String>>) -> Element {
+pub fn QuestionCard(tool_input: String, tool_output: String, running: bool) -> Element {
     let mut expanded = use_signal(|| true);
     let input = serde_json::from_str::<serde_json::Value>(&tool_input).unwrap_or_default();
     let input = input.get("input").unwrap_or(&input);
@@ -224,9 +226,11 @@ pub fn QuestionCard(tool_input: String, tool_output: String, running: bool, draf
     let failure = tool_content(&tool_output).as_ref().and_then(tool_failure);
     rsx! { CardShell { chip: "Question", label: question, running, expanded, failure, raw_output: tool_output.clone(),
         badges: rsx! {},
-        for (index, option) in options.into_iter().enumerate() {
-            if let Some(answer) = option.as_str() {
-                QuestionOption { key: "{index}", answer: answer.to_string(), draft }
+        ul { class: "x-chat-question-options",
+            for (index, option) in options.into_iter().enumerate() {
+                if let Some(answer) = option.as_str() {
+                    QuestionOption { key: "{index}", answer: answer.to_string() }
+                }
             }
         }
     }}
@@ -342,15 +346,8 @@ pub fn BoardFactSummary(tool_input: String) -> Element {
 }
 
 #[component]
-fn QuestionOption(answer: String, draft: Option<Signal<String>>) -> Element {
-    let chosen = answer.clone();
-    rsx! {
-        button {
-            style: "border: 1px solid; border-color: var(--x-border); background: white; border-radius: 6px; padding: 6px; cursor: pointer;",
-            onclick: move |_| { if let Some(mut draft) = draft { draft.set(chosen.clone()); } },
-            "{answer}"
-        }
-    }
+fn QuestionOption(answer: String) -> Element {
+    rsx! { li { "{answer}" } }
 }
 
 /// The stored arguments of a call, indented, or the stored text when it is not JSON.

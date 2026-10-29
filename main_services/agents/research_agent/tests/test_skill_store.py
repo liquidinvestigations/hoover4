@@ -159,7 +159,9 @@ def test_a_strict_render_of_a_tool_outside_every_pack_raises(tmp_path):
 @pytest.mark.parametrize("profile", PROFILES)
 @pytest.mark.parametrize("name", sorted(load_skills()))
 def test_every_skill_renders_strictly_for_every_profile(profile, name):
-    assert render_skill(name, context(profile), strict=True)
+    text = render_skill(name, context(profile), strict=True)
+    assert text
+    assert "ask_user" not in text
 
 
 # ------------------------------------------------------------------------ equality

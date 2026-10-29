@@ -54,7 +54,7 @@ renders the system prompt of every profile ([research_agent/prompts/__init__.py]
 **The prompt holds the role, lists the rest, and the skills teach.** The prompt holds the
 role line of the profile and the role text of the run kind, which is the rendered role skill
 (`skill_store.role_method`). The run's skills by name and description and the run's tools by
-name and summary follow. A chat run then gets the `ask_user` rule. Every run with
+name and summary follow. A chat run then gets the rule for a note that says web access is unavailable. Every run with
 `write_file` gets the routing text of the `report` skill under "Reports and other
 documents" (`skill_store.report_rules`): a requested report, list, table or draft, and every
 answer with citations, goes into a workspace file, an edit of a report patches that file, and
@@ -461,8 +461,7 @@ request size counts them. Every argument is still validated against the tool's o
 
 **The normalization.** `/model_step` normalizes the arguments of each call to a tool of the
 run before it classifies and returns the call (`classify_calls`), so the stored call, the
-worker's readers of it, such as the question of `ask_user`, and `/tool_call` see the same
-values. `tool_args.normalize_arguments` runs three steps. A second run on its result changes
+worker's readers of it and `/tool_call` see the same values. `tool_args.normalize_arguments` runs three steps. A second run on its result changes
 nothing.
 
 1. `repair_arguments`. The tool call parser of the model server can leave the model's string

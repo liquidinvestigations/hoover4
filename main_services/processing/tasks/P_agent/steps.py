@@ -208,11 +208,6 @@ class ToolCallResult:
 
 
 @dataclass
-class AskedAnswerParams(StepRef):
-    call: Optional[CallRef] = None
-
-
-@dataclass
 class StepFailure(StepRef):
     #: `model` or `tool`.
     step: str = ""
@@ -981,49 +976,6 @@ def tool_call(params: ToolCallParams) -> ToolCallResult:
                 live.close()
 
 
-#: The tools whose successful call ends the turn, and the argument that holds the answer
-#: text.
-TURN_ENDING_TOOLS = {"ask_user": "question"}
-
-
-@activity.defn
-@with_heartbeat
-def write_asked_answer(params: AskedAnswerParams) -> int:
-    """Write the question of a successful `ask_user` call as the turn answer after all
-    calls of its step have run. The question stays visible, and a workspace file that the
-    turn wrote stays in the workspace without becoming the response."""
-    from database import agent_runs
-
-    row = _read_row(params)
-    if agent_runs.is_terminal(row):
-        return row.next_seq
-    messages = _read_thread(row)
-    ai = next((m for m in messages if m.role == "ai" and m.idx == params.call.ai_idx), None)
-    if ai is None or params.call.position >= len(ai.tool_calls):
-        raise RuntimeError(f"run {row.run_id} has no question call")
-    entry = ai.tool_calls[params.call.position]
-    result = _answer_of(messages, params.call.call_id)
-    if result is None or result.usage.get("status") != "ok":
-        raise RuntimeError(f"run {row.run_id} has no successful question result")
-    key = TURN_ENDING_TOOLS.get(str(entry.get("name") or ""), "question")
-    question = str((entry.get("args") or {}).get(key) or "")
-    if not question:
-        raise RuntimeError(f"run {row.run_id} has an empty {key}")
-    if True:
-        # The model that asked, from the usage of the reply, as `write_incomplete` does.
-        metadata = {"citation_status": "none", "tool_scope": ai.usage.get("tool_scope", "documents_only")}
-        ai = replace(ai, usage_json=json.dumps({**ai.usage, **metadata}))
-        agent_runs.write_message(row.username, row.session_id, row.thread_id, row.run_id, ai)
-        _chat_row(row)(row.next_seq, "assistant", content=question,
-                       model=str(ai.usage.get("model") or ""), usage_json=json.dumps(metadata))
-        _finish_stream_rows_from(row.username, row.session_id, params.turn_uuid, row.start_seq)
-        next_seq = row.next_seq + 1
-    else:
-        next_seq = row.next_seq
-    agent_runs.write_run(row, result=question, next_seq=next_seq)
-    return next_seq
-
-
 # ------------------------------------------------------------------ the short activities
 
 
@@ -1143,5 +1095,5 @@ __all__ = [
     "SHARED_MODE", "SHARED_TOOLS", "SHARED_TEXT", "ToolCallParams", "ToolCallResult",
     "complete_result", "pinned_control", "share_key",
     "is_browser_tool", "model_step", "record_step_failure", "runs_in_browser", "runs_in_order",
-    "ToolTransportFailure", "tool_call", "tool_idx", "write_asked_answer", "write_incomplete",
+    "ToolTransportFailure", "tool_call", "tool_idx", "write_incomplete",
 ]

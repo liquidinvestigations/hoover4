@@ -18,7 +18,7 @@ from temporalio.worker import Replayer, Worker
 from tasks.P_agent.activities import AgentRunInput, CallRef, OpenedRun, RunRef, WriteEndingParams
 from tasks.P_agent.control_steps import ControlOutcome, ControlParams
 from tasks.P_agent.steps import (
-    AskedAnswerParams, IncompleteParams, ModelStepParams, ModelStepResult, StepFailure,
+    IncompleteParams, ModelStepParams, ModelStepResult, StepFailure,
     ToolCallParams, ToolCallResult,
 )
 from tasks.P_agent.workflows import (
@@ -88,11 +88,6 @@ async def record_step_failure(params: StepFailure) -> None:
     LOG.append("failure")
 
 
-@activity.defn(name="write_asked_answer")
-async def write_asked_answer(params: AskedAnswerParams) -> int:
-    return 0
-
-
 @activity.defn(name="write_incomplete")
 async def write_incomplete(params: IncompleteParams) -> int:
     return 0
@@ -102,7 +97,7 @@ def _workers(client, executor):
     return [
         Worker(client, task_queue=CHAT_TASK_QUEUE, workflows=[AgentRun],
                activities=[open_run, control_event, write_ending, summarize_if_first_turn,
-                           record_step_failure, write_asked_answer, write_incomplete],
+                           record_step_failure, write_incomplete],
                activity_executor=executor),
         Worker(client, task_queue=CHAT_MODEL_TASK_QUEUE, activities=[model_step, write_followups],
                activity_executor=executor),

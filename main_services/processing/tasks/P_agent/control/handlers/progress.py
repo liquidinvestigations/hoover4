@@ -39,7 +39,8 @@ operation facts before any signal is read.
   first time in the turn that `stuck` or `absent` fires. The advice proposes a method. It
   states no completion and no quota.
 * With `completion` `evidence`, a fired `absent` signal at level 2 or above checks the named
-  things of the preparation in the indexes (`absence.check_names`).
+  things of the preparation in the indexes (`absence.check_names`). The check runs only after
+  a successful `search_collections` or `search_passages` call of the turn.
 
 **Method advice.** A level note names only the search steps of the relevant methods
 (`methods`): the source rules of the task record, the operations of the turn and the source
@@ -327,7 +328,11 @@ class Handler:
             actions.append(Action("end_turn", "progress-end", freeze({"text": "The run ended after repeated searches without progress. " + source_text + "\n\nSearches run:\n" + summary(searches)})))
         absence_records = previous.get("absence_records", [])
         absent_checked = previous.get("absent_checked", False)
-        if completion == "evidence" and level >= 2 and signals["absent"]["fired"] and not absent_checked:
+        # Only a successful document search lets a name check give absence evidence.
+        searched = any(s["status"] == "ok" and s["name"] in ("search_collections", "search_passages")
+                       for s in searches)
+        if (completion == "evidence" and level >= 2 and signals["absent"]["fired"] and searched
+                and not absent_checked):
             names = (context.turn.get("preparation") or {}).get("names", [])
             absence_records = await check_names(names, context, services)
             actions.extend(note_action(absence_records, context))

@@ -423,7 +423,6 @@ class RunSummary:
     #: Empty for an answer. `step_budget` or `empty_response` for a run that stopped
     #: before an answer (`steps.write_incomplete`).
     end_reason: str = ""
-    asked: bool = False
 
 
 @dataclass

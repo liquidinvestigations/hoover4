@@ -196,8 +196,9 @@ cards. The chat text of the answer shows muted under it. When the turn delivered
 files, a Files line under the answer has one button for each file version. A row without
 `reports` shows its `report` only. A later edit of a file does not change an earlier answer.
 A turn that stops before its answer, fails or is cancelled stores the same list on its row,
-and the transcript shows the list there. A turn that asks the person a question shows the
-question, and its files stay in the workspace.
+and the transcript shows the list there. A stored turn of an earlier agent version that asked
+the person a question shows the question with its options as plain text, and its files stay
+in the workspace. A new turn cannot ask the person a question.
 
 A write whose text holds handles only inside code formatting, such as `` `[W1]` ``, links no
 citation. The file is stored, and the result gets a note that names the handle and tells the
@@ -603,7 +604,11 @@ change the shape, change both.
 ### Search progress and classifier traffic
 
 The turn pins capabilities from callable tools and permitted collections. Rules skip when their required tools are unavailable.
-Preparation classifies sources and names. It verifies absent names with indexed counts and suggests a clarification through `ask_user`.
+Preparation classifies sources and names. It verifies absent names with indexed counts.
+For a source choice of `documents`, `both` or `overview`, a note gives each absent name with its indexed close forms and their document counts.
+The note tells the model not to use a close form as the requested name. It names no tool and waits for no person.
+For another source choice, or a failed classifier request, preparation stores no absence record and adds no note.
+A failed name lookup establishes no absence. The progress rule checks names again only after a successful `search_collections` or `search_passages` call.
 Name lookups use the collections of earlier tool calls, or the collections explicitly named in the request before those calls.
 Without either scope, they use all permitted collections. A string collection argument remains one collection name.
 Code also retains names after "folder called", "folder named", "collection called" and "collection named" when the classifier omits them.

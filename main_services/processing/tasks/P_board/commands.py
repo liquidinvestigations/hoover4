@@ -570,10 +570,9 @@ def _explore_end(ctx: Context, body: dict, alloc: Allocator, prepared: Prepared)
     base = {"attempt": attempt, **({"phase": body["phase"]} if body.get("phase") else {})}
     actor = str(body.get("actor") or "explore")
     if end != m.EXPLORE_CONCLUDED:
-        if end not in (m.EXPLORE_FAILED, m.EXPLORE_CANCELLED, m.EXPLORE_QUESTION):
+        if end not in (m.EXPLORE_FAILED, m.EXPLORE_CANCELLED):
             raise Rejected(f"unknown end {end!r}")
-        extra = {"question": str(body.get("question") or "")[:2000]} if end == m.EXPLORE_QUESTION else {
-            "error": str(body.get("error") or "")[:2000]}
+        extra = {"error": str(body.get("error") or "")[:2000]}
         if isinstance(body.get("report"), dict):
             extra["report"] = body["report"]
         _event(ctx, prepared, end, intent_id, {**base, **extra}, f"{end}:{intent_id}:{attempt}", actor=actor)

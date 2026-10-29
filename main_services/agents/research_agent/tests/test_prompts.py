@@ -35,7 +35,7 @@ NOT_TOOLS = frozenset({"in_progress", "done", "cancelled", "pending"})
 
 #: Every tool of a chat run. The `board` pack belongs to board turns only.
 EVERY_TOOL = frozenset().union(*(t for p, t in PACKS.items() if p != "board"))
-LOCAL_TOOLS = {"search_agent_tools", "search_skills", "read_skill", "read_tool", "ask_user", "write_note"}
+LOCAL_TOOLS = {"search_agent_tools", "search_skills", "read_skill", "read_tool", "write_note"}
 
 
 class FakeTool:
@@ -122,7 +122,7 @@ def test_each_role_prompt_renders_for_web_and_collection_state(profile, web, col
     if profile in {"internal_search", "full_research"}:
         assert bool("no document collections" in prompt) is not collections
     assert bool("`web_search`" in prompt) is web
-    assert "`ask_user`" in prompt
+    assert "ask_user" not in prompt
 
 
 def test_every_run_tool_has_one_prompt_line():

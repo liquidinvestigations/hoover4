@@ -617,6 +617,10 @@ fn ChatConversationPanel(
         });
     };
 
+    // A board explore chat links back to its board, with the chat's intent selected.
+    let board_route = common::board_types::board_of_session(&session_id.read())
+        .map(|(board_id, intent_id)| Route::ai_board(board_id, intent_id));
+
     rsx! {
         div {
             style: "height: 100%; flex: 1; min-width: 360px; display: flex; \
@@ -669,8 +673,7 @@ fn ChatConversationPanel(
                 query: find_query,
                 match_index,
                 match_count,
-                board: common::board_types::board_of_session(&session_id.read())
-                    .map(|(board_id, intent_id)| Route::ai_board(board_id, intent_id)),
+                board: board_route.clone(),
             }
             ChatTranscript {
                 messages: messages.read().clone(),
@@ -716,18 +719,30 @@ fn ChatConversationPanel(
                     "{e}"
                 }
             }
-            div { style: "padding: 12px 14px; flex-shrink: 0; position: relative;",
-                ChatComposer {
-                    draft,
-                    options,
-                    sending,
-                    retry_after_seconds: retry_after,
-                    on_submit,
-                    on_stop,
-                    blocked: !gate_open,
+            // The backend refuses every message to a board explore chat, so its page offers
+            // no composer. Every hook of the composer lives inside `ChatComposer`, so the
+            // condition makes no hook of this component conditional.
+            if let Some(board) = board_route {
+                div {
+                    class: "x-chat-board-read-only",
+                    style: "padding: 12px 18px; flex-shrink: 0; font-size: var(--x-text-sm); color: var(--x-ink-muted);",
+                    "Board explore chats are read-only. "
+                    Link { to: board, style: "color: var(--x-link);", "Open the board" }
                 }
-                if let Some(ChatGate::Closed(reason)) = gate_now {
-                    ChatGateOverlay { reason }
+            } else {
+                div { style: "padding: 12px 14px; flex-shrink: 0; position: relative;",
+                    ChatComposer {
+                        draft,
+                        options,
+                        sending,
+                        retry_after_seconds: retry_after,
+                        on_submit,
+                        on_stop,
+                        blocked: !gate_open,
+                    }
+                    if let Some(ChatGate::Closed(reason)) = gate_now {
+                        ChatGateOverlay { reason }
+                    }
                 }
             }
         }
