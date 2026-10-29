@@ -15,6 +15,7 @@ The storage routes show readable collections, their datasets, and nested folder 
 | Open in Search | Open collection search with the current folder restriction. | The folder must resolve to its search identity. |
 | File row | Select the document preview. | Document access applies to the preview request. |
 | Dividers | Resize the sidebar or preview. | Double-click restores the default width. |
+| Upload | Open the upload page. Inside a folder of an upload dataset of the reader, it opens at that folder. | It shows only for a reader with an upload target. |
 
 ## States
 
@@ -38,7 +39,7 @@ Every document read retains collection access checks.
 ## Upload routes
 
 The website receives uploads into the upload dataset of a collection under `/_upload/`.
-No page sends uploads yet. [The receiver](../../../website/backend/src/uploads/) and [the tus handlers](../../../website/backend/src/server_extra/tus.rs) own the contract.
+The upload pages below send them. [The receiver](../../../website/backend/src/uploads/) and [the tus handlers](../../../website/backend/src/server_extra/tus.rs) own the contract.
 Rows `F-store-10` to `F-store-13` of [the feature register](../Features.md) give the statuses of each refusal.
 
 | Route | Behavior | Constraint |
@@ -52,3 +53,47 @@ Rows `F-store-10` to `F-store-13` of [the feature register](../Features.md) give
 A transfer change needs the batch owner and a current upload target: the uploader membership,
 the dataset setting and the writable mount. A removed permission stops new bytes and
 placement. Files that are in the dataset folder stay. Another owner's batch is a `403`.
+
+## Upload pages
+
+[The upload pages](../../../website/frontend/src/pages/uploads/) and [their server functions](../../../website/backend/src/api/uploads_api.rs) own the contract.
+[The upload driver](../../../website/frontend/assets/uploads.js) runs the transfer with the vendored tus-js-client.
+[The user procedure](../../user-manual/User_Manual.md#upload-files-and-folders) explains these tasks.
+Rows `F-store-15` and `F-store-16` of [the feature register](../Features.md) state the behavior.
+
+| Route | Page | Readers |
+|---|---|---|
+| `/upload?collection&folder` | The upload page. | Users with an upload target. |
+| `/uploads?collection` | The batch list. | Uploaders of the listed collections and administrators. |
+| `/uploads/<collection>/<batch_id>?page` | The batch detail. | Uploaders of the collection and administrators. |
+
+| Control | Behavior | Constraint |
+|---|---|---|
+| Destination | Select the upload target. | It is a select only with more than one target. Its value is in the address. |
+| Folder | Select the destination folder in the folder tree of the upload dataset. | The tree reads the structure index without a cache. The folder is in the address. |
+| Drop zone | Add dropped files and folders, or open the file dialog on a click. | The file dialog has no type filter. |
+| Choose a folder | Add a folder with its subfolders. | |
+| File row close | Remove one file from the selection. | The list shows 500 rows and a count of the rest. |
+| Clear | Remove every file from the selection. | |
+| Upload | Send `begin` and start the transfer. | It is disabled with no file and while a page check fails. |
+| Pause, Continue | Stop each transfer after its current chunk, and resume from the server offset. | |
+| Stop upload | End the transfers and commit the batch. | The files that arrived are ingested. |
+| Retry failed files | Send the failed files again. | It shows after a file fails its last retry. |
+| Collection filter | List the batches of one collection or of every readable collection. | The filter is in the address. |
+| Batch row | Open the batch detail. | |
+| Show all | Read the remaining batches in pages of 200. | |
+| Continue upload | Match a new selection with the files of the batch, check the acknowledged bytes and resume. | It shows to the owner of an `uploading` batch. |
+| Folder link | Open the batch folder in Storage. | |
+| Operation link | Open the operation of the batch. | It shows to administrators. |
+| Indexed path | Open the document view. | |
+| Page buttons | Open the previous or next 200 files of the file table. | The page is in the address. |
+
+| State | Display |
+|---|---|
+| No upload target | "You cannot upload into any collection." |
+| Two upload datasets | "This collection has two upload datasets. An administrator must disable one." |
+| Page check failure | The files that break a rule with the rule, and each batch limit that the selection exceeds. |
+| `begin` refusal | The files and rules, or the existing paths under "These paths exist in the folder:". |
+| Transfer | A bar of acknowledged bytes, the acknowledged bytes and files, and at most 3 files in transfer. |
+| Running batch | The detail page reads the counts again every 3 seconds until the state is terminal. |
+| No history access | The batch pages show the refusal. |

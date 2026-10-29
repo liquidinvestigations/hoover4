@@ -31,6 +31,7 @@ use crate::pages::not_found_page::NotFoundPage;
 use crate::pages::search_page::SearchPage;
 use crate::pages::view_document_page::ViewDocumentPage;
 use crate::pages::signal_terms::SignalTermsPage;
+use crate::pages::uploads::{UploadBatchPage, UploadPage, UploadsPage};
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
@@ -109,6 +110,19 @@ pub enum Route {
         selected_result_hash: UrlParam<Option<DocumentIdentifier>>,
         doc_viewer_state: UrlParam<Option<DocViewerState>>,
     },
+
+    // The upload page. Both values may be empty: an empty collection selects the first
+    // upload target, and an empty folder is the dataset root.
+    #[route("/upload?:collection&:folder")]
+    UploadPage { collection: String, folder: String },
+
+    // The batch list. It must be declared before the batch detail.
+    #[route("/uploads?:collection")]
+    UploadsPage { collection: String },
+
+    // `page` is the page of the file table, 0 when absent.
+    #[route("/uploads/:collection/:batch_id?:page")]
+    UploadBatchPage { collection: String, batch_id: String, page: u32 },
 
     #[route("/red_flag_terms")]
     SignalTermsPage {},

@@ -683,6 +683,41 @@ filter:
 
 <br clear="right">
 
+### Upload files and folders.
+
+An administrator can let you upload into a collection.
+The administrator turns on uploads for one dataset of the collection, and marks your group membership as uploader.
+Then the breadcrumb bar of Storage shows **Upload** at its right end.
+Inside a folder of the upload dataset, **Upload** opens the upload page at that folder.
+
+1. Choose the collection in **Destination** when you can upload into more than one.
+2. Choose the destination folder in **Folder**.
+3. Drop files or folders on the drop zone, or click the drop zone to choose files.
+   **Choose a folder** selects a whole folder with its subfolders.
+4. Read the list of files. The page lists the files that cannot be uploaded and the rule each one breaks.
+   Remove those files with the close icon of their row, or use **Clear** and choose again.
+5. Select **Upload**. The page checks the destination folder before it sends a byte.
+   A path that exists in the folder stops the upload, and the page lists those paths.
+
+A dialog shows the progress. **Pause** stops after the current part of each file, and **Continue** goes on.
+**Stop upload** ends the transfer. The files that arrived are kept and processed, and the rest are marked not sent.
+A file that fails after the automatic retries is listed with its error, and **Retry failed files** sends it again.
+The browser asks before you close the tab while files are in transfer.
+
+After the last file, the detail page of the upload opens.
+It shows the state of the upload, the counts of ingested, indexed and failed files, and one row for each file.
+The page updates every 3 seconds until processing ends.
+An indexed file opens the document view.
+
+If the tab closed during a transfer, open the upload from the **Uploads** link of the upload page, and select **Continue upload**.
+Choose the same files or the same folder again.
+The page matches each file by path, size and modification time, compares the bytes that the server already has, and sends the rest.
+A file that changed since the first transfer is listed and not sent.
+
+**Uploads** lists every upload into your upload collections, newest first, with the account that sent it.
+An upload that gets no new bytes for 24 hours, the default, ends automatically, and the files that arrived are processed.
+You cannot delete an uploaded file from these pages.
+
 ---
 
 

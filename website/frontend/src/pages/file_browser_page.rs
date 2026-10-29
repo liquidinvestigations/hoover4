@@ -26,6 +26,7 @@ use common::vfs::{VfsNodeKind, VfsTreeNode, make_node_key};
 use crate::data_definitions::doc_viewer_state::DocViewerState;
 use crate::data_definitions::url_param::UrlParam;
 use crate::pages::search_page::DocViewerStateControl;
+use crate::pages::uploads::upload_button::UploadButton;
 use crate::routes::Route;
 
 // ---------- Style constants ----------
@@ -278,6 +279,7 @@ pub fn FileBrowserCollectionsPage() -> Element {
                     style: BREADCRUMB_BAR_STYLE,
                     span { style: CRUMB_LABEL_STYLE, "Browsing" }
                     span { style: CRUMB_LABEL_STYLE, "Collections" }
+                    UploadButton { dataset: String::new(), folder: String::new() }
                 }
                 {body}
             }
@@ -455,6 +457,7 @@ pub fn FileBrowserCollectionPage(collectionname: String) -> Element {
                     Link { to: Route::FileBrowserCollectionsPage {}, style: CRUMB_LABEL_STYLE, "Browsing" }
                     span { style: CRUMB_SEP_STYLE, "›" }
                     span { style: CRUMB_LABEL_STYLE, "{name}" }
+                    UploadButton { dataset: String::new(), folder: String::new() }
                 }
                 {body}
             }
@@ -829,6 +832,8 @@ fn Breadcrumbs(collection: ReadSignal<String>, path: ReadSignal<PathDescriptor>,
     let crumbs = collapse_duplicate_crumbs(crumbs);
 
     let hidden = elide_crumbs(crumbs.len());
+    // The upload page opens at this folder only outside archives and emails.
+    let upload_folder = if path().container_hash.is_empty() { path().path } else { String::new() };
     let collapsed: Vec<Crumb> = crumbs[..hidden].to_vec();
     let visible: Vec<Crumb> = crumbs[hidden..].to_vec();
 
@@ -906,6 +911,7 @@ fn Breadcrumbs(collection: ReadSignal<String>, path: ReadSignal<PathDescriptor>,
                 }
             }
         }
+        UploadButton { dataset: collection(), folder: upload_folder }
         }
     }
 }

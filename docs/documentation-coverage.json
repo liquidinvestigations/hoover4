@@ -844,7 +844,7 @@
         "website/Readme.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "No page sends uploads yet. The receiver routes have unit tests and a tus-js-client check against the local website."
+      "no_screenshot_reason": "The upload pages of F-store-15 send these requests, and the manual has no published upload screenshot yet. The receiver routes have unit tests and a tus-js-client check against the local website."
     },
     {
       "id": "F-store-11",
@@ -858,7 +858,7 @@
         "website/Readme.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "No page sends uploads yet. The receiver routes have unit tests and a tus-js-client check against the local website."
+      "no_screenshot_reason": "The upload pages of F-store-15 send these requests, and the manual has no published upload screenshot yet. The receiver routes have unit tests and a tus-js-client check against the local website."
     },
     {
       "id": "F-store-12",
@@ -871,7 +871,7 @@
         "website/Readme.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "No page sends uploads yet. The receiver routes have unit tests and a tus-js-client check against the local website."
+      "no_screenshot_reason": "The upload pages of F-store-15 send these requests, and the manual has no published upload screenshot yet. The receiver routes have unit tests and a tus-js-client check against the local website."
     },
     {
       "id": "F-store-13",
@@ -885,7 +885,7 @@
         "docs/operations/Configuration_Reference.md"
       ],
       "audience": "user",
-      "no_screenshot_reason": "No page sends uploads yet. The receiver routes have unit tests and a tus-js-client check against the local website."
+      "no_screenshot_reason": "The upload pages of F-store-15 send these requests, and the manual has no published upload screenshot yet. The receiver routes have unit tests and a tus-js-client check against the local website."
     },
     {
       "id": "F-store-14",
@@ -897,7 +897,35 @@
         "docs/technical-specification/Capability_Contracts.md#f-store-14"
       ],
       "audience": "operator",
-      "no_screenshot_reason": "No page sends uploads yet. A receiver unit test covers the stop after a deletion and a purge."
+      "no_screenshot_reason": "The upload pages of F-store-15 send these requests, and the manual has no published upload screenshot yet. A receiver unit test covers the stop after a deletion and a purge."
+    },
+    {
+      "id": "F-store-15",
+      "source": [
+        "website/frontend/src/pages/uploads/upload_page.rs",
+        "website/frontend/assets/uploads.js"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#upload-files-and-folders",
+        "docs/technical-specification/interface/Storage.md",
+        "docs/technical-specification/Capability_Contracts.md#f-store-15"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "The manual has no published upload screenshot yet. A local browser walk of the upload pages on the local stack keeps its captures with the work record."
+    },
+    {
+      "id": "F-store-16",
+      "source": [
+        "website/backend/src/api/uploads_api.rs",
+        "website/frontend/src/pages/uploads/batch_detail.rs"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#upload-files-and-folders",
+        "docs/technical-specification/interface/Storage.md",
+        "docs/technical-specification/Capability_Contracts.md#f-store-16"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "The manual has no published upload screenshot yet. A local browser walk of the upload pages on the local stack keeps its captures with the work record."
     },
     {
       "id": "F-qa-01",
@@ -2829,6 +2857,9 @@
     "/admin/llm": "docs/user-manual/Admin_Manual.md",
     "/admin/ai_status": "docs/user-manual/Admin_Manual.md",
     "/admin/metrics": "docs/user-manual/Admin_Manual.md",
-    "/:..segments": "docs/user-manual/User_Manual.md"
+    "/:..segments": "docs/user-manual/User_Manual.md",
+    "/upload?:collection&:folder": "docs/user-manual/User_Manual.md#upload-files-and-folders",
+    "/uploads?:collection": "docs/user-manual/User_Manual.md#upload-files-and-folders",
+    "/uploads/:collection/:batch_id?:page": "docs/user-manual/User_Manual.md#upload-files-and-folders"
   }
 }

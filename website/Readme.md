@@ -160,6 +160,13 @@ Every tus request needs `Tus-Resumable: 1.0.0` and `X-Hoover-Upload: 1`. `begin`
 another owner's batch is a `403`. The `dx serve` development proxy answers `OPTIONS` itself, so
 the tus discovery headers come only from the server process.
 
+The pages `/upload`, `/uploads` and `/uploads/<collection>/<batch_id>` in
+[frontend/src/pages/uploads/](frontend/src/pages/uploads) send these requests through
+[frontend/assets/uploads.js](frontend/assets/uploads.js). That script uses tus-js-client 4.3.1,
+vendored as `frontend/assets/vendor/tus.min.js`. [frontend/assets/vendor/Readme.md](frontend/assets/vendor/Readme.md)
+records its source and SHA-256. The pages read through the server functions of
+[backend/src/api/uploads_api.rs](backend/src/api/uploads_api.rs).
+
 ## Testing
 
 | what | how |
