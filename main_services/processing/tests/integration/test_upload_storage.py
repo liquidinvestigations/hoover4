@@ -190,9 +190,10 @@ def _evidence_rows(client, dataset):
         [dataset, "hz", "/m2.txt", "hm2", "s", 1, datetime(2026, 1, 1), "archive", datetime(2026, 1, 1), 0],
     ], column_names=["collection_dataset", "container_hash", "path", "hash", "user_id",
                      "file_size_bytes", "mtime", "mtime_source", "updated_at", "is_deleted"])
+    # The archive is a `container` node (kind 2), as the tree build writes it.
     client.insert("vfs_nodes", [
-        [dataset, "", p, dataset + p, dataset + "/in", 1, h, 1, 2, datetime(2026, 1, 1), 0, 1, 1]
-        for p, h in (("/in/a.txt", "ha"), ("/in/z.zip", "hz"), ("/in/copy.txt", "ha"))
+        [dataset, "", p, dataset + p, dataset + "/in", kind, h, 1, 2, datetime(2026, 1, 1), 0, 1, 1]
+        for p, h, kind in (("/in/a.txt", "ha", 1), ("/in/z.zip", "hz", 2), ("/in/copy.txt", "ha", 1))
     ], column_names=["collection_dataset", "container_hash", "path", "node_key", "parent_key",
                      "kind", "file_hash", "file_size_bytes", "depth", "updated_at",
                      "subfolder_count", "subtree_file_count", "subtree_size_bytes"])

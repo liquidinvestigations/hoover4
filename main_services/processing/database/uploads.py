@@ -374,7 +374,10 @@ def current_error_hashes(client, upload_dataset: str, hashes: list[str]) -> set[
 
 
 def _published(client, upload_dataset: str, paths: list[str]) -> tuple[dict[str, str], set[str]]:
-    """Live top-level `vfs_files` hashes and the `vfs_nodes` file paths of the given paths."""
+    """Live top-level `vfs_files` hashes and the `vfs_nodes` paths of the given paths.
+
+    An uploaded archive or email has a node of kind `container`, so both kinds count.
+    """
     if not paths:
         return {}, set()
     vfs = client.query(
@@ -386,7 +389,8 @@ def _published(client, upload_dataset: str, paths: list[str]) -> tuple[dict[str,
     ).result_rows
     nodes = client.query(
         "SELECT DISTINCT path FROM vfs_nodes FINAL "
-        "WHERE collection_dataset = {ds:String} AND container_hash = '' AND kind = 'file' "
+        "WHERE collection_dataset = {ds:String} AND container_hash = '' "
+        "AND kind IN ('file', 'container') "
         "AND path IN (SELECT path FROM lookup_paths)",
         parameters={"ds": upload_dataset},
         external_data=_string_table("lookup_paths", "path", paths),
