@@ -62,6 +62,7 @@ pub async fn admin_get_user(user: &CurrentUser, username: String) -> anyhow::Res
             .map(|m| AdminMembershipItem {
                 groupname: m.groupname,
                 is_group_admin: m.is_group_admin,
+                is_uploader: m.is_uploader == 1,
                 origin: m.origin,
             })
             .collect(),

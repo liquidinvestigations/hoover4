@@ -10,6 +10,10 @@
 //!   button on the form is courtesy. Two admins in two browsers are stopped by the
 //!   non-terminal `operations` row, which is the same row the status strip polls, so
 //!   what refuses the second admin is exactly what the first one can see.
+//! * **One upload dataset per collection.** `uploads_enabled` is refused for a dataset whose
+//!   folder is not beneath a writable mount, and while another live dataset of the
+//!   collection has it. The check and the write hold the upload setting lock of the
+//!   collection (`db_auth::uploads::lock_upload_setting`), at creation and at each change.
 //! * **The creation form never takes a path.** It takes a mount name and a folder *name*.
 //!   The folder is validated against the listing of that mount and joined server-side. A
 //!   free-text path in a browser form is a way to point the ingest walker at any
@@ -19,7 +23,7 @@ use std::time::Duration;
 
 use common::admin_types::{
     DatasetFolderOption, DatasetMountOption, DatasetOcrPanel, DatasetOperationStatus, DatasetPdfVariant,
-    DatasetTextVariant,
+    DatasetTextVariant, DatasetUploadsSetting,
 };
 use common::current_user::CurrentUser;
 use common::storage_tree::compose_collection_dataset;
@@ -28,6 +32,7 @@ use time::format_description::well_known::Rfc3339;
 use crate::api::admin::operations;
 use crate::dataset_mounts::{self, is_safe_folder_name, DatasetMount};
 use crate::auth::guard;
+use crate::db_auth::uploads::{self, KEY_UPLOADS_ENABLED};
 use crate::db_utils::clickhouse_utils::{
     collection_db_name, get_collection_client, get_global_client,
 };
@@ -474,6 +479,122 @@ pub async fn admin_set_collection_ocr_defaults(
 }
 
 // ---------------------------------------------------------------------------
+// The upload dataset setting
+// ---------------------------------------------------------------------------
+
+/// The refusal of `uploads_enabled = true` for a dataset, or `None` when the setting may
+/// be written. `others` lists the other live datasets of the collection that have it.
+fn upload_refusal(
+    collection_dataset: &str,
+    dataset_type: &str,
+    writable_mount: bool,
+    others: &[String],
+) -> Option<String> {
+    if dataset_type != "disk" {
+        return Some(format!(
+            "{collection_dataset} is not a disk dataset, so it cannot accept uploads."
+        ));
+    }
+    if !writable_mount {
+        return Some(format!(
+            "The folder of {collection_dataset} is not in a writable dataset mount, so it cannot accept uploads."
+        ));
+    }
+    match others {
+        [] => None,
+        [other] => Some(format!(
+            "{other} already accepts uploads. A collection can have one upload dataset."
+        )),
+        many => Some(format!(
+            "The datasets {} already accept uploads. A collection can have one upload dataset. \
+             Turn off Accept uploads on all of them but one.",
+            many.join(", ")
+        )),
+    }
+}
+
+/// True when the dataset folder opens beneath a writable mount of `mounts`.
+async fn opens_in_writable_mount(
+    mounts: &[DatasetMount],
+    dataset_path: &str,
+) -> anyhow::Result<bool> {
+    let mounts = mounts.to_vec();
+    let path = dataset_path.to_string();
+    dataset_mounts::blocking(move || Ok(uploads::open_dataset_folder(&mounts, &path).is_ok())).await
+}
+
+/// Write `uploads_enabled` for a dataset, with the mounts in `mounts`. Turning it off is
+/// always accepted, so an administrator can clear a conflict. Turning it on holds the
+/// upload setting lock of the collection from the check to the write.
+pub async fn set_uploads_enabled(
+    collection_dataset: &str,
+    on: bool,
+    mounts: &[DatasetMount],
+) -> anyhow::Result<()> {
+    let facts = uploads::dataset_upload_facts(collection_dataset)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("dataset not found"))?;
+    let _guard = uploads::lock_upload_setting(&facts.collectionname).await;
+    if on {
+        let writable = facts.dataset_type == "disk"
+            && opens_in_writable_mount(mounts, &facts.dataset_path).await?;
+        let others: Vec<String> = uploads::upload_datasets_of_collection(&facts.collectionname)
+            .await?
+            .into_iter()
+            .filter(|d| d != collection_dataset)
+            .collect();
+        if let Some(refusal) = upload_refusal(collection_dataset, &facts.dataset_type, writable, &others) {
+            return Err(guard::InvalidInput(refusal).into());
+        }
+    }
+    write_setting(collection_dataset, KEY_UPLOADS_ENABLED, if on { "true" } else { "false" }).await
+}
+
+/// Turn "Accept uploads" on or off for a dataset.
+pub async fn admin_set_dataset_uploads(
+    user: &CurrentUser,
+    collection_dataset: String,
+    on: bool,
+) -> anyhow::Result<()> {
+    guard::require_admin(user)?;
+    set_uploads_enabled(&collection_dataset, on, &dataset_mounts::dataset_mounts()?).await
+}
+
+/// The upload setting of a dataset, for the dataset page.
+pub async fn admin_get_dataset_uploads(
+    user: &CurrentUser,
+    collection_dataset: String,
+) -> anyhow::Result<DatasetUploadsSetting> {
+    guard::require_admin(user)?;
+    let facts = uploads::dataset_upload_facts(&collection_dataset)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("dataset not found"))?;
+    let writable_mount = facts.dataset_type == "disk"
+        && opens_in_writable_mount(&dataset_mounts::dataset_mounts()?, &facts.dataset_path).await?;
+    let enabled = read_setting(&collection_dataset, KEY_UPLOADS_ENABLED).await?.as_deref() == Some("true");
+    let other_upload_datasets = uploads::upload_datasets_of_collection(&facts.collectionname)
+        .await?
+        .into_iter()
+        .filter(|d| d != &collection_dataset)
+        .collect();
+    Ok(DatasetUploadsSetting {
+        writable_mount,
+        enabled,
+        other_upload_datasets,
+    })
+}
+
+/// The live datasets of a collection that accept uploads, for the creation form.
+pub async fn admin_list_collection_upload_datasets(
+    user: &CurrentUser,
+    collectionname: String,
+) -> anyhow::Result<Vec<String>> {
+    guard::require_admin(user)?;
+    collection_db_name(&collectionname)?;
+    uploads::upload_datasets_of_collection(&collectionname).await
+}
+
+// ---------------------------------------------------------------------------
 // Dataset creation
 // ---------------------------------------------------------------------------
 
@@ -563,6 +684,12 @@ pub async fn admin_create_dataset_folder(
 ///
 /// With `new_folder` the server creates the folder in a writable mount after every other
 /// field is valid. Without it the folder must be in the listing of the mount.
+///
+/// With `accept_uploads` the dataset becomes the upload dataset of the collection. The
+/// mount must be writable, and no other live dataset of the collection may accept uploads.
+/// The upload setting lock of the collection is held from that check until the setting
+/// is written. Without it, a stored `true` of an earlier dataset with the same id is
+/// written `false`.
 #[allow(clippy::too_many_arguments)]
 pub async fn admin_create_dataset(
     user: &CurrentUser,
@@ -573,12 +700,20 @@ pub async fn admin_create_dataset(
     dataset_name: String,
     tesseract_languages: String,
     easyocr_languages: String,
+    accept_uploads: bool,
 ) -> anyhow::Result<String> {
     guard::require_admin(user)?;
     collection_db_name(&collectionname)?;
     let mount = dataset_mounts::mount_named(&mount_name)?;
     if new_folder {
         dataset_mounts::require_writable(&mount)?;
+    }
+    if accept_uploads && !mount.writable {
+        return Err(guard::InvalidInput(format!(
+            "The dataset mount {} is read-only, so a dataset in it cannot accept uploads.",
+            mount.name
+        ))
+        .into());
     }
 
     if !is_safe_folder_name(&folder_name) {
@@ -608,6 +743,14 @@ pub async fn admin_create_dataset(
 
     let tesseract = validate_languages(&tesseract_languages, "Tesseract languages")?;
     let easyocr = validate_languages(&easyocr_languages, "EasyOCR languages")?;
+
+    let upload_guard = uploads::lock_upload_setting(&collectionname).await;
+    if accept_uploads {
+        let others = uploads::upload_datasets_of_collection(&collectionname).await?;
+        if let Some(refusal) = upload_refusal(&collection_dataset, "disk", true, &others) {
+            return Err(guard::InvalidInput(refusal).into());
+        }
+    }
 
     if new_folder {
         admin_create_dataset_folder(user, mount_name.clone(), folder_name.clone()).await?;
@@ -659,6 +802,12 @@ pub async fn admin_create_dataset(
 
     write_setting(&collection_dataset, KEY_TESSERACT_LANGUAGES, &tesseract).await?;
     write_setting(&collection_dataset, KEY_EASYOCR_LANGUAGES, &easyocr).await?;
+    if accept_uploads {
+        write_setting(&collection_dataset, KEY_UPLOADS_ENABLED, "true").await?;
+    } else if read_setting(&collection_dataset, KEY_UPLOADS_ENABLED).await?.as_deref() == Some("true") {
+        write_setting(&collection_dataset, KEY_UPLOADS_ENABLED, "false").await?;
+    }
+    drop(upload_guard);
 
     // Not a rescan: that only walks the disk and leaves the dataset scanned but
     // unprocessed, which reads as finished and is not. `add_dataset` sequences the three
@@ -717,6 +866,19 @@ mod tests {
             writable: true,
         };
         assert_eq!(dataset_path(&mount, "case 7"), "/uploads/case 7");
+    }
+
+    #[test]
+    fn uploads_need_a_disk_dataset_in_a_writable_mount_and_no_other_upload_dataset() {
+        assert_eq!(upload_refusal("c_a", "disk", true, &[]), None);
+        let read_only = upload_refusal("c_a", "disk", false, &[]).unwrap();
+        assert!(read_only.contains("not in a writable dataset mount"), "{read_only}");
+        let not_disk = upload_refusal("c_a", "s3", true, &[]).unwrap();
+        assert!(not_disk.contains("not a disk dataset"), "{not_disk}");
+        let second = upload_refusal("c_b", "disk", true, &["c_a".to_string()]).unwrap();
+        assert!(second.starts_with("c_a already accepts uploads"), "{second}");
+        let conflict = upload_refusal("c_c", "disk", true, &["c_a".to_string(), "c_b".to_string()]).unwrap();
+        assert!(conflict.contains("c_a, c_b"), "{conflict}");
     }
 
     #[test]

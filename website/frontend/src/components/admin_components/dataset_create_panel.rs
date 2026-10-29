@@ -2,7 +2,9 @@
 //!
 //! The admin picks a mount and then a folder directly beneath it. The admin can also name a
 //! new folder in a writable mount, and the server creates it when the form is sent. The
-//! panel shows no mount select when only one mount is configured.
+//! panel shows no mount select when only one mount is configured. "Accept uploads" shows
+//! only for a writable mount, and it is disabled while another dataset of the collection
+//! accepts uploads. The server checks both rules again.
 //!
 //! Datasets were CLI-only until this panel: `main.py add-disk-dataset`. The reason it is
 //! a *picker* rather than a path box is the same reason the backend re-validates the name
@@ -19,8 +21,8 @@ use dioxus::prelude::*;
 use common::admin_types::{DatasetFolderOption, DatasetMountOption};
 
 use crate::api::admin_api::{
-    admin_create_dataset, admin_get_collection_ocr_defaults, admin_list_dataset_folders,
-    admin_list_dataset_mounts, admin_set_collection_ocr_defaults,
+    admin_create_dataset, admin_get_collection_ocr_defaults, admin_list_collection_upload_datasets,
+    admin_list_dataset_folders, admin_list_dataset_mounts, admin_set_collection_ocr_defaults,
 };
 
 /// The value of the folder option that asks for a new folder. It holds a `/`, so no
@@ -71,6 +73,10 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
     });
     let for_defaults = collectionname.clone();
     let mut defaults_res = use_resource(move || admin_get_collection_ocr_defaults(for_defaults.clone()));
+    let for_uploads = collectionname.clone();
+    let mut upload_datasets_res =
+        use_resource(move || admin_list_collection_upload_datasets(for_uploads.clone()));
+    let mut accept_uploads = use_signal(|| false);
 
     let mut folder = use_signal(String::new);
     let mut new_folder_name = use_signal(String::new);
@@ -131,6 +137,23 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
         .read()
         .as_ref()
         .and_then(|r| r.as_ref().err().map(|e| e.to_string()));
+
+    let upload_datasets: Vec<String> = upload_datasets_res
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .cloned()
+        .unwrap_or_default();
+    let upload_datasets_error = upload_datasets_res
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().err().map(|e| e.to_string()));
+    let uploads_taken = !upload_datasets.is_empty();
+    let accept_value = *accept_uploads.read() && mount_writable && !uploads_taken;
+    let uploads_taken_note = match upload_datasets.as_slice() {
+        [one] => format!("{one} already accepts uploads."),
+        many => format!("{} already accept uploads.", many.join(", ")),
+    };
 
     let chosen = folder.read().clone();
     let creating_folder = chosen == NEW_FOLDER;
@@ -256,6 +279,23 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
                         "Use lowercase letters, digits and underscores. The name cannot change later."
                     }
 
+                    if mount_writable {
+                        label { style: LABEL,
+                            input {
+                                r#type: "checkbox",
+                                checked: accept_value,
+                                disabled: uploads_taken || upload_datasets_error.is_some(),
+                                onchange: move |e| accept_uploads.set(e.checked()),
+                            }
+                            "Accept uploads"
+                        }
+                        if let Some(err) = upload_datasets_error.clone() {
+                            p { style: "{HELP_TEXT} margin: 0;", "The upload datasets of this collection could not be read: {err}" }
+                        } else if uploads_taken {
+                            p { style: "{HELP_TEXT} margin: 0;", "{uploads_taken_note}" }
+                        }
+                    }
+
                     label { style: LABEL,
                         span { style: "width: 130px; color: var(--x-ink-muted);", "Tesseract" }
                         input {
@@ -323,11 +363,12 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
                                     let name = dataset_name.read().clone();
                                     let tess = tesseract.read().clone();
                                     let easy = easyocr.read().clone();
+                                    let accept = accept_value;
                                     submitting.set(true);
                                     spawn(async move {
                                         msg.set(None);
                                         error_msg.set(None);
-                                        match admin_create_dataset(collectionname, mount_name, folder_value, creating_folder, name, tess, easy).await {
+                                        match admin_create_dataset(collectionname, mount_name, folder_value, creating_folder, name, tess, easy, accept).await {
                                             Ok(collection_dataset) => {
                                                 msg.set(Some(format!(
                                                     "Created {collection_dataset}. Ingestion has started. \
@@ -336,7 +377,9 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
                                                 folder.set(String::new());
                                                 new_folder_name.set(String::new());
                                                 dataset_name.set(String::new());
+                                                accept_uploads.set(false);
                                                 folders_res.restart();
+                                                upload_datasets_res.restart();
                                                 on_created.call(collection_dataset);
                                             }
                                             Err(e) => error_msg.set(Some(e.to_string())),

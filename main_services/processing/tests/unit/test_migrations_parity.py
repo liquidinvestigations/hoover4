@@ -137,6 +137,8 @@ EXPECTED_COLLECTION_TABLES = {
     "text_content",
     "text_storage_ready",
     "tika_metadata",
+    "upload_batches",
+    "upload_files",
     "vfs_directories",
     "vfs_files",
     "vfs_nodes",

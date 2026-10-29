@@ -596,15 +596,7 @@ async fn permissions_restrict_search_to_granted_collections() {
     })
     .await
     .unwrap();
-    groups::upsert_membership(groups::MembershipRow {
-        username: username.clone(),
-        groupname: groupname.clone(),
-        is_group_admin: false,
-        origin: "test".to_string(),
-        created_at: now,
-        updated_at: now,
-        is_deleted: 0,
-    })
+    groups::add_membership(&username, &groupname, "test", false)
     .await
     .unwrap();
     db_collections::grant_permission(&groupname, "other").await.unwrap();
@@ -1029,15 +1021,7 @@ async fn vfs_endpoints_respect_permissions() {
     })
     .await
     .unwrap();
-    groups::upsert_membership(groups::MembershipRow {
-        username: username.clone(),
-        groupname: groupname.clone(),
-        is_group_admin: false,
-        origin: "test".to_string(),
-        created_at: now,
-        updated_at: now,
-        is_deleted: 0,
-    })
+    groups::add_membership(&username, &groupname, "test", false)
     .await
     .unwrap();
     db_collections::grant_permission(&groupname, "other").await.unwrap();
@@ -3749,4 +3733,398 @@ async fn backward_steps_over_obsolete_index_rows_keep_their_boundary_until_the_s
     write_obsolete_continuation_rows().await;
     let _budget = Budget::start("backward_steps_over_obsolete_index_rows_keep_their_boundary_until_the_stored_match");
     step_over_obsolete_rows(P65_CONTINUATION_LAST, MatchDirection::Backward, 1).await;
+}
+
+// ---------------------------------------------------------------------------
+// Upload permission and membership flags, against the live global database.
+//
+// Each test writes rows with unique names. These are users, a group, collection rows
+// without a collection database, dataset rows in a temporary writable mount, and
+// `uploads_enabled` settings. The test soft-deletes them at the end. Settings rows of the unique
+// dataset ids stay, as every soft delete leaves its tombstone.
+// ---------------------------------------------------------------------------
+
+mod upload_permission {
+    use backend::api::admin::{dataset_ocr, groups as admin_groups};
+    use backend::dataset_mounts::DatasetMount;
+    use backend::db_auth::{collections as db_collections, groups, uploads, users};
+    use backend::db_utils::clickhouse_utils::get_global_client;
+    use common::current_user::CurrentUser;
+
+    fn suffix() -> String {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        format!("{}", nanos % 1_000_000_000_000)
+    }
+
+    fn caller(username: &str, is_admin: bool) -> CurrentUser {
+        CurrentUser {
+            username: username.to_string(),
+            fullname: String::new(),
+            email: String::new(),
+            is_admin,
+            groups: vec![],
+        }
+    }
+
+    async fn add_user(username: &str, is_admin: bool) {
+        let now = time::OffsetDateTime::now_utc();
+        users::upsert_user(users::UserRow {
+            username: username.to_string(),
+            fullname: "upload permission test".to_string(),
+            email: String::new(),
+            is_admin,
+            created_at: now,
+            updated_at: now,
+            is_deleted: 0,
+        })
+        .await
+        .unwrap();
+    }
+
+    async fn add_group(groupname: &str) {
+        let now = time::OffsetDateTime::now_utc();
+        groups::upsert_group(groups::GroupRow {
+            groupname: groupname.to_string(),
+            fullname: "upload permission test".to_string(),
+            created_at: now,
+            updated_at: now,
+            is_deleted: 0,
+        })
+        .await
+        .unwrap();
+    }
+
+    async fn set_collection(collectionname: &str, is_public: bool, is_deleted: u8) {
+        let now = time::OffsetDateTime::now_utc();
+        let row = db_collections::CollectionRow {
+            collectionname: collectionname.to_string(),
+            fullname: "upload permission test".to_string(),
+            created_at: now,
+            updated_at: now,
+            is_deleted: 0,
+            is_public: u8::from(is_public),
+        };
+        if is_deleted == 1 {
+            db_collections::soft_delete_collection(collectionname).await.unwrap();
+        } else {
+            db_collections::upsert_collection(row).await.unwrap();
+        }
+    }
+
+    #[derive(clickhouse::Row, serde::Serialize)]
+    struct DatasetRow {
+        collection_dataset: String,
+        collectionname: String,
+        dataset_name: String,
+        dataset_display_name: String,
+        dataset_type: String,
+        dataset_path: String,
+        dataset_access_json: Option<String>,
+        user_id: String,
+        #[serde(with = "clickhouse::serde::time::datetime")]
+        date_created: time::OffsetDateTime,
+        #[serde(with = "clickhouse::serde::time::datetime")]
+        date_modified: time::OffsetDateTime,
+        is_deleted: u8,
+    }
+
+    /// Write a disk dataset row. `is_deleted = 1` writes its tombstone one second later.
+    async fn set_dataset(collectionname: &str, name: &str, path: &str, is_deleted: u8) -> String {
+        let collection_dataset = format!("{collectionname}_{name}");
+        let now = time::OffsetDateTime::now_utc() + time::Duration::seconds(i64::from(is_deleted));
+        let client = get_global_client();
+        let mut insert = client.insert::<DatasetRow>("dataset").await.unwrap();
+        insert
+            .write(&DatasetRow {
+                collection_dataset: collection_dataset.clone(),
+                collectionname: collectionname.to_string(),
+                dataset_name: name.to_string(),
+                dataset_display_name: name.to_string(),
+                dataset_type: "disk".to_string(),
+                dataset_path: path.to_string(),
+                dataset_access_json: None,
+                user_id: "upload-permission-test".to_string(),
+                date_created: now,
+                date_modified: now,
+                is_deleted,
+            })
+            .await
+            .unwrap();
+        insert.end().await.unwrap();
+        collection_dataset
+    }
+
+    /// Write `uploads_enabled = true` without the checks, as a restored backup could.
+    async fn force_enabled(collection_dataset: &str) {
+        #[derive(clickhouse::Row, serde::Serialize)]
+        struct SettingRow {
+            collection_dataset: String,
+            key: String,
+            value: String,
+            #[serde(with = "clickhouse::serde::time::datetime")]
+            updated_at: time::OffsetDateTime,
+            is_deleted: u8,
+            setting_version_us: u64,
+            version_is_precise: u8,
+        }
+        let now = time::OffsetDateTime::now_utc();
+        let client = get_global_client();
+        let mut insert = client.insert::<SettingRow>("dataset_settings").await.unwrap();
+        insert
+            .write(&SettingRow {
+                collection_dataset: collection_dataset.to_string(),
+                key: uploads::KEY_UPLOADS_ENABLED.to_string(),
+                value: "true".to_string(),
+                updated_at: now,
+                is_deleted: 0,
+                setting_version_us: u64::try_from(now.unix_timestamp_nanos() / 1_000).unwrap(),
+                version_is_precise: 1,
+            })
+            .await
+            .unwrap();
+        insert.end().await.unwrap();
+    }
+
+    fn scratch_mount(label: &str) -> (std::path::PathBuf, Vec<DatasetMount>, Vec<DatasetMount>) {
+        let root = std::env::temp_dir().join(format!("hoover4-w6-{label}-{}", suffix()));
+        std::fs::create_dir_all(root.join("a")).unwrap();
+        std::fs::create_dir_all(root.join("b")).unwrap();
+        std::fs::create_dir_all(root.join("p")).unwrap();
+        let mount = DatasetMount {
+            name: "w6test".to_string(),
+            path: root.to_str().unwrap().to_string(),
+            writable: true,
+        };
+        let read_only = DatasetMount { writable: false, ..mount.clone() };
+        (root, vec![mount], vec![read_only])
+    }
+
+    async fn targets(username: &str, mounts: &[DatasetMount]) -> uploads::UploadTargets {
+        uploads::upload_targets_with_mounts(username, mounts.to_vec()).await.unwrap()
+    }
+
+    fn target_datasets(t: &uploads::UploadTargets) -> Vec<String> {
+        t.targets.iter().map(|t| t.collection_dataset.clone()).collect()
+    }
+
+    async fn stored_flags(username: &str, groupname: &str) -> Option<(bool, u8)> {
+        groups::get_membership(username, groupname)
+            .await
+            .unwrap()
+            .map(|m| (m.is_group_admin, m.is_uploader))
+    }
+
+    #[tokio::test]
+    #[ignore = "needs live stack"]
+    async fn upload_permission_matrix() {
+        let s = suffix();
+        let admin = caller(&format!("w6-admin-{s}"), true);
+        let (alice, bob, dave) = (format!("w6-alice-{s}"), format!("w6-bob-{s}"), format!("w6-dave-{s}"));
+        let group = format!("w6-group-{s}");
+        let (coll, public_coll) = (format!("w6t_{s}"), format!("w6p_{s}"));
+        let (root, mounts, read_only) = scratch_mount("matrix");
+        let root_path = root.to_str().unwrap().to_string();
+
+        for (u, is_admin) in [(&alice, false), (&bob, false), (&dave, false), (&admin.username, true)] {
+            add_user(u, is_admin).await;
+        }
+        add_group(&group).await;
+        set_collection(&coll, false, 0).await;
+        set_collection(&public_coll, true, 0).await;
+        db_collections::grant_permission(&group, &coll).await.unwrap();
+        let a = set_dataset(&coll, "a", &format!("{root_path}/a"), 0).await;
+        let b = set_dataset(&coll, "b", &format!("{root_path}/b"), 0).await;
+        let p = set_dataset(&public_coll, "p", &format!("{root_path}/p"), 0).await;
+
+        // A member without the flag is no uploader, and has no history access.
+        admin_groups::admin_add_member(&admin, group.clone(), alice.clone(), false).await.unwrap();
+        admin_groups::admin_add_member(&admin, group.clone(), bob.clone(), false).await.unwrap();
+        assert!(!uploads::can_read_upload_history(&caller(&alice, false), &coll).await.unwrap());
+        admin_groups::admin_set_uploader(&admin, group.clone(), alice.clone(), true).await.unwrap();
+        assert_eq!(stored_flags(&alice, &group).await, Some((false, 1)));
+        // No dataset accepts uploads yet.
+        assert!(targets(&alice, &mounts).await.targets.is_empty());
+        assert!(uploads::can_read_upload_history(&caller(&alice, false), &coll).await.unwrap());
+
+        // A read-only mount refuses the setting. The writable mount accepts it.
+        assert!(dataset_ocr::set_uploads_enabled(&a, true, &read_only).await.is_err());
+        dataset_ocr::set_uploads_enabled(&a, true, &mounts).await.unwrap();
+        dataset_ocr::set_uploads_enabled(&p, true, &mounts).await.unwrap();
+        assert_eq!(target_datasets(&targets(&alice, &mounts).await), vec![a.clone()]);
+        // The same rows with the mount read-only give no target.
+        assert!(targets(&alice, &read_only).await.targets.is_empty());
+        // A second dataset of the collection is refused.
+        let second = dataset_ocr::set_uploads_enabled(&b, true, &mounts).await.unwrap_err();
+        assert!(second.to_string().contains("already accepts uploads"), "{second}");
+
+        // A member without the flag, an administrator without a flagged membership, and a
+        // public collection without a grant give no target.
+        assert!(targets(&bob, &mounts).await.targets.is_empty());
+        assert!(!uploads::can_read_upload_history(&caller(&bob, false), &coll).await.unwrap());
+        assert!(targets(&admin.username, &mounts).await.targets.is_empty());
+        assert!(uploads::can_read_upload_history(&admin, &coll).await.unwrap());
+        assert!(!target_datasets(&targets(&alice, &mounts).await).contains(&p));
+        assert!(!uploads::can_read_upload_history(&caller(&alice, false), &public_coll).await.unwrap());
+
+        // A re-add keeps both flags.
+        admin_groups::admin_set_group_admin(&admin, group.clone(), alice.clone(), true).await.unwrap();
+        admin_groups::admin_add_member(&admin, group.clone(), alice.clone(), false).await.unwrap();
+        assert_eq!(stored_flags(&alice, &group).await, Some((true, 1)));
+
+        // The header sync keeps a manual membership with its flags.
+        groups::sync_header_memberships(&alice, std::slice::from_ref(&group)).await.unwrap();
+        assert_eq!(stored_flags(&alice, &group).await, Some((true, 1)));
+        // A new header membership starts clear, keeps a set flag over a second sync, and
+        // starts clear again after the proxy removes the group and sends it again.
+        groups::sync_header_memberships(&dave, std::slice::from_ref(&group)).await.unwrap();
+        assert_eq!(stored_flags(&dave, &group).await, Some((false, 0)));
+        admin_groups::admin_set_uploader(&admin, group.clone(), dave.clone(), true).await.unwrap();
+        groups::sync_header_memberships(&dave, std::slice::from_ref(&group)).await.unwrap();
+        assert_eq!(stored_flags(&dave, &group).await, Some((false, 1)));
+        assert_eq!(target_datasets(&targets(&dave, &mounts).await), vec![a.clone()]);
+        groups::sync_header_memberships(&dave, &[]).await.unwrap();
+        assert_eq!(stored_flags(&dave, &group).await, None);
+        assert!(targets(&dave, &mounts).await.targets.is_empty());
+        groups::sync_header_memberships(&dave, std::slice::from_ref(&group)).await.unwrap();
+        assert_eq!(stored_flags(&dave, &group).await, Some((false, 0)));
+
+        // Two enabled datasets, written past the checks, are a conflict without a target.
+        force_enabled(&b).await;
+        let conflicted = targets(&alice, &mounts).await;
+        assert!(conflicted.targets.is_empty(), "{conflicted:?}");
+        assert_eq!(conflicted.conflicts.len(), 1);
+        assert_eq!(conflicted.conflicts[0].datasets, {
+            let mut d = vec![a.clone(), b.clone()];
+            d.sort();
+            d
+        });
+        dataset_ocr::set_uploads_enabled(&b, false, &mounts).await.unwrap();
+        assert_eq!(target_datasets(&targets(&alice, &mounts).await), vec![a.clone()]);
+
+        // Turning uploads off and deleting the dataset end the target and keep history.
+        dataset_ocr::set_uploads_enabled(&a, false, &mounts).await.unwrap();
+        assert!(targets(&alice, &mounts).await.targets.is_empty());
+        assert!(uploads::can_read_upload_history(&caller(&alice, false), &coll).await.unwrap());
+        dataset_ocr::set_uploads_enabled(&a, true, &mounts).await.unwrap();
+        set_dataset(&coll, "a", &format!("{root_path}/a"), 1).await;
+        assert!(targets(&alice, &mounts).await.targets.is_empty());
+        assert!(uploads::can_read_upload_history(&caller(&alice, false), &coll).await.unwrap());
+        // With the dataset deleted, another dataset may accept uploads.
+        dataset_ocr::set_uploads_enabled(&b, true, &mounts).await.unwrap();
+        assert_eq!(target_datasets(&targets(&alice, &mounts).await), vec![b.clone()]);
+        // A mount without the folder gives no target, and history stays.
+        std::fs::remove_dir(root.join("b")).unwrap();
+        assert!(targets(&alice, &mounts).await.targets.is_empty());
+        assert!(uploads::can_read_upload_history(&caller(&alice, false), &coll).await.unwrap());
+        std::fs::create_dir(root.join("b")).unwrap();
+
+        // A revoked membership ends the target and the history access at once.
+        admin_groups::admin_remove_member(&admin, group.clone(), alice.clone()).await.unwrap();
+        assert!(targets(&alice, &mounts).await.targets.is_empty());
+        assert!(!uploads::can_read_upload_history(&caller(&alice, false), &coll).await.unwrap());
+        // A revoked grant does the same for a remaining uploader.
+        admin_groups::admin_add_member(&admin, group.clone(), alice.clone(), false).await.unwrap();
+        assert_eq!(stored_flags(&alice, &group).await, Some((false, 0)), "a membership added after removal starts clear");
+        admin_groups::admin_set_uploader(&admin, group.clone(), alice.clone(), true).await.unwrap();
+        assert_eq!(target_datasets(&targets(&alice, &mounts).await), vec![b.clone()]);
+        db_collections::revoke_permission(&group, &coll).await.unwrap();
+        assert!(targets(&alice, &mounts).await.targets.is_empty());
+        assert!(!uploads::can_read_upload_history(&caller(&alice, false), &coll).await.unwrap());
+
+        // Remove the test rows.
+        dataset_ocr::set_uploads_enabled(&b, false, &mounts).await.unwrap();
+        dataset_ocr::set_uploads_enabled(&p, false, &mounts).await.unwrap();
+        set_dataset(&coll, "b", &format!("{root_path}/b"), 1).await;
+        set_dataset(&public_coll, "p", &format!("{root_path}/p"), 1).await;
+        for u in [&alice, &bob, &dave] {
+            groups::soft_delete_membership(u, &group).await.unwrap();
+        }
+        for u in [&alice, &bob, &dave, &admin.username] {
+            users::soft_delete_user(u).await.unwrap();
+        }
+        groups::soft_delete_group(&group).await.unwrap();
+        set_collection(&coll, false, 1).await;
+        set_collection(&public_coll, true, 1).await;
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "needs live stack"]
+    async fn concurrent_upload_setting_changes_leave_one_upload_dataset() {
+        let s = suffix();
+        let coll = format!("w6c_{s}");
+        let (root, mounts, _) = scratch_mount("concurrent");
+        let root_path = root.to_str().unwrap().to_string();
+        set_collection(&coll, false, 0).await;
+        let a = set_dataset(&coll, "a", &format!("{root_path}/a"), 0).await;
+        let b = set_dataset(&coll, "b", &format!("{root_path}/b"), 0).await;
+
+        let mut accepted = 0;
+        for _round in 0..3 {
+            let (ra, rb) = tokio::join!(
+                dataset_ocr::set_uploads_enabled(&a, true, &mounts),
+                dataset_ocr::set_uploads_enabled(&b, true, &mounts),
+            );
+            assert_eq!(u8::from(ra.is_ok()) + u8::from(rb.is_ok()), 1, "{ra:?} {rb:?}");
+            assert_eq!(uploads::upload_datasets_of_collection(&coll).await.unwrap().len(), 1);
+            accepted += 1;
+            for d in [&a, &b] {
+                dataset_ocr::set_uploads_enabled(d, false, &mounts).await.unwrap();
+            }
+            assert!(uploads::upload_datasets_of_collection(&coll).await.unwrap().is_empty());
+        }
+        assert_eq!(accepted, 3);
+
+        set_dataset(&coll, "a", &format!("{root_path}/a"), 1).await;
+        set_dataset(&coll, "b", &format!("{root_path}/b"), 1).await;
+        set_collection(&coll, false, 1).await;
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore = "needs live stack"]
+    async fn membership_flag_updates_end_as_last_written() {
+        let s = suffix();
+        let admin = caller(&format!("w6-admin2-{s}"), true);
+        let user = format!("w6-erin-{s}");
+        let group = format!("w6-group2-{s}");
+        add_user(&user, false).await;
+        add_group(&group).await;
+        admin_groups::admin_add_member(&admin, group.clone(), user.clone(), false).await.unwrap();
+
+        // Successive writes, more than one in each second.
+        for (admin_flag, uploader) in [(true, true), (false, true), (true, false), (false, false), (true, true)] {
+            admin_groups::admin_set_group_admin(&admin, group.clone(), user.clone(), admin_flag).await.unwrap();
+            admin_groups::admin_set_uploader(&admin, group.clone(), user.clone(), uploader).await.unwrap();
+            assert_eq!(stored_flags(&user, &group).await, Some((admin_flag, u8::from(uploader))));
+        }
+
+        // Concurrent writes of the two flags each keep the other flag.
+        for (admin_flag, uploader) in [(false, false), (true, true), (false, true), (true, false)] {
+            let (ra, rb) = tokio::join!(
+                admin_groups::admin_set_group_admin(&admin, group.clone(), user.clone(), admin_flag),
+                admin_groups::admin_set_uploader(&admin, group.clone(), user.clone(), uploader),
+            );
+            ra.unwrap();
+            rb.unwrap();
+            assert_eq!(stored_flags(&user, &group).await, Some((admin_flag, u8::from(uploader))));
+        }
+
+        // A concurrent re-add and flag change keep the flag.
+        let (ra, rb) = tokio::join!(
+            admin_groups::admin_add_member(&admin, group.clone(), user.clone(), false),
+            admin_groups::admin_set_uploader(&admin, group.clone(), user.clone(), true),
+        );
+        ra.unwrap();
+        rb.unwrap();
+        assert_eq!(stored_flags(&user, &group).await, Some((true, 1)));
+
+        groups::soft_delete_membership(&user, &group).await.unwrap();
+        assert_eq!(stored_flags(&user, &group).await, None);
+        users::soft_delete_user(&user).await.unwrap();
+        groups::soft_delete_group(&group).await.unwrap();
+    }
 }

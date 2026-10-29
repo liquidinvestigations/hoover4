@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{
     admin_add_member, admin_delete_group, admin_get_group, admin_grant_permission,
-    admin_list_collections, admin_remove_member, admin_revoke_permission, admin_set_group_admin,
+    admin_list_collections, admin_remove_member, admin_revoke_permission, admin_set_group_admin, admin_set_uploader,
     admin_update_group,
 };
 use crate::components::admin_components::{
@@ -128,6 +128,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                             th { style: TH, "Username" }
                             th { style: TH, "Origin" }
                             th { style: TH, "Group admin" }
+                            th { style: TH, "Uploader" }
                             th { style: TH, "" }
                         }
                     }
@@ -147,6 +148,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                 td { style: TD,
                                     input {
                                         r#type: "checkbox",
+                                        aria_label: "Group admin",
                                         checked: m.is_group_admin,
                                         onchange: {
                                             let gname = gname.clone();
@@ -157,6 +159,28 @@ fn GroupDetailContent(groupname: String) -> Element {
                                                 let uname = uname.clone();
                                                 spawn(async move {
                                                     if let Err(e) = admin_set_group_admin(gname, uname, val).await {
+                                                        error_msg.set(Some(user_facing_message(&e)));
+                                                    }
+                                                    detail_res.restart();
+                                                });
+                                            }
+                                        },
+                                    }
+                                }
+                                td { style: TD,
+                                    input {
+                                        r#type: "checkbox",
+                                        aria_label: "Uploader",
+                                        checked: m.is_uploader,
+                                        onchange: {
+                                            let gname = gname.clone();
+                                            let uname = m.username.clone();
+                                            let val = !m.is_uploader;
+                                            move |_| {
+                                                let gname = gname.clone();
+                                                let uname = uname.clone();
+                                                spawn(async move {
+                                                    if let Err(e) = admin_set_uploader(gname, uname, val).await {
                                                         error_msg.set(Some(user_facing_message(&e)));
                                                     }
                                                     detail_res.restart();

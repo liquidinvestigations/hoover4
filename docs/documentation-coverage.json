@@ -2586,6 +2586,33 @@
       "scenario": "website/browser-tests/740-manual-doc-admin-feedback.ini"
     },
     {
+      "id": "F-admin-37",
+      "source": [
+        "website/backend/src/db_auth/groups.rs",
+        "website/backend/src/api/admin/groups.rs"
+      ],
+      "docs": [
+        "docs/technical-specification/interface/Administration.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "no_screenshot_reason": "The manual screenshots of the user and group pages predate this column. A browser check verified the control."
+    },
+    {
+      "id": "F-admin-38",
+      "source": [
+        "website/backend/src/api/admin/dataset_ocr.rs",
+        "website/backend/src/db_auth/uploads.rs"
+      ],
+      "docs": [
+        "docs/technical-specification/interface/Administration.md",
+        "docs/architecture/Storage_Model.md",
+        "website/backend/src/api/admin/Readme.md"
+      ],
+      "audience": "admin",
+      "no_screenshot_reason": "The control shows only with a writable dataset mount, which the screenshot target does not configure."
+    },
+    {
       "id": "F-auth-01",
       "source": [
         "website/backend/src/auth/route_policy.rs"

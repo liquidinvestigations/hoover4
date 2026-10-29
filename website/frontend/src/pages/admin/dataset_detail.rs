@@ -4,7 +4,8 @@ use dioxus::prelude::*;
 
 use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{
-    admin_delete_dataset, admin_get_dataset, admin_trigger_workflow, admin_update_dataset,
+    admin_delete_dataset, admin_get_dataset, admin_get_dataset_uploads, admin_set_dataset_uploads,
+    admin_trigger_workflow, admin_update_dataset,
 };
 use crate::components::admin_components::{
     AdminGuard, AdminShell, DatasetOcrSettingsPanel, ErrorBar, SuccessBar, BTN, BTN_DANGER,
@@ -114,6 +115,9 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                         "{detail.collectionname}"
                     }
                 }
+                if is_disk {
+                    DatasetUploadsControl { collection_dataset: dataset_id.clone() }
+                }
                 div {
                     button {
                         style: BTN,
@@ -196,6 +200,86 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                     },
                     "Delete dataset and its data"
                 }
+            }
+        }
+    }
+}
+
+/// The "Accept uploads" checkbox. It shows for a dataset whose folder is in a writable
+/// mount, and for a dataset that accepts uploads. It is disabled while another dataset of the collection accepts uploads, unless
+/// this dataset accepts uploads too, so a conflict can be cleared from either page.
+#[component]
+fn DatasetUploadsControl(collection_dataset: String) -> Element {
+    let for_res = collection_dataset.clone();
+    let mut setting_res = use_resource(move || admin_get_dataset_uploads(for_res.clone()));
+    let mut error_msg = use_signal(|| None::<String>);
+    let mut saving = use_signal(|| false);
+
+    let setting = setting_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned();
+    let load_error = setting_res
+        .read()
+        .as_ref()
+        .and_then(|r| r.as_ref().err().map(user_facing_message));
+
+    if let Some(err) = load_error {
+        return rsx! { ErrorBar { message: format!("The upload setting could not be read: {err}") } };
+    }
+    let Some(setting) = setting else {
+        return rsx! {};
+    };
+    // A dataset that accepts uploads keeps the checkbox after its mount stops being
+    // writable, so an administrator can turn the setting off.
+    if !setting.writable_mount && !setting.enabled {
+        return rsx! {};
+    }
+    let mount_gone = !setting.writable_mount;
+    let others = setting.other_upload_datasets.join(", ");
+    let blocked_note = if setting.other_upload_datasets.len() == 1 {
+        format!("{others} already accepts uploads.")
+    } else {
+        format!("{others} already accept uploads.")
+    };
+    let blocked = !setting.enabled && !setting.other_upload_datasets.is_empty();
+    let conflict = setting.enabled && !setting.other_upload_datasets.is_empty();
+    let enabled = setting.enabled;
+
+    rsx! {
+        if let Some(err) = error_msg.read().clone() {
+            ErrorBar { message: err }
+        }
+        label { style: LABEL,
+            input {
+                r#type: "checkbox",
+                checked: enabled,
+                disabled: blocked || *saving.read(),
+                onchange: {
+                    let cd = collection_dataset.clone();
+                    move |e: Event<FormData>| {
+                        let cd = cd.clone();
+                        let on = e.checked();
+                        saving.set(true);
+                        spawn(async move {
+                            error_msg.set(None);
+                            if let Err(err) = admin_set_dataset_uploads(cd, on).await {
+                                error_msg.set(Some(user_facing_message(&err)));
+                            }
+                            saving.set(false);
+                            setting_res.restart();
+                        });
+                    }
+                },
+            }
+            "Accept uploads"
+        }
+        if mount_gone {
+            p { style: "{HELP_TEXT} margin: 0;", "The folder of this dataset is not in a writable dataset mount, so it receives no uploads." }
+        }
+        if blocked {
+            p { style: "{HELP_TEXT} margin: 0;", "{blocked_note}" }
+        }
+        if conflict {
+            p { style: "{HELP_TEXT} margin: 0; color: var(--x-danger);",
+                "This dataset and {others} accept uploads. A collection can have one upload dataset. Turn off Accept uploads on all of them but one."
             }
         }
     }

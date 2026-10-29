@@ -7,7 +7,9 @@ the actual gate.
 ## Modules
 
 - [collections.rs](collections.rs) / [datasets.rs](datasets.rs) / [groups.rs](groups.rs) / [users.rs](users.rs) / [settings.rs](settings.rs), CRUD for
-  the registry tables. [settings.rs](settings.rs) includes `chat_enabled`, read at request time by
+  the registry tables. A membership has two flags, Group admin and Uploader. Each change
+  reads the stored row and writes it complete, so it keeps the other flag. Adding a member
+  again keeps the stored membership. [settings.rs](settings.rs) includes `chat_enabled`, read at request time by
   the chat gate.
 - [processing.rs](processing.rs), collection processing status (stage bars derived from watermarks),
   the Temporal workflow browser, failure lists, retries, and reads of the stored
@@ -21,7 +23,11 @@ the actual gate.
   the creation form takes a mount name and a folder *name*, validated against the listing of
   that mount, never a path. A new folder is created only in a writable mount.
   [../../dataset_mounts.rs](../../dataset_mounts.rs) reads the mount list and opens every folder through a
-  directory descriptor that refuses symbolic links.
+  directory descriptor that refuses symbolic links. The same module writes the dataset
+  setting `uploads_enabled` ("Accept uploads"). It refuses `true` for a dataset whose
+  folder is not beneath a writable mount, and while another live dataset of the collection
+  has it. The check and the write hold a process lock of the collection.
+  [../../db_auth/uploads.rs](../../db_auth/uploads.rs) holds the upload permission rules and their queries.
 - [operations.rs](operations.rs), the operations log behind `/admin/operations` and the scoped list on
   a collection page: reads of `operations FINAL`, the per-task error rates, and the
   dispatch path that writes the row and starts the `Operation` workflow on that row's id.

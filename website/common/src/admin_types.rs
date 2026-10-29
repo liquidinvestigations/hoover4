@@ -21,6 +21,8 @@ pub struct AdminUserDetail {
 pub struct AdminMembershipItem {
     pub groupname: String,
     pub is_group_admin: bool,
+    /// The uploader flag of the membership.
+    pub is_uploader: bool,
     pub origin: String,
 }
 
@@ -43,6 +45,8 @@ pub struct AdminGroupDetail {
 pub struct AdminGroupMemberItem {
     pub username: String,
     pub is_group_admin: bool,
+    /// The uploader flag of the membership.
+    pub is_uploader: bool,
     pub origin: String,
 }
 
@@ -227,4 +231,19 @@ pub struct DatasetFolderOption {
     pub entry_count: u64,
     /// True when a dataset already exists for this folder in the chosen collection.
     pub already_used: bool,
+}
+
+/// The upload setting of one dataset, for the dataset page.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DatasetUploadsSetting {
+    /// True when the dataset is a disk dataset whose folder resolves beneath a writable
+    /// mount of the running website. The page shows "Accept uploads" then, and while
+    /// `enabled` is true.
+    pub writable_mount: bool,
+    /// The stored value of `uploads_enabled`.
+    pub enabled: bool,
+    /// The other live datasets of the collection that have `uploads_enabled`. With one
+    /// of them the checkbox is disabled. With two or more datasets that accept uploads,
+    /// the collection has a conflict that an administrator must clear.
+    pub other_upload_datasets: Vec<String>,
 }

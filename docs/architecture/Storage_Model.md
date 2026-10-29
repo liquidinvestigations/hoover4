@@ -54,6 +54,13 @@ The backend resolves the right database per query, immediately after the permiss
 an unauthorised dataset never reaches a database name. The mapping from dataset to collection
 is immutable and is cached in process.
 
+An upload dataset is a disk dataset whose folder is beneath a writable dataset mount and
+whose `dataset_settings` row `uploads_enabled` is `true`. A collection has at most one.
+A membership row in `user_group_membership` has the flag `is_uploader`. The collection tables
+`upload_batches` and `upload_files` hold upload batch history. Their dataset column is
+`upload_dataset`, so a dataset purge, which deletes the rows of every collection table with a
+`collection_dataset` column, keeps that history.
+
 ## The file tree, and what deletion means
 
 `vfs_files` holds one current row per path. Three properties of its key decide what the

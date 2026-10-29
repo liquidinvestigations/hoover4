@@ -6,7 +6,7 @@ use common::current_user::CurrentUser;
 use crate::auth::guard;
 use crate::db_auth::{
     collections,
-    groups::{self, GroupRow, MembershipRow},
+    groups::{self, GroupRow},
 };
 
 fn slug_valid(s: &str) -> bool {
@@ -78,6 +78,7 @@ pub async fn admin_get_group(
             .map(|m| AdminGroupMemberItem {
                 username: m.username,
                 is_group_admin: m.is_group_admin,
+                is_uploader: m.is_uploader == 1,
                 origin: m.origin,
             })
             .collect(),
@@ -142,6 +143,8 @@ pub async fn admin_delete_group(user: &CurrentUser, groupname: String) -> anyhow
     groups::soft_delete_group(&groupname).await
 }
 
+/// Add a user to a group. A user who is already a member keeps the stored membership,
+/// with its origin, its group admin flag and its uploader flag.
 pub async fn admin_add_member(
     user: &CurrentUser,
     groupname: String,
@@ -155,16 +158,8 @@ pub async fn admin_add_member(
     if crate::db_auth::users::get_user(&username).await?.is_none() {
         anyhow::bail!("user not found");
     }
-    groups::upsert_membership(MembershipRow {
-        username,
-        groupname,
-        is_group_admin,
-        origin: "manual".to_string(),
-        created_at: time::OffsetDateTime::now_utc(),
-        updated_at: time::OffsetDateTime::now_utc(),
-        is_deleted: 0,
-    })
-    .await
+    groups::add_membership(&username, &groupname, "manual", is_group_admin).await?;
+    Ok(())
 }
 
 pub async fn admin_remove_member(
@@ -183,9 +178,24 @@ pub async fn admin_set_group_admin(
     is_group_admin: bool,
 ) -> anyhow::Result<()> {
     guard::require_admin(user)?;
-    let Some(mut row) = groups::get_membership(&username, &groupname).await? else {
-        anyhow::bail!("membership not found");
-    };
-    row.is_group_admin = is_group_admin;
-    groups::upsert_membership(row).await
+    groups::update_membership(&username, &groupname, |row| row.is_group_admin = is_group_admin)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("membership not found"))?;
+    Ok(())
+}
+
+/// Set the uploader flag of a membership. The member may then upload into the upload
+/// dataset of each collection that the group can read. The other columns keep their
+/// stored values.
+pub async fn admin_set_uploader(
+    user: &CurrentUser,
+    groupname: String,
+    username: String,
+    on: bool,
+) -> anyhow::Result<()> {
+    guard::require_admin(user)?;
+    groups::update_membership(&username, &groupname, |row| row.is_uploader = u8::from(on))
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("membership not found"))?;
+    Ok(())
 }
