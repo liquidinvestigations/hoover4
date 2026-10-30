@@ -126,7 +126,7 @@ def open_upload_operation(params: UploadOperationParams) -> UploadClaimResult:
             live[op_id] = row
             continue
         _finish(params.collectionname, params.upload_dataset, op_id, owners[op_id],
-                row["state"] if row else "errored")
+                row["state"] if row else "errored", settles=True)
 
     if live:
         row = min(live.values(), key=lambda r: (r["started_at"], r["op_id"]))
@@ -195,7 +195,8 @@ def settle_upload_operation(params: UploadOperationParams) -> dict[str, int]:
     open_ids = [b["batch_id"] for b in uploads.batches_of_operation(
         params.collectionname, params.upload_dataset, params.op_id)
         if b["state"] in uploads.OPEN_BATCH_STATES]
-    return _finish(params.collectionname, params.upload_dataset, params.op_id, open_ids, state)
+    return _finish(params.collectionname, params.upload_dataset, params.op_id, open_ids, state,
+                   settles=True)
 
 
 @activity.defn
@@ -237,7 +238,13 @@ ENDED_EARLY = {
 }
 
 def _finish(collectionname: str, upload_dataset: str, op_id: str, batch_ids,
-            operation_state: str) -> dict[str, int]:
+            operation_state: str, settles: bool = False) -> dict[str, int]:
+    """Write the outcome of each batch that `op_id` owns and that has no terminal state.
+
+    `settles` marks the settle of an ended operation. Its rows take the version step
+    `uploads.SETTLE_VERSION_STEP`. A late finish of the child that read the same row then
+    does not replace the settled state.
+    """
     from database import uploads
 
     counts: dict[str, int] = {}
@@ -254,6 +261,7 @@ def _finish(collectionname: str, upload_dataset: str, op_id: str, batch_ids,
         if operation_state in ENDED_EARLY:
             error = f"{ENDED_EARLY[operation_state]} {error}".strip()
         uploads.write_batch(collectionname, upload_dataset, batch_id, current=row,
+                            version_step=uploads.SETTLE_VERSION_STEP if settles else 1,
                             state=state, error=error, finished_at=uploads._now())
         counts[state] = counts.get(state, 0) + 1
         log.info("upload batch %s is %s: %d of %d files succeeded", batch_id, state,

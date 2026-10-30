@@ -4,7 +4,7 @@
 //! after `commit`.
 
 use common::search_result::DocumentIdentifier;
-use common::upload_pages::SelectedFile;
+use common::upload_pages::{begin_request_id, begin_result_unknown, SelectedFile, UnconfirmedBegin};
 use common::uploads::{
     check_manifest, format_count, format_upload_size, manifest_body_bytes, BeginFile, BeginRefusal,
     BeginRequest, FileProblem, LimitsResponse, UploadTargetInfo, MANIFEST_TOO_LARGE_MESSAGE,
@@ -83,6 +83,9 @@ pub fn UploadPage(collection: String, folder: String) -> Element {
     let mut transfer = use_signal(|| None::<Transfer>);
     // The destination of the running transfer, for the detail address after `commit`.
     let sending_to = use_signal(String::new);
+    // The last `begin` without a decision of the server. A click with the same selection
+    // and destination sends its request id again.
+    let mut unconfirmed = use_signal(|| None::<UnconfirmedBegin>);
 
     let driver = use_upload_driver(Callback::new(move |event: DriverEvent| match event {
         DriverEvent::Added { files } => {
@@ -91,9 +94,13 @@ pub fn UploadPage(collection: String, folder: String) -> Element {
         }
         DriverEvent::Refused { status, body } => {
             transfer.set(None);
+            if !begin_result_unknown(status) {
+                unconfirmed.set(None);
+            }
             refusal.set(Some(refusal_from(status, &body)));
         }
         DriverEvent::Begun { batch_id } => {
+            unconfirmed.set(None);
             if let Some(t) = transfer.write().as_mut() {
                 t.batch_id = Some(batch_id);
             }
@@ -144,6 +151,7 @@ pub fn UploadPage(collection: String, folder: String) -> Element {
                         refusal,
                         transfer,
                         sending_to,
+                        unconfirmed,
                         driver,
                     }
                 },
@@ -196,6 +204,7 @@ fn UploadForm(
     refusal: Signal<Option<BeginRefusal>>,
     transfer: Signal<Option<Transfer>>,
     sending_to: Signal<String>,
+    unconfirmed: Signal<Option<UnconfirmedBegin>>,
     driver: UploadDriver,
 ) -> Element {
     let folder = common::uploads::normalize_folder(&folder).unwrap_or_else(|_| "/".to_string());
@@ -205,8 +214,9 @@ fn UploadForm(
         .map(|f| BeginFile { path: f.path.clone(), size: f.size, last_modified_ms: f.last_modified_ms })
         .collect();
     let request = BeginRequest {
-        // The click replaces this id with one from the browser's random source. It has
-        // the same length, so the size check measures the body that the click sends.
+        // The click replaces this id with one from the browser's random source, or with
+        // the id of an unconfirmed `begin` of the same request. It has the same length, so
+        // the size check measures the body that the click sends.
         request_id: "0".repeat(32),
         collection: target.collection.clone(),
         folder: folder.clone(),
@@ -327,7 +337,10 @@ fn UploadForm(
                     let ids: Vec<u64> = selection.peek().iter().map(|f| f.id).collect();
                     let paths: Vec<String> = request.files.iter().map(|f| f.path.clone()).collect();
                     let mut request = request.clone();
-                    request.request_id = new_request_id();
+                    request.request_id = String::new();
+                    let request_key = serde_json::to_string(&request).unwrap_or_default();
+                    request.request_id = begin_request_id(unconfirmed.peek().as_ref(), &request_key, new_request_id);
+                    unconfirmed.set(Some(UnconfirmedBegin { request_id: request.request_id.clone(), request_key }));
                     let body = serde_json::to_string(&request).unwrap_or_default();
                     refusal.set(None);
                     sending_to.set(request.collection.clone());

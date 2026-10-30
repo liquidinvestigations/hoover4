@@ -137,3 +137,53 @@ def test_counters_count_manifest_entries_once():
 ])
 def test_only_the_complete_part_name_is_skipped_by_the_scan(name, reserved):
     assert is_upload_part_name(name) is reserved
+
+
+class _VfsClient:
+    """A client whose member query answers from `edges` (container, members), in the row
+    order given, for the containers of the current level."""
+
+    def __init__(self, edges):
+        self.edges = edges
+        self.frontier = set()
+
+    def query(self, _sql, parameters=None, external_data=None):
+        class _Result:
+            pass
+
+        result = _Result()
+        result.result_rows = [(c, m) for c, members in self.edges for m in members
+                              if c in self.frontier]
+        return result
+
+
+def _descend(edges, roots, monkeypatch):
+    from database import uploads
+
+    client = _VfsClient(edges)
+
+    def fake_table(_name, _column, values):
+        client.frontier = set(values)
+
+    monkeypatch.setattr(uploads, "_string_table", fake_table)
+    return uploads._descendants(client, "ds", roots)
+
+
+def test_a_member_below_two_roots_belongs_to_the_smallest_root_in_any_row_order(monkeypatch):
+    edges = [("rootB", ["shared", "onlyB"]), ("rootA", ["shared"])]
+    for order in (edges, list(reversed(edges))):
+        owner = _descend(order, ["rootA", "rootB"], monkeypatch)
+        assert owner == {"shared": "rootA", "onlyB": "rootB"}
+
+
+def test_a_member_belongs_to_the_root_that_reaches_it_at_the_lowest_level(monkeypatch):
+    # rootA reaches `deep` at level 2 through `mid`, rootZ reaches it at level 1.
+    edges = [("rootA", ["mid"]), ("mid", ["deep"]), ("rootZ", ["deep"])]
+    owner = _descend(edges, ["rootA", "rootZ"], monkeypatch)
+    assert owner == {"mid": "rootA", "deep": "rootZ"}
+
+
+def test_a_root_below_another_root_stays_its_own_root(monkeypatch):
+    edges = [("rootA", ["rootB", "x"]), ("rootB", ["y"])]
+    owner = _descend(edges, ["rootA", "rootB"], monkeypatch)
+    assert owner == {"x": "rootA", "y": "rootB"}

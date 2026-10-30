@@ -178,13 +178,22 @@ class BatchStateConflict(Exception):
     """The stored batch state belongs to the website, so the worker may not write it."""
 
 
+#: The version step of a settle write. The settle of an ended operation and a late
+#: finish of its child can read the same row. The child writes at most a few versions of
+#: a batch after any read, so the settle row stays above it, and `FINAL` returns the
+#: settled outcome whatever the insert order.
+SETTLE_VERSION_STEP = 1000
+
+
 def write_batch(collectionname: str, upload_dataset: str, batch_id: str, *,
-                current: dict | None = None, **changes) -> dict | None:
+                current: dict | None = None, version_step: int = 1,
+                **changes) -> dict | None:
     """Rewrite one batch row with the given columns changed. Returns the stored row.
 
     A terminal row is returned unchanged. A row in a website transfer state other than
     `queued` raises `BatchStateConflict`. `current` skips the read when the caller read
-    the row in the same step.
+    the row in the same step. The new row has the version of `current` plus
+    `version_step`.
     """
     if current is None:
         current = read_batch(collectionname, upload_dataset, batch_id)
@@ -203,7 +212,7 @@ def write_batch(collectionname: str, upload_dataset: str, batch_id: str, *,
             raise ValueError(f"The worker does not write the batch state {value}")
         row[key] = value
     row["error"] = _cut(row.get("error", ""))
-    row["row_version"] = int(current["row_version"]) + 1
+    row["row_version"] = int(current["row_version"]) + version_step
     _insert_batch(collectionname, row)
     return row
 
@@ -299,7 +308,10 @@ def _descendants(client, upload_dataset: str, roots: list[str]) -> dict[str, str
     """Map each member hash below the given top-level hashes to its top-level hash.
 
     Members are `vfs_files` rows whose `container_hash` is the hash of their container.
-    A hash below more than one root maps to the first root that reaches it.
+    A hash below more than one root maps to the root that reaches it at the lowest level,
+    and among the roots at that level to the smallest root hash. A root hash is never a
+    member. The batch detail page of the website (`level_sql` in
+    `website/backend/src/api/uploads_api.rs`) assigns members by the same rule.
     """
     owner: dict[str, str] = {}
     level = {h: h for h in roots if h}
@@ -314,6 +326,8 @@ def _descendants(client, upload_dataset: str, roots: list[str]) -> dict[str, str
             external_data=_string_table("lookup_hashes", "hash", sorted(level)),
         ).result_rows
         nxt = {}
+        # The smallest root first, so the assignment does not depend on the row order.
+        rows = sorted(rows, key=lambda r: (level.get(str(r[0]), ""), str(r[1])))
         for container, member in rows:
             root = level.get(str(container))
             if root is None or not member or member in owner or member in roots:

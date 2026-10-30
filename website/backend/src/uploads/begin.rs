@@ -29,6 +29,9 @@ pub const NO_TARGET_MESSAGE: &str = "You cannot upload into this collection.";
 /// The text of a `begin` for a collection with two upload datasets.
 pub const CONFLICT_MESSAGE: &str =
     "This collection has two upload datasets. An administrator must disable one.";
+/// The text of a `begin` while a deletion or a purge of the upload dataset is live.
+pub const REMOVAL_MESSAGE: &str =
+    "This upload dataset is being deleted or purged. Uploads into it can start after that operation ends.";
 /// The text of a malformed request id.
 pub const REQUEST_ID_MESSAGE: &str = "The request id must have 1 to 128 letters, digits, - or _.";
 
@@ -112,7 +115,13 @@ impl Service {
             TargetLookup::Target(target) => target,
             TargetLookup::Conflict(_) => return Err(UploadError::new(409, CONFLICT_MESSAGE)),
             TargetLookup::None => return Err(UploadError::new(403, NO_TARGET_MESSAGE)),
+            TargetLookup::Unavailable { reason, .. } => return Err(anyhow::Error::from(super::FolderUnavailable(reason)).into()),
         };
+        // The dispatch of a deletion or a purge stops the open batches. A batch that
+        // began after that stop would continue into the removed dataset.
+        if self.store.dataset_removal_live(&target.upload_dataset)? {
+            return Err(UploadError::new(409, REMOVAL_MESSAGE));
+        }
         if !journal::valid_dataset_id(&target.upload_dataset) {
             return Err(anyhow::anyhow!("the dataset id {:?} is not usable in the upload space", target.upload_dataset).into());
         }
@@ -233,7 +242,8 @@ impl Service {
     /// The batch of a repeated request. The function completes the ClickHouse rows of an
     /// interrupted `begin` first.
     fn existing_batch(&self, batch_id: &str) -> UploadResult<BeginResponse> {
-        let _batch_lock = fsutil::lock(&self.space.batch_lock(batch_id), true, true)?;
+        let _batch_lock = fsutil::lock_within(&self.space.batch_lock(batch_id), true, self.lock_wait)?
+            .ok_or_else(UploadError::busy)?;
         let (Some(manifest), Some(mut batch)) = (
             journal::read_manifest(&self.space, batch_id)?,
             journal::read_batch(&self.space, batch_id)?,

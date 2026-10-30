@@ -136,7 +136,8 @@ impl Service {
             if record.map(|r| r.batch_id) != Some(batch_id.to_string()) {
                 return Err(UploadError::not_found());
             }
-            let _lock = fsutil::lock(&self.space.batch_lock(batch_id), true, true)?;
+            let _lock = fsutil::lock_within(&self.space.batch_lock(batch_id), true, self.lock_wait)?
+                .ok_or_else(UploadError::busy)?;
             if let Some(mut current) = journal::read_batch(&self.space, batch_id)? {
                 self.record_manifest(&manifest, &mut current)?;
                 batch = current;
@@ -154,15 +155,17 @@ impl Service {
         manifest.files.get(file_no as usize).ok_or_else(UploadError::not_found)
     }
 
-    /// Take the shared batch lock and the exclusive file lock, in that order.
+    /// Take the shared batch lock and the exclusive file lock, in that order. Each wait
+    /// ends after `lock_wait` with 423, so a stalled request delays the others only until
+    /// it ends.
     fn lock_file(&self, batch_id: &str, file_no: u32) -> UploadResult<(Lock, Lock)> {
-        let batch = fsutil::lock(&self.space.batch_lock(batch_id), false, true)?
-            .ok_or_else(|| anyhow::anyhow!("the batch lock was not taken"))?;
+        let batch = fsutil::lock_within(&self.space.batch_lock(batch_id), false, self.lock_wait)?
+            .ok_or_else(UploadError::busy)?;
         if !self.space.batch_journal(batch_id).exists() {
             return Err(UploadError::ended(410));
         }
-        let file = fsutil::lock(&self.space.file_lock(batch_id, file_no), true, true)?
-            .ok_or_else(|| anyhow::anyhow!("the file lock was not taken"))?;
+        let file = fsutil::lock_within(&self.space.file_lock(batch_id, file_no), true, self.lock_wait)?
+            .ok_or_else(UploadError::busy)?;
         Ok((batch, file))
     }
 

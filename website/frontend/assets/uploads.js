@@ -1,7 +1,10 @@
 // The upload driver of the upload page and of "Continue upload" on the batch detail page.
 //
 // It holds the browser File objects, walks dropped folders, sends `begin`, runs at most
-// three tus-js-client uploads at a time, and sends `commit` after the last file. The Rust
+// three tus-js-client uploads at a time, and sends `commit` after the last file. A
+// "Continue upload" run commits after its last file only when it sends every file of the
+// batch that waits for bytes. Otherwise it ends with a `sent` event, and the batch stays
+// open for another selection or for Finish upload. Stop upload always commits. The Rust
 // page keeps the selection list and builds the `begin` body, so the page and the server
 // measure the same bytes. The page and this script talk through one `document::eval`
 // channel: the page sends commands (`cmd`), and the script sends events (`kind`).
@@ -15,6 +18,20 @@
   const RETRY_DELAYS = [0, 1000, 3000, 5000, 10000, 30000];
   const PROGRESS_MS = 200;
   const ENDED = "This upload has ended.";
+  // The waits before a repeat of a request that met a busy lock (423).
+  const BUSY_DELAYS = [1000, 5000, 15000, 30000];
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // A fetch that is repeated after a 423 answer, with the delays of BUSY_DELAYS.
+  async function fetchPatient(url, options) {
+    let res = await fetch(url, options);
+    for (const delay of BUSY_DELAYS) {
+      if (res.status !== 423) break;
+      await sleep(delay);
+      res = await fetch(url, options);
+    }
+    return res;
+  }
 
   const files = new Map();
   let nextId = 1;
@@ -211,10 +228,11 @@
   }
 
   // A run is one batch in transfer: its items, the uploads in flight and the totals.
-  function newRun(batchId, items, chunkBytes) {
+  // `commitWhenDone` is false for a resume run that does not send every waiting file.
+  function newRun(batchId, items, chunkBytes, commitWhenDone) {
     return {
-      batchId, chunkBytes, items, active: new Set(), paused: false, stopping: false,
-      ended: false, lastEmit: 0, timer: null,
+      batchId, chunkBytes, items, commitWhenDone, active: new Set(), paused: false,
+      stopping: false, ended: false, lastEmit: 0, timer: null,
     };
   }
 
@@ -291,7 +309,21 @@
     progress(true);
     const waiting = run.items.some((it) => it.state === "queued" || it.state === "active" || it.state === "paused");
     const failed = run.items.some((it) => it.state === "failed");
-    if (!waiting && !failed) commit();
+    if (!waiting && !failed) {
+      if (run.commitWhenDone) commit();
+      else endWithoutCommit();
+    }
+  }
+
+  // The run sent its files, and other files of the batch still wait for bytes. The batch
+  // stays `uploading`.
+  function endWithoutCommit() {
+    if (!run || run.ended) return;
+    run.ended = true;
+    window.removeEventListener("beforeunload", warnOnLeave);
+    const batchId = run.batchId;
+    run = null;
+    emit({ kind: "sent", batch_id: batchId });
   }
 
   async function commit() {
@@ -301,7 +333,7 @@
     window.removeEventListener("beforeunload", warnOnLeave);
     const batchId = run.batchId;
     try {
-      const res = await fetch(`/_upload/${batchId}/commit`, {
+      const res = await fetchPatient(`/_upload/${batchId}/commit`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
       });
       const text = await res.text();
@@ -315,8 +347,8 @@
     run = null;
   }
 
-  function beginRun(batchId, items, chunkBytes) {
-    run = newRun(batchId, items, chunkBytes);
+  function beginRun(batchId, items, chunkBytes, commitWhenDone) {
+    run = newRun(batchId, items, chunkBytes, commitWhenDone);
     window.addEventListener("beforeunload", warnOnLeave);
     pump();
   }
@@ -343,16 +375,19 @@
       return { fileNo: f.file_no, path: cmd.paths[i], file, size: file.size, acked: 0, state: "queued" };
     });
     emit({ kind: "begun", batch_id: batch.batch_id });
-    beginRun(batch.batch_id, items, cmd.chunk_bytes);
+    beginRun(batch.batch_id, items, cmd.chunk_bytes, true);
   }
 
   // "Continue upload": verify the acknowledged prefix of each matched file, then resume.
+  // A file whose prefix differs keeps its transfer and is listed. The run commits after
+  // its last file only when the page reports that it sends every waiting file of the
+  // batch (`commit_when_done`) and no file differs.
   async function resume(cmd) {
     const items = [];
     const mismatched = [];
     for (const m of cmd.items) {
       const file = files.get(m.id);
-      const res = await fetch(`/_upload/${cmd.batch_id}/prefix/${m.file_no}`, { cache: "no-store" });
+      const res = await fetchPatient(`/_upload/${cmd.batch_id}/prefix/${m.file_no}`, { cache: "no-store" });
       if (res.status === 409 || res.status === 410) continue;
       if (!res.ok) {
         mismatched.push({ path: m.path, error: (await res.text()) || `HTTP ${res.status}` });
@@ -368,9 +403,10 @@
         resumeUrl: digest.offset > 0 ? `/_upload/files/${cmd.batch_id}-${m.file_no}` : null,
       });
     }
+    const commitWhenDone = !!cmd.commit_when_done && !mismatched.length;
     emit({ kind: "checked", mismatched, sending: items.length });
-    // With every file complete and no mismatch, the run commits at once.
-    if (items.length || !mismatched.length) beginRun(cmd.batch_id, items, cmd.chunk_bytes);
+    // A run without files commits at once when every file of the batch has its bytes.
+    if (items.length || commitWhenDone) beginRun(cmd.batch_id, items, cmd.chunk_bytes, commitWhenDone);
   }
 
   function command(cmd) {
@@ -396,6 +432,10 @@
         break;
       case "stop":
         if (run) { run.stopping = true; commit(); }
+        break;
+      case "finish":
+        // Finish upload on the detail page: commit a batch without a run.
+        if (!run) { run = newRun(cmd.batch_id, [], 0, true); commit(); }
         break;
     }
   }

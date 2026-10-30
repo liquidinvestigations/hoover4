@@ -19,6 +19,11 @@
 //! | No destination, the source remains. | Remove an owned part and place again. |
 //! | Another entry holds the destination, the source remains. | Reject the file and keep that entry. |
 //! | Another entry or no entry, no source. | Reject the file as not recovered. Change nothing in the dataset. |
+//!
+//! The placement record also names the dataset folder. A rejection without a current
+//! target, after a permission change or a dataset deletion, opens that folder to remove
+//! an owned part. When the folder exists but does not open, the rejection fails and the
+//! journal keeps the part record, so the sweep tries again.
 
 use std::fs::File;
 use std::os::fd::{AsFd, OwnedFd};
@@ -28,7 +33,7 @@ use rustix::fs::{AtFlags, Mode, OFlags, RenameFlags, Timespec, Timestamps};
 use rustix::io::Errno;
 
 use super::fsutil::{self, Found, WalkError};
-use super::journal::{FileJournal, FileState, Manifest, PlaceMethod, PlacePhase, Placement, Space};
+use super::journal::{FileJournal, FileState, Manifest, PlaceMethod, PlacePhase, Placement, PlacementFolder, Space};
 use super::{random_id, Service, Target};
 
 /// The open flags of a data file or a part file. A symbolic link is refused.
@@ -47,6 +52,28 @@ pub fn rename_noreplace(old_dir: &OwnedFd, old: &str, new_dir: &OwnedFd, new: &s
     }
 }
 
+/// Open the dataset folder of a placement record from its mount root, each folder with
+/// `O_NOFOLLOW`. `None` when the dataset folder or a folder above it no longer exists.
+fn open_recorded_folder(folder: &PlacementFolder) -> anyhow::Result<Option<OwnedFd>> {
+    let mount = crate::dataset_mounts::DatasetMount {
+        name: folder.mount_name.clone(),
+        path: folder.mount_path.clone(),
+        writable: true,
+    };
+    let Some((_, parts)) = crate::db_auth::uploads::writable_mount_for(std::slice::from_ref(&mount), &folder.dataset_path) else {
+        anyhow::bail!("{} is not beneath the mount {}", folder.dataset_path, folder.mount_path);
+    };
+    let mut fd = crate::dataset_mounts::open_mount_root(&mount)?;
+    for part in &parts {
+        fd = match rustix::fs::openat(&fd, part.as_str(), OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC, Mode::empty()) {
+            Ok(next) => next,
+            Err(Errno::NOENT) => return Ok(None),
+            Err(e) => anyhow::bail!("cannot open {}: {e}", folder.dataset_path),
+        };
+    }
+    Ok(Some(fd))
+}
+
 fn set_mtime(fd: impl AsFd, mtime_ms: i64) -> anyhow::Result<()> {
     let at = Timespec { tv_sec: mtime_ms.div_euclid(1000), tv_nsec: (mtime_ms.rem_euclid(1000) * 1_000_000) as _ };
     rustix::fs::futimens(fd, &Timestamps { last_access: at, last_modification: at })?;
@@ -58,28 +85,65 @@ impl Service {
         fsutil::open_space_dir(&self.space.files_dir(batch_id))
     }
 
-    /// Remove the owned part file of a copy placement, when it exists.
+    /// Remove the owned part file of a copy placement, when it exists. Without `root`,
+    /// the dataset folder that the placement record names is opened. A folder that no
+    /// longer exists holds no part. A folder that exists but does not open is an error.
     fn remove_owned_part(&self, manifest: &Manifest, file: &FileJournal, root: Option<&OwnedFd>) -> anyhow::Result<()> {
-        let (Some(root), Some(placement)) = (root, file.placement.as_ref()) else { return Ok(()) };
+        let Some(placement) = file.placement.as_ref() else { return Ok(()) };
         if placement.method != PlaceMethod::Copy {
             return Ok(());
         }
+        let opened;
+        let root = match root {
+            Some(root) => root,
+            None => match placement.folder.as_ref() {
+                Some(folder) => match open_recorded_folder(folder)? {
+                    Some(fd) => {
+                        opened = fd;
+                        &opened
+                    }
+                    None => return Ok(()),
+                },
+                None => {
+                    tracing::warn!(
+                        "upload batch {} file {}: the placement record names no folder, a part {} can remain",
+                        manifest.batch_id,
+                        file.file_no,
+                        part_name(&manifest.batch_id, file.file_no)
+                    );
+                    return Ok(());
+                }
+            },
+        };
         let names = path_names(&manifest.files[file.file_no as usize].path);
         let parents = &names[..names.len() - 1];
-        if let Ok(Some(parent)) = fsutil::open_folders(root, parents, false) {
-            match rustix::fs::unlinkat(&parent, part_name(&manifest.batch_id, file.file_no), AtFlags::empty()) {
-                Ok(()) => fsutil::sync_fd(&parent)?,
-                Err(Errno::NOENT) => {}
-                Err(e) => return Err(e.into()),
+        match fsutil::open_folders(root, parents, false) {
+            Ok(Some(parent)) => {
+                match rustix::fs::unlinkat(&parent, part_name(&manifest.batch_id, file.file_no), AtFlags::empty()) {
+                    Ok(()) => fsutil::sync_fd(&parent)?,
+                    Err(Errno::NOENT) => {}
+                    Err(e) => return Err(e.into()),
+                }
             }
+            // An absent folder, or a file or a link in place of a folder, holds no part
+            // that this placement created.
+            Ok(None) | Err(WalkError::Blocked) => {}
+            Err(WalkError::Io(e)) => return Err(e.into()),
         }
         Ok(())
     }
 
-    /// End a file as rejected: remove its source bytes and an owned part. Nothing else in
-    /// the dataset folder changes.
+    /// End a file as rejected: remove its source bytes and an owned part. Without `root`,
+    /// the part is found through the folder of the placement record. Nothing else in the
+    /// dataset folder changes.
     pub fn reject(&self, manifest: &Manifest, file: &mut FileJournal, root: Option<&OwnedFd>, reason: &str) -> anyhow::Result<()> {
         self.remove_owned_part(manifest, file, root)?;
+        self.reject_unchanged(manifest, file, reason)
+    }
+
+    /// End a file as rejected and remove its source bytes. Nothing in the dataset folder
+    /// changes. Recovery uses it when the state of the folder does not prove a part.
+    fn reject_unchanged(&self, manifest: &Manifest, file: &mut FileJournal, reason: &str) -> anyhow::Result<()> {
         fsutil::remove_file(&self.space.data(&manifest.batch_id, file.file_no))?;
         file.state = FileState::Rejected;
         file.error = reason.to_string();
@@ -135,12 +199,12 @@ impl Service {
                     if source.is_some() {
                         return self.reject(manifest, file, Some(&root), PATH_EXISTS_MESSAGE);
                     }
-                    return self.reject(manifest, file, None, NOT_RECOVERED_MESSAGE);
+                    return self.reject_unchanged(manifest, file, NOT_RECOVERED_MESSAGE);
                 }
                 Found::Absent => {
                     self.remove_owned_part(manifest, file, Some(&root))?;
                     if source.is_none() {
-                        return self.reject(manifest, file, None, NOT_RECOVERED_MESSAGE);
+                        return self.reject_unchanged(manifest, file, NOT_RECOVERED_MESSAGE);
                     }
                     file.state = FileState::Complete;
                 }
@@ -157,10 +221,10 @@ impl Service {
             return self.reject(manifest, file, Some(&root), PATH_EXISTS_MESSAGE);
         }
         let Some((_, src_dev, src_ino, src_size)) = fsutil::stat_entry(&files_dir, &data_name)? else {
-            return self.reject(manifest, file, None, NOT_RECOVERED_MESSAGE);
+            return self.reject_unchanged(manifest, file, NOT_RECOVERED_MESSAGE);
         };
         if src_size != entry.size {
-            return self.reject(manifest, file, None, NOT_RECOVERED_MESSAGE);
+            return self.reject_unchanged(manifest, file, NOT_RECOVERED_MESSAGE);
         }
         let parent_dev = rustix::fs::fstat(&parent)?.st_dev as u64;
         let method = if parent_dev == src_dev { PlaceMethod::Rename } else { PlaceMethod::Copy };
@@ -174,6 +238,11 @@ impl Service {
             part_ino: None,
             dest_dev: None,
             dest_ino: None,
+            folder: Some(PlacementFolder {
+                mount_name: target.mount.name.clone(),
+                mount_path: target.mount.path.clone(),
+                dataset_path: target.dataset_path.clone(),
+            }),
         });
         file.version += 1;
         self.save_file(&manifest.batch_id, file, "place.prepared")?;

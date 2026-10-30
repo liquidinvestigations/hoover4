@@ -156,6 +156,20 @@ impl BatchStore for ClickHouseStore {
             Ok(live > 0)
         })
     }
+
+    fn dataset_removal_live(&self, upload_dataset: &str) -> anyhow::Result<bool> {
+        self.handle.block_on(async {
+            let live = crate::db_utils::clickhouse_utils::get_global_client()
+                .query(
+                    "SELECT count() FROM operations FINAL WHERE collection_dataset = ? \
+                     AND kind IN ('delete_dataset', 'purge_dataset') AND state IN ('pending', 'queued', 'running')",
+                )
+                .bind(upload_dataset)
+                .fetch_one::<u64>()
+                .await?;
+            Ok(live > 0)
+        })
+    }
 }
 
 /// The body of the signal-with-start request. It holds ids only: no path enters a
@@ -218,6 +232,12 @@ impl UploadAccess for DbAccess {
         let targets = self.handle.block_on(crate::db_auth::uploads::upload_targets(username))?;
         if let Some(conflict) = targets.conflicts.iter().find(|c| c.collectionname == collection) {
             return Ok(TargetLookup::Conflict(conflict.datasets.clone()));
+        }
+        if let Some(unavailable) = targets.unavailable.iter().find(|u| u.collectionname == collection) {
+            return Ok(TargetLookup::Unavailable {
+                upload_dataset: unavailable.collection_dataset.clone(),
+                reason: unavailable.reason.clone(),
+            });
         }
         let Some(target) = targets.targets.into_iter().find(|t| t.collectionname == collection) else {
             return Ok(TargetLookup::None);

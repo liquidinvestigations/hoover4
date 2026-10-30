@@ -45,7 +45,7 @@ Rows `F-store-10` to `F-store-13` of [the feature register](../Features.md) give
 | Route | Behavior | Constraint |
 |---|---|---|
 | `GET /_upload/limits` | Return the limits and the upload targets of the caller. | A collection with two upload datasets is listed as a conflict without a target. |
-| `POST /_upload/begin` | Check a manifest, reserve its paths and return the batch id and one tus address for each file. | The body is JSON of at most 16 MiB. No byte is accepted before these checks pass. |
+| `POST /_upload/begin` | Check a manifest, reserve its paths and return the batch id and one tus address for each file. | The body is JSON of at most 16 MiB. No byte is accepted before these checks pass. It is refused while a deletion or a purge of the upload dataset is live. |
 | tus requests under `/_upload/files/` | Create, read the offset of, append to and end the transfer of one file. | Each request needs `Tus-Resumable: 1.0.0` and `X-Hoover-Upload: 1`. Only the batch owner may send it. |
 | `GET /_upload/<batch_id>/prefix/<file_no>` | Return the SHA-256 of the acknowledged prefix. | Only the batch owner may read it. |
 | `POST /_upload/<batch_id>/commit` | End the transfer and return the detail address `/uploads/<collection>/<batch_id>`. | The body is JSON. A repeat returns the same address. |
@@ -82,7 +82,8 @@ Rows `F-store-15` and `F-store-16` of [the feature register](../Features.md) sta
 | Collection filter | List the batches of one collection or of every readable collection. | The filter is in the address. |
 | Batch row | Open the batch detail. | |
 | Show all | Read the remaining batches in pages of 200. | |
-| Continue upload | Match a new selection with the files of the batch, check the acknowledged bytes and resume. | It shows to the owner of an `uploading` batch. |
+| Continue upload | Match a new selection with the files of the batch, check the acknowledged bytes and resume. | It shows to the owner of an `uploading` batch. The run commits only when it sends every file that waits for bytes. |
+| Finish upload | Commit an `uploading` batch without its files that have not been sent. | It shows to the owner of an `uploading` batch. The files that arrived are ingested. |
 | Folder link | Open the batch folder in Storage. | |
 | Operation link | Open the operation of the batch. | It shows to administrators. |
 | Indexed path | Open the document view. | |
@@ -94,6 +95,7 @@ Rows `F-store-15` and `F-store-16` of [the feature register](../Features.md) sta
 | Two upload datasets | "This collection has two upload datasets. An administrator must disable one." |
 | Page check failure | The files that break a rule with the rule, and each batch limit that the selection exceeds. |
 | `begin` refusal | The files and rules, or the existing paths under "These paths exist in the folder:". |
+| Continue upload selection | The page shows the count of selected files outside the batch and each file whose bytes differ. It lists the waiting files that were not sent. |
 | Transfer | A bar of acknowledged bytes, the acknowledged bytes and files, and at most 3 files in transfer. |
 | Running batch | The detail page reads the counts again every 3 seconds until the state is terminal. |
 | No history access | The batch pages show the refusal. |

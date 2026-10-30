@@ -254,6 +254,19 @@ pub struct Placement {
     /// The device and inode of the published file, set with the state `Placed`.
     pub dest_dev: Option<u64>,
     pub dest_ino: Option<u64>,
+    /// The dataset folder of the placement, so a rejection without a current target can
+    /// still remove an owned part file. A record written before this field has none.
+    #[serde(default)]
+    pub folder: Option<PlacementFolder>,
+}
+
+/// The dataset folder that a placement writes into: the writable mount and the dataset
+/// path beneath it, as the target named them when the placement began.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PlacementFolder {
+    pub mount_name: String,
+    pub mount_path: String,
+    pub dataset_path: String,
 }
 
 /// The journal record of one file.

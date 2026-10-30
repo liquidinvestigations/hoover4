@@ -772,14 +772,15 @@ pub async fn dispatch_operation(
     match start_operation_workflow(&op_id, kind, collectionname, collection_dataset, &detail).await
     {
         Ok(()) => {
-            // The files placed so far stay in the folder. Transfers still running stop,
-            // and their bytes leave the upload space.
+            // The files placed so far stay in the folder. Transfers still running stop in
+            // the background, and their bytes leave the upload space. A cancelled
+            // deletion does not restore them.
             match kind {
                 "delete_dataset" => {
-                    crate::uploads::stop_dataset_transfers(collection_dataset, common::uploads::DATASET_DELETED_MESSAGE).await
+                    crate::uploads::stop_dataset_transfers(collection_dataset, common::uploads::DATASET_DELETED_MESSAGE)
                 }
                 "purge_dataset" => {
-                    crate::uploads::stop_dataset_transfers(collection_dataset, common::uploads::DATASET_PURGED_MESSAGE).await
+                    crate::uploads::stop_dataset_transfers(collection_dataset, common::uploads::DATASET_PURGED_MESSAGE)
                 }
                 _ => {}
             }

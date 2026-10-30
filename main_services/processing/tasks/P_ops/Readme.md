@@ -55,7 +55,9 @@ The **workflow** first asks `admit_operation` for a slot of its kind. The cap of
 a key of the `[operations]` section, rendered into `HOOVER4_OPERATION_CAPS`, with a default
 of 2. When the running operations of the kind and the older `pending` or `queued` rows of the
 kind fill the cap, the row becomes `queued` and the workflow asks again every 30 s, with no
-time limit. The oldest row by `(started_at, op_id)` starts first. Admission writes `running`
+time limit. An older row that waits for a running operation of its own target does not count,
+because it cannot take a slot now (`admission_counts`). Among the rows that can run, the oldest
+row by `(started_at, op_id)` starts first. Admission writes `running`
 and `run_started_at`, the real start. `run_started_at` stays epoch 0 until then. A `queued`
 row holds the lock like a running one, and a cancel of a queued operation lands it in
 `cancelled`. After 240 requests the workflow continues as new under the same id.

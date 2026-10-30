@@ -233,6 +233,12 @@ async fn batch_files(collection: &str, batch_id: &str) -> anyhow::Result<Vec<Fil
 
 /// The SQL of member level `k` below the ingested files of the batch: rows of the
 /// uploaded root hash and a hash at that level. Level 0 is the roots.
+///
+/// Each member hash has one root, as `_descendants` in `database/uploads.py` assigns it:
+/// the root that reaches it at the lowest level, and the smallest root hash among the
+/// roots at that level. A root hash and a hash of a lower level are not members again.
+/// A shared member then counts for one uploaded file only, on this page and in the
+/// terminal state of the batch.
 fn level_sql(k: usize) -> String {
     if k == 0 {
         return "SELECT DISTINCT file_hash AS root, file_hash AS hash FROM upload_files FINAL \
@@ -240,13 +246,16 @@ fn level_sql(k: usize) -> String {
             .to_string();
     }
     let up = k - 1;
+    let earlier: String = (0..k).map(|j| format!(" AND v.hash NOT IN (SELECT hash FROM l{j})")).collect();
     format!(
-        "SELECT DISTINCT l.root AS root, v.hash AS hash FROM \
-           (SELECT DISTINCT container_hash, hash FROM vfs_files FINAL \
-            WHERE collection_dataset = {{ds:String}} AND is_deleted = 0 AND hash != '' \
-              AND container_hash IN (SELECT hash FROM l{up})) AS v \
-         INNER JOIN l{up} AS l ON v.container_hash = l.hash \
-         WHERE v.hash != l.root"
+        "SELECT first_root AS root, member AS hash FROM \
+           (SELECT v.hash AS member, min(l.root) AS first_root FROM \
+              (SELECT DISTINCT container_hash, hash FROM vfs_files FINAL \
+               WHERE collection_dataset = {{ds:String}} AND is_deleted = 0 AND hash != '' \
+                 AND container_hash IN (SELECT hash FROM l{up})) AS v \
+            INNER JOIN l{up} AS l ON v.container_hash = l.hash \
+            WHERE 1{earlier} \
+            GROUP BY v.hash)"
     )
 }
 
@@ -510,8 +519,13 @@ mod tests {
     fn the_level_queries_chain_from_the_ingested_files() {
         let sql = levels_with(2);
         assert!(sql.starts_with("WITH l0 AS (SELECT DISTINCT file_hash AS root"));
-        assert!(sql.contains("l1 AS (SELECT DISTINCT l.root AS root"));
+        assert!(sql.contains("l1 AS (SELECT first_root AS root, member AS hash FROM"));
         assert!(sql.contains("container_hash IN (SELECT hash FROM l1)"));
+        // A member has one root, and a hash of an earlier level is not a member again.
+        assert!(sql.contains("min(l.root) AS first_root"));
+        assert!(sql.contains(
+            "WHERE 1 AND v.hash NOT IN (SELECT hash FROM l0) AND v.hash NOT IN (SELECT hash FROM l1)"
+        ));
         assert!(!sql.contains("l3"));
         let roots = roots_sql(1);
         assert!(roots.contains("members AS (SELECT root, hash FROM l0 UNION ALL SELECT root, hash FROM l1)"));

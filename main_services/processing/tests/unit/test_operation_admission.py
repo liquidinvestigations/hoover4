@@ -178,12 +178,16 @@ def test_the_estimate_counts_from_the_real_start():
     assert real_start(row) == datetime(2026, 1, 2)
 
 
-def test_the_admission_query_counts_only_live_rows(monkeypatch):
+def test_the_admission_query_reads_live_rows_of_the_kind_and_running_rows(monkeypatch):
     captured = {}
 
     class _Result:
-        column_names = ("running", "ahead")
-        result_rows = [(0, 0)]
+        column_names = ("op_id", "kind", "target_kind", "collectionname",
+                        "collection_dataset", "state", "started_at")
+        result_rows = [
+            ("old", "add_dataset", "dataset", "c", "c_x", "queued", datetime(2025, 12, 31)),
+            ("ocr", "rerun_ocr", "dataset", "c", "c_x", "running", datetime(2025, 12, 1)),
+        ]
 
     class _Client:
         def __enter__(self):
@@ -200,7 +204,84 @@ def test_the_admission_query_counts_only_live_rows(monkeypatch):
     import database.clickhouse as clickhouse
 
     monkeypatch.setattr(clickhouse, "get_global_client", lambda: _Client())
+    # The older row waits for the running OCR of its own dataset, so it is not ahead.
     assert operations.count_admission(_row("pending")) == (0, 0)
     assert "state IN ('pending', 'queued', 'running')" in captured["sql"]
-    assert "(started_at, op_id) < ({started_at:DateTime}, {op_id:String})" in captured["sql"]
-    assert captured["parameters"]["kind"] == "add_dataset"
+    assert "(kind = {kind:String} OR state = 'running')" in captured["sql"]
+    assert captured["parameters"] == {"kind": "add_dataset"}
+
+
+def _live(op_id: str, kind: str, state: str, dataset: str, day: int,
+          collection: str = "c") -> dict:
+    return {
+        "op_id": op_id, "kind": kind, "state": state,
+        "target_kind": KINDS[kind]["target_kind"],
+        "collectionname": collection, "collection_dataset": dataset,
+        "started_at": datetime(2026, 1, day),
+    }
+
+
+def _upload(dataset: str, day: int = 10, collection: str = "c") -> dict:
+    return _live("me", "ingest_upload", "pending", dataset, day, collection)
+
+
+def test_older_rows_that_wait_for_their_own_target_do_not_fill_the_cap():
+    live = [
+        _live("ocr-a", "rerun_ocr", "running", "c_a", 1),
+        _live("ocr-b", "rerun_ocr", "running", "c_b", 1),
+        _live("up-a", "ingest_upload", "queued", "c_a", 2),
+        _live("up-b", "ingest_upload", "queued", "c_b", 3),
+    ]
+    row = _upload("c_c")
+    running, ahead = operations.admission_counts(row, live + [row])
+    assert (running, ahead) == (0, 0)
+    assert admission_decision(running, ahead, 2) == "running"
+
+
+def test_older_rows_that_can_run_stay_ahead_in_their_order():
+    live = [
+        _live("up-a", "ingest_upload", "queued", "c_a", 2),
+        _live("up-b", "ingest_upload", "pending", "c_b", 3),
+        _live("up-later", "ingest_upload", "queued", "c_d", 20),
+    ]
+    row = _upload("c_c")
+    assert operations.admission_counts(row, live + [row]) == (0, 2)
+    assert admission_decision(0, 2, 2) == "queued"
+    # The newer row waits behind this one, not the reverse.
+    assert operations.admission_counts(live[2], live + [row]) == (0, 3)
+
+
+def test_running_rows_of_the_kind_count_against_the_cap():
+    live = [
+        _live("up-a", "ingest_upload", "running", "c_a", 2),
+        _live("up-b", "ingest_upload", "running", "c_b", 3),
+        _live("other", "rerun_ocr", "running", "c_z", 3),
+    ]
+    row = _upload("c_c")
+    assert operations.admission_counts(row, live + [row]) == (2, 0)
+    assert admission_decision(2, 0, 2) == "queued"
+
+
+def test_a_collection_operation_blocks_the_older_dataset_rows_of_its_collection():
+    live = [
+        _live("reindex", "reindex_collection", "running", "", 1, collection="press"),
+        _live("up-press", "ingest_upload", "queued", "press_inbox", 2, collection="press"),
+        _live("up-legal", "ingest_upload", "queued", "legal_inbox", 3, collection="legal"),
+    ]
+    row = _upload("c_c")
+    # Only the row of the other collection can run, so only it is ahead.
+    assert operations.admission_counts(row, live + [row]) == (0, 1)
+
+
+def test_the_overlap_rule_matches_the_target_clause():
+    dataset_row = _live("d", "ingest_upload", "queued", "c_a", 1)
+    assert operations.targets_overlap(dataset_row, _live("x", "rerun_ocr", "running", "c_a", 1))
+    assert not operations.targets_overlap(dataset_row, _live("x", "rerun_ocr", "running", "c_b", 1))
+    assert operations.targets_overlap(
+        dataset_row, _live("x", "reindex_collection", "running", "", 1))
+    assert not operations.targets_overlap(
+        dataset_row, _live("x", "reindex_collection", "running", "", 1, collection="other"))
+    collection_row = _live("r", "reindex_collection", "queued", "", 1)
+    assert operations.targets_overlap(collection_row, _live("x", "rerun_ocr", "running", "c_b", 1))
+    assert not operations.targets_overlap(
+        collection_row, _live("x", "rerun_ocr", "running", "o_b", 1, collection="other"))

@@ -1,14 +1,17 @@
 //! `/uploads/:collection/:batch_id?page`, the batch detail. It reads the outcome again
 //! every 3 seconds until the batch state is terminal. The owner of an `uploading` batch
 //! can continue the upload after a closed tab: the page matches a new selection of the
-//! same files, and the driver checks the acknowledged bytes before it resumes.
+//! same files, and the driver checks the acknowledged bytes before it resumes. The run
+//! commits after its last file only when it sends every file that waits for bytes. The
+//! page lists the files that the selection did not name or whose bytes differ, and
+//! Finish upload commits the batch without them.
 
 use std::time::Duration;
 
 use common::search_result::DocumentIdentifier;
 use common::upload_pages::{
-    batch_state_is_terminal, batch_state_label, match_resume_selection, ResumeFile, SelectedFile,
-    UploadBatchDetail, UploadFileRow, UploadFileState,
+    batch_state_is_terminal, batch_state_label, match_resume_selection, pending_paths, ResumeFile,
+    SelectedFile, UploadBatchDetail, UploadFileRow, UploadFileState,
 };
 use common::uploads::{format_count, format_upload_size};
 use dioxus::prelude::*;
@@ -25,6 +28,8 @@ use crate::routes::Route;
 
 const POLL: Duration = Duration::from_secs(3);
 const DIFFERS: &str = "The selected file differs from the uploaded bytes.";
+/// Paths of the list of files that have not been sent. The rest is a count.
+const NOT_SENT_ROWS: usize = 20;
 
 /// The address of the document view of an indexed file.
 fn document_route(dataset: &str, hash: &str) -> Route {
@@ -70,6 +75,13 @@ pub fn UploadBatchPage(collection: String, batch_id: String, page: u32) -> Eleme
     let mut manifest = use_signal(|| None::<Result<Vec<ResumeFile>, String>>);
     let mut unmatched = use_signal(|| 0usize);
     let mut mismatched = use_signal(Vec::<FailedFile>::new);
+    // The files of the batch that still wait for bytes and that the last selection did
+    // not name, or that the last run did not send.
+    let mut not_sent_yet = use_signal(Vec::<String>::new);
+    // True when the resume run commits after its last file.
+    let mut run_commits = use_signal(|| false);
+    // A failed Finish upload, shown under the controls.
+    let mut finish_error = use_signal(|| None::<String>);
     let mut transfer = use_signal(|| None::<Transfer>);
     let limits = use_resource(upload_page_info);
     // The driver callback cannot name the driver, so it leaves the resume command here,
@@ -85,7 +97,15 @@ pub fn UploadBatchPage(collection: String, batch_id: String, page: u32) -> Eleme
             let found = match_resume_selection(&batch_files, &files);
             unmatched.set(found.unmatched);
             mismatched.set(Vec::new());
+            finish_error.set(None);
             if !found.names_the_batch() {
+                return;
+            }
+            not_sent_yet.set(found.not_selected.clone());
+            let commits = found.sends_every_pending_file();
+            run_commits.set(commits);
+            // Nothing to send, and other files still wait: the batch stays open.
+            if found.matched.is_empty() && !commits {
                 return;
             }
             let chunk_bytes = match &*limits.peek() {
@@ -119,22 +139,45 @@ pub fn UploadBatchPage(collection: String, batch_id: String, page: u32) -> Eleme
                 "batch_id": batch_id,
                 "items": items,
                 "chunk_bytes": chunk_bytes,
+                "commit_when_done": commits,
             })));
         }
         DriverEvent::Checked { mismatched: found, sending } => {
-            if sending == 0 && !found.is_empty() {
+            // Without a file to send, the driver starts a run only to commit a batch whose
+            // files all have their bytes.
+            if sending == 0 && !(*run_commits.peek() && found.is_empty()) {
                 transfer.set(None);
             }
             mismatched.set(found);
         }
+        DriverEvent::Sent { .. } => {
+            transfer.set(None);
+            *tick.write() += 1;
+            // The run ended without a commit. Read the files that still wait for bytes.
+            let (collection, batch_id, _) = key.peek().clone();
+            spawn(async move {
+                let files = upload_batch_resume_files(collection, batch_id).await.map_err(|e| user_facing_message(&e));
+                if let Ok(batch_files) = &files {
+                    let differs: Vec<String> = mismatched.peek().iter().map(|m| m.path.clone()).collect();
+                    not_sent_yet.set(pending_paths(batch_files).into_iter().filter(|p| !differs.contains(p)).collect());
+                }
+                manifest.set(Some(files));
+            });
+        }
         DriverEvent::Committed { .. } => {
             transfer.set(None);
             resuming.set(false);
+            not_sent_yet.set(Vec::new());
+            mismatched.set(Vec::new());
             *tick.write() += 1;
         }
         DriverEvent::CommitFailed { message } => {
-            if let Some(t) = transfer.write().as_mut() {
-                t.error = Some(message);
+            if transfer.peek().is_some() {
+                if let Some(t) = transfer.write().as_mut() {
+                    t.error = Some(message);
+                }
+            } else {
+                finish_error.set(Some(message));
             }
         }
         DriverEvent::Refused { .. } | DriverEvent::Begun { .. } => {}
@@ -197,6 +240,24 @@ pub fn UploadBatchPage(collection: String, batch_id: String, page: u32) -> Eleme
                                 "Continue upload"
                             }
                         }
+                        div { style: "display: flex; align-items: center; gap: 10px; margin-top: 8px;",
+                            button {
+                                class: "x-upload-finish",
+                                style: BTN,
+                                disabled: transfer().is_some(),
+                                onclick: move |_| {
+                                    finish_error.set(None);
+                                    driver.send(serde_json::json!({"cmd": "finish", "batch_id": key.peek().1.clone()}));
+                                },
+                                "Finish upload"
+                            }
+                            span { style: "color: var(--x-ink-muted);",
+                                "Finish upload ingests the files received so far. Files that have not been sent are not uploaded."
+                            }
+                        }
+                        if let Some(e) = finish_error() {
+                            ErrorBar { message: e }
+                        }
                         if let Some(Err(e)) = manifest() {
                             ErrorBar { message: e }
                         }
@@ -209,6 +270,9 @@ pub fn UploadBatchPage(collection: String, batch_id: String, page: u32) -> Eleme
                             p { key: "{index}", class: "x-upload-mismatch", style: "color: var(--x-danger); margin: 2px 0; overflow-wrap: anywhere;",
                                 if file.error.is_empty() { "{show_path(&file.path)} {DIFFERS}" } else { "{show_path(&file.path)} {file.error}" }
                             }
+                        }
+                        if !not_sent_yet().is_empty() {
+                            NotSentList { paths: not_sent_yet() }
                         }
                     }
                 }
@@ -288,6 +352,25 @@ pub fn UploadBatchPage(collection: String, batch_id: String, page: u32) -> Eleme
         }
         if let Some(t) = transfer() {
             ProgressDialog { heading: t.heading, state: t.state, error: t.error, driver }
+        }
+    }
+}
+
+/// The files of the batch that still wait for bytes, after a selection or a run.
+#[component]
+fn NotSentList(paths: Vec<String>) -> Element {
+    let more = paths.len().saturating_sub(NOT_SENT_ROWS);
+    rsx! {
+        div { class: "x-upload-not-selected", style: "margin: 4px 0;",
+            p { style: "margin: 2px 0;",
+                "{format_count(paths.len() as u64)} files of this upload have not been sent. Select them to continue, or use Finish upload:"
+            }
+            for (index, path) in paths.iter().take(NOT_SENT_ROWS).enumerate() {
+                div { key: "{index}", style: "padding-left: 16px; overflow-wrap: anywhere;", "{show_path(path)}" }
+            }
+            if more > 0 {
+                div { style: "padding-left: 16px; color: var(--x-ink-muted);", "and {format_count(more as u64)} more files" }
+            }
         }
     }
 }

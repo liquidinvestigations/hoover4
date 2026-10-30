@@ -65,6 +65,9 @@ pub enum DriverEvent {
     },
     Committed { detail: String },
     CommitFailed { message: String },
+    /// A "Continue upload" run sent its files without a commit, because other files of
+    /// the batch still wait for bytes.
+    Sent { batch_id: String },
     /// "Continue upload" compared the acknowledged prefixes.
     /// `sending` counts the files that it resumes.
     Checked { mismatched: Vec<FailedFile>, sending: u64 },

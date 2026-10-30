@@ -503,31 +503,58 @@ def operation_caps() -> dict[str, int]:
 
 
 def admission_decision(running: int, ahead: int, cap: int) -> str:
-    """`running` when a slot is free and no older row of the kind waits, else `queued`."""
+    """`running` when a slot is free and no older row of the kind can run first, else `queued`."""
     return "running" if running + ahead < cap else "queued"
+
+
+def targets_overlap(row: dict, other: dict) -> bool:
+    """True when the target of `other` overlaps the target of `row`.
+
+    It applies the rule of `target_clause` to rows that were already read. A dataset row
+    overlaps a row of the same dataset and a collection row of its collection. A
+    collection row overlaps every row of its collection.
+    """
+    if KINDS[row["kind"]]["target_kind"] == "dataset":
+        return (other["collection_dataset"] == row["collection_dataset"]
+                or (other["target_kind"] == "collection"
+                    and other["collectionname"] == row["collectionname"]))
+    return other["collectionname"] == row["collectionname"]
+
+
+def admission_counts(row: dict, live_rows: list[dict]) -> tuple[int, int]:
+    """The running operations of the row's kind, and the waiting rows that are ahead of it.
+
+    A row is ahead when it has the kind of `row`, is `pending` or `queued`, and is older by
+    `(started_at, op_id)`. It must also have no running row on its own target. An older
+    row that waits for its own target cannot take a slot now. It therefore does not keep a
+    row with a free target out of the cap. The older rows that can run keep their order.
+    """
+    running_rows = [r for r in live_rows if r["state"] == "running"]
+    running = sum(1 for r in running_rows if r["kind"] == row["kind"])
+    key = (row["started_at"], row["op_id"])
+    ahead = 0
+    for other in live_rows:
+        if (other["kind"] != row["kind"] or other["state"] not in ("pending", "queued")
+                or (other["started_at"], other["op_id"]) >= key):
+            continue
+        if not any(targets_overlap(other, r) for r in running_rows if r["op_id"] != other["op_id"]):
+            ahead += 1
+    return running, ahead
 
 
 def count_admission(row: dict) -> tuple[int, int]:
     """The running operations of the row's kind, and the live rows that wait ahead of it.
 
-    A row waits ahead when it is `pending` or `queued` and is older by
-    `(started_at, op_id)`. `countIf` over an empty match returns one row of zeros, which
-    is the correct answer here.
+    It reads the live rows of the kind and every running row, then applies
+    `admission_counts`. The live rows of a deployment are few, so one read is enough.
     """
     from .clickhouse import get_global_client
 
     sql = (
-        "SELECT countIf(state = 'running') AS running, "
-        "countIf(state IN ('pending', 'queued') AND "
-        "(started_at, op_id) < ({started_at:DateTime}, {op_id:String})) AS ahead "
-        f"FROM operations FINAL WHERE kind = {{kind:String}} AND state IN ({_LIVE_SQL})"
+        "SELECT op_id, kind, target_kind, collectionname, collection_dataset, state, started_at "
+        f"FROM operations FINAL WHERE state IN ({_LIVE_SQL}) "
+        "AND (kind = {kind:String} OR state = 'running')"
     )
-    parameters = {
-        "kind": row["kind"],
-        "started_at": row["started_at"],
-        "op_id": row["op_id"],
-    }
     with get_global_client() as client:
-        result = _row_dicts(client.query(sql, parameters=parameters))
-    first = result[0] if result else {"running": 0, "ahead": 0}
-    return int(first["running"]), int(first["ahead"])
+        live_rows = _row_dicts(client.query(sql, parameters={"kind": row["kind"]}))
+    return admission_counts(row, live_rows)

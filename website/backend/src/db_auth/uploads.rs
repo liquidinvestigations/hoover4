@@ -58,11 +58,23 @@ pub struct UploadConflict {
     pub datasets: Vec<String>,
 }
 
+/// The upload dataset of a collection whose folder is beneath a writable mount but does
+/// not open now. The permission stands, so the receiver keeps the files of its batches.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UploadUnavailable {
+    pub collectionname: String,
+    pub collection_dataset: String,
+    /// The error of the folder open.
+    pub reason: String,
+}
+
 /// [`upload_targets`] returns this value.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UploadTargets {
     pub targets: Vec<UploadTarget>,
     pub conflicts: Vec<UploadConflict>,
+    /// Not targets now. The upload page does not list them.
+    pub unavailable: Vec<UploadUnavailable>,
 }
 
 /// One upload dataset of a collection that the user may upload into, before the mount
@@ -219,11 +231,14 @@ pub fn open_dataset_folder(mounts: &[DatasetMount], dataset_path: &str) -> anyho
 }
 
 /// The targets and the conflicts of the candidate rows. A collection with one candidate
-/// is a target when `resolves` opens its folder and returns the mount name. A collection
-/// with more than one candidate is a conflict, and no dataset of it is a target.
+/// is a target when `resolves` opens its folder and returns the mount name. `Ok(None)`
+/// from `resolves` means that no writable mount holds the path, and the collection has no
+/// target. An error means that the folder does not open, and the collection is
+/// unavailable. A collection with more than one candidate is a conflict, and no dataset
+/// of it is a target.
 pub fn targets_from_candidates(
     candidates: Vec<UploadCandidate>,
-    resolves: impl Fn(&str) -> Option<String>,
+    resolves: impl Fn(&str) -> Result<Option<String>, String>,
 ) -> UploadTargets {
     let mut by_collection: BTreeMap<String, Vec<UploadCandidate>> = BTreeMap::new();
     for candidate in candidates {
@@ -241,13 +256,19 @@ pub fn targets_from_candidates(
             continue;
         }
         let dataset = datasets.pop().expect("one candidate");
-        if let Some(mount_name) = resolves(&dataset.dataset_path) {
-            result.targets.push(UploadTarget {
+        match resolves(&dataset.dataset_path) {
+            Ok(Some(mount_name)) => result.targets.push(UploadTarget {
                 collectionname,
                 collection_dataset: dataset.collection_dataset,
                 dataset_path: dataset.dataset_path,
                 mount_name,
-            });
+            }),
+            Ok(None) => {}
+            Err(reason) => result.unavailable.push(UploadUnavailable {
+                collectionname,
+                collection_dataset: dataset.collection_dataset,
+                reason,
+            }),
         }
     }
     result
@@ -267,7 +288,10 @@ pub async fn upload_targets_with_mounts(
     let candidates = upload_candidates(username).await?;
     dataset_mounts::blocking(move || {
         Ok(targets_from_candidates(candidates, |path| {
-            open_dataset_folder(&mounts, path).ok().map(|(mount, _)| mount.name)
+            if writable_mount_for(&mounts, path).is_none() {
+                return Ok(None);
+            }
+            open_dataset_folder(&mounts, path).map(|(mount, _)| Some(mount.name)).map_err(|e| format!("{e:#}"))
         }))
     })
     .await
@@ -319,7 +343,7 @@ mod tests {
                 candidate("press", "press_inbox", "/uploads/press"),
                 candidate("legal", "legal_inbox", "/testdata/legal"),
             ],
-            |path| path.starts_with("/uploads/").then(|| "uploads".to_string()),
+            |path| Ok(path.starts_with("/uploads/").then(|| "uploads".to_string())),
         );
         assert_eq!(
             resolved.targets,
@@ -334,6 +358,23 @@ mod tests {
     }
 
     #[test]
+    fn a_folder_that_does_not_open_is_unavailable_and_not_a_lost_permission() {
+        let resolved = targets_from_candidates(
+            vec![candidate("press", "press_inbox", "/uploads/press")],
+            |_| Err("cannot open the dataset mount /uploads: No such file or directory".to_string()),
+        );
+        assert!(resolved.targets.is_empty() && resolved.conflicts.is_empty());
+        assert_eq!(
+            resolved.unavailable,
+            vec![UploadUnavailable {
+                collectionname: "press".to_string(),
+                collection_dataset: "press_inbox".to_string(),
+                reason: "cannot open the dataset mount /uploads: No such file or directory".to_string(),
+            }]
+        );
+    }
+
+    #[test]
     fn two_upload_datasets_in_one_collection_are_a_conflict_without_a_target() {
         let resolved = targets_from_candidates(
             vec![
@@ -341,7 +382,7 @@ mod tests {
                 candidate("press", "press_a", "/uploads/a"),
                 candidate("press", "press_a", "/uploads/a"),
             ],
-            |_| Some("uploads".to_string()),
+            |_| Ok(Some("uploads".to_string())),
         );
         assert!(resolved.targets.is_empty());
         assert_eq!(

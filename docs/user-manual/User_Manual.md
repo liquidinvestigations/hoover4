@@ -712,7 +712,9 @@ An indexed file opens the document view.
 If the tab closed during a transfer, open the upload from the **Uploads** link of the upload page, and select **Continue upload**.
 Choose the same files or the same folder again.
 The page matches each file by path, size and modification time, compares the bytes that the server already has, and sends the rest.
-A file that changed since the first transfer is listed and not sent.
+A file that changed since the first transfer is listed and not sent. Select the original file to continue it.
+When you select only some of the files, the page sends them and lists the files that have not been sent. The upload stays open.
+The upload ends when every file has arrived, or when you select **Finish upload**. **Finish upload** processes the files that arrived, and the rest are marked not sent.
 
 **Uploads** lists every upload into your upload collections, newest first, with the account that sent it.
 An upload that gets no new bytes for 24 hours, the default, ends automatically, and the files that arrived are processed.

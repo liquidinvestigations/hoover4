@@ -167,6 +167,25 @@ pub fn lock(path: &Path, exclusive: bool, wait: bool) -> anyhow::Result<Option<L
     }
 }
 
+/// Take a lock on `path` and wait at most `wait` for it. A lock that another holder keeps
+/// for longer gives `None`. The function tries the lock without blocking and sleeps
+/// between attempts, because `flock` itself has no time limit.
+pub fn lock_within(path: &Path, exclusive: bool, wait: std::time::Duration) -> anyhow::Result<Option<Lock>> {
+    let deadline = std::time::Instant::now() + wait;
+    let mut pause = std::time::Duration::from_millis(5);
+    loop {
+        if let Some(lock) = lock(path, exclusive, false)? {
+            return Ok(Some(lock));
+        }
+        let now = std::time::Instant::now();
+        if now >= deadline {
+            return Ok(None);
+        }
+        std::thread::sleep(pause.min(deadline - now));
+        pause = (pause * 2).min(std::time::Duration::from_millis(100));
+    }
+}
+
 /// The open flags of a folder in a dataset. A symbolic link is refused.
 const DIRECTORY: OFlags = OFlags::RDONLY
     .union(OFlags::DIRECTORY)

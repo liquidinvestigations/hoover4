@@ -107,7 +107,9 @@ version is below its journal version is written again before a conflicting chang
 
 `flock` locks on files of the upload space serialize the writers, also across processes. The
 lock order is request, dataset, batch, file. A transfer holds the shared batch lock and the
-exclusive file lock. A commit, the sweep and recovery hold the exclusive batch lock.
+exclusive file lock. A commit, the sweep and recovery hold the exclusive batch lock. A request
+waits at most 75 seconds for a lock and then answers 423. A `PATCH` body that gives no byte for
+60 seconds ends, so a client that lost its network releases its locks.
 
 Placement moves a complete file into the dataset folder and never replaces an entry. It
 opens every folder through the descriptor of its parent without following a symbolic link,

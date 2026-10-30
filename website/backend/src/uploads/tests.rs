@@ -24,6 +24,8 @@ const USER: &str = "alice";
 const COLLECTION: &str = "press";
 const DATASET: &str = "press_inbox";
 const HOUR: i64 = 3_600_000;
+/// The lock wait of the test receivers.
+const TEST_LOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(1500);
 
 struct FakeClock(AtomicI64);
 
@@ -40,6 +42,7 @@ struct MemStore {
     claimed: Mutex<HashMap<String, String>>,
     fail: AtomicBool,
     deleted: AtomicBool,
+    removal_live: AtomicBool,
 }
 
 impl MemStore {
@@ -99,6 +102,10 @@ impl BatchStore for MemStore {
 
     fn dataset_live(&self, _dataset: &str) -> anyhow::Result<bool> {
         Ok(!self.deleted.load(Ordering::SeqCst))
+    }
+
+    fn dataset_removal_live(&self, _dataset: &str) -> anyhow::Result<bool> {
+        Ok(self.removal_live.load(Ordering::SeqCst))
     }
 }
 
@@ -199,6 +206,7 @@ impl Env {
             access: self.access.clone(),
             free_space: self.free.clone(),
             faults: Faults::default(),
+            lock_wait: TEST_LOCK_WAIT,
         };
         service.prepare_space().unwrap();
         Arc::new(service)
@@ -702,7 +710,7 @@ fn a_deleted_or_purged_dataset_stops_its_transfers_and_keeps_placed_files() {
     assert_eq!(info.offset, 0);
 
     let stopped = service.stop_dataset(DATASET, common::uploads::DATASET_PURGED_MESSAGE).unwrap();
-    assert_eq!(stopped, 2);
+    assert_eq!(stopped, commit::DatasetStop { stopped: 2, busy: 0 });
     // A placed file stays, so its batch waits for the worker. The unsent file is not sent.
     assert_eq!(env.store.latest_batch(&a.batch_id).unwrap().state, batch_state::QUEUED);
     assert_eq!(env.store.latest_file(&a.batch_id, 0).unwrap().state, "placed");
@@ -714,7 +722,7 @@ fn a_deleted_or_purged_dataset_stops_its_transfers_and_keeps_placed_files() {
     assert_eq!(cancelled.state, batch_state::CANCELLED);
     assert_eq!(cancelled.error, common::uploads::DATASET_PURGED_MESSAGE);
     assert!(!service.space.data(&b.batch_id, 0).exists());
-    assert_eq!(service.stop_dataset(DATASET, common::uploads::DATASET_PURGED_MESSAGE).unwrap(), 0);
+    assert_eq!(service.stop_dataset(DATASET, common::uploads::DATASET_PURGED_MESSAGE).unwrap().stopped, 0);
 
     // The sweep stops a transfer of a dataset that was deleted elsewhere.
     let c = service.begin(USER, &request("stop-c", &[("four", 4)])).unwrap();
@@ -805,6 +813,159 @@ fn an_unreachable_store_keeps_the_rows_in_the_journal_until_it_returns() {
     service.sweep(true).unwrap();
     assert_eq!(env.store.latest_file(&begun.batch_id, 0).unwrap().state, "placed");
     assert_eq!(env.store.latest_batch(&begun.batch_id).unwrap().state, batch_state::QUEUED);
+}
+
+/// Run `work` on another thread and return its result, or `None` when it does not end
+/// within `limit`. A request that waits without a limit then fails the test instead of
+/// stopping it.
+fn within<T: Send + 'static>(limit: std::time::Duration, work: impl FnOnce() -> T + Send + 'static) -> Option<(T, std::time::Duration)> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let started = std::time::Instant::now();
+        let value = work();
+        let _ = sender.send((value, started.elapsed()));
+    });
+    receiver.recv_timeout(limit).ok()
+}
+
+#[test]
+fn a_stalled_patch_delays_the_other_requests_only_for_the_lock_wait() {
+    let env = Env::new(false);
+    let service = env.service();
+    let begun = service.begin(USER, &request("stall", &[("a", 16), ("b", 4)])).unwrap();
+    let id = begun.batch_id.clone();
+    send_file(&service, &id, 1, &content(1, 4)).unwrap();
+    // A PATCH whose client stopped sending: it holds the shared batch lock and the file lock.
+    let mut stalled = service.tus_patch_open(USER, &id, 0, 0, Some(8)).unwrap();
+    assert!(stalled.write(&content(0, 8)[..3]).unwrap());
+
+    let limit = TEST_LOCK_WAIT * 4;
+    for (name, status) in [
+        ("HEAD", { let (s, i) = (service.clone(), id.clone()); within(limit, move || s.tus_head(USER, &i, 0).map(|_| ()).unwrap_err().status) }),
+        ("prefix", { let (s, i) = (service.clone(), id.clone()); within(limit, move || s.prefix_digest(USER, &i, 0).map(|_| ()).unwrap_err().status) }),
+        ("commit", { let (s, i) = (service.clone(), id.clone()); within(limit, move || s.commit(USER, &i).map(|_| ()).unwrap_err().status) }),
+    ] {
+        let (status, waited) = status.unwrap_or_else(|| panic!("{name} waited longer than {limit:?}"));
+        assert_eq!(status, 423, "{name}");
+        assert!(waited >= TEST_LOCK_WAIT, "{name} answered after {waited:?}");
+    }
+    let stop = {
+        let s = service.clone();
+        within(limit, move || s.stop_dataset(DATASET, common::uploads::DATASET_DELETED_MESSAGE).unwrap())
+    };
+    assert_eq!(stop.expect("the stop waits at most the lock wait").0, commit::DatasetStop { stopped: 0, busy: 1 });
+    assert_eq!(service.sweep_batch(&id, false).unwrap(), commit::SweepOutcome::Busy);
+    // The refused commit left its stop marker, and the batch still accepts no new PATCH.
+    assert!(service.space.stopping(&id).exists());
+    assert_eq!(env.store.latest_batch(&id).unwrap().state, batch_state::UPLOADING);
+
+    // The idle limit of the route ends the PATCH as interrupted, and its prefix stays.
+    assert_eq!(stalled.finish(BodyEnd::Interrupted).unwrap().offset, 3);
+    assert_eq!(service.tus_head(USER, &id, 0).unwrap().offset, 3);
+    // The sweep commits a batch whose owner asked for the commit.
+    assert_eq!(service.sweep_batch(&id, false).unwrap(), commit::SweepOutcome::Committed);
+    assert_eq!(env.store.latest_batch(&id).unwrap().state, batch_state::QUEUED);
+    assert_eq!(env.store.latest_file(&id, 0).unwrap().state, "not_sent");
+    assert_eq!(read_dest(&env, "/in/b"), Some(content(1, 4)));
+}
+
+/// The part files in the dataset folder of a test.
+fn parts(env: &Env) -> Vec<String> {
+    tree(&env.dataset).into_iter().filter(|p| p.contains(".hoover4-part")).collect()
+}
+
+#[test]
+fn a_rejection_without_a_target_removes_the_owned_part_of_a_copy() {
+    let env = Env::new(true);
+    let first = env.service();
+    let begun = first.begin(USER, &request("part", &[("a", 4)])).unwrap();
+    let id = begun.batch_id.clone();
+    first.faults.arm("copy.part_created");
+    assert!(send_file(&first, &id, 0, &content(0, 4)).unwrap_err().message.contains(fsutil::SIMULATED_CRASH));
+    assert_eq!(parts(&env).len(), 1, "the crash leaves the part");
+    drop(first);
+
+    // The dataset is deleted before any sweep places the file again.
+    let service = env.service();
+    env.store.deleted.store(true, Ordering::SeqCst);
+    assert_eq!(service.sweep_batch(&id, false).unwrap(), commit::SweepOutcome::Stopped);
+    assert_eq!(parts(&env), Vec::<String>::new());
+    let file = env.store.latest_file(&id, 0).unwrap();
+    assert_eq!((file.state.as_str(), file.error.as_str()), ("rejected", common::uploads::DATASET_DELETED_MESSAGE));
+    assert_eq!(env.store.latest_batch(&id).unwrap().state, batch_state::CANCELLED);
+}
+
+#[test]
+fn a_part_whose_folder_does_not_open_stays_recorded_until_the_sweep_removes_it() {
+    let env = Env::new(true);
+    let first = env.service();
+    let begun = first.begin(USER, &request("part-later", &[("a", 4)])).unwrap();
+    let id = begun.batch_id.clone();
+    first.faults.arm("copy.part_created");
+    assert!(send_file(&first, &id, 0, &content(0, 4)).is_err());
+    drop(first);
+    let service = env.service();
+
+    // The mount root is not available while the deleted dataset stops its transfer.
+    let mount_root = env.dirs[0].clone();
+    let moved = mount_root.with_extension("away");
+    std::fs::rename(&mount_root, &moved).unwrap();
+    env.store.deleted.store(true, Ordering::SeqCst);
+    assert!(service.sweep_batch(&id, false).is_err());
+    let manifest = journal::read_manifest(&service.space, &id).unwrap().unwrap();
+    assert_eq!(journal::read_file(&service.space, &manifest, 0).unwrap().state, FileState::Placing);
+    std::fs::rename(&moved, &mount_root).unwrap();
+    assert_eq!(parts(&env).len(), 1);
+
+    assert_eq!(service.sweep_batch(&id, false).unwrap(), commit::SweepOutcome::Stopped);
+    assert_eq!(parts(&env), Vec::<String>::new());
+    assert_eq!(env.store.latest_file(&id, 0).unwrap().state, "rejected");
+}
+
+#[test]
+fn a_folder_that_does_not_open_keeps_complete_files_for_a_later_placement() {
+    let env = Env::new(false);
+    let service = env.service();
+    let begun = service.begin(USER, &request("away", &[("a", 4), ("b", 4)])).unwrap();
+    let id = begun.batch_id.clone();
+    let mut s = service.tus_patch_open(USER, &id, 0, 0, Some(4)).unwrap();
+    s.write(&content(0, 4)).unwrap();
+    assert!(s.finish(BodyEnd::Complete).unwrap().complete);
+    service.commit(USER, &id).unwrap();
+
+    let target = env.access.target.lock().unwrap().clone();
+    *env.access.target.lock().unwrap() =
+        TargetLookup::Unavailable { upload_dataset: DATASET.to_string(), reason: "the mount is not available".to_string() };
+    assert!(service.finish(&id).is_err());
+    let manifest = journal::read_manifest(&service.space, &id).unwrap().unwrap();
+    assert_eq!(journal::read_file(&service.space, &manifest, 0).unwrap().state, FileState::Complete);
+    assert!(service.space.data(&id, 0).exists());
+    assert_eq!(env.store.latest_batch(&id).unwrap().state, batch_state::COMMITTING);
+    // A transfer request gets a retryable answer, not the permission text.
+    let other = service.begin(USER, &request("away-2", &[("c", 4)]));
+    assert_eq!(other.unwrap_err().status, 503);
+    // The sweep keeps the batch while the folder stays unavailable.
+    env.advance(COMMIT_RETRY_MS + 1);
+    assert!(service.sweep_batch(&id, false).is_err());
+    assert!(service.space.data(&id, 0).exists());
+
+    *env.access.target.lock().unwrap() = target;
+    assert_eq!(service.sweep_batch(&id, false).unwrap(), commit::SweepOutcome::Committed);
+    assert_eq!(read_dest(&env, "/in/a"), Some(content(0, 4)));
+    assert_eq!(env.store.latest_file(&id, 1).unwrap().state, "not_sent");
+    assert_eq!(env.store.latest_batch(&id).unwrap().state, batch_state::QUEUED);
+}
+
+#[test]
+fn begin_refuses_while_a_deletion_or_purge_of_the_dataset_is_live() {
+    let env = Env::new(false);
+    let service = env.service();
+    env.store.removal_live.store(true, Ordering::SeqCst);
+    let e = service.begin(USER, &request("during-delete", &[("a", 1)])).unwrap_err();
+    assert_eq!((e.status, e.message.as_str()), (409, begin::REMOVAL_MESSAGE));
+    assert!(env.store.batch_ids().is_empty());
+    env.store.removal_live.store(false, Ordering::SeqCst);
+    service.begin(USER, &request("during-delete", &[("a", 1)])).unwrap();
 }
 
 /// Measure `RENAME_NOREPLACE` and folder synchronization on the folders that

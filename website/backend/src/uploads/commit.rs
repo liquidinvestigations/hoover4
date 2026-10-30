@@ -2,7 +2,10 @@
 //!
 //! `commit` writes the stop marker, so every later `PATCH` gets 409. It then takes the
 //! exclusive batch lock, which waits for each active `PATCH`, and records `committing`.
-//! It answers without waiting for placement. [`Service::finish`] then marks each
+//! The wait ends after the lock wait of the service with 423. The marker stays, the
+//! client may repeat the commit, and the sweep commits the batch. A `PATCH` ends at the
+//! latest after the idle limit of its body. `commit` answers without waiting for
+//! placement. [`Service::finish`] then marks each
 //! incomplete file `not_sent` and removes its bytes, places each complete file, and
 //! records `queued`, or `cancelled` when no file was placed. A `queued` batch is a durable
 //! dispatch record: the sweep signals its queue again until an operation claims it.
@@ -12,6 +15,7 @@
 //! | no manifest or no batch journal | `begin` stopped before it answered. Remove the batch folder. |
 //! | rows not recorded, no request record for the batch | `begin` never answered. Remove the batch. |
 //! | rows not recorded, request record present | Write the rows. |
+//! | `uploading` with the stop marker | A commit did not get the lock or stopped. Commit. |
 //! | `uploading`, journal activity older than `abandon_hours` | Commit as a stop. |
 //! | `uploading` | Truncate unacknowledged bytes, place complete files, mirror activity. |
 //! | `committing`, at startup or older than 10 minutes | Finish the commit. |
@@ -38,6 +42,15 @@ pub enum SweepOutcome {
     Waiting,
     Notified,
     Archived,
+}
+
+/// The result of [`Service::stop_dataset`].
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct DatasetStop {
+    /// The batches that the call stopped.
+    pub stopped: usize,
+    /// The batches whose lock another request held for the whole lock wait.
+    pub busy: usize,
 }
 
 /// The counts of one sweep.
@@ -93,7 +106,8 @@ impl Service {
                 fsutil::sync_dir(&self.space.batch_dir(batch_id))?;
             }
             self.faults.hit("commit.stop_marker")?;
-            let _lock = fsutil::lock(&self.space.batch_lock(batch_id), true, true)?;
+            let _lock = fsutil::lock_within(&self.space.batch_lock(batch_id), true, self.lock_wait)?
+                .ok_or_else(UploadError::busy)?;
             let mut batch = journal::read_batch(&self.space, batch_id)?.ok_or_else(|| UploadError::ended(410))?;
             if batch.state == batch_state::UPLOADING {
                 self.mark_committing(&mut batch)?;
@@ -119,9 +133,13 @@ impl Service {
     }
 
     /// Finish a `committing` batch, and signal the queue of a `queued` batch that has no
-    /// accepted signal yet. It waits for the exclusive batch lock.
+    /// accepted signal yet. It waits at most the lock wait of the service for the
+    /// exclusive batch lock. A batch that stays busy is finished by the sweep.
     pub fn finish(&self, batch_id: &str) -> anyhow::Result<()> {
-        let Some(lock) = fsutil::lock(&self.space.batch_lock(batch_id), true, true)? else { return Ok(()) };
+        let Some(lock) = fsutil::lock_within(&self.space.batch_lock(batch_id), true, self.lock_wait)? else {
+            tracing::warn!("upload batch {batch_id} is busy, the sweep finishes its commit");
+            return Ok(());
+        };
         let (Some(manifest), Some(mut batch)) = (
             journal::read_manifest(&self.space, batch_id)?,
             journal::read_batch(&self.space, batch_id)?,
@@ -139,6 +157,10 @@ impl Service {
     /// `stop_reason` names the deletion or purge of the dataset. The batch then has no
     /// target, each complete file is rejected with that reason, and a batch without a
     /// placed file is `cancelled` with that reason as its error.
+    ///
+    /// Without a stop reason, only a lost permission or target rejects the complete
+    /// files. A dataset folder that does not open is an error: the batch stays
+    /// `committing` with its files, and the sweep tries again.
     fn finish_locked(&self, manifest: &Manifest, batch: &mut BatchJournal, stop_reason: Option<&str>) -> anyhow::Result<()> {
         self.flush_batch(manifest, batch)?;
         if batch.state == batch_state::COMMITTING {
@@ -293,9 +315,24 @@ impl Service {
             return Ok(SweepOutcome::Stopped);
         }
         let outcome = match batch.state.as_str() {
+            batch_state::UPLOADING if self.space.stopping(batch_id).exists() => {
+                // The owner asked for the commit, which did not record `committing`.
+                self.mark_committing(&mut batch)?;
+                self.flush_batch(&manifest, &mut batch)?;
+                tracing::info!("upload batch {batch_id} has the stop marker and is committed");
+                self.finish_locked(&manifest, &mut batch, None)?;
+                SweepOutcome::Committed
+            }
             batch_state::UPLOADING => {
                 let mut activity = batch.last_activity_ms;
-                let target = self.current_target(&manifest)?;
+                // A target that does not open now only delays placement.
+                let target = match self.current_target(&manifest) {
+                    Ok(target) => target,
+                    Err(e) => {
+                        tracing::warn!("upload batch {batch_id}: placement waits: {e:#}");
+                        None
+                    }
+                };
                 for entry in &manifest.files {
                     let mut file = journal::read_file(&self.space, &manifest, entry.file_no)?;
                     activity = activity.max(file.last_activity_ms);
@@ -396,10 +433,11 @@ impl Service {
     }
 
     /// Stop every transfer of an upload dataset after its deletion or purge was
-    /// dispatched. It waits for the lock of each batch, so an active `PATCH` ends first.
-    /// Returns the number of stopped batches.
-    pub fn stop_dataset(&self, upload_dataset: &str, reason: &str) -> anyhow::Result<usize> {
-        let mut stopped = 0;
+    /// dispatched. It waits at most the lock wait of the service for the lock of each
+    /// batch, so an active `PATCH` ends first. A batch whose lock stays held is counted as
+    /// busy and is not changed.
+    pub fn stop_dataset(&self, upload_dataset: &str, reason: &str) -> anyhow::Result<DatasetStop> {
+        let mut stop = DatasetStop::default();
         for batch_id in journal::list_names(&self.space.batches())? {
             if !journal::valid_batch_id(&batch_id) {
                 continue;
@@ -408,7 +446,10 @@ impl Service {
             if manifest.upload_dataset != upload_dataset {
                 continue;
             }
-            let Some(lock) = fsutil::lock(&self.space.batch_lock(&batch_id), true, true)? else { continue };
+            let Some(lock) = fsutil::lock_within(&self.space.batch_lock(&batch_id), true, self.lock_wait)? else {
+                stop.busy += 1;
+                continue;
+            };
             let Some(mut batch) = journal::read_batch(&self.space, &batch_id)? else { continue };
             if !matches!(batch.state.as_str(), batch_state::UPLOADING | batch_state::COMMITTING) {
                 continue;
@@ -416,9 +457,9 @@ impl Service {
             self.stop_locked(&manifest, &mut batch, reason)?;
             drop(lock);
             self.release_reservation(&manifest)?;
-            stopped += 1;
+            stop.stopped += 1;
         }
-        Ok(stopped)
+        Ok(stop)
     }
 
     /// Keep a done record and remove the journal, the data and the request record of a

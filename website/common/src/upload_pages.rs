@@ -257,19 +257,29 @@ pub struct ResumeMatch {
     pub unmatched: usize,
     /// The selected files that match a file of the batch that has all its bytes.
     pub complete: usize,
+    /// The relative paths of the `pending` files of the batch that the selection does
+    /// not name, in manifest order.
+    pub not_selected: Vec<String>,
 }
 
 impl ResumeMatch {
-    /// True when the selection names a file of the batch. Only then does the page resume,
-    /// and a selection of complete files alone commits the batch.
+    /// True when the selection names a file of the batch. Only then does the page resume.
     pub fn names_the_batch(&self) -> bool {
         !self.matched.is_empty() || self.complete > 0
+    }
+
+    /// True when the selection names every `pending` file of the batch. Only then may
+    /// the run commit after its last file, because no file of the batch then waits for
+    /// bytes. A file whose prefix differs keeps the run from committing too.
+    pub fn sends_every_pending_file(&self) -> bool {
+        self.not_selected.is_empty()
     }
 }
 
 /// Match a reselection against the `pending` files of a batch by relative path, size and
 /// modification second. A file that matches a file that has all its bytes is neither sent
-/// nor counted as unmatched.
+/// nor counted as unmatched. The `pending` files that no selected file matches are
+/// listed in `not_selected`.
 pub fn match_resume_selection(batch: &[ResumeFile], selected: &[SelectedFile]) -> ResumeMatch {
     let mut result = ResumeMatch::default();
     let mut taken = std::collections::BTreeSet::new();
@@ -289,7 +299,47 @@ pub fn match_resume_selection(batch: &[ResumeFile], selected: &[SelectedFile]) -
             None => result.unmatched += 1,
         }
     }
+    result.not_selected = batch
+        .iter()
+        .filter(|b| b.state == "pending" && !taken.contains(&b.file_no))
+        .map(|b| b.relative_path.clone())
+        .collect();
     result
+}
+
+/// The `pending` files of a batch, by relative path, in manifest order.
+pub fn pending_paths(batch: &[ResumeFile]) -> Vec<String> {
+    batch.iter().filter(|b| b.state == "pending").map(|b| b.relative_path.clone()).collect()
+}
+
+/// A `begin` that the page sent without a decision of the server: the request id, and
+/// the body without the id, so the page can send the same request again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnconfirmedBegin {
+    pub request_id: String,
+    /// The JSON of the request with an empty request id.
+    pub request_key: String,
+}
+
+/// The request id of a `begin`. The id of an unconfirmed `begin` of the same selection
+/// and destination is sent again, so the server returns the batch that it recorded for
+/// the lost answer. Any other request gets `fresh()`.
+pub fn begin_request_id(
+    unconfirmed: Option<&UnconfirmedBegin>,
+    request_key: &str,
+    fresh: impl FnOnce() -> String,
+) -> String {
+    match unconfirmed {
+        Some(previous) if previous.request_key == request_key => previous.request_id.clone(),
+        _ => fresh(),
+    }
+}
+
+/// True when a `begin` answer leaves its result unknown: no answer (status 0), a lock
+/// that another request held (423), or a server failure. The page then keeps the request
+/// id for the next click. Any other answer is a decision of the server.
+pub fn begin_result_unknown(status: u16) -> bool {
+    status == 0 || status == 423 || status >= 500
 }
 
 /// A size for the page, as the storage pages show sizes.
@@ -408,5 +458,50 @@ mod tests {
         assert!(result.names_the_batch());
         let none = match_resume_selection(&batch, &[pick(6, "other.txt", 1, 1_792_500_000_000)]);
         assert!(!none.names_the_batch());
+        // d/c.txt did not match (size), so it is not selected and the run may not commit.
+        assert_eq!(result.not_selected, vec!["d/c.txt".to_string()]);
+        assert!(!result.sends_every_pending_file());
+    }
+
+    fn resume_batch() -> Vec<ResumeFile> {
+        let file = |file_no, path: &str, state: &str| ResumeFile {
+            file_no,
+            relative_path: path.into(),
+            size: 10,
+            mtime_s: 1_792_500_000,
+            state: state.into(),
+        };
+        vec![file(0, "d1/a", "pending"), file(1, "d1/b", "pending"), file(2, "d2/c", "pending"), file(3, "d2/e", "placed")]
+    }
+
+    fn select(id: u64, path: &str) -> SelectedFile {
+        SelectedFile { id, path: path.into(), size: 10, last_modified_ms: Some(1_792_500_000_000) }
+    }
+
+    #[test]
+    fn a_partial_reselection_names_the_files_that_stay_pending_and_does_not_commit() {
+        let batch = resume_batch();
+        let partial = match_resume_selection(&batch, &[select(1, "d1/a"), select(2, "d1/b")]);
+        assert_eq!(partial.matched, vec![(1, 0), (2, 1)]);
+        assert_eq!(partial.not_selected, vec!["d2/c".to_string()]);
+        assert!(partial.names_the_batch() && !partial.sends_every_pending_file());
+        // A selection of a complete file only names the batch, and it sends nothing.
+        let complete = match_resume_selection(&batch, &[select(5, "d2/e")]);
+        assert!(complete.names_the_batch() && complete.matched.is_empty());
+        assert_eq!(complete.not_selected.len(), 3);
+        assert!(!complete.sends_every_pending_file());
+        let all = match_resume_selection(&batch, &[select(1, "d1/a"), select(2, "d1/b"), select(3, "d2/c")]);
+        assert!(all.sends_every_pending_file());
+        assert_eq!(pending_paths(&batch), vec!["d1/a", "d1/b", "d2/c"]);
+    }
+
+    #[test]
+    fn an_unconfirmed_begin_of_the_same_request_keeps_its_id() {
+        let unconfirmed = UnconfirmedBegin { request_id: "first".into(), request_key: "{same}".into() };
+        assert_eq!(begin_request_id(Some(&unconfirmed), "{same}", || "fresh".into()), "first");
+        assert_eq!(begin_request_id(Some(&unconfirmed), "{changed}", || "fresh".into()), "fresh");
+        assert_eq!(begin_request_id(None, "{same}", || "fresh".into()), "fresh");
+        assert!(begin_result_unknown(0) && begin_result_unknown(423) && begin_result_unknown(502));
+        assert!(!begin_result_unknown(409) && !begin_result_unknown(400) && !begin_result_unknown(201));
     }
 }

@@ -8,7 +8,9 @@
 //!
 //! A `PATCH` body streams to a blocking writer thread through a bounded channel, so no
 //! chunk is held in memory as a whole. The writer holds the batch and file locks until
-//! the body ends.
+//! the body ends. A body that gives no byte for [`uploads::PATCH_IDLE_TIMEOUT`] ends as
+//! interrupted, so a client that lost its network without closing the connection does
+//! not hold the locks without a limit.
 
 use axum::{
     body::Body,
@@ -181,6 +183,28 @@ enum Piece {
     End(BodyEnd),
 }
 
+/// Pass the body to the writer until it ends, fails, or gives no frame for `idle`.
+async fn pump_body<S, E>(mut stream: S, sender: &tokio::sync::mpsc::Sender<Piece>, idle: std::time::Duration) -> BodyEnd
+where
+    S: futures::Stream<Item = Result<bytes::Bytes, E>> + Unpin,
+{
+    loop {
+        match tokio::time::timeout(idle, stream.next()).await {
+            Ok(Some(Ok(bytes))) => {
+                if sender.send(Piece::Bytes(bytes)).await.is_err() {
+                    return BodyEnd::Complete;
+                }
+            }
+            Ok(Some(Err(_))) => return BodyEnd::Interrupted,
+            Ok(None) => return BodyEnd::Complete,
+            Err(_) => {
+                tracing::warn!("an upload PATCH sent no byte for {} s and ends, the received prefix is kept", idle.as_secs());
+                return BodyEnd::Interrupted;
+            }
+        }
+    }
+}
+
 /// `PATCH /_upload/files/<id>`: append bytes at the acknowledged offset.
 pub async fn patch(
     Extension(user): Extension<CurrentUser>,
@@ -238,21 +262,7 @@ pub async fn patch(
         }
         session.finish(BodyEnd::Interrupted)
     });
-    let mut stream = body.into_data_stream();
-    let mut end = BodyEnd::Complete;
-    while let Some(frame) = stream.next().await {
-        match frame {
-            Ok(bytes) => {
-                if sender.send(Piece::Bytes(bytes)).await.is_err() {
-                    break;
-                }
-            }
-            Err(_) => {
-                end = BodyEnd::Interrupted;
-                break;
-            }
-        }
-    }
+    let end = pump_body(body.into_data_stream(), &sender, uploads::PATCH_IDLE_TIMEOUT).await;
     let _ = sender.send(Piece::End(end)).await;
     drop(sender);
     let result = match writer.await {
@@ -302,6 +312,33 @@ mod tests {
         assert!(parse_metadata("batch YWJj,,file Nw==").is_none());
         // A key without a value is legal in tus.
         assert_eq!(parse_metadata("flag").unwrap(), vec![("flag".to_string(), String::new())]);
+    }
+
+    #[tokio::test]
+    async fn a_body_that_stops_sending_ends_as_interrupted_after_the_idle_limit() {
+        let first: Result<bytes::Bytes, std::io::Error> = Ok(bytes::Bytes::from_static(b"abc"));
+        // One frame, then a stream that never gives another frame and never ends.
+        let stream = futures::stream::iter([first]).chain(futures::stream::pending());
+        let (sender, mut receiver) = tokio::sync::mpsc::channel::<Piece>(4);
+        let started = std::time::Instant::now();
+        let end = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            pump_body(stream, &sender, std::time::Duration::from_millis(200)),
+        )
+        .await
+        .expect("the body pump ends by its idle limit");
+        assert_eq!(end, BodyEnd::Interrupted);
+        assert!(started.elapsed() >= std::time::Duration::from_millis(200));
+        assert!(matches!(receiver.try_recv(), Ok(Piece::Bytes(b)) if &b[..] == b"abc"));
+    }
+
+    #[tokio::test]
+    async fn a_body_that_ends_or_fails_gives_its_end() {
+        let (sender, _receiver) = tokio::sync::mpsc::channel::<Piece>(4);
+        let done = futures::stream::iter([Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"x"))]);
+        assert_eq!(pump_body(done, &sender, std::time::Duration::from_secs(5)).await, BodyEnd::Complete);
+        let failed = futures::stream::iter([Err::<bytes::Bytes, _>(std::io::Error::other("cut"))]);
+        assert_eq!(pump_body(failed, &sender, std::time::Duration::from_secs(5)).await, BodyEnd::Interrupted);
     }
 
     #[test]

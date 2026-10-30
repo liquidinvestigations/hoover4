@@ -36,7 +36,9 @@
 
 Collection and dataset locks prevent conflicting dispatch according to the operation kind.
 Admission also keeps two operations of overlapping targets from running together, whatever their kinds.
+An older operation that waits for its own target does not take a slot from a newer operation of the same kind with a free target.
 Deleting or purging a dataset stops its unfinished upload batches. Files already placed stay in the folder.
+New uploads into the dataset are refused until that operation ends. Cancelling the deletion does not restore the stopped uploads.
 Cancelling queued work requires the same finalizer as cancelling running work.
 A progress denominator can remain unknown while new targets appear.
 A completed plan can contain failed documents.

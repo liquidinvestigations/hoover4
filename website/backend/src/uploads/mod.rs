@@ -68,6 +68,17 @@ pub fn upload_url(batch_id: &str, file_no: u32) -> String {
 /// A `committing` batch older than this is committed again by the sweep.
 pub const COMMIT_RETRY_MS: i64 = 10 * 60 * 1000;
 
+/// A `PATCH` body that gives no byte for this time ends as interrupted, and its
+/// synchronized prefix stays. A client that lost its network without a FIN or a RST then
+/// releases the batch and file locks. The design names no configuration key for it.
+pub const PATCH_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// The longest wait of a request or of a stop for a batch or file lock that another
+/// request holds. It is longer than [`PATCH_IDLE_TIMEOUT`], so a `HEAD` after a stalled
+/// `PATCH` gets its answer when that `PATCH` ends. A longer hold answers 423, and the
+/// client tries again.
+pub const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(75);
+
 /// The time source. The tests use a clock that they move by hand.
 pub trait Clock: Send + Sync {
     fn now_ms(&self) -> i64;
@@ -99,7 +110,26 @@ pub enum TargetLookup {
     Conflict(Vec<String>),
     /// The user may not upload into the collection.
     None,
+    /// The user may upload into `upload_dataset`, but its folder does not open now, for
+    /// example because the mount is not available. This is not a permission change.
+    Unavailable { upload_dataset: String, reason: String },
 }
+
+/// The text of a mutation while the dataset folder of the batch does not open.
+pub const FOLDER_UNAVAILABLE_MESSAGE: &str = "The upload folder is not available now. Try again later.";
+
+/// The error of [`Service::current_target`] when the dataset folder does not open. The
+/// files of the batch stay, and placement repeats later.
+#[derive(Debug)]
+pub struct FolderUnavailable(pub String);
+
+impl std::fmt::Display for FolderUnavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "the upload folder does not open: {}", self.0)
+    }
+}
+
+impl std::error::Error for FolderUnavailable {}
 
 /// The permission check of every mutation: the uploader membership, the dataset setting
 /// and the mounted destination.
@@ -152,6 +182,11 @@ pub trait BatchStore: Send + Sync {
     fn dataset_live(&self, _upload_dataset: &str) -> anyhow::Result<bool> {
         Ok(true)
     }
+    /// Whether a `delete_dataset` or `purge_dataset` operation of the dataset is pending,
+    /// queued or running. `begin` refuses a new batch while one is.
+    fn dataset_removal_live(&self, _upload_dataset: &str) -> anyhow::Result<bool> {
+        Ok(false)
+    }
 }
 
 /// The wake-up of the queue workflow of a dataset.
@@ -201,10 +236,23 @@ impl UploadError {
     pub fn not_found() -> Self {
         UploadError::new(404, "not found")
     }
+
+    /// Another request holds a lock of the batch or the file for longer than
+    /// [`LOCK_WAIT`].
+    pub fn busy() -> Self {
+        UploadError::new(423, BUSY_MESSAGE)
+    }
 }
+
+/// The text of a request that waited [`LOCK_WAIT`] for another request of the same upload.
+pub const BUSY_MESSAGE: &str = "Another request of this upload is still running. Try again later.";
 
 impl From<anyhow::Error> for UploadError {
     fn from(err: anyhow::Error) -> Self {
+        if err.downcast_ref::<FolderUnavailable>().is_some() {
+            tracing::warn!("upload request refused for now: {err:#}");
+            return UploadError::new(503, FOLDER_UNAVAILABLE_MESSAGE);
+        }
         UploadError::new(500, format!("{err:#}"))
     }
 }
@@ -221,6 +269,9 @@ pub struct Service {
     pub access: Arc<dyn UploadAccess>,
     pub free_space: Arc<dyn FreeSpace>,
     pub faults: Faults,
+    /// The longest wait for a lock that another request holds. [`LOCK_WAIT`] in
+    /// production. The tests use a short wait.
+    pub lock_wait: std::time::Duration,
 }
 
 /// A whole number from the environment, or the default when it is unset or empty.
@@ -260,6 +311,10 @@ pub fn space_from_env() -> PathBuf {
 }
 
 static SERVICE: OnceLock<Result<Arc<Service>, String>> = OnceLock::new();
+/// The multi-threaded runtime that started the receiver. Background work of a request
+/// runs there, because a Dioxus server function runs on a runtime that a spawned task
+/// does not outlive.
+static RUNTIME: OnceLock<tokio::runtime::Handle> = OnceLock::new();
 
 /// The receiver of this process. An error names the reason that uploads are not served.
 pub fn service() -> UploadResult<Arc<Service>> {
@@ -270,24 +325,52 @@ pub fn service() -> UploadResult<Arc<Service>> {
     }
 }
 
+/// The passes of [`stop_dataset_transfers`] over batches whose lock another request held.
+const STOP_PASSES: usize = 10;
+
 /// Stop the transfers of an upload dataset after its deletion or purge was dispatched.
-/// Without a receiver in this process there is nothing to stop. A failure is logged,
-/// and the next sweep stops the transfers of a deleted dataset.
-pub async fn stop_dataset_transfers(upload_dataset: &str, reason: &'static str) {
-    let Ok(service) = service() else { return };
+/// The stop runs in the background, so the dispatch does not wait for a request of an
+/// upload. Each pass waits at most [`LOCK_WAIT`] for each batch, and a busy batch is
+/// tried again in the next pass, up to [`STOP_PASSES`] passes. Without a receiver in this
+/// process there is nothing to stop. A failure is logged, and the next sweep stops the
+/// transfers of a deleted dataset.
+///
+/// A cancelled deletion does not restore the uploads that this stop ended.
+pub fn stop_dataset_transfers(upload_dataset: &str, reason: &'static str) {
+    let (Ok(service), Some(runtime)) = (service(), RUNTIME.get()) else { return };
     let dataset = upload_dataset.to_string();
-    match tokio::task::spawn_blocking(move || service.stop_dataset(&dataset, reason)).await {
-        Ok(Ok(0)) => {}
-        Ok(Ok(n)) => tracing::info!("stopped {n} upload batches of {upload_dataset}: {reason}"),
-        Ok(Err(e)) => tracing::error!("stopping the upload batches of {upload_dataset} failed: {e:#}"),
-        Err(e) => tracing::error!("stopping the upload batches of {upload_dataset} panicked: {e}"),
-    }
+    runtime.spawn(async move {
+        for _ in 0..STOP_PASSES {
+            let worker = service.clone();
+            let id = dataset.clone();
+            match tokio::task::spawn_blocking(move || worker.stop_dataset(&id, reason)).await {
+                Ok(Ok(stop)) => {
+                    if stop.stopped > 0 {
+                        tracing::info!("stopped {} upload batches of {dataset}: {reason}", stop.stopped);
+                    }
+                    if stop.busy == 0 {
+                        return;
+                    }
+                    tracing::warn!("{} upload batches of {dataset} are busy, the stop tries again", stop.busy);
+                }
+                Ok(Err(e)) => {
+                    tracing::error!("stopping the upload batches of {dataset} failed: {e:#}");
+                    return;
+                }
+                Err(e) => {
+                    tracing::error!("stopping the upload batches of {dataset} panicked: {e}");
+                    return;
+                }
+            }
+        }
+    });
 }
 
 /// Build the receiver of this process, recover the journal, and start the hourly sweep.
 /// Called once at startup on the multi-threaded runtime.
 pub fn start() {
     let handle = tokio::runtime::Handle::current();
+    let _ = RUNTIME.set(handle.clone());
     let built = (|| -> anyhow::Result<Service> {
         let service = Service {
             space: Space { root: space_from_env() },
@@ -298,6 +381,7 @@ pub fn start() {
             access: Arc::new(store::DbAccess::new(handle.clone())),
             free_space: Arc::new(StatvfsFreeSpace),
             faults: Faults::default(),
+            lock_wait: LOCK_WAIT,
         };
         service.prepare_space()?;
         Ok(service)
@@ -419,10 +503,15 @@ impl Service {
     }
 
     /// The target of a batch now, or `None` when the owner may no longer write it. The
-    /// target must still be the dataset of the batch.
+    /// target must still be the dataset of the batch. A dataset folder that does not open
+    /// is an error of type [`FolderUnavailable`], so no caller reads it as a lost
+    /// permission and rejects the files.
     pub fn current_target(&self, manifest: &Manifest) -> anyhow::Result<Option<Target>> {
         Ok(match self.access.target(&manifest.username, &manifest.collection)? {
             TargetLookup::Target(t) if t.upload_dataset == manifest.upload_dataset => Some(t),
+            TargetLookup::Unavailable { upload_dataset, reason } if upload_dataset == manifest.upload_dataset => {
+                return Err(FolderUnavailable(reason).into());
+            }
             _ => None,
         })
     }
