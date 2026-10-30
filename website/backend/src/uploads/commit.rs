@@ -112,7 +112,6 @@ impl Service {
             if batch.state == batch_state::UPLOADING {
                 self.mark_committing(&mut batch)?;
             }
-            self.flush_batch(&manifest, &mut batch)?;
             state = batch.state.clone();
             tracing::info!("upload batch {batch_id} committed by its owner");
         }
@@ -129,7 +128,10 @@ impl Service {
         batch.committed_ms = now;
         batch.last_activity_ms = now;
         batch.version += 1;
-        self.save_batch(batch, "commit.committing")
+        self.save_batch(batch, "commit.committing")?;
+        // A finish that fails leaves the batch `committing`, and the flusher writes that row.
+        self.queue_rows(&batch.batch_id, None);
+        Ok(())
     }
 
     /// Finish a `committing` batch, and signal the queue of a `queued` batch that has no
@@ -162,7 +164,6 @@ impl Service {
     /// files. A dataset folder that does not open is an error: the batch stays
     /// `committing` with its files, and the sweep tries again.
     fn finish_locked(&self, manifest: &Manifest, batch: &mut BatchJournal, stop_reason: Option<&str>) -> anyhow::Result<()> {
-        self.flush_batch(manifest, batch)?;
         if batch.state == batch_state::COMMITTING {
             let target = match stop_reason {
                 Some(_) => None,
@@ -208,7 +209,6 @@ impl Service {
             }
             batch.version += 1;
             self.save_batch(batch, "finish.state")?;
-            self.flush_batch(manifest, batch)?;
             tracing::info!(
                 "upload batch {} is {}: {placed} of {} files placed",
                 manifest.batch_id,
@@ -216,6 +216,9 @@ impl Service {
                 manifest.files.len()
             );
         }
+        // One batch row for the commit and its end, after the file rows, so the worker
+        // reads the file rows of every `queued` batch.
+        self.flush_batch(manifest, batch)?;
         if batch.state == batch_state::QUEUED && batch.notified_ms == 0 {
             self.notify_queue(manifest, batch)?;
         }
@@ -318,7 +321,6 @@ impl Service {
             batch_state::UPLOADING if self.space.stopping(batch_id).exists() => {
                 // The owner asked for the commit, which did not record `committing`.
                 self.mark_committing(&mut batch)?;
-                self.flush_batch(&manifest, &mut batch)?;
                 tracing::info!("upload batch {batch_id} has the stop marker and is committed");
                 self.finish_locked(&manifest, &mut batch, None)?;
                 SweepOutcome::Committed
@@ -333,15 +335,17 @@ impl Service {
                         None
                     }
                 };
+                let mut placed: Vec<FileJournal> = Vec::new();
                 for entry in &manifest.files {
                     let mut file = journal::read_file(&self.space, &manifest, entry.file_no)?;
                     activity = activity.max(file.last_activity_ms);
                     self.truncate_unacknowledged(batch_id, &file)?;
                     if target.is_some() && matches!(file.state, FileState::Complete | FileState::Placing) {
                         self.place(&manifest, &mut file, target.as_ref())?;
-                        self.flush_files(&manifest, std::slice::from_mut(&mut file))?;
+                        placed.push(file);
                     }
                 }
+                self.flush_files(&manifest, &mut placed)?;
                 if now - activity > self.limits.abandon_hours as i64 * 3_600_000 {
                     let marker = self.space.stopping(batch_id);
                     if !marker.exists() {
@@ -349,7 +353,6 @@ impl Service {
                         fsutil::sync_dir(&self.space.batch_dir(batch_id))?;
                     }
                     self.mark_committing(&mut batch)?;
-                    self.flush_batch(&manifest, &mut batch)?;
                     tracing::info!("upload batch {batch_id} had no transfer for {} hours and is committed", self.limits.abandon_hours);
                     self.finish_locked(&manifest, &mut batch, None)?;
                     SweepOutcome::Stopped
@@ -425,7 +428,6 @@ impl Service {
                 fsutil::sync_dir(&self.space.batch_dir(&manifest.batch_id))?;
             }
             self.mark_committing(batch)?;
-            self.flush_batch(manifest, batch)?;
         }
         self.finish_locked(manifest, batch, Some(reason))?;
         tracing::info!("upload batch {} stopped: {reason}", manifest.batch_id);

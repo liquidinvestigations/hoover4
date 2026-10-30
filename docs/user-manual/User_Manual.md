@@ -720,6 +720,10 @@ The upload ends when every file has arrived, or when you select **Finish upload*
 An upload that gets no new bytes for 24 hours, the default, ends automatically, and the files that arrived are processed.
 You cannot delete an uploaded file from these pages.
 
+The administrator sets the limits of one upload. The default limits are 10,000 files and 10 GiB.
+Uploads were tested up to 1,000 files, one file of 256 MiB, and an archive of 1,000 files.
+Processing an upload retries the earlier errors of its own files only. An administrator repeats the failed tasks of other files with the **Retry** control of the dataset.
+
 ---
 
 

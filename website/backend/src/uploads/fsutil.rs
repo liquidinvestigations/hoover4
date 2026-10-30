@@ -86,6 +86,17 @@ pub fn ensure_dir(path: &Path) -> anyhow::Result<()> {
 /// rename it over the name, and synchronize the folder. The caller holds the lock of the
 /// record, so one temporary name for each record is enough.
 pub fn atomic_write(dir: &Path, name: &str, bytes: &[u8], faults: &Faults, point: &str) -> anyhow::Result<()> {
+    replace_unsynced(dir, name, bytes, faults, point)?;
+    faults.hit(&format!("{point}.before_sync"))?;
+    sync_dir(dir)?;
+    Ok(())
+}
+
+/// The first part of [`atomic_write`]: write and synchronize a temporary file and rename
+/// it over the name, without the synchronization of the folder. After a crash the folder
+/// holds the new record or the earlier one, each complete. A caller that writes several
+/// records synchronizes the folder once after the last.
+pub fn replace_unsynced(dir: &Path, name: &str, bytes: &[u8], faults: &Faults, point: &str) -> anyhow::Result<()> {
     let temp = dir.join(format!(".{name}.tmp"));
     {
         let mut file = File::create(&temp)?;
@@ -94,8 +105,6 @@ pub fn atomic_write(dir: &Path, name: &str, bytes: &[u8], faults: &Faults, point
     }
     faults.hit(&format!("{point}.before_rename"))?;
     std::fs::rename(&temp, dir.join(name))?;
-    faults.hit(&format!("{point}.before_sync"))?;
-    sync_dir(dir)?;
     Ok(())
 }
 
@@ -130,6 +139,17 @@ pub fn remove_file(path: &Path) -> anyhow::Result<bool> {
             Ok(true)
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// Remove a file without a synchronization of its folder. A missing file is not an
+/// error. The caller uses it only where a crash that keeps the file changes no recovery
+/// action.
+pub fn remove_file_unsynced(path: &Path) -> anyhow::Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e.into()),
     }
 }

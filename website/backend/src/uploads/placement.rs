@@ -7,9 +7,11 @@
 //! existing name, on a file system without that flag.
 //!
 //! The journal records the method, the source identity and a token before the first
-//! change in the dataset folder, and the published identity with the state `Placed`. On
-//! the same file system the data file is renamed. Across file systems the bytes go to the
-//! reserved part name of the file, then the part is renamed. The part name holds the batch
+//! change in the dataset folder, and the published identity with the state `Placed`. Inside
+//! one mount the data file is renamed. Across mounts, also two bind mounts of one file
+//! system, the bytes go to the reserved part name of the file, then the part is renamed.
+//! A rename that the kernel refuses with `EXDEV` changes the record to a copy before the
+//! part exists. The part name holds the batch
 //! id and the file number, and the journal records it before it exists, so the journal
 //! proves the ownership of a part with that name.
 //!
@@ -72,6 +74,12 @@ fn open_recorded_folder(folder: &PlacementFolder) -> anyhow::Result<Option<Owned
         };
     }
     Ok(Some(fd))
+}
+
+/// The mount id of an open folder, or `None` when the kernel does not report it.
+fn mount_id(fd: &OwnedFd) -> Option<u64> {
+    let st = rustix::fs::statx(fd, "", AtFlags::EMPTY_PATH, rustix::fs::StatxFlags::MNT_ID).ok()?;
+    (st.stx_mask & rustix::fs::StatxFlags::MNT_ID.bits() != 0).then_some(st.stx_mnt_id)
 }
 
 fn set_mtime(fd: impl AsFd, mtime_ms: i64) -> anyhow::Result<()> {
@@ -162,8 +170,10 @@ impl Service {
         file.error.clear();
         file.version += 1;
         self.save_file(&manifest.batch_id, file, "place.placed")?;
-        // A copy leaves the source, and a link fallback can leave it after a crash.
-        fsutil::remove_file(&self.space.data(&manifest.batch_id, file.file_no))?;
+        // A copy leaves the source, and a link fallback can leave it after a crash. The
+        // removal needs no synchronization: a source that a crash keeps belongs to a
+        // placed file, which no recovery reads, and the archive of the batch removes it.
+        fsutil::remove_file_unsynced(&self.space.data(&manifest.batch_id, file.file_no))?;
         Ok(())
     }
 
@@ -227,7 +237,13 @@ impl Service {
             return self.reject_unchanged(manifest, file, NOT_RECOVERED_MESSAGE);
         }
         let parent_dev = rustix::fs::fstat(&parent)?.st_dev as u64;
-        let method = if parent_dev == src_dev { PlaceMethod::Rename } else { PlaceMethod::Copy };
+        // `rename` works only inside one mount. Two bind mounts of one file system have
+        // one device and two mount ids, so the device alone does not choose the method.
+        let same_mount = match (mount_id(&parent), mount_id(&files_dir)) {
+            (Some(a), Some(b)) => a == b,
+            _ => true,
+        };
+        let method = if parent_dev == src_dev && same_mount { PlaceMethod::Rename } else { PlaceMethod::Copy };
         file.state = FileState::Placing;
         file.placement = Some(Placement {
             token: random_id(),
@@ -247,58 +263,85 @@ impl Service {
         file.version += 1;
         self.save_file(&manifest.batch_id, file, "place.prepared")?;
 
-        match method {
-            PlaceMethod::Rename => {
-                let source = rustix::fs::openat(&files_dir, data_name.as_str(), FILE_RW, Mode::empty())?;
-                set_mtime(&source, entry.mtime_ms)?;
-                match rename_noreplace(&files_dir, &data_name, &parent, last) {
-                    Ok(()) => {}
-                    Err(Errno::EXIST) => return self.reject(manifest, file, Some(&root), PATH_EXISTS_MESSAGE),
-                    Err(e) => return Err(e.into()),
+        if method == PlaceMethod::Rename {
+            let source = rustix::fs::openat(&files_dir, data_name.as_str(), FILE_RW, Mode::empty())?;
+            set_mtime(&source, entry.mtime_ms)?;
+            match rename_noreplace(&files_dir, &data_name, &parent, last) {
+                Ok(()) => {}
+                Err(Errno::EXIST) => return self.reject(manifest, file, Some(&root), PATH_EXISTS_MESSAGE),
+                Err(Errno::XDEV) => {
+                    // Nothing changed in the dataset folder. The record becomes a copy
+                    // before the part name can exist.
+                    if let Some(placement) = file.placement.as_mut() {
+                        placement.method = PlaceMethod::Copy;
+                    }
+                    file.version += 1;
+                    self.save_file(&manifest.batch_id, file, "place.prepared")?;
+                    return self.place_copy(manifest, file, &root, &files_dir, &parent, last, entry.mtime_ms, parent_dev);
                 }
-                self.faults.hit("place.renamed")?;
-                fsutil::sync_fd(&parent)?;
-                fsutil::sync_fd(&files_dir)?;
-                self.faults.hit("place.synced")?;
-                self.mark_placed(manifest, file, src_dev, src_ino)
+                Err(e) => return Err(e.into()),
             }
-            PlaceMethod::Copy => {
-                let part = part_name(&manifest.batch_id, file.file_no);
-                match rustix::fs::unlinkat(&parent, part.as_str(), AtFlags::empty()) {
-                    Ok(()) | Err(Errno::NOENT) => {}
-                    Err(e) => return Err(e.into()),
-                }
-                let part_fd = rustix::fs::openat(
-                    &parent,
-                    part.as_str(),
-                    OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-                    Mode::from_raw_mode(0o664),
-                )?;
-                fsutil::sync_fd(&parent)?;
-                self.faults.hit("copy.part_created")?;
-                let part_ino = rustix::fs::fstat(&part_fd)?.st_ino as u64;
-                if let Some(placement) = file.placement.as_mut() {
-                    placement.phase = PlacePhase::PartCreated;
-                    placement.part_ino = Some(part_ino);
-                }
-                self.save_file(&manifest.batch_id, file, "place.part_recorded")?;
-                let mut source = File::from(rustix::fs::openat(&files_dir, data_name.as_str(), FILE_RW, Mode::empty())?);
-                let mut part_file = File::from(part_fd);
-                std::io::copy(&mut source, &mut part_file)?;
-                part_file.sync_all()?;
-                set_mtime(&part_file, entry.mtime_ms)?;
-                part_file.sync_all()?;
-                self.faults.hit("copy.part_synced")?;
-                match rename_noreplace(&parent, &part, &parent, last) {
-                    Ok(()) => {}
-                    Err(Errno::EXIST) => return self.reject(manifest, file, Some(&root), PATH_EXISTS_MESSAGE),
-                    Err(e) => return Err(e.into()),
-                }
-                self.faults.hit("place.renamed")?;
-                fsutil::sync_fd(&parent)?;
-                self.faults.hit("place.synced")?;
-                self.mark_placed(manifest, file, parent_dev, part_ino)
-            }
+            self.faults.hit("place.renamed")?;
+            fsutil::sync_fd(&parent)?;
+            fsutil::sync_fd(&files_dir)?;
+            self.faults.hit("place.synced")?;
+            return self.mark_placed(manifest, file, src_dev, src_ino);
         }
+        self.place_copy(manifest, file, &root, &files_dir, &parent, last, entry.mtime_ms, parent_dev)
+    }
+
+    /// The copy method of [`Service::place`]: copy the bytes to the reserved part name,
+    /// synchronize them, and rename the part to the destination. The journal records the
+    /// part before its bytes.
+    #[allow(clippy::too_many_arguments)]
+    fn place_copy(
+        &self,
+        manifest: &Manifest,
+        file: &mut FileJournal,
+        root: &OwnedFd,
+        files_dir: &OwnedFd,
+        parent: &OwnedFd,
+        last: &str,
+        mtime_ms: i64,
+        parent_dev: u64,
+    ) -> anyhow::Result<()> {
+        let data_name = Space::data_name(file.file_no);
+        let part = part_name(&manifest.batch_id, file.file_no);
+        match rustix::fs::unlinkat(parent, part.as_str(), AtFlags::empty()) {
+            Ok(()) | Err(Errno::NOENT) => {}
+            Err(e) => return Err(e.into()),
+        }
+        let part_fd = rustix::fs::openat(
+            parent,
+            part.as_str(),
+            OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+            Mode::from_raw_mode(0o664),
+        )?;
+        // The part name needs no synchronization here. A crash that loses it leaves no
+        // part, and recovery finds the destination absent and places the file again. The
+        // synchronization after the final rename makes the destination durable.
+        self.faults.hit("copy.part_created")?;
+        let part_ino = rustix::fs::fstat(&part_fd)?.st_ino as u64;
+        if let Some(placement) = file.placement.as_mut() {
+            placement.phase = PlacePhase::PartCreated;
+            placement.part_ino = Some(part_ino);
+        }
+        self.save_file(&manifest.batch_id, file, "place.part_recorded")?;
+        let mut source = File::from(rustix::fs::openat(files_dir, data_name.as_str(), FILE_RW, Mode::empty())?);
+        let mut part_file = File::from(part_fd);
+        std::io::copy(&mut source, &mut part_file)?;
+        part_file.sync_all()?;
+        set_mtime(&part_file, mtime_ms)?;
+        part_file.sync_all()?;
+        self.faults.hit("copy.part_synced")?;
+        match rename_noreplace(parent, &part, parent, last) {
+            Ok(()) => {}
+            Err(Errno::EXIST) => return self.reject(manifest, file, Some(root), PATH_EXISTS_MESSAGE),
+            Err(e) => return Err(e.into()),
+        }
+        self.faults.hit("place.renamed")?;
+        fsutil::sync_fd(parent)?;
+        self.faults.hit("place.synced")?;
+        self.mark_placed(manifest, file, parent_dev, part_ino)
     }
 }

@@ -387,6 +387,29 @@ def current_error_hashes(client, upload_dataset: str, hashes: list[str]) -> set[
     return {str(r[0]) for r in rows}
 
 
+def operation_file_hashes(collectionname: str, upload_dataset: str, op_id: str) -> list[str] | None:
+    """The hashes whose historical errors an `ingest_upload` operation selects.
+
+    These are the stored `file_hash` values of the files of the batches that the operation
+    claimed, and the members below them up to `DESCENDANT_LEVELS` levels. A batch that is
+    not ingested yet has no `file_hash`, so the selection, which runs after the first
+    batch, does not include its files. Returns None when the operation claimed no batch of
+    the dataset, so another operation kind keeps its selection of the whole dataset.
+    """
+    batch_ids = [row["batch_id"] for row in batches_of_operation(collectionname, upload_dataset, op_id)]
+    if not batch_ids:
+        return None
+    with _client(collectionname) as client:
+        rows = client.query(
+            "SELECT DISTINCT file_hash FROM upload_files FINAL "
+            "WHERE batch_id IN {ids:Array(String)} AND file_hash != ''",
+            parameters={"ids": batch_ids},
+        ).result_rows
+        roots = sorted({str(r[0]) for r in rows})
+        members = _descendants(client, upload_dataset, roots)
+    return sorted(set(roots) | set(members))
+
+
 def _published(client, upload_dataset: str, paths: list[str]) -> tuple[dict[str, str], set[str]]:
     """Live top-level `vfs_files` hashes and the `vfs_nodes` paths of the given paths.
 

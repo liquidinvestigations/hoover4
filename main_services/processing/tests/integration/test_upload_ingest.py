@@ -155,3 +155,35 @@ def test_a_batch_of_another_operation_is_left_alone(dataset):
     assert activities.upload_batch_limits(params).skip
     assert activities.ingest_upload_paths(params)["files"] == 0
     assert client.query("SELECT count() FROM vfs_files").result_rows[0][0] == 0
+
+
+@pytest.mark.parametrize("kind, expected", [
+    ("ingest_upload", [("h-member", "parse_office_xml_and_store"), ("h-own", "archive_scan")]),
+    ("rescan_dataset", [("h-member", "parse_office_xml_and_store"), ("h-other", "parse_error_tika"),
+                        ("h-own", "archive_scan")]),
+])
+def test_an_upload_operation_selects_the_old_errors_of_its_own_files_only(dataset, monkeypatch, kind, expected):
+    import database.operations as operations
+    from tasks.P_admin import rerun_selection
+    from tasks.P_admin.rerun_params import SelectErrorsParams
+
+    collection, upload_dataset, folder, client = dataset
+    _write(folder, "own.zip", b"zip\n")
+    _batch(client, upload_dataset, folder, ["own.zip"], op_id="op1")
+    client.command("ALTER TABLE upload_files UPDATE file_hash = 'h-own', state = 'ingested' "
+                   "WHERE batch_id = 'b1' SETTINGS mutations_sync = 2")
+    client.insert("vfs_files", [[upload_dataset, "h-own", "/m.docx", "h-member", "", 4,
+                                 datetime(2026, 1, 1), ""]],
+                  column_names=["collection_dataset", "container_hash", "path", "hash", "user_id",
+                                "file_size_bytes", "mtime", "mtime_source"])
+    at = datetime(2026, 10, 1)
+    # The table keeps one row for each error identity, so each row has its own.
+    client.insert("processing_errors", [
+        [upload_dataset, h, task, 1, "e", at, 0, "", "op-old", f"{h}:{task}", 1]
+        for h, task in (("h-own", "archive_scan"), ("h-member", "parse_office_xml_and_store"),
+                        ("h-other", "parse_error_tika"))
+    ], column_names=["collection_dataset", "hash", "task_name", "run_time_ms", "error_logs",
+                     "timestamp", "attempt", "workflow_run_id", "op_id", "error_identity",
+                     "write_version"])
+    monkeypatch.setattr(operations, "get_operation", lambda op_id: {"op_id": op_id, "kind": kind})
+    assert rerun_selection._candidate_pairs(SelectErrorsParams("op1", collection, upload_dataset)) == expected

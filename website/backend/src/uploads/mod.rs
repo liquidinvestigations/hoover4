@@ -11,8 +11,14 @@
 //! state. ClickHouse holds a copy in `upload_batches` and `upload_files` for history and
 //! for the worker. Every journal change raises the version of its record, and the
 //! ClickHouse row of a version carries that version as `row_version`. A record whose
-//! ClickHouse version is below its journal version is written again before any
-//! conflicting change.
+//! ClickHouse version is below its journal version is written again by the next flush,
+//! a repeated request or the sweep.
+//!
+//! A transfer request writes no row. It queues its batch in the [`RowQueue`], and one
+//! flusher thread writes the changed rows of a batch at most once every
+//! [`ROW_FLUSH_INTERVAL`], in one insert for each table. `begin`, the end of a commit
+//! ([`Service::finish`]), a stop and the sweep write their rows themselves, also in one
+//! insert for each table.
 //!
 //! The functions of [`Service`] block, and the HTTP handlers run them on the blocking
 //! thread pool, outside the Dioxus server-function runtime. The clock, the ClickHouse
@@ -30,9 +36,11 @@ pub mod transfer;
 #[cfg(test)]
 mod tests;
 
+use std::collections::{BTreeSet, HashMap};
 use std::os::fd::{BorrowedFd, OwnedFd};
 use std::path::PathBuf;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use common::uploads::UploadLimits;
 
@@ -78,6 +86,96 @@ pub const PATCH_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_se
 /// `PATCH` gets its answer when that `PATCH` ends. A longer hold answers 423, and the
 /// client tries again.
 pub const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(75);
+
+/// The shortest time between two row writes of one batch by the row flusher.
+pub const ROW_FLUSH_INTERVAL: Duration = Duration::from_secs(2);
+
+/// The rows of one batch that changed after the row flusher last wrote the batch.
+#[derive(Default)]
+struct PendingRows {
+    batch: bool,
+    files: BTreeSet<u32>,
+    /// When the flusher last took the rows of this batch.
+    taken: Option<Instant>,
+}
+
+/// The rows of one batch that one flush writes.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DueRows {
+    pub batch_id: String,
+    /// True when the batch row changed.
+    pub batch: bool,
+    pub files: BTreeSet<u32>,
+}
+
+/// The batches whose rows wait for the flusher. The queue is in memory. A lost entry
+/// loses no row, because the journal keeps `db_version` below `version` until a commit,
+/// a stop or the sweep writes the row.
+#[derive(Default)]
+pub struct RowQueue {
+    state: Mutex<HashMap<String, PendingRows>>,
+    wake: Condvar,
+}
+
+impl RowQueue {
+    /// Queue the batch row (`None`) or one file row of a batch.
+    pub fn mark(&self, batch_id: &str, file_no: Option<u32>) {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        let entry = state.entry(batch_id.to_string()).or_default();
+        match file_no {
+            Some(n) => {
+                entry.files.insert(n);
+            }
+            None => entry.batch = true,
+        }
+        drop(state);
+        self.wake.notify_one();
+    }
+
+    /// Take the rows of one batch whose last flush is at least [`ROW_FLUSH_INTERVAL`]
+    /// before `now`. Otherwise give the time of the next due batch, or `None` when no
+    /// row waits.
+    pub fn take_due(&self, now: Instant) -> Result<DueRows, Option<Instant>> {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        Self::take_locked(&mut state, now)
+    }
+
+    fn take_locked(state: &mut HashMap<String, PendingRows>, now: Instant) -> Result<DueRows, Option<Instant>> {
+        // An entry without rows is kept only to space the flushes of its batch.
+        state.retain(|_, p| p.batch || !p.files.is_empty() || p.taken.is_some_and(|t| now < t + ROW_FLUSH_INTERVAL));
+        let mut next: Option<Instant> = None;
+        for (batch_id, pending) in state.iter_mut() {
+            if !pending.batch && pending.files.is_empty() {
+                continue;
+            }
+            let due = pending.taken.map_or(now, |t| t + ROW_FLUSH_INTERVAL);
+            if due <= now {
+                pending.taken = Some(now);
+                return Ok(DueRows {
+                    batch_id: batch_id.clone(),
+                    batch: std::mem::take(&mut pending.batch),
+                    files: std::mem::take(&mut pending.files),
+                });
+            }
+            next = Some(next.map_or(due, |n: Instant| n.min(due)));
+        }
+        Err(next)
+    }
+
+    /// Wait for the next due batch and take its rows.
+    pub fn wait_due(&self) -> DueRows {
+        let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        loop {
+            let now = Instant::now();
+            let wait = match Self::take_locked(&mut state, now) {
+                Ok(due) => return due,
+                Err(Some(next)) => next.saturating_duration_since(now),
+                Err(None) => Duration::from_secs(60),
+            };
+            state = self.wake.wait_timeout(state, wait).unwrap_or_else(|e| e.into_inner()).0;
+        }
+    }
+}
 
 /// The time source. The tests use a clock that they move by hand.
 pub trait Clock: Send + Sync {
@@ -272,6 +370,8 @@ pub struct Service {
     /// The longest wait for a lock that another request holds. [`LOCK_WAIT`] in
     /// production. The tests use a short wait.
     pub lock_wait: std::time::Duration,
+    /// The rows that wait for the flusher.
+    pub rows: RowQueue,
 }
 
 /// A whole number from the environment, or the default when it is unset or empty.
@@ -382,6 +482,7 @@ pub fn start() {
             free_space: Arc::new(StatvfsFreeSpace),
             faults: Faults::default(),
             lock_wait: LOCK_WAIT,
+            rows: RowQueue::default(),
         };
         service.prepare_space()?;
         Ok(service)
@@ -393,6 +494,12 @@ pub fn start() {
     let started = built.as_ref().ok().cloned();
     let _ = SERVICE.set(built);
     let Some(service) = started else { return };
+    // The flusher blocks on ClickHouse through `Handle::block_on`, so it runs on a thread
+    // of its own outside the runtime.
+    let flusher = service.clone();
+    if let Err(e) = std::thread::Builder::new().name("upload-rows".to_string()).spawn(move || flusher.run_row_flusher()) {
+        tracing::error!("the upload row flusher did not start, rows wait for the commit and the sweep: {e}");
+    }
     tokio::spawn(async move {
         let mut startup = true;
         loop {
@@ -484,6 +591,10 @@ impl Service {
 
     /// Copy the given file rows to ClickHouse in one insert and record their versions.
     /// The caller holds the lock of each file or the exclusive batch lock.
+    ///
+    /// The journal records are written with one synchronization of their folder. A lost
+    /// record keeps the earlier record, which differs only by a lower `db_version`, so the
+    /// row is written again.
     pub fn flush_files(&self, manifest: &Manifest, files: &mut [FileJournal]) -> anyhow::Result<()> {
         let rows: Vec<FileRecord> = files
             .iter()
@@ -495,11 +606,66 @@ impl Service {
         }
         self.store.write_files(&manifest.collection, &rows)?;
         self.faults.hit("db.files_written")?;
+        let dir = self.space.files_dir(&manifest.batch_id);
         for file in files.iter_mut().filter(|f| f.db_version < f.version) {
             file.db_version = file.version;
-            self.save_file(&manifest.batch_id, file, "file.db_version")?;
+            let name = format!("{}.json", file.file_no);
+            fsutil::replace_unsynced(&dir, &name, &serde_json::to_vec(&*file)?, &self.faults, "file.db_version")?;
+        }
+        self.faults.hit("file.db_version.before_sync")?;
+        fsutil::sync_dir(&dir)
+    }
+
+    /// Queue the batch row (`None`) or one file row for the flusher.
+    pub fn queue_rows(&self, batch_id: &str, file_no: Option<u32>) {
+        self.rows.mark(batch_id, file_no);
+    }
+
+    /// Write the queued rows of one batch from the journal as it is now: the file rows in
+    /// one insert, then the batch row. The flusher holds no lock, so no request waits for
+    /// the insert, and it records no `db_version`. A row of a later version that another
+    /// writer stored first stays current, because the tables keep the row with the
+    /// highest `row_version`.
+    pub fn flush_queued(&self, due: &DueRows) -> anyhow::Result<()> {
+        let Some(manifest) = journal::read_manifest(&self.space, &due.batch_id)? else { return Ok(()) };
+        let mut rows = Vec::new();
+        for &file_no in &due.files {
+            if file_no as usize >= manifest.files.len() {
+                continue;
+            }
+            let file = journal::read_file(&self.space, &manifest, file_no)?;
+            if file.db_version < file.version {
+                rows.push(self.file_record(&manifest, &file));
+            }
+        }
+        if !rows.is_empty() {
+            self.store.write_files(&manifest.collection, &rows)?;
+        }
+        if due.batch {
+            if let Some(batch) = journal::read_batch(&self.space, &due.batch_id)? {
+                if batch.db_version < batch.version {
+                    self.store.write_batch(&manifest.collection, &self.batch_record(&manifest, &batch))?;
+                }
+            }
         }
         Ok(())
+    }
+
+    /// The loop of the flusher thread. A failed flush queues its rows again, so they are
+    /// tried after the next interval.
+    pub fn run_row_flusher(&self) {
+        loop {
+            let due = self.rows.wait_due();
+            if let Err(e) = self.flush_queued(&due) {
+                tracing::warn!("upload batch {}: the row write waits for the next flush: {e:#}", due.batch_id);
+                if due.batch {
+                    self.queue_rows(&due.batch_id, None);
+                }
+                for &file_no in &due.files {
+                    self.queue_rows(&due.batch_id, Some(file_no));
+                }
+            }
+        }
     }
 
     /// The target of a batch now, or `None` when the owner may no longer write it. The

@@ -39,6 +39,9 @@ impl Clock for FakeClock {
 struct MemStore {
     batches: Mutex<Vec<BatchRecord>>,
     files: Mutex<Vec<FileRecord>>,
+    /// The inserts of each table.
+    batch_inserts: AtomicU64,
+    file_inserts: AtomicU64,
     claimed: Mutex<HashMap<String, String>>,
     fail: AtomicBool,
     deleted: AtomicBool,
@@ -82,6 +85,7 @@ impl BatchStore for MemStore {
             anyhow::bail!("the store is down");
         }
         self.batches.lock().unwrap().push(row.clone());
+        self.batch_inserts.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -90,6 +94,7 @@ impl BatchStore for MemStore {
             anyhow::bail!("the store is down");
         }
         self.files.lock().unwrap().extend(rows.iter().cloned());
+        self.file_inserts.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -207,6 +212,7 @@ impl Env {
             free_space: self.free.clone(),
             faults: Faults::default(),
             lock_wait: TEST_LOCK_WAIT,
+            rows: RowQueue::default(),
         };
         service.prepare_space().unwrap();
         Arc::new(service)
@@ -683,6 +689,7 @@ const CRASH_POINTS: &[&str] = &[
     "patch.journal.before_sync",
     "db.files_written",
     "file.db_version.before_rename",
+    "file.db_version.before_sync",
     "place.prepared.before_rename",
     "place.prepared.before_sync",
     "copy.part_created",
@@ -806,13 +813,72 @@ fn an_unreachable_store_keeps_the_rows_in_the_journal_until_it_returns() {
     let service = env.service();
     let begun = service.begin(USER, &request("store", &[("a", 4)])).unwrap();
     env.store.fail.store(true, Ordering::SeqCst);
-    send_file(&service, &begun.batch_id, 0, &content(0, 4)).unwrap_err();
-    assert!(service.commit(USER, &begun.batch_id).is_err());
+    // No transfer request writes a row, so the transfer and the commit succeed.
+    send_file(&service, &begun.batch_id, 0, &content(0, 4)).unwrap();
+    service.commit(USER, &begun.batch_id).unwrap();
+    let due = service.rows.take_due(std::time::Instant::now()).unwrap();
+    assert!(service.flush_queued(&due).is_err());
+    assert!(service.finish(&begun.batch_id).is_err());
+    assert_eq!(journal::read_batch(&service.space, &begun.batch_id).unwrap().unwrap().state, batch_state::COMMITTING);
     env.store.fail.store(false, Ordering::SeqCst);
     service.sweep(true).unwrap();
     service.sweep(true).unwrap();
     assert_eq!(env.store.latest_file(&begun.batch_id, 0).unwrap().state, "placed");
     assert_eq!(env.store.latest_batch(&begun.batch_id).unwrap().state, batch_state::QUEUED);
+}
+
+#[test]
+fn transfer_requests_write_no_row_and_the_flusher_writes_one_insert_for_each_table() {
+    let env = Env::new(false);
+    let service = env.service();
+    let files: &[(&str, u64)] = &[("a", 4), ("b", 4), ("c", 0), ("d", 4)];
+    let begun = service.begin(USER, &request("rows", files)).unwrap();
+    let id = begun.batch_id.as_str();
+    // `begin` writes the manifest rows and the batch row, one insert each.
+    assert_eq!(env.store.file_inserts.load(Ordering::SeqCst), 1);
+    assert_eq!(env.store.batch_inserts.load(Ordering::SeqCst), 1);
+    for n in 0..3u32 {
+        send_file(&service, id, n, &content(n, files[n as usize].1)).unwrap();
+    }
+    service.tus_create(USER, id, 3, 4).unwrap();
+    service.tus_terminate(USER, id, 3).unwrap();
+    assert_eq!(env.store.file_inserts.load(Ordering::SeqCst), 1, "a transfer request wrote a row");
+
+    let start = std::time::Instant::now();
+    let due = service.rows.take_due(start).unwrap();
+    assert_eq!((due.batch_id.as_str(), due.batch, due.files.iter().copied().collect::<Vec<_>>()), (id, false, vec![0, 1, 2, 3]));
+    service.flush_queued(&due).unwrap();
+    assert_eq!(env.store.file_inserts.load(Ordering::SeqCst), 2);
+    for (n, state) in [(0, "placed"), (1, "placed"), (2, "placed"), (3, "not_sent")] {
+        assert_eq!(env.store.latest_file(id, n).unwrap().state, state, "file {n}");
+    }
+    // The flusher records no db_version, so the commit writes the rows again, and the
+    // journal keeps each row until a writer that records its version stored it.
+    assert!(journal::read_file(&service.space, &journal::read_manifest(&service.space, id).unwrap().unwrap(), 0).unwrap().db_version < 4);
+
+    // A change within the interval waits for it.
+    service.queue_rows(id, None);
+    assert_eq!(service.rows.take_due(start + std::time::Duration::from_millis(500)).unwrap_err(), Some(start + ROW_FLUSH_INTERVAL));
+    let due = service.rows.take_due(start + ROW_FLUSH_INTERVAL).unwrap();
+    assert!(due.batch && due.files.is_empty());
+    service.flush_queued(&due).unwrap();
+    assert_eq!(env.store.batch_inserts.load(Ordering::SeqCst), 1, "the batch row did not change");
+
+    // The commit request writes no row. The finish writes one insert for each table.
+    service.commit(USER, id).unwrap();
+    assert_eq!((env.store.file_inserts.load(Ordering::SeqCst), env.store.batch_inserts.load(Ordering::SeqCst)), (2, 1));
+    service.finish(id).unwrap();
+    assert_eq!((env.store.file_inserts.load(Ordering::SeqCst), env.store.batch_inserts.load(Ordering::SeqCst)), (3, 2));
+    assert_eq!(env.store.latest_batch(id).unwrap().state, batch_state::QUEUED);
+    let manifest = journal::read_manifest(&service.space, id).unwrap().unwrap();
+    for n in 0..4 {
+        let file = journal::read_file(&service.space, &manifest, n).unwrap();
+        assert_eq!(file.db_version, file.version, "file {n}");
+    }
+    // A queued batch row that the finish already wrote gives no insert.
+    let due = service.rows.take_due(start + ROW_FLUSH_INTERVAL * 2).unwrap();
+    service.flush_queued(&due).unwrap();
+    assert_eq!(env.store.batch_inserts.load(Ordering::SeqCst), 2);
 }
 
 /// Run `work` on another thread and return its result, or `None` when it does not end
@@ -940,6 +1006,8 @@ fn a_folder_that_does_not_open_keeps_complete_files_for_a_later_placement() {
     let manifest = journal::read_manifest(&service.space, &id).unwrap().unwrap();
     assert_eq!(journal::read_file(&service.space, &manifest, 0).unwrap().state, FileState::Complete);
     assert!(service.space.data(&id, 0).exists());
+    // The flusher writes the `committing` row that the commit queued.
+    service.flush_queued(&service.rows.take_due(std::time::Instant::now()).unwrap()).unwrap();
     assert_eq!(env.store.latest_batch(&id).unwrap().state, batch_state::COMMITTING);
     // A transfer request gets a retryable answer, not the permission text.
     let other = service.begin(USER, &request("away-2", &[("c", 4)]));

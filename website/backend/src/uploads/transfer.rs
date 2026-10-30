@@ -98,10 +98,7 @@ impl PatchSession {
         }
         service.save_file(&self.manifest.batch_id, &self.file, "patch.journal")?;
         if complete {
-            // A failed row write stays in the journal and the next flush repeats it.
-            if let Err(e) = service.flush_files(&self.manifest, std::slice::from_mut(&mut self.file)) {
-                tracing::warn!("upload batch {} file {}: the staged row waits: {e:#}", self.manifest.batch_id, self.file.file_no);
-            }
+            service.queue_rows(&self.manifest.batch_id, Some(self.file.file_no));
         }
         Ok(service.transfer_info(&self.manifest, &self.file))
     }
@@ -240,9 +237,7 @@ impl Service {
                     file.version += 1;
                     file.last_activity_ms = self.clock.now_ms();
                     self.save_file(batch_id, &file, "create.complete")?;
-                    if let Err(e) = self.flush_files(&manifest, std::slice::from_mut(&mut file)) {
-                        tracing::warn!("upload batch {batch_id} file {file_no}: the staged row waits: {e:#}");
-                    }
+                    self.queue_rows(batch_id, Some(file_no));
                 }
             }
             FileState::Complete | FileState::Placing | FileState::Placed => {}
@@ -331,9 +326,7 @@ impl Service {
         file.last_activity_ms = self.clock.now_ms();
         self.save_file(batch_id, &file, "terminate.journal")?;
         fsutil::remove_file(&self.space.data(batch_id, file_no))?;
-        if let Err(e) = self.flush_files(&manifest, std::slice::from_mut(&mut file)) {
-            tracing::warn!("upload batch {batch_id} file {file_no}: the not_sent row waits: {e:#}");
-        }
+        self.queue_rows(batch_id, Some(file_no));
         Ok(())
     }
 
@@ -369,8 +362,9 @@ impl Service {
         Ok(PrefixDigest { file_no, offset: file.offset, length, sha256: hex::encode(hasher.finalize()) })
     }
 
-    /// Place one file after its last byte arrived, while the batch is open. A batch whose
-    /// owner may no longer write it keeps the file complete, and commit rejects it.
+    /// Place one file after its last byte arrived, while the batch is open, and queue its
+    /// row for the flusher. A batch whose owner may no longer write it keeps the file
+    /// complete, and commit rejects it.
     pub fn place_after_transfer(&self, batch_id: &str, file_no: u32) -> anyhow::Result<()> {
         let Some(manifest) = journal::read_manifest(&self.space, batch_id)? else { return Ok(()) };
         let locks = self.lock_file(batch_id, file_no);
@@ -381,6 +375,7 @@ impl Service {
         }
         let Some(target) = self.current_target(&manifest)? else { return Ok(()) };
         self.place(&manifest, &mut file, Some(&target))?;
-        self.flush_files(&manifest, std::slice::from_mut(&mut file))
+        self.queue_rows(batch_id, Some(file_no));
+        Ok(())
     }
 }

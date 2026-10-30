@@ -8,6 +8,14 @@ from tasks.P_admin import rerun_selection
 from tasks.P_admin.rerun_params import ReconcileErrorsParams, SelectErrorsParams
 
 
+@pytest.fixture(autouse=True)
+def _no_operation_row(monkeypatch):
+    """The selection reads the operation kind. These tests run without a database."""
+    import database.operations as operations
+
+    monkeypatch.setattr(operations, "get_operation", lambda _op_id: None)
+
+
 class _Client:
     def __init__(self, rows):
         self.rows = rows
@@ -20,8 +28,9 @@ class _Client:
     def __exit__(self, *_args):
         return False
 
-    def query(self, query, parameters):
+    def query(self, query, parameters, external_data=None):
         self.queries.append((query, parameters))
+        self.external = external_data
         for marker, rows in self.rows:
             if marker in query:
                 return SimpleNamespace(result_rows=rows)
@@ -103,6 +112,64 @@ def test_selection_records_events_before_deleting_or_reopening(monkeypatch):
     ]
     assert calls[3][1][0]["event"] == "selection_complete"
     assert result.errors_before_run == 4
+
+
+@pytest.mark.parametrize("kind, scope, expected", [
+    ("ingest_upload", ["h-own"], True),
+    ("rescan_dataset", None, False),
+])
+def test_an_upload_operation_selects_only_the_errors_of_its_own_files(monkeypatch, kind, scope, expected):
+    import database.clickhouse as clickhouse
+    import database.operations as operations
+    import database.uploads as uploads
+
+    client = _Client([("SELECT DISTINCT hash, task_name FROM processing_errors", [("h-own", "parse_error_tika")])])
+    monkeypatch.setattr(clickhouse, "get_collection_client", lambda _name: client)
+    monkeypatch.setattr(operations, "get_operation", lambda op_id: {"op_id": op_id, "kind": kind})
+    asked = []
+    monkeypatch.setattr(uploads, "operation_file_hashes",
+                        lambda *args: asked.append(args) or scope)
+
+    pairs = rerun_selection._candidate_pairs(SelectErrorsParams("op", "collection", "dataset"))
+
+    assert pairs == [("h-own", "parse_error_tika")]
+    query = client.queries[0][0]
+    assert ("hash IN (SELECT hash FROM scope_hashes)" in query) is expected
+    assert (client.external is not None) is expected
+    assert asked == ([("collection", "dataset", "op")] if expected else [])
+
+
+def test_an_upload_operation_without_ingested_files_selects_nothing(monkeypatch):
+    import database.clickhouse as clickhouse
+    import database.operations as operations
+    import database.uploads as uploads
+
+    monkeypatch.setattr(clickhouse, "get_collection_client",
+                        lambda _name: pytest.fail("An empty scope must not read the errors"))
+    monkeypatch.setattr(operations, "get_operation", lambda op_id: {"op_id": op_id, "kind": "ingest_upload"})
+    monkeypatch.setattr(uploads, "operation_file_hashes", lambda *_args: [])
+
+    assert rerun_selection._candidate_pairs(SelectErrorsParams("op", "collection", "dataset")) == []
+
+
+def test_operation_file_hashes_reads_the_claimed_batches_and_their_members(monkeypatch):
+    import database.uploads as uploads
+
+    class Client(_Client):
+        def query(self, query, parameters=None, external_data=None, **_kw):
+            return super().query(query, parameters, external_data)
+
+    client = Client([
+        ("FROM upload_files", [("h-top",)]),
+        ("container_hash IN", [("h-top", "h-member")]),
+    ])
+    monkeypatch.setattr(uploads, "_client", lambda _name: client)
+    monkeypatch.setattr(uploads, "batches_of_operation", lambda *_args: [{"batch_id": "b1"}])
+    assert uploads.operation_file_hashes("collection", "dataset", "op") == ["h-member", "h-top"]
+    assert client.queries[0][1] == {"ids": ["b1"]}
+
+    monkeypatch.setattr(uploads, "batches_of_operation", lambda *_args: [])
+    assert uploads.operation_file_hashes("collection", "dataset", "op") is None
 
 
 def test_reconciliation_preserves_current_errors_and_records_outcomes(monkeypatch):

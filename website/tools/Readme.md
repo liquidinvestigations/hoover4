@@ -12,13 +12,14 @@ These tools prepare fixtures, drive browser workflows, and write verification ev
 | [serve_fixture_build.sh](serve_fixture_build.sh) | starts and stops a website build with the cargo feature `browser-fixtures` beside the stack website, for the scenarios in `browser-tests/fixture-build/` |
 | [identity_proxy.py](identity_proxy.py) | forwards requests to the fixture build and adds the identity headers of one account. `serve_fixture_build.sh` starts it in the browser container |
 | [prepare_table_fixtures.py](prepare_table_fixtures.py) | writes the synthetic table, text and match-continuation fixtures of the stack tests under `testdata/`; `--check` verifies them and `--ingest` ingests each missing dataset |
+| [upload_scenarios/](upload_scenarios/Readme.md) | writes the data sets of the bounded upload scenarios outside the repository. It runs on the host |
 | [count_whoami.py](count_whoami.py) | how many identity requests one navigation costs |
 | [check_session_gate.py](check_session_gate.py) | which of the session gate's three states a page settled in |
 | `console_whitelist.txt` | console messages the screenshot run treats as expected |
 | [manual_qa.py](manual_qa.py) | validates fixtures, selects cases, and combines procedure evidence |
 | [manual_qa_runtime.py](manual_qa_runtime.py) | executes the manual interactions and records each assertion |
 
-All of them run by copying the script into the browser container and executing it there; the
+All of them except `upload_scenarios/` run by copying the script into the browser container and executing it there. The
 container has no bind mounts, so both the script and its output travel by file copy. They do
 not use the browser MCP endpoint, which refuses internal hosts by design.
 

@@ -145,6 +145,8 @@ A plan is marked finished when its stages have **run**, not when every document 
 succeeded. An ingest or plan-execution operation selects historical Error pairs after planning
 and before plan execution. It deletes Errors for disabled stages and keeps Errors without a
 plan. It clears the selected hashes' model and regex scan watermarks, then reopens their plans.
+An `ingest_upload` operation selects only the Errors of the files of its own batches and of
+their members.
 
 Reconciliation removes a selected historical Error only when this operation records a
 matching successful task run and document outcome. A current Error event replaces an older

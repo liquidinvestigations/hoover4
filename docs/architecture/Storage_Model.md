@@ -103,7 +103,9 @@ acknowledged offsets, transfer activity and placement progress. Each record is a
 written to a temporary name, synchronized, renamed and followed by a synchronization of its
 folder. `upload_batches` and `upload_files` copy the journal. Each journal change raises the
 version of its record, and the row of that version carries it as `row_version`. A row whose
-version is below its journal version is written again before a conflicting change.
+version is below its journal version is written again. A transfer request does not write a
+row. One flusher thread writes the changed rows of a batch at most once every 2 seconds. The
+end of a commit and the sweep write the remaining rows. Each write has one insert for each table.
 
 `flock` locks on files of the upload space serialize the writers, also across processes. The
 lock order is request, dataset, batch, file. A transfer holds the shared batch lock and the
@@ -113,8 +115,9 @@ waits at most 75 seconds for a lock and then answers 423. A `PATCH` body that gi
 
 Placement moves a complete file into the dataset folder and never replaces an entry. It
 opens every folder through the descriptor of its parent without following a symbolic link,
-and publishes with `renameat2(RENAME_NOREPLACE)`. The upload space and the dataset folder can be on different file
-systems. Placement then copies the bytes to the reserved name
+and publishes with `renameat2(RENAME_NOREPLACE)` inside one mount. The upload space and each
+dataset mount are separate bind mounts, also on one file system. Placement therefore copies
+the bytes to the reserved name
 `.hoover4-upload-<batch_id>-<file_no>.hoover4-part` in the destination folder. It synchronizes
 the copy and renames it. An upload path cannot use the prefix `.hoover4-upload-` or the
 suffix `.hoover4-part`.

@@ -79,8 +79,25 @@ def recovery_activities(task_name: str) -> tuple[str, ...]:
     return (primary,) if primary else ()
 
 
+def _upload_scope(params: SelectErrorsParams) -> list[str] | None:
+    """The hashes that an `ingest_upload` operation may select, or None for another kind.
+
+    An upload operation retries only the failures of the files of its own batches and of
+    their members. A rescan and the retry actions keep the selection of the whole dataset.
+    """
+    from database.operations import get_operation
+
+    row = get_operation(params.op_id)
+    if not row or row.get("kind") != "ingest_upload":
+        return None
+    from database.uploads import operation_file_hashes
+
+    return operation_file_hashes(params.collectionname, params.collection_dataset, params.op_id) or []
+
+
 def _candidate_pairs(params: SelectErrorsParams) -> list[tuple[str, str]]:
     from database.clickhouse import get_collection_client
+    from database.uploads import _string_table
 
     filters = [
         "collection_dataset = {ds:String}",
@@ -93,12 +110,20 @@ def _candidate_pairs(params: SelectErrorsParams) -> list[tuple[str, str]]:
     if params.hash:
         filters.append("hash = {hash:String}")
         query_params["hash"] = params.hash
+    scope = _upload_scope(params)
+    extra = {}
+    if scope is not None:
+        if not scope:
+            return []
+        filters.append("hash IN (SELECT hash FROM scope_hashes)")
+        extra["external_data"] = _string_table("scope_hashes", "hash", scope)
     with get_collection_client(params.collectionname) as client:
         rows = client.query(
             "SELECT DISTINCT hash, task_name FROM processing_errors FINAL WHERE "
             + " AND ".join(filters)
             + " ORDER BY hash, task_name",
             parameters=query_params,
+            **extra,
         ).result_rows
     return [(str(hash), str(task_name)) for hash, task_name in rows]
 

@@ -477,6 +477,15 @@ Each value is a whole number. [deploy.py](../../deploy.py) refuses a value below
 which may be 0, and prints a warning for an unknown key. The path limits are fixed: 64 names, 255
 bytes for one name, and 1,024 bytes for a destination path. The `begin` body is at most 16 MiB.
 
+The upload scenarios ran at the defaults with these sizes:
+
+- 1,000 files of 1 KB in one batch
+- one file of 256 MiB
+- a zip of 1,000 members, and a zip that holds 2 zips of 100 members
+- a `begin` body of 16 MiB with 1,000 files
+
+No batch above 1,000 files or 512 MiB was measured.
+
 ## `[llm_provider.*]`
 
 One section per provider, each with the same five keys: `enabled`, `base_url`, `model`,
