@@ -3,6 +3,8 @@
 use std::collections::BTreeMap;
 
 use dioxus::prelude::*;
+use dioxus_free_icons::Icon;
+use dioxus_free_icons::icons::md_action_icons::MdFindInPage;
 
 use crate::{
     api::search_api::{search_for_results, search_for_results_hit_count},
@@ -190,6 +192,19 @@ fn SearchResultsView() -> Element {
     }
 
     let result_list = search_result.results.clone();
+    // An empty state describes only a completed answer to the current address.
+    let total = match search_results_state.hit_count.read().as_ref() {
+        Some(Ok(count)) => count.total,
+        _ => 0,
+    };
+    let empty_state = if result_list.is_empty()
+        && search_result.query == *search_results_state.query.read()
+        && search_result.page_number == *search_results_state.current_search_result_page.read()
+    {
+        Some(EmptyState::classify(&search_result.query, total))
+    } else {
+        None
+    };
 
     rsx! {
         div {
@@ -198,10 +213,8 @@ fn SearchResultsView() -> Element {
             if let Some(notice) = common::search_query::short_infix_notice(&search_result.query.query_string) {
                 div { role: "status", style: "padding: 8px 12px;", "{notice}" }
             }
-            if result_list.is_empty() && !search_result.query.query_string.trim().is_empty()
-                && search_result.query == *search_results_state.query.read()
-                && search_results_state.hit_count.read().as_ref().is_some_and(|r| r.as_ref().is_ok_and(|h| h.total == 0)) {
-                NoResults { query: search_results_state.query }
+            if let Some(state) = empty_state {
+                EmptySearchResults { state, query: search_results_state.query }
             }
             ul {
                 id: "x-search-panel-results-wrapper",
@@ -251,18 +264,135 @@ fn SearchFailure(error: ServerFnError, on_retry: Callback<()>) -> Element {
     }
 }
 
+/// Why a completed search shows no result cards.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmptyState {
+    /// The query has words and no document matches them under the filters.
+    NoMatch,
+    /// The query has no words and no document matches the filters.
+    FiltersMatchNothing,
+    /// Documents match, and the page in the address is after the last page.
+    AfterLastPage,
+}
+
+impl EmptyState {
+    /// Classify an empty page of a completed search with `total` matches.
+    pub fn classify(query: &SearchQuery, total: u64) -> Self {
+        if total > 0 {
+            EmptyState::AfterLastPage
+        } else if query.query_string.trim().is_empty() {
+            EmptyState::FiltersMatchNothing
+        } else {
+            EmptyState::NoMatch
+        }
+    }
+}
+
+/// The query of the Clear filters action: the same words and sort, with no facet or
+/// range filter.
+pub fn without_filters(query: &SearchQuery) -> SearchQuery {
+    SearchQuery {
+        facet_filters: Default::default(),
+        range_filters: Default::default(),
+        ..query.clone()
+    }
+}
+
+/// Keep the selected document and viewer state when an empty-result action changes the search.
+fn empty_result_route(mut route: Route, clear_filters: bool) -> Route {
+    if let Route::SearchPage { query, current_search_result_page, .. } = &mut route {
+        if clear_filters {
+            *query = without_filters(&query.0).into();
+        }
+        *current_search_result_page = 0;
+    }
+    route
+}
+
+const EMPTY_ACTION_STYLE: &str = "
+    border: 1px solid rgba(0,0,0,0.3); background: white;
+    border-radius: 100px; padding: 6px 16px; cursor: pointer;
+    font-size: var(--x-text-body);
+";
+
+/// The empty-result view of a completed search, in the layout of the empty preview pane:
+/// a centred column with a large grey icon, a title and one explanation line.
+///
+/// A query with words offers the checked similar words under the same filters. A query
+/// without words offers Clear filters. A page after the last page offers Go to page 1.
+/// Both actions change only the part of the address that they name.
+#[component]
+fn EmptySearchResults(state: EmptyState, query: ReadSignal<SearchQuery>) -> Element {
+    let route = use_route::<Route>();
+    let clear_route = empty_result_route(route.clone(), true);
+    let first_route = empty_result_route(route, false);
+    let (id, title, explanation) = match state {
+        EmptyState::NoMatch => (
+            "x-search-no-results",
+            "No results".to_string(),
+            format!("No document matches “{}” with the selected filters.", query.read().query_string.trim()),
+        ),
+        EmptyState::FiltersMatchNothing => (
+            "x-search-no-filter-results",
+            "No results".to_string(),
+            "No document matches the selected filters.".to_string(),
+        ),
+        EmptyState::AfterLastPage => (
+            "x-search-after-last-page",
+            "This page is empty".to_string(),
+            "The page is after the last page of results.".to_string(),
+        ),
+    };
+    rsx! {
+        section {
+            id,
+            class: "x-empty-search-results",
+            style: "display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; width: 100%; padding: 24px 12px; box-sizing: border-box;",
+            div {
+                style: "max-width: 360px; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 11px;",
+                Icon { icon: MdFindInPage, style: "width: 96px; height: 96px; color: rgba(0, 0, 0, 0.5);" }
+                h2 { style: "font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 500; color: rgb(0, 0, 0);", "{title}" }
+                p { style: "font-size: var(--x-text-body); line-height: var(--x-line-body); color: rgba(0, 0, 0, 0.5); overflow-wrap: anywhere;", "{explanation}" }
+                match state {
+                    EmptyState::NoMatch => rsx! { SimilarWords { query } },
+                    EmptyState::FiltersMatchNothing => rsx! {
+                        button {
+                            id: "x-search-clear-filters",
+                            style: EMPTY_ACTION_STYLE,
+                            class: "hoover4-hover-shadow-background",
+                            onclick: move |_| {
+                                navigator().push(clear_route.clone());
+                            },
+                            "Clear filters"
+                        }
+                    },
+                    EmptyState::AfterLastPage => rsx! {
+                        button {
+                            id: "x-search-first-page",
+                            style: EMPTY_ACTION_STYLE,
+                            class: "hoover4-hover-shadow-background",
+                            onclick: move |_| {
+                                navigator().push(first_route.clone());
+                            },
+                            "Go to page 1"
+                        }
+                    },
+                }
+            }
+        }
+    }
+}
+
 /// Offer checked query variants under the same filters after a zero-result search.
 #[component]
-fn NoResults(query: ReadSignal<SearchQuery>) -> Element {
+fn SimilarWords(query: ReadSignal<SearchQuery>) -> Element {
     let suggestions = use_resource(move || {
         let current = query.read().clone();
         crate::api::search_api::search_suggestions(current)
     });
     let current = suggestions.read().clone();
     rsx! {
-        section { id: "x-search-no-results", style: "padding: 24px 12px;",
-            h2 { style: "font-size: var(--x-text-page); line-height: var(--x-line-page); margin-bottom: 8px;", "No results" }
-            p { "The query was {query.read().query_string}." }
+        div { class: "x-search-similar-words", style: "display: flex; flex-direction: column; align-items: center; gap: 6px;",
             match current {
                 None => rsx! { p { role: "status", "Loading similar words." } },
                 Some(Err(error)) => rsx! { ServerErrorDisplay { error } },
@@ -271,25 +401,81 @@ fn NoResults(query: ReadSignal<SearchQuery>) -> Element {
                         p { "No similar words were found in the selected collections." }
                     } else {
                         p { "Search for a similar word:" }
-                        for suggestion in found.queries {
-                            button {
-                                key: "{suggestion.query}",
-                                class: "x-search-suggestion",
-                                style: "padding: 8px 12px; margin: 4px; border: 1px solid; border-color: var(--x-link); border-radius: 6px;",
-                                onclick: move |_| {
-                                    let mut corrected = query.read().clone();
-                                    corrected.query_string = suggestion.query.clone();
-                                    navigator().push(Route::SearchPage {
-                                        query: corrected.into(), current_search_result_page: 0,
-                                        selected_result_hash: None.into(), doc_viewer_state: None.into(),
-                                    });
-                                },
-                                "{suggestion.query} ({suggestion.count})"
+                        div {
+                            for suggestion in found.queries {
+                                button {
+                                    key: "{suggestion.query}",
+                                    class: "x-search-suggestion",
+                                    style: "padding: 8px 12px; margin: 4px; border: 1px solid; border-color: var(--x-link); border-radius: 6px;",
+                                    onclick: move |_| {
+                                        let mut corrected = query.read().clone();
+                                        corrected.query_string = suggestion.query.clone();
+                                        navigator().push(Route::SearchPage {
+                                            query: corrected.into(), current_search_result_page: 0,
+                                            selected_result_hash: None.into(), doc_viewer_state: None.into(),
+                                        });
+                                    },
+                                    "{suggestion.query} ({suggestion.count})"
+                                }
                             }
                         }
                     }
                 },
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use common::search_query::RangeFilter;
+    use common::search_result::FacetOriginalValue;
+
+    #[test]
+    fn empty_states_follow_the_count_and_the_words() {
+        let mut query = SearchQuery::default();
+        assert_eq!(EmptyState::classify(&query, 0), EmptyState::FiltersMatchNothing);
+        query.query_string = "  ".to_string();
+        assert_eq!(EmptyState::classify(&query, 0), EmptyState::FiltersMatchNothing);
+        query.query_string = "zzxqvtrplmx".to_string();
+        assert_eq!(EmptyState::classify(&query, 0), EmptyState::NoMatch);
+        assert_eq!(EmptyState::classify(&query, 12), EmptyState::AfterLastPage);
+        query.query_string.clear();
+        assert_eq!(EmptyState::classify(&query, 3), EmptyState::AfterLastPage);
+    }
+
+    #[test]
+    fn clear_filters_keeps_the_words_and_the_sort() {
+        let mut query = SearchQuery { query_string: "invoice".to_string(), ..Default::default() };
+        query.sort.desc = true;
+        query.facet_filters.insert("filetype".to_string(), [FacetOriginalValue::String("pdf".to_string())].into());
+        query.range_filters.insert("dates".to_string(), RangeFilter { min: Some(1), ..Default::default() });
+        let cleared = without_filters(&query);
+        assert_eq!(cleared.query_string, "invoice");
+        assert_eq!(cleared.sort, query.sort);
+        assert!(!cleared.has_any_filter());
+    }
+
+    #[test]
+    fn empty_actions_preserve_the_selected_document_and_viewer() {
+        let mut query = SearchQuery { query_string: "invoice".to_string(), ..Default::default() };
+        query.facet_filters.insert("filetype".to_string(), [FacetOriginalValue::String("pdf".to_string())].into());
+        let selected_result_hash = Some(DocumentIdentifier {
+            collection_dataset: "test_docs".to_string(), file_hash: "abc".to_string(),
+        }).into();
+        let doc_viewer_state = Some(DocViewerState::from_find_query("invoice".to_string())).into();
+        let original = Route::SearchPage {
+            query: query.clone().into(), current_search_result_page: 40,
+            selected_result_hash, doc_viewer_state,
+        };
+        for clear in [false, true] {
+            let mut expected = original.clone();
+            if let Route::SearchPage { query: expected_query, current_search_result_page, .. } = &mut expected {
+                *current_search_result_page = 0;
+                *expected_query = if clear { without_filters(&query) } else { query.clone() }.into();
+            }
+            assert_eq!(empty_result_route(original.clone(), clear), expected);
         }
     }
 }

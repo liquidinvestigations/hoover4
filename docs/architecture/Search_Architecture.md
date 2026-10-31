@@ -276,6 +276,16 @@ folder is one row rather than one row per document under it.
 
 ## The folder tree
 
+Storage root and collection searches resolve readable datasets for every request.
+They use uncached structure reads through the shared bounded fanout.
+A failed target fails the whole request.
+Each collection returns its first `offset + limit` matches, capped at 2000.
+The order uses kind, depth, path, dataset, and numeric index identity.
+The merge uses the same case-insensitive string order as Manticore.
+Numeric identity distinguishes case-only paths and equal paths in separate containers.
+The server merges these prefixes before applying the global offset.
+The interface shows 50 matches per page and separates the total from the reachable range.
+
 `<collectionname>_vfs` is one Manticore table per collection (not per shard, not per
 dataset) holding one row per VFS node. It powers the storage sidebar, the filter pane's
 folder picker, and in-folder search.

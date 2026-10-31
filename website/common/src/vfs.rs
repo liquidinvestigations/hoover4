@@ -205,6 +205,63 @@ pub struct VfsTreeChildren {
     pub took_ms: u64,
 }
 
+/// The file-browser search page counts at most this many matches as reachable.
+///
+/// Each collection returns its first `offset + limit` matches for the global merge, so
+/// a deeper page costs every collection a deeper read. Matches after this position are
+/// counted in `total` but cannot be opened from the result pages.
+pub const VFS_SEARCH_REACHABLE: u64 = 2000;
+
+/// The page size of the file-browser search page.
+pub const VFS_SEARCH_PAGE_SIZE: u64 = 50;
+
+/// One page of names that match a file-browser search over several datasets.
+///
+/// `total` counts every match in the readable datasets. `reachable` is the part of
+/// `total` that the result pages can show, at most [`VFS_SEARCH_REACHABLE`].
+/// `dataset_labels` maps each `collection_dataset` on the page to the label that a card
+/// shows for it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct VfsDatasetSearch {
+    pub nodes: Vec<VfsTreeNode>,
+    pub total: u64,
+    /// False when a collection reported its count as a lower bound.
+    #[serde(default = "default_true")]
+    pub total_exact: bool,
+    pub reachable: u64,
+    pub offset: u64,
+    pub limit: u64,
+    #[serde(default)]
+    pub dataset_labels: std::collections::BTreeMap<String, String>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl VfsDatasetSearch {
+    /// The number of pages that the reachable matches fill.
+    pub fn page_count(&self) -> u64 {
+        if self.limit == 0 { 0 } else { self.reachable.div_ceil(self.limit) }
+    }
+}
+
+impl VfsTreeNode {
+    /// Where a search result opens: the folder or container itself, or the folder that
+    /// holds a file.
+    pub fn open_descriptor(&self) -> PathDescriptor {
+        if self.kind.is_folder_like() {
+            self.descriptor()
+        } else {
+            PathDescriptor {
+                container_hash: self.container_hash.clone(),
+                path: self.path.clone(),
+            }
+            .parent()
+        }
+    }
+}
+
 /// The ancestor chain from the dataset root to one node, plus the query cost of the walk.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct VfsTreePath {

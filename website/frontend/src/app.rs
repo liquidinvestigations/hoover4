@@ -10,6 +10,21 @@ use crate::routes::Route;
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const THEME_CSS: Asset = asset!("/assets/dx-components-theme.css");
+/// The popover, hover-card and toast stylesheets. They are linked here, once, so the
+/// server-rendered head carries them before the first paint. A link inside a component
+/// reaches the head only when that component first renders, and its markup then paints
+/// without styles until the file arrives.
+const POPOVER_CSS: Asset = asset!("/src/components/popover/style.css");
+const HOVER_CARD_CSS: Asset = asset!("/src/components/hover_card/style.css");
+const TOAST_CSS: Asset = asset!("/src/components/toast/style.css");
+/// The Latin files of the two text faces that the first view uses: Roboto through
+/// `--x-font` and Inter through the theme's `body` rule. The URLs are the ones that
+/// `fonts.css` resolves to, and `crossorigin` matches the anonymous request mode of a
+/// font load, so the browser reuses the preloaded response.
+const PRELOADED_FONTS: [&str; 2] = [
+    "/assets/fonts/roboto/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBA.woff2",
+    "/assets/fonts/inter/UcCo3FwrK3iLTcviYwY.woff2",
+];
 /// html-to-image 1.11.13, MIT licence, vendored with its licence file. The feedback
 /// script draws the page image with it.
 const HTML_TO_IMAGE_JS: Asset = asset!("/assets/feedback/html-to-image.js");
@@ -32,11 +47,17 @@ static FONTS_FOLDER: Asset = asset!("/assets/fonts/", AssetOptions::folder().wit
 pub fn App() -> Element {
     rsx! {
         document::Meta { name: "color-scheme", content: "light" }
+        for font in PRELOADED_FONTS {
+            document::Link { rel: "preload", href: font, r#as: "font", r#type: "font/woff2", crossorigin: "anonymous" }
+        }
         document::Link { rel: "stylesheet", href: "/assets/fonts/fonts.css" }
 
         document::Link { rel: "icon", href: FAVICON }
         document::Link { rel: "stylesheet", href: MAIN_CSS }
         document::Link { rel: "stylesheet", href: THEME_CSS }
+        document::Link { rel: "stylesheet", href: POPOVER_CSS }
+        document::Link { rel: "stylesheet", href: HOVER_CARD_CSS }
+        document::Link { rel: "stylesheet", href: TOAST_CSS }
 
         PdfViewerJsScriptTag {  }
         document::Script { src: HTML_TO_IMAGE_JS }

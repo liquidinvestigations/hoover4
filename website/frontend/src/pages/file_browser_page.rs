@@ -15,14 +15,14 @@ use dioxus_free_icons::icons::md_file_icons::MdFolder;
 use crate::components::document_view_components::doc_preview_for_search::DocumentPreviewForSearchRoot;
 use crate::components::resizable_sidebar::ResizableSidebar;
 use crate::api::storage_api::{collection_overview, collections_overview};
-use crate::api::vfs_api::{vfs_node_term_id, vfs_search_in_folder};
+use crate::api::vfs_api::{vfs_node_term_id, vfs_search_datasets, vfs_search_in_folder};
 use crate::components::search_components::card_action_buttons::{
     DocCardActionButtonMore, DocCardActionButtonOpenNewTab,
 };
 use crate::components::search_components::storage_tree::{StorageRow, StorageTree};
 use crate::components::search_components::vfs_tree::{TreeSkin, browser_now_ms, CHILDREN_CACHE_TTL_MS};
 use common::search_result::FacetOriginalValue;
-use common::vfs::{VfsNodeKind, VfsTreeNode, make_node_key};
+use common::vfs::{VFS_SEARCH_PAGE_SIZE, VfsNodeKind, VfsTreeNode, make_node_key};
 use crate::data_definitions::doc_viewer_state::DocViewerState;
 use crate::data_definitions::url_param::UrlParam;
 use crate::pages::search_page::DocViewerStateControl;
@@ -225,10 +225,15 @@ const FILE_NAME_STYLE: &str = "color: var(--x-ink-strong);";
 
 /// The storage root. The sidebar is the same unified tree every storage surface has;
 /// the pane names the collections, because a collection page is a real page now.
+///
+/// With a query in `q`, a list of matching names in every readable dataset replaces the
+/// cards. `page` is the result page.
 #[component]
-pub fn FileBrowserCollectionsPage() -> Element {
+pub fn FileBrowserCollectionsPage(q: String, page: u64) -> Element {
     // No dataset and no folder: the tree shows collections and their datasets only.
     let nothing = use_memo(String::new);
+    let q = use_memo(use_reactive!(|q| q));
+    let page = use_memo(use_reactive!(|page| page));
     let overview = use_resource(move || async move { collections_overview().await });
 
     let body = match overview.read().clone() {
@@ -244,9 +249,7 @@ pub fn FileBrowserCollectionsPage() -> Element {
                         for collection in collections.iter() {
                             StatsCard {
                                 key: "collection-{collection.collectionname}",
-                                to: Route::FileBrowserCollectionPage {
-                                    collectionname: collection.collectionname.clone(),
-                                },
+                                to: Route::storage_collection(collection.collectionname.clone()),
                                 title: collection.collectionname.clone(),
                                 tooltip: collection.collectionname.clone(),
                                 is_collection: true,
@@ -272,9 +275,14 @@ pub fn FileBrowserCollectionsPage() -> Element {
                     style: BREADCRUMB_BAR_STYLE,
                     span { style: CRUMB_LABEL_STYLE, "Browsing" }
                     span { style: CRUMB_LABEL_STYLE, "Collections" }
+                    StorageSearchInput { collection: nothing, q }
                     UploadButton { dataset: String::new(), folder: String::new() }
                 }
-                {body}
+                if q().trim().is_empty() {
+                    {body}
+                } else {
+                    StorageSearchResults { collection: nothing, q, page }
+                }
             }
         }
     }
@@ -416,11 +424,16 @@ fn StatsCard(
 }
 
 /// The datasets of one collection, as cards with their cached statistics.
+///
+/// With a query in `q`, a list of matching names in the readable datasets of this
+/// collection replaces the cards. `page` is the result page.
 #[component]
-pub fn FileBrowserCollectionPage(collectionname: String) -> Element {
+pub fn FileBrowserCollectionPage(collectionname: String, q: String, page: u64) -> Element {
     // The signal, read inside the closure: that read is the subscription, and this page
     // is reachable from a sidebar row on another collection's page.
     let name = use_memo(use_reactive!(|collectionname| collectionname));
+    let q = use_memo(use_reactive!(|q| q));
+    let page = use_memo(use_reactive!(|page| page));
     let nothing = use_memo(String::new);
     let overview = use_resource(move || async move { collection_overview(name()).await });
 
@@ -463,13 +476,239 @@ pub fn FileBrowserCollectionPage(collectionname: String) -> Element {
                 style: "flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; overflow: auto;",
                 div {
                     style: BREADCRUMB_BAR_STYLE,
-                    Link { to: Route::FileBrowserCollectionsPage {}, style: CRUMB_LABEL_STYLE, "Browsing" }
+                    Link { to: Route::storage_root(), style: CRUMB_LABEL_STYLE, "Browsing" }
                     span { style: CRUMB_SEP_STYLE, "›" }
                     span { style: CRUMB_LABEL_STYLE, "{name}" }
+                    StorageSearchInput { collection: name, q }
                     UploadButton { dataset: String::new(), folder: String::new() }
                 }
-                {body}
+                if q().trim().is_empty() {
+                    {body}
+                } else {
+                    StorageSearchResults { collection: name, q, page }
+                }
             }
+        }
+    }
+}
+
+// ---------- File-browser search on the root and collection pages ----------
+
+/// The address of a storage search: the root page for an empty `collection`, the
+/// collection page otherwise.
+fn storage_search_route(collection: &str, q: String, page: u64) -> Route {
+    if collection.is_empty() {
+        Route::FileBrowserCollectionsPage { q, page }
+    } else {
+        Route::FileBrowserCollectionPage { collectionname: collection.to_string(), q, page }
+    }
+}
+
+/// The search box of the root and collection pages. The query lives in the address.
+///
+/// Typing changes the address 300 ms after the last key. The first query after an empty
+/// box adds a history entry, so Back returns to the cards. Later changes replace it.
+/// `sent` holds the last query this box wrote, so an address that it wrote itself does
+/// not overwrite keys typed after it. Back and links set the box to their query.
+#[component]
+fn StorageSearchInput(collection: ReadSignal<String>, q: ReadSignal<String>) -> Element {
+    let mut needle = use_signal(|| q.peek().clone());
+    let mut sent = use_signal(|| q.peek().clone());
+    use_effect(move || {
+        let current = q();
+        if *sent.peek() != current {
+            sent.set(current.clone());
+            needle.set(current);
+        }
+    });
+    let mut go = move |pattern: String| {
+        if *sent.peek() == pattern {
+            return;
+        }
+        let was_empty = sent.peek().trim().is_empty();
+        sent.set(pattern.clone());
+        let route = storage_search_route(&collection.peek(), pattern, 0);
+        if was_empty {
+            navigator().push(route);
+        } else {
+            navigator().replace(route);
+        }
+    };
+    rsx! {
+        div {
+            style: "flex: 1 1 260px; min-width: 200px; max-width: 520px;",
+            crate::components::search_input::SearchInput {
+                value: needle,
+                placeholder: if collection().is_empty() { "Search names in all collections…".to_string() } else { "Search names in this collection…".to_string() },
+                on_change: move |value: String| {
+                    needle.set(value.clone());
+                    spawn(async move {
+                        n0_future::time::sleep(std::time::Duration::from_millis(300)).await;
+                        if *needle.peek() == value {
+                            go(value);
+                        }
+                    });
+                },
+                on_submit: move |_| go(needle.peek().clone()),
+            }
+        }
+    }
+}
+
+/// The result list that replaces the cards while a storage search has a query.
+///
+/// The resource returns the request it answered, and the list renders only the answer
+/// to the current address. A failed request shows its error. Matches after the reachable
+/// range are counted and named, and cannot be opened.
+#[component]
+fn StorageSearchResults(collection: ReadSignal<String>, q: ReadSignal<String>, page: ReadSignal<u64>) -> Element {
+    let results = use_resource(move || {
+        let request = (collection(), q(), page());
+        async move {
+            let (collection, q, page) = request.clone();
+            let offset = page.saturating_mul(VFS_SEARCH_PAGE_SIZE);
+            let answer = vfs_search_datasets(collection, q, VFS_SEARCH_PAGE_SIZE, offset).await;
+            (request, answer)
+        }
+    });
+    let current = (collection(), q(), page());
+    let answer = match results.read().as_ref() {
+        Some((request, answer)) if *request == current => Some(answer.clone()),
+        _ => None,
+    };
+    let body = match answer {
+        None => rsx! { div { class: "x-storage-search-loading", padding: "20px", "Searching…" } },
+        Some(Err(e)) => rsx! { div { class: "x-error-display x-storage-search-error", padding: "20px", "The search failed: {e}" } },
+        Some(Ok(found)) => {
+            let collection_value = collection();
+            let q_value = q();
+            let page_value = page();
+            if found.total == 0 {
+                let short = q_value.trim().chars().count() < 3;
+                rsx! {
+                    div { class: "x-storage-search-empty", style: STORAGE_SEARCH_NOTE_STYLE,
+                        p { "No file or folder name contains “{q_value.trim()}”." }
+                        if short {
+                            p { "Type at least 3 characters of a name." }
+                        }
+                    }
+                }
+            } else if found.nodes.is_empty() {
+                rsx! {
+                    div { class: "x-storage-search-out-of-range", style: STORAGE_SEARCH_NOTE_STYLE,
+                        p { "This page is after the last page of results." }
+                        Link {
+                            to: storage_search_route(&collection_value, q_value.clone(), 0),
+                            style: CRUMB_LINK_STYLE,
+                            "Go to page 1"
+                        }
+                    }
+                }
+            } else {
+                let first = found.offset + 1;
+                let last = found.offset + found.nodes.len() as u64;
+                let pages = found.page_count();
+                let total_label = if found.total_exact { found.total.to_string() } else { format!("{}+", found.total) };
+                let previous = (page_value > 0).then(|| storage_search_route(&collection_value, q_value.clone(), page_value - 1));
+                let next = (page_value + 1 < pages).then(|| storage_search_route(&collection_value, q_value.clone(), page_value + 1));
+                rsx! {
+                    div { class: "x-storage-search-summary", style: STORAGE_SEARCH_SUMMARY_STYLE,
+                        span { "Matches {first}–{last} of {total_label}. Page {page_value + 1} of {pages}." }
+                        if found.total > found.reachable {
+                            span { "Only the first {found.reachable} matches can be opened. Add more of the name to find the rest." }
+                        }
+                    }
+                    table {
+                        style: TABLE_STYLE,
+                        thead {
+                            tr {
+                                th { style: TH_NAME_STYLE, "Name" }
+                                th { style: TH_NAME_STYLE, "Dataset" }
+                                th { style: TH_NAME_STYLE, "Path" }
+                                th { style: TH_SIZE_STYLE, "Size" }
+                            }
+                        }
+                        tbody {
+                            for node in found.nodes.iter() {
+                                StorageSearchRow {
+                                    key: "{node.node_key}",
+                                    node: node.clone(),
+                                    dataset_label: found.dataset_labels.get(&node.collection_dataset).cloned().unwrap_or_else(|| node.collection_dataset.clone()),
+                                }
+                            }
+                        }
+                    }
+                    div { style: STORAGE_SEARCH_PAGER_STYLE,
+                        if let Some(route) = previous {
+                            Link { to: route, class: "x-storage-search-previous", style: CRUMB_LINK_STYLE, "Previous page" }
+                        }
+                        if let Some(route) = next {
+                            Link { to: route, class: "x-storage-search-next", style: CRUMB_LINK_STYLE, "Next page" }
+                        }
+                    }
+                }
+            }
+        }
+    };
+    rsx! {
+        div { class: "x-storage-search-results", style: "display: flex; flex-direction: column; min-width: 0;", {body} }
+    }
+}
+
+const STORAGE_SEARCH_NOTE_STYLE: &str = "padding: 20px; color: var(--x-ink-muted); display: flex; flex-direction: column; gap: 8px; align-items: flex-start;";
+const STORAGE_SEARCH_SUMMARY_STYLE: &str = "padding: 8px 14px; font-size: var(--x-text-md); color: rgba(0,0,0,0.7); border-bottom: 1px solid #E5E7EB; display: flex; flex-direction: column; gap: 2px;";
+const STORAGE_SEARCH_PAGER_STYLE: &str = "display: flex; gap: 16px; padding: 12px 14px;";
+
+/// The route that a storage search result opens.
+///
+/// A folder opens itself. A container opens at its root and selects itself, as a tree
+/// row does. A file opens its folder with the file selected.
+fn storage_search_target(node: &VfsTreeNode) -> Route {
+    let dataset = node.collection_dataset.clone();
+    let selected = (!node.file_hash.is_empty() && node.kind != VfsNodeKind::Dir).then(|| DocumentIdentifier {
+        collection_dataset: dataset.clone(),
+        file_hash: node.file_hash.clone(),
+    });
+    Route::file_browser_page(dataset, node.open_descriptor(), selected)
+}
+
+/// One row of the storage search result list.
+#[component]
+fn StorageSearchRow(node: VfsTreeNode, dataset_label: String) -> Element {
+    let target = storage_search_target(&node);
+    let size = if node.file_size_bytes >= 0 && node.kind != VfsNodeKind::Dir {
+        format_size(node.file_size_bytes as u64)
+    } else {
+        String::new()
+    };
+    rsx! {
+        tr {
+            class: "x-storage-search-row",
+            td {
+                style: TD_NAME_STYLE,
+                Link {
+                    to: target.clone(),
+                    style: "{NAME_INNER_STYLE} color: var(--x-ink-strong); text-decoration: none;",
+                    span {
+                        style: ICON_STYLE,
+                        if node.kind == VfsNodeKind::Container { {container_icon()} }
+                        else if node.kind == VfsNodeKind::Dir { {folder_icon()} }
+                        else { {file_icon(String::new())} }
+                    }
+                    span { style: FILE_NAME_STYLE, "{node.display_name()}" }
+                }
+            }
+            td {
+                style: "padding: 6px 10px; font-size: var(--x-text-sm); white-space: nowrap;",
+                title: "{node.collection_dataset}",
+                "{dataset_label}"
+            }
+            td {
+                style: "padding: 6px 10px; color: var(--x-ink-muted); font-size: var(--x-text-sm); max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+                title: "{node.path}",
+                "{node.path}"
+            }
+            td { style: TD_SIZE_STYLE, "{size}" }
         }
     }
 }
@@ -717,7 +956,7 @@ fn StorageSidebar(current_dataset: ReadSignal<String>, focus_key: ReadSignal<Str
                         on_activate: Callback::new(move |row: StorageRow| {
                             let target = match row {
                                 StorageRow::Collection(name) => {
-                                    Route::FileBrowserCollectionPage { collectionname: name }
+                                    Route::storage_collection(name)
                                 }
                                 StorageRow::Dataset(dataset) => {
                                     Route::file_browser_page(dataset, PathDescriptor::root(), None)
@@ -850,7 +1089,7 @@ fn Breadcrumbs(collection: ReadSignal<String>, path: ReadSignal<PathDescriptor>,
         div {
             style: BREADCRUMB_BAR_STYLE,
             Link {
-                to: Route::FileBrowserCollectionsPage {},
+                to: Route::storage_root(),
                 style: CRUMB_LABEL_STYLE,
                 "Browsing"
             }

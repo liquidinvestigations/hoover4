@@ -60,13 +60,16 @@ pub enum Route {
     },
 
 
-    #[route("/file_browser")]
-    FileBrowserCollectionsPage {},
+    // `q` is the file-browser search over every readable dataset, empty for the cards.
+    // `page` is the result page, 0 when absent. A link without them decodes empty.
+    #[route("/file_browser?:q&:page")]
+    FileBrowserCollectionsPage { q: String, page: u64 },
 
     // A collection landing page. Three segments against FileBrowserPage's five, so the
-    // two cannot shadow each other whatever a collection is called.
-    #[route("/file_browser/c/:collectionname")]
-    FileBrowserCollectionPage { collectionname: String },
+    // two cannot shadow each other whatever a collection is called. `q` and `page` search
+    // the readable datasets of this collection, as on the root page.
+    #[route("/file_browser/c/:collectionname?:q&:page")]
+    FileBrowserCollectionPage { collectionname: String, q: String, page: u64 },
 
     #[route("/file_browser/:collection/:path/:selected_result_hash/:doc_viewer_state")]
     FileBrowserPage {
@@ -208,6 +211,16 @@ impl Route {
             selected_result_hash: UrlParam::from(None),
             doc_viewer_state: UrlParam::from(None),
         }
+    }
+
+    /// The storage root with its collection cards and no search.
+    pub fn storage_root() -> Self {
+        Self::FileBrowserCollectionsPage { q: String::new(), page: 0 }
+    }
+
+    /// The landing page of one collection with its dataset cards and no search.
+    pub fn storage_collection(collectionname: String) -> Self {
+        Self::FileBrowserCollectionPage { collectionname, q: String::new(), page: 0 }
     }
 
     /// Construct a [`Route::FileBrowserPage`] for navigating to a folder,

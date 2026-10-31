@@ -69,6 +69,7 @@ OCR PDF sources precede the original PDF and the PDF preview.
 ## Constraints
 
 - PDF source changes invalidate previous callbacks and dispose each viewer once.
+- Each opened source initializes its controller once. Repeated layout events preserve the controller, page, search, and zoom subscriptions.
 - PDF disposal completes after its component is removed.
 - A missing scroll strategy skips that scroll request and leaves the current viewer running.
 - Opening a result in a new tab preserves the search preview and its find query.

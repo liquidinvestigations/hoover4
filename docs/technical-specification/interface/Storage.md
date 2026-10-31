@@ -12,6 +12,9 @@ The storage routes show readable collections, their datasets, and nested folder 
 | Tree chevron | Expand or collapse children. | Expansion and label navigation are separate actions. |
 | Folder label and breadcrumb | Open a folder, including a container member path. | Parent links preserve container boundaries. |
 | Name search | Filter names below the current folder. | The control does not search document contents. |
+| Root and collection name search | Search names in all readable datasets or in one collection. | The query replaces the cards with results. Query and page remain in the address. |
+| Search result | Open its folder or container, or select its file in the containing folder. | Each row identifies its dataset and path. |
+| Search page links | Open the previous or next page of 50 matches. | The total and the reachable range are separate. At most 2000 matches are reachable. |
 | Open in Search | Open collection search with the current folder restriction. | The folder must resolve to its search identity. |
 | File row | Select the document preview. | Document access applies to the preview request. |
 | Dividers | Resize the sidebar or preview. | Double-click restores the default width. |
@@ -27,6 +30,8 @@ The storage routes show readable collections, their datasets, and nested folder 
 | Expanded tree | Child rows appear within the current window. |
 | Selected file | The preview shows the selected document. |
 | Request failure | The affected component displays the request error. |
+| No matching names | The page shows the query with no matches. A query below three characters shows an input hint. |
+| Page after the reachable range | The page offers Go to page 1. |
 
 ## Constraints
 

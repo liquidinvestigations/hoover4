@@ -992,6 +992,154 @@ async fn in_folder_search_is_scoped() {
     );
 }
 
+/// The file-browser search over several datasets pages through one global order.
+///
+/// `pdf` matches one file in `testdata` and five rows in `other`, so pages of two rows
+/// mix the two collections. Every page together must equal one large read, with no row
+/// twice and none missing. Two containers in `other_emails` hold `/zip-with-pdf.zip`,
+/// and both rows must stay.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn dataset_search_pages_one_global_order() {
+    skip_unless_dataset!(TESTFILES);
+    skip_unless_dataset!(EMAILS);
+    let _budget = Budget::start("dataset_search_pages_one_global_order");
+    let identities = backend::db_utils::manticore_utils::manticore_search_sql_uncached::<serde_json::Value>(
+        "SELECT id AS search_id FROM testdata_vfs LIMIT 1".to_string(),
+    ).await.unwrap();
+    assert!(identities.hits.hits[0]._source["search_id"].as_u64().is_some_and(|id| id > 0));
+    let pattern = std::env::var("HOOVER4_DATASET_SEARCH_PATTERN").unwrap_or_else(|_| "pdf".to_string());
+    let whole = backend::api::vfs::vfs_search_datasets(&admin_user(), None, pattern.clone(), 200, 0)
+        .await
+        .unwrap();
+    assert!(whole.total as usize >= whole.nodes.len());
+    assert!(whole.nodes.len() >= 3, "{pattern} needs matches in this corpus: {whole:?}");
+    let collections: std::collections::BTreeSet<String> = whole
+        .nodes
+        .iter()
+        .map(|n| n.collection_dataset.split('_').next().unwrap_or_default().to_string())
+        .collect();
+    assert!(collections.len() >= 2, "matches in two collections: {collections:?}");
+
+    // Pages of two rows for the first ten rows, where the collections mix, then pages of
+    // 25 rows, so the test stays inside its time budget on a larger local corpus.
+    let mut paged = Vec::new();
+    let mut offset = 0;
+    while offset < whole.nodes.len() as u64 {
+        let size = (if offset < 10 { 2 } else { 25 }).min(whole.nodes.len() as u64 - offset);
+        let page = backend::api::vfs::vfs_search_datasets(&admin_user(), None, pattern.clone(), size, offset)
+            .await
+            .unwrap();
+        assert_eq!(page.total, whole.total, "every page reports the same total");
+        if page.nodes.is_empty() {
+            break;
+        }
+        offset += page.nodes.len() as u64;
+        paged.extend(page.nodes);
+    }
+    let keys = |nodes: &[common::vfs::VfsTreeNode]| nodes.iter().map(|n| n.node_key.clone()).collect::<Vec<_>>();
+    assert_eq!(keys(&paged), keys(&whole.nodes), "the pages give the large read in order");
+    let unique: std::collections::BTreeSet<_> = keys(&paged).into_iter().collect();
+    assert_eq!(unique.len(), paged.len(), "no row appears twice");
+
+    if pattern == "pdf" {
+        let zips: Vec<_> = whole
+            .nodes
+            .iter()
+            .filter(|n| n.collection_dataset == EMAILS && n.path == "/zip-with-pdf.zip")
+            .collect();
+        assert_eq!(zips.len(), 2, "one path in two containers is two rows: {zips:?}");
+        assert_ne!(zips[0].node_key, zips[1].node_key);
+    }
+
+    // A page after the reachable range is empty and still counts the matches.
+    let after = backend::api::vfs::vfs_search_datasets(&admin_user(), None, pattern.clone(), 2, whole.reachable + 10)
+        .await
+        .unwrap();
+    assert!(after.nodes.is_empty());
+    assert_eq!(after.total, whole.total);
+
+    // One collection limits the search to its datasets.
+    let other = backend::api::vfs::vfs_search_datasets(&admin_user(), Some("other".to_string()), pattern.clone(), 200, 0)
+        .await
+        .unwrap();
+    assert!(other.nodes.iter().all(|n| n.collection_dataset.starts_with("other_")));
+    if pattern == "pdf" {
+        assert!(!other.nodes.is_empty());
+    }
+
+    // A pattern that the cleaner empties searches for nothing.
+    let nothing = backend::api::vfs::vfs_search_datasets(&admin_user(), None, "***".to_string(), 50, 0)
+        .await
+        .unwrap();
+    assert_eq!((nothing.total, nothing.nodes.len()), (0, 0));
+}
+
+/// The file-browser search over several datasets reads only the caller's datasets.
+#[tokio::test]
+#[ignore = "needs live stack"]
+async fn dataset_search_respects_permissions() {
+    skip_unless_dataset!(EMAILS);
+    skip_unless_dataset!(TESTFILES);
+    let _budget = Budget::start("dataset_search_respects_permissions");
+    use backend::db_auth::{collections as db_collections, groups};
+
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let username = format!("vfs-search-user-{suffix}");
+    let groupname = format!("vfs-search-group-{suffix}");
+    let now = time::OffsetDateTime::now_utc();
+    groups::upsert_group(groups::GroupRow {
+        groupname: groupname.clone(),
+        fullname: "Dataset search permission test group".to_string(),
+        created_at: now,
+        updated_at: now,
+        is_deleted: 0,
+    })
+    .await
+    .unwrap();
+    groups::add_membership(&username, &groupname, "test", false).await.unwrap();
+    db_collections::grant_permission(&groupname, "other").await.unwrap();
+    backend::auth::permissions::invalidate_permission_cache();
+    let user = CurrentUser {
+        username: username.clone(),
+        fullname: String::new(),
+        email: String::new(),
+        is_admin: false,
+        groups: vec![groupname.clone()],
+    };
+
+    let everywhere = backend::api::vfs::vfs_search_datasets(&user, None, "pdf".to_string(), 200, 0).await;
+    let denied = backend::api::vfs::vfs_search_datasets(&user, Some("testdata".to_string()), "pdf".to_string(), 50, 0).await;
+
+    db_collections::revoke_permission(&groupname, "other").await.unwrap();
+    groups::soft_delete_membership(&username, &groupname).await.unwrap();
+    groups::soft_delete_group(&groupname).await.unwrap();
+    backend::auth::permissions::invalidate_permission_cache();
+
+    let everywhere = everywhere.unwrap();
+    assert!(!everywhere.nodes.is_empty(), "the granted collection has matches");
+    let public: std::collections::BTreeSet<String> = backend::db_auth::collections::public_collections()
+        .await
+        .unwrap()
+        .into_iter()
+        .collect();
+    for node in &everywhere.nodes {
+        let collection = resolve_collection(&node.collection_dataset).await.unwrap();
+        assert!(
+            collection == "other" || public.contains(&collection),
+            "{} is outside the grant",
+            node.collection_dataset
+        );
+    }
+    assert!(
+        public.contains("testdata") || denied.is_err(),
+        "a collection without a readable dataset is refused: {denied:?}"
+    );
+}
+
 /// The VFS endpoints refuse a dataset the caller's group has no grant for. Without this
 /// the structure index is a way around `permissions::sanitize_query`. It answers
 /// "what files exist" for anyone who can name a dataset.

@@ -34,6 +34,7 @@ async def run(r):
                 await r.preview("stanley_pdf_with_ocr", "stanley")
             else:
                 await r.full("stanley_pdf_with_ocr")
+            await r.pdf_source("PDF", preview)
             await r.find("MIT", 7)
             original = await pdf_state(r)
             await r.pdf_source("PDF · OCR · Tesseract · eng", preview)
@@ -47,6 +48,7 @@ async def run(r):
             await r.text("1 / 7")
             results.append({"preview": preview, "original": original, "ocr": derived, "returned": await pdf_state(r)})
         await r.full("stanley_pdf_with_ocr")
+        await r.pdf_source("PDF")
         await r.action("eval", "window.__qa_original_fetch=window.fetch;window.__qa_held=false;window.__qa_released=false;window.fetch=(...args)=>{const u=typeof args[0]==='string'?args[0]:args[0].url;if(u.includes('search_document_pdf')&&!window.__qa_held){window.__qa_held=true;return new Promise((resolve,reject)=>{window.__qa_release=()=>window.__qa_original_fetch(...args).then(value=>{window.__qa_released=true;resolve(value)},reject);});}return window.__qa_original_fetch(...args)};return true;")
         try:
             await r.type(FIND, "MIT", True)

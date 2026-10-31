@@ -16,10 +16,14 @@
 //! worse than a slow one. These queries are cheap: one small attribute table, no text.
 
 use common::current_user::CurrentUser;
-use common::vfs::{VfsNodeKind, VfsTreeChildren, VfsTreeNode, VfsTreePath};
+use common::vfs::{
+    VFS_SEARCH_REACHABLE, VfsDatasetSearch, VfsNodeKind, VfsTreeChildren, VfsTreeNode, VfsTreePath,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::api::admin::collections::collectionname_valid;
+use crate::api::list_datasets::list_permitted_datasets;
+use crate::api::search::fanout::{FanoutTarget, fan_out};
 use crate::api::search::search_sql::sql_options_clause;
 use crate::auth::permissions;
 use crate::db_utils::clickhouse_utils;
@@ -41,6 +45,9 @@ pub const MAX_PATH_DEPTH: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 struct NodeRow {
+    /// SQL aliases the index identity so it remains in the JSON source row.
+    #[serde(default, rename = "search_id")]
+    id: u64,
     collection_dataset: String,
     node_key: String,
     parent_key: String,
@@ -388,6 +395,138 @@ pub async fn vfs_search_in_folder(
     })
 }
 
+/// The largest page that [`vfs_search_datasets`] returns.
+pub const MAX_DATASET_SEARCH_PAGE: u64 = 200;
+
+/// The SQL that one collection runs for [`vfs_search_datasets`].
+///
+/// Every collection orders its rows by the same five keys that [`dataset_search_order`]
+/// uses, and returns its first `fetch` rows. The merge cuts the global window from these rows.
+/// The numeric index identity distinguishes case-only paths and paths in different containers.
+fn datasets_search_sql(table: &str, datasets: &[String], cleaned: &str, fetch: u64, options_clause: &str) -> String {
+    let dataset_list = datasets
+        .iter()
+        .map(|d| quoted_manticore_string(d))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "
+        SELECT id AS search_id, collection_dataset, node_key, parent_key, container_hash, path, name,
+               kind, file_hash, file_size_bytes, depth, subfolder_count
+        FROM {table}
+        WHERE collection_dataset IN ({dataset_list})
+          AND MATCH({})
+        ORDER BY kind ASC, depth ASC, path ASC, collection_dataset ASC, id ASC
+        LIMIT {fetch}
+        {options_clause}
+        ;",
+        quoted_manticore_string(&format!("*{cleaned}*")),
+    )
+}
+
+/// The order of the global merge, the same as the per-collection `ORDER BY`.
+///
+/// Manticore compares strings with the `libc_ci` collation, which is `strcasecmp`: ASCII
+/// letters compare without case and other bytes compare as bytes. The merge compares the
+/// same way. The numeric index identity resolves ties within each collection.
+fn dataset_search_order(a: &NodeRow, b: &NodeRow) -> std::cmp::Ordering {
+    fn ci(value: &str) -> impl Iterator<Item = u8> + '_ {
+        value.bytes().map(|byte| byte.to_ascii_lowercase())
+    }
+    a.kind
+        .cmp(&b.kind)
+        .then_with(|| a.depth.cmp(&b.depth))
+        .then_with(|| ci(&a.path).cmp(ci(&b.path)))
+        .then_with(|| ci(&a.collection_dataset).cmp(ci(&b.collection_dataset)))
+        .then_with(|| a.id.cmp(&b.id))
+        .then_with(|| a.path.cmp(&b.path))
+        .then_with(|| a.collection_dataset.cmp(&b.collection_dataset))
+        .then_with(|| a.node_key.cmp(&b.node_key))
+}
+
+/// Merge the sorted prefixes of every collection and cut one global window.
+fn merge_dataset_search(sources: Vec<Vec<NodeRow>>, offset: u64, limit: u64) -> Vec<NodeRow> {
+    let mut rows: Vec<NodeRow> = sources.into_iter().flatten().collect();
+    rows.sort_by(dataset_search_order);
+    rows.into_iter().skip(offset as usize).take(limit as usize).collect()
+}
+
+/// Names that match `pattern` in every dataset that the caller can read, or in the
+/// readable datasets of one collection.
+///
+/// The readable datasets are resolved here for every request. Each collection is one
+/// fan-out target, so the search shares the process-wide query gate, the retries and the
+/// rule that a failed target fails the whole request. Every collection returns its first
+/// `offset + limit` matches in one order, and the merge cuts the global window from them.
+/// A window after [`VFS_SEARCH_REACHABLE`] matches is empty, and `total` still counts
+/// every match. The pattern is cleaned and wrapped in stars as in
+/// [`vfs_search_in_folder`]: a term needs three characters for the infix index.
+///
+/// A named collection with no readable dataset is an error, as on the collection page.
+pub async fn vfs_search_datasets(
+    user: &CurrentUser,
+    collection: Option<String>,
+    pattern: String,
+    limit: u64,
+    offset: u64,
+) -> anyhow::Result<VfsDatasetSearch> {
+    let limit = limit.clamp(1, MAX_DATASET_SEARCH_PAGE);
+    let cleaned = sanitize_folder_search(&pattern);
+    let mut datasets = list_permitted_datasets(user).await?;
+    if let Some(name) = collection.as_deref() {
+        datasets.retain(|d| d.collectionname == name);
+        if datasets.is_empty() {
+            anyhow::bail!("no readable datasets in collection {name:?}");
+        }
+    }
+    let empty = VfsDatasetSearch { offset, limit, ..Default::default() };
+    if cleaned.is_empty() || datasets.is_empty() {
+        return Ok(empty);
+    }
+    let mut by_collection: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+    let mut labels = std::collections::BTreeMap::new();
+    for dataset in &datasets {
+        if !collectionname_valid(&dataset.collectionname) {
+            continue;
+        }
+        labels.insert(dataset.collection_dataset.clone(), dataset.label().to_string());
+        by_collection
+            .entry(dataset.collectionname.clone())
+            .or_default()
+            .push(dataset.collection_dataset.clone());
+    }
+    // At least one row, so a window after the reachable range still reads the totals.
+    let fetch = (offset.min(VFS_SEARCH_REACHABLE) + limit).min(VFS_SEARCH_REACHABLE).max(1);
+    let options_clause = sql_options_clause(crate::api::search::search_sql::QueryTable::Structure, fetch.max(1000));
+    let targets: Vec<FanoutTarget> = by_collection.keys().map(FanoutTarget::collection).collect();
+    let by_collection = &by_collection;
+    let cleaned = &cleaned;
+    let options_clause = &options_clause;
+    let results = fan_out(targets, |target| async move {
+        let collectionname = target.collectionname();
+        let datasets = by_collection.get(collectionname).cloned().unwrap_or_default();
+        let sql = datasets_search_sql(&format!("{collectionname}_vfs"), &datasets, cleaned, fetch, options_clause);
+        manticore_search_sql_uncached::<NodeRow>(sql).await
+    })
+    .await?;
+    let mut total = 0;
+    let mut total_exact = true;
+    let mut sources = Vec::with_capacity(results.len());
+    for (_, response) in results {
+        total += response.hits.total;
+        total_exact &= response.hits.total_relation.is_empty() || response.hits.total_relation == "eq";
+        sources.push(response.hits.hits.into_iter().map(|hit| hit._source).collect());
+    }
+    let reachable = total.min(VFS_SEARCH_REACHABLE);
+    let nodes: Vec<VfsTreeNode> = if offset >= reachable {
+        Vec::new()
+    } else {
+        merge_dataset_search(sources, offset, limit.min(reachable - offset)).into_iter().map(Into::into).collect()
+    };
+    labels.retain(|dataset, _| nodes.iter().any(|node| &node.collection_dataset == dataset));
+    Ok(VfsDatasetSearch { nodes, total, total_exact, reachable, offset, limit, dataset_labels: labels })
+}
+
 /// The `vfs_node` term id of a node key, looked up rather than recomputed.
 ///
 /// The id is `blake2b(key)` truncated to 63 bits, minted by the Python indexer into
@@ -516,6 +655,91 @@ mod tests {
         // takes a backslash before a quote, and a doubled quote is a syntax error there.
         let sql = children_sql("t_vfs", "ds", "ds\u{1f}\u{1f}/it's", 10, 0, true, "");
         assert!(sql.contains("'ds\u{1f}\u{1f}/it\\'s'"), "{sql}");
+    }
+
+    fn row(collection_dataset: &str, kind: i64, depth: i64, path: &str, container: &str) -> NodeRow {
+        NodeRow {
+            collection_dataset: collection_dataset.to_string(),
+            node_key: common::vfs::make_node_key(collection_dataset, container, path),
+            container_hash: container.to_string(),
+            path: path.to_string(),
+            kind,
+            depth,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn dataset_search_sql_names_every_dataset_and_the_five_keys() {
+        let sql = datasets_search_sql(
+            "testdata_vfs",
+            &["testdata_zips".to_string(), "testdata_it's".to_string()],
+            "csv",
+            75,
+            "OPTION max_matches=1000",
+        );
+        assert!(sql.contains("FROM testdata_vfs"), "{sql}");
+        assert!(sql.contains("collection_dataset IN ('testdata_zips', 'testdata_it\\'s')"), "{sql}");
+        assert!(sql.contains("MATCH('*csv*')"), "{sql}");
+        assert!(
+            sql.contains("ORDER BY kind ASC, depth ASC, path ASC, collection_dataset ASC, id ASC"),
+            "{sql}"
+        );
+        assert!(sql.contains("LIMIT 75\n"), "{sql}");
+        assert!(!sql.contains("OFFSET"), "each collection returns its whole prefix: {sql}");
+    }
+
+    #[test]
+    fn interleaved_collections_merge_into_one_order_without_gaps() {
+        // Two collections whose matches alternate in the global order.
+        let a = vec![row("a_one", 1, 1, "/a1.csv", ""), row("a_one", 1, 1, "/c1.csv", ""), row("a_one", 1, 2, "/x/e.csv", "")];
+        let b = vec![row("b_two", 1, 1, "/B1.csv", ""), row("b_two", 1, 1, "/d1.csv", ""), row("b_two", 1, 2, "/x/f.csv", "")];
+        let all = merge_dataset_search(vec![a.clone(), b.clone()], 0, 100);
+        let paths: Vec<&str> = all.iter().map(|r| r.path.as_str()).collect();
+        // `B1` sorts between `a1` and `c1`, as `strcasecmp` orders it.
+        assert_eq!(paths, ["/a1.csv", "/B1.csv", "/c1.csv", "/d1.csv", "/x/e.csv", "/x/f.csv"]);
+        let mut paged = Vec::new();
+        for offset in (0..6).step_by(2) {
+            paged.extend(merge_dataset_search(vec![a.clone(), b.clone()], offset, 2));
+        }
+        assert_eq!(paged, all, "pages of two rows give every row once");
+    }
+
+    #[test]
+    fn equal_paths_in_two_containers_stay_two_rows_in_a_fixed_order() {
+        let one = row("ds_zips", 1, 3, "/inner/same.txt", "aaa");
+        let two = row("ds_zips", 1, 3, "/inner/same.txt", "bbb");
+        let other = row("ds_copy", 1, 3, "/inner/same.txt", "aaa");
+        let forward = merge_dataset_search(vec![vec![two.clone(), one.clone()], vec![other.clone()]], 0, 10);
+        let backward = merge_dataset_search(vec![vec![other.clone()], vec![one.clone(), two.clone()]], 0, 10);
+        assert_eq!(forward.len(), 3);
+        assert_eq!(forward, backward, "the order does not depend on the order of the targets");
+        assert_eq!(forward[0].collection_dataset, "ds_copy");
+        assert_eq!(forward[1].container_hash, "aaa");
+        assert_eq!(forward[2].container_hash, "bbb");
+    }
+
+    #[test]
+    fn case_only_paths_use_index_identity_before_byte_order() {
+        let mut lower = row("ds_one", 1, 1, "/a.csv", "");
+        lower.id = 1;
+        let mut upper = row("ds_one", 1, 1, "/A.csv", "");
+        upper.id = 2;
+        // A one-row SQL prefix must stay first when the prefix grows.
+        let first = merge_dataset_search(vec![vec![lower.clone()]], 0, 1);
+        let whole = merge_dataset_search(vec![vec![lower, upper.clone()]], 0, 2);
+        assert_eq!(first[0], whole[0]);
+        assert_eq!(whole[1], upper);
+    }
+
+    #[test]
+    fn folders_sort_before_files_and_shallow_before_deep() {
+        let file = row("x_y", 1, 1, "/a.csv", "");
+        let folder = row("x_y", 0, 2, "/z/csv", "");
+        let container = row("x_y", 2, 1, "/csv.zip", "");
+        let merged = merge_dataset_search(vec![vec![file, container, folder]], 0, 10);
+        let kinds: Vec<i64> = merged.iter().map(|r| r.kind).collect();
+        assert_eq!(kinds, [0, 1, 2], "the integer order of `kind`, as in the SQL");
     }
 
     #[test]

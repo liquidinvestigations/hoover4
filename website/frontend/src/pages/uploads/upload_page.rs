@@ -170,14 +170,14 @@ pub fn UploadPage(collection: String, folder: String) -> Element {
     };
 
     let back = if collection.is_empty() {
-        Route::FileBrowserCollectionsPage {}
+        Route::storage_root()
     } else {
         match info.read().as_ref() {
             Some(Ok(info)) => match info.targets.iter().find(|t| t.collection == collection) {
                 Some(t) => browser_route(&t.dataset, &folder),
-                None => Route::FileBrowserCollectionsPage {},
+                None => Route::storage_root(),
             },
-            _ => Route::FileBrowserCollectionsPage {},
+            _ => Route::storage_root(),
         }
     };
     let uploads_link = Route::UploadsPage { collection: collection.clone() };

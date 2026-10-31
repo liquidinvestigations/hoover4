@@ -385,6 +385,9 @@ pub fn PdfViewer(
             source_generation, pdf_url
         );
         let source_lifetime_for_callback = source_lifetime.clone();
+        // One controller per source generation. The wrapper already sends one layout
+        // callback per opened source, and this flag keeps that true in Rust as well.
+        let delivered = Rc::new(Cell::new(false));
 
         let cb = move |pdf_url: String,
                        event: JsValue,
@@ -392,6 +395,10 @@ pub fn PdfViewer(
                        search: PdfSearchApi,
                        zoom: PdfZoomApi| {
             if source_lifetime_for_callback.get() != source_generation {
+                return;
+            }
+            if delivered.replace(true) {
+                info!("pdf-lifecycle rust-loaded-repeat generation={}", source_generation);
                 return;
             }
             let loaded_event: PdfLoadedEvent =

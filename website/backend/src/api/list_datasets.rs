@@ -40,7 +40,7 @@ struct DatasetSummaryRow {
     dataset_display_name: String,
 }
 
-async fn list_permitted_datasets(user: &CurrentUser) -> anyhow::Result<Vec<DatasetSummary>> {
+pub(crate) async fn list_permitted_datasets(user: &CurrentUser) -> anyhow::Result<Vec<DatasetSummary>> {
     let perms = permissions::resolve_permissions(user).await?;
     let rows: Vec<DatasetSummaryRow> = get_global_client()
         .query(

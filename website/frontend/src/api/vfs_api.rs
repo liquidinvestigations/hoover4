@@ -6,7 +6,7 @@
 //! stale tree is worse than a slow one. The file and byte counts come from ClickHouse
 //! `vfs_nodes`, also without a cache.
 
-use common::vfs::{VfsSubtreeStats, VfsTreeChildren, VfsTreeNode, VfsTreePath};
+use common::vfs::{VfsDatasetSearch, VfsSubtreeStats, VfsTreeChildren, VfsTreeNode, VfsTreePath};
 use dioxus::prelude::*;
 
 /// The file browser shares its resolved path between the tree and breadcrumbs.
@@ -82,6 +82,22 @@ pub async fn vfs_search_in_folder(
 ) -> Result<VfsTreeChildren, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::vfs::vfs_search_in_folder(&user, collection_dataset, node_key, pattern, limit, 0)
+        .await
+        .map_err(to_server_fn_error)
+}
+
+/// Names matching a pattern in every readable dataset, or in the readable datasets of
+/// one collection when `collection` is not empty. The server resolves the datasets.
+#[server]
+pub async fn vfs_search_datasets(
+    collection: String,
+    pattern: String,
+    limit: u64,
+    offset: u64,
+) -> Result<VfsDatasetSearch, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    let collection = (!collection.is_empty()).then_some(collection);
+    backend::api::vfs::vfs_search_datasets(&user, collection, pattern, limit, offset)
         .await
         .map_err(to_server_fn_error)
 }

@@ -1,5 +1,6 @@
 """The image preview stage: which files get a preview, and what the converters may read."""
 
+import os
 import shutil
 import subprocess
 
@@ -58,15 +59,32 @@ def test_svg_preview_fits_480_and_does_not_read_outside_files(tmp_path):
 
 
 @pytest.mark.skipif(not shutil.which("magick"), reason="the converter is in the worker image")
-def test_raster_policy_refuses_a_file_outside_the_work_folder(tmp_path):
+@pytest.mark.parametrize("reference", ["inside", "absolute", "parent", "symlink"])
+def test_raster_policy_limits_referenced_files(tmp_path, reference):
     secret = tmp_path / "secret.png"
     subprocess.run(["magick", "-size", "64x64", "xc:red", str(secret)], check=True)
-    mvg = tmp_path / "drawing.mvg"
-    mvg.write_text(f"viewbox 0 0 100 100\nimage over 0,0 64,64 '{secret}'\n")
     work = tmp_path / "work"
     work.mkdir()
-    with pytest.raises(RuntimeError):
-        ip.make_preview_file(str(mvg), "raster", str(work), 60)
+    shutil.copyfile(secret, work / "inside.png")
+    (work / "link.png").symlink_to(secret)
+    target = {"inside": str(work / "inside.png"), "absolute": str(secret), "parent": str(work / ".." / "secret.png"),
+              "symlink": str(work / "link.png")}[reference]
+    mvg = tmp_path / "drawing.mvg"
+    mvg.write_text(f"viewbox 0 0 100 100\nimage over 0,0 64,64 '{target}'\n")
+    (work / "policy.xml").write_text(ip._policy(str(work), str(mvg)))
+    out = work / "preview.jpg"
+    result = subprocess.run(
+        ["magick", f"mvg:{mvg}", f"jpg:{out}"], cwd=work, capture_output=True,
+        env={**os.environ, "MAGICK_CONFIGURE_PATH": str(work), "MAGICK_TEMPORARY_PATH": str(work)},
+        timeout=60,
+    )
+    if reference == "inside":
+        assert result.returncode == 0, result.stderr
+        assert _pixel(str(out), 10, 10).startswith("srgb(254,")
+    else:
+        assert result.returncode != 0
+        assert b"security policy" in result.stderr
+        assert str(secret).encode() in result.stderr or target.encode() in result.stderr
 
 
 @pytest.mark.skipif(not shutil.which("magick"), reason="the converter is in the worker image")

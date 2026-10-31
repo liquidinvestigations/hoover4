@@ -137,6 +137,11 @@ Selection and indexing require a current live path.
 
 ## Image previews are a derived object too
 
+The worker builds ImageMagick 7.1.2-34 from a source archive with a pinned checksum.
+This release supports ordered path-policy exceptions with separate checks for resolved symbolic-link targets.
+The build retains the distribution's resource and coder policy.
+Preview tests verify conversion and refusal of external paths, parent traversal, and symbolic links.
+
 [image_preview.py](image_preview.py) writes one JPEG for each image that is not JPEG, PNG, BMP or WebP, and
 for the first frame of each video, to the collection bucket under `derived/image-preview/`.
 `image_previews` is its only index, and it gets no `blobs` row, for the reason above. The

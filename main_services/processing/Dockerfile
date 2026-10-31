@@ -5,6 +5,22 @@ COPY json_table/Cargo.toml json_table/Cargo.lock ./
 COPY json_table/src ./src
 RUN cargo build --release --locked
 
+FROM python:3.13 AS image-preview-tools
+# This release restores ordered path rules after the canonical-path policy regression.
+RUN apt-get update -yy && apt-get install -yy --no-install-recommends \
+    build-essential ca-certificates curl pkg-config libbz2-dev libdjvulibre-dev \
+    libfftw3-dev libfontconfig1-dev libfreetype6-dev libheif-dev libjbig-dev \
+    libjpeg62-turbo-dev liblcms2-dev liblqr-1-0-dev libltdl-dev liblzma-dev \
+    libopenexr-dev libopenjp2-7-dev libpango1.0-dev libpng-dev libraw-dev \
+    libtiff-dev libwebp-dev libwmf-dev libx11-dev libxml2-dev libxt-dev zlib1g-dev libzstd-dev
+RUN curl -fsSL https://github.com/ImageMagick/ImageMagick/archive/refs/tags/7.1.2-34.tar.gz -o /tmp/imagemagick.tar.gz \
+    && echo 'f5163a573a1c1bff16358d0a592b2fb168ad0fd3b9dc5ff57dc7820eebc5cf79  /tmp/imagemagick.tar.gz' | sha256sum -c - \
+    && tar -xf /tmp/imagemagick.tar.gz -C /tmp \
+    && cd /tmp/ImageMagick-7.1.2-34 \
+    && ./configure --prefix=/opt/imagemagick --with-quantum-depth=16 --disable-hdri --with-modules --without-perl --disable-docs \
+    && make -j4 && make install \
+    && ln -sf /etc/ImageMagick-7/policy.xml /opt/imagemagick/etc/ImageMagick-7/policy.xml
+
 FROM python:3.13
 RUN pip install uv
 # poppler-utils provides `pdftotext`, which parse_pdf.py has always shelled out to and
@@ -33,5 +49,9 @@ RUN uv sync --frozen --no-install-project
 # This line stays above `ADD . .`, so a source change does not run it again.
 RUN apt-get update -yy && apt-get install -yy libreoffice-impress-nogui
 COPY --from=json-table /src/target/release/json-table /usr/local/bin/json-table
+COPY --from=image-preview-tools /opt/imagemagick /opt/imagemagick
+# Login shells reset PATH. Keep their converter selection consistent with the worker.
+RUN ln -s /opt/imagemagick/bin/magick /usr/local/bin/magick
+ENV PATH=/opt/imagemagick/bin:$PATH
 ADD . .
 RUN uv run main.py version

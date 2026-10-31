@@ -16,6 +16,10 @@ plane. Three Rust crates in one workspace.
 
 ## Runtime dependencies
 
+[App](frontend/src/app.rs) registers popover, hover-card, and toast stylesheets before rendering route components.
+It preloads the Latin Roboto and Inter font files with anonymous cross-origin requests.
+The font stylesheet uses the same asset paths.
+
 The backend expects ClickHouse (`CLICKHOUSE_URL`) for structured data and the text Manticore
 daemon (`MANTICORE_URL`) for search. The admin views use `MANTICORE_VECTORS_URL` to inspect
 the vectors daemon. The backend also uses the blob store for document bytes and the two agent

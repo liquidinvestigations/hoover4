@@ -46,10 +46,16 @@ The remembered query is specific to the dataset, container, and folder path.
 |---|---|---|
 | counting | a query is running and no count has arrived | the previous results stay, the count reads as counting |
 | results | the query matched | the list, the total, and the cap notice when the total is over 1000 |
-| empty, unfiltered | no filters and nothing matched | that nothing matched the words |
-| empty, filtered | filters are set and nothing matched | that the *filters* matched nothing, a different sentence, because the fix is different |
+| empty query result | Words are present and no document matches under the filters. | The page shows No results and offers checked similar words. |
+| empty filter result | No words are present and no document matches. | The page shows No results and offers Clear filters. |
+| page after the last result | Documents match, but the requested page is empty. | The page offers Go to page 1. |
 | inverted range | a range whose lower bound is above its upper | the control refuses inline; a range that gets past the control must not quietly match everything |
 | failed | a server call failed | the failure is surfaced on the page, not swallowed into an empty result list |
+
+Empty states require successful results and a successful count for the current query.
+Clear filters removes facet and range filters and opens page 1.
+Go to page 1 changes only the result page.
+Both actions preserve collection selection, sort, the selected document, and viewer state.
 
 ## Constraints
 

@@ -4,7 +4,7 @@ pub mod stats;
 pub mod tree;
 pub use stats::{vfs_dataset_subtree_stats, vfs_subtree_stats};
 pub use tree::{
-    vfs_search_in_folder, vfs_tree_children, vfs_tree_children_after, vfs_tree_container_node,
+    vfs_search_datasets, vfs_search_in_folder, vfs_tree_children, vfs_tree_children_after, vfs_tree_container_node,
     vfs_tree_path_to, vfs_tree_path_with_stats,
 };
 

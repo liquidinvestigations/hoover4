@@ -164,11 +164,21 @@ window.x_open_pdf_viewer = async function(pdf_url, callback_fn) {
     const search = registry.getPlugin('search').provides();
     const zoom = registry.getPlugin('zoom').provides();
     const boundScroll = bindScrollApi(scroll, DOC_ID, generation, viewer);
+    // The scroll plugin emits a layout event each time its scroller mounts, and a
+    // remount sends `isInitial: false`. The callback builds the Rust controller, so it
+    // runs for the first layout of this source only. Page, search and zoom events reach
+    // Rust through their own subscriptions.
+    let delivered = false;
     scroll.onLayoutReady((event) => {
       if (generation !== window.x_pdf_viewer_generation || window.x_pdf_viewer !== viewer || document.getElementById('x-pdf-viewer') !== container) {
         trace("skip-stale-layout", { eventDocumentId: event && event.documentId });
         return;
       }
+      if (delivered) {
+        trace("layout-ready-repeat", { eventDocumentId: event && event.documentId, isInitial: event && event.isInitial });
+        return;
+      }
+      delivered = true;
       trace("layout-ready", { eventDocumentId: event && event.documentId, isInitial: event && event.isInitial });
       callback_fn(pdf_url, event, boundScroll, search, zoom);
     });
