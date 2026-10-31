@@ -244,7 +244,8 @@ class AgentRun:
             try:
                 await workflow.execute_activity(
                     write_followups,
-                    RunRef(run_id=inp.run_id, username=inp.username, session_id=inp.session_id),
+                    RunRef(run_id=inp.run_id, username=inp.username, session_id=inp.session_id,
+                           language=inp.language),
                     start_to_close_timeout=TIMEOUTS.title_activity,
                     heartbeat_timeout=HEARTBEAT_TIMEOUT,
                     retry_policy=EXTERNAL_RETRY,
@@ -275,7 +276,7 @@ class AgentRun:
                     turn_uuid=inp.turn_uuid,
                     allowed_collections=list(inp.allowed_collections or []),
                     llm_model=inp.llm_model, internet_tools=inp.internet_tools,
-                    board_turn=inp.board_turn)
+                    board_turn=inp.board_turn, language=inp.language)
 
     def _ref(self, inp: AgentRunInput) -> StepRef:
         return StepRef(**self._ref_fields(inp))
@@ -503,7 +504,8 @@ class AgentRun:
         try:
             await workflow.execute_activity(
                 summarize_if_first_turn,
-                RunRef(run_id=inp.run_id, username=inp.username, session_id=inp.session_id),
+                RunRef(run_id=inp.run_id, username=inp.username, session_id=inp.session_id,
+                       language=inp.language),
                 start_to_close_timeout=TIMEOUTS.title_activity,
                 heartbeat_timeout=HEARTBEAT_TIMEOUT,
                 retry_policy=EXTERNAL_RETRY,

@@ -1,0 +1,19 @@
+{
+ "terms": [
+  {"term": "skill", "meaning": "a short text that teaches the assistant one method. The assistant reads it with read_skill."},
+  {"term": "tool", "meaning": "a function that the assistant calls, such as search_collections."},
+  {"term": "tool call", "meaning": "one use of a tool with its arguments."},
+  {"term": "argument", "meaning": "a named input value of a tool call."},
+  {"term": "citation handle", "meaning": "a short label such as D1 or W2 that names one cited source in an answer."},
+  {"term": "quote", "meaning": "words copied exactly from a source."},
+  {"term": "workspace file", "meaning": "a file that the assistant writes for the user in the conversation."},
+  {"term": "report", "meaning": "a longer answer that the assistant writes into a workspace file."},
+  {"term": "hit", "meaning": "one result of a search."},
+  {"term": "passage", "meaning": "a short part of the text of a document."},
+  {"term": "query", "meaning": "the words of a search."},
+  {"term": "web page", "meaning": "a page of a public website."},
+  {"term": "run", "meaning": "the work of the assistant for one user message."},
+  {"term": "note", "meaning": "a short message that the system adds to the conversation for the assistant."},
+  {"term": "plan", "meaning": "the list of steps that the assistant keeps with update_plan."}
+ ]
+}

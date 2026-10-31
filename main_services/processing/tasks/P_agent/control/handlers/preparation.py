@@ -50,6 +50,7 @@ from typing import Any, Mapping
 
 from tasks.P_agent.control import facts as F
 from tasks.P_agent.control.handlers.absence import check_names, note_action
+from tasks.P_agent.notes import note
 from tasks.P_agent.control.model import (
     API_VERSION, Action, CheckResult, PolicyResult, freeze, noul, ranked,
 )
@@ -78,8 +79,7 @@ BASES = ("output_form", "source", "evidence")
 
 #: The note of a turn whose callable tools have no web tool, for a request that the
 #: classifier estimates to ask for public information.
-WEB_TOOLS_ABSENT = ("This turn has no web tools, so it cannot read public web pages. Use the "
-                    "selected collections, and state which part of the request they do not answer.")
+WEB_TOOLS_ABSENT = note("en", "note-web-tools-absent")
 
 #: The seconds before the hook deadline at which the handler stops waiting for children.
 RETURN_MARGIN_SECONDS = 0.75
@@ -348,14 +348,13 @@ class Handler:
             # only selects whether the note is relevant to the request.
             if "web" not in context.capabilities and web_only is not None and web_only >= 0.9:
                 facts["web_tools_absent"] = True
-                actions.append(Action("append_note", "web-unavailable", freeze({"text": WEB_TOOLS_ABSENT})))
+                actions.append(Action("append_note", "web-unavailable", freeze({"text": note(context.language, "note-web-tools-absent")})))
             choice = (facts["sources"] or {}).get("choice")
             # The source order of a chat turn. A board brief gives its own source rules.
             if (parameters.get("source_note", True) and choice in ("documents", "both")
                     and context.run_kind != "board"):
-                text = "Search the permitted document collections first. Read their relevant documents."
-                if "web" in context.capabilities:
-                    text += " Read those documents before using the web."
+                text = note(context.language, "note-sources-documents-before-web"
+                            if "web" in context.capabilities else "note-sources-documents")
                 actions.append(Action("append_note", "sources", freeze({"text": text})))
             gates = parameters.get("source_skills") or {}
             for name, setting in candidates.items():

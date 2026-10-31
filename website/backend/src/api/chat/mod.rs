@@ -307,11 +307,16 @@ pub fn intersect_collections(requested: &[String], permitted: &[String]) -> Vec<
 ///
 /// The model of the turn is the agent model of `hoover4.ini` (`admin::llm::agent_model`).
 /// A person does not choose it.
+///
+/// The turn answers in the agent language of the user (`LanguageSettings::resolve`), read
+/// when the turn starts. `accept_language` is the browser header, which decides it when the
+/// user has saved no language. A later change of the setting applies to the next turn.
 pub async fn send_message(
     user: &CurrentUser,
     session_id: String,
     message: String,
     requested_options: ChatOptions,
+    accept_language: Option<&str>,
 ) -> anyhow::Result<ChatSendResult> {
     gate::require_chat_open().await?;
     let username = user.username.as_str();
@@ -327,6 +332,8 @@ pub async fn send_message(
             retry_after_seconds: Some(e.retry_after_seconds),
         });
     }
+    // Read before the turn writes a row, so a failed read leaves no turn without a run.
+    let language = crate::api::settings::language_settings(user, accept_language).await?.agent;
 
     let message = message.trim().to_string();
     if message.is_empty() {
@@ -438,6 +445,7 @@ pub async fn send_message(
             "llm_model": &llm_model,
             // The conversation's own switch. It selects the agent service.
             "internet_tools": options.internet_tools,
+            "language": &language,
         }),
     })
     .await

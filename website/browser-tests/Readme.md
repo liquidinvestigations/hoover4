@@ -40,6 +40,7 @@ A new case takes the next unused number in its block. Other blocks keep their nu
 | `procedure` | name of a Python procedure in [procedures/](procedures) |
 | `init_script` | JavaScript that the browser runs before any page script on the first navigation of the scenario |
 | `cold_cache` | `true` to clear the browser cache and bypass it for the first navigation, so every stylesheet, script and font comes from the network |
+| `interface_language` | A language code that the settings page selects before the capture. The harness selects the browser language again after the capture. The setting belongs to the test user, so run such a case with `--shards 1` |
 | `summary` | one sentence that says what the case exercises |
 
 Verbs: `goto`, `wait_text`, `wait_css`, `click_text`, `click_css`, `type_css` (SEL :: TEXT),

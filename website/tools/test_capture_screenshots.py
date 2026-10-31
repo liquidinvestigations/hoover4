@@ -90,6 +90,14 @@ class ScenarioParsingTests(unittest.TestCase):
         self.assertTrue(pages[0].cold_cache)
         self.assertFalse(pages[1].cold_cache)
 
+    def test_interface_language_is_specific_to_its_scenario(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            ini = Path(directory) / "screenshots.ini"
+            ini.write_text("[german]\nurl=/\ninterface_language=de\n[ordinary]\nurl=/\n")
+            pages = MODULE.parse_pages(ini)
+        self.assertEqual(pages[0].interface_language, "de")
+        self.assertEqual(pages[1].interface_language, "")
+
     def test_exact_page_selection_rejects_a_missing_scenario(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             ini = Path(directory) / "screenshots.ini"

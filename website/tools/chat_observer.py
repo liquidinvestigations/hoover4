@@ -52,6 +52,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 from capture_credentials import (
     IMAGE_REVIEW_PENDING,
@@ -1017,6 +1018,29 @@ def write_run_index(out_dir: Path, results: list[ConversationResult], exit_statu
 # Driver
 # ---------------------------------------------------------------------------------
 
+#: The agent language buttons of the settings page.
+AGENT_CHOICES = "#x-settings-agent-choices"
+
+
+async def select_agent_language(tab, base_url: str, code: str) -> str:
+    """Select agent language `code` on the settings page, and return the earlier choice.
+    An empty code is the automatic choice. The page saves a choice when it is selected."""
+    await tab.get(base_url + "/settings")
+    await wait_for_app_mounted(tab)
+    await wait_css(tab, f"{AGENT_CHOICES} [aria-checked='true']")
+    selected = f"document.querySelector('{AGENT_CHOICES} [aria-checked=\"true\"]').dataset.language"
+    earlier = await js(tab, f"return {selected};")
+    click = f"document.querySelector('{AGENT_CHOICES} [data-language={json.dumps(code)}]').click(); return true;"
+    deadline = time.monotonic() + 20
+    # A click before hydration does nothing, so the click repeats until the choice shows.
+    while await js(tab, f"return {selected};") != code:
+        if time.monotonic() > deadline:
+            raise RuntimeError(f"the settings page did not select agent language {code!r}")
+        await js(tab, click)
+        await asyncio.sleep(1.0)
+    return earlier
+
+
 async def run_all(
     prompt_names: list[str],
     base_url: str,
@@ -1028,6 +1052,7 @@ async def run_all(
     run_followup: bool,
     history_only: str = "",
     continue_path: str = "",
+    agent_language: Optional[str] = None,
 ) -> tuple[list[ConversationResult], int]:
     import nodriver
     import nodriver.cdp.page as page_cdp
@@ -1051,6 +1076,7 @@ async def run_all(
     )
     results: list[ConversationResult] = []
     run_started = time.monotonic()
+    earlier_language: Optional[str] = None
     try:
         identity_tab = await browser.get(base_url + "/")
         identity_network = await watch_network(identity_tab, base_url.split("//", 1)[-1].split("/")[0])
@@ -1060,6 +1086,10 @@ async def run_all(
             if not ok:
                 print(f"incomplete execution: identity check failed: {name_or_reason}", file=sys.stderr)
                 return results, 2
+        if agent_language is not None:
+            earlier_language = await select_agent_language(identity_tab, base_url, agent_language)
+            print(f"== agent language {agent_language or 'automatic'} "
+                  f"(earlier: {earlier_language or 'automatic'}) ==", flush=True)
 
         if history_only:
             if not history_only.startswith("/ai_chat/c/"):
@@ -1258,6 +1288,12 @@ async def run_all(
                 conv_res = err
             results.append(conv_res)
     finally:
+        if agent_language is not None and earlier_language is not None:
+            try:
+                await select_agent_language(identity_tab, base_url, earlier_language)
+            except Exception as error:  # noqa: BLE001 - the report names the setting
+                print(f"diagnostic warning: the agent language was not restored: {error}",
+                      file=sys.stderr)
         await stop_browser(browser)
 
     totals = {sev: 0 for sev in ALL_SEVERITIES}
@@ -1290,6 +1326,11 @@ def main() -> int:
     parser.add_argument("--no-followup", action="store_true")
     parser.add_argument("--history-only", default="")
     parser.add_argument("--prompt-file", default="")
+    parser.add_argument(
+        "--agent-language", default=None,
+        help="select this agent language code on the settings page before the turns, and "
+             "restore the earlier choice after them; an empty value selects the automatic choice",
+    )
     parser.add_argument(
         "--continue", dest="continue_path", default="",
         help="a saved conversation path; the one selected prompt is sent once as its next turn",
@@ -1342,6 +1383,7 @@ def main() -> int:
         results, exit_status = asyncio.run(run_all(
             names, args.base_url.rstrip("/"), out_dir, resolutions, whitelist,
             username, password, not args.no_followup, args.history_only, args.continue_path,
+            args.agent_language,
         ))
     except Exception as exc:  # noqa: BLE001
         sys.stderr.write(f"incomplete execution: {type(exc).__name__}: {exc}\n")

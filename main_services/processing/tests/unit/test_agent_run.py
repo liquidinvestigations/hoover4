@@ -126,6 +126,7 @@ def test_agent_run_input_holds_ids_and_settings_only():
     assert {f.name for f in fields(AgentRunInput)} == {
         "run_id", "username", "session_id", "turn_seq", "start_seq", "turn_uuid",
         "allowed_collections", "llm_model", "internet_tools", "max_model_steps", "board_turn",
+        "language",
     }
     for params in (StepRef, ModelStepParams, ModelStepResult, ToolCallParams, StepFailure,
                    CallRef, RunRef, RunSummary, OpenedRun, WriteEndingParams):

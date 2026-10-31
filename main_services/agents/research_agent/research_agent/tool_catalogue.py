@@ -2,6 +2,10 @@
 
 The snapshot holds the tools of the run's packs. Each model call receives every tool in
 the snapshot. Concurrent steps can share the snapshot because it does not change.
+
+The snapshot keeps the agent language of the run. The summaries and the definitions that
+the model is shown (`shown_definition`) use the translated tool texts of that language
+(`localization`). The tool objects stay English, so a call validates and runs as before.
 """
 
 from __future__ import annotations
@@ -18,6 +22,12 @@ from pydantic import BaseModel, Field
 
 from agent_common.tool_packs import pack_of
 from research_agent import note_tools, skill_tools
+from research_agent.localization import (
+    DEFAULT_LANGUAGE,
+    catalog_revision,
+    localize_schema,
+    localize_text,
+)
 from research_agent.skill_store import (
     DEFAULT_PROFILE,
     SkillContext,
@@ -56,8 +66,8 @@ CATALOGUE_MATCH_COUNT = _match_count()
 _CATEGORY_PREFIXES = ("search", "doc", "pdf", "table", "folder")
 
 
-def _summary_of(tool: Any) -> str:
-    description = (getattr(tool, "description", "") or "").strip()
+def _summary_of(tool: Any, language: str = DEFAULT_LANGUAGE) -> str:
+    description = localize_text((getattr(tool, "description", "") or "").strip(), language)
     return description.splitlines()[0].strip() if description else ""
 
 
@@ -84,6 +94,10 @@ class CatalogueSnapshot:
     categories: Mapping[str, str]
     refused_names: Tuple[str, ...] = field(default=())
     skill_context: Optional[SkillContext] = None
+    #: The agent language of the run.
+    language: str = DEFAULT_LANGUAGE
+    #: The English summaries, which a search matches with the translated ones.
+    english_summaries: Mapping[str, str] = field(default_factory=dict)
 
     def callable_names(self) -> Tuple[str, ...]:
         """Return every tool name of this run."""
@@ -102,7 +116,8 @@ class CatalogueSnapshot:
         """
         limit = CATALOGUE_MATCH_COUNT if limit is None else limit
         items = [
-            (name, self.summaries.get(name, ""))
+            (name, " ".join(dict.fromkeys((self.summaries.get(name, ""),
+                                           self.english_summaries.get(name, "")))))
             for name in self.tools_by_name if name != SEARCH_TOOL
         ]
         return [
@@ -155,23 +170,27 @@ def build_snapshot(
             kept[tool.name] = tool
 
     names = sorted(kept)
-    digest = hashlib.sha256(
-        json.dumps(
-            [[n, tool_schema(kept[n])] for n in names], sort_keys=True, default=str
-        ).encode()
-    ).hexdigest()
     if skill_context is None:
         skill_context = SkillContext(
             profile=DEFAULT_PROFILE, tool_names=frozenset()
         )
+    language = skill_context.language
+    # An English snapshot keeps the version of the tool schemas alone. Another language
+    # adds its code and the revision of its translations.
+    content: List[Any] = [[n, tool_schema(kept[n])] for n in names]
+    if language != DEFAULT_LANGUAGE:
+        content = [language, catalog_revision(language), content]
+    digest = hashlib.sha256(json.dumps(content, sort_keys=True, default=str).encode()).hexdigest()
     skill_context = replace(skill_context, tool_names=frozenset(names))
     snapshot = CatalogueSnapshot(
         version=digest,
         tools_by_name=dict(kept),
-        summaries={n: _summary_of(kept[n]) for n in names},
+        summaries={n: _summary_of(kept[n], language) for n in names},
         categories={n: _category_of(n) for n in names},
         refused_names=tuple(sorted(set(refused))),
         skill_context=skill_context,
+        language=language,
+        english_summaries={n: _summary_of(kept[n]) for n in names},
     )
     holder["snapshot"] = snapshot
     return snapshot
@@ -192,15 +211,19 @@ class SearchAgentToolsArgs(BaseModel):
     )
 
 
+#: The lead of the text of a search that matched.
+MATCH_TEXT = "These tools match your request:"
+
+
 def search_result(snapshot: CatalogueSnapshot, query: str) -> Dict[str, Any]:
     """Return the result of one `search_agent_tools` call as a dict."""
     matches = snapshot.search(query)
     if not matches:
-        return {"matches": [], "text": NO_MATCH_TEXT}
+        return {"matches": [], "text": localize_text(NO_MATCH_TEXT, snapshot.language)}
     return {
         "matches": matches,
         "text": (
-            "These tools match your request: "
+            localize_text(MATCH_TEXT, snapshot.language) + " "
             + ", ".join(m["name"] for m in matches)
             + "."
         ),
@@ -225,7 +248,18 @@ def make_search_tool(snapshot_of) -> StructuredTool:
     )
 
 
+def shown_definition(shown: Dict[str, Any], language: str) -> Dict[str, Any]:
+    """An OpenAI tool definition with its description and the descriptions of its
+    parameters in `language`. Names, types and enum values stay as they are."""
+    if language == DEFAULT_LANGUAGE:
+        return shown
+    function = dict(shown.get("function") or {})
+    function["description"] = localize_text(function.get("description", ""), language)
+    function["parameters"] = localize_schema(function.get("parameters") or {}, language)
+    return {**shown, "function": function}
+
+
 __all__ = [
-    "CATALOGUE_MATCH_COUNT", "CatalogueSnapshot", "NO_MATCH_TEXT", "SEARCH_TOOL",
+    "CATALOGUE_MATCH_COUNT", "MATCH_TEXT", "shown_definition", "CatalogueSnapshot", "NO_MATCH_TEXT", "SEARCH_TOOL",
     "build_snapshot", "make_search_tool", "search_result", "tool_schema",
 ]

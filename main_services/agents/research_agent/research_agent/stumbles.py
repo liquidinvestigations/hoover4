@@ -17,6 +17,7 @@ import re
 from typing import Any, Dict, FrozenSet, Optional
 
 from agent_common.result_pages import is_canonical_page
+from research_agent.localization import localize_text
 
 #: The sentence that a stumble adds to an error.
 SKILL_LINE = "The skill `{skill}` shows how to fix this."
@@ -132,8 +133,10 @@ def stumble_skill(name: str, content: str, status: str, args: dict) -> Optional[
     return CAUSE_SKILLS.get(cause) if cause else None
 
 
-def with_skill_line(response: dict, args: dict, listed: FrozenSet[str]) -> dict:
-    """The tool response with the skill line added to its content, once.
+def with_skill_line(response: dict, args: dict, listed: FrozenSet[str],
+                    language: str = "en") -> dict:
+    """The tool response with the skill line added to its content, once. The line is in
+    the agent language of the run. The causes are read from the English tool messages.
 
     For a JSON object the sentence goes after the text under `message`, else after the text
     under `error`, else under `next`. For other text it goes after a blank line. A response
@@ -144,7 +147,7 @@ def with_skill_line(response: dict, args: dict, listed: FrozenSet[str]) -> dict:
                           args)
     if skill is None or skill not in listed:
         return response
-    line = SKILL_LINE.format(skill=skill)
+    line = localize_text(SKILL_LINE, language).replace("{skill}", skill)
     if line in content:
         return response
     data = _parse(content)

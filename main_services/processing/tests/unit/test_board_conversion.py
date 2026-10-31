@@ -306,8 +306,11 @@ def opening(board, monkeypatch):
     """The writers of `open_explore_turn`, with the collections that exist."""
     from database import clickhouse
 
-    state = {"sessions": [], "rows": [], "existing": ["enron"]}
+    from database import user_settings
+
+    state = {"sessions": [], "rows": [], "existing": ["enron"], "settings": {}}
     monkeypatch.setattr(clickhouse, "list_collections", lambda: list(state["existing"]))
+    monkeypatch.setattr(user_settings, "read_user_settings", lambda owner: dict(state["settings"]))
     monkeypatch.setattr(activities, "_ensure_session",
                         lambda b, session, title, collections: state["sessions"].append(collections))
     monkeypatch.setattr(activities, "_existing_user_seq", lambda owner, session, uuid: None)
@@ -355,6 +358,24 @@ def test_a_board_whose_collections_are_gone_fails_and_does_not_become_web_only(
     _set_board(board, monkeypatch, ["enron", "epstein"], 0, True)
     opened = activities.open_explore_turn(activities.TurnRequest("b1", "intent-approval", 1))
     assert opened.run_input.allowed_collections == ["enron"] and opened.run_input.internet_tools is False
+
+
+@pytest.mark.parametrize("settings,stored,expected", [
+    ({"agent.language": "fr", "ui.language": "de"}, "es", "fr"),
+    ({"ui.language": "de"}, "es", "de"),
+    ({}, "es", "es"),
+    ({}, "", "en"),
+    ({"agent.language": "xx"}, "pt", "pt"),
+])
+def test_an_explore_takes_the_owner_language_then_the_board_language(
+        board, opening, monkeypatch, settings, stored, expected):
+    from dataclasses import replace as replace_row
+
+    _set_board(board, monkeypatch, ["enron"], 0, True)
+    board.boards["b1"] = replace_row(board.boards["b1"], language=stored)
+    opening["settings"] = settings
+    opened = activities.open_explore_turn(activities.TurnRequest("b1", "intent-approval", 1))
+    assert opened.run_input.language == expected
 
 
 # ---------------------------------------------- counts through report and answer

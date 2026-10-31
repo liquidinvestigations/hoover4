@@ -5,6 +5,7 @@
    the skills, which the model reads with `read_skill` when it chooses to. Nothing here
    changes during a run, so the prompt cache of the system text holds for the whole run.
 
+   `language_name` names the answer language of the run (`localization.language_name`).
    `role_line` is the rendered role line of the profile (`ROLE_LINES`). `role_method` is the
    rendered role skill of the profile, or empty. `skills` holds the listed skills. `tools`
    holds (name, summary) pairs. `todo_rule` is true when the run has the plan tool.
@@ -17,6 +18,8 @@
 {{ role_line }}
 
 The current UTC date is {{ current_date }}.
+
+Write your answers, questions, plans and files in {{ language_name }}, also when the user or a source uses another language. Write search queries in the words that the documents use. Keep tool names, argument names, citation handles and quoted source text as they are.
 {% if role_method %}
 
 {{ role_method }}

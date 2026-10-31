@@ -345,12 +345,16 @@ def complete(system: str, prompt: str, max_tokens: int) -> Completion:
     return Completion(text=raw, model=model, latency_ms=elapsed(), **tokens)
 
 
-def title_and_summary(user_message: str, answer: str) -> TitleSummary:
-    """Ask the LLM for a title and a summary of one turn. Raises only `TransportFailure`."""
+def title_and_summary(user_message: str, answer: str, language: str = "") -> TitleSummary:
+    """Ask the LLM for a title and a summary of one turn, in the agent language of the run.
+    Raises only `TransportFailure`."""
+    from tasks.P_agent.language import english_name
+
     prompt = (
         "Given this chat turn, reply with exactly two lines:\n"
         "Line 1: a short title (max 8 words, no quotes).\n"
-        "Line 2: a one-or-two sentence summary of what was asked and answered.\n\n"
+        "Line 2: a one-or-two sentence summary of what was asked and answered.\n"
+        f"Write both lines in {english_name(language)}.\n\n"
         f"User: {user_message}\n\nAssistant: {answer}"
     )
     result = complete(SYSTEM_PROMPT, prompt, MAX_TOKENS)

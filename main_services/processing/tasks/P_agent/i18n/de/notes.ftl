@@ -1,0 +1,41 @@
+# Machine translation of en/notes.ftl. Do not edit by hand: change the English catalog
+# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+
+note-discovery-l2 = Die letzten zwei Suchen haben keine neue Quelle gefunden. Lesen Sie jetzt die besten Ergebnisseiten: Geben Sie bis zu 6 ihrer URLs in einem `read_page`-Aufruf in dessen `urls`-Liste an. Suchen Sie nur mit einer anderen Frage erneut.
+note-discovery-l3-web = Sie haben geantwortet, bevor Sie eine Quellenseite gelesen haben. Rufen Sie `read_page` einmal mit den URLs der Seiten auf, die Ihre Angaben stützen, bis zu 6 in dessen `urls`-Liste. Schreiben Sie danach die Antwort erneut mit den Quellen, die sie stützen.
+note-discovery-l3-documents = Sie haben geantwortet, bevor Sie ein Dokument gelesen haben. Lesen Sie die Dokumente, die Ihre Angaben stützen, mit `read_documents`, mehrere Datei-Hashes in einem Aufruf. Schreiben Sie danach die Antwort erneut mit den Quellen, die sie stützen.
+note-discovery-l4 = Lesen Sie jetzt die Ergebnisseiten, die die Anfrage beantworten könnten: Geben Sie bis zu 6 ihrer URLs in einem `read_page`-Aufruf in dessen `urls`-Liste an. Ein Aufruf liest sie alle gleichzeitig.
+note-capture-empty = Das Erfassen von { $urls } enthält keinen Artikeltext. Lesen Sie eine andere Quelle. Zitieren Sie diese Seite nicht.
+note-web-tools-absent = Diese Runde hat keine Web-Werkzeuge, daher kann sie öffentliche Web-Seiten nicht lesen. Nutzen Sie die ausgewählten Sammlungen und nennen Sie den Teil der Anfrage, den sie nicht beantworten.
+note-sources-documents = Suchen Sie zuerst in den erlaubten Dokumentensammlungen. Lesen Sie ihre relevanten Dokumente.
+note-sources-documents-before-web = Suchen Sie zuerst in den erlaubten Dokumentensammlungen. Lesen Sie ihre relevanten Dokumente. Lesen Sie diese Dokumente, bevor Sie das Web nutzen.
+note-absent-collection = Es ist keine erlaubte Sammlung mit dem Namen { $name } benannt. Die erlaubten Sammlungen sind { $collections }.
+note-absent-name = Die ausgewählten Sammlungen haben keinen indizierten Treffer für { $name }.
+note-absent-close-forms = Indizierte Annäherungsformen: { $forms }. Nutzen Sie keine Annäherungsform als angeforderten Namen. Wenn Sie eine davon suchen, nennen Sie sie in der Antwort als andere Schreibweise.
+note-absent-close-form = { $form } ({ $count } Dokumente)
+note-absent-web = Die Web-Werkzeuge dieser Runde können den Namen suchen.
+note-progress-level = Suchfortschrittsstufe { $level }.
+note-progress-searches = Bereits ausgeführte Suchen:
+note-progress-search = { $name } { $args }: { $items } Angaben, { $matches } Schlüsselwort-Treffer.
+note-progress-available = Noch verfügbare Suchschritte:
+note-progress-complete = Die verfügbaren Suchschritte sind erschöpft.
+note-progress-write-now = Schreiben Sie jetzt die Antwort oder den Bericht. Nennen Sie, was die gelesenen Quellen nicht enthalten, und nennen Sie die Suchen.
+note-progress-answer-next = Die nächste Antwort muss die Antwort sein. Nennen Sie die fehlenden Fakten und die Suchen, die Sie ausgeführt haben.
+note-progress-step-quoted = Suchen Sie jeden Namen als zitierten Ausdruck mit `search_collections`.
+note-progress-step-variants = Suchen Sie nicht zitierte Wörter und Namen-Varianten. Lesen Sie Wortanzahlen und Schreibweisen-Kandidaten.
+note-progress-step-filters = Entfernen Sie Filter nacheinander und führen Sie eine Suche ohne Filter aus.
+note-progress-step-facets = Prüfen Sie Filterwerte mit `search_facet_values`.
+note-progress-step-dates = Prüfen Sie Daten mit `search_histogram`.
+note-progress-step-passages = Suchen Sie eine Inhaltsbeschreibung mit `search_passages`.
+note-progress-step-folder = Nutzen Sie { $tool } für den angeforderten Ordner, Pfad oder Datei.
+note-progress-step-read-hits = Lesen Sie die besten 1 bis 3 Treffer mit { $tool }.
+note-progress-step-web-search = Suchen Sie das Web mit `web_search` und lesen Sie die besten Ergebnisseiten.
+note-progress-step-page-find = Suchen Sie den behaltenen Text einer langen Seite mit `read_page` und `find`.
+note-progress-step-page-retry = Lese eine weitere Ergebnisadresse oder die archivierte Kopie einer fehlgeschlagenen Seite.
+note-advice-stuck = Ein Chat-Check schätzt, dass die letzten Suchen ihre Ergebnisse wiederholen. Die no_results-Skill beschreibt weitere Formen einer Suche.
+note-advice-absent = Ein Chat-Check schätzt, dass die Ergebnisse nicht enthalten, was die Aufgabe verlangt. Gib den gesuchten Bereich an, bevor du ein Nichtvorliegen meldest.
+note-advice-completion = Ein Chat-Check schätzt, dass die Aufgabe mit den Ergebnissen beantwortet werden kann. Vergleiche jeden angeforderten Teil mit den Quellen, die du vor der Beantwortung gelesen hast.
+note-progress-ended = Der Lauf endete nach wiederholten Suchen ohne Erfolg.
+note-progress-ended-none = Keine quellebasierte Übereinstimmung mit einem Schlüsselwort wurde gefunden.
+note-progress-ended-some = Die Suchen fanden { $count } quellebasierte Übereinstimmungen mit einem Schlüsselwort. Der Agent hat seine Antwort nicht abgeschlossen.
+note-progress-ended-searches = Durchgeführte Suchen:

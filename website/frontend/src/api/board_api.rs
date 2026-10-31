@@ -38,7 +38,16 @@ macro_rules! board_server_fn {
 }
 
 board_server_fn!(list_boards, () -> Vec<BoardListItem>);
-board_server_fn!(create_board_command, (request_id: String, request: BoardCreateRequest) -> String);
+/// Create a board. The browser language decides the board language when the caller has
+/// saved none.
+#[server]
+pub async fn create_board_command(request_id: String, request: BoardCreateRequest) -> Result<String, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    let accept_language = crate::api::settings_api::accept_language().await;
+    backend::api::boards::create_board_command(&user, request_id, request, accept_language.as_deref())
+        .await
+        .map_err(to_server_fn_error)
+}
 board_server_fn!(board_snapshot, (board_id: String) -> BoardSnapshot);
 board_server_fn!(board_command, (board_id: String, request_id: String, action: BoardAction) -> BoardCommandReceipt);
 board_server_fn!(board_command_status, (board_id: String, request_id: String) -> BoardCommandReceipt);

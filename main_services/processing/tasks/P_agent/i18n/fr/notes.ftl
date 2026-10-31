@@ -1,0 +1,41 @@
+# Machine translation of en/notes.ftl. Do not edit by hand: change the English catalog
+# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+
+note-discovery-l2 = Les deux dernières recherches n'ont trouvé aucune nouvelle source. Lisez maintenant les pages de meilleur résultat : placez jusqu'à 6 de leurs URLs dans un seul appel read_page, dans sa liste `urls`. Recherchez à nouveau uniquement avec une question différente.
+note-discovery-l3-web = Vous avez répondu avant de lire une seule page de source. Appelez read_page une fois avec les URLs des pages qui soutiennent vos éléments, jusqu'à 6 dans sa liste `urls`. Puis réécrivez la réponse avec les sources qui la soutiennent.
+note-discovery-l3-documents = Vous avez répondu avant de lire un seul document. Lisez les documents qui soutiennent vos éléments avec read_documents, plusieurs hachages de fichier dans un seul appel. Puis réécrivez la réponse avec les sources qui la soutiennent.
+note-discovery-l4 = Lisez maintenant les pages de résultat qui pourraient répondre à la demande : placez jusqu'à 6 de leurs URLs dans un seul appel read_page, dans sa liste `urls`. Un seul appel les lit toutes en même temps.
+note-capture-empty = La capture de { $urls } ne contient aucun texte d'article. Lisez une autre source. Ne citez pas cette page.
+note-web-tools-absent = Cet intervalle n'a aucun outil web, il ne peut donc pas lire les pages web publiques. Utilisez les collections sélectionnées et précisez quelle partie de la demande elles ne répondent pas.
+note-sources-documents = Recherchez d'abord les collections de documents autorisées. Lisez leurs documents pertinents.
+note-sources-documents-before-web = Recherchez d'abord les collections de documents autorisées. Lisez leurs documents pertinents. Lisez ces documents avant d'utiliser le web.
+note-absent-collection = Aucune collection autorisée n'est nommée { $name }. Les collections autorisées sont { $collections }.
+note-absent-name = Les collections sélectionnées n'ont aucun match indexé pour { $name }.
+note-absent-close-forms = Formes proches indexées : { $forms }. N'utilisez pas une forme proche comme nom demandé. Lorsque vous recherchez l'une d'elles, nommez-la dans la réponse comme orthographe différente.
+note-absent-close-form = { $form } ({ $count } documents)
+note-absent-web = Les outils web de cet intervalle peuvent rechercher le nom.
+note-progress-level = Niveau de progression de la recherche { $level }.
+note-progress-searches = Recherches déjà exécutées :
+note-progress-search = { $name } { $args } : { $items } éléments, { $matches } matches de mot-clé.
+note-progress-available = Étapes de recherche encore disponibles :
+note-progress-complete = Les étapes de recherche disponibles sont complètes.
+note-progress-write-now = Écrivez la réponse ou le rapport maintenant. Précisez ce que les sources lues ne contiennent pas et nommez les recherches.
+note-progress-answer-next = La prochaine réponse doit être la réponse. Précisez les faits manquants et les recherches que vous avez exécutées.
+note-progress-step-quoted = Recherchez chaque nom comme phrase citée avec search_collections.
+note-progress-step-variants = Recherchez les mots non cités et les variantes de nom. Lisez les comptes de mots et les candidats d'orthographe.
+note-progress-step-filters = Retirez les filtres un à un et lancez une recherche sans filtres.
+note-progress-step-facets = Vérifiez les valeurs de filtre avec search_facet_values.
+note-progress-step-dates = Vérifiez les dates avec search_histogram.
+note-progress-step-passages = Recherchez une description de contenu avec search_passages.
+note-progress-step-folder = Utilisez { $tool } pour le dossier, le chemin ou le fichier demandé.
+note-progress-step-read-hits = Lisez les 1 à 3 meilleurs résultats avec { $tool }.
+note-progress-step-web-search = Recherchez le web avec web_search et lisez les meilleures pages de résultat.
+note-progress-step-page-find = Recherchez le texte conservé d'une longue page avec read_page et find.
+note-progress-step-page-retry = Lire l'adresse d'un autre résultat ou la copie archivée d'une page ayant échoué.
+note-advice-stuck = Une vérification par discussion estime que les recherches récentes répètent leurs résultats. La compétence no_results décrit d'autres formes de recherche.
+note-advice-absent = Une vérification par discussion estime que les résultats ne contiennent pas ce que demande la tâche. Indiquez le scope recherché avant de signaler une absence.
+note-advice-completion = Une vérification par discussion estime que les résultats peuvent répondre à la tâche. Comparez chaque partie demandée avec les sources que vous avez lues avant de répondre.
+note-progress-ended = L'exécution s'est terminée après des recherches répétées sans progrès.
+note-progress-ended-none = Aucune source correspondant aux mots-clés n'a été trouvée.
+note-progress-ended-some = Les recherches ont trouvé { $count } sources correspondant aux mots-clés. L'agent n'a pas complété sa réponse.
+note-progress-ended-searches = Recherches exécutées :

@@ -1,0 +1,41 @@
+# Machine translation of en/notes.ftl. Do not edit by hand: change the English catalog
+# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+
+note-discovery-l2 = 最近两次搜索没有找到新的来源。现在阅读最佳结果页面：将最多 6 个 URL 放入一次 read_page 调用的 `urls` 列表中。仅用不同的问题再次搜索。
+note-discovery-l3-web = 你在阅读任何来源页面之前就已作答。用支持你各条目的页面 URL 调用一次 read_page，最多 6 个，放入其 `urls` 列表中。然后用支持这些条目的来源再次作答。
+note-discovery-l3-documents = 你在阅读任何文档之前就已作答。用 read_documents 阅读支持你各条目的文档，一次调用传入多个文件哈希。然后用支持这些条目的来源再次作答。
+note-discovery-l4 = 现在阅读可能回答该请求的结果页面：将最多 6 个 URL 放入一次 read_page 调用的 `urls` 列表中。一次调用即可同时阅读全部页面。
+note-capture-empty = 对 { $urls } 的抓取没有获取到任何正文。阅读另一个来源。请勿引用此页面。
+note-web-tools-absent = 本轮没有网页工具，因此无法读取公开网页。请使用所选数据集集合，并说明它们未回答请求的哪一部分。
+note-sources-documents = 先搜索允许的文档数据集集合。阅读其中相关文档。
+note-sources-documents-before-web = 先搜索允许的文档数据集集合。阅读其中相关文档。在使用网页之前先阅读这些文档。
+note-absent-collection = 未命名允许的集合 { $name }。允许的集合为 { $collections }。
+note-absent-name = 所选数据集集合中没有与 { $name } 匹配的索引项。
+note-absent-close-forms = 相近形式索引项：{ $forms }。请勿将相近形式作为请求的名称。当你搜索其中某一项时，在答案中以其不同拼写命名。
+note-absent-close-form = { $form }（{ $count } 份文档）
+note-absent-web = 本轮的网页工具可以搜索该名称。
+note-progress-level = 搜索进度级别 { $level }。
+note-progress-searches = 已运行的搜索：
+note-progress-search = { $name } { $args }：{ $items } 条结果，{ $matches } 个关键词匹配。
+note-progress-available = 仍可使用的搜索步骤：
+note-progress-complete = 可用的搜索步骤已全部完成。
+note-progress-write-now = 现在撰写答案或报告。说明已阅读的来源未包含的内容，并列出所执行的搜索。
+note-progress-answer-next = 下一轮回复必须是答案。说明缺失的事实以及你所执行的搜索。
+note-progress-step-quoted = 使用 search_collections 将每个名称作为带引号的短语进行搜索。
+note-progress-step-variants = 搜索不带引号的词和名称变体。阅读词频和拼写候选项。
+note-progress-step-filters = 逐一移除筛选条件，并在无筛选条件的情况下执行一次搜索。
+note-progress-step-facets = 使用 search_facet_values 验证筛选值。
+note-progress-step-dates = 使用 search_histogram 验证日期。
+note-progress-step-passages = 使用 search_passages 搜索内容描述。
+note-progress-step-folder = 使用 { $tool } 处理请求的文件夹、路径或文件。
+note-progress-step-read-hits = 使用 { $tool } 阅读最佳的 1 到 3 条命中结果。
+note-progress-step-web-search = 使用 web_search 搜索网页并阅读最佳结果页面。
+note-progress-step-page-find = 使用 read_page 和 find 搜索长页面的保留文本。
+note-progress-step-page-retry = 读取另一个结果地址，或失败页面的存档副本。
+note-advice-stuck = 聊天检查估计最近的搜索在重复其结果。no_results 技能描述了搜索的其他形式。
+note-advice-absent = 聊天检查估计结果不包含任务所要求的内容。在报告缺失前，请说明搜索范围。
+note-advice-completion = 聊天检查估计结果能够回答该任务。在回答前，请将每个要求的部分与你在回答前读取的来源进行比较。
+note-progress-ended = 经过多次搜索却毫无进展后，运行结束。
+note-progress-ended-none = 未找到任何关键词匹配的来源。
+note-progress-ended-some = 搜索找到了 { $count } 个关键词匹配的来源。代理未完成其回答。
+note-progress-ended-searches = 已运行的搜索：

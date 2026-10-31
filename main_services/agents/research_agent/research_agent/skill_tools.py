@@ -17,6 +17,7 @@ from typing import Any, Callable, Dict, List, Optional
 from langchain_core.tools import StructuredTool, ToolException
 from pydantic import BaseModel, Field
 
+from research_agent.localization import localize_schema, localize_text
 from research_agent.skill_store import (
     SkillContext,
     listed_skills,
@@ -73,7 +74,8 @@ def _refusal(error: str, message: str) -> str:
 def search_skills_result(query: str, ctx: SkillContext) -> Dict[str, Any]:
     """The result of one `search_skills` call as a dict."""
     matches = search_skills(query, ctx)
-    return {"matches": matches, "text": READ_SKILL_HINT if matches else NO_SKILL_TEXT}
+    return {"matches": matches,
+            "text": localize_text(READ_SKILL_HINT if matches else NO_SKILL_TEXT, ctx.language)}
 
 
 def _is_listed(name: str, ctx: SkillContext) -> bool:
@@ -101,11 +103,12 @@ def read_tool_result(name: str, snapshot: Any) -> Dict[str, Any]:
             message += f" Find tools with {SEARCH_TOOL}."
         return json.loads(_refusal("tool_unavailable", message))
     schema = tool_schema(tool)
+    language = getattr(snapshot, "language", "en")
     return {
         "tool": name,
-        "description": (getattr(tool, "description", "") or "").strip(),
+        "description": localize_text((getattr(tool, "description", "") or "").strip(), language),
         "parameters": {
-            "properties": schema.get("properties") or {},
+            "properties": localize_schema(schema.get("properties") or {}, language),
             "required": list(schema.get("required") or []),
         },
     }

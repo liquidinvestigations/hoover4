@@ -1,0 +1,41 @@
+# Machine translation of en/notes.ftl. Do not edit by hand: change the English catalog
+# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+
+note-discovery-l2 = आख़िरी दो खोज़ों में कोई नया स्रोत नहीं मिला। अब उनकी बेहतरीन पर्दियों को पढ़ें: उनकी 6 तक की URLs को एक `read_page` कॉल में उसकी `urls` सूची में डालें। केवल अलग प्रश्न से फिर से खोज़ें।
+note-discovery-l3-web = आपने कोई स्रोत पृष्ठ पढ़ने से पहले उत्तर दिया। अपनी वस्तुओं को सहारा देने वाली पर्दियों की URLs से एक `read_page` कॉल करें, उसकी `urls` सूची में 6 तक। फिर स्रोतों को सहारा देते हुए उत्तर फिर से लिखें।
+note-discovery-l3-documents = आपने कोई दस्तावेज़ पढ़ने से पहले उत्तर दिया। `read_documents` से अपनी वस्तुओं को सहारा देने वाले दस्तावेज़ पढ़ें, एक कॉल में कई फ़ाइल हैश। फिर स्रोतों को सहारा देते हुए उत्तर फिर से लिखें।
+note-discovery-l4 = अनुरोध को जवाब दे सकने वाली पर्दियों को अब पढ़ें: उनकी 6 तक की URLs को एक `read_page` कॉल में उसकी `urls` सूची में डालें। एक कॉल से सभी को एक साथ पढ़ा जाता है।
+note-capture-empty = { $urls } का कैप्चर कोई लेख पाठ नहीं रखता। कोई और स्रोत पढ़ें। इस पृष्ठ का उद्धरण न करें।
+note-web-tools-absent = इस बार में कोई वेब टूल नहीं है, इसलिए यह सार्वजनिक वेब पृष्ठों को नहीं पढ़ सकता। चुनी हुई समग्रियों का उपयोग करें, और बताएं कि अनुरोध का कौन-सा हिस्सा वे जवाब नहीं देते।
+note-sources-documents = पहले अनुमत दस्तावेज़ समग्रियों की खोज़ें। उनकी प्रासंगिक दस्तावेज़ पढ़ें।
+note-sources-documents-before-web = पहले अनुमत दस्तावेज़ समग्रियों की खोज़ें। उनकी प्रासंगिक दस्तावेज़ पढ़ें। वेब का उपयोग करने से पहले वे दस्तावेज़ पढ़ें।
+note-absent-collection = { $name } नाम का कोई अनुमत समग्री नहीं है। अनुमत समग्रिय हैं { $collections }।
+note-absent-name = चुनी हुई समग्रियों के { $name } के लिए सूचीकृत मिलान नहीं है।
+note-absent-close-forms = सूचीकृत निकट रूप: { $forms }। अनुरोध नाम के रूप में निकट रूप का उपयोग न करें। जब आप किसी की खोज़ें, उत्तर में उसे अलग त्रुटि-लिपि के रूप में नाम दें।
+note-absent-close-form = { $form } ({ $count } दस्तावेज़)
+note-absent-web = इस बार के वेब टूल नाम की खोज़ कर सकते हैं।
+note-progress-level = खोज़ प्रगति स्तर { $level }।
+note-progress-searches = पहले से चली हुई खोज़ें:
+note-progress-search = { $name } { $args }: { $items } वस्तुएं, { $matches } कीवर्ड मिलान।
+note-progress-available = अभी तक उपलब्ध खोज़ कदम:
+note-progress-complete = उपलब्ध खोज़ कदम पूर्ण हैं।
+note-progress-write-now = अब उत्तर या रिपोर्ट लिखें। बताएं कि पढ़े हुए स्रोत क्या नहीं रखते और खोज़ों का नाम दें।
+note-progress-answer-next = अगला जवाब उत्तर होना चाहिए। ग़ायब तथ्यों और खोज़ों का नाम दें जो आपने चलाए।
+note-progress-step-quoted = `search_collections` से हर नाम को उद्धरण-युक्त वाक्य के रूप में खोज़ें।
+note-progress-step-variants = बिना उद्धरण वाले शब्दों और नाम-रूपों की खोज़ें। शब्द गिनती और लिपि उम्मीदवार पढ़ें।
+note-progress-step-filters = फ़िल्टर एक-एक करके हटाएं और बिना फ़िल्टर के खोज़ें।
+note-progress-step-facets = `search_facet_values` से फ़िल्टर मानों की पुष्टि करें।
+note-progress-step-dates = `search_histogram` से तिथियों की पुष्टि करें।
+note-progress-step-passages = `search_passages` से सामग्री विवरण की खोज़ें।
+note-progress-step-folder = अनुरोध फ़ोल्डर, पथ या फ़ाइल के लिए { $tool } का उपयोग करें।
+note-progress-step-read-hits = { $tool } से बेहतरीन 1 से 3 हिट्स पढ़ें।
+note-progress-step-web-search = `web_search` से वेब की खोज़ें और बेहतरीन जवाब पृष्ठों को पढ़ें।
+note-progress-step-page-find = `read_page` और `find` से लंबे पृष्ठ के रखी हुई सामग्री की खोज़ें।
+note-progress-step-page-retry = विफल पृथ्थ के संरक्षित संस्करण या किसी अन्य परिणाम के पते को पढ़ें।
+note-advice-stuck = चैट जाँच से अनुमान लगता है कि हालिया खोज़ें अपने परिणाम दोहरा रही हैं। no_results कौशल खोज़ के अन्य रूप बताता है।
+note-advice-absent = चैट जाँच से अनुमान लगता है कि परिणाम वो नहीं रखते जो कार्य पूछता है। अनुपस्थिति ज़ाहिर करने से पहले खोज़ की सीमा बताएँ।
+note-advice-completion = चैट जाँच से अनुमान लगता है कि परिणाम कार्य का उत्तर दे सकते हैं। उत्तर देने से पहले हर अनुरोधित भाग की तुलना उन स्रोतों से करें जो आपने पढ़े थे।
+note-progress-ended = बार-बार खोज़ करने के बावजूद कोई प्रगति नहीं होने के बाद रन समाप्त हुआ।
+note-progress-ended-none = कोई कीवर्ड-मैच स्रोत नहीं मिला।
+note-progress-ended-some = खोज़ें { $count } कीवर्ड-मैच स्रोत खोज़ें। एजेंट अपना उत्तर पूरा नहीं कर पाया।
+note-progress-ended-searches = चलाई गई खोज़ें:

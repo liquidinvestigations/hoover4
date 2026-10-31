@@ -22,6 +22,7 @@ import time
 from dataclasses import replace
 from typing import Any, Optional
 
+from tasks.P_agent.language import turn_language
 from tasks.P_agent.control import definitions, facts as F, registry, task_state as TS
 from tasks.P_agent.control.classifier import Classifier, Deadline
 from tasks.P_agent.control.model import (
@@ -248,7 +249,8 @@ def _pin(row, messages, params) -> dict:
     snapshot = _agent_post(params, "/control_snapshot", {**_step_body(row, params)}, params.deadline_seconds)
     assets = {k: snapshot.get(k) for k in ("revision", "system_prompt", "system_prompt_digest",
                                            "prompt_override", "skills", "callable_tools",
-                                           "catalogue_version", "profile")}
+                                           "catalogue_version", "profile", "language",
+                                           "catalog_revision")}
     capabilities = capabilities_of(assets.get("callable_tools") or [])
     definition = definitions.resolve(profile_of(params.internet_tools, capabilities))
     services = Services(Classifier(Deadline(2)), messages, row, params)
@@ -455,7 +457,8 @@ def _context(row, params, messages, control, event, anchor) -> PolicyContext:
         recent_steps=F.render_steps(messages),
         run_kind="board" if getattr(params, "board_turn", False) else "chat",
         task=freeze(F.task_of(messages[0], control)),
-        task_state=freeze(F.task_state_of(messages[0], control)))
+        task_state=freeze(F.task_state_of(messages[0], control)),
+        language=turn_language(assets.get("language") or getattr(params, "language", "")))
     return context
 
 

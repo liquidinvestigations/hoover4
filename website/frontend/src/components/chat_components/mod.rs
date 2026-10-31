@@ -3,6 +3,7 @@
 //! The session page opens a document preview after selection.
 
 pub mod activity;
+pub mod agent_language;
 pub mod composer;
 pub mod conversation_find;
 pub mod doc_ref_card;

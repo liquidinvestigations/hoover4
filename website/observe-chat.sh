@@ -6,7 +6,7 @@
 # Usage: ./observe-chat.sh [--target URL] [--out DIR] [--remote-target]
 #                           [--login-env FILE] [--resolutions LIST] [--prompts LIST]
 #                           [--conversations N] [--no-followup] [--continue PATH]
-#                           [--prompt-file FILE]
+#                           [--prompt-file FILE] [--agent-language CODE]
 # Credentials come from HOOVER4_TEST_USERNAME/HOOVER4_TEST_PASSWORD or --login-env.
 # Credential values are not accepted as wrapper arguments and are not placed in
 # Docker or Python argument lists.
@@ -23,6 +23,9 @@
 #   --no-followup skips the second turn of a prompt that has one in FOLLOW_UPS.
 # --continue /ai_chat/c/ID/9g==/9g== sends the one selected prompt once as the next turn of
 #   that saved conversation and observes that turn.
+# --agent-language CODE selects that agent language on the settings page before the turns,
+#   and selects the earlier choice again after them. An empty CODE selects "Same as the
+#   interface". The turns of the run answer in that language.
 #
 # Output: <out>/run-<UTC-timestamp>-<pid>/chat/<prompt-name>/ (default:
 #   website/test_reports/chat_observer/, gitignored). Never deleted by this script; each
@@ -77,6 +80,8 @@ NO_FOLLOWUP_ARG=""
 HISTORY_ONLY_ARG=""
 CONTINUE_ARG=""
 PROMPT_FILE_ARG=""
+AGENT_LANGUAGE_SET=0
+AGENT_LANGUAGE_ARG=""
 REMOTE_TARGET=0
 
 while [ $# -gt 0 ]; do
@@ -95,6 +100,7 @@ while [ $# -gt 0 ]; do
         --no-followup) NO_FOLLOWUP_ARG="1"; shift 1 ;;
         --history-only) HISTORY_ONLY_ARG="${2:?--history-only needs a value}"; shift 2 ;;
         --continue) CONTINUE_ARG="${2:?--continue needs a value}"; shift 2 ;;
+        --agent-language) AGENT_LANGUAGE_SET=1; AGENT_LANGUAGE_ARG="${2-}"; shift 2 ;;
         *) echo "error: unknown argument '$1'" >&2; exit 2 ;;
     esac
 done
@@ -246,6 +252,7 @@ CHAT_ARGS=(
 [ -n "$HISTORY_ONLY_ARG" ] && CHAT_ARGS+=(--history-only "$HISTORY_ONLY_ARG")
 [ -n "$CONTINUE_ARG" ] && CHAT_ARGS+=(--continue "$CONTINUE_ARG")
 [ -n "$PROMPT_FILE_ARG" ] && CHAT_ARGS+=(--prompt-file "$REMOTE_DIR/custom-prompt.json")
+[ "$AGENT_LANGUAGE_SET" = 1 ] && CHAT_ARGS+=(--agent-language "$AGENT_LANGUAGE_ARG")
 # Names only: docker reads values from this process environment.
 CHAT_ENV=(-e HOOVER4_TEST_USERNAME -e HOOVER4_TEST_PASSWORD)
 [ -n "${HOOVER4_CAPTURE_REVISION:-}" ] && CHAT_ENV+=(-e HOOVER4_CAPTURE_REVISION)

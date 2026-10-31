@@ -273,6 +273,24 @@ inline `background` of the card sets the selected colour, so the hover rule need
     font-size: var(--x-text-detail);
     color: rgba(0, 0, 0, 0.55);
 }
+.x-agent-language {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px 2px 8px;
+    border: 1px solid;
+    border-color: var(--x-border);
+    border-radius: 999px;
+    color: var(--x-ink);
+    font-size: var(--x-text-sm);
+    text-decoration: none;
+}
+.x-agent-language:hover {
+    border-color: var(--x-link);
+}
+.x-agent-language img {
+    border-radius: 50%;
+}
 .x-settings-status {
     min-height: 24px;
     margin-top: 12px;

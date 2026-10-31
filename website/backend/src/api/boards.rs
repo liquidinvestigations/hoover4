@@ -96,6 +96,9 @@ struct BoardRow {
     max_parallel: u8,
     explore_step_budget: u16,
     internet_tools: u8,
+    /// The agent language of the owner at creation. An explore uses it when the owner has
+    /// saved no language.
+    language: String,
     #[serde(with = "clickhouse::serde::time::datetime64::millis")]
     created_at: OffsetDateTime,
     #[serde(with = "clickhouse::serde::time::datetime64::millis")]
@@ -628,8 +631,11 @@ pub async fn list_boards(user: &CurrentUser) -> anyhow::Result<Vec<BoardListItem
 /// Create a board: its definition, then the `create_board` command, which writes the
 /// background, the goals, the creation event and the first hints. The board id comes from
 /// the user and the request id, so the same request sent again names the same board.
+/// `accept_language` is the browser header, which decides the board language when the
+/// owner has saved none.
 pub async fn create_board_command(user: &CurrentUser, request_id: String,
-                                  request: BoardCreateRequest) -> anyhow::Result<String> {
+                                  request: BoardCreateRequest,
+                                  accept_language: Option<&str>) -> anyhow::Result<String> {
     if !crate::api::chat::gate::evaluate_live_chat_gate().await.is_open() {
         anyhow::bail!("AI chat is closed, so a board cannot start");
     }
@@ -663,6 +669,7 @@ pub async fn create_board_command(user: &CurrentUser, request_id: String,
         Some(_) => {}
         None => {
             let created = now();
+            let language = super::settings::language_settings(user, accept_language).await?.agent;
             let row = BoardRow {
                 board_id: board_id.clone(),
                 owner: user.username.clone(),
@@ -675,6 +682,7 @@ pub async fn create_board_command(user: &CurrentUser, request_id: String,
                 max_parallel: MAX_PARALLEL,
                 explore_step_budget: BASE_EXPLORE_STEPS,
                 internet_tools: u8::from(internet_tools),
+                language,
                 created_at: created,
                 updated_at: created,
                 is_deleted: 0,
@@ -1279,7 +1287,8 @@ mod tests {
             board_id: "b".into(), owner: "alice".into(), title: "t".into(), goal: "g".into(),
             context: String::new(), collections: names(collections), llm_model: String::new(),
             max_explores: BASE_EXPLORES, max_parallel: MAX_PARALLEL,
-            explore_step_budget: BASE_EXPLORE_STEPS, internet_tools, created_at: t,
+            explore_step_budget: BASE_EXPLORE_STEPS, internet_tools, language: String::new(),
+            created_at: t,
             updated_at: t, is_deleted: 0,
         }
     }

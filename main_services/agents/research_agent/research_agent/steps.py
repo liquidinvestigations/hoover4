@@ -51,6 +51,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from research_agent import compaction, endpoints, images, llm_events, request_size, skill_store, stumbles
 from research_agent.chat_model import ThinkingChatOpenAI
+from research_agent.localization import catalog_revision
 from research_agent.execution import (
     ORDERED_TOOLS, _IDEMPOTENCY_KEY, _PAGE_SHARE, _error, _text_of,
     batch_budget, is_browser_tool, split_resources, validation_error,
@@ -61,7 +62,7 @@ from research_agent.run_messages import (
 from research_agent import thinking
 from research_agent.tool_args import DamagedArguments, model_schema, normalize_arguments, repair_json_arguments
 from research_agent.skill_tools import READ_SKILL
-from research_agent.tool_catalogue import SEARCH_TOOL, tool_schema
+from research_agent.tool_catalogue import SEARCH_TOOL, shown_definition, tool_schema
 
 log = logging.getLogger(__name__)
 
@@ -125,6 +126,8 @@ class StepRun(BaseModel):
     control: Optional[ControlAssets] = None
     kind: str = Field(default="chat", description="The run kind: chat, or board for a "
                       "board explore turn")
+    language: str = Field(default="en", description="The agent language code of the run. "
+                          "An unknown code selects English (`localization.run_language`)")
 
 
 class ModelStepRequest(StepRun):
@@ -244,13 +247,14 @@ def leaked_call(text: str) -> Optional[Dict[str, Any]]:
     })
 
 
-def shown_tool(tool: Any) -> Dict[str, Any]:
+def shown_tool(tool: Any, language: str = "en") -> Dict[str, Any]:
     """The OpenAI tool definition that the model is bound with: the tool's name and
-    description, and its schema as `tool_args.model_schema` shows it."""
+    description, and its schema as `tool_args.model_schema` shows it. The descriptions are
+    in the agent language of the run (`tool_catalogue.shown_definition`)."""
     shown = convert_to_openai_tool(tool)
     function = shown.get("function") or {}
     function["parameters"] = model_schema(tool_schema(tool) or function.get("parameters") or {})
-    return shown
+    return shown_definition(shown, language)
 
 
 def classify_calls(
@@ -345,6 +349,7 @@ async def _context(agent: Any, request: StepRun) -> Any:
     return await agent.context_for(
         request.username, request.allowed_collections, request.session_id,
         request.llm_model, request.run_id, kind=request.kind, revision=revision,
+        language=request.language,
     )
 
 
@@ -518,7 +523,7 @@ async def _model_step_frames(agent: Any, request: ModelStepRequest) -> AsyncIter
     pinned = request.control.system_prompt if request.control is not None else ""
     system_text = pinned or context.system_text_for(names)
     bound_tools = snapshot.tools_for()
-    shown_tools = [shown_tool(t) for t in bound_tools]
+    shown_tools = [shown_tool(t, snapshot.language) for t in bound_tools]
     schemas_json = json.dumps([t["function"]["parameters"] for t in shown_tools], default=str)
 
     # What the compaction returns goes to the model only. The stored thread keeps every
@@ -795,7 +800,7 @@ async def run_tool_call(agent: Any, request: ToolCallRequest) -> Dict[str, Any]:
     context = await _context(agent, request)
     response = await _run_tool_call(context, request)
     return stumbles.with_skill_line(response, dict(request.call.args or {}),
-                                    _listed_skill_names(context))
+                                    _listed_skill_names(context), context.snapshot.language)
 
 
 def _failed_result(body: Any) -> bool:
@@ -1052,13 +1057,20 @@ async def control_snapshot(agent: Any, request: ControlSnapshotRequest) -> Dict[
                               "tools": list(skill.tools), "terms": skill.terms,
                               "not_for": skill.not_for}
     prompt_digest = skill_digest(system_text)
+    language = snapshot.language
+    revision_parts = [prompt_digest, snapshot.version,
+                      sorted((n, s["digest"]) for n, s in skills.items())]
+    # An English snapshot keeps its earlier revision. Another language adds its code and
+    # the revision of its translations.
+    if language != "en":
+        revision_parts += [language, catalog_revision(language)]
     out.update({
         "profile": getattr(agent, "profile", ""),
+        "language": language, "catalog_revision": catalog_revision(language),
         "system_prompt": system_text, "system_prompt_digest": prompt_digest,
         "prompt_override": bool(getattr(agent, "system_prompt_override", "")),
         "skills": skills, "callable_tools": names, "catalogue_version": snapshot.version,
-        "revision": skill_digest(json.dumps([prompt_digest, snapshot.version,
-                                             sorted((n, s["digest"]) for n, s in skills.items())])),
+        "revision": skill_digest(json.dumps(revision_parts)),
     })
     return out
 

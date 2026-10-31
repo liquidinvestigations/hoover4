@@ -1,0 +1,41 @@
+# Machine translation of en/notes.ftl. Do not edit by hand: change the English catalog
+# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+
+note-discovery-l2 = Las dos últimas búsquedas no encontraron ninguna fuente nueva. Lea ahora las páginas de mejores resultados: introduzca hasta 6 de sus URLs en una llamada read_page, dentro de su lista `urls`. Busque de nuevo solo con una pregunta distinta.
+note-discovery-l3-web = Respondió antes de leer cualquier página de fuente. Haga una sola llamada read_page con las URLs de las páginas que respaldan sus elementos, hasta 6, dentro de su lista `urls`. Luego reescriba la respuesta con las fuentes que la respaldan.
+note-discovery-l3-documents = Respondió antes de leer cualquier documento. Lea los documentos que respaldan sus elementos con read_documents, varios hashes de archivo en una sola llamada. Luego reescriba la respuesta con las fuentes que la respaldan.
+note-discovery-l4 = Lea ahora las páginas de resultados que pueden responder a la solicitud: introduzca hasta 6 de sus URLs en una sola llamada read_page, dentro de su lista `urls`. Una sola llamada los lee todas a la vez.
+note-capture-empty = La captura de { $urls } no contiene texto de artículo. Lea otra fuente. No cite esta página.
+note-web-tools-absent = Esta ronda no tiene herramientas web, por lo que no puede leer páginas web públicas. Use las colecciones seleccionadas y indique qué parte de la solicitud no responden.
+note-sources-documents = Busque primero las colecciones de documentos permitidas. Lea sus documentos relevantes.
+note-sources-documents-before-web = Busque primero las colecciones de documentos permitidas. Lea sus documentos relevantes. Lea esos documentos antes de usar la web.
+note-absent-collection = No se nombra ninguna colección permitida como { $name }. Las colecciones permitidas son { $collections }.
+note-absent-name = Las colecciones seleccionadas no tienen ninguna coincidencia indexada para { $name }.
+note-absent-close-forms = Formas cercanas indexadas: { $forms }. No use una forma cercana como nombre solicitado. Cuando busque una, nómbrala en la respuesta con una ortografía distinta.
+note-absent-close-form = { $form } ({ $count } documentos)
+note-absent-web = Las herramientas web de esta ronda pueden buscar el nombre.
+note-progress-level = Nivel de progreso de búsqueda { $level }.
+note-progress-searches = Búsquedas ya ejecutadas:
+note-progress-search = { $name } { $args }: { $items } elementos, { $matches } coincidencias de palabra clave.
+note-progress-available = Pasos de búsqueda aún disponibles:
+note-progress-complete = Los pasos de búsqueda disponibles están completos.
+note-progress-write-now = Escriba ahora la respuesta o el informe. Indique qué no contienen las fuentes leídas y nombre las búsquedas.
+note-progress-answer-next = La próxima respuesta debe ser la respuesta. Indique los datos faltantes y las búsquedas que ejecutó.
+note-progress-step-quoted = Busque cada nombre como una frase entre comillas con search_collections.
+note-progress-step-variants = Busque palabras sin comillas y variantes de nombre. Lea los contejos de palabras y los candidatos de ortografía.
+note-progress-step-filters = Quite los filtros de uno en uno y ejecute una búsqueda sin filtros.
+note-progress-step-facets = Verifique los valores de filtro con search_facet_values.
+note-progress-step-dates = Verifique las fechas con search_histogram.
+note-progress-step-passages = Busque una descripción de contenido con search_passages.
+note-progress-step-folder = Use { $tool } para la carpeta, ruta o archivo solicitado.
+note-progress-step-read-hits = Lea los mejores 1 a 3 resultados con { $tool }.
+note-progress-step-web-search = Busque en la web con web_search y lea las mejores páginas de resultados.
+note-progress-step-page-find = Busque el texto conservado de una página larga con read_page y find.
+note-progress-step-page-retry = Lea otra dirección de resultado, o la copia archivada de una página que falló.
+note-advice-stuck = Una verificación por chat estima que las búsquedas recientes repiten sus resultados. La habilidad no_results describe otras formas de una búsqueda.
+note-advice-absent = Una verificación por chat estima que los resultados no contienen lo que la tarea solicita. Indique el alcance buscado antes de reportar una ausencia.
+note-advice-completion = Una verificación por chat estima que los resultados pueden responder a la tarea. Compare cada parte solicitada con las fuentes que leyó antes de responder.
+note-progress-ended = La ejecución terminó tras búsquedas repetidas sin progreso.
+note-progress-ended-none = No se encontró ninguna fuente con coincidencia de palabra clave.
+note-progress-ended-some = Las búsquedas encontraron { $count } fuentes con coincidencia de palabra clave. El agente no completó su respuesta.
+note-progress-ended-searches = Búsquedas ejecutadas:

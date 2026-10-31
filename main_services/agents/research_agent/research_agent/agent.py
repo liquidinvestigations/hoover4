@@ -22,7 +22,7 @@ from langfuse.langchain import CallbackHandler
 
 from agent_common import tool_packs
 from agent_common.result_pages import is_canonical_page
-from research_agent import compaction, endpoints, model_params, prompts, skill_store
+from research_agent import compaction, endpoints, localization, model_params, prompts, skill_store
 from research_agent.execution import page_share_client
 from research_agent.tool_args import normalize_arguments
 from research_agent.tool_catalogue import CatalogueSnapshot, build_snapshot
@@ -229,6 +229,7 @@ class MCPGatewayAgent:
         run_id: Optional[str] = None,
         kind: str = "chat",
         revision: str = "",
+        language: str = "en",
     ) -> str:
         # Sorted so that ["a","b"] and ["b","a"] share one cached context.
         #
@@ -246,9 +247,14 @@ class MCPGatewayAgent:
         #
         # `revision` is the revision of the definition and assets that the turn pinned, so
         # a later activation never reuses a context of an earlier one.
+        #
+        # `language` and the revision of its translations are part of the key because the
+        # context holds the prompt, the skills and the tool texts of one language.
         acl = f"{username or ''}|{','.join(sorted(allowed_collections or []))}"
+        language = localization.run_language(language)
         return (
             f"{acl}|{session_id or ''}|{llm_model or ''}|{run_id or ''}|{kind}|{revision}"
+            f"|{language}|{localization.catalog_revision(language)}"
         )
 
     def _resolve_model(self, llm_model: Optional[str] = None) -> str:
@@ -270,17 +276,19 @@ class MCPGatewayAgent:
         run_id: Optional[str] = None,
         kind: str = "chat",
         revision: str = "",
+        language: str = "en",
     ) -> AgentContext:
         """Return the cached context of one run, or build it."""
         model = self._resolve_model(llm_model)
+        language = localization.run_language(language)
         key = self._acl_key(username, allowed_collections, session_id, model, run_id, kind,
-                            revision)
+                            revision, language)
         if key in self._contexts:
             self._contexts.move_to_end(key)
             return self._contexts[key]
 
         context = await self._create_context(
-            username, allowed_collections, session_id, model, run_id, kind,
+            username, allowed_collections, session_id, model, run_id, kind, language,
         )
         self._contexts[key] = context
         while len(self._contexts) > MAX_CACHED_GRAPHS:
@@ -296,10 +304,12 @@ class MCPGatewayAgent:
         llm_model: Optional[str] = None,
         run_id: Optional[str] = None,
         kind: str = "chat",
+        language: str = "en",
     ) -> AgentContext:
         """Build the step context of one run, scoped to one caller's ACL.
 
-        `kind` selects the tool packs (`agent_common.tool_packs`).
+        `kind` selects the tool packs (`agent_common.tool_packs`). `language` selects the
+        prompt, the skills and the tool texts (`localization`).
         """
         # The ACL travels as connection headers so the MCP server enforces it on every
         # tool call. The model cannot widen its own permissions, because it never sees or
@@ -367,7 +377,7 @@ class MCPGatewayAgent:
             tools, allowed, kind,
             skill_store.SkillContext(
                 profile=profile, tool_names=frozenset(),
-                collections_hint=collections_hint,
+                collections_hint=collections_hint, language=language,
             ),
         )
         skill_context = snapshot.skill_context
@@ -384,6 +394,7 @@ class MCPGatewayAgent:
             snapshot=snapshot,
             skills=skill_store.listed_skills(skill_context),
             collections_hint=collections_hint,
+            language=language,
         )
 
         return AgentContext(

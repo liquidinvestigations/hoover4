@@ -184,6 +184,8 @@ class PolicyContext:
     #: the source rules and the requested output groups, each with its turn and its span.
     #: The coordinator stores it when it pins the turn, and every hook reads that copy.
     task_state: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    #: The agent language of the run, which the notes use (`tasks.P_agent.notes`).
+    language: str = "en"
 
 
 class PolicyServices(Protocol):

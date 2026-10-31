@@ -1,0 +1,41 @@
+# Machine translation of en/notes.ftl. Do not edit by hand: change the English catalog
+# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+
+note-discovery-l2 = Posljednja dva pretraživanja nisu pronašla novi izvor. Sada pročitajte najbolje rezultatske stranice: u poziv `read_page` unesite do 6 njihovih URL-ova u popis `urls`. Ponovno pretražujte samo drugim pitanjem.
+note-discovery-l3-web = Odgovorili ste prije no što ste pročit bilo koju stranicu izvora. Pozovite `read_page` jednom s URL-ovima stranica koje podržavaju vaše stavke, do 6 u popisu `urls`. Zatim ponovo napišite odgovor s izvorima koji ga podržavaju.
+note-discovery-l3-documents = Odgovorili ste prije no što ste pročitali bilo koji dokument. Pročitajte dokumente koji podržavaju vaše stavke s `read_documents`, nekoliko hasheva datoteka u jednom pozivu. Zatim ponovo napišite odgovor s izvorima koji ga podržavaju.
+note-discovery-l4 = Sada pročitajte rezultatske stranice koje bi mogle odgovoriti na zahtjev: u poziv `read_page` unesite do 6 njihovih URL-ova u popis `urls`. Jedan poziv čita ih sve odjednom.
+note-capture-empty = Zarobljavanje { $urls } ne sadrži tekst članka. Pročitajte drugi izvor. Ne citirajte ovu stranicu.
+note-web-tools-absent = Ovom potezu nemaju se web alati, pa ne mogu čitati javne web stranice. Koristite odabrane kolekcije i navedite koji dio zahtjeva ne odgovaraju.
+note-sources-documents = Prvo pretražujte dopuštene dokumentske kolekcije. Pročitajte njihove relevantne dokumente.
+note-sources-documents-before-web = Prvo pretražujte dopuštene dokumentske kolekcije. Pročitajte njihove relevantne dokumente. Pročitajte te dokumente prije no što iskoristite web.
+note-absent-collection = Nema dopuštene kolekcije pod imenom { $name }. Dopuštene kolekcije su { $collections }.
+note-absent-name = Odabrane kolekcije nemaju indeksirani podudarni oblik za { $name }.
+note-absent-close-forms = Indeksirani bliski oblici: { $forms }. Ne koristite bliski oblik kao zahtijevani naziv. Kada pretražujete jedan, navedite ga u odgovoru kao drugi oblik pisanja.
+note-absent-close-form = { $form } ({ $count } dokumenata)
+note-absent-web = Web alati ovog poteza mogu pretraživati naziv.
+note-progress-level = Razina napretka pretraživanja { $level }.
+note-progress-searches = Već pokrenuta pretraživanja:
+note-progress-search = { $name } { $args }: { $items } stavki, { $matches } podudarnih ključnih riječi.
+note-progress-available = Preostali koraci pretraživanja:
+note-progress-complete = Preostali koraci pretraživanja su potpuni.
+note-progress-write-now = Sada napišite odgovor ili izvješće. Navedite što izvori koje ste proitali ne sadrže i navedite pretraživanja.
+note-progress-answer-next = Sljedeći odgovor mora biti odgovor. Navedite nedostajuće činjenice i pretraživanja koje ste pokrenuli.
+note-progress-step-quoted = Svaki naziv pretražujte kao navođenu frazu s `search_collections`.
+note-progress-step-variants = Pretražujte nenavođene riječi i oblike naziva. Pročitajte brojeve riječi i kandidate za pravopis.
+note-progress-step-filters = Uklonite filtre jedan po jedan i pokrenite pretraživanje bez filtara.
+note-progress-step-facets = Provjerite vrijednosti filtara s `search_facet_values`.
+note-progress-step-dates = Provjerite datume s `search_histogram`.
+note-progress-step-passages = Pretražujte opis sadržaja s `search_passages`.
+note-progress-step-folder = Koristite { $tool } za zahtijevanu mapu, putanju ili datoteku.
+note-progress-step-read-hits = Pročitajte najboljih 1 do 3 pogotka s { $tool }.
+note-progress-step-web-search = Pretražujte web s `web_search` i pročitajte najbolje rezultatske stranice.
+note-progress-step-page-find = Pretražujte zadržani tekst duge stranice s `read_page` i `find`.
+note-progress-step-page-retry = Pročitajte adresu drugog rezultata ili arhiviranu kopiju neuspjele stranice.
+note-advice-stuck = Razgovorni provjera procjenjuje da nedavne pretrace ponavljaju svoje rezultate. Vještina bez rezultata opisuje druge oblike pretrage.
+note-advice-absent = Razgovorni provjera procjenjuje da rezultati ne sadrže ono što zadatak traži. Navedite obim pretrage prije nego što prijavite odsutnost.
+note-advice-completion = Razgovorni provjera procjenjuje da rezultati mogu odgovoriti na zadatak. Usporedite svaki traženi dio s izvorima koje ste pročitali prije nego što odgovorite.
+note-progress-ended = Trčanje je završilo nakon ponavljanja pretraga bez napretka.
+note-progress-ended-none = Nije pronađen nijedan izvor s podudaranjem ključne riječi.
+note-progress-ended-some = Pretrace su pronašle { $count } izvora s podudaranjem ključne riječi. Agent nije dovršio svoj odgovor.
+note-progress-ended-searches = Pokrenute pretrace:

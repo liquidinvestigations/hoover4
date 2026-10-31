@@ -46,6 +46,7 @@ from tasks.P_agent.activities import (
     call_refs,
 )
 from tasks.P_agent import thread_facts
+from tasks.P_agent.language import turn_language
 from tasks.P_agent.model_timeouts import STEP_HEARTBEAT_SECONDS
 
 log = logging.getLogger(__name__)
@@ -167,6 +168,8 @@ class StepRef:
     internet_tools: bool = False
     #: True for an explore turn of an investigation board: the agent runs the `board` kind.
     board_turn: bool = False
+    #: The agent language code of the run (`AgentRunInput.language`).
+    language: str = ""
 
 
 #: The `mode` of every model step in `agent_step_events`. Each model step binds the run's
@@ -267,6 +270,7 @@ def _step_run(row, params: StepRef) -> dict[str, Any]:
         "allowed_collections": list(params.allowed_collections or []),
         "llm_model": params.llm_model or _chat_model(),
         "kind": "board" if getattr(params, "board_turn", False) else "chat",
+        "language": turn_language(getattr(params, "language", "")),
     }
 
 

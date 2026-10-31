@@ -59,6 +59,8 @@ class BoardRow:
     max_parallel: int = 1
     explore_step_budget: int = 40
     internet_tools: int = 1
+    #: The agent language of the owner at creation. Empty means English.
+    language: str = ""
     created_at: datetime | None = None
     is_deleted: int = 0
 
@@ -124,7 +126,7 @@ class LabelRow:
 
 BOARD_COLUMNS = ["board_id", "owner", "title", "goal", "context", "collections", "llm_model",
                  "max_explores", "max_parallel", "explore_step_budget", "internet_tools",
-                 "created_at", "is_deleted"]
+                 "language", "created_at", "is_deleted"]
 FACT_COLUMNS = ["board_id", "fact_id", "kind", "text", "intent_id", "session_id", "answer_seq",
                 "open_questions", "problems", "created_by", "created_at", "request_id"]
 CITATION_COLUMNS = ["board_id", "fact_id", "label", "collection_dataset", "collectionname",

@@ -750,10 +750,22 @@ def open_explore_turn(req: TurnRequest) -> OpenedTurn:
         run_id=str(uuid.uuid5(BOARD_NAMESPACE, turn_uuid)), username=board.owner,
         session_id=session_id, turn_seq=seq, start_seq=seq + 1, turn_uuid=turn_uuid,
         allowed_collections=collections, llm_model="",  # empty: the agent model of hoover4.ini
-        internet_tools=web, max_model_steps=int(steps), board_turn=True)
+        internet_tools=web, max_model_steps=int(steps), board_turn=True,
+        language=explore_language(board))
     return OpenedTurn(workflow_id=f"chat-{session_id}-{seq + 1}", run_input=run_input)
 
 
+
+
+def explore_language(board) -> str:
+    """The agent language of an explore: the saved agent language of the owner, then the
+    saved interface language, then the language stored on the board at creation."""
+    from database.user_settings import read_user_settings
+    from tasks.P_agent.language import agent_language, supported_code
+
+    saved = read_user_settings(board.owner)
+    interface = supported_code(saved.get("ui.language")) or board.language
+    return agent_language(saved.get("agent.language"), interface)
 
 
 def _turn_rows(owner: str, session_id: str, turn_seq: int) -> list[dict]:

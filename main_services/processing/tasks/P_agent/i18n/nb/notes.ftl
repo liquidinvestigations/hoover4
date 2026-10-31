@@ -1,0 +1,41 @@
+# Machine translation of en/notes.ftl. Do not edit by hand: change the English catalog
+# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+
+note-discovery-l2 = De to siste søkene fant ingen nye kilder. Les de beste resultatsidene nå: legg opp til 6 av URL-ene deres i ett read_page-kall, i `urls`-lista. Søk igjen kun med et annet spørsmål.
+note-discovery-l3-web = Du svarte før du leste noen kildeside. Kall read_page én gang med URL-ene til sidene som støtter punktene dine, opp til 6 i `urls`-lista. Skriv deretter svaret på nytt med kildene som støtter det.
+note-discovery-l3-documents = Du svarte før du leste noen dokument. Les dokumentene som støtter punktene dine med read_documents, flere filhashes i ett kall. Skriv deretter svaret på nytt med kildene som støtter det.
+note-discovery-l4 = Les resultatsidene som kan svare på forespørselen nå: legg opp til 6 av URL-ene deres i ett read_page-kall, i `urls`-lista. Ett kall leser dem alle samtidig.
+note-capture-empty = Fangsten av { $urls } inneholder ingen artikkeltekst. Les en annen kilde. Ikke sitat denne siden.
+note-web-tools-absent = Denne runden har ingen verktøy for nett, så den kan ikke lese offentlige nettsider. Bruk de valgte samlingene, og oppgi hvilken del av forespørselen de ikke svarer på.
+note-sources-documents = Søk i tillatte dokumentsamlinger først. Les deres relevante dokument.
+note-sources-documents-before-web = Søk i tillatte dokumentsamlinger først. Les deres relevante dokument. Les disse dokument før du bruker nettet.
+note-absent-collection = Ingen tillatt samling har navnet { $name }. De tillatte samlingene er { $collections }.
+note-absent-name = De valgte samlingene har ingen indeksert treff for { $name }.
+note-absent-close-forms = Indekserte nærformer: { $forms }. Ikke bruk en nærform som det forespurte navnet. Når du søker en, oppgi den i svaret som en annen staving.
+note-absent-close-form = { $form } ({ $count } dokument)
+note-absent-web = Nettverktøyene i denne runden kan søke navnet.
+note-progress-level = Søkeprogressjonsnivå { $level }.
+note-progress-searches = Søker allerede kjørt:
+note-progress-search = { $name } { $args }: { $items } treff, { $matches } nøkkelords treff.
+note-progress-available = Søkesteg som fortsatt er tilgjengelige:
+note-progress-complete = Tilgjengelige søkesteg er fullført.
+note-progress-write-now = Skriv svaret eller rapporten nå. Oppgi hva de leste kildene ikke inneholder, og gi søkene.
+note-progress-answer-next = Neste svar må være svaret. Oppgi de manglende faktene og søkene du kjørte.
+note-progress-step-quoted = Søk hvert navn som en sitert setning med search_collections.
+note-progress-step-variants = Søk ikke-siterte ord og navnvarianter. Les ordantall og stavingskandidater.
+note-progress-step-filters = Fjern filtre ett etter ett og kjør et søk uten filtre.
+note-progress-step-facets = Kontroller filterverdier med search_facet_values.
+note-progress-step-dates = Kontroller datoer med search_histogram.
+note-progress-step-passages = Søk et innholdsbeskrivelse med search_passages.
+note-progress-step-folder = Bruk { $tool } for mappa, stien eller filen som er forespurt.
+note-progress-step-read-hits = Les de beste 1 til 3 treff med { $tool }.
+note-progress-step-web-search = Søk på nettet med web_search og les de beste resultatsidene.
+note-progress-step-page-find = Søk i den beholdne teksten til en lang side med read_page og find.
+note-progress-step-page-retry = Les en annen resultatadresse eller den arkiverte kopien av en mislykket side.
+note-advice-stuck = En chat-sjekk estimerer at de siste søkene gjentar resultatene sine. No_results-ferdigheten beskriver andre former for et søk.
+note-advice-absent = En chat-sjekk estimerer at resultatene ikke inneholder det oppgaven ber om. Angi det søkte området før du rapporterer en mangel.
+note-advice-completion = En chat-sjekk estimerer at resultatene kan svare på oppgaven. Sammenhver hver forespurt del med kilene du leste før du svarer.
+note-progress-ended = Kjøringen avsluttet etter gjentatte søk uten fremskritt.
+note-progress-ended-none = Ingen kilde med nøkkelordmatch ble funnet.
+note-progress-ended-some = Søkene fant { $count } kilder med nøkkelordmatch. Agenten fullførte ikke svaret sitt.
+note-progress-ended-searches = Søke kjørt:

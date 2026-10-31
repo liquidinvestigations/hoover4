@@ -109,7 +109,8 @@ pub async fn chat_send_message(
     options: ChatOptions,
 ) -> Result<ChatSendResult, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
-    backend::api::chat::send_message(&user, session_id, message, options)
+    let accept_language = crate::api::settings_api::accept_language().await;
+    backend::api::chat::send_message(&user, session_id, message, options, accept_language.as_deref())
         .await
         .map_err(to_server_fn_error)
 }

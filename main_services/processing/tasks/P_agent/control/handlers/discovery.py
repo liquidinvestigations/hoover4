@@ -22,18 +22,13 @@ from typing import Any, Mapping
 from tasks.P_agent.control import facts as F
 from tasks.P_agent.control.handlers_common import read_urls
 from tasks.P_agent.control.model import API_VERSION, Action, CheckResult, PolicyResult, freeze
+from tasks.P_agent.notes import note
 
-L3_WEB = ("You answered before reading any source page. Call read_page once with the URLs of "
-          "the pages that support your items, up to 6 in its `urls` list. Then write the answer "
-          "again with the sources that support it.")
-L3_DOCUMENTS = ("You answered before reading any document. Read the documents that support "
-                "your items with read_documents, several file hashes in one call. Then write the "
-                "answer again with the sources that support it.")
-L2 = ("The last two searches found no new source. Read the best result pages now: put up to 6 "
-      "of their URLs in one read_page call, in its `urls` list. Search again only with a "
-      "different question.")
-L4 = ("Read the result pages that may answer the request now: put up to 6 of their URLs in one "
-      "read_page call, in its `urls` list. One call reads them all at the same time.")
+#: The English notes. A run reads them in its own language (`tasks.P_agent.notes`).
+L3_WEB = note("en", "note-discovery-l3-web")
+L3_DOCUMENTS = note("en", "note-discovery-l3-documents")
+L2 = note("en", "note-discovery-l2")
+L4 = note("en", "note-discovery-l4")
 
 DEFAULT_READ_TOOLS = ("read_page", "read_documents", "read_more", "table_page", "table_cell",
                       "doc_email", "doc_search_text", "pdf_search")
@@ -110,10 +105,10 @@ class Handler:
             return PolicyResult(checks=(CheckResult(event.id, "L3", "pass", None,
                                                     tuple(reads[:6] or other[:6] or prior[:6]), "a read exists"),))
         web = "web" in context.capabilities and sources in ("web", "both") and "read_page" in context.callable_tools
-        text = L3_WEB if web else L3_DOCUMENTS
+        text = note(context.language, "note-discovery-l3-web" if web else "note-discovery-l3-documents")
         evidence = repeated_searches(context.results)
         if evidence and web:
-            text = L2 + " " + text
+            text = note(context.language, "note-discovery-l2") + " " + text
         return PolicyResult(
             checks=(CheckResult(event.id, "L3", "defect", None, (), "an answer before any read",
                                 freeze({"l2": evidence})),),
@@ -132,4 +127,4 @@ class Handler:
         return PolicyResult(
             checks=(CheckResult(event.id, "L4", "defect", None, tuple(unread[:6]),
                                 f"one page read while {len(unread)} results are unread"),),
-            actions=(Action("append_note", "L4", freeze({"text": L4})),))
+            actions=(Action("append_note", "L4", freeze({"text": note(context.language, "note-discovery-l4")})),))

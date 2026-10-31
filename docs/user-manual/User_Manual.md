@@ -60,6 +60,8 @@ Under **Interface language**, select the language of the menus, buttons and mess
 Under **Agent language**, select the language that the AI agent answers in.
 **Same as the interface** uses the interface language.
 Each choice is saved at once. The agent uses a new agent language from your next message.
+In a chat, the button with the flag beside **Send** shows the agent language. Select it to open your settings in a new tab.
+A board uses the agent language of its owner. A board whose owner saved no language uses the language of its creation.
 A machine produced the translations. Documents, file names and earlier answers keep their own language.
 Arabic and Hebrew show in the left-to-right layout.
 

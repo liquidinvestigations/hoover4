@@ -1,0 +1,41 @@
+# Machine translation of en/notes.ftl. Do not edit by hand: change the English catalog
+# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+
+note-discovery-l2 = De laatste twee zoekopdrachten hebben geen nieuwe bron gevonden. Lees nu de beste resultaatpagina's: voeg maximaal 6 van hun URL's toe aan één read_page-aanroep, in de `urls`-lijst. Zoek alleen opnieuw met een andere vraag.
+note-discovery-l3-web = Je hebt geantwoord voordat je een enkele bronpagina had gelezen. Roep read_page één keer aan met de URL's van de pagina's die je items ondersteunen, maximaal 6 in de `urls`-lijst. Schrijf daarna het antwoord opnieuw met de bronnen die het ondersteunen.
+note-discovery-l3-documents = Je hebt geantwoord voordat je een enkel document had gelezen. Lees de documenten die je items ondersteunen met read_documents, meerdere file-hashes in één aanroep. Schrijf daarna het antwoord opnieuw met de bronnen die het ondersteunen.
+note-discovery-l4 = Lees nu de resultaatpagina's die de aanvraag mogelijk beantwoorden: voeg maximaal 6 van hun URL's toe aan één read_page-aanroep, in de `urls`-lijst. Eén aanroep leest ze allemaal tegelijk.
+note-capture-empty = De vangst van { $urls } bevat geen artikeltekst. Lees een andere bron. Citateer deze pagina niet.
+note-web-tools-absent = Deze beurt heeft geen webtools, dus het kan geen openbare webpagina's lezen. Gebruik de geselecteerde verzamelingen, en geef aan welk deel van de aanvraag ze niet beantwoorden.
+note-sources-documents = Zoek eerst in de toegestane documentverzellingen. Lees hun relevante documenten.
+note-sources-documents-before-web = Zoek eerst in de toegestane documentverzellingen. Lees hun relevante documenten. Lees deze documenten voordat je het web gebruikt.
+note-absent-collection = Er is geen toegestane verzameling met de naam { $name }. De toegestane verzamelingen zijn { $collections }.
+note-absent-name = De geselecteerde verzamelingen hebben geen geïndexeerde overeenkomst voor { $name }.
+note-absent-close-forms = Geïndexeerde dichtvormen: { $forms }. Gebruik een dichtvorm niet als gevraagde naam. Als je er één zoekt, noem hem in het antwoord als een andere schrijfwijze.
+note-absent-close-form = { $form } ({ $count } documenten)
+note-absent-web = De webtools van deze beurt kunnen de naam zoeken.
+note-progress-level = Zoekvoorderingsniveau { $level }.
+note-progress-searches = Zoekopdrachten die al zijn uitgevoerd:
+note-progress-search = { $name } { $args }: { $items } items, { $matches } trefwoordovereenkomsten.
+note-progress-available = Zoekstappen die nog beschikbaar zijn:
+note-progress-complete = De beschikbare zoekstappen zijn compleet.
+note-progress-write-now = Schrijf nu het antwoord of het rapport. Geef aan wat de gelezen bronnen niet bevatten en noem de zoekopdrachten.
+note-progress-answer-next = Het volgende antwoord moet het antwoord zijn. Geef de ontbrekende feiten en de zoekopdrachten die je hebt uitgevoerd.
+note-progress-step-quoted = Zoek elke naam als een aanhalingsteken-fraase met search_collections.
+note-progress-step-variants = Zoek niet-aanhalingswoorden en naamvarianten. Lees woordtellingen en schrijfwijzekandidaten.
+note-progress-step-filters = Verwijder filters één voor één en voer een zoekopdracht zonder filters uit.
+note-progress-step-facets = Verifieer filterwaarden met search_facet_values.
+note-progress-step-dates = Verifieer data met search_histogram.
+note-progress-step-passages = Zoek een inhoudsbeschrijving met search_passages.
+note-progress-step-folder = Gebruik { $tool } voor de gevraagde map, pad of bestand.
+note-progress-step-read-hits = Lees de beste 1 tot 3 hits met { $tool }.
+note-progress-step-web-search = Zoek op het web met web_search en lees de beste resultaatpagina's.
+note-progress-step-page-find = Zoek de bewaarde tekst van een lange pagina met read_page en find.
+note-progress-step-page-retry = Lees een ander resultaatadres of de archiepkopie van een mislukte pagina.
+note-advice-stuck = Een chatcontrole schat in dat de recente zoekopdrachten hun resultaten herhalen. De no_results-vaardigheid beschrijft andere vormen van een zoekopdracht.
+note-advice-absent = Een chatcontrole schat in dat de resultaten niet bevatten wat de taak vraagt. Geef het gezochte bereik aan voordat u een ontbreken meldt.
+note-advice-completion = Een chatcontrole schat in dat de resultaten de taak kunnen beantwoorden. Vergelijk elk gevraagd onderdeel met de bronnen die u hebt gelezen voordat u antwoordt.
+note-progress-ended = De run eindigde na herhaalde zoekopdrachten zonder vooruitgang.
+note-progress-ended-none = Er werd geen op trefwoord overeenkomstige bron gevonden.
+note-progress-ended-some = De zoekopdrachten vonden { $count } op trefwoord overeenkomstige bronnen. De agent heeft zijn antwoord niet voltooid.
+note-progress-ended-searches = Zoekopdrachten uitgevoerd:

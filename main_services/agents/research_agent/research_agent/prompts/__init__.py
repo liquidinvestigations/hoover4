@@ -15,10 +15,16 @@ does not change the tool list, which the tool packs of the run kind decide
 
 The Manticore match syntax reaches the model through the skill `search` and through the
 descriptions of the search tools.
+
+A run in another language renders `prompts/<language>/agent.md.j2` when it exists, and
+takes its role line from `prompts/<language>/role_lines.json` when that file has the
+profile. Each falls back to English. The prompt names the answer language of the run
+(`localization.language_name`).
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -26,9 +32,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
+from jinja2 import ChoiceLoader, Environment, FileSystemLoader, StrictUndefined
 
 from agent_common.tool_packs import PACKS, pack_of
+from research_agent.localization import DEFAULT_LANGUAGE, language_name, localize_text, run_language
 from research_agent.skill_store import (
     DEFAULT_PROFILE,
     Skill,
@@ -85,10 +92,12 @@ TODO_TOOLS = ("update_plan",)
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s")
 
 
-def _environment() -> Environment:
-    """The Jinja environment of the templates. `StrictUndefined` so a mistyped name is loud."""
+def _environment(language: str = DEFAULT_LANGUAGE) -> Environment:
+    """The Jinja environment of the templates, translated first. `StrictUndefined` so a
+    mistyped name is loud."""
+    folders = [TEMPLATE_DIR / language] if language != DEFAULT_LANGUAGE else []
     return Environment(
-        loader=FileSystemLoader(str(TEMPLATE_DIR)),
+        loader=ChoiceLoader([FileSystemLoader(str(f)) for f in folders + [TEMPLATE_DIR]]),
         undefined=StrictUndefined,
         trim_blocks=True,
         lstrip_blocks=True,
@@ -96,6 +105,20 @@ def _environment() -> Environment:
         # it survives as a paragraph break.
         keep_trailing_newline=True,
     )
+
+
+def role_line_source(profile: str, language: str) -> str:
+    """The Jinja source of the role line of a profile in `language`, or the English one."""
+    path = TEMPLATE_DIR / language / "role_lines.json"
+    if language != DEFAULT_LANGUAGE and path.is_file():
+        try:
+            lines = json.loads(path.read_text())
+        except ValueError as exc:
+            log.error("the role lines of %s do not parse: %s", language, exc)
+            lines = {}
+        if isinstance(lines.get(profile), str) and lines[profile].strip():
+            return lines[profile]
+    return ROLE_LINES[profile]
 
 
 def tool_summary(description: str) -> str:
@@ -110,9 +133,10 @@ def tool_summary(description: str) -> str:
     return cut if cut else sentence[:SUMMARY_MAX_CHARS]
 
 
-def _pairs(snapshot: Any, names: Sequence[str]) -> List[Tuple[str, str]]:
+def _pairs(snapshot: Any, names: Sequence[str], language: str) -> List[Tuple[str, str]]:
     tools = snapshot.tools_by_name
-    return [(n, tool_summary(getattr(tools[n], "description", "") or "")) for n in names]
+    return [(n, tool_summary(localize_text(getattr(tools[n], "description", "") or "", language)))
+            for n in names]
 
 
 def render(
@@ -122,8 +146,12 @@ def render(
     skills: Sequence[Skill],
     collections_hint: Optional[bool] = None,
     strict: bool = False,
+    language: str = DEFAULT_LANGUAGE,
 ) -> str:
     """Render the system prompt of one profile for one run.
+
+    `language` is the agent language of the run. It selects the translated templates and
+    skills, and the prompt names it as the answer language.
 
     `snapshot` is the run's `CatalogueSnapshot`, and `skills` are its listed skills
     (`skill_store.listed_skills`). `collections_hint` is true only when the snapshot holds
@@ -141,7 +169,9 @@ def render(
     tool_names = frozenset(snapshot.tools_by_name)
     documents = bool(tool_names & PACKS["collections"])
     collections_hint = documents if collections_hint is None else bool(collections_hint) and documents
-    ctx = SkillContext(profile=name, tool_names=tool_names, collections_hint=collections_hint)
+    language = run_language(language)
+    ctx = SkillContext(profile=name, tool_names=tool_names, collections_hint=collections_hint,
+                       language=language)
     if strict:
         by_name = {skill.name: skill for skill in skills}
         for skill in skills:
@@ -149,17 +179,18 @@ def render(
             if unknown:
                 raise UnboundToolError(f"skill {skill.name!r} names {unknown}, which no pack holds")
             render_skill(skill.name, ctx, strict=True, skills=by_name)
-    role_line = environment().from_string(ROLE_LINES[name]).render(
+    role_line = environment(language).from_string(role_line_source(name, language)).render(
         web_enabled="web_search" in tool_names, collections_hint=collections_hint,
     ).strip()
-    return _environment().get_template(AGENT_TEMPLATE).render(
+    return _environment(language).get_template(AGENT_TEMPLATE).render(
         current_date=datetime.now(timezone.utc).date().isoformat(),
+        language_name=language_name(language),
         has=lambda name: name in tool_names,
         role_line=role_line,
         role_method=role_method(ctx, strict=strict),
         report_rules=report_rules(ctx, strict=strict),
         skills=list(skills),
-        tools=_pairs(snapshot, snapshot.callable_names()),
+        tools=_pairs(snapshot, snapshot.callable_names(), language),
         catalogue_search="search_agent_tools" in tool_names,
         chat_lead=name in {"internal_search", "full_research"},
         todo_rule=all(t in tool_names for t in TODO_TOOLS),

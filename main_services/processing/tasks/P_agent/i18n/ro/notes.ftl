@@ -1,0 +1,41 @@
+# Machine translation of en/notes.ftl. Do not edit by hand: change the English catalog
+# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+
+note-discovery-l2 = Ultimele două căutări nu au găsit nicio sursă nouă. Citiți acum paginile cu cele mai bune rezultate: introduceți până la 6 dintre URL-urile lor într-o singură apelare read_page, în lista `urls`. Cățați din nou doar cu o întrebare diferită.
+note-discovery-l3-web = Ați răspuns înainte de a citi orice pagină de sursă. Apelați read_page o singură dată cu URL-urile paginilor care susțin elementele dvs., până la 6, în lista `urls`. Apoi scrieți din nou răspunsul cu sursele care îl susțin.
+note-discovery-l3-documents = Ați răspânit înainte de a citi orice document. Citiți documentele care susțin elementele dvs. cu read_documents, mai multe hash-uri de fișier într-o singură apelare. Ap scrieți din nou răspunsul cu sursele care îl susțin.
+note-discovery-l4 = Citiți acum paginile de rezultat care pot răspunde la cerere: introduceți până la 6 dintre URL-urile lor într-o singură apelare read_page, în lista `urls`. O singură apelare le citește pe toate în același timp.
+note-capture-empty = Captura lui { $urls } nu conține text de articol. Citiți o altă sursă. Nu cita această pagină.
+note-web-tools-absent = Această rundă nu are instrumente web, așa că nu poate citi pagini web publice. Utilizați colecțiile selectate și precizați ce parte a cererii nu răspund.
+note-sources-documents = Cățați mai întâi colecțiile de documente permise. Citiți documentele lor relevante.
+note-sources-documents-before-web = Cățați mai întâi colecțiile de documente permise. Citiți documentele lor relevante. Citiți aceste documente înainte de a utiliza web-ul.
+note-absent-collection = Nicio colecție permisă nu poartă numele { $name }. Colecțiile permise sunt { $collections }.
+note-absent-name = Colecțiile selectate nu au o potrivire indexată pentru { $name }.
+note-absent-close-forms = Forme apropiate indexate: { $forms }. Nu utiliza o formă apropiată ca nume cerut. Când cățați una, numiți-o în răspuns ca o altă scriere.
+note-absent-close-form = { $form } ({ $count } documente)
+note-absent-web = Instrumentele web ai acestei runde pot căuta numele.
+note-progress-level = Nivel de progres al căutării { $level }.
+note-progress-searches = Căutări deja rulate:
+note-progress-search = { $name } { $args }: { $items } elemente, { $matches } potriviri de cuvinte cheie.
+note-progress-available = Pași de căutare încă disponibili:
+note-progress-complete = Pașii de căutare disponibili sunt epuizați.
+note-progress-write-now = Scrieți acum răspunsul sau raportul. Precizați ce nu conțin sursele citite și numiți căutările.
+note-progress-answer-next = Răspunsul următor trebuie să fie răspunsul. Precizați faptele lipsă și căutările pe care le-ați rulat.
+note-progress-step-quoted = Cățați fiecare nume ca o frază citată cu search_collections.
+note-progress-step-variants = Cățați cuvintele și variantele numelor fără citare. Citiți numărul de cuvinte și candidații de scriere.
+note-progress-step-filters = Îndepărtați filtrele pe rând și rulați o căutare fără filtre.
+note-progress-step-facets = Verificați valorile filtrelor cu search_facet_values.
+note-progress-step-dates = Verificați datele cu search_histogram.
+note-progress-step-passages = Cățați o descriere de conținut cu search_passages.
+note-progress-step-folder = Utilizați { $tool } pentru folderul, calea sau fișierul cerut.
+note-progress-step-read-hits = Citiți cele mai bune 1 la 3 rezultate cu { $tool }.
+note-progress-step-web-search = Cățați web-ul cu web_search și citați paginile cu cele mai bune rezultate.
+note-progress-step-page-find = Cățați textul păstrat al unei pagini lungi cu read_page și find.
+note-progress-step-page-retry = Citește o adresă din alt rezultat sau copia arhivată a unei pagini care a eșuat.
+note-advice-stuck = O verificare prin conversație estimează că căutările recente repetă rezultatele. Skill-ul no_results descrie alte forme de căutare.
+note-advice-absent = O verificare prin conversație estimează că rezultatele nu conțin ceea ce cere sarcina. Precizează sfera căutată înainte de a raporta o absență.
+note-advice-completion = O verificare prin conversație estimează că rezultatele pot răspunde la sarcină. Compară fiecare parte cerută cu sursele citite înainte de a răspunde.
+note-progress-ended = Rulearea s-a încheiat după căutări repetate, fără progres.
+note-progress-ended-none = Nu a fost găsită nuna sursă potrivită după cuvinte cheie.
+note-progress-ended-some = Căutările au găsit { $count } surse potrivite după cuvinte cheie. Agentul nu și-a completat răspunsul.
+note-progress-ended-searches = Căutări efectuate:

@@ -1,0 +1,41 @@
+# Machine translation of en/notes.ftl. Do not edit by hand: change the English catalog
+# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+
+note-discovery-l2 = لم تجد آخر عمليتي بحث عن مصدر جديد. اقرأ الآن أفضل صفحات النتائج: ضع حتى 6 من عناوينها (URLs) في استدعاء واحد من نوع read_page، ضمن قائمة `urls`. أعد البحث فقط بسؤال مختلف.
+note-discovery-l3-web = أجبت قبل قراءة أي صفحة من صفحات المصدر. اتصل بـ read_page مرة واحدة بعناوين الصفحات التي تدعم بنودك، حتى 6 ضمن قائمة `urls`. ثم اكتب الإجابة مرة أخرى مع المصادر التي تدعمها.
+note-discovery-l3-documents = أجبت قبل قراءة أي وثيقة. اقرأ الوثائق التي تدعم بنودك باستخدام read_documents، بعدة تجزئات لملفات في استدعاء واحد. ثم اكتب الإجابة مرة أخرى مع المصادر التي تدعمها.
+note-discovery-l4 = اقرأ الآن صفحات النتائج التي قد تجيب على الطلب: ضع حتى 6 من عناوينها (URLs) في استدعاء واحد من نوع read_page، ضمن قائمة `urls`. يقرأ الاستدعاء الواحد كلّها في آنٍ واحد.
+note-capture-empty = لا يحتوي التقاط { $urls } على نص المقالة. اقرأ مصدرًا آخر. لا تستشهد بهذه الصفحة.
+note-web-tools-absent = لا تحتوي هذه الجولة على أدوات ويب، لذا لا يمكنها قراءة صفحات الويب العامة. استخدم المجموعات المحددة، واذكر أي جزء من الطلب لا تجيب عليه.
+note-sources-documents = ابحث أولًا في مجموعات الوثائق المسموح بها. اقرأ وثائقها ذات الصلة.
+note-sources-documents-before-web = ابحث أولًا في مجموعات الوثائق المسموح بها. اقرأ وثيقاتها ذات الصلة. اقرأ تلك الوثائق قبل استخدام الويب.
+note-absent-collection = لا يُذكر أي مجموعة مسموح بها باسم { $name }. المجموعات المسموح بها هي { $collections }.
+note-absent-name = لا تمتلك المجموعات المحددة تطابقًا مُفهرسًا لـ { $name }.
+note-absent-close-forms = الأشكال القريبة المُفهرسة: { $forms }. لا تستخدم شكلاً قريباً باسم مطلوب. عند البحث عن واحد، اذكره في الإجابة باسم تهجئة مختلف.
+note-absent-close-form = { $form } ({ $count } وثيقة)
+note-absent-web = يمكن لأدوات ويب هذه الجولة البحث عن الاسم.
+note-progress-level = مستوى تقدم البحث { $level }.
+note-progress-searches = عمليات البحث التي جرت بالفعل:
+note-progress-search = { $name } { $args }: { $items } عنصر، { $matches } مطابقة بالكلمات المفتاحية.
+note-progress-available = خطوات البحث المتبقية المتاحة:
+note-progress-complete = خطوات البحث المتاحة مكتملة.
+note-progress-write-now = اكتب الإجابة أو التقرير الآن. اذكر ما لا تحويه المصادر المقروءة واذكر عمليات البحث.
+note-progress-answer-next = يجب أن تكون الرد التالي هو الإجابة. اذكر الحقائق المفقودة وعمليات البحث التي أجريتها.
+note-progress-step-quoted = ابحث عن كل اسم كعبارة مُقتبسة باستخدام search_collections.
+note-progress-step-variants = ابحث عن الكلمات غير المقتبسة ونماذج الأسماء. اقرأ أعداد الكلمات ومرشحات التهجئة.
+note-progress-step-filters = أزل الفلاتر واحدة تلو الأخرى وعمليات بلا فلاتر.
+note-progress-step-facets = تحقق من قيم الفلاتر باستخدام search_facet_values.
+note-progress-step-dates = تحقق من التواريخ باستخدام search_histogram.
+note-progress-step-passages = ابحث عن وصف محتوى باستخدام search_passages.
+note-progress-step-folder = استخدم { $tool } للمجلد أو المسار أو الملف المطلوب.
+note-progress-step-read-hits = اقرأ أفضل 1 إلى 3 نتائج باستخدام { $tool }.
+note-progress-step-web-search = ابحث في الويب باستخدام web_search واقرأ أفضل صفحات النتائج.
+note-progress-step-page-find = ابحث عن النص المحفوظ لصفحة طويلة باستخدام read_page وfind.
+note-progress-step-page-retry = اقرأ عنوان نتيجة أخرى، أو النسخة الأرشيفية لصفحة فشلت في التحميل.
+note-advice-stuck = تقدّر محادثة تحقق من أن عمليات البحث الأخيرة تُعيد تكرار نتائجها. تصفّر مهارة لا_نتائج أشكال البحث الأخرى.
+note-advice-absent = تقدّر محادثة تحقق من أن النتائج لا تحتوي على ما تطالب به المهمة. حدّد نطاق البحث قبل أن تقرّر غياب النتائج.
+note-advice-completion = تقدّر محادثة تحقق من أن النتائج يمكن أن تجيب على المهمة. قارن كل جزء طُلب به المصادر التي قرأتها قبل أن تجيب.
+note-progress-ended = انتهت العملية بعد تكرار عمليات البحث دون تقدّم.
+note-progress-ended-none = لم يُعثَر على أي مصدر مطابق للكلمات المفتاحية.
+note-progress-ended-some = وجدت عمليات البحث { $count } مصدرًا مطابقًا للكلمات المفتاحية. لم يكمل الوكيل إجابته.
+note-progress-ended-searches = عمليات البحث التي تمت:

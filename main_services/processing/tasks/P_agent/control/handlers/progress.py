@@ -59,6 +59,7 @@ from typing import Any, Mapping
 from tasks.P_agent.control import facts as F
 from tasks.P_agent.control.handlers.absence import check_names, note_action
 from tasks.P_agent.control.model import API_VERSION, Action, CheckResult, PolicyResult, freeze, noul, plain
+from tasks.P_agent.notes import note
 
 SEARCH_TOOLS = {"search_collections", "search_passages", "web_search", "folder_search",
                 "search_facet_values", "search_histogram", "search_entity_explainer", "doc_search_text", "pdf_search", "table_search_cells"}
@@ -72,12 +73,10 @@ SIGNALS = {
 COMPLETIONS = ("none", "evidence")
 
 #: The advice notes. Each names its origin, so the agent can tell advice from the task.
-STUCK_ADVICE = ("A chat check estimates that the recent searches repeat their results. "
-                "The no_results skill describes other forms of a search.")
-ABSENT_ADVICE = ("A chat check estimates that the results do not hold what the task asks for. "
-                 "State the searched scope before you report an absence.")
-COMPLETION_ADVICE = ("A chat check estimates that the results can answer the task. Compare each "
-                     "requested part with the sources that you read before you answer.")
+#: The English texts. A run reads them in its own language (`tasks.P_agent.notes`).
+STUCK_ADVICE = note("en", "note-advice-stuck")
+ABSENT_ADVICE = note("en", "note-advice-absent")
+COMPLETION_ADVICE = note("en", "note-advice-completion")
 
 
 #: The tools of each method, for the method evidence of a turn.
@@ -122,6 +121,7 @@ def ladder(context, results):
     """The available search steps of the relevant methods (`methods`) that the stored calls
     have not yet covered."""
     tools = context.callable_tools
+    language = getattr(context, "language", "en")
     relevant = methods(context, results)
     searches = [f for f in results if f.name in SEARCH_TOOLS]
     forms = [str(q) for f in searches for q in (list(f.args.get("queries") or []) + [f.args.get("query", "")]) if q]
@@ -130,40 +130,41 @@ def ladder(context, results):
     if "collections" in relevant:
         if "search_collections" in tools:
             if not any('"' in q for q in forms):
-                pending.append("Search each name as a quoted phrase with search_collections.")
+                pending.append(note(language, "note-progress-step-quoted"))
             if not any('"' not in q for q in forms):
-                pending.append("Search unquoted words and name variants. Read word counts and spelling candidates.")
+                pending.append(note(language, "note-progress-step-variants"))
             filtered = any(any(f.args.get(k) for k in ("facet_filters", "date_after", "date_before", "size_min", "folder_term_id")) for f in collection_searches)
             if not collection_searches or (filtered and not any(not any(f.args.get(k) for k in ("facet_filters", "date_after", "date_before", "size_min", "size_max", "folder_term_id", "filename_only")) for f in collection_searches)):
-                pending.append("Remove filters one at a time and run a search without filters.")
+                pending.append(note(language, "note-progress-step-filters"))
             if "search_facet_values" in tools and filtered and not any(f.name == "search_facet_values" for f in searches):
-                pending.append("Verify filter values with search_facet_values.")
+                pending.append(note(language, "note-progress-step-facets"))
             if "search_histogram" in tools and any(f.args.get("date_after") or f.args.get("date_before") for f in collection_searches) and not any(f.name == "search_histogram" for f in searches):
-                pending.append("Verify dates with search_histogram.")
+                pending.append(note(language, "note-progress-step-dates"))
         if "search_passages" in tools and not any(f.name == "search_passages" for f in searches):
-            pending.append("Search a content description with search_passages.")
+            pending.append(note(language, "note-progress-step-passages"))
         folder_request = any(w in context.request.lower() for w in ("folder", "path", "file"))
         for name in ("folder_search", "folder_list"):
             if folder_request and name in tools and not any(f.name == name for f in results):
-                pending.append(f"Use {name} for the requested folder, path or file.")
+                pending.append(note(language, "note-progress-step-folder", tool=name))
         if any(f.keyword_sources for f in collection_searches) and not any(f.reads for f in results if f.name in COLLECTION_TOOLS):
             reader = next((t for t in ("read_documents", "doc_search_text") if t in tools), None)
             if reader:
-                pending.append(f"Read the best 1 to 3 hits with {reader}.")
+                pending.append(note(language, "note-progress-step-read-hits", tool=reader))
     if "web" in relevant:
         pages = [f for f in results if f.name == "read_page"]
         if "web_search" in tools and not any(f.name == "web_search" for f in searches):
-            pending.append("Search the web with web_search and read the best result pages.")
+            pending.append(note(language, "note-progress-step-web-search"))
         if any(f.continuation for f in pages) and not any(f.args.get("find") for f in pages):
-            pending.append("Search the kept text of a long page with read_page and find.")
+            pending.append(note(language, "note-progress-step-page-find"))
         if any(f.status == "error" or any(status == "error" for _, status in f.reads) for f in pages):
-            pending.append("Read another result address, or the archived copy of a failed page.")
+            pending.append(note(language, "note-progress-step-page-retry"))
     return pending
 
 
-def summary(searches):
-    return "\n".join(f"- {s['name']} {json.dumps(s['args'], ensure_ascii=False)}: "
-                     f"{s['items']} items, {s['keyword_matches']} keyword matches." for s in searches[-30:])
+def summary(searches, language: str = "en"):
+    return "\n".join("- " + note(language, "note-progress-search", name=s["name"],
+                                  args=json.dumps(s["args"], ensure_ascii=False), items=s["items"],
+                                  matches=s["keyword_matches"]) for s in searches[-30:])
 
 
 def delivery(state, results) -> dict:
@@ -294,24 +295,26 @@ class Handler:
             level += 1
             units = 0
             pending = ladder(context, context.results)
-            text = f"Search progress level {level}.\nSearches already run:\n{summary(searches)}\n"
+            language = context.language
+            text = (note(language, "note-progress-level", level=level) + "\n"
+                    + note(language, "note-progress-searches") + "\n" + summary(searches, language) + "\n")
             if level == 1 and pending:
-                text += "Search steps still available:\n" + "\n".join(pending)
+                text += note(language, "note-progress-available") + "\n" + "\n".join(pending)
             elif level == 1 and methods(context, context.results):
-                text += "The available search steps are complete."
+                text += note(language, "note-progress-complete")
             elif level == 2:
-                text += (pending[0] if pending else "Write the answer or the report now. State what the sources read do not hold and name the searches.")
+                text += (pending[0] if pending else note(language, "note-progress-write-now"))
             else:
-                text += "The next reply must be the answer. State the missing facts and the searches that you ran."
+                text += note(language, "note-progress-answer-next")
             if completion == "evidence" and signals["answered"]["fired"] and evidence:
-                text += "\n" + COMPLETION_ADVICE
+                text += "\n" + note(language, "note-advice-completion")
             actions.append(Action("append_note", f"progress-{level}", freeze({"text": text, "level": level})))
         if parameters.get("advice", False):
             advice = []
             if signals["stuck"]["fired"] and not made_progress and not previous.get("stuck_advised"):
-                advice.append(STUCK_ADVICE)
+                advice.append(note(context.language, "note-advice-stuck"))
             if signals["absent"]["fired"] and not previous.get("absent_advised"):
-                advice.append(ABSENT_ADVICE)
+                advice.append(note(context.language, "note-advice-absent"))
             if advice:
                 actions.append(Action("append_note", "progress-advice", freeze({"text": " ".join(advice)})))
         model_steps = context.counters.get("model_steps", 0)
@@ -323,9 +326,12 @@ class Handler:
                 and model_steps - strongest >= parameters.get("steps_after_strongest", 6)):
             stop_cause = ("operations and classifier" if int(previous.get("signal_units", 0)) + signal_unit
                           else "operations")
-            source_text = ("No keyword-matched source was found." if not seen else
-                           f"The searches found {len(seen)} keyword-matched sources. The agent did not complete its answer.")
-            actions.append(Action("end_turn", "progress-end", freeze({"text": "The run ended after repeated searches without progress. " + source_text + "\n\nSearches run:\n" + summary(searches)})))
+            language = context.language
+            source_text = (note(language, "note-progress-ended-none") if not seen else
+                           note(language, "note-progress-ended-some", count=len(seen)))
+            actions.append(Action("end_turn", "progress-end", freeze({"text": (
+                note(language, "note-progress-ended") + " " + source_text + "\n\n"
+                + note(language, "note-progress-ended-searches") + "\n" + summary(searches, language))})))
         absence_records = previous.get("absence_records", [])
         absent_checked = previous.get("absent_checked", False)
         # Only a successful document search lets a name check give absence evidence.

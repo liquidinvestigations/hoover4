@@ -204,6 +204,10 @@ class Page:
     # Clear the browser cache and bypass it for the first navigation, so the page loads
     # every stylesheet, script and font from the network.
     cold_cache: bool = False
+    # The interface language code that the settings page selects before the capture. The
+    # browser language is selected again after it. The setting belongs to the user, so a
+    # run with such a page uses one shard.
+    interface_language: str = ""
     document_fixture: str = ""
     summary: str = ""
     slug: str = ""
@@ -252,6 +256,7 @@ def parse_pages(ini_path: Path, defaults: dict[str, str] | None = None) -> list[
                 procedure=section.get("procedure", "").strip(),
                 init_script=section.get("init_script", "").strip(),
                 cold_cache=section.getboolean("cold_cache", fallback=False),
+                interface_language=section.get("interface_language", "").strip(),
                 url=section.get("url", "/"),
                 actions=parse_actions(section.get("actions", "")),
                 full_page=section.getboolean("full_page", fallback=False),
@@ -1099,6 +1104,20 @@ async def set_cache_disabled(tab, disabled: bool) -> None:
     await tab.send(network_cdp.set_cache_disabled(cache_disabled=disabled))
 
 
+#: The interface language buttons of the settings page.
+INTERFACE_CHOICES = "#x-settings-interface-choices"
+
+
+async def select_interface_language(tab, base_url: str, code: str) -> None:
+    """Select interface language `code` on the settings page. An empty code is the browser
+    language. The page saves a choice when it is selected."""
+    await navigate_document(tab, base_url + "/settings")
+    await wait_css(tab, INTERFACE_CHOICES)
+    button = f"document.querySelector('{INTERFACE_CHOICES} [data-language={json.dumps(code)}]')"
+    await js(tab, f"{button}.click(); return true;")
+    await wait_eval(tab, f"return {{ok: {button}.getAttribute('aria-checked') === 'true'}};")
+
+
 async def navigate_document(tab, url: str, init_script: str = "") -> None:
     """Wait for the new mounted document in the current protocol session."""
     import nodriver.cdp.page as page_cdp
@@ -1280,12 +1299,32 @@ async def capture_one(
     whitelist: list[tuple[str, object]],
 ) -> tuple[list[dict], list[tuple[str, str]], dict]:
     """Run one scenario at one resolution. Returns (captures, observations, diagnostics)."""
+    await set_exact_viewport(tab, *size)
+    await set_color_scheme(tab, page.color_scheme)
+    if page.interface_language:
+        await select_interface_language(tab, base_url, page.interface_language)
+    try:
+        return await _capture_one(tab, base_url, network, page, resolution_name, size, res_dir,
+                                  stem, whitelist)
+    finally:
+        if page.interface_language:
+            await select_interface_language(tab, base_url, "")
+
+
+async def _capture_one(
+    tab,
+    base_url: str,
+    network: NetworkLog,
+    page: Page,
+    resolution_name: str,
+    size: tuple[int, int],
+    res_dir: Path,
+    stem: str,
+    whitelist: list[tuple[str, object]],
+) -> tuple[list[dict], list[tuple[str, str]], dict]:
     rw, rh = size
     diagnostics: dict = {"console": [], "network_bad": [], "api_calls": {}}
     captures: list[dict] = []
-
-    await set_exact_viewport(tab, rw, rh)
-    await set_color_scheme(tab, page.color_scheme)
     network.clear()
     if page.cold_cache:
         await set_cache_disabled(tab, True)

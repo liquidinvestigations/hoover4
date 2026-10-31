@@ -17,6 +17,7 @@ import asyncio
 from typing import Any, Mapping
 
 from tasks.P_agent.control.handlers_common import page_sections
+from tasks.P_agent.notes import note
 from tasks.P_agent.control.model import (
     API_VERSION, Action, CheckResult, PolicyResult, freeze, noul,
 )
@@ -29,7 +30,8 @@ QUESTIONS = {
                     "heading, repository navigation, or a not-found message?"),
     "not_found": "Does `body` say that the requested item or page was not found?",
 }
-NOTE = "The capture of {urls} holds no article text. Read another source. Do not cite this page."
+#: The note of an empty capture, by the run language (`tasks.P_agent.notes`).
+NOTE_ID = "note-capture-empty"
 
 
 class Handler:
@@ -77,6 +79,6 @@ class Handler:
                 flagged.append(url)
         actions = ()
         if flagged:
-            actions = (Action("append_note", "L1", freeze({"text": NOTE.format(urls=", ".join(flagged)),
+            actions = (Action("append_note", "L1", freeze({"text": note(context.language, NOTE_ID, urls=", ".join(flagged)),
                                                             "urls": flagged})),)
         return PolicyResult(checks=tuple(checks), actions=actions)

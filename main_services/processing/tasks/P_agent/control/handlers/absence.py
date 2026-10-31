@@ -6,6 +6,7 @@ import difflib
 import re
 
 from tasks.P_agent.control.model import Action, freeze, plain
+from tasks.P_agent.notes import note
 
 
 def _collection_named(name, request):
@@ -74,19 +75,20 @@ def note_action(records, context):
     close forms and their document counts."""
     if not records:
         return ()
+    language = getattr(context, "language", "en")
     lines = []
     for record in records:
         name = record["name"]
         if record["kind"] == "collection":
-            lines.append(f"No permitted collection is named {name!r}. "
-                         f"The permitted collections are {', '.join(context.collections)}.")
+            lines.append(note(language, "note-absent-collection", name=repr(name),
+                              collections=", ".join(context.collections)))
             continue
-        forms = ", ".join(f"{form!r} ({count} documents)" for form, count in record["options"])
-        line = f"The selected collections have no indexed match for {name!r}."
+        forms = ", ".join(note(language, "note-absent-close-form", form=repr(form), count=count)
+                          for form, count in record["options"])
+        line = note(language, "note-absent-name", name=repr(name))
         if forms:
-            line += (f" Indexed close forms: {forms}. Do not use a close form as the requested "
-                     "name. When you search one, name it in the answer as a different spelling.")
+            line += " " + note(language, "note-absent-close-forms", forms=forms)
         if "web" in context.capabilities:
-            line += " The web tools of this turn can search the name."
+            line += " " + note(language, "note-absent-web")
         lines.append(line)
     return (Action("append_note", "absent-names", freeze({"text": "\n".join(lines)})),)

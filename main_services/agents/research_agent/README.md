@@ -121,6 +121,43 @@ with `read_tool`. The Manticore match syntax reaches the model through the skill
 the descriptions of the search tools. The collection MCP server also renders it into its
 `instructions`, which this agent does not pass to the model.
 
+## The agent language of a run
+
+The website resolves the agent language when a turn starts: the saved agent language, else
+the saved interface language, else the browser's `Accept-Language` header, else English. A
+board explore uses the saved languages of the board owner, else the language stored on the
+board at creation. The worker sends the code in every step request, so the whole run keeps
+one language. A later change of the setting applies to the next turn.
+
+[research_agent/localization.py](research_agent/localization.py) selects the texts of that
+language, with English as the fallback for each file and each text.
+
+| Text | Translated file | What stays English |
+|---|---|---|
+| System prompt | `prompts/<code>/agent.md.j2` | Jinja names |
+| Role line | `prompts/<code>/role_lines.json` | Jinja names |
+| Skill | `skills/<code>/<name>.md.j2`, `skills/<code>/partials/` | name, group and tools of the front matter |
+| Tool and argument descriptions, and the result texts of the agent's own tools | `research_agent/tool_texts/<code>.json`, from the English list `research_agent/tool_texts/en.json` | tool names, argument names, enum values and schema keys |
+
+The prompt names the answer language. It tells the model to keep tool names, argument names,
+citation handles and quoted source text as they are, and to write search queries in the
+words that the documents use.
+
+A translated tool text changes only the definitions that the model is shown and the tool
+summaries. The tool objects stay English, so a call validates and runs as before. Skill
+search and tool search match the translated text and the English text. The error messages
+of the tool servers stay English, because the agent reads their causes from the English text
+(`stumbles.py`).
+
+The context key (`_acl_key`), the catalogue version and the control snapshot revision include
+the language and the catalog revision. A context or a pinned snapshot of one language is never
+used for another.
+
+[scripts/i18n/agent_tool_texts.py](../../../scripts/i18n/agent_tool_texts.py) collects
+`research_agent/tool_texts/en.json`. [scripts/i18n/translate_agent.py](../../../scripts/i18n/translate_agent.py)
+writes the translated files with a chat model and records the producer in
+`research_agent/translations.json`. Native speakers have not reviewed the translations.
+
 ## Tool packs and the catalogue
 
 A tool pack is a named set of tools in [agent_common/tool_packs.py](../agent_common/agent_common/tool_packs.py).
@@ -171,8 +208,9 @@ The worker runs the agent loop in the `AgentRun` workflow. For each model call i
 `POST /model_step`, and for each tool call of a reply it sends `POST /tool_call`. The service
 keeps no state of a run between two requests. Every request carries the run fields of
 `StepRun` (`steps.py`): `run_id`, `kind`, `depth`, the caller's identity and
-collections, and `llm_model`. The worker sends the plan's frozen model for every run of a
-plan.
+collections, `llm_model` and `language`. The worker sends the plan's frozen model for every
+run of a plan. `language` is the agent language of the run. See "The agent language of a run"
+below.
 
 A chat turn also sends `control`: the assets that the worker stored when the turn started.
 `control.system_prompt` replaces the rendered system prompt, `control.skills` holds the text
@@ -185,7 +223,9 @@ request without `control` uses the current prompt and skill texts of the service
 The worker calls it when a turn starts. The response holds the rendered system prompt, which
 is the `SYSTEM_PROMPT` override when it is set. It holds the text, digest, description,
 `terms` and `not_for` of each listed skill. It also holds the callable tool names, the
-catalogue version and one revision digest of these values. No credential and no connection header is in it. With
+catalogue version, the `language` of the run, the `catalog_revision` of its translations,
+and one revision digest of these values. The digest of a run in another language than
+English includes the language and the catalog revision. No credential and no connection header is in it. With
 `messages` and `earlier`, the response also has `visible_skills`: the skills whose
 successful `read_skill` result is still in the model input after every stored compaction.
 `visibility_only` returns that list only.

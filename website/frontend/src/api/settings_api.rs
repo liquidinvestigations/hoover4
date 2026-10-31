@@ -8,7 +8,7 @@ use crate::api::error_util::to_server_fn_error;
 
 /// The browser's `Accept-Language` header of the current request.
 #[cfg(feature = "server")]
-async fn accept_language() -> Option<String> {
+pub(crate) async fn accept_language() -> Option<String> {
     use dioxus::fullstack::FullstackContext;
     let headers: axum::http::HeaderMap = FullstackContext::extract().await.ok()?;
     headers

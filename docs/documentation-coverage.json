@@ -2910,6 +2910,22 @@
       ],
       "audience": "user",
       "no_screenshot_reason": "Every page shows the translated text. The settings page screenshot shows the language choice."
+    },
+    {
+      "id": "F-lang-03",
+      "source": [
+        "website/backend/src/api/chat/mod.rs",
+        "main_services/processing/tasks/P_agent/notes.py",
+        "main_services/agents/research_agent/research_agent/localization.py",
+        "website/frontend/src/components/chat_components/agent_language.rs"
+      ],
+      "docs": [
+        "docs/technical-specification/interface/Chat.md",
+        "docs/user-manual/User_Manual.md#choose-your-languages",
+        "main_services/agents/research_agent/README.md#the-agent-language-of-a-run"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "The composer control is one button with a flag and a code. The manual describes it in text."
     }
   ],
   "routes": {

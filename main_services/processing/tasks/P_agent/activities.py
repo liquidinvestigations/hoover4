@@ -178,6 +178,8 @@ class TitleSessionParams:
     answer: str
     #: The chat lead run that answered the turn, for the `agent_step_events` row.
     run_id: str = ""
+    #: The agent language of the run. The title and the summary are in it.
+    language: str = ""
 
 
 def title_session(params: TitleSessionParams) -> str:
@@ -197,7 +199,7 @@ def title_session(params: TitleSessionParams) -> str:
     from tasks.P_agent.summarize import TitleSummary, TransportFailure, title_and_summary
 
     try:
-        result = title_and_summary(params.user_message, params.answer)
+        result = title_and_summary(params.user_message, params.answer, params.language)
     except TransportFailure as exc:
         failed = getattr(exc, "completion", None)
         _record_summarizer_call(params, TitleSummary(
@@ -351,6 +353,10 @@ class AgentRunInput:
     #: True for a board explore turn. Such a run writes no follow-up
     #: suggestions and no session title, because nobody reads them.
     board_turn: bool = False
+    #: The agent language code of the turn, resolved by the website or the board when the
+    #: turn starts. The whole run keeps it. Empty, as in a run started before the field,
+    #: means English (`language.turn_language`).
+    language: str = ""
 
     def __post_init__(self):
         if self.allowed_collections is None:
@@ -444,6 +450,8 @@ class RunRef:
     run_id: str
     username: str
     session_id: str
+    #: The agent language of the run (`AgentRunInput.language`).
+    language: str = ""
 
 
 def _insert_chat_row(username: str, session_id: str, seq: int, role: str, **fields) -> None:
@@ -643,5 +651,5 @@ def summarize_if_first_turn(ref: RunRef) -> str:
         return ""
     return title_session(TitleSessionParams(
         username=row.username, session_id=row.session_id, user_message=question,
-        answer=row.result, run_id=row.run_id,
+        answer=row.result, run_id=row.run_id, language=ref.language,
     ))

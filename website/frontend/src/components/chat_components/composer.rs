@@ -1,4 +1,4 @@
-//! Chat composer: textarea, Deep Research / Internet tools checkboxes, submit arrow.
+//! Chat composer: textarea, Internet tools checkbox, agent language, submit arrow.
 //!
 //! Deliberately has **no** file-attachment / paperclip control. Documents enter through
 //! the processing pipeline, not the chat UI.
@@ -13,6 +13,7 @@ use common::chat_types::{ChatOptions, MAX_MESSAGE_CHARS};
 use dioxus::prelude::*;
 use dioxus_free_icons::{Icon, icons::{md_av_icons::MdStop, md_navigation_icons::MdArrowUpward}};
 
+use crate::components::chat_components::agent_language::AgentLanguageControl;
 use crate::components::search_components::search_result_list_controls::NavigationButton;
 use crate::tr;
 
@@ -86,6 +87,7 @@ pub fn ChatComposer(
                         {tr!("chat-composer-internet-tools")}
                     }
                 }
+                AgentLanguageControl {}
                 div { style: "flex: 1;" }
                 if let Some(secs) = *retry_after_seconds.read() {
                     span {
