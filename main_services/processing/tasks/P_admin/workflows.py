@@ -207,7 +207,7 @@ OCR_RUN_PLAN_WINDOW = 16
 
 @workflow.defn
 class RerunOcr:
-    """Bring every OCR target of a dataset to done: the "Run OCR" action.
+    """Bring every OCR target of a dataset to done: the work of the OCR update step.
 
     See `tasks/P_admin/ocr_rerun.py`. It first runs the unfinished plans with every stage,
     then records the open targets, runs one `OcrRunPlan` for each plan with an open

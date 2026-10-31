@@ -271,6 +271,8 @@ Source ownership uses [main_services/agents/collection_search_server/collection_
 
 Complete unfinished plans, remove earlier PDF members, and run current preparation, preview, OCR, PDF variant, and index targets. Settle dependent targets after prerequisite failures. Execute newly available work in the same operation. Recover saved OCR text without another request. Read file descriptors in bounded pages after one recovery. Bound concurrent pages and separate their temporary directories. Verify exact index receipts for native PDF and both OCR text families. Preserve legacy activity target contracts. Fail while any target remains open, with bounded target identity samples. Repeat failed work through error retry.
 
+The OCR step of a processing update (`F-admin-39`) starts `RerunOcr` with the effective languages of the dataset. After the run, the step removes the variants of languages that the settings no longer include, and the searchable PDFs that no variant uses.
+
 Source ownership uses [main_services/processing/tasks/P_admin/ocr_rerun.py](../../main_services/processing/tasks/P_admin/ocr_rerun.py), [main_services/processing/tasks/ocr_targets.py](../../main_services/processing/tasks/ocr_targets.py).
 
 ## F-admin-07
@@ -320,6 +322,12 @@ Source ownership uses [website/frontend/src/components/feedback_control.rs](../.
 List the feedback reports for administrators, newest first, 50 to a page, with search over title, description, account and page address and a status filter of not archived, unread, archived or all, all in the page address. Show the description, the page image, a link to the DOM copy served in a CSP sandbox, and the debug context of one report. Mark a report read or unread, and archive or restore it, as two separate flags
 
 Source ownership uses [website/backend/src/api/admin](../../website/backend/src/api/admin), [main_services/processing/tasks/P_ops](../../main_services/processing/tasks/P_ops).
+
+## F-admin-39
+
+Show the processing updates of a dataset and a collection: each update step with its count, state, last run and explanation. Store a desired fingerprint for each step from the step version, the versions of its stages, its settings and, for unfinished processing and failed files, the input revision. Calculate a scope only when a fingerprint changed or a person asked. Record a step with no automatic work as applied without an operation. Start at most one automatic update operation at a time, collection steps first, and continue with later scopes after a failure. Retry a failed stage automatically once for each new stage version. Record the applied fingerprint only after the step output settles. Refuse an empty step list, a preview whose fingerprints changed, and a dataset request whose collection steps are not applied, and start no work. Keep `change_ocr_languages` and `rerun_ocr` for the command line and history.
+
+Source ownership uses [main_services/processing/tasks/P_admin/updates](../../main_services/processing/tasks/P_admin/updates), [main_services/processing/tasks/stage_versions.py](../../main_services/processing/tasks/stage_versions.py), [main_services/processing/database/processing_updates.py](../../main_services/processing/database/processing_updates.py), [website/backend/src/api/admin/processing_updates.rs](../../website/backend/src/api/admin/processing_updates.rs).
 
 ## F-auth-08
 

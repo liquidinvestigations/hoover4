@@ -1,4 +1,4 @@
-"""The `rerun_ocr` operation, which the dataset page names "Run OCR".
+"""The `RerunOcr` run of the OCR update step, and of the `rerun_ocr` operation of the CLI.
 
 One run brings every OCR target of the dataset under its current settings to done, and a
 second run on a finished dataset sends no OCR request. `tasks/ocr_targets.py` defines the

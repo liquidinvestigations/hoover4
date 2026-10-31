@@ -168,6 +168,7 @@ edit that adds one.
 - Do not edit an applied migration, including comments. The runner verifies a checksum of the complete file.
 - Use a new migration or change the reader unless the owner explicitly authorized resetting deployments that applied the migration.
 - A capability change updates its row in [docs/technical-specification/](docs/technical-specification) in the same patch.
+- A change to stored pipeline output raises its stage version and adds the update step that rewrites existing output. See [.agents/rules/processing-versions.md](.agents/rules/processing-versions.md).
 - Preserve shared constants, storage identities, access checks, idempotency, and cancellation contracts when simplifying code.
 - Keep plan tags inside their defining folder. Define each short tag in a Key table when using tags.
 - Preserve local plan evidence when archiving. A gitignored folder may have no recoverable copy.

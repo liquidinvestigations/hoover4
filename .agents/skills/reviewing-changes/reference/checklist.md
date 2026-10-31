@@ -30,6 +30,7 @@ Select checks with the verification skill. Reuse captured evidence when it remai
 | Agent shared code changes. | Verify vendored copies and image build contexts. |
 | A shell check reports success. | Preserve the failing command's status through pipelines and conditional callers. |
 | A derived metric or status changes. | Verify what it can establish, including duplicate inputs and partial results. |
+| Stored pipeline output changes. | Verify the raised stage version and an update step that selects, rewrites and verifies the old output, as [the versions rule](../../../rules/processing-versions.md) describes. A version change alone rewrites no successful output. |
 | A capability changes. | Update its specification row and affected documentation in the same patch. |
 | A public file changes. | Exclude private infrastructure details and working-plan references. |
 

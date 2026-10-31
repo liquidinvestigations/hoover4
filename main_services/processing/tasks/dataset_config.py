@@ -21,7 +21,8 @@ it with `tasks/ocr_resolution_cases.json`.
 The cost of reading per activity is one ClickHouse query per file, which is why there is
 a short process-local cache: `_CACHE_SECONDS` turns it into one query per activity burst
 while still picking a change up within seconds. Do not raise it to "one minute, nobody
-will notice" -- the admin form waits on the job that depends on this.
+will notice". The processing update coordinator calculates the OCR step soon after a
+save, and it must read the new value.
 """
 
 import logging

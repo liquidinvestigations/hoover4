@@ -88,3 +88,31 @@ A red flag directs document review and does not establish misconduct.
 
 **Passage**:
 In red flag scoring, a passage is a word window or a group of adjacent qualifying windows.
+
+**Processing update**:
+A processing update brings the stored results of a dataset or a collection to what the
+current code, settings and inputs produce. The interface calls the action Update processing
+or Update collection. The operation kinds are `update_dataset` and `update_collection`. The
+word update alone also names a settings save and a database mutation, so write processing
+update for this sense.
+
+**Update step**:
+An update step is one entry of the processing update registry
+([registry.py](main_services/processing/tasks/P_admin/updates/registry.py)), for example `ocr` or `folder_counts`. It is distinct
+from a pipeline stage. One step can run more than one stage.
+
+**Fingerprint**:
+In processing updates, the desired fingerprint names the output that a step should leave
+now. The applied fingerprint names the output that last settled. A step waits while the two
+differ. In deployment, the configuration fingerprint (`HOOVER4_CONFIG_FINGERPRINT`) names the
+rendered configuration of a service, which is a different value.
+
+**Input revision**:
+The input revision of a dataset is the newest terminal operation of the dataset or its
+collection that is not a processing update. The unfinished and failed files steps include
+it in their fingerprint, so new files and interrupted work make them calculate again.
+
+**Stage version**:
+A stage version is the integer in [stage_versions.py](main_services/processing/tasks/stage_versions.py) that names the output format of
+one canonical stage. Some stages keep an older constant name, for example
+`OCR_PAGE_RULE_VERSION` or `READER_VERSION`. The registry exposes each one under its stage.

@@ -15,6 +15,7 @@ Keep preferences and unrelated improvements non-blocking.
 
 Use [the repository checklist](reference/checklist.md) for affected boundaries.
 Pay particular attention to mirrored Python and Rust behavior, writer identities, migrations, Temporal payloads, and access checks.
+When a stage stores different output, verify the update step that brings existing datasets to it.
 Review frontend hook ordering and real interaction evidence when visible behavior changes.
 
 Recommend a refactor only when it resolves a demonstrated defect or simplifies the requested change.

@@ -652,7 +652,7 @@ class Operation:
         return f"Updated OCR languages. The operation kept {progress['failed_documents']} document failures."
 
     async def _rerun_ocr(self, params: OperationParams) -> str:
-        """Bring every OCR target of a dataset to done: the "Run OCR" action.
+        """Bring every OCR target of a dataset to done: the `rerun_ocr` kind of the CLI.
 
         Progress counts the dataset's plans while unfinished plans run, then the OCR and
         index targets that `RerunOcr` recorded.

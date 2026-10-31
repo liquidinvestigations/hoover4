@@ -16,18 +16,25 @@ the actual gate.
   `processing_eta_samples` (written by the `CollectEtaSamples` workflow in
   [main_services/processing/tasks/P_admin/](../../../../../main_services/processing/tasks/P_admin), and the website never computes ETAs in a
   request path).
-- [dataset_ocr.rs](dataset_ocr.rs), per-dataset OCR languages, the `change_ocr_languages` operation and
-  the newest operation row a dataset page shows, the collection-level defaults new datasets
-  inherit, and dataset **creation** (which was CLI-only). Two rules live here: one language
-  change per dataset, refused by the operations lock rather than by a disabled button; and
-  the creation form takes a mount name and a folder *name*, validated against the listing of
-  that mount, never a path. A new folder is created only in a writable mount.
+- [dataset_ocr.rs](dataset_ocr.rs), per-dataset OCR languages, the newest operation row a dataset
+  page shows, the collection OCR defaults and vectors switch, and dataset **creation**. The
+  effective OCR value of a dataset comes from `resolve_ocr_languages`: the dataset row, then
+  the collection default, then `TESSERACT_LANGUAGES` and `EASYOCR_LANGUAGES`. It mirrors the
+  Python resolver, and both test `ocr_resolution_cases.json`. Apply saves the rows and
+  signals the processing update coordinator. It starts no operation. The creation form takes
+  a mount name and a folder *name*, validated against the listing of that mount, never a
+  path. A new folder is created only in a writable mount.
   [../../dataset_mounts.rs](../../dataset_mounts.rs) reads the mount list and opens every folder through a
   directory descriptor that refuses symbolic links. The same module writes the dataset
   setting `uploads_enabled` ("Accept uploads"). It refuses `true` for a dataset whose
   folder is not beneath a writable mount, and while another live dataset of the collection
   has it. The check and the write hold a process lock of the collection.
   [../../db_auth/uploads.rs](../../db_auth/uploads.rs) holds the upload permission rules and their queries.
+- [processing_updates.rs](processing_updates.rs), the stored processing update state of a dataset or
+  a collection, Check again, and Update processing. It reads stored rows only, so a page load
+  runs no count query. A request carries the step ids and the fingerprints that the page
+  showed. It refuses an empty selection, and the pipeline refuses changed fingerprints.
+  `signal_check` starts the `processing-updates` coordinator with a signal when it is closed.
 - [operations.rs](operations.rs), the operations log behind `/admin/operations` and the scoped list on
   a collection page: reads of `operations FINAL`, the per-task error rates, and the
   dispatch path that writes the row and starts the `Operation` workflow on that row's id.

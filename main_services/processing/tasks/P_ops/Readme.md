@@ -35,8 +35,10 @@ keeps a row queued while a running or older waiting operation overlaps its targe
 overlaps a row of its dataset and a collection row of its collection. A collection row
 overlaps every row of its collection. The row then stays `queued` and asks again every 30 s.
 No timer releases a running writer. The upload queue writes its `ingest_upload` rows without
-the dispatch check, so they wait in admission behind a rescan, an OCR run, a collection
-operation or a deletion of the same target.
+the dispatch check, so they wait in admission behind a rescan, an OCR run, a processing
+update, a collection operation or a deletion of the same target. An `update_collection`
+row therefore waits for every live operation of its collection, and a dataset update
+never waits for a collection update while it holds its own row.
 
 The lock check and the row insert are not atomic, and cannot be against ClickHouse. The
 workflow id is the second guard: two dispatches that both pass the check still mint
@@ -97,7 +99,10 @@ attributes for documents whose locations changed, without extraction; `ensure_co
 provision and remove a collection's database; `purge_dataset`, `delete_dataset`,
 `change_ocr_languages` and `retry_failed_files` each drive their own child workflow or
 chain of them; `ingest_upload` drives `IngestUploadBatches` over the batch ids of its detail
-([P_upload/](../P_upload/Readme.md)); `export_collection` writes a backup (below). `delete_dataset` is a purge with the registry row tombstoned first, so an
+([P_upload/](../P_upload/Readme.md)); `export_collection` writes a backup (below);
+`update_dataset` and `update_collection` drive `RunProcessingUpdate` over the step ids and
+fingerprints of their detail ([P_admin/](../P_admin/Readme.md#processing-updates)). An update row with no step
+fails with an accurate error and starts no child. `delete_dataset` is a purge with the registry row tombstoned first, so an
 interrupted deletion leaves rows nothing routes to rather than a live dataset missing half
 its data, and the log distinguishes a dataset that was retired from one whose data was
 cleaned out from under it. Every child
@@ -125,6 +130,10 @@ re-runs, and a purge or a delete counts **rows still in the stores**, so its bar
 the deletion rather than with the number of activities that have returned. A purge excludes
 the two task-telemetry tables it writes to while it runs. An operation counting its own
 telemetry as work left to do could never reach its total.
+
+An update operation counts **steps**. Its detail holds `step_progress`, the state of each
+step, and the coordinator reads the terminal row before it starts the next automatic
+operation.
 
 **Four kinds have no progress fraction at all, deliberately.** `compute_plans` writes
 every plan in one statement, `refresh_document_locations` rewrites a selected hash list

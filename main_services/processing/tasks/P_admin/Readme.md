@@ -20,8 +20,11 @@ singleton, rather than as part of ingestion.
   settings, reopen the plans holding OCR candidates, re-run them, then purge the variants
   the change dropped, from ClickHouse, then Manticore, then Garage. The order is the
   point; [ocr_languages.py](ocr_languages.py)'s module docstring says why each step cannot move.
-- Bring every OCR target of a dataset to done with unchanged settings (`RerunOcr`, the
-  "Run OCR" button). See "Run OCR" below.
+- Bring every OCR target of a dataset to done with unchanged settings (`RerunOcr`). The
+  OCR step of a processing update runs it. See "Run OCR" below.
+- Bring the stored results of each dataset and collection up to date after a version,
+  setting or input change (the processing updates in [updates/](updates)). See
+  "Processing updates" below.
 
 The website backend never owns migration SQL; it triggers these workflows so the schema has
 exactly one source of truth in Python.
@@ -30,6 +33,10 @@ exactly one source of truth in Python.
 
 - Workflows: `EnsureCollectionDatabase`, `DropCollectionDatabase`, `PurgeDataset`,
   `ChangeOcrLanguages`, `RerunOcr`, `OcrRunPlan`, `CollectEtaSamples` in [workflows.py](workflows.py)
+- Processing updates: `ProcessingUpdates`, `RunProcessingUpdate` and `UpdateDatasetVectors`
+  in [updates/workflows.py](updates/workflows.py), the steps in [updates/registry.py](updates/registry.py), the counts and
+  settlement reads in [updates/selectors.py](updates/selectors.py), and the stage versions in
+  [tasks/stage_versions.py](../stage_versions.py)
 - Activities: `ensure_collection_database`, `drop_collection_database`,
   `purge_dataset_from_manticore`, `purge_dataset_from_clickhouse`,
   `recompute_shard_ledger_activity`, `collect_eta_samples` in [activities.py](activities.py)
@@ -51,7 +58,9 @@ exactly one source of truth in Python.
 - Website: every workflow here is reached as the child of an operation:
   `EnsureCollectionDatabase` and `DropCollectionDatabase` under the collection-lifecycle
   kinds, `PurgeDataset` under `purge_dataset` and `delete_dataset`, `ChangeOcrLanguages`
-  under `change_ocr_languages`, `RerunOcr` under `rerun_ocr`. Each run therefore carries the operation's timestamped id,
+  under `change_ocr_languages`, `RerunOcr` under `rerun_ocr`, and `RunProcessingUpdate`
+  under `update_dataset` and `update_collection`. The admin pages no longer start
+  `change_ocr_languages` and `rerun_ocr`. The kinds stay for the CLI and for history. Each run therefore carries the operation's timestamped id,
   which is what makes a second click run again: a reused id makes it a no-op, and two
   language changes are two different runs with two different before/after states.
 
@@ -90,6 +99,63 @@ column has no finer order. An error in the same second as such a setting counts 
 
 An execution that started before the `run-ocr-targets` patch replays the earlier commands,
 which reopen the plans and run `ExecutePlans`.
+
+## Processing updates
+
+A processing update brings the stored results of existing data to what the current code,
+settings and inputs produce. The admin dataset page and the collection page show the
+steps, the counts, and the "Update processing" or "Update collection" button. The steps
+are in [updates/registry.py](updates/registry.py), in run order.
+
+| Step | Scope | Selects | Work | Settles when |
+|---|---|---|---|---|
+| `search_schema` | collection | Search tables that miss a column of the current page schema | `ALTER TABLE ADD COLUMN`. A type difference rebuilds the collection index. | No search table differs from the schema. |
+| `unfinished` | dataset | Unfinished plans and live files without a plan | `ExecutePlans` with every stage | No unfinished plan or file without a plan remains. |
+| `failed_files` | dataset | Files with a current processing error | The historical error selection, `ExecutePlans` on the failed stages, then the reconciliation | The reconciliation recorded the outcome of each selected pair. |
+| `ocr` | dataset | Files without OCR text for the effective languages, and text of removed languages | `RerunOcr`, then the purge of dropped variants and orphaned searchable PDFs | No variant of a removed language remains. |
+| `vectors` | dataset | Files with text and no vectors of the served embedding model | `UpdateDatasetVectors`, which runs P5 and P6 vectors on 4 plans at a time | Each selected plan ran. |
+| `folder_counts` | dataset | Folders without counts, or every folder when the stage version is newer than the applied one | `build_vfs_nodes` | No folder lacks counts. |
+
+The state is in five global tables of migration `00051`.
+
+- `processing_update_checks` holds the desired fingerprint and the counts of each step.
+  The row with an empty `step_id` holds the totals of the scope.
+- `processing_update_attempts` holds one row for each operation and step. Its
+  `row_version` orders the states, so a late progress write cannot replace a terminal
+  state.
+- `processing_update_applied` holds the fingerprint of the last output that settled.
+- `processing_retry_claims` holds each `(dataset, stage, version)` that a failed files
+  step retried.
+- `stage_versions` holds the version of each canonical stage, and whether the row is
+  the first record of the stage (`baseline`).
+
+The desired fingerprint of a step joins the step version, the versions of its stages,
+its settings (`target_key`) and, for `unfinished` and `failed_files` only, the input
+revision. The input revision is the newest terminal operation of the dataset or its
+collection that is not an update. A new ingestion or an interrupted run therefore makes
+those two steps calculate again without a version change.
+
+The coordinator `ProcessingUpdates` (id `processing-updates`) compares the fingerprints
+every 2 minutes, and at once on a `request_check` signal. A settings save and "Check
+again" send the signal. Only a changed fingerprint, or a request, runs the count queries
+of a scope. A step with no automatic work records its fingerprint as applied and starts
+no operation. When `[processing_updates] automatic` is true, the coordinator starts one
+automatic operation at a time across the installation, collections first. A dataset
+step that writes to the search index waits until the collection steps are applied. An
+attempt that failed or was cancelled at a fingerprint does not start again automatically.
+The button stays available for a manual run.
+
+`RunProcessingUpdate` first recalculates the requested steps. It refuses a manual request
+whose fingerprint changed (`ProcessingUpdatePreviewStale`), an empty or unknown step list
+(`ProcessingUpdateInvalidRequest`), and a dataset request whose collection steps are not
+applied (`ProcessingUpdatePrerequisitePending`). It then runs the steps in order. The
+applied row gets the fingerprint of the snapshot, so a setting changed during the run
+leaves the step waiting. A step that fails is recorded, and the next step runs.
+
+The automatic failed files step retries a stage once for each new stage version. A
+stage at its first recorded version (`baseline`) has no automatic retry. A manual retry
+also writes the claim. Raise a stage version in [tasks/stage_versions.py](../stage_versions.py) with the
+procedure in [.agents/rules/processing-versions.md](../../../../.agents/rules/processing-versions.md).
 
 ## One run per dataset
 

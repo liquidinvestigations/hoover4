@@ -14,6 +14,7 @@ decides and which code reads it.
 - [`[main_services]`](#main_services)
 - [`[dataset_mount.*]`](#dataset_mount)
 - [`[operations]`](#operations)
+- [`[processing_updates]`](#processing_updates)
 - [`[uploads]`](#uploads)
 - [`[llm_provider.*]`](#llm_provider)
 - [Secrets](#secrets)
@@ -112,8 +113,11 @@ endpoint stays out of rotation.
 
 ### Scanning and OCR
 
-`tesseract_languages` is what the CPU OCR image can serve. It is baked into the image, so a
-language added here needs a rebuild. `regex_scanner_threads` and `regex_scanner_queue_depth`
+`tesseract_languages` and `easyocr_languages` are the installation defaults of the OCR
+languages. A dataset uses its own value, else the collection default, else these values.
+The worker and the website both read them, and a change takes effect when the containers
+are created again. The Tesseract image installs every Debian language package, so any
+installed language works without a rebuild. `regex_scanner_threads` and `regex_scanner_queue_depth`
 bound the pattern scanner's runtime and its admission control. The scanner takes a slot
 before it reads or parses a scan request body. `regex_scanner_mem_limit` (default `4G`)
 sets its container memory limit.
@@ -447,9 +451,12 @@ The last rule runs after the services start. The others run before any compose c
 One key for each operation kind, named `<kind>_cap`, with the default `2`. A cap is the most
 operations of that kind that run at once across the deployment. No key covers a group of
 kinds. [deploy.py](../../deploy.py) refuses a value below 1, and prints a warning for an unknown key in the
-section. It renders the 18 values into one variable, `HOOVER4_OPERATION_CAPS`, in
+section. It renders the 20 values into one variable, `HOOVER4_OPERATION_CAPS`, in
 `hoover4-ops`, as `kind=value` pairs joined by commas. `ingest_upload_cap` limits the
 `ingest_upload` operations that the upload queues start, one queue for each upload dataset.
+`update_dataset_cap` and `update_collection_cap` limit the processing update operations.
+The coordinator starts one automatic update at a time, so these caps limit the manual
+updates beside it.
 
 An operation over its cap is stored as `queued`. It waits with no time limit, and the oldest
 queued operation of its kind starts when a slot is free. An operation also waits as `queued`
@@ -457,6 +464,15 @@ while another running operation of its dataset or collection runs, whatever its 
 operation holds its dataset or collection. A second operation on that target is refused until the first one ends or is
 cancelled. A change to a cap takes effect when `hoover4-ops` is created again,
 which `./deploy` does.
+
+## `[processing_updates]`
+
+`automatic` (default `true`) lets the processing update coordinator start update
+operations without a person. It starts one at a time after a deployment that changes a
+stage version, after a settings change and after new input. `false` starts no automatic
+operation. The admin pages still show the waiting steps, and Update processing still
+starts them. [deploy.py](../../deploy.py) renders the value into `HOOVER4_PROCESSING_UPDATES_AUTOMATIC` in the
+worker, and a change takes effect when the worker is created again.
 
 ## `[uploads]`
 
@@ -620,6 +636,11 @@ Deployment renders this value into the server override XML.
 - `refresh_document_locations_cap`, `retry_failed_files_cap`, `ensure_collection_cap`
 - `drop_collection_database_cap`, `export_collection_cap`, `import_collection_cap`
 - `purge_unattributed_entities_cap`, `backfill_vectors_cap`, `ingest_upload_cap`
+- `update_dataset_cap`, `update_collection_cap`
+
+### `[processing_updates]`: the automatic updates
+
+- `automatic`
 
 ### `[uploads]`: the upload limits
 

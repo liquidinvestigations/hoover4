@@ -66,22 +66,39 @@ now, and a table of where the processing time actually goes.
 ## Datasets
 
 A dataset's page shows its type and source path, when it was created, and its statistics:
-state, documents, size, indexed documents, errors, and finished plans. It also shows the OCR
-languages in use.
+state, documents, size, indexed documents, errors, and finished plans.
 
-**Run OCR** completes the work required by the dataset's current OCR settings.
-It first completes unfinished processing and removes earlier PDF member documents.
-It then prepares PDF sources, completes previews, runs missing OCR work, and indexes changed text.
-Saved OCR results provide their text without another OCR request.
-The operation also indexes replacement native PDF text when OCR languages are empty.
-It skips small or empty images and retains known PDF defects as metadata.
-Current processing errors settle the affected work.
-**Retry** on the processing page repeats failed files.
+**OCR languages** sets the languages of the two OCR engines. Select Tesseract languages from
+the checklist, and type in the filter to find one. Turn EasyOCR on or off with **Enabled**,
+and select its languages. **Use the collection default** makes the dataset follow the
+collection default. Each value shows its source: this dataset, the collection default or
+the installation default from `hoover4.ini`. EasyOCR languages that the image did not
+preload download on first use. A failed download shows under the list. **Apply** saves the
+settings. When automatic updates are on, the OCR update then starts without a second click.
 
-The progress bar counts plans while unfinished processing runs, then OCR and indexing
-targets. New OCR text adds indexing targets, so the total can increase during the run. A
-second **Run OCR** on a finished dataset sends no OCR request. A cancelled run loses no
-completed work, and the next **Run OCR** continues from it.
+**Processing updates** lists the update steps of the dataset. Each step shows how many files
+it changes, its state, what it does and its last run. A step waits when new versions,
+settings or files leave stored results out of date. An interrupted ingestion and an OCR
+settings change are examples. Waiting, failed and cancelled steps are selected. Select
+the steps to run and press **Update processing**. **Check again** asks the pipeline to count
+the steps now. When the counts changed since the page loaded, the request is refused, the
+new counts show, and nothing runs. A failed or cancelled step does not start again
+automatically. Start it with the button when the cause is fixed.
+
+The OCR step runs OCR for the current languages, deletes the text of removed languages and
+indexes the changed text. Saved OCR results provide their text without another OCR request.
+The failed files step runs the failed stages again. The automatic run retries a file once
+for each new version of the stage that failed. **Retry** on the processing page also repeats
+failed files.
+
+**Rescan disk** in the separate Disk module reads the dataset folder again and ingests new
+files.
+
+The collection page shows the collection steps with **Update collection**, and one status
+line for each dataset. A dataset update that writes to the search index waits for the
+collection steps. The collection page also sets the vectors of the collection. When vectors
+are off, the pipeline computes no new vectors and search does not use the stored vectors,
+which stay. When no value is set, the collection follows the installation.
 
 <a href="img/admin-dataset.png"><img src="img/admin-dataset.png" alt="Admin, one dataset" width="100%"></a>
 

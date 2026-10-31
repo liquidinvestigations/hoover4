@@ -173,8 +173,8 @@ pub async fn admin_delete_dataset(
 /// The operation kind and the operation detail of each button kind of the dataset page.
 ///
 /// The button's name and the operation kind differ because the buttons predate the
-/// operations log: this is the one place the two vocabularies are mapped. "Run OCR" is
-/// the kind `rerun_ocr`, the stored name of that operation.
+/// operations log: this is the one place the two vocabularies are mapped. The dataset
+/// page now shows only Rescan disk. The function still accepts the other kinds.
 fn operation_for_button(kind: &str) -> anyhow::Result<(&'static str, &'static str)> {
     Ok(match kind {
         "ingest_and_process" => ("add_dataset", ""),

@@ -98,6 +98,7 @@ and a test greps for readers that forget.
 
 ## OCR targets, skips and the "Run OCR" ledger
 
+Run OCR is the `RerunOcr` workflow. The OCR step of a processing update starts it, and the CLI kind `rerun_ocr` also starts it.
 Run OCR uses preparation, image preview, image OCR, image PDF, PDF variant, and index targets.
 Preparation includes Office conversion, source ranges, page selection, and original native PDF text.
 A PDF variant completes after every searchable part and its OCR text reach durable storage.
