@@ -54,7 +54,7 @@ pub struct UpdateStepView {
     pub explanation: String,
     /// The runs that follow, in words.
     pub runs: String,
-    /// `files` or `tables`.
+    /// `files`, `folders` or `tables`.
     pub unit: String,
     pub pending: u64,
     pub pending_bytes: u64,
@@ -134,8 +134,12 @@ pub fn selection_summary(steps: &[UpdateStepView], selected: &[String]) -> Strin
     let files: u64 = chosen.iter().filter(|s| s.unit == "files").map(|s| s.pending).sum();
     let bytes: u64 = chosen.iter().map(|s| s.pending_bytes).sum();
     let runs = if chosen.len() == 1 { "1 step".to_string() } else { format!("{} steps", chosen.len()) };
+    if files == 0 {
+        return format!("This runs {runs}. It changes no file.");
+    }
+    let unit = if files == 1 { "file" } else { "files" };
     format!(
-        "This runs {runs} on at most {files} files ({}). Search results for these documents change while it runs.",
+        "This runs {runs} on at most {files} {unit} ({}). Search results for these documents change while it runs.",
         crate::storage_tree::format_size(bytes)
     )
 }

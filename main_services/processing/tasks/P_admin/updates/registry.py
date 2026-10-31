@@ -60,7 +60,7 @@ class UpdateStep:
     explanation: str
     #: The runs that follow.
     runs: str
-    #: The unit of the count: files, or search tables for the schema step.
+    #: The unit of the count: files, folders for the folder counts, or search tables.
     unit: str = "files"
 
 
@@ -108,7 +108,7 @@ STEPS: Tuple[UpdateStep, ...] = (
         title="Folder counts",
         explanation="{files} folders have no file count or size, or have values of an earlier "
                     "version. The counts are calculated again.",
-        runs="Folder tree"),
+        runs="Folder tree", unit="folders"),
 )
 
 STEPS_BY_ID: Dict[str, UpdateStep] = {step.step_id: step for step in STEPS}

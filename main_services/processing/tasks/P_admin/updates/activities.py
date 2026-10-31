@@ -174,9 +174,12 @@ def _automatic_steps(ctx: selectors.ScopeContext, wanted: Dict[str, Desired],
             continue
         if row and row["applied_fingerprint"] == want.fingerprint:
             continue
-        # Any earlier attempt at this fingerprint, failed or cancelled included, ends the
-        # automatic run of the step until the fingerprint changes. The button stays.
-        if attempts.get((ctx.scope_id, step.step_id, want.fingerprint)):
+        # A failed or cancelled newest attempt at this fingerprint ends the automatic run
+        # of the step until the fingerprint changes. The button stays. A succeeded attempt
+        # whose fingerprint is no longer applied left output that a later change replaced,
+        # for example after a setting went from A to B and back to A, so the step runs.
+        earlier = attempts.get((ctx.scope_id, step.step_id, want.fingerprint)) or []
+        if earlier and earlier[0].get("effective_state") in ("failed", "cancelled"):
             continue
         chosen.append(step.step_id)
     return chosen

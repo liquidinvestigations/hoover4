@@ -31,7 +31,8 @@
 | Running operation | Progress uses the operation's available work unit. An update operation counts steps. |
 | Update step up to date | The applied output matches the current versions, settings and inputs. The count is the estimate of a manual run. |
 | Update step waiting | The step has work. An automatic run or a person starts it. |
-| Update step failed or cancelled | The last attempt at the current fingerprint did not settle. No automatic run starts it again until the fingerprint changes. The button stays available. |
+| Update step failed or cancelled | The last attempt at the current fingerprint did not settle, and the fingerprint is not applied. No automatic run starts it again until the fingerprint changes. The button stays available. |
+| Failed files retry available | The automatic work of the step is applied, and files with errors remain. A manual run retries them. A cancelled manual retry also shows this state. |
 | Update step not calculated | The pipeline has not calculated the step yet. |
 | Finished operation | The operation ended. Its document errors still require separate inspection. |
 | Failed operation | The operation identifies its recorded failure and available detail. |

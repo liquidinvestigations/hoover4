@@ -112,6 +112,8 @@ pub fn ProcessingUpdatesPanel(
     let can_start = !chosen.is_empty() && !running && !*submitting.read();
     let start_style = if can_start { "" } else { "opacity: 0.5; cursor: not-allowed;" };
     let status = view.status_line();
+    let unique_unit = count_unit(view.unique_files, "files");
+    let runs_word = if view.executions == 1 { "step run" } else { "step runs" };
     let scope_for_check = view.scope_id.clone();
     let scope_for_start = view.scope_id.clone();
     let kind_for_start = scope_kind.clone();
@@ -134,7 +136,7 @@ pub fn ProcessingUpdatesPanel(
                         "The pipeline has not calculated these updates yet."
                     } else {
                         "Calculated at {view.checked_at} in {view.check_ms} ms. "
-                        "The waiting steps change {view.unique_files} files ({format_size(view.unique_bytes)}), each file counted once, in {view.executions} step runs."
+                        "The waiting steps change {view.unique_files} {unique_unit} ({format_size(view.unique_bytes)}), each file counted once, in {view.executions} {runs_word}."
                     }
                 }
                 if !view.automatic {
@@ -161,7 +163,7 @@ pub fn ProcessingUpdatesPanel(
                             {
                                 let id_for_check = step.step_id.clone();
                                 let is_on = chosen.contains(&step.step_id);
-                                let unit = if step.unit == "tables" { "tables" } else { "files" };
+                                let unit = count_unit(step.pending, &step.unit);
                                 let state_label = if step.state == UpdateStepState::UpToDate { "Up to date. Select it to run it again." } else { step.state.label() };
                                 let state_colour = match step.state {
                                     UpdateStepState::Failed => "var(--x-danger)",
@@ -193,7 +195,7 @@ pub fn ProcessingUpdatesPanel(
                                             if step.state == UpdateStepState::UpToDate {
                                                 // An applied step has no automatic work. Its
                                                 // count is the estimate of a manual run.
-                                                span { title: "A run again would select about this many {unit}.", "{step.pending} {unit} on a run again" }
+                                                span { title: "A run again would select about this many {step.unit}.", "{step.pending} {unit} on a run again" }
                                             } else {
                                                 "{step.pending} {unit}"
                                             }
@@ -288,5 +290,17 @@ pub fn ProcessingUpdatesPanel(
                 }
             }
         }
+    }
+}
+
+/// The unit word of a count: `files`, `folders` or `tables`, singular for 1.
+fn count_unit(count: u64, unit: &str) -> &'static str {
+    match (unit, count == 1) {
+        ("tables", true) => "table",
+        ("tables", false) => "tables",
+        ("folders", true) => "folder",
+        ("folders", false) => "folders",
+        (_, true) => "file",
+        (_, false) => "files",
     }
 }

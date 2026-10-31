@@ -117,6 +117,13 @@ def test_a_step_starts_automatically_once_for_a_fingerprint():
     # An earlier attempt at the fingerprint, here a cancelled one, ends the automatic run.
     attempts = {("c_ds", "ocr", "F"): [{"effective_state": "cancelled"}]}
     assert activities._automatic_steps(_ctx(), _wanted(), checks, {}, attempts) == []
+    failed = {("c_ds", "ocr", "F"): [{"effective_state": "failed"}]}
+    assert activities._automatic_steps(_ctx(), _wanted(), checks, {}, failed) == []
+    # A succeeded attempt whose fingerprint is no longer applied runs again: the setting
+    # went from F to another value and back.
+    returned = {("c_ds", "ocr", "F"): [{"effective_state": "succeeded"}]}
+    other = {("c_ds", "ocr"): {"applied_fingerprint": "G"}}
+    assert activities._automatic_steps(_ctx(), _wanted(), checks, other, returned) == ["ocr"]
     # An applied fingerprint is up to date.
     applied = {("c_ds", "ocr"): {"applied_fingerprint": "F"}}
     assert activities._automatic_steps(_ctx(), _wanted(), checks, applied, {}) == []

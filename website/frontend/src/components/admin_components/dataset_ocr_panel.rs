@@ -253,8 +253,8 @@ fn language_label(code: &str) -> String {
 fn source_label(source: &str) -> &'static str {
     match source {
         "dataset" => "this dataset",
-        "collection" => "collection default",
-        _ => "installation default",
+        "collection" => "the collection default",
+        _ => "the installation default",
     }
 }
 
@@ -386,7 +386,7 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                 div {
                     h3 { style: SUBHEADING, "Tesseract" }
                     p { class: "x-ocr-source", style: "{HELP_TEXT} margin: 0 0 6px;",
-                        "In force: {panel.tesseract_languages}, from the {source_label(&panel.tesseract_source)}."
+                        "In force: {panel.tesseract_languages}, from {source_label(&panel.tesseract_source)}."
                     }
                     label { style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); margin-bottom: 8px;",
                         input {
@@ -394,7 +394,7 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                             checked: *inherit_tesseract.read(),
                             onchange: move |e| inherit_tesseract.set(e.checked()),
                         }
-                        "Use the {source_label(&panel.inherited_tesseract_source)}: {panel.inherited_tesseract}"
+                        "Use {source_label(&panel.inherited_tesseract_source)}: {panel.inherited_tesseract}"
                     }
                     if !*inherit_tesseract.read() {
                         if panel.tesseract_available.is_empty() {
@@ -430,9 +430,9 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                     }
                     p { class: "x-ocr-source", style: "{HELP_TEXT} margin: 0 0 6px;",
                         if panel.easyocr_languages.is_empty() {
-                            "In force: off, from the {source_label(&panel.easyocr_source)}."
+                            "In force: off, from {source_label(&panel.easyocr_source)}."
                         } else {
-                            "In force: {panel.easyocr_languages}, from the {source_label(&panel.easyocr_source)}."
+                            "In force: {panel.easyocr_languages}, from {source_label(&panel.easyocr_source)}."
                         }
                     }
                     label { style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); margin-bottom: 8px;",
@@ -442,9 +442,9 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                             onchange: move |e| inherit_easyocr.set(e.checked()),
                         }
                         if panel.inherited_easyocr.is_empty() {
-                            "Use the {source_label(&panel.inherited_easyocr_source)}: off"
+                            "Use {source_label(&panel.inherited_easyocr_source)}: off"
                         } else {
-                            "Use the {source_label(&panel.inherited_easyocr_source)}: {panel.inherited_easyocr}"
+                            "Use {source_label(&panel.inherited_easyocr_source)}: {panel.inherited_easyocr}"
                         }
                     }
                     if !*inherit_easyocr.read() {
