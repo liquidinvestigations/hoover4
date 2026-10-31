@@ -334,9 +334,9 @@ pub fn DatasetCreatePanel(
                         }
                     }
                     p { style: "{HELP_TEXT} margin: 0;",
-                        "`+`-joined language codes, e.g. eng+ron. These are the languages the first pass runs with; "
-                        "they can be changed later on the dataset page, but changing them re-runs OCR over the whole dataset. "
-                        "New datasets start from the collection's defaults."
+                        "`+`-joined language codes, for example eng+ron. An empty EasyOCR value turns EasyOCR off. "
+                        "The form starts with the collection defaults. A dataset created with the defaults follows later changes of them, "
+                        "and a dataset created with other values keeps its own. A change on the dataset page runs OCR again."
                     }
 
                     div {
@@ -355,11 +355,15 @@ pub fn DatasetCreatePanel(
                                         msg.set(None);
                                         error_msg.set(None);
                                         match admin_set_collection_ocr_defaults(collectionname, tess, easy).await {
-                                            Ok(()) => {
-                                                msg.set(Some(
-                                                    "Saved as this collection's defaults. Existing datasets keep their own settings."
-                                                        .to_string(),
-                                                ));
+                                            Ok(changed) => {
+                                                msg.set(Some(if changed.is_empty() {
+                                                    "Saved as this collection's defaults. No dataset changes its languages.".to_string()
+                                                } else {
+                                                    format!(
+                                                        "Saved as this collection's defaults. These datasets inherit them, and their OCR updates start one at a time: {}. Datasets with their own languages keep them.",
+                                                        changed.join(", ")
+                                                    )
+                                                }));
                                                 defaults_res.restart();
                                             }
                                             Err(e) => error_msg.set(Some(e.to_string())),

@@ -502,6 +502,17 @@ DEFAULTS = {
         "backfill_vectors_cap": "2",
         # The upload ingestion kind: the operations that the upload queues start.
         "ingest_upload_cap": "2",
+        # The processing updates. The coordinator starts one automatic operation at a
+        # time, so these caps limit the manual operations beside it.
+        "update_dataset_cap": "2",
+        "update_collection_cap": "2",
+    },
+    # The processing updates (tasks/P_admin/updates). `automatic = false` stops the
+    # coordinator from starting update operations on this installation. The pages still
+    # calculate the updates, and the Update processing button still starts them. It is
+    # an operational switch for an installation, not a way to skip a step for a dataset.
+    "processing_updates": {
+        "automatic": "true",
     },
     # The upload limits. The upload page and the `begin` route check the first three
     # before any byte is sent. Rendered as HOOVER4_UPLOAD_* for the website and the worker.
@@ -2012,6 +2023,8 @@ def render_main_env(cfg):
     if volume_bytes:
         env["HOOVER4_BACKUP_OBJECT_VOLUME_BYTES"] = volume_bytes
     env["HOOVER4_OPERATION_CAPS"] = operation_caps_value(cfg)
+    env["HOOVER4_PROCESSING_UPDATES_AUTOMATIC"] = (
+        "true" if cfg.get_bool("processing_updates", "automatic") else "false")
     env.update(upload_env(cfg))
     # Only ever used to tell a detached CLI where its operation can be watched. Not a
     # default anywhere in the tree: a deployment's address belongs to its own config.

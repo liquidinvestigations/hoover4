@@ -98,6 +98,13 @@ def chunk_embed_for_hashes(params: ChunkEmbedParams) -> ChunkEmbedResult:
             collection_dataset, plan_hash[:8],
         )
         return ChunkEmbedResult(text_segments=0, chunks_written=0, vectors_written=0)
+    from tasks.dataset_config import collection_vectors_enabled
+    if not collection_vectors_enabled(params.collectionname):
+        # The collection switch `features.vectors` is off. Stored vectors stay, and no
+        # new vector is written until the switch is on again.
+        log.info("%s (plan %s): vectors are off for collection %s; skipping chunk+embed",
+                 collection_dataset, plan_hash[:8], params.collectionname)
+        return ChunkEmbedResult(text_segments=0, chunks_written=0, vectors_written=0)
 
     serving_model, serving_dims = _probed_serving()
     heartbeat.beat("querying text_content")

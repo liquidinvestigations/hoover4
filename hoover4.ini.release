@@ -576,6 +576,17 @@ backfill_vectors_cap            = 2
 ; The upload ingestion. hoover4-ops ignores this key until the upload ingestion
 ; operation exists.
 ingest_upload_cap               = 2
+; The processing updates. The coordinator starts one automatic operation at a time, so
+; these caps limit the manual operations beside it.
+update_dataset_cap              = 2
+update_collection_cap           = 2
+
+[processing_updates]
+; true starts the processing updates automatically: after a deployment that changes a
+; stage version, after a settings change and after new input. One automatic operation
+; runs at a time. false stops the automatic operations on this installation. The admin
+; pages still show the waiting updates, and Update processing still starts them.
+automatic = true
 
 [uploads]
 ; The limits of one upload. The upload page and the begin route check them before any

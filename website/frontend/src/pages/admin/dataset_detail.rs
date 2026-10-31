@@ -8,7 +8,7 @@ use crate::api::admin_api::{
     admin_trigger_workflow, admin_update_dataset,
 };
 use crate::components::admin_components::{
-    AdminGuard, AdminShell, DatasetOcrSettingsPanel, ErrorBar, SuccessBar, BTN, BTN_DANGER,
+    AdminGuard, AdminShell, DatasetOcrSettingsPanel, ErrorBar, ProcessingUpdatesPanel, SuccessBar, BTN, BTN_DANGER,
     HELP_TEXT, INPUT, LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
@@ -163,16 +163,15 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
             }
         }
         DatasetOcrSettingsPanel { collection_dataset: dataset_id.clone() }
-        div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Processing" }
-            div { style: MODULE_BODY,
-                div { style: "display: flex; gap: 8px; flex-wrap: wrap;",
-                    if is_disk {
-                        WorkflowButton { label: "Rescan disk", kind: "rescan", dataset_id: dataset_id.clone(), pending, msg, error_msg }
+        ProcessingUpdatesPanel { scope_kind: "dataset".to_string(), scope_id: dataset_id.clone() }
+        if is_disk {
+            div { class: "x-admin-module", style: MODULE,
+                h2 { style: MODULE_CAPTION, "Disk" }
+                div { style: MODULE_BODY,
+                    p { style: "{HELP_TEXT} margin: 0 0 8px;",
+                        "Rescan disk reads the dataset folder again, adds new and changed files, and processes them."
                     }
-                    WorkflowButton { label: "Compute plans", kind: "compute_plans", dataset_id: dataset_id.clone(), pending, msg, error_msg }
-                    WorkflowButton { label: "Execute plans", kind: "execute_plans", dataset_id: dataset_id.clone(), pending, msg, error_msg }
-                    WorkflowButton { label: "Run OCR", kind: "rerun_ocr", dataset_id: dataset_id.clone(), pending, msg, error_msg }
+                    WorkflowButton { label: "Rescan disk", kind: "rescan", dataset_id: dataset_id.clone(), pending, msg, error_msg }
                 }
             }
         }

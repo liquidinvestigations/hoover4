@@ -62,6 +62,11 @@ def stage_is_off(task_name: str, collection_dataset: str) -> bool:
     if task_name == "P4_ExtractEntities":
         return not (os.getenv("NER_URL") or "").strip()
     if task_name in ("P5_ChunkEmbed", "P6_IndexVectors"):
+        from tasks.dataset_config import collection_of_dataset, collection_vectors_enabled
+
+        collectionname = collection_of_dataset(collection_dataset)
+        if collectionname:
+            return not collection_vectors_enabled(collectionname)
         return not (os.getenv("EMBEDDINGS_URL") or "").strip()
 
     engine = _task_engine(task_name, "run_ocr_and_store[")

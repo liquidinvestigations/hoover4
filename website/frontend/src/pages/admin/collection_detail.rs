@@ -6,10 +6,10 @@ use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{
     admin_delete_collection, admin_get_collection, admin_grant_permission, admin_list_groups,
     admin_provision_collection, admin_revoke_permission, admin_set_collection_public,
-    admin_update_collection,
+    admin_update_collection, admin_get_collection_vectors, admin_set_collection_vectors,
 };
 use crate::components::admin_components::{
-    AdminGuard, AdminShell, DatasetCreatePanel, ErrorBar, SuccessBar, BTN, BTN_DANGER,
+    AdminGuard, AdminShell, DatasetCreatePanel, ErrorBar, ProcessingUpdatesPanel, SuccessBar, BTN, BTN_DANGER,
     BTN_SMALL_DANGER, HELP_TEXT, INPUT, LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION, SELECT,
     TABLE, TD, TH,
 };
@@ -203,6 +203,8 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                 }
             }
         }
+        ProcessingUpdatesPanel { scope_kind: "collection".to_string(), scope_id: collection_id.clone() }
+        CollectionVectorsControl { collectionname: collection_id.clone() }
         DatasetCreatePanel {
             collectionname: collection_id.clone(),
             existing_datasets: detail.datasets.iter().map(|d| d.dataset_name.clone()).collect::<Vec<_>>(),
@@ -365,6 +367,65 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                             }
                         },
                         "Delete collection"
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The Vectors switch of a collection. A collection without its own value follows the
+/// installation.
+#[component]
+fn CollectionVectorsControl(collectionname: String) -> Element {
+    let for_res = collectionname.clone();
+    let mut state_res = use_resource(move || admin_get_collection_vectors(for_res.clone()));
+    let mut error_msg = use_signal(|| None::<String>);
+    let mut saving = use_signal(|| false);
+    let state = state_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned();
+    let load_error = state_res.read().as_ref().and_then(|r| r.as_ref().err().map(user_facing_message));
+    rsx! {
+        div { class: "x-admin-module", style: MODULE,
+            h2 { style: MODULE_CAPTION, "Features" }
+            div { style: MODULE_BODY,
+                if let Some(err) = error_msg.read().clone() { ErrorBar { message: err } }
+                if let Some(err) = load_error {
+                    ErrorBar { message: format!("The vectors setting could not be read: {err}") }
+                }
+                if let Some((enabled, explicit, installation)) = state {
+                    label { style: LABEL,
+                        input {
+                            r#type: "checkbox",
+                            class: "x-collection-vectors",
+                            checked: enabled,
+                            disabled: !installation || *saving.read(),
+                            onchange: {
+                                let name = collectionname.clone();
+                                move |e: Event<FormData>| {
+                                    let name = name.clone();
+                                    let on = e.checked();
+                                    saving.set(true);
+                                    spawn(async move {
+                                        error_msg.set(None);
+                                        if let Err(err) = admin_set_collection_vectors(name, on).await {
+                                            error_msg.set(Some(user_facing_message(&err)));
+                                        }
+                                        saving.set(false);
+                                        state_res.restart();
+                                    });
+                                }
+                            },
+                        }
+                        "Vectors"
+                    }
+                    p { style: "{HELP_TEXT} margin: 4px 0 0;",
+                        if !installation {
+                            "This installation runs no embedding service, so no collection uses vectors."
+                        } else if explicit {
+                            "Vectors find passages by meaning. Off stops new vectors and stops search from using the stored ones, which stay. On computes the missing vectors of every dataset, one dataset at a time."
+                        } else {
+                            "This collection follows the installation, which uses vectors. Vectors find passages by meaning. Off stops new vectors and stops search from using the stored ones, which stay."
+                        }
                     }
                 }
             }

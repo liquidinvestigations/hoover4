@@ -1,13 +1,11 @@
-//! The dataset OCR language form and the operation strip that keeps it unlockable.
+//! The dataset OCR language form and the operation strip of the dataset.
 //!
-//! These two are one file because they are one mechanism. The form disables itself while
-//! an apply operation runs; the strip is what makes that operation visible. A form that
-//! hides its own lock is a form that locks forever, so the strip polls, reports
-//! staleness, and shows the error when an operation fails.
+//! The strip polls the newest operation of the dataset, reports staleness, and shows the
+//! error when an operation fails.
 //!
-//! Neither of them is the actual guard. `admin_apply_ocr_languages` refuses a second
-//! dispatch server-side through the operations lock, reading the same row the strip
-//! polls, because two admins in two browsers are not stopped by a disabled button.
+//! Apply saves the languages and signals the processing updates. It starts no operation
+//! itself, so it is not locked by a running one. The OCR step of the processing updates
+//! runs the work, and the strip shows that operation like any other.
 
 use dioxus::prelude::*;
 
@@ -175,7 +173,8 @@ pub fn DatasetOperationStrip(
     }
 }
 
-/// One engine's language list, as a set of checkboxes over what the tier can serve.
+/// One engine's language list, as checkboxes over what the service reports, with a text
+/// filter, because the Tesseract image lists more than 100 entries.
 ///
 /// A text box would let an admin type a language the image does not have, which fails per
 /// file hours later. The backend refuses that too, but the form should not be able to
@@ -186,11 +185,27 @@ fn LanguageChecklist(
     selected: Signal<Vec<String>>,
     disabled: bool,
 ) -> Element {
+    let mut filter = use_signal(String::new);
     let ink = if disabled { "var(--x-ink-faint)" } else { "var(--x-ink)" };
+    let needle = filter.read().trim().to_lowercase();
+    // Selected codes stay visible whatever the filter says, so a choice never hides.
+    let shown: Vec<String> = available
+        .iter()
+        .filter(|code| needle.is_empty() || code.contains(&needle) || selected.read().contains(code))
+        .cloned()
+        .collect();
     rsx! {
+        input {
+            class: "x-language-filter",
+            style: "{INPUT} width: 220px; margin-bottom: 8px;",
+            placeholder: "Filter languages",
+            value: "{filter}",
+            disabled,
+            oninput: move |e| filter.set(e.value()),
+        }
         div {
-            style: "display: flex; flex-wrap: wrap; gap: 10px 16px;",
-            for code in available.iter().cloned() {
+            style: "display: flex; flex-wrap: wrap; gap: 8px 14px; max-height: 220px; overflow: auto;",
+            for code in shown.iter().cloned() {
                 {
                     let code_for_check = code.clone();
                     let code_for_toggle = code.clone();
@@ -216,12 +231,33 @@ fn LanguageChecklist(
                                     }
                                 },
                             }
-                            "{code}"
+                            "{language_label(&code)}"
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/// The label of a language code. Tesseract also lists an orientation model and script
+/// models, which read differently from a language.
+fn language_label(code: &str) -> String {
+    if code == "osd" {
+        return "osd (page orientation and script detection)".to_string();
+    }
+    if let Some(script) = code.strip_prefix("script/") {
+        return format!("{script} (script model)");
+    }
+    code.to_string()
+}
+
+/// The words for a value source.
+fn source_label(source: &str) -> &'static str {
+    match source {
+        "dataset" => "this dataset",
+        "collection" => "collection default",
+        _ => "installation default",
     }
 }
 
@@ -240,7 +276,10 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
     let mut panel_res = use_resource(move || admin_get_dataset_ocr(collection_dataset.read().clone()));
 
     let mut tesseract = use_signal(Vec::<String>::new);
-    let mut easyocr_raw = use_signal(String::new);
+    let mut easyocr = use_signal(Vec::<String>::new);
+    let mut easyocr_on = use_signal(|| true);
+    let mut inherit_tesseract = use_signal(|| false);
+    let mut inherit_easyocr = use_signal(|| false);
     let mut seeded_for = use_signal(String::new);
     let mut msg = use_signal(|| None::<String>);
     let mut error_msg = use_signal(|| None::<String>);
@@ -254,9 +293,7 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
     let load_failed = panel_res.read().as_ref().is_some_and(|r| r.is_err());
 
     // Seed the form from the server's values once per dataset, and re-seed when the
-    // router reuses this component for another one. Writing signals during render is what
-    // `use_effect` is for; the guard is the dataset id rather than a bool so a navigation
-    // between two datasets does not leave the first one's languages in the boxes.
+    // router reuses this component for another one.
     //
     // The hook runs on every render and the resource is read *inside* it, both so the
     // effect re-runs when the fetch resolves and because a `use_effect` that only exists
@@ -271,7 +308,10 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
         if let Some(loaded) = loaded {
             if *seeded_for.peek() != loaded.collection_dataset {
                 tesseract.set(split_languages(&loaded.tesseract_languages));
-                easyocr_raw.set(loaded.easyocr_languages);
+                easyocr.set(split_languages(&loaded.easyocr_languages));
+                easyocr_on.set(!loaded.easyocr_languages.is_empty());
+                inherit_tesseract.set(loaded.tesseract_source != "dataset");
+                inherit_easyocr.set(loaded.easyocr_source != "dataset");
                 seeded_for.set(loaded.collection_dataset);
             }
         }
@@ -292,16 +332,34 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
         };
     };
 
-    let operation_running = panel.operation.as_ref().is_some_and(|o| o.is_running());
-    let current_tesseract = split_languages(&panel.tesseract_languages);
     let selected_tesseract = tesseract.read().clone();
-    let dirty = selected_tesseract != current_tesseract
-        || *easyocr_raw.read() != panel.easyocr_languages;
-    let can_apply = dirty && !operation_running && !*submitting.read() && !selected_tesseract.is_empty();
+    let easyocr_value = if *easyocr_on.read() { easyocr.read().join("+") } else { String::new() };
+    let request_tesseract = if *inherit_tesseract.read() { panel.inherited_tesseract.clone() } else { selected_tesseract.join("+") };
+    let request_easyocr = if *inherit_easyocr.read() { panel.inherited_easyocr.clone() } else { easyocr_value.clone() };
+    let sources_change = (*inherit_tesseract.read()) != (panel.tesseract_source != "dataset")
+        || (*inherit_easyocr.read()) != (panel.easyocr_source != "dataset");
+    let dirty = sources_change
+        || request_tesseract != panel.tesseract_languages
+        || request_easyocr != panel.easyocr_languages;
+    let tesseract_ok = *inherit_tesseract.read() || !selected_tesseract.is_empty();
+    let easyocr_ok = *inherit_easyocr.read() || !*easyocr_on.read() || !easyocr.read().is_empty();
+    let can_apply = dirty && !*submitting.read() && tesseract_ok && easyocr_ok;
 
     let apply_style = if can_apply { "" } else { "opacity: 0.5; cursor: not-allowed;" };
     let dataset_for_apply = panel.collection_dataset.clone();
     let dataset_for_strip = panel.collection_dataset.clone();
+    let easyocr_choices = if panel.easyocr_supported.is_empty() {
+        // The service did not report its inventory. The stored codes stay selectable.
+        split_languages(&panel.easyocr_languages)
+    } else {
+        panel.easyocr_supported.clone()
+    };
+    let not_preloaded: Vec<String> = easyocr
+        .read()
+        .iter()
+        .filter(|code| !panel.easyocr_preloaded.is_empty() && !panel.easyocr_preloaded.contains(code))
+        .cloned()
+        .collect();
 
     rsx! {
         DatasetOperationStrip {
@@ -315,55 +373,106 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                 if let Some(e) = error_msg.read().clone() { ErrorBar { message: e } }
 
                 p { style: "{HELP_TEXT} margin: 0;",
-                    "Each EasyOCR script group adds one OCR pass over the dataset. Tesseract reads all its languages in one pass."
+                    "Each EasyOCR script group adds one OCR pass over the dataset. Tesseract reads all its languages in one pass. "
+                    "Apply saves the languages, and the OCR update of this dataset then starts by itself."
                 }
 
                 div {
-                    h3 { style: SUBHEADING,
-                        "Tesseract"
+                    h3 { style: SUBHEADING, "Tesseract" }
+                    p { class: "x-ocr-source", style: "{HELP_TEXT} margin: 0 0 6px;",
+                        "In force: {panel.tesseract_languages}, from the {source_label(&panel.tesseract_source)}."
                     }
-                    if panel.tesseract_available.is_empty() {
-                        p { style: "{HELP_TEXT} margin: 0;",
-                            "The Tesseract service did not answer, so the installed languages are unknown. "
-                            "The list comes from the running image, not from configuration \u{2014} without it this form would be offering languages that fail per file."
-                        }
-                    } else {
-                        LanguageChecklist {
-                            available: panel.tesseract_available.clone(),
-                            selected: tesseract,
-                            disabled: operation_running,
-                        }
-                        p { style: "{HELP_TEXT} margin: 6px 0 0;",
-                            "The first language is the primary one. Selected: "
-                            strong { "{selected_tesseract.join(\"+\")}" }
-                        }
-                    }
-                }
-
-                div {
-                    h3 { style: SUBHEADING,
-                        "EasyOCR"
-                    }
-                    if panel.easyocr_configured {
+                    label { style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); margin-bottom: 8px;",
                         input {
-                            style: "{INPUT} width: 260px;",
-                            value: "{easyocr_raw}",
-                            disabled: operation_running,
-                            oninput: move |e| easyocr_raw.set(e.value()),
+                            r#type: "checkbox",
+                            checked: *inherit_tesseract.read(),
+                            onchange: move |e| inherit_tesseract.set(e.checked()),
                         }
-                    } else {
-                        input { style: "{INPUT} width: 260px;", value: "{panel.easyocr_languages}", disabled: true }
-                        p { style: "{HELP_TEXT} margin: 6px 0 0;",
-                            "EasyOCR is off on this deployment, so this setting has no effect."
+                        "Use the {source_label(&panel.inherited_tesseract_source)}: {panel.inherited_tesseract}"
+                    }
+                    if !*inherit_tesseract.read() {
+                        if panel.tesseract_available.is_empty() {
+                            p { style: "{HELP_TEXT} margin: 0;",
+                                "The Tesseract service did not answer, so the installed languages are unknown. "
+                                "The list comes from the running image, not from configuration."
+                            }
+                        } else {
+                            LanguageChecklist {
+                                available: panel.tesseract_available.clone(),
+                                selected: tesseract,
+                                disabled: false,
+                            }
+                            p { style: "{HELP_TEXT} margin: 6px 0 0;",
+                                "The first language is the primary one. Selected: "
+                                strong { "{selected_tesseract.join(\"+\")}" }
+                            }
+                        }
+                    }
+                }
+
+                div {
+                    h3 { style: SUBHEADING, "EasyOCR" }
+                    if !panel.easyocr_configured {
+                        p { style: "{HELP_TEXT} margin: 0 0 6px;",
+                            "EasyOCR is off on this deployment, so this setting has no effect until it is on."
+                        }
+                    }
+                    p { class: "x-ocr-source", style: "{HELP_TEXT} margin: 0 0 6px;",
+                        if panel.easyocr_languages.is_empty() {
+                            "In force: off, from the {source_label(&panel.easyocr_source)}."
+                        } else {
+                            "In force: {panel.easyocr_languages}, from the {source_label(&panel.easyocr_source)}."
+                        }
+                    }
+                    label { style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); margin-bottom: 8px;",
+                        input {
+                            r#type: "checkbox",
+                            checked: *inherit_easyocr.read(),
+                            onchange: move |e| inherit_easyocr.set(e.checked()),
+                        }
+                        if panel.inherited_easyocr.is_empty() {
+                            "Use the {source_label(&panel.inherited_easyocr_source)}: off"
+                        } else {
+                            "Use the {source_label(&panel.inherited_easyocr_source)}: {panel.inherited_easyocr}"
+                        }
+                    }
+                    if !*inherit_easyocr.read() {
+                        label { style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); margin-bottom: 8px;",
+                            input {
+                                r#type: "checkbox",
+                                checked: *easyocr_on.read(),
+                                onchange: move |e| easyocr_on.set(e.checked()),
+                            }
+                            "Enabled"
+                        }
+                        if *easyocr_on.read() {
+                            if panel.easyocr_supported.is_empty() {
+                                p { style: "{HELP_TEXT} margin: 0 0 6px;",
+                                    "The EasyOCR service did not report the languages that it supports."
+                                }
+                            }
+                            LanguageChecklist {
+                                available: easyocr_choices.clone(),
+                                selected: easyocr,
+                                disabled: false,
+                            }
+                            if !not_preloaded.is_empty() {
+                                p { style: "{HELP_TEXT} margin: 6px 0 0;",
+                                    "The models of {not_preloaded.join(\", \")} are not in the image. The service downloads them on first use, which needs internet access."
+                                }
+                            }
+                        }
+                    }
+                    for failure in panel.easyocr_failed_downloads.iter() {
+                        p { key: "{failure}", style: "margin: 6px 0 0; color: var(--x-danger); font-size: var(--x-text-sm);",
+                            "A model download failed: {failure}"
                         }
                     }
                 }
 
                 if !panel.text_variants.is_empty() {
                     div {
-                        h3 { style: SUBHEADING,
-                            "Stored text variants"
-                        }
+                        h3 { style: SUBHEADING, "Stored text variants" }
                         div { style: "display: flex; flex-wrap: wrap; gap: 6px;",
                             for variant in panel.text_variants.iter() {
                                 span {
@@ -382,9 +491,7 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
 
                 if panel.ocr_pdf_configured && !panel.pdf_variants.is_empty() {
                     div {
-                        h3 { style: SUBHEADING,
-                            "Searchable PDFs"
-                        }
+                        h3 { style: SUBHEADING, "Searchable PDFs" }
                         div { style: "display: flex; flex-wrap: wrap; gap: 6px;",
                             for variant in panel.pdf_variants.iter() {
                                 span {
@@ -397,17 +504,10 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                         }
                     }
                 } else if !panel.ocr_pdf_configured {
-                    p { style: "{HELP_TEXT} margin: 0;",
-                        "Searchable PDFs are off on this deployment."
-                    }
+                    p { style: "{HELP_TEXT} margin: 0;", "Searchable PDFs are off on this deployment." }
                 }
 
                 div {
-                    if operation_running {
-                        p { style: "{HELP_TEXT} margin: 0 0 6px;",
-                            "The form unlocks when the operation above finishes."
-                        }
-                    }
                     button {
                         style: "{BTN} {apply_style}",
                         disabled: !can_apply,
@@ -416,14 +516,17 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                             move |_| {
                                 let dataset = dataset.clone();
                                 let tess = tesseract.read().join("+");
-                                let easy = easyocr_raw.read().clone();
+                                let easy = if *easyocr_on.read() { easyocr.read().join("+") } else { String::new() };
+                                let inherit_t = *inherit_tesseract.read();
+                                let inherit_e = *inherit_easyocr.read();
                                 submitting.set(true);
                                 spawn(async move {
                                     msg.set(None);
                                     error_msg.set(None);
-                                    match admin_apply_ocr_languages(dataset, tess, easy).await {
-                                        Ok(job_id) => {
-                                            msg.set(Some(format!("Apply job started: {job_id}")));
+                                    match admin_apply_ocr_languages(dataset, tess, easy, inherit_t, inherit_e).await {
+                                        Ok(sentence) => {
+                                            msg.set(Some(sentence));
+                                            seeded_for.set(String::new());
                                             panel_res.restart();
                                         }
                                         Err(e) => error_msg.set(Some(e.to_string())),
@@ -432,9 +535,9 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                                 });
                             }
                         },
-                        if *submitting.read() { "Starting\u{2026}" } else { "Apply" }
+                        if *submitting.read() { "Saving\u{2026}" } else { "Apply" }
                     }
-                    if !dirty && !operation_running {
+                    if !dirty {
                         span { style: "{HELP_TEXT} margin-left: 10px;", "No changes to apply." }
                     }
                 }

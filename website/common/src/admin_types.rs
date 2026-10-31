@@ -201,6 +201,29 @@ pub struct DatasetOcrPanel {
     /// normalised on the way through.
     pub tesseract_languages: String,
     pub easyocr_languages: String,
+    /// Where each value comes from: `dataset`, `collection` or `installation`.
+    #[serde(default)]
+    pub tesseract_source: String,
+    #[serde(default)]
+    pub easyocr_source: String,
+    /// The value that the dataset gets without its own row, and its source.
+    #[serde(default)]
+    pub inherited_tesseract: String,
+    #[serde(default)]
+    pub inherited_tesseract_source: String,
+    #[serde(default)]
+    pub inherited_easyocr: String,
+    #[serde(default)]
+    pub inherited_easyocr_source: String,
+    /// The EasyOCR languages that the installed package supports, from the service.
+    #[serde(default)]
+    pub easyocr_supported: Vec<String>,
+    /// The EasyOCR languages whose models the image preloads. Others download on first use.
+    #[serde(default)]
+    pub easyocr_preloaded: Vec<String>,
+    /// First-use model downloads that failed, as `languages: error`.
+    #[serde(default)]
+    pub easyocr_failed_downloads: Vec<String>,
     /// What the Tesseract image can actually serve, read from its `/health` rather than
     /// from configuration. Empty when the tier did not answer. The form then says so
     /// instead of offering a list it cannot stand behind.

@@ -1,0 +1,46 @@
+{
+  "comment": "The effective OCR languages of a dataset. Order: the dataset row, the collection default row, the installation default. A deleted row is a tombstone. The version is the newest row read, tombstones included, and 0 without a row. Read by tests/unit/test_ocr_resolution.py and by the dataset_ocr tests of the website backend. A row is [value, deleted, version_us].",
+  "installation": {"tesseract": "eng+deu", "easyocr": "en"},
+  "cases": [
+    {
+      "name": "no rows use the installation default",
+      "dataset": {}, "collection": {},
+      "expected": {"tesseract": ["eng+deu", "installation", 0], "easyocr": ["en", "installation", 0]}
+    },
+    {
+      "name": "a collection default applies to a dataset without its own row",
+      "dataset": {}, "collection": {"tesseract": ["ron", false, 50], "easyocr": ["en+ru", false, 51]},
+      "expected": {"tesseract": ["ron", "collection", 50], "easyocr": ["en+ru", "collection", 51]}
+    },
+    {
+      "name": "a dataset row overrides the collection default",
+      "dataset": {"tesseract": ["fra", false, 40]}, "collection": {"tesseract": ["ron", false, 50]},
+      "expected": {"tesseract": ["fra", "dataset", 40], "easyocr": ["en", "installation", 0]}
+    },
+    {
+      "name": "an empty EasyOCR dataset row turns EasyOCR off",
+      "dataset": {"easyocr": ["", false, 70]}, "collection": {"easyocr": ["en", false, 60]},
+      "expected": {"tesseract": ["eng+deu", "installation", 0], "easyocr": ["", "dataset", 70]}
+    },
+    {
+      "name": "an empty EasyOCR collection default turns EasyOCR off for inheriting datasets",
+      "dataset": {}, "collection": {"easyocr": ["", false, 60]},
+      "expected": {"tesseract": ["eng+deu", "installation", 0], "easyocr": ["", "collection", 60]}
+    },
+    {
+      "name": "a reset dataset row inherits the collection default with the reset version",
+      "dataset": {"tesseract": ["fra", true, 90]}, "collection": {"tesseract": ["ron", false, 50]},
+      "expected": {"tesseract": ["ron", "collection", 90], "easyocr": ["en", "installation", 0]}
+    },
+    {
+      "name": "a deleted collection default falls back to the installation with its version",
+      "dataset": {}, "collection": {"tesseract": ["ron", true, 80]},
+      "expected": {"tesseract": ["eng+deu", "installation", 80], "easyocr": ["en", "installation", 0]}
+    },
+    {
+      "name": "a newer collection default does not change a dataset override or its version",
+      "dataset": {"tesseract": ["fra", false, 40]}, "collection": {"tesseract": ["ita", false, 99]},
+      "expected": {"tesseract": ["fra", "dataset", 40], "easyocr": ["en", "installation", 0]}
+    }
+  ]
+}

@@ -11,6 +11,7 @@ Versioned arguments select the current completion contract.
 Both use stored detector rows and the group workflow's route rules.
 
 Engine error versions are compared with their language setting versions.
+A setting version is the newest dataset or collection default row that resolution read.
 Current writers use microseconds. Earlier whole-second settings include errors from the same second.
 An absent setting uses the epoch, so any recorded error is current.
 """
@@ -98,26 +99,17 @@ def chunked(values: Iterable[str], size: int = HASH_CHUNK) -> Iterable[List[str]
 
 
 def language_settings(collection_dataset: str) -> Dict[str, LanguageSetting]:
-    """Each engine's effective languages and the version of the row that set them.
+    """Each engine's effective languages and their version.
 
-    The value and the version come from one row, the latest by `setting_version_us`. A
-    deleted or absent row gives the stack-wide default, with the version of the deletion
-    or the epoch.
+    `tasks/dataset_config.resolve_ocr_languages` decides both: the dataset row, then the
+    collection default, then the installation default. The version is the newest row
+    that resolution read, tombstones included, or the epoch when no row exists.
     """
-    from tasks.dataset_config import DEFAULTS, latest_setting_rows, ocr_language_key
+    from tasks.dataset_config import effective_ocr_settings
 
-    keys = {engine: ocr_language_key(engine) for engine in OCR_ENGINES}
-    rows = latest_setting_rows(collection_dataset, list(keys.values()))
-    settings = {}
-    for engine, key in keys.items():
-        row = rows.get(key)
-        if row is None:
-            settings[engine] = LanguageSetting(DEFAULTS[key], SettingVersion())
-            continue
-        value = DEFAULTS[key] if row.is_deleted else row.value
-        settings[engine] = LanguageSetting(
-            value, SettingVersion(row.version_us, row.is_precise))
-    return settings
+    return {engine: LanguageSetting(effective.value,
+                                    SettingVersion(effective.version_us, effective.is_precise))
+            for engine, effective in effective_ocr_settings(collection_dataset).items()}
 
 
 def engine_passes(engine: str, languages: str) -> List[str]:

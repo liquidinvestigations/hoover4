@@ -1,0 +1,420 @@
+"""Target keys and live selectors of the update steps.
+
+`target_key` returns the settings that a step depends on, as a string. It reads no
+collection table, so the coordinator can compare every scope with one pass of cheap
+reads. `select` counts the work of one step with bounded queries over the collection
+database, and returns the files as a SQL subquery too, so the totals of a scope count
+each file once across its steps.
+
+Selector contracts, one for each step:
+
+* `unfinished` selects the files of plans without a `processing_plan_finished` row and
+  the blobs without a plan. Settlement: both counts are zero.
+* `failed_files` selects the files with a current `processing_errors` row of an enabled
+  stage and a plan. The automatic count keeps only the stage versions that are not a
+  baseline and have no retry claim for the dataset. Settlement: the selected pairs were
+  reconciled.
+* `ocr` selects files with OCR history that lack a result, a skip or an OCR error of a
+  current language pass, and files that keep a variant of languages that the effective
+  settings no longer include. The count is an estimate, because an error of earlier
+  languages counts as settled here. `RerunOcr` computes the exact targets.
+  Settlement: `RerunOcr` verified every target and no obsolete variant remains.
+* `vectors` selects files with text and no vector of the served model, when the
+  collection uses vectors. A file whose text has no passage worth a vector stays in the
+  count after the run, so the count is an upper bound. Settlement: every selected plan
+  ran embedding and indexing.
+* `folder_counts` selects folder nodes without counts, or every node after a version
+  change of the counts. Settlement: no node lacks its counts.
+* `search_schema` selects the shard tables that miss a required column or have another
+  type. Settlement: every shard table has the required definitions.
+"""
+
+import json
+import logging
+import re
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Sequence, Tuple
+
+from tasks.P_admin.updates.registry import STEPS_BY_ID, UpdateStep, step_version
+
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class ScopeContext:
+    """What the selectors of one scope read."""
+
+    scope_kind: str
+    scope_id: str
+    collectionname: str
+    input_revision: str = ""
+    #: The applied rows of the scope, by step id.
+    applied: Dict[str, dict] = field(default_factory=dict)
+
+
+@dataclass
+class Selection:
+    count: int = 0
+    bytes: int = 0
+    automatic: int = 0
+    #: A subquery over the collection database with one column `hash`, or empty.
+    hash_sql: str = ""
+    parameters: Dict[str, object] = field(default_factory=dict)
+    detail: Dict[str, object] = field(default_factory=dict)
+
+
+# ---- target keys ---------------------------------------------------------------------------
+
+
+def ocr_target(collection_dataset: str, collectionname: str) -> dict:
+    """The effective OCR languages and configured engines of a dataset."""
+    from tasks.dataset_config import effective_ocr_settings
+    from tasks.ocr_client import engine_configured
+    from tasks.ocr_pdf_client import engines_for_provider, service_configured
+    from tasks.text_sources import OCR_ENGINES
+
+    settings = effective_ocr_settings(collection_dataset, collectionname)
+    pdf_engines = engines_for_provider() if service_configured() else []
+    return {
+        "languages": {engine: settings[engine].value for engine in OCR_ENGINES},
+        "sources": {engine: settings[engine].source for engine in OCR_ENGINES},
+        "image_engines": [e for e in OCR_ENGINES if engine_configured(e)],
+        "pdf_engines": list(pdf_engines),
+    }
+
+
+def vectors_target(collectionname: str) -> dict:
+    from database.clickhouse import get_server_setting
+    from tasks.dataset_config import collection_vectors_enabled
+
+    if not collection_vectors_enabled(collectionname):
+        return {"vectors": "off"}
+    return {"vectors": "on", "model": get_server_setting("embeddings_serving_model") or ""}
+
+
+def schema_target() -> dict:
+    return {"columns": required_page_columns()}
+
+
+def target_key(step: UpdateStep, ctx: ScopeContext) -> Tuple[str, dict]:
+    """The target key of a step for a scope, and the settings it names."""
+    if step.step_id == "ocr":
+        target = ocr_target(ctx.scope_id, ctx.collectionname)
+        key = {k: target[k] for k in ("languages", "image_engines", "pdf_engines")}
+        return json.dumps(key, sort_keys=True), target
+    if step.step_id == "vectors":
+        target = vectors_target(ctx.collectionname)
+        return json.dumps(target, sort_keys=True), target
+    if step.step_id == "search_schema":
+        target = schema_target()
+        return json.dumps(target, sort_keys=True), {}
+    return "", {}
+
+
+# ---- selectors -----------------------------------------------------------------------------
+
+
+def _count(client, hash_sql: str, parameters: dict, collection_dataset: str) -> Tuple[int, int]:
+    """Distinct files of a hash subquery and their bytes, one size for each blob."""
+    if not hash_sql:
+        return 0, 0
+    rows = client.query(
+        f"SELECT uniqExact(h.hash), sum(b.size) FROM (SELECT DISTINCT hash FROM ({hash_sql})) AS h "
+        "LEFT JOIN (SELECT blob_hash, any(blob_size_bytes) AS size FROM blobs "
+        "WHERE collection_dataset = {cd:String} GROUP BY blob_hash) AS b ON b.blob_hash = h.hash",
+        parameters={**parameters, "cd": collection_dataset}).result_rows
+    return int(rows[0][0] or 0), int(rows[0][1] or 0)
+
+
+_LIVE = ("SELECT hash FROM vfs_files FINAL WHERE collection_dataset = {cd:String} "
+         "AND is_deleted = 0")
+
+
+def select_unfinished(client, ctx: ScopeContext) -> Selection:
+    open_plans = ("SELECT plan_hash FROM processing_plans WHERE collection_dataset = {cd:String} "
+                  "AND plan_hash NOT IN (SELECT plan_hash FROM processing_plan_finished "
+                  "WHERE collection_dataset = {cd:String})")
+    hash_sql = (
+        "SELECT item_hash AS hash FROM processing_plan_hits WHERE collection_dataset = {cd:String} "
+        f"AND plan_hash IN ({open_plans}) "
+        "UNION ALL SELECT blob_hash AS hash FROM blobs WHERE collection_dataset = {cd:String} "
+        "AND blob_hash NOT IN (SELECT item_hash FROM processing_plan_hits "
+        "WHERE collection_dataset = {cd:String})")
+    parameters = {"cd": ctx.scope_id}
+    plans = int(client.query(f"SELECT count() FROM ({open_plans})", parameters=parameters).result_rows[0][0])
+    files, size = _count(client, hash_sql, parameters, ctx.scope_id)
+    return Selection(files, size, files, hash_sql if files else "", parameters,
+                     {"plans": plans})
+
+
+def failed_pairs(client, collection_dataset: str) -> List[Tuple[str, str]]:
+    """Current error pairs of the dataset with a file and a plan."""
+    return [(str(h), str(t)) for h, t in client.query(
+        "SELECT DISTINCT hash, task_name FROM processing_errors FINAL "
+        "WHERE collection_dataset = {cd:String} AND hash != '' "
+        "AND hash IN (SELECT item_hash FROM processing_plan_hits WHERE collection_dataset = {cd:String})",
+        parameters={"cd": collection_dataset}).result_rows]
+
+
+def classify_failed(pairs: Sequence[Tuple[str, str]], stage_is_off, entitled: Dict[str, int],
+                    claimed: set) -> dict:
+    """The task names that a manual and an automatic retry select, and their stages.
+
+    A name of a disabled stage is left out. An unknown name is retryable by hand only.
+    The automatic names belong to entitled stage versions without a claim.
+    """
+    from tasks.stage_versions import canonical_stage
+
+    manual, automatic, stages = set(), set(), {}
+    manual_files, automatic_files = set(), set()
+    for file_hash, task_name in pairs:
+        if stage_is_off(task_name):
+            continue
+        manual.add(task_name)
+        manual_files.add(file_hash)
+        stage = canonical_stage(task_name)
+        if stage is None:
+            continue
+        stages[task_name] = stage
+        version = entitled.get(stage)
+        if version is not None and (stage, version) not in claimed:
+            automatic.add(task_name)
+            automatic_files.add(file_hash)
+    return {"manual_tasks": sorted(manual), "automatic_tasks": sorted(automatic),
+            "stages": stages, "manual_files": len(manual_files),
+            "automatic_files": len(automatic_files)}
+
+
+def select_failed(client, ctx: ScopeContext) -> Selection:
+    from database.processing_updates import claimed_stage_versions, entitled_stage_versions
+    from tasks.P_admin.stage_eligibility import stage_is_off
+
+    classes = classify_failed(
+        failed_pairs(client, ctx.scope_id),
+        lambda task: stage_is_off(task, ctx.scope_id),
+        entitled_stage_versions(), claimed_stage_versions(ctx.scope_id))
+    if not classes["manual_tasks"]:
+        return Selection(detail={"manual_tasks": [], "automatic_tasks": []})
+    hash_sql = ("SELECT hash FROM processing_errors FINAL WHERE collection_dataset = {cd:String} "
+                "AND hash != '' AND task_name IN {ff_tasks:Array(String)} "
+                "AND hash IN (SELECT item_hash FROM processing_plan_hits WHERE collection_dataset = {cd:String})")
+    parameters = {"cd": ctx.scope_id, "ff_tasks": classes["manual_tasks"]}
+    files, size = _count(client, hash_sql, parameters, ctx.scope_id)
+    return Selection(files, size, classes["automatic_files"], hash_sql, parameters, {
+        "manual_tasks": classes["manual_tasks"], "automatic_tasks": classes["automatic_tasks"]})
+
+
+def desired_ocr_variants(languages: Dict[str, str]) -> Tuple[set, set]:
+    """The text variants and the PDF `(engine, languages)` pairs of effective languages.
+
+    Engine configuration is not read here: a stopped service must not make its stored
+    variants obsolete.
+    """
+    from tasks.ocr_targets import engine_passes
+    from tasks.text_sources import ocr_extracted_by, pdf_ocr_extracted_by
+
+    variants, pairs = set(), set()
+    for engine, value in languages.items():
+        for languages_pass in engine_passes(engine, value):
+            variants.add(ocr_extracted_by(engine, languages_pass))
+            variants.add(pdf_ocr_extracted_by(engine, languages_pass))
+            pairs.add((engine, languages_pass))
+    return variants, pairs
+
+
+def obsolete_ocr_outputs(client, collection_dataset: str, keep_languages: Sequence[Dict[str, str]]):
+    """The stored OCR text variants and PDF pairs outside every settings value in `keep_languages`."""
+    keep_variants, keep_pairs = set(), set()
+    for languages in keep_languages:
+        variants, pairs = desired_ocr_variants(languages)
+        keep_variants |= variants
+        keep_pairs |= pairs
+    stored_variants = {row[0] for row in client.query(
+        "SELECT DISTINCT extracted_by FROM text_content WHERE collection_dataset = {cd:String} "
+        "AND (startsWith(extracted_by, 'ocr_') OR startsWith(extracted_by, 'pdfocr_'))",
+        parameters={"cd": collection_dataset}).result_rows}
+    stored_pairs = {(e, l) for e, l in client.query(
+        "SELECT engine, languages FROM pdf_ocr_results FINAL WHERE collection_dataset = {cd:String} "
+        "AND is_deleted = 0 GROUP BY engine, languages",
+        parameters={"cd": collection_dataset}).result_rows}
+    return sorted(stored_variants - keep_variants), sorted(stored_pairs - keep_pairs)
+
+
+def select_ocr(client, ctx: ScopeContext, target: Optional[dict] = None) -> Selection:
+    from tasks.ocr_targets import engine_passes
+
+    target = target or ocr_target(ctx.scope_id, ctx.collectionname)
+    image_pairs = [(e, p) for e in target["image_engines"]
+                   for p in engine_passes(e, target["languages"].get(e, ""))]
+    pdf_pairs = [(e, p) for e in target["pdf_engines"]
+                 for p in engine_passes(e, target["languages"].get(e, ""))]
+    parameters: Dict[str, object] = {"cd": ctx.scope_id}
+    parts = []
+    if image_pairs:
+        population = ("SELECT image_hash AS hash FROM raw_ocr_results WHERE collection_dataset = {cd:String} "
+                      "UNION ALL SELECT file_hash AS hash FROM ocr_skips WHERE collection_dataset = {cd:String} "
+                      "AND stage = 'image' "
+                      "UNION ALL SELECT hash FROM processing_errors WHERE collection_dataset = {cd:String} "
+                      "AND startsWith(task_name, 'run_ocr_and_store[')")
+        missing = []
+        for index, (engine, languages) in enumerate(image_pairs):
+            parameters[f"ie{index}"], parameters[f"il{index}"] = engine, languages
+            missing.append(
+                f"hash NOT IN (SELECT image_hash FROM raw_ocr_results WHERE collection_dataset = {{cd:String}} "
+                f"AND engine = {{ie{index}:String}} AND languages = {{il{index}:String}} "
+                f"UNION ALL SELECT file_hash FROM ocr_skips WHERE collection_dataset = {{cd:String}} "
+                f"AND stage = 'image' AND engine = {{ie{index}:String}} AND languages = {{il{index}:String}} "
+                f"UNION ALL SELECT hash FROM processing_errors WHERE collection_dataset = {{cd:String}} "
+                f"AND task_name = concat('run_ocr_and_store[', {{ie{index}:String}}, ']'))")
+        parts.append(f"SELECT hash FROM ({population}) WHERE hash IN ({_LIVE}) AND ({' OR '.join(missing)})")
+    if pdf_pairs:
+        population = ("SELECT pdf_hash AS hash FROM pdf_ocr_results WHERE collection_dataset = {cd:String} "
+                      "AND source_kind != 'image' "
+                      "UNION ALL SELECT file_hash AS hash FROM ocr_skips WHERE collection_dataset = {cd:String} "
+                      "AND stage = 'pdf' "
+                      "UNION ALL SELECT hash FROM processing_errors WHERE collection_dataset = {cd:String} "
+                      "AND startsWith(task_name, 'run_ocr_pdf_and_store[')")
+        missing = []
+        for index, (engine, languages) in enumerate(pdf_pairs):
+            parameters[f"pe{index}"], parameters[f"pl{index}"] = engine, languages
+            missing.append(
+                f"hash NOT IN (SELECT pdf_hash FROM pdf_ocr_results FINAL WHERE collection_dataset = {{cd:String}} "
+                f"AND engine = {{pe{index}:String}} AND languages = {{pl{index}:String}} AND is_deleted = 0 "
+                f"UNION ALL SELECT file_hash FROM ocr_skips WHERE collection_dataset = {{cd:String}} "
+                f"AND stage = 'pdf' AND engine = {{pe{index}:String}} AND languages = {{pl{index}:String}} "
+                f"UNION ALL SELECT hash FROM processing_errors WHERE collection_dataset = {{cd:String}} "
+                f"AND task_name = concat('run_ocr_pdf_and_store[', {{pe{index}:String}}, ']'))")
+        parts.append(f"SELECT hash FROM ({population}) WHERE hash IN ({_LIVE}) AND ({' OR '.join(missing)})")
+    variants, pairs = obsolete_ocr_outputs(client, ctx.scope_id, [target["languages"]])
+    if variants:
+        parameters["ov"] = variants
+        parts.append("SELECT file_hash AS hash FROM text_content WHERE collection_dataset = {cd:String} "
+                     "AND extracted_by IN {ov:Array(String)}")
+    for index, (engine, languages) in enumerate(pairs):
+        parameters[f"oe{index}"], parameters[f"ol{index}"] = engine, languages
+        parts.append(f"SELECT pdf_hash AS hash FROM pdf_ocr_results FINAL WHERE collection_dataset = {{cd:String}} "
+                     f"AND engine = {{oe{index}:String}} AND languages = {{ol{index}:String}} AND is_deleted = 0")
+    hash_sql = " UNION ALL ".join(parts)
+    files, size = _count(client, hash_sql, parameters, ctx.scope_id)
+    return Selection(files, size, files, hash_sql if files else "", parameters, {
+        "languages": target["languages"], "sources": target["sources"],
+        "obsolete_variants": variants, "obsolete_pairs": [list(p) for p in pairs]})
+
+
+def select_vectors(client, ctx: ScopeContext, target: Optional[dict] = None) -> Selection:
+    target = target or vectors_target(ctx.collectionname)
+    if target.get("vectors") != "on":
+        return Selection(detail={"vectors": "off"})
+    parameters = {"cd": ctx.scope_id, "model": target.get("model", "")}
+    hash_sql = ("SELECT DISTINCT file_hash AS hash FROM text_content WHERE collection_dataset = {cd:String} "
+                "AND file_hash IN (" + _LIVE + ") AND file_hash NOT IN (SELECT file_hash FROM text_chunk_vectors "
+                "WHERE collection_dataset = {cd:String} AND embedding_model = {model:String})")
+    files, size = _count(client, hash_sql, parameters, ctx.scope_id)
+    return Selection(files, size, files, hash_sql if files else "", parameters,
+                     {"vectors": "on", "model": target.get("model", "")})
+
+
+def select_folder_counts(client, ctx: ScopeContext) -> Selection:
+    """Nodes without counts, or every node when the applied version is older.
+
+    A dataset without an applied row is compared by its `-1` values only. Its stored
+    values were written by the current code or by none.
+    """
+    step = STEPS_BY_ID["folder_counts"]
+    applied = ctx.applied.get(step.step_id)
+    applied_version = ""
+    if applied:
+        try:
+            applied_version = json.loads(applied.get("detail") or "{}").get("version", "")
+        except ValueError:
+            applied_version = ""
+    every_node = bool(applied_version) and applied_version != step_version(step)
+    condition = "" if every_node else "AND (subtree_file_count < 0 OR subtree_size_bytes < 0) "
+    nodes = int(client.query(
+        "SELECT count() FROM vfs_nodes FINAL WHERE collection_dataset = {cd:String} "
+        "AND kind IN ('dir', 'container') " + condition,
+        parameters={"cd": ctx.scope_id}).result_rows[0][0])
+    return Selection(nodes, 0, nodes, "", {}, {"every_node": every_node})
+
+
+# ---- the search index schema ---------------------------------------------------------------
+
+#: Manticore `DESCRIBE` type names of the DDL types.
+_DESCRIBE_TYPES = {"string": "string", "text": "text", "int": "uint", "bigint": "bigint",
+                   "multi64": "mva64", "multi": "mva", "float": "float", "bool": "bool"}
+
+
+def required_page_columns() -> List[List[str]]:
+    """The `[name, type]` columns of a shard pages table, from its DDL."""
+    from database.manticore import pages_table_ddl
+
+    body = pages_table_ddl("t")
+    inner = body[body.index("(") + 1:body.rindex(")")]
+    columns = []
+    for line in inner.split(","):
+        match = re.match(r"\s*([a-z_0-9]+)\s+([a-z0-9]+)", line)
+        if match:
+            columns.append([match.group(1), match.group(2)])
+    return columns
+
+
+def schema_differences(collectionname: str) -> Dict[str, dict]:
+    """Each shard pages table that differs from the DDL: its missing and retyped columns."""
+    from database.manticore import client_for_table, list_shard_tables
+
+    required = required_page_columns()
+    differences = {}
+    for table in [t for t in list_shard_tables(collectionname) if t.endswith("_pages")]:
+        with client_for_table(table) as cnx:
+            cursor = cnx.cursor()
+            cursor.execute(f"DESCRIBE {table}")
+            actual = {row[0]: row[1] for row in cursor.fetchall()}
+        missing = [[name, kind] for name, kind in required if name not in actual]
+        retyped = [[name, kind] for name, kind in required
+                   if name in actual and actual[name] != _DESCRIBE_TYPES.get(kind, kind)]
+        if missing or retyped:
+            differences[table] = {"missing": missing, "retyped": retyped}
+    return differences
+
+
+def select_search_schema(ctx: ScopeContext) -> Selection:
+    differences = schema_differences(ctx.collectionname)
+    return Selection(len(differences), 0, len(differences), "", {},
+                     {"tables": differences,
+                      "rebuild": any(d["retyped"] for d in differences.values())})
+
+
+def select(step: UpdateStep, ctx: ScopeContext, client=None, target: Optional[dict] = None) -> Selection:
+    """Run the live selector of one step."""
+    if step.step_id == "search_schema":
+        return select_search_schema(ctx)
+    if step.step_id == "unfinished":
+        return select_unfinished(client, ctx)
+    if step.step_id == "failed_files":
+        return select_failed(client, ctx)
+    if step.step_id == "ocr":
+        return select_ocr(client, ctx, target)
+    if step.step_id == "vectors":
+        return select_vectors(client, ctx, target)
+    if step.step_id == "folder_counts":
+        return select_folder_counts(client, ctx)
+    raise ValueError(f"unknown update step {step.step_id!r}")
+
+
+def unique_files(client, selections: Sequence[Selection], collection_dataset: str) -> Tuple[int, int]:
+    """Files and bytes of the union of the selections, each file once."""
+    parts, parameters = [], {}
+    for index, selection in enumerate(selections):
+        if not selection.hash_sql:
+            continue
+        sql = selection.hash_sql
+        for name, value in selection.parameters.items():
+            if name == "cd":
+                continue
+            unique = f"u{index}_{name}"
+            sql = sql.replace("{" + name + ":", "{" + unique + ":")
+            parameters[unique] = value
+        parts.append(sql)
+    if not parts:
+        return 0, 0
+    return _count(client, " UNION ALL ".join(parts), parameters, collection_dataset)

@@ -6,6 +6,7 @@ use common::failure_types::{FailureInstanceRow, FailureListFilter, FailureListSo
 use common::metrics_types::{AdminMetrics, AdminUserLlmMetrics, ManticoreDaemonLoad};
 use common::operations_types::{OperationDetail, OperationsPage};
 use common::processing_types::*;
+use common::processing_updates::ProcessingUpdatesView;
 use dioxus::prelude::*;
 
 #[cfg(feature = "server")]
@@ -65,9 +66,9 @@ admin_server_fn!(admin_trigger_workflow, backend::api::admin::datasets::admin_tr
 
 admin_server_fn!(admin_get_dataset_ocr, backend::api::admin::dataset_ocr::admin_get_dataset_ocr, (collection_dataset: String) -> DatasetOcrPanel);
 admin_server_fn!(admin_get_dataset_operation, backend::api::admin::dataset_ocr::admin_get_dataset_operation, (collection_dataset: String) -> Option<DatasetOperationStatus>);
-admin_server_fn!(admin_apply_ocr_languages, backend::api::admin::dataset_ocr::admin_apply_ocr_languages, (collection_dataset: String, tesseract_languages: String, easyocr_languages: String) -> String);
+admin_server_fn!(admin_apply_ocr_languages, backend::api::admin::dataset_ocr::admin_apply_ocr_languages, (collection_dataset: String, tesseract_languages: String, easyocr_languages: String, inherit_tesseract: bool, inherit_easyocr: bool) -> String);
 admin_server_fn!(admin_get_collection_ocr_defaults, backend::api::admin::dataset_ocr::admin_get_collection_ocr_defaults, (collectionname: String) -> (String, String));
-admin_server_fn!(admin_set_collection_ocr_defaults, backend::api::admin::dataset_ocr::admin_set_collection_ocr_defaults, (collectionname: String, tesseract_languages: String, easyocr_languages: String));
+admin_server_fn!(admin_set_collection_ocr_defaults, backend::api::admin::dataset_ocr::admin_set_collection_ocr_defaults, (collectionname: String, tesseract_languages: String, easyocr_languages: String) -> Vec<String>);
 admin_server_fn!(admin_list_dataset_mounts, backend::api::admin::dataset_ocr::admin_list_dataset_mounts, () -> Vec<DatasetMountOption>);
 admin_server_fn!(admin_list_dataset_folders, backend::api::admin::dataset_ocr::admin_list_dataset_folders, (collectionname: String, mount_name: String) -> Vec<DatasetFolderOption>);
 admin_server_fn!(admin_create_dataset, backend::api::admin::dataset_ocr::admin_create_dataset, (collectionname: String, mount_name: String, folder_name: String, new_folder: bool, dataset_name: String, tesseract_languages: String, easyocr_languages: String, accept_uploads: bool) -> String);
@@ -138,3 +139,11 @@ admin_server_fn!(admin_list_document_errors, backend::api::admin::document_error
 
 admin_server_fn!(admin_llm_systemone, backend::api::admin::llm_reports::admin_llm_systemone, () -> common::llm_types::SystemOneReport);
 
+
+admin_server_fn!(admin_get_processing_updates, backend::api::admin::processing_updates::admin_get_processing_updates, (collection_dataset: String) -> ProcessingUpdatesView);
+admin_server_fn!(admin_get_collection_updates, backend::api::admin::processing_updates::admin_get_collection_updates, (collectionname: String) -> (ProcessingUpdatesView, Vec<(String, String)>));
+admin_server_fn!(admin_request_update_check, backend::api::admin::processing_updates::admin_request_update_check, (scope_id: String));
+admin_server_fn!(admin_start_processing_update, backend::api::admin::processing_updates::admin_start_processing_update, (collection_dataset: String, steps: Vec<String>, fingerprints: Vec<String>) -> String);
+admin_server_fn!(admin_start_collection_update, backend::api::admin::processing_updates::admin_start_collection_update, (collectionname: String, steps: Vec<String>, fingerprints: Vec<String>) -> String);
+admin_server_fn!(admin_get_collection_vectors, backend::api::admin::dataset_ocr::admin_get_collection_vectors, (collectionname: String) -> (bool, bool, bool));
+admin_server_fn!(admin_set_collection_vectors, backend::api::admin::dataset_ocr::admin_set_collection_vectors, (collectionname: String, on: bool));

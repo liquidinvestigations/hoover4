@@ -1921,3 +1921,13 @@ def test_every_writable_compose_mount_prints_a_copy_note(tmp_path):
     assert len(notes) == 2
     assert any("[dataset_mount.same]" in note and "copies" in note for note in notes)
     assert any("[dataset_mount.other]" in note and "copies" in note for note in notes)
+
+
+@pytest.mark.parametrize("source", ["hoover4.ini.development", "hoover4.ini.release"])
+def test_the_processing_updates_are_automatic_by_default(source):
+    cfg = _template(source)
+    assert cfg.get_bool("processing_updates", "automatic")
+    caps = deploy.operation_caps_value(cfg).split(",")
+    assert "update_dataset=2" in caps and "update_collection=2" in caps
+    cfg.values["processing_updates"]["automatic"] = "false"
+    assert not cfg.get_bool("processing_updates", "automatic")

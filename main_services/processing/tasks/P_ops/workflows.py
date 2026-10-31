@@ -329,6 +329,8 @@ class Operation:
             return f"queued {queued} plan(s) for re-indexing"
         if params.kind == "ingest_upload":
             return await self._ingest_upload(params)
+        if params.kind in ("update_dataset", "update_collection"):
+            return await self._processing_update(params)
         if params.kind == "refresh_document_locations":
             result = await workflow.execute_child_workflow(
                 "RefreshDocumentLocations",
@@ -404,6 +406,32 @@ class Operation:
         settled = ", ".join(f"{count} {state}" for state, count in sorted(states.items()))
         return (f"Ingested upload batches of {params.collection_dataset}: {settled}. "
                 f"The operation kept {progress['failed_documents']} document failures.")
+
+    async def _processing_update(self, params: OperationParams) -> str:
+        """Run the selected processing update steps of a dataset or a collection.
+
+        The detail holds the selected `steps`, the `fingerprints` of the preview that a
+        person saw, and `automatic` for an operation that the coordinator started. The
+        child is addressed by name for the reason given in `_ingest_dataset`.
+        """
+        steps = [str(step) for step in params.detail.get("steps") or []]
+        if not steps:
+            raise ApplicationErrorDetail(params.kind, "steps")
+        result = await workflow.execute_child_workflow(
+            "RunProcessingUpdate",
+            {
+                "op_id": params.op_id,
+                "scope_kind": "dataset" if params.kind == "update_dataset" else "collection",
+                "collectionname": params.collectionname,
+                "collection_dataset": params.collection_dataset,
+                "steps": steps,
+                "fingerprints": dict(params.detail.get("fingerprints") or {}),
+                "automatic": bool(params.detail.get("automatic", False)),
+            },
+            id=f"processing-update-{params.op_id}",
+            task_queue="processing-common-queue",
+        )
+        return f"Ran the update steps {', '.join(result.get('steps', []))}."
 
     async def _sample_selector_counts(self, params: OperationParams,
                                       counts: dict[str, int], execution_counts: dict | None = None) -> dict:

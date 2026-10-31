@@ -12,6 +12,7 @@ pub mod llm_reports;
 pub mod metrics;
 pub mod operations;
 pub mod processing;
+pub mod processing_updates;
 pub mod settings;
 pub mod users;
 

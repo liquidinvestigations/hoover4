@@ -10,6 +10,9 @@ class SelectErrorsParams:
     collection_dataset: str
     task_name: str = ""
     hash: str = ""
+    #: Error names to select, for a processing update. Empty selects by the two filters
+    #: above. A selection uses either this list or those filters.
+    task_names: list[str] = field(default_factory=list)
 
 
 @dataclass

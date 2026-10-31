@@ -122,6 +122,32 @@ def _vector_tables(collectionname: str, existing: set[str]) -> list[str]:
     return tables
 
 
+#: The collection feature switch for vectors, mirrored from
+#: `main_services/processing/tasks/dataset_config.py` (`KEY_FEATURE_VECTORS`).
+KEY_FEATURE_VECTORS = "features.vectors"
+
+
+def vectors_off_collections(collections: list[str]) -> set[str]:
+    """The collections among `collections` whose `features.vectors` row is `false`.
+
+    A collection without the row follows the installation, so its vectors are used. A
+    switched-off collection keeps its stored vectors, and search does not read them.
+    """
+    if not collections:
+        return set()
+    # The switch has one row per collection at most, so all rows are read.
+    rows = clickhouse_query(
+        "SELECT collection_dataset AS c, argMax(value, setting_version_us) AS v, "
+        "argMax(is_deleted, setting_version_us) AS d "
+        "FROM dataset_settings WHERE key = {k:String} GROUP BY collection_dataset",
+        database=GLOBAL_DB,
+        params={"k": KEY_FEATURE_VECTORS},
+    )
+    wanted = set(collections)
+    return {str(row.get("c")) for row in rows
+            if str(row.get("c")) in wanted and not int(row.get("d") or 0) and row.get("v") == "false"}
+
+
 def _existing_tables() -> set[str]:
     out: set[str] = set()
     for row in manticore_vectors_query("SHOW TABLES"):
@@ -149,7 +175,10 @@ def search(query_vector: list[float], collections: list[str]) -> list[VectorCand
             _vectors_endpoint_missing_reported = True
         raise VectorRankingUnavailable(str(exc)) from exc
     hits: list[VectorCandidate] = []
+    off = vectors_off_collections(collections)
     for collectionname in collections:
+        if collectionname in off:
+            continue
         for table in _vector_tables(collectionname, existing):
             sql = (
                 f"SELECT collection_dataset, file_hash, extracted_by, page_id, chunk_index, "

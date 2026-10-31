@@ -10,6 +10,10 @@ INPUT_KEYS: dict[str, tuple[str, ...]] = {
     "refresh_document_locations": ("item_hashes",),
     "export_collection": ("destination",),
     "import_collection": ("source",),
+    # A re-run asks for the same steps against the current state, so the stored
+    # fingerprints of the earlier preview are not carried.
+    "update_dataset": ("steps",),
+    "update_collection": ("steps",),
 }
 
 REGISTRY_KEYS = ("add_dataset", "rescan_dataset")
@@ -80,6 +84,10 @@ def project_inputs(kind: str, collectionname: str, collection_dataset: str,
             raise MissingOperationInput(kind, "item_hashes")
     elif kind == "import_collection" and not str(projected.get("source", "")).strip():
         raise MissingOperationInput(kind, "source")
+    elif kind in ("update_dataset", "update_collection"):
+        steps = projected.get("steps")
+        if not isinstance(steps, list) or not steps:
+            raise MissingOperationInput(kind, "steps")
     elif kind == "ingest_upload":
         # The upload queue claims the batches of each run. A rescan ingests the files of
         # an ended upload again.

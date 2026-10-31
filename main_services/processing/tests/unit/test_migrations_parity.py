@@ -80,6 +80,11 @@ EXPECTED_GLOBAL_TABLES = {
     "board_command_receipts",
     "chat_workspace_files",
     "chat_workspace_receipts",
+    "stage_versions",
+    "processing_update_checks",
+    "processing_update_attempts",
+    "processing_update_applied",
+    "processing_retry_claims",
 }
 
 EXPECTED_COLLECTION_TABLES = {

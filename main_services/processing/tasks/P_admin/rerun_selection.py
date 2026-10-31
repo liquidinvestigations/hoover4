@@ -110,6 +110,9 @@ def _candidate_pairs(params: SelectErrorsParams) -> list[tuple[str, str]]:
     if params.hash:
         filters.append("hash = {hash:String}")
         query_params["hash"] = params.hash
+    if params.task_names:
+        filters.append("task_name IN {tasks:Array(String)}")
+        query_params["tasks"] = list(params.task_names)
     scope = _upload_scope(params)
     extra = {}
     if scope is not None:
@@ -194,6 +197,7 @@ def select_historical_errors(params: SelectErrorsParams) -> SelectionResult:
             "without_plan": len(classes["without_plan"]),
             "task_name": params.task_name,
             "hash": params.hash,
+            "task_names": sorted(params.task_names),
         }
         marker = event_rows(params.op_id, params.collection_dataset,
                             [("", "")], "selection_complete")
@@ -201,7 +205,8 @@ def select_historical_errors(params: SelectErrorsParams) -> SelectionResult:
         insert_error_events(params.collectionname, marker)
     else:
         counts, classes = snapshot
-        if counts["task_name"] != params.task_name or counts["hash"] != params.hash:
+        if (counts["task_name"] != params.task_name or counts["hash"] != params.hash
+                or counts.get("task_names", []) != sorted(params.task_names)):
             raise ValueError("Selection filter differs from its complete snapshot")
 
     for values in chunked(classes["removed_stage_off"]):

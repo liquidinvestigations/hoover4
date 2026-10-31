@@ -52,6 +52,8 @@ const KINDS: &[(&str, &str, bool)] = &[
     ("purge_unattributed_entities", "collection", true),
     ("backfill_vectors", "collection", false),
     ("ingest_upload", "dataset", false),
+    ("update_dataset", "dataset", false),
+    ("update_collection", "collection", false),
 ];
 
 /// Kinds the operations workflow can actually drive today. The rest are registered
@@ -76,6 +78,8 @@ const DRIVEN_KINDS: &[&str] = &[
     "purge_unattributed_entities",
     "backfill_vectors",
     "ingest_upload",
+    "update_dataset",
+    "update_collection",
 ];
 
 const INPUT_KEYS: &[(&str, &[&str])] = &[
@@ -86,6 +90,10 @@ const INPUT_KEYS: &[(&str, &[&str])] = &[
     ("refresh_document_locations", &["item_hashes"]),
     ("export_collection", &["destination"]),
     ("import_collection", &["source"]),
+    // A re-run asks for the same steps against the current state, without the stored
+    // fingerprints of the earlier preview.
+    ("update_dataset", &["steps"]),
+    ("update_collection", &["steps"]),
 ];
 
 const REGISTRY_KEYS: &[&str] = &["add_dataset", "rescan_dataset"];
@@ -157,6 +165,13 @@ fn project_inputs(
             return Err(MissingOperationInput {
                 kind: kind.to_string(),
                 key: "item_hashes",
+            });
+        }
+    } else if kind == "update_dataset" || kind == "update_collection" {
+        if !projected.get("steps").and_then(|value| value.as_array()).is_some_and(|steps| !steps.is_empty()) {
+            return Err(MissingOperationInput {
+                kind: kind.to_string(),
+                key: "steps",
             });
         }
     } else if kind == "ingest_upload" {

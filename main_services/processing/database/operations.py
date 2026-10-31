@@ -76,7 +76,14 @@ KINDS: dict[str, dict] = {
     "purge_unattributed_entities": {"target_kind": "collection", "destructive": True},
     "backfill_vectors": {"target_kind": "collection", "destructive": False},
     "ingest_upload": {"target_kind": "dataset", "destructive": False},
+    "update_dataset": {"target_kind": "dataset", "destructive": False},
+    "update_collection": {"target_kind": "collection", "destructive": False},
 }
+
+#: The kinds of processing updates. Their own terminal rows do not change the input
+#: revision of a dataset (`database/processing_updates.py`), so an update that ends does
+#: not make its dataset look changed.
+UPDATE_KINDS = ("update_dataset", "update_collection")
 
 #: The source that updates each live operation's progress. The collector owns these
 #: updates so an `Operation` workflow can wait for its child without extending its
@@ -100,6 +107,9 @@ PROGRESS_SOURCES = {
     "purge_unattributed_entities": None,
     "backfill_vectors": None,
     "ingest_upload": "plans",
+    # The update workflow writes its own progress: one unit for each step.
+    "update_dataset": None,
+    "update_collection": None,
 }
 
 DRIVEN_KINDS = (
@@ -121,6 +131,8 @@ DRIVEN_KINDS = (
     "purge_unattributed_entities",
     "backfill_vectors",
     "ingest_upload",
+    "update_dataset",
+    "update_collection",
 )
 
 #: The columns of `operations`, in table order. One list, because a `ReplacingMergeTree`

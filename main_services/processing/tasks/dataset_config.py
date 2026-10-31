@@ -1,8 +1,22 @@
 """Per-dataset settings, read **per activity** rather than at import.
 
-A language change dispatched from the dataset admin page has to reach activities that
-are already running, which is what the apply job exists for, and a module-level
-constant read once at worker start would silently ignore it until the next restart.
+A language change saved on the dataset admin page has to reach activities that are
+already running, and a module-level constant read once at worker start would silently
+ignore it until the next restart.
+
+The OCR languages of a dataset have one resolution order, which the website applies too
+(`website/backend/src/api/admin/dataset_ocr.rs`):
+
+1. the dataset's own row (`ocr.<engine>.languages`), which can hold an empty EasyOCR
+   value that turns EasyOCR off,
+2. the collection default row (`ocr.default.<engine>.languages`, stored under the
+   collection name),
+3. the installation default from `hoover4.ini` (`TESSERACT_LANGUAGES` and
+   `EASYOCR_LANGUAGES`).
+
+A deleted row is a tombstone and resolution continues with the next level.
+`resolve_ocr_languages` returns the value, its source and a version. Both runtimes test
+it with `tasks/ocr_resolution_cases.json`.
 
 The cost of reading per activity is one ClickHouse query per file, which is why there is
 a short process-local cache: `_CACHE_SECONDS` turns it into one query per activity burst
@@ -26,14 +40,19 @@ log = logging.getLogger(__name__)
 KEY_TESSERACT_LANGUAGES = "ocr.tesseract.languages"
 KEY_EASYOCR_LANGUAGES = "ocr.easyocr.languages"
 
-#: Collection-level defaults a newly created dataset inherits. A dataset's own row
-#: always wins; these only fill in what was never set.
+#: Collection defaults, stored in `dataset_settings` under the collection name. Every
+#: dataset of the collection without its own row inherits them, including datasets that
+#: existed before the default was saved.
 KEY_DEFAULT_TESSERACT_LANGUAGES = "ocr.default.tesseract.languages"
 KEY_DEFAULT_EASYOCR_LANGUAGES = "ocr.default.easyocr.languages"
 
-#: Stack-wide defaults, from hoover4.ini via the worker environment. A dataset that has
-#: never been configured uses these; the moment the admin page writes a row, that row
-#: wins for that dataset and the default stops applying to it.
+#: The collection feature switch for vectors, stored under the collection name. `true`
+#: or `false`. A collection without the row follows the installation, which is on when
+#: an embeddings endpoint is configured.
+KEY_FEATURE_VECTORS = "features.vectors"
+
+#: Stack-wide defaults, from hoover4.ini via the worker environment. A dataset without a
+#: row of its own and without a collection default uses these.
 #:
 #: Read at import rather than per activity on purpose: this is deployment configuration,
 #: which cannot change without recreating the container anyway. The per-*dataset* values
@@ -41,6 +60,17 @@ KEY_DEFAULT_EASYOCR_LANGUAGES = "ocr.default.easyocr.languages"
 DEFAULTS: Dict[str, str] = {
     KEY_TESSERACT_LANGUAGES: (os.getenv("TESSERACT_LANGUAGES") or "eng").strip() or "eng",
     KEY_EASYOCR_LANGUAGES: (os.getenv("EASYOCR_LANGUAGES") or "en").strip() or "en",
+}
+
+#: The source names of a resolved OCR value. The website shows them.
+SOURCE_DATASET = "dataset"
+SOURCE_COLLECTION = "collection"
+SOURCE_INSTALLATION = "installation"
+
+#: The dataset key and the collection default key of each engine.
+OCR_KEYS: Dict[str, tuple] = {
+    ENGINE_TESSERACT: (KEY_TESSERACT_LANGUAGES, KEY_DEFAULT_TESSERACT_LANGUAGES),
+    ENGINE_EASYOCR: (KEY_EASYOCR_LANGUAGES, KEY_DEFAULT_EASYOCR_LANGUAGES),
 }
 
 #: How long a read is reused. Short on purpose -- see the module docstring.
@@ -84,6 +114,98 @@ def _latest_rows(client, collection_dataset: str,
             for key, (value, deleted, version, precise) in rows}
 
 
+@dataclass(frozen=True)
+class EffectiveSetting:
+    """One resolved OCR language value, where it came from, and its version.
+
+    `version_us` is the newest version among the rows that resolution read, tombstones
+    included, so a reset to an inherited value has a version above the row it reset.
+    It is 0 when no row exists. An OCR error newer than it belongs to this value
+    (`tasks/ocr_targets.error_is_current`).
+    """
+
+    value: str
+    source: str
+    version_us: int = 0
+    is_precise: bool = True
+
+
+def resolve_ocr_languages(dataset_rows: Dict[str, SettingRow],
+                          collection_rows: Dict[str, SettingRow],
+                          installation: Dict[str, str]) -> Dict[str, EffectiveSetting]:
+    """The effective languages of each OCR engine, by the order of the module docstring.
+
+    `dataset_rows` are keyed by `ocr.<engine>.languages`, `collection_rows` by
+    `ocr.default.<engine>.languages`, and `installation` by engine. Pure, so that the
+    case file can test it.
+    """
+    resolved = {}
+    for engine, (dataset_key, default_key) in OCR_KEYS.items():
+        read = []
+        chosen = None
+        for row, source in ((dataset_rows.get(dataset_key), SOURCE_DATASET),
+                            (collection_rows.get(default_key), SOURCE_COLLECTION)):
+            if row is None:
+                continue
+            read.append(row)
+            if not row.is_deleted:
+                chosen = (row.value, source)
+                break
+        if chosen is None:
+            chosen = (installation.get(engine, ""), SOURCE_INSTALLATION)
+        newest = max(read, key=lambda row: row.version_us, default=None)
+        resolved[engine] = EffectiveSetting(
+            value=chosen[0], source=chosen[1],
+            version_us=newest.version_us if newest else 0,
+            is_precise=newest.is_precise if newest else True)
+    return resolved
+
+
+def installation_ocr_defaults() -> Dict[str, str]:
+    """The `hoover4.ini` OCR languages of each engine."""
+    return {engine: DEFAULTS[dataset_key] for engine, (dataset_key, _) in OCR_KEYS.items()}
+
+
+def effective_ocr_settings(collection_dataset: str,
+                           collectionname: str = "") -> Dict[str, EffectiveSetting]:
+    """The effective OCR languages of one dataset, read now and not from the cache.
+
+    Reads the dataset rows and the collection default rows in one query. Raises when
+    the table cannot be read.
+    """
+    collectionname = collectionname or collection_of_dataset(collection_dataset)
+    dataset_rows = latest_setting_rows(collection_dataset, [keys[0] for keys in OCR_KEYS.values()])
+    collection_rows = (latest_setting_rows(collectionname, [keys[1] for keys in OCR_KEYS.values()])
+                       if collectionname else {})
+    return resolve_ocr_languages(dataset_rows, collection_rows, installation_ocr_defaults())
+
+
+def collection_of_dataset(collection_dataset: str) -> str:
+    """The collection of a registered dataset, or an empty string for another key."""
+    from database.clickhouse import UnknownDatasetError, resolve_collection
+
+    try:
+        return resolve_collection(collection_dataset)
+    except UnknownDatasetError:
+        return ""
+
+
+def collection_vectors_enabled(collectionname: str) -> bool:
+    """Whether a collection uses vectors: its `features.vectors` row, else the installation.
+
+    The installation is on when `EMBEDDINGS_URL` is set. A collection row cannot turn on
+    a service that the installation does not run. The embedding stage then records its
+    usual skip.
+    """
+    installation = bool((os.getenv("EMBEDDINGS_URL") or "").strip())
+    if not installation:
+        return False
+    row = get_dataset_settings(collectionname).get(KEY_FEATURE_VECTORS, "")
+    if row in ("true", "false"):
+        return row == "true"
+    return installation
+
+
 def latest_setting_rows(collection_dataset: str, keys: Sequence[str]) -> Dict[str, SettingRow]:
     """The latest row of each of `keys`, read now and not from the cache.
 
@@ -97,12 +219,22 @@ def latest_setting_rows(collection_dataset: str, keys: Sequence[str]) -> Dict[st
 
 
 def _load(collection_dataset: str) -> Dict[str, str]:
+    """Every stored setting of a key, with the OCR languages resolved.
+
+    The key can also be a collection name, for the collection rows. The OCR values of a
+    dataset follow `resolve_ocr_languages`. A key that is not a registered dataset keeps
+    the installation OCR defaults.
+    """
     from database.clickhouse import get_global_client
 
     values = dict(DEFAULTS)
     try:
         with get_global_client() as client:
             rows = _latest_rows(client, collection_dataset)
+            collectionname = collection_of_dataset(collection_dataset)
+            collection_rows = (_latest_rows(client, collectionname,
+                                            [keys[1] for keys in OCR_KEYS.values()])
+                               if collectionname else {})
     except Exception:
         # A settings read must never fail an activity: the defaults are the documented
         # behaviour, and failing here would turn a missing table into a failed dataset.
@@ -113,6 +245,9 @@ def _load(collection_dataset: str) -> Dict[str, str]:
     for key, row in rows.items():
         if not row.is_deleted:
             values[key] = row.value
+    for engine, effective in resolve_ocr_languages(rows, collection_rows,
+                                                   installation_ocr_defaults()).items():
+        values[OCR_KEYS[engine][0]] = effective.value
     return values
 
 

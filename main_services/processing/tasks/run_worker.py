@@ -351,6 +351,27 @@ async def run_common_worker():
         PurgeDataset,
         SweepChatArtifacts,
     )
+    from .P_admin.updates.activities import (
+        apply_search_schema,
+        begin_update_step,
+        check_processing_updates,
+        finish_update_step,
+        list_update_vector_plans,
+        obsolete_ocr_variants,
+        refresh_update_checks,
+        report_update_progress,
+        settle_update_step,
+        snapshot_processing_update,
+        submit_automatic_update,
+        update_operation_state,
+    )
+    from .P_admin.updates.workflows import (
+        COORDINATOR_ID,
+        ProcessingUpdates,
+        RunProcessingUpdate,
+        UpdateDatasetVectors,
+    )
+    from .stage_versions import register_stage_versions
     from .visibility import ensure_search_attributes
 
     log.info("Starting common worker...")
@@ -386,17 +407,28 @@ async def run_common_worker():
     except temporalio.exceptions.WorkflowAlreadyStartedError:
         pass
 
-    # Subtree value fill for datasets built before the columns existed. Same singleton
-    # pattern as the two above.
+    # The stage versions of this code, before the coordinator compares them. A restart
+    # without a version change inserts nothing.
+    log.info("Recorded %d new stage versions", register_stage_versions())
+
+    # The processing update coordinator. Same singleton pattern. Starting it starts no
+    # update operation: its first pass only compares the stored state.
     try:
         await client.start_workflow(
-            FillVfsSubtreeStats.run,
-            id="fill-vfs-subtree-stats",
+            ProcessingUpdates.run,
+            id=COORDINATOR_ID,
             task_queue="processing-common-queue",
             id_reuse_policy=temporalio.common.WorkflowIDReusePolicy.ALLOW_DUPLICATE,
             id_conflict_policy=temporalio.common.WorkflowIDConflictPolicy.USE_EXISTING,
         )
     except temporalio.exceptions.WorkflowAlreadyStartedError:
+        pass
+
+    # The folder counts step of the processing updates replaces the subtree value fill.
+    # A running fill singleton is cancelled. Its type stays registered for replay.
+    try:
+        await client.get_workflow_handle("fill-vfs-subtree-stats").cancel()
+    except Exception:  # noqa: BLE001 - absent or already closed
         pass
 
     CONCURRENCY = worker_concurrency("common", 3)
@@ -434,6 +466,9 @@ async def run_common_worker():
             CollectEtaSamples,
             SweepChatArtifacts,
             FillVfsSubtreeStats,
+            ProcessingUpdates,
+            RunProcessingUpdate,
+            UpdateDatasetVectors,
           ],
           activities=[
             plan_folder_ranges,
@@ -528,6 +563,20 @@ async def run_common_worker():
             list_finished_plans,
 
             capture_operation_failure,
+
+            # Processing updates
+            check_processing_updates,
+            submit_automatic_update,
+            update_operation_state,
+            snapshot_processing_update,
+            begin_update_step,
+            settle_update_step,
+            finish_update_step,
+            report_update_progress,
+            refresh_update_checks,
+            obsolete_ocr_variants,
+            apply_search_schema,
+            list_update_vector_plans,
           ],
           activity_executor=activity_executor,
           max_concurrent_activities=CONCURRENCY,

@@ -30,6 +30,7 @@ pub mod metrics_types;
 pub mod operations_types;
 pub mod pdf_search_results;
 pub mod processing_types;
+pub mod processing_updates;
 pub mod search_const;
 pub mod search_query;
 pub mod search_result;
