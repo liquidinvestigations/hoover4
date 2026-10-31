@@ -1,3 +1,10 @@
+# `json-table` reads JSON and JSON Lines files into table sheets (json_table/Readme.md).
+FROM docker.io/library/rust:1.91.0-trixie AS json-table
+WORKDIR /src
+COPY json_table/Cargo.toml json_table/Cargo.lock ./
+COPY json_table/src ./src
+RUN cargo build --release --locked
+
 FROM python:3.13
 RUN pip install uv
 # poppler-utils provides `pdftotext`, which parse_pdf.py has always shelled out to and
@@ -11,7 +18,7 @@ RUN pip install uv
 # `extractous`, where no per-dataset language setting can reach it. OCR is an HTTP
 # service (main_services/ocr_tesseract, ai_services/easyocr_server) and every OCR
 # variant is attributed to the engine and languages that produced it.
-RUN  apt-get update -yy && apt-get install -yy sed &&  sed -i 's/^Components: main$/& contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources && apt-get update -yy &&  apt-get install -yy p7zip-full p7zip-rar qpdf poppler-utils ffmpeg curl wget file build-essential pst-utils=0.6.76-1.2 libreoffice-writer-nogui openssl imagemagick librsvg2-bin
+RUN  apt-get update -yy && apt-get install -yy sed &&  sed -i 's/^Components: main$/& contrib non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources && apt-get update -yy &&  apt-get install -yy 7zip 7zip-rar qpdf poppler-utils ffmpeg curl wget file build-essential pst-utils=0.6.76-1.2 libreoffice-writer-nogui openssl imagemagick librsvg2-bin
 # imagemagick and librsvg2-bin (`rsvg-convert`) make the JPEG image previews.
 # Keep dependencies outside the shared source mount so worker startup cannot replace another container's environment.
 ENV UV_PROJECT_ENVIRONMENT=/opt/pysetup/.venv
@@ -25,5 +32,6 @@ RUN uv sync --frozen --no-install-project
 # libreoffice-impress-nogui converts PowerPoint and OpenDocument presentations to PDF.
 # This line stays above `ADD . .`, so a source change does not run it again.
 RUN apt-get update -yy && apt-get install -yy libreoffice-impress-nogui
+COPY --from=json-table /src/target/release/json-table /usr/local/bin/json-table
 ADD . .
 RUN uv run main.py version

@@ -129,6 +129,25 @@ def _rectangular(lines: list[str], delimiter: str) -> int:
     return count if count >= MIN_DELIMITED_COLUMNS else 0
 
 
+def _json_lines(lines: list[str]) -> bool:
+    """Whether every sample line is one complete JSON object or array.
+
+    A CSV line whose first field holds JSON fails this check, because the delimiter and
+    the next field follow the JSON value.
+    """
+    import json
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped[:1] not in ("{", "["):
+            return False
+        try:
+            json.loads(stripped)
+        except ValueError:
+            return False
+    return True
+
+
 def sniff_table(data: bytes) -> TableSniff | None:
     """Whether `data` is delimited text, and which kind. `None` means it is not.
 
@@ -142,6 +161,9 @@ def sniff_table(data: bytes) -> TableSniff | None:
         return None
     if any(not line.strip() for line in lines):
         # A blank line inside the sample is a paragraph break, not an empty record.
+        return None
+    if _json_lines(lines):
+        # JSON Lines with one schema has a constant comma count. The JSON reader reads it.
         return None
 
     best: tuple[int, str] | None = None

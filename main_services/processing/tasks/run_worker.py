@@ -357,6 +357,8 @@ async def run_common_worker():
         check_processing_updates,
         finish_update_step,
         list_update_vector_plans,
+        list_update_table_plans,
+        reparse_update_tables,
         obsolete_ocr_variants,
         refresh_update_checks,
         report_update_progress,
@@ -370,6 +372,7 @@ async def run_common_worker():
         ProcessingUpdates,
         RunProcessingUpdate,
         UpdateDatasetVectors,
+        UpdateDatasetTables,
     )
     from .stage_versions import register_stage_versions
     from .visibility import ensure_search_attributes
@@ -469,6 +472,7 @@ async def run_common_worker():
             ProcessingUpdates,
             RunProcessingUpdate,
             UpdateDatasetVectors,
+            UpdateDatasetTables,
           ],
           activities=[
             plan_folder_ranges,
@@ -577,6 +581,8 @@ async def run_common_worker():
             obsolete_ocr_variants,
             apply_search_schema,
             list_update_vector_plans,
+            list_update_table_plans,
+            reparse_update_tables,
           ],
           activity_executor=activity_executor,
           max_concurrent_activities=CONCURRENCY,

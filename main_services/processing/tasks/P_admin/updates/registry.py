@@ -87,6 +87,15 @@ STEPS: Tuple[UpdateStep, ...] = (
                     "The automatic run retries a file once for each new version of the stage that failed.",
         runs="The failed stages, then entity extraction, embedding and indexing"),
     UpdateStep(
+        step_id="tables", scope=SCOPE_DATASET, version=1, stages=("table",),
+        automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
+        title="Tables",
+        explanation="{files} files are JSON or JSON Lines files without a table of the current reader, or "
+                    "tables that an earlier reader cut at 300 columns. They are read again. JSON files "
+                    "that an earlier reader read as CSV get their JSON table, and the earlier cells stop "
+                    "being shown.",
+        runs="Table reading, then the file type and indexing of these files"),
+    UpdateStep(
         step_id="ocr", scope=SCOPE_DATASET, version=1,
         stages=("ocr_image", "ocr_pdf", "image_pdf", "image_preview", "pdf"),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),

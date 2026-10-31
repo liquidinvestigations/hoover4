@@ -17,6 +17,16 @@
 //! there must not be one: skipping the lookup lets a reader who may see dataset A read
 //! the cells of a document that only exists in dataset B by pasting its hash.
 //!
+//! # Every cell read takes the generation of its manifest
+//!
+//! A parse writes its cells, sheets and columns under a new generation number and
+//! publishes the manifest row that names it last. [`with_generation`] gives a client
+//! whose every read of `table_cells`, `table_sheets` and `table_columns` keeps the rows of
+//! that generation only (the ClickHouse setting `additional_table_filters`). An
+//! interrupted or concurrent parse therefore never mixes into the published table, and
+//! old cells inside the bounds of a shorter new table stay invisible. Every function
+//! here takes its client from [`with_generation`] after step 2.
+//!
 //! # Parameters are bound, not interpolated
 //!
 //! This is ClickHouse. `db_utils::manticore_match`'s escaping rules exist because
@@ -77,7 +87,7 @@
 
 use common::current_user::CurrentUser;
 use common::document_tables::{
-    MAX_TABLE_COLUMN_VALUES, SheetInterpretation, TableCell, TableClamps, TableColumnClass,
+    MAX_TABLE_COLUMN_VALUES, SheetInterpretation, TableCell, TableClamps, TableColumnClass, TableColumnHits,
     TableColumnFilter, TableColumnInfo, TableColumnValue, TableFilterKind, TableOverview,
     TablePage, TableRow, TableSheet, TableTruncation, TableViewQuery, clamp_table_page_rows,
     clamp_table_visible_columns, column_type_of, display_sheet_interpretation,
@@ -119,6 +129,7 @@ struct ManifestRow {
     truncated_reason: String,
     reader_version: u16,
     updated_at: u32,
+    generation: u32,
 }
 
 #[derive(Debug, clickhouse::Row, serde::Deserialize)]
@@ -271,6 +282,21 @@ pub struct TableManifest {
     /// routes build their source fingerprint from these two values and read no cell.
     pub reader_version: u16,
     pub updated_at: u32,
+    /// The parse generation that every cell, sheet and column read of this dataset uses.
+    pub generation: u32,
+}
+
+/// The `additional_table_filters` value that keeps one generation of the table rows.
+pub fn generation_filter(generation: u32) -> String {
+    format!(
+        "{{'table_cells':'generation = {generation}','table_sheets':'generation = {generation}',\
+         'table_columns':'generation = {generation}'}}"
+    )
+}
+
+/// A client whose reads of the table rows see the published generation only.
+pub fn with_generation(client: clickhouse::Client, generation: u32) -> clickhouse::Client {
+    client.with_option("additional_table_filters", generation_filter(generation))
 }
 
 /// The `(collection_dataset, hash)` lookup, with the read permission checked first.
@@ -292,7 +318,8 @@ pub async fn load_table_manifest(
             // spreadsheet where the answer is "this is not ready" or "this did not read".
             "SELECT reader, table_format, sheet_count, row_count, column_count, cell_count, \
                     stored_bytes, truncated_limits, truncated_maximums, truncated_sheets, \
-                    truncated_reason, reader_version, toUnixTimestamp(updated_at) AS updated_at \
+                    truncated_reason, reader_version, toUnixTimestamp(updated_at) AS updated_at, \
+                    generation \
              FROM table_documents FINAL \
              WHERE collection_dataset = ? AND hash = ? AND status = 'ok' \
              LIMIT 1",
@@ -336,6 +363,7 @@ pub async fn load_table_manifest(
         truncated_reason: row.truncated_reason,
         reader_version: row.reader_version,
         updated_at: row.updated_at,
+        generation: row.generation,
     }))
 }
 
@@ -365,7 +393,7 @@ pub async fn get_table_overview(
     let Some(manifest) = load_table_manifest(user, &document_identifier).await? else {
         return Ok(None);
     };
-    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+    let client = with_generation(get_client_for_dataset(&document_identifier.collection_dataset).await?, manifest.generation);
 
     let sheets = sheets_of(&client, &document_identifier).await?;
 
@@ -417,6 +445,7 @@ pub async fn get_table_overview(
             .collect(),
         truncations: manifest.truncations,
         truncated_reason: manifest.truncated_reason,
+        generation: manifest.generation,
     }))
 }
 
@@ -669,7 +698,7 @@ pub async fn read_table_page(
     read: TableRead<'_>,
 ) -> anyhow::Result<TablePageRead> {
     let manifest = require_table_manifest(user, &document_identifier).await?;
-    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+    let client = with_generation(get_client_for_dataset(&document_identifier.collection_dataset).await?, manifest.generation);
     let hash = document_identifier.file_hash.clone();
 
     // The sheet and its extents, from the manifest's own tables. A request naming a sheet
@@ -1052,7 +1081,7 @@ pub async fn get_table_sheet_hits(
     }
     let manifest = require_table_manifest(user, &document_identifier).await?;
     let search = table_find_terms(user, &document_identifier, &search).await;
-    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+    let client = with_generation(get_client_for_dataset(&document_identifier.collection_dataset).await?, manifest.generation);
     // The grid's own search count bounds a sheet by its header row only, so this does too.
     let Some(bounds) = sheet_bounds("c.", &display_sheets(&client, &document_identifier, &manifest).await?, false) else {
         return Ok(Vec::new());
@@ -1071,6 +1100,46 @@ pub async fn get_table_sheet_hits(
         .await?)
 }
 
+/// The columns of one sheet whose data cells hold a find term of `search`
+/// ([`table_find_terms`]), in column order, with the generation that they describe. The
+/// grid uses them to bring matching columns beyond its first 60 into view
+/// (`common::document_tables::columns_for_matches`). Every column and every data row of
+/// the sheet is searched.
+pub async fn get_table_column_hits(
+    user: &CurrentUser,
+    document_identifier: DocumentIdentifier,
+    sheet_id: u16,
+    search: String,
+) -> anyhow::Result<TableColumnHits> {
+    let manifest = require_table_manifest(user, &document_identifier).await?;
+    if table_find_text(&search).is_empty() {
+        return Ok(TableColumnHits { generation: manifest.generation, columns: Vec::new() });
+    }
+    let search = table_find_terms(user, &document_identifier, &search).await;
+    let client = with_generation(get_client_for_dataset(&document_identifier.collection_dataset).await?, manifest.generation);
+    let sheets: Vec<(TableSheet, SheetInterpretation)> = display_sheets(&client, &document_identifier, &manifest)
+        .await?
+        .into_iter()
+        .filter(|(sheet, _)| sheet.sheet_id == sheet_id)
+        .collect();
+    let Some(bounds) = sheet_bounds("c.", &sheets, true) else {
+        return Ok(TableColumnHits { generation: manifest.generation, columns: Vec::new() });
+    };
+    let columns: Vec<u32> = client
+        .query(&format!(
+            "SELECT DISTINCT c.column_id FROM table_cells AS c FINAL \
+             WHERE c.file_hash = ? AND {bounds} \
+             AND multiSearchAnyCaseInsensitiveUTF8(translate(c.cell_text, '\\t\\r\\n', '   '), ?) \
+             ORDER BY c.column_id"
+        ))
+        .with_option("max_execution_time", TABLE_QUERY_TIMEOUT_SECONDS)
+        .bind(&document_identifier.file_hash)
+        .bind(search)
+        .fetch_all()
+        .await?;
+    Ok(TableColumnHits { generation: manifest.generation, columns })
+}
+
 /// The distinct values of one column, most frequent first, for the filter popover's list.
 pub async fn get_table_column_values(
     user: &CurrentUser,
@@ -1081,7 +1150,7 @@ pub async fn get_table_column_values(
 ) -> anyhow::Result<Vec<TableColumnValue>> {
     let search = table_find_text(&search);
     let manifest = require_table_manifest(user, &document_identifier).await?;
-    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+    let client = with_generation(get_client_for_dataset(&document_identifier.collection_dataset).await?, manifest.generation);
 
     // The column has to exist on that sheet before a cell query runs, for the same reason
     // the page validates its visible set.
@@ -1154,7 +1223,7 @@ pub async fn count_table_cell_matches(
     }
     let manifest = require_table_manifest(user, document_identifier).await?;
     let find_terms = table_find_terms(user, document_identifier, find_query).await;
-    let client = get_client_for_dataset(&document_identifier.collection_dataset).await?;
+    let client = with_generation(get_client_for_dataset(&document_identifier.collection_dataset).await?, manifest.generation);
     // Header rows are excluded, so this number counts the same cells the grid can show a
     // reader. A term that only appears in a header would otherwise promise matches that
     // no row of the grid contains. The header is drawn once, as the column label.

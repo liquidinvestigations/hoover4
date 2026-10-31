@@ -56,6 +56,19 @@ gives the stored reading of each file:
   blank cells and an integer and decimal column. The labels establish the header.
 * `empty.csv`: no bytes. It has no table.
 
+`p73tables_fixtures` (collection `p73tables`, root `testdata/p73-tables/`), for the JSON
+reader and the 60-column grid:
+
+* `wide1000.csv`: 1000 columns `col1` to `col1000` and 5 rows. Only column 350 of data row 3
+  holds `needle350`.
+* `wide400.csv`: 400 columns and 3 rows. Only column 350 of data row 2 holds
+  `onlyincolumn350`.
+* `people.jsonl`: 7 JSON Lines rows with the dot paths `user.name` and `user.city`.
+* `people_noext`: 7 JSON Lines rows without a file name extension.
+* `sparse.json`: one sheet `$.data.rows` with sparse rows and a null value.
+* `jsoncells.csv`: a CSV whose first column holds JSON text. It stays a CSV table.
+* `long_cell.csv`: one cell of 70,000 characters, which the reader cuts at 64 KiB.
+
 `--check` verifies the written files against `EXPECTED`. `--ingest` also creates each
 missing collection and ingests each missing dataset with `main_services/run.sh`. A stack
 test that needs a fixture fails when its dataset is absent.
@@ -77,6 +90,13 @@ BILLS = REPO / "main_services/processing/tests/unit/fixtures/monitored_bills_38.
 
 #: The SHA3-256 of each file, which is its `file_hash` in the collection.
 EXPECTED = {
+    "p73-tables/wide1000.csv": "4f1976a11bbdc39f98fc98374b74b2baa6bda239187667fada08381d6345f9dd",
+    "p73-tables/wide400.csv": "5caff137ef2af24351cdfd74dd87b76f12e1864306678318751a71c827f7adaa",
+    "p73-tables/people.jsonl": "46ff52509ce26c4a9adb7a2343c0a9509cd80e3da089c0864afcbd2bf18c0c51",
+    "p73-tables/people_noext": "09ff88759acc3c95a85929aef2f7afd86f3d399e813a9499d0039d9f6cdd2ad2",
+    "p73-tables/sparse.json": "1eadc4f170fd53d1a3b956366ee7c474394c8775f4633e71b1131252120f555e",
+    "p73-tables/jsoncells.csv": "cac386fa6e99e833cedd2c40c95db3ae6ea7486364fcd97f1360f224e0df4098",
+    "p73-tables/long_cell.csv": "eda83c8c11251b302b5e160adbadb5d37d84176293e01beb51685372c03c82f9",
     "p64-evals/monitored_bills_38.csv": "d1ed78d2b98c3a31db5f4671c1c91a792d39ad389f40727ab21319f9fcc667c9",
     "p64-evals/events_headerless.csv": "4f37b1d6d20de58add25bb57a2159a7852cdbebbc7b1780f2f848b79ac2b8308",
     "p64-evals/events_with_header.csv": "eae06777f2880603548d96ecaddaab4926e730db9a8025d142a28663bfb583af",
@@ -114,6 +134,7 @@ DATASETS = (
     ("p65tables", "text", "p65-text"),
     ("p65tables", "continuation_long", "p65-continuation-long"),
     ("p66tables", "fixtures", "p66-tables"),
+    ("p73tables", "fixtures", "p73-tables"),
 )
 
 #: The pages of `continuation_pages.pdf`. Only the first and the last page have text.
@@ -195,6 +216,27 @@ def _csv(rows, header=None) -> bytes:
     return handle.getvalue().encode()
 
 
+def p73_files() -> dict[str, bytes]:
+    wide = _csv([[("needle350" if (i == 350 and r == 3) else f"v{r}_{i}") for i in range(1, 1001)]
+                 for r in range(1, 6)], [f"col{i}" for i in range(1, 1001)])
+    wide400 = _csv([[("onlyincolumn350" if (i == 350 and r == 2) else f"c{r}_{i}") for i in range(1, 401)]
+                    for r in range(1, 4)], [f"h{i}" for i in range(1, 401)])
+    people = "".join(json.dumps({"id": i, "user": {"name": f"n{i}", "city": f"c{i}"}, "tags": ["a", "b"]}) + "\n"
+                     for i in range(1, 8))
+    noext = "".join(json.dumps({"id": i, "name": f"x{i}", "score": i * 1.5}) + "\n" for i in range(1, 8))
+    sparse = json.dumps({"meta": {"v": 1}, "data": {"rows": [{"a": 1}, {"b": {"c": 2}}, {"a": 3, "d": None}]}},
+                        indent="\t")
+    return {
+        "p73-tables/wide1000.csv": wide,
+        "p73-tables/wide400.csv": wide400,
+        "p73-tables/people.jsonl": people.encode(),
+        "p73-tables/people_noext": noext.encode(),
+        "p73-tables/sparse.json": sparse.encode(),
+        "p73-tables/jsoncells.csv": b'payload,label\n"{""a"": 1}",x\n"{""a"": 2}",y\n"{""a"": 3}",z\n',
+        "p73-tables/long_cell.csv": _csv([("short", "x" * 70_000), ("other", "y")], ["name", "text"]),
+    }
+
+
 def files() -> dict[str, bytes]:
     tasks = []
     for n in range(1, 13):
@@ -224,6 +266,7 @@ def files() -> dict[str, bytes]:
              ("2021-04-11", "Briefing, South", "7"), ("2021-05-13", "Panel", "3.25"), ("2021-06-15", "", "4"),
              ("2021-07-17", "Dinner, East", "11"), ("2021-08-19", "Farewell", "9")], ["opened", "title", "amount"]),
         "p66-tables/empty.csv": b"",
+        **p73_files(),
         "p65-continuation-long/continuation_pages.pdf": _pdf_lines(
             {1: "Synthetic continuation page 1 names the quokka.",
              CONTINUATION_PAGES: f"Synthetic continuation page {CONTINUATION_PAGES} names the quokka."},

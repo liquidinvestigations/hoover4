@@ -38,11 +38,11 @@ def test_every_declared_table_mime_is_a_table(mime):
     "application/pdf",
     "text/plain",
     "text/html",
-    "application/json",
     "application/vnd.oasis.opendocument.text",
 ])
 def test_things_that_are_not_tables(mime):
-    """A `.docx`, a PDF, prose and JSON are all out, and each was a live proposal."""
+    """A `.docx`, a PDF and prose are out. JSON routes to the table stage, which checks
+    its structure first (`json_grammar`)."""
     assert not is_table_mime(mime)
 
 
@@ -101,7 +101,7 @@ def test_only_delimited_text_has_to_clear_the_shape_threshold():
 def test_the_caps_are_the_agreed_numbers():
     assert MAX_CELLS_PER_DOCUMENT == 300_000_000
     assert MAX_ROWS_PER_SHEET == 10_000_000
-    assert MAX_COLUMNS_PER_SHEET == 300
+    assert MAX_COLUMNS_PER_SHEET == 1000
     assert MAX_SHEETS == 100
 
 

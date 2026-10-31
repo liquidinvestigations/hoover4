@@ -37,7 +37,7 @@
     {"name": "enron_like_text_substitute", "dataset": "testdata_manualqa", "path": "/substitutes/mail-search-substitute.txt", "original": false, "substitutes_for": "Unavailable supplied email-address search document.", "expected": {"global_query": "hoover", "highlighted_address": "jeff.hoover@enron.com", "document_find_term": "enron", "document_find_count": 21}},
     {"name": "manual_table_substitute", "dataset": "testdata_manualqa", "path": "/substitutes/manual-qa-table.csv", "original": false, "substitutes_for": "Unavailable supplied table document.", "expected": {"table_format": "csv", "cell_values": ["Case", "Region", "Amount", "A-01", "Bucharest", "10", "A-02", "Cluj", "20", "A-03", "Iași", "30"], "sort_column": "Amount", "filter_column": "Region", "filter_value": "Cluj", "visible_columns": ["Case", "Region", "Amount"]}},
     {"name": "screenshot_table_corpus", "dataset": "testdata_excelsc", "path": "dataset-root", "original": true, "expected": {"table_documents": true}},
-    {"name": "screenshot_wide_table", "dataset": "testdata_wide", "path": "/wide.csv", "original": true, "expected": {"column_count": 350, "stored_column_limit": 300}},
+    {"name": "screenshot_wide_table", "dataset": "testdata_wide", "path": "/wide.csv", "original": true, "expected": {"column_count": 350, "stored_column_limit": 1000}},
     {"name": "leaf_dataset", "dataset": "testdata_leaf", "path": "/leaf.txt", "original": true, "expected": {"leaf": true}},
     {"name": "deep_tree", "dataset": "testdata_shapes", "path": "dataset-root", "original": true, "expected": {"known_branches": true}},
     {"name": "diskfiles_dataset", "dataset": "testdata_diskfiles", "path": "dataset-root", "original": true, "expected": {"dataset_present": true}}

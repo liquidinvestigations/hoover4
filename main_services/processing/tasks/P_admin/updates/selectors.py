@@ -23,6 +23,11 @@ Selector contracts, one for each step:
   collection uses vectors. A file whose text has no passage worth a vector stays in the
   count after the run, so the count is an upper bound. Settlement: every selected plan
   ran embedding and indexing.
+* `tables` selects live files with a table manifest of an older reader version that is a
+  JSON candidate or that an earlier reader cut at the column limit, and live JSON
+  candidates without a manifest of the current version. A JSON candidate has a JSON MIME
+  type or a JSON file name in its stored detection. Settlement: the count is zero, which
+  includes files whose new parse found no table (an `empty` manifest).
 * `folder_counts` selects folder nodes without counts, or every node after a version
   change of the counts. Settlement: no node lacks its counts.
 * `search_schema` selects the shard tables that miss a required column or have another
@@ -314,6 +319,34 @@ def select_vectors(client, ctx: ScopeContext, target: Optional[dict] = None) -> 
                      {"vectors": "on", "model": target.get("model", "")})
 
 
+def tables_hash_sql() -> Tuple[str, dict]:
+    """The files that the `tables` step reads again, as a subquery with parameters."""
+    from tasks.P3_parse_files.table_formats import (
+        JSON_EXTENSIONS, JSON_TABLE_MIMES, LIMIT_COLUMNS_PER_SHEET, READER_VERSION)
+
+    json_candidates = ("SELECT hash FROM file_types WHERE collection_dataset = {cd:String} "
+                       "AND (hasAny(mime_type, {tj_mimes:Array(String)}) "
+                       "OR hasAny(extensions, {tj_exts:Array(String)}))")
+    sql = (
+        "SELECT hash FROM ("
+        "SELECT hash FROM table_documents FINAL WHERE collection_dataset = {cd:String} "
+        "AND reader_version < {tj_version:UInt16} "
+        f"AND (hash IN ({json_candidates}) OR has(truncated_limits, {{tj_limit:String}})) "
+        f"UNION ALL SELECT hash FROM ({json_candidates}) WHERE hash NOT IN ("
+        "SELECT hash FROM table_documents FINAL WHERE collection_dataset = {cd:String} "
+        "AND reader_version >= {tj_version:UInt16})"
+        f") WHERE hash IN ({_LIVE})")
+    return sql, {"tj_mimes": sorted(JSON_TABLE_MIMES), "tj_exts": sorted(JSON_EXTENSIONS),
+                 "tj_version": READER_VERSION, "tj_limit": LIMIT_COLUMNS_PER_SHEET}
+
+
+def select_tables(client, ctx: ScopeContext) -> Selection:
+    hash_sql, extra = tables_hash_sql()
+    parameters = {"cd": ctx.scope_id, **extra}
+    files, size = _count(client, hash_sql, parameters, ctx.scope_id)
+    return Selection(files, size, files, hash_sql if files else "", parameters, {})
+
+
 def select_folder_counts(client, ctx: ScopeContext) -> Selection:
     """Nodes without counts, or every node when the applied version is older.
 
@@ -396,6 +429,8 @@ def select(step: UpdateStep, ctx: ScopeContext, client=None, target: Optional[di
         return select_ocr(client, ctx, target)
     if step.step_id == "vectors":
         return select_vectors(client, ctx, target)
+    if step.step_id == "tables":
+        return select_tables(client, ctx)
     if step.step_id == "folder_counts":
         return select_folder_counts(client, ctx)
     raise ValueError(f"unknown update step {step.step_id!r}")

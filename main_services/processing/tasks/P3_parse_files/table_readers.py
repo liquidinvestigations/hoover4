@@ -799,6 +799,151 @@ def _calamine_cell(value) -> Optional[RawCell]:
     return RawCell(0, 0, KIND_TEXT, text) if text.strip() else None
 
 
+# ------------------------------------------------------------------------- JSON
+
+
+#: The Rust reader in the worker image (`json_table/`).
+JSON_TABLE_BINARY = "json-table"
+#: Bytes of reader stderr that an error message keeps.
+JSON_STDERR_TAIL = 4000
+
+
+def json_number_cell(source_row: int, column_id: int, text: str) -> RawCell:
+    """A JSON number. The source text stays the cell text.
+
+    An integer inside Int64 is `int`. A larger integer stays `text`, because a float
+    would round a long identifier. A finite decimal is `float`, with its float value for
+    sorting only.
+    """
+    if _INT_RE.match(text):
+        value = int(text)
+        if _INT64_MIN <= value <= _INT64_MAX:
+            return RawCell(source_row, column_id, KIND_INT, text, int_value=value, float_value=float(value))
+        return RawCell(source_row, column_id, KIND_TEXT, text)
+    try:
+        number = float(text)
+    except ValueError:
+        return RawCell(source_row, column_id, KIND_TEXT, text)
+    if number != number or number in (float("inf"), float("-inf")):
+        return RawCell(source_row, column_id, KIND_TEXT, text)
+    return RawCell(source_row, column_id, KIND_FLOAT, text, float_value=number)
+
+
+def json_cell(source_row: int, column_id: int, code: str, text: str) -> RawCell:
+    """One cell of the reader protocol: `s` string, `n` number, `b` bool, `z` null, `j` JSON text."""
+    if code == "n":
+        return json_number_cell(source_row, column_id, text)
+    if code == "b":
+        return RawCell(source_row, column_id, KIND_BOOL, text, int_value=1 if text == "true" else 0,
+                       float_value=1.0 if text == "true" else 0.0)
+    return RawCell(source_row, column_id, KIND_TEXT, text)
+
+
+class JsonCells:
+    """The cell stream of `json-table`, with what its header said.
+
+    Row 1 of each sheet holds the column labels, so the collector reads it as the header.
+    JSON row `r` is source row `r + 1`. The process is killed when the consumer closes
+    the stream early, and a nonzero exit raises with the end of its stderr.
+    """
+
+    def __init__(self, path: str, on_progress: Optional[Callable[[str, int], None]] = None):
+        self.path = path
+        self.on_progress = on_progress
+        self.mode = ""
+        self.none_reason = ""
+        self.sheets: list[dict] = []
+        self.sheets_truncated = False
+        self._process = None
+        self._stderr = None
+
+    def __iter__(self) -> CellStream:
+        import json
+        import subprocess
+        import tempfile
+
+        self._stderr = tempfile.TemporaryFile()
+        self._process = subprocess.Popen(
+            [JSON_TABLE_BINARY, self.path], stdout=subprocess.PIPE, stderr=self._stderr,
+            stdin=subprocess.DEVNULL, bufsize=1 << 20)
+        names: dict[int, str] = {}
+        headers_sent: set[int] = set()
+        ended = False
+        for raw in self._process.stdout:
+            record = json.loads(raw)
+            kind = record.get("t")
+            if kind == "none":
+                self.none_reason = str(record.get("reason") or "")
+                break
+            if kind == "sheets":
+                self.mode = str(record.get("mode") or "")
+                self.sheets = list(record.get("sheets") or [])
+                self.sheets_truncated = bool(record.get("sheets_truncated"))
+                names = {int(sheet["id"]): str(sheet["name"]) for sheet in self.sheets}
+                continue
+            if kind == "end":
+                ended = True
+                break
+            if kind != "row":
+                continue
+            sheet_id = int(record["s"])
+            name = names.get(sheet_id, "")
+            if sheet_id not in headers_sent:
+                headers_sent.add(sheet_id)
+                sheet = next(s for s in self.sheets if int(s["id"]) == sheet_id)
+                for column in sheet["columns"]:
+                    yield sheet_id, name, RawCell(1, int(column["id"]), KIND_TEXT, str(column["label"]))
+            source_row = int(record["r"]) + 1
+            for column_id, code, text in record["c"]:
+                yield sheet_id, name, json_cell(source_row, int(column_id), code, text)
+            if self.on_progress and source_row % 10_000 == 0:
+                self.on_progress(name, source_row)
+        status = self._process.wait()
+        if status != 0:
+            raise RuntimeError(f"json-table exit {status}: {self._stderr_tail()}")
+        if not ended and not self.none_reason:
+            raise RuntimeError("json-table output ended without its end record")
+
+    def _stderr_tail(self) -> str:
+        if self._stderr is None:
+            return ""
+        self._stderr.seek(0, 2)
+        size = self._stderr.tell()
+        self._stderr.seek(max(0, size - JSON_STDERR_TAIL))
+        return self._stderr.read().decode("utf-8", "replace").strip()
+
+    def close(self) -> None:
+        """Stop the reader process and release its stderr file."""
+        if self._process is not None and self._process.poll() is None:
+            self._process.kill()
+            self._process.wait()
+        if self._process is not None and self._process.stdout is not None:
+            self._process.stdout.close()
+        if self._stderr is not None:
+            self._stderr.close()
+            self._stderr = None
+
+
+class _ClosingStream:
+    """A generator over a `JsonCells` whose `close` also stops the process."""
+
+    def __init__(self, cells: JsonCells):
+        self.cells = cells
+        self._iterator = iter(cells)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._iterator)
+
+    def close(self) -> None:
+        close = getattr(self._iterator, "close", None)
+        if close:
+            close()
+        self.cells.close()
+
+
 # ------------------------------------------------------------------------- dispatch
 
 
@@ -814,6 +959,8 @@ def read_cells(path: str, reader: str, *, encodings: Sequence[str] = (),
         return read_ods_cells(path, on_progress=on_progress)
     if reader == READER_CALAMINE:
         return read_calamine_cells(path, on_progress=on_progress)
+    if reader == "json":
+        return _ClosingStream(JsonCells(path, on_progress))
     if reader in {"html_table", "mhtml_table", "spreadsheetml"}:
         from tasks.P3_parse_files.table_markup import read_html_table_cells, read_mhtml_workbook_cells, read_spreadsheetml_cells
         return {"html_table": read_html_table_cells, "mhtml_table": read_mhtml_workbook_cells,

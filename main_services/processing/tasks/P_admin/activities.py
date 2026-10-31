@@ -273,9 +273,41 @@ def sweep_orphan_table_cells(params: CollectionDatabaseParams) -> str:
             )
             released += len(orphans)
 
-    log.info("[P_admin] %s: released the cells of %d unclaimed table document(s)",
-             params.collectionname, released)
-    return f"released {released}"
+        # A newer parse leaves its earlier generations behind. A generation that no
+        # manifest names and that is older than a named one has no reader. A generation
+        # above every named one can belong to a parse in progress, so it stays.
+        generations = 0
+        for _ in range(SWEEP_ORPHAN_MAX_BATCHES):
+            stale = [(row[0], int(row[1])) for row in client.query("""
+                SELECT c.file_hash, c.generation
+                FROM (SELECT DISTINCT file_hash, generation FROM table_cells) AS c
+                INNER JOIN (
+                    SELECT hash, groupUniqArray(generation) AS named, max(generation) AS top
+                    FROM table_documents FINAL WHERE status IN ('ok', 'parsing') GROUP BY hash
+                ) AS d ON d.hash = c.file_hash
+                WHERE c.generation < d.top AND NOT has(d.named, c.generation)
+                LIMIT {n:UInt32}
+            """, parameters={"n": SWEEP_ORPHAN_HASH_BATCH}).result_rows]
+            if not stale:
+                break
+            client.command(
+                "DELETE FROM table_cells WHERE (file_hash, generation) IN {pairs:Array(Tuple(String, UInt32))}",
+                parameters={"pairs": stale},
+            )
+            generations += len(stale)
+        for table in ("table_sheets", "table_columns"):
+            client.command(f"""
+                DELETE FROM {table} WHERE (collection_dataset, hash, generation) IN (
+                    SELECT s.collection_dataset, s.hash, s.generation FROM {table} AS s
+                    INNER JOIN (SELECT collection_dataset, hash, generation FROM table_documents FINAL
+                                WHERE status = 'ok') AS d
+                    ON d.collection_dataset = s.collection_dataset AND d.hash = s.hash
+                    WHERE s.generation < d.generation)
+            """)
+
+    log.info("[P_admin] %s: released the cells of %d unclaimed table document(s) and %d "
+             "earlier generation(s)", params.collectionname, released, generations)
+    return f"released {released}, generations {generations}"
 
 
 @activity.defn

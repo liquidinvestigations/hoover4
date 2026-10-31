@@ -33,6 +33,8 @@ from tasks.P_admin.updates.params import (
     UpdateCandidateParams,
     UpdateProgressParams,
     UpdateSnapshotResult,
+    TablePlanParams,
+    TablePlansParams,
     VectorPlansParams,
 )
 from tasks.P_admin.updates.registry import (
@@ -407,6 +409,9 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
             variants, pairs = selectors.obsolete_ocr_outputs(client, scope_id, keep)
             return (not variants and not pairs,
                     f"OCR text of removed languages remains: {variants + [' '.join(p) for p in pairs]}")
+        if step_id == "tables":
+            selection = selectors.select_tables(client, ctx)
+            return selection.count == 0, f"{selection.count} files still have an earlier table reading."
         if step_id == "folder_counts":
             selection = selectors.select_folder_counts(
                 client, selectors.ScopeContext(scope_kind, scope_id, params.collectionname))
@@ -552,3 +557,78 @@ def list_update_vector_plans(params: VectorPlansParams) -> List[str]:
             parameters={"cd": params.collection_dataset, "after": params.after,
                         "model": params.model}).result_rows
     return [row[0] for row in rows]
+
+
+@activity.defn
+@with_heartbeat
+def list_update_table_plans(params: TablePlansParams) -> List[str]:
+    """At most 100 plans after `after` that hold a file that the `tables` step selects."""
+    from database.clickhouse import get_collection_client
+
+    hash_sql, extra = selectors.tables_hash_sql()
+    with get_collection_client(params.collectionname) as client:
+        rows = client.query(
+            "SELECT DISTINCT plan_hash FROM processing_plan_hits WHERE collection_dataset = {cd:String} "
+            f"AND plan_hash > {{after:String}} AND item_hash IN ({hash_sql}) ORDER BY plan_hash LIMIT 100",
+            parameters={"cd": params.collection_dataset, "after": params.after, **extra}).result_rows
+    return [row[0] for row in rows]
+
+
+@activity.defn
+@with_heartbeat
+def reparse_update_tables(params: TablePlanParams) -> List[str]:
+    """Read the selected files of one plan again with the current table reader.
+
+    The reader is chosen from the stored detection and a structural check of the bytes,
+    so detection does not run again. Returns the hashes that were read.
+    """
+    import shutil
+
+    from database.clickhouse import get_collection_client
+    from tasks.P2_execute_plan.activities import write_blob_files
+    from tasks.P3_parse_files.batch_runner import try_budget_seconds
+    from tasks.P3_parse_files.file_names import bounded_file_names
+    from tasks.P3_parse_files.parse_table import ParseTableParams, parse_table_and_store
+    from tasks.P3_parse_files.table_formats import MARKUP_TABLE_READERS
+
+    hash_sql, extra = selectors.tables_hash_sql()
+    with get_collection_client(params.collectionname) as client:
+        rows = client.query(
+            "SELECT h.item_hash, b.size, b.s3_path, n.names, t.mimes, t.encodings, t.sniff, t.file_mime "
+            "FROM (SELECT DISTINCT item_hash FROM processing_plan_hits WHERE collection_dataset = {cd:String} "
+            f"AND plan_hash = {{plan:String}} AND item_hash IN ({hash_sql})) AS h "
+            "INNER JOIN (SELECT blob_hash, any(blob_size_bytes) AS size, any(s3_path) AS s3_path FROM blobs "
+            "WHERE collection_dataset = {cd:String} GROUP BY blob_hash) AS b ON b.blob_hash = h.item_hash "
+            "LEFT JOIN (SELECT hash, groupUniqArray(splitByChar('/', path)[-1]) AS names FROM vfs_files FINAL "
+            "WHERE collection_dataset = {cd:String} AND is_deleted = 0 GROUP BY hash) AS n ON n.hash = h.item_hash "
+            "LEFT JOIN (SELECT hash, groupUniqArrayArray(mime_type) AS mimes, "
+            "groupUniqArrayArray(mime_encoding) AS encodings, "
+            "groupUniqArrayArrayIf(mime_type, extracted_by = 'content_sniff') AS sniff, "
+            "anyIf(mime_type[1], extracted_by = 'file') AS file_mime "
+            "FROM file_types WHERE collection_dataset = {cd:String} GROUP BY hash) AS t ON t.hash = h.item_hash",
+            parameters={"cd": params.collection_dataset, "plan": params.plan_hash, **extra}).result_rows
+    if not rows:
+        return []
+    out_dir = os.path.join("/tmp/hoover4", params.collection_dataset, f"update-tables-{params.plan_hash}")
+    os.makedirs(out_dir, exist_ok=True)
+    clock = HeartbeatClock()
+    read: List[str] = []
+    try:
+        write_blob_files(params.collectionname, params.collection_dataset, [
+            {"item_hash": row[0], "file_size_bytes": int(row[1] or 0), "s3_url": row[2] or "",
+             "path": os.path.join(out_dir, row[0])} for row in rows],
+            context=f"{params.collection_dataset}/{params.plan_hash}")
+        for file_hash, size, _, names, mimes, encodings, sniff, file_mime in rows:
+            clock.beat(f"table {file_hash}")
+            authoritative = next((m for m in (sniff or []) if m in MARKUP_TABLE_READERS), "")
+            parse_table_and_store(ParseTableParams(
+                collectionname=params.collectionname, collection_dataset=params.collection_dataset,
+                file_hash=file_hash, file_path=os.path.join(out_dir, file_hash),
+                timeout_seconds=try_budget_seconds("parse_table_batch", int(size or 0)),
+                mime_types=list(mimes or []), mime_encodings=list(encodings or []),
+                op_id=params.op_id, file_names=bounded_file_names(list(names or [])),
+                sniff_mime_type=authoritative, file_mime_type=file_mime or ""))
+            read.append(file_hash)
+    finally:
+        shutil.rmtree(out_dir, ignore_errors=True)
+    return read

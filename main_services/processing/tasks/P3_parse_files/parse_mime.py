@@ -265,6 +265,10 @@ _EXTRA_EXTENSION_MIMES = {
     '.heic': 'image/heic',
     '.webp': 'image/webp',
     '.avif': 'image/avif',
+    '.jsonl': 'application/x-ndjson',
+    '.ndjson': 'application/x-ndjson',
+    '.geojson': 'application/json',
+    '.topojson': 'application/json',
 }
 
 

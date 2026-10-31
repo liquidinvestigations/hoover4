@@ -42,8 +42,10 @@ with workflow.unsafe.imports_passed_through():
         begin_update_step,
         check_processing_updates,
         finish_update_step,
+        list_update_table_plans,
         list_update_vector_plans,
         obsolete_ocr_variants,
+        reparse_update_tables,
         refresh_update_checks,
         report_update_progress,
         settle_update_step,
@@ -56,6 +58,8 @@ with workflow.unsafe.imports_passed_through():
         RunUpdateParams,
         StepParams,
         SubmitUpdateParams,
+        TablePlanParams,
+        TablePlansParams,
         UpdateProgressParams,
         VectorPlansParams,
     )
@@ -238,6 +242,12 @@ class RunProcessingUpdate:
                                   str(detail.get("model", ""))),
                 id=f"update-vectors-{params.op_id}", **self._child(params))
             return f"embedded and indexed {done} plans"
+        if step_id == "tables":
+            done = await workflow.execute_child_workflow(
+                UpdateDatasetTables.run,
+                TablePlansParams(params.op_id, params.collectionname, params.collection_dataset),
+                id=f"update-tables-{params.op_id}", **self._child(params))
+            return f"read the tables of {done} plans again"
         if step_id == "folder_counts":
             await workflow.execute_activity(
                 "build_vfs_nodes",
@@ -353,4 +363,59 @@ class UpdateDatasetVectors:
                 failed += 1
         workflow.continue_as_new(VectorPlansParams(
             params.op_id, params.collectionname, params.collection_dataset, params.model,
+            plans[-1], params.done + len(plans), params.failed + failed))
+
+
+@workflow.defn
+class UpdateDatasetTables:
+    """Table reading of the files that the `tables` step selects, plan by plan.
+
+    For each plan: read the selected files again (`reparse_update_tables`), resolve their
+    file type again, and index those files again, because the file type and the table
+    kind of a document are search attributes. Entity extraction and embedding read the
+    text, which a table reading does not change, so they do not run. Pages of at most
+    100 plans, four at a time, with continue-as-new after each page.
+    """
+
+    @workflow.run
+    async def run(self, params: TablePlansParams) -> int:
+        plans = await workflow.execute_activity(list_update_table_plans, params, start_to_close_timeout=timedelta(minutes=15),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        if not plans:
+            if params.failed:
+                raise ApplicationError(f"{params.failed} plans failed table reading or indexing",
+                                       non_retryable=True)
+            return params.done
+        common = dict(task_queue="processing-common-queue",
+                      search_attributes=dataset_search_attributes(params.collection_dataset))
+
+        async def plan(plan_hash: str):
+            hashes = await workflow.execute_activity(
+                reparse_update_tables,
+                TablePlanParams(params.op_id, params.collectionname, params.collection_dataset, plan_hash),
+                task_queue="processing-common-queue", start_to_close_timeout=timedelta(hours=6),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+            if not hashes:
+                return
+            await workflow.execute_activity(
+                "resolve_canonical_file_type",
+                {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset,
+                 "item_hashes": hashes},
+                task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=20),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+            await workflow.execute_child_workflow(
+                "IndexDatasetPlan",
+                {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset,
+                 "plan_hash": plan_hash, "op_id": params.op_id, "item_hashes": hashes},
+                id=f"update-index-tables-{params.op_id}-{plan_hash}", **common)
+
+        results = await run_with_window([lambda h=h: plan(h) for h in plans], VECTOR_PLAN_WINDOW)
+        failed = 0
+        for result in results:
+            if isinstance(result, BaseException):
+                if is_cancellation(result):
+                    raise result
+                failed += 1
+        workflow.continue_as_new(TablePlansParams(
+            params.op_id, params.collectionname, params.collection_dataset,
             plans[-1], params.done + len(plans), params.failed + failed))

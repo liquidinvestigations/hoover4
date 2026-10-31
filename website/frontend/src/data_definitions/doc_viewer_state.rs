@@ -1,7 +1,7 @@
 //! State definitions for the document viewer.
 
 use common::document_sources::DocumentSourceItem;
-use common::document_tables::{TableColumnFilter, TableSort};
+use common::document_tables::{TableColumnFilter, TableColumnSelection, TableSort};
 use common::document_text_pages::{MatchDirection, TextMatchStep};
 use common::search_result::DocumentIdentifier;
 use dioxus::prelude::*;
@@ -22,10 +22,14 @@ pub struct DocTableState {
     /// manifest lists", which is what a URL written before a sheet was picked describes.
     #[serde(default)]
     pub sheet_id: Option<u16>,
-    /// Columns the reader hid. Hidden rather than visible, so a re-ingest that ADDS a
-    /// column shows it instead of silently dropping it out of a shared link.
-    #[serde(default)]
+    /// The hidden columns of a link written before `column_selection` existed. It is
+    /// read once, when `column_selection` is `None`, and a state change clears it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hidden_columns: Vec<u32>,
+    /// The columns that the grid shows (`common::document_tables::effective_table_columns`).
+    /// `None` is the automatic selection, or the hidden columns of an older link.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub column_selection: Option<TableColumnSelection>,
     #[serde(default)]
     pub sort: Option<TableSort>,
     #[serde(default)]
@@ -36,6 +40,14 @@ pub struct DocTableState {
 }
 
 impl DocTableState {
+    /// The state with an explicit column selection, which replaces an older link's
+    /// hidden columns.
+    pub fn with_columns(mut self, selection: TableColumnSelection) -> Self {
+        self.hidden_columns.clear();
+        self.column_selection = Some(selection);
+        self
+    }
+
     /// Changing what is shown resets the pager: page 40 of an unfiltered sheet is very
     /// rarely page 40 of the filtered one, and landing past the end reads as no results.
     pub fn reset_page(mut self) -> Self {
@@ -364,7 +376,8 @@ mod tests {
             selected_source_page: None,
             table_state: Some(DocTableState {
                 sheet_id: Some(2),
-                hidden_columns: vec![3, 7],
+                hidden_columns: Vec::new(),
+                column_selection: Some(TableColumnSelection::Selected(vec![3, 7])),
                 sort: Some(TableSort { column_id: 4, desc: true }),
                 filters: vec![TableColumnFilter {
                     column_id: 1,

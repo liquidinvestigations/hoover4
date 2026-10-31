@@ -3,7 +3,18 @@
 Delimited inputs must meet the minimum table shape before any write.
 Readers with a fallback store accepted batches in a temporary Arrow file.
 Only a successful reader writes those batches to ClickHouse.
-The manifest lands before the cell rows.
+
+Each parse writes a new generation. The cells, sheets and columns of a parse carry its
+generation number, and the `ok` manifest row that names the generation is the last
+write. Readers read only the generation of the manifest, so an interrupted parse never
+shows cells of two parses, and old cells inside the bounds of a new table stay
+invisible. The generation is collection-wide for a hash, because the cells are shared by
+every dataset of the collection that holds the hash. Another dataset keeps reading its
+own manifest generation until its own parse or the dedup copy moves it. The sweep
+`sweep_orphan_table_cells` removes the generations that no manifest names.
+
+A parse without a table writes an `empty` manifest, so the earlier table of the hash
+stops being visible for the dataset.
 """
 
 from __future__ import annotations
@@ -39,6 +50,7 @@ from tasks.P3_parse_files.table_formats import (
     HEADER_BASIS_HEURISTIC,
     HEADER_ESTABLISHED,
     NUMERIC_KINDS,
+    READER_JSON,
     READER_VERSION,
     TEMPORAL_KINDS,
     KIND_TEXT,
@@ -49,6 +61,8 @@ from tasks.P3_parse_files.table_formats import (
     LIMIT_SHEETS,
     TruncationRecord,
     column_letter,
+    has_json_evidence,
+    json_grammar,
     is_delimited_reader,
     table_format_for,
     table_reader_for,
@@ -70,6 +84,14 @@ _NOT_THE_FILES_FAULT = (KeyboardInterrupt, SystemExit, GeneratorExit, CancelledE
 #: Cells per ClickHouse insert. Large enough that a million-cell sheet is a few hundred
 #: round trips, small enough that a batch is a few megabytes of Python objects.
 INSERT_BATCH_CELLS = 50_000
+
+#: Distinct values that the collector keeps across all columns of one document. A wide
+#: table can otherwise keep up to 1000 x MAX_COLUMN_DISTINCT strings. A column that
+#: reaches the budget reports its distinct count as approximate.
+MAX_DOCUMENT_DISTINCT = 2_000_000
+
+#: Manifest status of a parse that found no table.
+STATUS_EMPTY = "empty"
 
 
 @dataclass
@@ -296,6 +318,11 @@ class _Collector:
         self._row_id = 0
         self._done = False
         self.parsing_started = False
+        #: The generation that this parse writes, and whether the dataset already has an
+        #: `ok` manifest, which the `parsing` row must not replace.
+        self.generation = 0
+        self.published = False
+        self.distinct_total = 0
         self.spool = None
         self.spool_writer = None
         from tasks.P3_parse_files.table_text import TableText
@@ -393,7 +420,17 @@ class _Collector:
             stats.header = text
             stats.first, stats.first_text = cell, text
             return
-        _add_body_cell(stats, cell, text)
+        self._add(stats, cell, text)
+
+    def _add(self, stats: _ColumnStats, cell, text: str, first: bool = False) -> None:
+        """`_add_body_cell` within the document budget of distinct values."""
+        if not stats.distinct_overflow and self.distinct_total >= MAX_DOCUMENT_DISTINCT:
+            self.distinct_total -= len(stats.distinct)
+            stats.distinct_overflow = True
+            stats.distinct.clear()
+        before = len(stats.distinct)
+        _add_body_cell(stats, cell, text, first=first)
+        self.distinct_total += len(stats.distinct) - before
 
     def settle_headers(self) -> None:
         """Record the readings of row 1 of each sheet (`header_reading`), then read row 1 of
@@ -413,7 +450,7 @@ class _Collector:
             for stats in sheet.columns.values():
                 stats.header = ""
                 if stats.first is not None:
-                    _add_body_cell(stats, stats.first, stats.first_text, first=True)
+                    self._add(stats, stats.first, stats.first_text, first=True)
 
 
     def _flush(self, client, *, final=False) -> None:
@@ -438,6 +475,7 @@ class _Collector:
             "cell_time": pa.array([r[9] for r in rows], type=pa.timestamp("ms", tz="UTC")),
             "cell_link": pa.array([r[10] for r in rows], type=pa.string()),
             "cell_formula": pa.array([r[11] for r in rows], type=pa.string()),
+            "generation": pa.array([self.generation] * len(rows), type=pa.uint32()),
         })
         from tasks.P3_parse_files.table_readers import fallback_reader
         if fallback_reader(self.reader):
@@ -456,7 +494,11 @@ class _Collector:
     def start_manifest(self, client) -> None:
         if not self.parsing_started:
             self.parsing_started = True
+            if self.published:
+                # The published table stays readable until this parse publishes.
+                return
             _write_manifest(client, self.params, status="parsing", reader=self.reader,
+                generation=self.generation,
                 table_format=table_format_for(self.reader, (self.params.file_names or [self.params.file_path])[0]),
                 durable=True)
 
@@ -516,6 +558,7 @@ def _sheet_rows(params: ParseTableParams, collector: _Collector):
         "header_state": pa.array([s.header_state for s in sheets], type=pa.string()),
         "header_basis": pa.array([s.header_basis for s in sheets], type=pa.string()),
         "header_candidates": pa.array([s.header_candidates for s in sheets], type=pa.list_(pa.uint64())),
+        "generation": pa.array([collector.generation] * len(ids), type=pa.uint32()),
     })
 
 
@@ -576,6 +619,7 @@ def _column_rows(params: ParseTableParams, collector: _Collector):
         "min_value": pa.array(minimums, type=pa.string()),
         "max_value": pa.array(maximums, type=pa.string()),
         "samples": pa.array(samples, type=pa.list_(pa.string())),
+        "generation": pa.array([collector.generation] * len(sheet_ids), type=pa.uint32()),
     })
 
 
@@ -583,7 +627,7 @@ def _write_manifest(client, params: ParseTableParams, *, status: str, reader: st
                     table_format: str, sheet_count: int = 0, row_count: int = 0,
                     column_count: int = 0, cell_count: int = 0, stored_bytes: int = 0,
                     truncation: Optional[TruncationRecord] = None, parse_ms: int = 0,
-                    parse_error: str = "", durable: bool = False) -> None:
+                    parse_error: str = "", durable: bool = False, generation: int = 0) -> None:
     import pyarrow as pa
 
     from database.clickhouse import insert_parser_arrow, insert_arrow_durable
@@ -608,6 +652,7 @@ def _write_manifest(client, params: ParseTableParams, *, status: str, reader: st
         "truncated_reason": pa.array([truncation.reason()], type=pa.string()),
         "parse_ms": pa.array([parse_ms], type=pa.uint32()),
         "parse_error": pa.array([parse_error], type=pa.string()),
+        "generation": pa.array([generation], type=pa.uint32()),
     })
     writer = insert_arrow_durable if durable else insert_parser_arrow
     writer(client, "table_documents", table)
@@ -635,7 +680,7 @@ def _record_skip(params: ParseTableParams, run_time_ms: int, reason: str) -> Non
     ))
 
 
-def _existing_parse(client, file_hash: str):
+def _existing_parse(client, file_hash: str, collection_dataset: str = ""):
     """A finished parse of this hash in any dataset of this collection, or None.
 
     This is the cross-dataset dedup: `table_cells` is keyed by hash alone, so a hash
@@ -645,15 +690,44 @@ def _existing_parse(client, file_hash: str):
     rows = client.query("""
         SELECT reader, table_format, sheet_count, row_count, column_count, cell_count,
                stored_bytes, truncated, truncated_limits, truncated_maximums,
-               truncated_sheets, truncated_reason, collection_dataset
+               truncated_sheets, truncated_reason, collection_dataset, generation
         FROM table_documents FINAL
         WHERE hash = {h:String} AND status = 'ok' AND reader_version = {v:UInt16}
+          AND collection_dataset != {cd:String}
+        ORDER BY generation DESC
         LIMIT 1
-    """, parameters={"h": file_hash, "v": READER_VERSION}).result_rows
+    """, parameters={"h": file_hash, "v": READER_VERSION, "cd": collection_dataset}).result_rows
     return rows[0] if rows else None
 
 
-def _copy_structure(client, params: ParseTableParams, source_dataset: str) -> None:
+def _next_generation(client, file_hash: str) -> int:
+    """A generation above every manifest and every stored cell of the hash."""
+    manifests = client.query(
+        "SELECT max(generation) FROM table_documents FINAL WHERE hash = {h:String}",
+        parameters={"h": file_hash}).result_rows
+    cells = client.query(
+        "SELECT max(generation) FROM table_cells WHERE file_hash = {h:String}",
+        parameters={"h": file_hash}).result_rows
+    highest = [int(rows[0][0] or 0) for rows in (manifests, cells) if rows]
+    return max(highest, default=0) + 1
+
+
+def _has_published(client, params: "ParseTableParams") -> bool:
+    rows = client.query(
+        "SELECT count() FROM table_documents FINAL WHERE collection_dataset = {cd:String} "
+        "AND hash = {h:String} AND status = 'ok'",
+        parameters={"cd": params.collection_dataset, "h": params.file_hash}).result_rows
+    return bool(rows and int(rows[0][0]))
+
+
+def _write_empty(client, params: "ParseTableParams", reader: str, table_format: str,
+                 run_time_ms: int) -> None:
+    """Publish a parse without a table, so an earlier table of the hash is not shown."""
+    _write_manifest(client, params, status=STATUS_EMPTY, reader=reader,
+                    table_format=table_format, parse_ms=run_time_ms)
+
+
+def _copy_structure(client, params: ParseTableParams, source_dataset: str, generation: int) -> None:
     """Point this dataset's manifest at cells another dataset already read.
 
     The sheet and column rows are copied rather than recomputed: they are per-dataset
@@ -669,10 +743,34 @@ def _copy_structure(client, params: ParseTableParams, source_dataset: str) -> No
         names = ", ".join(f"`{name}`" for name in columns if name != "updated_at")
         client.command(
             f"INSERT INTO `{table}` ({names}) SELECT {selected} FROM `{table}` FINAL "
-            f"WHERE collection_dataset = {{src:String}} AND hash = {{h:String}}",
+            f"WHERE collection_dataset = {{src:String}} AND hash = {{h:String}} "
+            f"AND generation = {{g:UInt32}}",
             parameters={"cd": params.collection_dataset, "src": source_dataset,
-                        "h": params.file_hash},
+                        "h": params.file_hash, "g": generation},
         )
+
+
+def delimited_evidence(params: ParseTableParams, file_name: str) -> bool:
+    """Whether the MIME and name rules alone choose the CSV reader for this file."""
+    return table_reader_for(params.mime_types or [], file_name, authoritative_type=params.sniff_mime_type,
+                            content_type=params.file_mime_type) == "csv"
+
+
+def select_table_reader(params: ParseTableParams, file_name: str) -> str:
+    """The reader of one file: the MIME and name rules, then the JSON structure check.
+
+    The JSON reader replaces the CSV reader, or no reader, when the bytes have a JSON
+    grammar (`json_grammar`). An authoritative markup sniff and a spreadsheet keep their
+    reader.
+    """
+    reader = table_reader_for(params.mime_types or [], file_name,
+                              authoritative_type=params.sniff_mime_type, content_type=params.file_mime_type)
+    if reader not in ("", "csv"):
+        return reader
+    evidence = has_json_evidence(params.mime_types, file_name)
+    if (evidence or reader == "csv") and json_grammar(params.file_path, json_evidence=evidence):
+        return READER_JSON
+    return reader
 
 
 @activity.defn
@@ -684,27 +782,28 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
 
     started = time.time()
     file_name = (params.file_names or [params.file_path])[0]
-    reader = table_reader_for(params.mime_types or [], file_name,
-                              authoritative_type=params.sniff_mime_type, content_type=params.file_mime_type)
-    if not reader:
-        return SkippedOutcome({"status": "skipped", "reason": "no reader for this file"})
-    table_format = table_format_for(reader, file_name)
+    reader = select_table_reader(params, file_name)
 
     with get_collection_client(params.collectionname) as client:
-        existing = _existing_parse(client, params.file_hash)
-        if existing is not None and existing[12] != params.collection_dataset:
+        if not reader:
+            _write_empty(client, params, "", "", 0)
+            return SkippedOutcome({"status": "skipped", "reason": "no reader for this file"})
+        table_format = table_format_for(reader, file_name)
+        existing = _existing_parse(client, params.file_hash, params.collection_dataset)
+        if existing is not None:
             truncation = TruncationRecord(
                 limits=list(existing[8]), maximums=[int(m) for m in existing[9]],
                 sheets=list(existing[10]),
             )
+            # The structure lands before the manifest that names its generation.
+            _copy_structure(client, params, existing[12], int(existing[13]))
             _write_manifest(
                 client, params, status="ok", reader=existing[0],
                 table_format=existing[1], sheet_count=int(existing[2]),
                 row_count=int(existing[3]), column_count=int(existing[4]),
                 cell_count=int(existing[5]), stored_bytes=int(existing[6]),
-                truncation=truncation, parse_ms=0,
+                truncation=truncation, parse_ms=0, generation=int(existing[13]),
             )
-            _copy_structure(client, params, existing[12])
             if existing[0] == "sqlite":
                 from tasks.P3_parse_files.parse_common import insert_text_pages
                 from tasks.text_sources import TABLE_TEXT
@@ -727,15 +826,22 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
         def on_progress(sheet_name: str, row: int) -> None:
             heartbeat.beat(f"table {sheet_name or table_format} row {row}")
 
-        collector = _Collector(params, reader)
+        generation = _next_generation(client, params.file_hash)
+        published = _has_published(client, params)
+
+        def new_collector(name: str) -> _Collector:
+            made = _Collector(params, name)
+            made.generation, made.published = generation, published
+            return made
+
+        collector = new_collector(reader)
         attempted = [reader]
         reader_limits = {"time_limit_seconds": max(1, params.timeout_seconds - 60)} if reader == "sqlite" else {}
+        stream = None
         try:
-            collector.consume(
-                read_cells(params.file_path, reader,
-                           encodings=params.mime_encodings or [], on_progress=on_progress, **reader_limits),
-                client,
-            )
+            stream = read_cells(params.file_path, reader,
+                                encodings=params.mime_encodings or [], on_progress=on_progress, **reader_limits)
+            collector.consume(stream, client)
         except _NOT_THE_FILES_FAULT:
             collector.close()
             raise
@@ -746,14 +852,15 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
                 run_time_ms = max(int((time.time() - started) * 1000), 0)
                 _write_manifest(client, params, status="failed", reader=reader,
                                 table_format=table_format, parse_ms=run_time_ms,
-                                parse_error=f"{type(first_error).__name__}: {first_error}")
+                                parse_error=f"{type(first_error).__name__}: {first_error}",
+                                generation=generation)
                 _record_skip(params, run_time_ms,
                              f"table_read_failed ({reader}) {first_error}")
                 return {"status": "failed", "reader": reader, "error": str(first_error)}
             log.warning("[P3] table reader %s failed on %s (%s), falling back to %s",
                         reader, params.file_hash, first_error, alternative)
             attempted.append(alternative)
-            collector = _Collector(params, alternative)
+            collector = new_collector(alternative)
             try:
                 collector.consume(
                     read_cells(params.file_path, alternative, on_progress=on_progress),
@@ -767,22 +874,45 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
                 run_time_ms = max(int((time.time() - started) * 1000), 0)
                 _write_manifest(client, params, status="failed", reader=alternative,
                                 table_format=table_format, parse_ms=run_time_ms,
-                                parse_error=f"{type(second_error).__name__}: {second_error}")
+                                parse_error=f"{type(second_error).__name__}: {second_error}",
+                                generation=generation)
                 _record_skip(params, run_time_ms,
                              f"table_read_failed ({' then '.join(attempted)}) {second_error}")
                 return {"status": "failed", "reader": alternative,
                         "error": str(second_error)}
             reader = alternative
 
+        json_cells = getattr(stream, "cells", None)
+        if json_cells is not None and json_cells.none_reason and delimited_evidence(params, file_name):
+            # JSON without an array of objects, such as JSON Lines of arrays, keeps the
+            # delimited reading that its detection permits.
+            reader, table_format, json_cells = "csv", table_format_for("csv", file_name), None
+            collector = new_collector(reader)
+            try:
+                collector.consume(read_cells(params.file_path, reader, encodings=params.mime_encodings or [],
+                                             on_progress=on_progress), client)
+            except _NOT_THE_FILES_FAULT:
+                collector.close()
+                raise
+            except BaseException:  # noqa: BLE001 - a failed fallback is a parse without a table
+                collector.close()
+                collector = new_collector(reader)
         run_time_ms = max(int((time.time() - started) * 1000), 0)
+        if json_cells is not None:
+            table_format = json_cells.mode or table_format
+            if json_cells.sheets_truncated:
+                collector.truncation.record(LIMIT_SHEETS)
 
         if not collector.meets_threshold():
             collector.close()
-            log.info("[P3] table skip for %s: table_not_a_table (%s) %d cell(s)",
-                      params.file_hash, reader, collector.cell_count)
+            reason = (json_cells.none_reason if json_cells is not None and json_cells.none_reason
+                      else "below the minimum table shape")
+            _write_empty(client, params, reader, table_format, run_time_ms)
+            log.info("[P3] table skip for %s: table_not_a_table (%s) %d cell(s): %s",
+                      params.file_hash, reader, collector.cell_count, reason)
             return SkippedOutcome({"status": "skipped", "reader": reader,
                                     "cell_count": collector.cell_count,
-                                    "reason": "below the minimum table shape"})
+                                    "reason": reason})
 
         collector.commit_spool(client)
 
@@ -808,7 +938,7 @@ def parse_table_and_store(params: ParseTableParams) -> Dict[str, Any] | SkippedO
             sheet_count=len(collector.sheets), row_count=row_count,
             column_count=column_count, cell_count=collector.cell_count,
             stored_bytes=collector.stored_bytes, truncation=collector.truncation,
-            parse_ms=run_time_ms,
+            parse_ms=run_time_ms, generation=generation,
         )
 
     if collector.truncation.truncated:

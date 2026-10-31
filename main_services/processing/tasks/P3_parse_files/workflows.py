@@ -16,7 +16,7 @@ with workflow.unsafe.imports_passed_through():
     from tasks.P3_parse_files.parse_archives import ARCHIVE_NOT_OPENED
     from tasks.P3_parse_files.temp_dirs import has_application_error_type, is_temp_copy_missing
     from tasks.P3_parse_files.parse_mime import LOCAL_DETECTORS
-    from tasks.P3_parse_files.table_formats import is_table_mime, BINARY_TABLE_MIMES, DELIMITED_TABLE_MIMES, DELIMITED_EXTENSIONS
+    from tasks.P3_parse_files.table_formats import is_table_mime, BINARY_TABLE_MIMES, DELIMITED_TABLE_MIMES, DELIMITED_EXTENSIONS, JSON_TABLE_MIMES
     from tasks.P3_parse_files.content_types import AUTHORITATIVE_SNIFF_MIMES, AUTHORITATIVE_ALIASES, BINARY_MAIL_CONTAINER_MIMES
     from tasks.P0_scan_disk.mime_type_mapper import is_zip_based_document_mime, should_expand_as_archive
 
@@ -272,9 +272,11 @@ def route_stages(combined: Dict[str, List[str]], version: bool = False,
     if any(is_zip_based_document_mime(m) for m in mime_types):
         routes.append("office_xml")
     # A tabular document also gets a structural reading into cells. The text readers
-    # still index the same values as text.
+    # still index the same values as text. A JSON file gets the route too, and the table
+    # stage checks its structure before the JSON reader opens it.
     if any(is_table_mime(m) for m in mime_types) and (
-            set(mime_types) & BINARY_TABLE_MIMES or combined.get("permitted_delimited", ["legacy"])):
+            set(mime_types) & (BINARY_TABLE_MIMES | JSON_TABLE_MIMES)
+            or combined.get("permitted_delimited", ["legacy"])):
         routes.append("table")
     if "pdf" in coarse_types:
         routes.append("pdf")

@@ -395,6 +395,10 @@ pub struct TableOverview {
     /// The reader's own English sentence, kept as a fallback for a limit name this build
     /// does not know.
     pub truncated_reason: String,
+    /// The parse generation of the cells. A column-hit response for another generation
+    /// is stale.
+    #[serde(default)]
+    pub generation: u32,
 }
 
 impl TableOverview {
@@ -563,6 +567,85 @@ pub fn clamp_table_visible_columns(requested: &[u32]) -> Vec<u32> {
     requested.iter().copied().take(MAX_TABLE_VISIBLE_COLUMNS).collect()
 }
 
+/// Which columns of a sheet the website grid shows. One value decides it.
+///
+/// `Automatic` shows the first [`MAX_TABLE_VISIBLE_COLUMNS`] columns of the sheet.
+/// `Selected` names the columns, at most [`MAX_TABLE_VISIBLE_COLUMNS`], and an empty list
+/// is a selection without a column. A link from before this value existed has
+/// `hidden_columns` only, and [`effective_table_columns`] reads it once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(tag = "mode", content = "columns", rename_all = "snake_case")]
+pub enum TableColumnSelection {
+    #[default]
+    Automatic,
+    Selected(Vec<u32>),
+}
+
+/// The columns that the grid shows, in sheet order, at most [`MAX_TABLE_VISIBLE_COLUMNS`].
+///
+/// A selection wins over `legacy_hidden`. Without a selection, a non-empty
+/// `legacy_hidden` (an older link) shows the first columns that it does not hide. A
+/// selected id that the sheet does not have is left out.
+pub fn effective_table_columns(
+    sheet_columns: &[u32],
+    selection: Option<&TableColumnSelection>,
+    legacy_hidden: &[u32],
+) -> Vec<u32> {
+    match selection {
+        Some(TableColumnSelection::Selected(ids)) => sheet_columns
+            .iter()
+            .copied()
+            .filter(|id| ids.contains(id))
+            .take(MAX_TABLE_VISIBLE_COLUMNS)
+            .collect(),
+        Some(TableColumnSelection::Automatic) => {
+            sheet_columns.iter().copied().take(MAX_TABLE_VISIBLE_COLUMNS).collect()
+        }
+        None => sheet_columns
+            .iter()
+            .copied()
+            .filter(|id| !legacy_hidden.contains(id))
+            .take(MAX_TABLE_VISIBLE_COLUMNS)
+            .collect(),
+    }
+}
+
+/// The shown columns after a find text matched the columns `matched`.
+///
+/// When every matched column is shown, the selection stays. When the shown and the
+/// matched columns fit together, the grid shows both. When more than
+/// [`MAX_TABLE_VISIBLE_COLUMNS`] columns match, the grid shows the first matched ones.
+/// Otherwise it shows every matched column and fills the rest with the first shown
+/// columns. The result is in sheet order.
+pub fn columns_for_matches(sheet_columns: &[u32], shown: &[u32], matched: &[u32]) -> Vec<u32> {
+    let matched: Vec<u32> = sheet_columns.iter().copied().filter(|id| matched.contains(id)).collect();
+    if matched.iter().all(|id| shown.contains(id)) {
+        return sheet_columns.iter().copied().filter(|id| shown.contains(id)).collect();
+    }
+    if matched.len() >= MAX_TABLE_VISIBLE_COLUMNS {
+        return matched.into_iter().take(MAX_TABLE_VISIBLE_COLUMNS).collect();
+    }
+    let room = MAX_TABLE_VISIBLE_COLUMNS - matched.len();
+    let fill: Vec<u32> = sheet_columns
+        .iter()
+        .copied()
+        .filter(|id| shown.contains(id) && !matched.contains(id))
+        .take(room)
+        .collect();
+    sheet_columns
+        .iter()
+        .copied()
+        .filter(|id| matched.contains(id) || fill.contains(id))
+        .collect()
+}
+
+/// The columns of one sheet that hold a find term, for one parse generation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct TableColumnHits {
+    pub generation: u32,
+    pub columns: Vec<u32>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct TableCell {
     pub column_id: u32,
@@ -628,6 +711,70 @@ pub struct TablePage {
 pub struct TableColumnValue {
     pub value: String,
     pub count: u64,
+}
+
+#[cfg(test)]
+mod column_selection_tests {
+    use super::*;
+
+    fn ids(range: std::ops::RangeInclusive<u32>) -> Vec<u32> {
+        range.collect()
+    }
+
+    #[test]
+    fn automatic_shows_the_first_sixty() {
+        let sheet = ids(1..=400);
+        assert_eq!(effective_table_columns(&sheet, None, &[]), ids(1..=60));
+        assert_eq!(effective_table_columns(&sheet, Some(&TableColumnSelection::Automatic), &[3]), ids(1..=60));
+    }
+
+    #[test]
+    fn an_old_link_with_hidden_columns_decodes_once() {
+        let sheet = ids(1..=100);
+        let shown = effective_table_columns(&sheet, None, &[1, 2]);
+        assert_eq!(shown.first(), Some(&3));
+        assert_eq!(shown.len(), 60);
+        // Every column hidden is an empty selection, which shows no column.
+        assert!(effective_table_columns(&ids(1..=5), None, &ids(1..=5)).is_empty());
+        let url: TableColumnSelection = serde_json::from_str(r#"{"mode":"selected","columns":[]}"#).unwrap();
+        assert!(effective_table_columns(&sheet, Some(&url), &[]).is_empty());
+    }
+
+    #[test]
+    fn a_selection_drops_removed_columns_and_keeps_sheet_order() {
+        let selection = TableColumnSelection::Selected(vec![9, 2, 500]);
+        assert_eq!(effective_table_columns(&ids(1..=10), Some(&selection), &[]), vec![2, 9]);
+    }
+
+    #[test]
+    fn matches_inside_the_selection_change_nothing() {
+        let sheet = ids(1..=400);
+        assert_eq!(columns_for_matches(&sheet, &ids(1..=60), &[5, 7]), ids(1..=60));
+    }
+
+    #[test]
+    fn matches_that_fit_are_added() {
+        let sheet = ids(1..=400);
+        assert_eq!(columns_for_matches(&sheet, &[1, 2], &[350]), vec![1, 2, 350]);
+    }
+
+    #[test]
+    fn more_than_sixty_matches_show_the_first_sixty() {
+        let sheet = ids(1..=400);
+        let matched = ids(100..=200);
+        assert_eq!(columns_for_matches(&sheet, &ids(1..=60), &matched), ids(100..=159));
+        // Exactly sixty matches replace the selection.
+        assert_eq!(columns_for_matches(&sheet, &ids(1..=60), &ids(101..=160)), ids(101..=160));
+    }
+
+    #[test]
+    fn otherwise_matches_come_first_and_the_selection_fills() {
+        let sheet = ids(1..=400);
+        let got = columns_for_matches(&sheet, &ids(1..=60), &[350]);
+        assert_eq!(got.len(), 60);
+        assert!(got.contains(&350));
+        assert_eq!(got[..59], ids(1..=59)[..]);
+    }
 }
 
 #[cfg(test)]

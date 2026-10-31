@@ -22,6 +22,12 @@ impl Deadline {
         get_collection_client(collectionname)
             .with_option("max_execution_time", self.remaining_seconds().min(table_limit).to_string())
     }
+
+    /// [`Self::table_client`] restricted to the published generation of the document's
+    /// table rows ([`table_browse::with_generation`]).
+    fn cells_client(&self, collectionname: &str, context: &TableContext) -> clickhouse::Client {
+        table_browse::with_generation(self.table_client(collectionname), context.generation)
+    }
 }
 
 /// One table document that the caller can read, with its overview and its source.
@@ -30,6 +36,7 @@ struct TableContext {
     overview: common::document_tables::TableOverview,
     source: String,
     reader_version: u16,
+    generation: u32,
 }
 
 /// Resolves the dataset, checks the permission and reads the manifest. The source is the
@@ -65,7 +72,7 @@ async fn table_context(
         .await
         .map_err(AgentError::from_anyhow)?
         .ok_or_else(|| AgentError::not_found("this document has no browsable table"))?;
-    Ok(TableContext { identifier, overview, source, reader_version })
+    Ok(TableContext { identifier, overview, source, reader_version, generation: manifest.generation })
 }
 
 /// The sheet `sheet` and the reading of row 1 that `requested` selects. A reading that
@@ -112,7 +119,7 @@ async fn reading_columns(
     interpretation: &SheetInterpretation,
     deadline: Deadline,
 ) -> Result<Vec<ViewColumn>, AgentError> {
-    table_browse::view_columns(&deadline.table_client(collectionname), &context.identifier, sheet, interpretation)
+    table_browse::view_columns(&deadline.cells_client(collectionname, context), &context.identifier, sheet, interpretation)
         .await
         .map_err(AgentError::from_anyhow)
 }
@@ -410,7 +417,7 @@ async fn tables_cell_body(
     let column = column_label(&context, body.sheet, body.column)?;
     // A full primary-key read of one cell.
     let cells: Vec<(u64, String)> = deadline
-        .table_client(&body.collectionname)
+        .cells_client(&body.collectionname, &context)
         .query("SELECT source_row, cell_text FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND column_id = ? AND row_id = ? LIMIT 1")
         .bind(&body.file_hash)
         .bind(body.sheet)
@@ -476,7 +483,7 @@ async fn tables_column_values_body(
     let having = if after.is_some() { " HAVING n < ? OR (n = ? AND cell_text > ?)" } else { "" };
     let limit = common::document_tables::MAX_TABLE_COLUMN_VALUES;
     let mut query = deadline
-        .table_client(&body.collectionname)
+        .cells_client(&body.collectionname, &context)
         .query(&format!(
             "SELECT cell_text, count() AS n FROM table_cells FINAL \
              WHERE file_hash = ? AND sheet_id = ? AND column_id = ?{floor} AND row_id <= {} AND column_id <= {} \
@@ -546,7 +553,7 @@ async fn tables_search_cells_body(
     let header_row = interpretation.selected;
 
     let hit_count: u64 = deadline
-        .table_client(&body.collectionname)
+        .cells_client(&body.collectionname, &context)
         .query("SELECT count() FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND row_id > ? AND row_id <= ? AND column_id <= ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0")
         .bind(&body.file_hash)
         .bind(body.sheet)
@@ -561,7 +568,7 @@ async fn tables_search_cells_body(
         return Err(AgentError::invalid_argument("position is past the last hit"));
     }
     let rows: Vec<(u64, u64, u32, String)> = deadline
-        .table_client(&body.collectionname)
+        .cells_client(&body.collectionname, &context)
         .query("SELECT source_row, row_id, column_id, cell_text FROM table_cells FINAL WHERE file_hash = ? AND sheet_id = ? AND row_id > ? AND row_id <= ? AND column_id <= ? AND positionCaseInsensitiveUTF8(cell_text, ?) > 0 ORDER BY row_id, column_id LIMIT ? OFFSET ?")
         .bind(&body.file_hash)
         .bind(body.sheet)

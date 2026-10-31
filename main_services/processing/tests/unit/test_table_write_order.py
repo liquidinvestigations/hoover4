@@ -35,7 +35,7 @@ def test_below_threshold_has_no_writes(writes, monkeypatch):
     rows, path = writes
     monkeypatch.setattr(readers, "read_cells", lambda *a, **k: iter([cell(1, 1, "one")]))
     assert isinstance(table.parse_table_and_store(params(path, "csv")), SkippedOutcome)
-    assert rows == []
+    assert [(name, batch[0]["status"]) for name, _, batch in rows] == [("table_documents", "empty")]
 
 
 def test_manifest_waits_before_cells(writes, monkeypatch):
@@ -72,7 +72,8 @@ def test_failed_stream_has_no_published_cells(writes, monkeypatch, fallback):
         assert not any(name == "table_documents" and batch[0]["status"] == "parsing"
                        for name, _, batch in rows)
     elif fallback == "empty":
-        assert isinstance(result, SkippedOutcome) and rows == []
+        assert isinstance(result, SkippedOutcome)
+        assert [(name, batch[0]["status"]) for name, _, batch in rows] == [("table_documents", "empty")]
     else:
         assert result["status"] == "failed" and not cells
 
@@ -86,7 +87,8 @@ def test_below_threshold_stops_at_buffer_limit(writes, monkeypatch):
             yield cell(1, index + 1, "one row")
     monkeypatch.setattr(readers, "read_cells", stream)
     assert isinstance(table.parse_table_and_store(params(path, "csv")), SkippedOutcome)
-    assert len(seen) == 3 and rows == []
+    assert len(seen) == 3
+    assert [(name, batch[0]["status"]) for name, _, batch in rows] == [("table_documents", "empty")]
 
 
 @pytest.mark.parametrize('cancel_type', ['temporal', 'asyncio'])

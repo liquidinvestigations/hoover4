@@ -166,6 +166,72 @@ def _parse_s3_url(s3_url: str) -> Tuple[str, str]:
     return parts[0], parts[1]
 
 
+def write_blob_files(collectionname: str, collection_dataset: str, items: List[Dict[str, Any]],
+                     context: str = "") -> None:
+    """Write each blob to its `path`, from S3 or from `blob_values`, and verify its size.
+
+    Each item has `item_hash`, `s3_url`, `file_size_bytes` and `path`. The plan download
+    and the sibling volumes of a split archive use this one copy of the transfer.
+    """
+    from database.s3 import get_s3_client
+    from database.clickhouse import get_collection_client
+
+    s3_client = get_s3_client()
+    paths: Dict[str, List[str]] = {}
+    ch_hashes: List[str] = []
+    s3_hashes = set()
+    for it in items:
+        h = it.get("item_hash")
+        target_path = it["path"]
+        first = h not in paths
+        paths.setdefault(h, []).append(target_path)
+        s3_url = (it.get("s3_url") or "").strip()
+        bucket, key = _parse_s3_url(s3_url) if s3_url else ("", "")
+        if bucket and key:
+            s3_client.fget_object(bucket, key, target_path)
+            s3_hashes.add(h)
+        else:
+            if s3_url:
+                log.warning("Invalid s3 url for %s: %s", h, s3_url)
+            if first:
+                ch_hashes.append(h)
+
+    BATCH_SIZE = 100
+    for i in range(0, len(ch_hashes), BATCH_SIZE):
+        batch = ch_hashes[i:i + BATCH_SIZE]
+        with get_collection_client(collectionname) as client:
+            tbl = client.query_arrow("""
+                SELECT blob_hash, blob_value
+                FROM blob_values
+                WHERE collection_dataset = {cd:String}
+                  AND blob_hash IN {hashes:Array(String)}
+            """, {"cd": collection_dataset, "hashes": batch})
+            if not tbl or tbl.num_rows == 0:
+                continue
+            hashes = tbl.column("blob_hash").combine_chunks().to_pylist()
+            values = pc.cast(tbl.column("blob_value"), pa.large_binary()).combine_chunks().to_pylist()
+            for bh, data in zip(hashes, values):
+                for outp in paths.get(bh, []):
+                    with open(outp, "wb") as f:
+                        f.write(data)
+
+    for it in items:
+        ih = it.get("item_hash")
+        expected = int(it["file_size_bytes"])
+        path = it["path"]
+        src = "s3" if ih in s3_hashes else "clickhouse"
+        try:
+            actual = os.path.getsize(path)
+        except FileNotFoundError:
+            raise RuntimeError(
+                f"[P2] Downloaded file missing for {context}/{ih} from {src}; expected {expected} bytes"
+            )
+        if actual != expected:
+            raise RuntimeError(
+                f"[P2] Size mismatch for {context}/{ih} from {src}: expected {expected} bytes, got {actual} bytes at {path}"
+            )
+
+
 @dataclass
 class DownloadPlanFilesParams:
     collectionname: str
@@ -179,8 +245,6 @@ class DownloadPlanFilesParams:
 @with_heartbeat
 def download_plan_files(params: DownloadPlanFilesParams) -> Dict[str, Any]:
     """Activity that downloads plan files locally from S3 or ClickHouse."""
-    from database.s3 import get_s3_client, ensure_bucket
-    from database.clickhouse import get_collection_client
     collection_dataset: str = params.collection_dataset
     plan_hash: str = params.plan_hash
     items: List[Dict[str, Any]] = params.items
@@ -189,88 +253,11 @@ def download_plan_files(params: DownloadPlanFilesParams) -> Dict[str, Any]:
     out_dir = _plan_dir(base_temp_dir, collection_dataset, plan_hash)
     os.makedirs(out_dir, exist_ok=True)
 
-    # Prepare ClickHouse client and S3 client once
-    s3_client = get_s3_client()
-
-    # Separate S3-backed and ClickHouse-backed items, track output paths
-    hash_to_path = {}
-    ch_hashes: List[str] = []
-    s3_jobs: List[Dict[str, str]] = []
-    s3_hashes = set()
-
     total_size = sum(it["file_size_bytes"] for it in items) / 1024 / 1024  # MB
     log.info("[P2] Downloading %s files (%s MB) for plan %s %s", len(items), total_size, collection_dataset, plan_hash)
-
-    for it in items:
-        h = it.get("item_hash")
-        s3_url = (it.get("s3_url") or "").strip()
-        target_path = os.path.join(out_dir, h)
-        hash_to_path[h] = target_path
-
-        if s3_url:
-            bucket, key = _parse_s3_url(s3_url)
-            if not bucket or not key:
-                log.warning("Invalid s3 url for %s: %s", h, s3_url)
-                ch_hashes.append(h)  # fallback to ClickHouse
-            else:
-                s3_jobs.append({"bucket": bucket, "key": key, "path": target_path, "hash": h})
-                s3_hashes.add(h)
-        else:
-            ch_hashes.append(h)
-
-    # Download S3-backed files
-    for job in s3_jobs:
-        s3_client.fget_object(job["bucket"], job["key"], job["path"])
-
-    # Batch-fetch ClickHouse blobs in chunks of 100
-    BATCH_SIZE = 100
-    for i in range(0, len(ch_hashes), BATCH_SIZE):
-        batch = ch_hashes[i:i + BATCH_SIZE]
-        if not batch:
-            continue
-        with get_collection_client(params.collectionname) as client:
-            tbl = client.query_arrow("""
-                SELECT blob_hash, blob_value
-                FROM blob_values
-                WHERE collection_dataset = {cd:String}
-                  AND blob_hash IN {hashes:Array(String)}
-            """, {"cd": collection_dataset, "hashes": batch})
-            if not tbl or tbl.num_rows == 0:
-                continue
-            col_hash = tbl.column("blob_hash").combine_chunks()
-            col_val = tbl.column("blob_value")
-            # Force to binary to get bytes reliably
-            col_val_bin = pc.cast(col_val, pa.large_binary()).combine_chunks()
-            hashes = col_hash.to_pylist()
-            values = col_val_bin.to_pylist()  # list of bytes
-            for bh, data in zip(hashes, values):
-                outp = hash_to_path.get(bh)
-                if not outp:
-                    continue
-                with open(outp, "wb") as f:
-                    f.write(data)
-
-    # Verify sizes of all downloaded files
-    for it in items:
-        ih = it.get("item_hash")
-        expected = int(it["file_size_bytes"])
-        path = hash_to_path.get(ih)
-        if not path:
-            raise RuntimeError(
-                f"[P2] Missing output path for item {ih} in plan {collection_dataset}/{plan_hash}"
-            )
-        try:
-            actual = os.path.getsize(path)
-        except FileNotFoundError:
-            src = "s3" if ih in s3_hashes else "clickhouse"
-            raise RuntimeError(
-                f"[P2] Downloaded file missing for {collection_dataset}/{plan_hash}/{ih} from {src}; expected {expected} bytes"
-            )
-        if actual != expected:
-            src = "s3" if ih in s3_hashes else "clickhouse"
-            raise RuntimeError(
-                f"[P2] Size mismatch for {collection_dataset}/{plan_hash}/{ih} from {src}: expected {expected} bytes, got {actual} bytes at {path}"
-            )
+    write_blob_files(params.collectionname, collection_dataset, [
+        {**it, "path": os.path.join(out_dir, it.get("item_hash"))} for it in items],
+        context=f"{collection_dataset}/{plan_hash}")
 
     return {"out_dir": out_dir, "count": len(items)}
 

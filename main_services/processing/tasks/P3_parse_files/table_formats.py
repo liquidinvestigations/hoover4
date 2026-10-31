@@ -60,13 +60,24 @@ DELIMITED_TABLE_MIMES = frozenset({
     "application/tab-separated-values",
 })
 
+#: JSON and JSON Lines. A bounded structural check of the bytes (`json_grammar`) decides
+#: whether the JSON reader opens the file. The MIME type alone does not decide it, because
+#: a `.json` name can hold JSON Lines and a JSON Lines file can look like CSV.
+JSON_TABLE_MIMES = frozenset({
+    "application/json",
+    "application/x-ndjson",
+    "application/jsonl",
+    "application/ndjson",
+})
+JSON_EXTENSIONS = frozenset({".json", ".jsonl", ".ndjson", ".geojson", ".topojson"})
+
 MARKUP_TABLE_READERS = {
     "application/x-hoover-html-table": "html_table",
     "application/x-hoover-mhtml-workbook": "mhtml_table",
     "application/vnd.ms-spreadsheetml": "spreadsheetml",
     "application/vnd.sqlite3": "sqlite", "application/x-sqlite3": "sqlite",
 }
-TABLE_MIMES = BINARY_TABLE_MIMES | DELIMITED_TABLE_MIMES | MARKUP_TABLE_READERS.keys()
+TABLE_MIMES = BINARY_TABLE_MIMES | DELIMITED_TABLE_MIMES | JSON_TABLE_MIMES | MARKUP_TABLE_READERS.keys()
 
 #: Extensions that decide the reader when the MIME set is ambiguous, which it always is
 #: for delimited text, and often is for a `.xlsb` that libmagic calls a zip.
@@ -81,13 +92,16 @@ READER_CSV = "csv"
 READER_XLSX_STREAM = "xlsx_stream"
 READER_ODS_STREAM = "ods_stream"
 READER_CALAMINE = "calamine"
+READER_JSON = "json"
 
 #: Bumped when a reader changes what it produces. A claim carrying an older version is
 #: not trusted and the document is re-read. Version 2 reads row 1 of a delimited sheet as
 #: data when its cells have the kinds of the rows below it (`parse_table.first_row_is_data`).
 #: Version 3 also records every plausible reading of row 1 in `table_sheets`
-#: (`parse_table.header_reading`).
-READER_VERSION = 3
+#: (`parse_table.header_reading`). Version 4 adds the JSON reader, keeps up to 1000
+#: columns, writes each parse as a new generation, and records a valid parse without a
+#: table as an `empty` manifest.
+READER_VERSION = 4
 
 #: How a reader read row 1 of a sheet, as `table_sheets.header_state` stores it.
 HEADER_ESTABLISHED = "established"
@@ -105,7 +119,7 @@ HEADER_BASIS_HEURISTIC = "heuristic"
 #: an 8-million-row x 22-column crime dataset published as CSV fits inside all four.
 MAX_CELLS_PER_DOCUMENT = 300_000_000
 MAX_ROWS_PER_SHEET = 10_000_000
-MAX_COLUMNS_PER_SHEET = 300
+MAX_COLUMNS_PER_SHEET = 1000
 MAX_SHEETS = 100
 
 #: A cell longer than this is stored truncated. Text this long is a document pasted into
@@ -195,6 +209,69 @@ def table_reader_for(mime_types, path: str, *, authoritative_type: str = "", con
     return ""
 
 
+#: Bytes that `json_grammar` reads. The Rust reader reads the same sample.
+JSON_SAMPLE_BYTES = 64 * 1024
+
+
+def json_grammar(path: str, *, json_evidence: bool) -> str:
+    """`json`, `jsonl` or empty: the grammar of the start of a file.
+
+    `json_evidence` is a JSON MIME type or a JSON file name. With it, a file that starts
+    with `{` or `[` is a JSON candidate, and the reader decides whether it holds a table.
+    Without it, only stronger evidence counts, so a CSV whose first cell starts with a
+    bracket stays CSV: two complete JSON lines, or a whole small file that
+    parses as one JSON object or array. The first two nonblank lines decide JSON Lines,
+    as in the Rust reader, so a malformed later line fails the read with its line number.
+    """
+    import json
+
+    try:
+        with open(path, "rb") as handle:
+            sample = handle.read(JSON_SAMPLE_BYTES + 1)
+    except OSError:
+        return ""
+    whole = len(sample) <= JSON_SAMPLE_BYTES
+    sample = sample[:JSON_SAMPLE_BYTES]
+    if sample.startswith((b"\xfe\xff", b"\xff\xfe")):
+        return ""
+    if sample.startswith(b"\xef\xbb\xbf"):
+        sample = sample[3:]
+    body = sample.lstrip()
+    if not body[:1] in (b"{", b"["):
+        return ""
+    lines = sample.split(b"\n")
+    if not whole:
+        lines = lines[:-1]
+    lines = [line.strip() for line in lines if line.strip()]
+
+    def complete(line: bytes) -> bool:
+        if line[:1] not in (b"{", b"["):
+            return False
+        try:
+            json.loads(line)
+        except ValueError:
+            return False
+        return True
+
+    if len(lines) >= 2 and all(complete(line) for line in lines[:2]):
+        return "jsonl"
+    if json_evidence:
+        return "json"
+    if whole:
+        try:
+            value = json.loads(body)
+        except ValueError:
+            return ""
+        return "json" if isinstance(value, (dict, list)) else ""
+    return ""
+
+
+def has_json_evidence(mime_types, path: str) -> bool:
+    """A JSON MIME type among the detected types, or a JSON file name."""
+    return bool({m for m in (mime_types or []) if m} & JSON_TABLE_MIMES) \
+        or _extension(path) in JSON_EXTENSIONS
+
+
 def is_delimited_reader(reader: str) -> bool:
     """Whether this reader's output has to clear the 2x2 shape threshold."""
     return reader == READER_CSV
@@ -208,6 +285,8 @@ def table_format_for(reader: str, path: str) -> str:
     """
     if reader in {"html_table", "mhtml_table", "spreadsheetml", "sqlite"}:
         return reader
+    if reader == READER_JSON:
+        return "jsonl" if _extension(path) in {".jsonl", ".ndjson"} else "json"
     extension = _extension(path).lstrip(".")
     if reader == READER_CSV:
         return extension if extension in {"csv", "tsv", "tab", "psv"} else "csv"

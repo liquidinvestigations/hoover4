@@ -26,9 +26,10 @@
 
 use common::document_sources::DocumentTableSourceItem;
 use common::document_tables::{
-    DEFAULT_TABLE_PAGE_ROWS, TableCell, TableColumnClass,
-    TableColumnFilter, TableColumnInfo, TableColumnValue, TableFilterKind, TableOverview,
-    TablePage, TableSort, TableViewQuery, table_find_text,
+    DEFAULT_TABLE_PAGE_ROWS, MAX_TABLE_VISIBLE_COLUMNS, TableCell, TableColumnClass,
+    TableColumnFilter, TableColumnHits, TableColumnInfo, TableColumnSelection, TableColumnValue,
+    TableFilterKind, TableOverview, TablePage, TableSort, TableViewQuery, columns_for_matches,
+    effective_table_columns, table_find_text,
 };
 use common::search_result::DocumentIdentifier;
 use common::table_cell_preview::cell_preview;
@@ -73,6 +74,8 @@ struct CellDetails {
 /// What one accepted movement request is for: the document, the shown sheet, the find
 /// text and the count of pager clicks. A render with the same identity moves nothing.
 type MovementIdentity = (DocumentIdentifier, u16, String, u64);
+/// The request of a column-hit response: document, sheet, find text, filters and generation.
+type ColumnHitsKey = (DocumentIdentifier, u16, String, Vec<TableColumnFilter>, u32);
 
 /// Gives each grid an element id of its own, for the movement script to find.
 static NEXT_GRID_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -168,13 +171,14 @@ pub fn DocumentPreviewForTable(
         .as_ref()
         .map(|o| o.columns_of(sheet_id).into_iter().cloned().collect())
         .unwrap_or_default();
-    // Hidden, not visible: a re-ingest that ADDS a column should show it, not have it
-    // silently missing from a link written before it existed.
-    let visible_columns: Vec<u32> = sheet_columns
-        .iter()
-        .map(|c| c.column_id)
-        .filter(|id| !table_state.hidden_columns.contains(id))
-        .collect();
+    // One value decides the shown columns: the selection of the state, or the first 60
+    // columns, or the hidden columns of an older link (`effective_table_columns`).
+    let sheet_column_ids: Vec<u32> = sheet_columns.iter().map(|c| c.column_id).collect();
+    let visible_columns: Vec<u32> = effective_table_columns(
+        &sheet_column_ids,
+        table_state.column_selection.as_ref(),
+        &table_state.hidden_columns,
+    );
 
     let table_query = TableViewQuery {
         sheet_id,
@@ -248,6 +252,56 @@ pub fn DocumentPreviewForTable(
         control.set_doc_viewer_state.call(state);
     });
 
+    // ---- matching columns beyond the shown ones -------------------------------------
+    // The find text searches every column. The columns that hold it come back with the
+    // key of their request: document, sheet, find text, filters and generation. A
+    // response is applied once, and only while its key is still the current key, so a
+    // late response for an earlier query never changes the selection in the URL.
+    let generation = overview_value.as_ref().map(|o| o.generation).unwrap_or(0);
+    let hits_key: ColumnHitsKey = (
+        document_identifier_value.clone(),
+        sheet_id,
+        table_find_text(&find_query),
+        table_state.filters.clone(),
+        generation,
+    );
+    let hits_request = hits_key.clone();
+    let column_hits: Resource<Option<(ColumnHitsKey, TableColumnHits)>> =
+        use_resource(use_reactive!(|hits_request| {
+            async move {
+                if hits_request.2.is_empty() {
+                    return None;
+                }
+                let hits = get_table_column_hits(hits_request.0.clone(), hits_request.1, hits_request.2.clone())
+                    .await
+                    .ok()?;
+                Some((hits_request, hits))
+            }
+        }));
+    let mut applied_hits = use_signal(|| None::<ColumnHitsKey>);
+    let answered_hits = column_hits.read().clone().flatten();
+    let apply_columns = sheet_column_ids.clone();
+    let apply_visible = visible_columns.clone();
+    let apply_key = hits_key.clone();
+    let apply_state = table_state.clone();
+    use_effect(use_reactive!(|answered_hits, apply_key| {
+        let Some((answered, hits)) = answered_hits else {
+            return;
+        };
+        if answered != apply_key || hits.generation != apply_key.4 {
+            return;
+        }
+        if applied_hits.peek().as_ref() == Some(&answered) {
+            return;
+        }
+        applied_hits.set(Some(answered));
+        let next = columns_for_matches(&apply_columns, &apply_visible, &hits.columns);
+        if next != apply_visible {
+            set_table_state.call(apply_state.clone().with_columns(TableColumnSelection::Selected(next)));
+        }
+    }));
+    let mut banner_closed = use_signal(|| None::<DocumentIdentifier>);
+
     // ---- render ---------------------------------------------------------------------
     let Some(overview) = overview_value else {
         return rsx! {
@@ -272,8 +326,12 @@ pub fn DocumentPreviewForTable(
     }
 
     let active_filters = table_state.filters.len();
-    let banner = overview.truncation_banner();
-    let clamp_note = page_value.as_ref().and_then(|p| p.clamps.message());
+    // The truncation notice closes for this document view. The Metadata tab keeps the
+    // truncation record.
+    let banner = overview
+        .truncation_banner()
+        .filter(|_| banner_closed().as_ref() != Some(&document_identifier_value));
+    let banner_document = document_identifier_value.clone();
     let _ = source;
 
     let controls = rsx! {
@@ -289,8 +347,7 @@ pub fn DocumentPreviewForTable(
             }
             ColumnPicker {
                 columns: sheet_columns.clone(),
-                table_state: table_state.clone(),
-                set_table_state,
+                shown: visible_columns.len(),
                 column_modal,
                 modal_opener,
             }
@@ -318,15 +375,24 @@ pub fn DocumentPreviewForTable(
         div {
             style: "display: flex; flex-direction: column; height: 100%; min-height: 0;",
             if let Some(banner) = banner {
-                div { style: BANNER_STYLE, "{banner}" }
-            }
-            if let Some(note) = clamp_note {
-                div { style: BANNER_STYLE, "{note}." }
+                div {
+                    style: "{BANNER_STYLE} display: flex; align-items: flex-start; gap: 8px;",
+                    span { style: "flex: 1;", "{banner}" }
+                    button {
+                        r#type: "button",
+                        class: "x-table-banner-close",
+                        style: "border: none; background: transparent; cursor: pointer; font: inherit; padding: 0 4px;",
+                        "aria-label": "Close this notice",
+                        title: "Close this notice",
+                        onclick: move |_| banner_closed.set(Some(banner_document.clone())),
+                        "\u{00d7}"
+                    }
+                }
             }
             if !has_columns {
                 div {
                     style: "padding: 12px; color: rgba(0,0,0,0.6);",
-                    "Every column of this sheet is hidden. Use the Columns button to show one."
+                    "No column is shown. Use the Columns button to show one."
                 }
             } else {
                 match page_value.clone() {
@@ -392,6 +458,7 @@ pub fn DocumentPreviewForTable(
             TableColumnModalDialog {
                 modal,
                 columns: sheet_columns,
+                shown_columns: visible_columns.clone(),
                 table_state,
                 set_table_state,
                 document_identifier: document_identifier_value,
@@ -512,6 +579,7 @@ fn SheetChooserDialog(
                                 // of the sheet they were set on. Carried to another sheet
                                 // they would filter on a different column of the same number.
                                 next.hidden_columns.clear();
+                                next.column_selection = None;
                                 next.sort = None;
                                 next.filters.clear();
                                 set_table_state.call(next.reset_page());
@@ -541,14 +609,11 @@ fn SheetChooserDialog(
 #[component]
 fn ColumnPicker(
     columns: Vec<TableColumnInfo>,
-    table_state: DocTableState,
-    set_table_state: Callback<DocTableState>,
+    shown: usize,
     column_modal: Signal<Option<TableColumnModal>>,
     modal_opener: FocusHandle,
 ) -> Element {
     let mut trigger: FocusHandle = use_signal(|| None);
-    let hidden = table_state.hidden_columns.clone();
-    let shown = columns.len().saturating_sub(hidden.len());
     rsx! {
         button {
             r#type: "button",
@@ -570,6 +635,7 @@ fn ColumnPicker(
 fn TableColumnModalDialog(
     modal: TableColumnModal,
     columns: Vec<TableColumnInfo>,
+    shown_columns: Vec<u32>,
     table_state: DocTableState,
     set_table_state: Callback<DocTableState>,
     document_identifier: DocumentIdentifier,
@@ -605,7 +671,7 @@ fn TableColumnModalDialog(
     };
     let body = match modal {
         TableColumnModal::Picker => rsx! {
-            ColumnPickerDialog { columns, table_state, set_table_state }
+            ColumnPickerDialog { columns, shown_columns, table_state, set_table_state }
         },
         TableColumnModal::Sheets => rsx! {
             SheetChooserDialog { overview, sheet_id, sheet_hits, searching, table_state, set_table_state, column_modal }
@@ -644,17 +710,20 @@ fn TableColumnModalDialog(
 #[component]
 fn ColumnPickerDialog(
     columns: Vec<TableColumnInfo>,
+    shown_columns: Vec<u32>,
     table_state: DocTableState,
     set_table_state: Callback<DocTableState>,
 ) -> Element {
     let mut name_filter = use_signal(String::new);
-    let hidden = table_state.hidden_columns.clone();
     let needle = name_filter().to_lowercase();
     let listed: Vec<TableColumnInfo> = columns
         .iter()
         .filter(|c| needle.is_empty() || c.label().to_lowercase().contains(&needle))
         .cloned()
         .collect();
+    let shown_count = shown_columns.len();
+    let full = shown_count >= MAX_TABLE_VISIBLE_COLUMNS;
+    let all_ids: Vec<u32> = columns.iter().map(|c| c.column_id).collect();
     rsx! {
         input {
             style: "width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;",
@@ -663,55 +732,61 @@ fn ColumnPickerDialog(
             oninput: move |e| name_filter.set(e.value()),
         }
         div {
+            class: "x-table-columns-shown",
+            style: "margin-bottom: 8px; color: var(--x-ink-muted);",
+            "{shown_count} of {MAX_TABLE_VISIBLE_COLUMNS} shown"
+        }
+        div {
             style: "display: flex; gap: 8px; margin-bottom: 8px;",
             button {
-                "aria-label": "Show all columns",
+                "aria-label": "Show the first 60 columns",
                 style: FILTER_CHIP_STYLE,
                 onclick: {
                     let table_state = table_state.clone();
-                    move |_| {
-                        let mut next = table_state.clone();
-                        next.hidden_columns.clear();
-                        set_table_state.call(next);
-                    }
+                    move |_| set_table_state.call(table_state.clone().with_columns(TableColumnSelection::Automatic))
                 },
-                "Show all"
+                "Show the first {MAX_TABLE_VISIBLE_COLUMNS}"
             }
             button {
                 "aria-label": "Hide all columns",
                 style: FILTER_CHIP_STYLE,
                 onclick: {
                     let table_state = table_state.clone();
-                    let all: Vec<u32> = columns.iter().map(|c| c.column_id).collect();
-                    move |_| {
-                        let mut next = table_state.clone();
-                        next.hidden_columns = all.clone();
-                        set_table_state.call(next);
-                    }
+                    move |_| set_table_state.call(table_state.clone().with_columns(TableColumnSelection::Selected(Vec::new())))
                 },
                 "Hide all"
             }
         }
         for column in listed {
             {
-                let is_hidden = hidden.contains(&column.column_id);
+                let is_shown = shown_columns.contains(&column.column_id);
+                let disabled = full && !is_shown;
                 let table_state = table_state.clone();
                 let column_id = column.column_id;
+                let shown_now = shown_columns.clone();
+                let order = all_ids.clone();
+                let tooltip = if disabled {
+                    "The grid shows at most 60 columns. Hide a column first."
+                } else {
+                    ""
+                };
                 rsx! {
                     label {
                         key: "{column_id}",
+                        title: "{tooltip}",
                         style: "display: flex; align-items: center; gap: 8px; padding: 4px 2px; cursor: pointer;",
                         input {
                             r#type: "checkbox",
-                            checked: !is_hidden,
+                            checked: is_shown,
+                            disabled,
                             onchange: move |_| {
-                                let mut next = table_state.clone();
-                                if is_hidden {
-                                    next.hidden_columns.retain(|c| *c != column_id);
-                                } else {
-                                    next.hidden_columns.push(column_id);
-                                }
-                                set_table_state.call(next);
+                                let next: Vec<u32> = order
+                                    .iter()
+                                    .copied()
+                                    .filter(|id| if *id == column_id { !is_shown } else { shown_now.contains(id) })
+                                    .take(MAX_TABLE_VISIBLE_COLUMNS)
+                                    .collect();
+                                set_table_state.call(table_state.clone().with_columns(TableColumnSelection::Selected(next)));
                             },
                         }
                         span { style: "color: rgba(0,0,0,0.45); width: 28px;", "{column.letter}" }
@@ -1356,6 +1431,18 @@ pub async fn get_table_page(
         .map_err(crate::api::error_util::to_server_fn_error)?;
     backend::api::documents::table_browse::fill_cell_previews(&mut page);
     Ok(page)
+}
+
+#[server]
+pub async fn get_table_column_hits(
+    document_identifier: DocumentIdentifier,
+    sheet_id: u16,
+    search: String,
+) -> Result<TableColumnHits, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::api::documents::table_browse::get_table_column_hits(&user, document_identifier, sheet_id, search)
+        .await
+        .map_err(crate::api::error_util::to_server_fn_error)
 }
 
 #[server]

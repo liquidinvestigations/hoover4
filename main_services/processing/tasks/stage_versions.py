@@ -26,7 +26,7 @@ VFS_SUBTREE_STATS_VERSION = 1
 
 #: Each canonical stage and the version of the output it stores.
 STAGE_VERSIONS: Dict[str, int] = {
-    "detect": 1,
+    "detect": 2,
     "archive": 1,
     "email": 1,
     "plaintext": 1,

@@ -1,0 +1,16 @@
+[package]
+name = "json-table"
+version = "1.0.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "json-table"
+path = "src/main.rs"
+
+[dependencies]
+serde = "1"
+serde_json = { version = "1", features = ["arbitrary_precision", "preserve_order"] }
+
+[profile.release]
+opt-level = 3

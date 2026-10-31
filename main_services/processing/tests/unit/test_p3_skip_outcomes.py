@@ -148,6 +148,12 @@ def test_table_without_reader_is_skipped(monkeypatch):
     calls = []
     monkeypatch.setattr(parse_table, "_record_skip", lambda *args: calls.append(args))
     monkeypatch.setattr(parse_table, "table_reader_for", lambda *_args, **_kwargs: None)
+    manifests = []
+    from contextlib import nullcontext
+    from database import clickhouse as db
+    monkeypatch.setattr(db, "get_collection_client", lambda *a: nullcontext(object()))
+    monkeypatch.setattr(parse_table, "_write_manifest",
+                        lambda client, params, **kwargs: manifests.append(kwargs["status"]))
     params = parse_table.ParseTableParams(
         collectionname="collection",
         collection_dataset="dataset",
@@ -162,6 +168,8 @@ def test_table_without_reader_is_skipped(monkeypatch):
     assert isinstance(result, SkippedOutcome)
     assert result.value == {"status": "skipped", "reason": "no reader for this file"}
     assert calls == []
+    # The empty manifest hides an earlier table of the hash for this dataset.
+    assert manifests == ["empty"]
 
 
 def test_non_table_releases_temporary_cells(monkeypatch):
