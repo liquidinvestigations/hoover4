@@ -109,6 +109,16 @@ class TablePlansParams:
 
 
 @dataclass
+class VirusPlansParams:
+    op_id: str
+    collectionname: str
+    collection_dataset: str
+    after: str = ""
+    done: int = 0
+    failed: int = 0
+
+
+@dataclass
 class TablePlanParams:
     op_id: str
     collectionname: str

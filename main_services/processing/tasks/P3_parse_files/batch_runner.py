@@ -86,6 +86,7 @@ MEMBER_SCAN_RANGE_ENTRIES = 500
 
 COMMON_QUEUE = "processing-common-queue"
 TIKA_QUEUE = "processing-tika-queue"
+CLAMAV_QUEUE = "processing-clamav-queue"
 OCR_QUEUE = "processing-ocr-queue"
 #: Searchable-PDF batches. One slot of this queue is one request to hoover4-ocr-pdf, so
 #: the worker gives it as many slots as the builder runs.
@@ -98,6 +99,7 @@ PREVIEW_QUEUE = "processing-preview-queue"
 STAGE_QUEUES: Dict[str, str] = {
     "detect_mime_batch": COMMON_QUEUE,
     "tika_text_batch": TIKA_QUEUE,
+    "clamav_scan_batch": CLAMAV_QUEUE,
     "extract_plaintext_batch": COMMON_QUEUE,
     "parse_office_xml_batch": COMMON_QUEUE,
     "parse_table_batch": COMMON_QUEUE,
@@ -127,6 +129,7 @@ STAGE_QUEUES: Dict[str, str] = {
 STAGE_BUDGETS: Dict[str, Tuple[int, int, int]] = {
     "detect_mime_batch": (1, 0, 0),
     "tika_text_batch": (1, 1000, 0),
+    "clamav_scan_batch": (1, 0, 0),
     "extract_plaintext_batch": (1, 0, 0),
     "parse_office_xml_batch": (1, 0, 0),
     "parse_table_batch": (1, 0, 0),

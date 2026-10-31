@@ -53,6 +53,24 @@ pub fn DocCardActionButtonMore(
     show_finder: bool,
 ) -> Element {
     let mut is_expanded = use_signal(|| false);
+    // The antivirus state, read when the menu opens. An infected document shows a
+    // crossed-out download entry, because its download route answers 403.
+    let virus_status = use_resource(move || {
+        let expanded = is_expanded();
+        let document = document_identifier();
+        async move {
+            if !expanded {
+                return None;
+            }
+            get_virus_scan_status(document).await.ok()
+        }
+    });
+    let refused_signature: Option<String> = virus_status
+        .read()
+        .clone()
+        .flatten()
+        .filter(|status| status.is_infected())
+        .map(|status| status.signature);
     let do_copy_link = use_callback(move |_: ()| {
         let url = web_sys::window().unwrap().location().href().unwrap();
         let _r = web_sys::window()
@@ -227,7 +245,22 @@ pub fn DocCardActionButtonMore(
                         div {
                             style: "width: 100%; border-bottom: 1px solid rgba(0, 0, 0, 0.5);",
                         }
+                        if let Some(signature) = refused_signature.clone() {
+                            span {
+                                class: "x-download-refused",
+                                role: "menuitem",
+                                "aria-disabled": "true",
+                                title: "{common::antivirus::refused_download_tooltip(&signature)}",
+                                style: "padding: 4px; padding-left: 8px; margin: 0; display: flex; flex-direction: row; align-items: center; gap: 8px; color: rgba(0,0,0,0.45); text-decoration: line-through; cursor: not-allowed;",
+                                Icon {
+                                    icon: MdFileDownload,
+                                    style: "width: 19px; height: 19px;"
+                                },
+                                "Download Document"
+                            }
+                        }
                         a {
+                            hidden: refused_signature.is_some(),
                             style: "
                             padding: 4px;
                             padding-left: 8px;
@@ -319,6 +352,19 @@ async fn get_document_first_vfs_path(
 ) -> Result<PathDescriptor, ServerFnError> {
     let user = crate::api::server_auth::extract_user().await?;
     backend::api::vfs::get_first_vfs_path(&user, document_identifier)
+        .await
+        .map_err(crate::api::error_util::to_server_fn_error)
+}
+
+#[server]
+pub(crate) async fn get_virus_scan_status(
+    document_identifier: DocumentIdentifier,
+) -> Result<common::antivirus::VirusScanStatus, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::auth::permissions::assert_can_read(&user, &document_identifier.collection_dataset)
+        .await
+        .map_err(crate::api::error_util::to_server_fn_error)?;
+    backend::api::documents::antivirus::scan_status(&document_identifier.collection_dataset, &document_identifier.file_hash)
         .await
         .map_err(crate::api::error_util::to_server_fn_error)
 }

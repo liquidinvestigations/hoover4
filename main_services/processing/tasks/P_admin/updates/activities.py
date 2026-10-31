@@ -35,6 +35,7 @@ from tasks.P_admin.updates.params import (
     UpdateSnapshotResult,
     TablePlanParams,
     TablePlansParams,
+    VirusPlansParams,
     VectorPlansParams,
 )
 from tasks.P_admin.updates.registry import (
@@ -409,6 +410,12 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
             variants, pairs = selectors.obsolete_ocr_outputs(client, scope_id, keep)
             return (not variants and not pairs,
                     f"OCR text of removed languages remains: {variants + [' '.join(p) for p in pairs]}")
+        if step_id == "virus_scan":
+            selection = selectors.select_virus_scan(client, ctx)
+            stale = infected_without_attribute(params.collectionname, scope_id)
+            return (selection.count == 0 and not stale,
+                    f"{selection.count} files have no antivirus verdict, and {len(stale)} infected files "
+                    "have search rows without their search attribute.")
         if step_id == "tables":
             selection = selectors.select_tables(client, ctx)
             return selection.count == 0, f"{selection.count} files still have an earlier table reading."
@@ -632,3 +639,145 @@ def reparse_update_tables(params: TablePlanParams) -> List[str]:
     finally:
         shutil.rmtree(out_dir, ignore_errors=True)
     return read
+
+
+@activity.defn
+@with_heartbeat
+def list_update_virus_plans(params: VirusPlansParams) -> List[str]:
+    """At most 100 plans after `after` that hold a file that the `virus_scan` step selects."""
+    from database.clickhouse import get_collection_client
+
+    hash_sql, extra = selectors.virus_hash_sql()
+    with get_collection_client(params.collectionname) as client:
+        rows = client.query(
+            "SELECT DISTINCT plan_hash FROM processing_plan_hits WHERE collection_dataset = {cd:String} "
+            f"AND plan_hash > {{after:String}} AND item_hash IN ({hash_sql}) ORDER BY plan_hash LIMIT 100",
+            parameters={"cd": params.collection_dataset, "after": params.after, **extra}).result_rows
+    return [row[0] for row in rows]
+
+
+@activity.defn
+@with_heartbeat
+def scan_update_files(params: TablePlanParams) -> int:
+    """Scan the selected files of one plan, one at a time, and store their attempts."""
+    import shutil
+
+    from database.clickhouse import get_collection_client
+    from tasks.P2_execute_plan.activities import write_blob_files
+    from tasks.P3_parse_files.scan_virus import scan_file, store_attempts
+
+    hash_sql, extra = selectors.virus_hash_sql()
+    with get_collection_client(params.collectionname) as client:
+        rows = client.query(
+            "SELECT h.item_hash, b.size, b.s3_path FROM (SELECT DISTINCT item_hash FROM processing_plan_hits "
+            "WHERE collection_dataset = {cd:String} AND plan_hash = {plan:String} "
+            f"AND item_hash IN ({hash_sql})) AS h "
+            "INNER JOIN (SELECT blob_hash, any(blob_size_bytes) AS size, any(s3_path) AS s3_path FROM blobs "
+            "WHERE collection_dataset = {cd:String} GROUP BY blob_hash) AS b ON b.blob_hash = h.item_hash",
+            parameters={"cd": params.collection_dataset, "plan": params.plan_hash, **extra}).result_rows
+    out_dir = os.path.join("/tmp/hoover4", params.collection_dataset, f"update-virus-{params.plan_hash}")
+    os.makedirs(out_dir, exist_ok=True)
+    clock = HeartbeatClock()
+    try:
+        for file_hash, size, s3_path in rows:
+            clock.beat(f"scan {file_hash}")
+            path = os.path.join(out_dir, file_hash)
+            write_blob_files(params.collectionname, params.collection_dataset, [
+                {"item_hash": file_hash, "file_size_bytes": int(size or 0), "s3_url": s3_path or "", "path": path}],
+                context=f"{params.collection_dataset}/{params.plan_hash}")
+            try:
+                store_attempts(params.collectionname,
+                               [scan_file(params.collection_dataset, file_hash, path, int(size or 0))])
+            finally:
+                os.remove(path)
+    finally:
+        shutil.rmtree(out_dir, ignore_errors=True)
+    return len(rows)
+
+
+def _shard_page_tables(collectionname: str) -> List[str]:
+    from database.manticore import list_shard_tables
+
+    return [t for t in list_shard_tables(collectionname) if t.endswith("_pages")]
+
+
+def _dataset_verdicts(collectionname: str, collection_dataset: str) -> Dict[str, str]:
+    """The effective verdict of each live file of the dataset that has one."""
+    from database.clickhouse import get_collection_client
+
+    with get_collection_client(collectionname) as client:
+        rows = client.query(
+            "SELECT hash, argMax(verdict, result_seq) FROM virus_scan_results WHERE attempt_status = 'completed' "
+            "AND hash IN (SELECT hash FROM vfs_files FINAL WHERE collection_dataset = {cd:String} AND is_deleted = 0) "
+            "GROUP BY hash", parameters={"cd": collection_dataset}).result_rows
+    return {r[0]: r[1] for r in rows}
+
+
+def _hashes_with_attribute(collectionname: str, collection_dataset: str, hashes: List[str], value: int) -> set:
+    """The hashes among `hashes` with a search row whose `virus_hit` differs from `value`."""
+    from database.manticore import client_for_table, table_has_column
+
+    found: set = set()
+    for table in _shard_page_tables(collectionname):
+        if not table_has_column(table, "virus_hit"):
+            continue
+        with client_for_table(table) as cnx:
+            cursor = cnx.cursor()
+            for start in range(0, len(hashes), 200):
+                chunk = hashes[start:start + 200]
+                placeholders = ",".join(["%s"] * len(chunk))
+                cursor.execute(
+                    f"SELECT file_hash FROM {table} WHERE collection_dataset = %s AND file_hash IN ({placeholders}) "
+                    f"AND virus_hit != %s GROUP BY file_hash LIMIT 1000 OPTION max_matches=1000",
+                    (collection_dataset, *chunk, value))
+                found.update(row[0] for row in cursor.fetchall())
+    return found
+
+
+def infected_without_attribute(collectionname: str, collection_dataset: str) -> List[str]:
+    """The infected files of the dataset with a search row whose `virus_hit` is not 1."""
+    infected = [h for h, v in _dataset_verdicts(collectionname, collection_dataset).items() if v == "infected"]
+    if not infected:
+        return []
+    return sorted(_hashes_with_attribute(collectionname, collection_dataset, infected, 1))
+
+
+@activity.defn
+@with_heartbeat
+def stale_virus_attributes(params: TablePlansParams) -> Dict[str, List[str]]:
+    """The live files of the dataset whose search rows hold another `virus_hit` than their
+    effective verdict, grouped by one plan that holds each file.
+
+    Manticore refuses an UPDATE of a columnar attribute, so the caller indexes these files
+    again with `IndexDatasetPlan`. The page writer reads the verdict when it writes a row.
+    """
+    from database.clickhouse import get_collection_client
+
+    verdicts = _dataset_verdicts(params.collectionname, params.collection_dataset)
+    stale: set = set()
+    for value, hashes in ((1, [h for h, v in verdicts.items() if v == "infected"]),
+                          (0, [h for h, v in verdicts.items() if v == "clean"])):
+        if hashes:
+            stale.update(_hashes_with_attribute(params.collectionname, params.collection_dataset, hashes, value))
+    if not stale:
+        return {}
+    with get_collection_client(params.collectionname) as client:
+        rows = client.query(
+            "SELECT item_hash, max(plan_hash) FROM processing_plan_hits WHERE collection_dataset = {cd:String} "
+            "AND item_hash IN {h:Array(String)} GROUP BY item_hash",
+            parameters={"cd": params.collection_dataset, "h": sorted(stale)}).result_rows
+    plans: Dict[str, List[str]] = {}
+    for file_hash, plan_hash in rows:
+        plans.setdefault(plan_hash, []).append(file_hash)
+    return plans
+
+
+@activity.defn
+@with_heartbeat
+def retire_cached_searches(params: TablePlansParams) -> None:
+    """Change `server_settings.cache_epoch`, so no cached search answers with old attributes."""
+    import time as _time
+
+    from tasks.llm_catalog import set_server_setting
+
+    set_server_setting("cache_epoch", f"virus-{params.collection_dataset}-{_time.time_ns()}")

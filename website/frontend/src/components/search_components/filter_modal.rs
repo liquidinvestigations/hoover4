@@ -85,10 +85,11 @@ pub enum FilterCategory {
     Dates,
     Email,
     Entities,
+    Antivirus,
 }
 
 impl FilterCategory {
-    pub const ALL: [FilterCategory; 9] = [
+    pub const ALL: [FilterCategory; 10] = [
         FilterCategory::Collections,
         FilterCategory::FileTypes,
         FilterCategory::Language,
@@ -98,6 +99,7 @@ impl FilterCategory {
         FilterCategory::Dates,
         FilterCategory::Email,
         FilterCategory::Entities,
+        FilterCategory::Antivirus,
     ];
 
     pub fn label(&self) -> &'static str {
@@ -111,6 +113,7 @@ impl FilterCategory {
             FilterCategory::Dates => "Date",
             FilterCategory::Email => "Email",
             FilterCategory::Entities => "Entities",
+            FilterCategory::Antivirus => "Antivirus",
         }
     }
 
@@ -125,6 +128,7 @@ impl FilterCategory {
             FilterCategory::FileLocation => &["file_paths"],
             FilterCategory::Email => &["email_from", "email_to", "struct_flags"],
             FilterCategory::Entities => &EntitySub::VALUE_FIELDS,
+            FilterCategory::Antivirus => &["virus_hit"],
             FilterCategory::FileSize | FilterCategory::Dates => &[],
         }
     }
@@ -803,6 +807,9 @@ fn FilterModalDialog(
                             FilterCategory::Entities => rsx! {
                                 EntitiesPane { count_query, pending }
                             },
+                            FilterCategory::Antivirus => rsx! {
+                                AntivirusPane { pending }
+                            },
                         }
                     }
                 }
@@ -826,6 +833,7 @@ fn CategoryIcon(category: FilterCategory) -> Element {
         FilterCategory::Dates => rsx! { Icon { icon: MdDateRange, style } },
         FilterCategory::Email => rsx! { Icon { icon: MdEmail, style } },
         FilterCategory::Entities => rsx! { Icon { icon: MdPerson, style } },
+        FilterCategory::Antivirus => rsx! { Icon { icon: MdInfo, style } },
     }
 }
 
@@ -1669,6 +1677,35 @@ fn FileLocationPane(pending: Signal<SearchQuery>) -> Element {
                 focus_key: nothing,
                 on_activate: Callback::new(move |_row: StorageRow| resolve.call(())),
             }
+        }
+    }
+}
+
+/// The antivirus filter: documents whose effective antivirus verdict is `infected`
+/// (`virus_hit = 1` on their search rows).
+#[component]
+fn AntivirusPane(pending: Signal<SearchQuery>) -> Element {
+    let only_infected = use_memo(move || {
+        pending.read().facet_filters.get("virus_hit").is_some_and(|set| !set.is_empty())
+    });
+    rsx! {
+        div {
+            class: "x-facet-list-item x-filter-virus-hit",
+            style: "display: flex; align-items: center; gap: 8px; padding: 4px; cursor: pointer; margin-bottom: 8px;",
+            onclick: move |_| {
+                let mut q = pending.write();
+                if only_infected() {
+                    q.facet_filters.remove("virus_hit");
+                } else {
+                    q.facet_filters.insert("virus_hit".to_string(), [FacetOriginalValue::Int(1)].into_iter().collect());
+                }
+            },
+            if only_infected() {
+                Icon { icon: MdCheckBox, style: "width: 19px; height: 19px; color: rgb(28,33,45);" }
+            } else {
+                Icon { icon: MdCheckBoxOutlineBlank, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
+            }
+            "Only files in which the antivirus scan found a virus"
         }
     }
 }

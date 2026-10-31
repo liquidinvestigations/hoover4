@@ -108,8 +108,10 @@ mod search_body_tests {
 async fn _download_ocr_pdf(
     user: &CurrentUser,
     Path((collection_dataset, pdf_hash, engine, languages)): Path<(String, String, String, String)>,
+    view: bool,
 ) -> anyhow::Result<impl IntoResponse> {
     permissions::assert_can_read(user, &collection_dataset).await?;
+    crate::api::documents::antivirus::refuse_infected_download(&collection_dataset, &pdf_hash, view).await?;
 
     let id = DocumentIdentifier { collection_dataset, file_hash: pdf_hash };
     let sources = crate::api::documents::get_document_sources::get_pdf_sources(user,id.clone()).await?;
@@ -122,8 +124,9 @@ async fn _download_ocr_pdf(
 pub async fn download_ocr_pdf(
     Extension(user): Extension<CurrentUser>,
     path: Path<(String, String, String, String)>,
+    axum::extract::Query(view): axum::extract::Query<crate::api::documents::antivirus::ViewQuery>,
 ) -> Response {
-    match _download_ocr_pdf(&user, path).await {
+    match _download_ocr_pdf(&user, path, view.is_view()).await {
         Ok(response) => response.into_response(),
         Err(e) => {
             if guard::is_forbidden(&e) {

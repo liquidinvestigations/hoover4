@@ -43,6 +43,10 @@ with workflow.unsafe.imports_passed_through():
         check_processing_updates,
         finish_update_step,
         list_update_table_plans,
+        list_update_virus_plans,
+        retire_cached_searches,
+        stale_virus_attributes,
+        scan_update_files,
         list_update_vector_plans,
         obsolete_ocr_variants,
         reparse_update_tables,
@@ -61,6 +65,7 @@ with workflow.unsafe.imports_passed_through():
         TablePlanParams,
         TablePlansParams,
         UpdateProgressParams,
+        VirusPlansParams,
         VectorPlansParams,
     )
     from tasks.P_admin.updates.registry import SCOPE_DATASET
@@ -242,6 +247,12 @@ class RunProcessingUpdate:
                                   str(detail.get("model", ""))),
                 id=f"update-vectors-{params.op_id}", **self._child(params))
             return f"embedded and indexed {done} plans"
+        if step_id == "virus_scan":
+            result = await workflow.execute_child_workflow(
+                UpdateDatasetVirusScan.run,
+                VirusPlansParams(params.op_id, params.collectionname, params.collection_dataset),
+                id=f"update-virus-{params.op_id}", **self._child(params))
+            return json.dumps(result, sort_keys=True)
         if step_id == "tables":
             done = await workflow.execute_child_workflow(
                 UpdateDatasetTables.run,
@@ -417,5 +428,67 @@ class UpdateDatasetTables:
                     raise result
                 failed += 1
         workflow.continue_as_new(TablePlansParams(
+            params.op_id, params.collectionname, params.collection_dataset,
+            plans[-1], params.done + len(plans), params.failed + failed))
+
+
+@workflow.defn
+class UpdateDatasetVirusScan:
+    """The antivirus scan of the files that the `virus_scan` step selects, plan by plan.
+
+    The scans run on the antivirus queue, so they share its slots with new ingestion. After
+    the last page, `stale_virus_attributes` finds the files whose search rows hold another
+    `virus_hit`, and `IndexDatasetPlan` writes those rows again. Pages of at most 100 plans, four at a time, with continue-as-new after each.
+    """
+
+    @workflow.run
+    async def run(self, params: VirusPlansParams) -> dict:
+        plans = await workflow.execute_activity(list_update_virus_plans, params, start_to_close_timeout=timedelta(minutes=15),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        if not plans:
+            scope = TablePlansParams(params.op_id, params.collectionname, params.collection_dataset)
+            stale = await workflow.execute_activity(
+                stale_virus_attributes, scope,
+                task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=60),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+
+            async def reindex(plan_hash: str, hashes: list):
+                # Manticore cannot update a columnar attribute, so the rows are written again.
+                await workflow.execute_child_workflow(
+                    "IndexDatasetPlan",
+                    {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset,
+                     "plan_hash": plan_hash, "op_id": params.op_id, "item_hashes": hashes},
+                    id=f"update-index-virus-{params.op_id}-{plan_hash}", task_queue="processing-common-queue",
+                    search_attributes=dataset_search_attributes(params.collection_dataset))
+
+            results = await run_with_window([lambda p=p, h=h: reindex(p, h) for p, h in sorted(stale.items())],
+                                            VECTOR_PLAN_WINDOW)
+            for result in results:
+                if isinstance(result, BaseException):
+                    raise result
+            if stale:
+                await workflow.execute_activity(
+                    retire_cached_searches, scope, task_queue="processing-indexing-queue",
+                    start_to_close_timeout=timedelta(minutes=5), heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=_RETRY)
+            if params.failed:
+                raise ApplicationError(f"{params.failed} plans failed the antivirus scan", non_retryable=True)
+            return {"plans": params.done, "reindexed_files": sum(len(h) for h in stale.values())}
+
+        async def plan(plan_hash: str):
+            await workflow.execute_activity(
+                scan_update_files,
+                TablePlanParams(params.op_id, params.collectionname, params.collection_dataset, plan_hash),
+                task_queue="processing-clamav-queue", start_to_close_timeout=timedelta(hours=6),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+
+        results = await run_with_window([lambda h=h: plan(h) for h in plans], VECTOR_PLAN_WINDOW)
+        failed = 0
+        for result in results:
+            if isinstance(result, BaseException):
+                if is_cancellation(result):
+                    raise result
+                failed += 1
+        workflow.continue_as_new(VirusPlansParams(
             params.op_id, params.collectionname, params.collection_dataset,
             plans[-1], params.done + len(plans), params.failed + failed))

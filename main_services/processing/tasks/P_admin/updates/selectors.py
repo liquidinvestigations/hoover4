@@ -23,6 +23,11 @@ Selector contracts, one for each step:
   collection uses vectors. A file whose text has no passage worth a vector stays in the
   count after the run, so the count is an upper bound. Settlement: every selected plan
   ran embedding and indexing.
+* `virus_scan` selects, when the scan is on, live files up to the size limit whose hash
+  has no completed attempt in the collection and whose latest attempt is not
+  `skipped_size` or `incomplete`. A failed or disabled attempt is selected again.
+  Settlement: the count is zero and every infected hash of the dataset has `virus_hit`
+  set on its search rows.
 * `tables` selects live files with a table manifest of an older reader version that is a
   JSON candidate or that an earlier reader cut at the column limit, and live JSON
   candidates without a manifest of the current version. A JSON candidate has a JSON MIME
@@ -97,6 +102,12 @@ def vectors_target(collectionname: str) -> dict:
     return {"vectors": "on", "model": get_server_setting("embeddings_serving_model") or ""}
 
 
+def virus_target() -> dict:
+    from tasks.P3_parse_files.scan_virus import clamav_enabled
+
+    return {"virus_scan": "on" if clamav_enabled() else "off"}
+
+
 def schema_target() -> dict:
     return {"columns": required_page_columns()}
 
@@ -109,6 +120,9 @@ def target_key(step: UpdateStep, ctx: ScopeContext) -> Tuple[str, dict]:
         return json.dumps(key, sort_keys=True), target
     if step.step_id == "vectors":
         target = vectors_target(ctx.collectionname)
+        return json.dumps(target, sort_keys=True), target
+    if step.step_id == "virus_scan":
+        target = virus_target()
         return json.dumps(target, sort_keys=True), target
     if step.step_id == "search_schema":
         target = schema_target()
@@ -319,6 +333,28 @@ def select_vectors(client, ctx: ScopeContext, target: Optional[dict] = None) -> 
                      {"vectors": "on", "model": target.get("model", "")})
 
 
+def virus_hash_sql() -> Tuple[str, dict]:
+    """The files that the `virus_scan` step scans, as a subquery with parameters."""
+    from tasks.P3_parse_files.scan_virus import CLAMAV_MAX_FILE_BYTES
+
+    sql = (
+        f"SELECT hash FROM ({_LIVE}) WHERE hash IN (SELECT blob_hash FROM blobs "
+        "WHERE collection_dataset = {cd:String} AND blob_size_bytes <= {vs_max:UInt64}) "
+        "AND hash NOT IN (SELECT hash FROM virus_scan_results WHERE attempt_status = 'completed') "
+        "AND hash NOT IN (SELECT hash FROM virus_scan_results GROUP BY hash "
+        "HAVING argMax(attempt_status, result_seq) IN ('skipped_size', 'incomplete'))")
+    return sql, {"vs_max": CLAMAV_MAX_FILE_BYTES}
+
+
+def select_virus_scan(client, ctx: ScopeContext) -> Selection:
+    if virus_target()["virus_scan"] != "on":
+        return Selection(detail={"virus_scan": "off"})
+    hash_sql, extra = virus_hash_sql()
+    parameters = {"cd": ctx.scope_id, **extra}
+    files, size = _count(client, hash_sql, parameters, ctx.scope_id)
+    return Selection(files, size, files, hash_sql if files else "", parameters, {"virus_scan": "on"})
+
+
 def tables_hash_sql() -> Tuple[str, dict]:
     """The files that the `tables` step reads again, as a subquery with parameters."""
     from tasks.P3_parse_files.table_formats import (
@@ -429,6 +465,8 @@ def select(step: UpdateStep, ctx: ScopeContext, client=None, target: Optional[di
         return select_ocr(client, ctx, target)
     if step.step_id == "vectors":
         return select_vectors(client, ctx, target)
+    if step.step_id == "virus_scan":
+        return select_virus_scan(client, ctx)
     if step.step_id == "tables":
         return select_tables(client, ctx)
     if step.step_id == "folder_counts":

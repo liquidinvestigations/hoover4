@@ -28,7 +28,7 @@ pub fn DocumentPreviewForPdf(
     let pdf_url = use_memo(move || {
         let document_identifier = document_identifier.read().clone();
         let source = source.read().clone();
-        source.url(&document_identifier.collection_dataset,&document_identifier.file_hash)
+        source.view_url(&document_identifier.collection_dataset,&document_identifier.file_hash)
     });
 
     let mut controller = use_signal(move || None);

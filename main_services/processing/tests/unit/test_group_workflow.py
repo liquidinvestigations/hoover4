@@ -145,6 +145,7 @@ def test_three_files_schedule_each_stage_once_with_its_files_and_queue(monkeypat
     assert group.run(["e", "p", "i"], sizes={"e": 1250, "p": 2500}) == "processed 3 items"
 
     expected = {
+        "clamav_scan_batch": ["e", "p", "i"],
         "detect_mime_batch": ["e", "p", "i"],
         "tika_text_batch": ["e", "p", "i"],
         "extract_plaintext_batch": ["e"],
@@ -189,8 +190,8 @@ def test_zero_items_schedule_nothing(monkeypatch):
     assert group.calls == []
 
 
-@pytest.mark.parametrize("attachments,activities", [(0, 5), (1, 6)])
-def test_100_emails_take_five_activities_and_six_with_an_attachment(
+@pytest.mark.parametrize("attachments,activities", [(0, 6), (1, 7)])
+def test_100_emails_take_six_activities_and_seven_with_an_attachment(
         monkeypatch, attachments, activities):
     hashes = [f"m{index}" for index in range(100)]
     group = _Group(monkeypatch, {h: EMAIL for h in hashes})
@@ -308,7 +309,24 @@ def test_tika_types_do_not_change_routes(monkeypatch):
     group.run(["f"])
     assert group.hashes("extract_plaintext_batch") == ["f"]
     assert not group.scheduled("pdf_metadata_batch")
+    assert [group.calls[0][0], group.calls[1][0]] == ["clamav_scan_batch", "detect_mime_batch"]
+
+
+def test_a_history_without_the_scan_patch_schedules_no_scan(monkeypatch):
+    group = _Group(monkeypatch, {"f": TEXT})
+    monkeypatch.setattr(plan_workflows.workflow, "patched", lambda name: name not in (
+        "clamav-scan", "pdf-part-cursor-v1"))
+    group.run(["f"])
+    assert not group.scheduled("clamav_scan_batch")
     assert group.calls[0][0] == "detect_mime_batch"
+
+
+def test_an_infected_verdict_stops_no_stage(monkeypatch):
+    group = _Group(monkeypatch, {"f": TEXT})
+    group.overrides["clamav_scan_batch"] = lambda f: _ok(f, {"attempt_status": "completed",
+                                                             "verdict": "infected"})
+    group.run(["f"])
+    assert group.hashes("extract_plaintext_batch") == ["f"]
 
 
 def test_a_missing_copy_for_every_detector_gives_one_row(monkeypatch):

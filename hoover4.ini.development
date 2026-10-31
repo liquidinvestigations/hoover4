@@ -536,6 +536,14 @@ tesseract_threads_per_page =      ; OMP_THREAD_LIMIT; empty leaves it unset
 tesseract_cpu_cpus         =      ; CPU limit; empty is no limit
 tesseract_cpu_mem_limit    =      ; empty is 4096M plus 1024M for each tesseract_cpu_concurrency
 
+# ---- ClamAV antivirus scan ------------------------------------------------------
+; Each file is scanned before parsing. Off records each file as skipped and starts
+; no scanner container. The image holds the signatures of its build time.
+clamav_enabled           = true
+clamav_update_signatures = true   ; run freshclam in the container
+clamav_concurrency       = 4      ; scans at once in clamd and in the worker tier
+clamav_mem_limit         = 4G
+
 # ---- container logs -------------------------------------------------------------
 ; Rotation of every hoover4 container log, in the json-file driver's units.
 container_log_max_size  = 100m

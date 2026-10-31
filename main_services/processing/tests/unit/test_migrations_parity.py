@@ -148,6 +148,7 @@ EXPECTED_COLLECTION_TABLES = {
     "vfs_files",
     "vfs_nodes",
     "video_metadata",
+    "virus_scan_results",
     "ocr_pdf_version_ready",
     "ocr_skips",
     "ocr_run_targets",

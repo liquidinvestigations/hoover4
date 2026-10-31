@@ -155,9 +155,15 @@ pub async fn complete_response(user: &CurrentUser,id: &DocumentIdentifier,source
     Ok(([("Content-Type","application/pdf")],Body::from_stream(stream)).into_response())
 }
 
-pub async fn download_pdf(Extension(user): Extension<CurrentUser>,Path((dataset,hash,kind)):Path<(String,String,String)>) -> Response {
+pub async fn download_pdf(Extension(user): Extension<CurrentUser>,Path((dataset,hash,kind)):Path<(String,String,String)>,
+                          axum::extract::Query(view): axum::extract::Query<crate::api::documents::antivirus::ViewQuery>) -> Response {
     let id = DocumentIdentifier {collection_dataset:dataset,file_hash:hash};
-    complete_response(&user,&id,&DocumentPdfSourceItem {source_kind:kind,..Default::default()}).await.unwrap_or_else(error_response)
+    let result: anyhow::Result<Response> = async {
+        permissions::assert_can_read(&user,&id.collection_dataset).await?;
+        crate::api::documents::antivirus::refuse_infected_download(&id.collection_dataset,&id.file_hash,view.is_view()).await?;
+        complete_response(&user,&id,&DocumentPdfSourceItem {source_kind:kind,..Default::default()}).await
+    }.await;
+    result.unwrap_or_else(error_response)
 }
 
 #[cfg(test)]

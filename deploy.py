@@ -229,6 +229,14 @@ DEFAULTS = {
         "pdf_ocr_provider": "tesseract",
         "tesseract_cpu_enabled": "true",
         "tesseract_languages": "eng",
+        # The antivirus scan before parsing (hoover4-clamav). The image holds the
+        # signatures of its build time. clamav_update_signatures runs freshclam in the
+        # container. clamav_concurrency sets the scans that run at once, in clamd and in
+        # the worker tier that sends them.
+        "clamav_enabled": "true",
+        "clamav_update_signatures": "true",
+        "clamav_concurrency": "4",
+        "clamav_mem_limit": "4G",
         # regex entity scanning, always on, so the only knobs are its size
         "regex_scanner_threads": "10",
         "regex_scanner_queue_depth": "32",
@@ -602,6 +610,7 @@ MAIN_OVERLAYS = [
     (None, "compose/tika.yaml", None),
     (None, "compose/regex-entity-scanner.yaml", None),  # always on
     ("tesseract_cpu_enabled", "compose/tesseract-cpu.yaml", "hoover4-tesseract-cpu"),
+    ("clamav_enabled", "compose/clamav.yaml", "hoover4-clamav"),
     ("ocr_pdf_enabled", "compose/ocr-pdf.yaml", "hoover4-ocr-pdf"),
     ("ner_spacy_enabled", "compose/ner-spacy.yaml", "hoover4-ner-spacy"),
     # Overrides hoover4-website's command; adds no service of its own.
@@ -1565,6 +1574,28 @@ TESSERACT_BASE_MEM_MB = 4096
 TESSERACT_MEM_PER_THREAD_MB = 1024
 
 
+def render_clamav_env(cfg):
+    """The hoover4-clamav and worker variables of the antivirus scan.
+
+    With clamav_enabled off, the worker still runs its scan tier, which records each file
+    as skipped, so CLAMAV_URL is empty and no container starts.
+    """
+    m = "main_services"
+    enabled = cfg.get_bool(m, "clamav_enabled")
+    concurrency = whole_number(cfg, "clamav_concurrency")
+    if concurrency < 1:
+        fail("[main_services] clamav_concurrency must be at least 1")
+    size_bytes(cfg, "clamav_mem_limit")
+    return {
+        "CLAMAV_ENABLED": "true" if enabled else "false",
+        "CLAMAV_URL": "http://hoover4-clamav:8000" if enabled else "",
+        "CLAMAV_CONCURRENCY": str(concurrency),
+        "HOOVER4_CLAMAV_CONCURRENCY": str(concurrency),
+        "CLAMAV_UPDATE_SIGNATURES": "true" if cfg.get_bool(m, "clamav_update_signatures") else "false",
+        "CLAMAV_MEM_LIMIT": cfg.get(m, "clamav_mem_limit").strip(),
+    }
+
+
 def render_tesseract_env(cfg):
     """The hoover4-tesseract-cpu variables.
 
@@ -1810,6 +1841,7 @@ def render_main_env(cfg):
     # Tesseract would file Tesseract's text under EasyOCR's name -- and Tesseract has
     # already run as its own variant, so the two would be identical rows under different
     # labels. An engine with no endpoint produces no variant.
+    env.update(render_clamav_env(cfg))
     env["OCR_TESSERACT_URL"] = (
         # Same network, so the container name and its internal port -- never the
         # published one. The published port exists for humans and verify-stack.

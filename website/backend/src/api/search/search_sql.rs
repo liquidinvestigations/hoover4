@@ -75,6 +75,7 @@ const SEARCH_FIELDS: &[&str] = &[
     "date_max",
     "file_size_bytes",
     "struct_flags",
+    "virus_hit",
     "primary_filename",
     "email_from",
     "email_to",

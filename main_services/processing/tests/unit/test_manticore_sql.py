@@ -52,6 +52,7 @@ def test_pages_table_ddl_golden():
             date_max bigint,
             file_size_bytes bigint,
             struct_flags bigint,
+            virus_hit int,
             primary_filename string,
             email_from multi64,
             email_to multi64,

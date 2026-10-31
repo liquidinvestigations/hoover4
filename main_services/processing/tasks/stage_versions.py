@@ -18,6 +18,7 @@ and its version.
 
 from typing import Dict, Optional
 
+from tasks.P3_parse_files.scan_virus import SCAN_VERSION
 from tasks.P3_parse_files.table_formats import READER_VERSION
 from tasks.text_sources import OCR_PAGE_RULE_VERSION, PDF_SEGMENTATION_VERSION
 
@@ -27,6 +28,7 @@ VFS_SUBTREE_STATS_VERSION = 1
 #: Each canonical stage and the version of the output it stores.
 STAGE_VERSIONS: Dict[str, int] = {
     "detect": 2,
+    "virus_scan": SCAN_VERSION,
     "archive": 2,
     "email": 1,
     "plaintext": 1,

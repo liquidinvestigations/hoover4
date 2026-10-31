@@ -75,7 +75,7 @@ pub fn DocSourceDispatch(
                         url: if image.preview {
                             image_preview_url(&document_identifier())
                         } else {
-                            document_identifier().get_absolute_url_path()
+                            document_identifier().view_url_path()
                         },
                     }
                 }
@@ -86,7 +86,7 @@ pub fn DocSourceDispatch(
                 controls: rsx! {"Audio; {audio.duration_seconds} seconds"},
                 page: rsx! {
                     audio {
-                        src: "{document_identifier().get_absolute_url_path()}",
+                        src: "{document_identifier().view_url_path()}",
                         alt: "audio preview",
                         controls: true
                     }
@@ -98,7 +98,7 @@ pub fn DocSourceDispatch(
                 controls: rsx! {"Video; {video.width}x{video.height} - {video.duration_seconds} seconds"},
                 page: rsx! {
                     video {
-                        src: "{document_identifier().get_absolute_url_path()}",
+                        src: "{document_identifier().view_url_path()}",
                         poster: if video.preview { image_preview_url(&document_identifier()) },
                         alt: "video preview",
                         controls: true,

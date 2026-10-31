@@ -889,7 +889,7 @@ def list_collections_cmd():
         print(f"{collectionname}\t{collection_db_name(collectionname)}\t{counts.get(collectionname, 0)}")
 
 @cli.command()
-@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "ocr", "nlp", "embed", "indexing", "index-planner", "email-graph", "operations", "chat"]))
+@click.argument("worker_type", required=False, type=click.Choice(["common", "tika", "clamav", "ocr", "nlp", "embed", "indexing", "index-planner", "email-graph", "operations", "chat"]))
 def worker(worker_type: str | None = None):
     """Run worker(s). If worker_type provided, runs that worker; else spawns all.
 
@@ -910,6 +910,9 @@ def worker(worker_type: str | None = None):
         elif worker_type == "tika":
             from tasks.run_worker import run_tika_worker
             asyncio.run(run_tika_worker())
+        elif worker_type == "clamav":
+            from tasks.run_worker import run_clamav_worker
+            asyncio.run(run_clamav_worker())
         elif worker_type == "ocr":
             from tasks.run_worker import run_ocr_worker
             asyncio.run(run_ocr_worker())
@@ -981,7 +984,7 @@ def worker(worker_type: str | None = None):
     # person waiting on the other end, so it must exist before anything competes for the
     # host's memory. It polls chat-queue, chat-model-queue and agent-tool-queue, and never
     # the ingestion queue.
-    for wt in (["chat", "tika", "ocr", "nlp", "embed"]
+    for wt in (["chat", "tika", "clamav", "ocr", "nlp", "embed"]
                + ["indexing"] * indexing_count
                + ["email-graph", "index-planner"]
                + ["common"] * common_count):

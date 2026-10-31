@@ -12,7 +12,8 @@ Every file is synthetic. The script copies no conversation and no demo document.
   took the first row as the header. Version 2 reads it as a data row, because its id and
   date cells have the kinds of the rows below (`parse_table.first_row_is_data`).
 * `events_with_header.csv`: the same rows after a header row.
-* `project_export.json`: a JSON project export with 12 tasks. It has no sheet.
+* `project_export.json`: a JSON project export with 12 tasks. Table reader version 4 reads
+  its `data` array as the sheet `$.data`. Earlier versions stored no sheet.
 * `long_report.pdf`: 60 pages. Page 57 alone holds the name "Quillon Varga".
 
 `p65tables_fixtures` (collection `p65tables`, root `testdata/p65-tables/`):

@@ -62,6 +62,7 @@ with workflow.unsafe.imports_passed_through():
     )
     from tasks.P3_parse_files.parse_mime import LOCAL_DETECTORS
     from tasks.P3_parse_files.parse_archives import SPLIT_VOLUME_PATCH, split_set_sizes
+    from tasks.P3_parse_files.scan_virus import CLAMAV_SCAN_PATCH
     from tasks.P3_parse_files.split_volumes import is_volume_name
     from tasks.text_sources import OCR_ENGINES
     from tasks.P2_execute_plan.activities import (
@@ -613,6 +614,12 @@ class ProcessItemsBatched:
                 return batch.results
             except ActivityError as exc:
                 return stage_failure_results(name, keys, exc)
+
+        # Stage 0 scans every file for viruses. Its verdicts are stored and stop no stage:
+        # an infected file is parsed, and only the download of its original bytes and its
+        # searchable PDF is refused (`scan_virus`).
+        if workflow.patched(CLAMAV_SCAN_PATCH):
+            await run_stage("clamav_scan_batch", files)
 
         # Stage 1 selects routes with local detectors.
         detect = await run_stage("detect_mime_batch", files)

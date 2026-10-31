@@ -1901,6 +1901,7 @@ async fn downloading_an_unknown_hash_is_not_found() {
     let missing = backend::server_extra::download_document::download_document(
         Extension(admin_user()),
         Path((EMAILS.to_string(), "deadbeef".to_string())),
+        axum::extract::Query(Default::default()),
     )
     .await;
     assert_eq!(missing.status(), axum::http::StatusCode::NOT_FOUND);
@@ -1915,6 +1916,7 @@ async fn downloading_an_unknown_hash_is_not_found() {
     let found = backend::server_extra::download_document::download_document(
         Extension(admin_user()),
         Path((EMAILS.to_string(), file_hash)),
+        axum::extract::Query(Default::default()),
     )
     .await;
     assert_eq!(found.status(), axum::http::StatusCode::OK);

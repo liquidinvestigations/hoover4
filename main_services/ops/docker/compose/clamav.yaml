@@ -1,0 +1,37 @@
+# Overlay: the antivirus scanner (enabled via [main_services] clamav_enabled).
+# clamd and its HTTP front (main_services/clamav). The worker sends each file to
+# POST /scan before parsing. No port is published: only the worker calls it.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "${CONTAINER_LOG_MAX_SIZE:-100m}"
+    max-file: "${CONTAINER_LOG_MAX_FILES:-5}"
+
+services:
+  hoover4-clamav:
+    logging: *logging
+    build:
+      context: ${HOOVER4_REPO_ROOT}/main_services/clamav
+      dockerfile: Dockerfile
+    image: hoover4-clamav:local
+    container_name: hoover4-clamav
+    environment:
+      - CLAMAV_CONCURRENCY=${CLAMAV_CONCURRENCY:-4}
+      - CLAMAV_UPDATE_SIGNATURES=${CLAMAV_UPDATE_SIGNATURES:-true}
+    mem_limit: ${CLAMAV_MEM_LIMIT:-4G}
+    memswap_limit: ${CLAMAV_MEM_LIMIT:-4G}
+    healthcheck:
+      # Ready when clamd answers with an engine and a signature database version.
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).status == 200 else 1)"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - hoover4
+
+networks:
+  hoover4:
+    name: hoover4
+    external: true

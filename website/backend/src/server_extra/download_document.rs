@@ -67,6 +67,7 @@ async fn get_document_content_stream(
 async fn _download_document(
     user: &CurrentUser,
     Path((collection_dataset, file_hash)): Path<(String, String)>,
+    view: bool,
 ) -> anyhow::Result<impl IntoResponse> {
     debug!("download requested: {collection_dataset}/{file_hash}");
 
@@ -75,6 +76,7 @@ async fn _download_document(
         file_hash,
     };
     permissions::assert_can_read(user, &collection_dataset).await?;
+    crate::api::documents::antivirus::refuse_infected_download(&collection_dataset, &document_identifier.file_hash, view).await?;
     let filename = get_blob_filename(user, document_identifier.clone()).await?;
 
     let (stream_size, stream) = get_document_content_stream(document_identifier.clone()).await?;
@@ -86,7 +88,8 @@ async fn _download_document(
         ),
         (
             "Content-Disposition".to_string(),
-            format!("attachment; filename=\"{}\"", filename),
+            // The viewer reads the bytes inline. Every other request is a download.
+            format!("{}; filename=\"{}\"", if view { "inline" } else { "attachment" }, filename),
         ),
         ("Content-Length".to_string(), format!("{}", stream_size)),
     ];
@@ -98,8 +101,9 @@ async fn _download_document(
 pub async fn download_document(
     Extension(user): Extension<CurrentUser>,
     path: Path<(String, String)>,
+    axum::extract::Query(view): axum::extract::Query<crate::api::documents::antivirus::ViewQuery>,
 ) -> Response {
-    match _download_document(&user, path).await {
+    match _download_document(&user, path, view.is_view()).await {
         Ok(response) => response.into_response(),
         Err(e) => {
             if guard::is_forbidden(&e) {

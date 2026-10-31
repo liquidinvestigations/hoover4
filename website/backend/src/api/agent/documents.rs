@@ -862,6 +862,7 @@ fn raw_metadata_table_list() -> Vec<DocumentMetadataTableInfo> {
         DocumentMetadataTableInfo::new("table_sheets", "hash"),
         DocumentMetadataTableInfo::new("table_columns", "hash"),
         DocumentMetadataTableInfo::new("processing_errors", "hash"),
+        DocumentMetadataTableInfo::new("virus_scan_results", "hash"),
     ]
 }
 

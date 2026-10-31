@@ -349,6 +349,12 @@ impl DocumentPdfSourceItem {
         else if self.kind() == "preview" { format!("/_download_pdf/{dataset}/{hash}/preview") }
         else { format!("/_download_document/{dataset}/{hash}") }
     }
+    /// The url that the in-browser viewer loads: [`Self::url`] with `view=1`. A byte
+    /// route serves an infected document only to this request
+    /// (`backend::api::documents::antivirus`).
+    pub fn view_url(&self, dataset: &str, hash: &str) -> String {
+        format!("{}?view=1", self.url(dataset, hash))
+    }
     pub fn part_url(&self, dataset: &str, hash: &str, part_index: u16) -> String {
         format!("/_download_pdf_part/{dataset}/{hash}/{}/{}/{}/{part_index}", self.kind(),
             if self.engine.is_empty() { "-" } else { &self.engine },

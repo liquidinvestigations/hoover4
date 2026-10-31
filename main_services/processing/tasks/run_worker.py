@@ -359,6 +359,7 @@ async def run_common_worker():
         list_update_vector_plans,
         list_update_table_plans,
         reparse_update_tables,
+        list_update_virus_plans,
         obsolete_ocr_variants,
         refresh_update_checks,
         report_update_progress,
@@ -373,6 +374,7 @@ async def run_common_worker():
         RunProcessingUpdate,
         UpdateDatasetVectors,
         UpdateDatasetTables,
+        UpdateDatasetVirusScan,
     )
     from .stage_versions import register_stage_versions
     from .visibility import ensure_search_attributes
@@ -473,6 +475,7 @@ async def run_common_worker():
             RunProcessingUpdate,
             UpdateDatasetVectors,
             UpdateDatasetTables,
+            UpdateDatasetVirusScan,
           ],
           activities=[
             plan_folder_ranges,
@@ -584,6 +587,7 @@ async def run_common_worker():
             list_update_vector_plans,
             list_update_table_plans,
             reparse_update_tables,
+            list_update_virus_plans,
           ],
           activity_executor=activity_executor,
           max_concurrent_activities=CONCURRENCY,
@@ -614,6 +618,38 @@ async def run_tika_worker():
           workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
           workflows=[],
           activities=[tika_text_batch],
+          activity_executor=activity_executor,
+          max_concurrent_activities=CONCURRENCY,
+          max_concurrent_workflow_tasks=CONCURRENCY*2,
+          max_concurrent_local_activities=CONCURRENCY*2,
+          max_concurrent_activity_task_polls=CONCURRENCY*2,
+          max_concurrent_workflow_task_polls=CONCURRENCY*2,
+        )
+        await run_until_signalled(worker)
+
+
+async def run_clamav_worker():
+    """The antivirus tier on `processing-clamav-queue`. It runs whether the scan is on or
+    off, so the queue always has a poller: with the scan off, each file gets a skipped
+    attempt without a request. Its slots equal the scanner's own concurrency."""
+    from .P3_parse_files.scan_virus import clamav_scan_batch
+    from .P_admin.updates.activities import scan_update_files
+    from .visibility import ensure_search_attributes
+
+    log.info("Starting ClamAV worker...")
+    client = await Client.connect("temporal:7233")
+    await ensure_search_attributes(client)
+    CONCURRENCY = worker_concurrency("clamav", 4)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=CONCURRENCY) as activity_executor:
+        worker = Worker(
+          client,
+          interceptors=[TaskTimingInterceptor(), *guard_interceptors()],
+          workflow_runner=sandboxed_runner(),
+          task_queue="processing-clamav-queue",
+          graceful_shutdown_timeout=graceful_shutdown_timeout(),
+          workflow_failure_exception_types=WORKFLOW_FAILURE_EXCEPTION_TYPES,
+          workflows=[],
+          activities=[clamav_scan_batch, scan_update_files],
           activity_executor=activity_executor,
           max_concurrent_activities=CONCURRENCY,
           max_concurrent_workflow_tasks=CONCURRENCY*2,
@@ -761,6 +797,7 @@ async def run_indexing_worker():
       index_entity_terms, index_vfs_structure, compact_collection_shards,
       refresh_stale_document_locations, resolve_canonical_file_type,
   )
+  from .P_admin.updates.activities import retire_cached_searches, stale_virus_attributes
   from .visibility import ensure_search_attributes
   log.info("Starting Indexing worker...")
   client = await Client.connect("temporal:7233")
@@ -783,7 +820,7 @@ async def run_indexing_worker():
                   index_text_pages_with_receipts, index_vectors,
                   build_vfs_nodes, index_vfs_structure, compact_collection_shards,
                   resolve_canonical_file_type, index_entity_terms,
-                  refresh_stale_document_locations],
+                  refresh_stale_document_locations, retire_cached_searches, stale_virus_attributes],
       activity_executor=activity_executor,
       max_concurrent_activities=CONCURRENCY,
     )

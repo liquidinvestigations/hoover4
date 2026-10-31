@@ -32,6 +32,12 @@ impl DocumentIdentifier {
             self.collection_dataset, self.file_hash
         )
     }
+
+    /// The url that an in-browser viewer loads. A download route serves an infected
+    /// document only to a request with `view=1`.
+    pub fn view_url_path(&self) -> String {
+        format!("{}?view=1", self.get_absolute_url_path())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

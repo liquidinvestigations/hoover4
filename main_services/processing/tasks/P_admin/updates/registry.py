@@ -87,6 +87,14 @@ STEPS: Tuple[UpdateStep, ...] = (
                     "The automatic run retries a file once for each new version of the stage that failed.",
         runs="The failed stages, then entity extraction, embedding and indexing"),
     UpdateStep(
+        step_id="virus_scan", scope=SCOPE_DATASET, version=1, stages=("virus_scan",),
+        automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
+        title="Virus scan",
+        explanation="{files} files have no antivirus verdict. They are scanned. A file that the scanner "
+                    "finds infected is marked in search, and its original and searchable PDF downloads "
+                    "are refused.",
+        runs="Antivirus scan, then the search attribute of infected files"),
+    UpdateStep(
         step_id="tables", scope=SCOPE_DATASET, version=1, stages=("table",),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Tables",

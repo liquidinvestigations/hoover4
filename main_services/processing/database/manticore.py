@@ -328,6 +328,7 @@ DOCUMENT_COLUMNS = (
     'primary_filename',
     'email_from',
     'email_to',
+    'virus_hit',
 )
 
 
@@ -360,6 +361,9 @@ def pages_table_ddl(table_name: str) -> str:
       :data:`SIZE_UNKNOWN` when the document has no ``vfs_files`` row.
     * ``struct_flags`` bigint, a bitfield (see ``STRUCT_FLAG_*``) for the cheap
       booleans that do not each need a column.
+    * ``virus_hit`` int, 1 when the effective antivirus verdict of the document is
+      ``infected``, else 0. A shard table without the column gets it from the search
+      schema step, and the writer leaves the column out until then.
     * ``primary_filename`` string, a string ATTRIBUTE, not a text field: Manticore can
       ORDER BY the former and not the latter, and this is the result-card title and the
       "sort by name" key. Filename MATCHING goes through the ``filename_index`` row
@@ -407,6 +411,7 @@ def pages_table_ddl(table_name: str) -> str:
             date_max bigint,
             file_size_bytes bigint,
             struct_flags bigint,
+            virus_hit int,
             primary_filename string,
             email_from multi64,
             email_to multi64,
@@ -421,6 +426,27 @@ def pages_table_ddl(table_name: str) -> str:
             mentioned_date_max bigint
         ) engine='columnar' {_INFIX_SETTING}
     """
+
+
+_COLUMN_CACHE: dict = {}
+#: Seconds that `table_has_column` keeps an answer. A shard table gains a column once,
+#: through the search schema step, so a short cache only delays the first write of it.
+COLUMN_CACHE_SECONDS = 60
+
+
+def table_has_column(table: str, column: str) -> bool:
+    """Whether a Manticore table has `column`, from a cached `DESCRIBE`."""
+    import time
+
+    now = time.monotonic()
+    cached = _COLUMN_CACHE.get(table)
+    if cached is None or now - cached[0] > COLUMN_CACHE_SECONDS:
+        with client_for_table(table) as cnx:
+            cursor = cnx.cursor()
+            cursor.execute(f"DESCRIBE {table}")
+            cached = (now, {row[0] for row in cursor.fetchall()})
+        _COLUMN_CACHE[table] = cached
+    return column in cached[1]
 
 
 def vfs_table_name(collectionname: str) -> str:

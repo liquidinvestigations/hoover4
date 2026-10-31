@@ -176,8 +176,9 @@ def pages_replace_sql(pages_table: str, row: dict) -> str:
     is a bound parameter, in the order :func:`pages_replace_params` returns them.
     ``pages_table`` comes from ``shard_table_from_name`` (validated).
     """
-    columns = ', '.join(('id',) + _SCALAR_COLUMNS + _MVA_COLUMNS)
-    placeholders = ', '.join(['%s'] * (1 + len(_SCALAR_COLUMNS)))
+    scalars = _row_scalars(row)
+    columns = ', '.join(('id',) + scalars + _MVA_COLUMNS)
+    placeholders = ', '.join(['%s'] * (1 + len(scalars)))
     mvas = ', '.join(row.get(name) or '()' for name in _MVA_COLUMNS)
     return f"""REPLACE INTO {pages_table} ({columns}) VALUES ({placeholders}, {mvas})"""
 
@@ -191,7 +192,14 @@ def pages_replace_params(collection_dataset: str, row: dict) -> tuple:
     """
     return (
         pages_row_id(collection_dataset, row['file_hash'], row['extracted_by'], row['page_id']),
-    ) + tuple(row[name] for name in _SCALAR_COLUMNS)
+    ) + tuple(row[name] for name in _row_scalars(row))
+
+
+def _row_scalars(row: dict) -> tuple:
+    """The scalar columns of a pages row. `virus_hit` is written only when the writer put
+    it on the row, which it does only for a shard table that has the column, so a writer
+    never fails on a table that the search schema step has not updated yet."""
+    return _SCALAR_COLUMNS + (('virus_hit',) if 'virus_hit' in row else ())
 
 
 def pages_row_id(collection_dataset: str, file_hash: str, extracted_by: str, page_id: int) -> int:
@@ -382,7 +390,11 @@ def write_page_batches(client, table: str, collection_dataset: str,
         values.clear()
         statement_bytes = 0
 
+    from database.manticore import table_has_column
+    virus_column = table_has_column(table, 'virus_hit')
     for row in rows:
+        if not virus_column:
+            row.pop('virus_hit', None)
         encoded = bind_manticore_sql(
             client, pages_replace_sql(table, row),
             pages_replace_params(collection_dataset, row),
@@ -814,12 +826,13 @@ def empty_document_metadata() -> dict:
 
     row = {name: repr_manticore_tuple([]) for name in DOCUMENT_COLUMNS
            if name not in ('date_min', 'date_max', 'file_size_bytes', 'struct_flags',
-                           'primary_filename')}
+                           'primary_filename', 'virus_hit')}
     row.update({
         'date_min': DATE_UNKNOWN,
         'date_max': DATE_UNKNOWN,
         'file_size_bytes': SIZE_UNKNOWN,
         'struct_flags': 0,
+        'virus_hit': 0,
         'primary_filename': "",
         # Per segment rather than per document, so a document nothing is known about
         # supplies the "mentions nothing" state and each segment overwrites it.
@@ -1061,6 +1074,12 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
 
     from database.manticore import DATE_UNKNOWN, SIZE_UNKNOWN
 
+    # The effective antivirus verdict (`scan_virus.effective_verdicts`).
+    from tasks.P3_parse_files.scan_virus import effective_verdicts
+    with get_collection_client(params.collectionname) as client:
+        infected = {h for h, v in effective_verdicts(client, [item['hash'] for item, *_ in items]).items()
+                    if v['verdict'] == 'infected'}
+
     metadata: dict[str, dict] = {}
     for item, rows, node_keys, truncated in items:
         file_hash = item['hash']
@@ -1085,6 +1104,7 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
             "date_max": dates[-1] if dates else DATE_UNKNOWN,
             "file_size_bytes": max(sizes) if sizes else SIZE_UNKNOWN,
             "struct_flags": struct_flags,
+            "virus_hit": 1 if file_hash in infected else 0,
             "primary_filename": primary_filename(basenames),
             "email_from": repr_manticore_tuple(
                 sorted(address_ids[a] for a in from_by_hash.get(file_hash, ()))

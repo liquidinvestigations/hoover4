@@ -3,6 +3,7 @@
 extern crate serde;
 
 pub mod admin_types;
+pub mod antivirus;
 pub mod board_text;
 pub mod board_types;
 pub mod agent_api;

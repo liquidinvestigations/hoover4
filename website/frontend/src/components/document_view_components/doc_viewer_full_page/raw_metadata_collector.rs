@@ -11,7 +11,7 @@ use dioxus_free_icons::{
     Icon,
     icons::{
         go_icons::GoCopy,
-        md_action_icons::MdDateRange,
+        md_action_icons::{MdBugReport, MdDateRange},
         md_communication_icons::MdEmail,
         md_editor_icons::MdTableChart,
         md_file_icons::MdAttachment,
@@ -52,6 +52,9 @@ pub fn RawMetadataCollector(document_identifier: ReadSignal<DocumentIdentifier>)
         DocumentMetadataTableInfo::new("table_sheets", "hash"),
         DocumentMetadataTableInfo::new("table_columns", "hash"),
         DocumentMetadataTableInfo::new("processing_errors", "hash"),
+        // Every antivirus attempt of the file. The effective verdict is the latest
+        // `completed` row by `result_seq`.
+        DocumentMetadataTableInfo::new("virus_scan_results", "hash"),
     ];
 
     let document_identifier_value = document_identifier();
@@ -95,6 +98,7 @@ pub fn RawMetadataCollector(document_identifier: ReadSignal<DocumentIdentifier>)
             DatesSection { document_identifier }
             EmailSection { document_identifier }
             TableSection { document_identifier }
+            AntivirusSection { document_identifier }
             {sections}
         }
     }
@@ -388,6 +392,62 @@ fn DatesSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
                 style: SECTION_HEADER_STYLE,
                 Icon { icon: MdDateRange, style: "width: 19px; height: 19px;" }
                 "Dates"
+            }
+            {body}
+        }
+    }
+}
+
+/// The antivirus state: the effective verdict, or the status of the latest attempt
+/// when no scan completed, with the signature and the signature database version.
+#[component]
+fn AntivirusSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
+    let document_identifier_value = document_identifier();
+    let status = use_resource(use_reactive!(|document_identifier_value| {
+        async move {
+            crate::components::search_components::card_action_buttons::get_virus_scan_status(document_identifier_value)
+                .await
+        }
+    }));
+
+    let body = match status().clone() {
+        None => rsx! {
+            div { style: "color: rgba(0,0,0,0.55);", "Loading the antivirus state…" }
+        },
+        Some(Err(error)) => rsx! {
+            div {
+                class: "x-error-display",
+                style: "color: rgb(160,30,30);",
+                "Could not load the antivirus state of this document: {error}"
+            }
+        },
+        Some(Ok(status)) => {
+            let color = if status.is_infected() { "rgb(160,30,30)" } else { "inherit" };
+            let label = status.label();
+            rsx! {
+                div {
+                    class: "x-antivirus-state",
+                    "data-state": "{status.state}",
+                    style: "color: {color};",
+                    "{label}"
+                }
+                if !status.database_version.is_empty() {
+                    div {
+                        style: "color: rgba(0,0,0,0.65); font-size: 13px;",
+                        "ClamAV {status.engine_version}, signature database {status.database_version}, {status.scanned_at} UTC"
+                    }
+                }
+            }
+        }
+    };
+
+    rsx! {
+        li {
+            style: SECTION_STYLE,
+            h1 {
+                style: SECTION_HEADER_STYLE,
+                Icon { icon: MdBugReport, style: "width: 19px; height: 19px;" }
+                "Antivirus"
             }
             {body}
         }
