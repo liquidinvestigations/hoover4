@@ -195,15 +195,211 @@ def count_member_files(out_dir: str) -> int:
     return sum(len(files) for _root, _dirs, files in os.walk(out_dir))
 
 
+def _split_error(error_type: str, message: str):
+    from temporalio.exceptions import ApplicationError
+    return ApplicationError(message, type=error_type, non_retryable=True)
+
+
+def _incomplete_reason(stderr: bytes) -> bool:
+    """Whether 7-Zip says that a volume is missing or that the set ends early."""
+    text = (stderr or b"").decode("utf-8", "replace")
+    return any(marker in text for marker in (
+        "Missing volume", "Unexpected end of archive", "Unexpected end of data",
+        "There are some data after the end of the payload data", "Cannot open the file as archive",
+        "Can not open the file as archive", "is not archive"))
+
+
+def split_extraction_seconds(set_size: int) -> int:
+    """The 7-Zip time limit of a split set: the archive try budget of the whole set,
+    less a margin, so the batch heartbeat outlives the subprocess."""
+    from tasks.P3_parse_files.batch_runner import try_budget_seconds
+    return max(60, try_budget_seconds("extract_archive_batch", set_size) - 30)
+
+
+def extract_split_set(collectionname: str, volume_set, entry_hash: str) -> Dict[str, Any]:
+    """Write every volume of `volume_set` under its own name, run 7-Zip on the entry
+    volume, and remove the volumes. The members go to a folder named by the entry hash.
+
+    A missing or truncated volume raises `SplitArchiveIncomplete`. Members of an earlier
+    extraction of the same container that this one lacks are tombstoned.
+    """
+    import shutil
+    import subprocess
+
+    from tasks.P2_execute_plan.activities import write_blob_files
+    from tasks.P3_parse_files.split_volumes import (
+        SPLIT_ARCHIVE_INCOMPLETE, has_archive_signature, safe_volume_name)
+    from tasks.P3_parse_files.temp_dirs import make_temp_dir
+
+    out_dir = make_temp_dir(volume_set.collection_dataset, "extract", entry_hash)
+    volumes_dir = make_temp_dir(volume_set.collection_dataset, "volumes", entry_hash)
+    shutil.rmtree(out_dir, ignore_errors=True)
+    shutil.rmtree(volumes_dir, ignore_errors=True)
+    os.makedirs(out_dir)
+    os.makedirs(volumes_dir)
+    entry = volume_set.entry
+    try:
+        write_blob_files(collectionname, volume_set.collection_dataset, [
+            {"item_hash": file_hash, "file_size_bytes": size, "s3_url": s3_path,
+             "path": os.path.join(volumes_dir, safe_volume_name(name))}
+            for _, name, file_hash, size, s3_path in volume_set.volumes],
+            context=f"{volume_set.collection_dataset} split set {volume_set.folder}/{entry[1]}")
+        entry_path = os.path.join(volumes_dir, entry[1])
+        with open(entry_path, "rb") as handle:
+            signature = has_archive_signature(handle.read(16))
+        cmd = ["7z", "x", "-y", f"-o{out_dir}", entry_path]
+        try:
+            # stdin=DEVNULL: 7-Zip asks for a missing volume on stdin otherwise.
+            with heartbeat_pump(f"7z set {entry_hash[:8]}"):
+                res = subprocess.run(cmd, capture_output=True, stdin=subprocess.DEVNULL,
+                                     timeout=split_extraction_seconds(volume_set.size))
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"7z extraction timed out for the split set of {entry[1]}")
+        if res.returncode != 0:
+            if not signature:
+                from tasks.task_timing import SkippedOutcome
+                shutil.rmtree(out_dir, ignore_errors=True)
+                return {"skipped": SkippedOutcome({"status": "skipped",
+                                                   "reason": "numbered files that are not a split archive"})}
+            if _incomplete_reason(res.stderr) or _incomplete_reason(res.stdout):
+                missing = volume_set.next_name() or "a later volume"
+                raise _split_error(SPLIT_ARCHIVE_INCOMPLETE,
+                                   f"Split archive {volume_set.folder}/{entry[1]} is incomplete: "
+                                   f"7-Zip reports a missing or truncated volume after {volume_set.names[-1]}. "
+                                   f"Expected next volume: {missing}. {res.stderr[:200]!r}")
+            raise RuntimeError(f"7z extraction failed for the split set of {entry[1]}: "
+                               f"{res.stderr[:200]}\n{res.stdout[:200]}")
+    except BaseException:
+        shutil.rmtree(out_dir, ignore_errors=True)
+        raise
+    finally:
+        shutil.rmtree(volumes_dir, ignore_errors=True)
+    entry_count = count_member_files(out_dir)
+    tombstoned = _tombstone_absent_members(collectionname, volume_set.collection_dataset, entry_hash, out_dir)
+    if entry_count == 0:
+        shutil.rmtree(out_dir, ignore_errors=True)
+    return {"out_dir": out_dir, "entry_count": entry_count, "container_hash": entry_hash,
+            "volumes": volume_set.names, "tombstoned_members": tombstoned}
+
+
+def _tombstone_absent_members(collectionname: str, collection_dataset: str, container_hash: str,
+                              out_dir: str) -> int:
+    """Tombstone the stored members of `container_hash` that the new extraction lacks."""
+    from datetime import datetime, timezone
+
+    from database.clickhouse import get_collection_client
+    from tasks.P0_scan_disk.activities import _tombstone_paths
+
+    present = set()
+    for root, _dirs, files in os.walk(out_dir):
+        for name in files:
+            present.add("/" + os.path.relpath(os.path.join(root, name), out_dir).replace(os.sep, "/"))
+    with get_collection_client(collectionname) as client:
+        rows = client.query(
+            "SELECT container_hash, path, hash, file_size_bytes, toUnixTimestamp(mtime), mtime_source "
+            "FROM vfs_files FINAL WHERE collection_dataset = {cd:String} AND container_hash = {ch:String} "
+            "AND is_deleted = 0", parameters={"cd": collection_dataset, "ch": container_hash}).result_rows
+        gone = [{"container_hash": r[0], "path": r[1], "hash": r[2], "file_size_bytes": r[3],
+                 "mtime": r[4], "mtime_source": r[5]} for r in rows if r[1] not in present]
+        if gone:
+            _tombstone_paths(client, collection_dataset, gone,
+                             datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0))
+    return len(gone)
+
+
+def split_step(collectionname: str, collection_dataset: str, file: BatchFile, batch_hashes: set,
+               extracted: set):
+    """The archive outcome of a file with a volume name. None means: extract as before.
+
+    `batch_hashes` are the files of this stage batch, and `extracted` collects the entry
+    hashes that this batch already extracted, so one set extracts once per batch.
+    """
+    from database.clickhouse import get_collection_client
+    from tasks.P3_parse_files.split_volumes import (
+        SPLIT_ARCHIVE_AMBIGUOUS, SPLIT_ARCHIVE_INCOMPLETE, resolve_volume_sets)
+    from tasks.task_timing import SkippedOutcome
+
+    with get_collection_client(collectionname) as client:
+        sets = resolve_volume_sets(client, collection_dataset, file.item_hash)
+    if not sets:
+        return None
+    complete = {}
+    incomplete = []
+    for volume_set in sets:
+        if volume_set.entry is not None and not volume_set.missing():
+            complete.setdefault(volume_set.key(), volume_set)
+        else:
+            incomplete.append(volume_set)
+    as_entry = [s for s in complete.values() if s.entry[2] == file.item_hash]
+    if len({s.key() for s in as_entry}) > 1:
+        folders = ", ".join(sorted(s.folder for s in as_entry))
+        raise _split_error(SPLIT_ARCHIVE_AMBIGUOUS,
+                           f"The first volume occurs in {len(as_entry)} folders with different later volumes "
+                           f"({folders}). Its members cannot be stored under one container.")
+    if as_entry:
+        value = extract_split_set(collectionname, as_entry[0], file.item_hash)
+        extracted.add(file.item_hash)
+        return value
+    later = [s for s in complete.values() if s.entry[2] != file.item_hash]
+    if later:
+        volume_set = later[0]
+        if volume_set.entry[2] in batch_hashes or volume_set.entry[2] in extracted:
+            return SkippedOutcome({"status": "skipped", "reason": "volume of a split archive",
+                                   "entry": volume_set.entry[1]})
+        from temporalio.exceptions import ApplicationError
+        try:
+            value = extract_split_set(collectionname, volume_set, volume_set.entry[2])
+        except ApplicationError as exc:
+            if exc.type != SPLIT_ARCHIVE_INCOMPLETE:
+                raise
+            # The entry volume carries the error of an incomplete set.
+            return SkippedOutcome({"status": "skipped", "reason": "volume of an incomplete split archive",
+                                   "detail": str(exc)[:500]})
+        extracted.add(volume_set.entry[2])
+        return value
+    volume_set = incomplete[0]
+    missing = volume_set.missing()
+    entry = volume_set.entry
+    first_present = volume_set.volumes[0][2] == file.item_hash
+    if (entry is not None and entry[2] == file.item_hash) or (entry is None and first_present):
+        raise _split_error(SPLIT_ARCHIVE_INCOMPLETE,
+                           f"Split archive {volume_set.folder}/{volume_set.stem} is incomplete. "
+                           f"Missing volumes: {', '.join(missing) or 'unknown'}.")
+    return SkippedOutcome({"status": "skipped", "reason": "volume of an incomplete split archive",
+                           "missing": missing})
+
+
 @activity.defn
 @with_heartbeat
 def extract_archive_batch(params: StageBatchParams) -> BatchResult:
     """Extract each archive of a group into its own temporary folder, then record it.
 
     The value of a file is the dictionary of `extract_archive_to_temp` with `member_count`
-    added. A file whose extraction fails gets no archive row.
+    added. A file whose extraction fails gets no archive row. A file with a volume name
+    goes through `split_step` first (see `split_volumes`). Its members belong to the
+    entry volume, which the value names as `container_hash`.
     """
+    from tasks.P3_parse_files.split_volumes import is_volume_name
+    from tasks.task_timing import SkippedOutcome
+
+    batch_hashes = {file.item_hash for file in params.files}
+    extracted: set = set()
+
     def step(file: BatchFile) -> Dict[str, Any]:
+        if is_volume_name(file.file_names) or any(n.lower().endswith((".rar", ".zip")) for n in file.file_names):
+            outcome = split_step(params.collectionname, params.collection_dataset, file, batch_hashes, extracted)
+            if isinstance(outcome, SkippedOutcome):
+                return outcome
+            if isinstance(outcome, dict) and "skipped" in outcome:
+                return outcome["skipped"]
+            if outcome is not None:
+                record_archive_container(RecordArchiveContainerParams(
+                    collectionname=params.collectionname,
+                    collection_dataset=params.collection_dataset,
+                    archive_hash=outcome["container_hash"],
+                    archive_types=list(file.mime_types),
+                ))
+                return {**outcome, "member_count": count_member_files(outcome.get("out_dir") or "")}
         value = extract_archive_to_temp(ExtractArchiveParams(
             collectionname=params.collectionname,
             collection_dataset=params.collection_dataset,
@@ -222,3 +418,28 @@ def extract_archive_batch(params: StageBatchParams) -> BatchResult:
     return run_batch("extract_archive_batch", params.files, key=lambda f: f.item_hash,
                      size=lambda f: f.file_size_bytes, step=step,
                      task_name="extract_archive_to_temp")
+
+
+#: The workflow patch that routes volume names to the archive stage and sizes its budget
+#: by the resolved set.
+SPLIT_VOLUME_PATCH = "split-volume-sets"
+
+
+@activity.defn
+@with_heartbeat
+def split_set_sizes(params: StageBatchParams) -> Dict[str, int]:
+    """The bytes of the largest resolved volume set of each file with a volume name.
+
+    The group gives the archive stage these sizes, so the stage timeout, the try budget
+    of the file and the 7-Zip time limit all follow the same set size.
+    """
+    from database.clickhouse import get_collection_client
+    from tasks.P3_parse_files.split_volumes import resolve_volume_sets
+
+    sizes: Dict[str, int] = {}
+    with get_collection_client(params.collectionname) as client:
+        for file in params.files:
+            sets = resolve_volume_sets(client, params.collection_dataset, file.item_hash)
+            if sets:
+                sizes[file.item_hash] = max(s.size for s in sets)
+    return sizes

@@ -279,7 +279,7 @@ async def run_common_worker():
         ExecuteSinglePlan,
         ProcessItemsBatched,
     )
-    from .P3_parse_files.parse_archives import extract_archive_batch
+    from .P3_parse_files.parse_archives import extract_archive_batch, split_set_sizes
     from .P3_parse_files.parse_email import parse_email_headers_batch, extract_email_attachments_batch
     from .P3_parse_files.document_dates import resolve_document_dates
     from .P3_parse_files.parse_text import extract_plaintext_batch
@@ -514,6 +514,7 @@ async def run_common_worker():
             parse_email_headers_batch,
             extract_email_attachments_batch,
             extract_archive_batch,
+            split_set_sizes,
             pdf_metadata_batch,
             pdf_extract_batch,
             pdf_prepare_batch,

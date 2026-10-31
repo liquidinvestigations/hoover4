@@ -61,6 +61,8 @@ with workflow.unsafe.imports_passed_through():
         route_stages,
     )
     from tasks.P3_parse_files.parse_mime import LOCAL_DETECTORS
+    from tasks.P3_parse_files.parse_archives import SPLIT_VOLUME_PATCH, split_set_sizes
+    from tasks.P3_parse_files.split_volumes import is_volume_name
     from tasks.text_sources import OCR_ENGINES
     from tasks.P2_execute_plan.activities import (
         list_pending_plans,
@@ -618,6 +620,12 @@ class ProcessItemsBatched:
         combined = [combine_detector_results(results) for results in detector_results]
         routes = [route_stages(types, parts_version, file.file_names, file.file_size_bytes)
                   for types, file in zip(combined, files)]
+        split_version = workflow.patched(SPLIT_VOLUME_PATCH)
+        if split_version:
+            # A volume name of a split archive takes the archive route whatever the
+            # detectors say. The stage resolves the set and decides (`split_volumes`).
+            routes = [file_routes + ["archive"] if is_volume_name(file.file_names) and "archive" not in file_routes
+                      else file_routes for file_routes, file in zip(routes, files)]
 
         def with_route(route: str) -> List[int]:
             return [index for index, file_routes in enumerate(routes) if route in file_routes]
@@ -662,7 +670,8 @@ class ProcessItemsBatched:
             if count_key and not int(value.get(count_key) or 0) > 0:
                 return
             folders.append((index, ContainerFolder(
-                container_hash=files[index].item_hash,
+                # A split set names its entry volume, which owns the members.
+                container_hash=value.get("container_hash") or files[index].item_hash,
                 out_dir=value["out_dir"],
                 error_task_name=error_name,
                 source_size_bytes=files[index].file_size_bytes,
@@ -686,6 +695,20 @@ class ProcessItemsBatched:
         async def archive_stage() -> None:
             indexes = with_route("archive")
             items = [batch_file(i, mime_types=combined[i]["mime_types"]) for i in indexes]
+            volume_items = [item for item in items if is_volume_name(item.file_names)
+                            or any(n.lower().endswith((".rar", ".zip")) for n in item.file_names)]
+            if split_version and volume_items:
+                sizes = await workflow.execute_activity(
+                    split_set_sizes,
+                    StageBatchParams(collectionname=params.collectionname,
+                                     collection_dataset=params.collection_dataset,
+                                     plan_hash=params.plan_hash, files=volume_items, op_id=params.op_id),
+                    start_to_close_timeout=timedelta(minutes=10), heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                    task_queue=STAGE_QUEUES["extract_archive_batch"])
+                items = [dataclasses.replace(item, file_size_bytes=max(item.file_size_bytes,
+                                                                       int(sizes.get(item.item_hash, 0))))
+                         for item in items]
             for i, result in zip(indexes, await run_stage("extract_archive_batch", items)):
                 put(i, "archive_scan", result, ("extract_archive_batch", ""))
                 add_folder(i, result, "archive_scan", "entry_count")
