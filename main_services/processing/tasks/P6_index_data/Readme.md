@@ -271,6 +271,17 @@ Each VFS node stores the count of its immediate child folders and containers.
 The structure writer copies this count into the search index.
 The folder tree uses it to control disclosure.
 
+## The antivirus attribute
+
+Each page row has the integer attribute `virus_hit`. It is 1 when the effective antivirus
+verdict of the file is `infected` (see the antivirus stage in
+[P3](../P3_parse_files/Readme.md)), and 0 otherwise. The page writer reads the verdicts
+with `effective_verdicts`. A shard table created before the column existed gets it from
+the `search_schema` update step. Until then, the writer leaves the value out, because
+`table_has_column` reports the column as absent. Manticore refuses an `UPDATE` of a
+columnar attribute, so the `virus_scan` update step writes the rows of a file again with
+`IndexDatasetPlan` when its `virus_hit` differs from its verdict.
+
 ## Empty dataset search tables
 
 The structure and entity-term writers create their typed collection tables before writing.

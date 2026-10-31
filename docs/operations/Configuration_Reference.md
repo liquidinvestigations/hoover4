@@ -122,6 +122,15 @@ bound the pattern scanner's runtime and its admission control. The scanner takes
 before it reads or parses a scan request body. `regex_scanner_mem_limit` (default `4G`)
 sets its container memory limit.
 
+`clamav_enabled` (default `true`) starts `hoover4-clamav` and turns on the antivirus scan
+of each file before parsing. When it is off, the worker tier `clamav` still runs and
+records each file as `skipped_disabled`. `clamav_concurrency` (default `4`) is the number
+of scans that clamd runs at once, and the worker tier sends at most that many. The
+scanner front holds 4 times that number of waiting requests and answers 503 to more.
+`clamav_update_signatures` (default `true`) runs freshclam in the container. When it is
+off, the scanner uses the signatures of its image build. `clamav_mem_limit` (default
+`4G`) is the container memory limit.
+
 `clickhouse_ui_mem_limit` and `clickhouse_monitoring_mem_limit` set the memory
 limits of the two ClickHouse interface containers. Each defaults to `6000M`.
 
@@ -591,6 +600,7 @@ is the map back to the group above that explains it.
 - `manticore_mem_limit`, `manticore_vectors_mem_limit` (required), `clickhouse_mem_limit`, `ocr_pdf_mem_limit`
 - `ocr_pdf_concurrency`, `ocr_pdf_queue_depth`
 - `tesseract_cpu_concurrency`, `tesseract_threads_per_page`, `tesseract_cpu_cpus`, `tesseract_cpu_mem_limit`
+- `clamav_enabled`, `clamav_update_signatures`, `clamav_concurrency`, `clamav_mem_limit`
 - `regex_scanner_queue_depth`, `website_release_mode`, `search_max_parallelism`, `search_timeout_seconds`, `manticore_expansion_limit`
 - `common_workers`, `common_concurrency`, `common_max_cached_workflows`, `worker_mem_limit`, `tika_concurrency`
 - `ocr_concurrency`, `nlp_concurrency`, `embed_concurrency`, `indexing_concurrency`, `indexing_workers`

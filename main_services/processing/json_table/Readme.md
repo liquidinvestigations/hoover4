@@ -51,7 +51,7 @@ Strings are `text`, booleans are `bool`, and JSON text is `text`.
 
 | Limit | Value | Effect |
 |---|---|---|
-| Bytes of one row (a line or an array element) | 64 MiB | The read fails and names the row. |
+| Bytes of one row (a line or an array element) | 64 MiB | The read fails, exits with status 1 and names the limit. When no earlier row of the file is an object, the program writes `none` with the same reason, and the file has no table. |
 | Nesting | 128 levels (the `serde_json` limit) | The read fails. Before a sheet is found, the file has no table. |
 | Schema nodes of one sheet during discovery | 50,000 | The widest objects collapse. Then later root keys go to the column `*`. |
 | Columns of one sheet | 1000 | See Columns. |

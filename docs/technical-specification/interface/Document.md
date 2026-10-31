@@ -10,7 +10,8 @@
 
 Reads one document. `doc_viewer_state` stores the selected source and its view state.
 `viewer_right_tab_state` stores the selected right-side tab. The table source stores its
-sheet, sort, filters, hidden columns and page in `doc_viewer_state`. A text source stores
+sheet, sort, filters, column selection and page in `doc_viewer_state`. The column selection is
+automatic or a chosen list. An older link with a list of hidden columns still opens. A text source stores
 its explicit stored page identifier in `selected_source_page`, and its selected match in
 `selected_match`. That match applies only to its own source, page and find query.
 
@@ -18,7 +19,8 @@ its explicit stored page identifier in `selected_source_page`, and its selected 
 
 | id | control | does | constraint |
 |---|---|---|---|
-| `.table.columns` | visible-column control | opens the column visibility list | it opens one centred modal with a closing backdrop |
+| `.table.columns` | visible-column control | opens the column visibility list with `N of 60 shown`, `Show the first 60` and `Hide all` | it opens one centred modal with a closing backdrop. The grid shows at most 60 columns. At 60 shown columns, the boxes of hidden columns are disabled. The automatic selection shows the first 60 columns, or the columns with matches of the find text when such columns exist |
+| `.table.notice_close` | `Close this notice` control on the truncation notice | hides the notice for the open document | the notice names each storage limit that the parse reached, for example a cut cell |
 | `.table.column_filter` | column filter control | opens typed filter controls for one column | it opens one centred modal with a closing backdrop |
 | `.table.sort` | column sort control | cycles ascending, descending and no order | the changed order resets the result page |
 | `.table.sheet` | sheet chooser dialog | selects a workbook sheet, and shows the matching rows of each sheet while the find box holds a search | it clears sheet-specific columns, sorting and filters. With a search and no chosen sheet, the viewer opens on the first sheet with matches |
@@ -44,7 +46,7 @@ its explicit stored page identifier in `selected_source_page`, and its selected 
 | text page failure | a text page request fails | the previous page stays, with the error and the retry button above it |
 | text page absent | the requested identifier has no stored text | a statement that no text is stored there. The page overlay opens its stored neighbours. A source with one entry has no overlay, and the statement links its sole stored identifier |
 | text match failure | a match search or highlight read fails | the error appears beside the match group or above the text, and page navigation and raw text stay usable |
-| no visible columns | every sheet column is hidden | a message that directs the reader to the visible-column control |
+| no visible columns | the chosen column list is empty | `No column is shown. Use the Columns button to show one.` |
 | column modal | a visibility or filter control is open | one named modal above the grid, with keyboard focus inside it |
 | full-cell modal | the full-cell control is open | the raw value in a scrolling area, with column, row, sheet, type, exact integer, formula, link, dataset and document hash; empty values are omitted |
 | email without body | the email parser stores no readable body | the envelope, attachments, and source selector remain available |
@@ -52,6 +54,7 @@ its explicit stored page identifier in `selected_source_page`, and its selected 
 | image preview | the image format has a stored JPEG preview | the viewer shows the preview |
 | archive | the document is an archive or a mail store | the Archive or Email Archive tab opens first, with one metadata section titled with the archive kind. Its rows give the extracted file count and size, the archive file size and dates, the dates inside, and the processing errors. Counts and sizes show in `code`, and an unknown value shows as `Unknown`. The empty-source message is not shown |
 | image not shown | the browser cannot show the image and no preview exists | a note and a link that downloads the file |
+| antivirus | the Metadata tab is open | an Antivirus section with the effective verdict, or the status of the latest attempt when no scan completed, and the engine, signature database and scan time. An `infected` file shows `Virus found: <signature>.` in red, and the more-actions menu shows `Download Document` crossed out. The raw `virus_scan_results` table lists every attempt |
 | processing pending | no operation has reached the document | the page states that processing has not reached this document |
 | processing active | its unfinished plan belongs to an active operation | the page states that processing runs |
 | processing failure | its current operation recorded a file error | the page names the failed tasks |

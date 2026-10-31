@@ -6,8 +6,10 @@ This stage parses downloaded files by type and writes structured content and met
 
 - Detect MIME types with GNU `file`, Magika, filename extensions, and content sniffs.
 - Parse archives, emails, PDFs, images, audio, video, and raw text.
-- Read tabular documents (CSV/TSV/PSV, XLSX/XLSM/XLTX, XLS/XLSB, ODS) into individual
+- Read tabular documents (CSV/TSV/PSV, XLSX/XLSM/XLTX, XLS/XLSB, ODS, JSON and JSON Lines) into individual
   cells ([parse_table.py](parse_table.py)), alongside the text extraction of the same file.
+- Scan each file with ClamAV before the other stages ([scan_virus.py](scan_virus.py)).
+- Extract split archives from all their volumes ([split_volumes.py](split_volumes.py)).
 - Run OCR for images and extract text for indexing.
 - Build searchable PDF parts per engine for selected PDF pages ([parse_ocr_pdf.py](parse_ocr_pdf.py)), through the
   `hoover4-ocr-pdf` service.
@@ -256,7 +258,7 @@ Plain text retains PGP, uuencoded text, hashes, addresses, and URLs.
 ## Usage
 
 - Executed as part of P2 plan execution.
-- Ensure required external tools are present: `file`, `7z`, `qpdf`, `ffprobe`, `ffmpeg`, and Tika.
+- Ensure required external tools are present: `file`, `7z` with the RAR plugin, `json-table`, `qpdf`, `ffprobe`, `ffmpeg`, Tika and the ClamAV service.
 
 ## Navigation
 
@@ -307,6 +309,7 @@ input order. The rows of each file carry the per-file function name.
 
 | stage activity | per-file function | queue | Error name of a failed file |
 |---|---|---|---|
+| `clamav_scan_batch` | `scan_file` | ClamAV | none, a scan without a verdict is a skipped outcome |
 | `detect_mime_batch` | `detect_mime_all` | common | `detector_error_<name>` for each detector |
 | `tika_text_batch` | `run_tika_and_store` | Tika | `tika_text_batch` |
 | `extract_plaintext_batch` | `extract_plaintext_chunks` | common | the same |
@@ -398,14 +401,51 @@ row 1 is text, and one of them is above a column of numbers or dates
 (`first_row_labels_typed_data`). A text row above text rows, a row of numbers, and a row of
 years above numbers can each be a header or data. Such a sheet has the state `ambiguous`.
 Its candidates are `0` (row 1 is data) and `1` (row 1 is the header). The agent table routes
-read either candidate from the same cells. This reading is reader version 3
-(`table_formats.READER_VERSION`). A sheet that an earlier version read has the state
-`legacy` until the file is parsed again, and `_existing_parse` does not reuse its parse for
-another dataset.
+read either candidate from the same cells. A sheet that reader version 2 or earlier read has
+the state `legacy` until the file is parsed again, and `_existing_parse` does not reuse its
+parse for another dataset. The current reader version is 4 (`table_formats.READER_VERSION`).
+Version 4 adds the JSON reader and the limit of 1000 columns for each sheet.
 
-The manifest row is written **before** the cells, which is the opposite of
-[parse_ocr_pdf.py](parse_ocr_pdf.py)'s object-before-row rule and is the mirrored reason: a cell with no
-manifest row is invisible to the permission check and to `sweep_orphan_table_cells` alike.
+### A parse publishes a new generation.
+
+Each parse writes a new generation of the hash. `_next_generation` gives a number above
+every manifest and every stored cell of the hash. The cells, sheets and columns carry that
+number. The `ok` manifest row that names the generation is the last write. Every website
+and agent read filters `table_cells`, `table_sheets` and `table_columns` to the generation
+of the manifest. An interrupted parse thus shows no mix of two parses. Old cells inside the
+bounds of a new table stay invisible, and so do removed sheets and removed columns.
+
+A dataset without a published table gets a `parsing` manifest before the first cell batch
+of a large table, as before. A dataset with a published table keeps that table readable
+until the new parse publishes. A parse that finds no table writes an `empty` manifest.
+That row hides the earlier table of the dataset and records valid output, so the update
+step does not select the file again. A failed read writes a `failed` manifest of the new
+generation.
+
+The generation belongs to the hash, because the cells are shared by every dataset of the
+collection that holds the hash. Another dataset keeps reading its own manifest generation.
+The dedup copy (`_copy_structure`) moves it to the new generation: the sheets and columns of
+the generation land first, and the manifest last. `sweep_orphan_table_cells` removes the
+cells, sheets and columns of each generation that no manifest names.
+
+### JSON and JSON Lines become tables.
+
+`.json`, `.jsonl`, `.ndjson`, `.geojson` and `.topojson` files and the JSON MIME types go to
+the table stage with the reader `json`. The Rust program
+[json_table](../../json_table/Readme.md) reads the file in two passes and writes one
+protocol line for each row. Its Readme gives the grammar, the column paths, the
+1000-column collapse and the limits. `JsonCells` in [table_readers.py](table_readers.py)
+runs the program, keeps stderr in a temporary file, kills the program when the consumer
+stops early, and raises on a nonzero exit or a missing `end` line.
+
+`json_grammar` selects JSON or JSON Lines from the first two nonblank lines, with the same
+rule as the program. A file with JSON text but no array of objects gets no table. When its
+detection also permits delimited text, for example JSON Lines of arrays, the stage reads
+it as CSV. A CSV file with JSON values in its cells stays a CSV table. `sniff_table` does
+not accept JSON Lines as delimited text.
+
+Numbers keep their source text. An integer inside Int64 is an `int` cell. A larger
+integer is a `text` cell with the source digits. A finite decimal is a `float` cell.
 
 Two rules decide whether something is a table at all, and the asymmetry is the point. A
 binary spreadsheet is a table on the strength of its format, so one non-empty cell is
@@ -442,6 +482,67 @@ grid can say what was dropped. A cap that is invisible in the UI reads as "this 
 see it. A workbook with one blank sheet (a pivot-table template, entirely ordinary) is
 enough to trigger it. [parse_table.py](parse_table.py) therefore catches `BaseException` and re-raises
 only the interpreter's own, and the calamine reader skips a sheet with no used range.
+
+## Split archives use all their volumes.
+
+The plan download names each file by its hash, so 7-Zip cannot find the later volumes of
+a split archive from the first one. [split_volumes.py](split_volumes.py) resolves the
+volume set of a file from the live `vfs_files` rows of its dataset: the rows in the same
+container and folder whose names have the same stem and scheme. The schemes are numbered
+volumes (`x.7z.001`, `x.zip.001`, `x.001`), RAR parts (`x.part1.rar`), old RAR sets
+(`x.rar`, `x.r00`) and spanned zip files (`x.z01`, `x.zip`).
+
+`extract_split_set` in [parse_archives.py](parse_archives.py) writes each volume under its exact name in a
+temporary folder and runs 7-Zip on the entry volume. The worker image has 7-Zip with its
+RAR plugin. A name with a path separator or a parent reference is refused. The time limit
+and the stage budget use the size of the complete set. The group workflow reads that size
+with the activity `split_set_sizes`.
+
+| Case | Result |
+|---|---|
+| Complete set, entry volume in the batch | The entry volume extracts the set. The members belong to the entry hash. |
+| Complete set, only a later volume in the batch | The later volume extracts the set for the entry hash. A volume that arrives late, or that replaces another, refreshes the members. |
+| Missing first, middle or final volume | `SplitArchiveIncomplete` on the entry volume. The message names the missing volume when the names show it. A later volume of an incomplete set gets a skipped outcome. |
+| A 7-Zip diagnostic about a missing or truncated volume | `SplitArchiveIncomplete`. |
+| A numbered `.001` file without archive bytes | A skipped outcome, without an error. |
+| One name of a scheme without a sibling | A standalone file, extracted as before. |
+| One entry hash in several folders with different complete sets | `SplitArchiveAmbiguous`. The stage chooses no set. |
+
+A refresh tombstones the members of the earlier extraction that the new one does not
+contain. The container and the error of a file are both keyed by the file hash. An
+incomplete occurrence of a hash beside a complete occurrence of the same hash thus has no
+error of its own.
+
+The archive stage version is 2. The "Failed files" update step retries each earlier
+archive failure once with the new rule. The group workflow uses the patch
+`split-volume-sets`, so a group that started before the change keeps its old routes.
+
+## The antivirus stage runs first.
+
+`clamav_scan_batch` in [scan_virus.py](scan_virus.py) runs before detection in each group, on
+`processing-clamav-queue`. It streams each file to the `hoover4-clamav` service and stores
+one attempt row in `virus_scan_results`. The stage never fails a file, so parsing
+continues after a positive verdict and after a scan failure. The worker tier `clamav`
+polls the queue also when `clamav_enabled` is off. Then each attempt is `skipped_disabled`
+and no request goes to the service.
+
+| `attempt_status` | Meaning |
+|---|---|
+| `completed` | The scanner gave the verdict `clean` or `infected`. |
+| `incomplete` | The scanner stopped at a recursive limit (`Heuristics.Limits.Exceeded...`). The attempt has no verdict. |
+| `skipped_size` | The file is larger than 500 MiB. A file of exactly 500 MiB is scanned. |
+| `skipped_disabled` | `clamav_enabled` is off. |
+| `failed` | The service did not answer or answered an error. |
+
+The effective verdict of a hash is its latest `completed` attempt by `result_seq`.
+`result_seq` orders the attempts, and `scan_version` is the logical version of the stage.
+A later failed, incomplete, skipped or disabled attempt does not replace a known verdict.
+P6 sets the search attribute `virus_hit` to 1 when the effective verdict is `infected`.
+The 500 MiB input limit is separate from the recursive limits of clamd (`MaxScanSize`,
+`MaxRecursion`, `MaxFiles`), which give `incomplete`.
+
+The group workflow uses the patch `clamav-scan`, so a group that started before the change
+runs no scan.
 
 ## Busy services
 

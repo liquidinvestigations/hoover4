@@ -334,6 +334,20 @@
       "no_screenshot_reason": "No page shows upload batches yet. Time-skipping queue tests, ClickHouse tests and a tus-js-client upload against the local stack cover the behavior."
     },
     {
+      "id": "F-ingest-26",
+      "source": [
+        "main_services/processing/tasks/P3_parse_files/scan_virus.py",
+        "main_services/clamav"
+      ],
+      "docs": [
+        "main_services/processing/tasks/P3_parse_files/Readme.md",
+        "main_services/clamav/Readme.md",
+        "docs/technical-specification/Capability_Contracts.md#f-ingest-26"
+      ],
+      "audience": "operator",
+      "no_screenshot_reason": "The scan has no page of its own. Unit tests of the attempt rules and an EICAR ingest on the local stack cover the behavior."
+    },
+    {
       "id": "F-search-01",
       "source": [
         "website/backend/src/api/search"
@@ -546,6 +560,19 @@
       "audience": "user",
       "screenshot": "docs/user-manual/img/filter-date.png",
       "scenario": "website/browser-tests/746-manual-fixture-filter-pane-date.ini"
+    },
+    {
+      "id": "F-search-16",
+      "source": [
+        "website/frontend/src/components/search_components/filter_modal.rs",
+        "main_services/processing/tasks/P6_index_data/activities.py"
+      ],
+      "docs": [
+        "docs/technical-specification/interface/Search.md",
+        "main_services/processing/tasks/P6_index_data/Readme.md"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "No manual screenshot shows the Antivirus filter yet. A browser check against the local stack with an EICAR file covers the behavior."
     },
     {
       "id": "F-doc-01",

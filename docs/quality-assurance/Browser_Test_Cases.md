@@ -195,7 +195,7 @@ Spreadsheet grids, column filters, and the table column dialog.
 | `403-view-doc-table-sheets` | Exercises the view doc table sheets case. | `testdata_excelsc` | `--names view-doc-table-sheets` |
 | `404-view-doc-table-sorted` | Exercises the view doc table sorted case. | `testdata_excelsc` | `--names view-doc-table-sorted` |
 | `405-view-doc-table-filter-popover` | Exercises the view doc table filter popover case. | `testdata_excelsc` | `--names view-doc-table-filter-popover` |
-| `406-view-doc-table-truncated` | Exercises the view doc table truncated case. | `testdata_wide` | `--names view-doc-table-truncated` |
+| `406-view-doc-table-wide-stored` | Shows the first 60 columns of a stored 350-column table without a notice. | `testdata_wide` | `--names view-doc-table-wide-stored` |
 | `407-view-doc-table-metadata` | Exercises the view doc table metadata case. | `testdata_excelsc` | `--names view-doc-table-metadata` |
 | `408-qa-table-modal-geometry` | Exercises the qa table modal geometry case. | `testdata_excelsc` | `--names qa-table-modal-geometry` |
 | `409-qa-table-modal-backdrop` | Exercises the qa table modal backdrop case. | `testdata_excelsc` | `--names qa-table-modal-backdrop` |
@@ -208,6 +208,12 @@ Spreadsheet grids, column filters, and the table column dialog.
 | `416-view-doc-html-table` | Shows an HTML table export as a grid. | `filetypes_files` | `--names view-doc-html-table` |
 | `417-view-doc-spreadsheetml` | Shows a SpreadsheetML workbook as a grid. | `filetypes_files` | `--names view-doc-spreadsheetml` |
 | `418-view-doc-sqlite` | Shows a SQLite table as a grid with BLOB size markers. | `filetypes_files` | `--names view-doc-sqlite` |
+| `420-view-doc-table-json-lines` | Opens a JSON Lines file as a table with dot-path columns. | `p73tables_fixtures` | `--names view-doc-table-json-lines` |
+| `421-view-doc-table-wide-sixty` | Shows 60 of 1000 stored columns and refuses a 61st in the picker. | `p73tables_fixtures` | `--names view-doc-table-wide-sixty` |
+| `422-view-doc-table-column-find` | Brings a matching column beyond the first 60 into the grid and keeps it after reload. | `p73tables_fixtures` | `--names view-doc-table-column-find` |
+| `423-view-doc-table-old-link` | Decodes an older link with hidden columns into a 60-column selection. | `p73tables_fixtures` | `--names view-doc-table-old-link` |
+| `424-view-doc-table-empty-selection` | Shows the empty-selection message for a selection without a column. | `p73tables_fixtures` | `--names view-doc-table-empty-selection` |
+| `425-view-doc-table-notice-close` | Closes the truncation notice of a table with a cut cell. | `p73tables_fixtures` | `--names view-doc-table-notice-close` |
 
 ## Chat
 

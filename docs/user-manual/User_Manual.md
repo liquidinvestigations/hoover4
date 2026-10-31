@@ -352,6 +352,13 @@ Counts use the other active search restrictions.
 A red flag directs document review and does not establish misconduct.
 Open a matching document to inspect its scored passages and supporting signals.
 
+### Antivirus
+
+Select **Antivirus** in the filter dialog.
+Select **Only files in which the antivirus scan found a virus** and apply the filter.
+The results then hold only documents with a positive antivirus verdict.
+A document without a completed scan does not match.
+
 ### Applied filters
 
 <br clear="right">
@@ -553,11 +560,13 @@ Enter text in the cell search control to locate matching cells.
 Cell search applies to the selected table and is separate from collection search.
 Open a column control to inspect its values and apply a text, number, or date filter when available.
 Select a column sort direction to order the matching rows.
-Use the column controls to hide columns and restore them when needed.
+Use the **Columns** control to choose the shown columns. The grid shows at most 60 columns.
+**Show the first 60** restores the first 60 columns, and **Hide all** hides every column.
+When the cell search matches columns beyond the first 60, the grid shows those columns.
 Use the page controls to read additional rows.
 Open a long cell value to read its complete stored text.
-The server returns at most 200 rows and 60 visible columns per request.
-A clamp or extraction notice describes a limit that affected the returned table.
+A notice above the grid names each storage limit that affected the table. Close it with its × button.
+JSON and JSON Lines files also open as tables. A nested key becomes a column with a dotted name, for example `user.city`.
 
 ### Read connected email.
 
@@ -597,10 +606,16 @@ are trusted, email headers, blob hashes and size, and the detected file types.
 A PDF defect appears as `passworded` or `damaged` in its metadata.
 The pipeline retains that metadata and skips later PDF processing.
 
+The **Antivirus** section shows the result of the antivirus scan, the signature that it found,
+and the version of the signature database.
+
 ### Downloading
 
 **Download Document** in the ⋮ menu, or the same item in the viewer's own menu, saves the
 original file under its real name.
+
+When the antivirus scan found a virus in the file, **Download Document** is crossed out and
+the download is refused. The viewer can still show the file.
 
 <br clear="right">
 

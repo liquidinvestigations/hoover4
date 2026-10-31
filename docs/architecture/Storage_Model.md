@@ -62,6 +62,22 @@ A membership row in `user_group_membership` has the flag `is_uploader`. The coll
 `upload_dataset`, so a dataset purge, which deletes the rows of every collection table with a
 `collection_dataset` column, keeps that history.
 
+### Table cells are published by generation.
+
+`table_cells`, `table_sheets` and `table_columns` are keyed by hash, so one parse serves
+every dataset of the collection that holds the hash. Each parse writes a new `generation`.
+The per-dataset manifest `table_documents` names the generation that its dataset reads,
+and the manifest is the last write of a parse. A reader filters the three tables to that
+generation. A manifest with the status `empty` records a parse without a table and hides
+the earlier table of the dataset. The orphan sweep removes generations that no manifest
+names.
+
+### Antivirus attempts are kept in order.
+
+`virus_scan_results` holds one row for each scan attempt of a file in a dataset. Rows are
+not replaced. The effective verdict of a hash is its latest `completed` attempt by
+`result_seq`. The search attribute `virus_hit` copies that verdict into the shard rows.
+
 ## The file tree, and what deletion means
 
 `vfs_files` holds one current row per path. Three properties of its key decide what the

@@ -69,6 +69,13 @@ files that its last heartbeat detail lists as finished. So the history of a grou
 with its stages, and not with its files. After the stages, the group records the detector
 errors, best effort, and then the parser errors of every file, in item order.
 
+The first stage is `clamav_scan_batch` on `processing-clamav-queue`, under the workflow
+patch `clamav-scan`. Its result never stops a file. Detection and the parse stages follow.
+
+Under the patch `split-volume-sets`, a file whose name is a volume of a split archive goes
+to the archive stage. The group reads the size of each complete set with `split_set_sizes`
+and uses it as the file size for the stage budget. Detection still runs for every file.
+
 Download timeouts scale by total plan size; cleanup mirrors the same budget. The stage
 records failures into `processing_errors` and relies on P3 for actual file parsing.
 
