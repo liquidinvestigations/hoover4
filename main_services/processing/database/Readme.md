@@ -59,7 +59,7 @@ ClickHouse storage is split across `1 + N` databases.
 
 | | Database | Migrations | Holds |
 |---|---|---|---|
-| Global | `Hoover4_Processing` | [db_global_migrations/](db_global_migrations) | `users`, `user_groups`, `user_group_membership`, `collections`, `collection_group_permissions`, `web_sessions`, `server_settings`, `dataset`, `search_manticore_cache`, `temp_chat_json_objects`, `processing_eta_samples`, `processing_task_runs` (unroutable activity timings), `processing_queue_backlog`, `bench_runs`, `dataset_stats`, `feedback_reports` |
+| Global | `Hoover4_Processing` | [db_global_migrations/](db_global_migrations) | `users`, `user_groups`, `user_group_membership`, `collections`, `collection_group_permissions`, `web_sessions`, `server_settings`, `dataset`, `search_manticore_cache`, `temp_chat_json_objects`, `processing_eta_samples`, `processing_task_runs` (unroutable activity timings), `processing_queue_backlog`, `bench_runs`, `dataset_stats`, `feedback_reports`, `user_settings` |
 | Per collection | `Hoover4_Collection_<collectionname>` | [db_collection_migrations/](db_collection_migrations) | blobs, VFS, parsed content, plans, errors, task runs, document outcomes, term dictionaries, NLP watermark, Manticore shard ledger, upload batches and their files |
 
 `operation_error_events` stores `selection_complete` after all selector class events.

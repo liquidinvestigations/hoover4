@@ -13,6 +13,7 @@ use crate::components::hover_card::HoverCardTrigger;
 use crate::components::session_context::use_session_user;
 use crate::data_definitions::url_param::UrlParam;
 use crate::routes::Route;
+use crate::tr;
 use common::search_query::SearchQuery;
 
 use crate::pages::file_browser_page::FileBrowserPage;
@@ -21,6 +22,7 @@ use crate::pages::search_page::SearchPage;
 
 use dioxus_free_icons::icons::md_action_icons::MdHome;
 use dioxus_free_icons::icons::md_action_icons::MdSearch;
+use dioxus_free_icons::icons::md_action_icons::MdSettings;
 use dioxus_free_icons::icons::md_communication_icons::MdChat;
 use dioxus_free_icons::icons::md_file_icons::MdFolder;
 use dioxus_free_icons::icons::md_social_icons::MdPerson;
@@ -110,14 +112,14 @@ fn NavbarTopIconLinks() -> Element {
                 align-items: center;
                 justify-content: center;
             ",
-            IconLink { to: Route::HomePage { }, icon: MdHome, label: "Home" }
-            IconLink { to: Route::search_page_from_query(SearchQuery::default()), icon: MdSearch, label: "Search" }
+            IconLink { to: Route::HomePage { }, icon: MdHome, label: tr!("nav-home") }
+            IconLink { to: Route::search_page_from_query(SearchQuery::default()), icon: MdSearch, label: tr!("nav-search") }
             IconLink {
                 to: Route::storage_root(),
                 icon: MdFolder,
-                label: "File Browser",
+                label: tr!("nav-file-browser"),
             }
-            IconLink { to: Route::AiChatPage {}, icon: MdChat, label: "AI Chat" }
+            IconLink { to: Route::AiChatPage {}, icon: MdChat, label: tr!("nav-ai-chat") }
         }
     }
 }
@@ -140,10 +142,11 @@ fn NavbarBottomIconLinks() -> Element {
                 justify-content: center;
             ",
 
-            FeedbackRailButton {}
             if show_admin {
-                IconLink { to: Route::AdminDashboardPage { }, icon: MdPerson, label: "Admin" }
+                IconLink { to: Route::AdminDashboardPage { }, icon: MdSettings, label: tr!("nav-admin") }
             }
+            FeedbackRailButton {}
+            IconLink { to: Route::SettingsPage { }, icon: MdPerson, label: tr!("nav-settings") }
         }
     }
 }

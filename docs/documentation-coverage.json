@@ -2882,6 +2882,21 @@
       ],
       "audience": "developer",
       "no_screenshot_reason": "This offline command writes evaluation artifacts and changes no interface."
+    },
+    {
+      "id": "F-lang-01",
+      "source": [
+        "website/common/src/language.rs",
+        "website/backend/src/api/settings.rs",
+        "website/frontend/src/i18n.rs",
+        "website/frontend/src/pages/settings_page.rs"
+      ],
+      "docs": [
+        "docs/technical-specification/interface/Settings.md",
+        "docs/user-manual/User_Manual.md#choose-your-languages"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "The settings page is a list of language choices. The manual describes each choice in text."
     }
   ],
   "routes": {
@@ -2920,6 +2935,7 @@
     "/:..segments": "docs/user-manual/User_Manual.md",
     "/upload?:collection&:folder": "docs/user-manual/User_Manual.md#upload-files-and-folders",
     "/uploads?:collection": "docs/user-manual/User_Manual.md#upload-files-and-folders",
-    "/uploads/:collection/:batch_id?:page": "docs/user-manual/User_Manual.md#upload-files-and-folders"
+    "/uploads/:collection/:batch_id?:page": "docs/user-manual/User_Manual.md#upload-files-and-folders",
+    "/settings": "docs/user-manual/User_Manual.md#choose-your-languages"
   }
 }

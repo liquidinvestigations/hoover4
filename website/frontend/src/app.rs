@@ -73,7 +73,9 @@ pub fn App() -> Element {
                     // behind it, so the identity below is always resolved.
                     SessionProvider {
                         children: rsx! {
-                            Router::<Route> {}
+                            crate::i18n::LanguageProvider {
+                                Router::<Route> {}
+                            }
                         }
                     }
                 }

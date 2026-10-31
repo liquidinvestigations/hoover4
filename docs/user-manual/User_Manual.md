@@ -46,10 +46,22 @@ Every page shares the dark rail down the left edge. From the top:
 | magnifier | Search |
 | folder | Storage (the file browser) |
 | speech bubble | AI chat |
+| gear (bottom) | administration, for administrators only |
 | bug (bottom) | report a bug or send feedback |
-| person (bottom) | administration, for administrators only |
+| person (bottom) | your settings |
 
 Hold the pointer over an icon to show its name beside it.
+
+### Choose your languages
+
+Select the person icon to open your settings.
+Under **Interface language**, select the language of the menus, buttons and messages.
+**Browser language** uses the first of the 18 languages that your browser prefers, else English.
+Under **Agent language**, select the language that the AI agent answers in.
+**Same as the interface** uses the interface language.
+Each choice is saved at once. The agent uses a new agent language from your next message.
+A machine produced the translations. Documents, file names and earlier answers keep their own language.
+Arabic and Hebrew show in the left-to-right layout.
 
 Some pages have a divider between two panes: search results and the preview, the storage
 listing and the preview, the three panes of a document tab, and a conversation and its side

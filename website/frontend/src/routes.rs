@@ -29,6 +29,7 @@ use crate::pages::file_browser_page::{
 use crate::pages::home_page::HomePage;
 use crate::pages::not_found_page::NotFoundPage;
 use crate::pages::search_page::SearchPage;
+use crate::pages::settings_page::SettingsPage;
 use crate::pages::view_document_page::ViewDocumentPage;
 use crate::pages::signal_terms::SignalTermsPage;
 use crate::pages::uploads::{UploadBatchPage, UploadPage, UploadsPage};
@@ -129,6 +130,9 @@ pub enum Route {
 
     #[route("/red_flag_terms")]
     SignalTermsPage {},
+
+    #[route("/settings")]
+    SettingsPage {},
 
     #[route("/admin")]
     AdminDashboardPage {},

@@ -1,0 +1,55 @@
+{
+ "catalog_revision": "c4022277cf2116b1",
+ "messages": {
+  "ar": {
+   "main.ftl": {
+    "nav-admin": "fcaf706d135cd757",
+    "nav-ai-chat": "cee7a40a169fe795",
+    "nav-file-browser": "3e20ecbe287b1dbb",
+    "nav-home": "5bf49c9bf0a85dde",
+    "nav-search": "9ee5ee2c7c7f8297",
+    "nav-settings": "267258d7c5b73af1",
+    "settings-agent-answers-in": "41ed4cf4eb7ec11a",
+    "settings-agent-language": "b8e2ecd5ed70d3db",
+    "settings-agent-language-explanation": "2af79dceb9377f77",
+    "settings-browser-language": "5573ac03b834d070",
+    "settings-interface-language": "4fa82ebd0180c12a",
+    "settings-interface-language-explanation": "5068bcfccb0edf03",
+    "settings-now-showing": "aa19b49258214325",
+    "settings-same-as-interface": "f9da9340eda5d2c2",
+    "settings-saved": "50836410b51a0075",
+    "settings-title": "268ffed4d122399a"
+   }
+  },
+  "de": {
+   "main.ftl": {
+    "nav-admin": "fcaf706d135cd757",
+    "nav-ai-chat": "cee7a40a169fe795",
+    "nav-file-browser": "3e20ecbe287b1dbb",
+    "nav-home": "5bf49c9bf0a85dde",
+    "nav-search": "9ee5ee2c7c7f8297",
+    "nav-settings": "267258d7c5b73af1",
+    "settings-agent-answers-in": "41ed4cf4eb7ec11a",
+    "settings-agent-language": "b8e2ecd5ed70d3db",
+    "settings-agent-language-explanation": "2af79dceb9377f77",
+    "settings-browser-language": "5573ac03b834d070",
+    "settings-interface-language": "4fa82ebd0180c12a",
+    "settings-interface-language-explanation": "5068bcfccb0edf03",
+    "settings-now-showing": "aa19b49258214325",
+    "settings-same-as-interface": "f9da9340eda5d2c2",
+    "settings-saved": "50836410b51a0075",
+    "settings-title": "268ffed4d122399a"
+   }
+  }
+ },
+ "producer": {
+  "batch_messages": 30,
+  "description": "ornith: Ornith-1.5-35B-A3B-NVFP4 served by vLLM on the dev GPU box",
+  "glossary": "scripts/i18n/glossary.json",
+  "model": "ornith",
+  "review": "Machine translation. No native speaker has reviewed it.",
+  "temperature": 0.2,
+  "thinking": false,
+  "updated": "2026-10-31"
+ }
+}

@@ -7,6 +7,7 @@ pub mod chat_api;
 pub mod error_util;
 pub mod search_api;
 pub mod server_auth;
+pub mod settings_api;
 pub mod storage_api;
 pub mod uploads_api;
 pub mod vfs_api;

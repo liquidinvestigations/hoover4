@@ -26,6 +26,8 @@ dioxus-free-icons={version="0.10.0", features=[
 ]}
 dioxus-primitives = { git = "https://github.com/DioxusLabs/components", version = "0.0.1", default-features = false }
 base64 = "0.22.1"
+# Fluent catalogs for the interface languages. The bundle is built in `i18n.rs`.
+dioxus-i18n = "0.6"
 serde = "1"
 futures-util = "0.3.31"
 ciborium = "0.2.2"

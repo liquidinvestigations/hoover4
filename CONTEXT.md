@@ -116,3 +116,19 @@ it in their fingerprint, so new files and interrupted work make them calculate a
 A stage version is the integer in [stage_versions.py](main_services/processing/tasks/stage_versions.py) that names the output format of
 one canonical stage. Some stages keep an older constant name, for example
 `OCR_PAGE_RULE_VERSION` or `READER_VERSION`. The registry exposes each one under its stage.
+
+**Interface language**:
+The interface language is the language of the website's own text, such as labels, messages and
+explanations. The saved `ui.language` setting selects it, else the browser's
+`Accept-Language` header, else English. Document content, file names, stored processing
+errors and earlier model output keep their own language.
+
+**Agent language**:
+The agent language is the language that the agent answers in. The saved `agent.language`
+setting selects it, else the interface language. A turn stores its agent language when it
+starts, and its child work uses that stored value. A changed setting applies from the next
+turn.
+
+**Document language**:
+The document language is the language that the pipeline detects in a document's text. It is
+a search facet. The interface language and the agent language never change it.

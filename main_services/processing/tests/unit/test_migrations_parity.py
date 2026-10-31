@@ -85,6 +85,7 @@ EXPECTED_GLOBAL_TABLES = {
     "processing_update_attempts",
     "processing_update_applied",
     "processing_retry_claims",
+    "user_settings",
 }
 
 EXPECTED_COLLECTION_TABLES = {

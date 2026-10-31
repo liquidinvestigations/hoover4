@@ -220,6 +220,63 @@ inline `background` of the card sets the selected colour, so the hover rule need
 }
 
 /* Category headings and term columns need spacing after the global style reset. */
+/* The settings page and its language radio groups. */
+.x-settings-page {
+    height: 100%;
+    width: 100%;
+    overflow: auto;
+    box-sizing: border-box;
+    padding: 24px;
+}
+.x-settings-page > * {
+    max-width: 900px;
+}
+.x-settings-page h1 {
+    font-size: var(--x-text-page);
+    line-height: var(--x-line-page);
+    font-weight: 500;
+}
+.x-settings-page h2 {
+    font-size: var(--x-text-section);
+    font-weight: 500;
+    margin-top: 24px;
+}
+.x-language-choices {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+}
+.x-language-choice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid rgba(0, 0, 0, 0.25);
+    border-radius: 8px;
+    background-color: white;
+    color: var(--x-ink);
+    cursor: pointer;
+    text-align: start;
+    font-size: var(--x-text-body);
+}
+.x-language-choice[aria-checked="true"] {
+    border-color: var(--x-link);
+    box-shadow: 0 0 0 1px var(--x-link);
+}
+.x-language-choice-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.x-language-choice-detail {
+    font-size: var(--x-text-detail);
+    color: rgba(0, 0, 0, 0.55);
+}
+.x-settings-status {
+    min-height: 24px;
+    margin-top: 12px;
+}
 .x-signal-terms {
     height: 100%;
     width: 100%;

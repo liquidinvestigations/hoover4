@@ -1,0 +1,39 @@
+{
+  "comment": "Language resolution cases shared by website/common/src/language.rs and P_agent/language.py.",
+  "supported_code": [
+    {"tag": "en", "expected": "en"},
+    {"tag": "DE", "expected": "de"},
+    {"tag": "pt-BR", "expected": "pt"},
+    {"tag": "de_AT", "expected": "de"},
+    {"tag": "zh-Hans-CN", "expected": "zh"},
+    {"tag": "zh-TW", "expected": "zh"},
+    {"tag": "no", "expected": "nb"},
+    {"tag": "nn-NO", "expected": "nb"},
+    {"tag": "nb", "expected": "nb"},
+    {"tag": "iw", "expected": "he"},
+    {"tag": " ro ", "expected": "ro"},
+    {"tag": "ja", "expected": null},
+    {"tag": "", "expected": null},
+    {"tag": "*", "expected": null},
+    {"tag": "english", "expected": null}
+  ],
+  "accept_language": [
+    {"header": "de-DE,de;q=0.9,en;q=0.8", "expected": "de"},
+    {"header": "ja,fr;q=0.5", "expected": "fr"},
+    {"header": "en;q=0.5,ar;q=0.9", "expected": "ar"},
+    {"header": "ja,ko", "expected": null},
+    {"header": "*", "expected": null},
+    {"header": "de;q=0,es", "expected": "es"},
+    {"header": "fr;q=0.8,it;q=0.8", "expected": "fr"},
+    {"header": "", "expected": null},
+    {"header": "pt-BR;q=bad,sv", "expected": "sv"}
+  ],
+  "resolve": [
+    {"saved_interface": "", "saved_agent": "", "accept_language": null, "interface": "en", "agent": "en"},
+    {"saved_interface": "", "saved_agent": "", "accept_language": "de-CH,de;q=0.9", "interface": "de", "agent": "de"},
+    {"saved_interface": "fr", "saved_agent": "", "accept_language": "de", "interface": "fr", "agent": "fr"},
+    {"saved_interface": "fr", "saved_agent": "hr", "accept_language": "de", "interface": "fr", "agent": "hr"},
+    {"saved_interface": "", "saved_agent": "el", "accept_language": "ja", "interface": "en", "agent": "el"},
+    {"saved_interface": "xx", "saved_agent": "yy", "accept_language": "nb-NO", "interface": "nb", "agent": "nb"}
+  ]
+}

@@ -18,6 +18,7 @@ languages.
 - [Chat](#chat)
 - [Administration](#administration)
 - [Identity and access](#identity-and-access)
+- [Languages](#languages)
 
 ## Ingestion
 
@@ -268,5 +269,11 @@ languages.
 | `F-auth-04` | Restrict a collection to the groups granted it, and resolve every per-collection read after the permission check | `db_auth/`, [website/backend/src/db_utils/clickhouse_utils.rs](../../website/backend/src/db_utils/clickhouse_utils.rs) |
 | `F-auth-05` | Rate-limit chat, polling and API calls per user, with a ladder that decays for human-paced traffic and is flat for machine-paced polling | [website/backend/src/api/rate_limit.rs](../../website/backend/src/api/rate_limit.rs) |
 | `F-auth-06` | Resolve an artefact id to its owner and refuse a foreign one with a permission failure, not a missing row | [website/backend/src/db_chat/artifacts.rs](../../website/backend/src/db_chat/artifacts.rs) |
-| `F-auth-07` | Show the Admin navigation link only after the shared session identifies an administrator, and hide it while identity is unresolved and for ordinary users. Direct routes and admin APIs still refuse a non-administrator | `navbar.rs`, `session_context.rs`, [auth/guard.rs](../../website/backend/src/auth/guard.rs) |
+| `F-auth-07` | Show the Admin navigation link (gear icon, above the feedback control) only after the shared session identifies an administrator, and hide it while identity is unresolved and for ordinary users. Direct routes and admin APIs still refuse a non-administrator | `navbar.rs`, `session_context.rs`, [auth/guard.rs](../../website/backend/src/auth/guard.rs) |
 | `F-auth-08` | Resolve a caller of `/api/agent/v1/` from `X-Hoover4-User`, refuse a request carrying a proxy identity header or a session cookie, and expose the site's read surface to a tool-calling agent as twenty typed routes over collections, search, documents, tables and folders. [Read the contract.](Capability_Contracts.md#f-auth-08) | [website/backend/src/auth/session_middleware.rs](../../website/backend/src/auth/session_middleware.rs), [website/backend/src/api/agent/](../../website/backend/src/api/agent), [website/common/src/agent_api.rs](../../website/common/src/agent_api.rs), `table_browse::resolve_read` |
+
+## Languages
+
+| id | capability | owned by |
+|---|---|---|
+| `F-lang-01` | Let each signed-in person choose an interface language and an agent language from 18 languages on the settings page. Resolve the interface language from the saved setting, else the browser's `Accept-Language` header, else English, and the agent language from its saved setting, else the interface language. Render the server page and the hydrated page in the same language. [Read the interface table.](interface/Settings.md) | [website/common/src/language.rs](../../website/common/src/language.rs), [api/settings.rs](../../website/backend/src/api/settings.rs), `user_settings`, [frontend/src/i18n.rs](../../website/frontend/src/i18n.rs) |

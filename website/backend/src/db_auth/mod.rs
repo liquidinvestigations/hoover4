@@ -5,6 +5,7 @@ pub mod groups;
 pub mod sessions;
 pub mod settings;
 pub mod uploads;
+pub mod user_settings;
 pub mod users;
 
 use std::collections::HashMap;
