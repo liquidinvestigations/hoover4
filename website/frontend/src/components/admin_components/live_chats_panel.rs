@@ -14,6 +14,7 @@ use dioxus::prelude::*;
 
 use crate::api::chat_api::{chat_admin_cancel_run, chat_admin_live_runs};
 use crate::components::admin_components::{HELP_TEXT, MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH};
+use crate::tr;
 
 /// Poll interval. Fast enough to watch a run tick, slow enough not to matter.
 const REFRESH_MS: u64 = 2_000;
@@ -53,31 +54,29 @@ pub fn LiveChatsPanel() -> Element {
 
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Live LLM chats" }
+            h2 { style: MODULE_CAPTION, {tr!("live-chats-panel-live-llm-chats")} }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",
-                    "Agent turns running right now, longest-running first. Refreshes every 2 s. \
-                     Read from Temporal, so a turn that started before the last website restart \
-                     is here too."
+                    {tr!("live-chats-panel-agent-turns-running-right-now")}
                 }
                 if let Some(e) = action_error.read().clone() {
                     p { style: "color: var(--x-danger); font-size: var(--x-text-xs); margin: 0 0 8px;", "{e}" }
                 }
                 match runs {
-                    None => rsx! { p { style: HELP_TEXT, "Loading\u{2026}" } },
+                    None => rsx! { p { style: HELP_TEXT, {tr!("live-chats-panel-loading-u")} } },
                     Some(list) if list.is_empty() => rsx! {
-                        p { style: HELP_TEXT, "No chats running." }
+                        p { style: HELP_TEXT, {tr!("live-chats-panel-no-chats-running")} }
                     },
                     Some(list) => rsx! {
                         table { style: TABLE,
                             thead {
                                 tr {
-                                    th { style: TH, "User" }
-                                    th { style: TH, "Conversation" }
-                                    th { style: TH, "Question" }
-                                    th { style: TH, "Internet" }
-                                    th { style: TH, "Running" }
-                                    th { style: TH, "Started" }
+                                    th { style: TH, {tr!("live-chats-panel-user")} }
+                                    th { style: TH, {tr!("live-chats-panel-conversation")} }
+                                    th { style: TH, {tr!("live-chats-panel-question")} }
+                                    th { style: TH, {tr!("live-chats-panel-internet")} }
+                                    th { style: TH, {tr!("live-chats-panel-running")} }
+                                    th { style: TH, {tr!("live-chats-panel-started")} }
                                     th { style: TH, "" }
                                 }
                             }
@@ -134,8 +133,7 @@ fn LiveChatRow(
                 button {
                     style: "font-size: var(--x-text-xs); padding: 2px 8px; cursor: pointer;",
                     disabled: *killing.read(),
-                    title: "Cancels the workflow. The turn ends with a stopped marker in \
-                            the transcript rather than vanishing.",
+                    title: tr!("live-chats-panel-cancels-the-workflow-the-turn"),
                     onclick: move |_| {
                         let workflow_id = workflow_id.clone();
                         killing.set(true);
@@ -149,7 +147,7 @@ fn LiveChatRow(
                             killing.set(false);
                         });
                     },
-                    "Kill"
+                    {tr!("live-chats-panel-kill")}
                 }
             }
         }
@@ -158,9 +156,9 @@ fn LiveChatRow(
 
 fn yes_no(on: bool) -> Element {
     if on {
-        rsx! { span { style: "color: var(--x-ok); font-weight: 600;", "on" } }
+        rsx! { span { style: "color: var(--x-ok); font-weight: 600;", {tr!("live-chats-panel-on")} } }
     } else {
-        rsx! { span { style: "color: var(--x-ink-muted);", "off" } }
+        rsx! { span { style: "color: var(--x-ink-muted);", {tr!("live-chats-panel-off")} } }
     }
 }
 

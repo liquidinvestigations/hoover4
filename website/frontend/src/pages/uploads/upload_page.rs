@@ -21,6 +21,7 @@ use crate::api::error_util::user_facing_message;
 use crate::api::uploads_api::upload_page_info;
 use crate::components::admin_components::{ErrorBar, BTN, BTN_PRIMARY, LINK, SELECT};
 use crate::routes::Route;
+use crate::tr;
 
 /// Rows of the file list. The rest is a count.
 const LIST_ROWS: usize = 500;
@@ -42,7 +43,7 @@ fn refusal_from(status: u16, body: &str) -> BeginRefusal {
     match serde_json::from_str::<BeginRefusal>(body) {
         Ok(refusal) => refusal,
         Err(_) => BeginRefusal {
-            message: if body.trim().is_empty() { format!("HTTP {status}") } else { body.to_string() },
+            message: if body.trim().is_empty() { tr!("uploads-upload-http", status: status.to_string()) } else { body.to_string() },
             ..Default::default()
         },
     }
@@ -133,7 +134,7 @@ pub fn UploadPage(collection: String, folder: String) -> Element {
 
     let info_value = info.read().clone();
     let body = match info_value {
-        None => rsx! { p { "Loading..." } },
+        None => rsx! { p { {tr!("uploads-upload-loading")} } },
         Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(&e) } },
         Some(Ok(info)) => {
             let target = info
@@ -144,13 +145,13 @@ pub fn UploadPage(collection: String, folder: String) -> Element {
                 .cloned();
             match target {
                 None if info.conflicts.contains(&collection) || (info.targets.is_empty() && !info.conflicts.is_empty()) => rsx! {
-                    p { class: "x-upload-none", "This collection has two upload datasets. An administrator must disable one." }
+                    p { class: "x-upload-none", {tr!("uploads-upload-this-collection-has-two-upload")} }
                 },
                 None if !collection.is_empty() => rsx! {
-                    p { class: "x-upload-none", "You cannot upload into this collection." }
+                    p { class: "x-upload-none", {tr!("uploads-upload-you-cannot-upload-into-this")} }
                 },
                 None => rsx! {
-                    p { class: "x-upload-none", "You cannot upload into any collection." }
+                    p { class: "x-upload-none", {tr!("uploads-upload-you-cannot-upload-into-any")} }
                 },
                 Some(target) => rsx! {
                     UploadForm {
@@ -183,18 +184,18 @@ pub fn UploadPage(collection: String, folder: String) -> Element {
     let uploads_link = Route::UploadsPage { collection: collection.clone() };
 
     rsx! {
-        Title { "Hoover Search - Upload" }
+        Title { {tr!("uploads-upload-hoover-search-upload")} }
         UploadScripts {}
         div { style: PAGE_STYLE, "inert": transfer().is_some().then_some(""),
             div { style: "max-width: 860px; margin: 0 auto;",
                 div { style: "display: flex; align-items: center; gap: 15px; margin-bottom: 15px;",
                     Link { to: back, style: "{LINK} display: inline-flex; align-items: center; gap: 4px;",
                         Icon { icon: MdArrowBack, width: 16, height: 16 }
-                        "File browser"
+                        {tr!("uploads-upload-file-browser")}
                     }
-                    h1 { style: H1_STYLE, "Upload" }
+                    h1 { style: H1_STYLE, {tr!("uploads-upload-upload")} }
                     span { style: "flex: 1 1 auto;" }
-                    Link { to: uploads_link, class: "x-upload-history-link", style: LINK, "Uploads" }
+                    Link { to: uploads_link, class: "x-upload-history-link", style: LINK, {tr!("uploads-upload-uploads")} }
                 }
                 div { style: SURFACE_STYLE, {body} }
             }
@@ -247,19 +248,19 @@ fn UploadForm(
     let collection_for_select = target.collection.clone();
     let dataset = target.dataset.clone();
     let tree_collection = target.collection.clone();
-    let heading = format!(
-        "Uploading {} files to {} / {} {}",
-        format_count(count as u64),
-        target.collection,
-        target.dataset,
-        folder
+    let heading = tr!(
+        "uploads-upload-uploading-files-to-folder",
+        count: format_count(count as u64),
+        collection: target.collection.clone(),
+        dataset: target.dataset.clone(),
+        folder: folder.to_string()
     );
     let selected = selection.read().clone();
     let shown: Vec<SelectedFile> = selected.iter().take(LIST_ROWS).cloned().collect();
     let more = selected.len().saturating_sub(LIST_ROWS);
 
     rsx! {
-        label { style: FIELD_LABEL, r#for: "x-upload-destination", "Destination" }
+        label { style: FIELD_LABEL, r#for: "x-upload-destination", {tr!("uploads-upload-destination")} }
         if info.targets.len() > 1 {
             select {
                 id: "x-upload-destination",
@@ -275,7 +276,7 @@ fn UploadForm(
         } else {
             div { id: "x-upload-destination", "{target.collection} / {target.dataset}" }
         }
-        p { style: FIELD_LABEL, "Folder" }
+        p { style: FIELD_LABEL, {tr!("uploads-upload-folder")} }
         FolderTree {
             dataset: dataset.clone(),
             selected: folder.clone(),
@@ -289,18 +290,18 @@ fn UploadForm(
             p { key: "batch-{index}", class: "x-upload-problem", style: PROBLEM_STYLE, "{message}" }
         }
         if !problems.is_empty() {
-            ProblemList { heading: format!("{} files cannot be uploaded:", format_count(problems.len() as u64)), problems: problems.clone() }
+            ProblemList { heading: tr!("uploads-upload-files-cannot-be-uploaded", format_count_problems_len_as_u64: (format_count(problems.len() as u64)).to_string()), problems: problems.clone() }
         }
         if let Some(r) = refused {
             for (index, message) in r.batch_problems.iter().enumerate() {
                 p { key: "refused-{index}", class: "x-upload-problem", style: PROBLEM_STYLE, "{message}" }
             }
             if !r.problems.is_empty() {
-                ProblemList { heading: format!("{} files cannot be uploaded:", format_count(r.problems.len() as u64)), problems: r.problems.clone() }
+                ProblemList { heading: tr!("uploads-upload-files-cannot-be-uploaded-2", format_count_r_problems_len_as_u64: (format_count(r.problems.len() as u64)).to_string()), problems: r.problems.clone() }
             }
             if !r.collisions.is_empty() {
                 div { class: "x-upload-collisions", style: PROBLEM_STYLE,
-                    p { style: "margin: 4px 0;", "These paths exist in the folder:" }
+                    p { style: "margin: 4px 0;", {tr!("uploads-upload-these-paths-exist-in-the")} }
                     for path in r.collisions.iter() {
                         div { key: "{path}", style: "padding-left: 16px; overflow-wrap: anywhere;", "{path}" }
                     }
@@ -313,9 +314,9 @@ fn UploadForm(
 
         if count > 0 {
             div { style: "display: flex; align-items: center; gap: 12px; margin-top: 6px;",
-                p { style: "{FIELD_LABEL} margin: 0;", "Files" }
+                p { style: "{FIELD_LABEL} margin: 0;", {tr!("uploads-upload-files")} }
                 span { class: "x-upload-summary", style: "flex: 1 1 auto; color: var(--x-ink-muted);",
-                    "{format_count(count as u64)} files, {format_upload_size(total)}"
+                    {tr!("uploads-upload-files-2", format_count_count_as_u64: (format_count(count as u64)).to_string(), format_upload_size_total: format_upload_size(total))}
                 }
                 button {
                     class: "x-upload-clear",
@@ -326,7 +327,7 @@ fn UploadForm(
                         selection.set(Vec::new());
                         refusal.set(None);
                     },
-                    "Clear"
+                    {tr!("uploads-upload-clear")}
                 }
             }
             div { class: "x-upload-list", style: "border: 1px solid; border-color: var(--x-border); border-radius: 6px; max-height: 320px; overflow: auto;",
@@ -334,7 +335,7 @@ fn UploadForm(
                     FileLine { key: "{file.id}", file: file.clone(), selection, refusal, driver }
                 }
                 if more > 0 {
-                    div { style: "padding: 4px 10px; color: var(--x-ink-muted);", "and {format_count(more as u64)} more files" }
+                    div { style: "padding: 4px 10px; color: var(--x-ink-muted);", {tr!("uploads-upload-and-more-files", format_count_more_as_u64: (format_count(more as u64)).to_string())} }
                 }
             }
         }
@@ -369,7 +370,7 @@ fn UploadForm(
                         "chunk_bytes": chunk_bytes,
                     }));
                 },
-                "Upload {format_count(count as u64)} files"
+                {tr!("uploads-upload-upload-files", format_count_count_as_u64: (format_count(count as u64)).to_string())}
             }
         }
     }

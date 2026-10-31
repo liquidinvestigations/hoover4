@@ -30,6 +30,8 @@ use crate::data_definitions::doc_viewer_state::{
     ContinuationOutcome, ContinuationPhase, MatchContinuation, MatchOperationKey, STEPS_PER_MATCH_ACTION, TextMatchSelection,
 };
 use crate::pages::search_page::DocViewerStateControl;
+use crate::tr;
+use crate::i18n::SharedText;
 
 /// What one page request asks for. A response under another key belongs to an obsolete
 /// selection and never replaces the displayed page.
@@ -423,7 +425,7 @@ pub fn DocumentPreviewTextWithSearch(
             return;
         }
         let script = match intent {
-            ScrollIntent::Top => format!(
+            ScrollIntent::Top => format!( // i18n: data, JavaScript
                 r#"requestAnimationFrame(() => {{
                     const root = document.querySelector('[data-text-viewer-key="{viewer_key}"]');
                     if (!root) return;
@@ -536,8 +538,8 @@ fn has_page_overlay(view: Option<&TextPageView>) -> bool {
 fn position_text(navigation: &TextPageNavigation) -> (String, String) {
     let count = navigation.stored_count;
     match navigation.position {
-        Some(position) => (format!("{position}/{count}"), format!("Stored entry {position} of {count}")),
-        None => (format!("-/{count}"), format!("No stored text. {count} stored entries")),
+        Some(position) => (format!("{position}/{count}"), tr!("preview-text-stored-entry-of", position: position, count: count)),
+        None => (format!("-/{count}"), tr!("preview-text-no-stored-text", count: count)),
     }
 }
 
@@ -597,12 +599,12 @@ fn TextPageOverlay() -> Element {
 
     let Some(nav) = navigation() else { return rsx! {} };
     let viewer_key = store.viewer_key;
-    let label = nav.unit.label();
-    let description = nav.unit.description();
+    let label = nav.unit.label().shared();
+    let description = nav.unit.description().shared();
     let (position, position_label) = position_text(&nav);
     let width = identifier_width(&nav);
     let input_border = if invalid() { "var(--x-danger)" } else { "var(--x-border-strong)" };
-    let loading_text = pending_destination().map(|page| format!("Loading {label} {page}")).unwrap_or_default();
+    let loading_text = pending_destination().map(|page| tr!("preview-text-loading-page", label: label.to_string(), page: page)).unwrap_or_default();
 
     rsx! {
         div {
@@ -658,13 +660,13 @@ fn TextPageOverlay() -> Element {
             }
             NavigationButton {
                 icon: MdArrowUpward,
-                label: format!("Previous {label}"),
+                label: tr!("preview-with-search-previous", label: label.to_string()),
                 disabled: no_previous,
                 onclick: move |_| if let Some(page) = previous() { store.go_to_page.call(page) },
             }
             NavigationButton {
                 icon: MdArrowDownward,
-                label: format!("Next {label}"),
+                label: tr!("preview-with-search-next", label: label.to_string()),
                 disabled: no_next,
                 onclick: move |_| if let Some(page) = next() { store.go_to_page.call(page) },
             }
@@ -754,7 +756,7 @@ fn TextMatchControls() -> Element {
             "aria-label": "Matches",
             "data-text-match-controls": "true",
             style: "display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0;",
-            NavigationButton { icon: MdArrowUpward, label: "Previous Hit", disabled: disable_previous, onclick: move |_| store.step_match.call(MatchDirection::Backward) }
+            NavigationButton { icon: MdArrowUpward, label: tr!("preview-with-search-previous-hit"), disabled: disable_previous, onclick: move |_| store.step_match.call(MatchDirection::Backward) }
             if count() > 0 {
                 label {
                     "data-match-counter": "{current() + 1} / {count()}",
@@ -794,16 +796,16 @@ fn TextMatchControls() -> Element {
                     "- / -"
                 }
             }
-            NavigationButton { icon: MdArrowDownward, label: "Next Hit", disabled: disable_next, onclick: move |_| store.step_match.call(MatchDirection::Forward) }
+            NavigationButton { icon: MdArrowDownward, label: tr!("preview-with-search-next-hit"), disabled: disable_next, onclick: move |_| store.step_match.call(MatchDirection::Forward) }
             span {
                 role: "status",
                 "aria-busy": if searching { "true" } else { "false" },
-                "data-text-match-status": if searching { "searching" } else if incomplete() { "incomplete" } else { "" },
+                "data-text-match-status": if searching { "searching" } else if incomplete() { "incomplete" } else { "" }, // i18n: data, a protocol value
                 style: "white-space: nowrap; color: var(--x-ink-muted); font-size: var(--x-text-sm);",
                 if searching {
-                    "Searching"
+                    {tr!("preview-with-search-searching")}
                 } else if incomplete() {
-                    "Search incomplete"
+                    {tr!("preview-with-search-search-incomplete")}
                 }
             }
             if let Some(error) = step_error {
@@ -811,11 +813,11 @@ fn TextMatchControls() -> Element {
                     role: "alert",
                     style: "display: inline-flex; align-items: center; gap: 6px; color: var(--x-danger); font-size: var(--x-text-sm); white-space: nowrap;",
                     title: "{error}",
-                    "Match search failed"
+                    {tr!("preview-with-search-match-search-failed")}
                     button {
                         style: "background-color: white; color: var(--x-ink-strong); border: 1px solid; border-color: var(--x-border-strong); border-radius: 16px; padding: 1px 10px; cursor: pointer; font: inherit;",
                         onclick: move |_| store.retry_matches.call(()),
-                        "Retry"
+                        {tr!("preview-with-search-retry")}
                     }
                 }
             }

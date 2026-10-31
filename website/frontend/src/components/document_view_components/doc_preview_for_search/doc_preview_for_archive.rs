@@ -17,6 +17,8 @@ use crate::api::search_api::search_date_histogram;
 use crate::components::document_view_components::doc_preview_shared::PreviewWrapper;
 use crate::components::document_view_components::doc_viewer_full_page::{METADATA_KEY_STYLE, SECTION_HEADER_STYLE, SECTION_STYLE};
 use crate::routes::Route;
+use crate::tr;
+use crate::i18n::SharedText;
 
 /// The canonical MIME types that establish the ZIP format. The archive kind and the file
 /// name do not.
@@ -57,21 +59,17 @@ pub fn DocumentPreviewForArchive(
         crate::components::document_view_components::doc_viewer_full_page::get_document_dates(own_identifier).await
     }));
     let inside_text = match &*dates_inside.read() {
-        None => "Loading\u{2026}".to_string(),
-        Some(None) => "Unknown. The archive has no folder to search.".to_string(),
-        Some(Some(Err(error))) => format!("Could not load: {error}"),
+        None => tr!("preview-for-archive-loading"),
+        Some(None) => tr!("preview-for-archive-no-folder"),
+        Some(Some(Err(error))) => tr!("preview-for-archive-could-not-load", error: error.to_string()),
         Some(Some(Ok(histogram))) if histogram.domain_end <= histogram.domain_start =>
-            "No file inside has a confirmed date.".to_string(),
-        Some(Some(Ok(histogram))) => format!(
-            "{} to {}",
-            format_epoch_utc(histogram.domain_start),
-            format_epoch_utc(histogram.domain_end - 1)
-        ),
+            tr!("preview-for-archive-no-file-inside-has-a"),
+        Some(Some(Ok(histogram))) => tr!("preview-for-archive-to", format_epoch_utc_histogram_domain_start: (format_epoch_utc(histogram.domain_start)).to_string(), format_epoch_utc_histogram_domain_end_1: (format_epoch_utc(histogram.domain_end - 1)).to_string()),
     };
     let own_text = match &*own_dates.read() {
-        None => "Loading\u{2026}".to_string(),
-        Some(Err(error)) => format!("Could not load: {error}"),
-        Some(Ok(DocumentDates { dates })) if dates.is_empty() => "No confirmed date.".to_string(),
+        None => tr!("preview-for-archive-loading"),
+        Some(Err(error)) => tr!("preview-for-archive-could-not-load", error: error.to_string()),
+        Some(Ok(DocumentDates { dates })) if dates.is_empty() => tr!("preview-for-archive-no-confirmed-date"),
         Some(Ok(DocumentDates { dates })) =>
             dates.iter().map(|d| format_epoch_utc(d.epoch_seconds)).collect::<Vec<_>>().join(", "),
     };
@@ -79,7 +77,7 @@ pub fn DocumentPreviewForArchive(
     let extracted_size = source.extracted_size_bytes.map(format_size);
     let size = source.size_bytes.map(format_size);
     let errors = source.processing_errors.to_string();
-    let label = source.label();
+    let label = source.label().shared();
     rsx! {
         PreviewWrapper {
             controls: rsx! { "{label}" },
@@ -101,12 +99,12 @@ pub fn DocumentPreviewForArchive(
                                 ArchiveRow { key_text: "Archive file size", value: size }
                                 tr {
                                     class: "x-archive-own-dates",
-                                    td { style: METADATA_KEY_STYLE, "Archive file dates" }
+                                    td { style: METADATA_KEY_STYLE, {tr!("preview-for-archive-archive-file-dates")} }
                                     td { style: VALUE_STYLE, "{own_text}" }
                                 }
                                 tr {
                                     class: "x-archive-dates-inside",
-                                    td { style: METADATA_KEY_STYLE, "Dates inside" }
+                                    td { style: METADATA_KEY_STYLE, {tr!("preview-for-archive-dates-inside")} }
                                     td { style: VALUE_STYLE, "{inside_text}" }
                                 }
                                 ArchiveRow { key_text: "Processing errors", value: Some(errors), class: "x-archive-errors" }
@@ -117,14 +115,14 @@ pub fn DocumentPreviewForArchive(
                                 class: "x-archive-links",
                                 style: "display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px;",
                                 if let Some(route) = browse {
-                                    Link { class: "x-archive-browse", to: route, new_tab: true, style: "color: var(--x-link);", "Browse the archive" }
+                                    Link { class: "x-archive-browse", to: route, new_tab: true, style: "color: var(--x-link);", {tr!("preview-for-archive-browse-the-archive")} }
                                 }
                                 if let Some(route) = search {
                                     Link { class: "x-archive-search", to: route, new_tab: true, style: "color: var(--x-link);", "{search_text}" }
                                 }
                             }
                         } else {
-                            p { style: "margin: 8px 0 0 0; color: rgba(0,0,0,0.6);", "The archive has no extracted folder to browse." }
+                            p { style: "margin: 8px 0 0 0; color: rgba(0,0,0,0.6);", {tr!("preview-for-archive-the-archive-has-no-extracted")} }
                         }
                     }
                 }
@@ -147,7 +145,7 @@ fn ArchiveRow(key_text: &'static str, value: Option<String>, #[props(default)] c
                 style: VALUE_STYLE,
                 match value {
                     Some(value) => rsx! { code { "{value}" } },
-                    None => rsx! { "Unknown" },
+                    None => rsx! { {tr!("preview-for-archive-unknown")} },
                 }
             }
         }

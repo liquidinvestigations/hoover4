@@ -14,6 +14,7 @@ use crate::components::document_view_components::doc_preview_for_search::{
     doc_preview_for_table::DocumentPreviewForTable,
     doc_preview_for_text::DocumentPreviewForTextWithSearch,
 };
+use crate::tr;
 
 #[derive(Clone, Copy)]
 pub struct PreviewExtraSections {
@@ -69,7 +70,7 @@ pub fn DocSourceDispatch(
         },
         DocumentSourceItem::Image(image) => rsx! {
             PreviewWrapper {
-                controls: rsx! {"Image; {image.width}x{image.height}"},
+                controls: rsx! {{tr!("doc-preview-shared-image-x", image_width: image.width.to_string(), image_height: image.height.to_string())}},
                 page: rsx! {
                     ImagePreview {
                         url: if image.preview {
@@ -83,11 +84,11 @@ pub fn DocSourceDispatch(
         },
         DocumentSourceItem::Audio(audio) => rsx! {
             PreviewWrapper {
-                controls: rsx! {"Audio; {audio.duration_seconds} seconds"},
+                controls: rsx! {{tr!("doc-preview-shared-audio-seconds", audio_duration_seconds: audio.duration_seconds.to_string())}},
                 page: rsx! {
                     audio {
                         src: "{document_identifier().view_url_path()}",
-                        alt: "audio preview",
+                        alt: tr!("doc-preview-shared-audio-preview"),
                         controls: true
                     }
                 }
@@ -95,12 +96,12 @@ pub fn DocSourceDispatch(
         },
         DocumentSourceItem::Video(video) => rsx! {
             PreviewWrapper {
-                controls: rsx! {"Video; {video.width}x{video.height} - {video.duration_seconds} seconds"},
+                controls: rsx! {{tr!("doc-preview-shared-video-x-seconds", video_width: video.width.to_string(), video_height: video.height.to_string(), video_duration_seconds: video.duration_seconds.to_string())}},
                 page: rsx! {
                     video {
                         src: "{document_identifier().view_url_path()}",
                         poster: if video.preview { image_preview_url(&document_identifier()) },
-                        alt: "video preview",
+                        alt: tr!("doc-preview-shared-video-preview"),
                         controls: true,
                         style: "max-width: 100%; max-height: 100%;",
                     }
@@ -112,11 +113,11 @@ pub fn DocSourceDispatch(
         // error marker, and in particular it never prints the variant at a reader.
         _ => rsx! {
             PreviewWrapper {
-                controls: rsx! {"Preview"},
+                controls: rsx! {{tr!("doc-preview-shared-preview")}},
                 page: rsx! {
                     div {
                         style: "padding: 12px; color: rgba(0,0,0,0.6);",
-                        "There is no preview for this source. Pick another one from the list."
+                        {tr!("doc-preview-shared-there-is-no-preview-for")}
                     }
                 }
             },
@@ -144,8 +145,8 @@ fn ImagePreview(url: String) -> Element {
             p {
                 id: "x-image-preview-failed",
                 style: "margin: 0; padding: 12px; color: var(--x-ink-muted);",
-                "This browser cannot show this image format. "
-                a { href: "{url}", download: "", "Download the file" }
+                {tr!("doc-preview-shared-this-browser-cannot-show-this")}
+                a { href: "{url}", download: "", {tr!("doc-preview-shared-download-the-file")} }
             }
         };
     }
@@ -154,7 +155,7 @@ fn ImagePreview(url: String) -> Element {
         img {
             src: "{url}",
             style: "max-width: 100%; max-height: 100%;",
-            alt: "image preview",
+            alt: tr!("doc-preview-shared-image-preview"),
             onerror: move |_| failed_url.set(Some(failed.clone())),
         }
     }
@@ -169,11 +170,11 @@ pub fn SourceLoadNotice(error: String, on_retry: Callback<()>) -> Element {
             id: "x-source-load-notice",
             role: "alert",
             style: "flex: 0 0 auto; display: flex; align-items: center; gap: 12px; padding: 6px 12px; border-bottom: 1px solid; border-bottom-color: var(--x-border); color: var(--x-danger); font-size: var(--x-text-sm);",
-            span { style: "flex: 1 1 auto; min-width: 0;", "Could not load all document sources: {error}" }
+            span { style: "flex: 1 1 auto; min-width: 0;", {tr!("doc-preview-shared-could-not-load-all-document", error: error.to_string())} }
             button {
                 style: "flex: 0 0 auto; background-color: white; color: var(--x-ink-strong); border: 1px solid; border-color: var(--x-border-strong); border-radius: 16px; padding: 3px 12px; cursor: pointer; font: inherit;",
                 onclick: move |_| on_retry.call(()),
-                "Retry"
+                {tr!("doc-preview-shared-retry")}
             }
         }
     }

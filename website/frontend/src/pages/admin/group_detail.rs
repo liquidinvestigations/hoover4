@@ -14,15 +14,16 @@ use crate::components::admin_components::{
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
+use crate::tr;
 
 #[component]
 pub fn AdminGroupPage(groupname: String) -> Element {
     let groupname_for_content = groupname.clone();
     rsx! {
-        Title { "Admin: group {groupname}" }
+        Title { {tr!("admin-group-detail-admin-group", groupname: groupname.to_string())} }
         AdminGuard {
             AdminShell {
-                title: format!("Group {groupname}"),
+                title: tr!("admin-group-detail-group-2", groupname: groupname.to_string()),
                 breadcrumb: "Groups".to_string(),
                 active: "groups".to_string(),
                 SuspendWrapper { GroupDetailContent { groupname: groupname_for_content } }
@@ -76,9 +77,9 @@ fn GroupDetailContent(groupname: String) -> Element {
     let Some(detail) = detail else {
         return rsx! {
             if load_failed {
-                ErrorBar { message: "Failed to load group" }
+                ErrorBar { message: tr!("admin-group-detail-failed-to-load-group") }
             } else {
-                "Loading..."
+                {tr!("admin-group-detail-loading")}
             }
         };
     };
@@ -101,11 +102,11 @@ fn GroupDetailContent(groupname: String) -> Element {
             ErrorBar { message: err }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Group" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-group-detail-group")} }
             div { style: "{MODULE_BODY} display: flex; gap: 8px; flex-wrap: wrap; align-items: center;",
                 label { style: LABEL,
-                    "Display name"
-                    input { style: INPUT, placeholder: "display name", value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
+                    {tr!("admin-group-detail-display-name")}
+                    input { style: INPUT, placeholder: tr!("admin-group-detail-display-name-2"), value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
                 }
                 button {
                     style: BTN,
@@ -127,21 +128,21 @@ fn GroupDetailContent(groupname: String) -> Element {
                             });
                         }
                     },
-                    "Save"
+                    {tr!("admin-group-detail-save")}
                 }
             }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Members" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-group-detail-members")} }
             div { style: MODULE_BODY,
-                if membership_busy() { p { role: "status", "Saving membership..." } }
+                if membership_busy() { p { role: "status", {tr!("admin-group-detail-saving-membership")} } }
                 table { style: TABLE,
                     thead {
                         tr {
-                            th { style: TH, "Username" }
-                            th { style: TH, "Origin" }
-                            th { style: TH, "Group admin" }
-                            th { style: TH, "Uploader" }
+                            th { style: TH, {tr!("admin-group-detail-username")} }
+                            th { style: TH, {tr!("admin-group-detail-origin")} }
+                            th { style: TH, {tr!("admin-group-detail-group-admin")} }
+                            th { style: TH, {tr!("admin-group-detail-uploader")} }
                             th { style: TH, "" }
                         }
                     }
@@ -161,7 +162,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                 td { style: TD,
                                     input {
                                         r#type: "checkbox",
-                                        aria_label: "Group admin",
+                                        aria_label: tr!("admin-group-detail-group-admin"),
                                         checked: m.is_group_admin,
                                         disabled: membership_busy(),
                                         onchange: {
@@ -187,7 +188,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                 td { style: TD,
                                     input {
                                         r#type: "checkbox",
-                                        aria_label: "Uploader",
+                                        aria_label: tr!("admin-group-detail-uploader"),
                                         checked: m.is_uploader,
                                         disabled: membership_busy(),
                                         onchange: {
@@ -231,7 +232,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                                 });
                                             }
                                         },
-                                        "Remove"
+                                        {tr!("admin-group-detail-remove")}
                                     }
                                 }
                             }
@@ -239,7 +240,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                     }
                 }
                 div { style: "margin-top: 12px; display: flex; gap: 8px;",
-                    input { style: INPUT, placeholder: "username to add", value: "{add_user}", oninput: move |e| add_user.set(e.value()) }
+                    input { style: INPUT, placeholder: tr!("admin-group-detail-username-to-add"), value: "{add_user}", oninput: move |e| add_user.set(e.value()) }
                     button {
                         style: BTN,
                         disabled: membership_busy(),
@@ -264,16 +265,16 @@ fn GroupDetailContent(groupname: String) -> Element {
                                 });
                             }
                         },
-                        "Add member"
+                        {tr!("admin-group-detail-add-member")}
                     }
                 }
             }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Collection access" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-group-detail-collection-access")} }
             div { style: MODULE_BODY,
                 if granted_collections.is_empty() {
-                    p { style: "{HELP_TEXT} margin: 0 0 8px;", "This group has no collection permissions." }
+                    p { style: "{HELP_TEXT} margin: 0 0 8px;", {tr!("admin-group-detail-this-group-has-no-collection")} }
                 }
                 ul { style: "list-style: none; padding: 0; margin: 0;",
                     for c in granted_collections {
@@ -297,7 +298,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                         });
                                     }
                                 },
-                                "Revoke"
+                                {tr!("admin-group-detail-revoke")}
                             }
                         }
                     }
@@ -307,7 +308,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                         select {
                             style: SELECT,
                             onchange: move |e| grant_collection.set(e.value()),
-                            option { value: "", "Grant collection\u{2026}" }
+                            option { value: "", {tr!("admin-group-detail-grant-collection-u")} }
                             for c in cols {
                                 if !detail.collections.contains(&c.collectionname) {
                                     option { key: "{c.collectionname}", value: "{c.collectionname}", "{c.collectionname}" }
@@ -332,7 +333,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                     });
                                 }
                             },
-                            "Grant"
+                            {tr!("admin-group-detail-grant")}
                         }
                     }
                 }
@@ -340,7 +341,7 @@ fn GroupDetailContent(groupname: String) -> Element {
         }
         if !is_reserved {
             div { class: "x-admin-module", style: MODULE,
-                h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", "Danger zone" }
+                h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", {tr!("admin-group-detail-danger-zone")} }
                 div { style: MODULE_BODY,
                     button {
                         style: BTN_DANGER,
@@ -358,7 +359,7 @@ fn GroupDetailContent(groupname: String) -> Element {
                                 });
                             }
                         },
-                        "Delete group"
+                        {tr!("admin-group-detail-delete-group")}
                     }
                 }
             }

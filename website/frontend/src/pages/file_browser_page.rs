@@ -28,6 +28,7 @@ use crate::data_definitions::url_param::UrlParam;
 use crate::pages::search_page::DocViewerStateControl;
 use crate::pages::uploads::upload_button::UploadButton;
 use crate::routes::Route;
+use crate::tr;
 
 // ---------- Style constants ----------
 
@@ -237,11 +238,11 @@ pub fn FileBrowserCollectionsPage(q: String, page: u64) -> Element {
     let overview = use_resource(move || async move { collections_overview().await });
 
     let body = match overview.read().clone() {
-        None => rsx! { div { padding: "20px", "Loading..." } },
-        Some(Err(e)) => rsx! { div { class: "x-error-display", padding: "20px", "Error: {e}" } },
+        None => rsx! { div { padding: "20px", {tr!("file-browser-loading")} } },
+        Some(Err(e)) => rsx! { div { class: "x-error-display", padding: "20px", {tr!("file-browser-error", e: e.to_string())} } },
         Some(Ok(collections)) => {
             if collections.is_empty() {
-                rsx! { p { padding: "20px", "No collections are available to you." } }
+                rsx! { p { padding: "20px", {tr!("file-browser-no-collections-are-available-to")} } }
             } else {
                 rsx! {
                     div {
@@ -265,7 +266,7 @@ pub fn FileBrowserCollectionsPage(q: String, page: u64) -> Element {
     };
 
     rsx! {
-        Title { "Hoover Search - File Browser" }
+        Title { {tr!("file-browser-hoover-search-file-browser")} }
         div {
             style: PAGE_STYLE,
             StorageSidebar { current_dataset: nothing, focus_key: nothing }
@@ -273,8 +274,8 @@ pub fn FileBrowserCollectionsPage(q: String, page: u64) -> Element {
                 style: "flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; overflow: auto;",
                 div {
                     style: BREADCRUMB_BAR_STYLE,
-                    span { style: CRUMB_LABEL_STYLE, "Browsing" }
-                    span { style: CRUMB_LABEL_STYLE, "Collections" }
+                    span { style: CRUMB_LABEL_STYLE, {tr!("file-browser-browsing")} }
+                    span { style: CRUMB_LABEL_STYLE, {tr!("file-browser-collections")} }
                     StorageSearchInput { collection: nothing, q }
                     UploadButton { dataset: String::new(), folder: String::new() }
                 }
@@ -338,12 +339,17 @@ const CARD_BADGE_STYLE: &str = "
 ";
 
 /// The tooltip of the Indexed share.
-const INDEXED_SHARE_HELP: &str = "The share of documents that are in the search index.";
+fn indexed_share_help() -> String {
+    tr!("file-browser-the-share-of-documents-that")
+}
 /// The tooltip of the Processing errors share.
-const ERROR_SHARE_HELP: &str = "The share of documents with at least one processing error. \
-     Indexed documents can also have errors.";
+fn error_share_help() -> String {
+    tr!("file-browser-the-share-of-documents-with")
+}
 /// The tooltip of the count date.
-const UPDATED_ON_HELP: &str = "The date when these numbers were counted. It is not the date when files changed.";
+fn updated_on_help() -> String {
+    tr!("file-browser-the-date-when-these-numbers")
+}
 
 /// One storage card: a collection on the root page, or a dataset on a collection page.
 ///
@@ -374,35 +380,35 @@ fn StatsCard(
                     "{title}"
                 }
                 if stats.as_ref().is_some_and(|s| s.processing) {
-                    span { class: "x-storage-card-processing", style: CARD_BADGE_STYLE, "Processing" }
+                    span { class: "x-storage-card-processing", style: CARD_BADGE_STYLE, {tr!("file-browser-processing")} }
                 }
             }
             if let Some(count) = dataset_count {
                 div { style: CARD_STAT_ROW,
-                    span { "Datasets" }
+                    span { {tr!("file-browser-datasets")} }
                     span { style: CARD_VALUE_STYLE, "{count}" }
                 }
             }
             match stats {
                 None => rsx! {
-                    div { style: CARD_STAT_ROW, span { "Not counted yet" } }
+                    div { style: CARD_STAT_ROW, span { {tr!("file-browser-not-counted-yet")} } }
                 },
                 Some(aggregates) => rsx! {
                     div { style: CARD_STAT_ROW,
-                        span { "Documents" }
+                        span { {tr!("file-browser-documents")} }
                         span { style: CARD_VALUE_STYLE, "{aggregates.document_count}" }
                     }
                     div { style: CARD_STAT_ROW,
-                        span { "Total size" }
+                        span { {tr!("file-browser-total-size")} }
                         span { style: CARD_VALUE_STYLE, "{format_size(aggregates.total_size_bytes)}" }
                     }
-                    div { style: CARD_STAT_ROW, title: "{INDEXED_SHARE_HELP}",
-                        span { "Indexed" }
+                    div { style: CARD_STAT_ROW, title: "{indexed_share_help()}",
+                        span { {tr!("file-browser-indexed")} }
                         span { style: CARD_VALUE_STYLE, "{percent_of(aggregates.indexed_count, aggregates.document_count)}" }
                     }
                     if aggregates.error_documents_counted {
-                        div { style: CARD_STAT_ROW, title: "{ERROR_SHARE_HELP}",
-                            span { "Processing errors" }
+                        div { style: CARD_STAT_ROW, title: "{error_share_help()}",
+                            span { {tr!("file-browser-processing-errors")} }
                             span {
                                 style: if aggregates.error_document_count > 0 { "color: var(--x-warning); font-weight: 500;" } else { CARD_VALUE_STYLE },
                                 "{percent_of(aggregates.error_document_count, aggregates.document_count)}"
@@ -410,12 +416,12 @@ fn StatsCard(
                         }
                     }
                     if !aggregates.updated_on.is_empty() {
-                        div { style: CARD_STAT_ROW, title: "{UPDATED_ON_HELP}",
-                            span { "Updated on {aggregates.updated_on}" }
+                        div { style: CARD_STAT_ROW, title: "{updated_on_help()}",
+                            span { {tr!("file-browser-updated-on", aggregates_updated_on: aggregates.updated_on.to_string())} }
                         }
                     }
                     if incomplete {
-                        div { style: CARD_STAT_ROW, span { "Some datasets are not counted yet." } }
+                        div { style: CARD_STAT_ROW, span { {tr!("file-browser-some-datasets-are-not-counted")} } }
                     }
                 },
             }
@@ -438,8 +444,8 @@ pub fn FileBrowserCollectionPage(collectionname: String, q: String, page: u64) -
     let overview = use_resource(move || async move { collection_overview(name()).await });
 
     let body = match overview.read().clone() {
-        None => rsx! { div { padding: "20px", "Loading..." } },
-        Some(Err(e)) => rsx! { div { class: "x-error-display", padding: "20px", "Error: {e}" } },
+        None => rsx! { div { padding: "20px", {tr!("file-browser-loading")} } },
+        Some(Err(e)) => rsx! { div { class: "x-error-display", padding: "20px", {tr!("file-browser-error", e: e.to_string())} } },
         Some(Ok(overview)) => rsx! {
             div {
                 style: CARD_GRID_STYLE,
@@ -468,7 +474,7 @@ pub fn FileBrowserCollectionPage(collectionname: String, q: String, page: u64) -
     };
 
     rsx! {
-        Title { "Hoover Search - File Browser" }
+        Title { {tr!("file-browser-hoover-search-file-browser")} }
         div {
             style: PAGE_STYLE,
             StorageSidebar { current_dataset: nothing, focus_key: nothing }
@@ -476,7 +482,7 @@ pub fn FileBrowserCollectionPage(collectionname: String, q: String, page: u64) -
                 style: "flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; overflow: auto;",
                 div {
                     style: BREADCRUMB_BAR_STYLE,
-                    Link { to: Route::storage_root(), style: CRUMB_LABEL_STYLE, "Browsing" }
+                    Link { to: Route::storage_root(), style: CRUMB_LABEL_STYLE, {tr!("file-browser-browsing")} }
                     span { style: CRUMB_SEP_STYLE, "›" }
                     span { style: CRUMB_LABEL_STYLE, "{name}" }
                     StorageSearchInput { collection: name, q }
@@ -539,7 +545,7 @@ fn StorageSearchInput(collection: ReadSignal<String>, q: ReadSignal<String>) -> 
             style: "flex: 1 1 260px; min-width: 200px; max-width: 520px;",
             crate::components::search_input::SearchInput {
                 value: needle,
-                placeholder: if collection().is_empty() { "Search names in all collections…".to_string() } else { "Search names in this collection…".to_string() },
+                placeholder: if collection().is_empty() { {tr!("file-browser-search-names-in-all-collections")}.to_string() } else { {tr!("file-browser-search-names-in-this-collection")}.to_string() },
                 on_change: move |value: String| {
                     needle.set(value.clone());
                     spawn(async move {
@@ -577,8 +583,8 @@ fn StorageSearchResults(collection: ReadSignal<String>, q: ReadSignal<String>, p
         _ => None,
     };
     let body = match answer {
-        None => rsx! { div { class: "x-storage-search-loading", padding: "20px", "Searching…" } },
-        Some(Err(e)) => rsx! { div { class: "x-error-display x-storage-search-error", padding: "20px", "The search failed: {e}" } },
+        None => rsx! { div { class: "x-storage-search-loading", padding: "20px", {tr!("file-browser-searching")} } },
+        Some(Err(e)) => rsx! { div { class: "x-error-display x-storage-search-error", padding: "20px", {tr!("file-browser-the-search-failed", e: e.to_string())} } },
         Some(Ok(found)) => {
             let collection_value = collection();
             let q_value = q();
@@ -587,20 +593,20 @@ fn StorageSearchResults(collection: ReadSignal<String>, q: ReadSignal<String>, p
                 let short = q_value.trim().chars().count() < 3;
                 rsx! {
                     div { class: "x-storage-search-empty", style: STORAGE_SEARCH_NOTE_STYLE,
-                        p { "No file or folder name contains “{q_value.trim()}”." }
+                        p { {tr!("file-browser-no-file-or-folder-name", q_value_trim: q_value.trim().to_string())} }
                         if short {
-                            p { "Type at least 3 characters of a name." }
+                            p { {tr!("file-browser-type-at-least-3-characters")} }
                         }
                     }
                 }
             } else if found.nodes.is_empty() {
                 rsx! {
                     div { class: "x-storage-search-out-of-range", style: STORAGE_SEARCH_NOTE_STYLE,
-                        p { "This page is after the last page of results." }
+                        p { {tr!("file-browser-this-page-is-after-the")} }
                         Link {
                             to: storage_search_route(&collection_value, q_value.clone(), 0),
                             style: CRUMB_LINK_STYLE,
-                            "Go to page 1"
+                            {tr!("file-browser-go-to-page-1")}
                         }
                     }
                 }
@@ -613,19 +619,19 @@ fn StorageSearchResults(collection: ReadSignal<String>, q: ReadSignal<String>, p
                 let next = (page_value + 1 < pages).then(|| storage_search_route(&collection_value, q_value.clone(), page_value + 1));
                 rsx! {
                     div { class: "x-storage-search-summary", style: STORAGE_SEARCH_SUMMARY_STYLE,
-                        span { "Matches {first}–{last} of {total_label}. Page {page_value + 1} of {pages}." }
+                        span { {tr!("file-browser-matches-of-page-of", first: first.to_string(), last: last.to_string(), total_label: total_label.to_string(), page_value_1: (page_value + 1).to_string(), pages: pages)} }
                         if found.total > found.reachable {
-                            span { "Only the first {found.reachable} matches can be opened. Add more of the name to find the rest." }
+                            span { {tr!("file-browser-only-the-first-matches-can", found_reachable: found.reachable.to_string())} }
                         }
                     }
                     table {
                         style: TABLE_STYLE,
                         thead {
                             tr {
-                                th { style: TH_NAME_STYLE, "Name" }
-                                th { style: TH_NAME_STYLE, "Dataset" }
-                                th { style: TH_NAME_STYLE, "Path" }
-                                th { style: TH_SIZE_STYLE, "Size" }
+                                th { style: TH_NAME_STYLE, {tr!("file-browser-name")} }
+                                th { style: TH_NAME_STYLE, {tr!("file-browser-dataset")} }
+                                th { style: TH_NAME_STYLE, {tr!("file-browser-path")} }
+                                th { style: TH_SIZE_STYLE, {tr!("file-browser-size")} }
                             }
                         }
                         tbody {
@@ -640,10 +646,10 @@ fn StorageSearchResults(collection: ReadSignal<String>, q: ReadSignal<String>, p
                     }
                     div { style: STORAGE_SEARCH_PAGER_STYLE,
                         if let Some(route) = previous {
-                            Link { to: route, class: "x-storage-search-previous", style: CRUMB_LINK_STYLE, "Previous page" }
+                            Link { to: route, class: "x-storage-search-previous", style: CRUMB_LINK_STYLE, {tr!("file-browser-previous-page")} }
                         }
                         if let Some(route) = next {
-                            Link { to: route, class: "x-storage-search-next", style: CRUMB_LINK_STYLE, "Next page" }
+                            Link { to: route, class: "x-storage-search-next", style: CRUMB_LINK_STYLE, {tr!("file-browser-next-page")} }
                         }
                     }
                 }
@@ -723,7 +729,7 @@ pub fn FileBrowserPage(
     doc_viewer_state: UrlParam<Option<DocViewerState>>,
 ) -> Element {
     rsx! {
-        Title { "Hoover Search - File Browser" }
+        Title { {tr!("file-browser-hoover-search-file-browser")} }
         FileBrowserContent {
             collection: collection,
             path: path.0,
@@ -864,8 +870,8 @@ fn FileBrowserContent(
     let selected_value = selected_result_hash.read().clone();
 
     let listing_view = match listing_resource.read().clone() {
-        None => rsx! { div { padding: "20px", "Loading..." } },
-        Some(Err(e)) => rsx! { div { class: "x-error-display", padding: "20px", "Error: {e}" } },
+        None => rsx! { div { padding: "20px", {tr!("file-browser-loading")} } },
+        Some(Err(e)) => rsx! { div { class: "x-error-display", padding: "20px", {tr!("file-browser-error", e: e.to_string())} } },
         Some(Ok(listing)) => rsx! {
             ListingTable {
                 collection: collection_value.clone(),
@@ -942,7 +948,7 @@ fn StorageSidebar(current_dataset: ReadSignal<String>, focus_key: ReadSignal<Str
         ResizableSidebar {
             div {
                 style: SIDEBAR_STYLE,
-                div { style: SIDEBAR_HEADER_STYLE, "Storage" }
+                div { style: SIDEBAR_HEADER_STYLE, {tr!("file-browser-storage")} }
                 div {
                     // `overflow-x: hidden` here as well as inside the tree: nothing in the
                     // pane may make the page scroll sideways, however long a folder name
@@ -1091,7 +1097,7 @@ fn Breadcrumbs(collection: ReadSignal<String>, path: ReadSignal<PathDescriptor>,
             Link {
                 to: Route::storage_root(),
                 style: CRUMB_LABEL_STYLE,
-                "Browsing"
+                {tr!("file-browser-browsing")}
             }
             Link {
                 to: Route::file_browser_page(collection(), PathDescriptor::root(), None),
@@ -1108,7 +1114,7 @@ fn Breadcrumbs(collection: ReadSignal<String>, path: ReadSignal<PathDescriptor>,
                     id: "x-breadcrumb-more",
                     style: CRUMB_CHIP_STYLE,
                     class: "hoover4-hover-shadow-background",
-                    title: "Show the {hidden} folders above",
+                    title: tr!("file-browser-show-the-folders-above", hidden: hidden.to_string()),
                     onclick: move |event: Event<MouseData>| {
                         event.stop_propagation();
                         let open = *popup_open.read();
@@ -1193,7 +1199,7 @@ fn ListingTable(
     on_file_click: Callback<DocumentIdentifier>,
 ) -> Element {
     if listing.directories.is_empty() && listing.files.is_empty() {
-        return rsx! { p { padding: "20px", color: "var(--x-ink-muted)", "(empty folder)" } };
+        return rsx! { p { padding: "20px", color: "var(--x-ink-muted)", {tr!("file-browser-empty-folder")} } };
     }
     let mut mounts = use_signal(move || std::collections::HashMap::new());
     let onmounted = Callback::new(move |(_id, _d): (DocumentIdentifier, Event<MountedData>)| {
@@ -1221,10 +1227,10 @@ fn ListingTable(
             style: TABLE_STYLE,
             thead {
                 tr {
-                    th { style: TH_NAME_STYLE, "Name" }
+                    th { style: TH_NAME_STYLE, {tr!("file-browser-name")} }
                     th { style: TH_DETAILS_STYLE, "" }
-                    th { style: TH_SIZE_STYLE, "Files" }
-                    th { style: TH_SIZE_STYLE, "Size" }
+                    th { style: TH_SIZE_STYLE, {tr!("file-browser-files")} }
+                    th { style: TH_SIZE_STYLE, {tr!("file-browser-size")} }
                     th { style: TH_ACTIONS_STYLE, "" }
                 }
             }
@@ -1290,12 +1296,12 @@ fn DirRow(collection: String, name: String, path: PathDescriptor, stats: Option<
             }
             td {
                 style: TD_SIZE_STYLE,
-                title: "Files below this folder, with the files inside archives and emails",
+                title: tr!("file-browser-files-below-this-folder-with"),
                 "{files}"
             }
             td {
                 style: TD_SIZE_STYLE,
-                title: "Stored size of the files below this folder. Files inside archives and emails do not add their size again.",
+                title: tr!("file-browser-stored-size-of-the-files"),
                 "{size}"
             }
             td { style: TD_ACTIONS_STYLE, "" }
@@ -1398,7 +1404,7 @@ fn FileRow(
             }
             td {
                 style: TD_SIZE_STYLE,
-                title: if is_container { "Files inside this archive or email, at every level" } else { "" },
+                title: if is_container { tr!("file-browser-files-inside-this-archive-or") } else { "" },
                 "{file_count}"
             }
             td { style: TD_SIZE_STYLE, "{format_size(file.file_size_bytes)}" }
@@ -1440,7 +1446,7 @@ fn ViewDetailsButton(
                 white-space: nowrap; display: inline-flex; align-items: center;
             ",
             class: ROW_HOVER_CLASS,
-            title: "Show this container in the preview pane",
+            title: tr!("file-browser-show-this-container-in-the"),
             onclick: move |event: Event<MouseData>| {
                 // Without this the row's own onclick fires too, and the row now
                 // navigates into the container, so the preview would open and be
@@ -1448,7 +1454,7 @@ fn ViewDetailsButton(
                 event.stop_propagation();
                 on_file_click.call(doc_id.read().clone());
             },
-            "View Details"
+            {tr!("file-browser-view-details")}
         }
     }
 }
@@ -1541,7 +1547,7 @@ fn FolderToolbar(
                 style: "flex: 1 1 260px; min-width: 0;",
                 crate::components::search_input::SearchInput {
                     value: needle,
-                    placeholder: "Search in folder…",
+                    placeholder: tr!("file-browser-search-in-folder"),
                     on_change: move |value: String| {
                         needle.set(value);
                         if needle.peek().is_empty() { matches.set(None); }
@@ -1559,15 +1565,15 @@ fn FolderToolbar(
                     text-decoration: none; color: var(--x-ink-strong); font-size: var(--x-text-md); white-space: nowrap;
                 ",
                 class: ROW_HOVER_CLASS,
-                title: "Search the whole corpus, filtered to this folder and everything below it",
+                title: tr!("file-browser-search-the-whole-corpus-filtered"),
                 Icon { icon: MdOpenInNew, style: "width: 16px; height: 16px;" }
-                "Open in Search"
+                {tr!("file-browser-open-in-search")}
             }
         }
         if let Some(count) = match_count() {
             div {
                 style: "padding: 6px 14px; font-size: var(--x-text-md); color: rgba(0,0,0,0.7); border-bottom: 1px solid #E5E7EB;",
-                "{count} matches in this folder and below"
+                {tr!("file-browser-matches-in-this-folder-and", count: count)}
             }
         }
     }
@@ -1582,16 +1588,16 @@ fn FolderSearchResults(
     on_file_click: Callback<DocumentIdentifier>,
 ) -> Element {
     if nodes.is_empty() {
-        return rsx! { p { padding: "20px", color: "var(--x-ink-muted)", "No matches in this folder." } };
+        return rsx! { p { padding: "20px", color: "var(--x-ink-muted)", {tr!("file-browser-no-matches-in-this-folder")} } };
     }
     rsx! {
         table {
             style: TABLE_STYLE,
             thead {
                 tr {
-                    th { style: TH_NAME_STYLE, "Name" }
-                    th { style: TH_NAME_STYLE, "Path" }
-                    th { style: TH_SIZE_STYLE, "Size" }
+                    th { style: TH_NAME_STYLE, {tr!("file-browser-name")} }
+                    th { style: TH_NAME_STYLE, {tr!("file-browser-path")} }
+                    th { style: TH_SIZE_STYLE, {tr!("file-browser-size")} }
                 }
             }
             tbody {

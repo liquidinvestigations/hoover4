@@ -17,6 +17,7 @@ use crate::components::admin_components::{
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
+use crate::tr;
 
 /// Rows per page. Deliberately small: the log is read newest-first and the interesting
 /// row is almost always near the top.
@@ -25,10 +26,10 @@ const PAGE_SIZE: u32 = 25;
 #[component]
 pub fn AdminOperationsPage() -> Element {
     rsx! {
-        Title { "Admin: operations" }
+        Title { {tr!("admin-operations-admin-operations")} }
         AdminGuard {
             AdminShell {
-                title: "Operations".to_string(),
+                title: tr!("admin-operations-operations").to_string(),
                 breadcrumb: String::new(),
                 active: "operations".to_string(),
                 SuspendWrapper { OperationsContent {} }
@@ -71,7 +72,7 @@ fn OperationsContent() -> Element {
             if let Some(e) = load_error {
                 ErrorBar { message: e }
             } else {
-                p { style: HELP_TEXT, "Loading operations…" }
+                p { style: HELP_TEXT, {tr!("admin-operations-loading-operations")} }
             }
         };
     };
@@ -88,10 +89,10 @@ fn OperationsContent() -> Element {
             ErrorBar { message: e }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Filters" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-operations-filters")} }
             div { style: "{MODULE_BODY} display: flex; gap: 16px; flex-wrap: wrap; align-items: center;",
                 label { style: LABEL,
-                    "State"
+                    {tr!("admin-operations-state")}
                     select {
                         // Stable ids, because the screenshot harness drives these two
                         // controls and a selector built from styling breaks silently.
@@ -102,14 +103,14 @@ fn OperationsContent() -> Element {
                             state_filter.set(e.value());
                             page.set(0);
                         },
-                        option { value: "", "Any state" }
-                        for s in ["pending", "queued", "running", "finished", "errored", "cancelled"] {
-                            option { value: "{s}", "{s}" }
+                        option { value: "", {tr!("admin-operations-any-state")} }
+                        for s in ["pending", "queued", "running", "finished", "errored", "cancelled"] { // i18n: data, stored operation states
+                            option { value: "{s}", {tr!("admin-operations-state-name", state: s)} }
                         }
                     }
                 }
                 label { style: LABEL,
-                    "Collection"
+                    {tr!("admin-operations-collection")}
                     select {
                         id: "x-ops-filter-collection",
                         style: SELECT,
@@ -118,14 +119,14 @@ fn OperationsContent() -> Element {
                             collection_filter.set(e.value());
                             page.set(0);
                         },
-                        option { value: "", "All collections" }
+                        option { value: "", {tr!("admin-operations-all-collections")} }
                         for c in collections.iter() {
                             option { value: "{c}", "{c}" }
                         }
                     }
                 }
                 span { style: HELP_TEXT,
-                    "Choose a collection to see its per-task error rates."
+                    {tr!("admin-operations-choose-a-collection-to-see")}
                 }
             }
         }
@@ -137,7 +138,7 @@ fn OperationsContent() -> Element {
         }
 
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Operations, newest first" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-operations-operations-newest-first")} }
             div { style: MODULE_BODY,
                 OperationsTable {
                     rows: data.rows.clone(),
@@ -150,14 +151,14 @@ fn OperationsContent() -> Element {
                         style: BTN_SMALL,
                         disabled: current_page == 0,
                         onclick: move |_| page.set(current_page.saturating_sub(1)),
-                        "Newer"
+                        {tr!("admin-operations-newer")}
                     }
-                    span { style: HELP_TEXT, "Page {current_page + 1}" }
+                    span { style: HELP_TEXT, {tr!("admin-operations-page", current_page_1: (current_page + 1).to_string())} }
                     button {
                         style: BTN_SMALL,
                         disabled: !has_more,
                         onclick: move |_| page.set(current_page + 1),
-                        "Older"
+                        {tr!("admin-operations-older")}
                     }
                 }
             }
@@ -182,32 +183,32 @@ fn TaskErrorRatePanel(
     let above: Vec<&TaskErrorRate> = rates.iter().filter(|r| r.above_threshold).collect();
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Failure rate by task type ({collectionname})" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-operations-failure-rate-by-task-type", collectionname: collectionname.to_string())} }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
-                    "One row per activity execution, retries included. A rate over "
+                    {tr!("admin-operations-one-row-per-activity-execution")}
                     b { "{threshold:.1}%" }
-                    " is marked."
+                    {tr!("admin-operations-is-marked")}
                 }
                 if rates.is_empty() {
-                    p { style: HELP_TEXT, "No task executions recorded for this collection yet." }
+                    p { style: HELP_TEXT, {tr!("admin-operations-no-task-executions-recorded-for")} }
                 } else {
                     if above.is_empty() {
                         p { style: "font-size: var(--x-text-sm); color: var(--x-ok); margin: 0 0 10px;",
-                            "No task type is failing above {threshold:.1}%."
+                            {tr!("admin-operations-no-task-type-failing", threshold: format!("{threshold:.1}"))}
                         }
                     } else {
                         p { style: "font-size: var(--x-text-sm); color: {C_DANGER}; font-weight: 600; margin: 0 0 10px;",
-                            "{above.len()} task type(s) failing above {threshold:.1}%."
+                            {tr!("admin-operations-task-types-failing", count: above.len(), threshold: format!("{threshold:.1}"))}
                         }
                     }
                     table { style: TABLE,
                         thead {
                             tr {
-                                th { style: TH, "Task" }
-                                th { style: TH, "Error rate" }
-                                th { style: TH, "Failed / total executions" }
-                                th { style: TH, "Documents affected" }
+                                th { style: TH, {tr!("admin-operations-task")} }
+                                th { style: TH, {tr!("admin-operations-error-rate")} }
+                                th { style: TH, {tr!("admin-operations-failed-total-executions")} }
+                                th { style: TH, {tr!("admin-operations-documents-affected")} }
                             }
                         }
                         tbody {
@@ -228,7 +229,7 @@ fn TaskErrorRatePanel(
                                         "{r.error_rate_percent:.1}%"
                                         if r.above_threshold {
                                             span { style: "margin-left: 6px; font-size: var(--x-text-xs);",
-                                                "above the line"
+                                                {tr!("admin-operations-above-the-line")}
                                             }
                                         }
                                     }
@@ -278,23 +279,23 @@ pub fn OperationsTable(
 ) -> Element {
     if rows.is_empty() {
         return rsx! {
-            p { style: HELP_TEXT, "No operations recorded for this filter." }
+            p { style: HELP_TEXT, {tr!("admin-operations-no-operations-recorded-for-this")} }
         };
     }
     rsx! {
         table { style: TABLE,
             thead {
                 tr {
-                    th { style: TH, "Kind" }
-                    th { style: TH, "Target" }
-                    th { style: TH, "State" }
-                    th { style: TH, "Workflow" }
-                    th { style: TH, "Queued at" }
-                    th { style: TH, "Started" }
-                    th { style: TH, "Duration" }
-                    th { style: TH, "Progress" }
-                    th { style: TH, "ETA" }
-                    th { style: TH, "Outcome" }
+                    th { style: TH, {tr!("admin-operations-kind")} }
+                    th { style: TH, {tr!("admin-operations-target")} }
+                    th { style: TH, {tr!("admin-operations-state")} }
+                    th { style: TH, {tr!("admin-operations-workflow")} }
+                    th { style: TH, {tr!("admin-operations-queued-at")} }
+                    th { style: TH, {tr!("admin-operations-started")} }
+                    th { style: TH, {tr!("admin-operations-duration")} }
+                    th { style: TH, {tr!("admin-operations-progress")} }
+                    th { style: TH, {tr!("admin-operations-eta")} }
+                    th { style: TH, {tr!("admin-operations-outcome")} }
                     th { style: TH, "" }
                 }
             }
@@ -346,11 +347,11 @@ fn OperationTableRow(
                 }
                 if row.destructive {
                     div { style: "font-size: var(--x-text-xs); color: {C_DANGER};",
-                        "Destructive"
+                        {tr!("admin-operations-destructive")}
                     }
                 }
                 if !row.rerun_of.is_empty() {
-                    div { style: HELP_TEXT, title: "{row.rerun_of}", "Repeated run" }
+                    div { style: HELP_TEXT, title: "{row.rerun_of}", {tr!("admin-operations-repeated-run")} }
                 }
             }
             td { style: TD,
@@ -367,7 +368,7 @@ fn OperationTableRow(
                     href: "{row.temporal_url}",
                     target: "_blank",
                     style: LINK,
-                    "(Temporal)"
+                    {tr!("admin-operations-temporal")}
                 }
             }
             td { style: "{TD} white-space: nowrap;", "{short_time(&row.started_at)}" }
@@ -390,7 +391,7 @@ fn OperationTableRow(
                 if row.eta_seconds > 0 {
                     "{format_duration(row.eta_seconds as u64)}"
                 } else if running {
-                    span { style: HELP_TEXT, "no estimate yet" }
+                    span { style: HELP_TEXT, {tr!("admin-operations-no-estimate-yet")} }
                 } else {
                     span { style: HELP_TEXT, "n/a" }
                 }
@@ -407,7 +408,7 @@ fn OperationTableRow(
                                 spawn(async move {
                                     match admin_cancel_operation(op_id).await {
                                         Ok(state) => {
-                                            msg.set(Some(format!("Operation {state}.")));
+                                            msg.set(Some(tr!("admin-operations-operation", state: state.to_string())));
                                             on_changed.call(());
                                         }
                                         Err(e) => error_msg.set(Some(user_facing_message(&e))),
@@ -415,13 +416,13 @@ fn OperationTableRow(
                                 });
                             }
                         },
-                        "Cancel"
+                        {tr!("admin-operations-cancel")}
                     }
                 } else {
                     if row.destructive {
                         input {
                             style: "{INPUT} width: 130px; margin-bottom: 4px;",
-                            placeholder: "type {target} to confirm",
+                            placeholder: tr!("admin-operations-type-to-confirm", target: target.to_string()),
                             value: "{confirm_text}",
                             oninput: move |e| confirm_text.set(e.value()),
                         }
@@ -437,7 +438,7 @@ fn OperationTableRow(
                                 spawn(async move {
                                     match admin_rerun_operation(op_id, confirm).await {
                                         Ok(new_id) => {
-                                            msg.set(Some(format!("Dispatched {new_id}.")));
+                                            msg.set(Some(tr!("admin-operations-dispatched", new_id: new_id.to_string())));
                                             confirm_text.set(String::new());
                                             on_changed.call(());
                                         }
@@ -446,7 +447,7 @@ fn OperationTableRow(
                                 });
                             }
                         },
-                        "Re-run"
+                        {tr!("admin-operations-re-run")}
                     }
                 }
             }
@@ -475,9 +476,9 @@ fn progress_reading(row: &OperationRow) -> String {
             common::filter_summary::format_bytes(row.progress_total as i64),
         ),
         "purge_dataset" | "delete_dataset" => {
-            format!("{} / {} rows", row.progress_done, row.progress_total)
+            tr!("admin-operations-rows", row_progress_done: row.progress_done.to_string(), row_progress_total: row.progress_total.to_string())
         }
-        _ => format!("{} / {} plans", row.progress_done, row.progress_total),
+        _ => tr!("admin-operations-plans", row_progress_done: row.progress_done.to_string(), row_progress_total: row.progress_total.to_string()),
     }
 }
 
@@ -490,9 +491,9 @@ fn ProgressCell(row: OperationRow) -> Element {
         return rsx! {
             span { style: HELP_TEXT,
                 if row.state == "queued" {
-                    "waiting for a free slot or a free target"
+                    {tr!("admin-operations-waiting-for-a-free-slot")}
                 } else if row.state == "running" || row.state == "pending" {
-                    "counting work…"
+                    {tr!("admin-operations-counting-work")}
                 } else {
                     "n/a"
                 }
@@ -529,7 +530,7 @@ fn OutcomeCell(row: OperationRow) -> Element {
                         style: LINK,
                         class: "x-ops-failure-link",
                         if row.error.is_empty() {
-                            "Open captured tree"
+                            {tr!("admin-operations-open-captured-tree")}
                         } else {
                             "{row.error}"
                         }
@@ -538,24 +539,24 @@ fn OutcomeCell(row: OperationRow) -> Element {
             } else if !row.error.is_empty() {
                 div { style: "color: {C_DANGER}; font-size: var(--x-text-xs); max-width: 320px; overflow-wrap: anywhere;",
                     "{row.error}"
-                    div { style: HELP_TEXT, "no captured tree" }
+                    div { style: HELP_TEXT, {tr!("admin-operations-no-captured-tree")} }
                 }
             }
             match row.failed_documents {
                 Some(0) => rsx! {
-                    span { style: "font-size: var(--x-text-xs); color: var(--x-ok);", "no failed documents" }
+                    span { style: "font-size: var(--x-text-xs); color: var(--x-ok);", {tr!("admin-operations-no-failed-documents")} }
                 },
                 Some(n) => rsx! {
                     div { style: "color: {C_DANGER}; font-weight: 700; font-size: var(--x-text-xs);",
-                        "{n} document(s) failed"
+                        {tr!("admin-operations-document-s-failed", n: n)}
                     }
                     if let Some(t) = row.failed_tasks {
-                        div { style: HELP_TEXT, "{t} task failure(s)" }
+                        div { style: HELP_TEXT, {tr!("admin-operations-task-failure-s", t: t.to_string())} }
                     }
                 },
                 None => rsx! {
                     if row.error.is_empty() {
-                        span { style: HELP_TEXT, "failures not counted" }
+                        span { style: HELP_TEXT, {tr!("admin-operations-failures-not-counted")} }
                     }
                 },
             }
@@ -592,11 +593,11 @@ pub fn CollectionOperationsPanel(collectionname: String) -> Element {
 
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Operations" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-operations-operations")} }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
-                    "The newest ten operations of this collection. "
-                    Link { to: Route::AdminOperationsPage {}, style: LINK, "All operations" }
+                    {tr!("admin-operations-the-newest-ten-operations-of")}
+                    Link { to: Route::AdminOperationsPage {}, style: LINK, {tr!("admin-operations-all-operations")} }
                 }
                 if let Some(m) = msg() {
                     SuccessBar { message: m }
@@ -613,7 +614,7 @@ pub fn CollectionOperationsPanel(collectionname: String) -> Element {
                             on_changed: EventHandler::new(move |_| ops_res.restart()),
                         }
                     },
-                    None => rsx! { p { style: HELP_TEXT, "Loading operations…" } },
+                    None => rsx! { p { style: HELP_TEXT, {tr!("admin-operations-loading-operations")} } },
                 }
             }
         }

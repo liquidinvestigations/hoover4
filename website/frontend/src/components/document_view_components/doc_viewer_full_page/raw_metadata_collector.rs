@@ -22,6 +22,8 @@ use std::collections::BTreeMap;
 use crate::components::{
     error_boundary::ServerErrorDisplay, suspend_boundary::LoadingIndicator,
 };
+use crate::tr;
+use crate::i18n::SharedText;
 
 #[component]
 pub fn RawMetadataCollector(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
@@ -211,7 +213,7 @@ fn RawMetadataTable(value: serde_json::Value) -> Element {
                                         "Data copied to clipboard.".to_string(),
 
                                         dioxus_primitives::toast::ToastOptions::new()
-                                            .description(format!("The data for key = '{k}' has been copied to your clipboard."))
+                                            .description(tr!("raw-metadata-collector-the-data-for-key-has", k: k.to_string()))
                                             .duration(std::time::Duration::from_secs(7))
                                             .permanent(false),
                                     );
@@ -345,21 +347,20 @@ fn DatesSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
     let body = match dates().clone() {
         // Named states, unlike the anonymous red boxes the raw sections render.
         None => rsx! {
-            div { style: "color: rgba(0,0,0,0.55);", "Loading dates…" }
+            div { style: "color: rgba(0,0,0,0.55);", {tr!("raw-metadata-collector-loading-dates")} }
         },
         Some(Err(error)) => rsx! {
             div {
                 class: "x-error-display",
                 style: "color: rgb(160,30,30);",
-                "Could not load the dates for this document: {error}"
+                {tr!("raw-metadata-collector-could-not-load-the-dates", error: error.to_string())}
             }
         },
         Some(Ok(DocumentDates { dates })) if dates.is_empty() => rsx! {
             div {
                 style: "color: rgba(0,0,0,0.6);",
-                "No confirmed dates. Nothing in this document's metadata gave a date we
-                 trust, so it will not match any date range except "
-                b { "Unknown only" }
+                {tr!("raw-metadata-collector-no-confirmed-dates-nothing-in")}
+                b { {tr!("raw-metadata-collector-unknown-only")} }
                 "."
             }
         },
@@ -391,7 +392,7 @@ fn DatesSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
             h1 {
                 style: SECTION_HEADER_STYLE,
                 Icon { icon: MdDateRange, style: "width: 19px; height: 19px;" }
-                "Dates"
+                {tr!("raw-metadata-collector-dates")}
             }
             {body}
         }
@@ -412,18 +413,18 @@ fn AntivirusSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Elem
 
     let body = match status().clone() {
         None => rsx! {
-            div { style: "color: rgba(0,0,0,0.55);", "Loading the antivirus state…" }
+            div { style: "color: rgba(0,0,0,0.55);", {tr!("raw-metadata-collector-loading-the-antivirus-state")} }
         },
         Some(Err(error)) => rsx! {
             div {
                 class: "x-error-display",
                 style: "color: rgb(160,30,30);",
-                "Could not load the antivirus state of this document: {error}"
+                {tr!("raw-metadata-collector-could-not-load-the-antivirus", error: error.to_string())}
             }
         },
         Some(Ok(status)) => {
             let color = if status.is_infected() { "rgb(160,30,30)" } else { "inherit" };
-            let label = status.label();
+            let label = status.label().shared();
             rsx! {
                 div {
                     class: "x-antivirus-state",
@@ -434,7 +435,7 @@ fn AntivirusSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Elem
                 if !status.database_version.is_empty() {
                     div {
                         style: "color: rgba(0,0,0,0.65); font-size: 13px;",
-                        "ClamAV {status.engine_version}, signature database {status.database_version}, {status.scanned_at} UTC"
+                        {tr!("raw-metadata-collector-clamav-signature-database-utc", status_engine_version: status.engine_version.to_string(), status_database_version: status.database_version.to_string(), status_scanned_at: status.scanned_at.to_string())}
                     }
                 }
             }
@@ -447,7 +448,7 @@ fn AntivirusSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Elem
             h1 {
                 style: SECTION_HEADER_STYLE,
                 Icon { icon: MdBugReport, style: "width: 19px; height: 19px;" }
-                "Antivirus"
+                {tr!("raw-metadata-collector-antivirus")}
             }
             {body}
         }
@@ -474,12 +475,12 @@ fn EmailSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
                     h1 {
                         style: SECTION_HEADER_STYLE,
                         Icon { icon: MdEmail, style: "width: 19px; height: 19px;" }
-                        "Email"
+                        {tr!("raw-metadata-collector-email")}
                     }
                     div {
                         class: "x-error-display",
                         style: "color: rgb(160,30,30);",
-                        "Could not load the email header: {error}"
+                        {tr!("raw-metadata-collector-could-not-load-the-email", error: error.to_string())}
                     }
                 }
             };
@@ -494,24 +495,24 @@ fn EmailSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
             h1 {
                 style: SECTION_HEADER_STYLE,
                 Icon { icon: MdEmail, style: "width: 19px; height: 19px;" }
-                "Email"
+                {tr!("raw-metadata-collector-email")}
             }
             table {
                 style: "width: 100%; border-collapse: collapse;",
                 tbody {
                     if !value.subject.is_empty() {
                         tr {
-                            td { style: "padding: 4px 12px 4px 0; color: rgba(0,0,0,0.6); vertical-align: top; white-space: nowrap;", "Subject" }
+                            td { style: "padding: 4px 12px 4px 0; color: rgba(0,0,0,0.6); vertical-align: top; white-space: nowrap;", {tr!("raw-metadata-collector-subject")} }
                             td { style: "padding: 4px 0;", "{value.subject}" }
                         }
                     }
                     if let Some(sent) = value.date_sent {
                         tr {
-                            td { style: "padding: 4px 12px 4px 0; color: rgba(0,0,0,0.6); vertical-align: top; white-space: nowrap;", "Sent" }
+                            td { style: "padding: 4px 12px 4px 0; color: rgba(0,0,0,0.6); vertical-align: top; white-space: nowrap;", {tr!("raw-metadata-collector-sent")} }
                             td { style: "padding: 4px 0; font-variant-numeric: tabular-nums;", "{format_epoch_utc(sent)}" }
                         }
                     }
-                    for (role, label) in [("from", "From"), ("to", "To"), ("cc", "Cc"), ("bcc", "Bcc")] {
+                    for (role, label) in [("from", {tr!("raw-metadata-collector-from")}), ("to", {tr!("raw-metadata-collector-to")}), ("cc", {tr!("raw-metadata-collector-cc")}), ("bcc", {tr!("raw-metadata-collector-bcc")})] {
                         {
                             let people = value.participants_with_role(role);
                             if people.is_empty() {
@@ -539,7 +540,7 @@ fn EmailSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
                 div {
                     style: "display: flex; align-items: center; gap: 6px; margin-top: 10px; color: rgba(0,0,0,0.7);",
                     Icon { icon: MdAttachment, style: "width: 19px; height: 19px;" }
-                    "{value.attachment_count} attachment(s). Browse them by opening this email in Storage."
+                    {tr!("raw-metadata-collector-attachment-s-browse-them-by", value_attachment_count: value.attachment_count)}
                 }
             }
         }
@@ -588,12 +589,12 @@ fn TableSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
                     h1 {
                         style: SECTION_HEADER_STYLE,
                         Icon { icon: MdTableChart, style: "width: 19px; height: 19px;" }
-                        "Table"
+                        {tr!("raw-metadata-collector-table")}
                     }
                     div {
                         class: "x-error-display",
                         style: "color: rgb(160,30,30);",
-                        "Could not load the table structure: {error}"
+                        {tr!("raw-metadata-collector-could-not-load-the-table", error: error.to_string())}
                     }
                 }
             };
@@ -608,7 +609,7 @@ fn TableSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
         .map(|s| format!("{} {}", s.label(), s.row_count))
         .collect::<Vec<_>>()
         .join(", ");
-    let banner = value.truncation_banner();
+    let banner = value.truncation_banner().shared();
 
     rsx! {
         li {
@@ -616,30 +617,30 @@ fn TableSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
             h1 {
                 style: SECTION_HEADER_STYLE,
                 Icon { icon: MdTableChart, style: "width: 19px; height: 19px;" }
-                "Table"
+                {tr!("raw-metadata-collector-table")}
             }
             table {
                 style: "width: 100%; border-collapse: collapse;",
                 tbody {
                     tr {
-                        td { style: METADATA_KEY_STYLE, "Format" }
-                        td { style: "padding: 4px 0;", "{value.table_format} \u{00b7} read by {value.reader}" }
+                        td { style: METADATA_KEY_STYLE, {tr!("raw-metadata-collector-format")} }
+                        td { style: "padding: 4px 0;", {tr!("raw-metadata-collector-u-read-by", value_table_format: value.table_format.to_string(), value_reader: value.reader.to_string())} }
                     }
                     tr {
-                        td { style: METADATA_KEY_STYLE, "Sheets" }
+                        td { style: METADATA_KEY_STYLE, {tr!("raw-metadata-collector-sheets")} }
                         td { style: "padding: 4px 0;", "{value.sheet_count} ({sheet_summary})" }
                     }
                     tr {
-                        td { style: METADATA_KEY_STYLE, "Rows" }
-                        td { style: "padding: 4px 0;", "{value.row_count} across every sheet" }
+                        td { style: METADATA_KEY_STYLE, {tr!("raw-metadata-collector-rows")} }
+                        td { style: "padding: 4px 0;", {tr!("raw-metadata-collector-across-every-sheet", value_row_count: value.row_count)} }
                     }
                     tr {
-                        td { style: METADATA_KEY_STYLE, "Columns" }
-                        td { style: "padding: 4px 0;", "{value.column_count} in the widest sheet" }
+                        td { style: METADATA_KEY_STYLE, {tr!("raw-metadata-collector-columns")} }
+                        td { style: "padding: 4px 0;", {tr!("raw-metadata-collector-in-the-widest-sheet", value_column_count: value.column_count)} }
                     }
                     tr {
-                        td { style: METADATA_KEY_STYLE, "Cells stored" }
-                        td { style: "padding: 4px 0;", "{value.cell_count} ({value.stored_bytes} bytes of text)" }
+                        td { style: METADATA_KEY_STYLE, {tr!("raw-metadata-collector-cells-stored")} }
+                        td { style: "padding: 4px 0;", {tr!("raw-metadata-collector-bytes-of-text", value_cell_count: value.cell_count, value_stored_bytes: value.stored_bytes)} }
                     }
                 }
             }

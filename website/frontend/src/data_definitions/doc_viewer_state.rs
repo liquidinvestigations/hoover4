@@ -154,7 +154,7 @@ impl MatchContinuation {
                 if advances {
                     ContinuationOutcome::Continue(resume_after)
                 } else {
-                    let message = format!("The match search did not move past page {}.", self.boundary);
+                    let message = crate::tr!("doc-viewer-state-match-search-stopped", page: self.boundary);
                     ContinuationOutcome::Stop(ContinuationPhase::Failed(message), self.boundary)
                 }
             }

@@ -10,6 +10,7 @@ use dioxus::prelude::*;
 
 use crate::components::search_components::search_panel_left_view::SearchResultsState;
 use crate::components::search_components::search_result_item_card::SearchResultItemCard;
+use crate::tr;
 
 /// Opens one document in the chat page's side pane at a find query. The chat page
 /// provides it. A card with no provider opens the document the way a search result does.
@@ -110,7 +111,7 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
                 }
                 div {
                     style: "font-size: var(--x-text-xs); color: var(--x-ink-faint); margin-top: 4px;",
-                    "Not openable: {reason}."
+                    {tr!("doc-ref-card-not-openable", reason: reason.to_string())}
                 }
             }
         };
@@ -209,7 +210,7 @@ pub fn ChatDocRefCard(doc: ChatDocRef, index: u64, #[props(default)] passages: V
             if !doc.term.is_empty() && !doc.search_route.is_empty() {
                 div { "data-citation-search-term": "{doc.term}", style: "padding: 0 12px; font-size: var(--x-text-xs);",
                     Link { to: doc.search_route.clone(), style: "color: var(--x-ink);",
-                        "The search term was "
+                        {tr!("doc-ref-card-the-search-term-was")}
                         strong { em { code { "{doc.term}" } } }
                         "."
                     }
@@ -256,11 +257,11 @@ pub fn ChatDocRefRow(doc: ChatDocRef) -> Element {
                                 cursor: pointer; color: var(--x-link); text-decoration: underline; \
                                 font-size: var(--x-text-xs);",
                         onclick: move |_| chat_open.open.call(target.clone()),
-                        "Open"
+                        {tr!("doc-ref-card-open")}
                     }
                 },
                 _ => rsx! {
-                    span { style: "flex-shrink: 0; font-size: var(--x-text-xs); color: var(--x-ink-faint);", "Not openable" }
+                    span { style: "flex-shrink: 0; font-size: var(--x-text-xs); color: var(--x-ink-faint);", {tr!("doc-ref-card-not-openable-2")} }
                 },
             }
         }

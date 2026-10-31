@@ -12,14 +12,15 @@ use crate::components::admin_components::{
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::pages::admin::llm_reports::LlmReports;
 use crate::routes::Route;
+use crate::tr;
 
 #[component]
 pub fn AdminLlmPage() -> Element {
     rsx! {
-        Title { "Admin: LLM" }
+        Title { {tr!("admin-llm-config-admin-llm")} }
         AdminGuard {
             AdminShell {
-                title: "LLM".to_string(),
+                title: tr!("admin-llm-config-llm").to_string(),
                 breadcrumb: String::new(),
                 active: "llm".to_string(),
                 SuspendWrapper { LlmContent {} }
@@ -47,11 +48,11 @@ fn LlmContent() -> Element {
             }
         }
         match page {
-            None => rsx! { "Loading\u{2026}" },
+            None => rsx! { {tr!("admin-llm-config-loading-u")} },
             Some(p) => rsx! {
                 if !p.llm_configured {
                     ErrorBar {
-                        message: "No LLM provider is configured. Set LLM_BASE_URL / LLM_MODEL in hoover4.ini and redeploy.".to_string()
+                        message: tr!("admin-llm-config-no-llm-provider-is-configured").to_string()
                     }
                 }
                 ProviderPanel { page: p.clone(), reload, flash }
@@ -68,21 +69,21 @@ fn ProviderPanel(page: LlmPageData, mut reload: Signal<u32>, mut flash: Signal<O
     let mut busy = use_signal(|| false);
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Providers" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-llm-config-providers")} }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",
-                    "The refresh runs in the background. The current list stays visible meanwhile."
+                    {tr!("admin-llm-config-the-refresh-runs-in-the")}
                     if page.refresh_in_flight {
-                        " Refresh in flight\u{2026}"
+                        {tr!("admin-llm-config-refresh-in-flight-u")}
                     }
                 }
                 table { style: "{TABLE} margin-bottom: 12px;",
                     thead {
                         tr {
-                            th { style: TH, "Provider" }
-                            th { style: TH, "Models" }
-                            th { style: TH, "Freshest" }
-                            th { style: TH, "Status" }
+                            th { style: TH, {tr!("admin-llm-config-provider")} }
+                            th { style: TH, {tr!("admin-llm-config-models")} }
+                            th { style: TH, {tr!("admin-llm-config-freshest")} }
+                            th { style: TH, {tr!("admin-llm-config-status")} }
                         }
                     }
                     tbody {
@@ -92,8 +93,8 @@ fn ProviderPanel(page: LlmPageData, mut reload: Signal<u32>, mut flash: Signal<O
                                 td { style: TD, "{pr.model_count}" }
                                 td { style: TD, "{pr.freshest_fetched_at}" }
                                 td { style: TD,
-                                    if pr.ok && !pr.stale { "fresh" }
-                                    else if pr.ok { "stale" }
+                                    if pr.ok && !pr.stale { {tr!("admin-llm-config-fresh")} }
+                                    else if pr.ok { {tr!("admin-llm-config-stale")} }
                                     else { "{pr.error}" }
                                 }
                             }
@@ -116,7 +117,7 @@ fn ProviderPanel(page: LlmPageData, mut reload: Signal<u32>, mut flash: Signal<O
                             reload.set(next);
                         });
                     },
-                    "Refresh catalog"
+                    {tr!("admin-llm-config-refresh-catalog")}
                 }
             }
         }
@@ -135,22 +136,22 @@ fn ModelsPanel(
     let short = if page.short_call_model.is_empty() { "none".to_string() } else { page.short_call_model.clone() };
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Models" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-llm-config-models")} }
             div { style: MODULE_BODY,
                 table { class: "x-admin-llm-models", style: TABLE,
                     tbody {
                         tr {
-                            td { style: TD, "Agent turns, board assessments and report conversions" }
+                            td { style: TD, {tr!("admin-llm-config-agent-turns-board-assessments-and")} }
                             td { style: "{TD} font-family: monospace;", "{agent}" }
                         }
                         tr {
-                            td { style: TD, "Titles, summaries and board labels" }
+                            td { style: TD, {tr!("admin-llm-config-titles-summaries-and-board-labels")} }
                             td { style: "{TD} font-family: monospace;", "{short}" }
                         }
                     }
                 }
                 p { style: "{HELP_TEXT} margin: 8px 0 14px;",
-                    "hoover4.ini sets these models: quality_model of the LLM provider for agent turns, board assessments and report conversions when it is set, and its model for the rest."
+                    {tr!("admin-llm-config-hoover4-ini-sets-these-models")}
                 }
                 label { style: "display: flex; gap: 8px; align-items: center; font-weight: 600; margin-bottom: 4px;",
                     input {
@@ -161,7 +162,7 @@ fn ModelsPanel(
                             spawn(async move {
                                 match admin_set_llm_thinking(on).await {
                                     Ok(()) => {
-                                        let msg = if on { "Thinking is on" } else { "Thinking is off" };
+                                        let msg = if on { tr!("admin-llm-config-thinking-is-on") } else { tr!("admin-llm-config-thinking-is-off") };
                                         flash.set(Some(Ok(msg.to_string())));
                                         let next = *reload.peek() + 1;
                                         reload.set(next);
@@ -171,10 +172,10 @@ fn ModelsPanel(
                             });
                         },
                     }
-                    "Thinking"
+                    {tr!("admin-llm-config-thinking")}
                 }
                 p { style: "{HELP_TEXT} margin: 0;",
-                    "The model reasons before each tool call and each answer."
+                    {tr!("admin-llm-config-the-model-reasons-before-each")}
                 }
             }
         }
@@ -196,25 +197,25 @@ fn CatalogPanel(page: LlmPageData, mut filter: Signal<String>) -> Element {
         .collect();
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Catalog" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-llm-config-catalog")} }
             div { style: MODULE_BODY,
                 div { style: "margin-bottom: 12px; display: flex; gap: 12px; align-items: center;",
                     input {
                         style: "{INPUT} min-width: 280px;",
-                        placeholder: "Filter models\u{2026}",
+                        placeholder: tr!("admin-llm-config-filter-models-u"),
                         value: "{filter}",
                         oninput: move |e| filter.set(e.value()),
                     }
-                    span { style: HELP_TEXT, "{models.len()} shown" }
+                    span { style: HELP_TEXT, {tr!("admin-llm-config-shown", models_len: models.len())} }
                 }
                 table { style: TABLE,
                     thead {
                         tr {
-                            th { style: TH, "Provider" }
-                            th { style: TH, "Model" }
-                            th { style: TH, "Flags" }
+                            th { style: TH, {tr!("admin-llm-config-provider")} }
+                            th { style: TH, {tr!("admin-llm-config-model")} }
+                            th { style: TH, {tr!("admin-llm-config-flags")} }
                             th { style: TH, "p50" }
-                            th { style: TH, "Calls 14d" }
+                            th { style: TH, {tr!("admin-llm-config-calls-14d")} }
                         }
                     }
                     tbody {
@@ -228,12 +229,12 @@ fn CatalogPanel(page: LlmPageData, mut filter: Signal<String>) -> Element {
                                             div { style: HELP_TEXT, "{m.model_id}" }
                                         }
                                         td { style: TD,
-                                            if m.supports_tools { "tools " }
-                                            if m.supports_vision { "vision " }
-                                            if m.is_reasoning { "reasoning" }
+                                            if m.supports_tools { {tr!("admin-llm-config-tools")} }
+                                            if m.supports_vision { {tr!("admin-llm-config-vision")} }
+                                            if m.is_reasoning { {tr!("admin-llm-config-reasoning")} }
                                         }
                                         td { style: TD,
-                                            if m.median_latency_ms > 0 { "{m.median_latency_ms} ms" } else { "n/a" }
+                                            if m.median_latency_ms > 0 { {tr!("admin-llm-config-ms", m_median_latency_ms: m.median_latency_ms.to_string())} } else { "n/a" }
                                         }
                                         td { style: TD, "{m.call_count_14d}" }
                                     }
@@ -243,8 +244,8 @@ fn CatalogPanel(page: LlmPageData, mut filter: Signal<String>) -> Element {
                     }
                 }
                 p { style: "{HELP_TEXT} margin-top: 12px;",
-                    Link { to: Route::AdminAiStatusPage {}, style: LINK, "AI status" }
-                    " shows the serving health."
+                    Link { to: Route::AdminAiStatusPage {}, style: LINK, {tr!("admin-llm-config-ai-status")} }
+                    {tr!("admin-llm-config-shows-the-serving-health")}
                 }
             }
         }

@@ -38,6 +38,8 @@ use crate::{
     },
     data_definitions::doc_viewer_state::DocViewerState,
 };
+use crate::tr;
+use crate::i18n::SharedText;
 
 #[component]
 pub fn DocViewerRoot(
@@ -78,7 +80,7 @@ pub fn DocViewerRoot(
 
     let empty_source_message = use_memo(move || source_request.read().as_ref()
         .and_then(|result| result.as_ref().ok())
-        .map(|status| status.processing.empty_source_message()).unwrap_or_default());
+        .map(|status| status.processing.empty_source_message().shared()).unwrap_or_default());
 
     let control = use_context::<DocViewerStateControl>();
     let currently_selected_source: ReadSignal<Option<DocumentSourceItem>> = use_memo(move || {
@@ -174,12 +176,12 @@ pub fn DocViewerRoot(
                 page: rsx! {
                     div {
                         style: "padding: 12px; color: rgba(0,0,0,0.45); font-style: italic;",
-                        "{empty_source_message()}"
+                        "{empty_source_message().shared()}"
                     }
                 },
             }
         },
-        None => rsx! { div { style: "padding: 12px;", "Loading..." } },
+        None => rsx! { div { style: "padding: 12px;", {tr!("doc-viewer-full-loading")} } },
     };
 
     // Provide the same context that search-preview provides, but the triptych renders these
@@ -234,7 +236,7 @@ pub fn DocViewerRoot(
 fn RightTabButton(
     right_tab: ReadSignal<ViewerRightTabState>,
     tab: ViewerRightTabSelection,
-    label: &'static str,
+    label: String,
     on_viewer_right_tab_selected: Callback<ViewerRightTabState>,
 ) -> Element {
     let is_active = right_tab().selected_tab == tab;
@@ -297,9 +299,9 @@ fn RightPanel(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
                     border-bottom: 1px solid rgba(0,0,0,0.15);
                     background: rgba(0,0,0,0.02);
                 ",
-                RightTabButton { right_tab, on_viewer_right_tab_selected, tab: ViewerRightTabSelection::Entities, label: "Entities" }
-                RightTabButton { right_tab, on_viewer_right_tab_selected, tab: ViewerRightTabSelection::FileLocations, label: "File Locations" }
-                RightTabButton { right_tab, on_viewer_right_tab_selected, tab: ViewerRightTabSelection::Metadata, label: "Metadata" }
+                RightTabButton { right_tab, on_viewer_right_tab_selected, tab: ViewerRightTabSelection::Entities, label: tr!("doc-viewer-full-entities") }
+                RightTabButton { right_tab, on_viewer_right_tab_selected, tab: ViewerRightTabSelection::FileLocations, label: tr!("doc-viewer-full-file-locations") }
+                RightTabButton { right_tab, on_viewer_right_tab_selected, tab: ViewerRightTabSelection::Metadata, label: tr!("doc-viewer-full-metadata") }
             }
             div {
                 style: "flex: 1 1 auto; min-height: 0; overflow: hidden;",

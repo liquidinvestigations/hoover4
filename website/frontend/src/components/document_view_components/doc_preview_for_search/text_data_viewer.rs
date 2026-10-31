@@ -12,6 +12,8 @@ use crate::components::{
     document_view_components::doc_preview_for_search::text_preview_with_search::{DocumentViewerResultStore, OVERLAY_CLEARANCE},
     error_boundary::ServerErrorDisplay, suspend_boundary::LoadingIndicator,
 };
+use crate::tr;
+use crate::i18n::SharedText;
 
 #[component]
 pub fn TextDataViewer() -> Element {
@@ -58,16 +60,16 @@ pub fn TextDataViewer() -> Element {
                     p {
                         "data-text-absent": "true",
                         style: "margin: 0; padding: 12px 2px; color: var(--x-ink-muted);",
-                        "No text is stored for {view.navigation.unit.label()} {view.navigation.requested_page.unwrap_or_default()}."
+                        {tr!("text-data-viewer-no-text-is-stored-for", view_navigation_unit_label: view.navigation.unit.label().to_string(), view_navigation_requested_page: view.navigation.requested_page.unwrap_or_default())}
                         // A source with one entry has no page overlay, so its sole stored
                         // identifier is the way back from an old link.
                         if let (1, Some(sole)) = (view.navigation.stored_count, view.navigation.first_page) {
-                            " Open "
+                            {tr!("text-data-viewer-open")}
                             button {
                                 "data-text-sole-page": "{sole}",
                                 style: "background: none; border: none; padding: 0; cursor: pointer; font: inherit; color: var(--x-link); text-decoration: underline;",
                                 onclick: move |_| store.go_to_page.call(sole),
-                                "{view.navigation.unit.label()} {sole}"
+                                "{view.navigation.unit.label().shared()} {sole}"
                             }
                             "."
                         }
@@ -76,7 +78,7 @@ pub fn TextDataViewer() -> Element {
                 TextPageBody::EmptySource => rsx! {
                     p {
                         style: "margin: 0; padding: 12px 2px; color: var(--x-ink-muted);",
-                        "This source has no stored text."
+                        {tr!("text-data-viewer-this-source-has-no-stored")}
                     }
                 },
             }
@@ -93,7 +95,7 @@ fn TextNotices(view: TextPageView) -> Element {
         TextPageBody::Text { highlight_error, .. } => highlight_error.clone(),
         _ => None,
     };
-    let unit = view.navigation.unit.label();
+    let unit = view.navigation.unit.label().shared();
     let target = match store.request.read().page {
         Some(page) => format!("{unit} {page}"),
         None => "the text".to_string(),
@@ -108,7 +110,7 @@ fn TextNotices(view: TextPageView) -> Element {
                 style: NOTICE_STYLE,
                 span {
                     style: "flex: 1 1 auto; min-width: 0;",
-                    "Could not load {target}: {request_message}"
+                    {tr!("text-data-viewer-could-not-load", target: target.to_string(), request_message: request_message.to_string())}
                 }
                 RetryButton {}
             }
@@ -117,7 +119,7 @@ fn TextNotices(view: TextPageView) -> Element {
             div {
                 role: "status",
                 style: NOTICE_STYLE,
-                "This source changed after it was displayed. The page positions are refreshed."
+                {tr!("text-data-viewer-this-source-changed-after-it")}
             }
         }
         if let Some(error) = view.match_error {
@@ -125,7 +127,7 @@ fn TextNotices(view: TextPageView) -> Element {
                 role: "alert",
                 style: NOTICE_STYLE,
                 title: "{error}",
-                "The match search failed. The first stored {shown_unit} is shown."
+                {tr!("text-data-viewer-the-match-search-failed-the", shown_unit: shown_unit.to_string())}
             }
         }
         if let Some(error) = highlight_error {
@@ -133,7 +135,7 @@ fn TextNotices(view: TextPageView) -> Element {
                 role: "alert",
                 style: NOTICE_STYLE,
                 title: "{error}",
-                "Highlighting failed. The stored text is shown."
+                {tr!("text-data-viewer-highlighting-failed-the-stored-text")}
             }
         }
     }
@@ -148,7 +150,7 @@ fn RetryButton() -> Element {
         button {
             style: "flex: 0 0 auto; background-color: white; color: var(--x-ink-strong); border: 1px solid; border-color: var(--x-border-strong); border-radius: 16px; padding: 3px 12px; cursor: pointer; font: inherit;",
             onclick: move |_| store.retry.call(()),
-            "Retry"
+            {tr!("text-data-viewer-retry")}
         }
     }
 }
@@ -232,5 +234,6 @@ fn text_to_span_html(text: String, is_match: bool, is_active_match: bool) -> Str
 
     let text = html_escape::encode_text(&text).to_string();
 
+    // i18n: data, HTML markup
     format!(r#"<span class="{class}">{text}</span>"#)
 }

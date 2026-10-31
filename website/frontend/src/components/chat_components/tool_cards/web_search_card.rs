@@ -14,6 +14,7 @@ use crate::components::chat_components::tool_cards::{
     tool_failure, CardShell, ElapsedCounter, FocusHandle, ModalCloseButton, ModalShell,
     ToolFailure,
 };
+use crate::tr;
 
 #[derive(Debug, Clone, PartialEq)]
 struct Row {
@@ -162,15 +163,15 @@ pub fn WebSearchCard(
                     span {
                         style: "flex-shrink: 0; font-size: var(--x-text-xs); opacity: 0.8; \
                                 font-variant-numeric: tabular-nums;",
-                        "{results.len()} results"
+                        {tr!("web-search-card-results", results_len: results.len())}
                     }
                 }
                 if !degraded.is_empty() {
                     span {
-                        title: "These sources returned nothing, so the results come from fewer than intended",
+                        title: tr!("web-search-card-these-sources-returned-nothing-so"),
                         style: "flex-shrink: 0; background: #FEE2E2; color: var(--x-danger); \
                                 border-radius: 999px; padding: 1px 7px; font-size: var(--x-text-xs);",
-                        "\u{26a0} {degraded.len()} degraded"
+                        {tr!("web-search-card-u-degraded", degraded_len: degraded.len())}
                     }
                 }
             },
@@ -184,9 +185,9 @@ pub fn WebSearchCard(
             }
 
             for (index, form) in queries.iter().enumerate() {
-                div { style: "font-size: var(--x-text-xs);", "Form {index}: {form}" }
+                div { style: "font-size: var(--x-text-xs);", {tr!("web-search-card-form", index: index.to_string(), form: form.to_string())} }
             }
-            if !degraded.is_empty() { div { "No results from: {degraded_text}" } }
+            if !degraded.is_empty() { div { {tr!("web-search-card-no-results-from", degraded_text: degraded_text.to_string())} } }
             if let Some(note) = content.get("note").and_then(|note| note.as_str()) { div { "{note}" } }
 
             for (i, row) in results.iter().enumerate() {
@@ -196,17 +197,16 @@ pub fn WebSearchCard(
             if results.is_empty() && error.is_empty() {
                 div {
                     style: "font-size: var(--x-text-xs); font-style: italic; opacity: 0.75;",
-                    "No results. Every source answered and none of them had anything for this query."
+                    {tr!("web-search-card-no-results-every-source-answered")}
                 }
             }
 
             // Said out loud, because the alternative is a list that silently stops. The
             // model saw the whole result set; this row is the transcript's copy of it.
-            if json_bool(&content, "truncated") {
+            if json_bool(&content, "truncated") { // i18n: data, a protocol value
                 div {
                     style: "font-size: var(--x-text-xs); font-style: italic; opacity: 0.75;",
-                    "The lowest-ranked results were dropped so this call fits in the \
-                     transcript. The assistant saw all of them."
+                    {tr!("web-search-card-the-lowest-ranked-results-were")}
                 }
             }
 
@@ -217,7 +217,7 @@ pub fn WebSearchCard(
                                 font-size: var(--x-text-xs); padding: 0; text-decoration: underline;",
                         onmounted: move |e| opener.set(Some(e.data())),
                         onclick: move |_| popup_open.set(true),
-                        "View search details."
+                        {tr!("web-search-card-view-search-details")}
                     }
                 }
             }
@@ -286,14 +286,14 @@ fn UnparseableSearch(query: String, raw: String) -> Element {
             expanded,
             failure: ToolFailure {
                 refused: false,
-                message: "the stored result could not be read back as JSON".to_string(),
+                message: tr!("web-search-card-the-stored-result-could-not").to_string(),
             },
             badges: rsx! {},
 
             if raw.trim().is_empty() {
                 div {
                     style: "font-size: var(--x-text-xs); font-style: italic; opacity: 0.75;",
-                    "Nothing was stored for this call."
+                    {tr!("web-search-card-nothing-was-stored-for-this")}
                 }
             } else {
                 pre {
@@ -344,13 +344,13 @@ fn ResultRow(row: Row) -> Element {
                     "{host}"
                 }
                 if !forms.is_empty() {
-                    div { style: "font-size: var(--x-text-xs);", "Forms: {forms}" }
+                    div { style: "font-size: var(--x-text-xs);", {tr!("web-search-card-forms", forms: forms.to_string())} }
                 }
                 if !row.kind.is_empty() {
-                    div { style: "font-size: var(--x-text-xs);", "Kind: {row.kind}" }
+                    div { style: "font-size: var(--x-text-xs);", {tr!("web-search-card-kind", row_kind: row.kind.to_string())} }
                 }
                 if !row.published.is_empty() {
-                    div { style: "font-size: var(--x-text-xs);", "Published: {row.published}" }
+                    div { style: "font-size: var(--x-text-xs);", {tr!("web-search-card-published", row_published: row.published.to_string())} }
                 }
                 if !row.snippet.is_empty() {
                     div {
@@ -374,12 +374,12 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
     });
 
     let body = match &*detail.read_unchecked() {
-        None => rsx! { div { style: "padding: 20px; opacity: 0.7;", "Loading search detail\u{2026}" } },
+        None => rsx! { div { style: "padding: 20px; opacity: 0.7;", {tr!("web-search-card-loading-search-detail-u")} } },
         Some(Err(e)) => rsx! {
             div {
                 class: "x-error-display",
                 style: "padding: 20px; color: var(--x-danger);",
-                "Could not load the search detail: {e}"
+                {tr!("web-search-card-could-not-load-the-search", e: e.to_string())}
             }
         },
         Some(Ok(text)) => match serde_json::from_str::<serde_json::Value>(text) {
@@ -387,7 +387,7 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
                 div {
                     class: "x-error-display",
                     style: "padding: 20px; color: var(--x-danger);",
-                    "Malformed detail: {e}"
+                    {tr!("web-search-card-malformed-detail", e: e.to_string())}
                 }
             },
             Ok(doc) => {
@@ -398,39 +398,35 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
                 let latency = doc.get("source_latency_ms").cloned().unwrap_or(serde_json::Value::Null);
                 let counts = doc.get("source_counts").cloned().unwrap_or(serde_json::Value::Null);
                 let degraded = json_strings(&doc, "degraded").join(", ");
-                let dedupe = format!(
-                    "{} results in, {} after deduplication",
-                    json_u64(&doc, "total_before_dedupe"),
-                    json_u64(&doc, "total_after_dedupe"),
-                );
+                let dedupe = tr!("web-search-card-results-in-after-deduplication", json_u64_doc_total_before_dedupe: (json_u64(&doc, "total_before_dedupe")).to_string(), json_u64_doc_total_after_dedupe: (json_u64(&doc, "total_after_dedupe")).to_string());
                 rsx! {
                     div {
                         style: "padding: 12px 16px; border-bottom: 1px solid; border-bottom-color: var(--x-border); \
                                 font-size: var(--x-text-xs); color: var(--x-ink); line-height: 1.7;",
-                        div { "The tool returned selected results to the model." }
+                        div { {tr!("web-search-card-the-tool-returned-selected-results")} }
                         div { "{dedupe}" }
                         if applied {
-                            div { "The cross-encoder ranked results in {rerank_ms:.0} ms." }
+                            div { {tr!("web-search-card-reranked-in", ms: format!("{rerank_ms:.0}"))} }
                         } else {
-                            div { style: "color: var(--x-ink);", "Results use reciprocal rank fusion." }
+                            div { style: "color: var(--x-ink);", {tr!("web-search-card-results-use-reciprocal-rank-fusion")} }
                         }
                         if !degraded.is_empty() {
-                            div { style: "color: var(--x-danger);", "returned nothing: {degraded}" }
+                            div { style: "color: var(--x-danger);", {tr!("web-search-card-returned-nothing", degraded: degraded.to_string())} }
                         }
                         SourceTimings { latency, counts }
                     }
                     div {
                         style: "display: flex; gap: 0; align-items: stretch; overflow: auto; flex: 1;",
                         RankColumn {
-                            heading: "All candidates use fusion order.".to_string(),
+                            heading: tr!("web-search-card-all-candidates-use-fusion-order").to_string(),
                             rows: before,
                             show_source_ranks: true,
                         }
                         RankColumn {
                             heading: (if applied {
-                                "The cross-encoder ranks selected results."
+                                tr!("web-search-card-the-cross-encoder-ranks-selected")
                             } else {
-                                "Selected results use fusion order."
+                                tr!("web-search-card-selected-results-use-fusion-order")
                             }).to_string(),
                             rows: after,
                             show_source_ranks: false,
@@ -446,14 +442,14 @@ fn SearchDetailPopup(artifact_id: String, on_close: EventHandler<()>) -> Element
         // popup had none of the three: it could only be closed with a mouse, and Tab
         // walked straight past it into the transcript behind.
         ModalShell {
-            label: "Search detail".to_string(),
+            label: tr!("web-search-card-search-detail").to_string(),
             on_close,
             pane_size: "width: min(1100px, 96%); height: min(80%, 900px);".to_string(),
             header: rsx! {
                 div {
                     style: "display: flex; align-items: center; justify-content: space-between; \
                             padding: 12px 16px; border-bottom: 1px solid; border-bottom-color: var(--x-border);",
-                    strong { style: "font-size: var(--x-text-md);", "Search detail" }
+                    strong { style: "font-size: var(--x-text-md);", {tr!("web-search-card-search-detail")} }
                     ModalCloseButton { on_close }
                 }
             },
@@ -480,7 +476,7 @@ fn SourceTimings(latency: serde_json::Value, counts: serde_json::Value) -> Eleme
                             key: "{name}",
                             style: "background: #F1F5F9; border-radius: 6px; padding: 1px 7px; \
                                     font-size: var(--x-text-xs); font-variant-numeric: tabular-nums;",
-                            "{name}: {n} in {ms:.0} ms"
+                            {tr!("web-search-card-engine-results", name: name.to_string(), count: n, ms: format!("{ms:.0}"))}
                         }
                     }
                 }
@@ -520,9 +516,9 @@ fn RankColumn(heading: String, rows: Vec<Row>, show_source_ranks: bool) -> Eleme
                             if show_source_ranks {
                                 "{row.sources.join(\", \")}"
                             } else if let Some(score) = row.rerank_score {
-                                "score {score:.3} \u{b7} was RRF #{row.rrf_rank}"
+                                {tr!("web-search-card-score-was-rank", score: format!("{score:.3}"), rank: row.rrf_rank.to_string())}
                             } else {
-                                "RRF #{row.rrf_rank}"
+                                {tr!("web-search-card-rrf", row_rrf_rank: row.rrf_rank.to_string())}
                             }
                         }
                     }

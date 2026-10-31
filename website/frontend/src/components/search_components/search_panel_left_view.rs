@@ -23,6 +23,8 @@ use common::{
     search_query::SearchQuery,
     search_result::{DocumentIdentifier, SearchResultDocuments, SearchResultHitCount},
 };
+use crate::tr;
+use crate::i18n::SharedText;
 #[derive(Copy, Clone)]
 pub struct SearchResultsState {
     pub query: ReadSignal<SearchQuery>,
@@ -210,7 +212,7 @@ fn SearchResultsView() -> Element {
         div {
             id: "x-search-results-scroll",
             style: "height: 100%; width: 100%; overflow-y: auto;",
-            if let Some(notice) = common::search_query::short_infix_notice(&search_result.query.query_string) {
+            if let Some(notice) = common::search_query::short_infix_notice(&search_result.query.query_string).shared() {
                 div { role: "status", style: "padding: 8px 12px;", "{notice}" }
             }
             if let Some(state) = empty_state {
@@ -247,8 +249,8 @@ fn SearchFailure(error: ServerFnError, on_retry: Callback<()>) -> Element {
             id: "x-search-failed",
             role: "alert",
             style: "padding: 24px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px;",
-            h2 { style: "font-size: var(--x-text-page); line-height: var(--x-line-page);", "The search did not complete" }
-            p { "Some collections did not answer. Select Retry to run the same search again." }
+            h2 { style: "font-size: var(--x-text-page); line-height: var(--x-line-page);", {tr!("panel-left-view-the-search-did-not-complete")} }
+            p { {tr!("panel-left-view-some-collections-did-not-answer")} }
             button {
                 style: "
                     border: 1px solid rgba(0,0,0,0.3); background: white;
@@ -257,7 +259,7 @@ fn SearchFailure(error: ServerFnError, on_retry: Callback<()>) -> Element {
                 ",
                 class: "hoover4-hover-shadow-background",
                 onclick: move |_| on_retry.call(()),
-                "Retry"
+                {tr!("panel-left-view-retry")}
             }
             p { style: "font-size: 13px; color: rgba(0, 0, 0, 0.55); max-width: 560px; overflow-wrap: anywhere;", "{detail}" }
         }
@@ -329,18 +331,18 @@ fn EmptySearchResults(state: EmptyState, query: ReadSignal<SearchQuery>) -> Elem
     let (id, title, explanation) = match state {
         EmptyState::NoMatch => (
             "x-search-no-results",
-            "No results".to_string(),
-            format!("No document matches “{}” with the selected filters.", query.read().query_string.trim()),
+            tr!("panel-left-view-no-results"),
+            tr!("panel-left-view-no-document-matches-query", query: query.read().query_string.trim().to_string()),
         ),
         EmptyState::FiltersMatchNothing => (
             "x-search-no-filter-results",
-            "No results".to_string(),
-            "No document matches the selected filters.".to_string(),
+            tr!("panel-left-view-no-results"),
+            tr!("panel-left-view-no-document-matches-the-selected"),
         ),
         EmptyState::AfterLastPage => (
             "x-search-after-last-page",
-            "This page is empty".to_string(),
-            "The page is after the last page of results.".to_string(),
+            tr!("panel-left-view-this-page-is-empty"),
+            tr!("panel-left-view-the-page-is-after-the"),
         ),
     };
     rsx! {
@@ -363,7 +365,7 @@ fn EmptySearchResults(state: EmptyState, query: ReadSignal<SearchQuery>) -> Elem
                             onclick: move |_| {
                                 navigator().push(clear_route.clone());
                             },
-                            "Clear filters"
+                            {tr!("panel-left-view-clear-filters")}
                         }
                     },
                     EmptyState::AfterLastPage => rsx! {
@@ -374,7 +376,7 @@ fn EmptySearchResults(state: EmptyState, query: ReadSignal<SearchQuery>) -> Elem
                             onclick: move |_| {
                                 navigator().push(first_route.clone());
                             },
-                            "Go to page 1"
+                            {tr!("panel-left-view-go-to-page-1")}
                         }
                     },
                 }
@@ -394,13 +396,13 @@ fn SimilarWords(query: ReadSignal<SearchQuery>) -> Element {
     rsx! {
         div { class: "x-search-similar-words", style: "display: flex; flex-direction: column; align-items: center; gap: 6px;",
             match current {
-                None => rsx! { p { role: "status", "Loading similar words." } },
+                None => rsx! { p { role: "status", {tr!("panel-left-view-loading-similar-words")} } },
                 Some(Err(error)) => rsx! { ServerErrorDisplay { error } },
                 Some(Ok(found)) => rsx! {
                     if found.queries.is_empty() {
-                        p { "No similar words were found in the selected collections." }
+                        p { {tr!("panel-left-view-no-similar-words-were-found")} }
                     } else {
-                        p { "Search for a similar word:" }
+                        p { {tr!("panel-left-view-search-for-a-similar-word")} }
                         div {
                             for suggestion in found.queries {
                                 button {

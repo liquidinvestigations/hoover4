@@ -16,6 +16,7 @@ use crate::components::admin_components::{
     ErrorBar, BTN, HELP_TEXT, INPUT, LINK, MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
 };
 use crate::routes::Route;
+use crate::tr;
 
 /// A report result: the rows and the time they were read, or an error message.
 type ReportState<T> = Option<Result<(Vec<T>, String), String>>;
@@ -35,12 +36,7 @@ pub fn format_utc_ms(ms: i64) -> String {
     let day = doy - (153 * mp + 2) / 5 + 1;
     let month = if mp < 10 { mp + 3 } else { mp - 9 };
     let year = yoe + era * 400 + i64::from(month <= 2);
-    format!(
-        "{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02} UTC",
-        rem / 3600,
-        (rem % 3600) / 60,
-        rem % 60
-    )
+    tr!("admin-llm-reports-utc", year: format!("{:04}", year), month: format!("{:02}", month), day: format!("{:02}", day), rem_3600: format!("{:02}", rem / 3600), rem_3600_60: format!("{:02}", (rem % 3600) / 60), rem_60: format!("{:02}", rem % 60))
 }
 
 /// The time now, as text. Only a click handler calls it, so it runs in the browser.
@@ -63,9 +59,9 @@ fn seconds(ms: u64) -> String {
 #[component]
 pub fn LlmReports() -> Element {
     rsx! {
-        h2 { style: "font-size: var(--x-text-section); line-height: var(--x-line-section); margin: 23px 0 8px;", "Reports" }
+        h2 { style: "font-size: var(--x-text-section); line-height: var(--x-line-section); margin: 23px 0 8px;", {tr!("admin-llm-reports-reports")} }
         p { style: "{HELP_TEXT} margin: 0 0 12px;",
-            "Each report runs when you select its button."
+            {tr!("admin-llm-reports-each-report-runs-when-you")}
         }
         ErrorCountsReport {}
         ErrorLogReport {}
@@ -85,10 +81,10 @@ fn RunBar(id: String, busy: bool, read_at: String, onclick: EventHandler<()>) ->
                 style: BTN,
                 disabled: busy,
                 onclick: move |_| onclick.call(()),
-                if busy { "Running\u{2026}" } else { "Run report" }
+                if busy { {tr!("admin-llm-reports-running-u")} } else { {tr!("admin-llm-reports-run-report")} }
             }
             if !read_at.is_empty() {
-                span { style: HELP_TEXT, "Read at {read_at}" }
+                span { style: HELP_TEXT, {tr!("admin-llm-reports-read-at", read_at: read_at.to_string())} }
             }
         }
     }
@@ -110,10 +106,10 @@ fn ErrorCountsReport() -> Element {
     let at = current.as_ref().and_then(|r| r.as_ref().ok()).map(|(_, t)| t.clone()).unwrap_or_default();
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Errors" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-llm-reports-errors")} }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 8px;",
-                    "Failed attempts by step and error class, and agent runs that failed or ended early by their end reason."
+                    {tr!("admin-llm-reports-failed-attempts-by-step-and")}
                 }
                 RunBar { id: "x-llm-report-errors-run", busy: *busy.read(), read_at: at, onclick: run }
                 match current {
@@ -123,8 +119,8 @@ fn ErrorCountsReport() -> Element {
                         table { id: "x-llm-report-errors-result", style: TABLE,
                             thead {
                                 tr {
-                                    th { style: TH, "Source" }
-                                    th { style: TH, "Class" }
+                                    th { style: TH, {tr!("admin-llm-reports-source")} }
+                                    th { style: TH, {tr!("admin-llm-reports-class")} }
                                     th { style: TH, "24 h" }
                                     th { style: TH, "7 d" }
                                     th { style: TH, "30 d" }
@@ -132,7 +128,7 @@ fn ErrorCountsReport() -> Element {
                             }
                             tbody {
                                 if rows.is_empty() {
-                                    tr { td { style: TD, colspan: "5", "No errors in 30 days." } }
+                                    tr { td { style: TD, colspan: "5", {tr!("admin-llm-reports-no-errors-in-30-days")} } }
                                 }
                                 for (i, r) in rows.into_iter().enumerate() {
                                     tr { key: "{i}",
@@ -168,10 +164,10 @@ fn ErrorLogReport() -> Element {
     let at = current.as_ref().and_then(|r| r.as_ref().ok()).map(|(_, t)| t.clone()).unwrap_or_default();
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Recent errors" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-llm-reports-recent-errors")} }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 8px;",
-                    "The newest 100 failed attempts of 7 days. Open a row to read its error."
+                    {tr!("admin-llm-reports-the-newest-100-failed-attempts")}
                 }
                 RunBar { id: "x-llm-report-log-run", busy: *busy.read(), read_at: at, onclick: run }
                 match current {
@@ -181,17 +177,17 @@ fn ErrorLogReport() -> Element {
                         table { id: "x-llm-report-log-result", style: TABLE,
                             thead {
                                 tr {
-                                    th { style: TH, "Time" }
-                                    th { style: TH, "Source" }
-                                    th { style: TH, "User" }
-                                    th { style: TH, "Name" }
-                                    th { style: TH, "Class" }
-                                    th { style: TH, "Error" }
+                                    th { style: TH, {tr!("admin-llm-reports-time")} }
+                                    th { style: TH, {tr!("admin-llm-reports-source")} }
+                                    th { style: TH, {tr!("admin-llm-reports-user")} }
+                                    th { style: TH, {tr!("admin-llm-reports-name")} }
+                                    th { style: TH, {tr!("admin-llm-reports-class")} }
+                                    th { style: TH, {tr!("admin-llm-reports-error")} }
                                 }
                             }
                             tbody {
                                 if rows.is_empty() {
-                                    tr { td { style: TD, colspan: "6", "No errors in 7 days." } }
+                                    tr { td { style: TD, colspan: "6", {tr!("admin-llm-reports-no-errors-in-7-days")} } }
                                 }
                                 for (i, r) in rows.into_iter().enumerate() {
                                     tr { key: "{i}",
@@ -202,7 +198,7 @@ fn ErrorLogReport() -> Element {
                                         td { style: TD, "{r.class}" }
                                         td { style: TD,
                                             details {
-                                                summary { style: "cursor: pointer;", "Show" }
+                                                summary { style: "cursor: pointer;", {tr!("admin-llm-reports-show")} }
                                                 pre { style: "white-space: pre-wrap; margin: 6px 0 0; font-size: var(--x-text-xs);", "{r.error}" }
                                             }
                                         }
@@ -233,10 +229,10 @@ fn ToolTableReport() -> Element {
     let at = current.as_ref().and_then(|r| r.as_ref().ok()).map(|(_, t)| t.clone()).unwrap_or_default();
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Tool calls" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-llm-reports-tool-calls")} }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 8px;",
-                    "One row for each tool, by calls in 30 days. An error is a failed call."
+                    {tr!("admin-llm-reports-one-row-for-each-tool")}
                 }
                 RunBar { id: "x-llm-report-tools-run", busy: *busy.read(), read_at: at, onclick: run }
                 match current {
@@ -246,21 +242,21 @@ fn ToolTableReport() -> Element {
                         table { id: "x-llm-report-tools-result", style: TABLE,
                             thead {
                                 tr {
-                                    th { style: TH, "Tool" }
-                                    th { style: TH, "Calls 24 h" }
-                                    th { style: TH, "Error % 24 h" }
-                                    th { style: TH, "Avg ms 24 h" }
-                                    th { style: TH, "Calls 7 d" }
-                                    th { style: TH, "Error % 7 d" }
-                                    th { style: TH, "Avg ms 7 d" }
-                                    th { style: TH, "Calls 30 d" }
-                                    th { style: TH, "Error % 30 d" }
-                                    th { style: TH, "Avg ms 30 d" }
+                                    th { style: TH, {tr!("admin-llm-reports-tool")} }
+                                    th { style: TH, {tr!("admin-llm-reports-calls-24-h")} }
+                                    th { style: TH, {tr!("admin-llm-reports-error-24-h")} }
+                                    th { style: TH, {tr!("admin-llm-reports-avg-ms-24-h")} }
+                                    th { style: TH, {tr!("admin-llm-reports-calls-7-d")} }
+                                    th { style: TH, {tr!("admin-llm-reports-error-7-d")} }
+                                    th { style: TH, {tr!("admin-llm-reports-avg-ms-7-d")} }
+                                    th { style: TH, {tr!("admin-llm-reports-calls-30-d")} }
+                                    th { style: TH, {tr!("admin-llm-reports-error-30-d")} }
+                                    th { style: TH, {tr!("admin-llm-reports-avg-ms-30-d")} }
                                 }
                             }
                             tbody {
                                 if rows.is_empty() {
-                                    tr { td { style: TD, colspan: "10", "No tool calls in 30 days." } }
+                                    tr { td { style: TD, colspan: "10", {tr!("admin-llm-reports-no-tool-calls-in-30")} } }
                                 }
                                 for r in rows {
                                     tr { key: "{r.tool}",
@@ -303,19 +299,19 @@ fn TopUsersReport() -> Element {
     let at = current.as_ref().and_then(|r| r.as_ref().ok()).map(|(_, t)| t.clone()).unwrap_or_default();
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Top users" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-llm-reports-top-users")} }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 8px;",
-                    "The 30 users with the most model time in the window."
+                    {tr!("admin-llm-reports-the-30-users-with-the")}
                 }
                 select {
                     id: "x-llm-report-users-window",
                     style: "{INPUT} margin-bottom: 8px;",
                     value: "{days}",
                     onchange: move |e| days.set(e.value().parse().unwrap_or(30)),
-                    option { value: "30", "30 days" }
-                    option { value: "7", "7 days" }
-                    option { value: "1", "24 hours" }
+                    option { value: "30", {tr!("admin-llm-reports-30-days")} }
+                    option { value: "7", {tr!("admin-llm-reports-7-days")} }
+                    option { value: "1", {tr!("admin-llm-reports-24-hours")} }
                 }
                 RunBar { id: "x-llm-report-users-run", busy: *busy.read(), read_at: at, onclick: run }
                 match current {
@@ -325,18 +321,18 @@ fn TopUsersReport() -> Element {
                         table { id: "x-llm-report-users-result", style: TABLE,
                             thead {
                                 tr {
-                                    th { style: TH, "User" }
-                                    th { style: TH, "Tool calls" }
-                                    th { style: TH, "Tool time" }
-                                    th { style: TH, "Model calls" }
-                                    th { style: TH, "Model time" }
-                                    th { style: TH, "Tokens in" }
-                                    th { style: TH, "Tokens out" }
+                                    th { style: TH, {tr!("admin-llm-reports-user")} }
+                                    th { style: TH, {tr!("admin-llm-reports-tool-calls")} }
+                                    th { style: TH, {tr!("admin-llm-reports-tool-time")} }
+                                    th { style: TH, {tr!("admin-llm-reports-model-calls")} }
+                                    th { style: TH, {tr!("admin-llm-reports-model-time")} }
+                                    th { style: TH, {tr!("admin-llm-reports-tokens-in")} }
+                                    th { style: TH, {tr!("admin-llm-reports-tokens-out")} }
                                 }
                             }
                             tbody {
                                 if rows.is_empty() {
-                                    tr { td { style: TD, colspan: "7", "No agent use in the window." } }
+                                    tr { td { style: TD, colspan: "7", {tr!("admin-llm-reports-no-agent-use-in-the")} } }
                                 }
                                 for r in rows {
                                     tr { key: "{r.username}",
@@ -393,19 +389,19 @@ fn SystemOneReport() -> Element {
     let at = current.as_ref().and_then(|r| r.as_ref().ok()).map(|(_, t)| t.clone()).unwrap_or_default();
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "System one checks" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-llm-reports-system-one-checks")} }
             div { style: MODULE_BODY,
-                p { style: HELP_TEXT, "Requests are grouped by hook and rule. Latencies are in milliseconds. Shares use requests from the last 30 days." }
+                p { style: HELP_TEXT, {tr!("admin-llm-reports-requests-are-grouped-by-hook")} }
                 RunBar { id: "x-admin-llm-run-systemone", busy: busy(), read_at: at, onclick: run }
-                button { style: BTN, onclick: move |_| failures.set(false), "Counts" }
-                button { style: BTN, onclick: move |_| failures.set(true), "Recent failures" }
+                button { style: BTN, onclick: move |_| failures.set(false), {tr!("admin-llm-reports-counts")} }
+                button { style: BTN, onclick: move |_| failures.set(true), {tr!("admin-llm-reports-recent-failures")} }
                 match current {
-                    None => rsx! { p { style: HELP_TEXT, "Select Run report to read the statistics." } },
+                    None => rsx! { p { style: HELP_TEXT, {tr!("admin-llm-reports-select-run-report-to-read")} } },
                     Some(Err(error)) => rsx! { ErrorBar { message: error } },
                     Some(Ok((report, _))) => rsx! {
                         if failures() {
                             table { id: "x-admin-llm-systemone-failures", style: TABLE,
-                                thead { tr { th { style: TH, "Time" } th { style: TH, "Hook" } th { style: TH, "Rule" } th { style: TH, "Outcome" } } }
+                                thead { tr { th { style: TH, {tr!("admin-llm-reports-time")} } th { style: TH, {tr!("admin-llm-reports-hook")} } th { style: TH, {tr!("admin-llm-reports-rule")} } th { style: TH, {tr!("admin-llm-reports-outcome")} } } }
                                 tbody { for (index, row) in report.failures.iter().enumerate() {
                                     tr { key: "{index}",
                                         td { style: TD, "{format_utc_ms(row.time_ms)}" }
@@ -416,7 +412,7 @@ fn SystemOneReport() -> Element {
                         } else {
                             table { id: "x-admin-llm-systemone", style: TABLE,
                                 thead { tr {
-                                    for title in ["Hook", "Rule", "24h", "7d", "30d", "Questions", "Median ms", "95th percentile ms", "Error %", "Positive %", "Actions"] {
+                                    for title in ["Hook".to_string(), tr!("admin-llm-reports-rule"), "24h".to_string(), "7d".to_string(), "30d".to_string(), tr!("admin-llm-reports-questions"), tr!("admin-llm-reports-median-ms"), tr!("admin-llm-reports-95th-percentile-ms"), tr!("admin-llm-reports-error-2"), tr!("admin-llm-reports-positive"), tr!("admin-llm-reports-actions")] {
                                         th { key: "{title}", style: TH, "{title}" }
                                     }
                                 } }

@@ -14,6 +14,8 @@ use dioxus_free_icons::{
 };
 
 use crate::{data_definitions::doc_viewer_state::ViewerRightTabState, routes::Route};
+use crate::tr;
+use crate::i18n::SharedText;
 
 #[component]
 pub fn DocCardActionButtonOpenNewTab(
@@ -84,7 +86,7 @@ pub fn DocCardActionButtonMore(
         toast_api.info(
             "Link copied to clipboard.".to_string(),
             dioxus_primitives::toast::ToastOptions::new()
-                .description("The document link has been copied to your clipboard.")
+                .description(tr!("card-action-buttons-the-document-link-has-been"))
                 .duration(std::time::Duration::from_secs(15))
                 .permanent(false),
         );
@@ -94,7 +96,7 @@ pub fn DocCardActionButtonMore(
         toast_api.info(
             "Document download started.".to_string(),
             dioxus_primitives::toast::ToastOptions::new()
-                .description("The document is being downloaded to your computer.")
+                .description(tr!("card-action-buttons-the-document-is-being-downloaded"))
                 .duration(std::time::Duration::from_secs(15))
                 .permanent(false),
         );
@@ -240,7 +242,7 @@ pub fn DocCardActionButtonMore(
                                 icon: MdInsertLink,
                                 style: "width: 19px; height: 19px;"
                             },
-                            "Copy Document Link"
+                            {tr!("card-action-buttons-copy-document-link")}
                         },
                         div {
                             style: "width: 100%; border-bottom: 1px solid rgba(0, 0, 0, 0.5);",
@@ -250,13 +252,13 @@ pub fn DocCardActionButtonMore(
                                 class: "x-download-refused",
                                 role: "menuitem",
                                 "aria-disabled": "true",
-                                title: "{common::antivirus::refused_download_tooltip(&signature)}",
+                                title: "{common::antivirus::refused_download_tooltip(&signature).shared()}",
                                 style: "padding: 4px; padding-left: 8px; margin: 0; display: flex; flex-direction: row; align-items: center; gap: 8px; color: rgba(0,0,0,0.45); text-decoration: line-through; cursor: not-allowed;",
                                 Icon {
                                     icon: MdFileDownload,
                                     style: "width: 19px; height: 19px;"
                                 },
-                                "Download Document"
+                                {tr!("card-action-buttons-download-document")}
                             }
                         }
                         a {
@@ -289,7 +291,7 @@ pub fn DocCardActionButtonMore(
                                 icon: MdFileDownload,
                                 style: "width: 19px; height: 19px;"
                             },
-                            "Download Document"
+                            {tr!("card-action-buttons-download-document")}
                         },
 
                         if show_finder {
@@ -325,7 +327,7 @@ pub fn DocCardActionButtonMore(
                                     ",
                                     {folder_icon()}
                                 }
-                                "Open in File Browser"
+                                {tr!("card-action-buttons-open-in-file-browser")}
                             }
                         }
 

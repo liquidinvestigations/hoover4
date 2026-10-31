@@ -15,14 +15,16 @@ use crate::components::feedback_control::kb;
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::pages::admin::collections_list::short_date;
 use crate::routes::Route;
+use crate::tr;
+use crate::i18n::SharedText;
 
 #[component]
 pub fn AdminFeedbackPage(search: String, status: String, page: u32) -> Element {
     rsx! {
-        Title { "Admin: feedback" }
+        Title { {tr!("admin-feedback-admin-feedback")} }
         AdminGuard {
             AdminShell {
-                title: "Feedback".to_string(),
+                title: tr!("admin-feedback-feedback").to_string(),
                 breadcrumb: String::new(),
                 active: "feedback".to_string(),
                 SuspendWrapper { FeedbackContent { search, status, page } }
@@ -68,7 +70,7 @@ fn FeedbackContent(search: String, status: String, page: u32) -> Element {
             input {
                 id: "x-feedback-search",
                 style: "{INPUT} width: 320px;",
-                placeholder: "Search titles, descriptions, accounts and addresses",
+                placeholder: tr!("admin-feedback-search-titles-descriptions-accounts-and"),
                 value: "{draft}",
                 oninput: move |e| draft.set(e.value()),
                 onkeydown: move |e: KeyboardEvent| {
@@ -77,7 +79,7 @@ fn FeedbackContent(search: String, status: String, page: u32) -> Element {
                     }
                 },
             }
-            button { style: BTN, onclick: submit_search, "Search" }
+            button { style: BTN, onclick: submit_search, {tr!("admin-feedback-search")} }
             select {
                 id: "x-feedback-status",
                 style: SELECT,
@@ -89,7 +91,7 @@ fn FeedbackContent(search: String, status: String, page: u32) -> Element {
                     }
                 },
                 for s in FeedbackStatusFilter::ALL {
-                    option { value: s.as_param(), selected: s == status, "{s.label()}" }
+                    option { value: s.as_param(), selected: s == status, "{s.label().shared()}" }
                 }
             }
         }
@@ -97,24 +99,24 @@ fn FeedbackContent(search: String, status: String, page: u32) -> Element {
             ErrorBar { message }
         }
         match &*list_res.read() {
-            None => rsx! { p { style: HELP_TEXT, "Loading reports\u{2026}" } },
+            None => rsx! { p { style: HELP_TEXT, {tr!("admin-feedback-loading-reports-u")} } },
             Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
             Some(Ok(data)) => {
                 let pages = data.total.div_ceil(u64::from(FEEDBACK_PAGE_SIZE)).max(1);
                 rsx! {
                     p { id: "x-feedback-count", style: HELP_TEXT,
-                        if data.total == 1 { "1 report matches." } else { "{data.total} reports match." }
+                        if data.total == 1 { {tr!("admin-feedback-1-report-matches")} } else { {tr!("admin-feedback-reports-match", data_total: data.total)} }
                     }
                     if !data.rows.is_empty() {
                         table { style: TABLE,
                             thead {
                                 tr {
-                                    th { style: TH, "Received" }
-                                    th { style: TH, "Type" }
-                                    th { style: TH, "Title" }
-                                    th { style: TH, "From" }
-                                    th { style: TH, "Captures" }
-                                    th { style: TH, "State" }
+                                    th { style: TH, {tr!("admin-feedback-received")} }
+                                    th { style: TH, {tr!("admin-feedback-type")} }
+                                    th { style: TH, {tr!("admin-feedback-title")} }
+                                    th { style: TH, {tr!("admin-feedback-from")} }
+                                    th { style: TH, {tr!("admin-feedback-captures")} }
+                                    th { style: TH, {tr!("admin-feedback-state")} }
                                     th { style: TH, "" }
                                 }
                             }
@@ -140,11 +142,11 @@ fn FeedbackContent(search: String, status: String, page: u32) -> Element {
                     if pages > 1 {
                         div { style: "display: flex; gap: 12px; align-items: center; margin-top: 12px;",
                             if page > 1 {
-                                Link { to: route(&search, status, page - 1), style: LINK, "Previous page" }
+                                Link { to: route(&search, status, page - 1), style: LINK, {tr!("admin-feedback-previous-page")} }
                             }
-                            span { style: HELP_TEXT, "Page {page} of {pages}" }
+                            span { style: HELP_TEXT, {tr!("admin-feedback-page-of", page: page, pages: pages)} }
                             if u64::from(page) < pages {
-                                Link { id: "x-feedback-next-page", to: route(&search, status, page + 1), style: LINK, "Next page" }
+                                Link { id: "x-feedback-next-page", to: route(&search, status, page + 1), style: LINK, {tr!("admin-feedback-next-page")} }
                             }
                         }
                     }
@@ -158,7 +160,7 @@ fn FeedbackContent(search: String, status: String, page: u32) -> Element {
 fn FeedbackRow(row: FeedbackListRow, on_change: EventHandler<Result<(), String>>) -> Element {
     let mut expanded = use_signal(|| false);
     let weight = if row.is_read { "400" } else { "600" };
-    let kind_label = if row.kind == "bug" { "Bug" } else { "Feedback" };
+    let kind_label = if row.kind == "bug" { tr!("admin-feedback-bug") } else { tr!("admin-feedback-feedback") };
     let set_flags = {
         let report_id = row.report_id.clone();
         move |is_read: bool, is_archived: bool| {
@@ -189,20 +191,20 @@ fn FeedbackRow(row: FeedbackListRow, on_change: EventHandler<Result<(), String>>
             }
             td { style: TD, "{row.username}" }
             td { style: "{TD} white-space: nowrap;",
-                "Image {kb(row.screenshot_bytes)}"
-                div { style: HELP_TEXT, "DOM {kb(row.dom_bytes)}" }
+                {tr!("admin-feedback-image", kb_row_screenshot_bytes: kb(row.screenshot_bytes))}
+                div { style: HELP_TEXT, {tr!("admin-feedback-dom", kb_row_dom_bytes: kb(row.dom_bytes))} }
             }
             td { style: TD,
-                if is_read { "Read" } else { "Unread" }
-                if is_archived { div { style: HELP_TEXT, "Archived" } }
+                if is_read { {tr!("admin-feedback-read")} } else { {tr!("admin-feedback-unread")} }
+                if is_archived { div { style: HELP_TEXT, {tr!("admin-feedback-archived")} } }
             }
             td { style: "{TD} white-space: nowrap;",
                 button { class: "x-feedback-read", style: BTN_SMALL, onclick: move |_| toggle_read(!is_read, is_archived),
-                    if is_read { "Mark unread" } else { "Mark read" }
+                    if is_read { {tr!("admin-feedback-mark-unread")} } else { {tr!("admin-feedback-mark-read")} }
                 }
                 " "
                 button { class: "x-feedback-archive", style: BTN_SMALL, onclick: move |_| toggle_archive(is_read, !is_archived),
-                    if is_archived { "Restore" } else { "Archive" }
+                    if is_archived { {tr!("admin-feedback-restore")} } else { {tr!("admin-feedback-archive")} }
                 }
             }
         }
@@ -228,7 +230,7 @@ fn FeedbackDetail(row: FeedbackListRow) -> Element {
     rsx! {
         div { class: "x-feedback-detail", style: "padding: 4px 0 8px;",
             p { style: HELP_TEXT,
-                "Page: "
+                {tr!("admin-feedback-page")}
                 if is_safe_link(&row.page_url) {
                     a { href: "{row.page_url}", style: LINK, target: "_blank", rel: "noopener", "{row.page_url}" }
                 } else {
@@ -236,28 +238,28 @@ fn FeedbackDetail(row: FeedbackListRow) -> Element {
                 }
             }
             if row.description.is_empty() {
-                p { style: HELP_TEXT, "The report has no description." }
+                p { style: HELP_TEXT, {tr!("admin-feedback-the-report-has-no-description")} }
             } else {
                 p { style: "white-space: pre-wrap; margin: 8px 0;", "{row.description}" }
             }
             div { style: "display: flex; gap: 16px; margin: 8px 0;",
                 if row.screenshot_bytes > 0 {
-                    a { href: "{image_url}", style: LINK, target: "_blank", rel: "noopener", "Open the page image" }
+                    a { href: "{image_url}", style: LINK, target: "_blank", rel: "noopener", {tr!("admin-feedback-open-the-page-image")} }
                 }
                 if row.dom_bytes > 0 {
-                    a { href: "{dom_url}", style: LINK, target: "_blank", rel: "noopener", "Open the DOM copy" }
+                    a { href: "{dom_url}", style: LINK, target: "_blank", rel: "noopener", {tr!("admin-feedback-open-the-dom-copy")} }
                 }
             }
             if row.screenshot_bytes > 0 {
                 img {
                     src: "{image_url}",
-                    alt: "Page image of the report",
+                    alt: tr!("admin-feedback-page-image-of-the-report"),
                     style: "display: block; max-width: 100%; max-height: 480px; border: 1px solid; border-color: var(--x-border);",
                 }
             }
-            h3 { style: SUBHEADING, "Debug context and browser log" }
+            h3 { style: SUBHEADING, {tr!("admin-feedback-debug-context-and-browser-log")} }
             match &*detail_res.read() {
-                None => rsx! { p { style: HELP_TEXT, "Loading\u{2026}" } },
+                None => rsx! { p { style: HELP_TEXT, {tr!("admin-feedback-loading-u")} } },
                 Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
                 Some(Ok(detail)) => rsx! {
                     pre { style: "font-size: var(--x-text-xs); max-height: 360px; overflow: auto; background-color: var(--x-surface-muted); padding: 8px; border-radius: 6px; white-space: pre-wrap; word-break: break-word;",

@@ -26,6 +26,7 @@ use crate::components::suspend_boundary::SuspendWrapper;
 use crate::data_definitions::doc_viewer_state::{DocViewerState, DocViewerStateControl};
 use crate::data_definitions::url_param::UrlParam;
 use crate::routes::Route;
+use crate::tr;
 
 /// What of an in-flight turn is still worth rendering.
 ///
@@ -111,7 +112,7 @@ pub fn AiChatSessionPage(
     doc_viewer_state: UrlParam<Option<DocViewerState>>,
 ) -> Element {
     rsx! {
-        Title { "Hoover Search - AI Chat" }
+        Title { {tr!("ai-chat-session-hoover-search-ai-chat")} }
         AiChatSessionRoot {
             session_id,
             selected_result_hash: selected_result_hash.0.clone(),
@@ -277,7 +278,7 @@ fn AiChatSessionRoot(
         return rsx! {
             div {
                 style: "padding: 24px; color: var(--x-ink-muted);",
-                if load_error { "This conversation could not be loaded." } else { "Loading\u{2026}" }
+                if load_error { {tr!("ai-chat-session-this-conversation-could-not-be")} } else { {tr!("ai-chat-session-loading-u")} }
             }
         };
     };
@@ -482,7 +483,7 @@ fn ChatConversationPanel(
                         }
                         failures += 1;
                         if failures >= 3 {
-                            error.set(Some(format!("lost contact with the chat: {e}")));
+                            error.set(Some(tr!("ai-chat-session-lost-contact-with-the-chat", e: e.to_string())));
                             sending.set(false);
                             return;
                         }
@@ -600,9 +601,7 @@ fn ChatConversationPanel(
             // arriving, and there was nothing to read. `Ok(false)` is not a failure. It
             // means the turn had already finished, which is the outcome the user wanted.
             if let Err(e) = chat_stop(id).await {
-                error.set(Some(format!(
-                    "could not stop the answer: {e} \u{2014} it is still running"
-                )));
+                error.set(Some(tr!("ai-chat-session-could-not-stop-the-answer", e: e.to_string())));
             }
         });
     };
@@ -632,13 +631,13 @@ fn ChatConversationPanel(
                     to: Route::AiChatPage {},
                     style: "color: var(--x-link); text-decoration: none; font-size: var(--x-text-sm); \
                             white-space: nowrap;",
-                    "\u{2190} Chats"
+                    {tr!("ai-chat-session-u-chats")}
                 }
                 Link {
                     to: Route::AiChatHistoryPage {},
                     style: "color: var(--x-ink-muted); text-decoration: none; font-size: var(--x-text-sm); \
                             white-space: nowrap;",
-                    "History"
+                    {tr!("ai-chat-session-history")}
                 }
                 // The conversation's own name, so a chat opened from the history
                 // list still says which one it is once you have scrolled away from
@@ -657,7 +656,7 @@ fn ChatConversationPanel(
                 }
                 button {
                     "data-chat-workspace-button": "true",
-                    title: "Show the files that the assistant wrote in this conversation",
+                    title: tr!("ai-chat-session-show-the-files-that-the"),
                     style: "background: none; border: 1px solid; border-color: var(--x-border); border-radius: 6px; \
                             padding: 2px 10px; cursor: pointer; color: var(--x-link); font-size: var(--x-text-sm); \
                             white-space: nowrap;",
@@ -666,7 +665,7 @@ fn ChatConversationPanel(
                             open.open.call((String::new(), None));
                         }
                     },
-                    "Workspace"
+                    {tr!("ai-chat-session-workspace")}
                 }
             }
             ConversationFindBar {
@@ -696,14 +695,13 @@ fn ChatConversationPanel(
                             border: 1px solid #FDE68A; border-radius: 8px; font-size: var(--x-text-sm); \
                             color: #92400E; display: flex; align-items: center; gap: 10px;",
                     span { style: "flex: 1;",
-                        "This answer was interrupted before it finished, because the page or \
-                         the server stopped mid-turn. Ask again to retry."
+                        {tr!("ai-chat-session-this-answer-was-interrupted-before")}
                     }
                     button {
                         style: "background: none; border: 1px solid #D97706; border-radius: 6px; \
                                 color: #92400E; cursor: pointer; font-size: var(--x-text-xs); padding: 2px 8px;",
                         onclick: on_dismiss_interrupted,
-                        "Dismiss"
+                        {tr!("ai-chat-session-dismiss")}
                     }
                 }
             }
@@ -726,8 +724,8 @@ fn ChatConversationPanel(
                 div {
                     class: "x-chat-board-read-only",
                     style: "padding: 12px 18px; flex-shrink: 0; font-size: var(--x-text-sm); color: var(--x-ink-muted);",
-                    "Board explore chats are read-only. "
-                    Link { to: board, style: "color: var(--x-link);", "Open the board" }
+                    {tr!("ai-chat-session-board-explore-chats-are-read")}
+                    Link { to: board, style: "color: var(--x-link);", {tr!("ai-chat-session-open-the-board")} }
                 }
             } else {
                 div { style: "padding: 12px 14px; flex-shrink: 0; position: relative;",

@@ -14,17 +14,19 @@ use crate::components::admin_components::{
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
 use common::storage_tree::{format_size, state_label};
+use crate::tr;
+use crate::i18n::SharedText;
 
 #[component]
 pub fn AdminDatasetPage(collection_id: String, dataset_id: String) -> Element {
     let collection_id_for_content = collection_id.clone();
     let dataset_id_for_content = dataset_id.clone();
     rsx! {
-        Title { "Admin: dataset {dataset_id}" }
+        Title { {tr!("admin-dataset-detail-admin-dataset", dataset_id: dataset_id.to_string())} }
         AdminGuard {
             AdminShell {
-                title: format!("Dataset {dataset_id}"),
-                breadcrumb: format!("Collections \u{203a} {collection_id}"),
+                title: tr!("admin-dataset-detail-dataset", dataset_id: dataset_id.to_string()),
+                breadcrumb: tr!("admin-dataset-detail-collections", collection_id: collection_id.to_string()),
                 active: "collections".to_string(),
                 SuspendWrapper {
                     DatasetDetailContent {
@@ -68,9 +70,9 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
     let Some(detail) = detail else {
         return rsx! {
             if load_failed {
-                ErrorBar { message: "Failed to load dataset" }
+                ErrorBar { message: tr!("admin-dataset-detail-failed-to-load-dataset") }
             } else {
-                "Loading..."
+                {tr!("admin-dataset-detail-loading")}
             }
         };
     };
@@ -85,30 +87,30 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
             ErrorBar { message: err }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Metadata" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-dataset-detail-metadata")} }
             div { style: "{MODULE_BODY} display: flex; flex-direction: column; gap: 10px; max-width: 640px;",
                 label { style: LABEL,
-                    span { style: "width: 90px; color: var(--x-ink-muted);", "Display name" }
+                    span { style: "width: 90px; color: var(--x-ink-muted);", {tr!("admin-dataset-detail-display-name")} }
                     input { style: "{INPUT} flex: 1;", value: "{display_name}", oninput: move |e| display_name.set(e.value()) }
                 }
                 div { style: "display: flex; font-size: var(--x-text-sm);",
-                    span { style: "width: 96px; color: var(--x-ink-muted);", "Name" }
+                    span { style: "width: 96px; color: var(--x-ink-muted);", {tr!("admin-dataset-detail-name")} }
                     span { "{detail.dataset.dataset_name}" }
                 }
                 div { style: "display: flex; font-size: var(--x-text-sm);",
-                    span { style: "width: 96px; color: var(--x-ink-muted);", "Type" }
+                    span { style: "width: 96px; color: var(--x-ink-muted);", {tr!("admin-dataset-detail-type")} }
                     span { "{detail.dataset.dataset_type}" }
                 }
                 div { style: "display: flex; font-size: var(--x-text-sm);",
-                    span { style: "width: 96px; color: var(--x-ink-muted);", "Path" }
+                    span { style: "width: 96px; color: var(--x-ink-muted);", {tr!("admin-dataset-detail-path")} }
                     span { style: "word-break: break-all;", "{detail.dataset.dataset_path}" }
                 }
                 div { style: "display: flex; font-size: var(--x-text-sm);",
-                    span { style: "width: 96px; color: var(--x-ink-muted);", "Created" }
+                    span { style: "width: 96px; color: var(--x-ink-muted);", {tr!("admin-dataset-detail-created")} }
                     span { "{detail.dataset.date_created}" }
                 }
                 div { style: "display: flex; font-size: var(--x-text-sm); align-items: baseline;",
-                    span { style: "width: 96px; color: var(--x-ink-muted);", "Collection" }
+                    span { style: "width: 96px; color: var(--x-ink-muted);", {tr!("admin-dataset-detail-collection")} }
                     Link {
                         to: Route::AdminCollectionPage { collection_id: detail.collectionname.clone() },
                         style: LINK,
@@ -139,46 +141,46 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                                 });
                             }
                         },
-                        "Save"
+                        {tr!("admin-dataset-detail-save")}
                     }
                 }
             }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Statistics" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-dataset-detail-statistics")} }
             div { style: "{MODULE_BODY} display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px;",
                 match detail.aggregates.clone() {
                     Some(a) => rsx! {
-                        StatCard { label: "State", value: state_label(a.processing).to_string() }
-                        StatCard { label: "Documents", value: a.document_count.to_string() }
-                        StatCard { label: "Size", value: format_size(a.total_size_bytes) }
-                        StatCard { label: "Indexed", value: a.indexed_count.to_string() }
-                        StatCard { label: "Errors", value: a.error_count.to_string() }
+                        StatCard { label: tr!("admin-dataset-detail-state"), value: state_label(a.processing).shared().to_string() }
+                        StatCard { label: tr!("admin-dataset-detail-documents"), value: a.document_count.to_string() }
+                        StatCard { label: tr!("admin-dataset-detail-size"), value: format_size(a.total_size_bytes) }
+                        StatCard { label: tr!("admin-dataset-detail-indexed"), value: a.indexed_count.to_string() }
+                        StatCard { label: tr!("admin-dataset-detail-errors"), value: a.error_count.to_string() }
                     },
                     None => rsx! {
-                        StatCard { label: "Documents", value: "Not counted yet".to_string() }
+                        StatCard { label: tr!("admin-dataset-detail-documents"), value: "Not counted yet".to_string() }
                     },
                 }
-                StatCard { label: "Plans finished", value: format!("{} of {}", detail.stats.plans_finished, detail.stats.plans_total) }
+                StatCard { label: tr!("admin-dataset-detail-plans-finished"), value: tr!("admin-dataset-detail-of", detail_stats_plans_finished: detail.stats.plans_finished.to_string(), detail_stats_plans_total: detail.stats.plans_total.to_string()) }
             }
         }
         DatasetOcrSettingsPanel { collection_dataset: dataset_id.clone() }
         ProcessingUpdatesPanel { scope_kind: "dataset".to_string(), scope_id: dataset_id.clone() }
         if is_disk {
             div { class: "x-admin-module", style: MODULE,
-                h2 { style: MODULE_CAPTION, "Disk" }
+                h2 { style: MODULE_CAPTION, {tr!("admin-dataset-detail-disk")} }
                 div { style: MODULE_BODY,
                     p { style: "{HELP_TEXT} margin: 0 0 8px;",
-                        "Rescan disk reads the dataset folder again, adds new and changed files, and processes them."
+                        {tr!("admin-dataset-detail-rescan-disk-reads-the-dataset")}
                     }
-                    WorkflowButton { label: "Rescan disk", kind: "rescan", dataset_id: dataset_id.clone(), pending, msg, error_msg }
+                    WorkflowButton { label: tr!("admin-dataset-detail-rescan-disk"), kind: "rescan", dataset_id: dataset_id.clone(), pending, msg, error_msg }
                 }
             }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", "Danger zone" }
+            h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", {tr!("admin-dataset-detail-danger-zone")} }
             div { style: MODULE_BODY,
-                p { style: "{HELP_TEXT} margin: 0 0 8px;", "This deletes the dataset and all data extracted from it. You cannot undo it." }
+                p { style: "{HELP_TEXT} margin: 0 0 8px;", {tr!("admin-dataset-detail-this-deletes-the-dataset-and")} }
                 button {
                     style: BTN_DANGER,
                     onclick: {
@@ -197,7 +199,7 @@ fn DatasetDetailContent(collection_id: String, dataset_id: String) -> Element {
                             });
                         }
                     },
-                    "Delete dataset and its data"
+                    {tr!("admin-dataset-detail-delete-dataset-and-its-data")}
                 }
             }
         }
@@ -221,7 +223,7 @@ fn DatasetUploadsControl(collection_dataset: String) -> Element {
         .and_then(|r| r.as_ref().err().map(user_facing_message));
 
     if let Some(err) = load_error {
-        return rsx! { ErrorBar { message: format!("The upload setting could not be read: {err}") } };
+        return rsx! { ErrorBar { message: tr!("admin-dataset-detail-the-upload-setting-could-not", err: err.to_string()) } };
     }
     let Some(setting) = setting else {
         return rsx! {};
@@ -234,9 +236,9 @@ fn DatasetUploadsControl(collection_dataset: String) -> Element {
     let mount_gone = !setting.writable_mount;
     let others = setting.other_upload_datasets.join(", ");
     let blocked_note = if setting.other_upload_datasets.len() == 1 {
-        format!("{others} already accepts uploads.")
+        tr!("admin-dataset-detail-already-accepts-uploads", others: others.to_string())
     } else {
-        format!("{others} already accept uploads.")
+        tr!("admin-dataset-detail-already-accept-uploads", others: others.to_string())
     };
     let blocked = !setting.enabled && !setting.other_upload_datasets.is_empty();
     let conflict = setting.enabled && !setting.other_upload_datasets.is_empty();
@@ -269,17 +271,17 @@ fn DatasetUploadsControl(collection_dataset: String) -> Element {
                     }
                 },
             }
-            "Accept uploads"
+            {tr!("admin-dataset-detail-accept-uploads")}
         }
         if mount_gone {
-            p { style: "{HELP_TEXT} margin: 0;", "The folder of this dataset is not in a writable dataset mount, so it receives no uploads." }
+            p { style: "{HELP_TEXT} margin: 0;", {tr!("admin-dataset-detail-the-folder-of-this-dataset")} }
         }
         if blocked {
             p { style: "{HELP_TEXT} margin: 0;", "{blocked_note}" }
         }
         if conflict {
             p { style: "{HELP_TEXT} margin: 0; color: var(--x-danger);",
-                "This dataset and {others} accept uploads. A collection can have one upload dataset. Turn off Accept uploads on all of them but one."
+                {tr!("admin-dataset-detail-this-dataset-and-accept-uploads", others: others.to_string())}
             }
         }
     }
@@ -322,14 +324,14 @@ fn WorkflowButton(
                         msg.set(None);
                         error_msg.set(None);
                         match admin_trigger_workflow(ds, kind).await {
-                            Ok(run_id) => msg.set(Some(format!("Operation started: {run_id}"))),
+                            Ok(run_id) => msg.set(Some(tr!("admin-dataset-detail-operation-started", run_id: run_id.to_string()))),
                             Err(e) => error_msg.set(Some(user_facing_message(&e))),
                         }
                         pending.set(false);
                     });
                 }
             },
-            if *pending.read() { "Starting\u{2026}" } else { "{label}" }
+            if *pending.read() { {tr!("admin-dataset-detail-starting-u")} } else { "{label}" }
         }
     }
 }

@@ -5,6 +5,7 @@ use dioxus::prelude::*;
 use crate::components::admin_components::{C_DANGER, FONT, HELP_TEXT, PAGE_TITLE};
 use crate::components::session_context::use_session_user;
 use crate::components::suspend_boundary::LoadingIndicator;
+use crate::tr;
 
 #[component]
 pub fn AdminGuard(children: Element) -> Element {
@@ -19,9 +20,9 @@ pub fn AdminGuard(children: Element) -> Element {
                     style: "display: flex; flex-direction: column; width: 100%; height: 100%; background: white; {FONT}",
                     div {
                         style: "padding: 24px 40px;",
-                        h1 { style: "{PAGE_TITLE} color: {C_DANGER};", "Administration access required" }
-                        p { style: "font-size: var(--x-text-md); margin: 0 0 8px;", "Signed in as {u.username}." }
-                        p { style: "{HELP_TEXT} margin: 0;", "Ask an administrator for access to this section." }
+                        h1 { style: "{PAGE_TITLE} color: {C_DANGER};", {tr!("admin-guard-administration-access-required")} }
+                        p { style: "font-size: var(--x-text-md); margin: 0 0 8px;", {tr!("admin-guard-signed-in-as", u_username: u.username.to_string())} }
+                        p { style: "{HELP_TEXT} margin: 0;", {tr!("admin-guard-ask-an-administrator-for-access")} }
                     }
                 }
             },

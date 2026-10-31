@@ -37,8 +37,8 @@ pub enum StateParseError {
 impl std::fmt::Display for StateParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::DecodeError(err) => write!(f, "Failed to decode base64: {}", err),
-            Self::CiboriumError(err) => write!(f, "Failed to deserialize: {}", err),
+            Self::DecodeError(err) => write!(f, "Failed to decode base64: {}", err), // i18n: data, a decoding diagnostic
+            Self::CiboriumError(err) => write!(f, "Failed to deserialize: {}", err), // i18n: data, a decoding diagnostic
         }
     }
 }

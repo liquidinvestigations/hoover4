@@ -14,6 +14,7 @@ use dioxus_free_icons::icons::md_action_icons::MdBugReport;
 use dioxus_free_icons::Icon;
 
 use common::feedback_types::{DESCRIPTION_MAX_CHARS, TITLE_MAX_CHARS};
+use crate::tr;
 
 /// One collected browser log entry.
 #[derive(Debug, Clone, PartialEq, serde::Deserialize)]
@@ -77,7 +78,7 @@ impl FeedbackState {
             .await;
             self.phase.set(match result {
                 Ok(capture) => FeedbackPhase::Open(capture),
-                Err(e) => FeedbackPhase::Failed(format!("The capture failed: {e}")),
+                Err(e) => FeedbackPhase::Failed(tr!("feedback-control-capture-failed", error: e.to_string())),
             });
         });
     }
@@ -106,7 +107,7 @@ pub fn FeedbackRailButton() -> Element {
     let colour = if phase == FeedbackPhase::Idle { "white" } else { "#ff1f1f" };
     rsx! {
         crate::components::navbar::RailHint {
-            label: "Bug Report & Feedback Form",
+            label: tr!("feedback-control-bug-report-feedback-form"),
             button {
                 id: "x-feedback-button",
                 "aria-label": "Bug Report & Feedback Form",
@@ -134,7 +135,7 @@ const MUTED: &str = "color: var(--x-ink-muted); font-size: var(--x-text-sm);";
 
 /// Size in KB with one decimal.
 pub fn kb(bytes: u64) -> String {
-    format!("{:.1} KB", bytes as f64 / 1024.0)
+    tr!("feedback-control-kb", bytes_as_f64_1024_0: format!("{:.1}", bytes as f64 / 1024.0))
 }
 
 #[component]
@@ -143,9 +144,9 @@ fn CaptureFailed(message: String) -> Element {
     rsx! {
         div { id: "x-feedback-overlay", style: OVERLAY,
             div { style: COLUMN,
-                h2 { style: H2, "Report a bug or send feedback" }
+                h2 { style: H2, {tr!("feedback-control-report-a-bug-or-send")} }
                 p { style: "color: var(--x-danger);", "{message}" }
-                button { style: BTN, onclick: move |_| state.close(), "Close" }
+                button { style: BTN, onclick: move |_| state.close(), {tr!("feedback-control-close")} }
             }
         }
     }
@@ -169,7 +170,7 @@ fn FeedbackOverlay(capture: Capture) -> Element {
 
     let send = move |_| {
         if title.read().trim().is_empty() {
-            error.set(Some("Write a title.".to_string()));
+            error.set(Some(tr!("feedback-control-write-a-title")));
             return;
         }
         error.set(None);
@@ -180,7 +181,7 @@ fn FeedbackOverlay(capture: Capture) -> Element {
             "description": description(),
         });
         spawn(async move {
-            let result = document::eval(&format!(
+            let result = document::eval(&format!( // i18n: data, JavaScript
                 "return await window.hooverFeedback.send({fields});"
             ))
             .join::<SendResult>()
@@ -189,11 +190,11 @@ fn FeedbackOverlay(capture: Capture) -> Element {
                 Ok(r) if r.ok => send_state.set(SendState::Sent),
                 Ok(r) => {
                     let detail = if r.status == 0 { r.message } else { format!("{} ({})", r.message, r.status) };
-                    error.set(Some(format!("The report was not sent: {detail}. Select Send to try again.")));
+                    error.set(Some(tr!("feedback-control-not-sent", detail: detail)));
                     send_state.set(SendState::Editing);
                 }
                 Err(e) => {
-                    error.set(Some(format!("The report was not sent: {e}. Select Send to try again.")));
+                    error.set(Some(tr!("feedback-control-not-sent", detail: e.to_string())));
                     send_state.set(SendState::Editing);
                 }
             }
@@ -201,7 +202,7 @@ fn FeedbackOverlay(capture: Capture) -> Element {
     };
 
     let sending = send_state() == SendState::Sending;
-    let kind_button = |value: &'static str, label: &'static str| {
+    let kind_button = |value: &'static str, label: String| {
         let selected = kind() == value;
         let style = if selected { BTN_PRIMARY } else { BTN };
         rsx! {
@@ -230,38 +231,38 @@ fn FeedbackOverlay(capture: Capture) -> Element {
             },
             div { style: "display: flex; align-items: center; gap: 12px; padding: 14px 28px; border-bottom: 1px solid; border-bottom-color: var(--x-border);",
                 h1 { style: "margin: 0; flex: 1; font-size: var(--x-text-2xl); font-weight: 600; color: var(--x-ink-strong);",
-                    "Report a bug or send feedback"
+                    {tr!("feedback-control-report-a-bug-or-send")}
                 }
                 button { style: BTN, disabled: sending, onclick: move |_| state.close(),
-                    if send_state() == SendState::Sent { "Close" } else { "Cancel" }
+                    if send_state() == SendState::Sent { {tr!("feedback-control-close")} } else { {tr!("feedback-control-cancel")} }
                 }
             }
             div { style: "flex: 1; min-height: 0; display: flex;",
                 div { style: "{COLUMN} border-right: 1px solid; border-right-color: var(--x-border);",
                     if send_state() == SendState::Sent {
-                        p { id: "x-feedback-sent", style: "color: var(--x-ok); font-weight: 600;", "The report was sent. Thank you." }
+                        p { id: "x-feedback-sent", style: "color: var(--x-ok); font-weight: 600;", {tr!("feedback-control-the-report-was-sent-thank")} }
                     } else {
-                        h2 { style: H2, "Report" }
+                        h2 { style: H2, {tr!("feedback-control-report")} }
                         div { role: "radiogroup", "aria-label": "Report type", style: "display: flex; gap: 8px;",
-                            {kind_button("bug", "Bug")}
-                            {kind_button("feedback", "Feedback")}
+                            {kind_button("bug", {tr!("feedback-control-bug")})}
+                            {kind_button("feedback", {tr!("feedback-control-feedback")})}
                         }
-                        label { style: FIELD_LABEL, r#for: "x-feedback-title", "Title" }
+                        label { style: FIELD_LABEL, r#for: "x-feedback-title", {tr!("feedback-control-title")} }
                         input {
                             id: "x-feedback-title",
                             style: INPUT,
                             maxlength: "{TITLE_MAX_CHARS}",
                             autofocus: true,
-                            placeholder: "What happened, in one line",
+                            placeholder: tr!("feedback-control-what-happened-in-one-line"),
                             value: "{title}",
                             oninput: move |e| title.set(e.value()),
                         }
-                        label { style: FIELD_LABEL, r#for: "x-feedback-description", "Description" }
+                        label { style: FIELD_LABEL, r#for: "x-feedback-description", {tr!("feedback-control-description")} }
                         textarea {
                             id: "x-feedback-description",
                             style: "{INPUT} min-height: 180px; resize: vertical;",
                             maxlength: "{DESCRIPTION_MAX_CHARS}",
-                            placeholder: "What you did, what you expected, and what you saw. You can paste links to other pages of the application.",
+                            placeholder: tr!("feedback-control-what-you-did-what-you"),
                             value: "{description}",
                             oninput: move |e| description.set(e.value()),
                         }
@@ -270,30 +271,30 @@ fn FeedbackOverlay(capture: Capture) -> Element {
                         }
                         div { style: "margin-top: 14px;",
                             button { id: "x-feedback-send", style: BTN_PRIMARY, disabled: sending, onclick: send,
-                                if sending { "Sending\u{2026}" } else { "Send" }
+                                if sending { {tr!("feedback-control-sending-u")} } else { {tr!("feedback-control-send")} }
                             }
                         }
                     }
-                    h2 { style: "{H2} margin-top: 24px;", "Captured page" }
+                    h2 { style: "{H2} margin-top: 24px;", {tr!("feedback-control-captured-page")} }
                     p { id: "x-feedback-sizes", style: MUTED,
-                        "Page image: {kb(capture.png_bytes)}. DOM copy: {kb(capture.dom_bytes)}."
+                        {tr!("feedback-control-page-image-dom-copy", kb_capture_png_bytes: kb(capture.png_bytes), kb_capture_dom_bytes: kb(capture.dom_bytes))}
                     }
                     for note in capture.notes.iter() {
                         p { class: "x-feedback-note", style: "color: var(--x-warning); margin: 4px 0;", "{note}" }
                     }
                     if capture.png_data_url.is_empty() {
-                        p { style: MUTED, "The report has no page image." }
+                        p { style: MUTED, {tr!("feedback-control-the-report-has-no-page")} }
                     } else {
                         img {
                             id: "x-feedback-image",
                             src: "{capture.png_data_url}",
-                            alt: "Image of the page when the report started",
+                            alt: tr!("feedback-control-image-of-the-page-when"),
                             style: "display: block; max-width: 100%; margin-top: 8px; border: 1px solid; border-color: var(--x-border);",
                         }
                     }
                 }
                 div { style: COLUMN,
-                    h2 { style: H2, "Debug context" }
+                    h2 { style: H2, {tr!("feedback-control-debug-context")} }
                     table { style: "border-collapse: collapse; width: 100%;",
                         tbody {
                             for (key, value) in capture.context.iter() {
@@ -304,9 +305,9 @@ fn FeedbackOverlay(capture: Capture) -> Element {
                             }
                         }
                     }
-                    h2 { style: "{H2} margin-top: 24px;", "Browser log ({capture.logs.len()} entries)" }
+                    h2 { style: "{H2} margin-top: 24px;", {tr!("feedback-control-browser-log-entries", capture_logs_len: capture.logs.len())} }
                     if capture.logs.is_empty() {
-                        p { style: MUTED, "The page wrote no log entries since it loaded." }
+                        p { style: MUTED, {tr!("feedback-control-the-page-wrote-no-log")} }
                     } else {
                         div { id: "x-feedback-log", style: "font-family: ui-monospace, monospace; font-size: var(--x-text-xs); border: 1px solid; border-color: var(--x-border); border-radius: 6px;",
                             for (i, entry) in capture.logs.iter().enumerate() {

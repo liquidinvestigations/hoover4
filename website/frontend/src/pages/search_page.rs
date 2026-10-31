@@ -14,6 +14,7 @@ use crate::{
     routes::Route,
 };
 use common::{search_query::SearchQuery, search_result::DocumentIdentifier};
+use crate::tr;
 
 fn title_ellipsis(title: String) -> String {
     if title.len() > 20 {
@@ -38,7 +39,7 @@ pub fn SearchPage(
     // let url_param = <UrlParam<SearchQuery> as std::str::FromStr>::from_str(&query_base64);
 
     rsx! {
-        Title { "Hoover Search: {title_ellipsis(query.0.query_string.clone())}" }
+        Title { {tr!("search-hoover-search", title_ellipsis_query_0_query_string: (title_ellipsis(query.0.query_string.clone())).to_string())} }
         SearchPageRootComponent {
             query: query.0.clone(),
             current_search_result_page,

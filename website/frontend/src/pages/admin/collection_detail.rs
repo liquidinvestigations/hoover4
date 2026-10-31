@@ -17,15 +17,16 @@ use crate::components::suspend_boundary::SuspendWrapper;
 use crate::pages::admin::collections_list::{short_date, DatasetStatCells, DatasetStateCell};
 use crate::pages::admin::operations::CollectionOperationsPanel;
 use crate::routes::Route;
+use crate::tr;
 
 #[component]
 pub fn AdminCollectionPage(collection_id: String) -> Element {
     let collection_id_for_content = collection_id.clone();
     rsx! {
-        Title { "Admin: collection {collection_id}" }
+        Title { {tr!("admin-collection-detail-admin-collection", collection_id: collection_id.to_string())} }
         AdminGuard {
             AdminShell {
-                title: format!("Collection {collection_id}"),
+                title: tr!("admin-collection-detail-collection", collection_id: collection_id.to_string()),
                 breadcrumb: "Collections".to_string(),
                 active: "collections".to_string(),
                 SuspendWrapper { CollectionDetailContent { collection_id: collection_id_for_content } }
@@ -67,9 +68,9 @@ fn CollectionDetailContent(collection_id: String) -> Element {
     let Some(detail) = detail else {
         return rsx! {
             if load_failed {
-                ErrorBar { message: "Failed to load collection" }
+                ErrorBar { message: tr!("admin-collection-detail-failed-to-load-collection") }
             } else {
-                "Loading..."
+                {tr!("admin-collection-detail-loading")}
             }
         };
     };
@@ -91,18 +92,18 @@ fn CollectionDetailContent(collection_id: String) -> Element {
             ErrorBar { message: err }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Datasets" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-collection-detail-datasets")} }
             div { style: MODULE_BODY,
                 table { style: TABLE,
                     thead {
                         tr {
-                            th { style: TH, "Dataset" }
-                            th { style: "{TH} text-align: right;", "Documents" }
-                            th { style: "{TH} text-align: right;", "Size" }
-                            th { style: "{TH} text-align: right;", "Indexed" }
-                            th { style: "{TH} text-align: right;", "Errors" }
-                            th { style: TH, "State" }
-                            th { style: TH, "Created" }
+                            th { style: TH, {tr!("admin-collection-detail-dataset")} }
+                            th { style: "{TH} text-align: right;", {tr!("admin-collection-detail-documents")} }
+                            th { style: "{TH} text-align: right;", {tr!("admin-collection-detail-size")} }
+                            th { style: "{TH} text-align: right;", {tr!("admin-collection-detail-indexed")} }
+                            th { style: "{TH} text-align: right;", {tr!("admin-collection-detail-errors")} }
+                            th { style: TH, {tr!("admin-collection-detail-state")} }
+                            th { style: TH, {tr!("admin-collection-detail-created")} }
                         }
                     }
                     tbody {
@@ -131,14 +132,14 @@ fn CollectionDetailContent(collection_id: String) -> Element {
             }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Settings" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-collection-detail-settings")} }
             div { style: MODULE_BODY,
                 if !detail.collection.db_ready {
-                    p { style: "margin: 0 0 8px; color: var(--x-danger);", "The collection database is not ready yet." }
+                    p { style: "margin: 0 0 8px; color: var(--x-danger);", {tr!("admin-collection-detail-the-collection-database-is-not")} }
                 }
                 if detail.provisioning_state == "errored" {
                     p { style: "margin: 0 0 8px; color: var(--x-danger);",
-                        "The last storage provisioning failed: {detail.provisioning_error}"
+                        {tr!("admin-collection-detail-the-last-storage-provisioning-failed", detail_provisioning_error: detail.provisioning_error.to_string())}
                     }
                 }
                 div { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 8px;",
@@ -154,7 +155,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                     error_msg.set(None);
                                     match admin_provision_collection(cname).await {
                                         Ok(op_id) => {
-                                            msg.set(Some(format!("Storage provisioning started: {op_id}")));
+                                            msg.set(Some(tr!("admin-collection-detail-storage-provisioning-started", op_id: op_id.to_string())));
                                             detail_res.restart();
                                         }
                                         Err(e) => error_msg.set(Some(user_facing_message(&e))),
@@ -162,22 +163,22 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                 });
                             }
                         },
-                        "Provision storage"
+                        {tr!("admin-collection-detail-provision-storage")}
                     }
                     span { style: HELP_TEXT,
-                        "This creates the database and the file bucket of the collection when one of them is missing. It changes no existing data."
+                        {tr!("admin-collection-detail-this-creates-the-database-and")}
                     }
                 }
                 Link {
                     to: Route::AdminCollectionProcessingPage { collection_id: cname.clone() },
                     style: LINK,
-                    "Processing progress and estimates"
+                    {tr!("admin-collection-detail-processing-progress-and-estimates")}
                 }
             }
             div { style: "{MODULE_BODY} display: flex; gap: 8px; flex-wrap: wrap; align-items: center;",
                 label { style: LABEL,
-                    "Display name"
-                    input { style: INPUT, placeholder: "display name", value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
+                    {tr!("admin-collection-detail-display-name")}
+                    input { style: INPUT, placeholder: tr!("admin-collection-detail-display-name-2"), value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
                 }
                 button {
                     style: BTN,
@@ -199,7 +200,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                             });
                         }
                     },
-                    "Save"
+                    {tr!("admin-collection-detail-save")}
                 }
             }
         }
@@ -211,13 +212,13 @@ fn CollectionDetailContent(collection_id: String) -> Element {
             on_created: move |_| detail_res.restart(),
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Access" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-collection-detail-access")} }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
                     if detail.collection.is_public {
-                        "Public. Every signed-in user can search and read this collection."
+                        {tr!("admin-collection-detail-public-every-signed-in-user")}
                     } else {
-                        "Restricted. Only members of the groups below can search and read this collection."
+                        {tr!("admin-collection-detail-restricted-only-members-of-the")}
                     }
                 }
                 div { style: "display: flex; gap: 8px; align-items: center;",
@@ -235,9 +236,9 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                         Ok(()) => {
                                             msg.set(Some(
                                                 if make_public {
-                                                    "The collection is now public.".to_string()
+                                                    {tr!("admin-collection-detail-the-collection-is-now-public")}.to_string()
                                                 } else {
-                                                    "The collection is now restricted.".to_string()
+                                                    {tr!("admin-collection-detail-the-collection-is-now-restricted")}.to_string()
                                                 },
                                             ));
                                             detail_res.restart();
@@ -247,16 +248,16 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                 });
                             }
                         },
-                        if detail.collection.is_public { "Make restricted" } else { "Make public" }
+                        if detail.collection.is_public { {tr!("admin-collection-detail-make-restricted")} } else { {tr!("admin-collection-detail-make-public")} }
                     }
                 }
             }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Group permissions" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-collection-detail-group-permissions")} }
             div { style: MODULE_BODY,
                 if groups_with_access.is_empty() {
-                    p { style: "{HELP_TEXT} margin: 0 0 8px;", "No group can read this collection yet." }
+                    p { style: "{HELP_TEXT} margin: 0 0 8px;", {tr!("admin-collection-detail-no-group-can-read-this")} }
                 }
                 ul { style: "list-style: none; padding: 0; margin: 0;",
                     for g in groups_with_access {
@@ -284,7 +285,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                         });
                                     }
                                 },
-                                "Revoke"
+                                {tr!("admin-collection-detail-revoke")}
                             }
                         }
                     }
@@ -294,7 +295,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                         select {
                             style: SELECT,
                             onchange: move |e| grant_group.set(e.value()),
-                            option { value: "", "Grant group\u{2026}" }
+                            option { value: "", {tr!("admin-collection-detail-grant-group-u")} }
                             for g in groups {
                                 if !detail.groups_with_access.contains(&g.groupname) {
                                     option { key: "{g.groupname}", value: "{g.groupname}", "{g.groupname}" }
@@ -319,7 +320,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                     });
                                 }
                             },
-                            "Grant"
+                            {tr!("admin-collection-detail-grant")}
                         }
                     }
                 }
@@ -327,17 +328,17 @@ fn CollectionDetailContent(collection_id: String) -> Element {
         }
         CollectionOperationsPanel { collectionname: cname.clone() }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", "Danger zone" }
+            h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", {tr!("admin-collection-detail-danger-zone")} }
             div { style: MODULE_BODY,
-                p { style: "{HELP_TEXT} margin: 0 0 8px;", "A collection can only be deleted while it has no datasets." }
+                p { style: "{HELP_TEXT} margin: 0 0 8px;", {tr!("admin-collection-detail-a-collection-can-only-be")} }
                 p { style: "{HELP_TEXT} margin: 0 0 8px; color: var(--x-danger);",
-                    "Deleting the collection also drops its database "
-                    code { "Hoover4_Collection_{cname}" }
-                    " and everything in it. This cannot be undone. Type the collection name to confirm."
+                    {tr!("admin-collection-detail-deleting-the-collection-also-drops")}
+                    code { {tr!("admin-collection-detail-hoover4-collection", cname: cname.to_string())} }
+                    {tr!("admin-collection-detail-and-everything-in-it-this")}
                 }
                 div { style: "display: flex; gap: 8px; flex-wrap: wrap; align-items: center;",
                     label { style: LABEL,
-                        "Collection name"
+                        {tr!("admin-collection-detail-collection-name")}
                         input {
                             style: INPUT,
                             placeholder: "{cname}",
@@ -366,7 +367,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                 });
                             }
                         },
-                        "Delete collection"
+                        {tr!("admin-collection-detail-delete-collection")}
                     }
                 }
             }
@@ -386,11 +387,11 @@ fn CollectionVectorsControl(collectionname: String) -> Element {
     let load_error = state_res.read().as_ref().and_then(|r| r.as_ref().err().map(user_facing_message));
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Features" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-collection-detail-features")} }
             div { style: MODULE_BODY,
                 if let Some(err) = error_msg.read().clone() { ErrorBar { message: err } }
                 if let Some(err) = load_error {
-                    ErrorBar { message: format!("The vectors setting could not be read: {err}") }
+                    ErrorBar { message: tr!("admin-collection-detail-the-vectors-setting-could-not", err: err.to_string()) }
                 }
                 if let Some((enabled, explicit, installation)) = state {
                     label { style: LABEL,
@@ -416,15 +417,15 @@ fn CollectionVectorsControl(collectionname: String) -> Element {
                                 }
                             },
                         }
-                        "Vectors"
+                        {tr!("admin-collection-detail-vectors")}
                     }
                     p { style: "{HELP_TEXT} margin: 4px 0 0;",
                         if !installation {
-                            "This installation runs no embedding service, so no collection uses vectors."
+                            {tr!("admin-collection-detail-this-installation-runs-no-embedding")}
                         } else if explicit {
-                            "Vectors find passages by meaning. Off stops new vectors and stops search from using the stored ones, which stay. On computes the missing vectors of every dataset, one dataset at a time."
+                            {tr!("admin-collection-detail-vectors-find-passages-by-meaning")}
                         } else {
-                            "This collection follows the installation, which uses vectors. Vectors find passages by meaning. Off stops new vectors and stops search from using the stored ones, which stay."
+                            {tr!("admin-collection-detail-this-collection-follows-the-installation")}
                         }
                     }
                 }

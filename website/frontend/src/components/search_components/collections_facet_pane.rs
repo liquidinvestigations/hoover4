@@ -34,6 +34,7 @@ use crate::components::error_boundary::ServerErrorDisplay;
 use crate::components::search_components::search_facets::{STALE_OPACITY, request_in_flight};
 use crate::components::search_components::vfs_tree::{TriState, tri_state_icon};
 use crate::components::suspend_boundary::LoadingIndicator;
+use crate::tr;
 
 pub const FACET_FIELD: &str = "collection_dataset";
 
@@ -259,7 +260,7 @@ pub fn CollectionsFacetPane(
                         ",
                         class: "hoover4-hover-shadow-background",
                         onclick: move |_| facets.restart(),
-                        "Retry"
+                        {tr!("collections-facet-pane-retry")}
                     }
                 }
             };
@@ -307,7 +308,7 @@ pub fn CollectionsFacetPane(
             input {
                 r#type: "text",
                 style: "{INPUT_STYLE} flex: 1 1 auto;",
-                placeholder: "Search collections and datasets…",
+                placeholder: tr!("collections-facet-pane-search-collections-and-datasets"),
                 value: "{needle}",
                 oninput: move |event| needle.set(event.value()),
             }
@@ -315,7 +316,7 @@ pub fn CollectionsFacetPane(
         if no_matches {
             div {
                 style: "padding: 8px; font-size: 13px; color: rgba(0,0,0,0.55);",
-                "Nothing here matches \"{needle_text}\"."
+                {tr!("collections-facet-pane-nothing-here-matches", needle_text: needle_text.to_string())}
             }
         }
         ul {
@@ -391,7 +392,7 @@ fn CollectionFacetRow(
                     flex-shrink: 0; border: none; background: transparent; padding: 0;
                     margin: 0; cursor: pointer; display: inline-flex; align-items: center;
                 ",
-                title: if open { "Collapse" } else { "Expand" },
+                title: if open { tr!("collections-facet-pane-collapse") } else { tr!("collections-facet-pane-expand") },
                 onclick: toggle_open,
                 if open {
                     Icon { icon: MdExpandMore, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }

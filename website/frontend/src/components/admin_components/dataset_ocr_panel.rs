@@ -17,6 +17,8 @@ use crate::api::admin_api::{
 use crate::components::admin_components::{
     ErrorBar, SuccessBar, BTN, HELP_TEXT, SUBHEADING, INPUT, MODULE, MODULE_BODY, MODULE_CAPTION,
 };
+use crate::tr;
+use crate::i18n::SharedText;
 
 /// How often the strip re-reads the operation row while one is running. Fast enough that
 /// Apply reads as answered, slow enough that an admin leaving the page open is not a load
@@ -37,7 +39,7 @@ fn describe(operation: &DatasetOperationStatus) -> String {
     let stage = value.get("stage").and_then(|v| v.as_str());
     let mut parts = vec![stage.unwrap_or(&operation.state).to_string()];
     if stage.is_none() && matches!(operation.kind.as_str(), "add_dataset" | "rescan_dataset") {
-        parts.push(format!("{} of {} plans", operation.progress_done, operation.progress_total));
+        parts.push(tr!("dataset-ocr-panel-of-plans", operation_progress_done: operation.progress_done.to_string(), operation_progress_total: operation.progress_total.to_string()));
     }
     let list = |key: &str| -> String {
         value
@@ -54,14 +56,14 @@ fn describe(operation: &DatasetOperationStatus) -> String {
     let added = list("added");
     let removed = list("removed");
     if !added.is_empty() {
-        parts.push(format!("adding {added}"));
+        parts.push(tr!("dataset-ocr-panel-adding", added: added.to_string()));
     }
     if !removed.is_empty() {
-        parts.push(format!("removing {removed}"));
+        parts.push(tr!("dataset-ocr-panel-removing", removed: removed.to_string()));
     }
     if let Some(plans) = value.get("plans").and_then(|v| v.as_u64()) {
         if plans > 0 {
-            parts.push(format!("{plans} plan(s) reopened"));
+            parts.push(tr!("dataset-ocr-panel-plan-s-reopened", plans: plans.to_string()));
         }
     }
     parts.join(" \u{b7} ")
@@ -147,9 +149,9 @@ pub fn DatasetOperationStrip(
             style: "background: {background}; border: 1px solid {border}; color: {ink}; \
                     border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; font-size: var(--x-text-md);",
             div { style: "font-weight: 500;",
-                "Last operation: {current.kind}, {current.state}"
+                {tr!("dataset-ocr-panel-last-operation", current_kind: current.kind.to_string(), current_state: current.state.to_string())}
                 if current.is_running() {
-                    span { style: "font-weight: 400;", ", started {current.started_at}" }
+                    span { style: "font-weight: 400;", {tr!("dataset-ocr-panel-started", current_started_at: current.started_at.to_string())} }
                 } else if !current.finished_at.is_empty() {
                     span { style: "font-weight: 400;", ", {current.finished_at}" }
                 }
@@ -159,7 +161,7 @@ pub fn DatasetOperationStrip(
             }
             if stale {
                 div { style: "margin-top: 3px; font-weight: 500;",
-                    "No progress for {current.stale_seconds / 60} minutes. Check the Temporal workflow, and cancel the operation if it is stuck."
+                    {tr!("dataset-ocr-panel-no-progress-for-minutes-check", current_stale_seconds_60: (current.stale_seconds / 60).to_string())}
                 }
             }
             if !current.error.is_empty() {
@@ -198,7 +200,7 @@ fn LanguageChecklist(
         input {
             class: "x-language-filter",
             style: "{INPUT} width: 220px; margin-bottom: 8px;",
-            placeholder: "Filter languages",
+            placeholder: tr!("dataset-ocr-panel-filter-languages"),
             value: "{filter}",
             disabled,
             oninput: move |e| filter.set(e.value()),
@@ -317,12 +319,12 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
     let Some(panel) = panel else {
         return rsx! {
             div { class: "x-admin-module", style: MODULE,
-                h2 { style: MODULE_CAPTION, "OCR languages" }
+                h2 { style: MODULE_CAPTION, {tr!("dataset-ocr-panel-ocr-languages")} }
                 div { style: MODULE_BODY,
                     if load_failed {
-                        ErrorBar { message: "Failed to load the OCR settings for this dataset" }
+                        ErrorBar { message: tr!("dataset-ocr-panel-failed-to-load-the-ocr") }
                     } else {
-                        "Loading\u{2026}"
+                        {tr!("dataset-ocr-panel-loading-u")}
                     }
                 }
             }
@@ -373,20 +375,20 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
             on_change: move |_| panel_res.restart(),
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "OCR languages" }
+            h2 { style: MODULE_CAPTION, {tr!("dataset-ocr-panel-ocr-languages")} }
             div { style: "{MODULE_BODY} display: flex; flex-direction: column; gap: 16px;",
                 if let Some(m) = msg.read().clone() { SuccessBar { message: m } }
                 if let Some(e) = error_msg.read().clone() { ErrorBar { message: e } }
 
                 p { style: "{HELP_TEXT} margin: 0;",
-                    "Each EasyOCR script group adds one OCR pass over the dataset. Tesseract reads all its languages in one pass. "
-                    "Apply saves the languages, and the OCR update of this dataset then starts by itself."
+                    {tr!("dataset-ocr-panel-each-easyocr-script-group-adds")}
+                    {tr!("dataset-ocr-panel-apply-saves-the-languages-and")}
                 }
 
                 div {
-                    h3 { style: SUBHEADING, "Tesseract" }
+                    h3 { style: SUBHEADING, {tr!("dataset-ocr-panel-tesseract")} }
                     p { class: "x-ocr-source", style: "{HELP_TEXT} margin: 0 0 6px;",
-                        "In force: {panel.tesseract_languages}, from {source_label(&panel.tesseract_source)}."
+                        {tr!("dataset-ocr-panel-in-force-from", panel_tesseract_languages: panel.tesseract_languages.to_string(), source_label_panel_tesseract_source: (source_label(&panel.tesseract_source)).to_string())}
                     }
                     label { style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); margin-bottom: 8px;",
                         input {
@@ -394,13 +396,13 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                             checked: *inherit_tesseract.read(),
                             onchange: move |e| inherit_tesseract.set(e.checked()),
                         }
-                        "Use {source_label(&panel.inherited_tesseract_source)}: {panel.inherited_tesseract}"
+                        {tr!("dataset-ocr-panel-use", source_label_panel_inherited_tesseract_s: (source_label(&panel.inherited_tesseract_source)).to_string(), panel_inherited_tesseract: panel.inherited_tesseract.to_string())}
                     }
                     if !*inherit_tesseract.read() {
                         if panel.tesseract_available.is_empty() {
                             p { style: "{HELP_TEXT} margin: 0;",
-                                "The Tesseract service did not answer, so the installed languages are unknown. "
-                                "The list comes from the running image, not from configuration."
+                                {tr!("dataset-ocr-panel-the-tesseract-service-did-not")}
+                                {tr!("dataset-ocr-panel-the-list-comes-from-the")}
                             }
                         } else {
                             LanguageChecklist {
@@ -410,11 +412,11 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                             }
                             if script_models > 0 {
                                 p { style: "{HELP_TEXT} margin: 6px 0 0;",
-                                    "The image also has {script_models} script models, for example Latin. The form does not offer them, because the setting becomes part of a storage key and accepts lowercase codes only."
+                                    {tr!("dataset-ocr-panel-the-image-also-has-script", script_models: script_models.to_string())}
                                 }
                             }
                             p { style: "{HELP_TEXT} margin: 6px 0 0;",
-                                "The first language is the primary one. Selected: "
+                                {tr!("dataset-ocr-panel-the-first-language-is-the")}
                                 strong { "{selected_tesseract.join(\"+\")}" }
                             }
                         }
@@ -422,17 +424,17 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                 }
 
                 div {
-                    h3 { style: SUBHEADING, "EasyOCR" }
+                    h3 { style: SUBHEADING, {tr!("dataset-ocr-panel-easyocr")} }
                     if !panel.easyocr_configured {
                         p { style: "{HELP_TEXT} margin: 0 0 6px;",
-                            "EasyOCR is off on this deployment, so this setting has no effect until it is on."
+                            {tr!("dataset-ocr-panel-easyocr-is-off-on-this")}
                         }
                     }
                     p { class: "x-ocr-source", style: "{HELP_TEXT} margin: 0 0 6px;",
                         if panel.easyocr_languages.is_empty() {
-                            "In force: off, from {source_label(&panel.easyocr_source)}."
+                            {tr!("dataset-ocr-panel-in-force-off-from", source_label_panel_easyocr_source: (source_label(&panel.easyocr_source)).to_string())}
                         } else {
-                            "In force: {panel.easyocr_languages}, from {source_label(&panel.easyocr_source)}."
+                            {tr!("dataset-ocr-panel-in-force-from-2", panel_easyocr_languages: panel.easyocr_languages.to_string(), source_label_panel_easyocr_source: (source_label(&panel.easyocr_source)).to_string())}
                         }
                     }
                     label { style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); margin-bottom: 8px;",
@@ -442,9 +444,9 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                             onchange: move |e| inherit_easyocr.set(e.checked()),
                         }
                         if panel.inherited_easyocr.is_empty() {
-                            "Use {source_label(&panel.inherited_easyocr_source)}: off"
+                            {tr!("dataset-ocr-panel-use-off", source_label_panel_inherited_easyocr_sou: (source_label(&panel.inherited_easyocr_source)).to_string())}
                         } else {
-                            "Use {source_label(&panel.inherited_easyocr_source)}: {panel.inherited_easyocr}"
+                            {tr!("dataset-ocr-panel-use-2", source_label_panel_inherited_easyocr_sou: (source_label(&panel.inherited_easyocr_source)).to_string(), panel_inherited_easyocr: panel.inherited_easyocr.to_string())}
                         }
                     }
                     if !*inherit_easyocr.read() {
@@ -454,12 +456,12 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                                 checked: *easyocr_on.read(),
                                 onchange: move |e| easyocr_on.set(e.checked()),
                             }
-                            "Enabled"
+                            {tr!("dataset-ocr-panel-enabled")}
                         }
                         if *easyocr_on.read() {
                             if panel.easyocr_supported.is_empty() {
                                 p { style: "{HELP_TEXT} margin: 0 0 6px;",
-                                    "The EasyOCR service did not report the languages that it supports."
+                                    {tr!("dataset-ocr-panel-the-easyocr-service-did-not")}
                                 }
                             }
                             LanguageChecklist {
@@ -469,53 +471,53 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                             }
                             if !not_preloaded.is_empty() {
                                 p { style: "{HELP_TEXT} margin: 6px 0 0;",
-                                    "The models of {not_preloaded.join(\", \")} are not in the image. The service downloads them on first use, which needs internet access."
+                                    {tr!("admin-dataset-ocr-panel-models-not-in-image", languages: not_preloaded.join(", "))}
                                 }
                             }
                         }
                     }
                     for failure in panel.easyocr_failed_downloads.iter() {
                         p { key: "{failure}", style: "margin: 6px 0 0; color: var(--x-danger); font-size: var(--x-text-sm);",
-                            "A model download failed: {failure}"
+                            {tr!("dataset-ocr-panel-a-model-download-failed", failure: failure.to_string())}
                         }
                     }
                 }
 
                 if !panel.text_variants.is_empty() {
                     div {
-                        h3 { style: SUBHEADING, "Stored text variants" }
+                        h3 { style: SUBHEADING, {tr!("dataset-ocr-panel-stored-text-variants")} }
                         div { style: "display: flex; flex-wrap: wrap; gap: 6px;",
                             for variant in panel.text_variants.iter() {
                                 span {
                                     key: "{variant.extracted_by}",
                                     style: "background-color: var(--x-surface-muted); border: 1px solid; border-color: var(--x-border); border-radius: 999px; \
                                             padding: 2px 10px; font-size: var(--x-text-xs);",
-                                    "{common::document_sources::text_source_label(&variant.extracted_by)} \u{b7} {variant.page_count} pages"
+                                    {tr!("admin-dataset-ocr-panel-variant-pages", source: common::document_sources::text_source_label(&variant.extracted_by).shared(), pages: variant.page_count)}
                                 }
                             }
                         }
                         p { style: "{HELP_TEXT} margin: 6px 0 0;",
-                            "Removing a language deletes its text, its search rows and its searchable PDF."
+                            {tr!("dataset-ocr-panel-removing-a-language-deletes-its")}
                         }
                     }
                 }
 
                 if panel.ocr_pdf_configured && !panel.pdf_variants.is_empty() {
                     div {
-                        h3 { style: SUBHEADING, "Searchable PDFs" }
+                        h3 { style: SUBHEADING, {tr!("dataset-ocr-panel-searchable-pdfs")} }
                         div { style: "display: flex; flex-wrap: wrap; gap: 6px;",
                             for variant in panel.pdf_variants.iter() {
                                 span {
                                     key: "{variant.engine}-{variant.languages}",
                                     style: "background-color: var(--x-surface-muted); border: 1px solid; border-color: var(--x-border); border-radius: 999px; \
                                             padding: 2px 10px; font-size: var(--x-text-xs);",
-                                    "{variant.engine} \u{b7} {variant.languages} \u{b7} {variant.pdf_count} files \u{b7} {variant.total_bytes / 1024 / 1024} MB"
+                                    {tr!("dataset-ocr-panel-u-u-files-u-mb", variant_engine: variant.engine.to_string(), variant_languages: variant.languages.to_string(), variant_pdf_count: variant.pdf_count, variant_total_bytes_1024_1024: (variant.total_bytes / 1024 / 1024).to_string())}
                                 }
                             }
                         }
                     }
                 } else if !panel.ocr_pdf_configured {
-                    p { style: "{HELP_TEXT} margin: 0;", "Searchable PDFs are off on this deployment." }
+                    p { style: "{HELP_TEXT} margin: 0;", {tr!("dataset-ocr-panel-searchable-pdfs-are-off-on")} }
                 }
 
                 div {
@@ -546,10 +548,10 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                                 });
                             }
                         },
-                        if *submitting.read() { "Saving\u{2026}" } else { "Apply" }
+                        if *submitting.read() { {tr!("dataset-ocr-panel-saving-u")} } else { {tr!("dataset-ocr-panel-apply")} }
                     }
                     if !dirty {
-                        span { style: "{HELP_TEXT} margin-left: 10px;", "No changes to apply." }
+                        span { style: "{HELP_TEXT} margin-left: 10px;", {tr!("dataset-ocr-panel-no-changes-to-apply")} }
                     }
                 }
             }

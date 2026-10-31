@@ -11,14 +11,15 @@ use crate::components::admin_components::{
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
+use crate::tr;
 
 #[component]
 pub fn AdminOperationDetailPage(op_id: String, plans_page: u32, events_page: u32) -> Element {
     rsx! {
-        Title { "Admin: operation {op_id}" }
+        Title { {tr!("admin-operation-detail-admin-operation", op_id: op_id.to_string())} }
         AdminGuard {
             AdminShell {
-                title: format!("Operation {op_id}"),
+                title: tr!("admin-operation-detail-operation-2", op_id: op_id.to_string()),
                 breadcrumb: "Operations".to_string(),
                 active: "operations".to_string(),
                 SuspendWrapper { OperationDetailContent { op_id, plans_page, events_page } }
@@ -63,7 +64,7 @@ fn OperationDetailContent(op_id: String, plans_page: u32, events_page: u32) -> E
             if let Some(error) = load_error {
                 ErrorBar { message: error }
             } else {
-                p { style: HELP_TEXT, "Loading operation…" }
+                p { style: HELP_TEXT, {tr!("admin-operation-detail-loading-operation")} }
             }
         };
     };
@@ -84,40 +85,40 @@ fn OperationDetailBody(data: OperationDetail, plans_page: u32, events_page: u32)
     let event_has_more = (u64::from(events_page) + 1) * u64::from(data.page_size) < data.events_total;
     rsx! {
         p { style: HELP_TEXT,
-            Link { to: Route::AdminOperationsPage {}, style: LINK, "Back to operations" }
+            Link { to: Route::AdminOperationsPage {}, style: LINK, {tr!("admin-operation-detail-back-to-operations")} }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Operation" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-operation-detail-operation")} }
             div { style: MODULE_BODY,
                 p { code { "{row.op_id}" } }
                 p { style: HELP_TEXT,
-                    "{row.kind} · {row.state} · {row.target} · queued at {row.started_at}"
+                    {tr!("admin-operation-detail-queued-at", row_kind: row.kind.to_string(), row_state: row.state.to_string(), row_target: row.target.to_string(), row_started_at: row.started_at.to_string())}
                 }
                 p { style: HELP_TEXT,
                     if let Some(run_started_at) = row.run_started_at.as_ref() {
-                        "started {run_started_at}"
+                        {tr!("admin-operation-detail-started", run_started_at: run_started_at.to_string())}
                     } else {
-                        "not started"
+                        {tr!("admin-operation-detail-not-started")}
                     }
                 }
                 if let Some(summary) = rerun_outcome_summary(&row) {
                     p { id: "x-op-detail-counts", "{summary}" }
                 } else {
-                    p { id: "x-op-detail-counts", style: HELP_TEXT, "Re-run counts are not available." }
+                    p { id: "x-op-detail-counts", style: HELP_TEXT, {tr!("admin-operation-detail-re-run-counts-are-not")} }
                 }
                 if let Some(documents) = row.failed_documents {
                     p { style: HELP_TEXT,
-                        "{documents} failed document(s), {row.failed_tasks.unwrap_or(0)} task failure(s)"
+                        {tr!("admin-operation-detail-failed-document-s-task-failure", documents: documents.to_string(), row_failed_tasks_unwrap_or_0: (row.failed_tasks.unwrap_or(0)).to_string())}
                     }
                 } else {
-                    p { style: HELP_TEXT, "Failures were not counted." }
+                    p { style: HELP_TEXT, {tr!("admin-operation-detail-failures-were-not-counted")} }
                 }
                 if row.has_failure_tree {
                     p {
                         Link {
                             to: Route::AdminFailureDetailPage { op_id: row.op_id.clone() },
                             style: LINK,
-                            "Open captured Failure tree"
+                            {tr!("admin-operation-detail-open-captured-failure-tree")}
                         }
                     }
                 }
@@ -126,7 +127,7 @@ fn OperationDetailBody(data: OperationDetail, plans_page: u32, events_page: u32)
                         href: "{row.temporal_url}",
                         target: "_blank",
                         style: LINK,
-                        "Open in Temporal"
+                        {tr!("admin-operation-detail-open-in-temporal")}
                     }
                 }
             }
@@ -156,19 +157,19 @@ fn PlanList(
 
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Plans" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-operation-detail-plans")} }
             div { id: "x-op-detail-plans", style: MODULE_BODY,
-                p { style: HELP_TEXT, "{data.plans_total} plan(s), page {page + 1}" }
+                p { style: HELP_TEXT, {tr!("admin-operation-detail-plan-s-page", data_plans_total: data.plans_total, page_1: (page + 1).to_string())} }
                 if data.plans.is_empty() {
-                    p { style: HELP_TEXT, "No plans were recorded for this operation." }
+                    p { style: HELP_TEXT, {tr!("admin-operation-detail-no-plans-were-recorded-for")} }
                 } else {
                     table { style: TABLE,
                         thead {
                             tr {
-                                th { style: TH, "Dataset" }
-                                th { style: TH, "Plan hash" }
-                                th { style: TH, "Source" }
-                                th { style: TH, "Finished" }
+                                th { style: TH, {tr!("admin-operation-detail-dataset")} }
+                                th { style: TH, {tr!("admin-operation-detail-plan-hash")} }
+                                th { style: TH, {tr!("admin-operation-detail-source")} }
+                                th { style: TH, {tr!("admin-operation-detail-finished")} }
                             }
                         }
                         tbody {
@@ -177,7 +178,7 @@ fn PlanList(
                                     td { style: TD, "{plan.collection_dataset}" }
                                     td { style: TD, code { "{plan.plan_hash}" } }
                                     td { style: TD, "{plan.source}" }
-                                    td { style: TD, if plan.finished { "yes" } else { "no" } }
+                                    td { style: TD, if plan.finished { {tr!("admin-operation-detail-yes")} } else { {tr!("admin-operation-detail-no")} } }
                                 }
                             }
                         }
@@ -195,7 +196,7 @@ fn PlanList(
                                 events_page,
                             });
                         },
-                        "Previous"
+                        {tr!("admin-operation-detail-previous")}
                     }
                     button {
                         id: "x-op-detail-plans-next",
@@ -208,7 +209,7 @@ fn PlanList(
                                 events_page,
                             });
                         },
-                        "Next"
+                        {tr!("admin-operation-detail-next")}
                     }
                 }
             }
@@ -231,21 +232,21 @@ fn EventList(
 
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Error events" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-operation-detail-error-events")} }
             div { id: "x-op-detail-events", style: MODULE_BODY,
-                p { style: HELP_TEXT, "{data.events_total} Error event(s), page {page + 1}" }
+                p { style: HELP_TEXT, {tr!("admin-operation-detail-error-event-s-page", data_events_total: data.events_total, page_1: (page + 1).to_string())} }
                 if data.events.is_empty() {
-                    p { style: HELP_TEXT, "No Error events were recorded for this operation." }
+                    p { style: HELP_TEXT, {tr!("admin-operation-detail-no-error-events-were-recorded")} }
                 } else {
                     table { style: TABLE,
                         thead {
                             tr {
-                                th { style: TH, "Time" }
-                                th { style: TH, "Dataset" }
-                                th { style: TH, "Hash" }
-                                th { style: TH, "Task" }
-                                th { style: TH, "Event" }
-                                th { style: TH, "Error excerpt" }
+                                th { style: TH, {tr!("admin-operation-detail-time")} }
+                                th { style: TH, {tr!("admin-operation-detail-dataset")} }
+                                th { style: TH, {tr!("admin-operation-detail-hash")} }
+                                th { style: TH, {tr!("admin-operation-detail-task")} }
+                                th { style: TH, {tr!("admin-operation-detail-event")} }
+                                th { style: TH, {tr!("admin-operation-detail-error-excerpt")} }
                             }
                         }
                         tbody {
@@ -274,7 +275,7 @@ fn EventList(
                                 events_page: page.saturating_sub(1),
                             });
                         },
-                        "Previous"
+                        {tr!("admin-operation-detail-previous")}
                     }
                     button {
                         id: "x-op-detail-events-next",
@@ -287,7 +288,7 @@ fn EventList(
                                 events_page: page.saturating_add(1),
                             });
                         },
-                        "Next"
+                        {tr!("admin-operation-detail-next")}
                     }
                 }
             }

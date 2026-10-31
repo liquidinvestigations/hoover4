@@ -20,6 +20,7 @@ use wasm_bindgen::JsCast;
 use crate::components::error_boundary::ServerErrorDisplay;
 use crate::components::suspend_boundary::LoadingIndicator;
 use crate::routes::Route;
+use crate::tr;
 
 const PANEL_STYLE: &str = "
     display: flex;
@@ -128,7 +129,7 @@ pub fn DocumentFileLocationsPanel(
             div {
                 style: HEADER_STYLE,
                 Icon { icon: MdFolderOpen, style: "width: 19px; height: 19px;" }
-                "Document locations"
+                {tr!("file-locations-panel-document-locations")}
             }
             if value.locations.is_empty() {
                 // Not an error: a document can be known to the index while its VFS rows
@@ -136,9 +137,9 @@ pub fn DocumentFileLocationsPanel(
                 // empty box.
                 div {
                     style: "padding: 4px 2px; color: rgba(0,0,0,0.6);",
-                    "This document is not recorded at any path in "
+                    {tr!("file-locations-panel-this-document-is-not-recorded")}
                     b { "{document_identifier().collection_dataset}" }
-                    ", so there is nothing to browse to."
+                    {tr!("file-locations-panel-so-there-is-nothing-to")}
                 }
             }
             for location in value.locations.iter() {
@@ -151,7 +152,7 @@ pub fn DocumentFileLocationsPanel(
             if hidden > 0 {
                 div {
                     style: "padding: 8px 2px; color: rgba(0,0,0,0.6); font-size: 13px;",
-                    "…and {hidden} more. Use Storage to browse the rest."
+                    {tr!("file-locations-panel-and-more-use-storage-to", hidden: hidden.to_string())}
                 }
             }
         }
@@ -219,13 +220,13 @@ fn LocationRow(location: VfsFileLocation, document_identifier: DocumentIdentifie
                 class: "x-file-location-open hoover4-hover-shadow-background",
                 href: "{browse_href}",
                 target: "_blank",
-                title: "Open the containing folder in the file browser",
+                title: tr!("file-locations-panel-open-the-containing-folder-in"),
                 Icon { icon: MdFolderOpen, style: "width: 19px; height: 19px;" }
             }
             button {
                 style: ICON_BUTTON_STYLE,
                 class: "x-file-location-copy hoover4-hover-shadow-background",
-                title: "Copy this path",
+                title: tr!("file-locations-panel-copy-this-path"),
                 onclick: move |event| {
                     event.prevent_default();
                     event.stop_propagation();

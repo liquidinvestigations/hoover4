@@ -9,14 +9,15 @@ use crate::components::admin_components::{
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
+use crate::tr;
 
 #[component]
 pub fn AdminUsersPage() -> Element {
     rsx! {
-        Title { "Admin: users" }
+        Title { {tr!("admin-users-list-admin-users")} }
         AdminGuard {
             AdminShell {
-                title: "Users".to_string(),
+                title: tr!("admin-users-list-users").to_string(),
                 breadcrumb: String::new(),
                 active: "users".to_string(),
                 SuspendWrapper { UsersListContent {} }
@@ -35,7 +36,7 @@ fn UsersListContent() -> Element {
             span { style: "color: var(--x-ink-muted); font-size: 15px;", "\u{1F50D}" }
             input {
                 style: "{INPUT} flex: 0 1 320px;",
-                placeholder: "Search users",
+                placeholder: tr!("admin-users-list-search-users"),
                 value: "{search}",
                 oninput: move |e| search.set(e.value()),
             }
@@ -57,13 +58,13 @@ fn UsersListContent() -> Element {
                     table { style: TABLE,
                         thead {
                             tr {
-                                th { style: TH, "Username" }
-                                th { style: TH, "Full name" }
-                                th { style: TH, "Email address" }
-                                th { style: TH, "Superuser" }
-                                th { style: TH, "Groups" }
-                                th { style: TH, "Created" }
-                                th { style: TH, "Last login" }
+                                th { style: TH, {tr!("admin-users-list-username")} }
+                                th { style: TH, {tr!("admin-users-list-full-name")} }
+                                th { style: TH, {tr!("admin-users-list-email-address")} }
+                                th { style: TH, {tr!("admin-users-list-superuser")} }
+                                th { style: TH, {tr!("admin-users-list-groups")} }
+                                th { style: TH, {tr!("admin-users-list-created")} }
+                                th { style: TH, {tr!("admin-users-list-last-login")} }
                             }
                         }
                         tbody {
@@ -97,7 +98,7 @@ fn UsersListContent() -> Element {
                 }
             }
             Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
-            None => rsx! { "Loading..." },
+            None => rsx! { {tr!("admin-users-list-loading")} },
         }
     }
 }

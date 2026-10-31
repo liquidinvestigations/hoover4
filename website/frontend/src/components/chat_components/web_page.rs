@@ -8,6 +8,7 @@ use super::tool_cards::http_link;
 use crate::api::chat_api::chat_artifact_detail;
 use crate::data_definitions::doc_viewer_state::DocViewerStateControl;
 use crate::components::search_components::search_result_item_card::ResultCardLabel;
+use crate::tr;
 
 #[derive(Clone, Copy)]
 pub struct ChatWebOpen {
@@ -131,7 +132,7 @@ pub fn WebPagePreview(artifact_id: ReadSignal<String>, find: ReadSignal<String>)
         div { "data-web-preview": "true", style: "height: 100%; display: flex; flex-direction: column; background: #F5F6F8;",
             style { "::highlight(web-page-find) {{ background: #FFF176; }} ::highlight(web-page-current) {{ background: #FFB74D; }}" }
             div { style: "display: flex; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid; border-bottom-color: var(--x-border);",
-                input { placeholder: "Find exact text", value: "{find}",
+                input { placeholder: tr!("chat-web-find-exact-text"), value: "{find}",
                     style: "min-width: 0; flex: 1; border: 1px solid #AAAAAA; border-radius: 14px; padding: 8px 12px; background: white;",
                     oninput: move |event| {
                         let mut state = control.doc_viewer_state.read().clone().unwrap_or_default();
@@ -140,9 +141,9 @@ pub fn WebPagePreview(artifact_id: ReadSignal<String>, find: ReadSignal<String>)
                     }
                 }
                 span { id: "web-page-find-count", style: "font-size: var(--x-text-sm); color: var(--x-ink-muted);", "0/0" }
-                button { title: "Previous match", onclick: move |_| find_in_page(&find(), -1), "▲" }
-                button { title: "Next match", onclick: move |_| find_in_page(&find(), 1), "▼" }
-                button { title: "Close preview", onclick: move |_| {
+                button { title: tr!("chat-web-previous-match"), onclick: move |_| find_in_page(&find(), -1), "▲" }
+                button { title: tr!("chat-web-next-match"), onclick: move |_| find_in_page(&find(), 1), "▼" }
+                button { title: tr!("chat-web-close-preview"), onclick: move |_| {
                     let mut state = control.doc_viewer_state.read().clone().unwrap_or_default();
                     state.web_artifact_id = None;
                     control.set_doc_viewer_state.call(state);
@@ -155,9 +156,9 @@ pub fn WebPagePreview(artifact_id: ReadSignal<String>, find: ReadSignal<String>)
                     MarkdownishText { text: page.markdown, citation_links: false }
                 }
             } else if failed || (source.read().is_some() && !ready) {
-                div { style: "padding: 16px;", "The captured page could not be loaded." }
+                div { style: "padding: 16px;", {tr!("chat-web-the-captured-page-could-not")} }
             } else {
-                div { style: "padding: 16px;", "Loading…" }
+                div { style: "padding: 16px;", {tr!("chat-web-loading")} }
             }
         }
     }

@@ -7,12 +7,13 @@ use dioxus_free_icons::icons::md_communication_icons::MdChat;
 
 use crate::routes::Route;
 use common::search_query::SearchQuery;
+use crate::tr;
 
 /// Home page
 #[component]
 pub fn HomePage() -> Element {
     rsx! {
-        Title { "Hoover Search - Home" }
+        Title { {tr!("home-hoover-search-home")} }
         div {
             id: "x-home-container",
             style: "
@@ -72,11 +73,11 @@ fn MainTitle() -> Element {
             ",
             img {
                 src: asset!("/assets/favicon-transparent.png"),
-                alt: "Hoover Logo",
+                alt: tr!("home-hoover-logo"),
                 style: "width: 27px; height: 27px;",
             },
-            span { "Welcome to" }
-            span { style: "color:#4F46E5;", "Hoover!" }
+            span { {tr!("home-welcome-to")} }
+            span { style: "color:#4F46E5;", {tr!("home-hoover")} }
         }
     }
 }
@@ -92,7 +93,7 @@ fn SubText() -> Element {
                 max-width: 620px;
                 font-weight: 500;
             ",
-            "Investigate faster with AI-powered tools built for journalists search, analyze, and uncover insights across thousands of documents."
+            {tr!("home-investigate-faster-with-ai-powered")}
         }
     }
 }
@@ -121,7 +122,7 @@ fn TextSearchCard() -> Element {
                     font-size: var(--x-text-section); line-height: var(--x-line-section);
                     font-weight: 500;
                 ",
-                "Text Search"
+                {tr!("home-text-search")}
             }
 
             // Description
@@ -132,7 +133,7 @@ fn TextSearchCard() -> Element {
                     line-height: var(--x-line-body);
                     color: rgba(255,255,255,0.92);
                 ",
-                "Instantly find keywords or phrases across all uploaded reports, articles and documents. Perfect for tracing facts or following leads fast."
+                {tr!("home-instantly-find-keywords-or-phrases")}
             }
 
             // Divider spacing
@@ -144,7 +145,7 @@ fn TextSearchCard() -> Element {
                     color: rgba(255,255,255,0.9);
                     width: 100%;
                 ",
-                "*Type search terms in the text box below and hit Enter to start."
+                {tr!("home-type-search-terms-in-the")}
             }
             SearchCardInput {}
         }
@@ -170,7 +171,7 @@ fn SearchCardInput() -> Element {
             Icon { icon: MdSearch, style: "width: 19px; height: 19px; color:#6B7280;" }
             input {
                 r#type: "text",
-                placeholder: "Search collections...",
+                placeholder: tr!("home-search-collections"),
                 style: "
                     flex:1;
                     border: none;
@@ -221,7 +222,7 @@ fn AiChatCard() -> Element {
                         font-size: var(--x-text-section); line-height: var(--x-line-section);
                         font-weight: 500;
                     ",
-                    "AI Chat"
+                    {tr!("home-ai-chat")}
                 }
 
                 div {
@@ -232,7 +233,7 @@ fn AiChatCard() -> Element {
                         color: rgba(255,255,255,0.96);
                         max-width: 510px;
                     ",
-                    "Ask questions about your data and get clear, contextual answers. The assistant searches the collections you have access to, reads what it finds, and cites its sources."
+                    {tr!("home-ask-questions-about-your-data")}
                 }
 
                 div { style: "height: 8px; padding-top: 7px; margin-top: 7px; border-top: 1px solid white; width: 100%;" }
@@ -246,7 +247,7 @@ fn AiChatCard() -> Element {
                         color: rgba(255,255,255,0.92);
                     ",
                     Icon { icon: MdChat, style: "width: 19px; height: 19px;" }
-                    "Start a new chat or pick up an earlier one \u{2192}"
+                    {tr!("home-start-a-new-chat-or")}
                 }
             }
         }
@@ -297,7 +298,7 @@ fn FeedbackCard() -> Element {
                     flex-direction: column;
                     gap: 15px;
                 ",
-                div { style: "font-size: var(--x-text-body); line-height: var(--x-line-body); font-weight: 500;", "Send us an idea, or report a problem. The bug icon at the bottom of the left rail opens the same form." }
+                div { style: "font-size: var(--x-text-body); line-height: var(--x-line-body); font-weight: 500;", {tr!("home-send-us-an-idea-or")} }
 
                 div {
                     style: "display:flex; flex-direction:row;",
@@ -314,7 +315,7 @@ fn FeedbackCard() -> Element {
                             border: 1px solid #D1D5DB;
                             cursor: pointer;
                         ",
-                        "Send feedback",
+                        {tr!("home-send-feedback")},
                     }
                 }
             }

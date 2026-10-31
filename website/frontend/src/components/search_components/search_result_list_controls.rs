@@ -15,6 +15,7 @@ use crate::{
     components::hover_card::{HoverCard, HoverCardContent, HoverCardTrigger},
     components::search_components::search_panel_left_view::SearchResultsState,
 };
+use crate::tr;
 
 #[component]
 pub fn SearchResultListControls() -> Element {
@@ -88,10 +89,10 @@ fn PaginationCapNotice() -> Element {
                             background-color: white; padding: 11px 15px; width: 320px;
                             font-size: var(--x-text-body); line-height: var(--x-line-body); color: rgb(30, 35, 45);
                         ",
-                        div { style: "font-weight: 600; margin-bottom: 4px;", "Only the first {MAX_PAGINATION_DOCUMENT_LIMIT} results can be opened" }
-                        "The count beside this icon is the whole match; the pager stops at "
-                        "{MAX_PAGINATION_DOCUMENT_LIMIT}. Add words to the query, or narrow it with a "
-                        "filter, to bring what you are after inside that window."
+                        div { style: "font-weight: 600; margin-bottom: 4px;", {tr!("result-list-controls-only-the-first-results-can", max_pagination_document_limit: MAX_PAGINATION_DOCUMENT_LIMIT)} }
+                        {tr!("result-list-controls-the-count-beside-this-icon")}
+                        {tr!("result-list-controls-add-words-to-the-query", max_pagination_document_limit: MAX_PAGINATION_DOCUMENT_LIMIT)}
+                        {tr!("result-list-controls-filter-to-bring-what-you")}
                     }
                 }
             }
@@ -241,7 +242,7 @@ fn ControlNextPrevDocument() -> Element {
         // prev result
         NavigationButton {
             icon: MdArrowUpward,
-            label: "Previous Result",
+            label: tr!("result-list-controls-previous-result"),
             disabled: !can_go_to_previous_result(),
             onclick: go_previous
         }
@@ -257,7 +258,7 @@ fn ControlNextPrevDocument() -> Element {
         // next result
         NavigationButton {
             icon: MdArrowDownward,
-            label: "Next Result",
+            label: tr!("result-list-controls-next-result"),
             disabled: !can_go_to_next_result(),
             onclick: go_next
         }
@@ -321,7 +322,7 @@ fn ControlNextPrevPage() -> Element {
             // prev page
             NavigationButton2 {
                 icon: MdArrowBack,
-                label: "Previous Page",
+                label: tr!("result-list-controls-previous-page"),
                 disabled: !can_go_to_previous_page(),
                 onclick: move |_| {set_current_page(search_result_page() - 1);}
             }
@@ -351,7 +352,7 @@ fn ControlNextPrevPage() -> Element {
             // next page
             NavigationButton2 {
                 icon: MdArrowForward,
-                label: "Next Page",
+                label: tr!("result-list-controls-next-page"),
                 disabled: !can_go_to_next_page(),
                 onclick: move |_| {
                     // dioxus::logger::tracing::info!("NEXT PAGE!");
@@ -542,7 +543,7 @@ fn SearchForResultsHitCountString(
         // node, and returning nothing from one of them panics the render with "Unable to
         // retrieve the hook that was initialized at this index" when the arm changes.
         Some(Err(_)) => return rsx! { "n/a" },
-        Some(Ok(s)) => return rsx! { "{s.total} documents found" },
+        Some(Ok(s)) => return rsx! { {tr!("result-list-controls-documents-found", s_total: s.total)} },
         None => return rsx! {"..."},
     };
 }

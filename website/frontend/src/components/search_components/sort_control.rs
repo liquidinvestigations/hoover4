@@ -29,6 +29,8 @@ use dioxus_free_icons::{
         go_icons::{GoSortAsc, GoSortDesc},
     },
 };
+use crate::tr;
+use crate::i18n::SharedText;
 
 /// The accent the filter modal marks pending/active state with.
 const ACCENT: &str = "rgba(243,140,104,0.95)";
@@ -99,27 +101,27 @@ pub fn SortControl(
 
     let label = use_memo(move || {
         if applied_is_default() {
-            "Sort".to_string()
+            tr!("search-sort-control-sort")
         } else {
-            format!("Sort: {}", applied().key.label())
+            tr!("search-sort-control-sort-key", key: applied().key.label().shared())
         }
     });
 
     let button_tooltip = use_memo(move || {
         if is_pending() {
-            format!(
-                "Results are ordered by {}. Press Search to switch to {}.",
-                applied().key.label(),
-                effective().key.label()
+            tr!(
+                "search-sort-control-pending",
+                applied: applied().key.label().shared(),
+                pending: effective().key.label().shared()
             )
         } else {
-            "Change the order of the results".to_string()
+            tr!("search-sort-control-change-the-order-of-the")
         }
     });
 
     let direction_tooltip = use_memo(move || {
         if effective().key == SortKey::Relevance {
-            return "Relevance always sorts descending.".to_string();
+            return tr!("search-sort-control-relevance-always-sorts-descending");
         }
         let base = if effective().desc {
             "Descending. Click for ascending."
@@ -127,7 +129,7 @@ pub fn SortControl(
             "Ascending. Click for descending."
         };
         if direction_pending() {
-            format!("{base}. Not applied yet. Press Search.")
+            tr!("search-sort-control-not-applied-yet-press-search", base: base.to_string())
         } else {
             base.to_string()
         }
@@ -139,9 +141,9 @@ pub fn SortControl(
     });
     let direction_aria_label = use_memo(move || {
         if effective().desc {
-            "Sort direction: descending"
+            tr!("search-sort-control-sort-direction-descending")
         } else {
-            "Sort direction: ascending"
+            tr!("search-sort-control-sort-direction-ascending")
         }
     });
 
@@ -175,7 +177,7 @@ pub fn SortControl(
                 // is something to apply.
                 if key_pending() {
                     Icon { icon: MdArrowForward, style: "width: 16px; height: 16px; color: {ACCENT};" }
-                    span { style: "color: {ACCENT};", "{effective().key.label()}" }
+                    span { style: "color: {ACCENT};", "{effective().key.label().shared()}" }
                 }
             }
 
@@ -234,7 +236,7 @@ pub fn SortControl(
                                             Icon { icon: MdCheck, style: "width: 18px; height: 18px; color: rgba(243,140,104,0.95);" }
                                         }
                                     }
-                                    "{key.label()}"
+                                    "{key.label().shared()}"
                                 }
                             }
                         }

@@ -24,6 +24,8 @@ use crate::{
 };
 use common::entity_cards::EntityTermHit;
 use std::collections::HashMap;
+use crate::tr;
+use crate::i18n::SharedText;
 
 /// Whether a resource has a request running. Reading it subscribes, so a restart
 /// re-renders the reader. A reader that shows the previous value greyed uses it.
@@ -104,7 +106,7 @@ pub fn FacetSelectorList(
                         ",
                         class: "hoover4-hover-shadow-background",
                         onclick: move |_| facet_request.restart(),
-                        "Retry"
+                        {tr!("search-facets-retry")}
                     }
                 }
             };
@@ -153,7 +155,7 @@ pub fn FacetSelectorList(
         if no_matches {
             div {
                 style: "padding: 8px; font-size: 13px; color: rgba(0,0,0,0.55);",
-                "Nothing in this collection matches."
+                {tr!("search-facets-nothing-in-this-collection-matches")}
             }
         }
         ul {
@@ -284,7 +286,7 @@ pub fn ResolveMissingItems(
                 }
                 // The same label the backend gives a text source bucket.
                 FacetOriginalValue::String(s) if *facet_field_name.read() == "extracted_by" => {
-                    common::document_sources::text_source_label(s)
+                    common::document_sources::text_source_label(s).shared()
                 }
                 FacetOriginalValue::String(s) => s.clone(),
             },

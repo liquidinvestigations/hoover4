@@ -9,6 +9,7 @@ use crate::components::admin_components::{
     AdminGuard, AdminShell, LiveChatsPanel, HELP_TEXT, MODULE, MODULE_BODY, MODULE_CAPTION,
     TABLE, TD, TH, SUBHEADING};
 use crate::components::suspend_boundary::SuspendWrapper;
+use crate::tr;
 // Shadows the prelude's element table so `svg_title` exists. See its module docs. The
 // bar tooltip is the only place the exact bucket timestamp and count are readable.
 use crate::components::svg_title::dioxus_elements;
@@ -16,10 +17,10 @@ use crate::components::svg_title::dioxus_elements;
 #[component]
 pub fn AdminMetricsPage() -> Element {
     rsx! {
-        Title { "Admin: metrics" }
+        Title { {tr!("admin-metrics-admin-metrics")} }
         AdminGuard {
             AdminShell {
-                title: "Metrics".to_string(),
+                title: tr!("admin-metrics-metrics").to_string(),
                 breadcrumb: String::new(),
                 active: "metrics".to_string(),
                 SuspendWrapper { MetricsContent {} }
@@ -31,9 +32,9 @@ pub fn AdminMetricsPage() -> Element {
 fn humanize_bytes(bytes: u64) -> String {
     match bytes {
         b if b < 1024 => format!("{b} B"),
-        b if b < 1024 * 1024 => format!("{:.1} KiB", b as f64 / 1024.0),
-        b if b < 1024 * 1024 * 1024 => format!("{:.1} MiB", b as f64 / 1024.0 / 1024.0),
-        b => format!("{:.2} GiB", b as f64 / 1024.0 / 1024.0 / 1024.0),
+        b if b < 1024 * 1024 => tr!("admin-metrics-kib", b_as_f64_1024_0: format!("{:.1}", b as f64 / 1024.0)),
+        b if b < 1024 * 1024 * 1024 => tr!("admin-metrics-mib", b_as_f64_1024_0_1024_0: format!("{:.1}", b as f64 / 1024.0 / 1024.0)),
+        b => tr!("admin-metrics-gib", b_as_f64_1024_0_1024_0_1024_0: format!("{:.2}", b as f64 / 1024.0 / 1024.0 / 1024.0)),
     }
 }
 
@@ -46,10 +47,10 @@ fn MetricsContent() -> Element {
         // Live first: it is the only thing on this page that is actionable right now.
         LiveChatsPanel {}
         p { style: "{HELP_TEXT} margin: 0 0 16px;",
-            "The last 24 hours."
+            {tr!("admin-metrics-the-last-24-hours")}
         }
         match metrics {
-            None => rsx! { "Loading\u{2026}" },
+            None => rsx! { {tr!("admin-metrics-loading-u")} },
             Some(m) => rsx! {
                 UsagePanel { usage: m.usage }
                 ApiPanel { api: m.api }
@@ -72,15 +73,15 @@ fn ManticorePanel() -> Element {
 
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Manticore load (now)" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-metrics-manticore-load-now")} }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",
-                    "RAM is the memory of the tables. Thread load is for the last 1, 5 and 15 minutes."
+                    {tr!("admin-metrics-ram-is-the-memory-of")}
                 }
                 match state {
-                    None => rsx! { "Loading\u{2026}" },
+                    None => rsx! { {tr!("admin-metrics-loading-u")} },
                     Some(Err(error)) => rsx! {
-                        p { style: "{HELP_TEXT} color: var(--x-danger);", "Manticore status could not be read: {error}" }
+                        p { style: "{HELP_TEXT} color: var(--x-danger);", {tr!("admin-metrics-manticore-status-could-not-be", error: error.to_string())} }
                     },
                     Some(Ok(loads)) => rsx! {
                         for daemon in loads {
@@ -104,33 +105,33 @@ fn ManticoreLoadTables(load: ManticoreLoad) -> Element {
     rsx! {
         table { style: "{TABLE} margin-bottom: 20px;",
             tbody {
-                tr { td { style: TD, "Thread load (1, 5, 15 min)" } td { style: TD, "{three_loads(load.load)}" } }
-                tr { td { style: TD, "Primary thread load (1, 5, 15 min)" } td { style: TD, "{three_loads(load.load_primary)}" } }
-                tr { td { style: TD, "Secondary thread load (1, 5, 15 min)" } td { style: TD, "{three_loads(load.load_secondary)}" } }
-                tr { td { style: TD, "Worker threads busy / total" } td { style: TD, "{load.workers_active} / {load.workers_total}" } }
-                tr { td { style: TD, "Work queue" } td { style: TD, "{load.work_queue_length}" } }
-                tr { td { style: TD, "RAM held by tables" } td { style: TD, "{humanize_bytes(load.ram_bytes_total)}" } }
-                tr { td { style: TD, "Disk used by tables" } td { style: TD, "{humanize_bytes(load.disk_bytes_total)}" } }
-                tr { td { style: TD, "Tables merging" } td { style: TD, "{merging}" } }
+                tr { td { style: TD, {tr!("admin-metrics-thread-load-1-5-15")} } td { style: TD, "{three_loads(load.load)}" } }
+                tr { td { style: TD, {tr!("admin-metrics-primary-thread-load-1-5")} } td { style: TD, "{three_loads(load.load_primary)}" } }
+                tr { td { style: TD, {tr!("admin-metrics-secondary-thread-load-1-5")} } td { style: TD, "{three_loads(load.load_secondary)}" } }
+                tr { td { style: TD, {tr!("admin-metrics-worker-threads-busy-total")} } td { style: TD, "{load.workers_active} / {load.workers_total}" } }
+                tr { td { style: TD, {tr!("admin-metrics-work-queue")} } td { style: TD, "{load.work_queue_length}" } }
+                tr { td { style: TD, {tr!("admin-metrics-ram-held-by-tables")} } td { style: TD, "{humanize_bytes(load.ram_bytes_total)}" } }
+                tr { td { style: TD, {tr!("admin-metrics-disk-used-by-tables")} } td { style: TD, "{humanize_bytes(load.disk_bytes_total)}" } }
+                tr { td { style: TD, {tr!("admin-metrics-tables-merging")} } td { style: TD, "{merging}" } }
                 tr {
-                    td { style: TD, "Tables read" }
+                    td { style: TD, {tr!("admin-metrics-tables-read")} }
                     td {
                         style: if load.unread_tables > 0 { format!("{TD} color: var(--x-danger);") } else { TD.to_string() },
-                        "{load.table_count - load.unread_tables} of {load.table_count}"
+                        {tr!("admin-metrics-of", load_table_count_load_unread_tables: (load.table_count - load.unread_tables).to_string(), load_table_count: load.table_count)}
                     }
                 }
-                tr { td { style: TD, "Read at" } td { style: TD, "{load.read_at}" } }
+                tr { td { style: TD, {tr!("admin-metrics-read-at")} } td { style: TD, "{load.read_at}" } }
             }
         }
-        h3 { style: SUBHEADING, "Largest tables by RAM" }
+        h3 { style: SUBHEADING, {tr!("admin-metrics-largest-tables-by-ram")} }
         table { style: TABLE,
             thead {
                 tr {
-                    th { style: TH, "Table" }
-                    th { style: TH, "RAM" }
-                    th { style: TH, "Disk" }
-                    th { style: TH, "Disk chunks" }
-                    th { style: TH, "Merging" }
+                    th { style: TH, {tr!("admin-metrics-table")} }
+                    th { style: TH, {tr!("admin-metrics-ram")} }
+                    th { style: TH, {tr!("admin-metrics-disk")} }
+                    th { style: TH, {tr!("admin-metrics-disk-chunks")} }
+                    th { style: TH, {tr!("admin-metrics-merging")} }
                 }
             }
             tbody {
@@ -140,7 +141,7 @@ fn ManticoreLoadTables(load: ManticoreLoad) -> Element {
                         td { style: TD, "{humanize_bytes(t.ram_bytes)}" }
                         td { style: TD, "{humanize_bytes(t.disk_bytes)}" }
                         td { style: TD, "{t.disk_chunks}" }
-                        td { style: TD, if t.optimizing { "yes" } else { "no" } }
+                        td { style: TD, if t.optimizing { {tr!("admin-metrics-yes")} } else { {tr!("admin-metrics-no")} } }
                     }
                 }
             }
@@ -153,14 +154,14 @@ fn UsagePanel(usage: UsageMetrics) -> Element {
     let max_series = usage.series.iter().map(|p| p.count).max().unwrap_or(1).max(1);
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Usage (last 24 h)" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-metrics-usage-last-24-h")} }
             div { style: MODULE_BODY,
-                h3 { style: SUBHEADING, "Events by type" }
+                h3 { style: SUBHEADING, {tr!("admin-metrics-events-by-type")} }
                 table { style: "{TABLE} margin-bottom: 20px;",
                     thead {
                         tr {
-                            th { style: TH, "Event" }
-                            th { style: TH, "Count" }
+                            th { style: TH, {tr!("admin-metrics-event")} }
+                            th { style: TH, {tr!("admin-metrics-count")} }
                         }
                     }
                     tbody {
@@ -173,19 +174,19 @@ fn UsagePanel(usage: UsageMetrics) -> Element {
                     }
                 }
 
-                h3 { style: SUBHEADING, "Events per hour" }
+                h3 { style: SUBHEADING, {tr!("admin-metrics-events-per-hour")} }
                 if usage.series.is_empty() {
-                    p { style: HELP_TEXT, "No events recorded yet." }
+                    p { style: HELP_TEXT, {tr!("admin-metrics-no-events-recorded-yet")} }
                 } else {
                     HourlyEventsChart { series: usage.series, max_count: max_series }
                 }
 
-                h3 { style: SUBHEADING, "Busiest users" }
+                h3 { style: SUBHEADING, {tr!("admin-metrics-busiest-users")} }
                 table { style: TABLE,
                     thead {
                         tr {
-                            th { style: TH, "User" }
-                            th { style: TH, "Events" }
+                            th { style: TH, {tr!("admin-metrics-user")} }
+                            th { style: TH, {tr!("admin-metrics-events")} }
                         }
                     }
                     tbody {
@@ -348,7 +349,7 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
                             width: "{bar_w}", height: "{height}",
                             rx: "2",
                             fill: "var(--x-link)",
-                            svgtitle { "{point.bucket}: {point.count} events" }
+                            svgtitle { {tr!("admin-metrics-events-2", point_bucket: point.bucket.to_string(), point_count: point.count)} }
                         }
                     }
                 }
@@ -371,7 +372,7 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
                 x: "{LEFT - 6.0}", y: "{H - 7.0}",
                 "text-anchor": "end",
                 style: "font-size: var(--x-text-xs); fill: #999;",
-                "UTC"
+                {tr!("admin-metrics-utc")}
             }
         }
     }
@@ -381,23 +382,23 @@ fn HourlyEventsChart(series: Vec<UsageTimePoint>, max_count: u64) -> Element {
 fn ApiPanel(api: Vec<ApiFunctionStats>) -> Element {
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "API calls (last 24 h)" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-metrics-api-calls-last-24-h")} }
             div { style: MODULE_BODY,
                 if api.is_empty() {
-                    p { style: HELP_TEXT, "No API calls recorded yet." }
+                    p { style: HELP_TEXT, {tr!("admin-metrics-no-api-calls-recorded-yet")} }
                 } else {
                     table { style: TABLE,
                         thead {
                             tr {
-                                th { style: TH, "Function" }
-                                th { style: TH, "Calls" }
-                                th { style: TH, "Errors" }
-                                th { style: TH, "Error rate" }
+                                th { style: TH, {tr!("admin-metrics-function")} }
+                                th { style: TH, {tr!("admin-metrics-calls")} }
+                                th { style: TH, {tr!("admin-metrics-errors")} }
+                                th { style: TH, {tr!("admin-metrics-error-rate")} }
                                 th { style: TH, "p50" }
                                 th { style: TH, "p95" }
-                                th { style: TH, "max" }
-                                th { style: TH, "Bytes in" }
-                                th { style: TH, "Bytes out" }
+                                th { style: TH, {tr!("admin-metrics-max")} }
+                                th { style: TH, {tr!("admin-metrics-bytes-in")} }
+                                th { style: TH, {tr!("admin-metrics-bytes-out")} }
                             }
                         }
                         tbody {
@@ -410,9 +411,9 @@ fn ApiPanel(api: Vec<ApiFunctionStats>) -> Element {
                                         "{f.errors}"
                                     }
                                     td { style: TD, "{f.error_rate * 100.0:.1}%" }
-                                    td { style: TD, "{f.p50_ms} ms" }
-                                    td { style: TD, "{f.p95_ms} ms" }
-                                    td { style: TD, "{f.max_ms} ms" }
+                                    td { style: TD, {tr!("admin-metrics-ms", f_p50_ms: f.p50_ms.to_string())} }
+                                    td { style: TD, {tr!("admin-metrics-ms-2", f_p95_ms: f.p95_ms.to_string())} }
+                                    td { style: TD, {tr!("admin-metrics-ms-3", f_max_ms: f.max_ms.to_string())} }
                                     td { style: TD, "{humanize_bytes(f.bytes_in)}" }
                                     td { style: TD, "{humanize_bytes(f.bytes_out)}" }
                                 }

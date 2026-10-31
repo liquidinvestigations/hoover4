@@ -2897,6 +2897,19 @@
       ],
       "audience": "user",
       "no_screenshot_reason": "The settings page is a list of language choices. The manual describes each choice in text."
+    },
+    {
+      "id": "F-lang-02",
+      "source": [
+        "website/frontend/i18n",
+        "website/frontend/src/i18n.rs",
+        "scripts/i18n/translate_catalogs.py"
+      ],
+      "docs": [
+        "docs/user-manual/User_Manual.md#choose-your-languages"
+      ],
+      "audience": "user",
+      "no_screenshot_reason": "Every page shows the translated text. The settings page screenshot shows the language choice."
     }
   ],
   "routes": {

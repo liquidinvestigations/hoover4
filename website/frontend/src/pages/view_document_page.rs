@@ -10,6 +10,7 @@ use crate::{
         url_param::UrlParam,
     },
 };
+use crate::tr;
 
 /// View document page
 #[component]
@@ -20,7 +21,7 @@ pub fn ViewDocumentPage(
 ) -> Element {
     let document_identifier = document_identifier.0.clone();
     rsx! {
-        Title { "Hoover Search - View Document" }
+        Title { {tr!("view-document-hoover-search-view-document")} }
         DocViewerRoot { document_identifier, doc_viewer_state: doc_viewer_state.0.clone(), viewer_right_tab_state: viewer_right_tab_state.0.clone() }
 
     }

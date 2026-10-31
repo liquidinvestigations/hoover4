@@ -7,14 +7,15 @@ use crate::components::admin_components::{AdminGuard, AdminShell, ErrorBar};
 use crate::pages::admin::collections_list::DATASETS_SECTION_ID;
 use crate::components::suspend_boundary::{LoadingIndicator, SuspendWrapper};
 use crate::routes::Route;
+use crate::tr;
 
 #[component]
 pub fn AdminDashboardPage() -> Element {
     rsx! {
-        Title { "Admin: dashboard" }
+        Title { {tr!("admin-dashboard-admin-dashboard")} }
         AdminGuard {
             AdminShell {
-                title: "Administration".to_string(),
+                title: tr!("admin-dashboard-administration").to_string(),
                 breadcrumb: String::new(),
                 active: "dashboard".to_string(),
                 SuspendWrapper { DashboardContent {} }
@@ -34,13 +35,13 @@ fn DashboardContent() -> Element {
             Some(Ok((users, groups, collections, datasets))) => rsx! {
                 div {
                     style: "display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; max-width: 900px;",
-                    DashboardCard { label: "Users", count: *users, href: Route::AdminUsersPage {}.to_string() }
-                    DashboardCard { label: "Groups", count: *groups, href: Route::AdminGroupsPage {}.to_string() }
-                    DashboardCard { label: "Collections", count: *collections, href: Route::AdminCollectionsPage {}.to_string() }
-                    DashboardCard { label: "Datasets", count: *datasets, href: datasets_href.clone() }
+                    DashboardCard { label: tr!("admin-dashboard-users"), count: *users, href: Route::AdminUsersPage {}.to_string() }
+                    DashboardCard { label: tr!("admin-dashboard-groups"), count: *groups, href: Route::AdminGroupsPage {}.to_string() }
+                    DashboardCard { label: tr!("admin-dashboard-collections"), count: *collections, href: Route::AdminCollectionsPage {}.to_string() }
+                    DashboardCard { label: tr!("admin-dashboard-datasets"), count: *datasets, href: datasets_href.clone() }
                 }
             },
-            Some(Err(e)) => rsx! { ErrorBar { message: "Failed to load counts: {e}" } },
+            Some(Err(e)) => rsx! { ErrorBar { message: tr!("admin-dashboard-failed-to-load-counts", e: e.to_string()) } },
             None => rsx! { LoadingIndicator {} },
         }
     }

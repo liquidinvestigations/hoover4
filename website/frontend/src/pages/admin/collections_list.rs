@@ -15,6 +15,8 @@ use crate::components::admin_components::{
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
+use crate::tr;
+use crate::i18n::SharedText;
 
 /// The id of the Datasets section. The dashboard Datasets card links to it.
 pub const DATASETS_SECTION_ID: &str = "datasets";
@@ -22,10 +24,10 @@ pub const DATASETS_SECTION_ID: &str = "datasets";
 #[component]
 pub fn AdminCollectionsPage() -> Element {
     rsx! {
-        Title { "Admin: collections" }
+        Title { {tr!("admin-collections-list-admin-collections")} }
         AdminGuard {
             AdminShell {
-                title: "Collections".to_string(),
+                title: tr!("admin-collections-list-collections").to_string(),
                 breadcrumb: String::new(),
                 active: "collections".to_string(),
                 SuspendWrapper { CollectionsListContent {} }
@@ -50,7 +52,7 @@ fn CollectionsListContent() -> Element {
     // tables are on the page, because the collection table moves the section down.
     use_effect(move || {
         if cols_res.read().is_some() && datasets_res.read().is_some() {
-            document::eval(&format!(
+            document::eval(&format!( // i18n: data, JavaScript
                 "if (location.hash === '#{DATASETS_SECTION_ID}') document.getElementById('{DATASETS_SECTION_ID}')?.scrollIntoView();"
             ));
         }
@@ -75,24 +77,24 @@ fn CollectionsListContent() -> Element {
             match &*cols_res.read() {
                 Some(Ok(cols)) => rsx! { CollectionsTable { cols: cols.clone() } },
                 Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
-                None => rsx! { p { style: HELP_TEXT, "Loading collections\u{2026}" } },
+                None => rsx! { p { style: HELP_TEXT, {tr!("admin-collections-list-loading-collections-u")} } },
             }
         }
         section {
             id: DATASETS_SECTION_ID,
             class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Datasets" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-collections-list-datasets")} }
             match &*datasets_res.read() {
                 Some(Ok(datasets)) => rsx! { DatasetsTable { datasets: datasets.clone() } },
                 Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
-                None => rsx! { p { style: HELP_TEXT, "Loading datasets\u{2026}" } },
+                None => rsx! { p { style: HELP_TEXT, {tr!("admin-collections-list-loading-datasets-u")} } },
             }
         }
         section { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Add a collection" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-collections-list-add-a-collection")} }
             div { style: "{MODULE_BODY} display: flex; gap: 8px; flex-wrap: wrap; align-items: center;",
-                input { style: INPUT, placeholder: "Name, for example enron", value: "{collectionname}", oninput: move |e| collectionname.set(e.value()) }
-                input { style: INPUT, placeholder: "Display name", value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
+                input { style: INPUT, placeholder: tr!("admin-collections-list-name-for-example-enron"), value: "{collectionname}", oninput: move |e| collectionname.set(e.value()) }
+                input { style: INPUT, placeholder: tr!("admin-collections-list-display-name"), value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
                 button {
                     style: BTN_PRIMARY,
                     disabled: new_name.is_empty() || name_taken,
@@ -104,7 +106,7 @@ fn CollectionsListContent() -> Element {
                             success_msg.set(None);
                             match admin_create_collection(c.clone(), f).await {
                                 Ok(()) => {
-                                    success_msg.set(Some(format!("The collection \u{201c}{c}\u{201d} was added.")));
+                                    success_msg.set(Some(tr!("admin-collections-list-the-collection-was-added", c: c.to_string())));
                                     collectionname.set(String::new());
                                     fullname.set(String::new());
                                     cols_res.restart();
@@ -113,19 +115,19 @@ fn CollectionsListContent() -> Element {
                             }
                         });
                     },
-                    "Add collection"
+                    {tr!("admin-collections-list-add-collection")}
                 }
             }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0;",
-                    "A name has lowercase letters, digits and underscores. Capital letters become lowercase, "
-                    "and a dash, a space or a full stop becomes an underscore. The name cannot change later."
+                    {tr!("admin-collections-list-a-name-has-lowercase-letters")}
+                    {tr!("admin-collections-list-and-a-dash-a-space")}
                 }
                 if !new_name.is_empty() {
-                    p { class: "x-name-preview", style: "{HELP_TEXT} margin: 4px 0 0;", "The collection is saved as: {new_name}" }
+                    p { class: "x-name-preview", style: "{HELP_TEXT} margin: 4px 0 0;", {tr!("admin-collections-list-the-collection-is-saved-as", new_name: new_name.to_string())} }
                 }
                 if name_taken {
-                    p { class: "x-name-collision", style: "margin: 4px 0 0; color: var(--x-danger);", "A collection with the name {new_name} exists." }
+                    p { class: "x-name-collision", style: "margin: 4px 0 0; color: var(--x-danger);", {tr!("admin-collections-list-a-collection-with-the-name", new_name: new_name.to_string())} }
                 }
             }
         }
@@ -138,13 +140,13 @@ fn CollectionsTable(cols: Vec<AdminCollectionItem>) -> Element {
         table { style: TABLE,
             thead {
                 tr {
-                    th { style: TH, "Collection" }
-                    th { style: "{TH} text-align: right;", "Datasets" }
-                    th { style: "{TH} text-align: right;", "Documents" }
-                    th { style: "{TH} text-align: right;", "Size" }
-                    th { style: "{TH} text-align: right;", "Errors" }
-                    th { style: TH, "State" }
-                    th { style: TH, "Access" }
+                    th { style: TH, {tr!("admin-collections-list-collection")} }
+                    th { style: "{TH} text-align: right;", {tr!("admin-collections-list-datasets")} }
+                    th { style: "{TH} text-align: right;", {tr!("admin-collections-list-documents")} }
+                    th { style: "{TH} text-align: right;", {tr!("admin-collections-list-size")} }
+                    th { style: "{TH} text-align: right;", {tr!("admin-collections-list-errors")} }
+                    th { style: TH, {tr!("admin-collections-list-state")} }
+                    th { style: TH, {tr!("admin-collections-list-access")} }
                 }
             }
             tbody {
@@ -165,18 +167,18 @@ fn CollectionsTable(cols: Vec<AdminCollectionItem>) -> Element {
                         }
                         td { style: TD,
                             if !c.db_ready {
-                                span { style: "color: var(--x-danger);", "Database not ready" }
+                                span { style: "color: var(--x-danger);", {tr!("admin-collections-list-database-not-ready")} }
                             } else {
                                 StateText { stats_known: c.stats.counted_dataset_count > 0, processing: c.stats.processing }
                             }
                         }
                         td { style: TD,
                             if c.is_public {
-                                "Public"
+                                {tr!("admin-collections-list-public")}
                             } else if c.group_count == 1 {
-                                "1 group"
+                                {tr!("admin-collections-list-1-group")}
                             } else {
-                                "{c.group_count} groups"
+                                {tr!("admin-collections-list-groups", c_group_count: c.group_count)}
                             }
                         }
                     }
@@ -190,13 +192,13 @@ fn CollectionsTable(cols: Vec<AdminCollectionItem>) -> Element {
 fn CollectionStatCells(stats: CollectionAggregates) -> Element {
     if stats.counted_dataset_count == 0 {
         return rsx! {
-            td { style: "{TD} {NUM_TD} {HELP_TEXT}", colspan: 2, "Not counted yet" }
+            td { style: "{TD} {NUM_TD} {HELP_TEXT}", colspan: 2, {tr!("admin-collections-list-not-counted-yet")} }
         };
     }
     let (note, note_title) = if stats.is_complete() {
-        ("", "")
+        ("", String::new())
     } else {
-        (" *", "Some datasets are not counted yet.")
+        (" *", tr!("admin-collections-list-some-datasets-are-not-counted"))
     };
     rsx! {
         td { style: "{TD} {NUM_TD}", title: note_title, "{stats.document_count}{note}" }
@@ -207,31 +209,31 @@ fn CollectionStatCells(stats: CollectionAggregates) -> Element {
 #[component]
 fn StateText(stats_known: bool, processing: bool) -> Element {
     if !stats_known {
-        return rsx! { span { style: HELP_TEXT, "Unknown" } };
+        return rsx! { span { style: HELP_TEXT, {tr!("admin-collections-list-unknown")} } };
     }
     let colour = if processing { "var(--x-link)" } else { "var(--x-ink)" };
     rsx! {
-        span { style: "color: {colour};", "{state_label(processing)}" }
+        span { style: "color: {colour};", "{state_label(processing).shared()}" }
     }
 }
 
 #[component]
 fn DatasetsTable(datasets: Vec<AdminDatasetListItem>) -> Element {
     if datasets.is_empty() {
-        return rsx! { p { style: HELP_TEXT, "No collection has a dataset." } };
+        return rsx! { p { style: HELP_TEXT, {tr!("admin-collections-list-no-collection-has-a-dataset")} } };
     }
     rsx! {
         table { style: TABLE,
             thead {
                 tr {
-                    th { style: TH, "Dataset" }
-                    th { style: TH, "Collection" }
-                    th { style: "{TH} text-align: right;", "Documents" }
-                    th { style: "{TH} text-align: right;", "Size" }
-                    th { style: "{TH} text-align: right;", "Indexed" }
-                    th { style: "{TH} text-align: right;", "Errors" }
-                    th { style: TH, "State" }
-                    th { style: TH, "Created" }
+                    th { style: TH, {tr!("admin-collections-list-dataset")} }
+                    th { style: TH, {tr!("admin-collections-list-collection")} }
+                    th { style: "{TH} text-align: right;", {tr!("admin-collections-list-documents")} }
+                    th { style: "{TH} text-align: right;", {tr!("admin-collections-list-size")} }
+                    th { style: "{TH} text-align: right;", {tr!("admin-collections-list-indexed")} }
+                    th { style: "{TH} text-align: right;", {tr!("admin-collections-list-errors")} }
+                    th { style: TH, {tr!("admin-collections-list-state")} }
+                    th { style: TH, {tr!("admin-collections-list-created")} }
                 }
             }
             tbody {
@@ -269,7 +271,7 @@ fn DatasetsTable(datasets: Vec<AdminDatasetListItem>) -> Element {
 pub fn DatasetStatCells(collectionname: String, stats: Option<DatasetAggregates>) -> Element {
     match stats {
         None => rsx! {
-            td { style: "{TD} {NUM_TD} {HELP_TEXT}", colspan: 4, "Not counted yet" }
+            td { style: "{TD} {NUM_TD} {HELP_TEXT}", colspan: 4, {tr!("admin-collections-list-not-counted-yet")} }
         },
         Some(s) => {
             rsx! {

@@ -11,6 +11,7 @@ use crate::components::search_components::{
     card_action_buttons::{DocCardActionButtonMore, DocCardActionButtonOpenNewTab},
     search_panel_left_view::SearchResultsState,
 };
+use crate::tr;
 
 /// One line of the size and date column. The fixed height keeps an empty line, and the 1px
 /// padding aligns the text with the border of the menu button.
@@ -331,7 +332,7 @@ fn HighlightTextSnippetSection(
                         color: rgba(0, 0, 0, 0.55);
                         min-width: 0;
                     ",
-                    "Matched by filename. No matching text inside this document."
+                    {tr!("result-item-card-matched-by-filename-no-matching")}
                 }
                 if has_spans {
                     div {

@@ -9,6 +9,7 @@ use dioxus_free_icons::Icon;
 
 use crate::api::uploads_api::upload_page_info;
 use crate::routes::Route;
+use crate::tr;
 
 const BUTTON_STYLE: &str = "margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px solid rgba(0,0,0,0.35); border-radius: 100px; text-decoration: none; color: var(--x-ink-strong); font-size: var(--x-text-md); white-space: nowrap;";
 
@@ -33,7 +34,7 @@ pub fn UploadButton(dataset: String, folder: String) -> Element {
             class: "x-upload-button hoover4-hover-shadow-background",
             style: BUTTON_STYLE,
             Icon { icon: MdFileUpload, width: 16, height: 16 }
-            "Upload"
+            {tr!("uploads-upload-button-upload")}
         }
     }
 }

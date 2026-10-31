@@ -10,6 +10,7 @@ use dioxus::prelude::*;
 use crate::api::chat_api::{chat_workspace_file, chat_workspace_files};
 use crate::components::chat_components::markdown_text::MarkdownishText;
 use crate::data_definitions::doc_viewer_state::{DocViewerState, DocViewerStateControl};
+use crate::tr;
 
 /// Opens the workspace pane at a file version: `(name, version)`. An empty name opens the
 /// file list, and a `None` version the current version.
@@ -20,7 +21,7 @@ pub struct ChatWorkspaceOpen {
 
 /// The text of a file length in characters.
 fn length_text(chars: u32) -> String {
-    if chars == 1 { "1 character".to_string() } else { format!("{chars} characters") }
+    if chars == 1 { "1 character".to_string() } else { tr!("chat-workspace-pane-characters", chars: chars.to_string()) }
 }
 
 #[component]
@@ -56,18 +57,18 @@ pub fn WorkspacePane(
             div { style: "display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: white; \
                           border-bottom: 1px solid; border-bottom-color: var(--x-border);",
                 span { style: "flex: 1; font-size: var(--x-text-md); font-weight: 600; color: var(--x-ink-strong);",
-                    "Workspace"
+                    {tr!("chat-workspace-pane-workspace")}
                 }
-                button { title: "Close the workspace", onclick: close, "Close" }
+                button { title: tr!("chat-workspace-pane-close-the-workspace"), onclick: close, {tr!("chat-workspace-pane-close")} }
             }
             div { "data-workspace-files": "true",
                 style: "padding: 8px 14px; display: flex; flex-direction: column; gap: 4px; \
                         border-bottom: 1px solid; border-bottom-color: var(--x-border); max-height: 35%; overflow: auto;",
                 match listed {
-                    None => rsx! { span { style: "color: var(--x-ink-muted);", "Loading the files\u{2026}" } },
-                    Some(Err(error)) => rsx! { span { style: "color: var(--x-danger);", "The files could not be loaded: {error}" } },
+                    None => rsx! { span { style: "color: var(--x-ink-muted);", {tr!("chat-workspace-pane-loading-the-files-u")} } },
+                    Some(Err(error)) => rsx! { span { style: "color: var(--x-danger);", {tr!("chat-workspace-pane-the-files-could-not-be", error: error.to_string())} } },
                     Some(Ok(list)) if list.is_empty() => rsx! {
-                        span { style: "color: var(--x-ink-muted);", "This conversation has no files." }
+                        span { style: "color: var(--x-ink-muted);", {tr!("chat-workspace-pane-this-conversation-has-no-files")} }
                     },
                     Some(Ok(list)) => rsx! {
                         for entry in list {
@@ -87,7 +88,7 @@ pub fn WorkspacePane(
                                 },
                                 span { style: "font-weight: 600;", "{entry.name}" }
                                 span { style: "margin-left: 8px; font-size: var(--x-text-sm); color: var(--x-ink-muted);",
-                                    "version {entry.version}, {length_text(entry.chars)}"
+                                    {tr!("chat-workspace-pane-version", entry_version: entry.version.to_string(), length_text_entry_chars: (length_text(entry.chars)).to_string())}
                                 }
                             }
                         }
@@ -96,14 +97,14 @@ pub fn WorkspacePane(
             }
             div { "data-workspace-content": "true", style: "overflow: auto; padding: 16px; flex: 1;",
                 if current.is_empty() {
-                    span { style: "color: var(--x-ink-muted);", "Choose a file to read it." }
+                    span { style: "color: var(--x-ink-muted);", {tr!("chat-workspace-pane-choose-a-file-to-read")} }
                 } else {
                     match shown {
-                        None => rsx! { span { style: "color: var(--x-ink-muted);", "Loading the file\u{2026}" } },
-                        Some(Err(error)) => rsx! { span { style: "color: var(--x-danger);", "The file could not be loaded: {error}" } },
+                        None => rsx! { span { style: "color: var(--x-ink-muted);", {tr!("chat-workspace-pane-loading-the-file-u")} } },
+                        Some(Err(error)) => rsx! { span { style: "color: var(--x-danger);", {tr!("chat-workspace-pane-the-file-could-not-be", error: error.to_string())} } },
                         Some(Ok(found)) => rsx! {
                             div { style: "margin-bottom: 10px; font-size: var(--x-text-sm); color: var(--x-ink-muted);",
-                                "{found.name}, version {found.version}"
+                                {tr!("chat-workspace-pane-version-2", found_name: found.name.to_string(), found_version: found.version.to_string())}
                             }
                             MarkdownishText { text: found.content }
                         },

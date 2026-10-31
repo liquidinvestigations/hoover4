@@ -17,6 +17,7 @@ use dioxus_free_icons::{
     Icon,
     icons::md_content_icons::MdFilterList,
 };
+use crate::tr;
 
 const CONTROL_BUTTON_STYLE: &str = "
     display: inline-flex; align-items: center; gap: 4px;
@@ -80,7 +81,7 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
                 style: "width: 375px; max-width: 100%; margin-left: 16px;",
                 crate::components::search_input::SearchInput {
                     value: input_value,
-                    placeholder: "Search collections...",
+                    placeholder: tr!("input-top-bar-search-collections"),
                     on_change: move |value: String| modified_search_query.write().query_string = value,
                     on_submit: move |_| trigger_search(()),
                 }
@@ -99,26 +100,26 @@ pub fn SearchInputTopBar(original_query: ReadSignal<SearchQuery>) -> Element {
                     opacity: {search_button_opacity()};
                 ",
                 disabled: !query_has_changed(),
-                title: if query_has_changed() { "Search with the pending changes" } else { "Nothing new to search for" },
+                title: if query_has_changed() { tr!("input-top-bar-search-with-the-pending-changes") } else { tr!("input-top-bar-nothing-new-to-search-for") },
                 onclick: move |event: Event<MouseData>| {
                     event.prevent_default();
                     event.stop_propagation();
                     trigger_search(());
                 },
-                "Search"
+                {tr!("input-top-bar-search")}
             }
 
             button {
                 id: "x-search-open-filters",
                 style: "{CONTROL_BUTTON_STYLE}",
                 class: "hoover4-hover-shadow-background",
-                title: "Open all filters",
+                title: tr!("input-top-bar-open-all-filters"),
                 onclick: move |_| open_category.set(Some(FilterCategory::Collections)),
                 Icon { icon: MdFilterList, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.8);" }
                 if active_filter_count() > 0 {
-                    "Filter ({active_filter_count()})"
+                    {tr!("input-top-bar-filter", active_filter_count: active_filter_count())}
                 } else {
-                    "Filter"
+                    {tr!("input-top-bar-filter-2")}
                 }
             }
 

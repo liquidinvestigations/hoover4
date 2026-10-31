@@ -59,6 +59,7 @@ use dioxus_free_icons::{
 };
 
 use crate::api::vfs_api::{vfs_subtree_stats, vfs_tree_children, vfs_tree_path_to};
+use crate::tr;
 
 /// Children fetched per request. Past this the tree shows a "N more…" row rather than
 /// rendering forty thousand siblings and freezing the tab; clicking it fetches the next
@@ -368,7 +369,7 @@ pub fn VfsTree(
             // overflows makes the whole panel scrollable sideways.
             style: "width: 100%; min-width: 0; overflow-x: hidden; overflow-y: auto;",
             if let Some(Err(error)) = chain.read().as_ref() {
-                div { class: "x-error-display", "Could not load the folder path: {error}" }
+                div { class: "x-error-display", {tr!("search-vfs-tree-could-not-load-the-folder", error: error.to_string())} }
             }
             // Fetch components emit no row. They sit in a separate parent so a change
             // in the fetch list cannot replace keyed folder rows.
@@ -840,10 +841,10 @@ fn VisibleTreeRow(item: VisibleItem) -> Element {
                 button {
                     style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {gap_indent};",
                     class: "x-facet-list-item",
-                    title: "Show the {hidden} folder levels between here and the one you are in",
+                    title: tr!("search-vfs-tree-show-the-folder-levels-between", hidden: hidden.to_string()),
                     onclick: move |_| { unfolded_set.write().insert(unfold_key.clone()); },
                     Icon { icon: MdMoreHoriz, style: "width: 19px; height: 19px; flex-shrink: 0;" }
-                    div { style: "{LABEL_STYLE}", "{hidden} more levels…" }
+                    div { style: "{LABEL_STYLE}", {tr!("search-vfs-tree-more-levels", hidden: hidden.to_string())} }
                 }
             }
         }
@@ -855,10 +856,10 @@ fn VisibleTreeRow(item: VisibleItem) -> Element {
                 button {
                     style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {more_indent};",
                     class: "x-facet-list-item",
-                    title: "Show all {fetched} folders here",
+                    title: tr!("search-vfs-tree-show-all-folders-here", fetched: fetched.to_string()),
                     onclick: move |_| { unfolded_set.write().insert(unfold_key.clone()); },
                     Icon { icon: MdMoreHoriz, style: "width: 19px; height: 19px; flex-shrink: 0;" }
-                    div { style: "{LABEL_STYLE}", "{hidden} more {direction}…" }
+                    div { style: "{LABEL_STYLE}", {tr!("search-vfs-tree-more", hidden: hidden.to_string(), direction: direction.to_string())} }
                 }
             }
         }
@@ -868,11 +869,11 @@ fn VisibleTreeRow(item: VisibleItem) -> Element {
                 button {
                     style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {more_indent};",
                     class: "x-facet-list-item",
-                    title: "Load the next {CHILDREN_PAGE_SIZE.min(more)} of the {total} folders here",
+                    title: tr!("search-vfs-tree-load-the-next-of-the", children_page_size_min_more: (CHILDREN_PAGE_SIZE.min(more)).to_string(), total: total),
                     onclick: move |_| {
                         page_offsets.write().insert(parent_key.clone(), loaded);
                     },
-                    "{more} more…"
+                    {tr!("search-vfs-tree-more-2", more: more.to_string())}
                 }
             }
         }
@@ -881,7 +882,7 @@ fn VisibleTreeRow(item: VisibleItem) -> Element {
             rsx! {
                 div {
                     style: "padding: 4px 8px; padding-left: {pad}; font-size: 13px; color: rgba(0,0,0,0.5);",
-                    "Loading…"
+                    {tr!("search-vfs-tree-loading")}
                 }
             }
         }
@@ -891,14 +892,14 @@ fn VisibleTreeRow(item: VisibleItem) -> Element {
                 div {
                     class: "x-error-display",
                     style: "padding: 4px 8px; padding-left: {pad}; font-size: 13px; color: rgb(160,30,30);",
-                    "Could not load this folder: {message}"
+                    {tr!("search-vfs-tree-could-not-load-this-folder", message: message.to_string())}
                 }
             }
         }
         VisibleItem::EmptyRoot => rsx! {
             div {
                 style: "padding: 6px 8px; font-size: 13px; color: rgba(0,0,0,0.5);",
-                "No folders in this dataset."
+                {tr!("search-vfs-tree-no-folders-in-this-dataset")}
             }
         },
     }
@@ -938,11 +939,7 @@ fn indent_fraction(rung: usize) -> f64 {
 /// drag with no re-render. Both are scaled by the rung's [`indent_fraction`], so whichever
 /// binds, the ladder still steps.
 pub(crate) fn indent_style(rung: usize) -> String {
-    format!(
-        "min({}px, calc({MAX_INDENT_PERCENT}% * {:.4}))",
-        indent_px(rung),
-        indent_fraction(rung)
-    )
+    tr!("search-vfs-tree-min-px-calc", indent_px_rung: (indent_px(rung)).to_string(), max_indent_percent: MAX_INDENT_PERCENT.to_string(), indent_fraction_rung: format!("{:.4}", indent_fraction(rung)))
 }
 
 /// What [`indent_style`] resolves to, in pixels, in a tree `container_px` wide.
@@ -1072,7 +1069,7 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool) -
             class: "x-facet-list-item",
             "data-node-key": "{node_key}",
             "data-subfolder-count": "{node.subfolder_count}",
-            "aria-current": if is_selected { "location" } else { "false" },
+            "aria-current": if is_selected { "location" } else { "false" }, // i18n: data, a protocol value
             // The full path, always. It is the only place a truncated label can be read
             // in full, and truncation is the normal case here rather than the exception.
             title: "{node.path}",
@@ -1124,7 +1121,7 @@ fn VfsTreeRow(node: VfsTreeNode, depth: usize, rung: usize, is_expanded: bool) -
             if tree_depth > FULL_STEP_RUNGS {
                 div {
                     style: "flex-shrink: 0; font-size: 13px; color: rgba(0,0,0,0.45); border: 1px solid rgba(0,0,0,0.2); border-radius: 8px; padding: 0 5px;",
-                    "depth {tree_depth}"
+                    {tr!("search-vfs-tree-depth", tree_depth: tree_depth.to_string())}
                 }
             }
 
@@ -1148,13 +1145,13 @@ pub(crate) fn SubtreeStatsCells(stats: Option<SubtreeStats>) -> Element {
         div {
             class: "x-subtree-size",
             style: "flex: 0 0 72px; text-align: center; font-size: 13px; color: rgba(0,0,0,0.55); white-space: nowrap;",
-            title: "Stored size of the files below. Files inside archives and emails do not add their size again.",
+            title: tr!("search-vfs-tree-stored-size-of-the-files"),
             "{size}"
         }
         div {
             class: "x-subtree-files",
             style: "flex: 0 0 56px; text-align: right; font-size: 13px; color: rgba(0,0,0,0.55); white-space: nowrap;",
-            title: "Files below, with the files inside archives and emails",
+            title: tr!("search-vfs-tree-files-below-with-the-files"),
             "{files}"
         }
     }

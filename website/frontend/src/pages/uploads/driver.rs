@@ -13,6 +13,7 @@ use dioxus_free_icons::icons::md_file_icons::MdCloudUpload;
 use dioxus_free_icons::Icon;
 
 use crate::components::admin_components::{BTN, BTN_PRIMARY};
+use crate::tr;
 
 const TUS_JS: Asset = asset!("/assets/vendor/tus.min.js");
 const UPLOADS_JS: Asset = asset!("/assets/uploads.js");
@@ -158,15 +159,15 @@ pub fn DropZone(driver: UploadDriver) -> Element {
             "data-upload-drop": "true",
             style: ZONE_STYLE,
             Icon { icon: MdCloudUpload, width: 28, height: 28 }
-            span { "Drop files or folders here" }
-            span { style: "color: var(--x-ink-muted);", "or click to choose files" }
+            span { {tr!("uploads-driver-drop-files-or-folders-here")} }
+            span { style: "color: var(--x-ink-muted);", {tr!("uploads-driver-or-click-to-choose-files")} }
         }
         div { style: "margin-top: 8px;",
             button {
                 class: "x-upload-choose-folder",
                 style: BTN,
                 onclick: move |_| driver.send(serde_json::json!({"cmd": "open_folder"})),
-                "Choose a folder"
+                {tr!("uploads-driver-choose-a-folder")}
             }
         }
     }
@@ -187,25 +188,19 @@ pub fn ProgressDialog(
 ) -> Element {
     let progress = state;
     let percent = if progress.total == 0 { 100 } else { progress.sent.saturating_mul(100) / progress.total };
-    let count_line = format!(
-        "{} of {}, {} of {} files",
-        format_upload_size(progress.sent),
-        format_upload_size(progress.total),
-        format_count(progress.done),
-        format_count(progress.count)
-    );
+    let count_line = tr!("uploads-driver-of-of-files", format_upload_size_progress_sent: (format_upload_size(progress.sent)).to_string(), format_upload_size_progress_total: (format_upload_size(progress.total)).to_string(), format_count_progress_done: (format_count(progress.done)).to_string(), format_count_progress_count: (format_count(progress.count)).to_string());
     let paused = progress.paused;
     let has_failed = !progress.failed.is_empty();
     let committing = progress.phase == "committing";
     let ready = progress.phase == "transferring" && error.is_none();
     let failed_commit = error.is_some();
     let status = match progress.phase.as_str() {
-        "starting" => "Starting upload...",
-        "checking" => "Checking selected files...",
-        "committing" => "Finishing upload...",
-        _ if failed_commit => "The upload could not finish. Retry finishing the upload.",
-        _ if paused => "Upload paused.",
-        _ => "Sending files...",
+        "starting" => tr!("uploads-driver-starting-upload"),
+        "checking" => tr!("uploads-driver-checking-selected-files"),
+        "committing" => tr!("uploads-driver-finishing-upload"),
+        _ if failed_commit => tr!("uploads-driver-the-upload-could-not-finish"),
+        _ if paused => tr!("uploads-driver-upload-paused"),
+        _ => tr!("uploads-driver-sending-files"),
     };
     rsx! {
         div { style: OVERLAY_STYLE,
@@ -230,7 +225,7 @@ pub fn ProgressDialog(
                 }
                 for (index, failed) in progress.failed.iter().enumerate() {
                     div { key: "failed-{index}", class: "x-upload-failed", style: "color: var(--x-danger); overflow-wrap: anywhere;",
-                        "{failed.path} Failed: {failed.error}"
+                        {tr!("uploads-driver-failed", failed_path: failed.path.to_string(), failed_error: failed.error.to_string())}
                     }
                 }
                 if let Some(error) = error {
@@ -243,7 +238,7 @@ pub fn ProgressDialog(
                             style: BTN_PRIMARY,
                             disabled: committing,
                             onclick: move |_| driver.send(serde_json::json!({"cmd": "retry_commit"})),
-                            "Retry finish"
+                            {tr!("uploads-driver-retry-finish")}
                         }
                     }
                     if has_failed {
@@ -252,7 +247,7 @@ pub fn ProgressDialog(
                             style: BTN,
                             disabled: !ready,
                             onclick: move |_| driver.send(serde_json::json!({"cmd": "retry"})),
-                            "Retry failed files"
+                            {tr!("uploads-driver-retry-failed-files")}
                         }
                     }
                     if paused {
@@ -261,7 +256,7 @@ pub fn ProgressDialog(
                             style: BTN,
                             disabled: !ready,
                             onclick: move |_| driver.send(serde_json::json!({"cmd": "continue"})),
-                            "Continue"
+                            {tr!("uploads-driver-continue")}
                         }
                     } else {
                         button {
@@ -269,7 +264,7 @@ pub fn ProgressDialog(
                             style: BTN,
                             disabled: !ready,
                             onclick: move |_| driver.send(serde_json::json!({"cmd": "pause"})),
-                            "Pause"
+                            {tr!("uploads-driver-pause")}
                         }
                     }
                     button {
@@ -277,7 +272,7 @@ pub fn ProgressDialog(
                         style: BTN_PRIMARY,
                         disabled: !ready,
                         onclick: move |_| driver.send(serde_json::json!({"cmd": "stop"})),
-                        "Stop upload"
+                        {tr!("uploads-driver-stop-upload")}
                     }
                 }
             }

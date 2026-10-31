@@ -18,6 +18,8 @@ use dioxus_free_icons::{
 };
 
 use crate::components::popover::{PopoverContent, PopoverRoot, PopoverTrigger};
+use crate::tr;
+use crate::i18n::SharedText;
 
 #[server]
 pub async fn search_document_item_hit_counts(
@@ -209,23 +211,23 @@ fn SourceItemRow(
         // label a reader should have to decode.
         DocumentSourceItem::Text(source) => (
             _item_icon_rsx(MdTextSnippet),
-            common::document_sources::text_source_label(&source.extracted_by),
+            common::document_sources::text_source_label(&source.extracted_by).shared(),
         ),
         // A scanned document now offers the original PDF and one searchable PDF per OCR
         // pass, so the label has to name which, three entries all reading "PDF" is a
         // selector that cannot be used.
-        DocumentSourceItem::Pdf(source) => (_item_icon_rsx(MdPictureAsPdf), source.label()),
-        DocumentSourceItem::Archive(source) => (_item_icon_rsx(MdArchive), source.label().to_string()),
-        DocumentSourceItem::Email(_source) => (_item_icon_rsx(MdEmail), "Email".to_string()),
+        DocumentSourceItem::Pdf(source) => (_item_icon_rsx(MdPictureAsPdf), source.label().shared()),
+        DocumentSourceItem::Archive(source) => (_item_icon_rsx(MdArchive), source.label().shared()),
+        DocumentSourceItem::Email(_source) => (_item_icon_rsx(MdEmail), tr!("preview-source-selector-email")),
         // The grid, above the text sources: a workbook flattened to tab-separated text is
         // a fallback, not the thing a reader came for.
-        DocumentSourceItem::Table(source) => (_item_icon_rsx(MdTableChart), source.label()),
-        DocumentSourceItem::Image(_source) => (_item_icon_rsx(MdImage), "Image".to_string()),
-        DocumentSourceItem::Audio(_source) => (_item_icon_rsx(MdAudiotrack), "Audio".to_string()),
-        DocumentSourceItem::Video(_source) => (_item_icon_rsx(MdSwitchVideo), "Video".to_string()),
+        DocumentSourceItem::Table(source) => (_item_icon_rsx(MdTableChart), source.label().shared()),
+        DocumentSourceItem::Image(_source) => (_item_icon_rsx(MdImage), tr!("preview-source-selector-image")),
+        DocumentSourceItem::Audio(_source) => (_item_icon_rsx(MdAudiotrack), tr!("preview-source-selector-audio")),
+        DocumentSourceItem::Video(_source) => (_item_icon_rsx(MdSwitchVideo), tr!("preview-source-selector-video")),
         // Never `{source:?}`: a variant name is a storage detail, and a selector that
         // offers a row nobody can read is worse than one that says "other".
-        _ => (_item_icon_rsx(MdQuestionAnswer), "Other".to_string()),
+        _ => (_item_icon_rsx(MdQuestionAnswer), tr!("preview-source-selector-other")),
     };
     let text_color = if selected { "#111" } else { "#333" };
     // The closed selector is a main control and takes body text. The rows in the open list

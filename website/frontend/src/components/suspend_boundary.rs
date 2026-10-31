@@ -3,6 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::components::error_boundary::ComponentErrorBoundary;
+use crate::tr;
 
 #[component]
 pub fn SuspendWrapper(children: Element) -> Element {
@@ -32,7 +33,7 @@ pub fn LoadingIndicator() -> Element {
     rsx! {
         div {
             style: "color:black; font-size: var(--x-text-section); border: 1px solid black; padding: 10px; border-radius: 5px; margin: 15px;",
-            "Loading..."
+            {tr!("suspend-boundary-loading")}
         }
     }
 }

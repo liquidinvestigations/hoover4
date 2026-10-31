@@ -8,14 +8,15 @@ use crate::components::admin_components::{
     AdminGuard, AdminShell, HELP_TEXT, MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
+use crate::tr;
 
 #[component]
 pub fn AdminAiStatusPage() -> Element {
     rsx! {
-        Title { "Admin: AI status" }
+        Title { {tr!("admin-ai-status-admin-ai-status")} }
         AdminGuard {
             AdminShell {
-                title: "AI status".to_string(),
+                title: tr!("admin-ai-status-ai-status").to_string(),
                 breadcrumb: String::new(),
                 active: "ai_status".to_string(),
                 SuspendWrapper { AiStatusContent {} }
@@ -30,10 +31,10 @@ fn AiStatusContent() -> Element {
     let status = status_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned();
     rsx! {
         p { style: "{HELP_TEXT} margin: 0 0 16px;",
-            "The configured service and the service that actually answers. A fallback to the CPU service shows here only."
+            {tr!("admin-ai-status-the-configured-service-and-the")}
         }
         match status {
-            None => rsx! { "Loading\u{2026}" },
+            None => rsx! { {tr!("admin-ai-status-loading-u")} },
             Some(s) => rsx! {
                 FingerprintPanel { status: s.clone() }
                 CapabilitiesPanel { status: s.clone() }
@@ -67,31 +68,31 @@ fn FingerprintPanel(status: AdminAiStatus) -> Element {
     };
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Config fingerprint" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-ai-status-config-fingerprint")} }
             div { style: MODULE_BODY,
                 table { style: TABLE,
                     tbody {
                         tr {
-                            td { style: "{TD} font-weight: 600; width: 220px;", "Website / worker" }
+                            td { style: "{TD} font-weight: 600; width: 220px;", {tr!("admin-ai-status-website-worker")} }
                             td { style: TD, "{status.fingerprint_local}" }
                         }
                         tr {
-                            td { style: "{TD} font-weight: 600;", "AI server" }
+                            td { style: "{TD} font-weight: 600;", {tr!("admin-ai-status-ai-server")} }
                             td { style: TD, "{ai_fingerprint}" }
                         }
                         tr {
-                            td { style: "{TD} font-weight: 600;", "Match" }
+                            td { style: "{TD} font-weight: 600;", {tr!("admin-ai-status-match")} }
                             td { style: TD, "{match_label}" }
                         }
                         tr {
-                            td { style: "{TD} font-weight: 600;", "Embeddings probe" }
+                            td { style: "{TD} font-weight: 600;", {tr!("admin-ai-status-embeddings-probe")} }
                             td { style: TD,
-                                "{status.embeddings_serving_model} · {status.embeddings_serving_dim} dims"
+                                {tr!("admin-ai-status-dims", status_embeddings_serving_model: status.embeddings_serving_model.to_string(), status_embeddings_serving_dim: status.embeddings_serving_dim.to_string())}
                             }
                         }
                         tr {
-                            td { style: "{TD} font-weight: 600;", "LLM configured" }
-                            td { style: TD, if status.llm_configured { "yes" } else { "no" } }
+                            td { style: "{TD} font-weight: 600;", {tr!("admin-ai-status-llm-configured")} }
+                            td { style: TD, if status.llm_configured { {tr!("admin-ai-status-yes")} } else { {tr!("admin-ai-status-no-2")} } }
                         }
                     }
                 }
@@ -104,17 +105,17 @@ fn FingerprintPanel(status: AdminAiStatus) -> Element {
 fn CapabilitiesPanel(status: AdminAiStatus) -> Element {
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Capabilities" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-ai-status-capabilities")} }
             div { style: MODULE_BODY,
                 table { style: TABLE,
                     thead {
                         tr {
-                            th { style: TH, "Capability" }
-                            th { style: TH, "Configured" }
-                            th { style: TH, "Serving" }
-                            th { style: TH, "Model" }
-                            th { style: TH, "Reachable" }
-                            th { style: TH, "Detail" }
+                            th { style: TH, {tr!("admin-ai-status-capability")} }
+                            th { style: TH, {tr!("admin-ai-status-configured")} }
+                            th { style: TH, {tr!("admin-ai-status-serving")} }
+                            th { style: TH, {tr!("admin-ai-status-model")} }
+                            th { style: TH, {tr!("admin-ai-status-reachable")} }
+                            th { style: TH, {tr!("admin-ai-status-detail")} }
                         }
                     }
                     tbody {
@@ -124,7 +125,7 @@ fn CapabilitiesPanel(status: AdminAiStatus) -> Element {
                                 td { style: TD, "{c.configured_provider}" }
                                 td { style: TD, "{c.serving_provider}" }
                                 td { style: TD, "{c.serving_model}" }
-                                td { style: TD, if c.reachable { "yes" } else { "NO" } }
+                                td { style: TD, if c.reachable { {tr!("admin-ai-status-yes")} } else { {tr!("admin-ai-status-no")} } }
                                 td { style: "{TD} font-size: var(--x-text-xs); color: var(--x-ink-muted);", "{c.detail}" }
                             }
                         }
@@ -139,18 +140,18 @@ fn CapabilitiesPanel(status: AdminAiStatus) -> Element {
 fn ShardPanel(status: AdminAiStatus) -> Element {
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Vector shard dims vs probe" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-ai-status-vector-shard-dims-vs-probe")} }
             div { style: MODULE_BODY,
                 if status.shard_dims.is_empty() {
-                    p { style: HELP_TEXT, "No collections yet." }
+                    p { style: HELP_TEXT, {tr!("admin-ai-status-no-collections-yet")} }
                 } else {
                     table { style: TABLE,
                         thead {
                             tr {
-                                th { style: TH, "Collection" }
-                                th { style: TH, "Shard" }
+                                th { style: TH, {tr!("admin-ai-status-collection")} }
+                                th { style: TH, {tr!("admin-ai-status-shard")} }
                                 th { style: TH, "knn_dims" }
-                                th { style: TH, "Matches probe" }
+                                th { style: TH, {tr!("admin-ai-status-matches-probe")} }
                             }
                         }
                         tbody {
@@ -159,7 +160,7 @@ fn ShardPanel(status: AdminAiStatus) -> Element {
                                     td { style: TD, "{s.collection}" }
                                     td { style: TD, "{s.table}" }
                                     td { style: TD, "{s.knn_dims}" }
-                                    td { style: TD, if s.matches_probe { "yes" } else { "NO" } }
+                                    td { style: TD, if s.matches_probe { {tr!("admin-ai-status-yes")} } else { {tr!("admin-ai-status-no")} } }
                                 }
                             }
                         }
@@ -174,10 +175,10 @@ fn ShardPanel(status: AdminAiStatus) -> Element {
 fn BrowserPanel(status: AdminAiStatus) -> Element {
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Browser router" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-ai-status-browser-router")} }
             div { style: MODULE_BODY,
                 p {
-                    "Live sessions: {status.browser_live_sessions} / {status.browser_max_sessions}"
+                    {tr!("admin-ai-status-live-sessions", status_browser_live_sessions: status.browser_live_sessions.to_string(), status_browser_max_sessions: status.browser_max_sessions.to_string())}
                 }
                 p { style: HELP_TEXT, "{status.browser_detail}" }
             }
@@ -189,17 +190,17 @@ fn BrowserPanel(status: AdminAiStatus) -> Element {
 fn TrafficPanel(status: AdminAiStatus) -> Element {
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Recent LLM traffic (24 h)" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-ai-status-recent-llm-traffic-24-h")} }
             div { style: MODULE_BODY,
                 if status.recent_traffic.is_empty() {
-                    p { style: HELP_TEXT, "No llm_call_events yet." }
+                    p { style: HELP_TEXT, {tr!("admin-ai-status-no-llm-call-events-yet")} }
                 } else {
                     table { style: TABLE,
                         thead {
                             tr {
-                                th { style: TH, "User" }
-                                th { style: TH, "Calls" }
-                                th { style: TH, "Errors" }
+                                th { style: TH, {tr!("admin-ai-status-user")} }
+                                th { style: TH, {tr!("admin-ai-status-calls")} }
+                                th { style: TH, {tr!("admin-ai-status-errors")} }
                                 th { style: TH, "p50" }
                             }
                         }
@@ -209,7 +210,7 @@ fn TrafficPanel(status: AdminAiStatus) -> Element {
                                     td { style: TD, "{t.username}" }
                                     td { style: TD, "{t.calls}" }
                                     td { style: TD, "{t.errors}" }
-                                    td { style: TD, "{t.median_latency_ms} ms" }
+                                    td { style: TD, {tr!("admin-ai-status-ms", t_median_latency_ms: t.median_latency_ms.to_string())} }
                                 }
                             }
                         }
@@ -224,22 +225,22 @@ fn TrafficPanel(status: AdminAiStatus) -> Element {
 fn UsePanel(status: AdminAiStatus) -> Element {
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Service use% (24 h)" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-ai-status-service-use-24-h")} }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",
-                    "Busy seconds in the last 24 hours, as a share of the day."
+                    {tr!("admin-ai-status-busy-seconds-in-the-last")}
                 }
                 if status.service_use.is_empty() {
-                    p { style: HELP_TEXT, "No samples yet." }
+                    p { style: HELP_TEXT, {tr!("admin-ai-status-no-samples-yet")} }
                 } else {
                     table { style: TABLE,
                         thead {
                             tr {
-                                th { style: TH, "Service" }
-                                th { style: TH, "Calls" }
-                                th { style: TH, "Errors" }
-                                th { style: TH, "Busy s" }
-                                th { style: TH, "Use %" }
+                                th { style: TH, {tr!("admin-ai-status-service")} }
+                                th { style: TH, {tr!("admin-ai-status-calls")} }
+                                th { style: TH, {tr!("admin-ai-status-errors")} }
+                                th { style: TH, {tr!("admin-ai-status-busy-s")} }
+                                th { style: TH, {tr!("admin-ai-status-use")} }
                             }
                         }
                         tbody {

@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::pages::search_page::DocViewerStateControl;
+use crate::tr;
 
 #[component]
 pub fn DocPreviewFindQueryInputBox(on_find_query_changed: Callback<String>) -> Element {
@@ -21,7 +22,7 @@ pub fn DocPreviewFindQueryInputBox(on_find_query_changed: Callback<String>) -> E
     rsx! {
         crate::components::search_input::SearchInput {
             value: modified_find_query,
-            placeholder: "Search in document",
+            placeholder: tr!("preview-find-query-search-in-document"),
             on_change: move |value: String| modified_find_query.set(value),
             on_submit: move |_| on_find_query_changed.call(modified_find_query()),
         }

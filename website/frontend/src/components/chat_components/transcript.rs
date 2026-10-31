@@ -18,6 +18,8 @@ use crate::components::chat_components::{
     tool_cards::{ElapsedCounter, ToolCard, ToolImages, result_cards::{BoardFactSummary, TodoSummary}},
     tool_run_summary::{run_duration_ms, timestamp_ms, tool_run_summary},
 };
+use crate::tr;
+use crate::i18n::SharedText;
 
 #[component]
 pub fn ChatTranscript(
@@ -235,7 +237,7 @@ pub fn ChatTranscript(
                     flex-direction: column; gap: 12px;",
             if messages.is_empty() {
                 div { style: "color: var(--x-ink-faint); font-size: var(--x-text-md);",
-                    "Ask a question about the documents in your collections."
+                    {tr!("chat-transcript-ask-a-question-about-the")}
                 }
             }
             for (start, end) in segments.iter().copied() {
@@ -245,15 +247,10 @@ pub fn ChatTranscript(
                     ToolRunGroup {
                         key: "tools-{messages[start].seq}",
                         summary: if live_group_start == Some(start) {
-                            format!(
-                                "{} + {} running tool {}",
-                                tool_run_summary(
+                            tr!("chat-transcript-running-tool", tool_run_summary_messages_start_end_run_: (tool_run_summary(
                                     &messages[start..end],
                                     run_duration_ms(start.checked_sub(1).map(|b| &messages[b]), &messages[start..end]),
-                                ),
-                                joined_live_end,
-                                if joined_live_end == 1 { "call" } else { "calls" },
-                            )
+                                )).to_string(), joined_live_end: joined_live_end.to_string(), if_joined_live_end_1_tr_chat_transcript_: (if joined_live_end == 1 { tr!("chat-transcript-call") } else { tr!("chat-transcript-calls") }).to_string())
                         } else {
                             tool_run_summary(
                                 &messages[start..end],
@@ -319,7 +316,7 @@ pub fn ChatTranscript(
                 if joined_live_end == 0 && !turn.tool_rows.is_empty() {
                     ToolRunGroup {
                         key: "tools-{turn.tool_rows[0].seq}",
-                        summary: format!("{} running tool {}", turn.tool_rows.len(), if turn.tool_rows.len() == 1 { "call" } else { "calls" }),
+                        summary: tr!("chat-transcript-running-tool-2", turn_tool_rows_len: turn.tool_rows.len().to_string(), if_turn_tool_rows_len_1_tr_chat_transcri: (if turn.tool_rows.len() == 1 { tr!("chat-transcript-call") } else { tr!("chat-transcript-calls") }).to_string()),
                         force_open: true,
                         live: true,
                         elapsed_ms: live_elapsed,
@@ -442,7 +439,7 @@ fn FollowUpSuggestions(prompts: Vec<String>, mut draft: Signal<String>) -> Eleme
                         "aria-hidden": "true",
                         dioxus_free_icons::Icon { icon: dioxus_free_icons::icons::md_action_icons::MdHelpOutline, width: 13, height: 13 }
                     }
-                    "Suggested next..."
+                    {tr!("chat-transcript-suggested-next")}
                 }
                 div {
                     class: "x-chat-follow-ups-cards",
@@ -577,7 +574,7 @@ fn ToolRunGroup(
         }
     });
     let shown = *open.read() || force_open;
-    let action = if shown { "Hide" } else { "Show" };
+    let action = if shown { tr!("chat-transcript-hide") } else { tr!("chat-transcript-show") };
     rsx! {
         div {
             class: "x-chat-tool-run",
@@ -1036,7 +1033,7 @@ fn UserMessage(seq: u32, content: String, highlight: bool, ring: String) -> Elem
     let text_class = if open { "x-chat-user-text" } else { "x-chat-user-text x-chat-user-text-clamped" };
     // A message that a find match opened has not been measured cut. Its length decides then.
     let long = overflows() || (open && content.lines().count() > 3);
-    let label = if open { "Hide" } else { "Show" };
+    let label = if open { tr!("chat-transcript-hide") } else { tr!("chat-transcript-show") };
     let padding = if long { "padding: 10px 64px 10px 14px;" } else { "padding: 10px 14px;" };
     rsx! {
         div {
@@ -1124,7 +1121,7 @@ fn MessageEntry(
             // Absent for a turn nothing counted, and for every streaming partial: the
             // counts arrive with the finished row, and a footer that appears mid-answer
             // showing zeros would read as a measurement of nothing.
-            let context_footer = message.context_footer();
+            let context_footer = message.context_footer().shared();
             rsx! {
                 div {
                     style: "align-self: stretch; max-width: 96%; padding: 4px 2px; {ring}",
@@ -1138,7 +1135,7 @@ fn MessageEntry(
                             "data-chat-replaced-answer": "{message.seq}",
                             summary {
                                 style: "cursor: pointer; color: var(--x-ink-muted); font-size: var(--x-text-sm);",
-                                "Earlier answer"
+                                {tr!("chat-transcript-earlier-answer")}
                             }
                             MarkdownishText {
                                 text: message.content.clone(),
@@ -1198,11 +1195,7 @@ fn MessageEntry(
                     // unhealthy agent tier. Worth saying, quietly, rather than hiding.
                     if !retries.is_empty() {
                         AttemptDisclosure {
-                            summary: format!(
-                                "Answered after {} failed attempt{}",
-                                retries.len(),
-                                if retries.len() == 1 { "" } else { "s" },
-                            ),
+                            summary: tr!("chat-transcript-answered-after-failed-attempt", retries_len: retries.len().to_string(), if_retries_len_1_else_s: (if retries.len() == 1 { "" } else { "s" }).to_string()),
                             errors: retries,
                             tone_color: "var(--x-warning)",
                         }
@@ -1232,9 +1225,7 @@ fn MessageEntry(
                         div {
                             class: "x-chat-turn-footer",
                             style: "margin-top: 6px; padding-bottom: 11px; border-bottom: 1px solid #80808033; text-align: center; font-size: var(--x-text-detail); color: #6B7280; font-variant-numeric: tabular-nums;",
-                            title: "Tokens the conversation carries, the largest single \
-                                    context this turn was billed for, and how much of \
-                                    the model's window that used",
+                            title: tr!("chat-transcript-tokens-the-conversation-carries-the"),
                             "{footer}"
                         }
                     }
@@ -1246,7 +1237,7 @@ fn MessageEntry(
             rsx! {
                 div { "data-todo-call": if common::chat_todos::TODO_MUTATIONS.contains(&message.tool_name.as_str()) || message.tool_name == "read_todo" { "true" } else { "false" },
                     style: "display: flex; flex-direction: column; gap: 8px; {ring}",
-                    if let Some(label) = message.call_origin_label() {
+                    if let Some(label) = message.call_origin_label().shared() {
                         div { class: "x-chat-call-origin", style: "font-size: var(--x-text-detail); color: #475569;", "{label}" }
                     }
                     ToolCard {
@@ -1278,7 +1269,7 @@ fn MessageEntry(
                 style: "align-self: flex-start; max-width: 88%; background: white; \
                         color: var(--x-ink); border-left: 3px solid #AAAAAA33; padding: 6px 12px; \
                         border-radius: 0 8px 8px 0; font-size: var(--x-text-detail); {ring}",
-                summary { style: "cursor: pointer; font-weight: 600;", "Instruction to the agent" }
+                summary { style: "cursor: pointer; font-weight: 600;", {tr!("chat-transcript-instruction-to-the-agent")} }
                 div {
                     style: "margin-top: 4px; white-space: pre-wrap; word-break: break-word;",
                     "{message.content}"
@@ -1304,11 +1295,7 @@ fn MessageEntry(
                     // one failure into a report of a turn that failed twice.
                     if !retries.is_empty() {
                         AttemptDisclosure {
-                            summary: format!(
-                                "{} failed attempt{}",
-                                retries.len(),
-                                if retries.len() == 1 { "" } else { "s" },
-                            ),
+                            summary: tr!("chat-transcript-failed-attempt", retries_len: retries.len().to_string(), if_retries_len_1_else_s: (if retries.len() == 1 { "" } else { "s" }).to_string()),
                             errors: retries,
                             tone_color: "var(--x-danger)",
                         }
@@ -1336,17 +1323,17 @@ fn CompactionLine(content: String, ring: String) -> Element {
     let summary_failed = value.get("summary_state").and_then(|v| v.as_str()) == Some("failed");
     let mut record_open = use_signal(|| false);
     let line = if state == "running" {
-        format!("Compacting the context: {before} tokens to a target of {target}.")
+        tr!("chat-transcript-compacting", before: before.to_string(), target: target.to_string())
     } else if summary_failed {
-        format!("The summary of the earlier steps failed. The model received the earlier steps unchanged, {after} tokens.")
+        tr!("chat-transcript-compaction-failed", after: after.to_string())
     } else {
-        format!("Context compacted: {steps} steps summarised, {before} tokens to {after}.")
+        tr!("chat-transcript-compacted", steps: steps.to_string(), before: before.to_string(), after: after.to_string())
     };
     rsx! {
         div { class: "x-chat-compaction", style: "align-self: stretch; font-size: var(--x-text-xs); color: var(--x-ink); {ring}",
             "{line}"
-            if !reached && !summary_failed { span { " The context stays above the target of {target}." } }
-            if failed > 0 { span { " {failed} summary parts failed. The record holds the lists only." } }
+            if !reached && !summary_failed { span { {tr!("chat-transcript-the-context-stays-above-the", target: target.to_string())} } }
+            if failed > 0 { span { {tr!("chat-transcript-summary-parts-failed-the-record", failed: failed.to_string())} } }
             if let Some(record) = value.get("record").and_then(|v| v.as_str()).filter(|r| !r.is_empty()) {
                 button {
                     style: "margin-left: 8px; background: none; border: none; color: var(--x-link); cursor: pointer; text-decoration: underline;",
@@ -1354,7 +1341,7 @@ fn CompactionLine(content: String, ring: String) -> Element {
                         let next = !*record_open.peek();
                         record_open.set(next);
                     },
-                    "Show the record"
+                    {tr!("chat-transcript-show-the-record")}
                 }
                 if *record_open.read() { MarkdownishText { text: record.to_string() } }
             }
@@ -1379,7 +1366,7 @@ fn ReasoningDisclosure(reasoning: String) -> Element {
                     let next = !*open.peek();
                     open.set(next);
                 },
-                if *open.read() { "Hide reasoning" } else { "Show reasoning" }
+                if *open.read() { {tr!("chat-transcript-hide-reasoning")} } else { {tr!("chat-transcript-show-reasoning")} }
             }
             if *open.read() {
                 pre {
@@ -1424,9 +1411,9 @@ fn DocRefsDisclosure(tool_name: String, refs: Vec<ChatDocRef>) -> Element {
                     open.set(next);
                 },
                 if *open.read() {
-                    "{count} {noun} from {tool} \u{2014} hide"
+                    {tr!("chat-transcript-from-u-hide", count: count, noun: noun.to_string(), tool: tool.to_string())}
                 } else {
-                    "{count} {noun} from {tool} \u{2014} show"
+                    {tr!("chat-transcript-from-u-show", count: count, noun: noun.to_string(), tool: tool.to_string())}
                 }
             }
             if *open.read() && matches!(tool.as_str(), "search_collections" | "search_passages") {
@@ -1465,7 +1452,7 @@ fn AttemptDisclosure(
                     let next = !*open.peek();
                     open.set(next);
                 },
-                if *open.read() { "{summary} \u{2014} hide" } else { "{summary} \u{2014} show" }
+                if *open.read() { {tr!("chat-transcript-u-hide", summary: summary.to_string())} } else { {tr!("chat-transcript-u-show", summary: summary.to_string())} }
             }
             if *open.read() {
                 ul {
@@ -1486,11 +1473,11 @@ fn AttemptDisclosure(
 /// `quote_reason` values are written by `collection_search_server.citations`. An empty
 /// reason is a stored message that never recorded one, so the wording stays the
 /// message this page already showed.
-fn unverified_quote_message(reason: &str) -> &'static str {
+fn unverified_quote_message(reason: &str) -> String {
     match reason {
-        "short" => "Unverified quote. The quoted span is too short to check.",
-        "lookup_failed" => "Unverified quote. The document text could not be read.",
-        _ => "Unverified quote. This wording was not found in the document.",
+        "short" => tr!("chat-transcript-unverified-quote-the-quoted-span"),
+        "lookup_failed" => tr!("chat-transcript-unverified-quote-the-document-text"),
+        _ => tr!("chat-transcript-unverified-quote-this-wording-was"),
     }
 }
 
@@ -1532,7 +1519,7 @@ pub(super) fn DocumentCitationCards(
                             if conflicting.contains(&doc.handle) {
                                 div {
                                     style: "font-size: var(--x-text-xs); color: var(--x-warning); padding: 0 4px 2px 4px;",
-                                    "Citations of this conversation give {doc.handle} to more than one document. The answer links it to none of them."
+                                    {tr!("chat-transcript-citations-of-this-conversation-give", doc_handle: doc.handle.to_string())}
                                 }
                             }
                             // Older stored citations can contain unverified quotes.
@@ -2004,22 +1991,22 @@ mod tests {
 #[component]
 fn ReportHeader(report: ReportView) -> Element {
     let open = try_use_context::<ChatWorkspaceOpen>();
-    let label = format!("{}, version {}", report.name, report.version);
+    let label = tr!("chat-transcript-version-2", report_name: report.name.to_string(), report_version: report.version.to_string());
     rsx! {
         div { class: "x-chat-report-header",
             style: "display: flex; align-items: center; gap: 8px; margin-bottom: 4px; \
                     font-size: var(--x-text-sm); color: var(--x-ink-muted);",
-            span { "Report {label}" }
+            span { {tr!("chat-transcript-report", label: label.to_string())} }
             if let Some(open) = open {
                 button {
                     style: "background: none; border: none; padding: 0; cursor: pointer; \
                             color: var(--x-link); font-size: var(--x-text-sm);",
                     onclick: move |_| open.open.call((report.name.clone(), Some(report.version))),
-                    "Open in the workspace"
+                    {tr!("chat-transcript-open-in-the-workspace")}
                 }
             }
             if !report.found {
-                span { "This version could not be read. The chat text of the answer follows." }
+                span { {tr!("chat-transcript-this-version-could-not-be")} }
             }
         }
         if report.files.len() > 1 {
@@ -2042,7 +2029,7 @@ fn DeliveredFiles(files: Vec<common::chat_types::ReportRef>) -> Element {
         div { class: "x-chat-report-files", "data-chat-files": "{count}",
             style: "display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; \
                     margin: 4px 0; font-size: var(--x-text-sm); color: var(--x-ink-muted);",
-            span { "Files" }
+            span { {tr!("chat-transcript-files")} }
             for file in files.into_iter() {
                 if let Some(open) = open {
                     button {
@@ -2054,11 +2041,11 @@ fn DeliveredFiles(files: Vec<common::chat_types::ReportRef>) -> Element {
                             let (name, version) = (file.name.clone(), file.version);
                             move |_| open.open.call((name.clone(), Some(version)))
                         },
-                        "{file.name}, version {file.version}"
+                        {tr!("chat-transcript-version", file_name: file.name.to_string(), file_version: file.version.to_string())}
                     }
                 } else {
                     span { key: "{file.name}:{file.version}", "data-chat-file": "{file.name}:{file.version}",
-                        "{file.name}, version {file.version}" }
+                        {tr!("chat-transcript-version", file_name: file.name.to_string(), file_version: file.version.to_string())} }
                 }
             }
         }

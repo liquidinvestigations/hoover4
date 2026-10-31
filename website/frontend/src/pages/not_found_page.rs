@@ -14,6 +14,7 @@ use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::md_action_icons::MdSearch;
 
 use crate::routes::Route;
+use crate::tr;
 
 const CARD_STYLE: &str = "
     display: flex;
@@ -51,7 +52,7 @@ pub fn NotFoundPage(segments: Vec<String>) -> Element {
     let path = format!("/{}", segments.join("/"));
 
     rsx! {
-        Title { "Hoover Search - Page not found" }
+        Title { {tr!("not-found-hoover-search-page-not-found")} }
         div {
             id: "x-not-found",
             style: "
@@ -69,11 +70,11 @@ pub fn NotFoundPage(segments: Vec<String>) -> Element {
                 style: CARD_STYLE,
                 h1 {
                     style: "font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 600; color: #111827; margin: 0;",
-                    "Page not found"
+                    {tr!("not-found-page-not-found")}
                 }
                 p {
                     style: "font-size: var(--x-text-body); line-height: var(--x-line-body); color: #4B5563; margin: 0;",
-                    "Nothing here answers to"
+                    {tr!("not-found-nothing-here-answers-to")}
                 }
                 code {
                     style: "
@@ -89,17 +90,16 @@ pub fn NotFoundPage(segments: Vec<String>) -> Element {
                 }
                 p {
                     style: "font-size: 15px; line-height: 23px; color: #6B7280; margin: 0;",
-                    "The address may be mistyped, or it may be a link to something that has
-                     since been renamed or removed."
+                    {tr!("not-found-the-address-may-be-mistyped")}
                 }
                 div {
                     style: "display: flex; flex-direction: row; gap: 12px; flex-wrap: wrap;",
-                    Link { to: Route::HomePage {}, style: LINK_STYLE, "Go to the home page" }
+                    Link { to: Route::HomePage {}, style: LINK_STYLE, {tr!("not-found-go-to-the-home-page")} }
                     Link {
                         to: Route::search_page_from_query(common::search_query::SearchQuery::default()),
                         style: LINK_STYLE,
                         Icon { icon: MdSearch, style: "width: 18px; height: 18px;" }
-                        "Search"
+                        {tr!("not-found-search")}
                     }
                 }
             }

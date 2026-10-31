@@ -13,15 +13,16 @@ use crate::components::admin_components::{
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
+use crate::tr;
 
 #[component]
 pub fn AdminUserPage(username: String) -> Element {
     let username_for_content = username.clone();
     rsx! {
-        Title { "Admin: user {username}" }
+        Title { {tr!("admin-user-detail-admin-user", username: username.to_string())} }
         AdminGuard {
             AdminShell {
-                title: format!("User {username}"),
+                title: tr!("admin-user-detail-user-2", username: username.to_string()),
                 breadcrumb: "Users".to_string(),
                 active: "users".to_string(),
                 SuspendWrapper {
@@ -80,9 +81,9 @@ fn UserDetailContent(username: String) -> Element {
     let Some(detail) = detail else {
         return rsx! {
             if load_failed {
-                ErrorBar { message: "Failed to load user" }
+                ErrorBar { message: tr!("admin-user-detail-failed-to-load-user") }
             } else {
-                "Loading..."
+                {tr!("admin-user-detail-loading")}
             }
         };
     };
@@ -103,30 +104,30 @@ fn UserDetailContent(username: String) -> Element {
             ErrorBar { message: err }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "User" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-user-detail-user")} }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 12px;",
-                    "The next login replaces the full name, email and superuser status of a user from the login proxy."
+                    {tr!("admin-user-detail-the-next-login-replaces-the")}
                 }
                 p { style: "margin: 0 0 12px;",
                     Link {
                         to: Route::AdminUserLlmPage { username: uname.clone() },
                         style: LINK,
-                        "LLM usage \u{2192}"
+                        {tr!("admin-user-detail-llm-usage-u")}
                     }
                 }
                 div { style: "display: flex; gap: 8px; flex-wrap: wrap; align-items: center;",
                     label { style: LABEL,
-                        "Full name"
-                        input { style: INPUT, placeholder: "full name", value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
+                        {tr!("admin-user-detail-full-name")}
+                        input { style: INPUT, placeholder: tr!("admin-user-detail-full-name-2"), value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
                     }
                     label { style: LABEL,
-                        "Email"
-                        input { style: INPUT, placeholder: "email", value: "{email}", oninput: move |e| email.set(e.value()) }
+                        {tr!("admin-user-detail-email")}
+                        input { style: INPUT, placeholder: tr!("admin-user-detail-email-2"), value: "{email}", oninput: move |e| email.set(e.value()) }
                     }
                     label { style: LABEL,
                         input { r#type: "checkbox", checked: *is_admin.read(), onchange: move |_| is_admin.toggle() }
-                        "Superuser"
+                        {tr!("admin-user-detail-superuser")}
                     }
                     button {
                         style: BTN,
@@ -150,22 +151,22 @@ fn UserDetailContent(username: String) -> Element {
                                 });
                             }
                         },
-                        "Save"
+                        {tr!("admin-user-detail-save")}
                     }
                 }
             }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Groups" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-user-detail-groups")} }
             div { style: MODULE_BODY,
-                if membership_busy() { p { role: "status", "Saving membership..." } }
+                if membership_busy() { p { role: "status", {tr!("admin-user-detail-saving-membership")} } }
                 table { style: TABLE,
                     thead {
                         tr {
-                            th { style: TH, "Group" }
-                            th { style: TH, "Origin" }
-                            th { style: TH, "Group admin" }
-                            th { style: TH, "Uploader" }
+                            th { style: TH, {tr!("admin-user-detail-group")} }
+                            th { style: TH, {tr!("admin-user-detail-origin")} }
+                            th { style: TH, {tr!("admin-user-detail-group-admin")} }
+                            th { style: TH, {tr!("admin-user-detail-uploader")} }
                             th { style: TH, "" }
                         }
                     }
@@ -179,7 +180,7 @@ fn UserDetailContent(username: String) -> Element {
                                 td { style: TD,
                                     input {
                                         r#type: "checkbox",
-                                        aria_label: "Group admin",
+                                        aria_label: tr!("admin-user-detail-group-admin"),
                                         checked: m.is_group_admin,
                                         disabled: membership_busy(),
                                         onchange: {
@@ -205,7 +206,7 @@ fn UserDetailContent(username: String) -> Element {
                                 td { style: TD,
                                     input {
                                         r#type: "checkbox",
-                                        aria_label: "Uploader",
+                                        aria_label: tr!("admin-user-detail-uploader"),
                                         checked: m.is_uploader,
                                         disabled: membership_busy(),
                                         onchange: {
@@ -249,7 +250,7 @@ fn UserDetailContent(username: String) -> Element {
                                                 });
                                             }
                                         },
-                                        "Remove"
+                                        {tr!("admin-user-detail-remove")}
                                     }
                                 }
                             }
@@ -261,7 +262,7 @@ fn UserDetailContent(username: String) -> Element {
                         select {
                             style: SELECT,
                             onchange: move |e| add_group.set(e.value()),
-                            option { value: "", "Add to group\u{2026}" }
+                            option { value: "", {tr!("admin-user-detail-add-to-group-u")} }
                             for g in groups {
                                 if !detail.memberships.iter().any(|mb| mb.groupname == g.groupname) {
                                     option { key: "{g.groupname}", value: "{g.groupname}", "{g.groupname}" }
@@ -290,14 +291,14 @@ fn UserDetailContent(username: String) -> Element {
                                     });
                                 }
                             },
-                            "Add"
+                            {tr!("admin-user-detail-add")}
                         }
                     }
                 }
             }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", "Danger zone" }
+            h2 { style: "{MODULE_CAPTION} color: var(--x-danger);", {tr!("admin-user-detail-danger-zone")} }
             div { style: MODULE_BODY,
                 button {
                     style: BTN_DANGER,
@@ -315,7 +316,7 @@ fn UserDetailContent(username: String) -> Element {
                             });
                         }
                     },
-                    "Delete user"
+                    {tr!("admin-user-detail-delete-user")}
                 }
             }
         }

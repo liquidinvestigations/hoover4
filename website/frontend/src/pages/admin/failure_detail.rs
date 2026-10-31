@@ -16,14 +16,15 @@ use crate::components::admin_components::{
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
+use crate::tr;
 
 #[component]
 pub fn AdminFailureDetailPage(op_id: String) -> Element {
     rsx! {
-        Title { "Admin: failure {op_id}" }
+        Title { {tr!("admin-failure-detail-admin-failure", op_id: op_id.to_string())} }
         AdminGuard {
             AdminShell {
-                title: format!("Failure tree of {op_id}"),
+                title: tr!("admin-failure-detail-failure-tree-of", op_id: op_id.to_string()),
                 breadcrumb: "Failures".to_string(),
                 active: "failures".to_string(),
                 SuspendWrapper { FailureDetailContent { op_id } }
@@ -59,7 +60,7 @@ fn FailureDetailContent(op_id: String) -> Element {
             if let Some(e) = load_error {
                 ErrorBar { message: e }
             } else {
-                p { style: HELP_TEXT, "Loading tree…" }
+                p { style: HELP_TEXT, {tr!("admin-failure-detail-loading-tree")} }
             }
         };
     };
@@ -69,31 +70,31 @@ fn FailureDetailContent(op_id: String) -> Element {
 
     rsx! {
         p { style: HELP_TEXT,
-            Link { to: crate::pages::admin::failures::failures_route("", ""), style: LINK, "Back to errors and failures" }
+            Link { to: crate::pages::admin::failures::failures_route("", ""), style: LINK, {tr!("admin-failure-detail-back-to-errors-and-failures")} }
             " · "
-            Link { to: Route::AdminOperationsPage {}, style: LINK, "Operations" }
+            Link { to: Route::AdminOperationsPage {}, style: LINK, {tr!("admin-failure-detail-operations")} }
         }
         if copied() {
-            SuccessBar { message: "Scrubbed copy written to the clipboard.".to_string() }
+            SuccessBar { message: tr!("admin-failure-detail-scrubbed-copy-written-to-the").to_string() }
         }
         if tree.truncated {
-            ErrorBar { message: "This tree is truncated. At least one capture dropped nodes.".to_string() }
+            ErrorBar { message: tr!("admin-failure-detail-this-tree-is-truncated-at").to_string() }
         }
         if tree.capture_expired {
-            ErrorBar { message: "The captured tree has expired. The operations row is still present.".to_string() }
+            ErrorBar { message: tr!("admin-failure-detail-the-captured-tree-has-expired").to_string() }
         }
         if tree.nodes.is_empty() && !tree.capture_expired {
-            p { style: HELP_TEXT, "No captured nodes for this operation." }
+            p { style: HELP_TEXT, {tr!("admin-failure-detail-no-captured-nodes-for-this")} }
         }
 
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Operation" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-failure-detail-operation")} }
             div { style: MODULE_BODY,
                 p { id: "x-failures-detail-op",
                     code { "{tree.op_id}" }
                 }
                 p { style: HELP_TEXT,
-                    "{tree.operation_kind} · {tree.operation_state} · {root_count} root(s) · {tree.nodes.len()} node(s)"
+                    {tr!("admin-failure-detail-root-s-node-s", tree_operation_kind: tree.operation_kind.to_string(), tree_operation_state: tree.operation_state.to_string(), root_count: root_count, tree_nodes_len: tree.nodes.len())}
                 }
                 if !tree.operation_error.is_empty() {
                     p { "{tree.operation_error}" }
@@ -104,17 +105,17 @@ fn FailureDetailContent(op_id: String) -> Element {
                         href: "{tree.temporal_url}",
                         target: "_blank",
                         style: LINK,
-                        "Open in Temporal"
+                        {tr!("admin-failure-detail-open-in-temporal")}
                     }
                 }
             }
         }
 
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Scrubbed copy" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-failure-detail-scrubbed-copy")} }
             div { style: MODULE_BODY,
                 p { style: HELP_TEXT,
-                    "The scrubbed copy replaces dataset paths with hashes and long values with their lengths."
+                    {tr!("admin-failure-detail-the-scrubbed-copy-replaces-dataset")}
                 }
                 button {
                     id: "x-failures-copy-scrubbed",
@@ -123,7 +124,7 @@ fn FailureDetailContent(op_id: String) -> Element {
                         copy_text(&scrubbed);
                         copied.set(true);
                     },
-                    "Copy scrubbed record"
+                    {tr!("admin-failure-detail-copy-scrubbed-record")}
                 }
                 pre {
                     id: "x-failures-scrubbed-copy",
@@ -134,7 +135,7 @@ fn FailureDetailContent(op_id: String) -> Element {
         }
 
         div { id: "x-failures-tree", class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Tree" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-failure-detail-tree")} }
             div { style: MODULE_BODY,
                 for node in tree.nodes.iter() {
                     TreeNode { key: "{node.node_index}", node: node.clone() }
@@ -149,11 +150,7 @@ fn TreeNode(node: FailureNode) -> Element {
     let is_root = node.parent_index == -1;
     let indent = (node.depth as u32).saturating_mul(16);
     let stack_note = if node.stack_trace.chars().count() < node.stack_trace_original_len as usize {
-        format!(
-            "showing {} of {} characters",
-            node.stack_trace.chars().count(),
-            node.stack_trace_original_len
-        )
+        tr!("admin-failure-detail-showing-of-characters", node_stack_trace_chars_count: (node.stack_trace.chars().count()).to_string(), node_stack_trace_original_len: node.stack_trace_original_len.to_string())
     } else {
         String::new()
     };
@@ -162,20 +159,20 @@ fn TreeNode(node: FailureNode) -> Element {
             id: "x-failures-node-{node.node_index}",
             style: "margin-left: {indent}px; margin-bottom: 16px; padding: 8px; border-left: 3px solid; border-left-color: var(--x-link);",
             p { style: "margin: 0 0 4px; font-weight: 600;",
-                if is_root { "Root · " }
+                if is_root { {tr!("admin-failure-detail-root")} }
                 "{node.error_class}"
                 if !node.error_type.is_empty() { " / {node.error_type}" }
             }
             p { style: HELP_TEXT,
-                "node {node.node_index} · parent {node.parent_index} · depth {node.depth} · source {node.source} · stage {node.stage} · {node.task_name}"
+                {tr!("admin-failure-detail-node-parent-depth-source-stage", node_node_index: node.node_index.to_string(), node_parent_index: node.parent_index.to_string(), node_depth: node.depth.to_string(), node_source: node.source.to_string(), node_stage: node.stage.to_string(), node_task_name: node.task_name.to_string())}
             }
             p { "{node.message}" }
             p { style: HELP_TEXT,
-                "workflow {node.workflow_id} · run {node.run_id} · activity {node.activity_id} · attempt {node.attempt}"
+                {tr!("admin-failure-detail-workflow-run-activity-attempt", node_workflow_id: node.workflow_id.to_string(), node_run_id: node.run_id.to_string(), node_activity_id: node.activity_id.to_string(), node_attempt: node.attempt.to_string())}
             }
             if node.nodes_dropped > 0 {
                 p { style: "color: var(--x-danger); font-size: var(--x-text-xs);",
-                    "{node.nodes_dropped} node(s) dropped at this capture"
+                    {tr!("admin-failure-detail-node-s-dropped-at-this", node_nodes_dropped: node.nodes_dropped.to_string())}
                 }
             }
             if !node.details_json.is_empty() {

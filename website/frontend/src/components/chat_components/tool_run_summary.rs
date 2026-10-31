@@ -7,6 +7,7 @@
 use common::chat_types::ChatMessageItem;
 
 use crate::components::chat_components::tool_cards::{tool_content, tool_failure};
+use crate::tr;
 
 /// One kind of call on the summary line. The line lists the kinds in this order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -48,21 +49,20 @@ impl Kind {
 
     /// The phrase for `n` of this kind's unit.
     fn phrase(self, n: u64) -> String {
-        let s = |one: &str, many: &str| if n == 1 { one.to_string() } else { many.to_string() };
         match self {
-            Kind::Search => format!("searched {n} {}", s("term", "terms")),
-            Kind::Read => format!("read {n} {}", s("document", "documents")),
-            Kind::WebSearch => format!("searched the web for {n} {}", s("term", "terms")),
-            Kind::WebRead => format!("read {n} web {}", s("page", "pages")),
-            Kind::Browser => format!("{n} browser {}", s("action", "actions")),
-            Kind::Entities => format!("listed the entities of {n} {}", s("document", "documents")),
-            Kind::Cite => format!("cited {n} {}", s("document", "documents")),
-            Kind::WebCite => format!("cited {n} web {}", s("page", "pages")),
-            Kind::Skill => format!("read {n} {} and tool texts", s("skill", "skills")),
-            Kind::Note => format!("saved {n} {}", s("note", "notes")),
-            Kind::Todo => format!("{n} todo list {}", s("call", "calls")),
-            Kind::Instruction => format!("{n} {} to the agent", s("instruction", "instructions")),
-            Kind::Other => format!("{n} other {}", s("call", "calls")),
+            Kind::Search => tr!("tool-run-summary-searched", n: n),
+            Kind::Read => tr!("tool-run-summary-read", n: n),
+            Kind::WebSearch => tr!("tool-run-summary-searched-the-web-for", n: n),
+            Kind::WebRead => tr!("tool-run-summary-read-web", n: n),
+            Kind::Browser => tr!("tool-run-summary-browser", n: n),
+            Kind::Entities => tr!("tool-run-summary-listed-the-entities-of", n: n),
+            Kind::Cite => tr!("tool-run-summary-cited", n: n),
+            Kind::WebCite => tr!("tool-run-summary-cited-web", n: n),
+            Kind::Skill => tr!("tool-run-summary-read-and-tool-texts", n: n),
+            Kind::Note => tr!("tool-run-summary-saved", n: n),
+            Kind::Todo => tr!("tool-run-summary-todo-list", n: n),
+            Kind::Instruction => tr!("tool-run-summary-to-the-agent", n: n),
+            Kind::Other => tr!("tool-run-summary-other", n: n),
         }
     }
 }
@@ -186,10 +186,10 @@ pub fn tool_run_summary(rows: &[ChatMessageItem], duration_ms: Option<i64>) -> S
     counts.sort_by_key(|(kind, _)| *kind);
     let mut parts: Vec<String> = counts.into_iter().map(|(kind, n)| kind.phrase(n)).collect();
     if failures > 0 {
-        parts.push(format!("{failures} failed"));
+        parts.push(tr!("tool-run-summary-failed", failures: failures.to_string()));
     }
     parts.push(match duration_ms {
-        Some(ms) => format!("took {}", duration_text(ms)),
+        Some(ms) => tr!("tool-run-summary-took", duration_text_ms: (duration_text(ms)).to_string()),
         None => "time not recorded".to_string(),
     });
     let line = parts.join(", ");

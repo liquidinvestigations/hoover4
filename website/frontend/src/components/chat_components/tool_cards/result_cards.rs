@@ -10,6 +10,7 @@ use crate::api::storage_api::list_storage_tree;
 use crate::routes::Route;
 
 use super::{CardShell, json_str, page_rows, tool_content, tool_failure};
+use crate::tr;
 
 fn rows_label(rows: usize, more: bool) -> String {
     let suffix = if more { " · more available" } else { "" };
@@ -45,9 +46,9 @@ fn search_label(tool_name: &str, tool_input: &str, rows: usize, more: bool,
         .map(|(key, value)| format!("{key}: {value}"))
         .collect::<Vec<_>>().join(", ");
     let total = fields.get("total").or_else(|| fields.get("total_count")).or_else(|| fields.get("total_documents"))
-        .map(|value| format!(" · {value} documents")).unwrap_or_default();
-    let mut label = format!("{tool_name} · {forms} forms");
-    if !collections.is_empty() { label.push_str(&format!(" in {collections}")); }
+        .map(|value| tr!("cards-result-cards-documents", value: value.to_string())).unwrap_or_default();
+    let mut label = tr!("cards-result-cards-forms", tool_name: tool_name.to_string(), forms: forms.to_string());
+    if !collections.is_empty() { label.push_str(&tr!("cards-result-cards-in", collections: collections.to_string())); }
     if !filters.is_empty() { label.push_str(&format!(" · {filters}")); }
     label.push_str(&format!(" · {}{total}", rows_label(rows, more)));
     label
@@ -57,7 +58,7 @@ fn read_label(tool_name: &str, rows: &[serde_json::Value], more: bool) -> String
     let first = rows.first();
     let path = first.map(|row| json_str(row, "path")).unwrap_or_default();
     let page = first.and_then(|row| row.get("page").or_else(|| row.get("page_number")))
-        .map(|value| format!(" · page {value}")).unwrap_or_default();
+        .map(|value| tr!("cards-result-cards-page", value: value.to_string())).unwrap_or_default();
     let cut = if rows.iter().any(|row| row.get("cut").is_some_and(|value| !value.is_null() && value != false)) { " · cut" } else { "" };
     format!("{tool_name} · {path}{page} · {}{cut}", rows_label(rows.len(), more))
 }
@@ -110,10 +111,10 @@ pub fn SearchCard(tool_name: String, tool_input: String, tool_output: String, ru
     let search_all_route = search_all_route_from_tool_input(&tool_name, &tool_input);
     rsx! { CardShell { chip: "Search", label, running, expanded, failure, raw_output: tool_output.clone(),
         badges: rsx! {},
-        if let Some(route) = search_route { Link { to: route, "Search this" } }
-        if let Some(route) = search_all_route { Link { to: route, "Search every collection" } }
+        if let Some(route) = search_route { Link { to: route, {tr!("cards-result-cards-search-this")} } }
+        if let Some(route) = search_all_route { Link { to: route, {tr!("cards-result-cards-search-every-collection")} } }
         for (index, form) in forms.iter().enumerate() {
-            div { style: "font-size: var(--x-text-xs);", "Form {index}: {form}" }
+            div { style: "font-size: var(--x-text-xs);", {tr!("cards-result-cards-form", index: index.to_string(), form: form.to_string())} }
         }
         div { style: "font-size: var(--x-text-xs); color: var(--x-ink);", "{tool_input}" }
         for (key, value) in fields.iter() {
@@ -125,8 +126,8 @@ pub fn SearchCard(tool_name: String, tool_input: String, tool_output: String, ru
                     if key != "snippet" && key != "file_hash" { div { style: "font-size: var(--x-text-xs);", "{key}: {value}" } }
                 }
                 HashLink { row: row.clone(), refs: doc_refs.clone() }
-                if !json_str(&row, "snippet").is_empty() {
-                    MarkdownishText { text: json_str(&row, "snippet") }
+                if !json_str(&row, "snippet").is_empty() { // i18n: data, a protocol value
+                    MarkdownishText { text: json_str(&row, "snippet") } // i18n: data, a protocol value
                 }
             }
         }
@@ -165,7 +166,7 @@ fn ReadRow(row: serde_json::Value, refs: Vec<ChatDocRef>) -> Element {
             div { "{excerpt}" }
             if cut {
                 details {
-                    summary { "Show full text" }
+                    summary { {tr!("cards-result-cards-show-full-text")} }
                     div { "{text}" }
                 }
             }
@@ -186,7 +187,7 @@ pub fn CiteCard(tool_input: String, tool_output: String, running: bool, doc_refs
     let input = input.get("input").unwrap_or(&input);
     let requests = input.get("citations").and_then(|v| v.as_array()).cloned().unwrap_or_default();
     let missing = citations.iter().filter(|citation| citation.get("quote_reason").and_then(|value| value.as_str()).is_some_and(|value| !value.is_empty())).count();
-    let label = format!("cite_documents · {} documents · {missing} quotes not found", citations.len());
+    let label = tr!("cards-result-cards-cite-documents-documents-quotes-not", citations_len: citations.len().to_string(), missing: missing.to_string());
     let failure = tool_failure(&output);
     rsx! { CardShell { chip: "Cite", label, running, expanded, failure, raw_output: tool_output.clone(),
         badges: rsx! {},
@@ -194,15 +195,15 @@ pub fn CiteCard(tool_input: String, tool_output: String, running: bool, doc_refs
         for (index, citation) in citations.into_iter().enumerate() {
             {
                 let request = requests.get(index).cloned().unwrap_or_default();
-                let quote = json_str(&request, "quote");
-                let why = json_str(&request, "why");
+                let quote = json_str(&request, "quote"); // i18n: data, a protocol value
+                let why = json_str(&request, "why"); // i18n: data, a protocol value
                 let reason = json_str(&citation, "quote_reason");
-                let check = if citation.get("quote_verified").and_then(|value| value.as_bool()) == Some(true) { "Quote found" } else if !reason.is_empty() { "Quote not found" } else { "Quote not checked" };
+                let check = if citation.get("quote_verified").and_then(|value| value.as_bool()) == Some(true) { {tr!("cards-result-cards-quote-found")} } else if !reason.is_empty() { {tr!("cards-result-cards-quote-not-found")} } else { {tr!("cards-result-cards-quote-not-checked")} };
                 rsx! {
             div { key: "{index}", style: "border-top: 1px solid; border-top-color: var(--x-border); padding-top: 6px; white-space: pre-wrap;",
                 div { "{check}" }
-                if !quote.is_empty() { div { "Quote: {quote}" } }
-                if !why.is_empty() { div { "Reason: {why}" } }
+                if !quote.is_empty() { div { {tr!("cards-result-cards-quote", quote: quote.to_string())} } }
+                if !why.is_empty() { div { {tr!("cards-result-cards-reason", why: why.to_string())} } }
                 for (key, value) in citation.as_object().into_iter().flat_map(|citation| citation.iter()) {
                     if key != "file_hash" { div { "{key}: {value}" } }
                 }
@@ -221,7 +222,7 @@ pub fn QuestionCard(tool_input: String, tool_output: String, running: bool) -> E
     let mut expanded = use_signal(|| true);
     let input = serde_json::from_str::<serde_json::Value>(&tool_input).unwrap_or_default();
     let input = input.get("input").unwrap_or(&input);
-    let question = input.get("question").and_then(|value| value.as_str()).unwrap_or("The agent asked a question.").to_string();
+    let question = input.get("question").and_then(|value| value.as_str()).map(str::to_string).unwrap_or_else(|| tr!("cards-result-cards-the-agent-asked-a-question"));
     let options = input.get("options").and_then(|value| value.as_array()).cloned().unwrap_or_default();
     let failure = tool_content(&tool_output).as_ref().and_then(tool_failure);
     rsx! { CardShell { chip: "Question", label: question, running, expanded, failure, raw_output: tool_output.clone(),
@@ -237,24 +238,13 @@ pub fn QuestionCard(tool_input: String, tool_output: String, running: bool) -> E
 }
 
 /// "an" before a kind that starts with a vowel, such as "inferred", else "a".
-fn article(kind: &str) -> &'static str {
-    if kind.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" }
-}
-
-fn capitalized(word: &str) -> String {
-    let mut chars = word.chars();
-    chars.next().map(|c| c.to_uppercase().chain(chars).collect()).unwrap_or_default()
-}
-
 /// The kind, text and open questions of a `submit_board_fact` call.
 fn board_fact_input(tool_input: &str) -> (String, String, Vec<String>) {
     let input = serde_json::from_str::<serde_json::Value>(tool_input).unwrap_or_default();
     let input = input.get("input").unwrap_or(&input);
     let kind = match input.get("kind").and_then(|value| value.as_str()).unwrap_or("") {
-        "sourced" => "sourced",
-        "inferred" => "inferred",
-        "not_found" => "not found",
-        _ => "unknown kind",
+        kind @ ("sourced" | "inferred" | "not_found") => kind,
+        _ => "unknown",
     };
     let fact = input.get("fact").and_then(|value| value.as_str()).unwrap_or("").to_string();
     let questions = input
@@ -277,15 +267,15 @@ pub fn BoardFactCard(tool_input: String, tool_output: String, running: bool) -> 
     let failure = content.as_ref().and_then(tool_failure);
     let by_board = content.as_ref().and_then(|value| value.get("by")).and_then(|value| value.as_str()) == Some("board");
     let label = if by_board {
-        format!("Submitted by the board: {} {kind} finding from the report", article(&kind))
+        tr!("cards-result-cards-submitted-by-board", kind: kind.clone())
     } else {
-        format!("{} {kind} finding for the board", capitalized(article(&kind)))
+        tr!("cards-result-cards-finding-for-board", kind: kind.clone())
     };
     rsx! { CardShell { chip: "Board finding", label, running, expanded, failure, raw_output: tool_output.clone(),
         badges: rsx! {},
         div { style: "white-space: pre-wrap; font-size: var(--x-text-sm);", "{fact}" }
         for (index, question) in questions.into_iter().enumerate() {
-            div { key: "{index}", style: "font-size: var(--x-text-sm); color: var(--x-ink-muted);", "Open question: {question}" }
+            div { key: "{index}", style: "font-size: var(--x-text-sm); color: var(--x-ink-muted);", {tr!("cards-result-cards-open-question", question: question.to_string())} }
         }
     }}
 }
@@ -313,15 +303,14 @@ pub fn BoardFactSummary(tool_input: String) -> Element {
             board_fact_for_intent(board_id, intent_id).await.ok().flatten()
         }
     });
-    let kind_article = article(&kind);
     let content = rsx! {
         div { style: "font-size: var(--x-text-sm); font-weight: 600; color: var(--x-ink-strong);",
-            "The explore gave this answer to its board as {kind_article} {kind} finding."
+            {tr!("cards-result-cards-the-explore-gave-this-answer", kind: kind.to_string())}
         }
         if questions.is_empty() {
-            div { style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px;", "It left no open question." }
+            div { style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px;", {tr!("cards-result-cards-it-left-no-open-question")} }
         } else {
-            div { style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px;", "Open questions for the board:" }
+            div { style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px;", {tr!("cards-result-cards-open-questions-for-the-board")} }
             ul { style: "margin: 4px 0 0; padding-left: 20px; font-size: var(--x-text-sm);",
                 for (index, question) in questions.into_iter().enumerate() {
                     li { key: "{index}", "{question}" }
@@ -378,22 +367,22 @@ pub fn TodoCard(tool_name: String, tool_input: String, tool_output: String, runn
         .and_then(|version| todo_versions.iter().find(|snapshot| snapshot.version == version)).cloned();
     let label = match version {
         _ if running && !content_summary.is_empty() => format!("{tool_name} · {content_summary}"),
-        Some(version) if unchanged => format!("{tool_name} · version {version} · unchanged"),
-        Some(version) => format!("{tool_name} · version {version}"),
+        Some(version) if unchanged => tr!("cards-result-cards-version-unchanged", tool_name: tool_name.to_string(), version: version.to_string()),
+        Some(version) => tr!("cards-result-cards-version", tool_name: tool_name.to_string(), version: version.to_string()),
         None => tool_name.clone(),
     };
     let arguments = pretty_arguments(&tool_input);
     rsx! { CardShell { chip: "Todo", label, running, expanded, failure: failure.clone(), raw_output: tool_output.clone(),
         badges: rsx! {},
         div { "data-todo-arguments": "true",
-            div { style: "font-weight: 600;", "Arguments" }
+            div { style: "font-weight: 600;", {tr!("cards-result-cards-arguments")} }
             pre { style: "margin: 2px 0 0 0; white-space: pre-wrap; word-break: break-word;", "{arguments}" }
         }
         if let Some(failure) = failure {
             div { role: "alert", style: "white-space: pre-wrap; word-break: break-word;", "{failure.message}" }
         }
         if let Some(snapshot) = current {
-            div { style: "font-weight: 600;", "List after the call: {snapshot.goal}" }
+            div { style: "font-weight: 600;", {tr!("cards-result-cards-list-after-the-call", snapshot_goal: snapshot.goal.to_string())} }
             for item in snapshot.items.iter() {
                 {
                     let before = previous.as_ref().and_then(|old| old.items.iter().find(|old| old.id == item.id));
@@ -408,13 +397,13 @@ pub fn TodoCard(tool_name: String, tool_input: String, tool_output: String, runn
                             }
                             "{item.id} {status}: {item.text}"
                             if !item.note.is_empty() { " ({item.note})" }
-                            if !item.replaces_id.is_empty() { " · replaces {item.replaces_id}" }
+                            if !item.replaces_id.is_empty() { {tr!("cards-result-cards-replaces", replaces_id: item.replaces_id.to_string())} }
                         }
                     }
                 }
             }
         } else if !running {
-            div { "The list at this version is not stored." }
+            div { {tr!("cards-result-cards-the-list-at-this-version")} }
         }
     }}
 }

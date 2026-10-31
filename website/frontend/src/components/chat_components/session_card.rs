@@ -6,16 +6,17 @@ use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::md_communication_icons::MdChat;
 
 use crate::routes::Route;
+use crate::tr;
 
 #[component]
 pub fn ChatSessionCard(session: ChatSessionItem) -> Element {
     let title = if session.title.is_empty() {
-        "New chat".to_string()
+        tr!("chat-session-card-new-chat")
     } else {
         session.title.clone()
     };
     let summary = if session.summary.is_empty() {
-        format!("{} messages", session.message_count)
+        tr!("chat-session-card-messages", session_message_count: session.message_count.to_string())
     } else {
         session.summary.clone()
     };

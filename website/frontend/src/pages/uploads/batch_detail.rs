@@ -25,9 +25,13 @@ use crate::api::error_util::user_facing_message;
 use crate::api::uploads_api::{upload_batch_detail, upload_batch_resume_files, upload_page_info};
 use crate::components::admin_components::{ErrorBar, BTN, LINK, TABLE, TD, TH};
 use crate::routes::Route;
+use crate::tr;
+use crate::i18n::SharedText;
 
 const POLL: Duration = Duration::from_secs(3);
-const DIFFERS: &str = "The selected file differs from the uploaded bytes.";
+fn differs() -> String {
+    tr!("uploads-batch-detail-the-selected-file-differs-from")
+}
 /// Paths of the list of files that have not been sent. The rest is a count.
 const NOT_SENT_ROWS: usize = 20;
 
@@ -126,10 +130,10 @@ fn UploadBatchContent(collection: String, batch_id: String, page: u32) -> Elemen
             let total: u64 = found.matched.iter().map(|(id, _)| by_id[id].size).sum();
             let batch_id = key.peek().1.clone();
             let heading = match &*shown.peek() {
-                Some(Ok(d)) => format!(
-                    "Uploading {} files to {}",
-                    format_count(found.matched.len() as u64),
-                    destination_label(&d.batch)
+                Some(Ok(d)) => tr!(
+                    "uploads-batch-detail-uploading-files-to",
+                    count: format_count(found.matched.len() as u64),
+                    destination: destination_label(&d.batch)
                 ),
                 _ => String::new(),
             };
@@ -212,7 +216,7 @@ fn UploadBatchContent(collection: String, batch_id: String, page: u32) -> Elemen
 
     let value = shown();
     let body = match value {
-        None => rsx! { p { "Loading..." } },
+        None => rsx! { p { {tr!("uploads-batch-detail-loading")} } },
         Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(&e) } },
         Some(Ok(d)) => {
             let b = d.batch.clone();
@@ -224,12 +228,12 @@ fn UploadBatchContent(collection: String, batch_id: String, page: u32) -> Elemen
             let (prev_collection, prev_batch) = (collection.clone(), batch_id.clone());
             rsx! {
                 dl { class: "x-board-stats x-upload-fields",
-                    dt { "State" } dd { class: "x-upload-state", "{batch_state_label(&b.state)}" }
-                    dt { "Uploaded by" } dd { "{b.username}, {started_label(b.created_ms)} UTC" }
-                    dt { "Folder" } dd { Link { to: browse, style: LINK, "{b.folder}" } }
-                    dt { "Files" } dd { "{format_count(b.file_count as u64)}, {format_upload_size(b.byte_count)}" }
+                    dt { {tr!("uploads-batch-detail-state")} } dd { class: "x-upload-state", "{batch_state_label(&b.state).shared()}" }
+                    dt { {tr!("uploads-batch-detail-uploaded-by")} } dd { {tr!("uploads-batch-detail-utc", b_username: b.username.to_string(), started_label_b_created_ms: (started_label(b.created_ms)).to_string())} }
+                    dt { {tr!("uploads-batch-detail-folder")} } dd { Link { to: browse, style: LINK, "{b.folder}" } }
+                    dt { {tr!("uploads-batch-detail-files")} } dd { "{format_count(b.file_count as u64)}, {format_upload_size(b.byte_count)}" }
                     if let Some(op_id) = d.op_id.clone() {
-                        dt { "Operation" }
+                        dt { {tr!("uploads-batch-detail-operation")} }
                         dd { Link { to: Route::AdminOperationDetailPage { op_id: op_id.clone(), plans_page: 0, events_page: 0 }, style: LINK, "{op_id}" } }
                     }
                 }
@@ -242,7 +246,7 @@ fn UploadBatchContent(collection: String, batch_id: String, page: u32) -> Elemen
                             if matches!(&*manifest.read(), Some(Ok(_))) {
                                 DropZone { driver }
                             } else if manifest.read().is_none() {
-                                p { role: "status", "Loading upload files..." }
+                                p { role: "status", {tr!("uploads-batch-detail-loading-upload-files")} }
                             }
                         } else {
                             button {
@@ -259,7 +263,7 @@ fn UploadBatchContent(collection: String, batch_id: String, page: u32) -> Elemen
                                         manifest.set(Some(files));
                                     });
                                 },
-                                if matches!(&*manifest.read(), Some(Err(_))) { "Retry loading files" } else { "Continue upload" }
+                                if matches!(&*manifest.read(), Some(Err(_))) { {tr!("uploads-batch-detail-retry-loading-files")} } else { {tr!("uploads-batch-detail-continue-upload")} }
                             }
                         }
                         div { style: "display: flex; align-items: center; gap: 10px; margin-top: 8px;",
@@ -271,17 +275,17 @@ fn UploadBatchContent(collection: String, batch_id: String, page: u32) -> Elemen
                                     if transfer.peek().is_some() { return; }
                                     finish_error.set(None);
                                     transfer.set(Some(Transfer {
-                                        heading: "Finishing upload".into(),
+                                        heading: tr!("uploads-batch-detail-finishing-upload").into(),
                                         state: Progress { phase: "committing".into(), ..Default::default() },
                                         error: None,
                                         batch_id: Some(key.peek().1.clone()),
                                     }));
                                     driver.send(serde_json::json!({"cmd": "finish", "batch_id": key.peek().1.clone()}));
                                 },
-                                "Finish upload"
+                                {tr!("uploads-batch-detail-finish-upload")}
                             }
                             span { style: "color: var(--x-ink-muted);",
-                                "Finish upload ingests the files received so far. Files that have not been sent are not uploaded."
+                                {tr!("uploads-batch-detail-finish-upload-ingests-the-files")}
                             }
                         }
                         if let Some(e) = finish_error() {
@@ -292,12 +296,12 @@ fn UploadBatchContent(collection: String, batch_id: String, page: u32) -> Elemen
                         }
                         if unmatched() > 0 {
                             p { class: "x-upload-unmatched", style: "color: var(--x-danger);",
-                                "{format_count(unmatched() as u64)} selected files do not match this upload."
+                                {tr!("uploads-batch-detail-selected-files-do-not-match", format_count_unmatched_as_u64: (format_count(unmatched() as u64)).to_string())}
                             }
                         }
                         for (index, file) in mismatched().iter().enumerate() {
                             p { key: "{index}", class: "x-upload-mismatch", style: "color: var(--x-danger); margin: 2px 0; overflow-wrap: anywhere;",
-                                if file.error.is_empty() { "{show_path(&file.path)} {DIFFERS}" } else { "{show_path(&file.path)} {file.error}" }
+                                if file.error.is_empty() { "{show_path(&file.path)} {differs()}" } else { "{show_path(&file.path)} {file.error}" }
                             }
                         }
                         if !not_sent_yet().is_empty() {
@@ -312,22 +316,22 @@ fn UploadBatchContent(collection: String, batch_id: String, page: u32) -> Elemen
                         max: "{d.counts.files.max(1)}",
                         value: "{d.counts.indexed}",
                     }
-                    span { "{format_count(d.counts.indexed)} of {format_count(d.counts.files)} indexed" }
+                    span { {tr!("uploads-batch-detail-of-indexed", format_count_d_counts_indexed: (format_count(d.counts.indexed)).to_string(), format_count_d_counts_files: format_count(d.counts.files))} }
                 }
                 div { class: "x-upload-counts", style: "display: flex; gap: 18px; flex-wrap: wrap;",
-                    span { "Ingested {format_count(d.counts.ingested)}" }
-                    span { "Indexed {format_count(d.counts.indexed)}" }
-                    span { "With errors {format_count(d.counts.with_errors)}" }
-                    span { "Rejected {format_count(d.counts.rejected)}" }
-                    span { "Not sent {format_count(d.counts.not_sent)}" }
+                    span { {tr!("uploads-batch-detail-ingested", format_count_d_counts_ingested: (format_count(d.counts.ingested)).to_string())} }
+                    span { {tr!("uploads-batch-detail-indexed", format_count_d_counts_indexed: (format_count(d.counts.indexed)).to_string())} }
+                    span { {tr!("uploads-batch-detail-with-errors", format_count_d_counts_with_errors: (format_count(d.counts.with_errors)).to_string())} }
+                    span { {tr!("uploads-batch-detail-rejected", format_count_d_counts_rejected: (format_count(d.counts.rejected)).to_string())} }
+                    span { {tr!("uploads-batch-detail-not-sent", format_count_d_counts_not_sent: (format_count(d.counts.not_sent)).to_string())} }
                 }
                 table { class: "x-upload-files", style: TABLE,
                     thead {
                         tr {
-                            th { style: TH, "Path" }
-                            th { style: TH, "Size" }
-                            th { style: TH, "State" }
-                            th { style: TH, "Error" }
+                            th { style: TH, {tr!("uploads-batch-detail-path")} }
+                            th { style: TH, {tr!("uploads-batch-detail-size")} }
+                            th { style: TH, {tr!("uploads-batch-detail-state")} }
+                            th { style: TH, {tr!("uploads-batch-detail-error")} }
                         }
                     }
                     tbody {
@@ -345,7 +349,7 @@ fn UploadBatchContent(collection: String, batch_id: String, page: u32) -> Elemen
                             onclick: move |_| { navigator().replace(Route::UploadBatchPage { collection: prev_collection.clone(), batch_id: prev_batch.clone(), page: current.saturating_sub(1) }); },
                             Icon { icon: MdChevronLeft, width: 16, height: 16 }
                         }
-                        span { "{current + 1} of {pages}" }
+                        span { {tr!("uploads-batch-detail-of", current_1: (current + 1).to_string(), pages: pages)} }
                         button {
                             style: BTN,
                             "aria-label": "Next page",
@@ -360,19 +364,19 @@ fn UploadBatchContent(collection: String, batch_id: String, page: u32) -> Elemen
     };
 
     let heading = match &*shown.read() {
-        Some(Ok(d)) => format!("Upload to {}", destination_label(&d.batch)),
-        _ => "Upload".to_string(),
+        Some(Ok(d)) => tr!("uploads-batch-detail-upload-to", destination: destination_label(&d.batch)),
+        _ => tr!("uploads-batch-detail-upload"),
     };
     let list = Route::UploadsPage { collection: key().0 };
     rsx! {
-        Title { "Hoover Search - Upload" }
+        Title { {tr!("uploads-batch-detail-hoover-search-upload")} }
         UploadScripts {}
         div { style: PAGE_STYLE, "inert": transfer().is_some().then_some(""),
             div { style: "max-width: 1100px; margin: 0 auto;",
                 div { style: "display: flex; align-items: center; gap: 15px; margin-bottom: 15px;",
                     Link { to: list, style: "{LINK} display: inline-flex; align-items: center; gap: 4px;",
                         Icon { icon: MdArrowBack, width: 16, height: 16 }
-                        "Uploads"
+                        {tr!("uploads-batch-detail-uploads")}
                     }
                     h1 { style: "{H1_STYLE} overflow-wrap: anywhere;", "{heading}" }
                 }
@@ -392,13 +396,13 @@ fn NotSentList(paths: Vec<String>) -> Element {
     rsx! {
         div { class: "x-upload-not-selected", style: "margin: 4px 0;",
             p { style: "margin: 2px 0;",
-                "{format_count(paths.len() as u64)} files of this upload have not been sent. Select them to continue, or use Finish upload:"
+                {tr!("uploads-batch-detail-files-of-this-upload-have", format_count_paths_len_as_u64: (format_count(paths.len() as u64)).to_string())}
             }
             for (index, path) in paths.iter().take(NOT_SENT_ROWS).enumerate() {
                 div { key: "{index}", style: "padding-left: 16px; overflow-wrap: anywhere;", "{show_path(path)}" }
             }
             if more > 0 {
-                div { style: "padding-left: 16px; color: var(--x-ink-muted);", "and {format_count(more as u64)} more files" }
+                div { style: "padding-left: 16px; color: var(--x-ink-muted);", {tr!("uploads-batch-detail-and-more-files", format_count_more_as_u64: (format_count(more as u64)).to_string())} }
             }
         }
     }
@@ -423,7 +427,7 @@ fn FileTableLine(dataset: String, row: UploadFileRow) -> Element {
                 }
             }
             td { style: "{TD} white-space: nowrap;", "{format_upload_size(row.size_bytes)}" }
-            td { style: "{TD} {state_style}", "{row.state.label()}" }
+            td { style: "{TD} {state_style}", "{row.state.label().shared()}" }
             td { style: "{TD} overflow-wrap: anywhere;", title: "{row.error}", "{first_line}" }
         }
     }

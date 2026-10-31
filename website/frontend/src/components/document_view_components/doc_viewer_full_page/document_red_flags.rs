@@ -8,6 +8,8 @@ use crate::{
 use common::{search_result::DocumentIdentifier, signals::DocumentSignals};
 use dioxus::prelude::*;
 use dioxus_free_icons::{Icon, icons::md_action_icons::MdInfo};
+use crate::tr;
+use crate::i18n::SharedText;
 
 #[server]
 async fn get_document_signals(
@@ -40,13 +42,13 @@ pub fn DocumentRedFlags(document_identifier: ReadSignal<DocumentIdentifier>) -> 
         None => rsx! { LoadingIndicator {} },
         Some(Err(error)) => rsx! { ServerErrorDisplay { error } },
         Some(Ok(evidence)) => rsx! {
-            if evidence.clusters.is_empty() { p { "No red flag passage was found in this document." } }
+            if evidence.clusters.is_empty() { p { {tr!("document-red-flags-no-red-flag-passage-was")} } }
             for (index, cluster) in evidence.clusters.iter().enumerate() {
                 section { key: "{index}", class: "x-red-flag-passage",
                     h4 { "{titles.get(&cluster.category).unwrap_or(&cluster.category)}" }
                     h5 {
-                        "{common::document_sources::text_source_label(&cluster.extracted_by)}, page {cluster.page_id}, "
-                        strong { "{cluster.points} points" }
+                        {tr!("document-red-flags-source-page", source: common::document_sources::text_source_label(&cluster.extracted_by).shared(), page: cluster.page_id.to_string())}
+                        strong { {tr!("document-red-flags-points", cluster_points: cluster.points.to_string())} }
                         "."
                     }
                     p { class: "x-red-flag-excerpt",
@@ -57,11 +59,11 @@ pub fn DocumentRedFlags(document_identifier: ReadSignal<DocumentIdentifier>) -> 
                 }
             }
             details {
-                summary { "Other hits ({evidence.other_hits.len()})" }
+                summary { {tr!("document-red-flags-other-hits", evidence_other_hits_len: evidence.other_hits.len())} }
                 for (index, hit) in evidence.other_hits.iter().enumerate() {
                     p { key: "{index}",
-                        "{titles.get(&hit.category).unwrap_or(&hit.category)}. {hit.text}. Page {hit.page_id}."
-                        if !hit.flags.is_empty() { span { {format!(" Flags: {}.", hit.flags.join(", "))} } }
+                        {tr!("document-red-flags-page", titles_get_hit_category_unwrap_or_hit_ca: (titles.get(&hit.category).unwrap_or(&hit.category)).to_string(), hit_text: hit.text.to_string(), hit_page_id: hit.page_id.to_string())}
+                        if !hit.flags.is_empty() { span { {tr!("document-red-flags-flags", hit_flags_join: (hit.flags.join(", ")).to_string())} } }
                     }
                 }
             }
@@ -70,9 +72,9 @@ pub fn DocumentRedFlags(document_identifier: ReadSignal<DocumentIdentifier>) -> 
     rsx! {
         section { "data-red-flags": "true", class: "x-document-red-flags",
             h3 {
-                Link { to: Route::SignalTermsPage {}, new_tab: true, aria_label: "View category definitions and terms",
+                Link { to: Route::SignalTermsPage {}, new_tab: true, aria_label: tr!("document-red-flags-view-category-definitions-and-terms"),
                     Icon { icon: MdInfo, style: "width: 16px; height: 16px; flex-shrink: 0;" }
-                    "Red flags"
+                    {tr!("document-red-flags-red-flags")}
                 }
             }
             if let Some(Err(error)) = catalog.read().clone() { ServerErrorDisplay { error } }

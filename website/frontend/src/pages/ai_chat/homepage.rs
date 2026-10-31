@@ -22,6 +22,7 @@ use crate::components::chat_components::{
     ChatComposer, ChatGateOverlay, ChatSessionCard,
 };
 use crate::routes::Route;
+use crate::tr;
 
 const HOMEPAGE_CARD_LIMIT: usize = 6;
 
@@ -107,7 +108,7 @@ pub fn AiChatPage() -> Element {
     let cards: Vec<_> = sessions.into_iter().take(HOMEPAGE_CARD_LIMIT).collect();
 
     rsx! {
-        Title { "Hoover Search - AI Chat" }
+        Title { {tr!("ai-chat-homepage-hoover-search-ai-chat")} }
         div {
             style: "width: 100%; height: 100%; background: #F5F6F8; box-sizing: border-box; \
                     display: flex; gap: 23px; padding: 23px; overflow: auto;",
@@ -117,7 +118,7 @@ pub fn AiChatPage() -> Element {
             h1 {
                 style: "margin: 0 0 23px; font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 600; color: var(--x-ink-strong); \
                         text-align: center;",
-                "What are you researching?"
+                {tr!("ai-chat-homepage-what-are-you-researching")}
             }
 
             if !cards.is_empty() {
@@ -133,7 +134,7 @@ pub fn AiChatPage() -> Element {
                     Link {
                         to: Route::AiChatHistoryPage {},
                         style: "font-size: var(--x-text-sm); color: var(--x-link); text-decoration: none;",
-                        "View all conversations"
+                        {tr!("ai-chat-homepage-view-all-conversations")}
                     }
                 }
             }
@@ -161,7 +162,7 @@ pub fn AiChatPage() -> Element {
             }
             if *sending.read() {
                 div { style: "margin-top: 12px; color: var(--x-ink-muted); font-size: var(--x-text-sm);",
-                    "Starting conversation\u{2026}"
+                    {tr!("ai-chat-homepage-starting-conversation-u")}
                 }
             }
         }
@@ -181,24 +182,24 @@ fn BoardsOverview() -> Element {
             class: "x-boards-overview",
             style: "flex: 0 1 400px; min-width: 300px; display: flex; flex-direction: column; gap: 11px;",
             div { style: "display: flex; align-items: center; justify-content: space-between;",
-                h2 { style: "margin: 0; font-size: var(--x-text-section); font-weight: 600; color: var(--x-ink-strong);", "Investigation boards" }
+                h2 { style: "margin: 0; font-size: var(--x-text-section); font-weight: 600; color: var(--x-ink-strong);", {tr!("ai-chat-homepage-investigation-boards")} }
                 Link {
                     class: "x-board-new",
                     to: Route::AiBoardCreatePage {},
                     style: "font-size: var(--x-text-sm); color: var(--x-link); text-decoration: none; font-weight: 500;",
-                    "New board"
+                    {tr!("ai-chat-homepage-new-board")}
                 }
             }
             match &*boards_res.read() {
-                None => rsx! { div { style: "color: var(--x-ink-faint); font-size: var(--x-text-sm);", "Loading boards\u{2026}" } },
+                None => rsx! { div { style: "color: var(--x-ink-faint); font-size: var(--x-text-sm);", {tr!("ai-chat-homepage-loading-boards-u")} } },
                 Some(Err(e)) => rsx! {
                     div { class: "x-error-display", style: "color: var(--x-danger); font-size: var(--x-text-sm);",
-                        "Could not load the boards: {user_facing_message(e)}"
+                        {tr!("ai-chat-homepage-could-not-load-the-boards", user_facing_message_e: (user_facing_message(e)).to_string())}
                     }
                 },
                 Some(Ok(list)) if list.is_empty() => rsx! {
                     div { style: "color: var(--x-ink-muted); font-size: var(--x-text-sm);",
-                        "You have no board. A board runs a long investigation as a sequence of agent explores, and you review its answers."
+                        {tr!("ai-chat-homepage-you-have-no-board-a")}
                     }
                 },
                 Some(Ok(list)) => rsx! {
@@ -214,14 +215,14 @@ fn BoardsOverview() -> Element {
 #[component]
 fn BoardCard(board: BoardListItem) -> Element {
     let status = match (board.status.as_str(), board.graph.not_answered.len()) {
-        ("active", _) => "Active".to_string(),
-        ("paused", _) => "Paused".to_string(),
-        ("review", _) => "Waits for review".to_string(),
-        ("completed", 0) => "Completed".to_string(),
+        ("active", _) => tr!("ai-chat-homepage-active"),
+        ("paused", _) => tr!("ai-chat-homepage-paused"),
+        ("review", _) => tr!("ai-chat-homepage-waits-for-review"),
+        ("completed", 0) => tr!("ai-chat-homepage-completed"),
         ("completed", 1) => "Completed, 1 goal not answered".to_string(),
-        ("completed", n) => format!("Completed, {n} goals not answered"),
-        ("dropped", _) => "Dropped".to_string(),
-        _ => "Unknown".to_string(),
+        ("completed", n) => tr!("ai-chat-homepage-completed-goals-not-answered", n: n.to_string()),
+        ("dropped", _) => tr!("ai-chat-homepage-dropped"),
+        _ => tr!("ai-chat-homepage-unknown"),
     };
     // The generated summary of the board. Before its first label pass, the first goal.
     let summary = if board.summary.is_empty() {
@@ -247,7 +248,7 @@ fn BoardCard(board: BoardListItem) -> Element {
                         display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;",
                 "{summary}"
             }
-            div { style: "font-size: var(--x-text-detail); color: var(--x-ink-faint); margin-top: 2px;", "Updated {format_utc_ms(board.updated_ms)}" }
+            div { style: "font-size: var(--x-text-detail); color: var(--x-ink-faint); margin-top: 2px;", {tr!("ai-chat-homepage-updated", format_utc_ms_board_updated_ms: (format_utc_ms(board.updated_ms)).to_string())} }
         }
     }
 }

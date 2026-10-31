@@ -218,9 +218,19 @@ def translate_batch(model: Model, code: str, terms: dict[str, str], batch: list[
         .replace("{glossary}", "\n".join(f"{k}: {v}" for k, v in terms.items()))
     )
     text = "".join(source(message) for message in batch)
-    reply = strip_fence(model.ask(system, f"Translate these messages into {LANGUAGES[code]}:\n\n{text}"))
+    # Some models translate the ids of right-to-left languages. The request repeats the rule
+    # after the messages, where the model reads it last.
+    reply = strip_fence(model.ask(system, (
+        f"Translate these messages into {LANGUAGES[code]}:\n\n{text}\n"
+        "Start each message with its English id and ` = ` exactly as above. Do not translate the ids.")))
     resource = PARSER.parse(reply + "\n")
-    return {entry.id.name: entry for entry in resource.body if isinstance(entry, ast.Message)}
+    found = {entry.id.name: entry for entry in resource.body if isinstance(entry, ast.Message)}
+    # A reply to one single-line message can hold the value only. The id goes back in front,
+    # and `check` then verifies the variables as for any other reply.
+    if not found and len(batch) == 1 and "\n" not in reply.strip():
+        resource = PARSER.parse(f"{batch[0].id.name} = {reply.strip()}\n")
+        found = {entry.id.name: entry for entry in resource.body if isinstance(entry, ast.Message)}
+    return found
 
 
 def translate_language(model: Model, catalog: Path, name: str, code: str, record: dict, args) -> list[str]:

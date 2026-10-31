@@ -37,6 +37,7 @@ use crate::components::search_components::vfs_tree::{
     TriState, VfsTree, indent_style, record_tree_query, tree_query_log_json, tri_state_icon,
     window_siblings,
 };
+use crate::tr;
 
 /// Rows above a folder: the collection and the dataset. Folders indent from here.
 pub const SYNTHETIC_LEVELS: usize = 2;
@@ -239,17 +240,17 @@ pub fn StorageTree(
 
     let body = match tree.read().clone() {
         None => rsx! {
-            div { style: "padding: 8px 10px; font-size: 13px; color: rgba(0,0,0,0.5);", "Loading…" }
+            div { style: "padding: 8px 10px; font-size: 13px; color: rgba(0,0,0,0.5);", {tr!("search-storage-tree-loading")} }
         },
         Some(Err(error)) => rsx! {
             div {
                 class: "x-error-display",
                 style: "padding: 8px 10px; font-size: 13px; color: rgb(160,30,30);",
-                "Could not load the collections: {error}"
+                {tr!("search-storage-tree-could-not-load-the-collections", error: error.to_string())}
             }
         },
         Some(Ok(nodes)) if nodes.is_empty() => rsx! {
-            div { style: "padding: 8px 10px; font-size: 13px; color: rgba(0,0,0,0.5);", "No collections." }
+            div { style: "padding: 8px 10px; font-size: 13px; color: rgba(0,0,0,0.5);", {tr!("search-storage-tree-no-collections")} }
         },
         Some(Ok(nodes)) => {
             let focus = current_dataset();
@@ -261,7 +262,7 @@ pub fn StorageTree(
                 MoreRow {
                     hidden: level.hidden_before,
                     depth: 0,
-                    label: "collections",
+                    label: tr!("search-storage-tree-collections"),
                     unfold_key: "collections".to_string(),
                     unfolded,
                     above: true,
@@ -283,7 +284,7 @@ pub fn StorageTree(
                 MoreRow {
                     hidden: level.hidden_after,
                     depth: 0,
-                    label: "collections",
+                    label: tr!("search-storage-tree-collections"),
                     unfold_key: "collections".to_string(),
                     unfolded,
                     above: false,
@@ -392,7 +393,7 @@ fn CollectionBranch(
             MoreRow {
                 hidden: level.hidden_before,
                 depth: 1,
-                label: "datasets",
+                label: tr!("search-storage-tree-datasets"),
                 unfold_key: unfold_key.clone(),
                 unfolded,
                 above: true,
@@ -415,7 +416,7 @@ fn CollectionBranch(
             MoreRow {
                 hidden: level.hidden_after,
                 depth: 1,
-                label: "datasets",
+                label: tr!("search-storage-tree-datasets"),
                 unfold_key: unfold_key.clone(),
                 unfolded,
                 above: false,
@@ -615,7 +616,7 @@ fn SyntheticRow(
 fn MoreRow(
     hidden: usize,
     depth: usize,
-    label: &'static str,
+    label: String,
     unfold_key: String,
     unfolded: Signal<BTreeSet<String>>,
     above: bool,
@@ -630,10 +631,10 @@ fn MoreRow(
         button {
             style: "{ROW_STYLE} {MORE_ROW_STYLE} padding-left: {indent};",
             class: "x-facet-list-item",
-            title: "Show all {label} here",
+            title: tr!("search-storage-tree-show-all-here", label: label.to_string()),
             onclick: move |_| { unfolded_set.write().insert(unfold_key.clone()); },
             Icon { icon: MdMoreHoriz, style: "width: 19px; height: 19px; flex-shrink: 0;" }
-            div { style: "{LABEL_STYLE}", "{hidden} more {label} {direction}…" }
+            div { style: "{LABEL_STYLE}", {tr!("search-storage-tree-more", hidden: hidden.to_string(), label: label.to_string(), direction: direction.to_string())} }
         }
     }
 }

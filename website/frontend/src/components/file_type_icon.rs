@@ -9,6 +9,7 @@
 //! Five call sites draw this: the search result card, the storage browser's file rows,
 //! the viewer's title bar, an email's attachment cards and the preview source selector.
 
+use crate::i18n::SharedText;
 use common::file_type_icons::{FileTypeGlyph, file_type_glyph, file_type_label};
 use dioxus::prelude::*;
 use dioxus_free_icons::{
@@ -31,7 +32,7 @@ use dioxus_free_icons::{
 #[component]
 pub fn FileTypeGlyphIcon(file_type: String, size: u32) -> Element {
     let style = format!("width: {size}px; height: {size}px;");
-    let title = file_type_label(&file_type);
+    let title = file_type_label(&file_type).shared();
     rsx! {
         span {
             title: "{title}",

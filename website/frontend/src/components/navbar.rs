@@ -95,7 +95,7 @@ fn NavbarTopLogo() -> Element {
     rsx! {
         Link {
             to: Route::HomePage { },
-            img { src: asset!("assets/nav-logo.svg"), alt: "Hoover", style: "width: 100%; height: auto;" }
+            img { src: asset!("assets/nav-logo.svg"), alt: tr!("navbar-hoover"), style: "width: 100%; height: auto;" }
         }
     }
 }

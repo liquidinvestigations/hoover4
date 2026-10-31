@@ -31,7 +31,7 @@ pub async fn extract_user() -> Result<common::current_user::CurrentUser, dioxus:
 /// it so the wording cannot drift from the condition; the client renders whatever the
 /// server sent rather than a second copy of this sentence.
 #[cfg(feature = "server")]
-pub const NOT_SIGNED_IN: &str =
+pub const NOT_SIGNED_IN: &str = // i18n: data. The client translates it through the shared catalog.
     "Not signed in. This deployment requires an authenticated session and does not issue \
      anonymous ones. Sign in through your organisation's proxy, or ask an administrator \
      for access.";

@@ -12,6 +12,7 @@ use dioxus_free_icons::{Icon, IconShape};
 
 use crate::components::admin_components::{FONT, PAGE_TITLE};
 use crate::routes::Route;
+use crate::tr;
 
 /// `active` selects the highlighted navigation row: one of
 /// "dashboard", "collections", "operations", "failures", "feedback", "users", "groups", "settings",
@@ -32,22 +33,22 @@ pub fn AdminShell(
                 "aria-label": "Administration",
                 // As wide as its longest label, so the page keeps the rest of the width.
                 style: "width: max-content; flex-shrink: 0; height: 100%; overflow-y: auto; padding: 16px 0; background-color: var(--x-surface-muted); border-right: 1px solid; border-right-color: var(--x-border);",
-                NavLink { to: Route::AdminDashboardPage {}, icon: MdDashboard, label: "Dashboard", selected: active == "dashboard" }
-                NavLink { to: Route::AdminCollectionsPage {}, icon: MdStorage, label: "Collections", selected: active == "collections" }
-                NavLink { to: Route::AdminOperationsPage {}, icon: MdHistory, label: "Operations", selected: active == "operations" }
-                NavLink { to: crate::pages::admin::failures::failures_route("", ""), icon: MdReportProblem, label: "Errors/Failures", selected: active == "failures" }
+                NavLink { to: Route::AdminDashboardPage {}, icon: MdDashboard, label: tr!("admin-shell-dashboard"), selected: active == "dashboard" }
+                NavLink { to: Route::AdminCollectionsPage {}, icon: MdStorage, label: tr!("admin-shell-collections"), selected: active == "collections" }
+                NavLink { to: Route::AdminOperationsPage {}, icon: MdHistory, label: tr!("admin-shell-operations"), selected: active == "operations" }
+                NavLink { to: crate::pages::admin::failures::failures_route("", ""), icon: MdReportProblem, label: tr!("admin-shell-errors-failures"), selected: active == "failures" }
                 NavLink {
                     to: Route::AdminFeedbackPage { search: String::new(), status: String::new(), page: 1 },
                     icon: MdBugReport,
-                    label: "Feedback",
+                    label: tr!("admin-shell-feedback"),
                     selected: active == "feedback",
                 }
-                NavLink { to: Route::AdminUsersPage {}, icon: MdPerson, label: "Users", selected: active == "users" }
-                NavLink { to: Route::AdminGroupsPage {}, icon: MdGroup, label: "Groups", selected: active == "groups" }
-                NavLink { to: Route::AdminSettingsPage {}, icon: MdSettings, label: "Settings", selected: active == "settings" }
-                NavLink { to: Route::AdminLlmPage {}, icon: MdQuestionAnswer, label: "LLM", selected: active == "llm" }
-                NavLink { to: Route::AdminAiStatusPage {}, icon: MdDns, label: "AI status", selected: active == "ai_status" }
-                NavLink { to: Route::AdminMetricsPage {}, icon: MdInsertChart, label: "Metrics", selected: active == "metrics" }
+                NavLink { to: Route::AdminUsersPage {}, icon: MdPerson, label: tr!("admin-shell-users"), selected: active == "users" }
+                NavLink { to: Route::AdminGroupsPage {}, icon: MdGroup, label: tr!("admin-shell-groups"), selected: active == "groups" }
+                NavLink { to: Route::AdminSettingsPage {}, icon: MdSettings, label: tr!("admin-shell-settings"), selected: active == "settings" }
+                NavLink { to: Route::AdminLlmPage {}, icon: MdQuestionAnswer, label: tr!("admin-shell-llm"), selected: active == "llm" }
+                NavLink { to: Route::AdminAiStatusPage {}, icon: MdDns, label: tr!("admin-shell-ai-status"), selected: active == "ai_status" }
+                NavLink { to: Route::AdminMetricsPage {}, icon: MdInsertChart, label: tr!("admin-shell-metrics"), selected: active == "metrics" }
             }
             main {
                 style: "flex: 1; min-width: 0; height: 100%; overflow: auto; padding: 15px 23px 23px;",
@@ -56,7 +57,7 @@ pub fn AdminShell(
                     Link {
                         to: Route::AdminDashboardPage {},
                         style: "color: var(--x-ink-muted); text-decoration: none;",
-                        "Administration"
+                        {tr!("admin-shell-administration")}
                     }
                     if !breadcrumb.is_empty() {
                         span { " \u{203a} {breadcrumb}" }

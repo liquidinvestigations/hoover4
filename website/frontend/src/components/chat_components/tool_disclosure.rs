@@ -20,6 +20,7 @@ use crate::components::chat_components::tool_cards::{tool_content, tool_failure}
 use crate::components::chat_components::markdown_text::MarkdownishText;
 use crate::routes::Route;
 use crate::api::storage_api::list_storage_tree;
+use crate::tr;
 
 /// Longest value rendered inline in the readable view before it is clipped. Past this
 /// the raw view is the right place to look.
@@ -107,7 +108,7 @@ pub fn ToolCallDisclosure(
                 if running {
                     span {
                         style: "flex-shrink: 0; font-size: var(--x-text-xs); font-style: italic; color: var(--x-ink-muted);",
-                        "running\u{2026}"
+                        {tr!("chat-tool-disclosure-running-u")}
                     }
                 }
                 if let Some(route) = search_route {
@@ -115,7 +116,7 @@ pub fn ToolCallDisclosure(
                         to: route,
                         style: "color: var(--x-link); text-decoration: underline; font-size: var(--x-text-xs); \
                                 white-space: nowrap;",
-                        "Search this"
+                        {tr!("chat-tool-disclosure-search-this")}
                     }
                 }
                 if let Some(route) = search_all_route {
@@ -123,7 +124,7 @@ pub fn ToolCallDisclosure(
                         to: route,
                         style: "color: var(--x-link); text-decoration: underline; font-size: var(--x-text-xs); \
                                 white-space: nowrap;",
-                        "Search every collection"
+                        {tr!("chat-tool-disclosure-search-every-collection")}
                     }
                 }
                 if !running {
@@ -137,7 +138,7 @@ pub fn ToolCallDisclosure(
                                 show_raw.set(false);
                             }
                         },
-                        if *expanded.read() { "Hide" } else { "Expand" }
+                        if *expanded.read() { {tr!("chat-tool-disclosure-hide")} } else { {tr!("chat-tool-disclosure-expand")} }
                     }
                 }
             }
@@ -158,8 +159,7 @@ pub fn ToolCallDisclosure(
                     if !has_payload {
                         div {
                             style: "font-size: var(--x-text-xs); font-style: italic; opacity: 0.75;",
-                            "This step was recorded before tool arguments and results were \
-                             stored. Only the summary below is available."
+                            {tr!("chat-tool-disclosure-this-step-was-recorded-before")}
                         }
                         pre {
                             style: "margin: 0; white-space: pre-wrap; word-break: break-word; \
@@ -171,10 +171,10 @@ pub fn ToolCallDisclosure(
                     }
 
                     if !input_view.is_empty() {
-                        FieldSection { heading: "Arguments", fields: input_view.clone() }
+                        FieldSection { heading: tr!("chat-tool-disclosure-arguments"), fields: input_view.clone() }
                     }
                     if !output_view.is_empty() {
-                        FieldSection { heading: "Result", fields: output_view.clone() }
+                        FieldSection { heading: tr!("chat-tool-disclosure-result"), fields: output_view.clone() }
                     }
                     if !next_line.is_empty() {
                         div { style: "font-size: var(--x-text-xs);", "{next_line}" }
@@ -196,14 +196,14 @@ pub fn ToolCallDisclosure(
                                     let next = !*show_raw.peek();
                                     show_raw.set(next);
                                 },
-                                if *show_raw.read() { "Hide raw JSON" } else { "Show raw JSON" }
+                                if *show_raw.read() { {tr!("chat-tool-disclosure-hide-raw-json")} } else { {tr!("chat-tool-disclosure-show-raw-json")} }
                             }
                         }
                     }
 
                     if *show_raw.read() {
-                        RawJson { heading: "Input JSON", body: tool_input.clone() }
-                        RawJson { heading: "Output JSON", body: tool_output.clone() }
+                        RawJson { heading: tr!("chat-tool-disclosure-input-json"), body: tool_input.clone() }
+                        RawJson { heading: tr!("chat-tool-disclosure-output-json"), body: tool_output.clone() }
                     }
                 }
             }
@@ -247,7 +247,7 @@ fn object_row_columns(rows: &[serde_json::Value]) -> Vec<String> {
 }
 
 #[component]
-fn FieldSection(heading: &'static str, fields: Vec<(String, String)>) -> Element {
+fn FieldSection(heading: String, fields: Vec<(String, String)>) -> Element {
     rsx! {
         div {
             div {
@@ -282,7 +282,7 @@ fn FieldSection(heading: &'static str, fields: Vec<(String, String)>) -> Element
 }
 
 #[component]
-fn RawJson(heading: &'static str, body: String) -> Element {
+fn RawJson(heading: String, body: String) -> Element {
     if body.is_empty() {
         return rsx! {};
     }
@@ -353,10 +353,10 @@ fn summarise_value(v: &serde_json::Value) -> String {
                     .join(", ");
                 return clip(&joined);
             }
-            format!("{} item{}", items.len(), if items.len() == 1 { "" } else { "s" })
+            tr!("chat-tool-disclosure-item", count: items.len())
         }
         serde_json::Value::Object(map) => {
-            format!("{} field{}", map.len(), if map.len() == 1 { "" } else { "s" })
+            tr!("chat-tool-disclosure-field", count: map.len())
         }
     }
 }
@@ -389,9 +389,9 @@ fn collapsed_label(tool_name: &str, tool_input: &str, summary: &str) -> String {
                 format!(" \u{b7} {}", collections.join(", "))
             };
             if query.is_empty() {
-                format!("searched collections{filters}")
+                tr!("chat-tool-disclosure-searched-collections", filters: filters.to_string())
             } else {
-                format!("searched collections \u{b7} {query}{filters}")
+                tr!("chat-tool-disclosure-searched-collections-2", query: query.to_string(), filters: filters.to_string())
             }
         }
         "cite_documents" => {
@@ -401,7 +401,7 @@ fn collapsed_label(tool_name: &str, tool_input: &str, summary: &str) -> String {
             match count {
                 0 => "cited documents".to_string(),
                 1 => "cited 1 document".to_string(),
-                n => format!("cited {n} documents"),
+                n => tr!("chat-tool-disclosure-cited-documents", n: n.to_string()),
             }
         }
         "list_collections" => "listed collections".to_string(),
@@ -412,7 +412,7 @@ fn collapsed_label(tool_name: &str, tool_input: &str, summary: &str) -> String {
             if path.is_empty() {
                 "read document".to_string()
             } else {
-                format!("read document \u{b7} {path}")
+                tr!("chat-tool-disclosure-read-document", path: path.to_string())
             }
         }
         "list_document_entities" => "listed entities".to_string(),
@@ -420,18 +420,18 @@ fn collapsed_label(tool_name: &str, tool_input: &str, summary: &str) -> String {
         // The open-web tools all take a query or a url, and showing it is what the label is for.
         "web_search" | "search" | "news_search" | "wikipedia_search" => {
             match json_str_field(tool_input, "query") {
-                Some(q) => format!("searched the web \u{b7} {q}"),
+                Some(q) => tr!("chat-tool-disclosure-searched-the-web", q: q.to_string()),
                 None => "searched the web".to_string(),
             }
         }
         "browse" | "browse_url" | "fetch_url" | "get_page" => {
             match json_str_field(tool_input, "url") {
-                Some(u) => format!("opened page \u{b7} {u}"),
+                Some(u) => tr!("chat-tool-disclosure-opened-page", u: u.to_string()),
                 None => "opened a page".to_string(),
             }
         }
         "whois" => match json_str_field(tool_input, "domain") {
-            Some(d) => format!("whois \u{b7} {d}"),
+            Some(d) => tr!("chat-tool-disclosure-whois", d: d.to_string()),
             None => "whois lookup".to_string(),
         },
         other => {
@@ -444,9 +444,9 @@ fn collapsed_label(tool_name: &str, tool_input: &str, summary: &str) -> String {
                 detail
             };
             if short.is_empty() {
-                format!("called {other}")
+                tr!("chat-tool-disclosure-called", other: other.to_string())
             } else {
-                format!("called {other} \u{b7} {short}")
+                tr!("chat-tool-disclosure-called-2", other: other.to_string(), short: short.to_string())
             }
         }
     }

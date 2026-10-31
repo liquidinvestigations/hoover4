@@ -1,12 +1,13 @@
 //! Non-dismissible overlay over the composer when a new chat turn cannot start.
 
+use crate::i18n::SharedText;
 use common::chat_gate::ChatGateClosed;
 use dioxus::prelude::*;
 
 #[component]
 pub fn ChatGateOverlay(reason: ChatGateClosed) -> Element {
-    let lead = reason.overlay_lead();
-    let action = reason.overlay_action();
+    let lead = reason.overlay_lead().shared();
+    let action = reason.overlay_action().shared();
     rsx! {
         div {
             class: "x-chat-gate-overlay",

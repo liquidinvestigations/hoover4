@@ -8,39 +8,38 @@ use crate::components::admin_components::{
     AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN_SMALL, INPUT, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
+use crate::tr;
 
-fn setting_description(key: &str) -> &'static str {
+fn setting_description(key: &str) -> String {
     match key {
-        "session_expiration_seconds" => "Web session lifetime in seconds (default: 604800 = 1 week)",
+        "session_expiration_seconds" => tr!("admin-settings-web-session-lifetime-in-seconds"),
         "chat_enabled" => {
-            "Turns every new chat turn off when false (default: true). An in-flight turn \
-             finishes. Takes effect on the next send, with no redeploy."
+            tr!("admin-settings-turns-every-new-chat-turn")
         }
         "embeddings_serving_model" | "embeddings_serving_dim" => {
-            "Written by `main.py probe-embeddings`, and it is what the endpoint ACTUALLY serves. \
-             Editing this by hand does not change the server."
+            tr!("admin-settings-written-by-main-py-probe")
         }
-        _ => "",
+        _ => String::new(),
     }
 }
 
 /// Deployment keys are rendered read-only, so the page has to say where they are changed.
-fn deployment_description(key: &str) -> &'static str {
+fn deployment_description(key: &str) -> String {
     match key {
         "datasets_mount_path" => {
-            "The folder whose subfolders the dataset form lists. Changing it needs a redeploy."
+            tr!("admin-settings-the-folder-whose-subfolders-the")
         }
-        _ => "From hoover4.ini. Changing it needs a redeploy.",
+        _ => tr!("admin-settings-from-hoover4-ini-changing-it"),
     }
 }
 
 #[component]
 pub fn AdminSettingsPage() -> Element {
     rsx! {
-        Title { "Admin: settings" }
+        Title { {tr!("admin-settings-admin-settings")} }
         AdminGuard {
             AdminShell {
-                title: "Server settings".to_string(),
+                title: tr!("admin-settings-server-settings").to_string(),
                 breadcrumb: String::new(),
                 active: "settings".to_string(),
                 SuspendWrapper { SettingsContent {} }
@@ -81,9 +80,9 @@ fn SettingsContent() -> Element {
             table { style: TABLE,
                 thead {
                     tr {
-                        th { style: TH, "Key" }
-                        th { style: TH, "Value" }
-                        th { style: TH, "Description" }
+                        th { style: TH, {tr!("admin-settings-key")} }
+                        th { style: TH, {tr!("admin-settings-value")} }
+                        th { style: TH, {tr!("admin-settings-description")} }
                         th { style: TH, "" }
                     }
                 }
@@ -119,7 +118,7 @@ fn SettingsContent() -> Element {
                                                 error_msg.set(None);
                                                 match admin_set_setting(k.clone(), v).await {
                                                     Ok(()) => {
-                                                        msg.set(Some(format!("The setting \u{201c}{k}\u{201d} was saved successfully.")));
+                                                        msg.set(Some(tr!("admin-settings-the-setting-was-saved-successfully", k: k.to_string())));
                                                         settings_res.restart();
                                                     }
                                                     Err(e) => error_msg.set(Some(user_facing_message(&e))),
@@ -127,7 +126,7 @@ fn SettingsContent() -> Element {
                                             });
                                         }
                                     },
-                                    "Save"
+                                    {tr!("admin-settings-save")}
                                 }
                             }
                         }
@@ -135,20 +134,20 @@ fn SettingsContent() -> Element {
                 }
             }
         } else {
-            "Loading..."
+            {tr!("admin-settings-loading")}
         }
 
         if let Some(Ok(deployment)) = deployment_res.read().as_ref() {
             if !deployment.is_empty() {
                 h2 { style: "margin: 23px 0 8px; color: var(--x-ink-muted); font-size: var(--x-text-section); line-height: var(--x-line-section); font-weight: 400;",
-                    "Deployment configuration (read-only)"
+                    {tr!("admin-settings-deployment-configuration-read-only")}
                 }
                 table { style: TABLE,
                     thead {
                         tr {
-                            th { style: TH, "Key" }
-                            th { style: TH, "Value" }
-                            th { style: TH, "Description" }
+                            th { style: TH, {tr!("admin-settings-key")} }
+                            th { style: TH, {tr!("admin-settings-value")} }
+                            th { style: TH, {tr!("admin-settings-description")} }
                         }
                     }
                     tbody {
@@ -156,7 +155,7 @@ fn SettingsContent() -> Element {
                             tr { key: "{item.key}",
                                 td { style: "{TD} font-weight: 600;", "{item.key}" }
                                 td { style: "{TD} font-family: ui-monospace, monospace;",
-                                    if item.value.is_empty() { "(not set)" } else { "{item.value}" }
+                                    if item.value.is_empty() { {tr!("admin-settings-not-set")} } else { "{item.value}" }
                                 }
                                 td { style: "{TD} color: var(--x-ink-muted); font-size: var(--x-text-xs);",
                                     "{deployment_description(&item.key)}"

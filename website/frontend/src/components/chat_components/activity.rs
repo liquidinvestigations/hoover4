@@ -1,6 +1,7 @@
 //! The activity line of a chat turn in progress.
 
 use dioxus::prelude::*;
+use crate::tr;
 
 /// The one line that says a turn is in progress: a rotating icon and the text
 /// `The bot is working...`. The session page renders it while its turn is active and not
@@ -14,9 +15,9 @@ pub fn ChatActivity(
     queued_for: String,
 ) -> Element {
     let waiting = match queued_for.as_str() {
-        "model" => "The turn waits for a free model slot.",
-        "tool" => "The turn waits for a free tool slot.",
-        _ => "",
+        "model" => tr!("chat-activity-the-turn-waits-for-a"),
+        "tool" => tr!("chat-activity-the-turn-waits-for-a-2"),
+        _ => String::new(),
     };
     rsx! {
         div { class: "x-chat-activity", "data-chat-activity": "true",
@@ -24,7 +25,7 @@ pub fn ChatActivity(
                 span { class: "x-chat-activity-spinner", "aria-hidden": "true",
                     dioxus_free_icons::Icon { icon: dioxus_free_icons::icons::md_action_icons::MdAutorenew, width: 16, height: 16 }
                 }
-                span { role: "status", "The bot is working..." }
+                span { role: "status", {tr!("chat-activity-the-bot-is-working")} }
             }
             if !waiting.is_empty() {
                 div { class: "x-chat-activity-detail", "{waiting}" }

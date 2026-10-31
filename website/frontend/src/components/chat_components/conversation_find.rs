@@ -5,6 +5,7 @@
 use dioxus::prelude::*;
 
 use crate::routes::Route;
+use crate::tr;
 
 #[component]
 pub fn ConversationFindBar(
@@ -25,7 +26,7 @@ pub fn ConversationFindBar(
                     border-bottom: 1px solid; border-bottom-color: var(--x-border); background: #F8FCFF; flex-shrink: 0;",
             input {
                 r#type: "text",
-                placeholder: "Search in conversation",
+                placeholder: tr!("chat-conversation-find-search-in-conversation"),
                 style: "flex: 0 1 350px; min-width: 0; border: 1px solid rgba(0,0,0,0.35); border-radius: 14px; \
                         padding: 8px 12px; font-size: var(--x-text-md); outline: none; background: white;",
                 value: "{query}",
@@ -41,7 +42,7 @@ pub fn ConversationFindBar(
             button {
                 style: "border: 1px solid; border-color: var(--x-border); background: white; border-radius: 6px; \
                         width: 28px; height: 28px; cursor: pointer;",
-                title: "Previous match",
+                title: tr!("chat-conversation-find-previous-match"),
                 disabled: count == 0,
                 onclick: move |_| {
                     if count == 0 {
@@ -55,7 +56,7 @@ pub fn ConversationFindBar(
             button {
                 style: "border: 1px solid; border-color: var(--x-border); background: white; border-radius: 6px; \
                         width: 28px; height: 28px; cursor: pointer;",
-                title: "Next match",
+                title: tr!("chat-conversation-find-next-match"),
                 disabled: count == 0,
                 onclick: move |_| {
                     if count == 0 {
@@ -71,7 +72,7 @@ pub fn ConversationFindBar(
                     class: "x-chat-board-link",
                     to: route,
                     style: "color: var(--x-link); text-decoration: none; font-size: var(--x-text-sm); white-space: nowrap;",
-                    "Investigation Board"
+                    {tr!("chat-conversation-find-investigation-board")}
                 }
             }
         }

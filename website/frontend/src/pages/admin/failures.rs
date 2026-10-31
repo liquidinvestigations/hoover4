@@ -24,6 +24,7 @@ use crate::components::admin_components::{
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
+use crate::tr;
 
 const PAGE_SIZES: [u32; 4] = [1, 10, 25, 50];
 
@@ -45,10 +46,10 @@ pub fn failures_route(collection: &str, dataset: &str) -> Route {
 #[component]
 pub fn AdminFailuresPage(collection: String, dataset: String, task: String, search: String, page: u32) -> Element {
     rsx! {
-        Title { "Admin: errors and failures" }
+        Title { {tr!("admin-failures-admin-errors-and-failures")} }
         AdminGuard {
             AdminShell {
-                title: "Errors/Failures".to_string(),
+                title: tr!("admin-failures-errors-failures").to_string(),
                 breadcrumb: String::new(),
                 active: "failures".to_string(),
                 SuspendWrapper {
@@ -139,7 +140,7 @@ fn FailuresContent() -> Element {
             if let Some(e) = load_error {
                 ErrorBar { message: e }
             } else {
-                p { style: HELP_TEXT, "Loading failures…" }
+                p { style: HELP_TEXT, {tr!("admin-failures-loading-failures")} }
             }
         };
     };
@@ -156,19 +157,19 @@ fn FailuresContent() -> Element {
     if data.groups.is_empty() && !filtered && current_page == 0 {
         return rsx! {
             section { class: "x-admin-module", style: MODULE,
-                h2 { style: MODULE_CAPTION, "Operational failures" }
-                p { id: "x-failures-none", style: HELP_TEXT, "No operational failures at this time." }
+                h2 { style: MODULE_CAPTION, {tr!("admin-failures-operational-failures")} }
+                p { id: "x-failures-none", style: HELP_TEXT, {tr!("admin-failures-no-operational-failures-at-this")} }
             }
         };
     }
 
     rsx! {
         section { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Operational failures" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-failures-operational-failures")} }
             div { style: "{MODULE_BODY} display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;",
                 FilterSelect {
                     id: "x-failures-filter-collection",
-                    label: "Collection",
+                    label: tr!("admin-failures-collection"),
                     value: collection_filter(),
                     empty_label: "All collections",
                     options: data.collections.clone(),
@@ -176,7 +177,7 @@ fn FailuresContent() -> Element {
                 }
                 FilterSelect {
                     id: "x-failures-filter-dataset",
-                    label: "Dataset",
+                    label: tr!("admin-failures-dataset"),
                     value: dataset_filter(),
                     empty_label: "All datasets",
                     options: data.datasets.clone(),
@@ -184,7 +185,7 @@ fn FailuresContent() -> Element {
                 }
                 FilterSelect {
                     id: "x-failures-filter-task",
-                    label: "Task name",
+                    label: tr!("admin-failures-task-name"),
                     value: task_filter(),
                     empty_label: "All tasks",
                     options: data.task_names.clone(),
@@ -192,7 +193,7 @@ fn FailuresContent() -> Element {
                 }
                 FilterSelect {
                     id: "x-failures-filter-class",
-                    label: "Error class",
+                    label: tr!("admin-failures-error-class"),
                     value: class_filter(),
                     empty_label: "All classes",
                     options: data.error_classes.clone(),
@@ -200,14 +201,14 @@ fn FailuresContent() -> Element {
                 }
                 FilterSelect {
                     id: "x-failures-filter-kind",
-                    label: "Operation kind",
+                    label: tr!("admin-failures-operation-kind"),
                     value: kind_filter(),
                     empty_label: "All kinds",
                     options: data.operation_kinds.clone(),
                     onchange: move |v| { kind_filter.set(v); page.set(0); },
                 }
                 label { style: LABEL,
-                    "From"
+                    {tr!("admin-failures-from")}
                     input {
                         id: "x-failures-filter-from",
                         r#type: "date",
@@ -217,7 +218,7 @@ fn FailuresContent() -> Element {
                     }
                 }
                 label { style: LABEL,
-                    "To"
+                    {tr!("admin-failures-to")}
                     input {
                         id: "x-failures-filter-to",
                         r#type: "date",
@@ -229,22 +230,22 @@ fn FailuresContent() -> Element {
             }
             div { style: MODULE_BODY,
                 if data.groups.is_empty() {
-                    p { style: HELP_TEXT, "No captured failures match these filters." }
+                    p { style: HELP_TEXT, {tr!("admin-failures-no-captured-failures-match-these")} }
                 } else {
                     table { style: TABLE,
                         thead {
                             tr {
-                                SortHead { id: "x-failures-sort-signature", label: "Signature", column: "signature", current: current_sort.clone(), desc: current_desc,
+                                SortHead { id: "x-failures-sort-signature", label: tr!("admin-failures-signature"), column: "signature", current: current_sort.clone(), desc: current_desc,
                                     onsort: move |c| { toggle_sort(&mut sort_column, &mut sort_desc, c); page.set(0); } }
-                                SortHead { id: "x-failures-sort-count", label: "Count", column: "failure_count", current: current_sort.clone(), desc: current_desc,
+                                SortHead { id: "x-failures-sort-count", label: tr!("admin-failures-count"), column: "failure_count", current: current_sort.clone(), desc: current_desc,
                                     onsort: move |c| { toggle_sort(&mut sort_column, &mut sort_desc, c); page.set(0); } }
-                                SortHead { id: "x-failures-sort-class", label: "Class", column: "error_class", current: current_sort.clone(), desc: current_desc,
+                                SortHead { id: "x-failures-sort-class", label: tr!("admin-failures-class"), column: "error_class", current: current_sort.clone(), desc: current_desc,
                                     onsort: move |c| { toggle_sort(&mut sort_column, &mut sort_desc, c); page.set(0); } }
-                                SortHead { id: "x-failures-sort-task", label: "Task", column: "task_name", current: current_sort.clone(), desc: current_desc,
+                                SortHead { id: "x-failures-sort-task", label: tr!("admin-failures-task"), column: "task_name", current: current_sort.clone(), desc: current_desc,
                                     onsort: move |c| { toggle_sort(&mut sort_column, &mut sort_desc, c); page.set(0); } }
-                                SortHead { id: "x-failures-sort-collection", label: "Collection", column: "collectionname", current: current_sort.clone(), desc: current_desc,
+                                SortHead { id: "x-failures-sort-collection", label: tr!("admin-failures-collection"), column: "collectionname", current: current_sort.clone(), desc: current_desc,
                                     onsort: move |c| { toggle_sort(&mut sort_column, &mut sort_desc, c); page.set(0); } }
-                                SortHead { id: "x-failures-sort-last-seen", label: "Last seen", column: "last_seen", current: current_sort.clone(), desc: current_desc,
+                                SortHead { id: "x-failures-sort-last-seen", label: tr!("admin-failures-last-seen"), column: "last_seen", current: current_sort.clone(), desc: current_desc,
                                     onsort: move |c| { toggle_sort(&mut sort_column, &mut sort_desc, c); page.set(0); } }
                                 th { style: TH, "" }
                             }
@@ -280,18 +281,18 @@ fn FailuresContent() -> Element {
                         style: BTN_SMALL,
                         disabled: current_page == 0,
                         onclick: move |_| page.set(current_page.saturating_sub(1)),
-                        "Newer"
+                        {tr!("admin-failures-newer")}
                     }
-                    span { id: "x-failures-page-label", style: HELP_TEXT, "Page {current_page + 1}" }
+                    span { id: "x-failures-page-label", style: HELP_TEXT, {tr!("admin-failures-page", current_page_1: (current_page + 1).to_string())} }
                     button {
                         id: "x-failures-page-older",
                         style: BTN_SMALL,
                         disabled: !has_more,
                         onclick: move |_| page.set(current_page + 1),
-                        "Older"
+                        {tr!("admin-failures-older")}
                     }
                     label { style: LABEL,
-                        "Per page"
+                        {tr!("admin-failures-per-page")}
                         select {
                             id: "x-failures-page-size",
                             style: SELECT,
@@ -325,9 +326,9 @@ fn toggle_sort(column: &mut Signal<String>, desc: &mut Signal<bool>, next: Strin
 #[component]
 fn FilterSelect(
     id: &'static str,
-    label: &'static str,
+    label: String,
     value: String,
-    empty_label: &'static str,
+    empty_label: String,
     options: Vec<String>,
     onchange: EventHandler<String>,
 ) -> Element {
@@ -353,7 +354,7 @@ fn FilterSelect(
 #[component]
 fn SortHead(
     id: &'static str,
-    label: &'static str,
+    label: String,
     column: &'static str,
     current: String,
     desc: bool,
@@ -386,7 +387,7 @@ fn GroupRows(
     instances_error: Option<String>,
     on_toggle: EventHandler<()>,
 ) -> Element {
-    let expand_label = if expanded { "Hide" } else { "Show" };
+    let expand_label = if expanded { tr!("admin-failures-hide") } else { tr!("admin-failures-show") };
     rsx! {
         tr {
             td { style: TD,
@@ -397,7 +398,7 @@ fn GroupRows(
             }
             td { style: TD,
                 span { id: "x-failures-count-{index}", "{group.failure_count}" }
-                div { style: HELP_TEXT, "{group.operation_count} operation(s)" }
+                div { style: HELP_TEXT, {tr!("admin-failures-operation-s", group_operation_count: group.operation_count)} }
             }
             td { style: TD, "{group.error_class}" }
             td { style: TD, "{group.task_name}" }
@@ -421,10 +422,10 @@ fn GroupRows(
                     if let Some(e) = instances_error {
                         p { id: "x-failures-instances-error-{index}", style: HELP_TEXT, "{e}" }
                     } else if instances_loading {
-                        p { style: HELP_TEXT, "Loading instances…" }
+                        p { style: HELP_TEXT, {tr!("admin-failures-loading-instances")} }
                     } else if instances.is_empty() {
                         p { id: "x-failures-instances-empty-{index}", style: HELP_TEXT,
-                            "No instances for this signature."
+                            {tr!("admin-failures-no-instances-for-this-signature")}
                         }
                     } else {
                         ul { id: "x-failures-instances-{index}", style: "margin: 0; padding-left: 18px;",
@@ -436,7 +437,7 @@ fn GroupRows(
                                         "{inst.op_id}"
                                     }
                                     span { style: HELP_TEXT,
-                                        " node {inst.node_index} · {inst.source} · {inst.stage} · {inst.captured_at}"
+                                        {tr!("admin-failures-node", inst_node_index: inst.node_index.to_string(), inst_source: inst.source.to_string(), inst_stage: inst.stage.to_string(), inst_captured_at: inst.captured_at.to_string())}
                                     }
                                     div { style: "font-size: var(--x-text-xs);", "{inst.message}" }
                                 }
@@ -475,7 +476,7 @@ fn DocumentErrorsSection(collection: String, dataset: String, task: String, sear
     // page, so the browser's own scroll finds no target.
     use_effect(move || {
         if errors_res.read().is_some() {
-            document::eval(&format!(
+            document::eval(&format!( // i18n: data, JavaScript
                 "if (location.hash === '#{DOCUMENT_ERRORS_SECTION_ID}') document.getElementById('{DOCUMENT_ERRORS_SECTION_ID}')?.scrollIntoView();"
             ));
         }
@@ -499,11 +500,11 @@ fn DocumentErrorsSection(collection: String, dataset: String, task: String, sear
 
     rsx! {
         section { id: DOCUMENT_ERRORS_SECTION_ID, class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Document errors" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-failures-document-errors")} }
             div { style: "{MODULE_BODY} display: flex; gap: 16px; flex-wrap: wrap; align-items: center; margin-bottom: 12px;",
                 FilterSelect {
                     id: "x-doc-errors-collection",
-                    label: "Collection",
+                    label: tr!("admin-failures-collection"),
                     value: filter.collectionname.clone(),
                     empty_label: "All collections",
                     options: collection_choices,
@@ -514,7 +515,7 @@ fn DocumentErrorsSection(collection: String, dataset: String, task: String, sear
                 }
                 FilterSelect {
                     id: "x-doc-errors-dataset",
-                    label: "Dataset",
+                    label: tr!("admin-failures-dataset"),
                     value: filter.collection_dataset.clone(),
                     empty_label: "All datasets",
                     options: errors_res.read().as_ref().and_then(|r| r.as_ref().ok()).map(|d| d.dataset_choices.clone()).unwrap_or_default(),
@@ -525,7 +526,7 @@ fn DocumentErrorsSection(collection: String, dataset: String, task: String, sear
                 }
                 FilterSelect {
                     id: "x-doc-errors-task",
-                    label: "Task",
+                    label: tr!("admin-failures-task"),
                     value: filter.task_name.clone(),
                     empty_label: "All tasks",
                     options: errors_res.read().as_ref().and_then(|r| r.as_ref().ok()).map(|d| d.task_choices.clone()).unwrap_or_default(),
@@ -535,7 +536,7 @@ fn DocumentErrorsSection(collection: String, dataset: String, task: String, sear
                     },
                 }
                 label { style: LABEL,
-                    "Error text"
+                    {tr!("admin-failures-error-text")}
                     input {
                         id: "x-doc-errors-search",
                         style: INPUT,
@@ -553,23 +554,23 @@ fn DocumentErrorsSection(collection: String, dataset: String, task: String, sear
                 }
             }
             match &*errors_res.read() {
-                None => rsx! { p { style: HELP_TEXT, "Loading document errors\u{2026}" } },
+                None => rsx! { p { style: HELP_TEXT, {tr!("admin-failures-loading-document-errors-u")} } },
                 Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
                 Some(Ok(data)) if data.total == 0 => rsx! {
-                    p { id: "x-doc-errors-none", style: HELP_TEXT, "No document errors match these filters." }
+                    p { id: "x-doc-errors-none", style: HELP_TEXT, {tr!("admin-failures-no-document-errors-match-these")} }
                 },
                 Some(Ok(data)) => {
                     let pages = data.total.div_ceil(u64::from(DOCUMENT_ERRORS_PAGE_SIZE)).max(1);
                     let documents: u64 = data.stats.iter().map(|s| s.documents).sum();
                     rsx! {
-                        h3 { style: SUBHEADING, "Errors by dataset and task" }
+                        h3 { style: SUBHEADING, {tr!("admin-failures-errors-by-dataset-and-task")} }
                         table { id: "x-doc-errors-stats", style: TABLE,
                             thead {
                                 tr {
-                                    th { style: TH, "Dataset" }
-                                    th { style: TH, "Task" }
-                                    th { style: "{TH} text-align: right;", "Documents" }
-                                    th { style: TH, "Last seen" }
+                                    th { style: TH, {tr!("admin-failures-dataset")} }
+                                    th { style: TH, {tr!("admin-failures-task")} }
+                                    th { style: "{TH} text-align: right;", {tr!("admin-failures-documents")} }
+                                    th { style: TH, {tr!("admin-failures-last-seen")} }
                                 }
                             }
                             tbody {
@@ -579,7 +580,7 @@ fn DocumentErrorsSection(collection: String, dataset: String, task: String, sear
                                         td { style: TD,
                                             button {
                                                 style: "background: none; border: none; padding: 0; cursor: pointer; font: inherit; color: var(--x-link);",
-                                                title: "Show only this dataset and task",
+                                                title: tr!("admin-failures-show-only-this-dataset-and"),
                                                 onclick: {
                                                     let filter = filter.clone();
                                                     let ds = stat.collection_dataset.clone();
@@ -594,22 +595,22 @@ fn DocumentErrorsSection(collection: String, dataset: String, task: String, sear
                                     }
                                 }
                                 tr {
-                                    td { style: "{TD} font-weight: 600;", colspan: 2, "Total" }
+                                    td { style: "{TD} font-weight: 600;", colspan: 2, {tr!("admin-failures-total")} }
                                     td { style: "{TD} text-align: right; font-weight: 600;", "{documents}" }
                                     td { style: TD, "" }
                                 }
                             }
                         }
-                        h3 { style: SUBHEADING, "Errors" }
+                        h3 { style: SUBHEADING, {tr!("admin-failures-errors")} }
                         table { id: "x-doc-errors-table", style: TABLE,
                             thead {
                                 tr {
-                                    th { style: TH, "Last seen" }
-                                    th { style: TH, "Dataset" }
-                                    th { style: TH, "Document" }
-                                    th { style: TH, "Task" }
-                                    th { style: "{TH} text-align: right;", "Runs" }
-                                    th { style: TH, "Error" }
+                                    th { style: TH, {tr!("admin-failures-last-seen")} }
+                                    th { style: TH, {tr!("admin-failures-dataset")} }
+                                    th { style: TH, {tr!("admin-failures-document")} }
+                                    th { style: TH, {tr!("admin-failures-task")} }
+                                    th { style: "{TH} text-align: right;", {tr!("admin-failures-runs")} }
+                                    th { style: TH, {tr!("admin-failures-error")} }
                                 }
                             }
                             tbody {
@@ -619,7 +620,7 @@ fn DocumentErrorsSection(collection: String, dataset: String, task: String, sear
                                         td { style: TD, "{row.collection_dataset}" }
                                         td { style: "{TD} word-break: break-all;",
                                             if row.hash.is_empty() {
-                                                span { style: HELP_TEXT, "Dataset step" }
+                                                span { style: HELP_TEXT, {tr!("admin-failures-dataset-step")} }
                                             } else {
                                                 a {
                                                     href: "{document_href(&row.collection_dataset, &row.hash)}",
@@ -647,10 +648,10 @@ fn DocumentErrorsSection(collection: String, dataset: String, task: String, sear
                                     let filter = filter.clone();
                                     move |_| go(filter.clone(), page - 1)
                                 },
-                                "Previous page"
+                                {tr!("admin-failures-previous-page")}
                             }
                             span { id: "x-doc-errors-page", style: HELP_TEXT,
-                                if data.total == 1 { "Page {page} of {pages}, 1 error" } else { "Page {page} of {pages}, {data.total} errors" }
+                                if data.total == 1 { {tr!("admin-failures-page-of-1-error", page: page, pages: pages)} } else { {tr!("admin-failures-page-of-errors", page: page, pages: pages, data_total: data.total)} }
                             }
                             button {
                                 id: "x-doc-errors-next",
@@ -660,7 +661,7 @@ fn DocumentErrorsSection(collection: String, dataset: String, task: String, sear
                                     let filter = filter.clone();
                                     move |_| go(filter.clone(), page + 1)
                                 },
-                                "Next page"
+                                {tr!("admin-failures-next-page")}
                             }
                         }
                     }

@@ -58,6 +58,8 @@ use crate::{
         suspend_boundary::SuspendWrapper,
     },
 };
+use crate::tr;
+use crate::i18n::SharedText;
 
 /// The accent used for "this has filters" everywhere in the search UI. Reused rather
 /// than reinvented: the pill strip's border was this colour and the dot must read as the
@@ -102,18 +104,18 @@ impl FilterCategory {
         FilterCategory::Antivirus,
     ];
 
-    pub fn label(&self) -> &'static str {
+    pub fn label(&self) -> String {
         match self {
-            FilterCategory::Collections => "Collections",
-            FilterCategory::FileTypes => "File types",
-            FilterCategory::Language => "Language",
-            FilterCategory::TextSource => "Text source",
-            FilterCategory::FileSize => "File size",
-            FilterCategory::FileLocation => "File location",
-            FilterCategory::Dates => "Date",
-            FilterCategory::Email => "Email",
-            FilterCategory::Entities => "Entities",
-            FilterCategory::Antivirus => "Antivirus",
+            FilterCategory::Collections => tr!("search-filter-modal-collections"),
+            FilterCategory::FileTypes => tr!("search-filter-modal-file-types"),
+            FilterCategory::Language => tr!("search-filter-modal-language"),
+            FilterCategory::TextSource => tr!("search-filter-modal-text-source"),
+            FilterCategory::FileSize => tr!("search-filter-modal-file-size"),
+            FilterCategory::FileLocation => tr!("search-filter-modal-file-location"),
+            FilterCategory::Dates => tr!("search-filter-modal-date"),
+            FilterCategory::Email => tr!("search-filter-modal-email"),
+            FilterCategory::Entities => tr!("search-filter-modal-entities"),
+            FilterCategory::Antivirus => tr!("search-filter-modal-antivirus"),
         }
     }
 
@@ -351,7 +353,7 @@ pub fn FilterChips(
                                 button {
                                     style: "border: none; background: none; cursor: pointer; padding: 0; display: flex; align-items: center; flex-shrink: 0;",
                                     class: "x-hover-color-red",
-                                    title: "Remove this filter",
+                                    title: tr!("search-filter-modal-remove-this-filter"),
                                     onclick: move |event: Event<MouseData>| {
                                         event.stop_propagation();
                                         // Scoped so the borrow is released before the search
@@ -376,13 +378,13 @@ pub fn FilterChips(
                         border: 1px solid rgba(0,0,0,0.35); border-radius: 100px; background: white;
                         padding: 4px 8px; font-size: 13px; line-height: 19px; cursor: pointer;
                     ",
-                    title: "Open the filters that are not shown here",
+                    title: tr!("search-filter-modal-open-the-filters-that-are"),
                     onclick: move |_| {
                         if let Some(category) = first_hidden {
                             on_open.call(category);
                         }
                     },
-                    "{hidden} more"
+                    {tr!("search-filter-modal-more", hidden: hidden.to_string())}
                 }
                 button {
                     class: "x-filter-chips-clear",
@@ -395,7 +397,7 @@ pub fn FilterChips(
                         }
                         on_commit.call(());
                     },
-                    "Clear all"
+                    {tr!("search-filter-modal-clear-all")}
                 }
             }
         }
@@ -405,7 +407,7 @@ pub fn FilterChips(
 #[derive(Clone, PartialEq)]
 pub struct Chip {
     pub category: FilterCategory,
-    pub label: &'static str,
+    pub label: String,
     pub summary: String,
     pub full: String,
 }
@@ -489,7 +491,7 @@ fn build_chips(query: &SearchQuery, texts: Option<&HashMap<u64, String>>) -> Vec
                     && let Some(filter) = query.range_filters.get("mentioned_dates")
                     && filter.is_active()
                 {
-                    let text = format!("Mentioned {}", summarize_dates(filter, epoch_to_iso_date));
+                    let text = tr!("search-filter-modal-mentioned-dates", dates: summarize_dates(filter, epoch_to_iso_date));
                     short.push(text.clone());
                     long.push(text);
                 }
@@ -504,8 +506,8 @@ fn build_chips(query: &SearchQuery, texts: Option<&HashMap<u64, String>>) -> Vec
                     // of the values carrying one bit, one label covers all of them, and
                     // there is no term dictionary to look them up in.
                     if *field == "struct_flags" {
-                        short.push("Has attachments".to_string());
-                        long.push("Has attachments".to_string());
+                        short.push(tr!("search-filter-modal-has-attachments"));
+                        long.push(tr!("search-filter-modal-has-attachments"));
                         continue;
                     }
                     for value in set {
@@ -543,7 +545,7 @@ fn display_value(
     };
     match value {
         FacetOriginalValue::String(s) if field == "extracted_by" => {
-            let label = common::document_sources::text_source_label(s);
+            let label = common::document_sources::text_source_label(s).shared();
             (label.clone(), label)
         }
         FacetOriginalValue::String(s) => (s.clone(), s.clone()),
@@ -708,11 +710,11 @@ fn FilterModalDialog(
                 div {
                     style: "display: flex; align-items: center; gap: 8px; padding: 8px 11px; border-bottom: 1px solid rgba(0,0,0,0.12);",
                     Icon { icon: MdFilterList, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.8);" }
-                    div { style: "font-size: var(--x-text-section); line-height: var(--x-line-section); font-weight: 600; flex: 1 1 auto;", "All filters" }
+                    div { style: "font-size: var(--x-text-section); line-height: var(--x-line-section); font-weight: 600; flex: 1 1 auto;", {tr!("search-filter-modal-all-filters")} }
                     button {
                         style: "border: none; background: none; cursor: pointer; display: flex;",
                         class: "x-hover-color-red",
-                        title: "Close without applying",
+                        title: tr!("search-filter-modal-close-without-applying"),
                         onclick: move |_| open_category.set(None),
                         Icon { icon: MdClose, style: "width: 19px; height: 19px;" }
                     }
@@ -769,7 +771,7 @@ fn FilterModalDialog(
                                     count_query, pending,
                                     field: "file_types".to_string(),
                                     map_string_terms: term_field_prop("file_types"),
-                                    placeholder: "Search file types…".to_string(),
+                                    placeholder: tr!("search-filter-modal-search-file-types").to_string(),
                                     // A handful of buckets, all on screen, and no rows in
                                     // the term table: a corpus-wide search would answer
                                     // nothing for every needle.
@@ -780,14 +782,14 @@ fn FilterModalDialog(
                                 SearchableFacetPane {
                                     count_query, pending, field: "language".to_string(),
                                     map_string_terms: term_field_prop("language"),
-                                    placeholder: "Search languages…".to_string(),
+                                    placeholder: tr!("search-filter-modal-search-languages").to_string(),
                                 }
                             },
                             FilterCategory::TextSource => rsx! {
                                 SearchableFacetPane {
                                     count_query, pending, field: "extracted_by".to_string(),
                                     map_string_terms: None,
-                                    placeholder: "Search text sources…".to_string(),
+                                    placeholder: tr!("search-filter-modal-search-text-sources").to_string(),
                                     // A few sources per corpus, all on screen.
                                     server_side: false,
                                 }
@@ -881,14 +883,14 @@ fn FilterModalFooter(
                     q.facet_filters.clear();
                     q.range_filters.clear();
                 },
-                "Clear all"
+                {tr!("search-filter-modal-clear-all")}
             }
             div { style: "flex: 1 1 auto;" }
             button {
                 style: "border: 1px solid rgba(0,0,0,0.3); background: white; border-radius: 100px; padding: 4px 15px; cursor: pointer; font-size: 15px;",
                 class: "hoover4-hover-shadow-background",
                 onclick: move |_| open_category.set(None),
-                "Cancel"
+                {tr!("search-filter-modal-cancel")}
             }
             button {
                 style: "
@@ -906,7 +908,7 @@ fn FilterModalFooter(
                     on_apply.call(());
                 },
                 match *last_count.read() {
-                    Some(total) => format!("Show {total} results"),
+                    Some(total) => tr!("search-filter-modal-show-results", total: total.to_string()),
                     None => "Show results".to_string(),
                 }
             }
@@ -1098,12 +1100,12 @@ fn FileSizePane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
         div {
             style: "display: flex; flex-direction: column; gap: 4px;",
             match buckets.read().as_ref() {
-                None => rsx! { div { style: "color: rgba(0,0,0,0.5);", "Counting…" } },
+                None => rsx! { div { style: "color: rgba(0,0,0,0.5);", {tr!("search-filter-modal-counting")} } },
                 Some(Err(error)) => rsx! {
                     div {
                         class: "x-error-display",
                         style: "color: rgb(160,30,30);",
-                        "Could not load size buckets: {error}"
+                        {tr!("search-filter-modal-could-not-load-size-buckets", error: error.to_string())}
                     }
                 },
                 Some(Ok(result)) => rsx! {
@@ -1150,36 +1152,36 @@ fn FileSizePane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
             div {
                 style: "display: flex; align-items: center; gap: 10px; margin: 10px 0 6px;",
                 div { style: "flex: 1 1 auto; height: 1px; background: rgba(0,0,0,0.15);" }
-                div { style: "color: rgba(0,0,0,0.5); font-size: 13px;", "Or" }
+                div { style: "color: rgba(0,0,0,0.5); font-size: 13px;", {tr!("search-filter-modal-or")} }
                 div { style: "flex: 1 1 auto; height: 1px; background: rgba(0,0,0,0.15);" }
             }
 
             div {
                 style: "display: flex; align-items: center; gap: 8px; flex-wrap: wrap;",
-                span { style: "font-size: 13px;", "Between" }
+                span { style: "font-size: 13px;", {tr!("search-filter-modal-between")} }
                 input {
                     r#type: "number", min: "0", step: "0.1",
                     style: "{INPUT_STYLE} width: 90px;",
-                    placeholder: "min",
+                    placeholder: tr!("search-filter-modal-min"),
                     value: "{min_mb}",
                     oninput: move |event| min_mb.set(event.value()),
                     onchange: apply_custom,
                 }
-                span { style: "font-size: 13px;", "and" }
+                span { style: "font-size: 13px;", {tr!("search-filter-modal-and")} }
                 input {
                     r#type: "number", min: "0", step: "0.1",
                     style: "{INPUT_STYLE} width: 90px;",
-                    placeholder: "max",
+                    placeholder: tr!("search-filter-modal-max"),
                     value: "{max_mb}",
                     oninput: move |event| max_mb.set(event.value()),
                     onchange: apply_custom,
                 }
-                span { style: "font-size: 13px;", "MB" }
+                span { style: "font-size: 13px;", {tr!("search-filter-modal-mb")} }
             }
             if inverted() {
                 div {
                     style: "color: rgb(160,30,30); font-size: 13px; margin-top: 4px;",
-                    "The minimum is larger than the maximum."
+                    {tr!("search-filter-modal-the-minimum-is-larger-than")}
                 }
             }
         }
@@ -1313,7 +1315,7 @@ fn DatePane(
     rsx! {
         div {
             style: "display: flex; flex-direction: column; gap: 6px;",
-            for (label, target) in DateMode::ROWS {
+            for (label, target) in DateMode::rows() {
                 div {
                     key: "{label}",
                     class: "x-facet-list-item",
@@ -1334,7 +1336,7 @@ fn DatePane(
                 div {
                     style: "display: flex; align-items: center; gap: 8px; padding: 6px 0 0 30px; flex-wrap: wrap;",
                     if mode().shows_min() {
-                        span { style: "font-size: 13px;", "From" }
+                        span { style: "font-size: 13px;", {tr!("search-filter-modal-from")} }
                         input {
                             r#type: "date",
                             style: "{INPUT_STYLE}",
@@ -1343,7 +1345,7 @@ fn DatePane(
                         }
                     }
                     if mode().shows_max() {
-                        span { style: "font-size: 13px;", if mode() == DateMode::Between { "to" } else { "Before" } }
+                        span { style: "font-size: 13px;", if mode() == DateMode::Between { {tr!("search-filter-modal-to")} } else { {tr!("search-filter-modal-before")} } }
                         input {
                             r#type: "date",
                             style: "{INPUT_STYLE}",
@@ -1358,9 +1360,9 @@ fn DatePane(
                         // Not the same sentence as the one below it, and the difference
                         // is the whole feature: a document naming 1936 and 2020 mentions
                         // neither 2005 nor anything between them.
-                        "A document matches if any single date its text names falls in the range."
+                        {tr!("search-filter-modal-a-document-matches-if-any")}
                     } else {
-                        "A document matches if any of its confirmed dates falls in the range."
+                        {tr!("search-filter-modal-a-document-matches-if-any-2")}
                     }
                 }
             }
@@ -1368,19 +1370,19 @@ fn DatePane(
             if current().is_inverted() {
                 div {
                     style: "color: rgb(160,30,30); font-size: 13px; margin-top: 4px;",
-                    "The start date is after the end date."
+                    {tr!("search-filter-modal-the-start-date-is-after")}
                 }
             }
 
             div {
                 style: "margin-top: 14px; border-top: 1px solid rgba(0,0,0,0.12); padding-top: 8px;",
                 match histogram.read().as_ref() {
-                    None => rsx! { div { style: "color: rgba(0,0,0,0.5);", "Counting…" } },
+                    None => rsx! { div { style: "color: rgba(0,0,0,0.5);", {tr!("search-filter-modal-counting")} } },
                     Some(Err(error)) => rsx! {
                         div {
                             class: "x-error-display",
                             style: "color: rgb(160,30,30);",
-                            "Could not load the histogram: {error}"
+                            {tr!("search-filter-modal-could-not-load-the-histogram", error: error.to_string())}
                         }
                     },
                     Some(Ok(result)) => rsx! {
@@ -1420,7 +1422,7 @@ fn DateHistogramChart(
                     display: flex; align-items: center; gap: 8px; cursor: pointer;
                     padding: 4px 6px; border-radius: 6px; font-size: 13px; margin-top: 6px;
                 ",
-                title: "Click to show only the documents with no date of this kind",
+                title: tr!("search-filter-modal-click-to-show-only-the"),
                 onclick: move |_| on_unknown.call(()),
                 if unknown_selected {
                     Icon { icon: MdCheckBox, style: "width: 19px; height: 19px; color: rgb(28,33,45);" }
@@ -1429,7 +1431,7 @@ fn DateHistogramChart(
                 }
                 div {
                     style: "flex: 1 1 auto;",
-                    if histogram.counts_mentions { "Mentions no date" } else { "No confirmed date" }
+                    if histogram.counts_mentions { {tr!("search-filter-modal-mentions-no-date")} } else { {tr!("search-filter-modal-no-confirmed-date")} }
                 }
                 div { style: "color: rgba(0,0,0,0.6); font-size: 13px;", "{histogram.unknown_count}" }
             }
@@ -1441,9 +1443,9 @@ fn DateHistogramChart(
         // undated scans that all discuss the 1970s has no document dates and plenty of
         // mentioned ones, and one sentence for both would be wrong for one of them.
         let nothing = if histogram.counts_mentions {
-            "No document here mentions a date."
+            tr!("search-filter-modal-no-document-here-mentions-a")
         } else {
-            "No dated documents match."
+            tr!("search-filter-modal-no-dated-documents-match")
         };
         return rsx! {
             div { style: "color: rgba(0,0,0,0.5); font-size: 13px;", "{nothing}" }
@@ -1462,9 +1464,9 @@ fn DateHistogramChart(
                 // The bars are not comparable with the other histogram's: a document
                 // naming three days in one bin contributes three to it. Saying so is
                 // cheaper than a reader working out why the totals do not add up.
-                "Mentions by date. Click a bar to filter."
+                {tr!("search-filter-modal-mentions-by-date-click-a")}
             } else {
-                "Documents by date. Click a bar to filter."
+                {tr!("search-filter-modal-documents-by-date-click-a")}
             }
         }
         div {
@@ -1491,7 +1493,7 @@ fn DateHistogramChart(
                         div {
                             key: "{bucket.start}",
                             style: "flex: 1 1 0; min-width: 3px; height: 100%; display: flex; align-items: flex-end; cursor: pointer;",
-                            title: "{range}\n{count} documents\nClick to {action}",
+                            title: tr!("search-filter-modal-bar-title", range: range.clone(), count: count, action: action.clone()),
                             onclick: move |_| on_bucket.call(bucket.clone()),
                             div { style: "width: 100%; height: {height}%; background: {colour}; border-radius: 2px 2px 0 0;" }
                         }
@@ -1540,13 +1542,15 @@ fn date_mode(filter: &RangeFilter, picked: Option<DateMode>) -> DateMode {
 }
 
 impl DateMode {
-    const ROWS: [(&'static str, DateMode); 5] = [
-        ("No filtering", DateMode::Off),
-        ("Before…", DateMode::Before),
-        ("After…", DateMode::After),
-        ("Between…", DateMode::Between),
-        ("Unknown only", DateMode::UnknownOnly),
-    ];
+    fn rows() -> [(String, DateMode); 5] {
+        [
+            (tr!("search-filter-modal-no-filtering"), DateMode::Off),
+            (tr!("search-filter-modal-before-mode"), DateMode::Before),
+            (tr!("search-filter-modal-after-mode"), DateMode::After),
+            (tr!("search-filter-modal-between-mode"), DateMode::Between),
+            (tr!("search-filter-modal-unknown-only"), DateMode::UnknownOnly),
+        ]
+    }
 
     fn shows_min(&self) -> bool {
         matches!(self, DateMode::After | DateMode::Between)
@@ -1563,11 +1567,11 @@ impl DateMode {
         let from = epoch_to_iso_date(bucket.start);
         let to = epoch_to_iso_date(bucket.end - 1);
         match self {
-            DateMode::Before => format!("show only documents before {}", epoch_to_iso_date(bucket.end)),
-            DateMode::After => format!("show only documents from {from} onwards"),
-            DateMode::Between => format!("narrow the range to {from} – {to}"),
+            DateMode::Before => tr!("search-filter-modal-action-before", date: epoch_to_iso_date(bucket.end)),
+            DateMode::After => tr!("search-filter-modal-action-after", date: from),
+            DateMode::Between => tr!("search-filter-modal-action-between", from: from, to: to),
             DateMode::Off | DateMode::UnknownOnly => {
-                format!("filter to {from} – {to}")
+                tr!("search-filter-modal-action-filter", from: from, to: to)
             }
         }
     }
@@ -1666,7 +1670,7 @@ fn FileLocationPane(pending: Signal<SearchQuery>) -> Element {
     rsx! {
         div {
             style: "font-size: 13px; color: rgba(0,0,0,0.6); margin-bottom: 6px;",
-            "Filtering on a folder finds everything below it, including inside archives and emails."
+            {tr!("search-filter-modal-filtering-on-a-folder-finds")}
         }
         div {
             style: "max-height: 420px; overflow-y: auto; overflow-x: hidden; border: 1px solid rgba(0,0,0,0.12); border-radius: 8px; padding: 4px;",
@@ -1705,7 +1709,7 @@ fn AntivirusPane(pending: Signal<SearchQuery>) -> Element {
             } else {
                 Icon { icon: MdCheckBoxOutlineBlank, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
             }
-            "Only files in which the antivirus scan found a virus"
+            {tr!("search-filter-modal-only-files-in-which-the")}
         }
     }
 }
@@ -1740,29 +1744,29 @@ fn EmailPane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuery>)
             } else {
                 Icon { icon: MdCheckBoxOutlineBlank, style: "width: 19px; height: 19px; color: rgba(0,0,0,0.6);" }
             }
-            "Email has attachments"
+            {tr!("search-filter-modal-email-has-attachments")}
         }
 
         div {
             style: "display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap;",
             div {
                 style: "flex: 1 1 260px; min-width: 0;",
-                div { style: "font-weight: 600; margin-bottom: 4px;", "Sender" }
+                div { style: "font-weight: 600; margin-bottom: 4px;", {tr!("search-filter-modal-sender")} }
                 SearchableFacetPane {
                     count_query, pending,
                     field: "email_from".to_string(),
                     map_string_terms: term_field_prop("email_from"),
-                    placeholder: "Search senders…".to_string(),
+                    placeholder: tr!("search-filter-modal-search-senders").to_string(),
                 }
             }
             div {
                 style: "flex: 1 1 260px; min-width: 0;",
-                div { style: "font-weight: 600; margin-bottom: 4px;", "Receiver" }
+                div { style: "font-weight: 600; margin-bottom: 4px;", {tr!("search-filter-modal-receiver")} }
                 SearchableFacetPane {
                     count_query, pending,
                     field: "email_to".to_string(),
                     map_string_terms: term_field_prop("email_to"),
-                    placeholder: "Search receivers…".to_string(),
+                    placeholder: tr!("search-filter-modal-search-receivers").to_string(),
                 }
             }
         }
@@ -1828,21 +1832,21 @@ impl EntitySub {
         "red_flags",
     ];
 
-    pub fn label(&self) -> &'static str {
+    pub fn label(&self) -> String {
         match self {
-            EntitySub::All => "All",
-            EntitySub::Per => "Person",
-            EntitySub::Org => "Organization",
-            EntitySub::Loc => "Location",
-            EntitySub::Misc => "Misc",
-            EntitySub::Email => "Email",
-            EntitySub::Phone => "Phone",
-            EntitySub::BankAccount => "Bank account",
-            EntitySub::CompanyId => "Company ID",
-            EntitySub::Money => "Money",
-            EntitySub::CryptoWallet => "Crypto wallet",
-            EntitySub::RedFlags => "Red flags",
-            EntitySub::MentionedDate => "Mentioned Date",
+            EntitySub::All => tr!("search-filter-modal-all-entities"),
+            EntitySub::Per => tr!("search-filter-modal-person"),
+            EntitySub::Org => tr!("search-filter-modal-organization"),
+            EntitySub::Loc => tr!("search-filter-modal-location"),
+            EntitySub::Misc => tr!("search-filter-modal-misc"),
+            EntitySub::Email => tr!("search-filter-modal-email"),
+            EntitySub::Phone => tr!("search-filter-modal-phone"),
+            EntitySub::BankAccount => tr!("search-filter-modal-bank-account"),
+            EntitySub::CompanyId => tr!("search-filter-modal-company-id"),
+            EntitySub::Money => tr!("search-filter-modal-money"),
+            EntitySub::CryptoWallet => tr!("search-filter-modal-crypto-wallet"),
+            EntitySub::RedFlags => tr!("search-filter-modal-red-flags"),
+            EntitySub::MentionedDate => tr!("search-filter-modal-mentioned-date"),
         }
     }
 
@@ -1956,7 +1960,7 @@ fn EntitiesPane(count_query: ReadSignal<SearchQuery>, pending: Signal<SearchQuer
                                 count_query, pending,
                                 field: field.to_string(),
                                 map_string_terms: term_field_prop(field),
-                                placeholder: format!("Search {}…", other.label().to_lowercase()),
+                                placeholder: tr!("search-filter-modal-search-entity-type", kind: other.label().to_lowercase()),
                             }
                         }
                     }
@@ -2043,7 +2047,7 @@ fn EntitiesAllPane(
             input {
                 r#type: "text",
                 style: "{INPUT_STYLE} flex: 1 1 auto;",
-                placeholder: "Search every entity type…",
+                placeholder: tr!("search-filter-modal-search-every-entity-type"),
                 value: "{needle}",
                 oninput: move |event| needle.set(event.value()),
             }
@@ -2052,13 +2056,13 @@ fn EntitiesAllPane(
             // Every list, or none: a merged view that renders while three of its value
             // sources are still in flight is sorted by a count it does not have yet, and
             // reorders itself under the reader's cursor as they arrive.
-            None => rsx! { div { style: "padding: 8px; color: rgba(0,0,0,0.5);", "Loading…" } },
+            None => rsx! { div { style: "padding: 8px; color: rgba(0,0,0,0.5);", {tr!("search-filter-modal-loading")} } },
             Some(Err(error)) => rsx! { ServerErrorDisplay { error: error.clone() } },
             Some(Ok(rows)) => rsx! {
                 if rows.is_empty() {
                     div {
                         style: "padding: 8px 10px; font-size: 13px; color: rgba(0,0,0,0.55);",
-                        "No entities match."
+                        {tr!("search-filter-modal-no-entities-match")}
                     }
                 }
                 div {
@@ -2344,8 +2348,9 @@ mod tests {
         // the call site, and a chip row that knows nothing about it, giving a list of names
         // next to a chip of `#229645745`.
         for field in FilterCategory::ALL.iter().flat_map(|c| c.facet_fields()) {
-            // These facets store their values as strings or bits, not as term ids.
-            let expected = !matches!(*field, "collection_dataset" | "struct_flags" | "extracted_by");
+            // These facets store their values as strings, bits or the 0/1 scan flag, not as
+            // term ids.
+            let expected = !matches!(*field, "collection_dataset" | "struct_flags" | "extracted_by" | "virus_hit");
             assert_eq!(
                 term_field_of(field).is_some(),
                 expected,

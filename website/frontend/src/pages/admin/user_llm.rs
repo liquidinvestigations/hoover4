@@ -10,16 +10,17 @@ use crate::components::admin_components::{
     AdminGuard, AdminShell, HELP_TEXT, LINK, MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH, SUBHEADING};
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
+use crate::tr;
 
 #[component]
 pub fn AdminUserLlmPage(username: String) -> Element {
     let for_content = username.clone();
     rsx! {
-        Title { "Admin: LLM use by {username}" }
+        Title { {tr!("admin-user-llm-admin-llm-use-by", username: username.to_string())} }
         AdminGuard {
             AdminShell {
-                title: format!("LLM usage of {username}"),
-                breadcrumb: format!("Users \u{203a} {username}"),
+                title: tr!("admin-user-llm-llm-usage-of", username: username.to_string()),
+                breadcrumb: tr!("admin-user-llm-users", username: username.to_string()),
                 active: "users".to_string(),
                 SuspendWrapper { UserLlmContent { username: for_content } }
             }
@@ -48,11 +49,11 @@ fn UserLlmContent(username: String) -> Element {
             Link {
                 to: Route::AdminUserPage { username: username.clone() },
                 style: LINK,
-                "\u{2190} Back to user"
+                {tr!("admin-user-llm-u-back-to-user")}
             }
         }
         match metrics {
-            None => rsx! { "Loading\u{2026}" },
+            None => rsx! { {tr!("admin-user-llm-loading-u")} },
             Some(m) => rsx! {
                 SummaryPanel { metrics: m.clone() }
                 LimitsPanel { metrics: m.clone() }
@@ -66,27 +67,27 @@ fn UserLlmContent(username: String) -> Element {
 fn SummaryPanel(metrics: AdminUserLlmMetrics) -> Element {
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Totals (all time)" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-user-llm-totals-all-time")} }
             div { style: MODULE_BODY,
                 table { style: TABLE,
                     tbody {
                         tr {
-                            td { style: "{TD} font-weight: 600; width: 240px;", "Chat sessions" }
+                            td { style: "{TD} font-weight: 600; width: 240px;", {tr!("admin-user-llm-chat-sessions")} }
                             td { style: TD, "{metrics.sessions.len()}" }
                         }
                         tr {
-                            td { style: "{TD} font-weight: 600;", "Messages" }
+                            td { style: "{TD} font-weight: 600;", {tr!("admin-user-llm-messages")} }
                             td { style: TD, "{metrics.chat_messages}" }
                         }
                         tr {
-                            td { style: "{TD} font-weight: 600;", "Tool calls" }
+                            td { style: "{TD} font-weight: 600;", {tr!("admin-user-llm-tool-calls")} }
                             td { style: TD, "{metrics.tool_calls}" }
                         }
                         tr {
-                            td { style: "{TD} font-weight: 600;", "Model and tool time" }
+                            td { style: "{TD} font-weight: 600;", {tr!("admin-user-llm-model-and-tool-time")} }
                             td { style: TD,
                                 "{humanize_ms(metrics.agent_duration_ms_total)} "
-                                span { style: HELP_TEXT, "model and tool time of this user's agent steps. Parallel tool calls count in full" }
+                                span { style: HELP_TEXT, {tr!("admin-user-llm-model-and-tool-time-of")} }
                             }
                         }
                     }
@@ -100,18 +101,18 @@ fn SummaryPanel(metrics: AdminUserLlmMetrics) -> Element {
 fn LimitsPanel(metrics: AdminUserLlmMetrics) -> Element {
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Rate-limit usage (current windows)" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-user-llm-rate-limit-usage-current-windows")} }
             div { style: MODULE_BODY,
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
-                    "In-process counters of the running website container. Chat limit {metrics.chat_per_minute}/min, API limit {metrics.api_per_minute}/min, with a decaying sustained rate over the longer windows."
+                    {tr!("admin-user-llm-in-process-counters-of-the", metrics_chat_per_minute: metrics.chat_per_minute.to_string(), metrics_api_per_minute: metrics.api_per_minute.to_string())}
                 }
                 div { style: "display: flex; gap: 32px; flex-wrap: wrap;",
                     div {
-                        h3 { style: SUBHEADING, "Chat messages" }
+                        h3 { style: SUBHEADING, {tr!("admin-user-llm-chat-messages")} }
                         WindowTable { usage: metrics.chat_limit.clone() }
                     }
                     div {
-                        h3 { style: SUBHEADING, "API calls" }
+                        h3 { style: SUBHEADING, {tr!("admin-user-llm-api-calls")} }
                         WindowTable { usage: metrics.api_limit.clone() }
                     }
                 }
@@ -126,9 +127,9 @@ fn WindowTable(usage: Vec<RateWindowUsage>) -> Element {
         table { style: TABLE,
             thead {
                 tr {
-                    th { style: TH, "Window" }
-                    th { style: TH, "Used" }
-                    th { style: TH, "Budget" }
+                    th { style: TH, {tr!("admin-user-llm-window")} }
+                    th { style: TH, {tr!("admin-user-llm-used")} }
+                    th { style: TH, {tr!("admin-user-llm-budget")} }
                 }
             }
             tbody {
@@ -151,19 +152,19 @@ fn WindowTable(usage: Vec<RateWindowUsage>) -> Element {
 fn SessionsPanel(metrics: AdminUserLlmMetrics) -> Element {
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Chat sessions" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-user-llm-chat-sessions")} }
             div { style: MODULE_BODY,
                 if metrics.sessions.is_empty() {
-                    p { style: HELP_TEXT, "No chat sessions." }
+                    p { style: HELP_TEXT, {tr!("admin-user-llm-no-chat-sessions")} }
                 } else {
                     table { style: TABLE,
                         thead {
                             tr {
-                                th { style: TH, "Title" }
-                                th { style: TH, "Created" }
-                                th { style: TH, "Messages" }
-                                th { style: TH, "Tool calls" }
-                                th { style: TH, "Model and tool time" }
+                                th { style: TH, {tr!("admin-user-llm-title")} }
+                                th { style: TH, {tr!("admin-user-llm-created")} }
+                                th { style: TH, {tr!("admin-user-llm-messages")} }
+                                th { style: TH, {tr!("admin-user-llm-tool-calls")} }
+                                th { style: TH, {tr!("admin-user-llm-model-and-tool-time")} }
                             }
                         }
                         tbody {
@@ -171,7 +172,7 @@ fn SessionsPanel(metrics: AdminUserLlmMetrics) -> Element {
                                 tr { key: "{s.session_id}",
                                     td { style: TD,
                                         if s.title.is_empty() {
-                                            span { style: HELP_TEXT, "(untitled)" }
+                                            span { style: HELP_TEXT, {tr!("admin-user-llm-untitled")} }
                                         } else {
                                             "{s.title}"
                                         }

@@ -10,14 +10,15 @@ use crate::components::admin_components::{
 };
 use crate::components::suspend_boundary::SuspendWrapper;
 use crate::routes::Route;
+use crate::tr;
 
 #[component]
 pub fn AdminGroupsPage() -> Element {
     rsx! {
-        Title { "Admin: groups" }
+        Title { {tr!("admin-groups-list-admin-groups")} }
         AdminGuard {
             AdminShell {
-                title: "Groups".to_string(),
+                title: tr!("admin-groups-list-groups").to_string(),
                 breadcrumb: String::new(),
                 active: "groups".to_string(),
                 SuspendWrapper { GroupsListContent {} }
@@ -42,16 +43,16 @@ fn GroupsListContent() -> Element {
             ErrorBar { message: err }
         }
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Add group" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-groups-list-add-group")} }
             div { style: "{MODULE_BODY} display: flex; gap: 8px; flex-wrap: wrap; align-items: center;",
-                input { style: INPUT, placeholder: "groupname", value: "{groupname}", oninput: move |e| groupname.set(e.value()) }
-                input { style: INPUT, placeholder: "display name", value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
+                input { style: INPUT, placeholder: tr!("admin-groups-list-groupname"), value: "{groupname}", oninput: move |e| groupname.set(e.value()) }
+                input { style: INPUT, placeholder: tr!("admin-groups-list-display-name"), value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
                 // The rule, next to the field it constrains. The dataset form on the
                 // collection page states its own the same way; this one asked for a
                 // value in a format it never named, so the first thing a person types
                 // ("TestGroup") is rejected by a rule they had no way to know.
                 p { style: "{HELP_TEXT} width: 100%; margin: 0;",
-                    "Use lowercase letters, digits, underscores and hyphens in the name. The name cannot change later."
+                    {tr!("admin-groups-list-use-lowercase-letters-digits-underscores")}
                 }
                 button {
                     style: BTN_PRIMARY,
@@ -63,7 +64,7 @@ fn GroupsListContent() -> Element {
                             success_msg.set(None);
                             match admin_create_group(g.clone(), f).await {
                                 Ok(()) => {
-                                    success_msg.set(Some(format!("The group \u{201c}{g}\u{201d} was added successfully.")));
+                                    success_msg.set(Some(tr!("admin-groups-list-the-group-was-added-successfully", g: g.to_string())));
                                     groupname.set(String::new());
                                     fullname.set(String::new());
                                     groups_res.restart();
@@ -72,7 +73,7 @@ fn GroupsListContent() -> Element {
                             }
                         });
                     },
-                    "Add group +"
+                    {tr!("admin-groups-list-add-group-2")}
                 }
             }
         }
@@ -81,10 +82,10 @@ fn GroupsListContent() -> Element {
                 table { style: TABLE,
                     thead {
                         tr {
-                            th { style: TH, "Group" }
-                            th { style: TH, "Display name" }
-                            th { style: TH, "Members" }
-                            th { style: TH, "Collections" }
+                            th { style: TH, {tr!("admin-groups-list-group")} }
+                            th { style: TH, {tr!("admin-groups-list-display-name-2")} }
+                            th { style: TH, {tr!("admin-groups-list-members")} }
+                            th { style: TH, {tr!("admin-groups-list-collections")} }
                         }
                     }
                     tbody {
@@ -102,7 +103,7 @@ fn GroupsListContent() -> Element {
                 }
             },
             Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
-            None => rsx! { "Loading..." },
+            None => rsx! { {tr!("admin-groups-list-loading")} },
         }
     }
 }

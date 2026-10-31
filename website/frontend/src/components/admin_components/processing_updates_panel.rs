@@ -23,6 +23,8 @@ use crate::components::admin_components::{
     ErrorBar, SuccessBar, BTN, BTN_PRIMARY, HELP_TEXT, MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
 };
 use crate::routes::Route;
+use crate::tr;
+use crate::i18n::SharedText;
 
 /// How often the module reads the stored state.
 const POLL_SECONDS: u64 = 5;
@@ -84,14 +86,14 @@ pub fn ProcessingUpdatesPanel(
         }
     });
 
-    let title = if scope_kind == "collection" { "Collection updates" } else { "Processing updates" };
+    let title = if scope_kind == "collection" { tr!("processing-updates-panel-collection-updates") } else { tr!("processing-updates-panel-processing-updates") };
     let loaded = view_res.read().as_ref().map(|r| r.as_ref().map(|v| v.clone()).map_err(user_facing_message));
     let (view, datasets) = match loaded {
         None => {
             return rsx! {
                 div { class: "x-admin-module", style: MODULE,
                     h2 { style: MODULE_CAPTION, "{title}" }
-                    div { style: MODULE_BODY, "Loading\u{2026}" }
+                    div { style: MODULE_BODY, {tr!("processing-updates-panel-loading-u")} }
                 }
             };
         }
@@ -99,7 +101,7 @@ pub fn ProcessingUpdatesPanel(
             return rsx! {
                 div { class: "x-admin-module", style: MODULE,
                     h2 { style: MODULE_CAPTION, "{title}" }
-                    div { style: MODULE_BODY, ErrorBar { message: format!("The processing updates could not be read: {e}") } }
+                    div { style: MODULE_BODY, ErrorBar { message: tr!("processing-updates-panel-the-processing-updates-could-not", e: e.to_string()) } }
                 }
             };
         }
@@ -107,11 +109,11 @@ pub fn ProcessingUpdatesPanel(
     };
 
     let chosen = selected.read().clone();
-    let summary = selection_summary(&view.steps, &chosen);
+    let summary = selection_summary(&view.steps, &chosen).shared();
     let running = !view.running_op_id.is_empty();
     let can_start = !chosen.is_empty() && !running && !*submitting.read();
     let start_style = if can_start { "" } else { "opacity: 0.5; cursor: not-allowed;" };
-    let status = view.status_line();
+    let status = view.status_line().shared();
     let unique_unit = count_unit(view.unique_files, "files");
     let runs_word = if view.executions == 1 { "step run" } else { "step runs" };
     let scope_for_check = view.scope_id.clone();
@@ -128,34 +130,33 @@ pub fn ProcessingUpdatesPanel(
                 div { style: "display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;",
                     strong { class: "x-updates-status", "{status}" }
                     if running {
-                        Link { to: Route::AdminOperationDetailPage { op_id: view.running_op_id.clone(), plans_page: 0, events_page: 0 }, "Open the operation" }
+                        Link { to: Route::AdminOperationDetailPage { op_id: view.running_op_id.clone(), plans_page: 0, events_page: 0 }, {tr!("processing-updates-panel-open-the-operation")} }
                     }
                 }
                 p { class: "x-updates-checked", style: "{HELP_TEXT} margin: 0;",
                     if view.checked_at.is_empty() {
-                        "The pipeline has not calculated these updates yet."
+                        {tr!("processing-updates-panel-the-pipeline-has-not-calculated")}
                     } else {
-                        "Calculated at {view.checked_at} in {view.check_ms} ms. "
-                        "The waiting steps change {view.unique_files} {unique_unit} ({format_size(view.unique_bytes)}), each file counted once, in {view.executions} {runs_word}."
+                        {tr!("processing-updates-panel-calculated-at-in-ms", view_checked_at: view.checked_at.to_string(), view_check_ms: view.check_ms.to_string())}
+                        {tr!("processing-updates-panel-the-waiting-steps-change-each", view_unique_files: view.unique_files, unique_unit: unique_unit.to_string(), format_size_view_unique_bytes: format_size(view.unique_bytes), view_executions: view.executions.to_string(), runs_word: runs_word.to_string())}
                     }
                 }
                 if !view.automatic {
-                    p { style: "{HELP_TEXT} margin: 0;", "Automatic updates are off on this installation. Start the updates with the button." }
+                    p { style: "{HELP_TEXT} margin: 0;", {tr!("processing-updates-panel-automatic-updates-are-off-on")} }
                 }
                 if !view.prerequisites_waiting.is_empty() {
                     p { style: "margin: 0; color: var(--x-warning);",
-                        "The collection needs an update first: {view.prerequisites_waiting.join(\", \")}. "
-                        "Steps that write to the search index wait for it."
+                        {tr!("admin-processing-updates-panel-prerequisites-waiting", steps: view.prerequisites_waiting.join(", "))}
                     }
                 }
                 table { style: TABLE,
                     thead {
                         tr {
                             th { style: TH, "" }
-                            th { style: TH, "Step" }
-                            th { style: "{TH} text-align: right;", "Count" }
-                            th { style: TH, "State" }
-                            th { style: TH, "Last run" }
+                            th { style: TH, {tr!("processing-updates-panel-step")} }
+                            th { style: "{TH} text-align: right;", {tr!("processing-updates-panel-count")} }
+                            th { style: TH, {tr!("processing-updates-panel-state")} }
+                            th { style: TH, {tr!("processing-updates-panel-last-run")} }
                         }
                     }
                     tbody {
@@ -164,7 +165,7 @@ pub fn ProcessingUpdatesPanel(
                                 let id_for_check = step.step_id.clone();
                                 let is_on = chosen.contains(&step.step_id);
                                 let unit = count_unit(step.pending, &step.unit);
-                                let state_label = if step.state == UpdateStepState::UpToDate { "Up to date. Select it to run it again." } else { step.state.label() };
+                                let state_label = if step.state == UpdateStepState::UpToDate { {tr!("processing-updates-panel-up-to-date-select-it")} } else { step.state.label().to_string() };
                                 let state_colour = match step.state {
                                     UpdateStepState::Failed => "var(--x-danger)",
                                     UpdateStepState::Waiting | UpdateStepState::Running => "var(--x-link)",
@@ -189,13 +190,13 @@ pub fn ProcessingUpdatesPanel(
                                         td { style: TD,
                                             div { style: "font-weight: 500;", "{step.title}" }
                                             div { style: HELP_TEXT, "{step.explanation}" }
-                                            div { style: HELP_TEXT, "Runs: {step.runs}" }
+                                            div { style: HELP_TEXT, {tr!("processing-updates-panel-runs", step_runs: step.runs.to_string())} }
                                         }
                                         td { style: "{TD} text-align: right; white-space: nowrap;",
                                             if step.state == UpdateStepState::UpToDate {
                                                 // An applied step has no automatic work. Its
                                                 // count is the estimate of a manual run.
-                                                span { title: "A run again would select about this many {step.unit}.", "{step.pending} {unit} on a run again" }
+                                                span { title: tr!("processing-updates-panel-a-run-again-would-select", step_unit: step.unit.to_string()), {tr!("processing-updates-panel-on-a-run-again", step_pending: step.pending.to_string(), unit: unit.to_string())} }
                                             } else {
                                                 "{step.pending} {unit}"
                                             }
@@ -211,7 +212,7 @@ pub fn ProcessingUpdatesPanel(
                                         }
                                         td { style: "{TD} white-space: nowrap;",
                                             if step.last_op_id.is_empty() {
-                                                "Never"
+                                                {tr!("processing-updates-panel-never")}
                                             } else {
                                                 Link { to: Route::AdminOperationDetailPage { op_id: step.last_op_id.clone(), plans_page: 0, events_page: 0 }, "{step.last_run_at}" }
                                             }
@@ -246,13 +247,13 @@ pub fn ProcessingUpdatesPanel(
                                     admin_start_processing_update(scope, chosen, fingerprints).await
                                 };
                                 match started {
-                                    Ok(op_id) => msg.set(Some(format!("Update started: {op_id}"))),
+                                    Ok(op_id) => msg.set(Some(tr!("processing-updates-panel-update-started", op_id: op_id.to_string()))),
                                     Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                 }
                                 submitting.set(false);
                             });
                         },
-                        if scope_kind == "collection" { "Update collection" } else { "Update processing" }
+                        if scope_kind == "collection" { {tr!("processing-updates-panel-update-collection")} } else { {tr!("processing-updates-panel-update-processing")} }
                     }
                     button {
                         class: "x-update-check",
@@ -267,12 +268,12 @@ pub fn ProcessingUpdatesPanel(
                                 }
                             });
                         },
-                        "Check again"
+                        {tr!("processing-updates-panel-check-again")}
                     }
                 }
                 if !datasets.is_empty() {
                     table { style: TABLE,
-                        thead { tr { th { style: TH, "Dataset" } th { style: TH, "Processing updates" } } }
+                        thead { tr { th { style: TH, {tr!("processing-updates-panel-dataset")} } th { style: TH, {tr!("processing-updates-panel-processing-updates")} } } }
                         tbody {
                             for (dataset, line) in datasets.iter().cloned() {
                                 tr { key: "{dataset}",

@@ -19,6 +19,7 @@ use crate::components::chat_components::tool_cards::{
     ArtifactRef, CardShell, ElapsedCounter, FocusHandle, ModalCloseButton, ModalShell,
     ToolFailure,
 };
+use crate::tr;
 
 /// Human phrasing per tool, in two tenses.
 ///
@@ -34,7 +35,7 @@ fn action_label(tool_name: &str, input: &serde_json::Value, failed: bool) -> Str
     let pick = |done: String, not_done: String| if failed { not_done } else { done };
     match tool_name {
         "browser_navigate" if !url.is_empty() => {
-            pick(format!("opened {url}"), format!("could not open {url}"))
+            pick(tr!("cards-browser-card-opened", url: url.to_string()), tr!("cards-browser-card-could-not-open", url: url.to_string()))
         }
         "browser_navigate" => pick("opened a page".into(), "could not open the page".into()),
         "browser_navigate_back" => pick("went back".into(), "could not go back".into()),
@@ -43,29 +44,29 @@ fn action_label(tool_name: &str, input: &serde_json::Value, failed: bool) -> Str
             pick("took a screenshot".into(), "could not take a screenshot".into())
         }
         "browser_click" if !element.is_empty() => {
-            pick(format!("clicked {element}"), format!("could not click {element}"))
+            pick(tr!("cards-browser-card-clicked", element: element.to_string()), tr!("cards-browser-card-could-not-click", element: element.to_string()))
         }
         "browser_click" => pick("clicked".into(), "could not click".into()),
         "browser_type" if !element.is_empty() => pick(
-            format!("typed into {element}"),
-            format!("could not type into {element}"),
+            tr!("cards-browser-card-typed-into", element: element.to_string()),
+            tr!("cards-browser-card-could-not-type-into", element: element.to_string()),
         ),
         "browser_type" if !text.is_empty() => pick(
-            format!("typed \u{201c}{text}\u{201d}"),
-            format!("could not type \u{201c}{text}\u{201d}"),
+            tr!("cards-browser-card-typed", text: text.to_string()),
+            tr!("cards-browser-card-could-not-type", text: text.to_string()),
         ),
         "browser_type" => pick("typed".into(), "could not type".into()),
         "browser_fill_form" => pick("filled a form".into(), "could not fill the form".into()),
         "browser_press_key" => {
             let key = json_str(input, "key");
-            pick(format!("pressed {key}"), format!("could not press {key}"))
+            pick(tr!("cards-browser-card-pressed", key: key.to_string()), tr!("cards-browser-card-could-not-press", key: key.to_string()))
         }
         "browser_select_option" if !element.is_empty() => pick(
-            format!("chose an option in {element}"),
-            format!("could not choose an option in {element}"),
+            tr!("cards-browser-card-chose-an-option-in", element: element.to_string()),
+            tr!("cards-browser-card-could-not-choose-an-option", element: element.to_string()),
         ),
         "browser_hover" if !element.is_empty() => {
-            pick(format!("hovered {element}"), format!("could not hover {element}"))
+            pick(tr!("cards-browser-card-hovered", element: element.to_string()), tr!("cards-browser-card-could-not-hover", element: element.to_string()))
         }
         "browser_wait_for" => pick(
             "waited for the page".into(),
@@ -85,7 +86,7 @@ fn action_label(tool_name: &str, input: &serde_json::Value, failed: bool) -> Str
         ),
         other => {
             let bare = other.trim_start_matches("browser_").replace('_', " ");
-            pick(bare.clone(), format!("{bare} \u{2014} failed"))
+            pick(bare.clone(), tr!("cards-browser-card-failed", bare: bare.to_string()))
         }
     }
 }
@@ -279,7 +280,7 @@ fn ThumbnailButton(
     let entry = artifact.clone();
     rsx! {
         button {
-            title: "Open the archived page",
+            title: tr!("cards-browser-card-open-the-archived-page"),
             "aria-label": "Open the archived page",
             style: "{button_style}",
             onmounted: move |e| me.set(Some(e.data())),
@@ -323,7 +324,7 @@ fn CaptureBlock(
                 div {
                     style: "font-size: var(--x-text-xs); color: var(--x-ink); font-style: italic;",
                     if artifact.detail.is_empty() {
-                        "The page itself was not archived (status: {artifact.status}). The screenshot above is what was kept."
+                        {tr!("cards-browser-card-the-page-itself-was-not", artifact_status: artifact.status.to_string())}
                     } else {
                         "{artifact.detail}"
                     }
@@ -331,7 +332,7 @@ fn CaptureBlock(
             } else {
                 div {
                     style: "font-size: var(--x-text-xs);",
-                    "Click the screenshot to open the archived page."
+                    {tr!("cards-browser-card-click-the-screenshot-to-open")}
                 }
             }
         }
@@ -366,7 +367,7 @@ fn PageText(text: String) -> Element {
                         let next = !*show_all.peek();
                         show_all.set(next);
                     },
-                    if full { "Show less" } else { "Show all" }
+                    if full { {tr!("cards-browser-card-show-less")} } else { {tr!("cards-browser-card-show-all")} }
                 }
             }
         }
@@ -444,14 +445,14 @@ fn ArchivedPagePopup(artifact: ArtifactRef, on_close: EventHandler<()>) -> Eleme
     let openable = artifact.status == "ok";
     rsx! {
         ModalShell {
-            label: "Archived page".to_string(),
+            label: tr!("cards-browser-card-archived-page").to_string(),
             on_close,
             pane_size: "width: min(1300px, 96%); height: min(86%, 950px);".to_string(),
             header: rsx! {
                 div {
                     style: "display: flex; align-items: center; gap: 12px; padding: 10px 14px; \
                             border-bottom: 1px solid; border-bottom-color: var(--x-border); font-size: var(--x-text-xs);",
-                    strong { style: "flex-shrink: 0;", "Archived page" }
+                    strong { style: "flex-shrink: 0;", {tr!("cards-browser-card-archived-page")} }
                     if let Some(href) = link.clone() {
                         a {
                             href: "{href}",
@@ -469,7 +470,7 @@ fn ArchivedPagePopup(artifact: ArtifactRef, on_close: EventHandler<()>) -> Eleme
                             href: "{page}",
                             download: "page.html",
                             style: "flex-shrink: 0; color: var(--x-link);",
-                            "Download"
+                            {tr!("cards-browser-card-download")}
                         }
                     }
                     ModalCloseButton { on_close }
@@ -479,7 +480,7 @@ fn ArchivedPagePopup(artifact: ArtifactRef, on_close: EventHandler<()>) -> Eleme
             if openable {
                 iframe {
                     src: "{page}",
-                    title: "Archived copy of {artifact.url}",
+                    title: tr!("cards-browser-card-archived-copy-of", artifact_url: artifact.url.to_string()),
                     // Quoted because dioxus_elements has no typed `sandbox` on
                     // iframe. The EMPTY value is the strict one. An omitted
                     // attribute means no sandbox at all, which is the opposite.
@@ -491,7 +492,7 @@ fn ArchivedPagePopup(artifact: ArtifactRef, on_close: EventHandler<()>) -> Eleme
                     style: "flex: 1; display: flex; align-items: center; justify-content: center; \
                             padding: 30px; text-align: center; color: var(--x-ink); font-size: var(--x-text-sm);",
                     if artifact.detail.is_empty() {
-                        "This page was not archived (status: {artifact.status})."
+                        {tr!("cards-browser-card-this-page-was-not-archived", artifact_status: artifact.status.to_string())}
                     } else {
                         "{artifact.detail}"
                     }

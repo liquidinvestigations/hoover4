@@ -19,6 +19,8 @@ use dioxus_free_icons::{
 use crate::components::document_view_components::doc_preview_for_search::text_preview_with_search::DocumentPreviewTextWithSearch;
 use crate::components::document_view_components::doc_preview_shared::PreviewWrapper;
 use crate::routes::Route;
+use crate::tr;
+use crate::i18n::SharedText;
 
 const CARD_STYLE: &str = "
     padding: 12px;
@@ -122,14 +124,14 @@ pub fn DocumentPreviewForEmail(
     if !source.read().has_body {
         return rsx! {
             PreviewWrapper {
-                controls: rsx! { "Email" },
+                controls: rsx! { {tr!("preview-for-email-email")} },
                 page: rsx! {
                     div {
                         style: "padding: 10px; overflow: auto; height: 100%;",
                         {preamble}
                         div {
                             style: "font-size: 13px; color: rgba(0, 0, 0, 0.6); font-style: italic; padding: 8px 2px;",
-                            "No readable body is available. Select another text source to read its extracted content."
+                            {tr!("preview-for-email-no-readable-body-is-available")}
                         }
                     }
                 }
@@ -177,8 +179,8 @@ fn EmailEnvelopeCard(
     let value = envelope.read().clone();
     let date_label = value.date_sent.map(common::document_provenance::format_epoch_utc);
     let from_line = value.from.iter().map(EmailParty::full).collect::<Vec<_>>().join(", ");
-    let recipients = value.collapsed_recipients();
-    let secondary = value.secondary_counts();
+    let recipients = value.collapsed_recipients().shared();
+    let secondary = value.secondary_counts().shared();
 
     rsx! {
         div {
@@ -199,7 +201,7 @@ fn EmailEnvelopeCard(
                     div {
                         style: "flex: 1 1 auto; min-width: 0;",
                         div {
-                            "{parent.banner_verb()} "
+                            "{parent.banner_verb().shared()} "
                             span { style: "font-weight: 600;", "\u{201c}{parent.subject}\u{201d}" }
                             if parent.is_inferred() {
                                 // Said, not implied. This banner is the one place an
@@ -207,7 +209,7 @@ fn EmailEnvelopeCard(
                                 // sentence without a hedge reads as a fact.
                                 span {
                                     style: "margin-left: 6px; font-size: 13px; color: rgba(0,0,0,0.55);",
-                                    "(inferred)"
+                                    {tr!("preview-for-email-inferred")}
                                 }
                             }
                         }
@@ -227,7 +229,7 @@ fn EmailEnvelopeCard(
                         },
                         new_tab: true,
                         style: "display: flex; align-items: center; gap: 4px; color: #1a73e8; text-decoration: none; white-space: nowrap;",
-                        "Open parent"
+                        {tr!("preview-for-email-open-parent")}
                         Icon { icon: MdOpenInNew, style: "width: 15px; height: 15px;" }
                     }
                 }
@@ -249,7 +251,7 @@ fn EmailEnvelopeCard(
                 div { style: "margin-top: 8px; font-size: 13px; overflow-wrap: anywhere;", {email_header_text(&from_line, &value)} }
             }
             if let Some(line) = recipients {
-                div { style: "font-size: 13px; color: rgba(0,0,0,0.85); overflow-wrap: anywhere;", "to " {email_header_text(&line, &value)} }
+                div { style: "font-size: 13px; color: rgba(0,0,0,0.85); overflow-wrap: anywhere;", {tr!("preview-for-email-to")} {email_header_text(&line, &value)} }
             }
 
             div {
@@ -261,7 +263,7 @@ fn EmailEnvelopeCard(
                     if !secondary.is_empty() {
                         span { "{secondary}" }
                     }
-                    span { if show_details() { "hide details" } else { "details" } }
+                    span { if show_details() { {tr!("preview-for-email-hide-details")} } else { {tr!("preview-for-email-details")} } }
                     if show_details() {
                         Icon { icon: MdExpandLess, style: CHEVRON_STYLE }
                     } else {
@@ -277,7 +279,7 @@ fn EmailEnvelopeCard(
                             doc_viewer_state: None.into(),
                         },
                         style: "font-size: 13px; color: #1a73e8; text-decoration: none;",
-                        "Open Connected Emails ({value.cluster_size})"
+                        {tr!("preview-for-email-open-connected-emails", value_cluster_size: value.cluster_size)}
                     }
                 }
             }
@@ -290,7 +292,7 @@ fn EmailEnvelopeCard(
                 div {
                     style: "display: flex; align-items: center; gap: 6px; margin-top: 12px; color: rgba(0,0,0,0.6);",
                     Icon { icon: MdAttachFile, style: "width: 18px; height: 18px;" }
-                    span { style: "font-size: 13px; letter-spacing: 0.08em;", "ATTACHMENTS" }
+                    span { style: "font-size: 13px; letter-spacing: 0.08em;", {tr!("preview-for-email-attachments")} }
                 }
                 div {
                     class: "x-email-attachments",
@@ -324,7 +326,7 @@ fn EmailEnvelopeCard(
 
             div {
                 style: "margin-top: 14px; font-size: 13px; color: rgba(0,0,0,0.6);",
-                "Email text Message"
+                {tr!("preview-for-email-email-text-message")}
             }
         }
     }

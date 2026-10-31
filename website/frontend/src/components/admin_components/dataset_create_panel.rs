@@ -25,6 +25,7 @@ use crate::api::admin_api::{
     admin_create_dataset, admin_get_collection_ocr_defaults, admin_list_collection_upload_datasets,
     admin_list_dataset_folders, admin_list_dataset_mounts, admin_set_collection_ocr_defaults,
 };
+use crate::tr;
 
 /// The value of the folder option that asks for a new folder. It holds a `/`, so no
 /// folder name can be equal to it.
@@ -158,8 +159,8 @@ pub fn DatasetCreatePanel(
     let uploads_taken = !upload_datasets.is_empty();
     let accept_value = *accept_uploads.read() && mount_writable && !uploads_taken;
     let uploads_taken_note = match upload_datasets.as_slice() {
-        [one] => format!("{one} already accepts uploads."),
-        many => format!("{} already accept uploads.", many.join(", ")),
+        [one] => tr!("dataset-create-panel-already-accepts-uploads", one: one.to_string()),
+        many => tr!("dataset-create-panel-already-accept-uploads", many_join: (many.join(", ")).to_string()),
     };
 
     let chosen = folder.read().clone();
@@ -185,19 +186,19 @@ pub fn DatasetCreatePanel(
 
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Add a dataset" }
+            h2 { style: MODULE_CAPTION, {tr!("dataset-create-panel-add-a-dataset")} }
             div { style: "{MODULE_BODY} display: flex; flex-direction: column; gap: 12px; max-width: 640px;",
                 if let Some(m) = msg.read().clone() { SuccessBar { message: m } }
                 if let Some(e) = error_msg.read().clone() { ErrorBar { message: e } }
 
                 if let Some(err) = mounts_error {
                     p { style: "{HELP_TEXT} margin: 0;",
-                        "The dataset mounts could not be read, so there is nothing to pick from: {err}"
+                        {tr!("dataset-create-panel-the-dataset-mounts-could-not", err: err.to_string())}
                     }
                 } else if mounts_loading {
-                    p { style: "{HELP_TEXT} margin: 0;", "Loading the dataset mounts." }
+                    p { style: "{HELP_TEXT} margin: 0;", {tr!("dataset-create-panel-loading-the-dataset-mounts")} }
                 } else if mounts.is_empty() {
-                    p { style: "{HELP_TEXT} margin: 0;", "No dataset mount is configured." }
+                    p { style: "{HELP_TEXT} margin: 0;", {tr!("dataset-create-panel-no-dataset-mount-is-configured")} }
                 } else {
                     if mounts.len() > 1 {
                         MountSelect { mounts: mounts.clone(), value: mount_name.clone(), on_change: move |value: String| {
@@ -208,16 +209,16 @@ pub fn DatasetCreatePanel(
                     }
                     if let Some(err) = listing_error {
                         p { style: "{HELP_TEXT} margin: 0;",
-                            "The mount folder could not be read, so there is nothing to pick from: {err}"
+                            {tr!("dataset-create-panel-the-mount-folder-could-not", err: err.to_string())}
                         }
                     } else if folders.is_empty() && !mount_writable {
                         p { style: "{HELP_TEXT} margin: 0;",
-                            "No subfolders were found in this mount. "
-                            "Put the documents in a folder there and reload this page."
+                            {tr!("dataset-create-panel-no-subfolders-were-found-in")}
+                            {tr!("dataset-create-panel-put-the-documents-in-a")}
                         }
                     } else {
                     label { style: LABEL,
-                        span { style: "width: 130px; color: var(--x-ink-muted);", "Folder" }
+                        span { style: "width: 130px; color: var(--x-ink-muted);", {tr!("dataset-create-panel-folder")} }
                         select {
                             style: "{SELECT} flex: 1;",
                             value: "{folder}",
@@ -238,9 +239,9 @@ pub fn DatasetCreatePanel(
                                 }
                                 folder.set(value);
                             },
-                            option { value: "", "Select a folder" }
+                            option { value: "", {tr!("dataset-create-panel-select-a-folder")} }
                             if mount_writable {
-                                option { value: NEW_FOLDER, "New folder" }
+                                option { value: NEW_FOLDER, {tr!("dataset-create-panel-new-folder")} }
                             }
                             for option in folders.iter() {
                                 option {
@@ -248,9 +249,9 @@ pub fn DatasetCreatePanel(
                                     value: "{option.name}",
                                     disabled: option.already_used,
                                     if option.already_used {
-                                        "{option.name} ({option.entry_count} entries), already a dataset"
+                                        {tr!("dataset-create-panel-entries-already-a-dataset", option_name: option.name.to_string(), option_entry_count: option.entry_count)}
                                     } else {
-                                        "{option.name} ({option.entry_count} entries)"
+                                        {tr!("dataset-create-panel-entries", option_name: option.name.to_string(), option_entry_count: option.entry_count)}
                                     }
                                 }
                             }
@@ -258,7 +259,7 @@ pub fn DatasetCreatePanel(
                     }
                     if creating_folder {
                         label { style: LABEL,
-                            span { style: "width: 130px; color: var(--x-ink-muted);", "New folder" }
+                            span { style: "width: 130px; color: var(--x-ink-muted);", {tr!("dataset-create-panel-new-folder")} }
                             input {
                                 style: "{INPUT} flex: 1;",
                                 value: "{new_folder_name}",
@@ -272,17 +273,17 @@ pub fn DatasetCreatePanel(
                             }
                         }
                         p { style: "{HELP_TEXT} margin: 0;",
-                            "The server creates this folder in the mount when you create the dataset. "
-                            "The name cannot start with a full stop or contain a slash."
+                            {tr!("dataset-create-panel-the-server-creates-this-folder")}
+                            {tr!("dataset-create-panel-the-name-cannot-start-with")}
                         }
                     } else {
                         p { style: "{HELP_TEXT} margin: 0;",
-                            "The list shows the direct subfolders of the mount."
+                            {tr!("dataset-create-panel-the-list-shows-the-direct")}
                         }
                     }
 
                     label { style: LABEL,
-                        span { style: "width: 130px; color: var(--x-ink-muted);", "Dataset name" }
+                        span { style: "width: 130px; color: var(--x-ink-muted);", {tr!("dataset-create-panel-dataset-name")} }
                         input {
                             style: "{INPUT} flex: 1;",
                             value: "{dataset_name}",
@@ -290,14 +291,14 @@ pub fn DatasetCreatePanel(
                         }
                     }
                     p { style: "{HELP_TEXT} margin: 0;",
-                        "A name has lowercase letters, digits and underscores. Capital letters become lowercase, "
-                        "and a dash, a space or a full stop becomes an underscore. The name cannot change later."
+                        {tr!("dataset-create-panel-a-name-has-lowercase-letters")}
+                        {tr!("dataset-create-panel-and-a-dash-a-space")}
                     }
                     if !saved_name.is_empty() {
-                        p { class: "x-name-preview", style: "{HELP_TEXT} margin: 0;", "The dataset is saved as: {saved_name}" }
+                        p { class: "x-name-preview", style: "{HELP_TEXT} margin: 0;", {tr!("dataset-create-panel-the-dataset-is-saved-as", saved_name: saved_name.to_string())} }
                     }
                     if name_taken {
-                        p { class: "x-name-collision", style: "margin: 0; color: var(--x-danger);", "This collection has a dataset with the name {saved_name}." }
+                        p { class: "x-name-collision", style: "margin: 0; color: var(--x-danger);", {tr!("dataset-create-panel-this-collection-has-a-dataset", saved_name: saved_name.to_string())} }
                     }
 
                     if mount_writable {
@@ -308,17 +309,17 @@ pub fn DatasetCreatePanel(
                                 disabled: uploads_taken || upload_datasets_error.is_some(),
                                 onchange: move |e| accept_uploads.set(e.checked()),
                             }
-                            "Accept uploads"
+                            {tr!("dataset-create-panel-accept-uploads")}
                         }
                         if let Some(err) = upload_datasets_error.clone() {
-                            p { style: "{HELP_TEXT} margin: 0;", "The upload datasets of this collection could not be read: {err}" }
+                            p { style: "{HELP_TEXT} margin: 0;", {tr!("dataset-create-panel-the-upload-datasets-of-this", err: err.to_string())} }
                         } else if uploads_taken {
                             p { style: "{HELP_TEXT} margin: 0;", "{uploads_taken_note}" }
                         }
                     }
 
                     label { style: LABEL,
-                        span { style: "width: 130px; color: var(--x-ink-muted);", "Tesseract" }
+                        span { style: "width: 130px; color: var(--x-ink-muted);", {tr!("dataset-create-panel-tesseract")} }
                         input {
                             style: "{INPUT} flex: 1;",
                             value: "{tesseract}",
@@ -326,7 +327,7 @@ pub fn DatasetCreatePanel(
                         }
                     }
                     label { style: LABEL,
-                        span { style: "width: 130px; color: var(--x-ink-muted);", "EasyOCR" }
+                        span { style: "width: 130px; color: var(--x-ink-muted);", {tr!("dataset-create-panel-easyocr")} }
                         input {
                             style: "{INPUT} flex: 1;",
                             value: "{easyocr}",
@@ -334,9 +335,9 @@ pub fn DatasetCreatePanel(
                         }
                     }
                     p { style: "{HELP_TEXT} margin: 0;",
-                        "`+`-joined language codes, for example eng+ron. An empty EasyOCR value turns EasyOCR off. "
-                        "The form starts with the collection defaults. A dataset created with the defaults follows later changes of them, "
-                        "and a dataset created with other values keeps its own. A change on the dataset page runs OCR again."
+                        {tr!("dataset-create-panel-joined-language-codes-for-example")}
+                        {tr!("dataset-create-panel-the-form-starts-with-the")}
+                        {tr!("dataset-create-panel-and-a-dataset-created-with")}
                     }
 
                     div {
@@ -357,12 +358,9 @@ pub fn DatasetCreatePanel(
                                         match admin_set_collection_ocr_defaults(collectionname, tess, easy).await {
                                             Ok(changed) => {
                                                 msg.set(Some(if changed.is_empty() {
-                                                    "Saved as this collection's defaults. No dataset changes its languages.".to_string()
+                                                    {tr!("dataset-create-panel-saved-as-this-collection-s")}.to_string()
                                                 } else {
-                                                    format!(
-                                                        "Saved as this collection's defaults. These datasets inherit them, and their OCR updates start one at a time: {}. Datasets with their own languages keep them.",
-                                                        changed.join(", ")
-                                                    )
+                                                    tr!("dataset-create-panel-saved-as-this-collection-s-2", changed_join: (changed.join(", ")).to_string())
                                                 }));
                                                 defaults_res.restart();
                                             }
@@ -372,7 +370,7 @@ pub fn DatasetCreatePanel(
                                     });
                                 }
                             },
-                            if *saving_defaults.read() { "Saving\u{2026}" } else { "Save as collection defaults" }
+                            if *saving_defaults.read() { {tr!("dataset-create-panel-saving-u")} } else { {tr!("dataset-create-panel-save-as-collection-defaults")} }
                         }
                     }
 
@@ -397,10 +395,7 @@ pub fn DatasetCreatePanel(
                                         error_msg.set(None);
                                         match admin_create_dataset(collectionname, mount_name, folder_value, creating_folder, name, tess, easy, accept).await {
                                             Ok(collection_dataset) => {
-                                                msg.set(Some(format!(
-                                                    "Created {collection_dataset}. Ingestion has started. \
-                                                     Follow it on the collection's processing page."
-                                                )));
+                                                msg.set(Some(tr!("dataset-create-panel-created-ingestion-has-started-follow", collection_dataset: collection_dataset.to_string())));
                                                 folder.set(String::new());
                                                 new_folder_name.set(String::new());
                                                 dataset_name.set(String::new());
@@ -415,7 +410,7 @@ pub fn DatasetCreatePanel(
                                     });
                                 }
                             },
-                            if *submitting.read() { "Creating\u{2026}" } else { "Create and ingest" }
+                            if *submitting.read() { {tr!("dataset-create-panel-creating-u")} } else { {tr!("dataset-create-panel-create-and-ingest")} }
                         }
                     }
                     }
@@ -430,7 +425,7 @@ pub fn DatasetCreatePanel(
 fn MountSelect(mounts: Vec<DatasetMountOption>, value: String, on_change: EventHandler<String>) -> Element {
     rsx! {
         label { style: LABEL,
-            span { style: "width: 130px; color: var(--x-ink-muted);", "Mount" }
+            span { style: "width: 130px; color: var(--x-ink-muted);", {tr!("dataset-create-panel-mount")} }
             select {
                 style: "{SELECT} flex: 1;",
                 value: "{value}",
@@ -443,7 +438,7 @@ fn MountSelect(mounts: Vec<DatasetMountOption>, value: String, on_change: EventH
                         if option.writable {
                             "{option.name}"
                         } else {
-                            "{option.name} (read-only)"
+                            {tr!("dataset-create-panel-read-only", option_name: option.name.to_string())}
                         }
                     }
                 }

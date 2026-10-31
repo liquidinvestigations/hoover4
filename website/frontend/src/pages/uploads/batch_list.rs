@@ -10,6 +10,8 @@ use crate::api::error_util::user_facing_message;
 use crate::api::uploads_api::list_upload_batches;
 use crate::components::admin_components::{ErrorBar, BTN, SELECT, TABLE, TD, TH};
 use crate::routes::Route;
+use crate::tr;
+use crate::i18n::SharedText;
 
 /// `YYYY-MM-DD HH:MM`, in UTC.
 pub(super) fn started_label(ms: i64) -> String {
@@ -40,7 +42,7 @@ pub fn UploadsPage(collection: String) -> Element {
 
     let page = first.read().clone();
     let body = match page {
-        None => rsx! { p { "Loading..." } },
+        None => rsx! { p { {tr!("uploads-batch-list-loading")} } },
         Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(&e) } },
         Some(Ok(page)) => {
             let next = cursor().unwrap_or(page.next.clone());
@@ -50,30 +52,30 @@ pub fn UploadsPage(collection: String) -> Element {
             let selected = filter();
             rsx! {
                 div { style: "display: flex; align-items: center; gap: 8px; justify-content: flex-end;",
-                    label { r#for: "x-uploads-filter", "Collection" }
+                    label { r#for: "x-uploads-filter", {tr!("uploads-batch-list-collection")} }
                     select {
                         id: "x-uploads-filter",
                         style: SELECT,
                         value: "{selected}",
                         onchange: move |e| { navigator().replace(Route::UploadsPage { collection: e.value() }); },
-                        option { value: "", selected: selected.is_empty(), "All collections" }
+                        option { value: "", selected: selected.is_empty(), {tr!("uploads-batch-list-all-collections")} }
                         for c in collections.iter() {
                             option { key: "{c}", value: "{c}", selected: *c == selected, "{c}" }
                         }
                     }
                 }
                 if rows.is_empty() {
-                    p { class: "x-uploads-empty", "No uploads yet." }
+                    p { class: "x-uploads-empty", {tr!("uploads-batch-list-no-uploads-yet")} }
                 } else {
                     table { class: "x-uploads-table", style: TABLE,
                         thead {
                             tr {
-                                th { style: TH, "Started" }
-                                th { style: TH, "Destination" }
-                                th { style: TH, "Uploaded by" }
-                                th { style: TH, "Files" }
-                                th { style: TH, "Size" }
-                                th { style: TH, "State" }
+                                th { style: TH, {tr!("uploads-batch-list-started")} }
+                                th { style: TH, {tr!("uploads-batch-list-destination")} }
+                                th { style: TH, {tr!("uploads-batch-list-uploaded-by")} }
+                                th { style: TH, {tr!("uploads-batch-list-files")} }
+                                th { style: TH, {tr!("uploads-batch-list-size")} }
+                                th { style: TH, {tr!("uploads-batch-list-state")} }
                             }
                         }
                         tbody {
@@ -113,7 +115,7 @@ pub fn UploadsPage(collection: String) -> Element {
                                     loading.set(false);
                                 });
                             },
-                            "Show all"
+                            {tr!("uploads-batch-list-show-all")}
                         }
                     }
                 }
@@ -122,10 +124,10 @@ pub fn UploadsPage(collection: String) -> Element {
     };
 
     rsx! {
-        Title { "Hoover Search - Uploads" }
+        Title { {tr!("uploads-batch-list-hoover-search-uploads")} }
         div { style: PAGE_STYLE,
             div { style: "max-width: 1100px; margin: 0 auto;",
-                h1 { style: "{H1_STYLE} margin-bottom: 15px;", "Uploads" }
+                h1 { style: "{H1_STYLE} margin-bottom: 15px;", {tr!("uploads-batch-list-uploads")} }
                 div { style: SURFACE_STYLE, {body} }
             }
         }
@@ -151,7 +153,7 @@ fn BatchListLine(row: UploadBatchRow) -> Element {
             td { style: TD, "{row.username}" }
             td { style: TD, "{format_count(row.file_count as u64)}" }
             td { style: "{TD} white-space: nowrap;", "{format_upload_size(row.byte_count)}" }
-            td { style: "{TD} {state_style}", "{batch_state_label(&row.state)}" }
+            td { style: "{TD} {state_style}", "{batch_state_label(&row.state).shared()}" }
         }
     }
 }

@@ -37,6 +37,7 @@ use crate::data_definitions::doc_viewer_state::DocViewerState;
 use crate::data_definitions::url_param::UrlParam;
 use crate::pages::search_page::DocViewerStateControl;
 use crate::routes::Route;
+use crate::tr;
 
 /// Viewport the simulation runs in. The SVG scales to its pane through `viewBox`, so
 /// these are simulation units, not pixels, and the physics does not change with the
@@ -76,7 +77,7 @@ pub fn EmailGraphPage(
     doc_viewer_state: UrlParam<Option<DocViewerState>>,
 ) -> Element {
     rsx! {
-        Title { "Hoover Search - Connected Emails" }
+        Title { {tr!("email-graph-hoover-search-connected-emails")} }
         EmailGraphContent {
             centre: centre.0,
             selected: selected.0,
@@ -128,12 +129,12 @@ fn EmailGraphContent(
     });
 
     let graph_pane = match graph() {
-        None => rsx! { div { style: "padding: 20px; color: rgba(0,0,0,0.6);", "Loading the connection graph..." } },
+        None => rsx! { div { style: "padding: 20px; color: rgba(0,0,0,0.6);", {tr!("email-graph-loading-the-connection-graph")} } },
         Some(Err(error)) => rsx! {
-            div { class: "x-error-display", style: "padding: 20px;", "Could not load the graph: {error}" }
+            div { class: "x-error-display", style: "padding: 20px;", {tr!("email-graph-could-not-load-the-graph", error: error.to_string())} }
         },
         Some(Ok(value)) if value.nodes.is_empty() => rsx! {
-            div { style: "padding: 20px; color: rgba(0,0,0,0.6);", "This message has no connections." }
+            div { style: "padding: 20px; color: rgba(0,0,0,0.6);", {tr!("email-graph-this-message-has-no-connections")} }
         },
         Some(Ok(value)) => rsx! {
             EmailGraphCanvas {
@@ -192,12 +193,12 @@ fn EmailGraphCanvas(
     rsx! {
         div {
             style: "padding: 10px 14px; border-bottom: 1px solid rgba(0,0,0,0.10); display: flex; align-items: center; gap: 16px; flex-wrap: wrap;",
-            div { style: "font-weight: 600;", "Connected emails" }
+            div { style: "font-weight: 600;", {tr!("email-graph-connected-emails")} }
             div {
                 style: "font-size: 13px; color: rgba(0,0,0,0.6);",
-                "{value.nodes.len()} of {value.cluster_size} shown"
+                {tr!("email-graph-of-shown", value_nodes_len: value.nodes.len(), value_cluster_size: value.cluster_size)}
                 if value.truncated {
-                    " \u{00b7} the cluster continues beyond this view"
+                    {tr!("email-graph-u-the-cluster-continues-beyond")}
                 }
             }
             GraphLegend {}
@@ -229,12 +230,12 @@ fn EmailGraphCanvas(
                 }
                 text {
                     x: "8", y: "{VIEW_HEIGHT - 4.0}", font_size: "13", fill: "rgba(0,0,0,0.45)",
-                    "older"
+                    {tr!("email-graph-older")}
                 }
                 text {
                     x: "{VIEW_WIDTH - 8.0}", y: "{VIEW_HEIGHT - 4.0}", font_size: "13",
                     text_anchor: "end", fill: "rgba(0,0,0,0.45)",
-                    "newer"
+                    {tr!("email-graph-newer")}
                 }
 
                 for edge in value.edges.iter() {
@@ -460,7 +461,7 @@ fn render_edge(edge: &EmailGraphEdge, layout: &HashMap<(String, String), NodePos
             stroke_width: "1.6",
             stroke_dasharray: "{dash}",
             marker_end: "url(#x-email-arrow)",
-            title { "{edge.kind} \u{00b7} confidence {edge.confidence} \u{00b7} {edge.evidence}" }
+            title { {tr!("email-graph-u-confidence-u", edge_kind: edge.kind.to_string(), edge_confidence: edge.confidence.to_string(), edge_evidence: edge.evidence.to_string())} }
         }
     }
 }
@@ -505,7 +506,7 @@ fn render_node(
             }
             text {
                 x: "10", y: "17", font_size: "12", fill: "{text_colour}",
-                if label.is_empty() { "(no subject)" } else { "{label}" }
+                if label.is_empty() { {tr!("email-graph-no-subject")} } else { "{label}" }
             }
             text {
                 x: "10", y: "31", font_size: "11",

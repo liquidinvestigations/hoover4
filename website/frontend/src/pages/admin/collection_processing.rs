@@ -20,6 +20,7 @@ use crate::components::admin_components::{
     MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
+use crate::tr;
 // Shadows the prelude's element table so `svg_title` exists. See its module docs. An
 // HTML `<title>` inside an `<svg>` is a foreign element and never becomes a tooltip.
 use crate::components::svg_title::dioxus_elements;
@@ -59,7 +60,7 @@ fn PanelError(message: String) -> Element {
     rsx! {
         p {
             style: "color: var(--x-danger); font-size: var(--x-text-sm); margin: 0;",
-            "Could not load this panel: {message}"
+            {tr!("admin-collection-processing-could-not-load-this-panel", message: message.to_string())}
         }
     }
 }
@@ -68,11 +69,11 @@ fn PanelError(message: String) -> Element {
 pub fn AdminCollectionProcessingPage(collection_id: String) -> Element {
     let for_content = collection_id.clone();
     rsx! {
-        Title { "Admin: processing of {collection_id}" }
+        Title { {tr!("admin-collection-processing-admin-processing-of", collection_id: collection_id.to_string())} }
         AdminGuard {
             AdminShell {
-                title: format!("Processing of {collection_id}"),
-                breadcrumb: format!("Collections \u{203a} {collection_id}"),
+                title: tr!("admin-collection-processing-processing-of", collection_id: collection_id.to_string()),
+                breadcrumb: tr!("admin-collection-processing-collections", collection_id: collection_id.to_string()),
                 active: "collections".to_string(),
                 SuspendWrapper { ProcessingContent { collection_id: for_content } }
             }
@@ -148,7 +149,7 @@ fn ProcessingContent(collection_id: String) -> Element {
             Link {
                 to: Route::AdminCollectionPage { collection_id: collection_id.clone() },
                 style: LINK,
-                "\u{2190} Back to collection"
+                {tr!("admin-collection-processing-u-back-to-collection")}
             }
         }
 
@@ -200,16 +201,16 @@ fn ProcessingContent(collection_id: String) -> Element {
 fn StagesPanel(status: Load<CollectionProcessingStatus>, eta_samples: Option<Vec<EtaSamplePoint>>) -> Element {
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Processing stages" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-collection-processing-processing-stages")} }
             div { style: MODULE_BODY,
                 match status {
-                    Load::Pending => rsx! { "Loading\u{2026}" },
+                    Load::Pending => rsx! { {tr!("admin-collection-processing-loading-u")} },
                     Load::Failed(e) => rsx! { PanelError { message: e } },
                     Load::Ready(s) if !s.db_ready => rsx! {
-                        p { style: HELP_TEXT, "The collection database is still being provisioned." }
+                        p { style: HELP_TEXT, {tr!("admin-collection-processing-the-collection-database-is-still")} }
                     },
                     Load::Ready(s) if s.datasets.is_empty() => rsx! {
-                        p { style: HELP_TEXT, "This collection has no datasets yet." }
+                        p { style: HELP_TEXT, {tr!("admin-collection-processing-this-collection-has-no-datasets")} }
                     },
                     Load::Ready(s) => rsx! {
                         for ds in s.datasets {
@@ -218,7 +219,7 @@ fn StagesPanel(status: Load<CollectionProcessingStatus>, eta_samples: Option<Vec
                                     "{ds.dataset_display_name} "
                                     span { style: HELP_TEXT, "({ds.collection_dataset})" }
                                     if ds.error_count > 0 {
-                                        span { style: "color: var(--x-danger); margin-left: 8px;", "{ds.error_count} errors" }
+                                        span { style: "color: var(--x-danger); margin-left: 8px;", {tr!("admin-collection-processing-errors-2", ds_error_count: ds.error_count)} }
                                     }
                                 }
                                 for stage in ds.stages {
@@ -272,8 +273,8 @@ fn StageBar(stage: StageProgress) -> Element {
             }
             div { style: "width: 130px; font-size: var(--x-text-xs); color: var(--x-ink-muted); flex-shrink: 0;",
                 match stage.eta_seconds {
-                    Some(eta) => rsx! { "ETA {humanize_seconds(eta)}" },
-                    None if complete => rsx! { span { style: "color: var(--x-ok);", "done" } },
+                    Some(eta) => rsx! { {tr!("admin-collection-processing-eta", humanize_seconds_eta: (humanize_seconds(eta)).to_string())} },
+                    None if complete => rsx! { span { style: "color: var(--x-ok);", {tr!("admin-collection-processing-done")} } },
                     None => rsx! { "\u{2014}" },
                 }
             }
@@ -283,7 +284,7 @@ fn StageBar(stage: StageProgress) -> Element {
             // failure happened at rather than only in the panels further down.
             div { style: "width: 110px; font-size: var(--x-text-xs); flex-shrink: 0;",
                 if stage.failed_documents > 0 {
-                    span { style: "color: var(--x-danger);", "{stage.failed_documents} failed" }
+                    span { style: "color: var(--x-danger);", {tr!("admin-collection-processing-failed-2", stage_failed_documents: stage.failed_documents.to_string())} }
                 }
             }
         }
@@ -317,7 +318,7 @@ fn EtaSection(samples: Vec<EtaSamplePoint>) -> Element {
     if samples.is_empty() {
         return rsx! {
             p { style: "{HELP_TEXT} margin: 4px 0 0;",
-                "No estimate samples yet. They are collected while the dataset is processing."
+                {tr!("admin-collection-processing-no-estimate-samples-yet-they")}
             }
         };
     }
@@ -340,12 +341,12 @@ fn EtaSection(samples: Vec<EtaSamplePoint>) -> Element {
             div { style: "font-size: var(--x-text-sm); color: var(--x-ink); margin-bottom: 6px;",
                 match current {
                     Some(c) => rsx! {
-                        "Estimated completion: "
+                        {tr!("admin-collection-processing-estimated-completion")}
                         b { "{c.deadline}" }
-                        span { style: HELP_TEXT, " (in {humanize_seconds(c.eta_seconds)}, a best-effort estimate rather than a scheduling promise)" }
+                        span { style: HELP_TEXT, {tr!("admin-collection-processing-in-a-best-effort-estimate", humanize_seconds_c_eta_seconds: (humanize_seconds(c.eta_seconds)).to_string())} }
                     },
                     None => rsx! {
-                        span { style: HELP_TEXT, "No current estimate. The pipeline is finished or not making measurable progress." }
+                        span { style: HELP_TEXT, {tr!("admin-collection-processing-no-current-estimate-the-pipeline")} }
                     },
                 }
             }
@@ -442,7 +443,7 @@ fn EtaChart(samples: Vec<EtaSamplePoint>) -> Element {
                 x: "{LEFT - 6.0}", y: "{TOP - 3.0}",
                 "text-anchor": "end",
                 style: "font-size: var(--x-text-xs); fill: #999;",
-                "left"
+                {tr!("admin-collection-processing-left")}
             }
 
             for (stage, label, color) in ETA_STAGE_STYLES {
@@ -536,54 +537,48 @@ fn ShareBar(percent: f64, color: String) -> Element {
 fn TaskTimePanel(breakdown: Load<TaskTimeBreakdown>) -> Element {
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Where processing time goes" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-collection-processing-where-processing-time-goes")} }
             div { style: MODULE_BODY,
                 match breakdown {
-                    Load::Pending => rsx! { "Loading\u{2026}" },
+                    Load::Pending => rsx! { {tr!("admin-collection-processing-loading-u")} },
                     Load::Failed(e) => rsx! { PanelError { message: e } },
                     Load::Ready(b) if b.rows.is_empty() => rsx! {
                         p { style: HELP_TEXT,
-                            "No task executions recorded yet. Every activity the pipeline runs \
-                             writes one row here, so an empty table means nothing has been \
-                             processed since the instrumentation was deployed."
+                            {tr!("admin-collection-processing-no-task-executions-recorded-yet")}
                         }
                     },
                     Load::Ready(b) => rsx! {
                         div { style: "display: flex; gap: 26px; flex-wrap: wrap; margin-bottom: 14px;",
                             Metric {
-                                label: "Summed task time".to_string(),
+                                label: tr!("admin-collection-processing-summed-task-time").to_string(),
                                 value: format_seconds(b.total_seconds),
-                                note: format!("{} executions", b.total_executions),
+                                note: tr!("admin-collection-processing-executions-2", b_total_executions: b.total_executions.to_string()),
                             }
                             Metric {
-                                label: "Wall clock".to_string(),
+                                label: tr!("admin-collection-processing-wall-clock").to_string(),
                                 value: format_seconds(b.wall_clock_seconds),
                                 note: b.first_started.clone().unwrap_or_default(),
                             }
                             Metric {
-                                label: "Achieved parallelism".to_string(),
+                                label: tr!("admin-collection-processing-achieved-parallelism").to_string(),
                                 value: format!("{:.2}\u{00d7}", b.achieved_parallelism),
                                 note: "task-seconds per elapsed second".to_string(),
                             }
                         }
                         p { style: "{HELP_TEXT} margin: 0 0 12px;",
-                            "Summed task time divided by wall clock is what the pipeline actually \
-                             achieved in parallel. Close to 1 means the top task below is the whole \
-                             cost and worth optimising; close to the worker slot count means the \
-                             slots are saturated and more workers is the cheaper fix. Wall clock \
-                             spans the first execution to the last, idle time included."
+                            {tr!("admin-collection-processing-summed-task-time-divided-by")}
                         }
                         table { style: TABLE,
                             thead {
                                 tr {
-                                    th { style: TH, "Task" }
-                                    th { style: TH, "Total" }
-                                    th { style: TH, "Share" }
-                                    th { style: TH, "Executions" }
-                                    th { style: TH, "Mean" }
+                                    th { style: TH, {tr!("admin-collection-processing-task")} }
+                                    th { style: TH, {tr!("admin-collection-processing-total")} }
+                                    th { style: TH, {tr!("admin-collection-processing-share")} }
+                                    th { style: TH, {tr!("admin-collection-processing-executions")} }
+                                    th { style: TH, {tr!("admin-collection-processing-mean")} }
                                     th { style: TH, "p95" }
-                                    th { style: TH, "Max" }
-                                    th { style: TH, "Failed" }
+                                    th { style: TH, {tr!("admin-collection-processing-max")} }
+                                    th { style: TH, {tr!("admin-collection-processing-failed")} }
                                 }
                             }
                             tbody {
@@ -598,9 +593,9 @@ fn TaskTimePanel(breakdown: Load<TaskTimeBreakdown>) -> Element {
                                             }
                                         }
                                         td { style: TD, "{row.executions}" }
-                                        td { style: TD, {format!("{:.0} ms", row.mean_ms)} }
-                                        td { style: TD, {format!("{:.0} ms", row.p95_ms)} }
-                                        td { style: TD, {format!("{} ms", row.max_ms)} }
+                                        td { style: TD, {tr!("admin-collection-processing-ms", row_mean_ms: format!("{:.0}", row.mean_ms))} }
+                                        td { style: TD, {tr!("admin-collection-processing-ms-2", row_p95_ms: format!("{:.0}", row.p95_ms))} }
+                                        td { style: TD, {tr!("admin-collection-processing-ms-2-2", row_max_ms: row.max_ms.to_string())} }
                                         td {
                                             style: if row.error_count > 0 {
                                                 "{TD} color: var(--x-danger); font-weight: 700;"
@@ -662,10 +657,10 @@ fn LiveActivityPanel(collection_id: String) -> Element {
 
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Live activity" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-collection-processing-live-activity")} }
             div { style: MODULE_BODY,
                 match load_state(live_res) {
-                    Load::Pending => rsx! { "Loading\u{2026}" },
+                    Load::Pending => rsx! { {tr!("admin-collection-processing-loading-u")} },
                     Load::Failed(e) => rsx! { PanelError { message: e } },
                     Load::Ready(live) => rsx! { LiveActivityBody { live: live } },
                 }
@@ -679,8 +674,7 @@ fn LiveActivityBody(live: LiveTaskActivity) -> Element {
     if live.rows.is_empty() {
         return rsx! {
             p { style: HELP_TEXT,
-                "Nothing running. No activity finished in the last {live.window_seconds} s and no \
-                 worker reports anything in flight."
+                {tr!("admin-collection-processing-nothing-running-no-activity-finished", live_window_seconds: live.window_seconds.to_string())}
             }
         };
     }
@@ -688,39 +682,36 @@ fn LiveActivityBody(live: LiveTaskActivity) -> Element {
     rsx! {
         div { style: "display: flex; gap: 26px; flex-wrap: wrap; margin-bottom: 14px;",
             Metric {
-                label: "In flight".to_string(),
+                label: tr!("admin-collection-processing-in-flight").to_string(),
                 value: format!("{}", live.in_flight_total),
                 note: match live.sampled_at.clone() {
-                    Some(at) => format!("as of {at}"),
+                    Some(at) => tr!("admin-collection-processing-as-of", at: at.to_string()),
                     None => "no worker sample in the last few seconds".to_string(),
                 },
             }
             Metric {
-                label: "Average concurrency".to_string(),
+                label: tr!("admin-collection-processing-average-concurrency").to_string(),
                 value: format!("{:.2}\u{00d7}", live.average_concurrency),
-                note: format!("over the last {} s", live.window_seconds),
+                note: tr!("admin-collection-processing-over-the-last-s", live_window_seconds: live.window_seconds.to_string()),
             }
             Metric {
-                label: "Task time in window".to_string(),
+                label: tr!("admin-collection-processing-task-time-in-window").to_string(),
                 value: format_seconds(live.total_seconds_in_window),
                 note: "sums to the window \u{00d7} concurrency".to_string(),
             }
         }
         p { style: "{HELP_TEXT} margin: 0 0 12px;",
-            "Share of processing time over the last {live.window_seconds} s, refreshed every 5 s. \
-             An execution that straddles the window edge counts only for the part inside it. A row \
-             with executions in flight but no share is one that started before the window and has \
-             not finished. Check its age."
+            {tr!("admin-collection-processing-share-of-processing-time-over", live_window_seconds: live.window_seconds.to_string())}
         }
         table { style: TABLE,
             thead {
                 tr {
-                    th { style: TH, "Task" }
-                    th { style: TH, "Share of window" }
-                    th { style: TH, "Task time" }
-                    th { style: TH, "Completed" }
-                    th { style: TH, "In flight" }
-                    th { style: TH, "Oldest running" }
+                    th { style: TH, {tr!("admin-collection-processing-task")} }
+                    th { style: TH, {tr!("admin-collection-processing-share-of-window")} }
+                    th { style: TH, {tr!("admin-collection-processing-task-time")} }
+                    th { style: TH, {tr!("admin-collection-processing-completed")} }
+                    th { style: TH, {tr!("admin-collection-processing-in-flight")} }
+                    th { style: TH, {tr!("admin-collection-processing-oldest-running")} }
                 }
             }
             tbody {
@@ -761,7 +752,7 @@ fn LiveActivityBody(live: LiveTaskActivity) -> Element {
 fn WorkflowsPanel(workflows: Load<Vec<WorkflowSummary>>, filter: Signal<WorkflowFilter>) -> Element {
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Temporal workflows" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-collection-processing-temporal-workflows")} }
             div { style: MODULE_BODY,
                 div { style: "display: flex; gap: 8px; margin-bottom: 12px;",
                     for (label, value) in [("All", WorkflowFilter::All), ("Running", WorkflowFilter::Running), ("Failed", WorkflowFilter::Failed)] {
@@ -778,24 +769,24 @@ fn WorkflowsPanel(workflows: Load<Vec<WorkflowSummary>>, filter: Signal<Workflow
                     }
                 }
                 p { style: "{HELP_TEXT} margin: 0 0 10px;",
-                    "Workflows of this collection's datasets, child workflows included."
+                    {tr!("admin-collection-processing-workflows-of-this-collection-s")}
                 }
                 match workflows {
-                    Load::Pending => rsx! { "Loading\u{2026}" },
+                    Load::Pending => rsx! { {tr!("admin-collection-processing-loading-u")} },
                     Load::Failed(e) => rsx! { PanelError { message: e } },
                     Load::Ready(list) if list.is_empty() => rsx! {
-                        p { style: HELP_TEXT, "No workflows match this filter." }
+                        p { style: HELP_TEXT, {tr!("admin-collection-processing-no-workflows-match-this-filter")} }
                     },
                     Load::Ready(list) => rsx! {
                         table { style: TABLE,
                             thead {
                                 tr {
-                                    th { style: TH, "Workflow" }
-                                    th { style: TH, "Type" }
-                                    th { style: TH, "Status" }
-                                    th { style: TH, "Started" }
-                                    th { style: TH, "Closed" }
-                                    th { style: TH, "Temporal" }
+                                    th { style: TH, {tr!("admin-collection-processing-workflow")} }
+                                    th { style: TH, {tr!("admin-collection-processing-type")} }
+                                    th { style: TH, {tr!("admin-collection-processing-status")} }
+                                    th { style: TH, {tr!("admin-collection-processing-started")} }
+                                    th { style: TH, {tr!("admin-collection-processing-closed")} }
+                                    th { style: TH, {tr!("admin-collection-processing-temporal")} }
                                 }
                             }
                             tbody {
@@ -818,7 +809,7 @@ fn WorkflowsPanel(workflows: Load<Vec<WorkflowSummary>>, filter: Signal<Workflow
                                         td { style: TD, "{wf.start_time}" }
                                         td { style: TD, {wf.close_time.clone().unwrap_or_else(|| "\u{2014}".to_string())} }
                                         td { style: TD,
-                                            a { href: "{wf.temporal_url}", target: "_blank", style: LINK, "open \u{2197}" }
+                                            a { href: "{wf.temporal_url}", target: "_blank", style: LINK, {tr!("admin-collection-processing-open-u")} }
                                         }
                                     }
                                 }
@@ -841,24 +832,24 @@ fn TaskFailuresPanel(
 ) -> Element {
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Failed tasks" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-collection-processing-failed-tasks")} }
             div { style: MODULE_BODY,
                 match failures {
-                    Load::Pending => rsx! { "Loading\u{2026}" },
+                    Load::Pending => rsx! { {tr!("admin-collection-processing-loading-u")} },
                     Load::Failed(e) => rsx! { PanelError { message: e } },
                     Load::Ready(list) if list.is_empty() => rsx! {
-                        p { style: HELP_TEXT, "No task failures recorded." }
+                        p { style: HELP_TEXT, {tr!("admin-collection-processing-no-task-failures-recorded")} }
                     },
                     Load::Ready(list) => rsx! {
                         table { style: TABLE,
                             thead {
                                 tr {
-                                    th { style: TH, "Task" }
-                                    th { style: TH, "Dataset" }
-                                    th { style: TH, "Errors" }
-                                    th { style: TH, "Documents" }
-                                    th { style: TH, "Last seen" }
-                                    th { style: TH, "Sample" }
+                                    th { style: TH, {tr!("admin-collection-processing-task")} }
+                                    th { style: TH, {tr!("admin-collection-processing-dataset")} }
+                                    th { style: TH, {tr!("admin-collection-processing-errors")} }
+                                    th { style: TH, {tr!("admin-collection-processing-documents")} }
+                                    th { style: TH, {tr!("admin-collection-processing-last-seen")} }
+                                    th { style: TH, {tr!("admin-collection-processing-sample")} }
                                     th { style: TH, "" }
                                 }
                             }
@@ -888,7 +879,7 @@ fn TaskFailuresPanel(
                                                             msg.set(None);
                                                             error_msg.set(None);
                                                             match admin_retry_failed_task(cname, ds, task).await {
-                                                                Ok(run) => msg.set(Some(format!("Retry started (run {run}).")))
+                                                                Ok(run) => msg.set(Some(tr!("admin-collection-processing-retry-started-run", run: run.to_string())))
                                                                 ,
                                                                 Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                                             }
@@ -896,7 +887,7 @@ fn TaskFailuresPanel(
                                                         });
                                                     }
                                                 },
-                                                "Retry"
+                                                {tr!("admin-collection-processing-retry")}
                                             }
                                         }
                                     }
@@ -920,23 +911,23 @@ fn DocumentFailuresPanel(
 ) -> Element {
     rsx! {
         div { class: "x-admin-module", style: MODULE,
-            h2 { style: MODULE_CAPTION, "Failures per document" }
+            h2 { style: MODULE_CAPTION, {tr!("admin-collection-processing-failures-per-document")} }
             div { style: MODULE_BODY,
                 match failures {
-                    Load::Pending => rsx! { "Loading\u{2026}" },
+                    Load::Pending => rsx! { {tr!("admin-collection-processing-loading-u")} },
                     Load::Failed(e) => rsx! { PanelError { message: e } },
                     Load::Ready(list) if list.is_empty() => rsx! {
-                        p { style: HELP_TEXT, "No document failures recorded." }
+                        p { style: HELP_TEXT, {tr!("admin-collection-processing-no-document-failures-recorded")} }
                     },
                     Load::Ready(list) => rsx! {
                         table { style: TABLE,
                             thead {
                                 tr {
-                                    th { style: TH, "Document" }
-                                    th { style: TH, "Dataset" }
-                                    th { style: TH, "Failed tasks" }
-                                    th { style: TH, "Errors" }
-                                    th { style: TH, "Last seen" }
+                                    th { style: TH, {tr!("admin-collection-processing-document")} }
+                                    th { style: TH, {tr!("admin-collection-processing-dataset")} }
+                                    th { style: TH, {tr!("admin-collection-processing-failed-tasks")} }
+                                    th { style: TH, {tr!("admin-collection-processing-errors")} }
+                                    th { style: TH, {tr!("admin-collection-processing-last-seen")} }
                                     th { style: TH, "" }
                                 }
                             }
@@ -945,7 +936,7 @@ fn DocumentFailuresPanel(
                                     tr { key: "{f.collection_dataset}-{f.hash}",
                                         td { style: TD,
                                             if f.hash.is_empty() {
-                                                span { style: HELP_TEXT, "dataset-level" }
+                                                span { style: HELP_TEXT, {tr!("admin-collection-processing-dataset-level")} }
                                             } else {
                                                 div {
                                                     div { style: "font-family: monospace; font-size: var(--x-text-xs);", "{f.hash}" }
@@ -977,14 +968,14 @@ fn DocumentFailuresPanel(
                                                                 msg.set(None);
                                                                 error_msg.set(None);
                                                                 match admin_retry_document(cname, ds, hash).await {
-                                                                    Ok(run) => msg.set(Some(format!("Document retry started (run {run})."))),
+                                                                    Ok(run) => msg.set(Some(tr!("admin-collection-processing-document-retry-started-run", run: run.to_string()))),
                                                                     Err(e) => error_msg.set(Some(user_facing_message(&e))),
                                                                 }
                                                                 on_retry.call(());
                                                             });
                                                         }
                                                     },
-                                                    "Retry"
+                                                    {tr!("admin-collection-processing-retry")}
                                                 }
                                             }
                                         }

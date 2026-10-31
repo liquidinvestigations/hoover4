@@ -2,6 +2,7 @@
 //! way out to a status code, and a `ServerFnError` on its way to a reader.
 
 use dioxus::prelude::ServerFnError;
+use crate::tr;
 
 /// The one sentence to put in front of a reader when a server call failed.
 ///
@@ -14,11 +15,11 @@ use dioxus::prelude::ServerFnError;
 /// how a Rust struct ends up printed across the pagination of a search page.
 pub fn user_facing_message(error: &ServerFnError) -> String {
     match error {
-        ServerFnError::ServerError { message, .. } => message.clone(),
+        ServerFnError::ServerError { message, .. } => crate::i18n::tr_shared(message),
         // The client could not reach the server at all, so the server's wording for it
         // does not exist and the transport detail helps nobody.
         ServerFnError::Request(_) => {
-            "Could not reach the server. Check your connection and try again.".to_string()
+            tr!("api-error-util-could-not-reach-the-server")
         }
         other => other.to_string(),
     }

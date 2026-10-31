@@ -25,6 +25,7 @@ use crate::components::chat_components::tool_cards::{
     json_str, tool_content, tool_failure, CardShell,
 };
 use crate::routes::Route;
+use crate::tr;
 
 /// Model-found values rendered before the rest become a count.
 ///
@@ -139,10 +140,7 @@ pub fn EntitiesCard(
         })
         .unwrap_or(1);
     let count = if running { asked_for } else { documents.len().max(1) };
-    let label = format!(
-        "listed entities \u{b7} {count} document{}",
-        if count == 1 { "" } else { "s" }
-    );
+    let label = tr!("cards-entities-card-listed-entities-document", count: count.to_string(), if_count_1_else_s: (if count == 1 { "" } else { "s" }).to_string());
     let openable: usize = documents
         .iter()
         .filter(|d| datasets.contains_key(&d.file_hash))
@@ -162,7 +160,7 @@ pub fn EntitiesCard(
                     span {
                         style: "flex-shrink: 0; font-size: var(--x-text-xs); color: var(--x-ink-strong); \
                                 background: #E5E7EB; border-radius: 999px; padding: 1px 8px;",
-                        "{openable} with a card"
+                        {tr!("cards-entities-card-with-a-card", openable: openable.to_string())}
                     }
                 }
             },
@@ -209,7 +207,7 @@ fn DocumentEntityRow(
                 div { style: "font-size: var(--x-text-xs); color: var(--x-danger);", "{document.error}" }
             }
             if document.truncated {
-                div { style: "font-size: var(--x-text-xs); color: var(--x-ink);", "The entity list was cut." }
+                div { style: "font-size: var(--x-text-xs); color: var(--x-ink);", {tr!("cards-entities-card-the-entity-list-was-cut")} }
             }
             if !document.structured.is_empty() {
                 div {
@@ -219,7 +217,7 @@ fn DocumentEntityRow(
                             Link {
                                 key: "s{value}",
                                 to: Route::entity_card(identifier, value.clone()),
-                                title: "Open the card for this value ({rule_id})",
+                                title: tr!("cards-entities-card-open-the-card-for-this", rule_id: rule_id.to_string()),
                                 style: "border: 1px solid; border-color: var(--x-border); background: #F8FAFC; \
                                         border-radius: 999px; padding: 1px 9px; \
                                         font-size: var(--x-text-xs); color: var(--x-ink); \
@@ -242,8 +240,7 @@ fn DocumentEntityRow(
                 if identifier.is_none() {
                     div {
                         style: "font-size: var(--x-text-xs); color: var(--x-ink); margin-top: 4px;",
-                        "No card: this conversation never named the dataset these values \
-                         came from, and the viewer is addressed by dataset."
+                        {tr!("cards-entities-card-no-card-this-conversation-never")}
                     }
                 }
             }
@@ -265,19 +262,17 @@ fn DocumentEntityRow(
                     if document.model_found.len() > MODEL_VALUES_SHOWN {
                         {
                             let rest = document.model_found.len() - MODEL_VALUES_SHOWN;
-                            rsx! { "{rest} more, all of them in the document's entities panel. " }
+                            rsx! { {tr!("cards-entities-card-more-all-of-them-in", rest: rest.to_string())} }
                         }
                     }
-                    "Names, organisations and places above are a model's reading of the \
-                     prose. No rule validated them, so there is nothing to explain and \
-                     they open nothing."
+                    {tr!("cards-entities-card-names-organisations-and-places-above")}
                 }
             }
             if document.structured.is_empty() && document.model_found.is_empty()
                 && document.error.is_empty() {
                 div {
                     style: "font-size: var(--x-text-xs); color: var(--x-ink);",
-                    "Nothing extracted from this document."
+                    {tr!("cards-entities-card-nothing-extracted-from-this-document")}
                 }
             }
         }

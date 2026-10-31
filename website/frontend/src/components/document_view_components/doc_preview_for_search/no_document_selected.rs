@@ -3,6 +3,7 @@
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
 use dioxus_free_icons::icons::md_action_icons::MdSearchOff;
+use crate::tr;
 
 #[component]
 pub fn NoDocumentSelected() -> Element {
@@ -33,11 +34,11 @@ pub fn NoDocumentSelected() -> Element {
                 }
                 div {
                     style: "font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 500; color:rgb(0, 0, 0);",
-                    "No document selected"
+                    {tr!("no-document-selected-no-document-selected")}
                 }
                 div {
                     style: "font-size: var(--x-text-body); line-height: var(--x-line-body); font-weight: 400; color:rgba(0, 0, 0, 0.5);",
-                    "Please select a document from the list to display its preview here."
+                    {tr!("no-document-selected-please-select-a-document-from")}
                 }
             }
         }

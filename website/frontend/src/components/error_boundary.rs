@@ -5,6 +5,7 @@
 //! surfaced errors structurally instead of guessing from the words on screen.
 
 use dioxus::prelude::*;
+use crate::tr;
 
 #[component]
 pub fn GlobalErrorBoundary(boundary_name: ReadSignal<String>, children: Element) -> Element {
@@ -15,16 +16,16 @@ pub fn GlobalErrorBoundary(boundary_name: ReadSignal<String>, children: Element)
                     h1 {
                         class: "x-error-display",
                         style: "color:red; font-size: var(--x-text-page); border: 1px solid red; padding: 10px; border-radius: 5px; margin: 15px;",
-                        "Error",
+                        {tr!("error-boundary-error")},
                     }
                     p {
                         style: "color:darkred; font-size: var(--x-text-section); border: 1px solid red; padding: 10px; border-radius: 5px; margin: 15px;",
-                        "Boundary: {boundary_name}"
+                        {tr!("error-boundary-boundary", boundary_name: boundary_name.to_string())}
                     }
                     a {
                         href: "/",
                         style: "color:blue; font-size: var(--x-text-section); border: 1px solid blue; padding: 10px; border-radius: 5px; margin: 15px;",
-                        "Return to Home Page"
+                        {tr!("error-boundary-return-to-home-page")}
                     }
                     pre {
                         style: "color:black; border: 1px solid red; padding: 10px; border-radius: 5px; margin: 15px; text-wrap: auto;",
@@ -46,7 +47,7 @@ pub fn ComponentErrorBoundary(children: Element) -> Element {
                 let error_txt = if let Some(err) = error {
                     format!("{:#?}", err.0)
                 } else {
-                    "Unknown error".to_string()
+                    {tr!("error-boundary-unknown-error")}.to_string()
                 };
                 rsx! {
                     ComponentErrorDisplay {
@@ -56,7 +57,7 @@ pub fn ComponentErrorBoundary(children: Element) -> Element {
                             onclick: move |_| {
                                 _err.clear_errors();
                             },
-                            "Try Again"
+                            {tr!("error-boundary-try-again")}
                         }
                     }
                 }
@@ -91,7 +92,7 @@ pub fn ComponentErrorDisplay(error_txt: String, children: Element) -> Element {
 
             h1 {
                 style: "color:red; font-size: var(--x-text-page); border: 1px solid red; padding: 10px; border-radius: 5px; margin: 5px;",
-                "Component Error",
+                {tr!("error-boundary-component-error")},
             }
 
             pre {
@@ -128,9 +129,9 @@ pub fn ServerErrorDisplay(error: ServerFnError) -> Element {
     let user_input = crate::api::error_util::is_user_input_error(&error);
 
     let heading = if user_input {
-        "This search cannot run"
+        tr!("error-boundary-this-search-cannot-run")
     } else {
-        "Component Error"
+        tr!("error-boundary-component-error")
     };
     let heading_style = if user_input {
         "font-size: var(--x-text-section); font-weight: 600; color: rgba(0, 0, 0, 0.8);"

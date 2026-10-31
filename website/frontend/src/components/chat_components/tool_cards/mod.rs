@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use dioxus::prelude::*;
 
 use crate::components::chat_components::tool_disclosure::ToolCallDisclosure;
+use crate::tr;
 
 /// Rows of an old or current result page.
 #[derive(Debug, Clone, PartialEq)]
@@ -102,14 +103,14 @@ pub fn ToolCard(
         },
         "read_more" if read_more_source.as_ref().is_some_and(|(name, _, _)| matches!(name.as_str(), "search_collections" | "search_passages" | "list_collections")) => rsx! {
             result_cards::SearchCard {
-                tool_name: read_more_source.as_ref().map(|(name, seq, part)| format!("read_more · part {part} of {name} #{seq}")).unwrap_or_default(),
+                tool_name: read_more_source.as_ref().map(|(name, seq, part)| tr!("chat-tool-cards-read-more-part-of", part: part.to_string(), name: name.to_string(), seq: seq.to_string())).unwrap_or_default(),
                 tool_input, tool_output, running, doc_refs,
             }
         },
         "read_documents" | "read_more" => rsx! {
             result_cards::ReadCard {
                 tool_name: if tool_name == "read_more" {
-                    read_more_source.as_ref().map(|(name, seq, part)| format!("read_more · part {part} of {name} #{seq}"))
+                    read_more_source.as_ref().map(|(name, seq, part)| tr!("chat-tool-cards-read-more-part-of", part: part.to_string(), name: name.to_string(), seq: seq.to_string()))
                         .unwrap_or_else(|| "read_more · an earlier result".to_string())
                 } else { tool_name },
                 tool_input, tool_output, running, doc_refs,
@@ -494,8 +495,8 @@ pub fn ToolImages(refs: Vec<common::chat_types::ShownImage>, #[props(default)] t
         .filter(|s| s.image.kind == "document" || (s.image.kind == "capture" && !browser_card))
         .filter_map(|s| {
             let r = &s.image;
-            let what = if r.video { "First frame of the video" }
-                else if r.kind == "capture" { "Screenshot of" } else { "Image" };
+            let what = if r.video { tr!("chat-tool-cards-first-frame-of-the-video") }
+                else if r.kind == "capture" { tr!("chat-tool-cards-screenshot-of") } else { tr!("chat-tool-cards-image") };
             let received = if s.sent_to_model { " that the model received" } else { "" };
             r.url().map(|url| (url, format!("{what} {}{received}", r.label)))
         })
@@ -574,7 +575,7 @@ pub fn CardShell(
                 if running {
                     span {
                         style: "flex-shrink: 0; font-size: var(--x-text-xs); font-style: italic; color: var(--x-ink-muted);",
-                        "running\u{2026}"
+                        {tr!("chat-tool-cards-running-u")}
                     }
                 } else {
                     button {
@@ -585,7 +586,7 @@ pub fn CardShell(
                             let next = !*expanded.peek();
                             expanded.set(next);
                         },
-                        if *expanded.read() { "Hide" } else { "Expand" }
+                        if *expanded.read() { {tr!("chat-tool-cards-hide")} } else { {tr!("chat-tool-cards-expand")} }
                     }
                 }
             }
@@ -600,7 +601,7 @@ pub fn CardShell(
                                 let next = !*show_raw.peek();
                                 show_raw.set(next);
                             },
-                            if *show_raw.read() { "Hide raw JSON" } else { "Show raw JSON" }
+                            if *show_raw.read() { {tr!("chat-tool-cards-hide-raw-json")} } else { {tr!("chat-tool-cards-show-raw-json")} }
                         }
                         if *show_raw.read() {
                             pre { style: "white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow: auto;", "{raw_output}" }

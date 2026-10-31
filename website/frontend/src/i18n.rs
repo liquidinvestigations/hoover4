@@ -1,37 +1,59 @@
 //! Interface languages: the Fluent catalogs, the bundle of the active language, and the
 //! `tr!` macro that reads it.
 //!
-//! Each language has `i18n/<code>/main.ftl`. A bundle holds the English catalog and then
+//! Each language has the files `main`, `search`, `document`, `storage`, `chat`, `admin` and
+//! `shared` in `i18n/<code>/`. A bundle holds the English catalog and then
 //! the selected catalog, so a message that a translation lacks shows in English. The
 //! server renders the page in the language that `language_settings` resolves, and the
 //! client starts from the same serialized value, so hydration finds the same text.
 
 use common::language::{DEFAULT_LANGUAGE, LANGUAGES, LanguageSettings};
 use dioxus::prelude::*;
-use dioxus_i18n::fluent::{FluentBundle, FluentResource};
+use dioxus_i18n::fluent::{FluentArgs, FluentBundle, FluentResource};
 use dioxus_i18n::prelude::{I18nBundle, use_init_i18n_from_bundle};
 use dioxus_i18n::unic_langid::LanguageIdentifier;
 
+/// The catalog files of one language, joined. Each area of the interface has one file.
+macro_rules! catalog {
+    ($code:literal) => {
+        concat!(
+            include_str!(concat!("../i18n/", $code, "/main.ftl")),
+            "\n",
+            include_str!(concat!("../i18n/", $code, "/search.ftl")),
+            "\n",
+            include_str!(concat!("../i18n/", $code, "/document.ftl")),
+            "\n",
+            include_str!(concat!("../i18n/", $code, "/storage.ftl")),
+            "\n",
+            include_str!(concat!("../i18n/", $code, "/chat.ftl")),
+            "\n",
+            include_str!(concat!("../i18n/", $code, "/admin.ftl")),
+            "\n",
+            include_str!(concat!("../i18n/", $code, "/shared.ftl")),
+        )
+    };
+}
+
 /// The catalog text of each supported language, in the order of `LANGUAGES`.
 pub const CATALOGS: [(&str, &str); 18] = [
-    ("en", include_str!("../i18n/en/main.ftl")),
-    ("de", include_str!("../i18n/de/main.ftl")),
-    ("es", include_str!("../i18n/es/main.ftl")),
-    ("fr", include_str!("../i18n/fr/main.ftl")),
-    ("pl", include_str!("../i18n/pl/main.ftl")),
-    ("pt", include_str!("../i18n/pt/main.ftl")),
-    ("ar", include_str!("../i18n/ar/main.ftl")),
-    ("he", include_str!("../i18n/he/main.ftl")),
-    ("hi", include_str!("../i18n/hi/main.ftl")),
-    ("zh", include_str!("../i18n/zh/main.ftl")),
-    ("it", include_str!("../i18n/it/main.ftl")),
-    ("nl", include_str!("../i18n/nl/main.ftl")),
-    ("da", include_str!("../i18n/da/main.ftl")),
-    ("nb", include_str!("../i18n/nb/main.ftl")),
-    ("sv", include_str!("../i18n/sv/main.ftl")),
-    ("el", include_str!("../i18n/el/main.ftl")),
-    ("hr", include_str!("../i18n/hr/main.ftl")),
-    ("ro", include_str!("../i18n/ro/main.ftl")),
+    ("en", catalog!("en")),
+    ("de", catalog!("de")),
+    ("es", catalog!("es")),
+    ("fr", catalog!("fr")),
+    ("pl", catalog!("pl")),
+    ("pt", catalog!("pt")),
+    ("ar", catalog!("ar")),
+    ("he", catalog!("he")),
+    ("hi", catalog!("hi")),
+    ("zh", catalog!("zh")),
+    ("it", catalog!("it")),
+    ("nl", catalog!("nl")),
+    ("da", catalog!("da")),
+    ("nb", catalog!("nb")),
+    ("sv", catalog!("sv")),
+    ("el", catalog!("el")),
+    ("hr", catalog!("hr")),
+    ("ro", catalog!("ro")),
 ];
 
 /// Arabic and Hebrew wrap each inserted value in Unicode isolation marks, so a Latin
@@ -123,26 +145,175 @@ pub fn flag_src(code: &str) -> String {
     format!("/assets/flags/{code}.svg")
 }
 
-/// Translate a catalog message. Arguments use the Fluent variable names:
-/// `tr!("search-found", count: total)`. A missing message or a bad argument logs an
-/// error and shows the message id, so a catalog defect never stops the page.
+thread_local! {
+    /// The English bundle for text that is formatted outside a rendered page, such as in a
+    /// unit test.
+    static ENGLISH: FluentBundle<FluentResource> = bundle(DEFAULT_LANGUAGE);
+}
+
+/// The text of catalog message `id` in the active language. Outside a rendered page it
+/// uses English. A missing message or a bad argument logs an error and returns `id`, so a
+/// catalog defect never stops the page.
+pub fn translate(id: &str, args: Option<&FluentArgs>) -> String {
+    let in_scope = dioxus::core::Runtime::try_current().is_some_and(|runtime| runtime.try_current_scope_id().is_some());
+    let active = if in_scope { try_consume_context::<I18nBundle>() } else { None };
+    let result = match active {
+        Some(bundle) => bundle.try_translate_with_args(id, args).map_err(|error| error.to_string()),
+        None => ENGLISH.with(|bundle| {
+            // i18n: data, the log text of a catalog defect
+            let message = bundle.get_message(id).ok_or_else(|| format!("no message {id}"))?;
+            // i18n: data, the log text of a catalog defect
+            let pattern = message.value().ok_or_else(|| format!("message {id} has no value"))?;
+            let mut errors = vec![];
+            let text = bundle.format_pattern(pattern, args, &mut errors).to_string();
+            if errors.is_empty() { Ok(text) } else { Err(format!("{errors:?}")) }
+        }),
+    };
+    result.unwrap_or_else(|error| {
+        dioxus::logger::tracing::error!("translation {id}: {error}");
+        id.to_string()
+    })
+}
+
+/// One part of an English `shared` message: literal text or a variable.
+enum SharedPart {
+    Text(String),
+    Variable(String),
+}
+
+/// The English `shared` messages, as id and parts, for `tr_shared`.
+fn shared_patterns() -> Vec<(String, Vec<SharedPart>)> {
+    let english = include_str!("../i18n/en/shared.ftl");
+    let mut patterns: Vec<(String, Vec<SharedPart>)> = english
+        .lines()
+        .filter_map(|line| line.split_once(" = "))
+        .filter(|(id, _)| id.starts_with("shared-"))
+        .map(|(id, value)| {
+            let mut parts = Vec::new();
+            let value = value.replace("{\" \"}", " ");
+            let mut rest = value.as_str();
+            while let Some(start) = rest.find("{ $") {
+                if start > 0 {
+                    parts.push(SharedPart::Text(rest[..start].to_string()));
+                }
+                let end = rest[start..].find('}').map(|end| start + end).unwrap_or(rest.len() - 1);
+                parts.push(SharedPart::Variable(rest[start + 3..end].trim().to_string()));
+                rest = &rest[end + 1..];
+            }
+            if !rest.is_empty() {
+                parts.push(SharedPart::Text(rest.to_string()));
+            }
+            (id.to_string(), parts)
+        })
+        // A pattern with variables needs three literal letters, so a pattern such as
+        // `{ $a } { $b }` cannot match every text. Longer literal text is tried first.
+        .filter(|(_, parts)| literal_letters(parts) >= 3 || parts.iter().all(|part| matches!(part, SharedPart::Text(_))))
+        .collect();
+    patterns.sort_by_key(|(_, parts)| std::cmp::Reverse(literal_letters(parts)));
+    patterns
+}
+
+fn literal_letters(parts: &[SharedPart]) -> usize {
+    parts.iter().map(|part| match part {
+        SharedPart::Text(text) => text.chars().filter(|c| c.is_alphabetic()).count(),
+        SharedPart::Variable(_) => 0,
+    }).sum()
+}
+
+
+
+thread_local! {
+    static SHARED: Vec<(String, Vec<SharedPart>)> = shared_patterns();
+}
+
+/// The variable values of `text` under one English pattern, or `None` when it does not
+/// match. A variable takes the text up to the first occurrence of the literal after it.
+fn match_shared(parts: &[SharedPart], text: &str) -> Option<Vec<(String, String)>> {
+    let mut values = Vec::new();
+    let mut rest = text;
+    let mut index = 0;
+    while index < parts.len() {
+        match &parts[index] {
+            SharedPart::Text(literal) => rest = rest.strip_prefix(literal.as_str())?,
+            SharedPart::Variable(name) => {
+                let value = match parts.get(index + 1) {
+                    Some(SharedPart::Text(next)) if index + 2 == parts.len() => rest.strip_suffix(next.as_str())?,
+                    Some(SharedPart::Text(next)) => &rest[..rest.find(next.as_str())?],
+                    _ => rest,
+                };
+                values.push((name.clone(), value.to_string()));
+                rest = &rest[value.len()..];
+            }
+        }
+        index += 1;
+    }
+    rest.is_empty().then_some(values)
+}
+
+/// The translation of English text that the shared Rust code or the server produced, such
+/// as a source label or a correctable error. The text is matched against the English
+/// `shared` messages, and the matching message is shown in the active language with the
+/// same values. Text without a matching message stays in English.
+pub fn tr_shared(english: &str) -> String {
+    let found = SHARED.with(|patterns| {
+        patterns.iter().find_map(|(id, parts)| match_shared(parts, english).map(|values| (id.clone(), values)))
+    });
+    match found {
+        Some((id, values)) => {
+            let mut args = FluentArgs::new();
+            for (name, value) in values {
+                // A value can be shared text itself, such as the OCR part of a PDF label.
+                args.set(name, if value.is_empty() { value } else { tr_shared(&value) });
+            }
+            translate(&id, Some(&args))
+        }
+        None => english.to_string(),
+    }
+}
+
+/// `tr_shared` for the text types that shared Rust code returns.
+pub trait SharedText {
+    type Output;
+    /// The text in the active language, through `tr_shared`.
+    fn shared(self) -> Self::Output;
+}
+
+impl SharedText for &str {
+    type Output = String;
+    fn shared(self) -> String {
+        tr_shared(self)
+    }
+}
+
+impl SharedText for String {
+    type Output = String;
+    fn shared(self) -> String {
+        tr_shared(&self)
+    }
+}
+
+impl<T: AsRef<str>> SharedText for Option<T> {
+    type Output = Option<String>;
+    fn shared(self) -> Option<String> {
+        self.map(|text| tr_shared(text.as_ref()))
+    }
+}
+
+/// Translate a catalog message with `translate`. Arguments use the Fluent variable names:
+/// `tr!("search-found", count: total)`.
 #[macro_export]
 macro_rules! tr {
     ($id:expr $(, $name:ident : $value:expr )* $(,)?) => {{
-        match dioxus_i18n::te!($id $(, $name : $value )*) {
-            Ok(text) => text,
-            Err(error) => {
-                dioxus::logger::tracing::error!("translation {}: {}", $id, error);
-                String::from($id)
-            }
-        }
+        #[allow(unused_mut)]
+        let mut args = dioxus_i18n::fluent::FluentArgs::new();
+        $( args.set(stringify!($name), $value); )*
+        $crate::i18n::translate($id, Some(&args))
     }};
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dioxus_i18n::fluent::FluentArgs;
 
     /// The messages of a catalog with the sorted variable names that each one uses. A
     /// message starts with an identifier in the first column, and its indented lines
@@ -187,6 +358,21 @@ mod tests {
                 assert_eq!(&vars, expected, "{code}: {id} uses other variables than English");
             }
         }
+    }
+
+    #[test]
+    fn shared_text_matches_its_english_message() {
+        assert_eq!(tr_shared("Virus found: Eicar-Test-Signature."), "Virus found: Eicar-Test-Signature.");
+        let parts = SHARED.with(|patterns| {
+            patterns.iter().position(|(id, _)| id == "shared-antivirus-virus-found").is_some()
+        });
+        assert!(parts);
+        let matched = SHARED.with(|patterns| {
+            let (_, parts) = patterns.iter().find(|(id, _)| id == "shared-antivirus-virus-found").unwrap();
+            match_shared(parts, "Virus found: Eicar-Test-Signature.")
+        });
+        assert_eq!(matched, Some(vec![("value".to_string(), "Eicar-Test-Signature".to_string())]));
+        assert_eq!(tr_shared("Text that no message has."), "Text that no message has.");
     }
 
     #[test]

@@ -64,6 +64,7 @@ use crate::components::search_components::search_panel_left_view::SearchResultsS
 use crate::data_definitions::doc_viewer_state::DocViewerState;
 use crate::pages::admin::llm_reports::format_utc_ms;
 use crate::routes::Route;
+use crate::tr;
 
 /// Seconds between two reads while the board is active or an explore runs.
 const LIVE_POLL_SECONDS: u64 = 3;
@@ -79,7 +80,7 @@ pub fn AiBoardPage(board_id: String, selected: String, zoom: String, assessment:
     // No top padding: the header row has the height of the logo box of the left bar, so the
     // two share one middle line (`HEADER_HEIGHT`).
     rsx! {
-        Title { "Hoover Search - Board" }
+        Title { {tr!("ai-chat-board-hoover-search-board")} }
         div {
             style: "width: 100%; height: 100%; background: #F5F6F8; box-sizing: border-box; padding: 0 23px 15px; overflow: auto; font-family: var(--x-font); font-size: var(--x-text-body); line-height: var(--x-line-body); color: var(--x-ink);",
             BoardExplorer { board_id, selected, zoom, assessment }
@@ -141,12 +142,12 @@ struct PanStart {
 #[component]
 pub fn StatusText(status: String) -> Element {
     let (label, colour) = match status.as_str() {
-        "active" => ("Active", "var(--x-link)"),
-        "paused" => ("Paused", "var(--x-ink-muted)"),
-        "review" => ("Waits for review", "var(--x-danger)"),
-        "completed" => ("Completed", "var(--x-ok)"),
-        "dropped" => ("Dropped", "var(--x-ink-muted)"),
-        _ => ("Unknown", "var(--x-ink-muted)"),
+        "active" => (tr!("ai-chat-board-active"), "var(--x-link)"),
+        "paused" => (tr!("ai-chat-board-paused"), "var(--x-ink-muted)"),
+        "review" => (tr!("ai-chat-board-waits-for-review"), "var(--x-danger)"),
+        "completed" => (tr!("ai-chat-board-completed"), "var(--x-ok)"),
+        "dropped" => (tr!("ai-chat-board-dropped"), "var(--x-ink-muted)"),
+        _ => (tr!("ai-chat-board-unknown"), "var(--x-ink-muted)"),
     };
     rsx! { span { style: "color: {colour}; font-weight: 500;", "{label}" } }
 }
@@ -331,7 +332,7 @@ fn BoardExplorer(
             if let Some(err) = error.read().clone() {
                 ErrorBar { message: err }
             } else {
-                p { style: HELP_TEXT, "Loading the board\u{2026}" }
+                p { style: HELP_TEXT, {tr!("ai-chat-board-loading-the-board-u")} }
             }
         };
     };
@@ -480,18 +481,18 @@ fn BoardExplorer(
                     }
                 }
                 if !selected_id.is_empty() {
-                    button { class: "x-board-overview-open", onclick: move |_| on_select.call(String::new()), "Show the board overview" }
+                    button { class: "x-board-overview-open", onclick: move |_| on_select.call(String::new()), {tr!("ai-chat-board-show-the-board-overview")} }
                 }
                 div { class: "x-board-zoom",
                     button {
-                        "aria-label": "Zoom out", title: "Zoom out",
+                        "aria-label": "Zoom out", title: tr!("ai-chat-board-zoom-out"),
                         disabled: zoom_out.is_none(),
                         onclick: move |_| if let Some(next) = zoom_out { set_zoom.call(next) },
                         Icon { icon: MdRemove, style: "width: 15px; height: 15px;" }
                     }
                     span { class: "x-board-zoom-level", "{level}%" }
                     button {
-                        "aria-label": "Zoom in", title: "Zoom in",
+                        "aria-label": "Zoom in", title: tr!("ai-chat-board-zoom-in"),
                         disabled: zoom_in.is_none(),
                         onclick: move |_| if let Some(next) = zoom_in { set_zoom.call(next) },
                         Icon { icon: MdAdd, style: "width: 15px; height: 15px;" }
@@ -535,11 +536,11 @@ const SECTION: &str = "margin: 0 0 8px; font-size: var(--x-text-section); line-h
 fn BoardHeader(snap: BoardSnapshot, on_settings: EventHandler<()>) -> Element {
     rsx! {
         div { class: "x-board-header", style: "height: {HEADER_HEIGHT}; margin-bottom: 4px;",
-            Link { to: Route::AiChatPage {}, style: "color: var(--x-link); text-decoration: none;", "\u{2190} AI Chat" }
+            Link { to: Route::AiChatPage {}, style: "color: var(--x-link); text-decoration: none;", {tr!("ai-chat-board-u-ai-chat")} }
             h1 { "{snap.board.title}" }
             StatusText { status: snap.status.clone() }
             span { style: "flex: 1;" }
-            button { class: "x-board-settings-open", style: BTN, onclick: move |_| on_settings.call(()), "Settings" }
+            button { class: "x-board-settings-open", style: BTN, onclick: move |_| on_settings.call(()), {tr!("ai-chat-board-settings")} }
         }
     }
 }
@@ -562,8 +563,8 @@ fn BoardSettings(
     let web_only = snap.board.collections.is_empty();
     let collections = collections_text(&snap.board.collections);
     let pause_label = match snap.status.as_str() {
-        "active" => Some(("Pause the board", true)),
-        "paused" => Some(("Resume the board", false)),
+        "active" => Some((tr!("ai-chat-board-pause-the-board"), true)),
+        "paused" => Some((tr!("ai-chat-board-resume-the-board"), false)),
         _ => None,
     };
     rsx! {
@@ -574,17 +575,17 @@ fn BoardSettings(
                 class: "x-board-settings",
                 style: "background: white; border-radius: 10px; padding: 18px 20px; width: 460px; max-width: 92%; box-shadow: 0 8px 30px rgba(0,0,0,0.2);",
                 onclick: move |e| e.stop_propagation(),
-                div { style: "font-size: var(--x-text-section); font-weight: 600; margin-bottom: 10px;", "Board settings" }
+                div { style: "font-size: var(--x-text-section); font-weight: 600; margin-bottom: 10px;", {tr!("ai-chat-board-board-settings")} }
                 if internet_tools_enabled {
                     label { style: "display: flex; gap: 8px; align-items: center; font-size: var(--x-text-body);",
                         // A disabled input shows no tooltip in some browsers, so the label holds it too.
-                        title: if web_only { "A board without collections needs internet tools." } else { "" },
+                        title: if web_only { tr!("ai-chat-board-a-board-without-collections-needs") } else { "" },
                         input {
                             class: "x-board-internet-tools",
                             r#type: "checkbox",
                             checked: snap.board.internet_tools,
                             disabled: finished || busy() || web_only,
-                            title: if web_only { "A board without collections needs internet tools." } else { "" },
+                            title: if web_only { tr!("ai-chat-board-a-board-without-collections-needs") } else { "" },
                             onchange: {
                                 let id = board_id.clone();
                                 move |e: FormEvent| {
@@ -598,13 +599,13 @@ fn BoardSettings(
                                 }
                             },
                         }
-                        "Internet tools"
+                        {tr!("ai-chat-board-internet-tools")}
                     }
-                    p { style: HELP_TEXT, "The next explores of the board can search the web and read web pages. Running explores keep the setting they started with." }
+                    p { style: HELP_TEXT, {tr!("ai-chat-board-the-next-explores-of-the")} }
                 }
-                div { style: SUBHEADING, "Collections" }
+                div { style: SUBHEADING, {tr!("ai-chat-board-collections")} }
                 p { style: "margin: 4px 0;", "{collections}" }
-                p { style: HELP_TEXT, "The collections are fixed when the board is created." }
+                p { style: HELP_TEXT, {tr!("ai-chat-board-the-collections-are-fixed-when")} }
                 div { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 14px;",
                     if let Some((label, paused)) = pause_label {
                         button {
@@ -639,13 +640,13 @@ fn BoardSettings(
                                     });
                                 }
                             },
-                            "Confirm drop"
+                            {tr!("ai-chat-board-confirm-drop")}
                         }
                     } else if snap.status != "dropped" {
-                        button { style: BTN_SMALL_DANGER, onclick: move |_| confirm_drop.set(true), "Drop the board" }
+                        button { style: BTN_SMALL_DANGER, onclick: move |_| confirm_drop.set(true), {tr!("ai-chat-board-drop-the-board")} }
                     }
                     span { style: "flex: 1;" }
-                    button { style: BTN_PRIMARY, onclick: move |_| on_close.call(()), "Close" }
+                    button { style: BTN_PRIMARY, onclick: move |_| on_close.call(()), {tr!("ai-chat-board-close")} }
                 }
             }
         }
@@ -655,7 +656,7 @@ fn BoardSettings(
 /// The collections of a board as one line, or "None" for a board without collections.
 fn collections_text(collections: &[String]) -> String {
     if collections.is_empty() {
-        "None".to_string()
+        tr!("ai-chat-board-none")
     } else {
         collections.join(", ")
     }
@@ -664,9 +665,9 @@ fn collections_text(collections: &[String]) -> String {
 /// The button text of a reopening that adds `grant` explores.
 fn reopen_label(grant: u32) -> String {
     if grant == 0 {
-        "Reopen with the remaining budget".to_string()
+        tr!("ai-chat-board-reopen-with-the-remaining-budget")
     } else {
-        format!("Reopen with {grant} more explores")
+        tr!("ai-chat-board-reopen-with-more", grant: grant)
     }
 }
 
@@ -732,13 +733,13 @@ fn BoardOverview(
     rsx! {
         if snap.limit_reached && !dropped {
             div { class: "x-board-limit", style: "{PANEL} border-color: var(--x-danger);",
-                div { style: SECTION, "The board used its explore limit" }
-                p { "The board used {EXPLORE_LIMIT} explores, the limit of one board. It starts no more work. You can still decide the proposed answers." }
-                Link { to: Route::AiBoardCreatePage {}, style: LINK, "Create a new board to continue the investigation" }
+                div { style: SECTION, {tr!("ai-chat-board-the-board-used-its-explore")} }
+                p { {tr!("ai-chat-board-the-board-used-explores-the", explore_limit: EXPLORE_LIMIT)} }
+                Link { to: Route::AiBoardCreatePage {}, style: LINK, {tr!("ai-chat-board-create-a-new-board-to")} }
             }
         }
         div { style: PANEL,
-            div { style: SECTION, if goals.len() == 1 { "Goal" } else { "Goals" } }
+            div { style: SECTION, if goals.len() == 1 { {tr!("ai-chat-board-goal")} } else { {tr!("ai-chat-board-goals")} } }
             for goal in goals.iter() {
                 div { key: "{goal.fact_id}", style: "margin: 4px 0;",
                     span { style: "font-family: monospace; color: var(--x-ink-muted); margin-right: 6px;", "{goal.slug}" }
@@ -768,12 +769,12 @@ fn BoardOverview(
             }
             if !dropped && !snap.limit_reached && goals.len() < MAX_GOALS {
                 div { class: "x-board-goal-form", style: "margin-top: 10px;",
-                    div { style: SUBHEADING, "Add new goal..." }
+                    div { style: SUBHEADING, {tr!("ai-chat-board-add-new-goal")} }
                     div { class: "x-board-inline-form", style: "display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;",
                         textarea {
                             class: "x-board-goal",
                             style: "{TEXTAREA} flex: 1 1 220px; min-width: 0;", rows: "2",
-                            placeholder: "A new goal",
+                            placeholder: tr!("ai-chat-board-a-new-goal"),
                             value: "{goal}", oninput: move |e| goal.set(e.value()),
                         }
                         button {
@@ -783,24 +784,24 @@ fn BoardOverview(
                                 let mut run = run.clone();
                                 move |_| run(BoardAction::AddGoal { text: goal.read().clone() }, Some(goal))
                             },
-                            "Add goal"
+                            {tr!("ai-chat-board-add-goal")}
                         }
                     }
                 }
             } else if !dropped && goals.len() >= MAX_GOALS {
-                p { class: "x-board-goal-limit", style: HELP_TEXT, "A board has at most {MAX_GOALS} goals. Create a new board for another goal." }
+                p { class: "x-board-goal-limit", style: HELP_TEXT, {tr!("ai-chat-board-a-board-has-at-most", max_goals: MAX_GOALS.to_string())} }
             }
             if !snap.board.context.is_empty() {
-                div { style: SUBHEADING, "Background context" }
+                div { style: SUBHEADING, {tr!("ai-chat-board-background-context")} }
                 p { style: "margin: 4px 0;", "{snap.board.context}" }
             }
         }
         if snap.status == "review" {
             div { class: "x-board-correction", style: PANEL,
-                div { style: SECTION, "Continue with a correction" }
+                div { style: SECTION, {tr!("ai-chat-board-continue-with-a-correction")} }
                 textarea {
                     style: "{TEXTAREA} margin-top: 8px;", rows: "2",
-                    placeholder: "Correction: what is wrong or missing. The board continues with it.",
+                    placeholder: tr!("ai-chat-board-correction-what-is-wrong-or"),
                     value: "{correction}", oninput: move |e| correction.set(e.value()),
                 }
                 button {
@@ -810,34 +811,34 @@ fn BoardOverview(
                         review_id: correction_id.clone(), accept: false, correction: correction.read().clone(),
                         seen_seq: Some(seen_seq), seen_unreviewed: Vec::new(),
                     }, Some(correction)),
-                    "Continue with a correction"
+                    {tr!("ai-chat-board-continue-with-a-correction")}
                 }
             }
         }
         if snap.status == "review" {
             div { class: "x-board-review", style: "{PANEL} border-color: var(--x-danger);",
-                div { style: SECTION, "The board waits for your review" }
+                div { style: SECTION, {tr!("ai-chat-board-the-board-waits-for-your")} }
                 if budget_review {
-                    p { "The board used its budget of {snap.max_explores} explores." }
+                    p { {tr!("ai-chat-board-the-board-used-its-budget", snap_max_explores: snap.max_explores.to_string())} }
                 } else if snap.review_reason == "stalled" {
-                    p { "The assessments gave no usable direction." }
+                    p { {tr!("ai-chat-board-the-assessments-gave-no-usable")} }
                 } else if stall_review {
                     p { "{snap.review_statement}" }
                 }
                 if !snap.answers_proposed.is_empty() {
-                    p { style: HELP_TEXT, "Accept or reject the proposed answer of each goal above. A rejected answer lets the board continue at once." }
+                    p { style: HELP_TEXT, {tr!("ai-chat-board-accept-or-reject-the-proposed")} }
                 } else if snap.review_statement.is_empty() || stall_review {
-                    p { style: HELP_TEXT, "No proposed answer waits for your decision." }
+                    p { style: HELP_TEXT, {tr!("ai-chat-board-no-proposed-answer-waits-for")} }
                 } else {
                     p { "{snap.review_statement}" }
                 }
                 if budget_review {
                     if let Some(button) = reopen.clone() {
-                        p { style: HELP_TEXT, "Reopen the board to continue the open goals. It keeps its findings and answers." }
+                        p { style: HELP_TEXT, {tr!("ai-chat-board-reopen-the-board-to-continue")} }
                         {button}
                     }
                 }
-                p { style: HELP_TEXT, "Close the board to accept every proposed answer and stop it, or continue it with a correction." }
+                p { style: HELP_TEXT, {tr!("ai-chat-board-close-the-board-to-accept")} }
                 div { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap;",
                     button {
                         style: if budget_review && reopen.is_some() { BTN } else { BTN_PRIMARY },
@@ -846,12 +847,12 @@ fn BoardOverview(
                             review_id: finish_id.clone(), accept: true, correction: String::new(),
                             seen_seq: Some(seen_seq), seen_unreviewed: finish_seen.clone(),
                         }, None),
-                        "Close the board"
+                        {tr!("ai-chat-board-close-the-board")}
                     }
                 }
                 if !budget_review {
                     if let Some(button) = reopen.clone() {
-                        p { style: "{HELP_TEXT} margin-top: 8px;", "Or reopen the board to continue the open goals without a correction." }
+                        p { style: "{HELP_TEXT} margin-top: 8px;", {tr!("ai-chat-board-or-reopen-the-board-to")} }
                         {button}
                     }
                 }
@@ -860,16 +861,16 @@ fn BoardOverview(
         if snap.status == "completed" {
             if let Some(button) = reopen.clone() {
                 div { class: "x-board-completed", style: PANEL,
-                    div { style: SECTION, "The board is complete" }
-                    p { style: HELP_TEXT, "A goal has no accepted answer. Reopen the board to continue it. The board keeps its findings and answers." }
+                    div { style: SECTION, {tr!("ai-chat-board-the-board-is-complete")} }
+                    p { style: HELP_TEXT, {tr!("ai-chat-board-a-goal-has-no-accepted")} }
                     {button}
                 }
             }
         }
         if (snap.status == "active" || snap.status == "paused") && !snap.limit_reached {
             div { style: PANEL,
-                div { style: SECTION, "Add a hint" }
-                p { style: HELP_TEXT, "The next assessment reads every hint. A hint also answers an explore that asked a question." }
+                div { style: SECTION, {tr!("ai-chat-board-add-a-hint")} }
+                p { style: HELP_TEXT, {tr!("ai-chat-board-the-next-assessment-reads-every")} }
                 textarea {
                     class: "x-board-hint",
                     style: TEXTAREA, rows: "2",
@@ -882,23 +883,23 @@ fn BoardOverview(
                         let mut run = run.clone();
                         move |_| run(BoardAction::AddHint { text: hint.read().clone() }, Some(hint))
                     },
-                    "Add hint"
+                    {tr!("ai-chat-board-add-hint")}
                 }
             }
         }
         div { class: "x-board-timeline", style: PANEL,
-            div { style: SECTION, "Events" }
+            div { style: SECTION, {tr!("ai-chat-board-events")} }
             table { class: "x-board-events", style: TABLE,
                 thead {
                     tr {
-                        th { style: TH, title: "Newest first",
+                        th { style: TH, title: tr!("ai-chat-board-newest-first"),
                             span { style: "display: inline-flex; align-items: center; gap: 4px;",
-                                "Date"
+                                {tr!("ai-chat-board-date")}
                                 Icon { icon: MdArrowDownward, style: "width: 15px; height: 15px; color: var(--x-ink-muted);" }
                             }
                         }
-                        th { style: TH, "Actor" }
-                        th { style: TH, "Event" }
+                        th { style: TH, {tr!("ai-chat-board-actor")} }
+                        th { style: TH, {tr!("ai-chat-board-event")} }
                         th { style: TH, "aria-label": "Links" }
                     }
                 }
@@ -908,7 +909,7 @@ fn BoardOverview(
                             td { style: "{TD} white-space: nowrap;", "{format_utc_ms(event.created_ms)}" }
                             td { style: "{TD} {actor_style(&event.actor)}", class: "x-board-event-actor", "{actor_label(&event.actor)}" }
                             td { style: TD,
-                                NodeText { text: event.summary.clone(), links: links.clone() }
+                                NodeText { text: crate::i18n::tr_shared(&event.summary), links: links.clone() }
                                 if !event.quote.is_empty() {
                                     ": "
                                     em { class: "x-board-event-quote", NodeText { text: event.quote.clone(), links: links.clone() } }
@@ -917,7 +918,7 @@ fn BoardOverview(
                             td { style: "{TD} width: 1%;", class: "x-board-event-link",
                                 match event_link(&snap, event) {
                                     EventLink::Assessment(number) => rsx! {
-                                        button { style: "{BTN_SMALL} white-space: nowrap;", onclick: move |_| on_details.call(Some(number)), "Show details" }
+                                        button { style: "{BTN_SMALL} white-space: nowrap;", onclick: move |_| on_details.call(Some(number)), {tr!("ai-chat-board-show-details")} }
                                     },
                                     EventLink::Chat(session_id) => {
                                         let href = Route::ai_chat_session(session_id, None, None).to_string();
@@ -925,7 +926,7 @@ fn BoardOverview(
                                         a {
                                             href: "{href}",
                                             target: "_blank", rel: "noopener", style: LINK,
-                                            "Open"
+                                            {tr!("ai-chat-board-open")}
                                         }
                                         }
                                     }
@@ -951,11 +952,11 @@ fn BoardOverview(
             if snap.events.len() > EVENT_ROWS {
                 if show_all_events() {
                     button { class: "x-board-events-all", style: "{BTN_SMALL} margin-top: 6px;", onclick: move |_| show_all_events.set(false),
-                        "Show the newest {EVENT_ROWS} events"
+                        {tr!("ai-chat-board-show-the-newest-events", event_rows: EVENT_ROWS)}
                     }
                 } else {
                     button { class: "x-board-events-all", style: "{BTN_SMALL} margin-top: 6px;", onclick: move |_| show_all_events.set(true),
-                        "Show all {snap.events.len()} events"
+                        {tr!("ai-chat-board-show-all-events", snap_events_len: snap.events.len())}
                     }
                 }
             }
@@ -1045,18 +1046,18 @@ fn BoardStatistics(snap: BoardSnapshot) -> Element {
     let collections = collections_text(&snap.board.collections);
     rsx! {
         div { class: "x-board-statistics", style: PANEL,
-            div { style: SECTION, "Statistics" }
+            div { style: SECTION, {tr!("ai-chat-board-statistics")} }
             dl { class: "x-board-stats",
-                dt { "Explores" } dd { "{snap.explores_used} of {snap.max_explores}" }
-                dt { "Model steps per explore" } dd { "{snap.explore_steps}" }
-                dt { "Assessments" } dd { "{snap.reasons_done}" }
-                dt { "Intents" } dd { "{intent_line}" }
-                dt { "Findings" } dd { "{fact_line}" }
-                dt { "Collections" } dd { "{collections}" }
+                dt { {tr!("ai-chat-board-explores")} } dd { {tr!("ai-chat-board-of", snap_explores_used: snap.explores_used.to_string(), snap_max_explores: snap.max_explores.to_string())} }
+                dt { {tr!("ai-chat-board-model-steps-per-explore")} } dd { "{snap.explore_steps}" }
+                dt { {tr!("ai-chat-board-assessments")} } dd { "{snap.reasons_done}" }
+                dt { {tr!("ai-chat-board-intents")} } dd { "{intent_line}" }
+                dt { {tr!("ai-chat-board-findings")} } dd { "{fact_line}" }
+                dt { {tr!("ai-chat-board-collections")} } dd { "{collections}" }
                 if internet_tools_enabled {
-                    dt { "Internet tools" } dd { "{internet}" }
+                    dt { {tr!("ai-chat-board-internet-tools")} } dd { "{internet}" }
                 }
-                dt { "Created" } dd { "{format_utc_ms(snap.board.created_ms)}" }
+                dt { {tr!("ai-chat-board-created")} } dd { "{format_utc_ms(snap.board.created_ms)}" }
             }
         }
     }
@@ -1150,22 +1151,22 @@ pub fn enrich_fact_sources(stored: &[ChatDocRef], session: &SessionSources) -> (
 /// The title of a fact in its detail pane.
 fn fact_title(fact: &BoardFact) -> String {
     match fact.kind.as_str() {
-        "origin" => "Background context".to_string(),
+        "origin" => tr!("ai-chat-board-background-context"),
         "goal" => {
             let number = fact.slug.strip_prefix("goal-").and_then(|n| n.parse::<u32>().ok()).unwrap_or(1);
-            format!("Goal {number}")
+            tr!("ai-chat-board-goal-number", number: number)
         }
-        _ if fact.title.is_empty() => "Finding".to_string(),
+        _ if fact.title.is_empty() => tr!("ai-chat-board-finding"),
         _ => fact.title.clone(),
     }
 }
 
 /// The placeholder of the reject box and the label of its button, for a correction or a fact.
-fn reject_words(kind: &str) -> (&'static str, &'static str) {
+fn reject_words(kind: &str) -> (String, String) {
     if kind == "correction" {
-        ("Why the correction is wrong", "Reject correction")
+        (tr!("ai-chat-board-why-the-correction-is-wrong"), tr!("ai-chat-board-reject-correction"))
     } else {
-        ("Why the finding is wrong", "Reject finding")
+        (tr!("ai-chat-board-why-the-finding-is-wrong"), tr!("ai-chat-board-reject-finding"))
     }
 }
 
@@ -1283,7 +1284,7 @@ fn FactDetail(
                 rejected: fact.rejected,
                 chat: fact.session_id.clone(),
                 answer: if snap.unreviewed.contains(&fact.fact_id) {
-                    "unreviewed".to_string()
+                    "unreviewed".to_string() // i18n: data, a protocol value
                 } else {
                     answer_word(&answer, snap.not_answered.contains(&fact.fact_id))
                 },
@@ -1292,15 +1293,15 @@ fn FactDetail(
                 div { class: "x-board-fact-rejection", style: "border-left: 3px solid; border-left-color: var(--x-danger); padding: 4px 10px; margin: 6px 0;",
                     div { style: "color: var(--x-danger); font-weight: 500;",
                         if fact.rejected_ms > 0 {
-                            "{rejected_by} rejected this finding on {format_utc_ms(fact.rejected_ms)}. The board no longer uses it."
+                            {tr!("ai-chat-board-rejected-this-finding-on-the", rejected_by: rejected_by.to_string(), format_utc_ms_fact_rejected_ms: (format_utc_ms(fact.rejected_ms)).to_string())}
                         } else {
-                            "{rejected_by} rejected this finding. The board no longer uses it."
+                            {tr!("ai-chat-board-rejected-this-finding-the-board", rejected_by: rejected_by.to_string())}
                         }
                     }
                     if fact.rejected_reason.is_empty() {
-                        div { style: HELP_TEXT, "No reason was given." }
+                        div { style: HELP_TEXT, {tr!("ai-chat-board-no-reason-was-given")} }
                     } else {
-                        div { style: "white-space: pre-wrap;", "Reason: {fact.rejected_reason}" }
+                        div { style: "white-space: pre-wrap;", {tr!("ai-chat-board-reason", fact_rejected_reason: fact.rejected_reason.to_string())} }
                     }
                 }
             }
@@ -1327,13 +1328,13 @@ fn FactDetail(
                 }
             }
             if !questions.is_empty() {
-                div { style: SUBHEADING, "Open questions" }
+                div { style: SUBHEADING, {tr!("ai-chat-board-open-questions")} }
                 for (index, text, follower) in questions.into_iter() {
                     div { key: "{index}", class: "x-board-fact-question",
                         div { class: "x-board-fact-question-text", "{text}" }
                         if let Some(intent) = follower {
                             span { class: "x-board-question-corner x-board-question-followed",
-                                "Explored in "
+                                {tr!("ai-chat-board-explored-in")}
                                 Link { to: link(intent.clone()), style: "{LINK} font-family: monospace;", "{intent}" }
                             }
                         } else if can_ask {
@@ -1348,19 +1349,19 @@ fn FactDetail(
                                         fact_id: fact_id.clone(), index: Some(index), question: String::new(),
                                     }, None)
                                 },
-                                "Explore this question"
+                                {tr!("ai-chat-board-explore-this-question")}
                             }
                         }
                     }
                 }
             }
             if !own.is_empty() {
-                div { style: SUBHEADING, "Your questions" }
+                div { style: SUBHEADING, {tr!("ai-chat-board-your-questions")} }
                 for (i, (text, intent)) in own.into_iter().enumerate() {
                     div { key: "{i}", class: "x-board-fact-question x-board-own-question",
                         div { class: "x-board-fact-question-text", "{text}" }
                         span { class: "x-board-question-corner x-board-question-followed",
-                            "Explored in "
+                            {tr!("ai-chat-board-explored-in")}
                             Link { to: link(intent.clone()), style: "{LINK} font-family: monospace;", "{intent}" }
                         }
                     }
@@ -1368,12 +1369,12 @@ fn FactDetail(
             }
             if can_ask {
                 div { class: "x-board-follow-up", style: "margin-top: 10px;",
-                    div { style: SUBHEADING, if fact.kind == "origin" { "Ask about the background context" } else { "Ask about this finding" } }
+                    div { style: SUBHEADING, if fact.kind == "origin" { {tr!("ai-chat-board-ask-about-the-background-context")} } else { {tr!("ai-chat-board-ask-about-this-finding")} } }
                     div { class: "x-board-inline-form", style: "display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap;",
                         textarea {
                             class: "x-board-own-question-text",
                             style: "{TEXTAREA} flex: 1 1 220px; min-width: 0;", rows: "2",
-                            placeholder: "A follow-up question about this node",
+                            placeholder: tr!("ai-chat-board-a-follow-up-question-about"),
                             value: "{own_question}", oninput: move |e| own_question.set(e.value()),
                         }
                         button {
@@ -1387,13 +1388,13 @@ fn FactDetail(
                                     fact_id: fact_id.clone(), index: None, question: own_question.read().clone(),
                                 }, Some(own_question))
                             },
-                            "Ask"
+                            {tr!("ai-chat-board-ask")}
                         }
                     }
                 }
             }
             if !fact.problems.is_empty() {
-                div { style: SUBHEADING, "Checks that changed this finding" }
+                div { style: SUBHEADING, {tr!("ai-chat-board-checks-that-changed-this-finding")} }
                 for (i, p) in fact.problems.iter().enumerate() {
                     div { key: "{i}", style: "font-size: var(--x-text-detail); color: var(--x-danger);",
                         NodeText { text: p.clone(), links: links.clone() }
@@ -1402,7 +1403,7 @@ fn FactDetail(
             }
             if can_reject {
                 div { style: SUBHEADING,
-                    if fact.kind == "correction" { "Reject this correction" } else { "Reject this finding" }
+                    if fact.kind == "correction" { {tr!("ai-chat-board-reject-this-correction")} } else { {tr!("ai-chat-board-reject-this-finding")} }
                 }
                 div { style: "display: flex; gap: 8px; align-items: center;",
                     input {
@@ -1475,21 +1476,21 @@ fn GoalAnswer(
         if not_answered {
             return rsx! {
                 p { class: "x-board-goal-answer", "data-answer": "not-answered", style: HELP_TEXT,
-                    "Not answered. The board was finished without an answer for this goal. A hint or a reopening opens it again."
+                    {tr!("ai-chat-board-not-answered-the-board-was")}
                 }
             };
         }
-        return rsx! { p { class: "x-board-goal-answer", style: HELP_TEXT, "No answer yet." } };
+        return rsx! { p { class: "x-board-goal-answer", style: HELP_TEXT, {tr!("ai-chat-board-no-answer-yet")} } };
     };
     let proposed_by = if answer.proposed_ms > 0 {
-        format!("From assessment {} on {}.", answer.reason_no, format_utc_ms(answer.proposed_ms))
+        tr!("ai-chat-board-from-assessment-on", number: answer.reason_no, date: format_utc_ms(answer.proposed_ms))
     } else {
-        format!("From assessment {}.", answer.reason_no)
+        tr!("ai-chat-board-from-assessment", number: answer.reason_no)
     };
     let drops = if accepted { Vec::new() } else { answer.later_drops.clone() };
     let drop_count = match drops.len() {
         1 => "1 later assessment dropped an answer for this goal:".to_string(),
-        n => format!("{n} later assessments dropped an answer for this goal:"),
+        n => tr!("ai-chat-board-later-assessments-dropped-an-answer", n: n.to_string()),
     };
     let link_board = board_id.clone();
     let (goal, proposal_id) = (answer.goal.clone(), answer.proposal_id.clone());
@@ -1510,11 +1511,11 @@ fn GoalAnswer(
     };
     let mut decide_accept = decide.clone();
     let mut decide_reject = decide;
-    let (label, border) = if accepted { ("Answer", "solid") } else { ("Proposed answer", "dashed") };
+    let (label, border) = if accepted { (tr!("ai-chat-board-answer"), "solid") } else { (tr!("ai-chat-board-proposed-answer"), "dashed") };
     rsx! {
         div {
             class: "x-board-goal-answer",
-            "data-answer": if accepted { "accepted" } else { "proposed" },
+            "data-answer": if accepted { "accepted" } else { "proposed" }, // i18n: data, a protocol value
             style: "border-left: 3px {border}; border-left-color: var(--x-ok); padding: 2px 10px; margin: 8px 0;",
             div { style: "font-weight: 600; color: var(--x-ok);",
                 "{label} "
@@ -1522,7 +1523,7 @@ fn GoalAnswer(
             }
             if answer.answer_kind == NOT_ESTABLISHED {
                 div { class: "x-board-answer-unresolved", style: HELP_TEXT,
-                    "The findings of this answer are searches that found nothing. Accept it to record that the records do not answer the goal, or reject it to continue the investigation."
+                    {tr!("ai-chat-board-the-findings-of-this-answer")}
                 }
             }
             p { style: "margin: 2px 0; white-space: pre-wrap;", NodeText { text: answer.statement.clone(), links: links.clone() } }
@@ -1541,16 +1542,16 @@ fn GoalAnswer(
                                     assessment: number.to_string(),
                                 },
                                 style: LINK,
-                                "assessment {number}"
+                                {tr!("ai-chat-board-assessment-2", number: number)}
                             }
                         }
                     }
-                    ". Open an assessment to read why."
+                    {tr!("ai-chat-board-open-an-assessment-to-read")}
                 }
             }
             if !from.is_empty() {
                 p { style: HELP_TEXT,
-                    "From the findings "
+                    {tr!("ai-chat-board-from-the-findings")}
                     for (i, slug) in from.iter().enumerate() {
                         span { key: "{slug}",
                             if i > 0 { ", " }
@@ -1575,13 +1576,13 @@ fn GoalAnswer(
                     style: "{BTN_PRIMARY} margin-top: 4px;",
                     disabled: busy(),
                     onclick: move |_| decide_accept(true),
-                    "Accept answer"
+                    {tr!("ai-chat-board-accept-answer")}
                 }
                 div { style: "display: flex; gap: 8px; align-items: center; margin-top: 6px;",
                     input {
                         class: "x-board-answer-correction",
                         style: "{INPUT} flex: 1;",
-                        placeholder: "Why the answer is wrong or incomplete",
+                        placeholder: tr!("ai-chat-board-why-the-answer-is-wrong"),
                         value: "{correction}",
                         oninput: move |e| correction.set(e.value()),
                     }
@@ -1590,7 +1591,7 @@ fn GoalAnswer(
                         style: BTN_SMALL_DANGER,
                         disabled: busy(),
                         onclick: move |_| decide_reject(false),
-                        "Reject answer"
+                        {tr!("ai-chat-board-reject-answer")}
                     }
                 }
             }
@@ -1603,16 +1604,16 @@ fn IntentDetail(intent: BoardIntent, from: Vec<String>, board_id: String, zoom: 
     rsx! {
         div { class: "x-board-intent-detail", style: PANEL,
             DetailHeader {
-                title: if intent.title.is_empty() { "Intent".to_string() } else { intent.title.clone() },
+                title: if intent.title.is_empty() { {tr!("ai-chat-board-intent")}.to_string() } else { intent.title.clone() },
                 kind: NodeKind::Intent(intent.state.clone()),
                 slug: intent.slug.clone(),
                 rejected: false,
                 chat: intent.session_id.clone(),
             }
-            div { style: SUBHEADING, "Intent" }
+            div { style: SUBHEADING, {tr!("ai-chat-board-intent")} }
             p { class: "x-board-intent-metadata", style: HELP_TEXT,
                 if !from.is_empty() {
-                    "From the findings "
+                    {tr!("ai-chat-board-from-the-findings")}
                     for (index, slug) in from.iter().enumerate() {
                         span { key: "{index}",
                             if index > 0 { ", " }
@@ -1628,22 +1629,22 @@ fn IntentDetail(intent: BoardIntent, from: Vec<String>, board_id: String, zoom: 
                     }
                     ". "
                 }
-                "Attempts: {intent.attempts}. Declared {format_utc_ms(intent.created_ms)}."
+                {tr!("ai-chat-board-attempts-declared", intent_attempts: intent.attempts.to_string(), format_utc_ms_intent_created_ms: (format_utc_ms(intent.created_ms)).to_string())}
             }
             div { class: "x-board-intent-objective", style: "white-space: pre-wrap; overflow-wrap: anywhere; background-color: var(--x-surface-muted); padding: 8px; border-radius: 6px;",
                 NodeText { text: intent.objective.clone(), links: links.clone() }
             }
             if !intent.question.is_empty() {
-                div { style: SUBHEADING, "The explore asked" }
+                div { style: SUBHEADING, {tr!("ai-chat-board-the-explore-asked")} }
                 p { style: "margin: 4px 0;", "{intent.question}" }
-                p { style: HELP_TEXT, "Add a hint in the board overview to answer it." }
+                p { style: HELP_TEXT, {tr!("ai-chat-board-add-a-hint-in-the")} }
             }
             if !intent.last_error.is_empty() {
-                div { style: SUBHEADING, "Last error" }
+                div { style: SUBHEADING, {tr!("ai-chat-board-last-error")} }
                 p { style: "margin: 4px 0; color: var(--x-danger);", "{intent.last_error}" }
             }
             if !intent.brief.is_empty() {
-                div { style: SUBHEADING, "Brief" }
+                div { style: SUBHEADING, {tr!("ai-chat-board-brief")} }
                 pre { style: PRE, "{intent.brief}" }
             }
         }
@@ -1659,7 +1660,7 @@ fn DetailHeader(title: String, kind: NodeKind, slug: String, rejected: bool, cha
         div { class: "x-board-detail-head",
             div { class: "x-board-detail-title", style: "{SECTION} margin: 0; text-decoration: {decoration};", "{title}" }
             if !chat.is_empty() {
-                Link { to: Route::ai_chat_session(chat.clone(), None, None), style: "{LINK} white-space: nowrap;", "Open the explore chat" }
+                Link { to: Route::ai_chat_session(chat.clone(), None, None), style: "{LINK} white-space: nowrap;", {tr!("ai-chat-board-open-the-explore-chat")} }
             }
         }
         div { class: "x-board-detail-meta",
@@ -1715,7 +1716,7 @@ fn NodeText(text: String, links: NodeLinks) -> Element {
 fn AssessmentDetails(board_id: String, reason_no: u32, links: NodeLinks, on_close: EventHandler<()>) -> Element {
     let details = use_resource(move || board_assessment(board_id.clone(), reason_no));
     let body = match &*details.read() {
-        None => rsx! { p { style: HELP_TEXT, "Loading the assessment\u{2026}" } },
+        None => rsx! { p { style: HELP_TEXT, {tr!("ai-chat-board-loading-the-assessment-u")} } },
         Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
         Some(Ok(a)) => rsx! { AssessmentBody { assessment: a.clone(), links: links.clone() } },
     };
@@ -1729,9 +1730,9 @@ fn AssessmentDetails(board_id: String, reason_no: u32, links: NodeLinks, on_clos
                 style: "background: white; border-radius: 10px; padding: 18px 20px; width: min(1100px, 94%); height: 90%; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.2);",
                 onclick: move |e| e.stop_propagation(),
                 div { style: "display: flex; align-items: center; gap: 12px;",
-                    div { style: "font-size: var(--x-text-section); font-weight: 600;", "Assessment {reason_no}" }
+                    div { style: "font-size: var(--x-text-section); font-weight: 600;", {tr!("ai-chat-board-assessment", reason_no: reason_no.to_string())} }
                     span { style: "flex: 1;" }
-                    button { style: BTN_PRIMARY, onclick: move |_| on_close.call(()), "Close" }
+                    button { style: BTN_PRIMARY, onclick: move |_| on_close.call(()), {tr!("ai-chat-board-close")} }
                 }
                 div { style: "flex: 1; min-height: 0; overflow: auto;", {body} }
             }
@@ -1742,29 +1743,29 @@ fn AssessmentDetails(board_id: String, reason_no: u32, links: NodeLinks, on_clos
 #[component]
 fn AssessmentBody(assessment: BoardAssessment, links: NodeLinks) -> Element {
     let a = assessment;
-    let tokens = format!("{} prompt and {} completion tokens", a.prompt_tokens, a.completion_tokens);
+    let tokens = tr!("ai-chat-board-prompt-and-completion-tokens", a_prompt_tokens: a.prompt_tokens.to_string(), a_completion_tokens: a.completion_tokens.to_string());
     rsx! {
         p { style: HELP_TEXT,
-            "{format_utc_ms(a.created_ms)}. Model {a.model}. Outcome {a.outcome}. {a.latency_ms} ms, {tokens}."
+            {tr!("ai-chat-board-model-outcome-ms", format_utc_ms_a_created_ms: (format_utc_ms(a.created_ms)).to_string(), a_model: a.model.to_string(), a_outcome: a.outcome.to_string(), a_latency_ms: a.latency_ms.to_string(), tokens: tokens.to_string())}
         }
         if !a.error.is_empty() {
             p { style: "color: var(--x-danger);", "{a.error}" }
         }
         if !a.problems.is_empty() {
-            div { style: SUBHEADING, "Checks that changed it" }
+            div { style: SUBHEADING, {tr!("ai-chat-board-checks-that-changed-it")} }
             for (i, p) in a.problems.iter().enumerate() {
                 div { key: "{i}", style: "font-size: var(--x-text-detail); color: var(--x-danger);",
                     NodeText { text: p.clone(), links: links.clone() }
                 }
             }
         }
-        div { style: SUBHEADING, "Prompt" }
+        div { style: SUBHEADING, {tr!("ai-chat-board-prompt")} }
         if a.stored {
             pre { class: "x-board-assessment-prompt", style: "{PRE} max-height: none;", "{a.prompt}" }
         } else {
-            p { style: HELP_TEXT, "This assessment ran before the prompts were stored." }
+            p { style: HELP_TEXT, {tr!("ai-chat-board-this-assessment-ran-before-the")} }
         }
-        div { style: SUBHEADING, "Response" }
+        div { style: SUBHEADING, {tr!("ai-chat-board-response")} }
         pre { class: "x-board-assessment-reply", style: "{PRE} max-height: none;", "{a.reply}" }
     }
 }
@@ -1876,8 +1877,8 @@ mod tests {
 
     #[test]
     fn a_correction_pane_rejects_a_correction() {
-        assert_eq!(reject_words("correction"), ("Why the correction is wrong", "Reject correction"));
-        assert_eq!(reject_words("sourced"), ("Why the finding is wrong", "Reject finding"));
+        assert_eq!(reject_words("correction"), ("Why the correction is wrong".to_string(), "Reject correction".to_string()));
+        assert_eq!(reject_words("sourced"), ("Why the finding is wrong".to_string(), "Reject finding".to_string()));
     }
 
     fn event(event_type: &str, subject: &str) -> BoardEvent {

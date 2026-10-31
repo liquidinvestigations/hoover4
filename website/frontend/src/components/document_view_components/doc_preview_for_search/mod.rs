@@ -1,5 +1,6 @@
 //! Document preview components for search results.
 
+use crate::i18n::SharedText;
 pub mod doc_preview_find_query;
 pub mod doc_preview_for_archive;
 pub mod doc_preview_for_email;
@@ -67,7 +68,7 @@ fn DocumentPreviewForSearchContent(
 
     let empty_source_message = use_memo(move || source_request.read().as_ref()
         .and_then(|result| result.as_ref().ok())
-        .map(|status| status.processing.empty_source_message()).unwrap_or_default());
+        .map(|status| status.processing.empty_source_message().shared()).unwrap_or_default());
 
     let control = use_context::<DocViewerStateControl>();
 
@@ -182,7 +183,7 @@ fn DocumentPreviewForSearchContent(
                         {source_notice}
                         div {
                             style: "padding: 12px; color: rgba(0,0,0,0.45); font-style: italic;",
-                            "{empty_source_message()}"
+                            "{empty_source_message().shared()}"
                         }
                     },
                     wrapper_fn: _make_preview_wrapper,

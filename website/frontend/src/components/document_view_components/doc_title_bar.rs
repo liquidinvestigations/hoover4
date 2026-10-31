@@ -11,6 +11,7 @@ use dioxus_free_icons::{
 use crate::components::search_components::card_action_buttons::{
     DocCardActionButtonMore, DocCardActionButtonOpenNewTab,
 };
+use crate::tr;
 
 #[component]
 pub fn DocTitleBar(
@@ -131,14 +132,14 @@ fn FilenameText(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
         Some(Ok(None)) => {
             return rsx! { div {
                 style: "display: block; overflow:hidden;text-overflow: ellipsis; white-space: nowrap;color:rgba(0,0,0,0.45); font-style: italic;",
-                title: "This document is not at any path in its dataset",
-                "Unknown file"
+                title: tr!("doc-title-bar-this-document-is-not-at"),
+                {tr!("doc-title-bar-unknown-file")}
             }};
         }
         Some(Err(e)) => {
             return rsx! { div {
                 class: "x-error-display",
-                "error! {e}"
+                {tr!("doc-title-bar-error", e: e.to_string())}
             }};
         }
         None => {

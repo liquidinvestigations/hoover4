@@ -9,6 +9,7 @@ use dioxus::prelude::*;
 
 use crate::api::chat_api::{chat_delete_session, chat_list_sessions};
 use crate::routes::Route;
+use crate::tr;
 
 #[component]
 pub fn AiChatHistoryPage() -> Element {
@@ -17,7 +18,7 @@ pub fn AiChatHistoryPage() -> Element {
     let mut sessions_res = use_resource(move || chat_list_sessions(show_boards()));
 
     rsx! {
-        Title { "Hoover Search - Chat history" }
+        Title { {tr!("ai-chat-history-hoover-search-chat-history")} }
         div {
             style: "width: 100%; height: 100%; background: #F5F6F8; box-sizing: border-box; \
                     padding: 23px; overflow: auto;",
@@ -26,11 +27,11 @@ pub fn AiChatHistoryPage() -> Element {
                 Link {
                     to: Route::AiChatPage {},
                     style: "color: var(--x-link); text-decoration: none; font-size: var(--x-text-md);",
-                    "\u{2190} Back"
+                    {tr!("ai-chat-history-u-back")}
                 }
                 h1 {
                     style: "margin: 0; font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 600; color: var(--x-ink-strong);",
-                    "Conversation history"
+                    {tr!("ai-chat-history-conversation-history")}
                 }
                 label {
                     style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); color: var(--x-ink-muted); cursor: pointer;",
@@ -40,20 +41,20 @@ pub fn AiChatHistoryPage() -> Element {
                         checked: show_boards(),
                         onchange: move |e: FormEvent| show_boards.set(e.checked()),
                     }
-                    "Show board chats"
+                    {tr!("ai-chat-history-show-board-chats")}
                 }
             }
             match sessions_res.read().as_ref() {
-                None => rsx! { div { style: "color: var(--x-ink-faint);", "Loading\u{2026}" } },
+                None => rsx! { div { style: "color: var(--x-ink-faint);", {tr!("ai-chat-history-loading-u")} } },
                 Some(Err(e)) => rsx! {
                     div {
                         class: "x-error-display",
                         style: "color: var(--x-danger);",
-                        "Could not load history: {e}"
+                        {tr!("ai-chat-history-could-not-load-history", e: e.to_string())}
                     }
                 },
                 Some(Ok(list)) if list.is_empty() => rsx! {
-                    div { style: "color: var(--x-ink-faint);", "No conversations yet." }
+                    div { style: "color: var(--x-ink-faint);", {tr!("ai-chat-history-no-conversations-yet")} }
                 },
                 Some(Ok(list)) => rsx! {
                     div {
@@ -73,29 +74,29 @@ pub fn AiChatHistoryPage() -> Element {
                                                 style: "font-size: var(--x-text-xs); font-weight: 500; color: var(--x-ink-muted); \
                                                         border: 1px solid; border-color: var(--x-border); border-radius: 6px; \
                                                         padding: 1px 6px; margin-right: 8px;",
-                                                "Board"
+                                                {tr!("ai-chat-history-board")}
                                             }
                                         }
-                                        if s.title.is_empty() { "New chat" } else { "{s.title}" }
+                                        if s.title.is_empty() { {tr!("ai-chat-history-new-chat")} } else { "{s.title}" }
                                     }
                                     div {
                                         style: "font-size: var(--x-text-sm); color: var(--x-ink-muted); margin-top: 4px; line-height: 1.45;",
                                         if s.summary.is_empty() {
-                                            "{s.message_count} messages"
+                                            {tr!("ai-chat-history-messages", s_message_count: s.message_count)}
                                         } else {
                                             "{s.summary}"
                                         }
                                     }
                                     div {
                                         style: "font-size: var(--x-text-xs); color: var(--x-ink-faint); margin-top: 6px;",
-                                        "{s.message_count} messages · updated {s.updated_at}"
+                                        {tr!("ai-chat-history-messages-updated", s_message_count: s.message_count, s_updated_at: s.updated_at.to_string())}
                                     }
                                 }
                                 if !is_board_session(&s.session_id) { button {
                                     style: "background: none; border: 1px solid #FEE2E2; color: var(--x-danger); \
                                             border-radius: 8px; padding: 6px 10px; cursor: pointer; \
                                             font-size: var(--x-text-xs); flex-shrink: 0;",
-                                    title: "Delete conversation",
+                                    title: tr!("ai-chat-history-delete-conversation"),
                                     onclick: {
                                         let id = s.session_id.clone();
                                         move |_| {
@@ -107,7 +108,7 @@ pub fn AiChatHistoryPage() -> Element {
                                             });
                                         }
                                     },
-                                    "Delete"
+                                    {tr!("ai-chat-history-delete")}
                                 } }
                             }
                         }

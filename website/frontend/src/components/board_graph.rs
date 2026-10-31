@@ -35,6 +35,7 @@ use std::collections::{HashMap, HashSet};
 use common::board_text::name_nodes;
 use common::board_types::{BoardFact, BoardGraphInput, BoardIntent, BoardReviewGoal};
 use dioxus::prelude::*;
+use crate::tr;
 
 /// Pixels at 100 % zoom: one node, one depth column (a node and a gap of 80), one row (a node
 /// and a gap of 30), and the free band left and right of the nodes.
@@ -404,7 +405,7 @@ pub fn node_style(kind: &NodeKind) -> (&'static str, &'static str, &'static str,
                 "question" => "#e37400",
                 _ => "#80868b",
             };
-            ("#ffffff", stroke, "5 4", format!("intent, {state}"))
+            ("#ffffff", stroke, "5 4", tr!("board-graph-intent", state: state.to_string()))
         }
     }
 }

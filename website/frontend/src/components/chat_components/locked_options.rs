@@ -1,9 +1,12 @@
 //! Show the locked internet setting beside the chat title when the deployment enables it.
 
 use dioxus::prelude::*;
+use crate::tr;
 
 /// The tooltip of the frozen switch.
-pub const LOCKED_TOOLTIP: &str = "Start a new chat to change this setting.";
+pub fn locked_tooltip() -> String {
+    tr!("chat-locked-options-start-a-new-chat-to")
+}
 
 #[component]
 pub fn LockedInternetFlag(on: bool) -> Element {
@@ -12,22 +15,22 @@ pub fn LockedInternetFlag(on: bool) -> Element {
         return rsx! {};
     }
     let color = if on { "var(--x-ink)" } else { "var(--x-ink-faint)" };
-    let label = "Internet tools";
+    let label = tr!("chat-locked-options-internet-tools");
     rsx! {
         label {
             class: "x-chat-locked-internet",
             style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); \
                     color: {color}; cursor: not-allowed; user-select: none; flex-shrink: 0; white-space: nowrap;",
-            title: LOCKED_TOOLTIP,
+            title: locked_tooltip(),
             input {
                 r#type: "checkbox",
                 checked: on,
                 disabled: true,
-                title: LOCKED_TOOLTIP,
+                title: locked_tooltip(),
                 style: "cursor: not-allowed;",
                 // A disabled checkbox is skipped by keyboard navigation, so the state
                 // needs saying out loud for anyone not looking at the tick.
-                aria_label: if on { "{label}: on" } else { "{label}: off" },
+                aria_label: if on { tr!("chat-locked-options-on", label: label.to_string()) } else { tr!("chat-locked-options-off", label: label.to_string()) },
             }
             "{label}"
         }

@@ -18,6 +18,7 @@ use crate::api::error_util::user_facing_message;
 use crate::api::storage_api::collections_overview;
 use crate::components::admin_components::{ErrorBar, BTN_PRIMARY, BTN_SMALL, HELP_TEXT, INPUT, LABEL, LINK, SUBHEADING};
 use crate::routes::Route;
+use crate::tr;
 
 const TEXTAREA: &str = "border: 1px solid; border-color: var(--x-border-strong); border-radius: 6px; padding: 6px 8px; font-size: var(--x-text-body); color: var(--x-ink-strong); background: white; width: 100%; box-sizing: border-box; font-family: inherit;";
 /// The visible label of a field, above the field.
@@ -54,13 +55,13 @@ pub fn master_click(listed: &[String], chosen: &[String]) -> Vec<String> {
 }
 
 /// The source error of the form, or `None` while a source is selected.
-pub fn source_error(collections: usize, internet_tools: bool, internet_tools_enabled: bool) -> Option<&'static str> {
+pub fn source_error(collections: usize, internet_tools: bool, internet_tools_enabled: bool) -> Option<String> {
     if collections > 0 || (internet_tools_enabled && internet_tools) {
         None
     } else if internet_tools_enabled {
-        Some("Select a collection or turn on internet tools.")
+        Some(tr!("chat-board-create-select-a-collection-or-turn"))
     } else {
-        Some("Select at least one collection.")
+        Some(tr!("chat-board-create-select-at-least-one-collection"))
     }
 }
 
@@ -94,7 +95,7 @@ pub fn AiBoardCreatePage() -> Element {
     // HTML has no `indeterminate` attribute, so the property is set after each render.
     let master = master_state(&listed, chosen.read().as_deref().unwrap_or_default());
     use_effect(use_reactive!(|master| {
-        document::eval(&format!(
+        document::eval(&format!( // i18n: data, JavaScript
             "const box = document.querySelector('.x-board-collections-all'); if (box) box.indeterminate = {};",
             master == Master::Some
         ));
@@ -116,7 +117,7 @@ pub fn AiBoardCreatePage() -> Element {
                         }
                     },
                 }
-                "Collections"
+                {tr!("chat-board-create-collections")}
             }
             div { style: "display: flex; gap: 14px; flex-wrap: wrap; align-items: center; padding-left: 22px;",
                 for c in cols.clone() {
@@ -144,7 +145,7 @@ pub fn AiBoardCreatePage() -> Element {
             }
         },
         Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(e) } },
-        None => rsx! { span { style: HELP_TEXT, "Loading collections\u{2026}" } },
+        None => rsx! { span { style: HELP_TEXT, {tr!("chat-board-create-loading-collections-u")} } },
     };
     let goal_count = goals.read().len();
     // No error while the collections load, because every collection is selected when they arrive.
@@ -153,29 +154,29 @@ pub fn AiBoardCreatePage() -> Element {
     });
 
     rsx! {
-        Title { "Hoover Search - New board" }
+        Title { {tr!("chat-board-create-hoover-search-new-board")} }
         div {
             style: "width: 100%; height: 100%; background: #F5F6F8; box-sizing: border-box; padding: 23px; overflow: auto;",
             div { style: "max-width: 760px; margin: 0 auto;",
                 div { style: "display: flex; align-items: center; gap: 15px; margin-bottom: 15px;",
                     Link { to: Route::AiChatPage {}, style: "{LINK} display: inline-flex; align-items: center; gap: 4px;",
                         Icon { icon: MdArrowBack, width: 16, height: 16 }
-                        "AI Chat"
+                        {tr!("chat-board-create-ai-chat")}
                     }
                     h1 {
                         style: "margin: 0; font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 600; color: var(--x-ink-strong);",
-                        "New investigation board"
+                        {tr!("chat-board-create-new-investigation-board")}
                     }
                 }
                 p { style: HELP_TEXT,
-                    "A board runs its goals as a sequence of agent explores. Each explore is a chat that ends in one board finding. You review the answer of each goal, and you can reject findings and add hints while it runs."
+                    {tr!("chat-board-create-a-board-runs-its-goals")}
                 }
                 if let Some(err) = error_msg.read().clone() {
                     ErrorBar { message: err }
                 }
                 div { style: "display: flex; flex-direction: column; gap: 10px; background: white; border: 1px solid; border-color: var(--x-border); border-radius: 12px; padding: 16px;",
                     label { style: FIELD_LABEL,
-                        "Title"
+                        {tr!("chat-board-create-title")}
                         input {
                             class: "x-board-title",
                             style: "{INPUT} font-weight: 400;",
@@ -184,7 +185,7 @@ pub fn AiBoardCreatePage() -> Element {
                     }
                     for index in 0..goal_count {
                         label { key: "{index}", style: FIELD_LABEL,
-                            if goal_count == 1 { "Goal" } else { {format!("Goal {}", index + 1)} }
+                            if goal_count == 1 { {tr!("chat-board-create-goal")} } else { {tr!("chat-board-create-goal-2", index_1: (index + 1).to_string())} }
                             div { style: "display: flex; gap: 6px; align-items: flex-start; font-weight: 400;",
                                 textarea {
                                     class: "x-board-goal",
@@ -195,9 +196,9 @@ pub fn AiBoardCreatePage() -> Element {
                                 if goal_count > 1 {
                                     button {
                                         style: BTN_SMALL,
-                                        title: "Remove this goal",
+                                        title: tr!("chat-board-create-remove-this-goal"),
                                         onclick: move |_| { goals.write().remove(index); },
-                                        "Remove"
+                                        {tr!("chat-board-create-remove")}
                                     }
                                 }
                             }
@@ -209,12 +210,12 @@ pub fn AiBoardCreatePage() -> Element {
                                 class: "x-board-add-goal",
                                 style: BTN_SMALL,
                                 onclick: move |_| goals.write().push(String::new()),
-                                "Add a goal"
+                                {tr!("chat-board-create-add-a-goal")}
                             }
                         }
                     }
                     label { style: FIELD_LABEL,
-                        "Context (optional)"
+                        {tr!("chat-board-create-context-optional")}
                         textarea {
                             style: "{TEXTAREA} font-weight: 400;", rows: "2",
                             class: "x-board-context",
@@ -222,7 +223,7 @@ pub fn AiBoardCreatePage() -> Element {
                         }
                     }
                     label { style: FIELD_LABEL,
-                        "Hints, one per line (optional)"
+                        {tr!("chat-board-create-hints-one-per-line-optional")}
                         textarea {
                             style: "{TEXTAREA} font-weight: 400;", rows: "2",
                             class: "x-board-hints",
@@ -230,7 +231,7 @@ pub fn AiBoardCreatePage() -> Element {
                         }
                     }
                     div { class: "x-board-sources", style: "display: flex; flex-direction: column; gap: 8px;",
-                        div { style: SUBHEADING, "Sources" }
+                        div { style: SUBHEADING, {tr!("chat-board-create-sources")} }
                         {collection_boxes}
                         if internet_tools_enabled {
                             label { style: LABEL,
@@ -240,10 +241,10 @@ pub fn AiBoardCreatePage() -> Element {
                                     checked: internet_tools(),
                                     onchange: move |e: FormEvent| internet_tools.set(e.checked()),
                                 }
-                                "Internet tools"
+                                {tr!("chat-board-create-internet-tools")}
                             }
                         }
-                        if let Some(text) = missing_source {
+                        if let Some(text) = missing_source.clone() {
                             p { class: "x-board-source-error", style: SOURCE_ERROR, "{text}" }
                         }
                     }
@@ -274,7 +275,7 @@ pub fn AiBoardCreatePage() -> Element {
                                     busy.set(false);
                                 });
                             },
-                            if busy() { "Creating board..." } else { "Create board" }
+                            if busy() { {tr!("chat-board-create-creating-board")} } else { {tr!("chat-board-create-create-board")} }
                         }
                     }
                 }
@@ -329,7 +330,7 @@ mod tests {
     fn the_source_error_shows_only_without_a_source() {
         assert_eq!(source_error(0, true, true), None);
         assert_eq!(source_error(2, false, false), None);
-        assert_eq!(source_error(0, false, true), Some("Select a collection or turn on internet tools."));
-        assert_eq!(source_error(0, true, false), Some("Select at least one collection."));
+        assert_eq!(source_error(0, false, true).as_deref(), Some("Select a collection or turn on internet tools."));
+        assert_eq!(source_error(0, true, false).as_deref(), Some("Select at least one collection."));
     }
 }

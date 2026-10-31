@@ -16,6 +16,7 @@ use crate::{
     },
     pages::search_page::DocViewerStateControl,
 };
+use crate::tr;
 
 #[component]
 pub fn DocumentPreviewForPdf(
@@ -125,7 +126,7 @@ pub fn PdfControllerButtons2(controller: PdfViewerControllerDx) -> Element {
                     set_search_idx.call(search_hit_index() - 1);
                 },
                 disabled: search_hit_index() <= 0,
-                label: "Previous Hit"
+                label: tr!("preview-for-pdf-previous-hit")
             }
 
             div {
@@ -143,7 +144,7 @@ pub fn PdfControllerButtons2(controller: PdfViewerControllerDx) -> Element {
             }
 
             NavigationButton {
-                icon: MdArrowDownward, label: "Next Hit",
+                icon: MdArrowDownward, label: tr!("preview-for-pdf-next-hit"),
                 onclick: move |_| {
                     set_search_idx.call(search_hit_index() + 1);
                 },

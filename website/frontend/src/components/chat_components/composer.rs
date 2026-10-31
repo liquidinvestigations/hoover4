@@ -14,6 +14,7 @@ use dioxus::prelude::*;
 use dioxus_free_icons::{Icon, icons::{md_av_icons::MdStop, md_navigation_icons::MdArrowUpward}};
 
 use crate::components::search_components::search_result_list_controls::NavigationButton;
+use crate::tr;
 
 #[component]
 pub fn ChatComposer(
@@ -49,7 +50,7 @@ pub fn ChatComposer(
                         line-height: var(--x-line-body); color: var(--x-ink-strong); background: transparent;",
                 rows: 2,
                 maxlength: MAX_MESSAGE_CHARS as i64,
-                placeholder: "Ask the bot...",
+                placeholder: tr!("chat-composer-ask-the-bot"),
                 value: "{draft}",
                 disabled: disabled,
                 oninput: move |e| draft.set(e.value()),
@@ -82,14 +83,14 @@ pub fn ChatComposer(
                                 options.set(o);
                             },
                         }
-                        "Internet tools"
+                        {tr!("chat-composer-internet-tools")}
                     }
                 }
                 div { style: "flex: 1;" }
                 if let Some(secs) = *retry_after_seconds.read() {
                     span {
                         style: "font-size: var(--x-text-sm); color: var(--x-warning);",
-                        "Try again in {secs} s"
+                        {tr!("chat-composer-try-again-in-s", secs: secs.to_string())}
                     }
                 }
                 if *sending.read() {
@@ -112,7 +113,7 @@ pub fn ChatComposer(
                             // deliberately not promoted. An unmarked fragment in the
                             // conversation's permanent memory is read back by a later
                             // turn as though the assistant had said it.
-                            title: "Stop the answer (the partial is not saved to the conversation)",
+                            title: tr!("chat-composer-stop-the-answer-the-partial"),
                             onclick: move |_| stop.call(()),
                             Icon { icon: MdStop, style: "width: 20px; height: 20px; color: white;" }
                         }
@@ -123,7 +124,7 @@ pub fn ChatComposer(
                         // a control that looks live, invites a press, and
                         // silently ignores it.
                         span {
-                            title: "Starting the conversation\u{2026}",
+                            title: tr!("chat-composer-starting-the-conversation-u"),
                             style: "width: 40px; height: 40px; border-radius: 999px; \
                                     background: #E2E8F0; color: var(--x-ink-faint); font-size: var(--x-text-md); \
                                     display: flex; align-items: center; justify-content: center;",
@@ -133,7 +134,7 @@ pub fn ChatComposer(
                 } else {
                     NavigationButton {
                         icon: MdArrowUpward,
-                        label: "Send",
+                        label: tr!("chat-composer-send"),
                         disabled: send_disabled,
                         onclick: move |_| on_submit.call(()),
                     }

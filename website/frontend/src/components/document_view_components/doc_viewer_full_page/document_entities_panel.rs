@@ -46,6 +46,8 @@ use crate::components::{
     error_boundary::ServerErrorDisplay, suspend_boundary::LoadingIndicator,
 };
 use crate::data_definitions::doc_viewer_state::DocViewerStateControl;
+use crate::tr;
+use crate::i18n::SharedText;
 
 /// Rows on one page of a section, and the most pages a section will offer.
 ///
@@ -168,7 +170,7 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
                 }
                 input {
                     r#type: "text",
-                    placeholder: "Filter Entities ...",
+                    placeholder: tr!("document-entities-panel-filter-entities"),
                     style: "
                         width: 100%;
                         border: 1px solid rgba(0,0,0,0.35);
@@ -188,13 +190,13 @@ pub fn DocumentEntitiesPanel(document_identifier: ReadSignal<DocumentIdentifier>
                     div {
                         style: "display: flex; align-items: center; gap: 6px; margin-top: 8px; \
                                 font-size: 13px; color: rgba(0,0,0,0.65);",
-                        span { "Found by" }
+                        span { {tr!("document-entities-panel-found-by")} }
                         select {
                             style: "border: 1px solid rgba(0,0,0,0.35); border-radius: 8px; \
                                     padding: 4px 6px; font-size: 13px;",
                             value: "{provider_filter()}",
                             onchange: move |e| provider_filter.set(e.value()),
-                            option { value: "", "any model" }
+                            option { value: "", {tr!("document-entities-panel-any-model")} }
                             for name in providers.iter() {
                                 option { key: "{name}", value: "{name}", "{name}" }
                             }
@@ -253,9 +255,9 @@ fn SelectedEntityBanner(value: String, missing: bool) -> Element {
             div {
                 style: "flex: 1; min-width: 0; word-break: break-all;",
                 if missing {
-                    "This document has no entity \"{value}\". It may have been re-ingested since the link was made."
+                    {tr!("document-entities-panel-this-document-has-no-entity", value: value.to_string())}
                 } else {
-                    "Opened on one entity: {value}"
+                    {tr!("document-entities-panel-opened-on-one-entity", value: value.to_string())}
                 }
             }
             button {
@@ -263,7 +265,7 @@ fn SelectedEntityBanner(value: String, missing: bool) -> Element {
                         color: {ink}; cursor: pointer; font-size: 13px; \
                         text-decoration: underline;",
                 onclick: clear,
-                "Show all entities"
+                {tr!("document-entities-panel-show-all-entities")}
             }
         }
     }
@@ -363,7 +365,7 @@ fn EntityGroup(
                 }
                 div {
                     style: "font-size: var(--x-text-section); line-height: var(--x-line-section); font-weight: 700; color: rgba(0,0,0,0.75); flex: 1 1 auto;",
-                    "{entity_type.label()}"
+                    "{entity_type.label().shared()}"
                 }
                 div { style: "font-size: 13px; color: rgba(0,0,0,0.5);", "{total}" }
                 if has_details && !force_expanded {
@@ -380,7 +382,7 @@ fn EntityGroup(
                         } else {
                             Icon { icon: MdChevronRight, style: "width: 14px; height: 14px;" }
                         }
-                        "View Details"
+                        {tr!("document-entities-panel-view-details")}
                     }
                 }
             }
@@ -427,14 +429,14 @@ fn EntityGroup(
                         style: "border: 1px solid rgba(0,0,0,0.25); background: white; border-radius: 6px; padding: 2px 8px; cursor: pointer;",
                         disabled: current == 0,
                         onclick: move |_| page.set(page().saturating_sub(1)),
-                        "Previous"
+                        {tr!("document-entities-panel-previous")}
                     }
-                    span { style: "color: rgba(0,0,0,0.6);", "Page {current + 1} of {pages}" }
+                    span { style: "color: rgba(0,0,0,0.6);", {tr!("document-entities-panel-page-of", current_1: (current + 1).to_string(), pages: pages)} }
                     button {
                         style: "border: 1px solid rgba(0,0,0,0.25); background: white; border-radius: 6px; padding: 2px 8px; cursor: pointer;",
                         disabled: current + 1 >= pages,
                         onclick: move |_| page.set(current + 1),
-                        "Next"
+                        {tr!("document-entities-panel-next")}
                     }
                     if hidden > 0 {
                         // The cap is not a bug and must not read as one: saying how many
@@ -442,7 +444,7 @@ fn EntityGroup(
                         // a list that quietly lost things.
                         span {
                             style: "color: rgba(0,0,0,0.5);",
-                            "{hidden} more not shown"
+                            {tr!("document-entities-panel-more-not-shown", hidden: hidden.to_string())}
                         }
                     }
                 }
@@ -530,7 +532,7 @@ fn EntityCard(
             }
             match card.read().as_ref() {
                 None => rsx! {
-                    div { style: "font-size: 13px; color: rgba(0,0,0,0.5);", "Loading details…" }
+                    div { style: "font-size: 13px; color: rgba(0,0,0,0.5);", {tr!("document-entities-panel-loading-details")} }
                 },
                 Some(None) => rsx! {
                     div {
@@ -539,7 +541,7 @@ fn EntityCard(
                     }
                     div {
                         style: "font-size: 13px; color: rgba(0,0,0,0.55); margin-top: 2px;",
-                        "No details available for this value."
+                        {tr!("document-entities-panel-no-details-available-for-this")}
                     }
                 },
                 Some(Some(explanation)) => rsx! {
@@ -554,9 +556,9 @@ fn EntityCard(
                                 color: rgba(0,0,0,0.65); cursor: pointer; text-decoration: underline;",
                         onclick: move |_| show_amounts.toggle(),
                         if show_amounts() {
-                            "Hide the {amounts.len()} amounts in this bucket"
+                            {tr!("document-entities-panel-hide-the-amounts-in-this", amounts_len: amounts.len())}
                         } else {
-                            "Show the {amounts.len()} amounts in this bucket"
+                            {tr!("document-entities-panel-show-the-amounts-in-this", amounts_len: amounts.len())}
                         }
                     }
                     if show_amounts() {
@@ -660,7 +662,7 @@ fn EntityChip(item: DocumentEntityItem, show_provider: bool) -> Element {
     let title = if item.surface_text.is_empty() {
         item.value.clone()
     } else {
-        format!("{}\nas written: {}", item.value, item.surface_text)
+        tr!("document-entities-panel-as-written", value: item.value.clone(), written: item.surface_text.clone())
     };
 
     rsx! {
@@ -720,7 +722,7 @@ fn EntityChip(item: DocumentEntityItem, show_provider: bool) -> Element {
                     padding-left: 8px;
                     flex-shrink: 0;
                 ",
-                "{item.hit_count} mentions in all sources"
+                {tr!("document-entities-panel-mentions-in-all-sources", hit_count: item.hit_count)}
             }
         }
     }

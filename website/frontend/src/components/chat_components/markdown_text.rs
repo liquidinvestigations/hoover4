@@ -23,6 +23,7 @@ use common::board_text::{link_nodes, LinkNode, TextPart};
 use common::chat_types::ChatDocRef;
 use super::transcript::DocumentCitationCards;
 use super::web_page::WebPageCard;
+use crate::tr;
 
 /// Body size for assistant prose. It equals the body text role, `--x-text-body`.
 const BODY_PX: f32 = 15.0;
@@ -361,7 +362,7 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                                 padding: 0 4px; margin: 0 1px; font-size: var(--x-text-detail);
                                 font-weight: 400; cursor: pointer; vertical-align: baseline;
                             ",
-                            title: "Show the cited source",
+                            title: tr!("chat-markdown-text-show-the-cited-source"),
                             onclick: {
                                 let handle = handle.clone();
                                 move |_| scroll_to_handle(&handle)
@@ -373,8 +374,7 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                         span {
                             key: "{i}",
                             style: "color: var(--x-ink-muted);",
-                            title: "No citation of this conversation gave this handle, so \
-                                    no document stands behind it.",
+                            title: tr!("chat-markdown-text-no-citation-of-this-conversation"),
                             "{handle} ({UNCITED_LABEL})"
                         }
                     },
@@ -383,8 +383,7 @@ fn InlineSpans(spans: Vec<Span>) -> Element {
                             key: "{i}",
                             "data-conflicting-handle": "{handle}",
                             style: "color: var(--x-warning);",
-                            title: "Citations of this conversation gave this handle to more \
-                                    than one document, so it links to none of them.",
+                            title: tr!("chat-markdown-text-citations-of-this-conversation-gave"),
                             "{handle} ({CONFLICTING_LABEL})"
                         }
                     },

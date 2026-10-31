@@ -26,6 +26,7 @@
 //!   high browser zoom, where [`MAX_SIDEBAR_PX`] is wider than half the page.
 
 use dioxus::prelude::*;
+use crate::tr;
 
 /// Where the width is remembered. The unit is part of the key: a value written under a
 /// different unit must not be readable as this one.
@@ -251,7 +252,7 @@ pub fn ResizablePane(
                 border-right: 1px solid #E5E7EB;
                 box-sizing: border-box;
             ",
-            title: "Drag to resize, double-click to reset",
+            title: tr!("resizable-sidebar-drag-to-resize-double-click"),
             onmousedown: move |event: Event<MouseData>| {
                 event.prevent_default();
                 let client_x = event.client_coordinates().x;

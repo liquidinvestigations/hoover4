@@ -49,6 +49,8 @@ use crate::components::chat_components::tool_cards::{focus, FocusHandle, ModalCl
 use crate::components::suspend_boundary::LoadingIndicator;
 use crate::data_definitions::doc_viewer_state::DocTableState;
 use crate::pages::search_page::DocViewerStateControl;
+use crate::tr;
+use crate::i18n::SharedText;
 
 /// The one table-level control that can cover the grid.
 #[derive(Clone, PartialEq)]
@@ -306,7 +308,7 @@ pub fn DocumentPreviewForTable(
     let Some(overview) = overview_value else {
         return rsx! {
             PreviewWrapper {
-                controls: rsx! { "Table" },
+                controls: rsx! { {tr!("preview-for-table-table")} },
                 page: rsx! { LoadingIndicator {} }
             }
         };
@@ -314,11 +316,11 @@ pub fn DocumentPreviewForTable(
     if overview.sheets.is_empty() {
         return rsx! {
             PreviewWrapper {
-                controls: rsx! { "Table" },
+                controls: rsx! { {tr!("preview-for-table-table")} },
                 page: rsx! {
                     div {
                         style: "padding: 12px; color: rgba(0,0,0,0.6);",
-                        "This document was read as a table but stored no sheets."
+                        {tr!("preview-for-table-this-document-was-read-as")}
                     }
                 }
             }
@@ -329,7 +331,7 @@ pub fn DocumentPreviewForTable(
     // The truncation notice closes for this document view. The Metadata tab keeps the
     // truncation record.
     let banner = overview
-        .truncation_banner()
+        .truncation_banner().shared()
         .filter(|_| banner_closed().as_ref() != Some(&document_identifier_value));
     let banner_document = document_identifier_value.clone();
     let _ = source;
@@ -354,7 +356,7 @@ pub fn DocumentPreviewForTable(
             if active_filters > 0 {
                 button {
                     style: FILTER_CHIP_STYLE,
-                    title: "Remove every column filter",
+                    title: tr!("preview-for-table-remove-every-column-filter"),
                     onclick: {
                         let table_state = table_state.clone();
                         move |_| {
@@ -365,7 +367,7 @@ pub fn DocumentPreviewForTable(
                     },
                     Icon { icon: MdFilterList, style: "width: 16px; height: 16px;" }
                     // A filter you cannot see is how people conclude the data is missing.
-                    "{active_filters} filter(s) \u{00b7} clear"
+                    {tr!("preview-for-table-filter-s-u-clear", active_filters: active_filters.to_string())}
                 }
             }
         }
@@ -383,7 +385,7 @@ pub fn DocumentPreviewForTable(
                         class: "x-table-banner-close",
                         style: "border: none; background: transparent; cursor: pointer; font: inherit; padding: 0 4px;",
                         "aria-label": "Close this notice",
-                        title: "Close this notice",
+                        title: tr!("preview-for-table-close-this-notice"),
                         onclick: move |_| banner_closed.set(Some(banner_document.clone())),
                         "\u{00d7}"
                     }
@@ -392,7 +394,7 @@ pub fn DocumentPreviewForTable(
             if !has_columns {
                 div {
                     style: "padding: 12px; color: rgba(0,0,0,0.6);",
-                    "No column is shown. Use the Columns button to show one."
+                    {tr!("preview-for-table-no-column-is-shown-use")}
                 }
             } else {
                 match page_value.clone() {
@@ -402,7 +404,7 @@ pub fn DocumentPreviewForTable(
                             role: "status",
                             style: "padding: 12px;",
                             if !find_query.is_empty() || active_filters > 0 {
-                                p { "No rows match the current filters." }
+                                p { {tr!("preview-for-table-no-rows-match-the-current")} }
                                 button {
                                     style: CONTROL_BUTTON_STYLE,
                                     onclick: move |_| {
@@ -414,10 +416,10 @@ pub fn DocumentPreviewForTable(
                                         state.table_state = Some(table);
                                         control.set_doc_viewer_state.call(state);
                                     },
-                                    "Clear filters"
+                                    {tr!("preview-for-table-clear-filters")}
                                 }
                             } else {
-                                p { "This sheet has no rows." }
+                                p { {tr!("preview-for-table-this-sheet-has-no-rows")} }
                             }
                         }
                     },
@@ -510,7 +512,7 @@ fn SheetPicker(
     let current = overview
         .sheet(sheet_id)
         .map(|s| format!("{} ({} \u{00d7} {})", s.label(), s.row_count, s.column_count))
-        .unwrap_or_else(|| "Sheet".to_string());
+        .unwrap_or_else(|| tr!("preview-for-table-sheet"));
     if overview.sheets.len() == 1 {
         return rsx! {
             span { style: "color: var(--x-ink); font-size: var(--x-text-md); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;", title: "{current}", "{current}" }
@@ -534,7 +536,7 @@ fn SheetPicker(
             if other_hits > 0 {
                 span {
                     style: "font-weight: 600; color: var(--x-link);",
-                    title: "Matching rows on other sheets",
+                    title: tr!("preview-for-table-matching-rows-on-other-sheets"),
                     "+{other_hits}"
                 }
             }
@@ -593,7 +595,7 @@ fn SheetChooserDialog(
                                 span {
                                     class: "x-table-sheet-hits",
                                     style: "min-width: 3ch; text-align: right; font-weight: 600; color: {hit_colour};",
-                                    title: "Matching rows",
+                                    title: tr!("preview-for-table-matching-rows"),
                                     "{hits}"
                                 }
                             }
@@ -626,7 +628,7 @@ fn ColumnPicker(
                 column_modal.set(Some(TableColumnModal::Picker));
             },
             Icon { icon: MdViewColumn, style: "width: 16px; height: 16px;" }
-            "{shown} of {columns.len()}"
+            {tr!("preview-for-table-of", shown: shown, columns_len: columns.len())}
         }
     }
 }
@@ -649,14 +651,13 @@ fn TableColumnModalDialog(
         column_modal.set(None);
     };
     let label = match &modal {
-        TableColumnModal::Picker => "Choose visible columns".to_string(),
-        TableColumnModal::Filter(column) => format!("Filter {}", column.label()),
-        TableColumnModal::Sheets => "Choose a sheet".to_string(),
-        TableColumnModal::Cell(details) => format!(
-            "Cell {}{} in {}",
-            details.column.letter,
-            details.source_row,
-            details.column.label()
+        TableColumnModal::Picker => tr!("preview-for-table-choose-visible-columns"),
+        TableColumnModal::Filter(column) => tr!("preview-for-table-filter-column", column: column.label()),
+        TableColumnModal::Sheets => tr!("preview-for-table-choose-a-sheet"),
+        TableColumnModal::Cell(details) => tr!(
+            "preview-for-table-cell-in-column",
+            cell: format!("{}{}", details.column.letter, details.source_row),
+            column: details.column.label()
         ),
     };
     let (pane_size, body_style) = match &modal {
@@ -727,14 +728,14 @@ fn ColumnPickerDialog(
     rsx! {
         input {
             style: "width: 100%; box-sizing: border-box; padding: 6px 8px; margin-bottom: 8px;",
-            placeholder: "Find a column\u{2026}",
+            placeholder: tr!("preview-for-table-find-a-column-u"),
             value: "{name_filter}",
             oninput: move |e| name_filter.set(e.value()),
         }
         div {
             class: "x-table-columns-shown",
             style: "margin-bottom: 8px; color: var(--x-ink-muted);",
-            "{shown_count} of {MAX_TABLE_VISIBLE_COLUMNS} shown"
+            {tr!("preview-for-table-of-shown", shown_count: shown_count, max_table_visible_columns: MAX_TABLE_VISIBLE_COLUMNS)}
         }
         div {
             style: "display: flex; gap: 8px; margin-bottom: 8px;",
@@ -745,7 +746,7 @@ fn ColumnPickerDialog(
                     let table_state = table_state.clone();
                     move |_| set_table_state.call(table_state.clone().with_columns(TableColumnSelection::Automatic))
                 },
-                "Show the first {MAX_TABLE_VISIBLE_COLUMNS}"
+                {tr!("preview-for-table-show-the-first", max_table_visible_columns: MAX_TABLE_VISIBLE_COLUMNS)}
             }
             button {
                 "aria-label": "Hide all columns",
@@ -754,7 +755,7 @@ fn ColumnPickerDialog(
                     let table_state = table_state.clone();
                     move |_| set_table_state.call(table_state.clone().with_columns(TableColumnSelection::Selected(Vec::new())))
                 },
-                "Hide all"
+                {tr!("preview-for-table-hide-all")}
             }
         }
         for column in listed {
@@ -766,9 +767,9 @@ fn ColumnPickerDialog(
                 let shown_now = shown_columns.clone();
                 let order = all_ids.clone();
                 let tooltip = if disabled {
-                    "The grid shows at most 60 columns. Hide a column first."
+                    {tr!("preview-for-table-the-grid-shows-at-most")}
                 } else {
-                    ""
+                    String::new()
                 };
                 rsx! {
                     label {
@@ -833,7 +834,7 @@ fn TableGrid(
                     tr {
                         th {
                             style: "position: sticky; left: 0; top: 0; z-index: 3; background: #f3f3f3; border-bottom: 1px solid rgba(0,0,0,0.2); border-right: 1px solid rgba(0,0,0,0.12); padding: 4px 8px; text-align: right; color: rgba(0,0,0,0.5);",
-                            title: "The row number the file itself gives",
+                            title: tr!("preview-for-table-the-row-number-the-file"),
                             "#"
                         }
                         for column_id in visible_columns.iter().copied() {
@@ -935,14 +936,14 @@ fn ColumnHeader(
                 style: "display: inline-flex; align-items: center; gap: 4px;",
                 span { style: "color: rgba(0,0,0,0.4); font-weight: 400;", "{column.letter}" }
                 span {
-                    title: "{column.column_type}, {column.non_empty} values, {column.distinct_count} distinct",
+                    title: tr!("preview-for-table-values-distinct", column_column_type: column.column_type.to_string(), column_non_empty: column.non_empty.to_string(), column_distinct_count: column.distinct_count),
                     "{column.label()}"
                 }
                 // The type is stated in the header, from the manifest, so it is drawn
                 // before any cell arrives.
                 match class {
                     TableColumnClass::Number => rsx! {
-                        span { style: "color: rgba(0,0,0,0.4); font-weight: 400;", title: "Numeric column", "#" }
+                        span { style: "color: rgba(0,0,0,0.4); font-weight: 400;", title: tr!("preview-for-table-numeric-column"), "#" }
                     },
                     TableColumnClass::Temporal => rsx! {
                         Icon { icon: MdDateRange, style: "width: 14px; height: 14px; opacity: 0.45;" }
@@ -951,7 +952,7 @@ fn ColumnHeader(
                 }
                 span {
                     style: "cursor: pointer; display: inline-flex;",
-                    title: "Sort. Rows with nothing in this column come last, either way.",
+                    title: tr!("preview-for-table-sort-rows-with-nothing-in"),
                     onclick: on_sort,
                     match sorted {
                         Some(TableSort { desc: false, .. }) => rsx! {
@@ -999,7 +1000,7 @@ fn ColumnFilterTrigger(
                 column_modal.set(Some(TableColumnModal::Filter(column.clone())));
             },
             span {
-                title: "Filter this column",
+                title: tr!("preview-for-table-filter-this-column"),
                 Icon { icon: MdFilterList, style: "width: 15px; height: 15px;" }
             }
         }
@@ -1067,7 +1068,7 @@ fn ColumnFilterPopover(
                     style: "min-width: 260px; max-width: 320px; max-height: 380px; overflow-y: auto; padding: 8px; font-weight: 400; text-align: left;",
                     div {
                         style: "font-size: 13px; color: rgba(0,0,0,0.55); margin-bottom: 6px;",
-                        "{column.column_type} \u{00b7} {column.distinct_count} distinct \u{00b7} {column.min_value} \u{2013} {column.max_value}"
+                        {tr!("preview-for-table-u-distinct-u-u", column_column_type: column.column_type.to_string(), column_distinct_count: column.distinct_count, column_min_value: column.min_value.to_string(), column_max_value: column.max_value.to_string())}
                     }
                     match class {
                         TableColumnClass::Number | TableColumnClass::Temporal => rsx! {
@@ -1075,14 +1076,14 @@ fn ColumnFilterPopover(
                                 style: "display: flex; gap: 6px; align-items: center;",
                                 input {
                                     style: "width: 100px; padding: 3px 5px;",
-                                    placeholder: "from",
+                                    placeholder: tr!("preview-for-table-from"),
                                     value: "{low}",
                                     oninput: move |e| low.set(e.value()),
                                 }
                                 span { "\u{2013}" }
                                 input {
                                     style: "width: 100px; padding: 3px 5px;",
-                                    placeholder: "to",
+                                    placeholder: tr!("preview-for-table-to"),
                                     value: "{high}",
                                     oninput: move |e| high.set(e.value()),
                                 }
@@ -1106,13 +1107,13 @@ fn ColumnFilterPopover(
                                     apply_range(kind);
                                     on_close.call(());
                                 },
-                                "Apply range"
+                                {tr!("preview-for-table-apply-range")}
                             }
                         },
                         TableColumnClass::Text => rsx! {
                             input {
                                 style: "width: 100%; padding: 4px 6px;",
-                                placeholder: "Contains\u{2026}",
+                                placeholder: tr!("preview-for-table-contains-u"),
                                 value: "{text}",
                                 oninput: move |e| text.set(e.value()),
                             }
@@ -1125,7 +1126,7 @@ fn ColumnFilterPopover(
                                         apply_text(TableFilterKind::Contains(text()));
                                         on_close.call(());
                                     },
-                                    "Contains"
+                                    {tr!("preview-for-table-contains")}
                                 }
                                 button {
                                     style: FILTER_CHIP_STYLE,
@@ -1133,15 +1134,15 @@ fn ColumnFilterPopover(
                                         apply_starts(TableFilterKind::StartsWith(text()));
                                         on_close.call(());
                                     },
-                                    "Starts with"
+                                    {tr!("preview-for-table-starts-with")}
                                 }
                             }
                             div {
                                 style: "margin-top: 8px; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 6px;",
                                 match values.read().clone() {
-                                    None => rsx! { div { style: "font-size: 13px; color: rgba(0,0,0,0.5);", "Loading values\u{2026}" } },
+                                    None => rsx! { div { style: "font-size: 13px; color: rgba(0,0,0,0.5);", {tr!("preview-for-table-loading-values-u")} } },
                                     Some(values) if values.is_empty() => rsx! {
-                                        div { style: "font-size: 13px; color: rgba(0,0,0,0.5);", "No values match." }
+                                        div { style: "font-size: 13px; color: rgba(0,0,0,0.5);", {tr!("preview-for-table-no-values-match")} }
                                     },
                                     Some(values) => rsx! {
                                         for value in values {
@@ -1176,7 +1177,7 @@ fn ColumnFilterPopover(
                                 apply_empty(TableFilterKind::IsEmpty);
                                 on_close.call(());
                             },
-                            "Is empty"
+                            {tr!("preview-for-table-is-empty")}
                         }
                         button {
                             style: FILTER_CHIP_STYLE,
@@ -1185,7 +1186,7 @@ fn ColumnFilterPopover(
                                 apply_clear(TableFilterKind::Contains(String::new()));
                                 on_close.call(());
                             },
-                            "Clear"
+                            {tr!("preview-for-table-clear")}
                         }
                     }
         }
@@ -1255,7 +1256,7 @@ fn GridCell(
                 button {
                     r#type: "button",
                     class: "x-table-cell-expand",
-                    title: "Open full cell",
+                    title: tr!("preview-for-table-open-full-cell"),
                     "aria-label": "Open full cell",
                     onmounted: move |e| expand_button.set(Some(e.data())),
                     onclick: move |event: Event<MouseData>| {
@@ -1287,22 +1288,22 @@ fn cell_style(class: TableColumnClass, expandable: bool) -> String {
 #[component]
 fn CellDetailsDialog(details: CellDetails) -> Element {
     let CellDetails { cell, column, source_row, sheet_label, document } = details;
-    let mut rows: Vec<(&'static str, String)> = vec![
-        ("Column", format!("{} ({})", column.label(), column.letter)),
-        ("Row", source_row.to_string()),
+    let mut rows: Vec<(String, String)> = vec![
+        (tr!("preview-for-table-column"), format!("{} ({})", column.label(), column.letter)),
+        (tr!("preview-for-table-row"), source_row.to_string()),
     ];
     if !sheet_label.is_empty() {
-        rows.push(("Sheet", sheet_label));
+        rows.push((tr!("preview-for-table-sheet"), sheet_label));
     }
-    rows.push(("Type", cell.kind.clone()));
+    rows.push((tr!("preview-for-table-type"), cell.kind.clone()));
     if let Some(exact) = cell.int_value {
-        rows.push(("Exact integer", exact.to_string()));
+        rows.push((tr!("preview-for-table-exact-integer"), exact.to_string()));
     }
     if !cell.formula.is_empty() {
-        rows.push(("Formula", format!("= {}", cell.formula)));
+        rows.push((tr!("preview-for-table-formula"), format!("= {}", cell.formula)));
     }
-    rows.push(("Dataset", document.collection_dataset.clone()));
-    rows.push(("Document hash", document.file_hash.clone()));
+    rows.push((tr!("preview-for-table-dataset"), document.collection_dataset.clone()));
+    rows.push((tr!("preview-for-table-document-hash"), document.file_hash.clone()));
     rsx! {
         dl {
             style: "display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0 0 12px 0; font-size: 13px; flex: 0 0 auto;",
@@ -1315,7 +1316,7 @@ fn CellDetailsDialog(details: CellDetails) -> Element {
                 }
             }
             if !cell.link.is_empty() {
-                dt { style: "color: rgba(0,0,0,0.55);", "Link" }
+                dt { style: "color: rgba(0,0,0,0.55);", {tr!("preview-for-table-link")} }
                 dd {
                     style: "margin: 0; overflow-wrap: anywhere;",
                     a { href: "{cell.link}", target: "_blank", rel: "noopener noreferrer", "{cell.link}" }
@@ -1394,18 +1395,18 @@ fn TablePager(
                     disabled: current == 0,
                     onclick: move |_| go.call(current.saturating_sub(1)),
                     Icon { icon: MdChevronLeft, style: "width: 16px; height: 16px;" }
-                    "Previous"
+                    {tr!("preview-for-table-previous")}
                 }
-                span { "page {current + 1} of {last_page + 1}" }
+                span { {tr!("preview-for-table-page-of", current_1: (current + 1).to_string(), last_page_1: (last_page + 1).to_string())} }
                 button {
                     style: FILTER_CHIP_STYLE,
                     disabled: current >= last_page,
                     onclick: move |_| go.call((current + 1).min(last_page)),
-                    "Next"
+                    {tr!("preview-for-table-next")}
                     Icon { icon: MdChevronRight, style: "width: 16px; height: 16px;" }
                 }
             }
-            div { "rows {first_row}\u{2013}{last_row} of {page.total_rows}" }
+            div { {tr!("preview-for-table-rows-u-of", first_row: first_row.to_string(), last_row: last_row.to_string(), page_total_rows: page.total_rows)} }
         }
     }
 }
