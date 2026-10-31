@@ -315,6 +315,22 @@ macro_rules! tr {
 mod tests {
     use super::*;
 
+    /// The lines of message `id` in a catalog text: its first line and its indented lines.
+    fn message_block(text: &str, id: &str) -> String {
+        let mut out = String::new();
+        let mut inside = false;
+        for line in text.lines() {
+            if line.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '-') {
+                inside = line.split('=').next().unwrap_or_default().trim() == id;
+            }
+            if inside {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+        out
+    }
+
     /// The messages of a catalog with the sorted variable names that each one uses. A
     /// message starts with an identifier in the first column, and its indented lines
     /// follow it.
@@ -352,10 +368,23 @@ mod tests {
     #[test]
     fn every_catalog_parses_and_matches_the_english_messages() {
         let english: std::collections::BTreeMap<_, _> = messages(DEFAULT_LANGUAGE).into_iter().collect();
+        let english_text = catalog(DEFAULT_LANGUAGE);
         for (code, _) in CATALOGS {
             for (id, vars) in messages(code) {
                 let expected = english.get(&id).unwrap_or_else(|| panic!("{code}: {id} is not an English message"));
-                assert_eq!(&vars, expected, "{code}: {id} uses other variables than English");
+                // Chinese has one plural form, so a translation can leave out a variable
+                // that English uses only to select the plural variant.
+                let selector_only = |name: &String| {
+                    let block = message_block(english_text, &id);
+                    let uses = block.matches(&format!("${name}")).count();
+                    uses > 0 && uses == block.matches(&format!("${name} ->")).count()
+                };
+                let missing: Vec<&String> = expected.iter().filter(|v| !vars.contains(v)).collect();
+                let one_form = code == "zh" && vars.iter().all(|v| expected.contains(v))
+                    && missing.iter().all(|v| selector_only(v));
+                if !one_form {
+                    assert_eq!(&vars, expected, "{code}: {id} uses other variables than English");
+                }
             }
         }
     }

@@ -809,3 +809,82 @@ dataset-create-panel-already-accepts-uploads = { $one } يقبل الرفع با
 dataset-create-panel-already-accept-uploads = { $many_join } يقبلون الرفع بالفعل.
 dataset-create-panel-saved-as-this-collection-s-2 = حُفظت كإعدادات افتراضية لهذه المجموعة. ترثها هذه المجموعات، وتبدأ تحديثات الـ OCR واحدة تلو الأخرى: { $changed_join }. تحافظ المجموعات ذات اللغات الخاصة بها على لغاتها.
 dataset-create-panel-created-ingestion-has-started-follow = أنشئت { $collection_dataset }. بدأت عملية الاستيعاب. تابعها على صفحة معالجة المجموعة.
+processing-updates-unit =
+    { $unit ->
+        [folders]
+            { $count ->
+                [one] مجلد
+               *[other] مجلدات
+            }
+        [tables]
+            { $count ->
+                [one] جدول
+               *[other] جداول
+            }
+       *[files]
+            { $count ->
+                [one] ملف
+               *[other] ملفات
+            }
+    }
+processing-updates-step-runs =
+    { $count ->
+        [one] خطوة تعمل
+       *[other] خطوات تعمل
+    }
+processing-update-search_schema-title = مخطط فهرس البحث
+processing-update-search_schema-explanation =
+    { $files ->
+        [one] { $count } جدول بحث في المجموعة يفتقر إلى عمود يحتاجه فهرس البحث.
+       *[other] { $count } جداول بحث في المجموعة تفتقر إلى أعمدة يحتاجها فهرس البحث.
+    } يُضاف العمود إلى كل جدول. يستمر البحث في العمل.
+processing-update-search_schema-runs = جداول فهرس البحث
+processing-update-unfinished-title = معالجة غير مكتملة
+processing-update-unfinished-explanation =
+    { $files ->
+        [one] { $count } ملف لم تُعالج حتى النهاية.
+       *[other] { $count } ملف لم تُعالج حتى النهاية.
+    } يشمل ذلك الملفات التي لا تملك خطة معالجة، مثلاً بعد استيراد انقطع. تُكتمل معالجة هذه الملفات.
+processing-update-unfinished-runs = جميع مراحل المعالجة لهذه الملفات
+processing-update-failed_files-title = ملفات فشلت
+processing-update-failed_files-explanation =
+    { $files ->
+        [one] { $count } ملف به خطأ في المعالجة.
+       *[other] { $count } ملف به أخطاء في المعالجة.
+    } تُعاد تشغيل المراحل الفاشلة بالنسبة لهم. تحاول التشغيل التلقائي إعادة ملف مرة واحدة لكل إصدار جديد من المرحلة الفاشلة.
+processing-update-failed_files-runs = المراحل الفاشلة، ثم استخلاص الكيانات، والتضميم والفهرسة
+processing-update-virus_scan-title = فحص الفيروسات
+processing-update-virus_scan-explanation =
+    { $files ->
+        [one] { $count } ملف لا يملك حكماً من برنامج مكافحة الفيروسات.
+       *[other] { $count } ملف لا يملك أحكاماً من برنامج مكافحة الفيروسات.
+    } تُفحص. يُوضع علامة على الملف الذي يكتشفه الماسح أنه مصاب في البحث، ويُرفض تنزيل PDF الأصلي والقابل للبحث.
+processing-update-virus_scan-runs = فحص برنامج مكافحة الفيروسات، ثم خاصية البحث في الملفات المصابة
+processing-update-tables-title = جداول
+processing-update-tables-explanation =
+    { $files ->
+        [one] { $count } ملف هو ملف JSON أو JSON Lines بدون جدول من القارئ الحالي، أو جدول قطعته قارئ سابق عند 300 عمود.
+       *[other] { $count } ملف هي ملفات JSON أو JSON Lines بدون جداول من القارئ الحالي، أو جداول قطعها قارئ سابق عند 300 عمود.
+    } تُقرأ مرة أخرى. الملفات التي قرأها قارئ سابق كـ CSV تُعاد إليها جداول JSON، وتتوقف الخلايا السابقة عن العرض.
+processing-update-tables-runs = قراءة الجداول، ثم نوع الملف وفهرسة هذه الملفات
+processing-update-ocr-title = OCR
+processing-update-ocr-explanation =
+    { $files ->
+        [one] حوالي { $count } ملف لا يملك نص OCR للغات الحالية، أو يحتفظ بنص OCR للغات لم تعد تشملها الإعدادات.
+       *[other] حوالي { $count } ملف لا يملك نصوص OCR للغات الحالية، أو يحتفظ بنصوص OCR للغات لم تعد تشملها الإعدادات.
+    } تعمل OCR للغات الحالية، ويُحذف نص اللغات المزالة.
+processing-update-ocr-runs = OCR وPDFات القابلة للبحث، ثم استخلاص الكيانات، والتضميم والفهرسة للنص الجديد
+processing-update-vectors-title = متجهات
+processing-update-vectors-explanation =
+    { $files ->
+        [one] { $count } ملف به نص لا يملك متجهات من نموذج التضميم الذي تُقدّمه التثبيت.
+       *[other] { $count } ملف به نص لا يملك متجهات من نموذج التضميم الذي تُقدّمه التثبيت.
+    } تُحسب متجهاته وتُفهرس.
+processing-update-vectors-runs = التضميم وفهرسة المتجهات
+processing-update-folder_counts-title = أعداد المجلدات
+processing-update-folder_counts-explanation =
+    { $files ->
+        [one] { $count } مجلد لا يملك عدداً للملفات أو حجماً، أو به قيم من إصدار سابق.
+       *[other] { $count } مجلدات لا تملك أعداداً للملفات أو أحجاماً، أو بها قيم من إصدار سابق.
+    } تُعاد حساب الأعداد.
+processing-update-folder_counts-runs = شجرة المجلدات

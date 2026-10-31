@@ -805,3 +805,69 @@ dataset-create-panel-already-accepts-uploads = { $one } already accepts uploads.
 dataset-create-panel-already-accept-uploads = { $many_join } already accept uploads.
 dataset-create-panel-saved-as-this-collection-s-2 = Saved as this collection's defaults. These datasets inherit them, and their OCR updates start one at a time: { $changed_join }. Datasets with their own languages keep them.
 dataset-create-panel-created-ingestion-has-started-follow = Created { $collection_dataset }. Ingestion has started. Follow it on the collection's processing page.
+processing-updates-unit = { $unit ->
+    [folders] { $count ->
+        [one] folder
+       *[other] folders
+    }
+    [tables] { $count ->
+        [one] table
+       *[other] tables
+    }
+   *[files] { $count ->
+        [one] file
+       *[other] files
+    }
+}
+processing-updates-step-runs = { $count ->
+    [one] step run
+   *[other] step runs
+}
+processing-update-search_schema-title = Search index schema
+processing-update-search_schema-explanation = { $files ->
+    [one] { $count } search table of the collection misses a column that the search index needs.
+   *[other] { $count } search tables of the collection miss a column that the search index needs.
+} The column is added to each table. Search keeps working.
+processing-update-search_schema-runs = Search index tables
+processing-update-unfinished-title = Unfinished processing
+processing-update-unfinished-explanation = { $files ->
+    [one] { $count } file is not processed to the end.
+   *[other] { $count } files are not processed to the end.
+} This includes files without a processing plan, for example after an interrupted ingestion. Their processing completes.
+processing-update-unfinished-runs = All processing stages for these files
+processing-update-failed_files-title = Failed files
+processing-update-failed_files-explanation = { $files ->
+    [one] { $count } file has a processing error.
+   *[other] { $count } files have a processing error.
+} The failed stages run again for them. The automatic run retries a file once for each new version of the stage that failed.
+processing-update-failed_files-runs = The failed stages, then entity extraction, embedding and indexing
+processing-update-virus_scan-title = Virus scan
+processing-update-virus_scan-explanation = { $files ->
+    [one] { $count } file has no antivirus verdict.
+   *[other] { $count } files have no antivirus verdict.
+} They are scanned. A file that the scanner finds infected is marked in search, and its original and searchable PDF downloads are refused.
+processing-update-virus_scan-runs = Antivirus scan, then the search attribute of infected files
+processing-update-tables-title = Tables
+processing-update-tables-explanation = { $files ->
+    [one] { $count } file is a JSON or JSON Lines file without a table of the current reader, or a table that an earlier reader cut at 300 columns.
+   *[other] { $count } files are JSON or JSON Lines files without a table of the current reader, or tables that an earlier reader cut at 300 columns.
+} They are read again. JSON files that an earlier reader read as CSV get their JSON table, and the earlier cells stop being shown.
+processing-update-tables-runs = Table reading, then the file type and indexing of these files
+processing-update-ocr-title = OCR
+processing-update-ocr-explanation = { $files ->
+    [one] About { $count } file has no OCR text for the current languages, or keeps OCR text of languages that the settings no longer include.
+   *[other] About { $count } files have no OCR text for the current languages, or keep OCR text of languages that the settings no longer include.
+} OCR runs for the current languages, and the text of the removed languages is deleted.
+processing-update-ocr-runs = OCR and searchable PDFs, then entity extraction, embedding and indexing of the new text
+processing-update-vectors-title = Vectors
+processing-update-vectors-explanation = { $files ->
+    [one] { $count } file with text has no vectors of the embedding model that the installation serves.
+   *[other] { $count } files with text have no vectors of the embedding model that the installation serves.
+} Their vectors are computed and indexed.
+processing-update-vectors-runs = Embedding and vector indexing
+processing-update-folder_counts-title = Folder counts
+processing-update-folder_counts-explanation = { $files ->
+    [one] { $count } folder has no file count or size, or has values of an earlier version.
+   *[other] { $count } folders have no file count or size, or have values of an earlier version.
+} The counts are calculated again.
+processing-update-folder_counts-runs = Folder tree

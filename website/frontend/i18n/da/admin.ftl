@@ -809,3 +809,82 @@ dataset-create-panel-already-accepts-uploads = { $one } accepterer allerede uplo
 dataset-create-panel-already-accept-uploads = { $many_join } accepterer allerede uploads.
 dataset-create-panel-saved-as-this-collection-s-2 = Gemt som denne collections standardindstillinger. Disse datasæt arver dem, og deres OCR-opdateringer starter én ad gangen: { $changed_join }. Datasæt med egne sprog beholder dem.
 dataset-create-panel-created-ingestion-has-started-follow = Oprettet { $collection_dataset }. Ingestion er startet. Følg den på collections side for behandlingsopdateringer.
+processing-updates-unit =
+    { $unit ->
+        [folders]
+            { $count ->
+                [one] mappe
+               *[other] mapper
+            }
+        [tables]
+            { $count ->
+                [one] tabel
+               *[other] tabeller
+            }
+       *[files]
+            { $count ->
+                [one] fil
+               *[other] filer
+            }
+    }
+processing-updates-step-runs =
+    { $count ->
+        [one] trin kører
+       *[other] trin kører
+    }
+processing-update-search_schema-title = Søgeindeksschema
+processing-update-search_schema-explanation =
+    { $files ->
+        [one] { $count } søgetabel i samlingen mangler en kolonne, som søgeindekset kræver.
+       *[other] { $count } søgetabeller i samlingen mangler en kolonne, som søgeindekset kræver.
+    } Kolonnen tilføjes til hver tabel. Søgningen fortsætter med at virke.
+processing-update-search_schema-runs = Søgeindekstabeller
+processing-update-unfinished-title = Ufuldført behandling
+processing-update-unfinished-explanation =
+    { $files ->
+        [one] { $count } fil er ikke behandlet helt færdig.
+       *[other] { $count } filer er ikke behandlet helt færdig.
+    } Dette omfatter filer uden en behandlingsplan, for eksempel efter en afbrudt indsamling. Deres behandling fuldføres.
+processing-update-unfinished-runs = Alle behandlingsstadier for disse filer
+processing-update-failed_files-title = Fejlede filer
+processing-update-failed_files-explanation =
+    { $files ->
+        [one] { $count } fil har en behandlingsfejl.
+       *[other] { $count } filer har en behandlingsfejl.
+    } De fejlede stadier kører igen for dem. Den automatiske køring forsøger en fil én gang for hver ny version af det stadie, der fejlede.
+processing-update-failed_files-runs = De fejlede stadier, derefter entitetsudtræk, indlejring og indeksering
+processing-update-virus_scan-title = Virusundersøgelse
+processing-update-virus_scan-explanation =
+    { $files ->
+        [one] { $count } fil har ingen antivirusdom.
+       *[other] { $count } filer har ingen antivirusdom.
+    } De scannes. En fil, som skanneren finder inficeret, markeres i søgningen, og dens oprindelige og søgbare PDF-download afvises.
+processing-update-virus_scan-runs = Antivirusscanning, derefter søgeattributten for inficerede filer
+processing-update-tables-title = Tabeller
+processing-update-tables-explanation =
+    { $files ->
+        [one] { $count } fil er en JSON- eller JSON Lines-fil uden en tabel fra den nuværende læser, eller en tabel, som en tidligere læser skar af ved 300 kolonner.
+       *[other] { $count } filer er JSON- eller JSON Lines-filer uden en tabel fra den nuværende læser, eller tabeller, som en tidligere læser skar ved 300 kolonner.
+    } De læses igen. JSON-filer, som en tidligere læser læste som CSV, får deres JSON-tabel, og de tidligere celler ophører med at blive vist.
+processing-update-tables-runs = Tabelæsning, derefter filtype og indeksering af disse filer
+processing-update-ocr-title = OCR
+processing-update-ocr-explanation =
+    { $files ->
+        [one] Omkring { $count } fil har ingen OCR-tekst for de nuværende sprog, eller beholder OCR-tekst af sprog, som indstillingerne ikke længere omfatter.
+       *[other] Omkring { $count } filer har ingen OCR-tekst for de nuværende sprog, eller beholder OCR-tekst af sprog, som indstillingerne ikke længere omfatter.
+    } OCR kører for de nuværende sprog, og teksten af de fjernede sprog slettes.
+processing-update-ocr-runs = OCR og søgbare PDF-filer, derefter entitetsudtræk, indlejring og indeksering af den nye tekst
+processing-update-vectors-title = Vektorer
+processing-update-vectors-explanation =
+    { $files ->
+        [one] { $count } fil med tekst har ingen vektorer fra indlejringsmodellen, som installationen leverer.
+       *[other] { $count } filer med tekst har ingen vektorer fra indlejringsmodellen, som installationen leverer.
+    } Deres vektorer beregnes og indekseres.
+processing-update-vectors-runs = Indlejring og vektorindeksering
+processing-update-folder_counts-title = Mappetælninger
+processing-update-folder_counts-explanation =
+    { $files ->
+        [one] { $count } mappe har ingen fortælling eller størrelse, eller har værdier fra en tidligere version.
+       *[other] { $count } mapper har ingen fortælling eller størrelse, eller har værdier fra en tidligere version.
+    } Tællingerne beregnes igen.
+processing-update-folder_counts-runs = Mappe-træ

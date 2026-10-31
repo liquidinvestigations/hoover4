@@ -487,6 +487,7 @@ admin-llm-reports-error-30-d = Greška % 30 d
 admin-llm-reports-avg-ms-30-d = Prosječno ms 30 d
 admin-llm-reports-no-tool-calls-in-30 = Nema poziva alata u zadnjih 30 dana.
 admin-llm-reports-top-users = Najbolji korisnici
+admin-llm-reports-the-30-users-with-the = Izvještaj o 30 korisnika s najviše vremena modela u prozoru.
 admin-llm-reports-30-days = 30 dana
 admin-llm-reports-7-days = 7 dana
 admin-llm-reports-24-hours = 24 sata
@@ -808,3 +809,82 @@ dataset-create-panel-already-accepts-uploads = { $one } već prihvaća prijenose
 dataset-create-panel-already-accept-uploads = { $many_join } već prihvaćaju prijenose.
 dataset-create-panel-saved-as-this-collection-s-2 = Spremljeno kao zadane postavke ove kolekcije. Ovi podaci nasljeđuju ih, a njihova OCR ažuriranja započinju jedno po jedno: { $changed_join }. Podaci s vlastitim jezicima zadržavaju ih.
 dataset-create-panel-created-ingestion-has-started-follow = Stvoren { $collection_dataset }. Prijenos je započeto. Pratite ga na stranici obrade kolekcije.
+processing-updates-unit =
+    { $unit ->
+        [folders]
+            { $count ->
+                [one] mapa
+               *[other] mapa
+            }
+        [tables]
+            { $count ->
+                [one] tablica
+               *[other] tablica
+            }
+       *[files]
+            { $count ->
+                [one] datoteka
+               *[other] datoteka
+            }
+    }
+processing-updates-step-runs =
+    { $count ->
+        [one] pokretanje koraka
+       *[other] pokretanja koraka
+    }
+processing-update-search_schema-title = Shema indeksa pretrace
+processing-update-search_schema-explanation =
+    { $files ->
+        [one] { $count } tablici pretrace kolekcije nedostaje stupac koji indeks pretrace treba.
+       *[other] { $count } tablica pretrace kolekcije nedostaje stupac koji indeks pretrace treba.
+    } Stupac se dodaje u svaku tablicu. Pretraga nastavlja raditi.
+processing-update-search_schema-runs = Tablice indeksa pretrace
+processing-update-unfinished-title = Neadnovana obrada
+processing-update-unfinished-explanation =
+    { $files ->
+        [one] { $count } datoteka nije obrađena do kraja.
+       *[other] { $count } datoteka nije obrađena do kraja.
+    } To uključuje datoteke bez plana obrade, na primjer nakon prekinutog unosa. Njihova se obrada dovršava.
+processing-update-unfinished-runs = Svi stupci obrade za ove datoteke
+processing-update-failed_files-title = Neuspjele datoteke
+processing-update-failed_files-explanation =
+    { $files ->
+        [one] { $count } datoteci je došlo do greške u obradi.
+       *[other] { $count } datoteka je došlo do greške u obradi.
+    } Neuspjeli stupci ponovo se pokreću za njih. Automatsko pokretanje pokušava datoteku jednom za svaku novu verziju neuspjelog stupca.
+processing-update-failed_files-runs = Neuspjeli stupci, zatim ekstrakcija entiteta, ugradnja i indeksiranje
+processing-update-virus_scan-title = Skeniranje virusa
+processing-update-virus_scan-explanation =
+    { $files ->
+        [one] { $count } datoteci nedostaje antivirusno zaključak.
+       *[other] { $count } datoteka nedostaje antivirusno zaključak.
+    } Skeniraju se. Datoteka koju skener proglazi zaraženom označava se u pretragama, a njezina preuzimanja originalnog i pretraživog PDF-a odbijaju se.
+processing-update-virus_scan-runs = Antivirusno skeniranje, zatim atribut pretrace zaraženih datoteka
+processing-update-tables-title = Tablice
+processing-update-tables-explanation =
+    { $files ->
+        [one] { $count } datoteka je JSON ili JSON Lines datoteka bez tablice trenutnog čitača, ili tablica koju je raniji čitač odsjekao na 300 stupaca.
+       *[other] { $count } datoteka je JSON ili JSON Lines datoteka bez tablice trenutnog čitača, ili tablice koje je raniji čitač odsjekao na 300 stupaca.
+    } Ponovo se čitaju. JSON datotekama koje je raniji čitač pročitao kao CSV dodaje se JSON tablica, a ranije ćelije prestaju se prikazivati.
+processing-update-tables-runs = Čitanje tablica, zatim vrsta datoteke i indeksiranje ovih datoteka
+processing-update-ocr-title = OCR
+processing-update-ocr-explanation =
+    { $files ->
+        [one] Otprilike { $count } datoteka nema OCR tekst za trenutne jezike, ili zadržava OCR tekst jezika koje postavke više ne uključuju.
+       *[other] Otprilike { $count } datoteka nema OCR tekst za trenutne jezike, ili zadržava OCR tekst jezika koje postavke više ne uključuju.
+    } OCR se pokreće za trenutne jezike, a tekst uključenih jezika briše se.
+processing-update-ocr-runs = OCR i pretraživi PDF-ovi, zatim ekstrakcija entiteta, ugradnja i indeksiranje novog teksta
+processing-update-vectors-title = Vektori
+processing-update-vectors-explanation =
+    { $files ->
+        [one] { $count } datoteka s tekstom nema vektore modela ugradnje koje instalacija posluže.
+       *[other] { $count } datoteka s tekstom nema vektore modela ugradnje koje instalacija posluže.
+    } Njihovi se vektori izračunavaju i indeksiraju.
+processing-update-vectors-runs = Ugradnja i indeksiranje vektora
+processing-update-folder_counts-title = Brojevi mapa
+processing-update-folder_counts-explanation =
+    { $files ->
+        [one] { $count } mapi nedostaje broj datoteka ili veličina, ili ima vrijednosti ranije verzije.
+       *[other] { $count } mapa nedostaje broj datoteka ili veličina, ili imaju vrijednosti ranije verzije.
+    } Brojevi se ponovo izračunavaju.
+processing-update-folder_counts-runs = Stablo mapa

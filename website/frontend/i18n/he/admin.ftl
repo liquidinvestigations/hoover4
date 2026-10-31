@@ -809,3 +809,82 @@ dataset-create-panel-already-accepts-uploads = { $one } כבר מקבל העלא
 dataset-create-panel-already-accept-uploads = { $many_join } כבר מקבלים העלאות.
 dataset-create-panel-saved-as-this-collection-s-2 = נשמר כברירות המחדל של האוסף הזה. ערכות הנתונים הללו יורשות אותן, ועדכוני ה-OCR שלהן מתחילים אחד אחרי השני: { $changed_join }. ערכות נתונים עם שפות משלהן שומרות עליהן.
 dataset-create-panel-created-ingestion-has-started-follow = { $collection_dataset } נוצר. תהליך העיבוד הראשוני הופעל. אפשר לעקוב אחריו בעמוד עיבוד האוסף.
+processing-updates-unit =
+    { $unit ->
+        [folders]
+            { $count ->
+                [one] תיקיה
+               *[other] תיקיות
+            }
+        [tables]
+            { $count ->
+                [one] טבלה
+               *[other] טבלות
+            }
+       *[files]
+            { $count ->
+                [one] קובץ
+               *[other] קבצים
+            }
+    }
+processing-updates-step-runs =
+    { $count ->
+        [one] שלב
+       *[other] שלבים
+    }
+processing-update-search_schema-title = סכמת מפתח החיפוש
+processing-update-search_schema-explanation =
+    { $files ->
+        [one] ל{ $count } טבלת חיפוש באוסף חסר עמודה שהמפתח דורש.
+       *[other] ל{ $count } טבלות חיפוש באוסף חסרים עמודות שהמפתח דורש.
+    } העמודות מתווספות לכל טבלה. החיפוש ממשיך לפעול.
+processing-update-search_schema-runs = טבלות מפתח החיפוש
+processing-update-unfinished-title = עיבוד שלא הושלם
+processing-update-unfinished-explanation =
+    { $files ->
+        [one] { $count } קובץ לא עובד עד הסוף.
+       *[other] { $count } קבצים לא עובדו עד הסוף.
+    } זה כולל קבצים ללא תכנית עיבוד, למשל אחרי קליטה שהופסקה. העיבוד שלהם מושלם.
+processing-update-unfinished-runs = כל שלבי העיבוד של הקבצים האלה
+processing-update-failed_files-title = קבצים שנכשלו
+processing-update-failed_files-explanation =
+    { $files ->
+        [one] ל{ $count } קובץ יש כשלון עיבוד.
+       *[other] ל{ $count } קבצים יש כשלונות עיבוד.
+    } שלבי העיבוד שנכשלו מופעלים שוב עבורם. ההפעלה האוטומטית מנסה קובץ אחד עבור כל גרסה חדשה של השלב שנכשל.
+processing-update-failed_files-runs = השלבים שנכשלו, ואחריהם חילוץ ישויות, הטמעה ומפתח
+processing-update-virus_scan-title = סריקת וירוסים
+processing-update-virus_scan-explanation =
+    { $files ->
+        [one] ל{ $count } קובץ אין שופט אנטי-וירוס.
+       *[other] ל{ $count } קבצים אין שופט אנטי-וירוס.
+    } הם נסרקים. קובץ שהסורק מוצא כנדבק מסומן בחיפוש, והורדות ה-PDF המקורי והחיפוש שלו נדחות.
+processing-update-virus_scan-runs = סריקת אנטי-וירוס, ואחריהם תכונת החיפוש של קבצים נדבקים
+processing-update-tables-title = טבלות
+processing-update-tables-explanation =
+    { $files ->
+        [one] { $count } קובץ הוא קובץ JSON או JSON Lines ללא טבלה של הקורא הנוכחי, או טבלה שקצר קורא קודם ב-300 עמודות.
+       *[other] { $count } קבצים הם קבצי JSON או JSON Lines ללא טבלות של הקורא הנוכחי, או טבלות שקצר קורא קודם ב-300 עמודות.
+    } הם נקראים שוב. קבצי JSON שקרא קורא קודם כ-CSV מקבלים את טבלת ה-JSON שלהם, והתאים של הקורא הקודם מפסיקים להופיע.
+processing-update-tables-runs = קריאת טבלות, ואחריהם סוג הקובץ ומפתח של קבצים אלה
+processing-update-ocr-title = OCR
+processing-update-ocr-explanation =
+    { $files ->
+        [one] ב-{ $count } קובץ אין טקסט OCR לשפות הנוכחיות, או שהוא שומר טקסט OCR לשפות שההדרות כבר לא כוללות.
+       *[other] ב-{ $count } קבצים אין טקסט OCR לשפות הנוכחיות, או שהם שומרים טקסט OCR לשפות שההדרות כבר לא כוללות.
+    } OCR מופעל לשפות הנוכחיות, וטקסט השפות שהוספו נמחק.
+processing-update-ocr-runs = OCR ו-PDF חיפוש, ואחריהם חילוץ ישויות, הטמעה ומפתח של הטקסט החדש
+processing-update-vectors-title = וקטורים
+processing-update-vectors-explanation =
+    { $files ->
+        [one] ל{ $count } קובץ עם טקסט אין וקטורים של מודל ההטמעה שההתקנה מספקת.
+       *[other] ל{ $count } קבצים עם טקסט אין וקטורים של מודל ההטמעה שההתקנה מספקת.
+    } הוקטורים שלהם מחושבים ונמפתחים.
+processing-update-vectors-runs = הטמעה ומפתח וקטורים
+processing-update-folder_counts-title = ספירות תיקיות
+processing-update-folder_counts-explanation =
+    { $files ->
+        [one] ל{ $count } תיקיה אין ספירת קבצים או גודל, או שיש לה ערכים של גרסה קודמת.
+       *[other] ל{ $count } תיקיות אין ספירות קבצים או גדלים, או שיש להן ערכים של גרסה קודמת.
+    } הספירות מחושבות שוב.
+processing-update-folder_counts-runs = עץ התיקיות

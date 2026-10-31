@@ -11,7 +11,8 @@
 
 use dioxus::prelude::*;
 
-use common::processing_updates::{selection_summary, ProcessingUpdatesView, UpdateStepState};
+use common::processing_updates::{selection_summary, ProcessingUpdatesView, UpdateStepState, UpdateStepView};
+use common::uploads::format_count;
 use common::storage_tree::format_size;
 
 use crate::api::admin_api::{
@@ -115,7 +116,7 @@ pub fn ProcessingUpdatesPanel(
     let start_style = if can_start { "" } else { "opacity: 0.5; cursor: not-allowed;" };
     let status = view.status_line().shared();
     let unique_unit = count_unit(view.unique_files, "files");
-    let runs_word = if view.executions == 1 { "step run" } else { "step runs" };
+    let runs_word = tr!("processing-updates-step-runs", count: view.executions);
     let scope_for_check = view.scope_id.clone();
     let scope_for_start = view.scope_id.clone();
     let kind_for_start = scope_kind.clone();
@@ -138,7 +139,7 @@ pub fn ProcessingUpdatesPanel(
                         {tr!("processing-updates-panel-the-pipeline-has-not-calculated")}
                     } else {
                         {tr!("processing-updates-panel-calculated-at-in-ms", view_checked_at: view.checked_at.to_string(), view_check_ms: view.check_ms.to_string())}
-                        {tr!("processing-updates-panel-the-waiting-steps-change-each", view_unique_files: view.unique_files, unique_unit: unique_unit.to_string(), format_size_view_unique_bytes: format_size(view.unique_bytes), view_executions: view.executions.to_string(), runs_word: runs_word.to_string())}
+                        {tr!("processing-updates-panel-the-waiting-steps-change-each", view_unique_files: view.unique_files, unique_unit: unique_unit, format_size_view_unique_bytes: format_size(view.unique_bytes), view_executions: view.executions.to_string(), runs_word: runs_word)}
                     }
                 }
                 if !view.automatic {
@@ -165,6 +166,7 @@ pub fn ProcessingUpdatesPanel(
                                 let id_for_check = step.step_id.clone();
                                 let is_on = chosen.contains(&step.step_id);
                                 let unit = count_unit(step.pending, &step.unit);
+                                let texts = step_texts(&step);
                                 let state_label = if step.state == UpdateStepState::UpToDate { {tr!("processing-updates-panel-up-to-date-select-it")} } else { step.state.label().to_string() };
                                 let state_colour = match step.state {
                                     UpdateStepState::Failed => "var(--x-danger)",
@@ -188,9 +190,9 @@ pub fn ProcessingUpdatesPanel(
                                             }
                                         }
                                         td { style: TD,
-                                            div { style: "font-weight: 500;", "{step.title}" }
-                                            div { style: HELP_TEXT, "{step.explanation}" }
-                                            div { style: HELP_TEXT, {tr!("processing-updates-panel-runs", step_runs: step.runs.to_string())} }
+                                            div { style: "font-weight: 500;", "{texts.title}" }
+                                            div { style: HELP_TEXT, "{texts.explanation}" }
+                                            div { style: HELP_TEXT, {tr!("processing-updates-panel-runs", step_runs: texts.runs)} }
                                         }
                                         td { style: "{TD} text-align: right; white-space: nowrap;",
                                             if step.state == UpdateStepState::UpToDate {
@@ -294,14 +296,33 @@ pub fn ProcessingUpdatesPanel(
     }
 }
 
-/// The unit word of a count: `files`, `folders` or `tables`, singular for 1.
-fn count_unit(count: u64, unit: &str) -> &'static str {
-    match (unit, count == 1) {
-        ("tables", true) => "table",
-        ("tables", false) => "tables",
-        ("folders", true) => "folder",
-        ("folders", false) => "folders",
-        (_, true) => "file",
-        (_, false) => "files",
+/// The unit word of a count in the interface language: `files`, `folders` or `tables`.
+fn count_unit(count: u64, unit: &str) -> String {
+    tr!("processing-updates-unit", unit: unit.to_string(), count: count)
+}
+
+/// The steps of the pipeline registry (`P_admin/updates/registry.py`) that the catalog
+/// translates. Another step shows the English texts that the pipeline stored.
+const TRANSLATED_STEPS: [&str; 8] = [
+    "search_schema", "unfinished", "failed_files", "virus_scan", "tables", "ocr", "vectors", "folder_counts",
+];
+
+/// The title, the explanation and the runs of one step, in the interface language.
+struct StepTexts {
+    title: String,
+    explanation: String,
+    runs: String,
+}
+
+fn step_texts(step: &UpdateStepView) -> StepTexts {
+    if !TRANSLATED_STEPS.contains(&step.step_id.as_str()) {
+        return StepTexts { title: step.title.clone(), explanation: step.explanation.clone(), runs: step.runs.clone() };
+    }
+    // i18n: data, the catalog id of a registry step
+    let id = |part: &str| format!("processing-update-{}-{part}", step.step_id);
+    StepTexts {
+        title: tr!(&id("title")),
+        explanation: tr!(&id("explanation"), files: step.pending, count: format_count(step.pending)),
+        runs: tr!(&id("runs")),
     }
 }

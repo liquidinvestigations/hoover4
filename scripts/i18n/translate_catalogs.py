@@ -97,13 +97,56 @@ def plural_keys(message: ast.Message) -> set[str]:
     return keys
 
 
+def selector_variables(message: ast.Message) -> set[str]:
+    """The variables that a message uses only as the selector of a plural selector."""
+    selectors: set[str] = set()
+    shown: set[str] = set()
+
+    class Uses(Visitor):
+        def visit_SelectExpression(self, node):  # noqa: N802
+            if isinstance(node.selector, ast.VariableReference):
+                selectors.add(node.selector.id.name)
+            for variant in node.variants:
+                self.visit(variant)
+
+        def visit_VariableReference(self, node):  # noqa: N802
+            shown.add(node.id.name)
+
+    Uses().visit(message)
+    return selectors - shown
+
+
+def drop_absent_plurals(code: str, message: ast.Message) -> ast.Message:
+    """The message without the variants whose key is a plural category that `code` lacks.
+    A selector key that is not a plural category stays. A selector that keeps only its
+    default variant stays a selector."""
+
+    class Drop(Visitor):
+        def visit_SelectExpression(self, node):  # noqa: N802
+            node.variants = [v for v in node.variants
+                             if v.default or not isinstance(v.key, ast.Identifier)
+                             or v.key.name not in PLURALS["ar"] or v.key.name in PLURALS[code]]
+            self.generic_visit(node)
+
+    Drop().visit(message)
+    return message
+
+
 def check(code: str, english: ast.Message, translated: ast.Message) -> str | None:
     """Why a translated message is not usable, or `None`."""
-    if variables(translated) != variables(english):
+    missing = variables(english) - variables(translated)
+    if PLURALS[code] == {"other"} and missing and missing <= selector_variables(english) \
+            and variables(translated) <= variables(english):
+        # A language with one plural form needs no selector over a count that the text
+        # does not show.
+        pass
+    elif variables(translated) != variables(english):
         return f"variables {sorted(variables(translated))} differ from {sorted(variables(english))}"
     keys = plural_keys(translated)
     english_keys = plural_keys(english)
-    if english_keys and english_keys <= PLURALS["en"]:
+    if english_keys and english_keys <= PLURALS["en"] and not keys and PLURALS[code] == {"other"}:
+        pass
+    elif english_keys and english_keys <= PLURALS["en"]:
         extra = keys - PLURALS[code]
         if extra:
             return f"plural keys {sorted(extra)} are not categories of {code}"
@@ -252,9 +295,13 @@ def translate_language(model: Model, catalog: Path, name: str, code: str, record
             result = translate_batch(model, code, terms, batch)
             for message in batch:
                 candidate = result.get(message.id.name)
+                if candidate is not None:
+                    candidate = drop_absent_plurals(code, candidate)
                 reason = "missing from the reply" if candidate is None else check(code, message, candidate)
                 if reason:
                     retry = translate_batch(model, code, terms, [message]).get(message.id.name)
+                    if retry is not None:
+                        retry = drop_absent_plurals(code, retry)
                     reason = "missing from the reply" if retry is None else check(code, message, retry)
                     candidate = None if reason else retry
                 if candidate is None:

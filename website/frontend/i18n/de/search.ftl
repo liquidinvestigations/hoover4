@@ -153,5 +153,6 @@ search-filter-modal-mentioned-dates = Erwähnt { $dates }
 panel-left-view-no-document-matches-query = Kein Dokument entspricht „{ $query }“ mit den ausgewählten Filtern.
 search-sort-control-pending = Ergebnisse sind nach { $applied } sortiert. Wählen Sie „Suche“, um zu { $pending } zu wechseln.
 search-sort-control-sort-key = Sortieren nach: { $key }
+search-filter-modal-search-entity-type = Durchsuchen { $kind }…
 search-vfs-tree-min-px-calc = min({ $indent_px_rung }px, calc({ $max_indent_percent }% * { $indent_fraction_rung }))
 search-sort-control-not-applied-yet-press-search = { $base }. Noch nicht angewendet. Klicken Sie auf „Suche“.

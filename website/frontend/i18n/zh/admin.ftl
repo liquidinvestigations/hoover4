@@ -809,3 +809,73 @@ dataset-create-panel-already-accepts-uploads = { $one } 已接受上传。
 dataset-create-panel-already-accept-uploads = { $many_join } 已接受上传。
 dataset-create-panel-saved-as-this-collection-s-2 = 已保存为该数据集集合的默认设置。这些数据集将继承这些设置，其 OCR 更新将逐个启动：{ $changed_join }。拥有自身语言的数据集将保留其语言。
 dataset-create-panel-created-ingestion-has-started-follow = 已创建 { $collection_dataset }。摄取已启动。请前往该数据集集合的处理页面跟踪其进度。
+processing-updates-unit =
+    { $unit ->
+        [folders]
+            { $count ->
+                [one] 文件夹
+               *[other] 文件夹
+            }
+        [tables]
+            { $count ->
+                [one] 表格
+               *[other] 表格
+            }
+       *[files]
+            { $count ->
+                [one] 文档
+               *[other] 文档
+            }
+    }
+processing-updates-step-runs =
+    { $count ->
+       *[other] 步骤已运行
+    }
+processing-update-search_schema-title = 搜索索引架构
+processing-update-search_schema-explanation =
+    { $files ->
+       *[other] 数据集中 { $count } 张搜索表缺少搜索索引所需的列。
+    } 该列已添加到每张表。搜索继续正常工作。
+processing-update-search_schema-runs = 搜索索引表格
+processing-update-unfinished-title = 未完成的处理
+processing-update-unfinished-explanation =
+    { $files ->
+       *[other] { $count } 个文件未处理完成。
+    } 这包括没有处理计划的文件，例如在中断的摄入之后。它们的处理将完成。
+processing-update-unfinished-runs = 这些文件的所有处理阶段
+processing-update-failed_files-title = 处理失败的文档
+processing-update-failed_files-explanation =
+    { $files ->
+       *[other] { $count } 个文件存在处理错误。
+    } 失败的阶段将重新运行。自动运行会针对失败的阶段的每个新版本重试一次文件。
+processing-update-failed_files-runs = 失败的阶段，然后进行实体提取、嵌入和索引
+processing-update-virus_scan-title = 病毒扫描
+processing-update-virus_scan-explanation =
+    { $files ->
+       *[other] { $count } 个文件没有防病毒判定结果。
+    } 它们将被扫描。扫描器发现感染的文件将在搜索中标记，并拒绝其原始和可搜索的 PDF 下载。
+processing-update-virus_scan-runs = 防病毒扫描，然后处理感染文档的搜索属性
+processing-update-tables-title = 表格
+processing-update-tables-explanation =
+    { $files ->
+       *[other] { $count } 个文件是缺少当前读取器数据表的 JSON 或 JSON Lines 文件，或某几张表被较早的读取器截断为 300 列。
+    } 它们将被重新读取。较早的读取器作为 CSV 读取的 JSON 文件将恢复其 JSON 数据表，较早的单元格将不再显示。
+processing-update-tables-runs = 表格读取，然后处理这些文档的文件类型和索引
+processing-update-ocr-title = OCR
+processing-update-ocr-explanation =
+    { $files ->
+       *[other] 约 { $count } 个文件没有当前语言的 OCR 文本，或保留了设置不再包含的语言的 OCR 文本。
+    } 将为当前语言运行 OCR，并删除被移除语言的文本。
+processing-update-ocr-runs = OCR 和可搜索 PDF，然后对新文本进行实体提取、嵌入和索引
+processing-update-vectors-title = 向量
+processing-update-vectors-explanation =
+    { $files ->
+       *[other] { $count } 个含文本的文件没有本安装提供的嵌入模型向量。
+    } 将计算并索引它们的向量。
+processing-update-vectors-runs = 嵌入和向量索引
+processing-update-folder_counts-title = 文件夹计数
+processing-update-folder_counts-explanation =
+    { $files ->
+       *[other] { $count } 个文件夹没有文件计数或大小，或存在较早版本的数据。
+    } 将重新计算计数。
+processing-update-folder_counts-runs = 文件夹树

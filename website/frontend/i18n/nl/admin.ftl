@@ -807,3 +807,82 @@ dataset-ocr-panel-plan-s-reopened = { $plans } plannen heropend
 dataset-create-panel-already-accepts-uploads = { $one } accepteert al uploads.
 dataset-create-panel-already-accept-uploads = { $many_join } accepteren al uploads.
 dataset-create-panel-saved-as-this-collection-s-2 = Opgeslagen als de standaardwaarden van deze verzameling. Deze datasets erven deze, en hun OCR-bewkingen starten één voor één: { $changed_join }. Datasets met hun eigen talen behouden deze.
+processing-updates-unit =
+    { $unit ->
+        [folders]
+            { $count ->
+                [one] map
+               *[other] mappen
+            }
+        [tables]
+            { $count ->
+                [one] tabel
+               *[other] tabellen
+            }
+       *[files]
+            { $count ->
+                [one] bestand
+               *[other] bestanden
+            }
+    }
+processing-updates-step-runs =
+    { $count ->
+        [one] verwerkingsstap
+       *[other] verwerkingsstappen
+    }
+processing-update-search_schema-title = Schema voor de zoekindex
+processing-update-search_schema-explanation =
+    { $files ->
+        [one] { $count } zoektabel van de verzameling mist een kolom die de zoekindex nodig heeft.
+       *[other] { $count } zoektabellen van de verzameling missen een kolom die de zoekindex nodig heeft.
+    } De kolom wordt aan elke tabel toegevoegd. Zoeken blijft werken.
+processing-update-search_schema-runs = Zoekindex tabellen
+processing-update-unfinished-title = Verwerking niet afgerond
+processing-update-unfinished-explanation =
+    { $files ->
+        [one] { $count } bestand is niet tot het eind verwerkt.
+       *[other] { $count } bestanden zijn niet tot het eind verwerkt.
+    } Dit betreft bestanden zonder verwerkingsplan, bijvoorbeeld na een onderbroken ingestie. Hun verwerking wordt afgerond.
+processing-update-unfinished-runs = Alle verwerkingsstappen voor deze bestanden
+processing-update-failed_files-title = Mislukte bestanden
+processing-update-failed_files-explanation =
+    { $files ->
+        [one] { $count } bestand heeft een verwerkingsfout.
+       *[other] { $count } bestanden hebben een verwerkingsfout.
+    } De mislukte stappen worden opnieuw voor hen uitgevoerd. De automatische run probeert een bestand één keer per nieuwe versie van de mislukte stap.
+processing-update-failed_files-runs = De mislukte stappen, dan entiteteactie, embedding en indexering
+processing-update-virus_scan-title = Virusscan
+processing-update-virus_scan-explanation =
+    { $files ->
+        [one] { $count } bestand heeft geen antivirusoordeel.
+       *[other] { $count } bestanden hebben geen antivirusoordeel.
+    } Ze worden gescand. Een bestand dat de scanner als besmet vindt, wordt in zoeken gemarkeerd, en het downloaden van het originele en doorzoekbare PDF-bestand wordt geweigerd.
+processing-update-virus_scan-runs = Antivirusscan, dan het zoekkenmerk van besmette bestanden
+processing-update-tables-title = Tabellen
+processing-update-tables-explanation =
+    { $files ->
+        [one] { $count } bestand is een JSON- of JSON Lines-bestand zonder een tabel van de huidige lezer, of een tabel die een eerdere lezer bij 300 kolommen afkapte.
+       *[other] { $count } bestanden zijn JSON- of JSON Lines-bestanden zonder een tabel van de huidige lezer, of tabellen die een eerdere lezer bij 300 kolommen afkapte.
+    } Ze worden opnieuw gelezen. JSON-bestanden die een eerdere lezer als CSV heeft gelezen, krijgen hun JSON-tabel, en de eerdere cellen worden niet meer getoond.
+processing-update-tables-runs = Tabellezing, dan het bestandstype en indexering van deze bestanden
+processing-update-ocr-title = OCR
+processing-update-ocr-explanation =
+    { $files ->
+        [one] Ongeveer { $count } bestand heeft geen OCR-tekst voor de huidige talen, of behoudt OCR-tekst van talen die de instellingen niet meer bevatten.
+       *[other] Ongeveer { $count } bestanden hebben geen OCR-tekst voor de huidige talen, of behouden OCR-tekst van talen die de instellingen niet meer bevatten.
+    } OCR wordt uitgevoerd voor de huidige talen, en de tekst van de verwijderde talen wordt verwijderd.
+processing-update-ocr-runs = OCR en doorzoekbare PDF's, dan entiteteactie, embedding en indexering van de nieuwe tekst
+processing-update-vectors-title = Vectoren
+processing-update-vectors-explanation =
+    { $files ->
+        [one] { $count } bestand met tekst heeft geen vectoren van het embeddingmodel dat de installatie aanbiedt.
+       *[other] { $count } bestanden met tekst hebben geen vectoren van het embeddingmodel dat de installatie aanbiedt.
+    } Hun vectoren worden berekend en geïndexeerd.
+processing-update-vectors-runs = Embedding en vectorindexering
+processing-update-folder_counts-title = Aantallen mappen
+processing-update-folder_counts-explanation =
+    { $files ->
+        [one] { $count } map heeft geen bestandenaantal of -grootte, of heeft waarden van een eerdere versie.
+       *[other] { $count } mappen hebben geen bestandenaantal of -grootte, of hebben waarden van een eerdere versie.
+    } De aantallen worden opnieuw berekend.
+processing-update-folder_counts-runs = Mapboom

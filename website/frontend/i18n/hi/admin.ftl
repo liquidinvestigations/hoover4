@@ -809,3 +809,82 @@ dataset-create-panel-already-accepts-uploads = { $one } पहले से अ�
 dataset-create-panel-already-accept-uploads = { $many_join } पहले से अपलोड स्वीकार करते हैं।
 dataset-create-panel-saved-as-this-collection-s-2 = इस समग्री के डिफ़ॉल्ट के रूप में सहेजा गया। ये डेटासेट इन्हें अपनाते हैं, और उनके OCR अपडेट एक-एक करके शुरू होते हैं: { $changed_join }। अपनी भाषा रखने वाले डेटासेट अपनी भाषा रखते हैं।
 dataset-create-panel-created-ingestion-has-started-follow = { $collection_dataset } बना दिया गया। इन्गेशन शुरू हो गया है। इसे समग्री के प्रोसेसिंग पेज पर फ़ॉलो करें।
+processing-updates-unit =
+    { $unit ->
+        [folders]
+            { $count ->
+                [one] फ़ोल्डर
+               *[other] फ़ोल्डर
+            }
+        [tables]
+            { $count ->
+                [one] तालिका
+               *[other] तालिकाएँ
+            }
+       *[files]
+            { $count ->
+                [one] दस्तावेज़
+               *[other] दस्तावेज़
+            }
+    }
+processing-updates-step-runs =
+    { $count ->
+        [one] कदम कार्य
+       *[other] कदम कार्य
+    }
+processing-update-search_schema-title = खोज़ सूचीकरण स्कीमा
+processing-update-search_schema-explanation =
+    { $files ->
+        [one] समग्री की { $count } खोज़ तालिका में वह स्तम्भ नहीं जो खोज़ सूचीकरण को ज़रूरी है, वह मौजूद नहीं है।
+       *[other] समग्री की { $count } खोज़ तालिकाएँ में वह स्तम्भ नहीं जो खोज़ सूचीकरण को ज़रूरी है, वह मौजूद नहीं है।
+    } हर तालिका में वह स्तम्भ जोड़ा जाता है। खोज़ का कार्य चलता रहता है।
+processing-update-search_schema-runs = खोज़ सूचीकरण तालिकाएँ
+processing-update-unfinished-title = अत्पूर्ण प्रोसेसिंग
+processing-update-unfinished-explanation =
+    { $files ->
+        [one] { $count } दस्तावेज़ अत्पूर्ण तक प्रोसेड नहीं है।
+       *[other] { $count } दस्तावेज़ अत्पूर्ण तक प्रोसेड नहीं हैं।
+    } इसमें उन दस्तावेज़ शामिल हैं जिनका कोई प्रोसेसिंग प्लान नहीं है, जैसे कि रोके गए अनुवाद के बाद। उनका प्रोसेसिंग पूरा होता है।
+processing-update-unfinished-runs = इन दस्तावेज़ के सभी प्रोसेसिंग चरण
+processing-update-failed_files-title = विफल दस्तावेज़
+processing-update-failed_files-explanation =
+    { $files ->
+        [one] { $count } दस्तावेज़ में प्रोसेसिंग विफलता है।
+       *[other] { $count } दस्तावेज़ में प्रोसेसिंग विफलता है।
+    } विफल चरण उनके लिए फिर से चलते हैं। स्वचालित कार्य नए चरण संस्करण के लिए एक दस्तावेज़ को एक बार पुनः प्रयास करता है।
+processing-update-failed_files-runs = विफल चरण, फिर इकाई निष्कर्षण, एम्बेडिंग और सूचीकरण
+processing-update-virus_scan-title = वायरुस स्कैन
+processing-update-virus_scan-explanation =
+    { $files ->
+        [one] { $count } दस्तावेज़ में एंटीवायरुस निर्णय नहीं है।
+       *[other] { $count } दस्तावेज़ में एंटीवायरुस निर्णय नहीं हैं।
+    } उन्हें स्कैन किया जाता है। स्कैनर द्वारा संक्रित पाए गए दस्तावेज़ खोज़ में चिह्नित किया जाता है, और उसका मूल और खोज़योग्य PDF डाउनलोड रद्द किया जाता है।
+processing-update-virus_scan-runs = एंटीवायरुस स्कैन, फिर संक्रित दस्तावेज़ों का खोज़ गुण
+processing-update-tables-title = तालिकाएँ
+processing-update-tables-explanation =
+    { $files ->
+        [one] { $count } दस्तावेज़ वर्तमान पढ़ने वाले की तालिका वाला एक JSON या JSON Lines दस्तावेज़ नहीं है, या तालिका जो पूर्व पढ़ने वाले ने 300 स्तम्भों पर काटा था।
+       *[other] { $count } दस्तावेज़ वर्तमान पढ़ने वाले की तालिका वाले JSON या JSON Lines दस्तावेज़ नहीं हैं, या तालिकाएँ जो पूर्व पढ़ने वाले ने 300 स्तम्भों पर काटा था।
+    } उन्हें फिर से पढ़ा जाता है। पूर्व पढ़ने वाले द्वारा CSV के रूप में पढ़े गए JSON दस्तावेज़ों को उनका JSON तालिका मिलता है, और पूर्व कोष्टकें दिखाना बंद हो जाती हैं।
+processing-update-tables-runs = तालिका पढ़ना, फिर इन दस्तावेज़ों का फ़ाइल प्रारूप और सूचीकरण
+processing-update-ocr-title = OCR
+processing-update-ocr-explanation =
+    { $files ->
+        [one] { $count } दस्तावेज़ में वर्तमान भाषाओं के लिए OCR पाठ नहीं है, या वर्तमान भाषाओं के लिए OCR पाठ जो सेटिंग्स अब शामिल नहीं करती, वह रखता है।
+       *[other] { $count } दस्तावेज़ में वर्तमान भाषाओं के लिए OCR पाठ नहीं है, या वर्तमान भाषाओं के लिए OCR पाठ जो सेटिंग्स अब शामिल नहीं करती, वह रखते हैं।
+    } वर्तमान भाषाओं के लिए OCR चलता है, और हटाए गए भाषाओं का पाठ हटा दिया जाता है।
+processing-update-ocr-runs = OCR और खोज़योग्य PDF, फिर नए पाठ का इकाई निष्कर्षण, एम्बेडिंग और सूचीकरण
+processing-update-vectors-title = वेक्टर
+processing-update-vectors-explanation =
+    { $files ->
+        [one] पाठ वाला { $count } दस्तावेज़ में वह एम्बेडिंग मॉडल जो स्थापना प्रदान करती है, उसका वेक्टर नहीं है।
+       *[other] पाठ वाला { $count } दस्तावेज़ में वह एम्बेडिंग मॉडल जो स्थापना प्रदान करती है, उसका वेक्टर नहीं हैं।
+    } उनके वेक्टर गणित के लिए बनाए जाते हैं और सूचीकृत किए जाते हैं।
+processing-update-vectors-runs = एम्बेडिंग और वेक्टर सूचीकरण
+processing-update-folder_counts-title = फ़ोल्डर गणनाएँ
+processing-update-folder_counts-explanation =
+    { $files ->
+        [one] { $count } फ़ोल्डर में दस्तावेज़ गणना या आकार नहीं है, या पूर्व संस्करण के मान हैं।
+       *[other] { $count } फ़ोल्डर में दस्तावेज़ गणना या आकार नहीं हैं, या पूर्व संस्करण के मान हैं।
+    } गणनाएँ फिर से गणित के लिए बनाई जाती हैं।
+processing-update-folder_counts-runs = फ़ोल्डर वृक्ष

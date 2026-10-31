@@ -326,6 +326,7 @@ admin-failure-detail-node-s-dropped-at-this = { $node_nodes_dropped } node(r) dr
 admin-failures-admin-errors-and-failures = Administrator: feil og svikt
 admin-failures-errors-failures = Feil/svikt
 admin-failures-loading-failures = Lastar svikt…
+admin-failures-operational-failures = Driftsfeil
 admin-failures-no-operational-failures-at-this = Ingen operative svikt akkurat nå.
 admin-failures-collection = Samling
 admin-failures-dataset = Datasett
@@ -808,3 +809,82 @@ dataset-create-panel-already-accepts-uploads = { $one } aksepterer allerede oppl
 dataset-create-panel-already-accept-uploads = { $many_join } aksepterer allerede opplasting.
 dataset-create-panel-saved-as-this-collection-s-2 = Lagret som standard for denne samlingen. Disse datasettene arver dem, og OCR-oppdateringene starter ett om gangen: { $changed_join }. Datasetter med egne språk beholder dem.
 dataset-create-panel-created-ingestion-has-started-follow = Opprettet { $collection_dataset }. Ingesting har startet. Følg det på samlingens behandlingsside.
+processing-updates-unit =
+    { $unit ->
+        [folders]
+            { $count ->
+                [one] mappe
+               *[other] mapper
+            }
+        [tables]
+            { $count ->
+                [one] tabell
+               *[other] tabeller
+            }
+       *[files]
+            { $count ->
+                [one] fil
+               *[other] filer
+            }
+    }
+processing-updates-step-runs =
+    { $count ->
+        [one] kjøring av steg
+       *[other] kjøringer av steg
+    }
+processing-update-search_schema-title = Søkeindeksskjema
+processing-update-search_schema-explanation =
+    { $files ->
+        [one] { $count } søketabell i samlingen mangler en kolonne som søkeindeksen trenger.
+       *[other] { $count } søketabeller i samlingen mangler en kolonne som søkeindeksen trenger.
+    } Kolonnen legges til i hver tabell. Søket fortsetter å fungere.
+processing-update-search_schema-runs = Søkeindekstabeller
+processing-update-unfinished-title = Ufullført behandling
+processing-update-unfinished-explanation =
+    { $files ->
+        [one] { $count } fil er ikke behandlet til slutten.
+       *[other] { $count } filer er ikke behandlet til slutten.
+    } Dette inkluderer filer uten behandlingsplan, for eksempel etter en avbrutt innsamling. Behandlingen fullføres.
+processing-update-unfinished-runs = Alle behandlingsstadier for disse filene
+processing-update-failed_files-title = Mislykkede filer
+processing-update-failed_files-explanation =
+    { $files ->
+        [one] { $count } fil har en behandlingsfeil.
+       *[other] { $count } filer har en behandlingsfeil.
+    } De mislykkede stegene kjøres igjen for dem. Den automatiske kjøringen prøver en fil én gang for hver ny versjon av stegene som mislyktes.
+processing-update-failed_files-runs = De mislykkede stegene, deretter enhetsekstraksjon, innbinding og indeksering
+processing-update-virus_scan-title = Virusundersøkelse
+processing-update-virus_scan-explanation =
+    { $files ->
+        [one] { $count } fil har ingen antivirusvurdering.
+       *[other] { $count } filer har ingen antivirusvurdering.
+    } De blir undersøkt. En fil som skanneren finner som infisert, merkes i søket, og nedlastingen av originalen og den søkbare PDF-en avvises.
+processing-update-virus_scan-runs = Antivirusundersøkelse, deretter søkeattributtet for infiserte filer
+processing-update-tables-title = Tabeller
+processing-update-tables-explanation =
+    { $files ->
+        [one] { $count } fil er en JSON- eller JSON Lines-fil uten en tabell fra gjeldende leser, eller en tabell som en tidligere leser kappet av på 300 kolonner.
+       *[other] { $count } filer er JSON- eller JSON Lines-filer uten en tabell fra gjeldende leser, eller tabeller som en tidligere leser kappet av på 300 kolonner.
+    } De blir lest igjen. JSON-filer som en tidligere leser leste som CSV får sin JSON-tabell, og de tidligere cellene slutter å vises.
+processing-update-tables-runs = Tabelllesing, deretter filtype og indeksering av disse filene
+processing-update-ocr-title = OCR
+processing-update-ocr-explanation =
+    { $files ->
+        [one] Omkring { $count } fil har ingen OCR-tekst for gjeldende språk, eller beholder OCR-tekst fra språk som innstillingene ikke lenger inkluderer.
+       *[other] Omkring { $count } filer har ingen OCR-tekst for gjeldende språk, eller beholder OCR-tekst fra språk som innstillingene ikke lenger inkluderer.
+    } OCR kjøres for gjeldende språk, og teksten fra de fjernede språkene slettes.
+processing-update-ocr-runs = OCR og søkbare PDF-er, deretter enhetsekstraksjon, innbinding og indeksering av den nye teksten
+processing-update-vectors-title = Vektorer
+processing-update-vectors-explanation =
+    { $files ->
+        [one] { $count } fil med tekst har ingen vektorer fra innbindingsmodellen som installasjonen serverer.
+       *[other] { $count } filer med tekst har ingen vektorer fra innbindingsmodellen som installasjonen serverer.
+    } Vektorene beregnes og indekseres.
+processing-update-vectors-runs = Innbinding og vektorindeksering
+processing-update-folder_counts-title = Mappeteller
+processing-update-folder_counts-explanation =
+    { $files ->
+        [one] { $count } mappe har ingen filantall eller størrelse, eller har verdier fra en tidligere versjon.
+       *[other] { $count } mapper har ingen filantall eller størrelse, eller har verdier fra en tidligere versjon.
+    } Tallene beregnes igjen.
+processing-update-folder_counts-runs = Mappestruktur

@@ -809,3 +809,82 @@ dataset-create-panel-already-accepts-uploads = { $one } acceptă deja încărcă
 dataset-create-panel-already-accept-uploads = { $many_join } acceptă deja încărcări.
 dataset-create-panel-saved-as-this-collection-s-2 = Salvate ca implicite pentru această colecție. Aceste seturi de date le moștenesc, iar actualizările lor de OCR pornesc pe rând: { $changed_join }. Seturile de date cu propriile limbi le păstrează.
 dataset-create-panel-created-ingestion-has-started-follow = Creat { $collection_dataset }. Ingestia a pornit. Urmărește-o pe pagina de procesare a colecției.
+processing-updates-unit =
+    { $unit ->
+        [folders]
+            { $count ->
+                [one] folderan
+               *[other] foldere
+            }
+        [tables]
+            { $count ->
+                [one] tabel
+               *[other] tabele
+            }
+       *[files]
+            { $count ->
+                [one] fișier
+               *[other] fișiere
+            }
+    }
+processing-updates-step-runs =
+    { $count ->
+        [one] etapă rulată
+       *[other] etape rulante
+    }
+processing-update-search_schema-title = Schema indexului de căutare
+processing-update-search_schema-explanation =
+    { $files ->
+        [one] { $count } tabel de căutare din colecție îi lipsește o coloană de care are nevoie indexul de căutare.
+       *[other] { $count } tabele de căutare din colecție îi lipsesc coloane de care are nevoie indexul de căutare.
+    } Coloana este adăuată fiecărui tabel. Căutarea continuă să funcționeze.
+processing-update-search_schema-runs = Tabele indexului de căutare
+processing-update-unfinished-title = Procesare incompletă
+processing-update-unfinished-explanation =
+    { $files ->
+        [one] { $count } fișier nu este procesat până la capăt.
+       *[other] { $count } fișiere nu sunt procesate până la capăt.
+    } Aceasta include fișierele fără un plan de procesare, de exemplu după o ingestie întreruptă. Procesarea lor se completează.
+processing-update-unfinished-runs = Toate etapele de procesare pentru aceste fișiere
+processing-update-failed_files-title = Fișiere eșuate
+processing-update-failed_files-explanation =
+    { $files ->
+        [one] { $count } fișier are o eroare de procesare.
+       *[other] { $count } fișiere au erori de procesare.
+    } Etapele eșuate sunt rulate din nou pentru ele. Rularea automată reîncearcă un fișier o dată pentru fiecare versiune nouă a etapei care a eșuat.
+processing-update-failed_files-runs = Etapele eșuate, apoi extracția entităților, încapsularea și indexarea
+processing-update-virus_scan-title = Scanare antivirus
+processing-update-virus_scan-explanation =
+    { $files ->
+        [one] { $count } fișier nu are un verdict antivirus.
+       *[other] { $count } fișiere nu au verdict antivirus.
+    } Sunt scanate. Un fișier pe care scannerul îl consideră infectat este marcat în căutare, iar descărcările sale PDF original și căutabilă sunt refuzate.
+processing-update-virus_scan-runs = Scanare antivirus, apoi atributul de căutare a fișierelor infectate
+processing-update-tables-title = Tabele
+processing-update-tables-explanation =
+    { $files ->
+        [one] { $count } fișier este un fișier JSON sau JSON Lines fără un tabel al cititorului actual, sau un tabel pe care un cititor anterior l-a tăiat la 300 coloane.
+       *[other] { $count } fișiere sunt fișiere JSON sau JSON Lines fără tabele al cititorului actual, sau tabele pe care un cititor anterior le-a tăiat la 300 coloane.
+    } Sunt citite din nou. Fișierele JSON citite ca CSV de un cititor anterior își recapătă tabelul JSON, iar celulele anterior afișate încetează să mai fie afișate.
+processing-update-tables-runs = Citirea tabelelor, apoi tipul fișierului și indexarea acestor fișiere
+processing-update-ocr-title = OCR
+processing-update-ocr-explanation =
+    { $files ->
+        [one] Aproximativ { $count } fișier nu are text OCR pentru limbile actuale, sau păstrează text OCR de limbi care nu mai sunt incluse în setări.
+       *[other] Aproximativ { $count } fișiere nu au text OCR pentru limbile actuale, sau păstrează text OCR de limbi care nu mai sunt incluse în setări.
+    } OCR rulează pentru limbile actuale, iar textul limbilor eliminate este șters.
+processing-update-ocr-runs = OCR și PDF-uri căutabile, apoi extracția entităților, încapsularea și indexarea textului nou
+processing-update-vectors-title = Vectori
+processing-update-vectors-explanation =
+    { $files ->
+        [one] { $count } fișier cu text nu are vectori ai modelului de încapsulare servit de instalare.
+       *[other] { $count } fișiere cu text nu au vectori ai modelului de încapsulare servit de instalare.
+    } Vectorii lor sunt calculați și indexați.
+processing-update-vectors-runs = Îcapsulare și indexare vectorială
+processing-update-folder_counts-title = Numărarea folderelor
+processing-update-folder_counts-explanation =
+    { $files ->
+        [one] { $count } folder nu are număr sau dimensiune de fișiere, sau are valori unei versiuni anterioare.
+       *[other] { $count } foldere nu au număr sau dimensiune de fișiere, sau au valori unei versiuni anterioare.
+    } Numărările sunt calculate din nou.
+processing-update-folder_counts-runs = Arbore de foldere

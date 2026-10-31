@@ -808,3 +808,84 @@ dataset-create-panel-already-accepts-uploads = { $one } już przyjmuje przesyła
 dataset-create-panel-already-accept-uploads = { $many_join } już przyjmują przesyłanie.
 dataset-create-panel-saved-as-this-collection-s-2 = Zapisano jako domyślne wartości tej Kolekcji. Te Zbiory danych je dziedziczą, a ich aktualizacje OCR uruchamiają się pojedynczo: { $changed_join }. Zbiory danych z własnymi językami zachowują je.
 dataset-create-panel-created-ingestion-has-started-follow = Utworzono { $collection_dataset }. Ingestacja rozpoczęta. Śledź ją na stronie przetwarzania Kolekcji.
+processing-updates-unit =
+    { $unit ->
+        [folders]
+            { $count ->
+                [one] folder
+               *[other] folderów
+            }
+        [tables]
+            { $count ->
+                [one] tabela
+               *[other] tabel
+            }
+       *[files]
+            { $count ->
+                [one] plik
+               *[other] plików
+            }
+    }
+processing-updates-step-runs =
+    { $count ->
+        [one] { $count } uruchomienie kroku
+        [few] { $count } uruchomienia kroku
+        [many] { $count } uruchomień kroku
+       *[other] { $count } uruchomień kroku
+    }
+processing-update-search_schema-title = Schema indeksu wyszukiwania
+processing-update-search_schema-explanation =
+    { $files ->
+        [one] { $count } tabela wyszukiwania kolekcji nie ma kolumny potrzebnej dla indeksu wyszukiwania.
+       *[other] { $count } tabele wyszukiwania kolekcji nie mają kolumny potrzebnej dla indeksu wyszukiwania.
+    } Kolumna jest dodana do każdej tabeli. Wyszukiwanie działa dalej.
+processing-update-search_schema-runs = Tabele indeksu wyszukiwania
+processing-update-unfinished-title = Nieukońskie przetwarzanie
+processing-update-unfinished-explanation =
+    { $files ->
+        [one] { $count } plik nie jest przetworzony do końca.
+       *[other] { $count } pliki nie są przetworzone do końca.
+    } Obejmuje to pliki bez planu przetwarzania, na przykład po przerwonym załadowaniu. Ich przetwarzanie się kończy.
+processing-update-unfinished-runs = Wszystkie etapy przetwarzania dla tych plików
+processing-update-failed_files-title = Pliki z błędem
+processing-update-failed_files-explanation =
+    { $files ->
+        [one] { $count } plik ma błąd przetwarzania.
+       *[other] { $count } pliki mają błąd przetwarzania.
+    } Powtórne uruchomienie etapów, które się nie powiodły. Automatyczne uruchomienie ponawia plik raz dla każdej nowej wersji etapu, który się nie powiódł.
+processing-update-failed_files-runs = Etapy, które się nie powiodły, potem ekstrakcja encji, wbudowanie i indeksowanie
+processing-update-virus_scan-title = Skanowanie antywirusowe
+processing-update-virus_scan-explanation =
+    { $files ->
+        [one] { $count } plik nie ma werdyktu antywirusowego.
+       *[other] { $count } pliki nie mają werdyktu antywirusowego.
+    } Są skanowane. Plik uznany za zainfekowany jest oznaczony w wyszukiwaniu, a jego oryginalne i przeszukiwane pobrania PDF są odrzucone.
+processing-update-virus_scan-runs = Skanowanie antywirusowe, potem atrybut wyszukiwania zainfekowanych plików
+processing-update-tables-title = Tabele
+processing-update-tables-explanation =
+    { $files ->
+        [one] { $count } plik to plik JSON lub JSON Lines bez tabeli obecnego czytnika, albo tabela ucięta przez wcześniejszego czytnika na 300 kolumn.
+       *[other] { $count } pliki to pliki JSON lub JSON Lines bez tabeli obecnego czytnika, albo tabele ucięte przez wcześniejszego czytnika na 300 kolumn.
+    } Są ponownie odczytywane. Pliki JSON odczytane wcześniej jako CSV otrzymują swoją tabelę JSON, a wcześniejsze komórki przestają być wyświetlane.
+processing-update-tables-runs = Odczyt tabel, potem typ pliku i indeksowanie tych plików
+processing-update-ocr-title = OCR
+processing-update-ocr-explanation =
+    { $files ->
+        [one] Około { $count } plik nie ma tekstu OCR dla obecnych języków, albo zachowuje tekst OCR języków, które ustawienia już nie obejmują.
+       *[other] Około { $count } pliki nie mają tekstu OCR dla obecnych języków, albo zachowają tekst OCR języków, które ustawienia już nie obejmują.
+    } OCR uruchamia się dla obecnych języków, a tekst usuniętych języków jest usuwany.
+processing-update-ocr-runs = OCR i przeszukiwane PDF-y, potem ekstrakcja encji, wbudowanie i indeksowanie nowego tekstu
+processing-update-vectors-title = Wektory
+processing-update-vectors-explanation =
+    { $files ->
+        [one] { $count } plik z tekstem nie ma wektorów modelu wbudowania, jaki oferuje instalacja.
+       *[other] { $count } pliki z tekstem nie mają wektorów modelu wbudowania, jaki oferuje instalacja.
+    } Ich wektory są obliczane i indeksowane.
+processing-update-vectors-runs = Wbudowanie i indeksowanie wektorów
+processing-update-folder_counts-title = Liczby folderów
+processing-update-folder_counts-explanation =
+    { $files ->
+        [one] { $count } folder nie ma liczby plików albo rozmiaru, albo ma wartości wcześniejszej wersji.
+       *[other] { $count } foldery nie mają liczby plików albo rozmiaru, albo mają wartości wcześniejszej wersji.
+    } Liczby są przeliczane ponownie.
+processing-update-folder_counts-runs = Drzewo folderów

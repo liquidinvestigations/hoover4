@@ -809,3 +809,82 @@ dataset-create-panel-already-accepts-uploads = Το { $one } ήδη δέχετα
 dataset-create-panel-already-accept-uploads = Τα { $many_join } ήδη δέχονται ανέβασμα.
 dataset-create-panel-saved-as-this-collection-s-2 = Αποθηκεύθηκαν ως προεπιλογές αυτής της Συλλογής. Αυτά τα Σύνολα δεδομένων τις κληρονομούν, και οι ενημερώσεις OCR ξεκινούν μία τη φορά: { $changed_join }. Σύνολα δεδομένων με τις δικές τους γλώσσες τις διατηρούν.
 dataset-create-panel-created-ingestion-has-started-follow = Δημιουργήθηκε το { $collection_dataset }. Η εισαγωγή ξεκίνησε. Παρακολουθήστε την στη σελίδα επεξεργασίας της Συλλογής.
+processing-updates-unit =
+    { $unit ->
+        [folders]
+            { $count ->
+                [one] { $count } φάκελος
+               *[other] { $count } φάσκελοι
+            }
+        [tables]
+            { $count ->
+                [one] { $count } πίνακας
+               *[other] { $count } πίνάκες
+            }
+       *[files]
+            { $count ->
+                [one] { $count } αρχείο
+               *[other] { $count } αρχεία
+            }
+    }
+processing-updates-step-runs =
+    { $count ->
+        [one] { $count } βήμα εκτελείται
+       *[other] { $count } βήματα εκτελούνται
+    }
+processing-update-search_schema-title = Σχέδιο δείκτη αναζήτησης
+processing-update-search_schema-explanation =
+    { $files ->
+        [one] Σε { $count } πίνακα αναζήτησης της συλλοģής λείπει στήλη που χρειάζεται ο δείκτης αναζήτησης.
+       *[other] Σε { $count } πινάκες αναζήτησης της συλλοģής λείπουν στήλες που χρειάζεται ο δείκτης αναζήτησης.
+    } Η στήλη προστίθεται σε κάθε πίνακα. Η αναζήτηση συνεχίζει να λειτουργεί.
+processing-update-search_schema-runs = Πίνάκες δείκτη αναζήτησης
+processing-update-unfinished-title = Μη ολοκληρωμένη επεξεργασία
+processing-update-unfinished-explanation =
+    { $files ->
+        [one] Το { $count } αρχείο δεν έχει επεξεργαστεί πλήρως.
+       *[other] Τα { $count } αρχεία δεν έχουν επεξεργαστεί πλήρως.
+    } Περιλαμβάνονται αρχεία χωρίς πλάνο επεξεργασίας, για παράδειγμα μετά από διακοπείσα εισαγωγή. Η επεξεργασία τους ολοκληρώνεται.
+processing-update-unfinished-runs = Όλα τα στάδια επεξεργασίας για αυτά τα αρχεία
+processing-update-failed_files-title = Αποτυχόντα αρχεία
+processing-update-failed_files-explanation =
+    { $files ->
+        [one] Το { $count } αρχείο έχει σφάλμα επεξεργασίας.
+       *[other] Τα { $count } αρχεία έχουν σφάλμα επεξεργασίας.
+    } Τα αποτυχόντα στάδια εκτελούνται ξανά. Η αυτόματη εκτέλεση προσπαθεί ένα αρχείο μία φορά για κάθε νέα έκδοση του σταδίου που αποτυχόντα.
+processing-update-failed_files-runs = Τα αποτυχόντα στάδια, στη συνέχεια εξαγωγή οντοτήτων, ενσωμάτωση και δείκτης
+processing-update-virus_scan-title = Σάρωση ιών
+processing-update-virus_scan-explanation =
+    { $files ->
+        [one] Το { $count } αρχείο δεν έχει αποτέλεσμα αντιιικής σάρωσης.
+       *[other] Τα { $count } αρχεία δεν έχουν αποτέλεσμα αντιιικής σάρωσης.
+    } Σαρώνονται. Ένα αρχείο που ο σάρωρας βρίσκει μολυσμένο επισημαίνεται στην αναζήτηση, και οι αρχικές και αναζητήσιμες λήψεις PDF απορρίπτονται.
+processing-update-virus_scan-runs = Αντιιική σάρωση, στη συνέχεια το χαρακτηριστικό αναζήτησης των μολυσμένων αρχείων
+processing-update-tables-title = Πίνάκες
+processing-update-tables-explanation =
+    { $files ->
+        [one] Το { $count } αρχείο είναι αρχείο JSON ή JSON Lines χωρίς πίνακα του τρέχοντος αναγνώστη, ή πίνακας που ένας προηγούμενος αναγνώστης έκοψε στις 300 στήλες.
+       *[other] Τα { $count } αρχεία είναι αρχεία JSON ή JSON Lines χωρίς πινάκες του τρέχοντος αναγνώστη, ή πινάκες που ένας προηγούμενος αναγνώστης έκοψε στις 300 στήλες.
+    } Διαβάζονται ξανά. Τα αρχεία JSON που ένας προηγούμενος αναγνώστης διάβασε ως CSV παίρνουν τον πίνακα JSON τους, και τα προηγούμενα κελιά σταματούν να εμφανίζονται.
+processing-update-tables-runs = Ανάγνωση πινάκων, στη συνέχεια ο τύπος αρχείου και ο δείκτης αυτών των αρχείων
+processing-update-ocr-title = OCR
+processing-update-ocr-explanation =
+    { $files ->
+        [one] Περίπου το { $count } αρχείο δεν έχει κείμενο OCR για τις τρέχουσες γλώσσες, ή διατηρεί κείμενο OCR γλώσσων που οι ρυθμίσεις πλέον δεν περιλαμβάνουν.
+       *[other] Περίπου τα { $count } αρχεία δεν έχουν κείμενο OCR για τις τρέχουσες γλώσσες, ή διατηρούν κείμενο OCR γλώσσων που οι ρυθμίσεις πλέον δεν περιλαμβάνουν.
+    } Το OCR εκτείνεται για τις τρέχουσες γλώσσες, και το κείμενο των καταργημένων γλώσσων διαγράφεται.
+processing-update-ocr-runs = OCR και αναζητήσιμα PDF, στη εξαγωγή οντοτήτων, ενσωμάτωση και δείκτης του νέου κείμενου
+processing-update-vectors-title = Διανύσματα
+processing-update-vectors-explanation =
+    { $files ->
+        [one] Το { $count } αρχείο με κείμενο δεν έχει διανύσματα του μοντέλου ενσωμάτωσης που παρέχει η εγκατάσταση.
+       *[other] Τα { $count } αρχεία με κείμενο δεν έχουν διανύσματα του μοντέλου ενσωμάτωσης που παρέχει η εγκατάσταση.
+    } Τα διανύσματά τους υπολογίζονται και δείκνυνται.
+processing-update-vectors-runs = Ενσωμάτωση και δείκτης διανυσμάτων
+processing-update-folder_counts-title = Μετρήσεις φακέλων
+processing-update-folder_counts-explanation =
+    { $files ->
+        [one] Το { $count } φάκελος δεν έχει μέτρηση αρχείων ή μέγεθος, ή έχει τιμές προηγούμενης έκδοσης.
+       *[other] Τα { $count } φάσκελοι δεν έχουν μέτρηση αρχείων ή μέγεθος, ή έχουν τιμές προηγούμενης έκδοσης.
+    } Τα μετρήματα υπολογίζονται ξανά.
+processing-update-folder_counts-runs = Δέντρο φακέλων

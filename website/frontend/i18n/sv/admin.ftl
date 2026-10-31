@@ -809,3 +809,82 @@ dataset-create-panel-already-accepts-uploads = { $one } accepterar redan uppladd
 dataset-create-panel-already-accept-uploads = { $many_join } accepterar redan uppladdningar.
 dataset-create-panel-saved-as-this-collection-s-2 = Sparat som den här samlingens standardvärden. Dessa dataset nedärver dem, och deras OCR-uppdateringar startar en i taget: { $changed_join }. Dataset med egna språk behåller dem.
 dataset-create-panel-created-ingestion-has-started-follow = Skapade { $collection_dataset }. Inläsningen har startat. Följ den på samlingens sidan för bearbetning.
+processing-updates-unit =
+    { $unit ->
+        [folders]
+            { $count ->
+                [one] mapp
+               *[other] appar
+            }
+        [tables]
+            { $count ->
+                [one] tabell
+               *[other] tabeller
+            }
+       *[files]
+            { $count ->
+                [one] dokument
+               *[other] dokument
+            }
+    }
+processing-updates-step-runs =
+    { $count ->
+        [one] körning av steg
+       *[other] körningar av steg
+    }
+processing-update-search_schema-title = Sökindexschema
+processing-update-search_schema-explanation =
+    { $files ->
+        [one] { $count } söktabell i samlingen saknar en kolumn som sökindexet behöver.
+       *[other] { $count } söktabeller i samlingen saknar en kolumn som sökindexet behöver.
+    } Kolumnen läggs till i varje tabell. Sökningen fortsätter att fungera.
+processing-update-search_schema-runs = Sökindextabeller
+processing-update-unfinished-title = Ofärdig bearbetning
+processing-update-unfinished-explanation =
+    { $files ->
+        [one] { $count } dokument är inte bearbetat till slutet.
+       *[other] { $count } dokument är inte bearbetade till slutet.
+    } Detta inkluderar dokument utan bearbetningsplan, till exempel efter en avbruten infödning. Deras bearbetning slutförs.
+processing-update-unfinished-runs = Alla bearbetningssteg för dessa dokument
+processing-update-failed_files-title = Misslyckade dokument
+processing-update-failed_files-explanation =
+    { $files ->
+        [one] { $count } dokument har en bearbetningsfel.
+       *[other] { $count } dokument har en bearbetningsfel.
+    } De misslyckade stegen körs igen för dem. Den automatiska körningen försöker igen ett dokument en gång för varje ny version av steget som misslyckades.
+processing-update-failed_files-runs = De misslyckade stegen, sedan entitetsutvinning, inbäddning och indexering
+processing-update-virus_scan-title = Virussökning
+processing-update-virus_scan-explanation =
+    { $files ->
+        [one] { $count } dokument har inget antivirusbeslut.
+       *[other] { $count } dokument har inget antivirusbeslut.
+    } De skannas. Ett dokument som skannern hittar som infekterat markeras i sökning, och dess original- och sökbara PDF-nedladdningar nekas.
+processing-update-virus_scan-runs = Antivirusscan, sedan sökattributet för infekterade dokument
+processing-update-tables-title = Tabeller
+processing-update-tables-explanation =
+    { $files ->
+        [one] { $count } dokument är ett JSON- eller JSON Lines-dokument utan en tabell för den aktuella läsaren, eller en tabell som en tidigare läsare klippte vid 300 kolumner.
+       *[other] { $count } dokument är JSON- eller JSON Lines-dokument utan en tabell för den aktuella läsaren, eller tabeller som en tidigare läsare klippte vid 300 kolumner.
+    } De läses igen. JSON-dokument som en tidigare läsare läste som CSV får deras JSON-tabell, och de tidigare cellerna slutar visas.
+processing-update-tables-runs = Tabellläsning, sedan dokumenttyp och indexering av dessa dokument
+processing-update-ocr-title = OCR
+processing-update-ocr-explanation =
+    { $files ->
+        [one] Omkring { $count } dokument har inget OCR-text för de aktuella språken, eller behåller OCR-text för språk som inställningarna inte längre inkluderar.
+       *[other] Omkring { $count } dokument har inget OCR-text för de aktuella språken, eller behåller OCR-text för språk som inställningarna inte längre inkluderar.
+    } OCR körs för de aktuella språken, och texten för de borttagna språken tas bort.
+processing-update-ocr-runs = OCR och sökbara PDF, sedan entitetsutvinning, inbäddning och indexering av den nya texten
+processing-update-vectors-title = Vektorer
+processing-update-vectors-explanation =
+    { $files ->
+        [one] { $count } dokument med text har inga vektorer för inbäddningsmodellen som installationen serverar.
+       *[other] { $count } dokument med text har inga vektorer för inbäddningsmodellen som installationen serverar.
+    } Deras vektorer beräknas och indexeras.
+processing-update-vectors-runs = Inbäddning och vektorindexering
+processing-update-folder_counts-title = Mappräkningar
+processing-update-folder_counts-explanation =
+    { $files ->
+        [one] { $count } mapp har inget filantal eller storlek, eller har värden från en tidigare version.
+       *[other] { $count } mappar har inget filantal eller storlek, eller har värden från en tidigare version.
+    } Räkningarna beräknas igen.
+processing-update-folder_counts-runs = Mappträdet

@@ -365,9 +365,69 @@ chat-transcript-running-tool-2 = { $turn_tool_rows_len } 运行工具 { $if_turn
 chat-transcript-answered-after-failed-attempt = 在 { $retries_len } 次失败尝试后{ $if_retries_len_1_else_s }得到回答
 chat-transcript-failed-attempt = { $retries_len } 次失败尝试{ $if_retries_len_1_else_s }
 chat-transcript-version-2 = { $report_name }，版本 { $report_version }
+tool-run-summary-searched =
+    { $n ->
+       *[other] 搜索了 { $n } 个关键词
+    }
+tool-run-summary-read =
+    { $n ->
+       *[other] 读取了 { $n } 份文档
+    }
+tool-run-summary-searched-the-web-for =
+    { $n ->
+       *[other] 在网络上搜索 { $n } 个关键词
+    }
+tool-run-summary-read-web =
+    { $n ->
+       *[other] 读取了 { $n } 个网页
+    }
+tool-run-summary-browser =
+    { $n ->
+       *[other] { $n } 次浏览器操作
+    }
+tool-run-summary-listed-the-entities-of =
+    { $n ->
+       *[other] 列出了 { $n } 份文档的实体
+    }
+tool-run-summary-cited =
+    { $n ->
+       *[other] 引用了 { $n } 份文档
+    }
+tool-run-summary-cited-web =
+    { $n ->
+       *[other] 引用了 { $n } 个网页
+    }
+tool-run-summary-read-and-tool-texts =
+    { $n ->
+       *[other] 读取了 { $n } 个技能和工具文本
+    }
+tool-run-summary-saved =
+    { $n ->
+       *[other] 保存了 { $n } 条备注
+    }
+tool-run-summary-todo-list =
+    { $n ->
+       *[other] { $n } 次待办列表调用
+    }
+tool-run-summary-to-the-agent =
+    { $n ->
+       *[other] { $n } 条给代理的指令
+    }
+tool-run-summary-other =
+    { $n ->
+       *[other] { $n } 次其他调用
+    }
 tool-run-summary-failed = { $failures } 次失败
 tool-run-summary-took = 耗时 { $duration_text_ms }
 chat-session-card-messages = { $session_message_count } 条消息
+chat-tool-disclosure-item =
+    { $count ->
+       *[other] { $count } 条项目
+    }
+chat-tool-disclosure-field =
+    { $count ->
+       *[other] { $count } 个字段
+    }
 chat-tool-disclosure-searched-collections = 已搜索的集合{ $filters }
 chat-tool-disclosure-searched-collections-2 = 已搜索的集合 · { $query }{ $filters }
 chat-tool-disclosure-cited-documents = 已引用 { $n } 份文档

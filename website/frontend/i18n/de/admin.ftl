@@ -807,3 +807,82 @@ dataset-ocr-panel-plan-s-reopened = { $plans } Plan(s) erneut geöffnet
 dataset-create-panel-already-accepts-uploads = { $one } akzeptiert bereits Uploads.
 dataset-create-panel-already-accept-uploads = { $many_join } akzeptieren bereits Uploads.
 dataset-create-panel-saved-as-this-collection-s-2 = Als Standardwerte dieser Sammlung gespeichert. Diese Datensätze erben sie, und ihre OCR-Updates starten nacheinander: { $changed_join }. Datensätze mit eigenen Sprachen behalten diese.
+processing-updates-unit =
+    { $unit ->
+        [folders]
+            { $count ->
+                [one] Ordner
+               *[other] Ordner
+            }
+        [tables]
+            { $count ->
+                [one] Tabelle
+               *[other] Tabellen
+            }
+       *[files]
+            { $count ->
+                [one] Datei
+               *[other] Dateien
+            }
+    }
+processing-updates-step-runs =
+    { $count ->
+        [one] Vorgang läuft
+       *[other] Vorgänge laufen
+    }
+processing-update-search_schema-title = Schema des Suchindexes
+processing-update-search_schema-explanation =
+    { $files ->
+        [one] { $count } Suchtabelle der Sammlung fehlt eine Spalte, die der Suchindex benötigt.
+       *[other] { $count } Suchtabellen der Sammlung fehlt eine Spalte, die der Suchindex benötigt.
+    } Die Spalte wird jeder Tabelle hinzugefügt. Die Suche funktioniert weiter.
+processing-update-search_schema-runs = Tabellen des Suchindexes
+processing-update-unfinished-title = Nicht abgeschlossene Verarbeitung
+processing-update-unfinished-explanation =
+    { $files ->
+        [one] { $count } Datei wurde nicht bis zum Ende verarbeitet.
+       *[other] { $count } Dateien wurden nicht bis zum Ende verarbeitet.
+    } Dazu gehören Dateien ohne Verarbeitungsplan, zum Beispiel nach einer unterbrochenen Ingestion. Deren Verarbeitung wird abgeschlossen.
+processing-update-unfinished-runs = Alle Verarbeitungsstufen für diese Dateien
+processing-update-failed_files-title = Fehlgeschlagene Dateien
+processing-update-failed_files-explanation =
+    { $files ->
+        [one] { $count } Datei hat einen Verarbeitungsfehler.
+       *[other] { $count } Dateien haben einen Verarbeitungsfehler.
+    } Für sie werden die fehlgeschlagenen Stufen erneut ausgeführt. Der automatische Lauf wiederholt eine Datei je einmal für jede neue Version der fehlgeschlagenen Stufe.
+processing-update-failed_files-runs = Die fehlgeschlagenen Stufen, danach die Entitätenerkennung, Einbettung und Indizierung
+processing-update-virus_scan-title = Virenscan
+processing-update-virus_scan-explanation =
+    { $files ->
+        [one] { $count } Datei hat kein Virenschutzurteil.
+       *[other] { $count } Dateien haben kein Virenschutzurteil.
+    } Sie werden gescannt. Eine Datei, die der Scanner als infiziert erkennt, wird in der Suche markiert, und ihre Downloads des Original- und durchsuchbaren PDFs werden abgelehnt.
+processing-update-virus_scan-runs = Virenscan, danach das Suchattribut infizierter Dateien
+processing-update-tables-title = Tabellen
+processing-update-tables-explanation =
+    { $files ->
+        [one] { $count } Datei ist eine JSON- oder JSON-Lines-Datei ohne Tabelle des aktuellen Readers oder eine Tabelle, die ein früherer Reader bei 300 Spalten abgeschnitten hat.
+       *[other] { $count } Dateien sind JSON- oder JSON-Lines-Dateien ohne Tabelle des aktuellen Readers oder Tabellen, die ein früherer Reader bei 300 Spalten abgeschnitten hat.
+    } Sie werden erneut gelesen. JSON-Dateien, die ein früherer Reader als CSV gelesen hat, erhalten ihre JSON-Tabelle, und die früheren Zellen werden nicht mehr angezeigt.
+processing-update-tables-runs = Tabellenlesen, danach der Dateityp und Indizierung dieser Dateien
+processing-update-ocr-title = OCR
+processing-update-ocr-explanation =
+    { $files ->
+        [one] Bei { $count } Datei fehlt OCR-Text für die aktuellen Sprachen, oder es bleibt OCR-Text von Sprachen, den die Einstellungen nicht mehr enthalten.
+       *[other] Bei { $count } Dateien fehlt OCR-Text für die aktuellen Sprachen, oder es bleibt OCR-Text von Sprachen, den die Einstellungen nicht mehr enthalten.
+    } OCR wird für die aktuellen Sprachen ausgeführt, und der Text der entfernten Sprachen wird gelöscht.
+processing-update-ocr-runs = OCR und durchsuchbare PDFs, danach die Entitätenerkennung, Einbettung und Indizierung des neuen Textes
+processing-update-vectors-title = Vektoren
+processing-update-vectors-explanation =
+    { $files ->
+        [one] { $count } Datei mit Text hat keine Vektoren des Einbettungsmodells, das die Installation bereitstellt.
+       *[other] { $count } Dateien mit Text haben keine Vektoren des Einbettungsmodells, das die Installation bereitstellt.
+    } Deren Vektoren werden berechnet und indiziert.
+processing-update-vectors-runs = Einbettung und Vektorindizierung
+processing-update-folder_counts-title = Ordneranzahlen
+processing-update-folder_counts-explanation =
+    { $files ->
+        [one] { $count } Ordner hat keine Dateianzahl oder -größe oder Werte einer früheren Version.
+       *[other] { $count } Ordner haben keine Dateianzahl oder -größe oder Werte einer früheren Version.
+    } Die Anzahlen werden erneut berechnet.
+processing-update-folder_counts-runs = Ordnerbaum
