@@ -38,6 +38,8 @@ A new case takes the next unused number in its block. Other blocks keep their nu
 | `manual_asset` | the stable filename [docs/user-manual/User_Manual.md](../../docs/user-manual/User_Manual.md) links for this scenario's capture. The runner records it in the manifest beside the capture it names. It never renames the PNG file itself, so a document that changes keeps the manual's link valid |
 | `requires_dataset` | a page whose route or assertions are tied to one dataset names it here (several, comma-separated, if it needs more than one; `any` if it needs one of the four datasets [main_services/verify-stack.sh](../../main_services/verify-stack.sh) always ingests, testdata_testfiles, testdata_zips, testdata_shapes, other_emails, but not a specific one). The capture wrapper skips a page whose dataset is not on the running site, with the missing dataset named, rather than failing it. A page with no `requires_dataset` renders without the corpus |
 | `procedure` | name of a Python procedure in [procedures/](procedures) |
+| `init_script` | JavaScript that the browser runs before any page script on the first navigation of the scenario |
+| `cold_cache` | `true` to clear the browser cache and bypass it for the first navigation, so every stylesheet, script and font comes from the network |
 | `summary` | one sentence that says what the case exercises |
 
 Verbs: `goto`, `wait_text`, `wait_css`, `click_text`, `click_css`, `type_css` (SEL :: TEXT),

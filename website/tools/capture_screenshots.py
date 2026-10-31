@@ -201,6 +201,9 @@ class Page:
     color_scheme: str = ""
     procedure: str = ""
     init_script: str = ""
+    # Clear the browser cache and bypass it for the first navigation, so the page loads
+    # every stylesheet, script and font from the network.
+    cold_cache: bool = False
     document_fixture: str = ""
     summary: str = ""
     slug: str = ""
@@ -248,6 +251,7 @@ def parse_pages(ini_path: Path, defaults: dict[str, str] | None = None) -> list[
                 name=name,
                 procedure=section.get("procedure", "").strip(),
                 init_script=section.get("init_script", "").strip(),
+                cold_cache=section.getboolean("cold_cache", fallback=False),
                 url=section.get("url", "/"),
                 actions=parse_actions(section.get("actions", "")),
                 full_page=section.getboolean("full_page", fallback=False),
@@ -1085,6 +1089,16 @@ return {mounted: !!main && main.childElementCount > 0 && booted};
     raise RuntimeError(f"the application had not mounted after {APP_MOUNT_TIMEOUT_S:g}s")
 
 
+async def set_cache_disabled(tab, disabled: bool) -> None:
+    """Clear the browser cache and bypass it, or stop bypassing it."""
+    import nodriver.cdp.network as network_cdp
+
+    await tab.send(network_cdp.enable())
+    if disabled:
+        await tab.send(network_cdp.clear_browser_cache())
+    await tab.send(network_cdp.set_cache_disabled(cache_disabled=disabled))
+
+
 async def navigate_document(tab, url: str, init_script: str = "") -> None:
     """Wait for the new mounted document in the current protocol session."""
     import nodriver.cdp.page as page_cdp
@@ -1273,7 +1287,13 @@ async def capture_one(
     await set_exact_viewport(tab, rw, rh)
     await set_color_scheme(tab, page.color_scheme)
     network.clear()
-    await navigate_document(tab, base_url + page.url, page.init_script)
+    if page.cold_cache:
+        await set_cache_disabled(tab, True)
+    try:
+        await navigate_document(tab, base_url + page.url, page.init_script)
+    finally:
+        if page.cold_cache:
+            await set_cache_disabled(tab, False)
     await wait_css(tab, "body *")
     await asyncio.sleep(page.settle_ms / 1000.0)
     await run_recorded_actions(tab, base_url, page.actions, res_dir / f"{stem}.steps.json", network)

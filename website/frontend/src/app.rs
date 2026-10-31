@@ -17,13 +17,14 @@ const THEME_CSS: Asset = asset!("/assets/dx-components-theme.css");
 const POPOVER_CSS: Asset = asset!("/src/components/popover/style.css");
 const HOVER_CARD_CSS: Asset = asset!("/src/components/hover_card/style.css");
 const TOAST_CSS: Asset = asset!("/src/components/toast/style.css");
-/// The Latin files of the two text faces that the first view uses: Roboto through
-/// `--x-font` and Inter through the theme's `body` rule. The URLs are the ones that
-/// `fonts.css` resolves to, and `crossorigin` matches the anonymous request mode of a
-/// font load, so the browser reuses the preloaded response.
-const PRELOADED_FONTS: [&str; 2] = [
+/// The Latin file of the normal Roboto face, which every first view uses through
+/// `--x-font`. The search, document and storage pages load no other face before the
+/// first paint. Inter is not preloaded: the theme sets it on `body`, but `#main` sets
+/// Roboto, so no view renders Inter text. The URL is the one that `fonts.css` resolves
+/// to, and `crossorigin` matches the anonymous request mode of a font load, so the
+/// browser reuses the preloaded response.
+const PRELOADED_FONTS: [&str; 1] = [
     "/assets/fonts/roboto/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBA.woff2",
-    "/assets/fonts/inter/UcCo3FwrK3iLTcviYwY.woff2",
 ];
 /// html-to-image 1.11.13, MIT licence, vendored with its licence file. The feedback
 /// script draws the page image with it.

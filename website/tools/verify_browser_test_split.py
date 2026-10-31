@@ -56,6 +56,7 @@ def page_payload(page) -> dict[str, object]:
         "color_scheme": page.color_scheme,
         "procedure": page.procedure,
         "init_script": page.init_script,
+        "cold_cache": page.cold_cache,
         "document_fixture": page.document_fixture,
     }
 

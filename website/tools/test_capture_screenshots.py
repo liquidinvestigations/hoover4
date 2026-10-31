@@ -82,6 +82,14 @@ class ScenarioParsingTests(unittest.TestCase):
         self.assertEqual(pages[0].init_script, "window.clock=1000;")
         self.assertEqual(pages[1].init_script, "")
 
+    def test_cold_cache_is_specific_to_its_scenario(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            ini = Path(directory) / "screenshots.ini"
+            ini.write_text("[cold]\nurl=/\ncold_cache=true\n[ordinary]\nurl=/\n")
+            pages = MODULE.parse_pages(ini)
+        self.assertTrue(pages[0].cold_cache)
+        self.assertFalse(pages[1].cold_cache)
+
     def test_exact_page_selection_rejects_a_missing_scenario(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             ini = Path(directory) / "screenshots.ini"
