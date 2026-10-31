@@ -2,11 +2,13 @@
 # when the GPU tier is unreachable, so it must not depend on it in any way.
 FROM python:3.13-slim
 
-# Language data is chosen at build time, not at runtime: traineddata files are ~15 MB
-# each and a dataset configured for a language that is not installed fails per file.
-# /health lists what is actually present so that mismatch is visible before it bites.
-# Add languages here and rebuild -- there is no download-on-demand path on purpose.
-ARG TESSERACT_LANGS="tesseract-ocr-eng tesseract-ocr-ron tesseract-ocr-deu tesseract-ocr-fra tesseract-ocr-spa tesseract-ocr-rus"
+# Language data is chosen at build time, not at runtime: a dataset configured for a
+# language that is not installed fails per file. /health lists what is actually present,
+# and the admin form offers only those languages. `tesseract-ocr-all` installs every
+# language and script model that Debian packages, with the orientation model `osd`. It
+# makes the image larger by some hundreds of megabytes, which the deployment accepts.
+# There is no download-on-demand path on purpose.
+ARG TESSERACT_LANGS="tesseract-ocr-all"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \

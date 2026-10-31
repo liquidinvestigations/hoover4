@@ -44,7 +44,12 @@ An undecodable image keeps its original failure.
 - `languages_available` is read from `tesseract --list-langs`, not from configuration.
   A dataset configured for a language whose traineddata is not in the image fails per
   file, and `/health` is the only place that mismatch is visible beforehand. Languages
-  are an image build argument (`TESSERACT_LANGS`); there is no download-on-demand path.
+  are an image build argument (`TESSERACT_LANGS`). There is no download-on-demand path.
+  The default `tesseract-ocr-all` installs every Debian language package, so the list holds
+  more than 100 languages, the orientation model `osd` and script models with capitalised
+  names such as `Latin`. The admin form offers the languages and `osd`, and leaves out the
+  script models, because a dataset setting becomes part of a storage key and accepts
+  lowercase codes only.
 - **Backpressure is explicit.** `OCR_CONCURRENCY` slots plus an `OCR_QUEUE_DEPTH` queue;
   beyond that the service answers `503` with `Retry-After`. The client maps that to a
   *retryable* Temporal error, so a busy OCR tier slows the pipeline rather than filling

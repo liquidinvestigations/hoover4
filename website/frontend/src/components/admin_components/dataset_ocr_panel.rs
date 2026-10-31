@@ -240,14 +240,11 @@ fn LanguageChecklist(
     }
 }
 
-/// The label of a language code. Tesseract also lists an orientation model and script
-/// models, which read differently from a language.
+/// The label of a language code. Tesseract also lists its orientation model, which reads
+/// differently from a language.
 fn language_label(code: &str) -> String {
     if code == "osd" {
         return "osd (page orientation and script detection)".to_string();
-    }
-    if let Some(script) = code.strip_prefix("script/") {
-        return format!("{script} (script model)");
     }
     code.to_string()
 }
@@ -348,6 +345,15 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
     let apply_style = if can_apply { "" } else { "opacity: 0.5; cursor: not-allowed;" };
     let dataset_for_apply = panel.collection_dataset.clone();
     let dataset_for_strip = panel.collection_dataset.clone();
+    // Debian installs the script models under capitalised names such as `Latin`. The
+    // server accepts only lowercase codes, because the setting becomes part of a storage key.
+    let tesseract_choices: Vec<String> = panel
+        .tesseract_available
+        .iter()
+        .filter(|c| c.chars().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_'))
+        .cloned()
+        .collect();
+    let script_models = panel.tesseract_available.len() - tesseract_choices.len();
     let easyocr_choices = if panel.easyocr_supported.is_empty() {
         // The service did not report its inventory. The stored codes stay selectable.
         split_languages(&panel.easyocr_languages)
@@ -398,9 +404,14 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
                             }
                         } else {
                             LanguageChecklist {
-                                available: panel.tesseract_available.clone(),
+                                available: tesseract_choices.clone(),
                                 selected: tesseract,
                                 disabled: false,
+                            }
+                            if script_models > 0 {
+                                p { style: "{HELP_TEXT} margin: 6px 0 0;",
+                                    "The image also has {script_models} script models, for example Latin. The form does not offer them, because the setting becomes part of a storage key and accepts lowercase codes only."
+                                }
                             }
                             p { style: "{HELP_TEXT} margin: 6px 0 0;",
                                 "The first language is the primary one. Selected: "

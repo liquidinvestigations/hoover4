@@ -8,7 +8,8 @@ GPU OCR over HTTP, the GPU half of the OCR tier, and the counterpart of
 ```
 POST /ocr    {"image_b64": ..., "languages": "en+ro"}
              -> {"text", "confidence", "engine", "languages", "run_time_ms", "words": [...]}
-GET  /health -> {"status", "engine", "languages_available", "gpu", ...}
+GET  /health -> {"status", "engine", "languages_available", "languages_supported",
+                 "failed_downloads", "gpu", ...}
 ```
 
 This is the same request and response shape the Tesseract twin serves, because
@@ -56,7 +57,13 @@ and it logs the count. It never overwrites a file, so a second start copies 0 fi
 copy error stops the start, and the health check does not pass.
 
 A language that is *not* baked in still works. It is downloaded on first use, and pays
-for that on the first page. `/health` advertises only the baked set.
+for that on the first page. `/health` reports three lists. `languages_available` is the
+baked set, which works without internet access. `languages_supported` is every code that
+the installed `easyocr` package can read. `failed_downloads` holds the last Reader build
+error of each language set that could not load or download its models, for example on a
+host without internet access. A later successful build removes the entry. The admin OCR
+form shows the supported list and the failed downloads. A host without internet access
+must bake every language it uses through the build argument `EASYOCR_LANGUAGES`.
 
 Adding a language in a new script is the main cost lever in the pipeline: it adds a full
 OCR pass **and** a complete set of downstream NER, chunk, embed and index rows. See

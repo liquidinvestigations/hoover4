@@ -5,7 +5,8 @@ Contract
 ``POST /ocr``   ``{"image_b64": ..., "languages": "en+ro"}``
                 -> ``{"text", "confidence", "engine", "languages", "run_time_ms",
                       "words": [...]}``
-``GET /health`` -> ``{"status", "engine", "languages_available", ...}``
+``GET /health`` -> ``{"status", "engine", "languages_available", "languages_supported",
+                      "failed_downloads", ...}``
 
 Byte-for-byte the same contract as ``main_services/ocr_tesseract``, because
 ``tasks/ocr_client.py`` builds one request shape and posts it to whichever engine a
@@ -134,6 +135,34 @@ _inflight = threading.Semaphore(OCR_CONCURRENCY + OCR_QUEUE_DEPTH)
 _readers: "OrderedDict[tuple, object]" = OrderedDict()
 _readers_lock = threading.Lock()
 
+#: The last Reader build error of each language set that is not cached, for /health.
+#: A later successful build removes the entry. Bounded, because the key comes from the
+#: caller.
+FAILED_DOWNLOADS_LIMIT = 20
+_failed_downloads: "OrderedDict[str, str]" = OrderedDict()
+
+
+def _supported_languages() -> List[str]:
+    """Return the language codes that the installed easyocr package can read.
+
+    The list comes from the package, so it includes languages whose models the image did
+    not preload. Those download on first use.
+    """
+    try:
+        from easyocr.config import all_lang_list
+    except Exception:
+        log.warning("easyocr language list is not importable", exc_info=True)
+        return []
+    return sorted(set(all_lang_list))
+
+
+def _record_failed_download(key: tuple, exc: Exception) -> None:
+    languages = "+".join(key)
+    _failed_downloads.pop(languages, None)
+    _failed_downloads[languages] = f"{type(exc).__name__}: {exc}"
+    while len(_failed_downloads) > FAILED_DOWNLOADS_LIMIT:
+        _failed_downloads.popitem(last=False)
+
 
 def _use_gpu() -> bool:
     import torch
@@ -143,6 +172,10 @@ def _use_gpu() -> bool:
 
 def _split_languages(languages: str) -> List[str]:
     return [code.strip() for code in (languages or "").split("+") if code.strip()]
+
+
+class ReaderBuildError(RuntimeError):
+    """The Reader of a language set could not load or download its models."""
 
 
 def _get_reader(codes: List[str]):
@@ -159,14 +192,26 @@ def _get_reader(codes: List[str]):
             _readers.move_to_end(key)
             return _readers[key]
         log.info("building EasyOCR reader for %s (gpu=%s)", key, _use_gpu())
-        reader = easyocr.Reader(
-            list(codes),
-            gpu=_use_gpu(),
-            model_storage_directory=EASYOCR_MODEL_DIR,
-            user_network_directory=EASYOCR_MODEL_DIR,
-            download_enabled=True,
-            verbose=False,
-        )
+        try:
+            reader = easyocr.Reader(
+                list(codes),
+                gpu=_use_gpu(),
+                model_storage_directory=EASYOCR_MODEL_DIR,
+                user_network_directory=EASYOCR_MODEL_DIR,
+                download_enabled=True,
+                verbose=False,
+            )
+        except ValueError:
+            # An unknown code or a set of incompatible scripts. The caller gets a 400, and
+            # no download was tried.
+            raise
+        except Exception as exc:
+            # The models of a language that the image did not preload download here. A
+            # host without internet access fails at this point.
+            log.warning("EasyOCR reader for %s failed to build", key, exc_info=True)
+            _record_failed_download(key, exc)
+            raise ReaderBuildError(f"the models for {'+'.join(key)} could not be loaded or downloaded: {exc}") from exc
+        _failed_downloads.pop("+".join(key), None)
         _readers[key] = reader
         while len(_readers) > OCR_READER_CACHE_SIZE:
             evicted, _ = _readers.popitem(last=False)
@@ -262,7 +307,14 @@ def health():
     return {
         "status": status,
         "engine": "easyocr",
+        # Preloaded in the image. These work without internet access.
         "languages_available": _split_languages(EASYOCR_LANGUAGES),
+        # Readable by the installed package. The others download on first use.
+        "languages_supported": _supported_languages(),
+        "failed_downloads": [
+            {"languages": languages, "error": error}
+            for languages, error in list(_failed_downloads.items())
+        ],
         "gpu": gpu,
         "readers_warm": [list(key) for key in _readers],
         "concurrency": OCR_CONCURRENCY,
@@ -308,6 +360,8 @@ def ocr(request: OcrRequest, response: Response):
             # from incompatible scripts, or a code it does not know). The fix is a
             # settings change, not a retry, so it must not look retryable.
             raise HTTPException(status_code=400, detail=f"unusable language set {codes}: {exc}")
+        except ReaderBuildError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
         except Exception as exc:
             raise HTTPException(status_code=422, detail=f"easyocr failed: {exc}")
 
