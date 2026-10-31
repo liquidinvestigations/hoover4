@@ -187,3 +187,54 @@ def test_an_upload_operation_selects_the_old_errors_of_its_own_files_only(datase
                      "write_version"])
     monkeypatch.setattr(operations, "get_operation", lambda op_id: {"op_id": op_id, "kind": kind})
     assert rerun_selection._candidate_pairs(SelectErrorsParams("op1", collection, upload_dataset)) == expected
+
+
+def test_replacing_a_checked_path_with_a_symlink_does_not_change_the_ingested_bytes(dataset, monkeypatch):
+    from tasks.P0_scan_disk import activities as scan
+    from tasks.P_upload import activities
+    from tasks.P_upload.params import UploadBatchParams
+    import hashlib
+
+    collection, upload_dataset, folder, client = dataset
+    original = b"the uploaded bytes"
+    _write(folder, "a.txt", original)
+    secret = folder.parent / "outside.txt"
+    secret.write_bytes(b"outside the dataset")
+    _batch(client, upload_dataset, folder, ["a.txt"])
+    real_ingest = scan.ingest_files
+
+    def replace_then_ingest(params, **kwargs):
+        path = folder / "up" / "a.txt"
+        path.unlink()
+        path.symlink_to(secret)
+        return real_ingest(params, **kwargs)
+
+    monkeypatch.setattr(scan, "ingest_files", replace_then_ingest)
+    result = activities.ingest_upload_paths(UploadBatchParams(collection, upload_dataset, "op1", "b1"))
+    assert result["ingested"] == 1
+    [file] = uploads.read_files(collection, "b1")
+    assert file["file_hash"] == hashlib.sha3_256(original).hexdigest()
+
+
+def test_empty_dataset_creates_typed_search_tables_before_writing(dataset):
+    from database.manticore import get_manticore_client, drop_collection_tables
+    from tasks.P_admin.activities import purge_dataset_from_manticore, PurgeDatasetParams
+    from tasks.P6_index_data.activities import (
+        BuildVfsNodesParams, build_vfs_nodes, index_vfs_structure, index_entity_terms,
+    )
+
+    collection, upload_dataset, _folder, _client = dataset
+    params = BuildVfsNodesParams(collection, upload_dataset)
+    try:
+        build_vfs_nodes(params)
+        index_vfs_structure(params)
+        index_entity_terms(params)
+        with get_manticore_client() as connection:
+            with connection.cursor() as cursor:
+                for suffix in ("vfs", "entities"):
+                    cursor.execute(f"DESCRIBE {collection}_{suffix}")
+                    fields = {row[0]: row[1] for row in cursor.fetchall()}
+                    assert fields["collection_dataset"] == "string"
+        purge_dataset_from_manticore(PurgeDatasetParams(collection, upload_dataset))
+    finally:
+        drop_collection_tables(collection)

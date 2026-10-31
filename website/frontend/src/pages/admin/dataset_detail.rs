@@ -257,6 +257,7 @@ fn DatasetUploadsControl(collection_dataset: String) -> Element {
                     move |e: Event<FormData>| {
                         let cd = cd.clone();
                         let on = e.checked();
+                        if *saving.peek() { return; }
                         saving.set(true);
                         spawn(async move {
                             error_msg.set(None);

@@ -57,6 +57,7 @@ class IngestUploadBatchesParams:
     upload_dataset: str
     op_id: str
     batch_ids: list[str] = field(default_factory=list)
+    paths_prepared: bool = False
     selection_done: bool = False
     execution_counts: dict[str, int] = field(default_factory=dict)
     selector_counts: dict[str, int] = field(default_factory=dict)

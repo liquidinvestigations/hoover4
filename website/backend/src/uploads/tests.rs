@@ -46,6 +46,7 @@ struct MemStore {
     fail: AtomicBool,
     deleted: AtomicBool,
     removal_live: AtomicBool,
+    removal_id: Mutex<String>,
 }
 
 impl MemStore {
@@ -107,6 +108,10 @@ impl BatchStore for MemStore {
 
     fn dataset_live(&self, _dataset: &str) -> anyhow::Result<bool> {
         Ok(!self.deleted.load(Ordering::SeqCst))
+    }
+
+    fn latest_dataset_removal(&self, _dataset: &str) -> anyhow::Result<String> {
+        Ok(self.removal_id.lock().unwrap().clone())
     }
 
     fn dataset_removal_live(&self, _dataset: &str) -> anyhow::Result<bool> {
@@ -1065,4 +1070,21 @@ fn probe_filesystem_support() {
         );
         std::fs::remove_dir_all(&probe).unwrap();
     }
+}
+
+#[test]
+fn a_completed_cli_purge_stops_an_existing_transfer() {
+    let env = Env::new(false);
+    let service = env.service();
+    let batch = service.begin(USER, &request("before-purge", &[("pending", 4)])).unwrap();
+    service.tus_create(USER, &batch.batch_id, 0, 4).unwrap();
+    // The CLI left a terminal operation row without calling the website stop hook.
+    *env.store.removal_id.lock().unwrap() = "purge-1".into();
+    assert!(!env.store.removal_live.load(Ordering::SeqCst));
+    assert_eq!(service.tus_create(USER, &batch.batch_id, 0, 4).unwrap_err().status, 403);
+    service.sweep(false).unwrap();
+    assert_eq!(env.store.latest_batch(&batch.batch_id).unwrap().state, batch_state::CANCELLED);
+    assert!(!service.space.data(&batch.batch_id, 0).exists());
+    let next = service.begin(USER, &request("after-purge", &[("next", 4)])).unwrap();
+    assert!(service.tus_create(USER, &next.batch_id, 0, 4).is_ok());
 }

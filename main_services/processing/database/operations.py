@@ -30,7 +30,7 @@ not started.
 A row is `pending` from dispatch until its workflow asks for admission. Admission lets at
 most the configured cap of operations of one kind run at once (`operation_caps()`), and
 it never lets a row run while another running row overlaps its target
-(`running_conflicts`). A row over its cap or behind an overlapping writer is `queued`,
+(`admission_conflicts`). A row over its cap or behind an overlapping writer is `queued`,
 and it waits with no time limit. The oldest waiting row of
 a kind starts first, ordered by `(started_at, op_id)`. A `queued` row is live, so it holds
 its target like a running one.
@@ -285,17 +285,19 @@ def lock_clause(kind: str, collectionname: str,
     return f"state IN ({_LIVE_SQL}) AND {where}", parameters
 
 
-def running_conflicts(row: dict) -> list[dict]:
-    """Running operations other than `row` whose target overlaps the target of `row`.
+def admission_conflicts(row: dict) -> list[dict]:
+    """Running writers and older waiting writers with an overlapping target.
 
-    What admission reads before it lets a row run. Every kind writes its target, so two
-    overlapping writers of any kinds never run together. A row that stopped reporting is
-    a conflict like any other, because only a terminal row releases its target.
+    Waiting rows keep their order across operation kinds. Continuous uploads therefore
+    cannot pass an older deletion each time an upload operation ends.
     """
     where, parameters = target_clause(row["kind"], row["collectionname"],
                                       row["collection_dataset"])
-    return _select(f"state = 'running' AND op_id != {{self_op_id:String}} AND {where}",
-                   {**parameters, "self_op_id": row["op_id"]})
+    return _select(
+        f"(state = 'running' OR (state IN ('pending', 'queued') "
+        "AND (started_at, op_id) < ({started:DateTime}, {self_op_id:String}))) "
+        f"AND op_id != {{self_op_id:String}} AND {where}",
+        {**parameters, "self_op_id": row["op_id"], "started": row["started_at"]})
 
 
 def blocking_operations(kind: str, collectionname: str,

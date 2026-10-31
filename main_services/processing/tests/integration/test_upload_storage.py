@@ -168,7 +168,7 @@ def test_admission_sees_a_running_writer_of_the_same_target_of_any_kind(
     operations.update_operation(blocker["op_id"], state="running")
     upload = operations.create_operation("ingest_upload", collection, dataset,
                                          op_id="upload-" + uuid4().hex[:8], check_lock=False)
-    found = [row["op_id"] for row in operations.running_conflicts(upload)]
+    found = [row["op_id"] for row in operations.admission_conflicts(upload)]
     assert found == ([blocker["op_id"]] if conflicts else [])
     # The other direction: the running upload holds the target against the other kind.
     operations.finish_operation(blocker["op_id"], "finished")
@@ -176,8 +176,22 @@ def test_admission_sees_a_running_writer_of_the_same_target_of_any_kind(
     other = operations.create_operation(
         blocker_kind, collection, target_dataset if operations.KINDS[blocker_kind]["target_kind"] == "dataset" else "",
         op_id="other-" + uuid4().hex[:8], check_lock=False)
-    found = [row["op_id"] for row in operations.running_conflicts(other)]
+    found = [row["op_id"] for row in operations.admission_conflicts(other)]
     assert found == ([upload["op_id"]] if conflicts else [])
+
+
+def test_a_waiting_removal_precedes_a_later_upload(upload_db):
+    collection, dataset, _, _ = upload_db
+    suffix = uuid4().hex[:8]
+    removal = operations.create_operation("purge_dataset", collection, dataset,
+                                          op_id="remove-" + suffix, check_lock=False)
+    operations.update_operation(removal["op_id"], state="queued")
+    later = operations.create_operation("ingest_upload", collection, dataset,
+                                        op_id="upload-" + suffix, check_lock=False)
+    assert [r["op_id"] for r in operations.admission_conflicts(later)] == [removal["op_id"]]
+    assert operations.admission_conflicts(removal) == []
+    operations.finish_operation(removal["op_id"], "finished")
+    assert operations.admission_conflicts(later) == []
 
 
 def _evidence_rows(client, dataset):

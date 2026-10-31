@@ -69,7 +69,7 @@ def fake_store(monkeypatch):
     store = {"row": None, "counts": (0, 0), "writes": [], "conflicts": []}
     monkeypatch.setattr(operations, "get_operation", lambda _op_id: store["row"])
     monkeypatch.setattr(operations, "count_admission", lambda _row: store["counts"])
-    monkeypatch.setattr(operations, "running_conflicts", lambda _row: store["conflicts"])
+    monkeypatch.setattr(operations, "admission_conflicts", lambda _row: store["conflicts"])
     monkeypatch.setattr(
         operations, "update_operation",
         lambda op_id, base_row=None, **changes: store["writes"].append(changes),
@@ -144,17 +144,18 @@ def test_the_conflict_query_names_running_overlapping_rows_except_itself(monkeyp
     captured = []
     monkeypatch.setattr(operations, "_select",
                         lambda where, parameters, limit=None: captured.append((where, parameters)) or [])
-    operations.running_conflicts(_row("pending", "ingest_upload"))
-    operations.running_conflicts(_row("pending", "reindex_collection"))
+    operations.admission_conflicts(_row("pending", "ingest_upload"))
+    operations.admission_conflicts(_row("pending", "reindex_collection"))
     (dataset_where, dataset_parameters), (collection_where, collection_parameters) = captured
-    assert dataset_where.startswith("state = 'running' AND op_id != {self_op_id:String} AND ")
+    assert "state = 'running' OR (state IN ('pending', 'queued')" in dataset_where
+    assert "(started_at, op_id) < ({started:DateTime}, {self_op_id:String})" in dataset_where
     assert "collection_dataset = {collection_dataset:String}" in dataset_where
     assert "target_kind = 'collection' AND collectionname = {collectionname:String}" in dataset_where
     assert dataset_parameters == {"collection_dataset": "c_d", "collectionname": "c",
-                                  "self_op_id": "op"}
+                                  "self_op_id": "op", "started": datetime(2026, 1, 1)}
     assert collection_where.endswith("collectionname = {collectionname:String}")
     assert "collection_dataset" not in collection_where
-    assert collection_parameters == {"collectionname": "c", "self_op_id": "op"}
+    assert collection_parameters == {"collectionname": "c", "self_op_id": "op", "started": datetime(2026, 1, 1)}
 
 
 def test_the_lock_clause_keeps_its_live_states_and_targets():

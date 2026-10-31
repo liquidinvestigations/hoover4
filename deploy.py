@@ -1248,30 +1248,12 @@ def verify_writable_dataset_mounts(cfg, rt):
 
 
 def upload_space_notes(cfg):
-    """A note for each writable dataset mount on another file system than the upload
-    space. Placement then copies each file into the dataset folder instead of renaming
-    it. The notes need the created volume folder and the mount folders, so a missing
-    folder gives no note."""
-    root = cfg.get("storage", "volumes_path").strip()
-    try:
-        space_dev = os.stat(os.path.join(root, UPLOAD_SPACE_VOLUME)).st_dev
-    except OSError:
-        return []
-    notes = []
-    for mount in dataset_mounts(cfg):
-        if not mount.writable:
-            continue
-        try:
-            mount_dev = os.stat(mount.host_path).st_dev
-        except OSError:
-            continue
-        if mount_dev != space_dev:
-            notes.append(
-                "note: the upload space %s and [dataset_mount.%s] host_path = %s are on "
-                "different file systems, so each upload placement copies the file instead "
-                "of renaming it." % (os.path.join(root, UPLOAD_SPACE_VOLUME), mount.name,
-                                      mount.host_path))
-    return notes
+    """Describe upload placement across the separate Compose mounts."""
+    return [
+        "note: upload placement into [dataset_mount.%s] copies each file across separate "
+        "container mounts, including mounts on the same host file system." % mount.name
+        for mount in dataset_mounts(cfg) if mount.writable
+    ]
 
 
 def upload_env(cfg):

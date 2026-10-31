@@ -208,10 +208,11 @@ class UploadQueue:
 class IngestUploadBatches:
     """Ingest, plan and execute each claimed batch, then write its outcome.
 
-    For each batch: `upload_batch_limits`, `ingest_upload_paths`, `ComputePlans`, the
-    historical-error selection before the first `ExecutePlans`, `ExecutePlans`, and
-    `finish_upload_batches`. The error reconciliation runs after the last batch. The
-    search attributes, the selection and the cancellation follow `IngestAndProcessDataset`:
+    New runs ingest every claimed batch before planning and selecting historical errors.
+    Each batch then runs `ComputePlans`, `ExecutePlans`, and `finish_upload_batches`.
+    The patch preserves the original activity order for existing histories.
+    Error reconciliation runs after the last batch.
+    Search attributes, selection, and cancellation follow `IngestAndProcessDataset`:
     a cancellation propagates to the running child or activity and is not caught here.
     The upload queue settles the batches after a cancelled or failed operation.
     """
@@ -223,36 +224,26 @@ class IngestUploadBatches:
             from tasks.P2_execute_plan.workflows import ExecutePlansParams
 
         attributes = dataset_search_attributes(params.upload_dataset)
+        if workflow.patched("upload-prepare-all-batches") and not params.paths_prepared:
+            for batch_id in params.batch_ids:
+                await self._ingest(params, batch_id)
+            params.paths_prepared = True
         remaining = list(params.batch_ids)
         while remaining:
             batch_id = remaining[0]
             one = UploadBatchParams(params.collectionname, params.upload_dataset,
                                     params.op_id, batch_id)
-            limits: UploadBatchLimitsResult = await workflow.execute_activity(
-                upload_batch_limits, one,
-                start_to_close_timeout=timedelta(minutes=5),
-                heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-                result_type=UploadBatchLimitsResult,
-            )
-            ingested = False
-            if not limits.skip:
-                try:
-                    await workflow.execute_activity(
-                        ingest_upload_paths, one,
-                        start_to_close_timeout=timedelta(seconds=limits.ingest_seconds),
-                        heartbeat_timeout=HEARTBEAT_TIMEOUT,
-                        retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
-                    )
-                    ingested = True
-                except Exception as exc:
-                    if _is_cancellation(exc):
-                        raise
-                    # One batch that cannot be ingested fails alone. Its placed files
-                    # stay in the folder, and the next batch continues.
-                    workflow.logger.warning("upload batch %s was not ingested: %s",
-                                            batch_id, exc)
-                    await self._finish(params, batch_id, "errored")
+            if params.paths_prepared:
+                limits: UploadBatchLimitsResult = await workflow.execute_activity(
+                    upload_batch_limits, one,
+                    start_to_close_timeout=timedelta(minutes=5),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                    result_type=UploadBatchLimitsResult,
+                )
+                ingested = not limits.skip
+            else:
+                ingested = await self._ingest(params, batch_id)
             if ingested:
                 await workflow.execute_child_workflow(
                     "ComputePlans",
@@ -324,6 +315,35 @@ class IngestUploadBatches:
             "selector_counts": params.selector_counts,
             "batch_states": params.batch_states,
         }
+
+    async def _ingest(self, params: IngestUploadBatchesParams, batch_id: str) -> bool:
+        one = UploadBatchParams(params.collectionname, params.upload_dataset, params.op_id, batch_id)
+        limits: UploadBatchLimitsResult = await workflow.execute_activity(
+            upload_batch_limits, one,
+            start_to_close_timeout=timedelta(minutes=5),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT,
+            retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+            result_type=UploadBatchLimitsResult,
+        )
+        ingested = False
+        if not limits.skip:
+            try:
+                await workflow.execute_activity(
+                    ingest_upload_paths, one,
+                    start_to_close_timeout=timedelta(seconds=limits.ingest_seconds),
+                    heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=RetryPolicy(maximum_attempts=ACTIVITY_MAX_ATTEMPTS),
+                )
+                ingested = True
+            except Exception as exc:
+                if _is_cancellation(exc):
+                    raise
+                # One batch that cannot be ingested fails alone. Its placed files
+                # stay in the folder, and the next batch continues.
+                workflow.logger.warning("upload batch %s was not ingested: %s",
+                                        batch_id, exc)
+                await self._finish(params, batch_id, "errored")
+        return ingested
 
     async def _finish(self, params: IngestUploadBatchesParams, batch_id: str,
                       operation_state: str) -> None:

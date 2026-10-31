@@ -169,21 +169,36 @@ def _descend(edges, roots, monkeypatch):
     return uploads._descendants(client, "ds", roots)
 
 
-def test_a_member_below_two_roots_belongs_to_the_smallest_root_in_any_row_order(monkeypatch):
+def test_a_shared_member_belongs_to_both_roots_in_any_row_order(monkeypatch):
     edges = [("rootB", ["shared", "onlyB"]), ("rootA", ["shared"])]
     for order in (edges, list(reversed(edges))):
         owner = _descend(order, ["rootA", "rootB"], monkeypatch)
-        assert owner == {"shared": "rootA", "onlyB": "rootB"}
+        assert owner == {"shared": {"rootA", "rootB"}, "onlyB": {"rootB"}}
 
 
-def test_a_member_belongs_to_the_root_that_reaches_it_at_the_lowest_level(monkeypatch):
+def test_a_member_can_belong_to_roots_at_different_levels(monkeypatch):
     # rootA reaches `deep` at level 2 through `mid`, rootZ reaches it at level 1.
     edges = [("rootA", ["mid"]), ("mid", ["deep"]), ("rootZ", ["deep"])]
     owner = _descend(edges, ["rootA", "rootZ"], monkeypatch)
-    assert owner == {"mid": "rootA", "deep": "rootZ"}
+    assert owner == {"mid": {"rootA"}, "deep": {"rootA", "rootZ"}}
 
 
-def test_a_root_below_another_root_stays_its_own_root(monkeypatch):
+def test_a_nested_uploaded_root_also_counts_as_a_member(monkeypatch):
     edges = [("rootA", ["rootB", "x"]), ("rootB", ["y"])]
     owner = _descend(edges, ["rootA", "rootB"], monkeypatch)
-    assert owner == {"x": "rootA", "y": "rootB"}
+    assert owner == {"rootB": {"rootA"}, "x": {"rootA"}, "y": {"rootA", "rootB"}}
+
+
+def test_a_shared_failed_member_marks_both_uploaded_archives_incomplete():
+    files = [_file(0, "ingested", file_hash="a"), _file(1, "ingested", file_hash="b")]
+    evidence = _evidence(files, members={"member": {"a", "b"}},
+                         plans={"member": (1, 1)}, failing={"member"})
+    counts = classify_outcome(files, evidence)
+    assert counts["succeeded"] == 0
+    assert counts["current_errors"] == 2
+    assert counts["state"] == "failed"
+
+
+def test_member_cycles_visit_each_root_and_member_pair_once(monkeypatch):
+    owner = _descend([("a", ["b"]), ("b", ["a"])], ["a", "b"], monkeypatch)
+    assert owner == {"a": {"b"}, "b": {"a"}}

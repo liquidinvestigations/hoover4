@@ -119,6 +119,7 @@ impl Service {
         };
         // The dispatch of a deletion or a purge stops the open batches. A batch that
         // began after that stop would continue into the removed dataset.
+        let removal_op_id = self.store.latest_dataset_removal(&target.upload_dataset)?;
         if self.store.dataset_removal_live(&target.upload_dataset)? {
             return Err(UploadError::new(409, REMOVAL_MESSAGE));
         }
@@ -139,7 +140,8 @@ impl Service {
         let digest = manifest_digest(username, request, &folder);
         let key = request_key(username, &request.request_id);
 
-        let _request_lock = fsutil::lock(&self.space.request_lock(&key), true, true)?;
+        let _request_lock = fsutil::lock_within(&self.space.request_lock(&key), true, self.lock_wait)?
+            .ok_or_else(UploadError::busy)?;
         if let Some(record) = fsutil::read_json::<RequestRecord>(&self.space.request_record(&key))? {
             if record.manifest_digest != digest {
                 return Err(UploadError::new(409, REQUEST_ID_REUSED_MESSAGE));
@@ -147,7 +149,8 @@ impl Service {
             return self.existing_batch(&record.batch_id);
         }
 
-        let dataset_lock = fsutil::lock(&self.space.dataset_lock(&target.upload_dataset), true, true)?;
+        let dataset_lock = fsutil::lock_within(&self.space.dataset_lock(&target.upload_dataset), true, self.lock_wait)?
+            .ok_or_else(UploadError::busy)?;
         let reservations = self.reservations(&target.upload_dataset)?;
         let root = self.open_target_root(&target)?;
         let mut collisions = Vec::new();
@@ -190,6 +193,7 @@ impl Service {
             folder,
             manifest_digest: digest.clone(),
             created_ms: now,
+            removal_op_id: Some(removal_op_id),
             files: request
                 .files
                 .iter()

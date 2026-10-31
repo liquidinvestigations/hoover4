@@ -552,15 +552,18 @@ def ingest_files_batch(params: IngestFilesBatchParams) -> str:
     return ingest_files(params).message
 
 
-def ingest_files(params: IngestFilesBatchParams, *, rehash_known: bool = False) -> IngestFilesResult:
+def ingest_files(params: IngestFilesBatchParams, *, rehash_known: bool = False,
+                 source_paths: Dict[str, str] | None = None) -> IngestFilesResult:
     """Ingest a batch of files into blobs, types, and VFS. The body of `ingest_files_batch`.
 
     `rehash_known` hashes every path that already has a live row, instead of trusting a
     row whose size and mtime match. The targeted upload ingest sets it, because it must
-    report the hash of the bytes now at the path.
+    report the hash of the bytes now at the path. `source_paths` can provide pinned file
+    descriptors through their process-local paths. These paths never enter activity inputs.
     """
     collection_dataset: str = params.collection_dataset
     dataset_path: str = params.dataset_path
+    source_path = lambda rel: source_paths[rel] if source_paths is not None else _rel_to_abs(dataset_path, rel)
     file_paths: List[str] = list(params.file_paths or [])
     container_hash: str = params.container_hash or ""
     root_path_prefix: str = params.root_path_prefix or ""
@@ -669,7 +672,7 @@ def ingest_files(params: IngestFilesBatchParams, *, rehash_known: bool = False) 
     touched: List[str] = []
     for rel in maybe_changed:
         try:
-            current_hash, _ = _compute_hashes_streaming(_rel_to_abs(dataset_path, rel))
+            current_hash, _ = _compute_hashes_streaming(source_path(rel))
         except OSError as exc:
             unreadable(rel, exc)
             continue
@@ -706,7 +709,7 @@ def ingest_files(params: IngestFilesBatchParams, *, rehash_known: bool = False) 
 
     readable_paths = []
     for rel in todo_paths:
-        abs_p = _rel_to_abs(dataset_path, rel)
+        abs_p = source_path(rel)
         try:
             hm, size = _compute_hashes_streaming(abs_p)
         except OSError as exc:

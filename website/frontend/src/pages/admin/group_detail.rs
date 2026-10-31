@@ -34,7 +34,19 @@ pub fn AdminGroupPage(groupname: String) -> Element {
 #[component]
 fn GroupDetailContent(groupname: String) -> Element {
     let groupname_for_res = groupname.clone();
-    let mut detail_res = use_resource(move || admin_get_group(groupname_for_res.clone()));
+    let mut membership_busy = use_signal(|| false);
+    let mut membership_refreshing = use_signal(|| false);
+    let mut detail_res = use_resource(move || {
+        let name = groupname_for_res.clone();
+        async move {
+            let result = admin_get_group(name).await;
+            if *membership_refreshing.peek() {
+                membership_refreshing.set(false);
+                membership_busy.set(false);
+            }
+            result
+        }
+    });
     let collections_res = use_resource(admin_list_collections);
     let mut fullname = use_signal(String::new);
     let mut add_user = use_signal(String::new);
@@ -122,6 +134,7 @@ fn GroupDetailContent(groupname: String) -> Element {
         div { class: "x-admin-module", style: MODULE,
             h2 { style: MODULE_CAPTION, "Members" }
             div { style: MODULE_BODY,
+                if membership_busy() { p { role: "status", "Saving membership..." } }
                 table { style: TABLE,
                     thead {
                         tr {
@@ -150,17 +163,21 @@ fn GroupDetailContent(groupname: String) -> Element {
                                         r#type: "checkbox",
                                         aria_label: "Group admin",
                                         checked: m.is_group_admin,
+                                        disabled: membership_busy(),
                                         onchange: {
                                             let gname = gname.clone();
                                             let uname = m.username.clone();
                                             let val = !m.is_group_admin;
                                             move |_| {
+                                                if *membership_busy.peek() { return; }
                                                 let gname = gname.clone();
                                                 let uname = uname.clone();
+                                                membership_busy.set(true);
                                                 spawn(async move {
-                                                    if let Err(e) = admin_set_group_admin(gname, uname, val).await {
+                                                    if let Err(e) = admin_set_group_admin(gname.clone(), uname, val).await {
                                                         error_msg.set(Some(user_facing_message(&e)));
                                                     }
+                                                    membership_refreshing.set(true);
                                                     detail_res.restart();
                                                 });
                                             }
@@ -172,17 +189,21 @@ fn GroupDetailContent(groupname: String) -> Element {
                                         r#type: "checkbox",
                                         aria_label: "Uploader",
                                         checked: m.is_uploader,
+                                        disabled: membership_busy(),
                                         onchange: {
                                             let gname = gname.clone();
                                             let uname = m.username.clone();
                                             let val = !m.is_uploader;
                                             move |_| {
+                                                if *membership_busy.peek() { return; }
                                                 let gname = gname.clone();
                                                 let uname = uname.clone();
+                                                membership_busy.set(true);
                                                 spawn(async move {
-                                                    if let Err(e) = admin_set_uploader(gname, uname, val).await {
+                                                    if let Err(e) = admin_set_uploader(gname.clone(), uname, val).await {
                                                         error_msg.set(Some(user_facing_message(&e)));
                                                     }
+                                                    membership_refreshing.set(true);
                                                     detail_res.restart();
                                                 });
                                             }
@@ -192,16 +213,20 @@ fn GroupDetailContent(groupname: String) -> Element {
                                 td { style: TD,
                                     button {
                                         style: BTN_SMALL_DANGER,
+                                        disabled: membership_busy(),
                                         onclick: {
                                             let gname = gname.clone();
                                             let uname = m.username.clone();
                                             move |_| {
+                                                if *membership_busy.peek() { return; }
                                                 let gname = gname.clone();
                                                 let uname = uname.clone();
+                                                membership_busy.set(true);
                                                 spawn(async move {
-                                                    if let Err(e) = admin_remove_member(gname, uname).await {
+                                                    if let Err(e) = admin_remove_member(gname.clone(), uname).await {
                                                         error_msg.set(Some(user_facing_message(&e)));
                                                     }
+                                                    membership_refreshing.set(true);
                                                     detail_res.restart();
                                                 });
                                             }
@@ -217,20 +242,24 @@ fn GroupDetailContent(groupname: String) -> Element {
                     input { style: INPUT, placeholder: "username to add", value: "{add_user}", oninput: move |e| add_user.set(e.value()) }
                     button {
                         style: BTN,
+                        disabled: membership_busy(),
                         onclick: {
                             let gname = gname.clone();
                             move |_| {
+                                if *membership_busy.peek() { return; }
                                 let gname = gname.clone();
                                 let u = add_user.read().clone();
                                 if u.is_empty() {
                                     return;
                                 }
+                                membership_busy.set(true);
                                 spawn(async move {
-                                    if let Err(e) = admin_add_member(gname, u, false).await {
+                                    if let Err(e) = admin_add_member(gname.clone(), u, false).await {
                                         error_msg.set(Some(user_facing_message(&e)));
                                     } else {
                                         add_user.set(String::new());
                                     }
+                                    membership_refreshing.set(true);
                                     detail_res.restart();
                                 });
                             }

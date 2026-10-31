@@ -317,6 +317,12 @@ impl Service {
             self.release_reservation(&manifest)?;
             return Ok(SweepOutcome::Stopped);
         }
+        if in_transfer && self.removal_changed(&manifest)? {
+            self.stop_locked(&manifest, &mut batch, common::uploads::DATASET_PURGED_MESSAGE)?;
+            drop(lock);
+            self.release_reservation(&manifest)?;
+            return Ok(SweepOutcome::Stopped);
+        }
         let outcome = match batch.state.as_str() {
             batch_state::UPLOADING if self.space.stopping(batch_id).exists() => {
                 // The owner asked for the commit, which did not record `committing`.

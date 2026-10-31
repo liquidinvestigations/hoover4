@@ -157,6 +157,19 @@ impl BatchStore for ClickHouseStore {
         })
     }
 
+    fn latest_dataset_removal(&self, upload_dataset: &str) -> anyhow::Result<String> {
+        self.handle.block_on(async {
+            let rows = crate::db_utils::clickhouse_utils::get_global_client()
+                .query("SELECT op_id FROM operations FINAL WHERE collection_dataset = ? \
+                        AND kind IN ('delete_dataset', 'purge_dataset') \
+                        ORDER BY started_at DESC, op_id DESC LIMIT 1")
+                .bind(upload_dataset)
+                .fetch_all::<String>()
+                .await?;
+            Ok(rows.into_iter().next().unwrap_or_default())
+        })
+    }
+
     fn dataset_removal_live(&self, upload_dataset: &str) -> anyhow::Result<bool> {
         self.handle.block_on(async {
             let live = crate::db_utils::clickhouse_utils::get_global_client()

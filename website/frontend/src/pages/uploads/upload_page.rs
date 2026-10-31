@@ -112,8 +112,15 @@ pub fn UploadPage(collection: String, folder: String) -> Element {
                 navigator().push(Route::UploadBatchPage { collection, batch_id, page: 0 });
             }
         }
+        DriverEvent::Phase { phase } => {
+            if let Some(t) = transfer.write().as_mut() {
+                t.state.phase = phase;
+                t.error = None;
+            }
+        }
         DriverEvent::CommitFailed { message } => {
             if let Some(t) = transfer.write().as_mut() {
+                t.state.phase = "commit_failed".into();
                 t.error = Some(message);
             }
         }
@@ -133,11 +140,14 @@ pub fn UploadPage(collection: String, folder: String) -> Element {
                 .targets
                 .iter()
                 .find(|t| t.collection == collection)
-                .or(if collection.is_empty() || !info.conflicts.contains(&collection) { info.targets.first() } else { None })
+                .or(if collection.is_empty() { info.targets.first() } else { None })
                 .cloned();
             match target {
                 None if info.conflicts.contains(&collection) || (info.targets.is_empty() && !info.conflicts.is_empty()) => rsx! {
                     p { class: "x-upload-none", "This collection has two upload datasets. An administrator must disable one." }
+                },
+                None if !collection.is_empty() => rsx! {
+                    p { class: "x-upload-none", "You cannot upload into this collection." }
                 },
                 None => rsx! {
                     p { class: "x-upload-none", "You cannot upload into any collection." }
@@ -175,7 +185,7 @@ pub fn UploadPage(collection: String, folder: String) -> Element {
     rsx! {
         Title { "Hoover Search - Upload" }
         UploadScripts {}
-        div { style: PAGE_STYLE,
+        div { style: PAGE_STYLE, "inert": transfer().is_some().then_some(""),
             div { style: "max-width: 860px; margin: 0 auto;",
                 div { style: "display: flex; align-items: center; gap: 15px; margin-bottom: 15px;",
                     Link { to: back, style: "{LINK} display: inline-flex; align-items: center; gap: 4px;",
@@ -207,7 +217,7 @@ fn UploadForm(
     unconfirmed: Signal<Option<UnconfirmedBegin>>,
     driver: UploadDriver,
 ) -> Element {
-    let folder = common::uploads::normalize_folder(&folder).unwrap_or_else(|_| "/".to_string());
+    let folder = common::uploads::normalize_folder(&folder).unwrap_or_else(|_| folder.clone());
     let files: Vec<BeginFile> = selection
         .read()
         .iter()
@@ -232,7 +242,7 @@ fn UploadForm(
     let count = request.files.len();
     let refused = refusal();
     let chunk_bytes = info.limits.chunk_bytes;
-    let blocked = count == 0 || !batch_problems.is_empty() || !problems.is_empty();
+    let blocked = transfer().is_some() || count == 0 || !batch_problems.is_empty() || !problems.is_empty();
 
     let collection_for_select = target.collection.clone();
     let dataset = target.dataset.clone();
@@ -334,6 +344,7 @@ fn UploadForm(
                 style: BTN_PRIMARY,
                 disabled: blocked,
                 onclick: move |_| {
+                    if transfer.peek().is_some() { return; }
                     let ids: Vec<u64> = selection.peek().iter().map(|f| f.id).collect();
                     let paths: Vec<String> = request.files.iter().map(|f| f.path.clone()).collect();
                     let mut request = request.clone();
@@ -346,7 +357,7 @@ fn UploadForm(
                     sending_to.set(request.collection.clone());
                     transfer.set(Some(Transfer {
                         heading: heading.clone(),
-                        state: Progress { total, count: count as u64, ..Default::default() },
+                        state: Progress { total, count: count as u64, phase: "starting".into(), ..Default::default() },
                         error: None,
                         batch_id: None,
                     }));

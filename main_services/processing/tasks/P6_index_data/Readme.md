@@ -270,3 +270,9 @@ A calibration change requires reindexing and does not require another scan.
 Each VFS node stores the count of its immediate child folders and containers.
 The structure writer copies this count into the search index.
 The folder tree uses it to control disclosure.
+
+## Empty dataset search tables
+
+The structure and entity-term writers create their typed collection tables before writing.
+An empty dataset can therefore finish without running the shard planner.
+Table creation preserves existing tables and does not repair a table with an incorrect schema.

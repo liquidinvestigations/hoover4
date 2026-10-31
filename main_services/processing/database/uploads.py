@@ -304,17 +304,15 @@ INGEST_REJECTION_PREFIX = "Not ingested: "
 DESCENDANT_LEVELS = 16
 
 
-def _descendants(client, upload_dataset: str, roots: list[str]) -> dict[str, str]:
-    """Map each member hash below the given top-level hashes to its top-level hash.
+def _descendants(client, upload_dataset: str, roots: list[str]) -> dict[str, set[str]]:
+    """Map each member hash to every uploaded root that contains it.
 
-    Members are `vfs_files` rows whose `container_hash` is the hash of their container.
-    A hash below more than one root maps to the root that reaches it at the lowest level,
-    and among the roots at that level to the smallest root hash. A root hash is never a
-    member. The batch detail page of the website (`level_sql` in
-    `website/backend/src/api/uploads_api.rs`) assigns members by the same rule.
+    Each root and member pair is visited once. Shared members affect every containing
+    archive, including an uploaded archive nested inside another uploaded archive.
     """
-    owner: dict[str, str] = {}
-    level = {h: h for h in roots if h}
+    owner: dict[str, set[str]] = {}
+    level = {h: {h} for h in roots if h}
+    seen = {(h, h) for h in level}
     for _ in range(DESCENDANT_LEVELS):
         if not level:
             break
@@ -325,15 +323,17 @@ def _descendants(client, upload_dataset: str, roots: list[str]) -> dict[str, str
             parameters={"ds": upload_dataset},
             external_data=_string_table("lookup_hashes", "hash", sorted(level)),
         ).result_rows
-        nxt = {}
-        # The smallest root first, so the assignment does not depend on the row order.
-        rows = sorted(rows, key=lambda r: (level.get(str(r[0]), ""), str(r[1])))
+        nxt: dict[str, set[str]] = {}
         for container, member in rows:
-            root = level.get(str(container))
-            if root is None or not member or member in owner or member in roots:
+            if not member:
                 continue
-            owner[str(member)] = root
-            nxt[str(member)] = root
+            member = str(member)
+            for root in level.get(str(container), set()):
+                if (root, member) in seen:
+                    continue
+                seen.add((root, member))
+                owner.setdefault(member, set()).add(root)
+                nxt.setdefault(member, set()).add(root)
         level = nxt
     return owner
 
@@ -462,7 +462,8 @@ class OutcomeEvidence:
     """The stored facts that `classify_outcome` reads, keyed by path or hash.
 
     `vfs` maps a path to the hash of its live top-level `vfs_files` row. `nodes` holds the
-    paths with a `vfs_nodes` file row. `members` maps a member hash to its top-level hash.
+    paths with a `vfs_nodes` file row.
+    `members` maps each member hash to its containing top-level hashes.
     `plans` maps a hash to `(plans, finished plans)`. `failing` holds the hashes with a
     current error.
     """
@@ -470,7 +471,8 @@ class OutcomeEvidence:
     def __init__(self, vfs=None, nodes=None, members=None, plans=None, failing=None):
         self.vfs: dict[str, str] = dict(vfs or {})
         self.nodes: set[str] = set(nodes or ())
-        self.members: dict[str, str] = dict(members or {})
+        self.members: dict[str, set[str]] = {h: ({r} if isinstance(r, str) else set(r))
+                                           for h, r in (members or {}).items()}
         self.plans: dict[str, tuple[int, int]] = dict(plans or {})
         self.failing: set[str] = set(failing or ())
 
@@ -498,9 +500,9 @@ def classify_outcome(files: list[dict], evidence: OutcomeEvidence,
         "succeeded": 0,
     }
     members = evidence.members
-    failing_roots = {members.get(h, h) for h in evidence.failing}
-    unfinished_roots = {members.get(h, h) for h, (planned, done) in evidence.plans.items()
-                        if done < planned}
+    failing_roots = {root for h in evidence.failing for root in ({h} | members.get(h, set()))}
+    unfinished_roots = {root for h, (planned, done) in evidence.plans.items()
+                        if done < planned for root in ({h} | members.get(h, set()))}
     for row in files:
         state = row["state"]
         if state == "not_sent":

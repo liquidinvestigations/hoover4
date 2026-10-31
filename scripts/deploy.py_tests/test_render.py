@@ -1909,7 +1909,7 @@ def test_the_upload_limits_reach_the_website_and_the_worker():
             assert set(UPLOAD_DEFAULT_ENV) <= names, service
 
 
-def test_a_writable_mount_on_another_file_system_prints_a_note(tmp_path):
+def test_every_writable_compose_mount_prints_a_copy_note(tmp_path):
     cfg = _mount_sections(_storage(tmp_path), {
         "same": {"host_path": str(tmp_path / "same"), "container_path": "/same", "writable": "true"},
         "other": {"host_path": "/dev/shm", "container_path": "/other", "writable": "true"},
@@ -1917,10 +1917,7 @@ def test_a_writable_mount_on_another_file_system_prints_a_note(tmp_path):
     })
     cfg.values["main_services"]["testdata_dir"] = ""
     cfg.values["main_services"]["datasets_mount_path"] = ""
-    (tmp_path / "same").mkdir()
-    assert deploy.upload_space_notes(cfg) == []  # the volume folder does not exist yet
-    (tmp_path / deploy.UPLOAD_SPACE_VOLUME).mkdir()
     notes = deploy.upload_space_notes(cfg)
-    if os.stat("/dev/shm").st_dev == os.stat(tmp_path).st_dev:
-        pytest.skip("/dev/shm is on the file system of the temporary folder here")
-    assert len(notes) == 1 and "[dataset_mount.other]" in notes[0] and "copies" in notes[0]
+    assert len(notes) == 2
+    assert any("[dataset_mount.same]" in note and "copies" in note for note in notes)
+    assert any("[dataset_mount.other]" in note and "copies" in note for note in notes)

@@ -77,6 +77,7 @@ Rows `F-store-15` and `F-store-16` of [the feature register](../Features.md) sta
 | Clear | Remove every file from the selection. | |
 | Upload | Send `begin` and start the transfer. | It is disabled with no file and while a page check fails. |
 | Pause, Continue | Stop each transfer after its current chunk, and resume from the server offset. | |
+| Retry finish | Repeat a failed commit of the same batch. | It appears after a commit failure. |
 | Stop upload | End the transfers and commit the batch. | The files that arrived are ingested. |
 | Retry failed files | Send the failed files again. | It shows after a file fails its last retry. |
 | Collection filter | List the batches of one collection or of every readable collection. | The filter is in the address. |
@@ -99,3 +100,17 @@ Rows `F-store-15` and `F-store-16` of [the feature register](../Features.md) sta
 | Transfer | A bar of acknowledged bytes, the acknowledged bytes and files, and at most 3 files in transfer. |
 | Running batch | The detail page reads the counts again every 3 seconds until the state is terminal. |
 | No history access | The batch pages show the refusal. |
+
+Upload and Finish upload reject repeated clicks while their request runs.
+The dialog shows starting, prefix verification, transfer, pause, and commit states.
+Pause and Stop upload are disabled during initialization, prefix verification, and commit.
+The dialog prevents interaction with the page behind it.
+A prefix request failure closes the dialog and shows an error beside the selection controls.
+An unavailable collection in the address does not select another collection.
+Changing the destination reloads its folder tree.
+A failed shared member marks every uploaded archive that contains it as having errors.
+Each manifest entry contributes once to the counts.
+
+A failed batch read retries on the next poll.
+A failed resume-manifest read offers Retry loading files.
+Opening another batch clears the previous batch selection and transfer state.

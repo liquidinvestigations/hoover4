@@ -64,9 +64,9 @@ The website mounts the volume folder `hoover4-upload-tmp` at `/upload-tmp` as it
 It holds the transfer journals and the bytes of files that are still arriving. It also holds
 complete files that wait for placement. Its reset class is `data`, so `--reset` empties it. A batch that has
 not placed its files then loses them, and its owner must upload them again. Placed files are
-in the dataset folder and stay. When a writable dataset mount is on another file system than
-this folder, [deploy.py](../../deploy.py) prints a note, and each placement copies the file instead of
-renaming it.
+in the dataset folder and stay. Compose uses separate mounts for upload space and dataset folders.
+Placement copies files across these mounts, including mounts on the same host file system.
+[deploy.py](../../deploy.py) prints this copy requirement for each writable dataset mount.
 
 Manticore uses version 29.9.0. Its data folders retain the `_v14` names for existing installations.
 Deployment creates each daemon's authentication file when it is absent and preserves an existing file.

@@ -37,12 +37,15 @@
   let nextId = 1;
   let sink = null;
   let run = null;
+  let pending = false;
+  let generation = 0;
 
   const emit = (event) => { try { if (sink) sink(event); } catch (_) { sink = null; } };
 
   // Selection ------------------------------------------------------------------------
 
   function addFiles(found) {
+    if (pending || run) return;
     const added = [];
     for (const { file, path } of found) {
       const id = nextId++;
@@ -254,10 +257,12 @@
       in_flight: items.filter((it) => it.state === "active").slice(0, MAX_ACTIVE).map((it) => it.path),
       failed: items.filter((it) => it.state === "failed").map((it) => ({ path: it.path, error: it.error })),
       paused: run.paused,
+      phase: run.ended ? "committing" : "transferring",
     });
   }
 
   function startItem(item) {
+    const owner = run;
     item.state = "active";
     run.active.add(item);
     if (!item.upload) {
@@ -272,6 +277,7 @@
         removeFingerprintOnSuccess: false,
         onShouldRetry: shouldRetry,
         onChunkComplete: (_chunk, accepted) => {
+          if (run !== owner || owner.ended) return;
           item.acked = accepted;
           progress(false);
           if (run && run.paused && accepted < item.size) {
@@ -282,12 +288,14 @@
           }
         },
         onSuccess: () => {
+          if (run !== owner || owner.ended) return;
           item.acked = item.size;
           item.state = "done";
           run.active.delete(item);
           pump();
         },
         onError: (err) => {
+          if (run !== owner || owner.ended) return;
           item.state = "failed";
           item.error = errorText(err);
           run.active.delete(item);
@@ -327,24 +335,30 @@
   }
 
   async function commit() {
-    if (!run || run.ended) return;
-    run.ended = true;
-    for (const item of run.active) if (item.upload) item.upload.abort(false);
-    window.removeEventListener("beforeunload", warnOnLeave);
-    const batchId = run.batchId;
+    if (!run || run.ended || pending) return;
+    const owner = run;
+    owner.ended = true;
+    progress(true);
+    emit({ kind: "phase", phase: "committing" });
     try {
-      const res = await fetchPatient(`/_upload/${batchId}/commit`, {
+      await Promise.all([...owner.active].map((item) => item.upload && item.upload.abort(false)));
+      const res = await fetchPatient(`/_upload/${owner.batchId}/commit`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
       });
       const text = await res.text();
+      if (run !== owner) return;
       let body = {};
       try { body = JSON.parse(text); } catch (_) { body = { message: text }; }
-      if (res.ok) emit({ kind: "committed", detail: body.detail });
-      else emit({ kind: "commit_failed", message: body.message || `HTTP ${res.status}` });
+      if (!res.ok) throw new Error(body.message || `HTTP ${res.status}`);
+      run = null;
+      window.removeEventListener("beforeunload", warnOnLeave);
+      emit({ kind: "committed", detail: body.detail });
     } catch (err) {
+      if (run !== owner) return;
+      owner.ended = false;
+      owner.stopping = true;
       emit({ kind: "commit_failed", message: String(err) });
     }
-    run = null;
   }
 
   function beginRun(batchId, items, chunkBytes, commitWhenDone) {
@@ -354,6 +368,7 @@
   }
 
   async function begin(cmd) {
+    const token = generation;
     let res;
     let text;
     try {
@@ -361,10 +376,14 @@
         method: "POST", headers: { "Content-Type": "application/json" }, body: cmd.body,
       });
       text = await res.text();
+      if (token !== generation) return;
     } catch (err) {
+      if (token !== generation) return;
+      pending = false;
       emit({ kind: "refused", status: 0, body: JSON.stringify({ message: String(err) }) });
       return;
     }
+    pending = false;
     if (res.status !== 201) {
       emit({ kind: "refused", status: res.status, body: text });
       return;
@@ -383,12 +402,16 @@
   // its last file only when the page reports that it sends every waiting file of the
   // batch (`commit_when_done`) and no file differs.
   async function resume(cmd) {
+    const token = generation;
     const items = [];
     const mismatched = [];
     for (const m of cmd.items) {
       const file = files.get(m.id);
       const res = await fetchPatient(`/_upload/${cmd.batch_id}/prefix/${m.file_no}`, { cache: "no-store" });
-      if (res.status === 409 || res.status === 410) continue;
+      if (token !== generation) return;
+      if (res.status === 409 || res.status === 410) {
+        throw new Error((await res.text()) || ENDED);
+      }
       if (!res.ok) {
         mismatched.push({ path: m.path, error: (await res.text()) || `HTTP ${res.status}` });
         continue;
@@ -403,10 +426,39 @@
         resumeUrl: digest.offset > 0 ? `/_upload/files/${cmd.batch_id}-${m.file_no}` : null,
       });
     }
+    if (token !== generation) return;
+    pending = false;
     const commitWhenDone = !!cmd.commit_when_done && !mismatched.length;
     emit({ kind: "checked", mismatched, sending: items.length });
     // A run without files commits at once when every file of the batch has its bytes.
     if (items.length || commitWhenDone) beginRun(cmd.batch_id, items, cmd.chunk_bytes, commitWhenDone);
+  }
+
+  function startRequest(cmd, task) {
+    if (pending || run) return;
+    pending = true;
+    const token = generation;
+    task(cmd).catch((err) => {
+      if (token !== generation) return;
+      pending = false;
+      emit(cmd.cmd === "begin"
+        ? { kind: "refused", status: 0, body: JSON.stringify({ message: String(err) }) }
+        : { kind: "resume_failed", message: String(err) });
+    });
+  }
+
+  function detach() {
+    generation++;
+    pending = false;
+    const previous = run;
+    run = null;
+    if (previous) {
+      clearTimeout(previous.timer);
+      for (const item of previous.active) if (item.upload) item.upload.abort(false);
+    }
+    files.clear();
+    sink = null;
+    window.removeEventListener("beforeunload", warnOnLeave);
   }
 
   function command(cmd) {
@@ -414,18 +466,18 @@
       case "open_files": input("x-upload-file-input", false).click(); break;
       case "open_folder": input("x-upload-folder-input", true).click(); break;
       case "forget": for (const id of cmd.ids) files.delete(id); break;
-      case "begin": begin(cmd); break;
-      case "resume": resume(cmd); break;
-      case "pause": if (run) { run.paused = true; progress(true); } break;
+      case "begin": startRequest(cmd, begin); break;
+      case "resume": startRequest(cmd, resume); break;
+      case "pause": if (run && !run.ended && !run.stopping) { run.paused = true; progress(true); } break;
       case "continue":
-        if (run) {
+        if (run && !run.ended && !run.stopping) {
           run.paused = false;
           for (const item of run.items) if (item.state === "paused") item.state = "queued";
           pump();
         }
         break;
       case "retry":
-        if (run) {
+        if (run && !run.ended && !run.stopping) {
           for (const item of run.items) if (item.state === "failed") { item.state = "queued"; item.error = ""; }
           pump();
         }
@@ -433,17 +485,18 @@
       case "stop":
         if (run) { run.stopping = true; commit(); }
         break;
+      case "retry_commit": commit(); break;
+      case "detach": detach(); break;
       case "finish":
         // Finish upload on the detail page: commit a batch without a run.
-        if (!run) { run = newRun(cmd.batch_id, [], 0, true); commit(); }
+        if (!run && !pending) { run = newRun(cmd.batch_id, [], 0, true); commit(); }
         break;
     }
   }
 
   window.hooverUploads = {
-    // Connect the page. A new page replaces the previous sink. A run in transfer keeps
-    // going and reports to the new sink.
-    attach(send) { sink = send; ensureInputs(); progress(true); },
+    // A new page owns a new selection. Interrupted batches can resume from their detail page.
+    attach(send) { detach(); sink = send; ensureInputs(); },
     command,
     sha256Hex(bytes) { const h = sha256(); h.update(bytes); return h.hex(); },
   };

@@ -49,22 +49,19 @@ fn FolderRow(
 ) -> Element {
     let initially_open = holds(&path, &selected);
     let mut open = use_signal(move || initially_open);
-    let node_key = make_node_key(&dataset, "", &path);
-    let children = use_resource({
-        let dataset = dataset.clone();
-        move || {
-            let dataset = dataset.clone();
-            let node_key = node_key.clone();
-            let wanted = open();
-            async move {
-                if !wanted {
-                    return Ok(Vec::new());
-                }
-                let page = vfs_tree_children(dataset, node_key, CHILD_LIMIT, 0, true).await?;
-                Ok::<_, ServerFnError>(
-                    page.nodes.into_iter().filter(|n| n.kind == VfsNodeKind::Dir).collect::<Vec<_>>(),
-                )
+    let location = use_memo(use_reactive!(|dataset, path| (dataset, path)));
+    let children = use_resource(move || {
+        let (dataset, path) = location();
+        let node_key = make_node_key(&dataset, "", &path);
+        let wanted = open();
+        async move {
+            if !wanted {
+                return Ok(Vec::new());
             }
+            let page = vfs_tree_children(dataset, node_key, CHILD_LIMIT, 0, true).await?;
+            Ok::<_, ServerFnError>(
+                page.nodes.into_iter().filter(|n| n.kind == VfsNodeKind::Dir).collect::<Vec<_>>(),
+            )
         }
     });
     let is_selected = selected == path;

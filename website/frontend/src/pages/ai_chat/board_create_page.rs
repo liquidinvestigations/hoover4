@@ -251,8 +251,10 @@ pub fn AiBoardCreatePage() -> Element {
                         button {
                             class: "x-board-create",
                             style: BTN_PRIMARY,
-                            disabled: busy() || missing_source.is_some(),
+                            disabled: busy() || chosen.read().is_none() || missing_source.is_some(),
                             onclick: move |_| {
+                                if *busy.peek() || chosen.peek().is_none() { return; }
+                                busy.set(true);
                                 let request = BoardCreateRequest {
                                     title: title.read().clone(),
                                     goals: goals.read().iter().map(|g| g.trim().to_string()).filter(|g| !g.is_empty()).collect(),
@@ -262,7 +264,6 @@ pub fn AiBoardCreatePage() -> Element {
                                     hints: hints.read().lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect(),
                                 };
                                 spawn(async move {
-                                    busy.set(true);
                                     error_msg.set(None);
                                     match create_and_wait(request).await {
                                         Ok(board_id) => {
@@ -273,7 +274,7 @@ pub fn AiBoardCreatePage() -> Element {
                                     busy.set(false);
                                 });
                             },
-                            "Create board"
+                            if busy() { "Creating board..." } else { "Create board" }
                         }
                     }
                 }

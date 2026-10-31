@@ -338,27 +338,34 @@ def open_dataset_root(dataset_path: str) -> int:
     return fd
 
 
-def stat_beneath(root_fd: int, rel_path: str) -> os.stat_result:
-    """`lstat` of a regular file beneath the root descriptor, without following links.
-
-    Raises `OSError` for a missing entry or a link at any name, and `ValueError` for an
-    entry that is not a regular file.
-    """
+def open_file_beneath(root_fd: int, rel_path: str) -> int:
+    """Open a regular file through directory descriptors without following symbolic links."""
     names = [n for n in rel_path.split("/") if n]
     if not names or any(n in (".", "..") for n in names):
         raise ValueError("The path is not a file path.")
-    fd = os.dup(root_fd)
+    folder_fd = os.dup(root_fd)
     try:
         for name in names[:-1]:
-            child = os.open(name, _DIR_FLAGS, dir_fd=fd)
-            os.close(fd)
-            fd = child
-        result = os.stat(names[-1], dir_fd=fd, follow_symlinks=False)
+            child = os.open(name, _DIR_FLAGS, dir_fd=folder_fd)
+            os.close(folder_fd)
+            folder_fd = child
+        fd = os.open(names[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                     dir_fd=folder_fd)
+    finally:
+        os.close(folder_fd)
+    if not stat_module.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise ValueError("The path is not a regular file.")
+    return fd
+
+
+def stat_beneath(root_fd: int, rel_path: str) -> os.stat_result:
+    """Read the metadata of a regular file without following symbolic links."""
+    fd = open_file_beneath(root_fd, rel_path)
+    try:
+        return os.fstat(fd)
     finally:
         os.close(fd)
-    if not stat_module.S_ISREG(result.st_mode):
-        raise ValueError("The path is not a regular file.")
-    return result
 
 
 def _ancestors(paths) -> list[str]:
@@ -422,7 +429,7 @@ def ingest_upload_paths(params: UploadBatchParams) -> dict[str, int]:
     from database import uploads
     from tasks.P0_scan_disk.activities import (
         FILE_BATCH_MAX_BYTES, FILE_BATCH_MAX_COUNT, IngestFilesBatchParams,
-        InsertVfsDirectoriesParams, _batch_files_by_size, _rel_to_abs, ingest_files,
+        InsertVfsDirectoriesParams, _batch_files_by_size, ingest_files,
         insert_vfs_directories,
     )
 
@@ -445,6 +452,7 @@ def ingest_upload_paths(params: UploadBatchParams) -> dict[str, int]:
     counts = {"files": len(files), "ingested": 0, "rejected": 0, "skipped": 0,
               "chunks": len(chunks)}
     root_fd = open_dataset_root(dataset_path)
+    pinned = {}
     try:
         current = {int(f["file_no"]): f for f in files}
         for index, chunk in enumerate(chunks):
@@ -458,10 +466,9 @@ def ingest_upload_paths(params: UploadBatchParams) -> dict[str, int]:
             ready = []
             for f in todo:
                 try:
-                    found = stat_beneath(root_fd, f["path"])
-                    seen = os.lstat(_rel_to_abs(dataset_path, f["path"]))
-                    if (seen.st_dev, seen.st_ino) != (found.st_dev, found.st_ino):
-                        raise ValueError("The path changed while it was checked.")
+                    fd = open_file_beneath(root_fd, f["path"])
+                    pinned[f["path"]] = fd
+                    found = os.fstat(fd)
                 except (OSError, ValueError) as exc:
                     reason = exc.strerror if isinstance(exc, OSError) and exc.strerror else str(exc)
                     changes[int(f["file_no"])] = _rejection(reason)
@@ -484,7 +491,11 @@ def ingest_upload_paths(params: UploadBatchParams) -> dict[str, int]:
                     op_id=params.op_id,
                     file_mtimes=[int(found.st_mtime) for _, found in ready],
                     file_sizes=[int(found.st_size) for _, found in ready],
-                ), rehash_known=True)
+                ), rehash_known=True,
+                    source_paths={path: f"/proc/self/fd/{fd}" for path, fd in pinned.items()})
+            for fd in pinned.values():
+                os.close(fd)
+            pinned.clear()
             stored = _stored_hashes(params.collectionname, params.upload_dataset, paths)
             for f, _ in ready:
                 reason = result.unreadable.get(f["path"]) if result else None
@@ -501,6 +512,8 @@ def ingest_upload_paths(params: UploadBatchParams) -> dict[str, int]:
                 current[file_no] = {**current[file_no], **change}
             send_heartbeat({"batch_chunk": index + 1, "batch_chunks": len(chunks)})
     finally:
+        for fd in pinned.values():
+            os.close(fd)
         os.close(root_fd)
     uploads.write_batch(params.collectionname, params.upload_dataset, params.batch_id,
                         state="processing")

@@ -1454,7 +1454,7 @@ def index_vfs_structure(params: BuildVfsNodesParams) -> str:
     ``parent_key`` chain: filtering on a folder must find everything under it even
     when the container in between exists at two paths (`zip-in-multiple-locations`).
     """
-    from database.manticore import get_manticore_client, vfs_table_name
+    from database.manticore import create_vfs_table, get_manticore_client
 
     from .vfs_nodes import (
         KIND_TO_INT,
@@ -1464,7 +1464,8 @@ def index_vfs_structure(params: BuildVfsNodesParams) -> str:
     )
 
     collection_dataset: str = params.collection_dataset
-    vfs_table = vfs_table_name(params.collectionname)
+    # Empty datasets can reach this writer without running the shard planner.
+    vfs_table = create_vfs_table(params.collectionname)
     with get_collection_client(params.collectionname) as client:
         nodes = client.query_arrow("""
             SELECT container_hash, path, node_key, parent_key, kind, file_hash,
@@ -1610,10 +1611,11 @@ def index_entity_terms(params: BuildVfsNodesParams) -> str:
     ids so a REPLACE upserts in place, no dataset-wide DELETE first, and a reconciliation
     sweep afterwards that removes rows whose term no longer exists.
     """
-    from database.manticore import entities_table_name, get_manticore_client
+    from database.manticore import create_entities_table, get_manticore_client
 
     collection_dataset: str = params.collection_dataset
-    entities_table = entities_table_name(params.collectionname)
+    # This table also exists when the dataset has no searchable terms.
+    entities_table = create_entities_table(params.collectionname)
     with get_collection_client(params.collectionname) as client:
         terms = client.query_arrow("""
             SELECT term_field, term_id, term_value

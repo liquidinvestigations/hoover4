@@ -282,6 +282,9 @@ pub trait BatchStore: Send + Sync {
     }
     /// Whether a `delete_dataset` or `purge_dataset` operation of the dataset is pending,
     /// queued or running. `begin` refuses a new batch while one is.
+    fn latest_dataset_removal(&self, _upload_dataset: &str) -> anyhow::Result<String> {
+        Ok(String::new())
+    }
     fn dataset_removal_live(&self, _upload_dataset: &str) -> anyhow::Result<bool> {
         Ok(false)
     }
@@ -673,6 +676,9 @@ impl Service {
     /// is an error of type [`FolderUnavailable`], so no caller reads it as a lost
     /// permission and rejects the files.
     pub fn current_target(&self, manifest: &Manifest) -> anyhow::Result<Option<Target>> {
+        if self.removal_changed(manifest)? {
+            return Ok(None);
+        }
         Ok(match self.access.target(&manifest.username, &manifest.collection)? {
             TargetLookup::Target(t) if t.upload_dataset == manifest.upload_dataset => Some(t),
             TargetLookup::Unavailable { upload_dataset, reason } if upload_dataset == manifest.upload_dataset => {
@@ -680,6 +686,14 @@ impl Service {
             }
             _ => None,
         })
+    }
+
+    /// A removal dispatched after begin stops the batch, including a completed purge.
+    pub fn removal_changed(&self, manifest: &Manifest) -> anyhow::Result<bool> {
+        match &manifest.removal_op_id {
+            Some(previous) => Ok(self.store.latest_dataset_removal(&manifest.upload_dataset)? != *previous),
+            None => self.store.dataset_removal_live(&manifest.upload_dataset),
+        }
     }
 
     /// Open the root folder of a target through directory descriptors.

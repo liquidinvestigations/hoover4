@@ -42,6 +42,11 @@ fn document_route(dataset: &str, hash: &str) -> Route {
 
 #[component]
 pub fn UploadBatchPage(collection: String, batch_id: String, page: u32) -> Element {
+    rsx! { UploadBatchContent { key: "{collection}/{batch_id}", collection, batch_id, page } }
+}
+
+#[component]
+fn UploadBatchContent(collection: String, batch_id: String, page: u32) -> Element {
     let key = use_memo(use_reactive!(|collection, batch_id, page| (collection, batch_id, page)));
     let mut tick = use_signal(|| 0u64);
     let detail = use_resource(move || {
@@ -61,7 +66,7 @@ pub fn UploadBatchPage(collection: String, batch_id: String, page: u32) -> Eleme
             n0_future::time::sleep(POLL).await;
             let running = match &*shown.peek() {
                 Some(Ok(d)) => !batch_state_is_terminal(&d.batch.state),
-                Some(Err(_)) => false,
+                Some(Err(_)) => true,
                 None => true,
             };
             if running {
@@ -130,7 +135,7 @@ pub fn UploadBatchPage(collection: String, batch_id: String, page: u32) -> Eleme
             };
             transfer.set(Some(Transfer {
                 heading,
-                state: Progress { total, count: found.matched.len() as u64, ..Default::default() },
+                state: Progress { total, count: found.matched.len() as u64, phase: "checking".into(), ..Default::default() },
                 error: None,
                 batch_id: Some(batch_id.clone()),
             }));
@@ -171,9 +176,20 @@ pub fn UploadBatchPage(collection: String, batch_id: String, page: u32) -> Eleme
             mismatched.set(Vec::new());
             *tick.write() += 1;
         }
+        DriverEvent::ResumeFailed { message } => {
+            transfer.set(None);
+            finish_error.set(Some(message));
+        }
+        DriverEvent::Phase { phase } => {
+            if let Some(t) = transfer.write().as_mut() {
+                t.state.phase = phase;
+                t.error = None;
+            }
+        }
         DriverEvent::CommitFailed { message } => {
             if transfer.peek().is_some() {
                 if let Some(t) = transfer.write().as_mut() {
+                    t.state.phase = "commit_failed".into();
                     t.error = Some(message);
                 }
             } else {
@@ -222,14 +238,20 @@ pub fn UploadBatchPage(collection: String, batch_id: String, page: u32) -> Eleme
                 }
                 if can_continue {
                     div {
-                        if resuming() {
-                            DropZone { driver }
+                        if resuming() && !matches!(&*manifest.read(), Some(Err(_))) {
+                            if matches!(&*manifest.read(), Some(Ok(_))) {
+                                DropZone { driver }
+                            } else if manifest.read().is_none() {
+                                p { role: "status", "Loading upload files..." }
+                            }
                         } else {
                             button {
                                 class: "x-upload-continue-upload",
                                 style: BTN,
                                 onclick: move |_| {
+                                    if *resuming.peek() && !matches!(&*manifest.peek(), Some(Err(_))) { return; }
                                     resuming.set(true);
+                                    manifest.set(None);
                                     let (collection, batch_id, _) = key.peek().clone();
                                     spawn(async move {
                                         let files = upload_batch_resume_files(collection, batch_id).await
@@ -237,7 +259,7 @@ pub fn UploadBatchPage(collection: String, batch_id: String, page: u32) -> Eleme
                                         manifest.set(Some(files));
                                     });
                                 },
-                                "Continue upload"
+                                if matches!(&*manifest.read(), Some(Err(_))) { "Retry loading files" } else { "Continue upload" }
                             }
                         }
                         div { style: "display: flex; align-items: center; gap: 10px; margin-top: 8px;",
@@ -246,7 +268,14 @@ pub fn UploadBatchPage(collection: String, batch_id: String, page: u32) -> Eleme
                                 style: BTN,
                                 disabled: transfer().is_some(),
                                 onclick: move |_| {
+                                    if transfer.peek().is_some() { return; }
                                     finish_error.set(None);
+                                    transfer.set(Some(Transfer {
+                                        heading: "Finishing upload".into(),
+                                        state: Progress { phase: "committing".into(), ..Default::default() },
+                                        error: None,
+                                        batch_id: Some(key.peek().1.clone()),
+                                    }));
                                     driver.send(serde_json::json!({"cmd": "finish", "batch_id": key.peek().1.clone()}));
                                 },
                                 "Finish upload"
@@ -338,7 +367,7 @@ pub fn UploadBatchPage(collection: String, batch_id: String, page: u32) -> Eleme
     rsx! {
         Title { "Hoover Search - Upload" }
         UploadScripts {}
-        div { style: PAGE_STYLE,
+        div { style: PAGE_STYLE, "inert": transfer().is_some().then_some(""),
             div { style: "max-width: 1100px; margin: 0 auto;",
                 div { style: "display: flex; align-items: center; gap: 15px; margin-bottom: 15px;",
                     Link { to: list, style: "{LINK} display: inline-flex; align-items: center; gap: 4px;",

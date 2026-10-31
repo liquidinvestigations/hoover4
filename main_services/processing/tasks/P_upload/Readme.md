@@ -11,7 +11,10 @@ The tables `upload_batches` and `upload_files` hold both, and [database/uploads.
 |---|---|---|---|
 | `UploadQueue` | `processing-common-queue` | `collectionname`, `upload_dataset`, optional `active_op_id` | One run for each upload dataset, id `upload-queue-<upload_dataset>`. Claims up to 50 waiting batches as one `ingest_upload` operation and waits for its terminal row. |
 | `Operation` kind `ingest_upload` | `operations-queue` | the operation id, the dataset, `detail.batch_ids` | Passes admission, then runs `IngestUploadBatches` and verifies plan completion as the other ingest kinds do. |
-| `IngestUploadBatches` | `processing-common-queue` | `collectionname`, `upload_dataset`, `op_id`, at most 50 batch ids | For each batch: `upload_batch_limits`, `ingest_upload_paths`, `ComputePlans`, the historical-error selection before the first `ExecutePlans`, `ExecutePlans`, `finish_upload_batches`. After the last batch it runs `reconcile_selected_errors`. |
+| `IngestUploadBatches` | `processing-common-queue` | `collectionname`, `upload_dataset`, `op_id`, at most 50 batch ids | Ingest all claimed batches before selecting historical errors. Then plan, execute, and finish each batch. Reconcile selected errors after the last batch. |
+
+The `upload-prepare-all-batches` patch preserves the activity order of older histories.
+New runs record `paths_prepared` across continuation, so later batches have hashes before error selection.
 
 No payload holds a path, a file name or a manifest.
 The activities read paths from `upload_files` by batch id.
@@ -48,7 +51,9 @@ The activity calls `stop_if_worker_is_stopping` between chunks.
 
 For each placed file the activity opens the dataset folder one name at a time from `/` without following links, and requires a regular file.
 It writes `vfs_directories` rows for the parent folders in chunks of 500. `build_vfs_nodes` writes the root node.
-It then runs `ingest_files` from P0 with `container_hash = ''` and `rehash_known`.
+It keeps each file descriptor open while `ingest_files` from P0 reads its bytes.
+A path replacement cannot redirect those reads.
+The call uses `container_hash = ''` and `rehash_known`.
 It writes `upload_files.file_hash` from the stored `vfs_files.hash` of the live top-level row of the path.
 A missing, linked or unreadable file is `rejected` with a reason that starts with `Not ingested: `, and the other files continue.
 A batch that cannot be ingested fails alone, and the next batch of the operation continues.

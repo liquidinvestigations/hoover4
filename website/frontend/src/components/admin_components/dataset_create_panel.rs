@@ -328,6 +328,7 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
                                     let collectionname = collectionname.clone();
                                     let tess = tesseract.read().clone();
                                     let easy = easyocr.read().clone();
+                                    if *saving_defaults.peek() { return; }
                                     saving_defaults.set(true);
                                     spawn(async move {
                                         msg.set(None);
@@ -364,6 +365,7 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
                                     let tess = tesseract.read().clone();
                                     let easy = easyocr.read().clone();
                                     let accept = accept_value;
+                                    if *submitting.peek() { return; }
                                     submitting.set(true);
                                     spawn(async move {
                                         msg.set(None);

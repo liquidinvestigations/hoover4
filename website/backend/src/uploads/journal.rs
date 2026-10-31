@@ -156,6 +156,9 @@ pub struct Manifest {
     pub folder: String,
     pub manifest_digest: String,
     pub created_ms: i64,
+    /// The newest dataset removal when begin checked its target.
+    #[serde(default)]
+    pub removal_op_id: Option<String>,
     pub files: Vec<ManifestFile>,
 }
 

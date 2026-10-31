@@ -68,8 +68,8 @@ def record_operation_state(params: OperationStateParams) -> str:
 def admit_operation(op_id: str) -> str:
     """Start the operation when its kind has a free slot and its target is free.
 
-    The target is free when no other running operation overlaps it
-    (`database.operations.running_conflicts`), whatever the kinds of the two rows. The
+    The target is free when no running or older waiting operation overlaps it
+    (`database.operations.admission_conflicts`), whatever the kinds of the two rows. The
     dispatch lock of `create_operation` reads and inserts in separate statements, and the
     upload queue writes its rows without it, so this check is the one that excludes
     concurrent writers of a dataset or a collection. Otherwise the row is stored as
@@ -88,7 +88,7 @@ def admit_operation(op_id: str) -> str:
 
     from database.operations import (
         TERMINAL_STATES, _now, admission_decision, count_admission, get_operation,
-        operation_caps, running_conflicts, update_operation,
+        operation_caps, admission_conflicts, update_operation,
     )
 
     row = get_operation(op_id)
@@ -101,7 +101,7 @@ def admit_operation(op_id: str) -> str:
     cap = operation_caps()[row["kind"]]
     running, ahead = count_admission(row)
     decision = admission_decision(running, ahead, cap)
-    conflicts = running_conflicts(row) if decision == "running" else []
+    conflicts = admission_conflicts(row) if decision == "running" else []
     if conflicts:
         decision = "queued"
         log.info("operation %s (%s) waits for %s", op_id, row["kind"],

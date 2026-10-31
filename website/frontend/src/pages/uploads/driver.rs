@@ -43,6 +43,7 @@ pub struct Progress {
     pub in_flight: Vec<String>,
     pub failed: Vec<FailedFile>,
     pub paused: bool,
+    pub phase: String,
 }
 
 /// An event of the script.
@@ -54,6 +55,8 @@ pub enum DriverEvent {
     /// `begin` answered with a refusal. `body` is the response text.
     Refused { status: u16, body: String },
     Begun { batch_id: String },
+    Phase { phase: String },
+    ResumeFailed { message: String },
     Progress {
         sent: u64,
         total: u64,
@@ -62,6 +65,7 @@ pub enum DriverEvent {
         in_flight: Vec<String>,
         failed: Vec<FailedFile>,
         paused: bool,
+        phase: String,
     },
     Committed { detail: String },
     CommitFailed { message: String },
@@ -77,7 +81,7 @@ impl DriverEvent {
     /// The progress fields of a `Progress` event.
     pub fn progress(&self) -> Option<Progress> {
         match self {
-            DriverEvent::Progress { sent, total, done, count, in_flight, failed, paused } => Some(Progress {
+            DriverEvent::Progress { sent, total, done, count, in_flight, failed, paused, phase } => Some(Progress {
                 sent: *sent,
                 total: *total,
                 done: *done,
@@ -85,6 +89,7 @@ impl DriverEvent {
                 in_flight: in_flight.clone(),
                 failed: failed.clone(),
                 paused: *paused,
+                phase: phase.clone(),
             }),
             _ => None,
         }
@@ -125,6 +130,9 @@ pub fn use_upload_driver(on_event: Callback<DriverEvent>) -> UploadDriver {
             }
         }
     });
+    use_drop(move || {
+        document::eval("if (window.hooverUploads) window.hooverUploads.command({cmd: 'detach'});");
+    });
     UploadDriver { eval }
 }
 
@@ -134,6 +142,7 @@ pub fn UploadScripts() -> Element {
     rsx! {
         document::Script { src: TUS_JS }
         document::Script { src: UPLOADS_JS }
+        document::Style { ".x-upload-progress button:disabled, .x-upload-submit:disabled, .x-upload-finish:disabled {{ opacity: 0.5; cursor: not-allowed; }}" }
     }
 }
 
@@ -187,9 +196,22 @@ pub fn ProgressDialog(
     );
     let paused = progress.paused;
     let has_failed = !progress.failed.is_empty();
+    let committing = progress.phase == "committing";
+    let ready = progress.phase == "transferring" && error.is_none();
+    let failed_commit = error.is_some();
+    let status = match progress.phase.as_str() {
+        "starting" => "Starting upload...",
+        "checking" => "Checking selected files...",
+        "committing" => "Finishing upload...",
+        _ if failed_commit => "The upload could not finish. Retry finishing the upload.",
+        _ if paused => "Upload paused.",
+        _ => "Sending files...",
+    };
     rsx! {
         div { style: OVERLAY_STYLE,
-            div { class: "x-upload-progress", style: DIALOG_STYLE, role: "dialog",
+            div { class: "x-upload-progress", style: DIALOG_STYLE, role: "dialog", "aria-modal": "true", tabindex: "-1",
+                onmounted: move |_| { document::eval("document.querySelector('.x-upload-progress')?.focus()"); },
+                p { class: "x-upload-status", role: "status", "{status}" }
                 h2 { style: "margin: 0; font-size: var(--x-text-section); font-weight: 600; color: var(--x-ink-strong); overflow-wrap: anywhere;",
                     "{heading}"
                 }
@@ -215,10 +237,20 @@ pub fn ProgressDialog(
                     div { style: "color: var(--x-danger);", "{error}" }
                 }
                 div { style: "display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px;",
+                    if failed_commit {
+                        button {
+                            class: "x-upload-retry-commit",
+                            style: BTN_PRIMARY,
+                            disabled: committing,
+                            onclick: move |_| driver.send(serde_json::json!({"cmd": "retry_commit"})),
+                            "Retry finish"
+                        }
+                    }
                     if has_failed {
                         button {
                             class: "x-upload-retry",
                             style: BTN,
+                            disabled: !ready,
                             onclick: move |_| driver.send(serde_json::json!({"cmd": "retry"})),
                             "Retry failed files"
                         }
@@ -227,6 +259,7 @@ pub fn ProgressDialog(
                         button {
                             class: "x-upload-continue",
                             style: BTN,
+                            disabled: !ready,
                             onclick: move |_| driver.send(serde_json::json!({"cmd": "continue"})),
                             "Continue"
                         }
@@ -234,6 +267,7 @@ pub fn ProgressDialog(
                         button {
                             class: "x-upload-pause",
                             style: BTN,
+                            disabled: !ready,
                             onclick: move |_| driver.send(serde_json::json!({"cmd": "pause"})),
                             "Pause"
                         }
@@ -241,6 +275,7 @@ pub fn ProgressDialog(
                     button {
                         class: "x-upload-stop",
                         style: BTN_PRIMARY,
+                        disabled: !ready,
                         onclick: move |_| driver.send(serde_json::json!({"cmd": "stop"})),
                         "Stop upload"
                     }
