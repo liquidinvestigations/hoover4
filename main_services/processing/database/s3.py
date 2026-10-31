@@ -38,10 +38,16 @@ COLLECTION_BUCKET_PREFIX = os.environ.get("S3_COLLECTION_BUCKET_PREFIX", "hoover
 
 
 def collection_bucket(collectionname: str) -> str:
-    """The bucket holding one collection's ingested blobs and derived objects."""
+    """The bucket holding one collection's ingested blobs and derived objects.
+
+    An S3 bucket name allows `-` and refuses `_`, and a collection name allows `_` and
+    refuses `-`. Each `_` therefore becomes `-`. The mapping is one to one, so two
+    collections never share a bucket. The website builds the same name, and both test
+    suites read `tasks/collection_bucket_cases.json`.
+    """
     from database.clickhouse import validate_collectionname
     validate_collectionname(collectionname)
-    return f"{COLLECTION_BUCKET_PREFIX}{collectionname}"
+    return f"{COLLECTION_BUCKET_PREFIX}{collectionname.replace('_', '-')}"
 
 
 def _hostport(endpoint: str) -> str:

@@ -26,7 +26,7 @@ use common::admin_types::{
     DatasetTextVariant, DatasetUploadsSetting,
 };
 use common::current_user::CurrentUser;
-use common::storage_tree::compose_collection_dataset;
+use common::storage_tree::{compose_collection_dataset, normalize_identifier};
 use time::format_description::well_known::Rfc3339;
 
 use crate::api::admin::operations;
@@ -719,10 +719,11 @@ pub async fn admin_create_dataset(
     if !is_safe_folder_name(&folder_name) {
         anyhow::bail!("{folder_name:?} is not a folder name");
     }
+    // The form shows the same normalized name before it sends the request.
     let dataset_name = if dataset_name.trim().is_empty() {
-        folder_name.to_lowercase().replace(['-', ' ', '.'], "_")
+        normalize_identifier(&folder_name)
     } else {
-        dataset_name.trim().to_string()
+        normalize_identifier(&dataset_name)
     };
     if !is_valid_dataset_name(&dataset_name) {
         anyhow::bail!(

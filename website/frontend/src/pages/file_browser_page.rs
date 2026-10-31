@@ -2,7 +2,7 @@
 
 use common::search_query::SearchQuery;
 use common::search_result::DocumentIdentifier;
-use common::storage_tree::{DatasetAggregates, format_size};
+use common::storage_tree::{DatasetAggregates, format_size, percent_of};
 use common::vfs::{PathDescriptor, SubtreeStats, VfsFileEntry, VfsListing};
 use dioxus::prelude::*;
 use dioxus_free_icons::Icon;
@@ -251,14 +251,7 @@ pub fn FileBrowserCollectionsPage() -> Element {
                                 tooltip: collection.collectionname.clone(),
                                 is_collection: true,
                                 dataset_count: Some(collection.dataset_count),
-                                stats: (collection.counted_dataset_count > 0).then(|| DatasetAggregates {
-                                    collection_dataset: String::new(),
-                                    document_count: collection.document_count,
-                                    total_size_bytes: collection.total_size_bytes,
-                                    indexed_count: collection.indexed_count,
-                                    error_count: collection.error_count,
-                                    processing: collection.processing,
-                                }),
+                                stats: (collection.counted_dataset_count > 0).then(|| collection.as_dataset_aggregates()),
                                 incomplete: !collection.is_complete(),
                             }
                         }
@@ -336,6 +329,14 @@ const CARD_BADGE_STYLE: &str = "
     color: var(--x-link); border: 1px solid; border-color: var(--x-link);
 ";
 
+/// The tooltip of the Indexed share.
+const INDEXED_SHARE_HELP: &str = "The share of documents that are in the search index.";
+/// The tooltip of the Processing errors share.
+const ERROR_SHARE_HELP: &str = "The share of documents with at least one processing error. \
+     Indexed documents can also have errors.";
+/// The tooltip of the count date.
+const UPDATED_ON_HELP: &str = "The date when these numbers were counted. It is not the date when files changed.";
+
 /// One storage card: a collection on the root page, or a dataset on a collection page.
 ///
 /// `stats` is `None` when the pipeline has not counted the dataset yet, and the card then
@@ -387,14 +388,22 @@ fn StatsCard(
                         span { "Total size" }
                         span { style: CARD_VALUE_STYLE, "{format_size(aggregates.total_size_bytes)}" }
                     }
-                    div { style: CARD_STAT_ROW,
+                    div { style: CARD_STAT_ROW, title: "{INDEXED_SHARE_HELP}",
                         span { "Indexed" }
-                        span { style: CARD_VALUE_STYLE, "{aggregates.indexed_count}" }
+                        span { style: CARD_VALUE_STYLE, "{percent_of(aggregates.indexed_count, aggregates.document_count)}" }
                     }
-                    if aggregates.error_count > 0 {
-                        div { style: CARD_STAT_ROW,
+                    if aggregates.error_documents_counted {
+                        div { style: CARD_STAT_ROW, title: "{ERROR_SHARE_HELP}",
                             span { "Processing errors" }
-                            span { style: "color: var(--x-warning); font-weight: 500;", "{aggregates.error_count}" }
+                            span {
+                                style: if aggregates.error_document_count > 0 { "color: var(--x-warning); font-weight: 500;" } else { CARD_VALUE_STYLE },
+                                "{percent_of(aggregates.error_document_count, aggregates.document_count)}"
+                            }
+                        }
+                    }
+                    if !aggregates.updated_on.is_empty() {
+                        div { style: CARD_STAT_ROW, title: "{UPDATED_ON_HELP}",
+                            span { "Updated on {aggregates.updated_on}" }
                         }
                     }
                     if incomplete {

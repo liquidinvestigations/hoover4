@@ -305,7 +305,7 @@ Source ownership uses [website/backend/src/api/admin/document_errors.rs](../../w
 
 ## F-admin-33
 
-Store each dataset's document count, size, indexed count, error count and processing state in `dataset_stats`. The error count counts distinct document and task pairs. Refresh the state when an operation is admitted, refresh all values when an operation ends, and refresh while a collection has a live operation or a dataset row that still reads processing. A dataset is processing while a live operation other than `export_collection` holds it, so permanently failed work reads as done.
+Store each dataset's document count, size, indexed count, error count, error document count, count time and processing state in `dataset_stats`. The error count counts distinct document and task pairs. The indexed and error document counts count documents of `blobs`, the population of the document count, and the error document count leaves out errors of the whole dataset. A state refresh keeps the count time. A row of an older `statistics_version` keeps its numbers until the next collector pass counts it again. Refresh the state when an operation is admitted, refresh all values when an operation ends, and refresh while a collection has a live operation or a dataset row that still reads processing. A dataset is processing while a live operation other than `export_collection` holds it, so permanently failed work reads as done.
 
 Source ownership uses [main_services/processing/database/dataset_stats.py](../../main_services/processing/database/dataset_stats.py), [main_services/processing/tasks/P_admin/eta_collector.py](../../main_services/processing/tasks/P_admin/eta_collector.py).
 

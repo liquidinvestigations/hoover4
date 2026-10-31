@@ -2,7 +2,9 @@
 //! form that adds a collection.
 
 use common::admin_types::{AdminCollectionItem, AdminDatasetListItem};
-use common::storage_tree::{format_size, state_label, CollectionAggregates, DatasetAggregates};
+use common::storage_tree::{
+    format_size, normalize_identifier, state_label, CollectionAggregates, DatasetAggregates,
+};
 use dioxus::prelude::*;
 
 use crate::api::error_util::user_facing_message;
@@ -54,6 +56,14 @@ fn CollectionsListContent() -> Element {
         }
     });
 
+    let new_name = normalize_identifier(&collectionname.read());
+    let name_taken = !new_name.is_empty()
+        && cols_res
+            .read()
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .is_some_and(|cols| cols.iter().any(|c| c.collectionname == new_name));
+
     rsx! {
         if let Some(msg) = success_msg.read().clone() {
             SuccessBar { message: msg }
@@ -85,8 +95,9 @@ fn CollectionsListContent() -> Element {
                 input { style: INPUT, placeholder: "Display name", value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
                 button {
                     style: BTN_PRIMARY,
+                    disabled: new_name.is_empty() || name_taken,
                     onclick: move |_| {
-                        let c = collectionname.read().clone();
+                        let c = normalize_identifier(&collectionname.read());
                         let f = fullname.read().clone();
                         spawn(async move {
                             error_msg.set(None);
@@ -103,6 +114,18 @@ fn CollectionsListContent() -> Element {
                         });
                     },
                     "Add collection"
+                }
+            }
+            div { style: MODULE_BODY,
+                p { style: "{HELP_TEXT} margin: 0;",
+                    "A name has lowercase letters, digits and underscores. Capital letters become lowercase, "
+                    "and a dash, a space or a full stop becomes an underscore. The name cannot change later."
+                }
+                if !new_name.is_empty() {
+                    p { class: "x-name-preview", style: "{HELP_TEXT} margin: 4px 0 0;", "The collection is saved as: {new_name}" }
+                }
+                if name_taken {
+                    p { class: "x-name-collision", style: "margin: 4px 0 0; color: var(--x-danger);", "A collection with the name {new_name} exists." }
                 }
             }
         }

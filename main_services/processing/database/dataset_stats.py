@@ -7,8 +7,18 @@ one row for each registered dataset of that collection.
 The numbers use the storage card definitions. ``document_count`` counts distinct blob
 hashes, extracted files included. ``total_size_bytes`` adds one size for each distinct
 blob hash, because ``blobs`` is a ReplacingMergeTree and an unmerged duplicate row would
-count twice. ``indexed_count`` counts distinct file hashes in ``index_state``.
-``error_count`` counts distinct document and task pairs in ``processing_errors``.
+count twice. ``indexed_count`` counts the documents of ``blobs`` that have an
+``index_state`` row. ``error_count`` counts distinct document and task pairs in
+``processing_errors``. ``error_document_count`` counts the documents of ``blobs`` that
+have a ``processing_errors`` row. A row of the whole dataset has an empty hash and is
+not in it. The storage cards show the two document counts as shares of
+``document_count``, which is the same population.
+
+``counted_at`` is the time of the count, and the cards show its date. A state refresh
+writes ``computed_at`` and carries ``counted_at`` unchanged. ``statistics_version`` names
+the count definitions. A row of an older version keeps its numbers until the collector
+counts its collection again (``collections_to_refresh``), so no card loses its numbers
+while the definitions change.
 
 A dataset is ``processing`` while a live operation holds it under the lock rule of
 ``operations.lock_clause``: a dataset operation on the dataset, or a collection
@@ -28,6 +38,11 @@ DONE = "done"
 #: Live kinds that do not change the collection.
 READ_ONLY_KINDS = frozenset({"export_collection"})
 
+#: The version of the count definitions. Raise it when a count changes its meaning, and
+#: the collector counts every collection again. Mirrored as
+#: `ERROR_DOCUMENTS_STATISTICS_VERSION` in `website/backend/src/api/list_datasets.rs`.
+STATISTICS_VERSION = 1
+
 COLUMNS = [
     "collectionname",
     "collection_dataset",
@@ -35,6 +50,9 @@ COLUMNS = [
     "total_size_bytes",
     "indexed_count",
     "error_count",
+    "error_document_count",
+    "counted_at",
+    "statistics_version",
     "state",
     "computed_at",
 ]
@@ -91,30 +109,41 @@ def compute_collection_stats(collectionname: str) -> list[dict]:
             " FROM blobs GROUP BY collection_dataset, blob_hash"
             ") GROUP BY collection_dataset",
         )
+        # Only documents of `blobs`, so the count is a share of `document_count`.
         indexed = _grouped(
             client,
             "SELECT collection_dataset, uniqExact(file_hash) FROM index_state "
+            "WHERE (collection_dataset, file_hash) IN "
+            "(SELECT collection_dataset, blob_hash FROM blobs) "
             "GROUP BY collection_dataset",
         )
         # One error for each document and task. A task that failed in several runs
-        # wrote one row for each run, and the Errors/Failures page shows it once.
+        # wrote one row for each run, and the Errors/Failures page shows it once. The
+        # document count uses the population of `blobs` and leaves out the empty hash
+        # of a dataset error.
         errors = _grouped(
             client,
-            "SELECT collection_dataset, uniqExact(hash, task_name) FROM processing_errors FINAL "
-            "GROUP BY collection_dataset",
+            "SELECT collection_dataset, uniqExact(hash, task_name), "
+            "uniqExactIf(hash, hash != '' AND (collection_dataset, hash) IN "
+            "(SELECT collection_dataset, blob_hash FROM blobs)) "
+            "FROM processing_errors FINAL GROUP BY collection_dataset",
         )
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     rows = []
     for ds in datasets:
         documents, size = sizes.get(ds, (0, 0))
+        error_pairs, error_documents = errors.get(ds, (0, 0))
         rows.append({
             "collectionname": collectionname,
             "collection_dataset": ds,
             "document_count": int(documents or 0),
             "total_size_bytes": int(size or 0),
             "indexed_count": int(indexed.get(ds, (0,))[0] or 0),
-            "error_count": int(errors.get(ds, (0,))[0] or 0),
+            "error_count": int(error_pairs or 0),
+            "error_document_count": int(error_documents or 0),
+            "counted_at": now,
+            "statistics_version": STATISTICS_VERSION,
             "state": dataset_state(ds, live),
             "computed_at": now,
         })
@@ -154,7 +183,8 @@ def refresh_dataset_states(collectionname: str) -> int:
     with get_global_client() as client:
         result = client.query(
             "SELECT s.collectionname, s.collection_dataset, s.document_count, "
-            "s.total_size_bytes, s.indexed_count, s.error_count "
+            "s.total_size_bytes, s.indexed_count, s.error_count, s.error_document_count, "
+            "s.counted_at, s.statistics_version "
             "FROM dataset_stats AS s FINAL "
             "WHERE s.collectionname = {c:String} AND s.collection_dataset IN "
             "(SELECT collection_dataset FROM dataset FINAL "
@@ -205,7 +235,8 @@ def collections_to_refresh() -> list[str]:
     A collection qualifies when a registered dataset has no statistics row, which covers
     a new deployment and a new dataset. It also qualifies when a stored row says
     `processing`: a live operation then refreshes it anyway, and without one the row is
-    left over from a refresh that failed when the operation ended.
+    left over from a refresh that failed when the operation ended. A row counted under
+    an older `STATISTICS_VERSION` qualifies too, and keeps its numbers until then.
     """
     from .clickhouse import get_global_client
 
@@ -215,7 +246,9 @@ def collections_to_refresh() -> list[str]:
             "WHERE d.is_deleted = 0 AND (d.collection_dataset NOT IN "
             "(SELECT collection_dataset FROM dataset_stats) "
             "OR d.collection_dataset IN "
-            "(SELECT collection_dataset FROM dataset_stats FINAL WHERE state = 'processing')) "
-            "ORDER BY d.collectionname"
+            "(SELECT collection_dataset FROM dataset_stats FINAL "
+            " WHERE state = 'processing' OR statistics_version < {v:UInt16})) "
+            "ORDER BY d.collectionname",
+            parameters={"v": STATISTICS_VERSION},
         ).result_rows
     return [row[0] for row in rows if row[0]]

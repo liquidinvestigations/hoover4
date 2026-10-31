@@ -37,10 +37,32 @@ pub fn system_bucket() -> String {
 /// collection's objects are enumerable without prefix filtering and deletable in one
 /// call, and so a read scoped to a collection cannot reach another one's bytes. Garage
 /// dedups blocks globally, so the split costs no storage.
+///
+/// An S3 bucket name refuses `_`, and a collection name refuses `-`, so each `_` becomes
+/// `-`. The mapping is one to one. It mirrors `collection_bucket` in
+/// `main_services/processing/database/s3.py`, and both test suites read
+/// `main_services/processing/tasks/collection_bucket_cases.json`.
 pub fn collection_bucket(collectionname: &str) -> String {
     let prefix = std::env::var("S3_COLLECTION_BUCKET_PREFIX")
         .unwrap_or_else(|_| "hoover4-c-".to_string());
-    format!("{prefix}{collectionname}")
+    format!("{prefix}{}", collectionname.replace('_', "-"))
+}
+
+/// A file of `main_services/processing/tasks/`, for a test that compares this runtime
+/// with the pipeline. A whole checkout reaches it beside the workspace. The website
+/// container mounts the folder at `/mirror/processing-tasks`. Returns `None` elsewhere,
+/// and the calling test then fails, so a missing file is never a silent pass.
+#[cfg(test)]
+pub fn processing_tasks_file(name: &str) -> Option<String> {
+    let candidates = [
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../main_services/processing/tasks")
+            .join(name),
+        std::path::Path::new("/mirror/processing-tasks").join(name),
+    ];
+    candidates
+        .iter()
+        .find_map(|path| std::fs::read_to_string(path).ok())
 }
 
 /// Split a stored `s3://bucket/key` into its two halves.
@@ -82,4 +104,24 @@ pub async fn s3_client() -> anyhow::Result<aws_sdk_s3::Client> {
         .behavior_version(aws_sdk_s3::config::BehaviorVersion::latest())
         .build();
     Ok(aws_sdk_s3::Client::from_conf(config))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bucket_names_match_the_pipeline_cases() {
+        let text = processing_tasks_file("collection_bucket_cases.json")
+            .expect("collection_bucket_cases.json is not reachable from this test");
+        let cases: serde_json::Value = serde_json::from_str(&text).unwrap();
+        let prefix = std::env::var("S3_COLLECTION_BUCKET_PREFIX")
+            .unwrap_or_else(|_| "hoover4-c-".to_string());
+        for case in cases["cases"].as_array().unwrap() {
+            let name = case["collectionname"].as_str().unwrap();
+            let bucket = case["bucket"].as_str().unwrap();
+            let expected = format!("{prefix}{}", &bucket["hoover4-c-".len()..]);
+            assert_eq!(collection_bucket(name), expected, "{name}");
+        }
+    }
 }

@@ -5,7 +5,8 @@ use dioxus::prelude::*;
 use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{
     admin_delete_collection, admin_get_collection, admin_grant_permission, admin_list_groups,
-    admin_revoke_permission, admin_set_collection_public, admin_update_collection,
+    admin_provision_collection, admin_revoke_permission, admin_set_collection_public,
+    admin_update_collection,
 };
 use crate::components::admin_components::{
     AdminGuard, AdminShell, DatasetCreatePanel, ErrorBar, SuccessBar, BTN, BTN_DANGER,
@@ -135,6 +136,38 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                 if !detail.collection.db_ready {
                     p { style: "margin: 0 0 8px; color: var(--x-danger);", "The collection database is not ready yet." }
                 }
+                if detail.provisioning_state == "errored" {
+                    p { style: "margin: 0 0 8px; color: var(--x-danger);",
+                        "The last storage provisioning failed: {detail.provisioning_error}"
+                    }
+                }
+                div { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 8px;",
+                    button {
+                        style: BTN,
+                        disabled: matches!(detail.provisioning_state.as_str(), "pending" | "queued" | "running"),
+                        onclick: {
+                            let cname = cname.clone();
+                            move |_| {
+                                let cname = cname.clone();
+                                spawn(async move {
+                                    msg.set(None);
+                                    error_msg.set(None);
+                                    match admin_provision_collection(cname).await {
+                                        Ok(op_id) => {
+                                            msg.set(Some(format!("Storage provisioning started: {op_id}")));
+                                            detail_res.restart();
+                                        }
+                                        Err(e) => error_msg.set(Some(user_facing_message(&e))),
+                                    }
+                                });
+                            }
+                        },
+                        "Provision storage"
+                    }
+                    span { style: HELP_TEXT,
+                        "This creates the database and the file bucket of the collection when one of them is missing. It changes no existing data."
+                    }
+                }
                 Link {
                     to: Route::AdminCollectionProcessingPage { collection_id: cname.clone() },
                     style: LINK,
@@ -172,6 +205,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
         }
         DatasetCreatePanel {
             collectionname: collection_id.clone(),
+            existing_datasets: detail.datasets.iter().map(|d| d.dataset_name.clone()).collect::<Vec<_>>(),
             on_created: move |_| detail_res.restart(),
         }
         div { class: "x-admin-module", style: MODULE,

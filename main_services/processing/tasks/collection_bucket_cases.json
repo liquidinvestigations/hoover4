@@ -1,0 +1,10 @@
+{
+  "comment": "The bucket name of each collection name with the default prefix hoover4-c-. Read by tests/unit/test_collection_bucket.py and by the db_utils tests of the website backend. The longest collection name is 48 characters, so the longest bucket name is 58 characters, under the S3 limit of 63.",
+  "cases": [
+    {"collectionname": "testdata", "bucket": "hoover4-c-testdata"},
+    {"collectionname": "under_score", "bucket": "hoover4-c-under-score"},
+    {"collectionname": "p73_test_col", "bucket": "hoover4-c-p73-test-col"},
+    {"collectionname": "a_b_c", "bucket": "hoover4-c-a-b-c"},
+    {"collectionname": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", "bucket": "hoover4-c-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}
+  ]
+}

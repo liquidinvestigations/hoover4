@@ -37,12 +37,17 @@ The first table shows each collection's display name, dataset count, documents, 
 and access. The state is Processing while an operation changes the collection, and Done
 otherwise. A failed operation also ends in Done. The Datasets section lists the datasets of
 every collection with their documents, size, indexed documents, errors, state and creation
-date. The form at the bottom adds a collection.
+date. The form at the bottom adds a collection. A name has lowercase letters, digits and
+underscores. The form shows the name that it saves: capital letters become lowercase, and a
+dash, a space or a full stop becomes an underscore. The form refuses a name that exists.
 
 <a href="img/admin-collections.png"><img src="img/admin-collections.png" alt="Admin, collections" width="100%"></a>
 
 A collection's own page lists its datasets first, then renames it, links to its processing
-view, sets its access, and shows its newest ten operations.
+view, sets its access, and shows its newest ten operations. **Provision storage** creates the
+database and the file bucket of the collection when one of them is missing. Use it when the
+page reports that the last storage provisioning failed. It keeps the collection and its
+settings.
 
 
 <a href="img/admin-collection.png"><img src="img/admin-collection.png" alt="Admin, one collection" width="100%"></a>

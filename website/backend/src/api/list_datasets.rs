@@ -165,13 +165,21 @@ struct StoredStatsRow {
     total_size_bytes: u64,
     indexed_count: u64,
     error_count: u64,
+    error_document_count: u64,
+    statistics_version: u16,
+    updated_on: String,
     state: String,
 }
+
+/// The `statistics_version` from which a row carries `error_document_count`. Mirrors
+/// `STATISTICS_VERSION` in `main_services/processing/database/dataset_stats.py`.
+const ERROR_DOCUMENTS_STATISTICS_VERSION: u16 = 1;
 
 /// The cached statistics of every registered dataset, or of one collection's datasets.
 ///
 /// One read of the global `dataset_stats` table, which the pipeline writes during and
-/// after processing. The join with the registry hides the rows of deleted datasets. A
+/// after processing. `updated_on` is the date of the count (`counted_at`), the lightest
+/// date the table holds. The join with the registry hides the rows of deleted datasets. A
 /// dataset with no statistics row is absent from the result.
 pub async fn stored_dataset_aggregates(
     collectionname: Option<&str>,
@@ -180,7 +188,10 @@ pub async fn stored_dataset_aggregates(
     let sql = format!(
         "SELECT s.collection_dataset AS collection_dataset, s.document_count AS document_count, \
          s.total_size_bytes AS total_size_bytes, s.indexed_count AS indexed_count, \
-         s.error_count AS error_count, s.state AS state \
+         s.error_count AS error_count, s.error_document_count AS error_document_count, \
+         s.statistics_version AS statistics_version, \
+         if(toUnixTimestamp(s.counted_at) = 0, '', formatDateTime(s.counted_at, '%Y-%m-%d')) AS updated_on, \
+         s.state AS state \
          FROM dataset_stats AS s FINAL \
          INNER JOIN (SELECT collection_dataset, collectionname FROM dataset FINAL WHERE is_deleted = 0) AS d \
          ON d.collection_dataset = s.collection_dataset \
@@ -199,6 +210,9 @@ pub async fn stored_dataset_aggregates(
             total_size_bytes: row.total_size_bytes,
             indexed_count: row.indexed_count,
             error_count: row.error_count,
+            error_document_count: row.error_document_count,
+            error_documents_counted: row.statistics_version >= ERROR_DOCUMENTS_STATISTICS_VERSION,
+            updated_on: row.updated_on,
             processing: row.state == "processing",
         })
         .collect())

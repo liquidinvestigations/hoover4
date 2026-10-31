@@ -7,7 +7,7 @@
 
 | Route family | Controls | Constraint |
 |---|---|---|
-| Collections and datasets | Create, rename, inspect access, inspect processing, and dispatch supported actions. | A dataset belongs to its collection permanently. |
+| Collections and datasets | Create, rename, inspect access, inspect processing, and dispatch supported actions. Provision the storage of an existing collection again. | A dataset belongs to its collection permanently. A name field shows the identifier that it saves, with capital letters lowercased and a dash, space or full stop changed to an underscore, and refuses an identifier that exists. Provisioning creates a missing database or bucket and keeps the collection row. |
 | Dataset creation | Pick a dataset mount and a folder directly beneath it. In a writable mount, name a new folder, which the server creates. In a writable mount, select Accept uploads. | The form takes no path. A read-only mount offers no new folder and no Accept uploads, and the server refuses both. With one mount the form shows no mount select. Accept uploads is disabled while another dataset of the collection accepts uploads. |
 | Dataset upload setting | Turn Accept uploads on or off on the dataset page. | The checkbox shows for a disk dataset whose folder is beneath a writable mount, and for a dataset that accepts uploads. Turning it on is refused while another live dataset of the collection accepts uploads. Turning it off is always accepted. |
 | Processing | Inspect five stage groups, errors, throughput, and task time. | Display groups are P0, P1, P2/P3, P4, and P6. |

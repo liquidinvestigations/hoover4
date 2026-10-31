@@ -18,7 +18,8 @@ This directory centralizes database utilities and schema definitions used by the
 ## One Garage bucket per collection
 
 `hoover4-c-<collectionname>` holds a collection's ingested blobs and everything derived
-from them; `hoover4-system` holds what belongs to no collection, which today is chat
+from them. Each `_` of the collection name becomes `-` in the bucket name, because S3
+refuses `_` and a collection name has no `-`; `hoover4-system` holds what belongs to no collection, which today is chat
 artifacts. `blobs.s3_path` stores the full `s3://<bucket>/<key>`, and every reader takes
 the bucket from the path rather than from its own configuration, a reader that rebuilds
 the bucket name fetches from wherever it happens to be pointed instead of from where the

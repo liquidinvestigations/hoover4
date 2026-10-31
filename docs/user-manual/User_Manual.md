@@ -613,15 +613,18 @@ original file under its real name.
 The folder icon in the rail opens **Storage**: the corpus as it is laid out on disk.
 
 The landing page shows one card for each collection, with the same tree in the pane on the
-left. A card shows the number of datasets and the summed documents, total size, indexed
-documents and processing errors of those datasets. A card marked Processing belongs to a
-collection whose data is changing.
+left. A card shows the number of datasets and the summed documents and total size of those
+datasets. It also shows the share of the documents that are indexed, the share of the
+documents with a processing error, and the date of the count. A card marked Processing
+belongs to a collection whose data is changing.
 
 <a href="img/storage-collections.png"><img src="img/storage-collections.png" alt="Storage, all collections" width="100%"></a>
 
-Choosing a collection shows a card per dataset with its document count, total size, how many
-are indexed, and how many hit processing errors. The pipeline counts these numbers during and
-after processing. A dataset that it has not counted yet says so.
+Choosing a collection shows a card per dataset with its document count, total size, the share
+of its documents that are indexed, and the share of its documents with a processing error. An
+indexed document can also have an error, so the two shares can add up to more than 100%. The
+pipeline counts these numbers during and after processing. **Updated on** gives the date of
+that count, not the date when files changed. A dataset that it has not counted yet says so.
 
 
 <a href="img/storage-collection.png"><img src="img/storage-collection.png" alt="A collection&#x27;s datasets" width="100%"></a>

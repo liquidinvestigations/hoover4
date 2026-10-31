@@ -19,6 +19,7 @@
 use dioxus::prelude::*;
 
 use common::admin_types::{DatasetFolderOption, DatasetMountOption};
+use common::storage_tree::normalize_identifier;
 
 use crate::api::admin_api::{
     admin_create_dataset, admin_get_collection_ocr_defaults, admin_list_collection_upload_datasets,
@@ -50,7 +51,13 @@ fn suggest_dataset_name(folder: &str) -> String {
 }
 
 #[component]
-pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<String>) -> Element {
+pub fn DatasetCreatePanel(
+    collectionname: String,
+    /// The dataset names that the collection has, for the collision message.
+    #[props(default)]
+    existing_datasets: Vec<String>,
+    on_created: EventHandler<String>,
+) -> Element {
     let mounts_res = use_resource(admin_list_dataset_mounts);
     // Empty until the admin picks a mount. The first mount applies until then.
     let mut mount = use_signal(String::new);
@@ -162,7 +169,14 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
     } else {
         chosen.clone()
     };
-    let can_create = !target_folder.is_empty() && !mount_name.is_empty() && !*submitting.read();
+    // The name the server derives when the field is empty, and saves otherwise.
+    let saved_name = if dataset_name.read().trim().is_empty() {
+        normalize_identifier(&target_folder)
+    } else {
+        normalize_identifier(&dataset_name.read())
+    };
+    let name_taken = !saved_name.is_empty() && existing_datasets.iter().any(|d| d == &saved_name);
+    let can_create = !target_folder.is_empty() && !mount_name.is_empty() && !*submitting.read() && !name_taken;
     let create_style = if can_create {
         ""
     } else {
@@ -276,7 +290,14 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
                         }
                     }
                     p { style: "{HELP_TEXT} margin: 0;",
-                        "Use lowercase letters, digits and underscores. The name cannot change later."
+                        "A name has lowercase letters, digits and underscores. Capital letters become lowercase, "
+                        "and a dash, a space or a full stop becomes an underscore. The name cannot change later."
+                    }
+                    if !saved_name.is_empty() {
+                        p { class: "x-name-preview", style: "{HELP_TEXT} margin: 0;", "The dataset is saved as: {saved_name}" }
+                    }
+                    if name_taken {
+                        p { class: "x-name-collision", style: "margin: 0; color: var(--x-danger);", "This collection has a dataset with the name {saved_name}." }
                     }
 
                     if mount_writable {
@@ -361,7 +382,7 @@ pub fn DatasetCreatePanel(collectionname: String, on_created: EventHandler<Strin
                                     let collectionname = collectionname.clone();
                                     let mount_name = mount_name.clone();
                                     let folder_value = target_folder.clone();
-                                    let name = dataset_name.read().clone();
+                                    let name = normalize_identifier(&dataset_name.read());
                                     let tess = tesseract.read().clone();
                                     let easy = easyocr.read().clone();
                                     let accept = accept_value;

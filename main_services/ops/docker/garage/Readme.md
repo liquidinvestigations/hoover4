@@ -3,7 +3,8 @@
 Single-node [Garage](https://garagehq.deuxfleurs.fr/) on `garage:3900`.
 
 **One bucket per collection, plus one system bucket.** A collection's objects are in
-`hoover4-c-<collectionname>`: its ingested blobs under `<collection_dataset>/<blob_hash>`
+`hoover4-c-<collectionname>`, with each `_` of the name changed to `-`, because a bucket
+name cannot contain `_`: its ingested blobs under `<collection_dataset>/<blob_hash>`
 and its OCR'd PDFs under `derived/...`. Everything belonging to no collection (chat
 artifacts) is in `hoover4-system`. `blobs.s3_path` stores the full `s3://<bucket>/<key>`,
 so a reader takes the bucket from the path rather than from its own configuration.

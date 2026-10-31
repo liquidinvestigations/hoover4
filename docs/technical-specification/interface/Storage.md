@@ -8,7 +8,7 @@ The storage routes show readable collections, their datasets, and nested folder 
 
 | Control | Behavior | Constraint |
 |---|---|---|
-| Collection and dataset cards | Open the selected scope. | Counts come from stored dataset statistics. |
+| Collection and dataset cards | Open the selected scope. Show documents, size, the indexed share and the processing error share of the documents, and the date of the count. | Counts come from stored dataset statistics. A collection share uses summed counts. A share above 100% shows as 100%. The date is the count date, not a file change date. |
 | Tree chevron | Expand or collapse children. | Expansion and label navigation are separate actions. |
 | Folder label and breadcrumb | Open a folder, including a container member path. | Parent links preserve container boundaries. |
 | Name search | Filter names below the current folder. | The control does not search document contents. |

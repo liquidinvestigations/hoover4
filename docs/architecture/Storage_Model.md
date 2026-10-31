@@ -129,7 +129,9 @@ dataset and stay.
 ## The object store: a bucket per collection
 
 Buckets are named for the collection they hold, alongside one system bucket for everything
-that is not collection data.
+that is not collection data. A bucket name cannot contain `_`, so each `_` of a collection
+name becomes `-` in its bucket name. A collection name cannot contain `-`, so two
+collections never get one bucket.
 
 **Readers take the bucket out of the blob row's stored path.** A reader that rebuilds the
 bucket name from its own configuration works on one collection and fails on the next, and

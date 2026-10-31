@@ -53,6 +53,7 @@ admin_server_fn!(admin_get_collection, backend::api::admin::collections::admin_g
 admin_server_fn!(admin_create_collection, backend::api::admin::collections::admin_create_collection, (collectionname: String, fullname: String));
 admin_server_fn!(admin_update_collection, backend::api::admin::collections::admin_update_collection, (collectionname: String, fullname: String));
 admin_server_fn!(admin_delete_collection, backend::api::admin::collections::admin_delete_collection, (collectionname: String));
+admin_server_fn!(admin_provision_collection, backend::api::admin::collections::admin_provision_collection, (collectionname: String) -> String);
 admin_server_fn!(admin_set_collection_public, backend::api::admin::collections::admin_set_collection_public, (collectionname: String, is_public: bool));
 admin_server_fn!(admin_grant_permission, backend::api::admin::collections::admin_grant_permission, (groupname: String, collectionname: String));
 admin_server_fn!(admin_revoke_permission, backend::api::admin::collections::admin_revoke_permission, (groupname: String, collectionname: String));

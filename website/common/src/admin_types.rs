@@ -84,6 +84,12 @@ pub struct AdminCollectionDetail {
     pub collection: AdminCollectionItem,
     pub datasets: Vec<AdminDatasetItem>,
     pub groups_with_access: Vec<String>,
+    /// The newest `ensure_collection` operation of the collection: its state and error.
+    /// Empty when none exists.
+    #[serde(default)]
+    pub provisioning_state: String,
+    #[serde(default)]
+    pub provisioning_error: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

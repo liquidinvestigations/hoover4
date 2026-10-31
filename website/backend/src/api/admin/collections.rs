@@ -171,6 +171,7 @@ pub async fn admin_get_collection(
         }
     }
     let db_ready = collections::collection_db_ready(&c.collectionname).await?;
+    let (provisioning_state, provisioning_error) = latest_provisioning(&c.collectionname).await?;
     let counted: Vec<&DatasetAggregates> = datasets.iter().filter_map(|d| d.stats.as_ref()).collect();
     let stats = CollectionAggregates::sum(&c.collectionname, datasets.len() as u64, &counted);
     Ok(AdminCollectionDetail {
@@ -185,7 +186,39 @@ pub async fn admin_get_collection(
         },
         datasets,
         groups_with_access: perms.into_iter().map(|p| p.groupname).collect(),
+        provisioning_state,
+        provisioning_error,
     })
+}
+
+/// The state and error of the newest `ensure_collection` operation of a collection.
+async fn latest_provisioning(collectionname: &str) -> anyhow::Result<(String, String)> {
+    let rows: Vec<(String, String)> = crate::db_utils::clickhouse_utils::get_global_client()
+        .query(
+            "SELECT state, error FROM operations FINAL \
+             WHERE kind = 'ensure_collection' AND collectionname = ? \
+             ORDER BY started_at DESC, op_id DESC LIMIT 1",
+        )
+        .bind(collectionname)
+        .fetch_all()
+        .await?;
+    Ok(rows.into_iter().next().unwrap_or_default())
+}
+
+/// Provision the storage of an existing collection again: its database and its bucket.
+///
+/// `ensure_collection` creates what is missing and changes nothing that exists, so this
+/// repairs a collection whose provisioning failed, for example at its bucket, without
+/// deleting the collection row, its settings or its group grants.
+pub async fn admin_provision_collection(
+    user: &CurrentUser,
+    collectionname: String,
+) -> anyhow::Result<String> {
+    guard::require_admin(user)?;
+    if collections::get_collection(&collectionname).await?.is_none() {
+        anyhow::bail!("collection not found");
+    }
+    operations::dispatch_operation("ensure_collection", &collectionname, "", &user.username, "", "").await
 }
 
 pub async fn admin_create_collection(
@@ -196,8 +229,8 @@ pub async fn admin_create_collection(
     guard::require_admin(user)?;
     if !collectionname_valid(&collectionname) {
         anyhow::bail!(
-            "invalid collectionname: use 1-{MAX_COLLECTIONNAME_LENGTH} characters of [a-z0-9_], \
-             not ending in _<digits>, _pages or _meta"
+            "invalid collection name {collectionname:?}: use 1-{MAX_COLLECTIONNAME_LENGTH} lowercase letters, \
+             digits and underscores, not ending in _<digits>, _pages or _meta"
         );
     }
     if collections::get_collection(&collectionname).await?.is_some() {
@@ -222,10 +255,9 @@ pub async fn admin_create_collection(
     // finished: without one, a collection stuck in "provisioning" is a state with no
     // record behind it to explain why.
     //
-    // If the operation cannot even be dispatched, undo the row. Leaving it would strand
-    // the collection: it can never be provisioned (there is no re-provision action) and
-    // it can never be re-created either, because the existence check above would reject
-    // it.
+    // If the operation cannot even be dispatched, undo the row. A failed provisioning
+    // after a successful dispatch keeps the row, and `admin_provision_collection` runs
+    // the same operation again.
     if let Err(e) =
         operations::dispatch_operation("ensure_collection", &collectionname, "", &user.username, "", "")
             .await
