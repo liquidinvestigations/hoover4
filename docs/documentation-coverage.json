@@ -2965,6 +2965,6 @@
     "/upload?:collection&:folder": "docs/user-manual/User_Manual.md#upload-files-and-folders",
     "/uploads?:collection": "docs/user-manual/User_Manual.md#upload-files-and-folders",
     "/uploads/:collection/:batch_id?:page": "docs/user-manual/User_Manual.md#upload-files-and-folders",
-    "/settings": "docs/user-manual/User_Manual.md#choose-your-languages"
+    "/settings/language": "docs/user-manual/User_Manual.md#choose-your-languages"
   }
 }

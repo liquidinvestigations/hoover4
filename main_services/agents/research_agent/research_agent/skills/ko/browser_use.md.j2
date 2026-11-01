@@ -1,0 +1,30 @@
+---
+name: browser_use
+group: technique
+description: 웹 브라우저로 이동하는 방법: 주소 열기, 페이지 스냅샷 읽기, 이후 요소 참조에 따라 클릭, 입력 또는 선택
+tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
+---
+웹 브라우저 사용하기
+
+{% if has('read_page') %}
+{{ tool('read_page') }} 페이지의 텍스트를 읽으세요. 페이지 상태나 상호작용하는 요소가 중요하면 브라우저 스냅샷을 사용하세요.
+
+{% endif %}
+1. {{ tool('browser_navigate') }}로 주소를 엽니다.
+2. {{ tool('browser_snapshot') }}를 호출하세요. 스냅샷이 ref e12처럼 각 요소와 그 참조를 나열합니다.
+3. {{ tool('browser_click') }}, {{ tool('browser_type') }} 또는 {{ tool('browser_select_option') }}로 한 요소에 작용하세요. 최신 스냅샷의 참조와 요소의 짧은 설명을 줍니다. Enter 같은 키는 {{ tool('browser_press_key') }}를 사용하세요.
+4. 각 작용 후 {{ tool('browser_snapshot') }}를 다시 호출하세요. 작용이 페이지를 바꿀 수 있고, 그러면 오래된 참조가 유효하지 않습니다.
+
+결과가 "### Error"로 시작하면 오류 텍스트를 읽으세요. stale element reference는 페이지가 바뀌었다는 뜻입니다. 새로운 스냅샷을 취하고 새 참조를 사용하세요. 빈 참조나 선택자는 요소 주지 않았다는 뜻입니다.
+
+답이나 보고서에서 어떤 열었는지, 페이지가 무엇을 보여주었는지 말하세요.
+
+{{ tool('browser_navigate') }}은(는) url이 필요합니다. {{ tool('browser_snapshot') }}은(는) 인자를 받지 않습니다.
+```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }}은(는) target이 필요합니다. 반환된 요소 참조를 사용하거나 고유 선택자를 사용하십시오.
+element는 선택적으로 대상을 설명합니다. button은 기본값이 left이며 right 또는 middle이 될 수 있습니다.
+doubleClick은 선택적으로 더블 클릭을 지정합니다. modifiers는 선택적으로 Alt, Control, ControlOrMeta, Meta 또는 Shift를 포함합니다.
+```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }}은(는) target과 text가 필요합니다. element는 선택적으로 대상을 설명합니다.
+submit은 입력 후 Enter를 누를지 선택적으로 지정합니다. slowly는 키 핸들러를 트리거하기 위해 문자를 하나씩 입력할지 선택적으로 지정합니다.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }}은(는) target과 values(옵션 값 목록)가 필요합니다. element는 선택적으로 대상을 설명합니다.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }}은(는) key가 필요합니다. 예를 들어 Enter 또는 Control+ArrowRight와 같습니다.
+```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` 각 작업은 상태 또는 오류를 반환합니다. 페이지를 변경하는 작업 후 새 스냅샷을 읽으십시오.

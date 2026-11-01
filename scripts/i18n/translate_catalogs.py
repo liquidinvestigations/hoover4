@@ -41,7 +41,8 @@ LANGUAGES = {
     "de": "German", "es": "Spanish", "fr": "French", "pl": "Polish", "pt": "Portuguese (Portugal)",
     "ar": "Arabic", "he": "Hebrew", "hi": "Hindi", "zh": "Simplified Chinese", "it": "Italian",
     "nl": "Dutch", "da": "Danish", "nb": "Norwegian Bokmål", "sv": "Swedish", "el": "Greek",
-    "hr": "Croatian", "ro": "Romanian",
+    "hr": "Croatian", "ro": "Romanian", "ru": "Russian",
+    "ja": "Japanese", "ko": "Korean",
 }
 
 #: The CLDR cardinal plural categories of each language.
@@ -53,6 +54,7 @@ PLURALS = {
     "it": {"one", "many", "other"}, "nl": {"one", "other"}, "da": {"one", "other"},
     "nb": {"one", "other"}, "sv": {"one", "other"}, "el": {"one", "other"},
     "hr": {"one", "few", "other"}, "ro": {"one", "few", "other"},
+    "ru": {"one", "few", "many", "other"}, "ja": {"other"}, "ko": {"other"},
 }
 
 BATCH = 30
@@ -162,7 +164,7 @@ def check(code: str, english: ast.Message, translated: ast.Message) -> str | Non
 
 
 #: The languages whose scripts have no letter case.
-UNCASED = {"ar", "he", "hi", "zh"}
+UNCASED = {"ar", "he", "hi", "ja", "ko", "zh"}
 
 
 def starts_upper(message: ast.Message) -> bool:

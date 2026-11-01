@@ -1,0 +1,95 @@
+---
+name: passages
+group: technique
+description: search_passages를 사용하여 여러 문서 또는 단일 문서 내에서 질문에 답하는 정확한 구절이나 페이지를 찾는 방법
+tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
+terms: 관련 용어: 구절, 단락, 문장, 인용구, 발췌, 페이지, 섹션, ~라고 하는 부분, ~을 언급하는 부분, 정확한 표현, 줄. 긴 텍스트 문서에 적용됨: PDF, Word 파일, 이메일, 보고서, 녹취록.
+not_for: 개수, 파일 목록 또는 메타데이터에는 필요 없음.
+---
+구절과 페이지 찾기
+
+{% if has('search_passages') %}
+여러 문서를 검색하려면 {{ tool('search_passages') }}을(를) 사용하십시오. 이 툴은 키워드와 의미 양쪽 모두로 텍스트 구절을 검색합니다. 문서가 사용하는 단어가 분명하지 않을 때, 평범한 말로 된 질문에 사용하십시오. 한 번의 호출에서 질문의 서로 다른 형태인 12개까지의 질문을 주십시오. 각 검색 결과는 이를 찾은 질문을 표시합니다. 정확한 이름, 주소, 구절이 필요하면 {{ tool('search_collections') }}을(를) 사용하십시오.
+
+{% endif %}
+{% if has('doc_search_text') or has('pdf_search') %}
+한 길이의 문서를 검색하려면 이 툴을 사용하십시오.
+{% if has('doc_search_text') %}
+{{ tool('doc_search_text') }}은(는) 한 텍스트 출처의 질문 검색 결과를 페이지 순서로, 각 검색 결과의 페이지와 함께 나열합니다.
+{% endif %}
+{% if has('pdf_search') %}
+{{ tool('pdf_search') }}은(는) PDF 출처의 페이지에서 질문을 찾습니다. 페이지 범위를 검색하려면 page_from과 page_to를 주십시오.
+{% endif %}
+
+{% endif %}
+{% if has('read_documents') %}
+구절이 주장을 뒷받침하기에 충분한 텍스트를 보여주지 않을 때 {{ tool('read_documents') }}으로 페이지를 읽으십시오. 해당 페이지를 주거나, 가장 많은 검색 결과를 가진 페이지를 여는 질문을 주십시오.
+{% endif %}
+
+구절이 답변을 뒷받침할 때 문서와 페이지를 주십시오.
+
+{% if has('read_documents') %}
+{{ tool('read_documents') }}은(는) 컬렉션과 file_hash를 요구합니다.
+컬렉션은 하나의 이름입니다. file_hash는 그 컬렉션의 1에서 20개 해시의 목록입니다.
+서로 다른 컬렉션의 문서에 대해, 컬렉션별로 별도의 일괄 처리를 만드십시오.
+결과에서 정체성을 복사하십시오. 고유한 파일 이름이나 경로로 문서를 특정할 수도 있습니다.
+source는 선택적으로 추출된 출처를 선택합니다. 생략하면 우선 출처를 사용합니다.
+page는 선택적으로 저장된 페이지 식별자를 선택합니다. 페이지 식별자에는 간격이 있을 수 있습니다.
+page를 생략하거나 0을 주어, 가장 많은 질문 검색 결과를 가진 페이지나 질문이 없는 첫 저장 페이지를 선택하십시오.
+query는 그 페이지에서 근처의 서로 다른 일치 단어 주변 텍스트를 엽니다.
+정확한 표기를 위해 질문 안에서 구절을 인용하십시오. 하나의 일치 값은 그 첫 발생을 엽니다.
+offset는 구절 시작을 재정의합니다. 그 페이지 안에서 0부터의 유니코드 문자로 셉니다.
+length는 양수의 문자 수입니다. 생략하면 6,000 문자를 사용합니다.
+source_version은 선택적으로 반환된 출처 지문을 검증합니다. 범위 재읽기를 위해 이를 복사하십시오.
+
+결과는 start, 배타적 end, 총 페이지 문자 수, 단위를 포함한 text_range를 반환합니다.
+page_complete는 해당 범위가 페이지 전체를 덮는다는 것을 의미합니다.
+cut 마커는 툴이 범위의 일부만 제공했다는 것을 의미할 뿐, 페이지가 거기에서 끝난다는 뜻은 아닙니다.
+항목의 more를 사용하여 해당 문서를 계속 읽으십시오. 최상위 more를 사용하여 남은 페이지나 이후 페이지를 계속 읽으십시오.
+반환된 handle를 {{ tool('read_more') }}에 그대로 이어서 입력하십시오.
+read_before 또는 read_after를 인접한 텍스트를 위한 read_documents 인자로 사용하십시오. 오프셋 계산은 필요 없습니다.
+범위 인자는 한 호출 안의 모든 해시에 적용됩니다. 문서의 출처, 범위, 소스 버전이 다르면 별도 호출을 사용하십시오.
+예를 들어 첫 문서가 반환한 read_after 객체를 한 호출로 복사하십시오.
+```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` 두 문서가 반환한 read_after 객체를 다른 호출로 복사하십시오.
+```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` 각 문서에 대해 실제 반환된 값을 사용하십시오. source2나 offset2와 같은 번호가 붙은 필드를 추가하지 마십시오.
+반복된 초기 호출은 동일한 텍스트를 반환합니다. 추가 텍스트가 필요하면 이어서 사용하십시오.
+해당 주장에 충분한 증거를 제공하는 구절이 나오면 읽기를 멈추십시오.
+
+이 최소 호출은 저장된 첫 페이지를 엽니다.
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` 이 호출은 표적 구절을 엽니다.
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` 이 호출은 선택한 출처와 페이지에서 반환된 범위를 엽니다.
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` 이어서 읽기는 다음 반환 범위를 읽습니다. 실제 발급된 표지를 사용하십시오.
+```json {"continuation":"COPY_RETURNED_MORE"} ```
+{% endif %}
+{% if has('doc_search_text') %}
+{{ tool('doc_search_text') }} 컬렉션, file_hash, query를 요구합니다. source는 선택적으로 하나의 추출을 선택합니다.
+각 검색 결과에 대해 page, ordinal, start, end, snippet을 반환합니다. 오프셋은 해당 페이지 내 문자를 세습니다.
+구절에 더 많은 맥락이 필요할 때 hit 페이지와 시작을 read_documents로 복사하십시오.
+read_more를 사용해 나머지 검색 결과를 검색하십시오.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
+{% endif %}
+{% if has('doc_sources') %}
+{{ tool('doc_sources') }} 컬렉션과 file_hash를 요구합니다. query는 선택적으로 각 추출에서 일치하는 검색 결과를 셉니다.
+이름과 저장된 페이지 범위를 반환합니다. 특정 추출을 선택할 때 출처 이름을 복사하십시오.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
+{% endif %}
+{% if has('doc_diff_sources') %}
+{{ tool('doc_diff_sources') }} 컬렉션, file_hash, source_a, source_b를 요구합니다.
+page_a와 page_b는 선택적으로 페이지를 선택합니다. 생략하면 각 출처의 저장된 첫 페이지를 선택합니다.
+결과는 통합 텍스트 diff입니다. 이어서 진행할 때 read_more를 사용하십시오.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
+{% endif %}
+{% if has('pdf_search') %}
+{{ tool('pdf_search') }} 컬렉션, file_hash, query를 요구합니다.
+source는 선택적으로 PDF 추출을 선택합니다. page_from과 page_to는 선택적으로 포함 PDF 페이지 범위를 제한합니다.
+반환된 페이지 위치를 복사하십시오. 이어서 진행되는 검색 결과에 read_more를 사용하십시오.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
+{% endif %}
+{% if has('search_passages') %}
+{{ tool('search_passages') }} 쿼리를 하나의 문자열 또는 최대 12개의 형태로 된 목록으로 받습니다.
+컬렉션은 하나의 이름 또는 목록을 받습니다. 생략하면 허용된 모든 컬렉션을 검색합니다.
+max_results는 제공된 스키마 제한 내에서 쿼리 형태별 검색 결과를 선택합니다. 생략하면 15를 사용합니다.
+결과는 컬렉션, file_hash, 페이지, snippet을 제공합니다. q는 0-기반 쿼리 인덱스를 기록합니다.
+구절이 질문의 답이 아닐 때 보조 텍스트를 읽으십시오.
+```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
+{% endif %}

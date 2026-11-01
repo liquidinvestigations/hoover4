@@ -1,0 +1,46 @@
+---
+name: entities
+group: technique
+description: ドキュメントが名指す人々、組織、場所、メールアドレス、金額をどのように一覧表示するか
+tools: list_document_entities, search_entity_explainer, search_facet_values
+terms: これに対する用語：人々、個人、名前、組織、企業、機関、場所、所在地、都市、国、メールアドレス、電話番号、金額、お金、識別子、口座番号、主要関係者、誰が言及されているか。
+not_for: リクエストで特定の人を名指し、その人に関するドキュメントの内容を尋ねる場合は不要です。
+---
+ドキュメントの名前をリストする
+
+{% if has('list_document_entities') %}
+1. {{ tool('list_document_entities') }} は、ドキュメントに対して抽出された名前をリストします。そのコレクション名とファイルハッシュを指定します。
+2. 結果には2つの階層があります。entities は、言語モデルが散文を読み取ったもの（人物、組織、場所）です。誤っている可能性があるため、信頼する前にテキスト内の名前を確認します。structured は、ルールが検証した値（有効なチェックディジットを持つ識別子、日付、通貨コードを持つ金額）を保持します。
+3. {{ tool('search_collections') }} を使って、新しい名前、住所、識別子を検索します。1つの名前の全形式を1つの呼び出しにまとめます。
+{% endif %}
+{% if has('search_entity_explainer') %}
+4. 結果でルールと値の両方が示されているが理解できない場合、{{ tool('search_entity_explainer') }} を呼び出します。
+{% endif %}
+{% if has('search_facet_values') %}
+5. {{ tool('search_facet_values') }} は、コレクション全体でのエンティティフィルターの値とそのカウントを返します。
+{% endif %}
+
+パイプラインが抽出した名前は、そのドキュメントがその人物に関する証拠ではありません。その周りのテキストを読んでください。
+
+名前がどこにも出現しない場合、インデックスされたスペルنگの提案とその検証済みカウントを読んでください。
+提案されたスペルنگを要求された名前として使わないでください。
+提案されたスペルングを検索する場合、回答でそれは異なるスペルングであると明記してください。
+スペルنگが一致しない場合、検索したコレクションはその名前を保持しないと報告してください。
+
+{% if has('list_document_entities') %}
+{{ tool('list_document_entities') }} ドキュメントを、コレクションと file_hash オブジェクトのリストとして受け取ります。
+この形式は、無関係なリストをペアリングすることなく、混合コレクションの識別子を保持します。
+代わりに、collection と file_hash は一致するリスト、または複数のハッシュを持つ単一のコレクションを受け取ることができます。
+結果は抽出された値をドキュメントごとにグループ化します。続行する場合は read_more を使用します。
+```json {"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]} ``` ```json {"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]} ```
+{% endif %}
+{% if has('search_entity_explainer') %}
+{{ tool('search_entity_explainer') }} は、抽出エンティティ結果から collection、entity_type、entity_value を必要とします。
+これは抽出ルールの説明と一致するドキュメントを返します。
+```json {"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"} ```
+{% endif %}
+{% if has('search_facet_values') %}
+エンティティの分布には、{{ tool('search_facet_values') }} を facets と任意の collection、query とともに呼び出します。
+結果マトリクスは、各フェセットセルに [text, count] ペアを持ちます。
+```json {"facets":["ner_per","ner_org","ner_loc"]} ``` ```json {"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"} ```
+{% endif %}

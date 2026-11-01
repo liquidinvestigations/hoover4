@@ -34,7 +34,7 @@ pub fn AgentLanguageControl() -> Element {
         a {
             class: "x-agent-language",
             "data-agent-language": "{code}",
-            href: "/settings",
+            href: "/settings/language",
             target: "_blank",
             rel: "noopener",
             title: tr!("chat-composer-agent-language-title", language: name.clone()),

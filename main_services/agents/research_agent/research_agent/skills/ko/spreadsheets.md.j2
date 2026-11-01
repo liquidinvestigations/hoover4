@@ -1,0 +1,55 @@
+---
+name: spreadsheets
+group: technique
+description: 표 툴을 사용하여 스프레드시트 파일을 읽는 방법: 시트, 열, 행 및 개별 셀
+tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
+terms: 관련 용어: 표, 표들, 스프레드시트, Excel, 워크북, 시트, 워크시트, 탭, CSV, TSV, 표 형식 데이터, 데이터 표, 원장, 등록부, 추적기, 열이 있는 목록, 행, 열, 셀, 헤더, 피벗 표, 데이터베이스 표, SQLite, Tabelle. 파일 형식: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML, 그리고 HTML 또는 PDF 문서 내 표. 표 유형의 검색 결과.
+not_for: 요청이 표로 답변을 배치하는 것만 요구하거나 'table'이라는 단어를 다른 의미로 사용할 경우 필요하지 않음.
+---
+스프레드시트 읽기
+
+스프레드시트, CSV 파일, 문서 내 표는 표 문서입니다. 파일_hash와 검색 결과의 컬렉션으로 이름을 지정합니다.
+
+1. {{ tool('table_overview') }}는 시트와 열을 그들의 id와 함께 나열합니다.
+2. {{ tool('table_page') }}로 행을 읽으십시오. 한 호출은 50개의 행을 제공합니다. 호출에서 행을 정렬하고 필터하십시오. 큰 시트의 행으로 가기 위해 row_start를 주고, 60번째 이후의 열을 읽기 위해 열을 주십시오.
+3. {{ tool('table_column_values') }}는 한 열의 값들과 그들의 카운트를 나열합니다.
+4. 시트에서 값을 찾기 위해 {{ tool('table_search_cells') }}를 호출하십시오. 매치가 맥락을 필요로 할 때 {{ tool('table_page') }}로 주변 행을 읽으십시오.
+5. {{ tool('table_page') }}가 긴 셀을 자를 때, {{ tool('table_cell') }}로 전체를 읽으십시오. 반환된 row_id와 함께 행을 주고, 반환된 열 id와 함께 열을 주십시오.
+
+읽는 사람이 값을 다시 찾아야 할 때 시트, 행, 열을 주십시오.
+
+값으로 행을 세려면 그 열에 {{ tool('table_column_values') }}을(를) 호출하십시오. 텍스트 페이지의 행을 직접 세지 마십시오. 총 행 수, 필터 및 열을 명시하십시오.
+한 번의 값 호출은 최대 200개의 값을 제공합니다. 결과에 이음이 있으면 이음이 없을 때까지 read_more를 호출하십시오. 부분 값 목록은 완전한 분포를 주지 않습니다.
+값의 카운트는 같은 시트, 같은 행, 같은 경우에 한해 행 총합과 일치합니다. 빈 셀은 값을 가지지 않으므로 빈 셀이 있으면 합이 행 총합보다 작아집니다. 합과 총합을 비교할 때 빈 셀의 수를 명시하십시오.
+예를 들어, 24개의 건축 허가 시트에 유형 열이 있습니다. 값 호출은 fence 9, roof 7, deck 5, pool 3을 제공하고 이음이 없습니다. 이 카운트들은 24와 일치합니다. 24행에 대해 27과 일치하는 카운트는 세는 오류를 나타냅니다. 21과 일치하는 카운트는 빈 유형이 있는 3개의 행을 나타냅니다.
+CSV 파일은 헤더 행을 명시하지 않습니다. 각 표 결과는 `interpretation`을(를) 제공하며, 이는 카운트가 설명하는 1행의 읽기입니다. state `established`에서는 읽기가 알려져 있습니다. state `ambiguous` 또는 `legacy`와 두 개의 `candidates`에서는 1행이 헤더나 첫 데이터 행이 될 수 있습니다.
+각 후보는 그 행 카운트를 제공합니다. 결과는 모든 행을 읽으며, `all_rows`입니다. 단, 호출이 `interpretation`을(를) 제공하지 않는 한. 각 카운트를 그 읽기와 함께 제공하거나, 다른 읽기를 interpretation `all_rows` 또는 `first_row_header`로 읽으십시오. 한 읽기의 카운트를 확립된 행 카운트로 보고하지 마십시오.
+JSON 파일이나 텍스트 파일은 시트가 없습니다. {{ tool('table_overview') }}이(가) 시트를 제공하지 않으면 문서를 텍스트로 읽으십시오.
+
+모든 table 호출은 동일한 문서 결과에서 collection과 file_hash를 요구합니다.
+{{ tool('table_overview') }}는 시트와 열 식별자를 반환합니다.
+다른 table 툴은 sheet를 요구합니다. 개요에서 식별자를 복사하세요.
+{{ tool('table_page') }}는 선택적으로 sort, filters, columns, search, row_start, interpretation을 받아들입니다.
+sort는 column과 direction을 요구하며, asc 또는 desc입니다. 생략하면 저장된 행 순서를 사용합니다.
+filters는 열 술어의 목록입니다. 각 술어는 하나의 테스트 타입을 사용합니다.
+숫자 또는 날짜 범위는 하한과 상한을 모두 포함할 수 있습니다.
+테스트는 contains, equals, starts_with, is_empty, number_min, number_max, date_min, date_max입니다.
+텍스트 테스트는 문자열을 사용합니다. 숫자 테스트는 숫자를 사용합니다. 날짜 범위는 YYYY-MM-DD 문자열을 사용합니다.
+columns는 열 식별자를 선택합니다. 반환된 창은 최대 60개의 선택된 열을 포함합니다.
+search는 선택적으로 해당 텍스트를 포함하는 행을 유지합니다. row_start는 요청된 행 순서에서의 0부터 시작하는 위치입니다.
+결과는 열 메타데이터와 행을 포함합니다. row_id는 저장된 행 식별자로, 정렬 후에도 유지됩니다.
+
+{{ tool('table_column_values') }}도 column을 요구합니다. search는 선택적으로 값 텍스트를 필터합니다.
+그 열에 대한 값과 카운트를 반환합니다.
+{{ tool('table_search_cells') }}은 query를 요구합니다. 일치하는 시트, 행, 열 식별자와 텍스트를 반환합니다.
+{{ tool('table_cell') }}은 row와 column을 요구합니다. 반환된 row_id를 argument 이름 row로 전달하세요.
+2,000자 슬라이스를 반환합니다. 나머지 셀 텍스트는 read_more를 사용하세요.
+계속되는 표 페이지, 값, 검색 결과에는 read_more를 사용하세요.
+
+이 최소 개요는 표 구조를 엽니다.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` 이 페이지 호출은 복사한 시트 및 열 식별자를 사용합니다.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` 이 값 호출은 하나의 열을 좁힙니다.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` 이 값 호출은 모호한 CSV 시트의 1행을 열 이름으로 읽습니다.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` 이 셀 검색은 요청한 값을 찾습니다.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` 이 셀 호출은 정렬된 결과에서 그 행이 첫 번째로 나타났을 때도 row_id 71을 읽습니다.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```

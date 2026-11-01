@@ -1,7 +1,7 @@
 # Machine translation of en/main.ftl. Do not edit by hand: change the English catalog
 # and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
 
-settings-title = הגדרות
+settings-title = הגדרות שפה
 settings-interface-language = שפת הממשק
 settings-interface-language-explanation = שפת התפריטים, הכפתורים וההודעות של אתר זה.
 settings-browser-language = שפת הדפדפן
@@ -15,7 +15,7 @@ nav-home = דף הבית
 nav-search = חיפוש
 nav-file-browser = דפדפן קבצים
 nav-ai-chat = שיחת AI
-nav-settings = הגדרות
+nav-language-settings = הגדרות שפה
 nav-admin = מנהל מערכת
 error-boundary-error = שגיאה
 error-boundary-boundary = גבול: { $boundary_name }

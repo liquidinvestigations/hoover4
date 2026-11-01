@@ -1,0 +1,46 @@
+---
+name: entities
+group: technique
+description: 문서가 언급하는 사람, 조직, 장소, 이메일 주소, 금액을 나열하는 방법
+tools: list_document_entities, search_entity_explainer, search_facet_values
+terms: 관련 용어: 사람, 개인, 이름, 조직, 회사, 기관, 장소, 위치, 도시, 국가, 이메일 주소, 전화번호, 금액, 돈, 식별자, 계좌 번호, 주요 인물, 누가 언급되었는지.
+not_for: 요청이 한 사람을 지정하고 그 사람에 대해 문서가 무엇이라고 말하는지 묻는 경우에는 필요하지 않습니다.
+---
+문서 이름 나열
+
+{% if has('list_document_entities') %}
+1. {{ tool('list_document_entities') }}은 문서에 대해 추출한 이름을 나열합니다. 컬렉션 이름과 파일 해시를 지정합니다.
+2. 결과는 두 단계로 구성됩니다. entities는 언어 모델이 본문으로 읽어낸 사람, 조직, 장소입니다. 틀릴 수 있으니, 신뢰하기 전에 텍스트에서 이름을 확인합니다. structured는 규칙이 검증한 값을 담습니다. 유효한 체크디트가 있는 식별자, 날짜, 통화 코드가 있는 금액이 그렇습니다.
+3. {{ tool('search_collections') }}로 새 이름, 주소, 식별자를 검색합니다. 한 이름의 모든 표기를 한 호출에 넣습니다.
+{% endif %}
+{% if has('search_entity_explainer') %}
+4. 결과에 이해하지 못하는 규칙과 값이 나오면, {{ tool('search_entity_explainer') }}을 호출합니다.
+{% endif %}
+{% if has('search_facet_values') %}
+5. {{ tool('search_facet_values') }}은 컬렉션에 걸친 개체 필터의 값과 그 개수를 제공합니다.
+{% endif %}
+
+파이프라인이 추출한 이름이 그 문서가 그 사람에 관한 것이라는 증거는 아닙니다. 주변 텍스트를 읽으십시오.
+
+어디에도 이름이 나오지 않으면, 색인된 철자 제안과 그 검증된 개수를 읽으십시오.
+추천 철자를 요청한 이름으로 사용하지 마십시오.
+추천 철자를 검색하면, 답에서 다른 철자로 명시하십시오.
+어떤 철자도 일치하지 않으면, 검색한 컬렉션에 그 이름이 없다고 보고하십시오.
+
+{% if has('list_document_entities') %}
+{{ tool('list_document_entities') }} 문서는 컬렉션과 file_hash 객체의 목록으로接受됩니다.
+이 형태는 관련 없는 목록을 짝지우지 않고 혼합 컬렉션 신원을 보존합니다.
+대신에, collection과 file_hash는 일치하는 목록을 받거나, 여러 해시를 가진 단일 컬렉션을 받을 수 있습니다.
+결과는 추출된 값을 문서별로 묶습니다. 계속될 때 read_more를 사용하십시오.
+```json {"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]} ``` ```json {"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]} ```
+{% endif %}
+{% if has('search_entity_explainer') %}
+{{ tool('search_entity_explainer') }}는 추출된 개체 결과에서 collection, entity_type, entity_value를 요구합니다.
+이것은 추출 규칙의 설명과 일치하는 문서를 반환합니다.
+```json {"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"} ```
+{% endif %}
+{% if has('search_facet_values') %}
+개체 분포에 대해, facets와 선택적 collection, query를 사용하여 {{ tool('search_facet_values') }}를 호출하십시오.
+결과 행렬은 각 facets 셀에 [text, count] 쌍을 가집니다.
+```json {"facets":["ner_per","ner_org","ner_loc"]} ``` ```json {"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"} ```
+{% endif %}

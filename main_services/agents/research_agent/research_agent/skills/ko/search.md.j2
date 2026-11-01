@@ -1,0 +1,87 @@
+---
+name: search
+group: general
+description: 문서 컬렉션을 검색하고 질문 구문법 사용
+tools: search_collections
+---
+{% if has('search_collections') %}
+사용자의 문서 검색
+
+1. 문서의 내용이 질문의 답이 될 수 있을 때 검색을 수행합니다.
+2. 요청이 한 컬렉션을 대상으로 할 때 컬렉션을 지정합니다. 이 채팅이 읽을 수 있는 모든 컬렉션을 검색하게 하려면 생략합니다.
+3. {{ tool('search_collections') }}는 여러 질문을 받아들입니다. 이름이나 주소의 적절한 형태를 사용하세요. 정확한 구절은 큰따옴표로 묶으세요.
+4. OR, AND, NOT은 질문에서 일반적인 단어입니다. 둘 중 하나를 나타내려면 |를 사용하고, 단어 앞에 -을 붙여 단어를 제외하세요.
+5. 결과 행에서 file_hash와 collection을 복사합니다. 해시를 직접 작성하지 마세요.{% if has('read_more') %} 행에 file_hash가 없으면 {{ tool('read_more') }}을(를) 호출합니다.{% endif +%}
+6. 질문의 답에 도움이 될 때 날짜나 크기 필터를 설정합니다.
+7. 검색이 문서를 찾지 못했다고 보고할 때, 질문과 컬렉션, 개수를 함께 제시합니다.
+8. 한 번의 호출은 최대 12개의 질문을 처리합니다. 더 긴 목록은 두 번의 호출로 나눕니다.
+9. 각 질문에는 최소한 하나의 검색할 단어를 넣으세요. -단어만으로 이루어진 질문은 거부됩니다.
+10. filename_only를 true 또는 false로 설정합니다. 이 인자는 텍스트를 받지 않습니다.
+
+예시. 사용자가 JoeBWilkinson@cs.com에 대한 모든 데이터를 요청합니다. {{ tool('search_collections') }}에 대한 호출 하나에 질문 ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]을(를) 전달합니다. 결과 행이 주장을 뒷받침할 충분한 증거를 제공하지 않으면 문서를 읽으세요.
+{% endif %}
+
+이전 검색으로 질문에 답하지 못할 때 다음 검색 단계를 따르십시오.
+{% if has('search_collections') %}
+1. 각 이름을 따옴표로 묶은 구문으로 검색하십시오.
+2. 비따옴표 구문, 이니셜, 이메일 주소 및 문서 언어의 이름을 검색하십시오.
+word_counts 및 오타 수정을 확인하십시오. 의도한 이름에만 수정을 사용하십시오.
+하나의 변하는 글자에 dasovi?h를, 선택적 마지막 글자에 dasovic%를 사용하십시오.
+단어 순서가 중요할 때 skilling << resigned를 사용하십시오.
+3. 필터를 하나씩 제거하십시오. 필터 없이 검색을 실행하십시오.
+{% endif %}
+{% if has('search_facet_values') %}
+{{ tool('search_facet_values') }}로 필터 값을 확인하십시오.
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }}로 날짜를 확인하십시오.
+{% endif %}
+{% if has('search_passages') %}
+4. 내용의 설명을 {{ tool('search_passages') }}로 검색하십시오.
+{% endif %}
+{% if has('folder_search') %}
+5. 요청이 폴더, 경로 또는 파일을 지정할 때 {{ tool('folder_search') }}를 사용하십시오.
+{% endif %}
+{% if has('folder_list') %}
+그 폴더에 {{ tool('folder_list') }}를 사용하십시오.
+{% endif %}
+{% if has('read_documents') %}
+6. 최상의 1~3개 검색 결과를 {{ tool('read_documents') }}로 읽으십시오.
+{% endif %}
+문서의 사람이나 조직에 대해, 그들을 지칭하는 그 문서의 부분을 읽으십시오. 다른 작업에 대한 참고는 그 다른 작업을 지칭합니다.
+{% if has('doc_search_text') %}
+문서 내 관련 텍스트에 {{ tool('doc_search_text') }}를 사용하십시오.
+{% endif %}
+{% if has('web_search') %}
+7. 요청이 허용할 때만 웹을 검색하십시오.
+{% endif %}
+{% if has('read_page') %}
+최상의 웹 페이지를 {{ tool('read_page') }}로 읽으십시오.
+{% endif %}
+
+{% if has('search_collections') %}
+검색 인자의 전체 목록은 collection, queries, query, sort, date_after, date_before, date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max, folder_term_id, filename_only, facet_filters입니다.
+collection에는 이름이나 목록을 지정하십시오. 생략하거나 []를 주면 허용된 모든 컬렉션을 검색합니다.
+query는 기본값이 빈 텍스트입니다. queries는 최대 12개의 폼을 선택적으로 추가하십시오. 중복된 폼은 한 번만 실행됩니다.
+빈 쿼리는 필터 일치 항목을 모두 조회합니다. 검색 폼은 일치하는 문서 식별자를 병합합니다.
+sort에는 필드와 방향이 있습니다. 필드는 relevance, date, file_size, name입니다. 방향은 asc, desc입니다.
+생략하면 기본 relevance 정렬을 사용합니다.
+date_after와 date_before는 문서 날짜에 대한 포함 UTC 에포크 초를 사용합니다.
+mentioned_date_after과 mentioned_date_before는 텍스트에서 추출한 날짜에 대한 포함 UTC 에포크 초를 사용합니다.
+date_unknown_only=true는 알려진 문서 날짜가 없는 문서를 선택합니다. 알려진 날짜 범위와 함께 사용하지 마십시오.
+size_min과 size_max는 포함 바이트 한계입니다. folder_term_id는 반환된 폴더 용어를 선택합니다.
+filename_only=true는 쿼리를 이름과 경로로 제한합니다. False는 문서 내용을 사용합니다.
+facet_filters는 유효한 패셋 이름에 반환된 값 텍스트 목록을 매핑합니다. 생략하면 패셋 필터를 적용하지 않습니다.
+하나의 패셋 내 값은 상호 대체 관계입니다. 다른 패셋 필터는 모두 일치해야 합니다.
+
+각 결과에는 collection, file_hash, path, snippet, available, type, date, size가 포함됩니다.
+q는 행을 찾은 0부터 시작하는 폼 번호를 나열합니다. query_forms는 각 폼의 카운트를 보고합니다.
+word_counts는 색인화된 단어 수를 검증합니다. suggestions는 카운트가 있는 인접한 색인된 철자를 나열합니다.
+query_notes를 읽어 복구된 구문, 알 수 없는 필터, 실패한 폼을 확인하십시오.
+more는 결과를 이어갑니다. read_more에 복사하십시오. 첫 페이지가 비어 있으면 동일한 호출을 반복할 필요가 없습니다.
+
+이 최소 호출은 허용된 모든 컬렉션을 검색합니다.
+```json {"query":"\"Joe Wilkinson\""} ``` 이 고급 호출은 질문 형식, 컬렉션 범위, 정렬, 날짜, 크기, 패싯 필터를 결합합니다.
+```json {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}} ``` 이 별도 호출은 알려진 문서 날짜가 없는 파일을 찾습니다.
+```json {"query":"report","filename_only":true,"date_unknown_only":true} ``` 현재 채팅에 대해 반환된 값으로 컬렉션, 폴더, 패싯 값을 대체하십시오.
+{% endif %}

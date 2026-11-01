@@ -13,7 +13,7 @@ from typing import Optional
 #: The fallback language and the source of every catalog.
 DEFAULT_LANGUAGE = "en"
 
-#: The 18 supported codes with their own name and their English name.
+#: The 21 supported codes with their own name and their English name.
 LANGUAGES: dict[str, tuple[str, str]] = {
     "en": ("English", "English"),
     "de": ("Deutsch", "German"),
@@ -33,6 +33,9 @@ LANGUAGES: dict[str, tuple[str, str]] = {
     "el": ("Ελληνικά", "Greek"),
     "hr": ("Hrvatski", "Croatian"),
     "ro": ("Română", "Romanian"),
+    "ru": ("Русский", "Russian"),
+    "ja": ("日本語", "Japanese"),
+    "ko": ("한국어", "Korean"),
 }
 
 _ALIASES = {"no": "nb", "nn": "nb", "iw": "he"}

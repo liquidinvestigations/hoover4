@@ -1,0 +1,88 @@
+---
+name: folders_and_files
+group: technique
+description: コレクションが何を含んでいるかを確認する方法：データセット、フォルダー、ファイル形式、件数と日付、および名前やパスからファイルを探す方法
+tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
+terms: ここで使う表現：コレクション、データセット、フォルダー、ディレクトリ、パス、ファイル名、ファイル形式、拡張子、フォーマット、件数、ファイル数、サイズ、最大、概要、目録、コレクションの内容、年別ドキュメント数。
+not_for: ドキュメントの内容のみを尋ねる依頼の場合は不要。
+---
+フォルダとファイル
+
+{% if has('list_collections') and has('search_facet_values') %}
+コレクションの概要を確認するには、{{ tool('list_collections') }}を{}で呼び出します。
+その後、許可された各コレクションのファイル形式と言語について、{{ tool('search_facet_values') }}を1回ずつ呼び出します。
+既定のマトリクスには両方の軸が含まれています。コレクションまたは軸ごとに個別に呼び出す必要はありません。
+{% endif %}
+
+{% if has('list_collections') %}
+{{ tool('list_collections') }}は引数を取りません。コレクション名、ドキュメント数、データセット数を返します。
+```json {} ```
+
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }}は、各コレクションとデータセットのストレージ数を返します。
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }}は、データセット内の1つのフォルダの子フォルダとファイルを返します。
+{% endif %}
+{% if has('folder_search') %}
+1つのデータセット内で名前によってフォルダまたはファイルを探すには、{{ tool('folder_search') }}を呼び出します。
+{% endif %}
+{% if has('search_collections') %}
+すべてのコレクション内で名前によってファイルを探すには、{{ tool('search_collections') }}を`filename_only`をtrueに設定して呼び出します。クエリとして名前またはその一部を指定します。
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }}は、日付またはサイズごとに検索のドキュメント数をカウントします。
+{% endif %}
+{% if has('search_facet_values') %}
+{{ tool('search_facet_values') }}は、ファイル形式を含むフィルターの値を数を付けて返します。
+{% endif %}
+
+ファイル名またはパスで1つのドキュメントを特定できます。結果行の`file_hash`がそれを直接特定します。
+
+インベントリ依頼にはメタツールを使用します。これらの数は依頼に直接答えられます。
+コンテンツ検索は、人物がドキュメントの内容を尋ねた場合에만有用です。
+
+{% if has('search_facet_values') %}
+{{ tool('search_facet_values') }}を複数のコレクションとファセットに対して1回呼び出します。
+引数は collection、facets、query、ids です。
+collection を省略するか、許可されたすべてのコレクションに対して [] を指定します。選択を絞り込むには、名前またはリストを1つ指定します。
+["file_types"、"language"] のファセットは省略します。その他の分布には、正確なファセット名の一覧を指定します。
+file_types、file_paths、email_from、email_to、struct_flags、ner_per、ner_org、ner_loc、ner_misc、re_email、language、red_flags、re_phone、re_bank_account、re_company_id、re_money、re_crypto_wallet を使用します。
+file_type は無効です。file_types を使用します。
+query はファセット値内のテキストを検索します。ドキュメント本文は検索しません。
+ids は既知の用語識別子を任意で解決します。通常の検索では値のテキストを使用し、識別子は不要です。
+
+結果には列と項目が含まれます。各行はコレクションから始まります。
+各ファセットセルには [text, count] ペアが含まれます。後の本文検索のためにテキストを facet_filters にコピーします。
+null のセルには報告されたエラーが含まれます。空のセルには返される値がありません。
+カウントは値あたりのインデックス付きドキュメントの一致数を示します。複数の値が1つのドキュメントに適用されることがあります。
+固有の合計を主張するためにファセットカウントを追加しないでください。在庫の合計は list_collections から取得します。
+デフォルトのファセット一覧には、まれな値が含まれていないことがあります。特定の値を見つけるには query を使用します。
+結果が続く場合は read_more を使ってさらに取得します。
+
+この最小限の呼び出しは、許可されたコレクション全体でファイル形式と言語を調査します。
+```json {} ``` この呼び出しは2つの選択したコレクションを比較し、そのメールアドレス値を検索します。
+```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} は collection が必要です。dataset はオプションで1つのデータセットを選択します。
+この呼び出しは、1つのコレクション内のすべてのデータセットのストレージカウントを読み取ります。
+```json {"collection":"alpha"} ``` この呼び出しは1つのデータセットを選択します。
+```json {"collection":"alpha","dataset":"files"} ```
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} は collection と dataset が必要です。node_id はオプションで返されたフォルダーノードを選択します。
+node_id を省略するとデータセットのルートを読み取ります。子ノードの識別子は後の呼び出しにコピーします。
+```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('folder_search') %}
+{{ tool('folder_search') }} は collection、dataset、query が必要です。node_id はオプションで検索を1つのフォルダーに限定します。
+```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} は search_collections と同じフィルターを受け入れます。ただし sort と queries は除きます。
+field は date、mentioned_date、size のいずれかです。既定値は date です。query は既定値が空のクエリです。
+省略された collection は許可されたすべてのコレクションをカバーします。結果はバケットと選択したフィールドを返します。
+```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{% endif %}

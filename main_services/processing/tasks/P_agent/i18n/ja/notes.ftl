@@ -1,0 +1,41 @@
+# Machine translation of en/notes.ftl. Do not edit by hand: change the English catalog
+# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+
+note-discovery-l2 = 直近2回の検索では新しいソースは見つかりませんでした。最も優れた結果ページの本文を読み取ってください：`urls` リストに URL を最大6件までまとめて 1回の read_page 呼び出しで行います。異なる質問で再検索してください。
+note-discovery-l3-web = ソースページを読み取る前に回答しました。あなたの項目を裏付けるページの URL を `urls` リストに最大6件までまとめて 1回の read_page 呼び出しで行います。その後、裏付けるソースを明記して回答を再度記述してください。
+note-discovery-l3-documents = ドキュメントを読み取る前に回答しました。read_documents であなたの項目を裏付けるドキュメントを読み取ってください。複数のファイルハッシュを 1回の呼び出しで行います。その後、裏付けるソースを明記して回答を再度記述してください。
+note-discovery-l4 = 要求への回答となる可能性のある結果ページの本文を読み取ってください：`urls` リストに URL を最大6件までまとめて 1回の read_page 呼び出しで行います。1回の呼び出しで全てを読み取ることができます。
+note-capture-empty = { $urls } のキャプチャには記事本文が含まれていません。別のソースを読み取ってください。このページは引用しないでください。
+note-web-tools-absent = このターンにはウェブツールが無いため、公開ウェブページを読み取ることができません。選択したコレクションを使用し、要求のどの部分が回答されていないかを明記してください。
+note-sources-documents = まず許可されたドキュメントコレクションを検索してください。その関連ドキュメントを読み取ってください。
+note-sources-documents-before-web = まず許可されたドキュメントコレクションを検索してください。その関連ドキュメントを読み取ってください。ウェブを使用する前にこれらのドキュメントを読み取ってください。
+note-absent-collection = { $name } という許可されたコレクションはありません。許可されたコレクションは { $collections } です。
+note-absent-name = 選択したコレクションには { $name } のインデックス一致がありません。
+note-absent-close-forms = 近似フォーム（インデックス済み）: { $forms }。要求された名前として近似フォームを使用しないでください。使用する場合、回答では異なる綴りで明記してください。
+note-absent-close-form = { $form }（{ $count } ドキュメント）
+note-absent-web = このターンのウェブツールでこの名前の検索が可能です。
+note-progress-level = 検索進捗レベル { $level }。
+note-progress-searches = 実行済みの検索:
+note-progress-search = { $name } { $args }: { $items } 項目、{ $matches } キーワード一致。
+note-progress-available = 残りの検索ステップ:
+note-progress-complete = 利用可能な検索ステップは全て完了しました。
+note-progress-write-now = 回答またはレポートを現在記述してください。読み取ったソースが持たない内容を明記し、実行した検索を明記してください。
+note-progress-answer-next = 次の返信は回答でなければなりません。不足している事実と実行した検索を明記してください。
+note-progress-step-quoted = search_collections で各名前を引用句として検索してください。
+note-progress-step-variants = 引用なしの語と名前のバリアントを検索してください。語数と綴りの候補を確認してください。
+note-progress-step-filters = フィルターを1つずつ削除し、フィルターなしで検索を実行してください。
+note-progress-step-facets = search_facet_values でフィルター値を確認してください。
+note-progress-step-dates = search_histogram で日付を確認してください。
+note-progress-step-passages = search_passages で本文の説明を検索してください。
+note-progress-step-folder = 要求されたフォルダー、パス、ファイルに { $tool } を使用してください。
+note-progress-step-read-hits = 最も優れた1〜3件のヒットを { $tool } で読み取ってください。
+note-progress-step-web-search = web_search でウェブを検索し、最も優れた結果ページを読み取ってください。
+note-progress-step-page-find = 長いページの保持された本文を read_page と find で検索してください。
+note-progress-step-page-retry = 失敗したページの別結果、またはアーカイブされたコピーを読み取ります。
+note-advice-stuck = チャット確認では、最近の検索が結果を繰り返していると推定されます。no_results スキルは検索の他の形式を説明します。
+note-advice-absent = チャット確認では、結果がタスクが求める内容を含んでいないと推定されます。欠落を報告する前に、検索範囲を明示してください。
+note-advice-completion = チャット確認では、結果がタスクに回答できると推定されます。求められた各部分を、回答前に読み取ったソースと照合してください。
+note-progress-ended = 進展のない検索を繰り返したため、実行は終了しました。
+note-progress-ended-none = キーワードに一致するソースは見つかりませんでした。
+note-progress-ended-some = 検索で { $count } 件のキーワードに一致するソースが見つかりました。エージェントは回答を完了していません。
+note-progress-ended-searches = 実行した検索:

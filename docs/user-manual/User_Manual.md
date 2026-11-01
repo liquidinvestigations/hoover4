@@ -48,19 +48,19 @@ Every page shares the dark rail down the left edge. From the top:
 | speech bubble | AI chat |
 | gear (bottom) | administration, for administrators only |
 | bug (bottom) | report a bug or send feedback |
-| person (bottom) | your settings |
+| flag (bottom) | your language settings. The flag is the flag of the interface language. |
 
 Hold the pointer over an icon to show its name beside it.
 
 ### Choose your languages
 
-Select the person icon to open your settings.
+Select the flag at the bottom of the rail to open your language settings.
 Under **Interface language**, select the language of the menus, buttons and messages.
-**Browser language** uses the first of the 18 languages that your browser prefers, else English.
+**Browser language** uses the first of the 21 languages that your browser prefers, else English.
 Under **Agent language**, select the language that the AI agent answers in.
 **Same as the interface** uses the interface language.
 Each choice is saved at once. The agent uses a new agent language from your next message.
-In a chat, the button with the flag beside **Send** shows the agent language. Select it to open your settings in a new tab.
+In a chat, the button with the flag beside **Send** shows the agent language. Select it to open your language settings in a new tab.
 A board uses the agent language of its owner. A board whose owner saved no language uses the language of its creation.
 A machine produced the translations. Documents, file names and earlier answers keep their own language.
 Arabic and Hebrew show in the left-to-right layout.

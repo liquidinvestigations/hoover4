@@ -1,0 +1,55 @@
+---
+name: spreadsheets
+group: technique
+description: テーブルツールを使ってスプレッドシートファイル（シート、列、行、単一のセル）を読む方法
+tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
+terms: ここで言う「テーブル」の言い換え表現: table、tables、spreadsheet、Excel、workbook、sheet、worksheet、tab、CSV、TSV、tabular data、data table、ledger、register、tracker、列のあるリスト、row、column、cell、header、pivot table、database table、SQLite、Tabelle。ファイル形式: xlsx、xls、xlsm、ods、csv、tsv、sqlite、db、SpreadsheetML XML、そしてHTMLまたはPDFドキュメント内のテーブル。検索結果のタイプはテーブル。
+not_for: リクエストが単に回答をテーブル形式で出力することを求めている場合や、tableという言葉を別の意味で使っている場合は不要です。
+---
+スプレッドシートの読み取り
+
+スプレッドシート、CSVファイル、またはドキュメント内のテーブルはテーブルドキュメントです。検索結果のfile_hashとコレクションによって名前を付けます。
+
+1. {{ tool('table_overview') }}はシートと列を、そのidと共に一覧表示します。
+2. {{ tool('table_page') }}で行を読み取ります。1回の呼び出しで50行が得られます。呼び出しで行をソートおよびフィルターします。大きなシートの行へ進むためにrow_startを指定し、60番目の列以降の列を読み取るために列を指定します。
+3. {{ tool('table_column_values') }}は1つの列の値とその頻度を一覧表示します。
+4. シート内の値を見つけるには、{{ tool('table_search_cells') }}を呼び出します。一致にコンテキストが必要な場合は、{{ tool('table_page') }}で周辺の行を読み取ります。
+5. {{ tool('table_page') }}が長いセルを切り取る場合、{{ tool('table_cell') }}で全体を読み取ります。返されたrow_idを行に、返された列idを列に指定します。
+
+リーダーが再度値を見つける場合は、シート、行、列を指定します。
+
+値で行を数えるには、その列で {{ tool('table_column_values') }} を呼び出します。テキストのページに行を自分で数えないでください。総行数、フィルター、列を述べます。
+1回の値呼び出しで最大200個の値が得られます。結果に続行がある場合、続行が無くなるまで read_more を呼び出します。部分的な値のリストは完全な分布を与えません。
+値のカウントは、同じシート、同じ行、同じフィルターに対してのみ総行数に合います。空白セルには値がないため、空白セルは合計を総行数より小さくします。合計と総行数を比較するとき、空白セルの数を述べます。
+例えば、24件の建築許可のシートには種別列があります。値の呼び出しは、fence 9、roof 7、deck 5、pool 3を与え、続行はありません。これらのカウントは24に合います。24行に対して27に合うカウントは数え間違いを示します。21に合うカウントは、種別が空白の3行を示します。
+CSVファイルはヘッダー行を述べません。各テーブル結果は `interpretation` を gives。これは、そのカウントが説明する1行目の読み取りです。状態 `established` では、読み取りは分かっています。状態 `ambiguous` または `legacy` で2つの `candidates` がある場合、1行目はヘッダーまたは最初のデータ行になり得ます。
+各候補は行カウントを与えます。結果は `all_rows` を除いて各行を読み取り、呼び出しが `interpretation` を与える場合を除きます。各カウントをその読み取りと共に述べたり、解釈 `all_rows` または `first_row_header` で別の読み取りを読み取ります。1つの読み取りのカウントを確立された行数として報告しないでください。
+JSONファイルまたはテキストファイルにはシートがありません。{{ tool('table_overview') }} がシートを与えない場合、ドキュメントをテキストとして読み取ります。
+
+各テーブル呼び出しには、同じドキュメント結果から collection と file_hash が必要です。
+{{ tool('table_overview') }} はシートと列の識別子を返します。
+その他のテーブルツールは sheet が必要です。概要からその識別子をコピーしてください。
+{{ tool('table_page') }} はオプションで sort、filters、columns、search、row_start、interpretation を受け取ります。
+sort には column と direction が必要で、asc または desc です。省略すると保存された行順序が使われます。
+filters は列述語のリストです。各述語は1つのテストタイプを使います。
+数値または日付の範囲は下限と上限の両方を含められます。
+テストには contains、equals、starts_with、is_empty、number_min、number_max、date_min、date_max があります。
+テキストテストには文字列を使います。数値テストには数値を使います。日付の境界には YYYY-MM-DD 形式の文字列を使います。
+columns は列識別子を選択します。1つの返却ウィンドウには最大60個の選択された列が含まれます。
+search はオプションでそのテキストを含む行を保持します。row_start は要求された行順序における0起点の位置です。
+結果には列メタデータと行が含まれます。row_id は保存された行の識別子で、ソート後も保持されます。
+
+{{ tool('table_column_values') }} もまた column が必要です。search はオプションで値のテキストをフィルターします。
+それはその列に対する値とカウントを返します。
+{{ tool('table_search_cells') }} は query が必要です。それは一致するシート、行、列の識別子とテキストを返します。
+{{ tool('table_cell') }} は row と column が必要です。返却された row_id を argument name row の下で渡してください。
+それは2,000文字のスライスを返します。残りのセルテキストには read_more を使ってください。
+テーブルの続きのページ、値、検索ヒットには read_more を使ってください。
+
+この最小限の概要はテーブル構造を開きます。
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` このページ呼び出しはコピーしたシートと列の識別子を使用します。
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` この値呼び出しは1つの列を絞り込みます。
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` この値呼び出しはあいまいなCSVシートの1行目を列名として読み取ります。
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` このセル検索は要求された値を検出します。
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` このセル呼び出しは、その行が並べ替え結果の先頭に表示された場合でもrow_id 71を読み取ります。
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```

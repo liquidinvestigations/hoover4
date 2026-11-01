@@ -1111,7 +1111,7 @@ INTERFACE_CHOICES = "#x-settings-interface-choices"
 async def select_interface_language(tab, base_url: str, code: str) -> None:
     """Select interface language `code` on the settings page. An empty code is the browser
     language. The page saves a choice when it is selected."""
-    await navigate_document(tab, base_url + "/settings")
+    await navigate_document(tab, base_url + "/settings/language")
     await wait_css(tab, INTERFACE_CHOICES)
     button = f"document.querySelector('{INTERFACE_CHOICES} [data-language={json.dumps(code)}]')"
     await js(tab, f"{button}.click(); return true;")

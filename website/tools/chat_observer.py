@@ -1025,7 +1025,7 @@ AGENT_CHOICES = "#x-settings-agent-choices"
 async def select_agent_language(tab, base_url: str, code: str) -> str:
     """Select agent language `code` on the settings page, and return the earlier choice.
     An empty code is the automatic choice. The page saves a choice when it is selected."""
-    await tab.get(base_url + "/settings")
+    await tab.get(base_url + "/settings/language")
     await wait_for_app_mounted(tab)
     await wait_css(tab, f"{AGENT_CHOICES} [aria-checked='true']")
     selected = f"document.querySelector('{AGENT_CHOICES} [aria-checked=\"true\"]').dataset.language"

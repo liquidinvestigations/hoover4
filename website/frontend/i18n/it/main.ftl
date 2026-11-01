@@ -1,7 +1,7 @@
 # Machine translation of en/main.ftl. Do not edit by hand: change the English catalog
 # and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
 
-settings-title = Impostazioni
+settings-title = Impostazioni lingua
 settings-interface-language = Lingua dell'interfaccia
 settings-interface-language-explanation = La lingua dei menu, dei pulsanti e dei messaggi di questo sito web.
 settings-browser-language = Lingua del browser
@@ -15,7 +15,7 @@ nav-home = Home
 nav-search = Cerca
 nav-file-browser = Esplora file
 nav-ai-chat = Chat AI
-nav-settings = Impostazioni
+nav-language-settings = Impostazioni lingua
 nav-admin = Amministratore
 error-boundary-error = Errore
 error-boundary-boundary = Confine: { $boundary_name }

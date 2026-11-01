@@ -1,7 +1,7 @@
 # Machine translation of en/main.ftl. Do not edit by hand: change the English catalog
 # and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
 
-settings-title = Setări
+settings-title = Setări de limbă
 settings-interface-language = Limbă interfață
 settings-interface-language-explanation = Limbă meniurilor, butoanelor și mesajelor acestui site.
 settings-browser-language = Limbă navigator
@@ -15,7 +15,7 @@ nav-home = Acasă
 nav-search = Căutare
 nav-file-browser = Explorator de fișiere
 nav-ai-chat = Conversație AI
-nav-settings = Setări
+nav-language-settings = Setări de limbă
 nav-admin = Administrator
 error-boundary-error = Eroare
 error-boundary-boundary = Limită: { $boundary_name }

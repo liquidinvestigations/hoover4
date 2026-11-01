@@ -1,0 +1,19 @@
+---
+name: todo_upkeep
+group: stumble
+description: update_plan を使用して、プラン、そのステップ、各ステップの状態を保持する方法
+tools: update_plan
+---
+プランを保持する
+
+{{ tool('update_plan') }} は目標と全ステップのリストを受け取ります。各ステップにはテキストとステータスがあり、完了したステップには短いノートが付きます。
+
+1. 全リストを毎回、順序どおりに送信します。除外したステップはプランから消えます。
+2. 各ステップをテキストとステータスを持つオブジェクトとして渡します。ステータスは pending または done です。
+3. ステップは作業が終わるまで pending のままです。その後、found、not found、replaced といったノートをつけて done として送信します。
+4. ステータスだけが変わるときはステップのテキストはそのままにします。これによりステップは id を保持します。
+5. 新しい目標は新しいプランを開始します。
+6. {{ tool('update_plan') }} はプランを保持するだけです。レポートや他のファイルには {{ tool('write_file') }} で書き出します。
+
+これは例です。ステップ 1 は必要なものを見つけ、ステップ 2 はまだ開いています。
+```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` 結果には各ステップの id をつけた全プランが表示されます。何もしない呼び出しは変更なしを返します。再度呼び出す前に、指定したフィールドを修正します。

@@ -35,7 +35,7 @@ macro_rules! catalog {
 }
 
 /// The catalog text of each supported language, in the order of `LANGUAGES`.
-pub const CATALOGS: [(&str, &str); 18] = [
+pub const CATALOGS: [(&str, &str); 21] = [
     ("en", catalog!("en")),
     ("de", catalog!("de")),
     ("es", catalog!("es")),
@@ -54,6 +54,9 @@ pub const CATALOGS: [(&str, &str); 18] = [
     ("el", catalog!("el")),
     ("hr", catalog!("hr")),
     ("ro", catalog!("ro")),
+    ("ru", catalog!("ru")),
+    ("ja", catalog!("ja")),
+    ("ko", catalog!("ko")),
 ];
 
 /// Arabic and Hebrew wrap each inserted value in Unicode isolation marks, so a Latin
@@ -372,15 +375,15 @@ mod tests {
         for (code, _) in CATALOGS {
             for (id, vars) in messages(code) {
                 let expected = english.get(&id).unwrap_or_else(|| panic!("{code}: {id} is not an English message"));
-                // Chinese has one plural form, so a translation can leave out a variable
-                // that English uses only to select the plural variant.
+                // Chinese, Japanese and Korean have one plural form, so a translation can
+                // leave out a variable that English uses only to select the plural variant.
                 let selector_only = |name: &String| {
                     let block = message_block(english_text, &id);
                     let uses = block.matches(&format!("${name}")).count();
                     uses > 0 && uses == block.matches(&format!("${name} ->")).count()
                 };
                 let missing: Vec<&String> = expected.iter().filter(|v| !vars.contains(v)).collect();
-                let one_form = code == "zh" && vars.iter().all(|v| expected.contains(v))
+                let one_form = ["zh", "ja", "ko"].contains(&code) && vars.iter().all(|v| expected.contains(v))
                     && missing.iter().all(|v| selector_only(v));
                 if !one_form {
                     assert_eq!(&vars, expected, "{code}: {id} uses other variables than English");

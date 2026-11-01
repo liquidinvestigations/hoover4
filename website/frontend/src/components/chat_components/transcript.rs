@@ -423,11 +423,12 @@ fn citation_placements(messages: &[ChatMessageItem], docs: &[ChatDocRef], pages:
     result
 }
 
-/// Three suggestion cards fill and focus the composer when selected.
+/// One to three suggestion cards fill and focus the composer when selected. The cards keep
+/// the three columns of the grid, so fewer cards leave the remaining columns empty.
 #[component]
 fn FollowUpSuggestions(prompts: Vec<String>, mut draft: Signal<String>) -> Element {
     rsx! {
-        if prompts.len() == 3 {
+        if !prompts.is_empty() {
             div {
                 class: "x-chat-follow-ups",
                 role: "group",

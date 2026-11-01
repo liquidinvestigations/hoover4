@@ -1,0 +1,45 @@
+---
+name: emails
+group: technique
+description: 이메일 문서 읽기: 발신자, 수신자, 날짜, 제목, 헤더, 사본 및 스레드
+tools: doc_email, doc_metadata, read_documents
+---
+이메일 문서 읽기
+
+{% if has('search_collections') %}
+{{ tool('search_collections') }}로 이메일을 찾으십시오. 주소나 이름의 모든 표기를 한 번의 호출에 넣으십시오. 예를 들어 주소, "First Last", "Last, First"와 같습니다.
+
+{% endif %}
+{% if has('doc_email') %}
+1. {{ tool('doc_email') }}에 이메일의 file_hash를 넣어 호출하십시오. 보낸 사람, 받는 사람, 사본, 날짜, 제목, 부모 메시지, 첨부 파일, 메시지 그래프를 제공합니다.
+2. 스레드를 따라가려면 node에 그래프 내 다른 메시지의 file hash를 넣으십시오. 그래프가 그 메시지를 중심으로 정렬됩니다.
+3. 첨부 파일은 그 자체로 하나의 문서입니다. 자신의 file_hash로 읽으십시오.
+{% endif %}
+{% if has('read_documents') %}
+4. 메시지의 텍스트를 {{ tool('read_documents') }}로 읽으십시오.
+{% endif %}
+{% if has('doc_metadata') %}
+5. 텍스트에 없는 헤더와 날짜를 위해 {{ tool('doc_metadata') }}를 호출하십시오.
+{% endif %}
+
+같은 메시지의 사본이 여러 우편함에 있을 수 있습니다. 카운트가 고유 메시지에 의존할 때 그 필드들을 비교하십시오.
+
+{% if has('doc_email') %}
+{{ tool('doc_email') }} 컬렉션과 file_hash가 필요합니다.
+collection은 하나의 이름입니다. file_hash는 해당 컬렉션의 해시 하나 또는 열 개까지의 해시 목록을 받아들입니다.
+node는 선택적으로 반환된 메시지 해시를 그래프의 중심으로 맞춥니다. 생략하면 요청된 이메일을 중심으로 맞춥니다.
+나머지 첨부 파일과 그래프 항목을 검사하려면 read_more와 함께 사용하십시오.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+{% endif %}
+{% if has('doc_metadata') %}
+{{ tool('doc_metadata') }} 컬렉션과 file_hash가 필요합니다. 해시 하나 또는 열 개까지의 해시 목록을 받아들입니다.
+저장된 메타데이터, 날짜, 위치, 다운로드 링크를 반환합니다. 나머지 메타데이터 필드는 read_more를 사용하십시오.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{% endif %}
+작성자, 수신자, 날짜를 지정하기 전에 요청된 구절을 읽으십시오.
+바깥쪽 이메일 봉투는 바깥쪽 메시지에 속합니다.
+전송되거나 인용된 구절은 다른 작성자, 수신자, 날짜를 가질 수 있습니다.
+그 구절의 자체 헤더를 사용해 누가 작성했는지 식별하십시오.
+메시지를 전송한 사람이 반드시 인용된 진술을 작성한 것은 아닙니다.
+귀속이 여전히 알려지지 않았다면 그 한계를 명시하십시오.
+대상 범위와 계속 지시로 구절을 읽으십시오. 나중 텍스트를 요청하기 위해 처음 읽기를 반복하지 마십시오.

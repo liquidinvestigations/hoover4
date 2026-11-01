@@ -22,7 +22,7 @@
 | Close the workspace | Close the workspace pane. | The conversation stays open. |
 | Follow-up suggestion | Fill and focus the composer with the selected prompt. | The user edits or sends it explicitly. |
 | Send | Submit the composer text. | Empty text and a closed chat gate disable Send. The navigation arrow button includes a Send tooltip. |
-| Agent language | Open the settings page in a new tab. | The composer shows the flag and the code of the agent language. When the page gets the focus again, it reads the settings again. A change applies to the next message. |
+| Agent language | Open the language settings page in a new tab. | The composer shows the flag and the code of the agent language. When the page gets the focus again, it reads the settings again. A change applies to the next message. |
 | Open the board | Open the board of a board explore chat, with the chat's intent selected. | A board explore chat has no composer. In its place, the page shows "Board explore chats are read-only." and this link. |
 | Stored question card | Show a question of an earlier agent version with its options. | The options are plain text in every chat. They are not buttons. An ordinary chat keeps its composer. |
 | Tool group | Show or hide the tools, instructions, superseded answers, and the reasoning of the round. | Completed groups start closed. |
@@ -63,8 +63,8 @@ The board writes a "Submitted by the board" finding card after the answer of a b
 An active turn shows one line with a turning icon and the text "The bot is working...".
 A queued turn adds the slot that it waits for under that line.
 Failed document quotes allocate no new handles.
-Finished answers show three generated follow-up prompts when generation succeeds.
-The prompts occupy three columns inside a card with a question icon and the heading "Suggested next...".
+Finished answers show one to three generated follow-up prompts when generation succeeds.
+The prompts occupy three columns inside a card with a question icon and the heading "Suggested next...". Fewer than three prompts leave the remaining columns empty.
 The centered token footer has a faint separator beneath it.
 An unavailable captured page shows a loading failure.
 Exact find shows the current match and total count.

@@ -7,7 +7,7 @@
 #
 # PROMPT_NAME is a prompt of website/tools/chat_observer.py (default: document-comparison,
 # which searches two collections, reads documents and cites them). CODES is a
-# comma-separated list (default: the 18 supported codes). The turns run one after another,
+# comma-separated list (default: the 21 supported codes). The turns run one after another,
 # because the agent language is a setting of the test user.
 #
 # For each code the script runs website/observe-chat.sh with --agent-language, then
@@ -23,7 +23,7 @@ set -uo pipefail
 
 OUT="${1:?usage: check_agent_languages.sh OUT_DIR [PROMPT_NAME] [CODES]}"
 PROMPT="${2:-document-comparison}"
-CODES="${3:-en,de,es,fr,pl,pt,ar,he,hi,zh,it,nl,da,nb,sv,el,hr,ro}"
+CODES="${3:-en,de,es,fr,pl,pt,ar,he,hi,zh,it,nl,da,nb,sv,el,hr,ro,ru,ja,ko}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TARGET="${HOOVER4_SITE_URL:-http://hoover4-development-auth-backdoor:8080}"
 mkdir -p "$OUT"

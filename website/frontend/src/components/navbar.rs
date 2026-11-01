@@ -25,7 +25,6 @@ use dioxus_free_icons::icons::md_action_icons::MdSearch;
 use dioxus_free_icons::icons::md_action_icons::MdSettings;
 use dioxus_free_icons::icons::md_communication_icons::MdChat;
 use dioxus_free_icons::icons::md_file_icons::MdFolder;
-use dioxus_free_icons::icons::md_social_icons::MdPerson;
 use dioxus_free_icons::{Icon, IconShape};
 
 /// Shared navbar component.
@@ -146,7 +145,26 @@ fn NavbarBottomIconLinks() -> Element {
                 IconLink { to: Route::AdminDashboardPage { }, icon: MdSettings, label: tr!("nav-admin") }
             }
             FeedbackRailButton {}
-            IconLink { to: Route::SettingsPage { }, icon: MdPerson, label: tr!("nav-settings") }
+            LanguageSettingsLink {}
+        }
+    }
+}
+
+/// The language settings link at the bottom of the rail: the flag of the interface language
+/// that the page shows.
+#[component]
+fn LanguageSettingsLink() -> Element {
+    let code = crate::i18n::use_active_language().settings.read().interface.clone();
+    rsx! {
+        RailHint {
+            label: tr!("nav-language-settings"),
+            Link {
+                to: Route::LanguageSettingsPage {},
+                class: "x-rail-language",
+                "data-interface-language": "{code}",
+                style: "display: flex;",
+                img { src: crate::i18n::flag_src(&code), alt: tr!("nav-language-settings"), width: "26", height: "26" }
+            }
         }
     }
 }

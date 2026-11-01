@@ -1,6 +1,6 @@
 ## Settings page
 
-settings-title = Settings
+settings-title = Language settings
 settings-interface-language = Interface language
 settings-interface-language-explanation = The language of the menus, buttons and messages of this website.
 settings-browser-language = Browser language
@@ -17,7 +17,7 @@ nav-home = Home
 nav-search = Search
 nav-file-browser = File Browser
 nav-ai-chat = AI Chat
-nav-settings = Settings
+nav-language-settings = Language Settings
 nav-admin = Admin
 error-boundary-error = Error
 error-boundary-boundary = Boundary: { $boundary_name }

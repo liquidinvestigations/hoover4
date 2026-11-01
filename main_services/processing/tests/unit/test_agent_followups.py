@@ -12,11 +12,18 @@ from tasks.P_agent import followups
 from tasks.P_agent.activities import RunRef, WriteResultParams
 
 
-def test_three_questions_are_required_and_duplicates_are_rejected():
+def test_one_to_three_distinct_questions_are_kept():
     assert followups.parse_prompts('["What next?", "Which source?", "Who replied?"]') == [
         "What next?", "Which source?", "Who replied?"]
     assert followups.parse_prompts('1. What next?\n2. Which source?\n3. Who replied?')
-    for text in ['[]', '["One?"]', '["Same?", "same?", "Other?"]', '{"questions":[]}']:
+    assert followups.parse_prompts('["One?"]') == ["One?"]
+    assert followups.parse_prompts('["Same?", "same?", "Other?"]') == ["Same?", "Other?"]
+    assert followups.parse_prompts('["A?", "", "B?"]') == ["A?", "B?"]
+    assert followups.parse_prompts('["A?", "B?", "C?", "D?"]') == ["A?", "B?", "C?"]
+    assert followups.parse_prompts('1. A?\n2. B?') == ["A?", "B?"]
+    assert followups.parse_prompts('Τι άλλο;') == ['Τι άλλο;']
+    for text in ['[]', '{"questions":[]}', 'One.\nTwo.\nThree.\nFour lines of prose.', 'no questions',
+                 'A?\nB?\nC?\nD?']:
         assert followups.parse_prompts(text) == []
 
 

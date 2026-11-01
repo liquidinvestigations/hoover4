@@ -1,4 +1,5 @@
-//! The settings of the signed-in person: the interface language and the agent language.
+//! The language settings of the signed-in person: the interface language and the agent
+//! language. `/settings` has no page of its own yet.
 
 use common::language::Language;
 use dioxus::prelude::*;
@@ -10,10 +11,10 @@ use crate::components::error_boundary::ServerErrorDisplay;
 use crate::i18n::{flag_src, languages, use_active_language};
 use crate::tr;
 
-/// `/settings`. Each choice is saved when it is selected. The interface changes at once.
+/// `/settings/language`. Each choice is saved when it is selected. The interface changes at once.
 /// The agent uses the new language from the next message.
 #[component]
-pub fn SettingsPage() -> Element {
+pub fn LanguageSettingsPage() -> Element {
     let mut active = use_active_language();
     let settings = active.settings.read().clone();
     let mut failure = use_signal(|| None::<ServerFnError>);

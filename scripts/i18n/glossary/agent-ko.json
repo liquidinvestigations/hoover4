@@ -1,0 +1,20 @@
+{
+ "glossary_revision": "38e8b095d07db8b8",
+ "terms": {
+  "skill": "스킬",
+  "tool": "툴",
+  "tool call": "툴 호출",
+  "argument": "인자",
+  "citation handle": "인용 표지",
+  "quote": "인용구",
+  "workspace file": "작업장 파일",
+  "report": "보고서",
+  "hit": "검색 결과",
+  "passage": "구절",
+  "query": "질문",
+  "web page": "웹 페이지",
+  "run": "실행",
+  "note": "메모",
+  "plan": "계획"
+ }
+}

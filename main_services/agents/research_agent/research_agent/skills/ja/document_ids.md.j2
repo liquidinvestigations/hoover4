@@ -1,0 +1,19 @@
+---
+name: document_ids
+group: stumble
+description: ファイルハッシュでドキュメントに名前を付ける方法、または read_documents 内のパスで名前を付ける方法
+tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
+---
+ドキュメントへの名前付け
+
+ドキュメントのハッシュは 64 桁の 16 進文字で構成されます。ドキュメントツールは、12 文字以上の一意な先頭部分も受け付けます。
+
+1. 同じ結果行の file_hash とコレクションをコピーします。ハッシュを自分で作成しないでください。
+   COPY_RETURNED_HASH というプレースホルダーや、ゼロ値はハッシュではありません。フォルダー id も、この会話のリストや検索結果から取得されます。
+2. {% if has('read_documents') %}{{ tool('read_documents') }} は、1つのドキュメントを指定する場合、ファイル名やパスを解決することもできます。{% endif %} 他のドキュメントツールはハッシュを使用します。
+3. ファイル名からファイルの file_hash を探すには、{{ tool('search_collections') }}{% if has('folder_search') %} または {{ tool('folder_search') }}{% endif %} で名前を検索し、その行の file_hash をコピーします。
+{% if has('read_more') %}
+4. 行に file_hash がない場合、結果の次のページに対して {{ tool('read_more') }} を呼び出します。
+{% endif %}
+
+読み取りで、読み取り可能なデータセットにハッシュが含まれていないと示された場合、そのコレクションと値を結果行と照合します。ドキュメントが欠落しているのは、値が複数のドキュメントを指定しているためかもしれません。

@@ -399,12 +399,14 @@ pub fn compact_tokens(n: u32) -> String {
 }
 
 impl ChatMessageItem {
-    /// Return exactly three stored follow-up prompts for the completed answer.
+    /// The stored follow-up prompts of the completed answer: one to three non-empty prompts.
+    /// The model can give fewer than three, and each one it gives is shown.
     pub fn follow_up_prompts(&self) -> Vec<String> {
         let value = serde_json::from_str::<serde_json::Value>(&self.usage_json).unwrap_or_default();
-        let prompts = value.get("follow_up_prompts").and_then(|value| value.as_array())
-            .map(|items| items.iter().filter_map(|item| item.as_str().map(str::to_string)).collect::<Vec<_>>()).unwrap_or_default();
-        if prompts.len() == 3 && prompts.iter().all(|prompt| !prompt.trim().is_empty()) { prompts } else { Vec::new() }
+        value.get("follow_up_prompts").and_then(|value| value.as_array())
+            .map(|items| items.iter().filter_map(|item| item.as_str())
+                .filter(|prompt| !prompt.trim().is_empty()).map(str::to_string).take(3).collect())
+            .unwrap_or_default()
     }
 
     /// The report of an answer row: the workspace file version of its turn, or `None`.
@@ -1533,6 +1535,20 @@ mod tests {
             context_window: window,
             streaming: false,
             usage_json: String::new(),
+        }
+    }
+
+    #[test]
+    fn follow_up_prompts_keep_one_to_three_non_empty_prompts() {
+        let mut row = counted(0, 0, 0);
+        for (stored, expected) in [
+            (r#"{"follow_up_prompts":["A?","B?"]}"#, vec!["A?", "B?"]),
+            (r#"{"follow_up_prompts":["A?"," ","C?","D?","E?"]}"#, vec!["A?", "C?", "D?"]),
+            (r#"{"follow_up_prompts":[]}"#, vec![]),
+            (r#"{}"#, vec![]),
+        ] {
+            row.usage_json = stored.into();
+            assert_eq!(row.follow_up_prompts(), expected, "{stored}");
         }
     }
 

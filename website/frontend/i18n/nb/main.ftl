@@ -1,7 +1,7 @@
 # Machine translation of en/main.ftl. Do not edit by hand: change the English catalog
 # and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
 
-settings-title = Innstillinger
+settings-title = Språkinnstillinger
 settings-interface-language = Grenseflakespråk
 settings-interface-language-explanation = Språket for menyene, knappene og meldingene på dette nettstedet.
 settings-browser-language = Netbladspråk
@@ -15,7 +15,7 @@ nav-home = Hjem
 nav-search = Søk
 nav-file-browser = Filutforsker
 nav-ai-chat = AI-samtale
-nav-settings = Innstillinger
+nav-language-settings = Språkinnstillinger
 nav-admin = Administrator
 error-boundary-error = Feil
 error-boundary-boundary = Grense: { $boundary_name }

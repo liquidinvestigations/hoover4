@@ -1,4 +1,4 @@
-"""Generate and store three suggested questions for one completed answer."""
+"""Generate and store up to three suggested questions for one completed answer."""
 
 import json
 import logging
@@ -15,9 +15,19 @@ from tasks.P_agent import summarize
 log = logging.getLogger(__name__)
 
 
+#: The most suggestions that one answer shows.
+MAX_PROMPTS = 3
+
+#: The question marks that end a plain-line suggestion: Latin, full-width, Arabic, and the
+#: Greek question mark, which is a semicolon.
+QUESTION_MARKS = ("?", "？", "؟", ";", "\u037e")
+
+
 def parse_prompts(text: str) -> list[str]:
-    """Accept three distinct questions from a JSON array, fenced or bare, or from three plain
-    lines."""
+    """Up to three distinct questions from a JSON array, fenced or bare, or from one to three
+    plain lines that each end with a question mark. An empty item, an item of more than 300
+    characters and a repeated item are left out. Plain lines without question marks, or more
+    than three of them, give none, because such a reply is prose, not a list of questions."""
     from tasks.llm_json import extract_json
 
     text = summarize.strip_think_blocks(text).strip()
@@ -26,12 +36,17 @@ def parse_prompts(text: str) -> list[str]:
     except ValueError:
         prompts = [re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line).strip()
                    for line in text.splitlines() if line.strip()]
-    if (not isinstance(prompts, list) or len(prompts) != 3
-            or any(not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 300
-                   for prompt in prompts)):
+        if len(prompts) > MAX_PROMPTS or not all(p.endswith(QUESTION_MARKS) for p in prompts):
+            return []
+    if not isinstance(prompts, list):
         return []
-    prompts = [prompt.strip() for prompt in prompts]
-    return prompts if len({prompt.casefold() for prompt in prompts}) == 3 else []
+    out: list[str] = []
+    for prompt in prompts:
+        if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 300:
+            continue
+        if prompt.strip().casefold() not in {kept.casefold() for kept in out}:
+            out.append(prompt.strip())
+    return out[:MAX_PROMPTS]
 
 
 #: The `llm_call_events.kind` of a follow-up suggestion call.
@@ -99,10 +114,10 @@ def generate_prompts(question: str, answer: str, model: str, username: str = "",
         prompts, error = [], "hit max_tokens"
     else:
         prompts = parse_prompts(content)
-        error = "" if prompts else "the reply gives no three distinct questions"
+        error = "" if prompts else "the reply gives no usable question"
     record(usage, error, len(content))
     return {"follow_up_prompts": prompts, "follow_up_usage": usage,
-            "follow_up_error": "" if prompts else "The model did not return three questions."}
+            "follow_up_error": "" if prompts else "The model did not return a question."}
 
 
 @activity.defn

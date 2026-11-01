@@ -1,0 +1,30 @@
+---
+name: browser_use
+group: technique
+description: ウェブブラウザの操作方法: アドレスを開き、ページのスナップショットを読み取り、その後、要素参照によってクリック、入力、または選択する
+tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
+---
+ウェブブラウザを操作する
+
+{% if has('read_page') %}
+{{ tool('read_page') }} はページのテキストを読み取ります。ページの状態やインタラクティブな要素が重要な場合は、ブラウザのスナップショットを使用してください。
+
+{% endif %}
+1. {{ tool('browser_navigate') }} でアドレスを開きます。
+2. {{ tool('browser_snapshot') }} を呼び出します。スナップショットは、ref e12 のような参照付きでページの各要素をリストします。
+3. {{ tool('browser_click') }}、{{ tool('browser_type') }} または {{ tool('browser_select_option') }} で要素に対して操作します。最新のスナップショットからの参照と、要素の簡単な説明を指定します。Enter のようなキーには {{ tool('browser_press_key') }} を使用します。
+4. 各操作の後、{{ tool('browser_snapshot') }} を再度呼び出します。操作でページが変化することがあり、その場合、古い参照は有効ではありません。
+
+結果が "### Error" で始まる場合は、エラーテキストを読み取ります。期限切れの要素参照（stale element reference）とは、ページが変化したことを意味します。新しいスナップショットを取り、新しい参照を使用します。参照またはセレクタが空とは、要素を指定しなかったことを意味します。
+
+どのアドレスを開き、ページが何を表示していたかを、あなたの回答やレポートで述べてください。
+
+{{ tool('browser_navigate') }} は url が必要です。{{ tool('browser_snapshot') }} は引数を取りません。
+```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} は target が必要です。返された要素参照をコピーするか、一意のセレクタを使用してください。
+element はオプションで対象を説明します。button は既定で left であり、right または middle にできます。
+doubleClick はオプションでダブルクリックを選択します。modifiers はオプションで Alt、Control、ControlOrMeta、Meta、Shift を含みます。
+```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} は target と text が必要です。element はオプションで対象を説明します。
+submit はオプションで入力後に Enter を押します。slowly はオプションで文字を個別に入力してキーハンドラを起動します。
+```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} は target と values（オプション値のリスト）が必要です。element はオプションで対象を説明します。
+```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} は key が必要です。例えば Enter や Control+ArrowRight などです。
+```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` 各アクションはステータスまたはエラーを返します。ページを変更するアクションの後、新しいスナップショットを読んでください。

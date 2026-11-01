@@ -1,0 +1,20 @@
+{
+ "glossary_revision": "38e8b095d07db8b8",
+ "terms": {
+  "skill": "スキル",
+  "tool": "ツール",
+  "tool call": "ツール呼び出し",
+  "argument": "引数",
+  "citation handle": "引用ハンドル",
+  "quote": "引用",
+  "workspace file": "ワークスペースファイル",
+  "report": "レポート",
+  "hit": "ヒット",
+  "passage": "パスジ",
+  "query": "クエリ",
+  "web page": "ウェブページ",
+  "run": "実行",
+  "note": "ノート",
+  "plan": "プラン"
+ }
+}

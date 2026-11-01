@@ -1,15 +1,16 @@
-# The settings route chooses the languages of one person.
+# The language settings route chooses the languages of one person.
 
-The settings route shows the interface language and the agent language of the signed-in person.
-[The settings page](../../../website/frontend/src/pages/settings_page.rs), [the language rules](../../../website/common/src/language.rs) and [the settings API](../../../website/backend/src/api/settings.rs) own the contract.
-The person icon at the bottom of the navigation rail opens it for every signed-in person.
+The route `/settings/language` shows the interface language and the agent language of the signed-in person.
+`/settings` has no page of its own. Each later group of settings gets its own route under it.
+[The language settings page](../../../website/frontend/src/pages/settings_page.rs), [the language rules](../../../website/common/src/language.rs) and [the settings API](../../../website/backend/src/api/settings.rs) own the contract.
+The flag at the bottom of the navigation rail opens it for every signed-in person. The flag is the flag of the interface language that the page shows, and its name is Language Settings.
 
 ## Controls
 
 | Control | Behavior | Constraint |
 |---|---|---|
-| Interface language choices | Select Browser language or one of 18 languages. The page saves the choice and shows the interface in that language at once. | Browser language follows the first supported language of the browser's `Accept-Language` header, else English. Each language shows its own name, its code and its flag. |
-| Agent language choices | Select Same as the interface or one of 18 languages. The page saves the choice. | The agent uses the choice from the next message. A turn that already started keeps its language. |
+| Interface language choices | Select Browser language or one of 21 languages. The page saves the choice and shows the interface in that language at once. | Browser language follows the first supported language of the browser's `Accept-Language` header, else English. Each language shows its own name, its code and its flag. |
+| Agent language choices | Select Same as the interface or one of 21 languages. The page saves the choice. | The agent uses the choice from the next message. A turn that already started keeps its language. |
 
 ## States
 
