@@ -5,7 +5,9 @@
    the skills, which the model reads with `read_skill` when it chooses to. Nothing here
    changes during a run, so the prompt cache of the system text holds for the whole run.
 
-   `language_name` names the answer language of the run (`localization.language_name`).
+   `language_name` names the answer language of the run (`localization.language_name`). The
+   prompt names it near the start and again in its last line, because a model follows the
+   end of a long prompt more closely.
    `role_line` is the rendered role line of the profile (`ROLE_LINES`). `role_method` is the
    rendered role skill of the profile, or empty. `skills` holds the listed skills. `tools`
    holds (name, summary) pairs. `todo_rule` is true when the run has the plan tool.
@@ -77,3 +79,5 @@ When a citation fails, retry once with the candidate text that the error gives.
 If it fails again, leave out the claim, or state that the sources read do not confirm it.
 The reader sees a card for each handle. Add a list of the sources only when the person asks for one.
 {% endif %}
+
+Write your reply in {{ language_name }}.

@@ -7,7 +7,7 @@
  "review": "not reviewed by a native speaker",
  "sources": {
   "ar": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -31,7 +31,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "da": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -55,7 +55,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "de": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -79,7 +79,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "el": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -103,7 +103,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "es": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -127,7 +127,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "fr": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -151,7 +151,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "he": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -175,7 +175,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "hi": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -199,7 +199,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "hr": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -223,7 +223,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "it": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -247,7 +247,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "nb": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -271,7 +271,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "nl": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -295,7 +295,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "pl": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -319,7 +319,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "pt": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -343,7 +343,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "ro": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -367,7 +367,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "sv": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
@@ -391,7 +391,7 @@
    "skills/web_research.md.j2": "5380e1fad62fb34f"
   },
   "zh": {
-   "prompts/agent.md.j2": "97513c6c8cdf52eb",
+   "prompts/agent.md.j2": "0f882bee03cb0536",
    "prompts/role_lines": "9f5cdde55b0cb593",
    "skills/after_a_result.md.j2": "850f0015c01df857",
    "skills/browser_use.md.j2": "5a3c6e04be2d577b",
