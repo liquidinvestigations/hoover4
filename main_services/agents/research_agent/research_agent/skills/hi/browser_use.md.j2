@@ -1,0 +1,30 @@
+---
+name: browser_use
+group: technique
+description: वेब ब्राउजर को ड्राइव करने का विधि: पता खोलें, पृष्ठ का स्नापशॉट पढ़ें, फिर तत्व सूचक के अनुसार क्लिक करें, टाइप करें या चुनें
+tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
+---
+एक वेब ब्राउजर चलाना
+
+{% if has('read_page') %}
+{{ tool('read_page') }} पृष्ठ के पाठ को पढ़ता है। पृष्ठ की स्थिति या अन्तरक्रियात्मक तत्वों को महत्व देने पर ब्राउजर स्नैपशॉट का प्रयोग करें।
+
+{% endif %}
+1. {{ tool('browser_navigate') }} से पते को खोलें।
+2. {{ tool('browser_snapshot') }} का प्रयोग करें। स्नैपशॉट पृष्ठ के प्रत्येक तत्व को उसके संदर्भ सहित सूचित करता है, जैसे ref e12।
+3. {{ tool('browser_click') }}, {{ tool('browser_type') }} या {{ tool('browser_select_option') }} से एक तत्व पर कार्य करें। नवीनतम स्नैपशॉट से संदर्भ और तत्व का एक छोटा वर्णन दें। Enter जैसे कुंजि के लिए {{ tool('browser_press_key') }} का प्रयोग करें।
+4. प्रत्येक कार्य के बाद, फिर से {{ tool('browser_snapshot') }} का प्रयोग करें। एक कार्य पृष्ठ को बदल सकता है, और तब पुराने संदर्भ मान्य नहीं होते।
+
+जब कोई परिणत "### Error" से शुरू हो, तो त्रुटि पाठ पढ़ें। एक पुराने तत्व का संदर्भ मल्तब है कि पृष्थ बदल गया है। एक नया स्नैपशॉट लें और नया संदर्भ प्रयोग करें। एक खाली संदर्भ या सेलेक्टर मल्तब है कि आपने कोई तत्व नहीं दिया।
+
+अपनी प्रतिक्रिया या रिपोर्ट में बताएं कि आपने किस पते को खोला और पृष्ठ ने क्या दिखाया।
+
+{{ tool('browser_navigate') }} कार्यक्रम url माँगता है. {{ tool('browser_snapshot') }} को कोई आरोप नहीं माँगता.
+```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} कार्यक्रम target माँगता है. लौटाए गए तत्व का संदर्फ़ कॉपी करें या एक व्यक्तिगत सेलेक्टर का प्रयोग करें.
+तत्व वैकल्पिक रूप से लक्ष्य का वर्णन करता है. बटन बाईं को देता है और दाईं या मध्य भी हो सकता है.
+डबल क्लिक वैकल्पिक रूप से डबल क्लिक चुनता है. मॉडिफ़ायर्स वैकल्पिक रूप से Alt, Control, ControlOrMeta, Meta या Shift रखते हैं.
+```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} कार्यक्रम target और text माँगता है. तत्व वैकल्पिक रूप से लक्ष्य का वर्णन करता है.
+submit वैकल्पिक रूप से टाइप करने के बाद Enter दबाता है. slowly वैकल्पिक रूप से व्यक्तिगत अक्षर टाइप करके की हैंडलर्स सक्रिय करता है.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} कार्यक्रम target और values माँगता है, जो विकल्प मानों की सूची है. तत्व वैकल्पिक रूप से लक्ष्य का वर्णन करता है.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} कार्यक्रम key माँगता है, जैसे Enter या Control+ArrowRight.
+```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` प्रत्येक कार्यक्रम अपनी स्थिति या त्रुटि लौटाता है. पेज बदलने वाले कार्यक्रम के बाद एक नया स्नैपशॉट पढ़ें.

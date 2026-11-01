@@ -1,0 +1,71 @@
+---
+name: no_results
+group: stumble
+description: 当搜索没有任何结果时该怎么做：移除筛选条件、拆分短语、尝试名称的其他形式，然后说明缺少什么
+tools: search_collections, search_passages, web_search
+---
+当一次搜索没有找到任何结果时
+
+{% if has('search_collections') %}
+先阅读 word_counts。
+当一个名字出现在任何地方都没有时，阅读索引的拼写建议及其已核对的计数。
+不要将建议的拼写作为所请求的名字。
+当你搜索一个建议拼写时，在答案中将其命名为不同的拼写。
+当没有拼写匹配时，报告所搜索的数据集集合不包含该名字。
+
+{% endif %}
+当之前的搜索未能回答该问题时，遵循以下搜索步骤。
+{% if has('search_collections') %}
+1. 将每个名字作为带引号的短语进行搜索。
+2. 搜索不带引号的词、首字母、电子邮件地址以及文档语言中的名字。
+阅读 word_counts 和拼写建议。仅将建议用于预期的名字。
+使用 dasovi?h 表示一个变化的字母，使用 dasovic% 表示可选的结尾字母。
+当词序重要时使用 skilling << resigned。
+3. 一次移除一个筛选条件。运行一次不带筛选条件的搜索。
+{% if has('search_facet_values') %}
+使用 {{ tool('search_facet_values') }} 核实筛选值。
+{% endif %}
+{% if has('search_histogram') %}
+使用 {{ tool('search_histogram') }} 核实日期。
+{% endif %}
+{% if has('search_passages') %}
+4. 使用 {{ tool('search_passages') }} 搜索内容的描述。
+{% endif %}
+{% if has('folder_search') %}
+5. 当请求命名了一个文件夹、路径或文件时使用 {{ tool('folder_search') }}。
+{% endif %}
+{% if has('folder_list') %}
+对该文件夹使用 {{ tool('folder_list') }}。
+{% endif %}
+{% if has('read_documents') %}
+6. 使用 {{ tool('read_documents') }} 阅读最佳的 1 到 3 个命中。
+{% endif %}
+{% if has('doc_search_text') %}
+对文档中的相关文本使用 {{ tool('doc_search_text') }}。
+{% endif %}
+{% if has('web_search') %}
+7. 仅当请求允许时才搜索网络。
+{% endif %}
+{% if has('read_page') %}
+使用 {{ tool('read_page') }} 阅读最佳的网页。
+{% endif %}
+{% else %}
+{% if has('web_search') %}
+1. 将每个名字作为带引号的短语进行搜索，然后搜索该名字的其他形式、其首字母以及该地点的语言。
+{% endif %}
+{% if has('read_page') %}
+2. 使用 {{ tool('read_page') }} 阅读最佳的网页。
+{% endif %}
+{% endif %}
+
+在可用步骤未找到任何关键词匹配后，以缺失情况和搜索作答。
+{% if has('search_collections') %}
+在给出缺失情况回答前，至少运行 4 次不同的搜索，且至少使用 2 个可用的搜索工具。
+不要重复完全相同的搜索。说明所搜索的数据集集合和缺失的事实。
+将缺失情况陈述限制在你审查过的搜索和文档。
+例如，可以说"所搜索的委员会会议记录和转让记录未识别出批准日期。"这些搜索并不能证明在任何 permitted 收集中都不存在批准记录。
+{% else %}
+在给出缺失情况回答前，至少运行 4 次不同的搜索。
+不要重复完全相同的搜索。说明所运行的搜索和读过的网页。
+将缺失情况陈述限制在你审查过的搜索和网页。
+{% endif %}

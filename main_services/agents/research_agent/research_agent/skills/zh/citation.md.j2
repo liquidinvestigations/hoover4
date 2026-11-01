@@ -1,0 +1,49 @@
+---
+name: citation
+group: general
+description: 如何引用支持答案的文档
+tools: cite_documents
+---
+引用的文本会写入工作区文件。`report`技能说明了如何编写和编辑该文件。
+
+{% if has('cite_documents') %}
+当你的{{ citation_artefact }}依赖于{% if web_enabled %}内部{% else %}某{% endif %}文档时，请调用{{ tool('cite_documents') }}。
+为每个支持论断或引文的文档各调用一次。在论断旁使用该返回的标识。
+在依赖内部文档的论断旁使用标识。你也可以用文档来标识它，或描述搜索结果。
+一次调用最多接受12条引用。引用你实际用到的内容，而非搜索返回的全部内容。
+当搜索或读取返回支持某论断的文档时，请引用这些文档。
+
+每条引用请提供：
+- collection 和 file_hash，从工具结果中复制。切勿编造 file_hash。
+- quote：从文档正文的一行中复制的5到6个连续单词。不要标题行（From、To、Cc、Subject、Date）。不要包含问号的片段。
+- find：可选。引文中必须让当事人看到的最短确切短语。卡片会在该短语处打开文档。
+- why：一行说明该文档支持什么。
+
+把你拿到的标识（例如`[D1]`）写在你做出论断的{{ citation_artefact }}中。
+
+示例。{{ tool('read_documents') if has('read_documents') else 'A tool' }}在数据集集合 enron 中返回了邮件"Re: DRAFT talking points"。
+其正文内容为"The talking points look great to me. Best of luck today."。你的{{ citation_artefact }}显示 Jim Steffes 批准了该草案。使用参数 collection enron、结果中的 file_hash、引文"talking points look great to me"、查找"look great"，以及"Steffes approves the draft of 27 December"的原因调用{{ tool('cite_documents') }}。
+然后撰写"Steffes approved the draft [D1]."。不要引用"Subject: Re: DRAFT talking points"，因为它是标题行。不要引用"Can you check the notes?"，因为它包含问号。
+被引用邮件的换行、标点符号和`>`标记无需一致。
+缺失或无引文不会分配任何引用标识。将错误给出的候选文本中的 5 到 6 个单词复制到引文并重试。
+只有返回的引用标识才能标注一个来源。切勿自行在方括号中写入标签。
+将引用标识作为文本写在主张旁边。不要将其放在反引号中。`[D1]`放在反引号中不会链接任何内容。
+复用返回的文档引用标识以验证更多段落。该文档只有一张卡片。
+{% if citation_resolver == "lead" %}
+首席研究员负责解决它们，因此你从未分配过的引用标识对任何人都无用。
+{% endif %}
+{% endif %}
+{% include "citation_failures.j2" %}
+
+{% if has('cite_documents') %}
+citations 参数是一个文档引用对象的列表。
+每个对象都需要 collection 和 file_hash。quote 保存 5 到 6 个连续词语的精确来源原文。
+在每个对象中重复 collection 和 file_hash，包括来自同一文档的独立引文。
+对象不会继承来自之前对象的参数。
+find 可选地在 quote 内选择一个确切短语。省略时使用整个 quote。
+term 可选地记录来源搜索查询。why 陈述所支持的论断。
+结果会为每个已验证条目提供一个标识。未通过验证的条目会给出原因，并可给出候选段落。
+仅对措辞精确的未通过验证条目进行重试。已验证的引文本身并不能验证该引文的作者或日期。
+```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]} ``` 该批次验证了来自同一文档的两段段落。
+```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+{% endif %}

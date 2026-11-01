@@ -1,0 +1,19 @@
+---
+name: document_ids
+group: stumble
+description: כיצד לתת שם למסמך לפי ה-hash של הקובץ, או לפי נתיב ב-read_documents
+tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
+---
+מתן שם למסמך
+
+למסמך יש hash של 64 תווים הקסדציאליים. כלי המסמכים מקבלים גם התחלה ייחודית של לפחות 12 תווים.
+
+1. העתק את file_hash ואת האוף של אותו שורה. אף פעם לא לכתוב hash בעצמך.
+   מקום ריק כמו COPY_RETURNED_HASH או ערך של אפסים הוא לא hash. גם מזהה תיקייה מגיע מרשימה או מתוצאת חיפוש של שיחה זו.
+2. {% if has('read_documents') %}{{ tool('read_documents') }} יכול גם לפתור שם קובץ או נתיב כשהוא קורא מסמך אחד.{% endif %} כלי מסמכים אחרים משתמשים ב-hash.
+3. למצוא את file_hash של קובץ לפי שמו, חפש את השם עם {{ tool('search_collections') }}{% if has('folder_search') %} או {{ tool('folder_search') }}{% endif %}, והעתק את file_hash של השורה.
+{% if has('read_more') %}
+4. כששורה אין לה file_hash, קרא {{ tool('read_more') }} לדף הבא של התוצאה.
+{% endif %}
+
+כשקריאה אומרת שאין אוף קריא שמחזיק hash, בדוק את האוף והערך מול שורה. מסמך חסר יכול גם להציע שהערף קורא יותר ממסמך אחד.

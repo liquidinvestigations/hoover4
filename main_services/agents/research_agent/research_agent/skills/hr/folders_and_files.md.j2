@@ -1,0 +1,88 @@
+---
+name: folders_and_files
+group: technique
+description: kako pregledati sadržaj kolekcije: podatke, mape, vrste datoteka, brojeve i datume te kako pronaći datoteku po imenu ili putanji
+tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
+terms: Izrazi za to: kolekcija, podatak, mapa, direktorij, putanja, ime datoteke, vrsta datoteke, ekstenzija, format, brojevi, koliko datoteka, veličina, najveća, pregled, inventar, sadržaj kolekcije, dokumenti po godini.
+not_for: Nije potrebno kada zahtjev obuhvaća samo sadržaj dokumenata.
+---
+Mapi i datoteke
+
+{% if has('list_collections') and has('search_facet_values') %}
+Za pregled kolekcije pozovite {{ tool('list_collections') }} s {}.
+Zatim pozovite {{ tool('search_facet_values') }} s {} jednom za svaku vrstu datoteke i jezik dopuštene kolekcije.
+Zadana matrica već sadrži obje dimenzije. Nije potreban zaseban poziv po kolekciji ili dimenziji.
+{% endif %}
+
+{% if has('list_collections') %}
+{{ tool('list_collections') }} ne prima argumente. Daje nazive kolekcija, brojeve dokumenata i brojeve podataka.
+```json {} ```
+
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} daje brojeve pohrane svake kolekcije i podataka.
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} daje podmape i datoteke jedne mape jednog podataka.
+{% endif %}
+{% if has('folder_search') %}
+Da biste pronašli mapu ili datoteku po imenu unutar jednog podataka, pozovite {{ tool('folder_search') }}.
+{% endif %}
+{% if has('search_collections') %}
+Da biste pronašli datoteku po imenu u svakoj kolekciji, pozovite {{ tool('search_collections') }} s `filename_only` postavljenim na true. Dajte ime ili njegov dio kao upit.
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} broji dokumente pretrace po datumu ili veličini.
+{% endif %}
+{% if has('search_facet_values') %}
+{{ tool('search_facet_values') }} daje vrijednosti filtra, uključujući vrste datoteke, s brojevima.
+{% endif %}
+
+Ime ili putanja datoteke mogu identificirati jedan dokument. Redak rezultata `file_hash` identificira ga izravno.
+
+Za zahtjev za popis upotrijebite alate metpodataka. Njihovi brojevi mogu zahtjev izravno odgovoriti.
+Pretrage sadržaja korisne su samo kad osoba pita što dokumenti kažu.
+
+{% if has('search_facet_values') %}
+Pozovite {{ tool('search_facet_values') }} jednom za nekoliko kolekcija i faceta.
+Argumenti su kolekcija, faceti, upit i ids.
+Izostavite kolekciju ili dajte [] za svaku dopuštenu kolekciju. Dajte jedno ime ili popis za sužavanje odabira.
+Izostavite facete za ["file_types", "language"]. Dajte popis točnih imena faceta za ostale distribucije.
+Koristite file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc, re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money ili re_crypto_wallet.
+file_type je neispravan. Koristite file_types.
+upit pronalazi tekst unutar vrijednosti faceta. Ne pretraž sadržaj dokumenata.
+ids opcionalno rješava poznate identifikatore termina. Obične pretrace koriste tekst vrijednosti i ne trebaju identifikatore.
+
+Rezultat ima stupce i stavke. Svaki redak počinje svojom kolekcijom.
+Svaka ćelija faceta sadrži parove [text, count]. Kopirajte tekst u facet_filters za kasniju pretragu sadržaja.
+Prazna ćelija ima prijavljenu grešku. Prazna ćelija nema povratne vrijednosti.
+Brojevi se odnose na indeksirane podatke dokumenata po vrijednosti. Nekoliko vrijednosti može se odnositi na jedan dokument.
+Nemojte zbrajati brojeve faceta da biste tvrdili distinct total. Ukupni podaci dolaze iz list_collections.
+Zadani popis faceta može izostaviti neuobičajene vrijednosti. Koristite upit za pronalazak određene vrijednosti.
+Koristite više s read_more kada rezultat nastavlja.
+
+Ova minimalna poziva inventarizira formate datoteka i jezike kroz dopuštene kolekcije.
+```json {} ``` Ova poziva uspoređuje dvije odabrane kolekcije i pretražuje njihove vrijednosti e-adresa.
+```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} zahtijeva kolekciju. Podatak opcionalno odabire jedan Podatak.
+Ova poziva čita sve brojeve pohrane Podataka unutar jedne Kolekcije.
+```json {"collection":"alpha"} ``` Ova poziva odabire jedan Podatak.
+```json {"collection":"alpha","dataset":"files"} ```
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} zahtijeva kolekciju i Podatak. node_id opcionalno odabire vraćeni čvor mape.
+Izostavite node_id za čitanje korena Podataka. Kopirajte identifikatore dječjih čvorova u kasnije pozive.
+```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('folder_search') %}
+{{ tool('folder_search') }} zahtijeva kolekciju, Podatak i upit. node_id opcionalno ograničava pretragu na jednu mapu.
+```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} prihvaća iste filtare kao search_collections, osim sort i upita.
+field je date, mentioned_date ili size. Zaduženo je date. query zaduženo je prazan upit.
+Izostavljena kolekcija pokriva svaku dopuštenu kolekciju. Rezultat vraća bucketove i odabrano polje.
+```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{% endif %}

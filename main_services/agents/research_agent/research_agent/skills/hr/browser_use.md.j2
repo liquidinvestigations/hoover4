@@ -1,0 +1,30 @@
+---
+name: browser_use
+group: technique
+description: kako upravljati web preglednikom: otvoriti adresu, pročitati snimku stranice, a zatim kliknuti, upisati ili odabrati prema referenci elementa
+tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
+---
+Vođenje web preglednika
+
+{% if has('read_page') %}
+{{ tool('read_page') }} očitava tekst stranice. Koristi snimku preglednika kada stanje stranice ili interaktivni elementi imaju značenje.
+
+{% endif %}
+1. Otvori adresu s {{ tool('browser_navigate') }}.
+2. Pozovi {{ tool('browser_snapshot') }}. Snimka popisuje svaki element stranice s njegovom referencom, npr. ref e12.
+3. Djeluj na jedan element s {{ tool('browser_click') }}, {{ tool('browser_type') }} ili {{ tool('browser_select_option') }}. Navedi referencu iz najsvijeće snimke i kratak opis elementa. Koristi {{ tool('browser_press_key') }} za tipku kao što je Enter.
+4. Nakon svakog djelovanja ponovo pozovi {{ tool('browser_snapshot') }}. Djelovanje može promijeniti stranicu, pa stare reference više nisu valjane.
+
+Kada rezultat počinje s "### Error", pročitaj tekst greške. Referenca zastarjelog elementa znači da se stranica promijenila. Napravi novu snimku i iskoristi novu referencu. Pražna referenca ili selektor znače da nisi naveo element.
+
+U svom odgovoru ili izvješću reci koju si adresu otvorio i što je stranica prikazivala.
+
+{{ tool('browser_navigate') }} zahtijeva url. {{ tool('browser_snapshot') }} ne prima argumente.
+```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} zahtijeva odredište. Kopirajte referencu vraćenog elementa ili upotrijebite jedinstveni selektor.
+element opcionalno opisuje odredište. gumb standardno je lijevi i može biti desni ili srednji.
+doubleClick opcionalno odabire dvojni klik. modifiers opcionalno sadrži Alt, Control, ControlOrMeta, Meta ili Shift.
+```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} zahtijeva odredište i text. element opcionalno opisuje odredište.
+submit opcionalno pritišće Enter nakon upisa. opcionalno slowly upisuje pojedinačne znakove kako bi potaknuo rukovatelje tipkama.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} zahtijeva target i values, popis vrijednosti opcija. element opcionalno opisuje odredište.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} zahtijeva key, kao što su Enter ili Control+ArrowRight.
+```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` Svaka akcija vraća svoj status ili grešku. Nakon akcije koja mijenja stranicu pročitajte novi snapshot.

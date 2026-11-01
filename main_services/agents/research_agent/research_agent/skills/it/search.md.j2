@@ -1,0 +1,87 @@
+---
+name: search
+group: general
+description: come cercare nelle collezioni di documenti e usare la sintassi delle richieste
+tools: search_collections
+---
+{% if has('search_collections') %}
+Ricerca nei documenti dell'utente
+
+1. Cerca i documenti quando il loro contenuto può rispondere alla domanda.
+2. Usa Collezione quando la richiesta riguarda una singola Collezione. Lascialo vuoto per cercare in tutte le collezioni che questa chat può leggere.
+3. {{ tool('search_collections') }} accetta più richieste. Usa le forme pertinenti di un nome o un indirizzo. Inserisci una frase esatta tra virgolette.
+4. OR, AND e NOT sono parole ordinarie in una richiesta. Usa | per indicare "oppure" e -parola per escludere una parola.
+5. Copia file_hash e collection da una riga di risultato. Non scrivere mai un hash di tuo.{% if has('read_more') %} Se una riga non ha file_hash, chiama {{ tool('read_more') }}.{% endif +%}
+6. Imposta un filtro per data o dimensione quando aiuta a rispondere alla domanda.
+7. Quando riporti che una ricerca non ha trovato alcun documento, indica la richiesta, le collezioni e il conteggio.
+8. Una chiamata contiene al massimo 12 richieste. Dividi una lista più lunga in due chiamate.
+9. Dai a ogni richiesta almeno una parola da cercare. Una richiesta composta solo da termini -parola viene rifiutata.
+10. Imposta filename_only a true o false. Non accetta testo.
+
+Esempio. L'utente chiede tutti i dati su JoeBWilkinson@cs.com. Fai una chiamata a {{ tool('search_collections') }} con le richieste ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Leggi un documento quando la sua riga di risultato non fornisce abbastanza prove per l'affermazione.
+{% endif %}
+
+Segui questi passaggi di ricerca quando le ricerche precedenti non rispondono alla domanda.
+{% if has('search_collections') %}
+1. Cerca ogni nome come frase tra virgolette.
+2. Cerca parole non virgolettate, iniziali, indirizzi e-mail e nomi nella lingua del documento.
+Leggi word_counts e i suggerimenti ortografici. Usa un suggerimento solo per il nome inteso.
+Usa dasovi?h per una lettera variabile e dasovic% per una lettera finale opzionale.
+Usa skilling << resigned quando l'ordine delle parole conta.
+3. Rimovi i filtri uno alla volta. Esegui una ricerca senza filtri.
+{% endif %}
+{% if has('search_facet_values') %}
+Verifica i valori dei filtri con {{ tool('search_facet_values') }}.
+{% endif %}
+{% if has('search_histogram') %}
+Verifica le date con {{ tool('search_histogram') }}.
+{% endif %}
+{% if has('search_passages') %}
+4. Cerca una descrizione del contenuto con {{ tool('search_passages') }}.
+{% endif %}
+{% if has('folder_search') %}
+5. Usa {{ tool('folder_search') }} quando la richiesta nomina una cartella, un percorso o un file.
+{% endif %}
+{% if has('folder_list') %}
+Usa {{ tool('folder_list') }} per quella cartella.
+{% endif %}
+{% if has('read_documents') %}
+6. Leggi i migliori 1-3 risultati con {{ tool('read_documents') }}.
+{% endif %}
+Per le persone o le organizzazioni di un documento, leggi la parte di quel documento che le nomina. Un riferimento a un altro lavoro nomina quell'altro lavoro.
+{% if has('doc_search_text') %}
+Usa {{ tool('doc_search_text') }} per il testo rilevante in un documento.
+{% endif %}
+{% if has('web_search') %}
+7. Cerca il web solo quando la richiesta lo consente.
+{% endif %}
+{% if has('read_page') %}
+Leggi le migliori pagine web con {{ tool('read_page') }}.
+{% endif %}
+
+{% if has('search_collections') %}
+Gli argomenti di ricerca completi sono collection, queries, query, sort, date_after, date_before, date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max, folder_term_id, filename_only e facet_filters.
+collection accetta un nome o una lista. L'omissione o [] ricercano ogni collezione permessa.
+query è vuota per impostazione predefinita. queries aggiunge opzionalmente fino a 12 forme. Forme duplicate vengono eseguite una volta sola.
+Una query vuota esplora tutte le corrispondenze dei filtri. Le forme di ricerca uniscono le identità dei documenti corrispondenti.
+sort contains campo e direzione. Il campo è rilevanza, data, file_size o name. La direzione è asc o desc.
+L'omissione usa l'ordine di rilevanza predefinito.
+date_after e date_before usano secondi epoch UTC inclusivi per la data del documento.
+mentioned_date_after e mentioned_date_before usano secondi epoch UTC inclusivi per le date estratte dal testo.
+date_unknown_only=true seleziona i documenti senza data del documento nota. Non combinarla con un intervallo di date note.
+size_min e size_max sono limiti di byte inclusivi. folder_term_id seleziona un termine di cartella restituito.
+filename_only=true limita la query ai nomi e ai percorsi. False usa i contenuti del documento.
+facet_filters mappa i nomi di facet validi su liste di testo dei valori restituiti. L'omissione non applica alcun filtro di facet.
+I valori all'interno di un singolo facet sono alternativi. Filtri di facet diversi devono tutti corrispondere.
+
+Ogni risultato include collection, file_hash, path, snippet e i tipi, data e size disponibili.
+q elenca le forme basate su zero che hanno trovato la riga. query_forms riporta il conteggio di ogni forma.
+word_counts verifica le parole indicizzate. suggestions elenca ortoscopie indicizzate vicine con i conteggi.
+Leggi query_notes per sintassi riparata, filtri sconosciuti e forme di ricerca fallite.
+more continua il risultato. Copialo in read_more. Una prima pagina vuota non richiede chiamate identiche ripetute.
+
+Questa chiamata minima ricerca tutte le collezioni consentite.
+```json {"query":"\"Joe Wilkinson\""} ``` Questa chiamata avanzata combina forme di richiesta, ambito della collezione, ordinamento, date, dimensione e filtri per facetta.
+```json {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}} ``` Questa chiamata separata trova i documenti senza una data nota.
+```json {"query":"report","filename_only":true,"date_unknown_only":true} ``` Sostituisci i valori di collezione, cartella e facetta con i valori restituiti per la chat corrente.
+{% endif %}

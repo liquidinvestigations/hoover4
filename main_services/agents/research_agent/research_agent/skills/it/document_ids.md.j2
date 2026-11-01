@@ -1,0 +1,19 @@
+---
+name: document_ids
+group: stumble
+description: come nominare un documento con il suo hash del file, o con un percorso in read_documents
+tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
+---
+Denominare un documento
+
+Un hash di documento ha 64 caratteri esadecimali. Gli strumenti per documenti accettano anche un inizio univco di almeno 12 caratteri.
+
+1. Copia il file_hash e la collezione della stessa riga del risultato. Non scrivere mai un hash da solo.
+   Un segnaposto come COPY_RETURNED_HASH o un valore di zeri non è un hash. Anche un id di cartella proviene da un elenco o da un risultato di ricerca di questa conversazione.
+2. {% if has('read_documents') %}{{ tool('read_documents') }} può anche risolvere un nome file o un percorso quando ne nomina un documento.{% endif %} Altri strumenti per documenti usano l'hash.
+3. Per trovare il file_hash di un file tramite il suo nome, cerca il nome con {{ tool('search_collections') }}{% if has('folder_search') %} o {{ tool('folder_search') }}{% endif %}, e copia il file_hash della riga.
+{% if has('read_more') %}
+4. Quando una riga non ha file_hash, chiama {{ tool('read_more') }} per la prossima pagina del risultato.
+{% endif %}
+
+Quando una lettura afferma che nessun insieme di dati leggibile contiene un hash, verifica la sua collezione e il suo valore rispetto alla riga del risultato. Un documento mancante può anche significare che il valore ne nomina più di uno.

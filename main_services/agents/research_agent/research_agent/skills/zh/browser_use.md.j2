@@ -1,0 +1,30 @@
+---
+name: browser_use
+group: technique
+description: 如何驱动网页浏览器：打开地址、读取页面快照，然后按元素引用进行点击、输入或选择
+tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
+---
+驱动网页浏览器
+
+{% if has('read_page') %}
+{{ tool('read_page') }} 读取页面的文本。当页面状态或交互元素重要时，请使用浏览器快照。
+
+{% endif %}
+1. 使用 {{ tool('browser_navigate') }} 打开地址。
+2. 调用 {{ tool('browser_snapshot') }}。快照会列出页面中的每个元素及其引用，例如 ref e12。
+3. 使用 {{ tool('browser_click') }}、{{ tool('browser_type') }} 或 {{ tool('browser_select_option') }} 对一个元素进行操作。提供来自最新快照的引用，并给出该元素的简短描述。对于回车等按键，使用 {{ tool('browser_press_key') }}。
+4. 每次操作后，再次调用 {{ tool('browser_snapshot') }}。某个操作可能改变页面，此时旧的引用将不再有效。
+
+当结果以"### Error"开头时，读取错误文本。过期的元素引用意味着页面已发生变化。重新获取快照并使用新的引用。空的引用或选择器意味着你未提供任何元素。
+
+在你的回答或报告中说明你打开了哪个地址，以及页面显示了什么内容。
+
+{{ tool('browser_navigate') }} 需要 url。{{ tool('browser_snapshot') }} 不接受任何参数。
+```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} 需要 target。复制返回的元素引用，或使用唯一选择器。
+element 可选地描述目标。button 默认为 left，也可取 right 或 middle。
+doubleClick 可选地选择双击。modifiers 可选地包含 Alt、Control、ControlOrMeta、Meta 或 Shift。
+```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} 需要 target 和 text。element 可选地描述目标。
+submit 可选地在输入后按下回车。slowly 可选地逐个输入字符以触发键盘处理器。
+```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} 需要 target 和 values，即选项值列表。element 可选地描述目标。
+```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} 需要 key，例如 Enter 或 Control+ArrowRight。
+```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` 每个操作都会返回其状态或错误。在改变页面的操作后读取新的快照。

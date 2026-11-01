@@ -1,0 +1,69 @@
+---
+name: call_arguments
+group: stumble
+description: hur du fyller i argumenten till ett verktygskall: endast namnen som dess schema anger, en lista där det efterfrågas en lista, och inga extra citattecken
+tools:
+---
+Fyll i argumenten till ett verktygsanrop
+
+{% if has('read_tool') %}
+När du är osäker på argumenten till ett verktyg, gör en {{ tool('read_tool') }} med dess namn. Den ger varje argument, dess typ och de argument som verktyget kräver.
+
+{% endif %}
+1. Ange endast argumentnamn som verktyget ger. Ett argument med ett annat namn avvisas.
+2. Ange varje krävt argument.
+3. När verktyget ber om en lista, ange en lista, även för ett enda värde. Skriv frågor ["lease"]. Skriv inte frågor "lease".
+4. När verktyget ber om ett tal eller sant eller falskt, ange värdet utan citattecken. Skriv filename_only true. Skriv inte filename_only "true".
+5. Sätt inte citattecken inuti ett textvärde. Skriv status done. Skriv inte status "\"done\"".
+6. Håll varje värde inom verktygets gränser, såsom flest objekt i en lista.
+7. När verktyget ber om en lista med objekt, ange en lista med objekt. Ange inte en text
+{% if has('cite_documents') %}
+   som håller JSON. Skriv citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
+   Skriv inte citations "[{\"collection\": ...}]".
+{% elif has('cite_pages') %}
+   som håller JSON. Skriv pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
+   Skriv inte pages "[{\"url\": ...}]".
+{% else %}
+   som håller JSON.
+{% endif %}
+{% if has('write_file') %}
+8. Ange filnamnet i varje {{ tool('write_file') }}- och {{ tool('patch_file') }}-anrop.
+{% endif %}
+
+När ett anrop avvisas, namnger felet argumentet och vad som är fel på det. Rätta det argumentet, och skicka sedan anropet.
+
+{% if has('search_agent_tools') %}
+{{ tool('search_agent_tools') }} kräver fråga, en uppgiftsbeskrivning på högst 160 tecken.
+Den returnerar relevanta verktygsnamn och beskrivningar. Läs ett verktyg innan du använder okända argument.
+```json {"query":"Find a passage late in one long document."} ```
+{% endif %}
+{% if has('read_tool') %}
+{{ tool('read_tool') }} kräver name, det exakta namnet på ett tillgängligt verktyg.
+Den returnerar beskrivningen och hela indatastrukturen, inklusive tillåtna värden, standardvärden och obligatoriska fält.
+```json {"name":"read_documents"} ``` Efter ett fel om okänt argument, läs det misslyckade verktygets struktur innan du försöker igen.
+{% if has('update_plan') %}
+Exempelvis misslyckas detta {{ tool('update_plan') }} kall eftersom `plan` inte är ett argument.
+```json {"plan":["Find the message."]} ``` Läs dess struktur med {{ tool('read_tool') }}.
+```json {"name":"update_plan"} ``` Anropa sedan {{ tool('update_plan') }} med mål och steg.
+```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"pending"}]} ```
+{% endif %}
+{% if has('read_documents') %}
+Om {{ tool('read_documents') }} avvisar `source2` eller `offset2`, läs dess struktur innan du försöker igen.
+Använd ett separat anrop för varje dokument som kräver olika range-argument.
+{% endif %}
+{% endif %}
+{% if has('search_skills') %}
+{{ tool('search_skills') }} accepterar fråga, högst 160 tecken. Uteläggning eller tom text listar alla tillgängliga färdigheter.
+Den returnerar metoddnamn och beskrivningar.
+```json {} ``` ```json {"query":"Read a long document and continue its matching passage."} ```
+{% endif %}
+{% if has('read_skill') %}
+{{ tool('read_skill') }} kräver name, det exakta namn som returnerades vid färdighetsupptäckt.
+Den returnerar metoddinstruktionerna, verktygsargumenten och exemplen.
+```json {"name":"passages"} ```
+{% endif %}
+{% if has('write_note') %}
+{{ tool('write_note') }} kräver text, med 1 till 2 000 tecken. Den sparar bevis och olösta frågor för senare sammanhang.
+Inkludera källors identiteter och nästa användbara anrop när det sammanhanget måste överleva komprimering.
+```json {"text":"The approval passage is in the returned document range. Verify its original writer before attributing it."} ```
+{% endif %}

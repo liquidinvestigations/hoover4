@@ -1,0 +1,14 @@
+---
+name: thorough
+group: general
+description: hvordan du velger videre søk når et spørsmål trenger forskning
+tools: search_collections, web_search
+---
+Velg søk som kan svare på personens spørsmål. Et bredt søk kan vise tilgjengelige poster. Et spesifikt søk kan teste et navn, dato eller uttrykk fra et resultat.
+
+Les kildeteksten bak et påstand. Stopp når videre søk er usannsynlig å endre svaret, og oppsøk søkelimiten når den påvirker konklusjonen.
+
+{% if has('search_collections') %}
+Bruk nærhet, for eksempel "forurensning av vann"~10, for ord som ligger nær hverandre.
+Bruk quorum, for eksempel "forurensning av vann anlegg"/2, for et tema med flere relevante ord.
+{% endif %}

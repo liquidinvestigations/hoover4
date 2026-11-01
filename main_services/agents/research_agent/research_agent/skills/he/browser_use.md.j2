@@ -1,0 +1,30 @@
+---
+name: browser_use
+group: technique
+description: כיצד להניע דפדפן אינטרנט: פתיחת כתובת, קריאת תמונת-דף, ואז לחיצה, הקלטה או בחירה לפי הפניה לאלמנט
+tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
+---
+הנעת דפדפן אינטרנט
+
+{% if has('read_page') %}
+{{ tool('read_page') }} קרא את טקסט הדף. השתמש בתמונת מצב של דפדפן כאשר מצב הדף או אלמנטים אינטראקטיביים חשובים.
+
+{% endif %}
+1. פתח את הכתובת עם {{ tool('browser_navigate') }}.
+2. קרא {{ tool('browser_snapshot') }}. התמונה מרשימה כל אלמנט של הדף יחד עם הייחוס שלו, כגון ref e12.
+3. פעל על אלמנט אחד עם {{ tool('browser_click') }}, {{ tool('browser_type') }} או {{ tool('browser_select_option') }}. תן את הייחוס מהתמונה האחרונה ותיאור קצר של האלמנט. השתמש {{ tool('browser_press_key') }} למקש כגון Enter.
+4. אחרי כל פעולה, קרא {{ tool('browser_snapshot') }} שוב. פעולה יכולה לשנות את הדף, ואז הייחוסים הישנים אינם תקפים.
+
+כאשר תוצאה מתחילה ב-\"### Error\", קרא את טקסט השגיאה. ייחוס אלמנט מיושן משמעו שהדף השתנה. קח תמונה חדשה והשתמש בייחוס החדש. ייחוס ריק או סלקטור משמעו שנתת אלמנט ריק.
+
+תציין בתשובה או בדוח איזה כתובת פתחת ומה הדף הציג.
+
+{{ tool('browser_navigate') }} דורש url. {{ tool('browser_snapshot') }} מקבל ארגומטרים.
+```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} דורש target. העתק ייחוס של רכיב שהוחזר או השתמש בבחירה ייחודית.
+element מתאר את ה-target באופציונלית. button מוגבר כברירת מחדל ל-left ויכול להיות right או middle.
+doubleClick בוחר באופציונלית לחיצה כפולה. modifiers מחזיק באופציונלית את Alt, Control, ControlOrMeta, Meta או Shift.
+```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} דורש target ו-text. element מתאר את ה-target באופציונלית.
+submit לוחץ באופציונלית על Enter אחרי הקלדה. slowly מקליד באופציונלית תווים בודדים כדי להפעיל handlers של מקשים.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} דורש target ו-values, רשימה של ערכי אפשרויות. element מתאר את ה-target באופציונלית.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} דורש key, כגון Enter או Control+ArrowRight.
+```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` לכל פעולה מוחזר הסטטוס שלה או שגיאה. קרא תמונת מצב חדשה אחרי פעולה המשנה את הדף.

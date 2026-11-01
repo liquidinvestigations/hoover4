@@ -1,0 +1,115 @@
+---
+name: web_research
+group: technique
+description: hvordan man søger på det åbne web, læser en webside eller ejerposten for et domæne og citater de websider, der understøtter en rapport
+tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
+---
+At undersøge det åbne web
+
+Brug webkilder, når de kan besvare personens spørgsmål.
+
+{% if has('web_search') %}
+{{ tool('web_search') }} accepterer en liste over forespørgsler. Feltet `sources` afgrænser søgningen til navngivne kilder.{% if has('list_search_sources') %} {{ tool('list_search_sources') }} lister de kilder op.{% endif +%}
+{% endif %}
+{% if has('read_page') %}
+1. Læs de bedste resultater fuldstændigt med {{ tool('read_page') }}. Giv alle adresser i ét kald, og angiv i goal, hvad du leder efter. Et resultat markeret BLOCKED BY A BOT CHECK er ikke siden. Brug ikke dens tekst.
+{% endif %}
+{% if has('whois_lookup') %}
+{% if has('read_page') %}2.{% else %}1.{% endif %} Til ejeren, registranten eller datoerne for et domæne, kald {{ tool('whois_lookup') }} med hvert domæne i ét kald.
+{% endif %}
+
+Læs hver kilde før du bruger dens påstande. Et søgningresultat-udtræk er ikke en kilde.
+{% if has('cite_pages') %}
+
+Citering af websider
+
+Kald {{ tool('cite_pages') }} med hver læst side-URL og den præcise understøttende formulering i `terms`.
+Brug de returnerede web-citationsmærker ved siden af de påstande, de understøtter.
+Erstat bare kilde-URL'er med de mærker.
+{{ tool('cite_pages') }} accepterer url og terms for én side, eller pages for op til tolv sideobjekter.
+Hver side kræver url og terms. terms indeholder op til præcise sætninger, hver på højest 200 tegn. Versaling skal matche.
+version vælger valgfrit en fanget version. why angiver valgfrit den understøttede påstand, på højest 300 tegn.
+Resultatet giver verificerede citater og et stabilt web-citationsmærke. En mislykket side giver en fejl uden et mærke.
+
+Eksempel. {{ tool('read_page') }} læs URL'en https://example.org/report. Dens tekst siger "The plant closed in March 2019." Kald {{ tool('cite_pages') }} med flade argumenter for én side:
+url, kopieret fra read-resultatet, termer med den præcise sætning, og hvorfor.
+```json {"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"The report gives the closing date."} ``` Skriv derefter "The plant closed in March 2019 [W1]." med det mærke, som kaldet returnerede.
+Del en liste på mere end tolv sider op i separate kald.
+```json {"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"This passage gives the approval date."}]} ``` Kopier det returnerede webhandle, for example `[W1]`, ved siden af det påstand, den understøtter.
+Behold hvert handle med URL'en og citaterne fra det returnerede citation-objekt.
+En fejl allokerer ikke et handle. Udelad den kildes påstande indtil dens citation lykkes.
+For manglende ordning, kopier den præcise tekst fra det returnerede kandidat-objekt og kald værktøjet igen.
+Når en fejl indeholder `errors[i].retry_arguments`, kopier det objekt uændret ind i det næste kald.
+Behold succesfulde citater fra en partielt resultat. Retry kun de fejlede sider.
+For eksempel citerer et kald tre sider, og to lykkes med [W1] og [W2]. Brug de two handles. Send det næste kald med kun den tredje side, og brug dens retry-argumenter.
+For eksempel forbinder dette kald ord på tværs af en kildes linjeskift og fejler.
+```json {"url":"https://example.org/report","terms":["The plant closed in March 2019"]} ``` Fejlen kan returnere disse retry-argumenter med den præcise kildetekst.
+```json {"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}} ``` Kald {{ tool('cite_pages') }} med det returnerede objekt, inklusive dens faktiske version og præcise termer.
+```json {"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]} ``` Et PDF-vindue har sin egen version. For at citere et pasus af siderne 51 til 100, kopier versionen af den read.
+```json {"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]} ``` Hvis et kald overskriger otte termer, del dets termer op i grupper på højst otte og citér hver gruppe separat.
+Behold URL'en og kildens version med hver gruppe. Ændring af kaldets struktur reducerer ikke dets termantal.
+Handlet åbner den fangede sidetekst og dens verificerede citater.
+Brug én side per kald hvis en batch ankommer beskadiget.
+En ulæst, blokeret eller uverificeret side kan ikke understøtte en påstand.
+
+{% include "citation_failures.j2" %}
+{% endif %}
+
+Et navn eller en begivenhed, som du husker, er en kandidat, indtil en kilde navngiver den. Find en kilde, der navngiver den, før du bruger den. Send ikke en søgning igen med de samme ord eller med små ændringer i formuleringen. En næste søgning skal bruge en anden metode: andre identifikationsfakta for kandidaten, en navngivet kilde, sproget for stedet, eller en side, som et læst resultater henviser til. Når ingen resterende metode can finde en kilde, markér kandidaten som ikke verificeret, og fortsæt med andet arbejde. En person med samme navn er en anden person, indtil en kilde forbinder faktaene. Når en kilde modsigar en kandidat, fjern kandidaten og angiv årsagen.
+
+For example husker du, at en mølle lukkede i 2019. En søgning efter "Harlow mill closed 2019" finder ingen side om møllen. En søgning efter "Harlow mill closure" finder de samme resultater. Send ikke en tredje form af disse ord. Søg efter navnet på ejerens virksomhed med bynavnet. En lokal nyhedsside navngiver lukkningsmåneden, så læs den, og kandidaten er verificeret.
+
+For example husker du en anden retssag mod samme virksomhed. Søgninger efter virksomheden med "lawsuit", efter retsnavnet og efter formatet på sagens nummer finder ingen sag.
+Ingen anden metode er tilbage. Skriv at de læste kilder ikke bekræfter en anden sag, og navngiv den ikke som en sag.
+
+En læsning dækker kun dens ekstraherede tekst. En fund uden match viser, at den ekstraherede tekst ikke indeholder ordene. Det viser ikke, at dokumentet ikke indeholder dem. Et PDF-resultat giver siderne, som læsningen ekstraherede. Før du påstår, at et dokument ikke navngiver en person, angiv siderne eller teksten, du søgte.
+For en liste over daterede begivenheder, behold ét registrat for hver begivenhed med dens dato, dens navn og dens kilde. Angiv registrater uden dato, dublerede rapporter og kilder, du ikke kunne læse ud over de daterede registrater.
+
+Anvend alle forespurgte krav til hvert element i svaret.
+Oplys, hvilket krav et element fejler.
+Identificer hvert elements adskilende fakta.
+Giv for en retssag retten, datoen og sagens nummer, når kilderne oplyser dem.
+Verificér i kilden hver egenskab, som forespørgslen kræver af et element.
+Tæl ét tilfælde, begivenhed eller entitet én gang, og list dets stadiers identifikatorer sammen.
+Flet rapporter om samme element.
+Oplys, når kilderne etablerer færre distinkte enditeter end forespørgslen.
+Før du svarer, verificér hvert elements adskilende fakta og hvert krav mod siderne, du læste.
+Behold et element, der fejler et krav, uden for den matchende liste, og navngiv dets fejlede krav.
+Læs alle sider, du citerer, inklusive en erstatningskilde fundet efter en blokeret side.
+Når en sidelæsning fejler, brug en anden læselig kilde eller udelad dens påstande og adresse.
+
+{% if has('web_search') %}
+{{ tool('web_search') }} accepterer forespørgsler som en liste eller én streng, og query som en yderligere enkeltforespørgsel.
+Giv mindst én forespørgsel. Udelad kilder for at søge i alle tilgængelige kilder.
+max_results sættes standardt til 15. timelimit er d, w, m eller y og gælder kun for understøttede nyhedskilder.
+Resultatet returnerer rangerede URLs, titler, uddrag og matchede forespørgselsformer. Læs udvalgte URLs før du stoler på deres påstande.
+```json {"queries":["transfer approval"]} ``` ```json {"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"} ```
+{% endif %}
+{% if has('list_search_sources') %}
+{{ tool('list_search_sources') }} tager ingen argumenter. Den returnerer tilgængelige kildenames og beskrivelser.
+```json {} ```
+{% endif %}
+{% if has('read_page') %}
+{{ tool('read_page') }} kræver urls, en liste på op til seks HTTP- eller HTTPS-adresser.
+goal registrerer valgfrit spørgsmålet. Den vælger ikke matchende tekst.
+find vælger valgfrit ordrette tekstmatches uden casesensitivitetsbegrænsninger.
+offset er en nulbaseret tegnposition. Udeladelse starter ved nul.
+version vælger den fangede tekstversion. Kopier den fra en tidligere læsning af samme URL for at fortsætte den tekst.
+En version tilhører én URL. For en anden URL skal du læse den URL først og kopiere dens egen version.
+links sættes standardt til true og inkluderer linkdestinationer i teksten.
+page_start vælger den første side af et PDF-vindue. En læsning extraherer højst 50 PDF-sider.
+Et cut-resultat, et find-resultat med flere matches og et PDF-vindue giver argumenterne til næste kald.
+Kopier det argumentobjekt uændret. Det beholder URL, PDF-vinduet, links-indstillingen og versionen.
+En version tilhører én URL og én PDF-vindue.
+Et vindue uden tekst viser ikke, at de andre PDF-sider har ingen tekst.
+Gentagelse af det første kald læser den første tekst igen.
+```json {"urls":["COPY_SEARCH_RESULT_URL"]} ``` ```json {"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false} ``` For example, a PDF result says "The text covers PDF pages 1 to 50 of 120 only" and gives the next window.
+A find in that window gives more matches with this object. Copy it as the next call.
+```json {"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200} ```
+{% endif %}
+{% if has('whois_lookup') %}
+{{ tool('whois_lookup') }} accepterer domains som en liste og domain som én domæne.
+Giv domænenavn uden URL-sti. Resultatet rapporterer hver domæne separat.
+Et null registrant betyder, at registret ikke har publiceret den værdi. Registraren sælger domæneregistreringen.
+```json {"domains":["example.org"]} ``` ```json {"domains":["example.org","example.com"],"domain":"example.net"} ```
+{% endif %}

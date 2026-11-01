@@ -1,0 +1,88 @@
+---
+name: folders_and_files
+group: technique
+description: hoe je kunt zien wat een verzameling bevat: datasets, mappen, bestandstypen, aantallen en data, en hoe je een bestand kunt vinden op naam of pad
+tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
+terms: Woorden hiervoor: verzameling, dataset, map, directory, pad, bestandsnaam, bestandstype, extensie, formaat, aantallen, hoeveel bestanden, grootte, grootste, overzicht, inventaris, wat een verzameling bevat, documenten per jaar.
+not_for: Niet nodig wanneer het verzoek alleen gaat over de inhoud van documenten.
+---
+Mappen en bestanden
+
+{% if has('list_collections') and has('search_facet_values') %}
+Voor een overzicht van de verzameling roep {{ tool('list_collections') }} op met {}.
+Roep daarna {{ tool('search_facet_values') }} met {} één keer op voor elk toegestaan bestandstype en elke taal.
+De standaardmatrix bevat beide facetten al. Er is geen aparte aanroep per verzameling of facet nodig.
+{% endif %}
+
+{% if has('list_collections') %}
+{{ tool('list_collections') }} neemt geen argumenten mee. Het geeft verzamelingnamen, aantallen documenten en aantallen datasets.
+```json {} ```
+
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} geeft de opslagaantallen van elke verzameling en dataset.
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} geeft de submappen en bestanden van één map van een dataset.
+{% endif %}
+{% if has('folder_search') %}
+Om een map of bestand op naam binnen één dataset te vinden, roep {{ tool('folder_search') }} op.
+{% endif %}
+{% if has('search_collections') %}
+Om een bestand op naam in elke verzameling te vinden, roep {{ tool('search_collections') }} op met `filename_only` op true. Geef de naam of een deel ervan als zoekopdracht.
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} telt de documenten van een zoekopdracht op datum of grootte.
+{% endif %}
+{% if has('search_facet_values') %}
+{{ tool('search_facet_values') }} geeft de waarden van een filter, inclusief bestandstypen, met aantallen.
+{% endif %}
+
+Een bestandsnaam of -pad kan één document identificeren. De `file_hash` van een resultaatregel identificeert het direct.
+
+Gebruik metadata-tools voor een inventarisatieverzoek. Hun aantallen kunnen het verzoek direct beantwoorden.
+Inhoudszoekingen zijn alleen nuttig wanneer de persoon vraagt wat de documenten bevatten.
+
+{% if has('search_facet_values') %}
+Roep {{ tool('search_facet_values') }} één keer op voor meerdere verzamelingen en facets.
+De argumenten zijn collection, facets, query en ids.
+Laat collection weg of geef [] voor elke toegestane verzameling. Geef één naam of een lijst om de selectie te beperken.
+Laat facets weg voor ["file_types", "language"]. Geef een lijst van exacte facetnamen voor andere distributies.
+Gebruik file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc, re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money of re_crypto_wallet.
+file_type is ongeldig. Gebruik file_types.
+query zoekt tekst binnen facetwaarden. Het zoekt niet in documentinhoud.
+ids lost optioneel bekende term-identificaties op. Gewone zoekopdrachten gebruiken de waarde tekst en hebben geen identificaties nodig.
+
+Het resultaat heeft kolommen en items. Elke rij begint met de verzameling.
+Elk facetveld bevat [text, count]-paren. Kopieer tekst naar facet_filters voor een latere inhoudszoekopdracht.
+Een nullveld heeft een gemelde fout. Een leeg veld heeft geen teruggegeven waarden.
+Aantallen verwijzen naar geïndexerde documentmatches per waarde. Meerdere waarden kunnen op één document van toepassing zijn.
+Voeg facetaantallen niet toe om een afzonderlijk totaal te beweren. Inventairtalen komen uit list_collections.
+De standaard facetlijst kan ongewone waarden overslaan. Gebruik query om een specifieke waarde te vinden.
+Gebruik meer met read_more wanneer het resultaat doorgaat.
+
+Deze minimale aanroep inventariseert formaten en talen binnen toegestane Verzamelingen.
+```json {} ``` Deze aanroep vergelijkt twee geselecteerde Verzamelingen en doorzoekt hun e-mailadreswaarden.
+```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} vereist Verzameling. dataset selecteert optioneel één Dataset.
+Deze aanroep leet alle dataset-opslagtellingen binnen één Verzameling.
+```json {"collection":"alpha"} ``` Deze aanroep selecteert één Dataset.
+```json {"collection":"alpha","dataset":"files"} ```
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} vereist Verzameling en Dataset. node_id selecteert optioneel een mapnode uit de resultaten.
+Laat node_id weg om de datasetroot te lezen. Kopieer kindnode-identificatoren naar latere aanroepen.
+```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('folder_search') %}
+{{ tool('folder_search') }} vereist Verzameling, Dataset en zoekopdracht. node_id beperkt de zoekopdracht optioneel tot één map.
+```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} accepteert dezelfde filters als search_collections, behalve sort en queries.
+field is date, mentioned_date of size. De standaardwaarde is date. query is standaard een lege zoekopdracht.
+Een weggelaten Verzameling dekt elke toegestane Verzameling. Het resultaat geeft buckets en het geselecteerde field terug.
+```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{% endif %}

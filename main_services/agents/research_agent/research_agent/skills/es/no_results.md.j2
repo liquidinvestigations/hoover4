@@ -1,0 +1,71 @@
+---
+name: no_results
+group: stumble
+description: qué hacer cuando una búsqueda no encuentra resultados: quitar los filtros, dividir una frase, probar otras formas de un nombre y luego indicar qué falta
+tools: search_collections, search_passages, web_search
+---
+Cuando una búsqueda no encuentra nada
+
+{% if has('search_collections') %}
+Lea primero word_counts.
+Cuando un nombre no aparece en ningún lugar, lea las sugerencias de ortografía indexadas y sus controles verificados.
+No use una sugerencia de ortografía como nombre solicitado.
+Cuando busque una sugerencia de ortografía, indíquelo en la respuesta como una ortografía diferente.
+Cuando ninguna ortografía coincida, informe que las Colecciones buscadas no contienen el nombre.
+
+{% endif %}
+Siga estos pasos de búsqueda cuando las búsquedas previas no responden la pregunta.
+{% if has('search_collections') %}
+1. Busque cada nombre como una frase entre comillas.
+2. Busque palabras sin comillas, iniciales, direcciones de correo electrónico y nombres en el idioma del documento.
+Lea word_counts y las sugerencias de ortografía. Use una sugerencia solo para el nombre pretendido.
+Use dasovi?h para una letra variable y dasovic% para una letra final opcional.
+Use skilling << resignado cuando el orden de las palabras importa.
+3. Quite los filtros uno a uno. Ejecute una búsqueda sin filtros.
+{% if has('search_facet_values') %}
+Verifique los valores de los filtros con {{ tool('search_facet_values') }}.
+{% endif %}
+{% if has('search_histogram') %}
+Verifique las fechas con {{ tool('search_histogram') }}.
+{% endif %}
+{% if has('search_passages') %}
+4. Busque una descripción del contenido con {{ tool('search_passages') }}.
+{% endif %}
+{% if has('folder_search') %}
+5. Use {{ tool('folder_search') }} cuando la solicitud nombre una carpeta, ruta o archivo.
+{% endif %}
+{% if has('folder_list') %}
+Use {{ tool('folder_list') }} para esa carpeta.
+{% endif %}
+{% if has('read_documents') %}
+6. Lea los mejores 1 a 3 resultados con {{ tool('read_documents') }}.
+{% endif %}
+{% if has('doc_search_text') %}
+Use {{ tool('doc_search_text') }} para el texto relevante dentro de un documento.
+{% endif %}
+{% if has('web_search') %}
+7. Busque en la web solo cuando la solicitud lo permite.
+{% endif %}
+{% if has('read_page') %}
+Lea las mejores páginas web con {{ tool('read_page') }}.
+{% endif %}
+{% else %}
+{% if has('web_search') %}
+1. Busque cada nombre como una frase entre comillas, y luego otras formas del nombre, sus iniciales y el idioma del lugar.
+{% endif %}
+{% if has('read_page') %}
+2. Lea las mejores páginas web con {{ tool('read_page') }}.
+{% endif %}
+{% endif %}
+
+Después de que los pasos disponibles no encuentren ninguna coincidencia de palabra clave, responde indicando la ausencia y las búsquedas realizadas.
+{% if has('search_collections') %}
+Antes de indicar una ausencia, ejecuta al menos 4 búsquedas distintas con al menos 2 herramientas de búsqueda disponibles.
+No repitas una búsqueda idéntica. Indica las colecciones buscadas y los hechos que faltan.
+Limita la afirmación de ausencia a las búsquedas y los documentos que examinaste.
+Por ejemplo, di "Las actas del comité buscadas y los registros de transferencia no identificaron una fecha de aprobación." Estas búsquedas no establecen que no exista ningún registro de aprobación en ninguna colección permitida.
+{% else %}
+Antes de indicar una ausencia, ejecuta al menos 4 búsquedas distintas.
+No repitas una búsqueda idéntica. Indica las búsquedas y las páginas leídas.
+Limita la afirmación de ausencia a las búsquedas y las páginas que examinaste.
+{% endif %}

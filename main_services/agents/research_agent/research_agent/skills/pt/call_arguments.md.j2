@@ -1,0 +1,69 @@
+---
+name: call_arguments
+group: stumble
+description: como preencher os argumentos de uma chamada de ferramenta: apenas os nomes que o seu schema fornece, uma lista quando é pedida uma lista, e sem aspas adicionais
+tools:
+---
+Preencher os argumentos de uma chamada
+
+{% if has('read_tool') %}
+Quando não tiveres a certeza dos argumentos de uma ferramenta, chama {{ tool('read_tool') }} com o nome dela. Ela indica-te cada argumento, o seu tipo e os argumentos que a ferramenta exige.
+
+{% endif %}
+1. Indica apenas os nomes de argumentos que a ferramenta fornece. Um argumento com outro nome é recusado.
+2. Indica cada argumento obrigatório.
+3. Onde a ferramenta pedir uma lista, indica uma lista, também para um único valor. Escreve queries ["lease"]. Não escrevas queries "lease".
+4. Onde a ferramenta pedir um número ou true ou false, indica o valor sem aspas. Escreve filename_only true. Não escrevas filename_only "true".
+5. Não coloques aspas dentro de um valor de texto. Escreve status done. Não escrevas status "\"done\"".
+6. Mantém cada valor dentro dos limites da sua ferramenta, como o número máximo de itens de uma lista.
+7. Onde a ferramenta pedir uma lista de objetos, indica uma lista de objetos. Não indiques um texto
+{% if has('cite_documents') %}
+   que contenha JSON. Escreve citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
+   Não escrevas citations "[{\"collection\": ...}]".
+{% elif has('cite_pages') %}
+   que contenha JSON. Escreve pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
+   Não escrevas pages "[{\"url\": ...}]".
+{% else %}
+   que contenha JSON.
+{% endif %}
+{% if has('write_file') %}
+8. Indica o nome do ficheiro em cada chamada {{ tool('write_file') }} e {{ tool('patch_file') }}.
+{% endif %}
+
+Quando uma chamada é recusada, o erro nomeia o argumento e o que nele está errado. Corrige esse argumento e, de seguida, envia a chamada.
+
+{% if has('search_agent_tools') %}
+{{ tool('search_agent_tools') }} requer consulta, uma descrição de tarefa de até 160 caracteres.
+Retorna nomes e descrições de ferramentas relevantes. Leia uma ferramenta antes de usar argumentos desconhecidos.
+```json {"query":"Encontre uma passagem no fim de um documento longo."} ```
+{% endif %}
+{% if has('read_tool') %}
+{{ tool('read_tool') }} requer nome, o nome exato de uma ferramenta disponível.
+Retorna a descrição e o esquema de entrada completo, incluindo valores permitidos, valores padrão e campos obrigatórios.
+```json {"name":"read_documents"} ``` Após um erro de argumento desconhecido, leia o esquema da ferramenta que falhou antes de tentar novamente.
+{% if has('update_plan') %}
+Por exemplo, esta {{ tool('update_plan') }} falha porque `plan` não é um argumento.
+```json {"plan":["Encontre a mensagem."]} ``` Leia o seu esquema com {{ tool('read_tool') }}.
+```json {"name":"update_plan"} ``` Depois, chame {{ tool('update_plan') }} com objetivo e passos.
+```json {"goal":"Encontre a data de aprovação.","steps":[{"text":"Encontre a mensagem.","status":"pendente"}]} ```
+{% endif %}
+{% if has('read_documents') %}
+Se {{ tool('read_documents') }} recusar `source2` ou `offset2`, leia o seu esquema antes de tentar novamente.
+Use uma chamada separada para cada documento que precise de argumentos de intervalo diferentes.
+{% endif %}
+{% endif %}
+{% if has('search_skills') %}
+{{ tool('search_skills') }} aceita consulta, até 160 caracteres. A omissão ou texto vazio lista todas as competências disponíveis.
+Retorna nomes de métodos e descrições.
+```json {} ``` ```json {"query":"Leia um documento longo e continue a sua passagem correspondente."} ```
+{% endif %}
+{% if has('read_skill') %}
+{{ tool('read_skill') }} requer nome, o nome exato retornado pela descoberta de competências.
+Retorna as instruções do método, os argumentos da ferramenta e exemplos.
+```json {"name":"passages"} ```
+{% endif %}
+{% if has('write_note') %}
+{{ tool('write_note') }} requer texto, com 1 a 2.000 caracteres. Guarda evidências e questões em aberto para contexto posterior.
+Inclua as identidades das fontes e a próxima chamada útil quando esse contexto tiver de sobreviver à compactação.
+```json {"text":"A passagem de aprovação está no intervalo de documento retornado. Verifique o seu autor original antes de lhe atribuir a autoria."} ```
+{% endif %}

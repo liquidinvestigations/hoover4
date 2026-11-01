@@ -1,0 +1,19 @@
+---
+name: todo_upkeep
+group: stumble
+description: hoe je het plan bijhoudt met update_plan, de stappen en hun statussen
+tools: update_plan
+---
+Het plan behouden
+
+{{ tool('update_plan') }} neemt het doel en de hele lijst met stappen. Elke stap heeft tekst en status, en een voltooide stap heeft een korte notitie.
+
+1. Stuur de hele lijst in elke aanroep, in de juiste volgorde. Een stap die je weglaat, staat niet meer in het plan.
+2. Geef elke stap als object met tekst en status. status is pending of done.
+3. Een stap is pending tot zijn werk is afgelopen. Stuur hem daarna als done met een notitie, zoals found, not found of replaced.
+4. Houd de tekst van een stap gelijk als alleen de status verandert. De stap behoudt dan zijn id.
+5. Een nieuw doel begint een nieuw plan.
+6. {{ tool('update_plan') }} houdt alleen het plan bij. Schrijf een rapport of een ander bestand met {{ tool('write_file') }}.
+
+Dit is een voorbeeld. Stap 1 heeft gevonden wat je nodig hebt, en stap 2 staat nog open.
+```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` Het resultaat toont de hele plan met de id van elke stap. Een aanroep die niets verandert, geeft het ongewijzigd terug. Corrigeer de genoemde veld voordat je opnieuw aanroept.

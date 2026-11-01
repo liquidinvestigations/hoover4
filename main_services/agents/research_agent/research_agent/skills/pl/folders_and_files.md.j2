@@ -1,0 +1,88 @@
+---
+name: folders_and_files
+group: technique
+description: jak sprawdzić, co zawiera kolekcja: zbiory danych, foldery, typy plików, liczebność i daty oraz jak znaleźć plik po nazwie lub ścieżce
+tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
+terms: Słowa kluczowe: kolekcja, zbiór danych, folder, katalog, ścieżka, nazwa pliku, typ pliku, rozszerzenie, format, liczebność, ile plików, rozmiar, największy, przegląd, inwentaryzacja, zawartość kolekcji, dokumenty według roku.
+not_for: Niepotrzebne, gdy zapytanie dotyczy wyłącznie treści dokumentów.
+---
+Foldery i pliki
+
+{% if has('list_collections') and has('search_facet_values') %}
+Aby uzyskać przegląd kolekcji, wywołaj {{ tool('list_collections') }} z {}.
+Następnie wywołaj {{ tool('search_facet_values') }} z {} raz dla każdego rodzaju plików i języków permitted kolekcji.
+Domyślna maciera zawiera już obie osie. Nie ma potrzeby wykonywania osobnego wywołania dla kolekcji ani osi.
+{% endif %}
+
+{% if has('list_collections') %}
+{{ tool('list_collections') }} nie przyjmuje argumentów. Zwraca nazwy kolekcji, liczbę dokumentów i liczbę zbiorów danych.
+```json {} ```
+
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} zwraca liczbę zajmowanego miejsca dla każdej kolekcji i zbioru danych.
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} zwraca foldery podrzędne i pliki jednego folderu zbioru danych.
+{% endif %}
+{% if has('folder_search') %}
+Aby znaleźć folder lub plik po nazwie w jednym zbiorze danych, wywołaj {{ tool('folder_search') }}.
+{% endif %}
+{% if has('search_collections') %}
+Aby znaleźć plik po nazwie we wszystkich kolekcjach, wywołaj {{ tool('search_collections') }} z `filename_only` ustawionym na true. Podaj nazwę lub jej część jako zapytanie.
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} liczy dokumenty wyszukiwania według daty lub rozmiaru.
+{% endif %}
+{% if has('search_facet_values') %}
+{{ tool('search_facet_values') }} zwraca wartości filtra, w tym rodzajów plików, wraz z liczbami.
+{% endif %}
+
+Nazwę lub ścieżkę pliku można wykorzystać do identyfikacji jednego dokumentu. Wiersz wyniku `file_hash` identyfikuje go bezpośrednio.
+
+Do zapytania inwentaryzacyjnego użyj narzędzi metadanych. Ich liczby mogą bezpośrednio odpowiedzieć na zapytanie.
+Wyszukiwanie treści przydaje się tylko wtedy, gdy osoba pyta, co dokumenty mówią.
+
+{% if has('search_facet_values') %}
+Wywołaj {{ tool('search_facet_values') }} raz dla kilku kolekcji i facetów.
+Argumentami są collection, facets, query i ids.
+Pomiń collection lub podaj [] dla każdej dozwolonej kolekcji. Podaj jedną nazwę lub listę, aby zawęzić wybór.
+Pomiń facets dla ["file_types", "language"]. Podaj listę dokładnych nazw facetów dla pozostałych rozkładów.
+Użyj file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc, re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money lub re_crypto_wallet.
+file_type jest nieprawidłowe. Użyj file_types.
+query znajduje tekst wewnątrz wartości facetów. Nie szuka w treści dokumentu.
+ids opcjonalnie rozwiązuje znane identyfikatory terminów. Zwykłe wyszukiwanie używa tekstu wartości i nie wymaga identyfikatorów.
+
+Wynik zawiera kolumny i elementy. Każde wiersze zaczyna się od swojej kolekcji.
+Każda komórka faktu zawiera pary [text, count]. Skopiuj tekst do facet_filters w celu późniejszego wyszukiwania treści.
+Komórka z null zawiera zgłoszony błąd. Pusta komórka nie zwraca żadnych wartości.
+Liczby odnoszą się do zindeksowanych trafień dokumentów na każdą wartość. Do jednego dokumentu może zastosować się kilka wartości.
+Nie dodaj liczb faktu, aby twierdzić o odrębnym sumie. Sumy inwentaryzacyjne pochodzą z list_collections.
+Domyślna lista facetów może pomijać nieczęste wartości. Użyj query, aby znaleźć konkretną wartość.
+Użyj więcej z read_more, gdy wynik się kontynuuje.
+
+To minimalne wywołanie inwentaryzuje formaty plików i języki w ramach dozwolonych Kolekcji.
+```json {} ``` To wywołanie porównuje dwie wybrane Kolekcje i szuka ich wartości adresów e-mail.
+```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} wymaga Kolekcji. Zbiór danych wybiera opcjonalnie один zbiór danych.
+To wywołanie odczytuje wszystkie liczniki magazynu zbiorów danych w ramach jednej Kolekcji.
+```json {"collection":"alpha"} ``` To wywołanie wybiera один zbiór danych.
+```json {"collection":"alpha","dataset":"files"} ```
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} wymaga Kolekcji i zbioru danych. node_id opcjonalnie wybiera zwrócony węzeł folderu.
+Pominij node_id, aby odczytać katalog główny zbioru danych. Skopiuj identyfikatory węzłów potomnych do kolejnych wywołań.
+```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('folder_search') %}
+{{ tool('folder_search') }} wymaga Kolekcji, zbioru danych i zapytania. node_id opcjonalnie ogranicza szukanie do jednego folderu.
+```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} przyjmuje te same filtries co search_collections, z wyłączeniem sortowania i zapytań.
+field to date, mentioned_date lub size. Domyślnie date. query domyślnie to puste zapytanie.
+Pominięta Kolekcja obejmuje każdą dozwoloną Kolekcję. Wynik zwraca wiadra i wybrane pole.
+```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{% endif %}

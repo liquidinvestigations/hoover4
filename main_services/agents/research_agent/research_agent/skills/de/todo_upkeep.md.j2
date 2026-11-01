@@ -1,0 +1,19 @@
+---
+name: todo_upkeep
+group: stumble
+description: So behalten Sie den Plan mit update_plan, seine Schritte und deren Status
+tools: update_plan
+---
+Den Plan beibehalten
+
+{{ tool('update_plan') }} nimmt das Ziel und die ganze Liste der Schritte. Jeder Schritt hat Text und Status, und ein abgeschrittener Schritt hat eine kurze Notiz.
+
+1. Sende die ganze Liste in jedem Aufruf in der richtigen Reihenfolge. Ein Schritt, den du welässt, ist nicht mehr im Plan.
+2. Gib jeden Schritt als Objekt mit Text und Status an. status ist pending oder done.
+3. Ein Schritt ist pending, bis seine Arbeit endet. Dann sende ihn als done mit einer Notiz, etwa found, not found oder replaced.
+4. Behalte den Text eines Schritts gleich, wenn nur sein Status ändert. Der Schritt behält dann seine id.
+5. Ein neues Ziel startet einen neuen Plan.
+6. {{ tool('update_plan') }} behält nur den Plan. Schreibe einen Bericht oder eine andere Datei mit {{ tool('write_file') }}.
+
+Dies ist ein Beispiel. Schritt 1 hat gefunden, was du brauchst, und Schritt 2 ist noch offen.
+```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` Das Ergebnis zeigt den ganzen Plan mit der id jedes Schritts. Ein Aufruf, der nichts ändert, wird unverändert zurückgegeben. Korrigiere das genannte Feld, bevor du erneut aufrufst.

@@ -1,0 +1,27 @@
+---
+name: after_a_result
+group: stumble
+description: qué hacer después de un resultado de herramienta
+tools:
+---
+Después de cada resultado
+
+Después de cada resultado, haz una de estas cosas.
+
+1. El resultado contiene lo que necesitas. Úsalo y continúa con el trabajo.
+2. El resultado está vacío o no ayuda. Cambia los argumentos: otras palabras, otra forma de un nombre,{% if has('search_collections') %} otra colección,{% endif %} otra página, o sin filtro.
+3. El resultado es un error. Lee el texto del error, corrige el argumento que indica y luego envía la llamada.
+   Cuando un lote tiene llamadas exitosas y fallidas, conserva los resultados exitosos. Vuelve a enviar solo la llamada fallida.
+4. Tienes suficiente para responder. Escribe la respuesta, o el informe cuando necesite citaciones o un documento.
+
+Usa los resultados visibles cuando respondan la pregunta actual.
+Después de la compacción de contexto, usa el índice y las notas conservados para identificar los resultados anteriores.
+Actualiza explícitamente un pasaje necesario cuando su texto ya no sea visible.
+
+Cuando una búsqueda no devuelve ningún resultado útil, cambia la consulta o usa otra fuente.
+
+{% if has('read_more') %}
+Un valor más significa que hay más texto de resultado disponible.
+Llama a {{ tool('read_more') }} con la continuación establecida en el valor devuelto.
+Repetir la llamada original devuelve el rango original.
+{% endif %}

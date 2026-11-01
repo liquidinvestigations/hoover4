@@ -1,0 +1,46 @@
+---
+name: entities
+group: technique
+description: 如何列出文档中提及的人物、组织、地点、电子邮件地址和金额
+tools: list_document_entities, search_entity_explainer, search_facet_values
+terms: 相关用语：人物、人员、姓名、组织、公司、机构、地点、位置、城市、国家、电子邮件地址、电话号码、金额、资金、标识符、账号、关键人物、提及了谁。
+not_for: 当请求指定某一个人并询问文档关于该说了什么时，无需使用。
+---
+列出文档名称
+
+{% if has('list_document_entities') %}
+1. {{ tool('list_document_entities') }} 列出某文档提取出的姓名。提供其数据集集合名称和文件哈希。
+2. 结果分两层。entities 是语言模型对正文的解读：人物、组织和地点。它可能出错，因此在使用某个姓名之前，先在文本中核实。structured 保存经规则校验的值，例如带有有效校验位的标识符、日期，以及带货币代码的金额。
+3. 使用 {{ tool('search_collections') }} 搜索新出现的姓名、地址和标识符。将同一姓名的各种写法合并为一次调用。
+{% endif %}
+{% if has('search_entity_explainer') %}
+4. 当结果给出某个规则和你无法理解的某个值时，调用 {{ tool('search_entity_explainer') }}。
+{% endif %}
+{% if has('search_facet_values') %}
+5. {{ tool('search_facet_values') }} 给出某实体筛选在数据集集合中各取值及其计数。
+{% endif %}
+
+管道提取出的姓名，并不能证明该文档就是关于此人的。阅读其周围的文本。
+
+当某姓名一处都未出现时，阅读索引出的拼写建议及其已核实的计数。
+不要将建议的拼写作为所请求的姓名。
+当你搜索某建议拼写时，在答案中将其标注为另一种拼写。
+当没有任何拼写匹配时，报告所搜索的数据集集合中并不持有该姓名。
+
+{% if has('list_document_entities') %}
+{{ tool('list_document_entities') }} 接受以 collection 和 file_hash 对象列表形式提供的文档。
+这种形式可在不配对无关列表的情况下保留跨数据集集合的身份。
+或者，collection 和 file_hash 可接受相互匹配的列表，或一个 collection 配多个哈希值。
+结果会按文档对提取出的值进行分组。当需要进一步查看时，请使用 read_more。
+```json {"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]} ``` ```json {"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]} ```
+{% endif %}
+{% if has('search_entity_explainer') %}
+{{ tool('search_entity_explainer') }} 需要来自提取出的实体结果的 collection、entity_type 和 entity_value。
+它会返回提取规则的描述以及匹配的文档。
+```json {"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"} ```
+{% endif %}
+{% if has('search_facet_values') %}
+对于实体分布，请调用 {{ tool('search_facet_values') }}，并传入 facets 以及可选的 collection 和 query。
+结果矩阵在每个 facet 单元格中包含 [text, count] 配对。
+```json {"facets":["ner_per","ner_org","ner_loc"]} ``` ```json {"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"} ```
+{% endif %}

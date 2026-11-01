@@ -1,0 +1,19 @@
+---
+name: todo_upkeep
+group: stumble
+description: 如何使用 update_plan 保留计划、其步骤及其状态
+tools: update_plan
+---
+保持计划
+
+{{ tool('update_plan') }} 接受目标以及整份步骤列表。每个步骤都包含文本和状态，已完成步骤含一条简短备注。
+
+1. 在每次调用中按顺序发送整份列表。被你省略的步骤将不再属于该计划。
+2. 将每个步骤作为含文本和状态的对象给出。状态为 pending 或 done。
+3. 步骤在其工作完成前保持 pending。随后以 done 发送并附备注，例如 found、not found 或 replaced。
+4. 当仅状态改变时，保持步骤文本不变。该步骤从而保留其 id。
+5. 新目标开启一个新计划。
+6. {{ tool('update_plan') }} 仅保留计划。使用 {{ tool('write_file') }} 撰写报告或其他文件。
+
+这是一个示例。步骤 1 找到了你所需的内容，而步骤 2 仍处于待处理状态。
+```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` 结果展示整份计划及每个步骤的 id。未改变任何内容的调用返回不变。在再次调用前，先修正所命名的字段。

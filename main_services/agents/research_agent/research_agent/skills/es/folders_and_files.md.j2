@@ -1,0 +1,88 @@
+---
+name: folders_and_files
+group: technique
+description: cómo ver el contenido de una Colección: conjuntos de datos, carpetas, tipos de archivo, recuentos y fechas, y cómo encontrar un archivo por su nombre o ruta
+tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
+terms: Palabras clave: colección, conjunto de datos, carpeta, directorio, ruta, nombre de archivo, tipo de archivo, extensión, formato, recuentos, cuántos archivos, tamaño, mayor, resumen, inventario, contenido de una colección, documentos por año.
+not_for: No es necesario cuando la consulta solo se refiere al contenido de los documentos.
+---
+Carpetas y archivos
+
+{% if has('list_collections') and has('search_facet_values') %}
+Para obtener un resumen de la Colección, llama {{ tool('list_collections') }} con {}.
+Luego llama {{ tool('search_facet_values') }} con {} una vez por cada tipo de archivo e idioma de las colecciones permitidas.
+La matriz predeterminada ya contiene ambas facetas. No se necesita una llamada separada por colección o faceta.
+{% endif %}
+
+{% if has('list_collections') %}
+{{ tool('list_collections') }} no toma argumentos. Proporciona nombres de colección, recuentos de documentos y recuentos de conjuntos de datos.
+```json {} ```
+
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} proporciona los recuentos de almacenamiento de cada colección y conjunto de datos.
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} proporciona las carpetas y archivos hijos de una carpeta de un conjunto de datos.
+{% endif %}
+{% if has('folder_search') %}
+Para encontrar una carpeta o archivo por nombre dentro de un conjunto de datos, llama {{ tool('folder_search') }}.
+{% endif %}
+{% if has('search_collections') %}
+Para encontrar un archivo por nombre en todas las colecciones, llama {{ tool('search_collections') }} con `filename_only` establecido en true. Indica el nombre o parte de él como consulta.
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} cuenta los documentos de una búsqueda por fecha o tamaño.
+{% endif %}
+{% if has('search_facet_values') %}
+{{ tool('search_facet_values') }} proporciona los valores de un filtro, incluidos los tipos de archivo, con recuentos.
+{% endif %}
+
+El nombre o ruta de un archivo puede identificar un documento. La fila de resultado `file_hash` lo identifica directamente.
+
+Utiliza las herramientas de metadatos para una solicitud de inventario. Sus recuentos pueden responder a la solicitud directamente.
+Las búsquedas de contenido solo son útiles cuando la persona pregunta qué dicen los documentos.
+
+{% if has('search_facet_values') %}
+Llama {{ tool('search_facet_values') }} una sola vez para varias Colecciones y facetas.
+Los argumentos son collection, facets, query e ids.
+Omite collection o indica [] para cada Colección permitida. Indica un nombre o una lista para restringir la selección.
+Omite las facetas para ["file_types", "language"]. Indica una lista de nombres de facetas exactos para otras distribuciones.
+Usa file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc, re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money o re_crypto_wallet.
+file_type es inválido. Usa file_types.
+query encuentra texto dentro de los valores de faceta. No busca en el contenido de los documentos.
+ids resuelve opcionalmente identificadores de términos conocidos. Las búsquedas ordinarias usan el texto del valor y no necesitan identificadores.
+
+El resultado tiene columnas y elementos. Cada fila comienza con su Colección.
+Cada celda de faceta contiene pares [text, count]. Copia el texto en facet_filters para una búsqueda de contenido posterior.
+Una celda nula tiene un error reportado. Una celda vacía no devuelve valores.
+Los conteos se refieren a coincidencias de documentos indexados por valor. Varios valores pueden aplicarse a un documento.
+No sumes los conteos de facetas para afirmar un total distinto. Los totales de inventario provienen de list_collections.
+La lista de facetas predeterminada puede omitir valores poco comunes. Usa query para encontrar un valor específico.
+Usa más con read_more cuando el resultado continúa.
+
+Esta llamada mínima inventa los formatos de archivo y los idiomas de las colecciones permitidas.
+```json {} ``` Esta llamada compara dos colecciones seleccionadas y busca sus valores de dirección de correo electrónico.
+```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} requiere collection. dataset opcionalmente selecciona un conjunto de datos.
+Esta llamada lee todos los conteos de almacenamiento del conjunto de datos dentro de una colección.
+```json {"collection":"alpha"} ``` Esta llamada selecciona un conjunto de datos.
+```json {"collection":"alpha","dataset":"files"} ```
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} requiere collection y dataset. node_id opcionalmente selecciona un nodo de carpeta devuelto.
+Omite node_id para leer la raíz del conjunto de datos. Copia los identificadores de nodos hijos en llamadas posteriores.
+```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('folder_search') %}
+{{ tool('folder_search') }} requiere collection, dataset y query. node_id opcionalmente limita la búsqueda a una carpeta.
+```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} acepta los mismos filtros que search_collections, excepto sort y queries.
+field es date, mentioned_date o size. Por defecto es date. query por defecto es una consulta vacía.
+collection omitida cubre toda la colección permitida. El resultado devuelve buckets y el campo seleccionado.
+```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{% endif %}

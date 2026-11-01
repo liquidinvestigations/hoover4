@@ -1,0 +1,20 @@
+{
+ "glossary_revision": "38e8b095d07db8b8",
+ "terms": {
+  "skill": "vještina",
+  "tool": "alat",
+  "tool call": "poziv alata",
+  "argument": "argument",
+  "citation handle": "oznaka citata",
+  "quote": "navod",
+  "workspace file": "datoteka radnog prostora",
+  "report": "izvješće",
+  "hit": "pogodak",
+  "passage": "odsječak",
+  "query": "upit",
+  "web page": "web stranica",
+  "run": "pokretanje",
+  "note": "bilješka",
+  "plan": "plan"
+ }
+}

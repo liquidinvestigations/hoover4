@@ -1,0 +1,27 @@
+---
+name: after_a_result
+group: stumble
+description: que faire après un résultat d'outil
+tools:
+---
+Après chaque résultat
+
+Après chaque résultat, fais l'une de ces actions.
+
+1. Le résultat contient ce dont tu as besoin. Utilise-le, puis continue le travail.
+2. Le résultat est vide ou ne t'aide pas. Modifie les arguments : d'autres mots, une autre forme d'un nom,{% if has('search_collections') %} une autre collection,{% endif %} une autre page, ou aucun filtre.
+3. Le résultat est une erreur. Lis le texte de l'erreur, corrige l'argument qu'il nomme, puis renvoie l'appel.
+   Lorsqu'un lot contient des appels réussis et échoués, garde les résultats réussis. Renvoie uniquement l'appel échoué.
+4. Tu as assez de quoi répondre. Écris la réponse, ou le rapport quand il nécessite des citations ou un document.
+
+Utilise les résultats visibles lorsqu'ils répondent à la question actuelle.
+Après la compression du contexte, utilise l'index et les notes conservés pour identifier les résultats antérieurs.
+Actualise explicitement un passage requis lorsque son texte n'est plus visible.
+
+Lorsqu'une recherche ne retourne aucun résultat utile, modifie la requête ou utilise une autre source.
+
+{% if has('read_more') %}
+Une valeur plus grande signifie qu'un texte de résultat supplémentaire est disponible.
+Appelle {{ tool('read_more') }} avec la continuation réglée sur la valeur retournée.
+La répétition de l'appel original retourne la plage originale.
+{% endif %}

@@ -1,0 +1,20 @@
+{
+ "glossary_revision": "38e8b095d07db8b8",
+ "terms": {
+  "skill": "δεξιότητα",
+  "tool": "εργαλείο",
+  "tool call": "κλήση εργαλείου",
+  "argument": "όρισμα",
+  "citation handle": "χειριστής αναφοράς",
+  "quote": "παράθεση",
+  "workspace file": "αρχείο εργαστηρίου",
+  "report": "αναφορά",
+  "hit": "εύρεση",
+  "passage": "περίοδος",
+  "query": "ερώτημα",
+  "web page": "ιστοσελίδα",
+  "run": "εκτέλεση",
+  "note": "σημείωση",
+  "plan": "πλάνο"
+ }
+}

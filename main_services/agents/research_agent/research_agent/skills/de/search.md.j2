@@ -1,0 +1,87 @@
+---
+name: search
+group: general
+description: wie man Dokumentensammlungen durchsucht und die Abfragesyntax verwendet
+tools: search_collections
+---
+{% if has('search_collections') %}
+Durchsuchen der Dokumente des Users
+
+1. Durchsuchen Sie Dokumente, wenn ihr Inhalt die Frage beantworten kann.
+2. Nutzen Sie Sammlung, wenn die Anfrage eine einzelne Sammlung betrifft. Lassen Sie es weg, um über die Sammlungen zu suchen, die dieser Chat lesen kann.
+3. {{ tool('search_collections') }} akzeptiert mehrere Abfragen. Verwenden Sie relevante Formen eines Namens oder Adressen. Setzen Sie eine exakte Phrase in Anführungszeichen.
+4. OR, UND und NICHT sind gewöhnliche Wörter in einer Abfrage. Verwenden Sie | für entweder und -Wort zum Ausschließen eines Wortes.
+5. Kopieren Sie file_hash und collection aus einer Ergebniszeile. Schreiben Sie niemals selbst einen Hash.{% if has('read_more') %} Wenn eine Zeile keinen file_hash hat, rufen Sie {{ tool('read_more') }}.{% endif +%}
+6. Setzen Sie ein Datum- oder Größenfilter, wenn es hilft, die Frage zu beantworten.
+7. Wenn Sie berichten, dass eine Suche kein Dokument gefunden hat, geben Sie deren Abfrage, Sammlungen und Anzahl an.
+8. Ein Vorgang nimmt höchstens 12 Abfragen. Teilen Sie eine längere Liste in zwei Vorgänge.
+9. Geben Sie jeder Abfrage mindestens ein Wort zum Durchsuchen. Eine Abfrage, die nur aus -Wörtern besteht, wird abgelehnt.
+10. Setzen Sie filename_only auf true oder false. Es nimmt keinen Text an.
+
+Beispiel. Der User fragt nach allen Daten zu JoeBWilkinson@cs.com. Machen Sie einen Vorgang zu {{ tool('search_collections') }} mit den Abfragen ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Lesen Sie ein Dokument, wenn dessen Ergebniszeile nicht genug Evidenz für die Behauptung liefert.
+{% endif %}
+
+Folge diesen Suchschritten, wenn frühere Suchen die Frage nicht beantworten.
+{% if has('search_collections') %}
+1. Suche jeden Namen als zitierten Ausdruck.
+2. Suche nicht-zitierte Wörter, Initialen, E-Mail-Adressen und Namen in der Sprache des Dokuments.
+Lese word_counts und Rechtsvorschläge. Verwende einen Vorschlag nur für den beabsichtigten Namen.
+Verwende dasovi?h für eine variierende Buchstabe und dasovic% für einen optionalen Endbuchstaben.
+Verwende skilling << resigniert, wenn die Wortreihung eine Rolle spielt.
+3. Entferne Filter nacheinander. Führe eine Suche ohne Filter durch.
+{% endif %}
+{% if has('search_facet_values') %}
+Prüfe Filterwerte mit {{ tool('search_facet_values') }}.
+{% endif %}
+{% if has('search_histogram') %}
+Prüfe Daten mit {{ tool('search_histogram') }}.
+{% endif %}
+{% if has('search_passages') %}
+4. Suche eine Beschreibung des Inhalts mit {{ tool('search_passages') }}.
+{% endif %}
+{% if has('folder_search') %}
+5. Verwende {{ tool('folder_search') }}, wenn die Anfrage einen Ordner, Pfad oder Datei benennt.
+{% endif %}
+{% if has('folder_list') %}
+Verwende {{ tool('folder_list') }} für diesen Ordner.
+{% endif %}
+{% if has('read_documents') %}
+6. Lese die besten 1 bis 3 Treffer mit {{ tool('read_documents') }}.
+{% endif %}
+Für die Personen oder Organisationen eines Dokuments lesen den Teil dieses Dokuments, der sie benennt. Ein Verweis auf ein anderes Werk benennt dieses andere Werk.
+{% if has('doc_search_text') %}
+Verwende {{ tool('doc_search_text') }} für relevanten Text in einem Dokument.
+{% endif %}
+{% if has('web_search') %}
+7. Suche das Web nur, wenn die Anfrage es zulässt.
+{% endif %}
+{% if has('read_page') %}
+Lese die besten Webseiten mit {{ tool('read_page') }}.
+{% endif %}
+
+{% if has('search_collections') %}
+Die vollständigen Suchargumente sind collection, queries, query, sort, date_after, date_before, date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max, folder_term_id, filename_only und facet_filters.
+collection akzeptiert einen Namen oder eine Liste. Das Weglassen oder [] durchsucht alle erlaubten Sammlungen.
+query hat standardmäßig leeren Text. queries fügt optional bis zu 12 Formulare hinzu. Doppelte Formulare werden einmal ausgeführt.
+Eine leere Abfrage durchsucht alle Filtertreffer. Suchformulare zusammengeführte übereinstimmende Dokumentidentitäten.
+sort enthält Feld und Richtung. Feld ist relevance, date, file_size oder name. Richtung ist asc oder desc.
+Das Weglassen verwendet die Standard-Relevanzordnung.
+date_after und date_before verwenden inklusive UTC-Epochensekunden für das Dokumentdatum.
+mentioned_date_after und mentioned_date_before verwenden inklusive UTC-Epochensekunden für aus Text extrahierte Daten.
+date_unknown_only=true wählt Dokumente ohne bekanntes Dokumentdatum aus. Kombiniere es nicht mit einem bekannten-Datumsbereich.
+size_min und size_max sind inklusive Byte-Limits. folder_term_id wählt einen zurückgegebenen Ordnerbegriff aus.
+filename_only=true beschränkt die Abfrage auf Namen und Pfade. False verwendet den Dokumentinhalt.
+facet_filters ordnet gültige Facettennamen Listen von zurückgegebenen Werttexten zu. Das Weglassen wendet keine Facettenfilter an.
+Werte innerhalb einer Facette sind Alternativen. Verschiedene Facettenfilter müssen alle übereinstimmen.
+
+Jedes Ergebnis enthält collection, file_hash, path, snippet und verfügbaren Typ, Datum und Größe.
+q listet die nullbasierten Formulare auf, die die Zeile gefunden haben. query_forms meldet die Anzahl jeder Form.
+word_counts überprüft indizierte Wörter. suggestions listet nahegelegene indizierte Schreibweisen mit Anzahlen auf.
+Lese query_notes für reparierte Syntax, unbekannte Filter und fehlgeschlagene Suchformulare.
+more setzt das Ergebnis fort. Kopiere es in read_more. Eine erste Seite ohne Wiederholung benötigt keinen wiederholten identischen Aufruf.
+
+Dieser minimale Aufruf durchsucht alle erlaubten Sammlungen.
+```json {"query":"\"Joe Wilkinson\""} ``` Dieser erweiterte Aufruf kombiniert Abfrageformen, Sammlungsbereich, Sortierung, Daten, Größe und Facettenfilter.
+```json {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}} ``` Dieser separate Aufruf findet Dateien ohne bekanntes Dokumentdatum.
+```json {"query":"report","filename_only":true,"date_unknown_only":true} ``` Ersetzen Sie Sammlung, Ordner und Facettenwerte durch Werte, die für den aktuellen Chat zurückgegeben wurden.
+{% endif %}

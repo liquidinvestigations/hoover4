@@ -1,0 +1,45 @@
+---
+name: emails
+group: technique
+description: 如何阅读电子邮件文档：发件人、收件人、日期、主题、标题、副本和对话线程
+tools: doc_email, doc_metadata, read_documents
+---
+阅读电子邮件文档
+
+{% if has('search_collections') %}
+查找电子邮件 {{ tool('search_collections') }}。将地址或名称的各种形式放入一次调用中，例如地址、“姓名”和“名, 姓”。
+
+{% endif %}
+{% if has('doc_email') %}
+1. 使用电子邮件的 file_hash 调用 {{ tool('doc_email') }}。它提供发件人、收件人、副本、日期、主题、父消息、附件和消息图。
+2. 要追踪一条线程，请提供 node，即图中另一条消息的文件哈希。该图随即围绕该消息居中。
+3. 附件是独立的文档。使用其自己的 file_hash 阅读它。
+{% endif %}
+{% if has('read_documents') %}
+4. 使用 {{ tool('read_documents') }} 阅读消息的文本。
+{% endif %}
+{% if has('doc_metadata') %}
+5. 对于文本中不包含的标题和日期，调用 {{ tool('doc_metadata') }}。
+{% endif %}
+
+同一消息的副本可能存在于多个邮箱中。当计数取决于不同消息时，请比较其字段。
+
+{% if has('doc_email') %}
+{{ tool('doc_email') }} 需要 collection 和 file_hash。
+collection 为单个名称。file_hash 接受一个哈希，或来自该数据集集合最多十个哈希的列表。
+node 可选地将图居中于返回的消息哈希。省略则居中于所请求的邮件。
+配合 read_more 使用，以检查其余附件和图条目。
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+{% endif %}
+{% if has('doc_metadata') %}
+{{ tool('doc_metadata') }} 需要 collection 和 file_hash。它接受一个哈希，或最多十个哈希的列表。
+它返回存储的元数据、日期、地点和下载链接。使用 read_more 查看其余元数据字段。
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{% endif %}
+在指定作者、收件人或日期之前，先阅读所请求的段落。
+外层邮件信封属于外层消息。
+被转发或被引用的段落可能有不同的作者、收件人和日期。
+使用该段落的自身标题来识别其作者。
+转发消息的人不一定撰写了被引用的陈述。
+当归属仍不明确时，说明这一限制。
+针对目标范围和延续指令阅读段落。不要重复初次阅读去请求后续文本。

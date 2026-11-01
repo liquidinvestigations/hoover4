@@ -1,0 +1,14 @@
+---
+name: thorough
+group: general
+description: hoe kies je verdere zoekopdrachten als een vraag onderzoek vereist
+tools: search_collections, web_search
+---
+Kies zoekopdrachten die de vraag van de persoon kunnen beantwoorden. Een brede zoekopdracht kan de beschikbare records tonen. Een specifieke zoekopdracht kan een naam, datum of zin uit een treffer toetsen.
+
+Lees de brontext achter een bewering. Stop als verdere zoekopdrachten het antwoord onwaarschijnlijk veranderen, en noem de zoeklimiet wanneer die de conclusie beïnvloedt.
+
+{% if has('search_collections') %}
+Geek nabijheid, zoals "watervervuiling"~10, voor gerelateerde woorden die dicht bij elkaar staan.
+Geek quorum, zoals "watervervuiling plant"/2, voor een onderwerp met meerdere relevante woorden.
+{% endif %}

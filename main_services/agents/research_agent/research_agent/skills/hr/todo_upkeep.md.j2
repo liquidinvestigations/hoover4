@@ -1,0 +1,19 @@
+---
+name: todo_upkeep
+group: stumble
+description: kako zadržati plan s update_plan, njegove korake i njihove statuse
+tools: update_plan
+---
+Zadržavanjem plana
+
+{{ tool('update_plan') }} uzima cilj i cijeli popis koraka. Svaki korak ima tekst i status, a završeni korak ima kratku bilješku.
+
+1. Pošalji cijeli popis u svakom pozivu, po redu. Korak koji izostaviš više nije u planu.
+2. Navedi svaki korak kao objekt s tekstom i statusom. status je pending ili done.
+3. Korak je pending dok se njegov završi rad. Zatim ga pošalji kao done s bilješkom, kao što su found, not found ili replaced.
+4. Zadrži tekst koraka istim kada se mijenja samo njegov status. Korak tada zadržava svoj id.
+5. Novi cilj pokreće novi plan.
+6. {{ tool('update_plan') }} samo zadržava plan. Navedi izvješće ili drugu datoteku s {{ tool('write_file') }}.
+
+Ovo je primjer. Korak 1 pronašao je ono što trebate, a korak 2 je još otvoren.
+```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` Rezultat prikazuje cijeli plan s id-om svakog koraka. Poziv koji ništa ne mijenja vraća nepromijenjeno. Isprvi naznačeno polje prije nego što ponovo pozoveš.

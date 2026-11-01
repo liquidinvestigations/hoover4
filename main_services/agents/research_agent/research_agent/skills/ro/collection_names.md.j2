@@ -1,0 +1,20 @@
+---
+name: collection_names
+group: stumble
+description: cum să numești o colecție sau un set de date într-un apel: numele exact returnat de list_collections
+tools: list_collections, search_collections
+---
+Denumirea unei colecții
+
+1. Lasă colecția fără nume pentru a căuta în fiecare colecție a acestei conversații. Acest lucru este corect pentru majoritatea întrebărilor.
+2. Când trebuie să dai o colecție, copiază-ți numele exact din {{ tool('list_collections') }} sau din colecția unui rând de rezultat.
+3. Un set de date nu este o colecție. Tabelele setului de date /ehudx se află în colecția de tabele. Dă tabele.
+4. Nu schimba un nume. Nu adăuga un spațiu, nu schimba o literă mare sau nu traduce-l.
+5. Când un apel spune că o colecție este în afă colecțiilor permise, această conversație nu o poate citi. Nu trimite din nou apelul. Folosest colecțiile acestei conversații.
+
+Pentru a citi un document, dă colecția aceluiași rând de rezultat ca file_hash-ul său.
+
+Când un nume nu apare nicăieri, citește sugestiile de ortografie indexate și numerele lor verificate.
+Nu folosi o ortografie sugerată ca nume cerut.
+Când cauți o ortografie sugerată, numește-o în răspuns ca o ortografie diferită.
+Când nicio ortografie nu se potrivește, raportează că colecțiile căutate nu conțin numele.

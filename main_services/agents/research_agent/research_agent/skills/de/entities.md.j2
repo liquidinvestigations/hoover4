@@ -1,0 +1,46 @@
+---
+name: entities
+group: technique
+description: Wie listen Sie Personen, Organisationen, Orte, E-Mail-Adressen und Beträge auf, die in Dokumenten genannt werden
+tools: list_document_entities, search_entity_explainer, search_facet_values
+terms: Wörter dafür: Personen, Namen, Organisationen, Unternehmen, Institutionen, Orte, Standorte, Städte, Länder, E-Mail-Adressen, Telefonnummern, Beträge, Geld, Bezeichner, Kontonummern, Schlüsselfiguren, wer wird erwähnt.
+not_for: Nicht erforderlich, wenn die Anfrage eine Person nennt und fragt, was die Dokumente über diese Person sagen.
+---
+Auflistung der Dokumente, die Namen enthalten
+
+{% if has('list_document_entities') %}
+1. {{ tool('list_document_entities') }} listet extrahierte Namen für ein Dokument auf. Gib den Sammlungsname und den Datei-Hash an.
+2. Das Ergebnis hat zwei Ebenen. entities ist die Lesung des Textes durch ein Sprachmodell: Personen, Organisationen und Orte. Das kann falsch sein, also prüfe einen Namen im Text, bevor du dich darauf verlässt. structured enthält die Werte, die eine Regel validiert hat, etwa Belege mit einer gültigen Prüfziffer, Daten und Geldbeträge mit Währungscode.
+3. Suche nach den neuen Namen, Adressen und Belegen mit {{ tool('search_collections') }}. Fasse alle Schreibweisen eines Namens in einem Aufruf zusammen.
+{% endif %}
+{% if has('search_entity_explainer') %}
+4. Wenn ein Ergebnis eine Regel und einen Wert angibt, den du nicht verstehst, rufe {{ tool('search_entity_explainer') }} auf.
+{% endif %}
+{% if has('search_facet_values') %}
+5. {{ tool('search_facet_values') }} liefert die Werte eines Entitätsfilters über eine Sammlung hinweg, jeweils mit deren Häufigkeiten.
+{% endif %}
+
+Ein Name, den die Pipeline extrahiert hat, ist kein Beweis dafür, dass das Dokument von dieser Person handelt. Lies den Text darum herum.
+
+Wenn ein Name nirgendwhere vorkommt, lies die indizierten Rechtschervorschläge und deren geprünte Häufigkeiten.
+Verwende einen vorgeschlagenen Namen nicht als angeforderten Namen.
+Wenn du eine vorgeschlagene Schreibweise suchst, gib sie in der Antwort als andere Schreibweise an.
+Wenn keine Schreibweise passt, melde, dass die gesuchten Sammlungen den Namen nicht enthalten.
+
+{% if has('list_document_entities') %}
+{{ tool('list_document_entities') }} akzeptiert Dokumente als Liste von Sammlung- und file_hash-Objekten.
+Diese Form bewahrt die Identität gemischter Sammlungen, ohne nicht zusammenhängende Listen zu verknüpfen.
+Alternativ können collection und file_hash übereinstimmende Listen akzeptieren oder eine Sammlung mit mehreren Hashes.
+Das Ergebnis gruppiert die extrahierten Werte nach Dokument. Verwende read_more, wenn es weitergeht.
+```json {"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]} ``` ```json {"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]} ```
+{% endif %}
+{% if has('search_entity_explainer') %}
+{{ tool('search_entity_explainer') }} benötigt collection, entity_type und entity_value aus einem extrahierten Entitätsergebnis.
+Es gibt die Beschreibung der Extraktionsregel und die passenden Dokumente zurück.
+```json {"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"} ```
+{% endif %}
+{% if has('search_facet_values') %}
+Für Entitätsverteilungen rufe {{ tool('search_facet_values') }} mit Facets und optionaler Sammlung und Abfrage auf.
+Die Ergebnismatrix hat [text, count]-Paare in jeder Facet-Zelle.
+```json {"facets":["ner_per","ner_org","ner_loc"]} ``` ```json {"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"} ```
+{% endif %}

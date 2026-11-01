@@ -1,0 +1,115 @@
+---
+name: web_research
+group: technique
+description: hoe u het open internet doorzoekt, een webpagina of het eigenaarsrecord van een domein leest en de webpagina's citeert die een rapport ondersteunen
+tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
+---
+Het onderzoeken van het open web
+
+Gebruik webbronnen wanneer die de vraag van de persoon kunnen beantwoorden.
+
+{% if has('web_search') %}
+{{ tool('web_search') }} accepteert een lijst van zoekopdrachten. Het `sources`-veld beperkt de zoekopdracht tot named sources.{% if has('list_search_sources') %} {{ tool('list_search_sources') }} geeft die sources weer.{% endif +%}
+{% endif %}
+{% if has('read_page') %}
+1. Lees de beste resultaten volledig met {{ tool('read_page') }}. Geef alle adressen in één call en geef als doel aan wat je zoekt. Een resultaat gemarkeerd als BLOCKED BY A BOT CHECK is niet de pagina. Gebruik de tekst ervan niet.
+{% endif %}
+{% if has('whois_lookup') %}
+{% if has('read_page') %}2.{% else %}1.{% endif %} Voor de eigenaar, de registrar of de data van een domain, roep {{ tool('whois_lookup') }} aan met elk domain in één call.
+{% endif %}
+
+Lees elke bron voordat je de claims ervan gebruikt. Een snippet van een zoekresultaat is geen bron.
+{% if has('cite_pages') %}
+
+Webpagina's citeren
+
+Roep {{ tool('cite_pages') }} aan met de URL van elke gelezen pagina en de exacte ondersteunende woorden in `terms`.
+Gebruik de teruggegeven webhandles naast de claims die se ondersteunen.
+Vervang kale source-URL's door die handles.
+{{ tool('cite_pages') }} accepteert url en terms voor één pagina, of pages voor maximaal twaalf page-objects.
+Elke pagina vereist url en terms. terms bevat maximaal acht exacte zinsdelen, elk hoogstens 200 tekens. De hoofdlettergevoeligheid moet overeenkomen.
+version selecteert optioneel een vastgelegde versie. why geeft optioneel de ondersteunde claim aan, in maximaal 300 tekens.
+Het resultaat geeft geverifieerde citaten en een stabiele webhandle. Een mislukte pagina geeft een fout zonder handle.
+
+Voorbeeld. {{ tool('read_page') }} lees de URL https://example.org/report. De tekst zegt "De fabriek sloot in maart 2019." Roep {{ tool('cite_pages') }} aan met vlakke argumenten voor één pagina:
+url, overgenomen uit het lezersultaat, termen met de exacte zin, en waarom.
+```json {"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"The report gives the closing date."} ``` Schrijf daarna "De fabriek sloot in maart 2019 [W1]." met het handle dat de aanroep teruggeeft.
+Splits een lijst van meer dan twaalf pagina's in seperate aanroepen.
+```json {"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"This passage gives the approval date."}]} ``` Kopieer het teruggevende web-handle, bijvoorbeeld `[W1]`, achter de stelling die het ondersteunt.
+Bewaar elk handle bij de URL en de citaten uit het teruggevende citaatobject.
+Een fout wijst geen handle toe. Laat de claims van die bron tot de citaatsucces weg.
+Bij ontbrekende woordkeuze, kopieer de exacte tekst uit het teruggevende kandidaat en roep de tool opnieuw aan.
+Wanneer een fout `errors[i].retry_arguments` bevat, kopieer dat object ongewijzigd in de volgende aanroep.
+Bewaar succesvolle citaten uit een partiël resultaat. Herhaal alleen de mislukte pagina's.
+Bijvoorbeeld, een aanroep citeert drie pagina's en twee slagen met [W1] en [W2]. Gebruik die twee handles. Stuur de volgende aanroep met alleen de derde pagina, en gebruik de herstelargumenten.
+Bijvoorbeeld, deze aanroep verbindt woorden over een bronregelscheiding en slaagt niet.
+```json {"url":"https://example.org/report","terms":["The plant closed in March 2019"]} ``` De fout kan deze herstelargumenten teruggeven met de exacte brontekst.
+```json {"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}} ``` Roep {{ tool('cite_pages') }} aan met dat teruggevende object, inclusief de werkelijke versie en de exacte termen.
+```json {"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]} ``` Een PDF-venster heeft zijn eigen versie. Om een passage van pagina's 51 tot 100 te citeren, kopieer de versie van die lezing.
+```json {"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]} ``` Als een aanroep meer dan acht termen overschrijdt, splits de termen in groepen van maximaal acht en citeer elke groep apart.
+Bewaar de URL en de bronversie bij elke groep. Het wijzigen van de aanroepstructuur verlaagt niet de termenaantal.
+Het handle opent de vastgelegde paginatext en de geverifieerde citaten.
+Gebruik één pagina per aanroep als een batch beschadigd aankomt.
+Een ongelezen, geblokkeerde of ongeverifieerde pagina kan eenstelling niet ondersteunen.
+
+{% include "citation_failures.j2" %}
+{% endif %}
+
+Een naam of een gebeurtenis die je herkent, is een kandidaat tot een bron die het noemt. Zoek een bron die het noemt voordat je het gebruikt. Stuur geen tweede zoekopdracht met dezelfde woorden of met kleine formuleringveranderingen. Een volgende zoekopdracht moet een andere methode gebruiken: andere kenmerkende feiten van de kandidaat, een genoemde bron, de taal van de plaats, of een pagina die een gelezen resultaat koppelt. Als er geen resterende methode meer is om een bron te vinden, markeer de kandidaat als niet gverifieerd en ga door met ander werk. Een persoon met dezelfde naam is een andere persoon tot een bron de feiten aan elkaar koppelt. Als een bron een kandidaat tegenspreekt, verwijder de kandidaat en geef de reden.
+
+Bijvoorbeeld, je herkent dat een molen in 2019 sloot. Een zoekopdracht naar "Harlow mill closed 2019" vindt geen pagina over de molen. Een zoekopdracht naar "Harlow mill closure" vindt dezelfde resultaten. Stuur geen derde vorm van deze woorden. Zoek de naam van de eigenaarbedrijf met de stadsnaam. Een lokale nieuwspagina noemt de sluitingsmaand, lees die, en de kandidaat is gverifieerd.
+
+Bijvoorbeeld, je herkent een tweede rechtszaak tegen dezelfde bedrijf. Zoekopdrachten naar het bedrijf met "lawsuit", naar de rechtsnaam, en naar het zaakeventsformaat vinden geen zaak.
+Geen andere methode meer. Schrijf dat de gelezen bronnen een tweede zaak niet bevestigen, en noem het niet als een zaak.
+
+Een lezen dekt alleen de geëxtraheerde tekst. Een vinden zonder overeenkomst toont aan dat de geëxtraheerde tekst de woorden niet bevat. Het toont niet aan dat het document ze niet bevat. Een PDF-resultaat geeft de pagina's die het lezen geëxtraheerde. Voordat je stelt dat een document een persoon niet noemt, geef de pagina's of de tekst die je zocht.
+Voor een lijst van gedateerde gebeurtenissen, houd één record voor elke gebeurtenis met zijn datum, zijn naam en zijn bron. Geef records zonder datum, dubbele rapporten en bronnen die je niet kon lezen behalve de gedateerde records.
+
+Elk gevraagd item moet aan alle eisen voldoen; pas elke eis op elk item toe.
+Geef aan welke eis elk item schendt.
+Identificeer elk item aan de hand van zijn onderscheidende feiten.
+Geef bij een rechtszaak het gerecht, de datum en het procesnummer als bron.
+Controleer in de bron elke eigenschap die het verzoek van een item eist.
+Tel een zaak, gebeurtenis of entiteit één keer, en vermeld de identificatoren van de fasen samen.
+Voeg rapporten over hetzelfde item samen.
+Geef aan wanneer de bronnen minder distincte items vaststellen dan gevraagd.
+Controleer voordat je antwoord de onderscheidende feiten van elk item en alle eisen tegen de pagina's die je hebt gelezen.
+Houd een item dat een eis schendt buiten de bijbehorende lijst, en noem de geschonden eis.
+Lees elke pagina die je citeert, ook een vervangingsbron die je na een geblokkeerde pagina vindt.
+Als het lezen van een pagina mislukt, gebruik dan een andere leesbare bron of laat de claims en het adres weg.
+
+{% if has('web_search') %}
+{{ tool('web_search') }} accepteert zoekopdrachten als lijst van één string, en query als extra enkele zoekopdracht.
+Geef ten minste één zoekopdracht. Laat sources weg om alle beschikbare bronnen te doorzoeken.
+max_results staat standaard op 15. timelimit is d, w, m of y en geldt alleen voor ondersteunde nieuwsbronnen.
+Het resultaat geeft gerangschikte URLs, titels, snippets en overeenkomende zoekopdrachtvormen. Lees geselecteerde URLs voordat je op hun beweringen vertrouwt.
+```json {"queries":["transfer approval"]} ``` ```json {"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"} ```
+{% endif %}
+{% if has('list_search_sources') %}
+{{ tool('list_search_sources') }} accepteert geen argumenten. Het geeft beschikbare bronnamen en beschrijvingen terug.
+```json {} ```
+{% endif %}
+{% if has('read_page') %}
+{{ tool('read_page') }} vereist urls, een lijst van maximaal zes HTTP- of HTTPS-adressen.
+goal schrijft optioneel de vraag op. Het selecteert geen overeenkomende tekst.
+find selecteert optioneel letterlijke tekstovereenkomsten zonder beperkingen op hoofdletters.
+offset is een op nul gebaseerd tekenposities. Weglatting begint bij nul.
+version selecteert de vastgelegde tekstversie. Kopieer die van een eerdere leesbeurt van dezelfde URL om die tekst voort te zetten.
+Een version behoort bij één URL. Voor een andere URL lees je die URL eerst en kopieer je je eigen version.
+links staat standaard op true en neemt linkbestemmingen op in de tekst.
+page_start selecteert de eerste pagina van een PDF-venster. Eén leesbeurt haalt maximaal 50 PDF-pagina's.
+Een cut-resultaat, een find-resultaat met meer overeenkomsten en een PDF-venster geven de argumenten van de volgende call.
+Kopieer dat argumentobject ongewijzigd. Het behoudt de URL, het PDF-venster, de links-instelling en de version.
+Een version behoort bij één URL en één PDF-venster.
+Een venster zonder tekst geeft niet aan dat de andere pagina's van de PDF geen tekst hebben.
+Het herhalen van de eerste call leest de eerste tekst opnieuw.
+```json {"urls":["COPY_SEARCH_RESULT_URL"]} ``` ```json {"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false} ``` Voorbeeld: een PDF-resultaat zegt "The text covers PDF pages 1 to 50 of 120 only" en geeft het volgende venster.
+Een find in dat venster geeft meer overeenkomsten met dit object. Kopieer het als volgende call.
+```json {"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200} ```
+{% endif %}
+{% if has('whois_lookup') %}
+{{ tool('whois_lookup') }} accepteert domains als lijst en domain als één domein.
+Geef domeinnamen zonder URL-pad. Het resultaat meldt elk domein apart.
+Een null registrant betekent dat het register die waarde niet heeft gepubliceerd. De registrar verkoopt de domeinregistratie.
+```json {"domains":["example.org"]} ``` ```json {"domains":["example.org","example.com"],"domain":"example.net"} ```
+{% endif %}

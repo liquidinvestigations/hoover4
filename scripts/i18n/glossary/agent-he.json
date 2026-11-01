@@ -1,0 +1,20 @@
+{
+ "glossary_revision": "38e8b095d07db8b8",
+ "terms": {
+  "skill": "כישור",
+  "tool": "כלי",
+  "tool call": "קריאה לכלי",
+  "argument": "ארגומטר",
+  "citation handle": "תגית ציטוט",
+  "quote": "ציטוט",
+  "workspace file": "קובץ עבודה",
+  "report": "דוח",
+  "hit": "פגיעה",
+  "passage": "פסוק",
+  "query": "שאילתה",
+  "web page": "דף אינטרנט",
+  "run": "הרצה",
+  "note": "הערה",
+  "plan": "תכנון"
+ }
+}

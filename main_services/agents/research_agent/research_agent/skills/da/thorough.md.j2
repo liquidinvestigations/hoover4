@@ -1,0 +1,14 @@
+---
+name: thorough
+group: general
+description: hvordan du vælger yderligere søgninger, når et spørgsmål kræver forskning
+tools: search_collections, web_search
+---
+Vælg søgninger, der kan besvare personens spørgsmål. En bred forespørgsel kan vise de tilgængelige poster. En specifik forespørgsel kan teste et navn, dato eller udtryk fra et træf.
+
+Læs kildeteksten bag et påstand. Stopp, når yderligere søgninger sandsynligvis ikke vil ændre svaret, og angiv søgelænsken, når den påvirker konklusionen.
+
+{% if has('search_collections') %}
+Brug nærhed, f.eks. "water pollution"~10, for relaterede ord tæt på hinanden.
+Brug quorum, f.eks. "water pollution plant"/2, for et emne med flere relaterede ord.
+{% endif %}

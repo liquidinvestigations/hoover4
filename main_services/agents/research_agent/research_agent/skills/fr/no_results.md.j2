@@ -1,0 +1,71 @@
+---
+name: no_results
+group: stumble
+description: que faire lorsqu'une recherche ne donne aucun résultat : supprimer les filtres, découper une expression, essayer d'autres formes d'un nom, puis indiquer ce qui manque
+tools: search_collections, search_passages, web_search
+---
+Lorsqu'une recherche ne trouve rien
+
+{% if has('search_collections') %}
+Lisez d'abord word_counts.
+Lorsqu'un nom n'apparaît nulle part, lisez les suggestions d'orthographe indexées et leurs comptes vérifiés.
+N'utilisez pas une suggestion d'orthographe comme nom demandé.
+Lorsque vous recherchez une suggestion d'orthographe, indiquez-la dans la réponse comme une autre orthographe.
+Lorsqu'aucune orthographe ne correspond, signalez que les collections recherchées ne contiennent pas le nom.
+
+{% endif %}
+Suivez ces étapes de recherche quand les recherches précédentes ne répondent pas à la question.
+{% if has('search_collections') %}
+1. Recherchez chaque nom comme une phrase entre guillemets.
+2. Recherchez les mots non guillemetés, les initiales, les adresses e-mail et les noms dans la langue du document.
+Lisez word_counts et les suggestions d'orthographe. N'utilisez une suggestion que pour le nom voulu.
+Utilisez dasovi?h pour une lettre variable et dasovic% pour une lettre finale optionnelle.
+Utilisez skilling << resigned quand l'ordre des mots compte.
+3. Retirez les filtres un par un. Exécutez une recherche sans filtre.
+{% if has('search_facet_values') %}
+Vérifiez les valeurs des filtres avec {{ tool('search_facet_values') }}.
+{% endif %}
+{% if has('search_histogram') %}
+Vérifiez les dates avec {{ tool('search_histogram') }}.
+{% endif %}
+{% if has('search_passages') %}
+4. Recherchez une description du contenu avec {{ tool('search_passages') }}.
+{% endif %}
+{% if has('folder_search') %}
+5. Utilisez {{ tool('folder_search') }} quand la demande nomme un dossier, un chemin ou un fichier.
+{% endif %}
+{% if has('folder_list') %}
+Utilisez {{ tool('folder_list') }} pour ce dossier.
+{% endif %}
+{% if has('read_documents') %}
+6. Lisez les 1 à 3 meilleurs résultats avec {{ tool('read_documents') }}.
+{% endif %}
+{% if has('doc_search_text') %}
+Utilisez {{ tool('doc_search_text') }} pour le texte pertinent dans un document.
+{% endif %}
+{% if has('web_search') %}
+7. Recherchez le web uniquement quand la demande l'autorise.
+{% endif %}
+{% if has('read_page') %}
+Lisez les meilleures pages Web avec {{ tool('read_page') }}.
+{% endif %}
+{% else %}
+{% if has('web_search') %}
+1. Recherchez chaque nom comme une phrase entre guillemets, puis les autres formes du nom, ses initiales et la langue du lieu.
+{% endif %}
+{% if has('read_page') %}
+2. Lisez les meilleures pages Web avec {{ tool('read_page') }}.
+{% endif %}
+{% endif %}
+
+Après que les étapes disponibles n'ont trouvé aucune correspondance de mot-clé, répondez par l'absence et les recherches.
+{% if has('search_collections') %}
+Avant de répondre par l'absence, lancez au moins 4 recherches distinctes avec au moins 2 outils de recherche disponibles.
+Ne répétez pas une recherche identique. Indiquez les collections recherchées et les faits manquants.
+Limitez une affirmation d'absence aux recherches et aux documents que vous avez examinés.
+Par exemple, dites « Les comptes rendus du comité recherchés et les dossiers de transfert n'ont identifié aucune date d'approbation. » Ces recherches n'établissent pas qu'il n'existe aucun dossier d'approbation dans une collection permise quel qu'elle soit.
+{% else %}
+Avant de répondre par l'absence, lancez au moins 4 recherches distinctes.
+Ne répétez pas une recherche identique. Indiquez les recherches et les pages lues.
+Limitez une affirmation d'absence aux recherches et aux pages que vous avez examinés.
+{% endif %}

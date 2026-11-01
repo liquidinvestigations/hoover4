@@ -1,0 +1,55 @@
+---
+name: spreadsheets
+group: technique
+description: comment lire un fichier de tableur avec les outils de tableau : ses feuilles, colonnes, lignes et cellules individuelles
+tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
+terms: Mots associés : tableau, tableaux, tableur, Excel, classeur, feuille, worksheet, onglet, CSV, TSV, données tabulaires, tableau de données, grand livre, registre, suivi, liste avec colonnes, ligne, colonne, cellule, en-tête, tableau croisé dynamique, tableau de base de données, SQLite, Tabelle. Types de fichiers : xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML, et tableaux à l'intérieur de documents HTML ou PDF. Résultats de recherche de type tableau.
+not_for: Non nécessaire lorsque la demande se limite à demander que la réponse soit présentée sous forme de tableau, ou utilise le mot tableau dans un autre sens.
+---
+Lire une feuille de calcul
+
+Une feuille de calcul, un fichier CSV ou un tableau dans un document constituent un document tableau. Nommez-le par file_hash et la collection d'un résultat de recherche.
+
+1. {{ tool('table_overview') }} liste les feuilles et les colonnes avec leurs identifiants.
+2. Lisez les lignes avec {{ tool('table_page') }}. Un appel renvoie 50 lignes. Triez et filtrez les lignes dans l'appel. Donnez row_start pour accéder à une ligne d'une grande feuille, et columns pour lire les colonnes après la 60ᵉ.
+3. {{ tool('table_column_values') }} liste les valeurs d'une colonne et leurs comptes.
+4. Pour trouver une valeur dans une feuille, appelez {{ tool('table_search_cells') }}. Lisez les lignes voisines avec {{ tool('table_page') }} lorsque le match nécessite un contexte.
+5. Lorsque {{ tool('table_page') }} coupe une cellule longue, lisez-la entière avec {{ tool('table_cell') }}. Donnez row avec le row_id renvoyé, et column avec l'identifiant de colonne renvoyé.
+
+Donnez une feuille, une ligne et une colonne lorsque le lecteur doit retrouver une valeur.
+
+Pour compter les lignes selon une valeur, appelez {{ tool('table_column_values') }} sur cette colonne. Ne comptez pas vous-mêmes les lignes d'une page de texte. Indiquez le total de lignes, les filtres et la colonne.
+Un appel de valeurs donne jusqu'à 200 valeurs. Lorsque le résultat comporte une continuation, appelez read_more jusqu'à ce qu'il n'y ait plus de continuation. Une liste de valeurs partielle ne donne aucune distribution complète.
+Les comptes de valeurs ne s'additionnent au total de lignes que pour le même tableau, les mêmes lignes et les mêmes filtres. Une cellule vide n'a aucune valeur, donc les cellules vides rendent la somme inférieure au total de lignes. Indiquez le nombre de cellules vides lorsque vous comparez la somme au total.
+Par exemple, un tableau de 24 permis de construire possède une colonne de type. L'appel de valeurs donne clôture 9, toit 7, terrasse 5 et piscine 3, et aucune continuation. Ces comptes s'additionnent à 24. Des comptes qui s'additionnent à 27 pour 24 lignes montrent une erreur de comptage. Des comptes qui s'additionnent à 21 montrent 3 lignes avec un type vide.
+Un fichier CSV ne comporte pas de ligne d'en-tête. Chaque résultat de tableau donne `interpretation`, la lecture de la ligne 1 dont les comptes décrivent le contenu. Avec l'état `established`, la lecture est connue. Avec l'état `ambiguous` ou `legacy` et deux `candidates`, la ligne 1 peut être l'en-tête ou la première ligne de données.
+Chaque candidat donne son compte de lignes. Le résultat lit chaque ligne, `all_rows`, sauf si l'appel donne `interpretation`. Donnez chaque compte avec sa lecture, ou lisez l'autre lecture avec l'interprétation `all_rows` ou `first_row_header`. Ne signalez pas le compte d'une lecture comme étant le total de lignes établi.
+Un fichier JSON ou un fichier texte n'a pas de tableaux. Lorsque {{ tool('table_overview') }} ne donne aucun tableau, lisez le document comme texte.
+
+Chaque appel de tableau nécessite la collection et file_hash provenant du même résultat de document.
+{{ tool('table_overview') }} retourne les identifiants de feuille et de colonne.
+Les autres outils de tableau nécessitent sheet. Copiez son identifiant depuis l'aperçu.
+{{ tool('table_page') }} accepte optionnellement sort, filters, columns, search, row_start et interpretation.
+sort nécessite column et direction, asc ou desc. L'omission utilise l'ordre des lignes stocké.
+filters est une liste de prédicats de colonne. Chaque prédicat utilise un type de test.
+Une plage numérique ou de date peut inclure à la fois les bornes inférieure et supérieure.
+Les tests sont contains, equals, starts_with, is_empty, number_min, number_max, date_min et date_max.
+Les tests de texte utilisent des chaînes. Les tests numériques utilisent des nombres. Les bornes de date utilisent des chaînes YYYY-MM-DD.
+columns sélectionne les identifiants de colonne. Une fenêtre retournée contient au plus 60 colonnes sélectionnées.
+search garde optionnellement les lignes contenant son texte. row_start est une position basée sur zéro dans l'ordre des lignes demandé.
+Le résultat contient les métadonnées de colonne et les lignes. row_id est l'identité de ligne stockée, y compris après le tri.
+
+{{ tool('table_column_values') }} nécessite aussi column. search filtre optionnellement le texte des valeurs.
+Il retourne les valeurs et les comptages pour cette colonne.
+{{ tool('table_search_cells') }} nécessite query. Il retourne les identifiants de feuille, de ligne et de colonne correspondants avec le texte.
+{{ tool('table_cell') }} nécessite row et column. Transmettez le row_id retourné sous le nom d'argument row.
+Il retourne des tranches de 2 000 caractères. Utilisez read_more pour le reste du texte de cellule.
+Utilisez read_more pour les pages de tableau continues, les valeurs et les résultats de recherche.
+
+Cet aperçu minimal ouvre la structure du tableau.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` Cet appel de page utilise les identifiants de feuille et de colonne copiés.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` Cet appel de valeurs restreint une seule colonne.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` Cet appel de valeurs lit la ligne 1 d'une feuille CSV ambiguë comme noms de colonne.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` Cette recherche de cellule localise une valeur demandée.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` Cet appel de cellule lit la row_id 71, même quand cette ligne apparaissait en tête dans un résultat trié.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```

@@ -1,0 +1,69 @@
+---
+name: call_arguments
+group: stumble
+description: cum se completează argumentele unui apel de instrument: doar numele pe care le oferă schema sa, o listă acolo unde se solicită o listă și fără citate suplimentare
+tools:
+---
+Completearea argumentelor unui apel
+
+{% if has('read_tool') %}
+Când nu ești sigur de argumentele unui instrument, apelează {{ tool('read_tool') }} după numele său. Acesta îți oferă fiecare argument, tipul său și argumentele de care instrumentul are nevoie.
+
+{% endif %}
+1. Oferă doar numele de argumente pe care instrumentul le indică. Un argument cu alt nume este refuzat.
+2. Oferă fiecare argument necesar.
+3. Când instrumentul cere o listă, oferă o listă, și pentru o singură valoare. Scrie interogare ["lease"]. Nu scrie interogare "lease".
+4. Când instrumentul cere un număr sau adevărat sau fals, oferă valoarea fără ghilimele. Scrie filename_only true. Nu scrie filename_only "true".
+5. Nu pune ghilimele în interiorul unei valori text. Scrie status done. Nu scrie status "\"done\"".
+6. Păstrează fiecare valoare în limitele instrumentului său, cum ar fi numărul maxim de elemente al unei liste.
+7. Când instrumentul cere o listă de obiecte, oferă o listă de obiecte. Nu oferi un text
+{% if has('cite_documents') %}
+   care conține JSON. Scrie citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
+   Nu scrie citations "[{\"collection\": ...}]".
+{% elif has('cite_pages') %}
+   care conține JSON. Scrie pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"}].
+   Nu scrie pages "[{\"url\": ...}]".
+{% else %}
+   care conține JSON.
+{% endif %}
+{% if has('write_file') %}
+8. Oferă numele fișierului în fiecare apel {{ tool('write_file') }} și {{ tool('patch_file') }}.
+{% endif %}
+
+Când un apel este refuzat, eroarea indică argumentul și ce are greșit în el. Corectează acel argument, apoi trimite apelul.
+
+{% if has('search_agent_tools') %}
+{{ tool('search_agent_tools') }} necesită interogare, o descriere a sarcinii de până la 160 de caractere.
+Returnează numele și descrierile instrumentelor relevante. Citește un instrument înainte de a folosi argumente necunoscute.
+```json {"query":"Găsește un pasaj spre finalul unui document lung."} ```
+{% endif %}
+{% if has('read_tool') %}
+{{ tool('read_tool') }} necesită nume, numele exact al unui instrument disponibil.
+Returnează descrierea și schema completă de intrare, inclusiv valorile permise, valorile implicite și câmpurile obligatorii.
+```json {"name":"read_documents"} ``` După o eroare pentru un argument necunoscut, citește schema instrumentului care a eșuat înainte de a repeta apelul.
+{% if has('update_plan') %}
+De exemplu, acest {{ tool('update_plan') }} apel eșuează pentru că `plan` nu este un argument.
+```json {"plan":["Găsește mesajul."]} ``` Citește schema sa cu {{ tool('read_tool') }}.
+```json {"name":"update_plan"} ``` Apoi apelează {{ tool('update_plan') }} cu scopul și pașii.
+```json {"goal":"Găsește data aprobării.","steps":[{"text":"Găsește mesajul.","status":"pending"}]} ```
+{% endif %}
+{% if has('read_documents') %}
+Dacă {{ tool('read_documents') }} respinge `source2` sau `offset2`, citește schema sa înainte de a repeta apelul.
+Folosește un apel separat pentru fiecare document care necesită argumente de interval diferite.
+{% endif %}
+{% endif %}
+{% if has('search_skills') %}
+{{ tool('search_skills') }} acceptă interogare, de până la 160 de caractere. Omiterea sau textul gol listează toate abilitățile disponibile.
+Returnează numele și descrierile metoadelor.
+```json {} ``` ```json {"query":"Citește un document lung și continuă pasajul care se potrivește."} ```
+{% endif %}
+{% if has('read_skill') %}
+{{ tool('read_skill') }} necesită nume, numele exact returnat de descoperirea abilităților.
+Returnează instrucțiunile metodei, argumentele instrumentului și exemplele.
+```json {"name":"passages"} ```
+{% endif %}
+{% if has('write_note') %}
+{{ tool('write_note') }} necesită text, de la 1 la 2.000 de caractere. Salvează dovezile și întrebările nerezolvate pentru contextul viitor.
+Include identitățile surselor și următorul apel util când acest context trebuie să supraviețuiască compresiei.
+```json {"text":"Pasajul de aprobare este în intervalul de document returnat. Verifică autorul original înainte de a-i atribui."} ```
+{% endif %}

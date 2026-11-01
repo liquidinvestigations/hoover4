@@ -1,0 +1,20 @@
+{
+ "glossary_revision": "38e8b095d07db8b8",
+ "terms": {
+  "skill": "färdighet",
+  "tool": "verktyg",
+  "tool call": "verktygskall",
+  "argument": "argument",
+  "citation handle": "citationshandtag",
+  "quote": "citat",
+  "workspace file": "arbetsytsfil",
+  "report": "rapport",
+  "hit": "träff",
+  "passage": "passus",
+  "query": "fråga",
+  "web page": "webbsida",
+  "run": "körning",
+  "note": "not",
+  "plan": "plan"
+ }
+}

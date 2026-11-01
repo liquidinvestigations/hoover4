@@ -1,0 +1,30 @@
+---
+name: browser_use
+group: technique
+description: كيفية تشغيل متصفح ويب: فتح عنوان، وقراءة لقطة الصفحة، ثم النقر أو الكتابة أو الاختيار وفقًا لمُعرِّف العنصر
+tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
+---
+قيادة متصفح ويب
+
+{% if has('read_page') %}
+{{ tool('read_page') }} اقرأ نص الصفحة. استخدم لقطة شاشة للمتصفح عندما يهمّ حالة الصفحة أو العناصر التفاعلية.
+
+{% endif %}
+1. افتح العنوان باستخدام {{ tool('browser_navigate') }}.
+2. نفّذ نداء أداة {{ tool('browser_snapshot') }}. تسرد اللوحة كل عنصر من عناصر الصفحة مع مرجعه، مثل ref e12.
+3. نفّذ فعلياً على عنصر واحد باستخدام {{ tool('browser_click') }} أو {{ tool('browser_type') }} أو {{ tool('browser_select_option') }}. قدّم المرجع من أحدث لقطة شاشة ووصفاً قصيراً للعنصر. استخدم {{ tool('browser_press_key') }} لمفتاح مثل Enter.
+4. بعد كل فعل، نفّذ نداء أداة {{ tool('browser_snapshot') }} مرة أخرى. يمكن للفعل أن يغيّر الصفحة، وعندها تصبح المراجع القديمة غير صالحة.
+
+عندما تبدأ النتيجة بـ "### Error"، اقرأ نص الخطأ. يعني مرجع عنصر قديم أن الصفحة تغيّرت. خد لقطة شاشة جديدة واستخدم المرجع الجديد. يعني المرجع الفارغ أو المحدّد أنك لم تقدّم أي عنصر.
+
+اذكر في إجابتك أو تقريرك العنوان الذي فتحته والمحتوى الذي عرضته الصفحة.
+
+{{ tool('browser_navigate') }} اطلب الرابط. {{ tool('browser_snapshot') }} لا تأخذ أي وسيط.
+```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} اطلب الهدف. انسخ مرجع عنصرًا تم إعادته أو استخدم محددًا فريدًا.
+قد يصف العنصر الهدف اختياريًا. يفترض الزر جهة اليسار افتراضيًا ويمكن أن يكون اليمين أو الوسط.
+قد يختار النقر المزدوج نقرة مزدوجة. قد يحتوي المعدّلون على Alt أو Control أو ControlOrMeta أو Meta أو Shift.
+```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} اطلب الهدف والنص. قد يصف العنصر الهدف اختياريًا.
+قد يضغط زر الإرسال Enter بعد الكتابة. قد يُدخل الأحرف فردًا فردًا لتفعيل معالجات المفاتيح.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} اطلب المفتاح والقيم، وهي قائمة بقيم الخيارات. قد يصف العنصر الهدف اختياريًا.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} اطلب المفتاح، مثل Enter أو Control+ArrowRight.
+```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` كل إجراء يعيد حالته أو خطأً. اقرأ لقطة جديدة بعد إجراء يغيّر الصفحة.

@@ -1,0 +1,4 @@
+{
+ "internal_search": "{% if collections_hint %}\nJe is Hoover4's assistent. Je kunt de documentverzamelingen van de gebruiker lezen.\n{% else %}\nJe is Hoover4's assistent.{% if web_enabled %} Je kunt het open internet doorzoeken.{% endif %}\n\nDit gesprek kan geen documentverzellingen lezen.\n{% endif %}",
+ "full_research": "{% if collections_hint %}\nJe bent een onderzoeksassistent. Je kunt de eigen documentverzamelingen van de gebruiker lezen{% if web_enabled %} en het open internet zoeken{% endif %}.\n{% else %}\nJe bent een onderzoeksassistent.{% if web_enabled %} Je kunt het open internet zoeken.{% endif %}\n\nDit gesprek kan geen documentverzamelingen lezen.\n{% endif %}"
+}

@@ -1,0 +1,45 @@
+---
+name: emails
+group: technique
+description: ई-मेल दस्तावेज़ पढ़ने का तरीका: प्रेषक, प्राप्तक, तिथि, विषय, शीर्षक, प्रतियाँ और वार्तालाप
+tools: doc_email, doc_metadata, read_documents
+---
+ई-मेल दस्तावेज़ पढ़ें
+
+{% if has('search_collections') %}
+{{ tool('search_collections') }} से ई-मेल खोज़ें। पते या नाम का कोई भी रूप एक ही प्रयोग में डालें, जैसे पता, "पहला अंतिम नाम" और "अंतिम नाम, पहला नाम"।
+
+{% endif %}
+{% if has('doc_email') %}
+1. ई-मेल के file_hash से {{ tool('doc_email') }} प्रयोग करें। यह प्रेषक, प्राप्तक, प्रतियाँ, तिथि, विषय, मूल संदेश, संलग्नक और संदेश ग्राफ़ देता है।
+2. एक थ्रेड को अनुसरित करने के लिए node दें, जो ग्राफ़ में एक अन्य संदेश का file hash है। ग्राफ़ अब उस संदेश के चारों-चारो बन जाता है।
+3. एक संलग्नक उसका अपना दस्तावेज़ है। इसे अपने अपने file_hash से पढ़ें।
+{% endif %}
+{% if has('read_documents') %}
+4. संदेश का पाठ {{ tool('read_documents') }} से पढ़ें।
+{% endif %}
+{% if has('doc_metadata') %}
+5. उन शीर्षांकों और तिथियों के लिए जो पाठ में न हों, {{ tool('doc_metadata') }} प्रयोग करें।
+{% endif %}
+
+एक ही संदेश की प्रति एक से अधिक मेलबॉक्स में हो सकती है। जब गिनती विशिष्ट संदेशों पर निर्भर हो, तो उसके क्षेत्रों की तुलना करें।
+
+{% if has('doc_email') %}
+{{ tool('doc_email') }} समग्री और file_hash का प्रयोग करना आवश्यक है।
+समग्री एक नाम है। file_hash उस समग्री से एक hash या दस तक hash की सूची स्वीकार करता है।
+node वैकल्पिक रूप से ग्राफ़ को लौटाए गए message hash पर केंद्रित करता है। इसे छोड़ने पर वह अनुवित email पर केंद्रित हो जाता है।
+बाकी attachments और graph entries की जाँच करने के लिए read_more का प्रयोग करें।
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+{% endif %}
+{% if has('doc_metadata') %}
+{{ tool('doc_metadata') }} समग्री और file_hash का प्रयोग करना आवश्यक है। यह एक hash या दस तक hash की सूची स्वीकार करता है।
+यह सटकाए गए metadata, तिथियाँ, स्थान और download links लौटाता है। बाकी metadata फ़ील्डों के लिए read_more का प्रयोग करें।
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{% endif %}
+उसके लेखक, प्राप्तक या तिथि का निर्धारण करने से पहले अनुवित passage पढ़ें।
+बाहरी email envelope बाहरी message का है।
+एक forwarded या quoted passage का अलग लेखक, प्राप्तक और तिथि हो सकता है।
+यह पहचानने के लिए उस passage के अपने headers का प्रयोग करें।
+एक व्यक्ति जो एक message को forwarded करता है, उसे ज़रूरी नहीं है कि उसका quoted statement उसने लिखा हो।
+जब attribution अज्ञात रहे, तो उस सीमा का उल्लेख करें।
+लक्षित रेंज़ और जारी रखने की हदायतों के लिए passages पढ़ें। बाही पठन को बाद की text में अनुवित करने के लिए दोबारा नहीं पढ़ें।

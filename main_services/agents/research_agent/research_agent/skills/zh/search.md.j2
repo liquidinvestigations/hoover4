@@ -1,0 +1,87 @@
+---
+name: search
+group: general
+description: 如何搜索文档数据集并使用查询语法
+tools: search_collections
+---
+{% if has('search_collections') %}
+搜索用户的文档
+
+1. 当文档内容能够回答问题时进行搜索。
+2. 当请求针对某个数据集集合时使用 collection。若要搜索该聊天可读的所有数据集集合，则省略它。
+3. {{ tool('search_collections') }} 接受多个查询。使用名称或地址的相关形式。将确切短语放在双引号中。
+4. OR、AND 和 NOT 是查询中的普通词。使用 | 表示任选，使用 -word 排除某个词。
+5. 从结果行中复制 file_hash 和 collection。切勿自行编写哈希值。{% if has('read_more') %} 若某行没有 file_hash，则调用 {{ tool('read_more') }}。{% endif +%}
+6. 在有助于回答问题时设置日期或大小筛选条件。
+7. 当你报告某次搜索未找到任何文档时，给出其查询、数据集集合和数量。
+8. 一次调用最多接受 12 个查询。将更长的列表拆分为两次调用。
+9. 为每个查询至少提供一个用于搜索的词。仅由 -word 组成的查询会被拒绝。
+10. 将 filename_only 设置为 true 或 false。它不接受文本。
+
+示例。用户请求获取关于 JoeBWilkinson@cs.com 的所有数据。向 {{ tool('search_collections') }} 发起一次调用，查询为 ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]。当某结果行未能为该主张提供足够证据时，读取一份文档。
+{% endif %}
+
+当之前的搜索未能回答该问题时，请执行以下搜索步骤。
+{% if has('search_collections') %}
+1. 将每个名称作为带引号的短语进行搜索。
+2. 在文档语言中搜索不带引号的单词、首字母、电子邮件地址和名称。
+阅读 word_counts 和拼写建议。仅将建议用于预期的名称。
+使用 dasovi?h 表示一个变化的字母，使用 dasovic% 表示可选的结尾字母。
+当词序重要时使用 skilling << resigned。
+3. 一次移除一个筛选条件。运行不带筛选条件的搜索。
+{% endif %}
+{% if has('search_facet_values') %}
+使用 {{ tool('search_facet_values') }} 验证筛选值。
+{% endif %}
+{% if has('search_histogram') %}
+使用 {{ tool('search_histogram') }} 验证日期。
+{% endif %}
+{% if has('search_passages') %}
+4. 使用 {{ tool('search_passages') }} 搜索内容的描述。
+{% endif %}
+{% if has('folder_search') %}
+5. 当请求指定了文件夹、路径或文件时使用 {{ tool('folder_search') }}。
+{% endif %}
+{% if has('folder_list') %}
+使用该文件夹时使用 {{ tool('folder_list') }}。
+{% endif %}
+{% if has('read_documents') %}
+6. 使用 {{ tool('read_documents') }} 阅读最佳的 1 到 3 个命中结果。
+{% endif %}
+对于文档中涉及的人或组织，阅读该文档中提及它们的段落。对另一部作品的引用即指该作品。
+{% if has('doc_search_text') %}
+使用 {{ tool('doc_search_text') }} 获取文档中的相关文本。
+{% endif %}
+{% if has('web_search') %}
+7. 仅当请求允许时才搜索网络。
+{% endif %}
+{% if has('read_page') %}
+使用 {{ tool('read_page') }} 阅读最佳的网页。
+{% endif %}
+
+{% if has('search_collections') %}
+完整的搜索参数包括：collection、queries、query、sort、date_after、date_before、date_unknown_only、mentioned_date_after、mentioned_date_before、size_min、size_max、folder_term_id、filename_only 和 facet_filters。
+collection 接受名称或列表。省略或填写 [] 表示搜索所有允许的集合。
+query 默认为空文本。queries 可选地最多添加 12 种表单。重复的表单只运行一次。
+空查询会浏览所有筛选匹配。搜索表单会合并匹配的文档标识。
+sort 包含字段和方向。字段为相关性、日期、文件大小或名称。方向为 asc 或 desc。
+省略时使用默认的相关性排序。
+date_after 和 date_before 使用包含性的 UTC 纪元秒数，对应文档日期。
+mentioned_date_after 和 mentioned_date_before 使用包含性的 UTC 纪元秒数，对应从文本中提取的日期。
+date_unknown_only=true 选择没有已知文档日期的文档。不要将其与已知日期范围结合使用。
+size_min 和 size_max 为包含性的字节限制。folder_term_id 选择返回的文件夹术语。
+filename_only=true 将查询限制为名称和路径。false 使用文档内容。
+facet_filters 将有效的 facet 名称映射到返回值的文本列表。省略表示不应用任何 facet 筛选。
+同一 facet 内的值是互斥选项。不同的 facet 筛选都必须匹配。
+
+每个结果都包含 collection、file_hash、path、snippet 以及可用的类型、日期和大小。
+q 列出找到该行的从 0 开始的表单。query_forms 报告每种表单的计数。
+word_counts 验证已索引的单词。suggestions 列出附近的已索引拼写及其计数。
+阅读 query_notes 以了解修复后的语法、未知筛选和失败的查询表单。
+more 继续返回结果。将其复制到 read_more。空白的第一页无需重复相同的调用。
+
+此最小化调用搜索所有允许的数据集集合。
+```json {"query":"\"Joe Wilkinson\""} ``` 此高级调用将查询形式、数据集集合范围、排序、日期、数量和筛选条件相结合。
+```json {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}} ``` 此独立调用查找没有已知文档日期的文件。
+```json {"query":"report","filename_only":true,"date_unknown_only":true} ``` 将数据集集合、文件夹和筛选条件值替换为当前聊天返回的值。
+{% endif %}

@@ -1,0 +1,45 @@
+---
+name: emails
+group: technique
+description: hur man läser e-postdokument: avsändare, mottagare, datum, ämne, rubriker, kopior och trådar
+tools: doc_email, doc_metadata, read_documents
+---
+Läsa e-postdokument
+
+{% if has('search_collections') %}
+Hitta e-post med {{ tool('search_collections') }}. Placera varje form av en adress eller ett namn i ett anrop, till exempel adressen, „Första Efternamn” och „Efternamn, Första”.
+
+{% endif %}
+{% if has('doc_email') %}
+1. Anrop {{ tool('doc_email') }} med fil_hash för e-posten. Det ger avsändaren, mottagarna, kopiorna, datumet, ämnet, föräldramessaget, bilagorna och mejselnätet.
+2. För att följa en tråd, ange node, filhashen för ett annat meddelande i nätet. Nätet centrerar då det mejselnätet.
+3. En bilaga är ett dokument i sig. Läs den med sin egen fil_hash.
+{% endif %}
+{% if has('read_documents') %}
+4. Läs texten i mejselnätet med {{ tool('read_documents') }}.
+{% endif %}
+{% if has('doc_metadata') %}
+5. För rubrikerna och datum som inte finns i texten, anrop {{ tool('doc_metadata') }}.
+{% endif %}
+
+En kopia av samma mejselnät kan finnas i mer än ett postfält. Jämför dess fält när en beräkning beror på distinkta mejselnät.
+
+{% if has('doc_email') %}
+{{ tool('doc_email') }} Kräv samling och file_hash.
+Samling är ett namn. file_hash accepterar ett hash eller en lista med upp till tio hash från samlingen.
+node centrerar valfritt grafen på ett returnerat meddelandehash. Utelämning centrerar den på det begärada e-postmeddelandet.
+Använd read_more för att inspektera återstående bilagor och grafposter.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+{% endif %}
+{% if has('doc_metadata') %}
+{{ tool('doc_metadata') }} Kräv samling och file_hash. Den accepterar ett hash eller en lista med upp till tio hash.
+Den returnerar lagrad metadata, datum, platser och nedlänkningsadresser. Använd read_more för återstående metadatafält.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{% endif %}
+Läs det begärade passuset innan du tilldelar dess författare, mottagare eller datum.
+Det yttre e-postkuvertet tillhör det yttre meddelandet.
+Ett vidarebefordrat eller citerat passus kan ha en annan författare, mottagare och datum.
+Använd det passusets egna huvudrubriker för att identifiera vem som skrev det.
+En person som vidarebefordrade ett meddelande har inte nödvändigtvis skrivit dess citerade påstående.
+När tillskrivningen är okänd anger du den begränsningen.
+Läs passus för riktade intervall och fortsättningsinstruktioner. Upprepa inte den inledande läsningen för att begära senare text.

@@ -1,0 +1,19 @@
+---
+name: todo_upkeep
+group: stumble
+description: sådan opbeholder du planen med update_plan, dens trin og deres status
+tools: update_plan
+---
+Med planen
+
+{{ tool('update_plan') }} tager målet og hele listen over trin. Hvert trin har tekst og status, og et færdigt trin har en kort note.
+
+1. Send hele listen i hvert kald, i rækkefølge. Et trin, du lader være med, er ikke længere en del af planen.
+2. Angiv hvert trin som et objekt med tekst og status. status er pending eller done.
+3. Et trin er pending, indtil dets arbejde er afsluttet. Send det derefter som done med en note, såsom found, not found eller replaced.
+4. Behold teksten i et trin uændret, når kun dens status ændres. Trinnet bevarer da dens id.
+5. Et nyt mål starter en ny plan.
+6. {{ tool('update_plan') }} beholder kun planen. Skriv en rapport eller en anden fil med {{ tool('write_file') }}.
+
+Dette er et eksempel. Trin 1 har fundet det, du skal bruge, og trin 2 er stadig åbent.
+```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` Resultatet viser hele planen med id'et for hvert trin. Et kald, der ændrer intet, returneres uændret. Ret det angivne felt, før du kalder igen.

@@ -1,0 +1,19 @@
+---
+name: document_ids
+group: stumble
+description: cómo nombrar un documento con su hash de archivo, o con una ruta en read_documents
+tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
+---
+Nombrar un documento
+
+El hash de un documento tiene 64 caracteres hexadecimales. Las herramientas de documento también aceptan un inicio único de al menos 12 caracteres.
+
+1. Copia el file_hash y la Colección de la misma fila de resultado. Nunca escribas tú mismo un hash.
+   Un marcador de posición como COPY_RETURNED_HASH o un valor de ceros no es un hash. También se obtiene un id de carpeta de un listado o de un resultado de búsqueda de esta conversación.
+2. {% if has('read_documents') %}{{ tool('read_documents') }} también puede resolver un nombre de archivo o ruta cuando nombra un documento.{% endif %} Otras herramientas de documento usan el hash.
+3. Para encontrar el file_hash de un archivo por su nombre, busca el nombre con {{ tool('search_collections') }}{% if has('folder_search') %} o {{ tool('folder_search') }}{% endif %}, y copia el file_hash de la fila.
+{% if has('read_more') %}
+4. Cuando una fila no tiene file_hash, llama a {{ tool('read_more') }} para la siguiente página del resultado.
+{% endif %}
+
+Cuando una lectura dice que ningún conjunto de datos legible contiene un hash, compara su Colección y su valor con la fila de resultado. Un documento que falta también puede significar que el valor nombra a más de un documento.

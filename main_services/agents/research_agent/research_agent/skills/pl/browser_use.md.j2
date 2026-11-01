@@ -1,0 +1,30 @@
+---
+name: browser_use
+group: technique
+description: jak sterować przeglądarką internetową: otwórz adres, przeczytaj zrzut strony, a następnie kliknij, wpisz lub wybierz według referencji elementu
+tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
+---
+Otwieranie przeglądarki internetowej
+
+{% if has('read_page') %}
+{{ tool('read_page') }} odczytuje tekst strony. Użyj zrzutu przeglądarki, gdy liczy się stan strony lub elementy interakcyjne.
+
+{% endif %}
+1. Otwórz adres przy pomocy {{ tool('browser_navigate') }}.
+2. Wywołaj {{ tool('browser_snapshot') }}. Zrzut wymienia każdy element strony wraz z jego referencją, na przykład ref e12.
+3. Działaj na jednym elemencie przy pomocy {{ tool('browser_click') }}, {{ tool('browser_type') }} lub {{ tool('browser_select_option') }}. Podaj referencję z najnowszego zrzutu i krótki opis elementu. Użyj {{ tool('browser_press_key') }} dla klawisha takiego como Enter.
+4. Po każdej akcji wywołaj {{ tool('browser_snapshot') }} ponownie. Akcja może zmienić stronę, a wtedy stare referencje nie są już poprawne.
+
+Gdy wynik zaczyna się od „### Error”, przeczytaj tekst błędu. Stara referencja elementu oznacza, że strona się zmieniła. Zrób nowy zrzut i użyj nowej referencji. Pusta referencja lub selektor oznaczają, że nie podałeś żadnego elementu.
+
+W odpowiedzi lub raporcie podaj, jaki adres otworzyłeś i co pokazywała strona.
+
+{{ tool('browser_navigate') }} wymaga adresu URL. {{ tool('browser_snapshot') }} nie przyjmuje argumentów.
+```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} wymaga elementu docelowego. Skopiuj referencję zwróconego elementu lub użyj unikalnego selektora.
+element opisuje element docelowy. button domyślnie to lewy i może być prawym lub środkowym.
+doubleClick opcjonalnie wybiera podwójne kliknięcie. modifiers opcjonalnie zawiera Alt, Control, ControlOrMeta, Meta lub Shift.
+```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Przemplik przycisk","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} wymaga elementu docelowego i tekstu. element opisuje element docelowy.
+submit opcjonalnie naciska Enter po wpisaniu. opcjonalnie wpisuje pojedyncze znaki, aby wywołać obsługi klawiszy.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Przeglądarka pola","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} wymaga elementu docelowego i wartości, czyli listy wartości opcji. element opisuje element docelowy.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Przeglądarka selektora","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} wymaga klucza, takiego como Enter lub Control+ArrowRight.
+```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` Każda operacja zwraca swój status lub błąd. Po operacji zmieniaющей stronie odczytaj nowy snapshot.

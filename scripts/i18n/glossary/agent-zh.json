@@ -1,0 +1,20 @@
+{
+ "glossary_revision": "38e8b095d07db8b8",
+ "terms": {
+  "skill": "技能",
+  "tool": "工具",
+  "tool call": "工具调用",
+  "argument": "参数",
+  "citation handle": "引用标识",
+  "quote": "引文",
+  "workspace file": "工作区文件",
+  "report": "报告",
+  "hit": "命中",
+  "passage": "段落",
+  "query": "查询",
+  "web page": "网页",
+  "run": "运行",
+  "note": "备注",
+  "plan": "计划"
+ }
+}

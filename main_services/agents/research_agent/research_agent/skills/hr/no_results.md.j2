@@ -1,0 +1,71 @@
+---
+name: no_results
+group: stumble
+description: što učiniti kada pretraga pronađe ništa: ukloniti filtarove, razdvojiti frazu, pokušati druge oblike imena, a zatim reći što nedostaje
+tools: search_collections, search_passages, web_search
+---
+Kada pretraga ne pronađe ništa
+
+{% if has('search_collections') %}
+Prvo pročitaj word_counts.
+Kada se ime ne pojavljuje nigdje, pročitaj indeksirane preporuke za pravopis i njihove provjerene brojeve.
+Nemoj koristiti preporučeni pravopis kao traženo ime.
+Kada pretraguješ preporučeni pravopis, u odgovoru ga navedi kao drugi pravopis.
+Kada nijedan pravopis ne odgovara, priopći da tražene Kolekcije ne sadrže to ime.
+
+{% endif %}
+Slijedi ove korake pretrace kada ranije pretrace ne daju odgovor na pitanje.
+{% if has('search_collections') %}
+1. Pretraži svako ime kao navođenu frazu.
+2. Pretraži navođene riječi, inicijale, e-mail adrese i imena u jeziku dokumenta.
+Pročitaj word_counts i preporuke za pravopis. Koristi preporuku samo za namjereno ime.
+Koristi dasovi?h za jednu varijabilnu slovo i dasovic% za opcionalno završno slovo.
+Koristi skilling << resigned kada redoslijed riječi ima značenje.
+3. Ukloni filtre jedan po jedan. Pokreni pretragu bez filtara.
+{% if has('search_facet_values') %}
+Provjeri vrijednosti filtara s {{ tool('search_facet_values') }}.
+{% endif %}
+{% if has('search_histogram') %}
+Provjeri datume s {{ tool('search_histogram') }}.
+{% endif %}
+{% if has('search_passages') %}
+4. Pretraži opis sadržaja s {{ tool('search_passages') }}.
+{% endif %}
+{% if has('folder_search') %}
+5. Koristi {{ tool('folder_search') }} kada zahtjev imenuje mapu, putanju ili datoteku.
+{% endif %}
+{% if has('folder_list') %}
+Koristi {{ tool('folder_list') }} za tu mapu.
+{% endif %}
+{% if has('read_documents') %}
+6. Pročitaj najbolje 1 do 3 pogotka s {{ tool('read_documents') }}.
+{% endif %}
+{% if has('doc_search_text') %}
+Koristi {{ tool('doc_search_text') }} za relevantan tekst u dokumentu.
+{% endif %}
+{% if has('web_search') %}
+7. Pretraži web samo kada zahtjev to dopušta.
+{% endif %}
+{% if has('read_page') %}
+Pročitaj najbolje web stranice s {{ tool('read_page') }}.
+{% endif %}
+{% else %}
+{% if has('web_search') %}
+1. Pretraži svako ime kao navođenu frazu, a zatim druge oblike imena, njegove inicijale i jezik mjesta.
+{% endif %}
+{% if has('read_page') %}
+2. Pročitaj najbolje web stranice s {{ tool('read_page') }}.
+{% endif %}
+{% endif %}
+
+Nakon što dostupni koraci ne pronađu nikakav pokladak ključne riječi, odgovorite na odsustvo i pretragama.
+{% if has('search_collections') %}
+Prije odgovora na odsustvo pokrenite najmanje 4 različite pretrage s najmanje 2 dostupna alata za pretragu.
+Ne ponavljajte identičnu pretragu. Navedite pretražene kolekcije i nedostajuće činjenice.
+Ograničite izjavu o odsustvu na pretrage i dokumente koje ste pregledali.
+Na primjer, recite „Pretraženi zapisnici odbora i zapisi o prijenosu nisu identificirali datum odobrenja." Ove pretrage ne utvrđuju da u bilo kojoj dopuštenoj kolekciji ne postoji zapis o odobrenju.
+{% else %}
+Prije odgovora na odsustvo pokrenite najmanje 4 različite pretrage.
+Ne ponavljajte identičnu pretragu. Navedite pretrage i stranice koje ste čitali.
+Ograničite izjavu o odsustvu na pretrage i stranice koje ste pregledali.
+{% endif %}

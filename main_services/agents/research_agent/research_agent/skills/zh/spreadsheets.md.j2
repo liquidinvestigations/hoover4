@@ -1,0 +1,61 @@
+---
+name: spreadsheets
+group: technique
+description: 如何使用表格工具读取电子表格文件：其工作表、列、行和单个单元格
+tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
+terms: 相关用语：table、tables、spreadsheet、Excel、workbook、sheet、worksheet、tab、CSV、TSV、tabular data、data table、ledger、register、tracker、带列的列表、row、column、cell、header、pivot table、database table、SQLite、Tabelle。文件类型：xlsx、xls、xlsm、ods、csv、tsv、sqlite、db、SpreadsheetML XML，以及 HTML 或 PDF 文档中的表格。表格类型的搜索命中。
+not_for: 当请求仅要求将答案以表格形式呈现，或以其他含义使用 table 一词时，则不需要。
+---
+读取电子表格
+
+电子表格、CSV 文件或文档中的表格都是表格文档。用搜索结果的 file_hash 和 collection 来命名它。
+
+1. {{ tool('table_overview') }} 列出各工作表和列及其 id。
+2. 使用 {{ tool('table_page') }} 读取行。一次调用返回 50 行。在调用中对行进行排序和筛选。传入 row_start 以跳转到大型工作表中的某一行，并传入 columns 以读取第 60 列之后的列。
+3. {{ tool('table_column_values') }} 列出某一列中的值及其计数。
+4. 要在某个工作表中查找值，调用 {{ tool('table_search_cells') }}。当匹配需要上下文时，用 {{ tool('table_page') }} 读取周围的行。
+5. 当 {{ tool('table_page') }} 截断了长单元格时，用 {{ tool('table_cell') }} 读取其完整内容。传入返回的 row_id，并以返回的 column id 指定列。
+
+当读取器需要再次查找值时，给出工作表、行和列。
+
+要按某个值统计行数，就对该列调用 {{ tool('table_column_values') }}。不要自己数一段文本的行数。说明总行数、筛选条件和列名。
+
+一次 values 调用最多给出 200 个值。当结果带有续传时，调用 read_more，直到不再有续传为止。部分值列表无法给出完整分布。
+
+这些值的计数只有在同一工作表、同一行和同一筛选条件下才等于行数总计。空单元格没有值，因此空单元格会使总和小于行数总计。在将总和与总计比较时，说明空单元格的数量。
+
+例如，一个包含 24 份建筑许可的工作表有一个类型列。values 调用给出 fence 9、roof 7、deck 5 和 pool 3，且没有续传。这些计数加起来等于 24。若计数加起来为 27，却只有 24 行，则说明存在计数错误。若计数加起来为 21，则说明有 3 行的 type 为空。
+
+CSV 文件不声明表头行。每个表格结果都给出 `interpretation`，即第 1 行的读取结果，其计数据此描述。当 state 为 `established` 时，该读取结果已知。当 state 为 `ambiguous` 或 `legacy` 且有两个 `candidates` 时，第 1 行可能是表头，也可能是第一条数据行。
+
+每个候选项都给出其行数。结果会读取每一行，`all_rows`，除非该调用给出 `interpretation`。为每个计数附上其读取结果，或用解释 `all_rows` 或 `first_row_header` 读取另一种读取结果。不要将某种读取结果的计数作为已确立的行数。
+
+JSON 文件或文本文件没有工作表。当 {{ tool('table_overview') }} 没有给出工作表时，把文档作为文本读取。
+
+每个表格调用都需要来自同一文档结果的 collection 和 file_hash。
+{{ tool('table_overview') }} 返回工作表和列标识符。
+其他表格工具需要 sheet。从概览中复制其标识符。
+{{ tool('table_page') }} 可选地接受 sort、filters、columns、search、row_start 和 interpretation。
+sort 需要 column 和 direction，即 asc 或 desc。省略则使用存储的行顺序。
+filters 是列谓词列表。每个谓词使用一种测试类型。
+数值或日期范围可同时包含下界和上界。
+测试类型包括 contains、equals、starts_with、is_empty、number_min、number_max、date_min 和 date_max。
+文本测试使用字符串。数值测试使用数字。日期边界使用 YYYY-MM-DD 字符串。
+columns 选择列标识符。每个返回窗口最多包含 60 个选定的列。
+search 可选地保留包含其文本的行。row_start 是请求行顺序中的从零开始的位置。
+结果包含列元数据和行。row_id 是存储的行标识，排序后仍然有效。
+
+{{ tool('table_column_values') }} 还需要 column。search 可选地过滤值文本。
+它返回该列的值和计数。
+{{ tool('table_search_cells') }} 需要 query。它返回匹配的 sheet、row 和列标识及文本。
+{{ tool('table_cell') }} 需要 row 和 column。将返回的 row_id 作为参数名 row 传入。
+它返回 2,000 字符的切片。使用 read_more 获取剩余的单元格文本。
+使用 read_more 获取续表页面、值和搜索命中。
+
+打开此概览的表格结构。
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` 此页面使用复制的表和列标识符进行调用。
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` 此值收窄一列进行调用。
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` 此值将含糊 CSV 表的第一行读取为列名进行调用。
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` 此单元格搜索定位所请求的值。
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` 此单元格读取 row_id 71 进行调用，即使该行在排序结果中排在首位。
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```

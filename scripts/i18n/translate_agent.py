@@ -14,9 +14,11 @@ The tool writes, for each language, the files that `research_agent.localization`
   (`scripts/i18n/agent_tool_texts.py` writes that list).
 
 Jinja tags, Jinja comments, code spans in backticks and `{name}` fields are replaced by
-numbered markers before the model sees the text. A reply must return every marker once,
-keep the number of lines, and keep each line that holds only a Jinja tag. A part that fails
-twice stays English. A skill keeps its English front matter except `description`, `terms`
+numbered markers before the model sees the text. A reply must return every marker once.
+When the part has a line that holds only a Jinja tag, the reply must also keep the number of
+lines and each such line. A part that fails twice is tried again paragraph by paragraph, and
+a paragraph that fails stays English. A batch of tool texts that fails twice is tried again
+one text at a time. A failed file or language is logged, and the other files go on. A skill keeps its English front matter except `description`, `terms`
 and `not_for`. `translations.json` in the package folder records the producer, the
 parameters and the English text hash of each translated file and text, so a second run
 translates only what changed. The glossary is the one of `translate_catalogs.py` and the
@@ -132,6 +134,9 @@ def marker_problem(english: str, translated: str, count: int, lines: bool) -> st
     if not lines:
         return None
     source_lines, target_lines = english.split("\n"), translated.split("\n")
+    # The line count matters only around a line that holds Jinja tags and no text.
+    if not any(MARKER.sub("", line).strip() == "" and line.strip() for line in source_lines):
+        return None
     if len(source_lines) != len(target_lines):
         return f"{len(target_lines)} lines for {len(source_lines)}"
     for a, b in zip(source_lines, target_lines):
@@ -183,17 +188,25 @@ def translate_part(model: Model, code: str, terms: dict, part: str, problems: li
     lead = masked[:len(masked) - len(masked.lstrip("\n"))]
     tail = masked[len(masked.rstrip("\n")):]
     core = unwrap(masked.strip("\n"))
+    reason = "the model request failed"
     for _attempt in range(2):
-        reply = strip_fence(model.ask(system_text(SYSTEM, code, terms), core)).strip("\n")
+        try:
+            reply = strip_fence(model.ask(system_text(SYSTEM, code, terms), core)).strip("\n")
+        except Exception:  # noqa: BLE001 - a failed request counts as one attempt
+            continue
         reason = marker_problem(core, reply, len(tokens), lines=True)
         if reason is None:
             # A proofread that breaks a marker or a line is dropped, and the translation stays.
-            checked = strip_fence(model.ask(system_text(PROOF_SYSTEM, code, terms), reply)).strip("\n")
-            if marker_problem(core, checked, len(tokens), lines=True) is None:
+            try:
+                checked = strip_fence(model.ask(system_text(PROOF_SYSTEM, code, terms), reply)).strip("\n")
+            except Exception:  # noqa: BLE001 - the translation stays without a proofread
+                checked = ""
+            if checked and marker_problem(core, checked, len(tokens), lines=True) is None:
                 reply = checked
             return unmask(lead + reply + tail, tokens)
     # A part of several paragraphs is tried again paragraph by paragraph.
-    paragraphs = re.split(r"(?<=\n\n)", part)
+    paragraphs = [p for p in re.split(r"(?<=\n\n)", part) if p]
+    # Two or more paragraphs are each shorter than the part, so the retry ends.
     if len(paragraphs) > 1:
         return "".join(translate_part(model, code, terms, p, problems, where) for p in paragraphs)
     problems.append(f"{code} {where}: {reason}, the English part stays")
@@ -222,7 +235,9 @@ def translate_texts(model: Model, code: str, terms: dict, texts: list[str], prob
             try:
                 reply = json.loads(strip_fence(model.ask(system_text(TEXT_SYSTEM, code, terms),
                                                          json.dumps(request, ensure_ascii=False))))
-            except ValueError:
+            except Exception:  # noqa: BLE001 - a bad reply or a failed request: one attempt
+                continue
+            if not isinstance(reply, dict):
                 continue
             missing = []
             for key in request:
@@ -238,6 +253,18 @@ def translate_texts(model: Model, code: str, terms: dict, texts: list[str], prob
             request = {k: request[k] for k in missing}
             if not request:
                 break
+        # A text that breaks the reply of its batch gets a request of its own.
+        for key in list(request):
+            masked_text, tokens = masked[int(key)]
+            try:
+                reply = json.loads(strip_fence(model.ask(system_text(TEXT_SYSTEM, code, terms),
+                                                         json.dumps({key: masked_text}, ensure_ascii=False))))
+            except Exception:  # noqa: BLE001 - the text stays English
+                continue
+            value = reply.get(key) if isinstance(reply, dict) else None
+            if isinstance(value, str) and marker_problem(masked_text, value, len(tokens), False) is None:
+                out[batch[int(key)]] = unmask(value, tokens)
+                request.pop(key)
         for key in request:
             problems.append(f"{code} {where}: text {start + int(key)} stays English")
     return out
@@ -273,7 +300,8 @@ def role_lines(package: Path) -> dict:
     raise SystemExit("ROLE_LINES not found")
 
 
-def translate_language(model: Model, package: Path, code: str, record: dict, lock: threading.Lock) -> list[str]:
+def translate_language(model: Model, package: Path, code: str, record: dict, lock: threading.Lock,
+                       save, keep_existing: bool) -> list[str]:
     problems: list[str] = []
     terms = {**glossary(model, code), **agent_glossary(model, code)}
     with lock:
@@ -285,6 +313,7 @@ def translate_language(model: Model, package: Path, code: str, record: dict, loc
     def done(key: str, english: str) -> None:
         with lock:
             hashes[key] = sha(english)
+        save()
 
     sources = [("prompts/agent.md.j2", package / "prompts" / "agent.md.j2", package / "prompts" / code / "agent.md.j2", "template")]
     for path in sorted((package / "skills").glob("*.md.j2")):
@@ -295,9 +324,17 @@ def translate_language(model: Model, package: Path, code: str, record: dict, loc
         english = source.read_text()
         if not wanted(key, english) and target.exists():
             continue
+        if keep_existing and key not in hashes and target.exists():
+            done(key, english)
+            continue
         print(f"  {code} {key}", flush=True)
         before = len(problems)
-        text = (translate_skill if kind == "skill" else translate_template)(model, code, terms, english, problems, key)
+        try:
+            text = (translate_skill if kind == "skill" else translate_template)(model, code, terms, english, problems, key)
+        except Exception as exc:  # noqa: BLE001 - one failed file must not stop the language
+            problems.append(f"{code} {key}: {type(exc).__name__}: {exc}, the file is not written")
+            print(f"  {code} {key}: failed: {type(exc).__name__}: {exc}", flush=True)
+            continue
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(text)
         if len(problems) == before:
@@ -306,7 +343,9 @@ def translate_language(model: Model, package: Path, code: str, record: dict, loc
     roles = role_lines(package)
     english = json.dumps(roles, sort_keys=True)
     target = package / "prompts" / code / "role_lines.json"
-    if wanted("prompts/role_lines", english) or not target.exists():
+    if keep_existing and "prompts/role_lines" not in hashes and target.exists():
+        done("prompts/role_lines", english)
+    elif wanted("prompts/role_lines", english) or not target.exists():
         before = len(problems)
         out = {name: translate_template(model, code, terms, source, problems, f"role line {name}")
                for name, source in roles.items()}
@@ -337,6 +376,9 @@ def main() -> int:
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--producer", default="", help="the model description for the record, without credentials")
+    parser.add_argument("--keep-existing", action="store_true",
+                        help="record an existing translated file without a recorded hash as current, "
+                             "for a run after an interrupted one")
     args = parser.parse_args()
     model = Model(args.base_url, args.model, args.key_file.read_text().strip(), args.temperature)
     record_path = args.package / "translations.json"
@@ -347,14 +389,27 @@ def main() -> int:
         "review": "not reviewed by a native speaker",
     })
     lock = threading.Lock()
+
+    def save() -> None:
+        with lock:
+            text = json.dumps(record, ensure_ascii=False, indent=1, sort_keys=True) + "\n"
+            record_path.write_text(text)
+
     codes = [c for c in args.languages.split(",") if c in LANGUAGES]
     problems: list[str] = []
     with concurrent.futures.ThreadPoolExecutor(args.workers) as pool:
-        for found in pool.map(lambda code: translate_language(model, args.package, code, record, lock), codes):
-            problems.extend(found)
-            with lock:
-                record_path.write_text(json.dumps(record, ensure_ascii=False, indent=1, sort_keys=True) + "\n")
-    record_path.write_text(json.dumps(record, ensure_ascii=False, indent=1, sort_keys=True) + "\n")
+        futures = {pool.submit(translate_language, model, args.package, code, record, lock, save,
+                               args.keep_existing): code for code in codes}
+        # A language that fails is reported, and the other languages go on.
+        for future in concurrent.futures.as_completed(futures):
+            code = futures[future]
+            try:
+                problems.extend(future.result())
+                print(f"  {code}: done", flush=True)
+            except Exception as exc:  # noqa: BLE001
+                problems.append(f"{code}: {type(exc).__name__}: {exc}, the language stopped")
+                print(f"  {code}: failed: {type(exc).__name__}: {exc}", flush=True)
+            save()
     print(f"{len(problems)} parts or texts stay English")
     for problem in problems:
         print(f"  {problem}")

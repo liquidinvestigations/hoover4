@@ -1,0 +1,95 @@
+---
+name: passages
+group: technique
+description: jak znaleźć dokładne fragmenty tekstu lub strony, które odpowiadają na pytanie, za pomocą search_passages, w wielu dokumentach lub jednym
+tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
+terms: Słowa dla niego: fragment tekstu, akapit, zdanie, cytat, wycinek, strona, sekcja, gdzie jest powiedziane, część, która wspomina, dokładne sformułowanie, linia. Dotyczy długich dokumentów tekstowych: PDF, plików Word, e-maili, raportów i transkryptów.
+not_for: Niepotrzebne dla liczb, list plików lub metadanych.
+---
+Wyszukiwanie fragmentów tekstów i stron
+
+{% if has('search_passages') %}
+Aby szukać w wielu dokumentach, użyj {{ tool('search_passages') }}. Szuka w fragmentach tekstów według słów kluczowych i według znaczenia razem. Użyj go, gdy masz pytanie wyrażone zwykłymi słowami, a słowa używane w dokumentach nie są jasne. Podaj do 12 zapytań w jednym wywołaniu, z których każde to inna forma pytania. Każde trafienie wskazuje zapytania, które je znaleźły. Dla dokładnej nazwy, adresu lub frazy użyj {{ tool('search_collections') }}.
+
+{% endif %}
+{% if has('doc_search_text') or has('pdf_search') %}
+Aby szukać w jednym długim dokumencie, użyj tych narzędzi.
+{% if has('doc_search_text') %}
+{{ tool('doc_search_text') }} wypisuje trafienia zapytania w jednym źródle tekstowym, w kolejności stron, ze stroną każdego trafienia.
+{% endif %}
+{% if has('pdf_search') %}
+{{ tool('pdf_search') }} znajduje zapytanie na stronach źródła PDF. Podaj page_from i page_to, aby szukać w zakresie stron.
+{% endif %}
+
+{% endif %}
+{% if has('read_documents') %}
+Odczytaj stronę za pomocą {{ tool('read_documents') }}, gdy fragment tekstu nie pokazuje wystarczająco tekstu, aby poprzeć twierdzenie. Podaj jego stronę lub podaj zapytanie, aby otworzyć stronę z największą liczbą trafień.
+{% endif %}
+
+Podaj dokument i stronę, gdy fragment tekstu popiera odpowiedź.
+
+{% if has('read_documents') %}
+{{ tool('read_documents') }} wymaga collection i file_hash.
+collection to jedna nazwa. file_hash to lista od 1 do 20 skrótów z tego źródła.
+Dla dokumentów w różnych kolekcjach przygotuj osobną partię dla każdej kolekcji.
+Kopiuj identyfikatory z wyników. Unikalna nazwa pliku lub ścieżka mogą też rozstrzygnąć dokument.
+source opcjonalnie wybiera wyciągnięte źródło. Pominięcie używa preferowanego źródła.
+page opcjonalnie wybiera zapisany identyfikator strony. Identyfikatory stron mogą mieć luki.
+Pominij page lub podaj zero, aby wybrać stronę z największą liczbą trafień zapytania, albo pierwszą zapisaną stronę bez zapytania.
+query otwiera tekst wokół pobliskich, odrębnych dopasowanych słów na tej stronie.
+Dla dokładnego brzmienia wklej frazę wewnątrz zapytania. Pojedyncze dopasowane wartość otwiera jej pierwsze wystąpienie.
+offset nadpisuje początek fragmentu tekstu. Liczy znaki Unicode od zera w tej stronie.
+length to dodatnia liczba znaków. Pominięcie używa 6 000 znaków.
+source_version opcjonalnie weryfikuje zwrócony odcisk palba źródła. Kopiuj je dla ponownego odczytu zakresu.
+
+Wynik zwraca tekst_range z polem start, wykluczonym końcem, liczbą znaków na stronie i jednostką.
+page_complete oznacza, że zakres obejmuje całą stronę.
+Marker cięcia oznacza, że narzędzie dostarczyło tylko część zakresu. Nie oznacza to, że strona się tam kończy.
+Kontynuuj ten dokument, używając more danego elementu. Użyj more najwyższego poziomu, aby kontynuować pozostałą stronę lub kolejne strony.
+Skopiuj zwrócony sygatura cytatu dokładnie do {{ tool('read_more') }} jako kontynuację.
+Skopiuj read_before lub read_after jako argumenty read_documents dla tekstu otaczającego. Nie jest potrzebne obliczanie offsetu.
+Argumenty zakresu stosują się do każdego hash w jednym wywołaniu. Użyj osobnych wywołań, gdy dokumenty mają różne źródła, zakresy lub wersje źródła.
+Na przykład skopiuj zwrócony obiekt read_after pierwszego dokumentu do jednego wywołania.
+```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` Skopiuj zwrócony obiekt read_after drugiego dokumentu do innego wywołania.
+```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` Użyj faktycznych zwróconych wartości dla każdego dokumentu. Nie addawaj pól numerowanych, takich jak source2 czy offset2.
+Ponowione początkowe wywołanie zwraca ten sam tekst. Użyj kontynuacji, gdy potrzebny jest więcej tekstu.
+Zatrzymaj czytanie, gdy fragment tekstu dostarcza wystarczających dowodów do potwierdzenia żądanego twierdzenia.
+
+To minimalne wywołanie otwiera pierwszą zapisaną stronę.
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` To wywołanie otwiera wyselekjonowany fragment tekstu.
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` To wywołanie otwiera zwrócony zakres w wybranym Źródle i na stronie.
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` To kontynuowanie czyta następny zwrócony zakres. Użyj faktycznej wydanej sygnatury cytatu.
+```json {"continuation":"COPY_RETURNED_MORE"} ```
+{% endif %}
+{% if has('doc_search_text') %}
+{{ tool('doc_search_text') }} wymaga kolekcji, file_hash i query. source opcjonalnie wybiera jedną ekstrakcję.
+Zwraca stronę, ordinal, start, end i snippet dla każdego trafienia. Przesunięcia liczą znaki w obrębie tej strony.
+Kiedy snippet wymaga większego kontekstu, kopiuj stronę i start trafienia do read_documents.
+Użyj read_more, aby pobrać pozostałe trafienia.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
+{% endif %}
+{% if has('doc_sources') %}
+{{ tool('doc_sources') }} wymaga kolekcji i file_hash. query opcjonalnie liczy trafienia pasujące w każdej ekstrakcji.
+Zwraca nazwy źródeł i zapisane zakresy stron. Kopiuj nazwę źródła, gdy wybierasz konkretną ekstrakcję.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
+{% endif %}
+{% if has('doc_diff_sources') %}
+{{ tool('doc_diff_sources') }} wymaga kolekcji, file_hash, source_a i source_b.
+page_a i page_b opcjonalnie wybierają strony. Pominięcie wybiera pierwszą zapisaną stronę każdego źródła.
+Wynikiem jest zjednoczona różnica tekstu. Użyj read_more, gdy się kontynuuje.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
+{% endif %}
+{% if has('pdf_search') %}
+{{ tool('pdf_search') }} wymaga kolekcji, file_hash i query.
+source opcjonalnie wybiera ekstrakcję PDF. page_from i page_to opcjonalnie ograniczają inclusive zakres stron PDF.
+Kopiuj zwrócone pozycje strony. Użyj read_more dla kontynuowanych trafień.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
+{% endif %}
+{% if has('search_passages') %}
+{{ tool('search_passages') }} przyjmuje zapytania jako jeden ciąg lub listę do 12 form.
+collection przyjmuje jedną nazwę lub listę. Pominięcie szuka we wszystkich dozwolonych kolekcjach.
+max_results wybiera liczbę trafień na formę zapytania w obrębie limitu serwowanego schematu. Pominięcie używa 15.
+Wynik daje collection, file_hash, page i snippet. q zapisuje zero-based indeksy zapytania.
+Kiedy fragment tekstu nie odpowiada na pytanie, czytaj tekst wspierający.
+```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
+{% endif %}

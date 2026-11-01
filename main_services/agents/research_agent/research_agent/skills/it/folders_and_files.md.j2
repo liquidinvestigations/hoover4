@@ -1,0 +1,88 @@
+---
+name: folders_and_files
+group: technique
+description: come vedere cosa contiene una collezione: insiemi di dati, cartelle, tipi di file, conteggi e date, e come trovare un file per nome o percorso
+tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
+terms: Parole relative: collezione, insieme di dati, cartella, directory, percorso, nome del file, tipo di file, estensione, formato, conteggi, quanti file, dimensione, più grande, panoramica, inventario, cosa contiene una collezione, documenti per anno.
+not_for: Non necessario quando la richiesta riguarda solo il contenuto dei documenti.
+---
+Cartelle e file
+
+{% if has('list_collections') and has('search_facet_values') %}
+Per una panoramica della Collezione, chiama {{ tool('list_collections') }} con {}.
+Poi chiama {{ tool('search_facet_values') }} con {} una volta per ogni tipo di file e lingua di ogni collezione permessa.
+La matrice predefinita contiene già entrambe le facciate. Non è necessaria una chiamata separata per collezione o facciata.
+{% endif %}
+
+{% if has('list_collections') %}
+{{ tool('list_collections') }} non accetta argomenti. Fornisce i nomi delle collezioni, i conteggi dei documenti e i conteggi degli insiemi di dati.
+```json {} ```
+
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} fornisce i conteggi di archiviazione di ogni collezione e insieme di dati.
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} fornisce le cartelle e i file figli di una cartella di un insieme di dati.
+{% endif %}
+{% if has('folder_search') %}
+Per trovare una cartella o un file per nome all'interno di un insieme di dati, chiama {{ tool('folder_search') }}.
+{% endif %}
+{% if has('search_collections') %}
+Per trovare un file per nome in ogni collezione, chiama {{ tool('search_collections') }} con `filename_only` impostato su true. Fornisci il nome o una sua parte come richiesta.
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} conta i documenti di una ricerca per data o dimensione.
+{% endif %}
+{% if has('search_facet_values') %}
+{{ tool('search_facet_values') }} fornisce i valori di un filtro, inclusi i tipi di file, con i conteggi.
+{% endif %}
+
+Il nome o il percorso di un file può identificare un documento. La riga di risultato `file_hash` lo identifica direttamente.
+
+Usa gli strumenti di metadati per una richiesta di inventario. I loro conteggi possono rispondere alla richiesta direttamente.
+Le ricerche di contenuto sono utili solo quando la persona chiede cosa dicono i documenti.
+
+{% if has('search_facet_values') %}
+Chiama {{ tool('search_facet_values') }} una volta per più collezioni e facette.
+Gli argomenti sono collection, facets, query e ids.
+Ometti collection o fornisci [] per ogni collezione consentita. Fornisci un nome o una lista per restringere la selezione.
+Ometti facets per ["file_types", "language"]. Fornisci una lista di nomi di facette esatti per altre distribuzioni.
+Usa file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc, re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money o re_crypto_wallet.
+file_type non è valido. Usa file_types.
+query trova testo all'interno dei valori di facetta. Non cerca nei contenuti dei documenti.
+ids risolve opvolmente gli identificatori di termine noti. Le ricerche ordinarie usano il testo del valore e non richiedono identificatori.
+
+Il risultato ha colonne e elementi. Ogni riga inizia con la propria collezione.
+Ogni cella di facetta contiene coppie [testo, conteggio]. Copia il testo in facet_filters per una successiva ricerca per contenuto.
+Una cella null ha un errore segnalato. Una cella vuota non ha valori restituiti.
+I conteggi si riferiscono ai documenti indicizzati corrispondenti per valore. Più valori possono applicarsi a un singolo documento.
+Non aggiungere i conteggi delle facette per affermare un totale distinto. I totali dell'inventario provengono da list_collections.
+La lista di facette predefinita può omettere valori non comuni. Usa query per trovare un valore specifico.
+Usa read_more quando il risultato continua.
+
+Questa chiamata minima inventaria i formati di file e le lingue tra le collezioni permesse.
+```json {} ``` Questa chiamata confronta due collezioni selezionate e cerca i valori degli indirizzi email.
+```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} richiede collection. dataset seleziona opzionalmente un insieme di dati.
+Questa legge tutti i conteggi di storage dell'insieme di dati all'interno di una collezione.
+```json {"collection":"alpha"} ``` Questa seleziona un insieme di dati.
+```json {"collection":"alpha","dataset":"files"} ```
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} richiede collection e dataset. node_id seleziona opzionalmente un nodo cartella restituito.
+Ometti node_id per leggere la radice dell'insieme di dati. Copia gli identificatori dei nodi figlio in chiamate successive.
+```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('folder_search') %}
+{{ tool('folder_search') }} richiede collection, dataset e query. node_id limita opzionalmente la ricerca a una cartella.
+```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} accetta gli stessi filtri di search_collections, escluso sort e queries.
+field è date, mentioned_date o size. Il valore predefinito è date. query è predefinito come query vuota.
+collection omesso copre ogni collezione permessa. Il risultato restituisce bucket e il campo selezionato.
+```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{% endif %}

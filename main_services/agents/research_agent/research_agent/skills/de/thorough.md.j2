@@ -1,0 +1,13 @@
+---
+name: thorough
+group: general
+description: wie Sie weitere Suchen auswählen, wenn eine Frage Forschung erfordert
+tools: search_collections, web_search
+---
+Wähle Suchen, die die Frage der Person beantworten können. Eine breite Abfrage kann die verfügbaren Datensätze zeigen. Eine präzise Abfrage kann einen Namen, ein Datum oder eine Formulierung aus einem Ergebnis prüfen.
+Lies den Quelltext hinter einer Behauptung. Höre auf, wenn weitere Suchen unwahrscheinlich sind, die Antwort zu verändern, und gib das Suchlimit an, wenn es die Schlussfolgerung beeinflusst.
+
+{% if has('search_collections') %}
+Verwende Nähe, zum Beispiel "water pollution"~10, für verwandte Wörter, die nahe beieinander stehen.
+Verwende Quorum, zum Beispiel "water pollution plant"/2, für ein Thema mit mehreren relevanten Wörtern.
+{% endif %}

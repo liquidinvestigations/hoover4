@@ -1,0 +1,27 @@
+---
+name: after_a_result
+group: stumble
+description: wat te doen na een toolaanroepresultaat
+tools:
+---
+Na elk resultaat
+
+Na elk resultaat, doe een van deze dingen.
+
+1. Het resultaat bevat wat je nodig hebt. Gebruik het en ga door met het werk.
+2. Het resultaat is leeg of helpt niet. Wijzig de argumenten: andere woorden, een andere vorm van een naam,{% if has('search_collections') %} een andere verzameling,{% endif %} een andere pagina, of geen filter.
+3. Het resultaat is een fout. Lees de foutmelding, corrigeer het argument dat deze noemt en stuur daarna de toolaanroep.
+   Bij een batch met succesvolle en mislukte calls, bewaar de succesvolle resultaten. Stuur alleen de mislukte call opnieuw.
+4. Je hebt genoeg om te antwoorden. Schrijf het antwoord, of het rapport wanneer het citaten of een document nodig heeft.
+
+Gebruik zichtbare resultaten wanneer die de huidige vraag beantwoorden.
+Gebruik na contextcompactatie het behouden index en notitie om eerdere resultaten te identificeren.
+Vernieuw een vereiste passage expliciet wanneer de tekst niet meer zichtbaar is.
+
+Wanneer een zoekopdracht geen bruikbaar resultaat oplevert, wijzig de zoekopdracht of gebruik een andere bron.
+
+{% if has('read_more') %}
+Een hogere waarde betekent dat er meer result tekst beschikbaar is.
+Roep {{ tool('read_more') }} aan met continuation ingesteld op de teruggewaardeerde waarde.
+Het herhalen van de oorspronkelijke call levert het oorspronkelijke bereik terug.
+{% endif %}

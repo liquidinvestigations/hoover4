@@ -1,0 +1,30 @@
+---
+name: browser_use
+group: technique
+description: πώς να οδηγείτε έναν πρόβολο ιστοσελίδας: ανοίξτε μια διεύθυνση, διαβάστε το στιγμιότυπο της σελίδας, στη συνέχεια κάντε κλικ, πληκτρολογήστε ή επιλέξτε ανάλογα με την αναφορά στοιχείου
+tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
+---
+Οδήγηση ενός ιστοσελίδας
+
+{% if has('read_page') %}
+{{ tool('read_page') }} διαβάζει το κείμενο μιας ιστοσελίδας. Χρησιμοποίησε ένα στιγμιότυπο περιβάλλοντος όταν έχει σημασία η κατάσταση της ιστοσελίδας ή τα διαδραστικά στοιχεία.
+
+{% endif %}
+1. Άνοιξε τη διεύθυνση με {{ tool('browser_navigate') }}.
+2. Κάλεσε {{ tool('browser_snapshot') }}. Το στιγμιότυπο καταγράφει κάθε στοιχείο της ιστοσελίδας με την αναφορά του, όπως ref e12.
+3. Επιδράσε σε ένα στοιχείο με {{ tool('browser_click') }}, {{ tool('browser_type') }} ή {{ tool('browser_select_option') }}. Δώσε την αναφορά από το τελευταίο στιγμιότυπο και μια σύντομη περιγραφή του στοιχείου. Χρησιμοποίησε {{ tool('browser_press_key') }} για ένα πλήκτρο όπως Enter.
+4. Μετά από κάθε ενέργεια, κάλεσε {{ tool('browser_snapshot') }} ξανά. Μια ενέργεια μπορεί να αλλάξει την ιστοσελίδα, οπότε οι παλιές αναφορές δεν είναι έγκυρες.
+
+Όταν ένα αποτέλεσμα ξεκινά με «### Error», διάβασε το κείμενο του σφάλματος. Μια παλιά αναφορά στοιχείου σημαίνει ότι η ιστοσελίδα άλλαξε. Πάρε ένα νέο στιγμιότυπο και χρησιμοποίησε τη νέα αναφορά. Μια κενή αναφορά ή επιλογέας σημαίνει ότι δεν έδωσες στοιχείο.
+
+Πες στην απάντησή σου ή στην αναφορά σου ποια διεύθυνση άνοιξες και τι έδειχνε η ιστοσελίδα.
+
+{{ tool('browser_navigate') }} απαιτεί url. {{ tool('browser_snapshot') }} δεν παίρνει οράσματα.
+```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} απαιτεί target. Αντιγράψτε μια αναφορά στοιχείου που επιστρέφεται ή χρησιμοποιήστε μοναδικό επιλογέα.
+στοιχείο περιγράφει προαιρετικά τον στόχο. κουμπί ορίζεται προαιρετικά αριστερό και μπορεί να είναι δεξιό ή μεσαίο.
+doubleClick επιλέγει προαιρετικά διπλό κλικ. modifiers κρατάει προαιρετικά Alt, Control, ControlOrMeta, Meta ή Shift.
+```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} απαιτεί target και text. στοιχείο περιγράφει προαιρετικά τον στόχο.
+submit πιέζει προαιρετικά Enter μετά τη συγγραφή. optionally types individual characters to trigger key handlers.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} απαιτεί target και values, μια λίστα τιμών επιλογής. στοιχείο περιγράφει προαιρετικά τον στόχο.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} απαιτεί key, όπως Enter ή Control+ArrowRight.
+```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` Κάθε ενέργ επιστρέφει την κατάσταση ή ένα σφάλμα. Διαβάστε ένα νέο snapshot μετά από ενέργεια που αλλάζει σελίδα.

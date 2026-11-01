@@ -1,0 +1,27 @@
+---
+name: after_a_result
+group: stumble
+description: was nach einem Werkzeugergebnis zu tun ist
+tools:
+---
+Nach jedem Ergebnis
+
+Führe nach jedem Ergebnis eine dieser Aktionen aus.
+
+1. Das Ergebnis enthält, was du brauchst. Nutze es und fahre mit der Arbeit fort.
+2. Das Ergebnis ist leer oder hilft nicht. Ändere die Argumente: andere Wörter, eine andere Form eines Namens,{% if has('search_collections') %} eine andere Sammlung,{% endif %} eine andere Seite oder keinen Filter.
+3. Das Ergebnis ist ein Fehler. Lies den Fehlertext, korrigiere das Argument, das er nennt, und sende danach den Aufruf.
+   Wenn ein Batch erfolgreiche und fehlgeschlagene Aufrufe enthält, behalte die erfolgreichen Ergebnisse. Sende nur den fehlgeschlagenen Aufruf erneut.
+4. Du hast genug zum Beantworten. Schreibe die Antwort oder den Bericht, wenn Belege oder ein Dokument nötig sind.
+
+Nutze sichtbare Ergebnisse, wenn sie die aktuelle Frage beantworten.
+Verwende nach der Kontextkomprimierung den behaltenen Index und die Hinweise, um frühere Ergebnisse zu identifizieren.
+Aktualisiere eine benötigte Passage ausdrücklich, wenn ihr Text nicht mehr sichtbar ist.
+
+Wenn eine Suche kein nützliches Ergebnis liefert, ändere die Abfrage oder nutze eine andere Quelle.
+
+{% if has('read_more') %}
+Ein größerer Wert bedeutet, dass zusätzliches Ergebnis verfügbar ist.
+Rufe {{ tool('read_more') }} mit einer Fortsetzung auf den zurückgegebenen Wert auf.
+Das wiederholte Aufrufen des ursprünglichen Aufrufs liefert den ursprünglichen Bereich.
+{% endif %}

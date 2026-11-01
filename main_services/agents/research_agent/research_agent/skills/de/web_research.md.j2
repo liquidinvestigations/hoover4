@@ -1,0 +1,115 @@
+---
+name: web_research
+group: technique
+description: wie man im offenen Web sucht, eine Webseite oder den Inhaber-Eintrag einer Domain liest und die Webseiten zitiert, die einen Bericht unterstützen
+tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
+---
+Recherche im offenen Web
+
+Nutze Web-Quellen, wenn sie die Frage der Person beantworten können.
+
+{% if has('web_search') %}
+{{ tool('web_search') }} akzeptiert eine Liste von Abfragen. Das Feld `sources` beschränkt die Suche auf benannte Quellen.{% if has('list_search_sources') %} {{ tool('list_search_sources') }} listet diese Quellen auf.{% endif +%}
+{% endif %}
+{% if has('read_page') %}
+1. Lese die besten Ergebnisse vollständig mit {{ tool('read_page') }}. Gib alle Adressen in einem Aufruf an und gib als Ziel an, was du suchst. Ein Ergebnis, das mit BLOCKED BY A BOT CHECK markiert ist, ist nicht die Seite. Verwende deren Text nicht.
+{% endif %}
+{% if has('whois_lookup') %}
+{% if has('read_page') %}2.{% else %}1.{% endif %} Für den Inhaber, den Registrar oder die Daten einer Domäne rufe {{ tool('whois_lookup') }} mit jeder Domäne in einem Aufruf auf.
+{% endif %}
+
+Liese jede Quelle, bevor du ihre Aussagen verwendest. Ein Suchergebnis-Snippet ist keine Quelle.
+{% if has('cite_pages') %}
+
+Anführen von Web-Seiten
+
+Rufe {{ tool('cite_pages') }} mit jeder gelesenen Seiten-URL und der genauen unterstützenden Formulierung in `terms` auf.
+Verwende die zurückgegebenen Web-Kennungen neben den Aussagen, die sie unterstützen.
+Ersetze bloße Quellen-URLs durch diese Kennungen.
+{{ tool('cite_pages') }} akzeptiert url und Begriffe für eine Seite oder Seiten für bis zu zwölf Seitenobjekte.
+Jede Seite erfordert url und terms. terms enthält bis zu acht genaue Phrasen, jede höchstens 200 Zeichen lang. Die Groß-/Kleinschreibung muss übereinstimmen.
+version wählt optional eine aufgenommene Version aus. why gibt optional die unterstützte Aussage an, in höchstens 300 Zeichen.
+Das Ergebnis liefert verifizierte Zitate und eine stabile Web-Kennung. Eine fehlgeschlagene Seite liefert einen Fehler ohne Kennung.
+
+Beispiel. {{ tool('read_page') }} lese die URL https://example.org/report. Der Text lautet „The plant closed in March 2019." Rufe {{ tool('cite_pages') }} mit flachen Argumenten für eine Seite auf:
+url, übernommen aus dem read-Ergebnis, Begriffe mit der exakten Phrase sowie den Grund.
+```json {"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"The report gives the closing date."} ``` Schreibe danach „The plant closed in March 2019 [W1]." mit der Zitationskennung, die der Aufruf zurückgibt.
+Teile eine Liste mit mehr als zwölf Seiten in separate Aufrufe auf.
+```json {"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"This passage gives the approval date."}]} ``` Kopiere den zurückgegebenen Web-Handling, zum Beispiel `[W1]`, neben die Behauptung, die es stützt.
+Behalte jeden Handling bei der URL und den Zitaten aus dem zurückgegebenen citation-Objekt.
+Ein Fehler weist keinen Handling zu. Lass die Behauptungen dieser Quelle bis zum erfolgreichen citation aus.
+Für nicht gefundene Formulierung kopiere den exakten Text aus dem zurückgegebenen candidate und rufe das Werkzeug erneut auf.
+Wenn ein Fehler `errors[i].retry_arguments` enthält, kopiere dieses Objekt unverändert in den nächsten Aufruf.
+Behalte erfolgreiche citations aus einem Teilergebnis. Wiederhole nur die fehlgeschlagenen Seiten.
+Zum Beispiel zitiert ein Aufruf drei Seiten, und zwei gelingen mit [W1] und [W2]. Nutze diese zwei Handlings. Sende den nächsten Aufruf nur mit der dritten Seite und verwende deren retry-Argumente.
+Zum Beispiel verbindet dieser Aufruf Wörter über einen Quellen-Zeilenumbruch und schlägt fehl.
+```json {"url":"https://example.org/report","terms":["The plant closed in March 2019"]} ``` Der Fehler kann diese retry-Argumente mit dem exakten Quelltext zurückgeben.
+```json {"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}} ``` Rufe {{ tool('cite_pages') }} mit diesem zurückgegebenen Objekt auf, einschließlich seiner tatsächlichen Version und der exakten Begriffe.
+```json {"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]} ``` Ein PDF-Fenster hat seine eigene Version. Um eine Passage der Seiten 51 bis 100 zu zitieren, kopiere die Version jener read.
+```json {"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]} ``` Wenn ein Aufruf mehr als acht Begriffe überschreitet, teile seine Begriffe in Gruppen zu höchst acht auf und zitiere jede Gruppe separat.
+Behalte die URL und die Quellen-Version bei jeder Gruppe. Das Ändern der Aufrufstruktur reduziert nicht ihre Begriffsanzahl.
+Der Handling öffnet den erfassten Seitentext und seine verifizierten Zitate.
+Verwende eine Seite pro Aufruf, wenn ein Beschädigter Batch eintrifft.
+Eine unlesbare, blockierte oder unverifizierte Seite kann eine Behauptung nicht stützen.
+
+{% include "citation_failures.j2" %}
+{% endif %}
+
+Ein Name oder ein Ereignis, das du dir erinnerst, ist ein Kandidat, bis eine Quelle ihn nennt. Finde eine Quelle, die ihn nennt, bevor du ihn verwendest. Sende nicht erneut eine Suche mit denselben Worten oder mit kleinen Formulierungsveränderungen. Eine nächste Suche muss eine andere Methode verwenden: andere identifizierende Fakten des Kandidaten, eine benannte Quelle, die Sprache des Ortes oder eine Seite, die ein gelesenes Ergebnis verlinkt. Wenn keine verbleibende Methode eine Quelle finden kann, markiere den Kandidaten als nicht verifiziert, und arbeite mit anderen Arbeiten weiter. Eine Person mit demselben Namen ist eine andere Person, bis eine Quelle die Fakten verbindet. Wenn eine Quelle einem Kandidaten widerspricht, entferne den Kandidaten, und gib den Grund an.
+
+Zum Beispiel erinnerst dich, dass eine Mühle im Jahr 2019 geschlossen wurde. Eine Suche nach „Harlow mill closed 2019" findet keine Seite über die Mühle. Eine Suche nach „Harlow mill closure" findet dieselben Ergebnisse. Sende nicht eine dritte Form dieser Worte. Suche den Namen der Eigentümergesellschaft mit dem Ortsnamen. Eine lokale Nachrichten-Seite nennt den Monatsabschluss, also lies sie, und der Kandidat ist verifiziert.
+
+Zum Beispiel erinnerst dich an einen zweiten Gerichtsfall gegen dieselbe Gesellschaft. Suchen nach der Gesellschaft mit „lawsuit", nach dem Gerichtsnamen und nach dem Fallnummer-Format finden keinen Fall.
+Keine andere Methode bleibt. Schreibe, dass die gelesenen Quellen keinen zweiten Fall bestätigen, und nenne ihn nicht als Fall.
+
+Ein Lesen deckt nur seinen extrahierten Text ab. Ein Finden ohne Treffer zeigt an, dass der extrahierte Text die Worte nicht enthält. Es zeigt nicht an, dass das Dokument sie nicht enthält. Ein PDF-Ergebnis gibt die Seiten an, die das Lesen extrahiert hat. Bevor du annimmst, dass ein Dokument eine Person nicht nennt, gib die Seiten oder den Text an, den du durchsucht hast.
+Für eine Liste datierter Ereignisse behalte einen Datensatz für jedes Ereignis mit seinem Datum, seinem Namen und seiner Quelle. Gib Datens ohne Datum, doppelte Berichte und Quellen an, die du außer den datierten Datens nicht auseinander lesen konntest.
+
+Wende alle angeforderten Einschränkungen auf jedes Element der Antwort an.
+Gib an, welche Einschränkung ein Element verletzt.
+Jedes Element bei seinen unterscheidenden Fakten benennen.
+Gib bei einem Gerichtsfall das Gericht, das Datum und die Aktenzeichen an, wenn die Quellen diese angeben.
+Prüfe in der Quelle jede Eigenschaft, die die Anfrage von einem Element verlangt.
+Zähle ein Verfahren, ein Ereignis oder eine Entität nur einmal, und liste die Kennzeichnungen seiner Stufen zusammen.
+Berichte über dasselbe Element zusammenfügen.
+Gib an, wenn die Quellen weniger eindeutige Elemente feststellen als angefordert.
+Prüfe vor der Antwort die unterscheidenden Fakten jedes Elements und jede Einschränkung gegen die von dir gelesenen Seiten.
+Behalte ein Element, das eine Einschränkung verletzt, außerhalb der passenden Liste, und nenne seine verletzte Einschränkung.
+Lies jede Seite, die du zitierst, einschließlich einer Ersatzquelle, die nach einer blockierten Seite gefunden wurde.
+Wenn das Lesen einer Seite fehlschlägt, verwende eine andere lesbare Quelle, oder lass die Behauptungen und die Adresse weg.
+
+{% if has('web_search') %}
+{{ tool('web_search') }} nimmt Abfragen als Liste oder einen einzelnen String entgegen und query als zusätzliche einzelne Abfrage.
+Gib mindestens eine Abfrage an. Lass Quellen weg, um alle verfügbaren Quellen zu durchsuchen.
+max_results hat den Standardwert 15. timelimit ist d, w, m oder y und gilt nur für unterstützte Nachrichtenquellen.
+Das Ergebnis liefert sortierte URLs, Titel, Snippets und übereinstimmende Abfrageformen. Lese ausgewählte URLs, bevor du ihren Aussagen vertraust.
+```json {"queries":["transfer approval"]} ``` ```json {"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"} ```
+{% endif %}
+{% if has('list_search_sources') %}
+{{ tool('list_search_sources') }} nimmt keine Argumente entgegen. Es liefert verfügbare Quellennamen und -beschreibungen.
+```json {} ```
+{% endif %}
+{% if has('read_page') %}
+{{ tool('read_page') }} erfordert urls, eine Liste von bis zu sechs HTTP- oder HTTPS-Adressen.
+goal zeichnet optional die Frage auf. Es wählt keine übereinstimmenden Texte aus.
+find wählt optional wörtliche Textübereinstimmungen ohne Groß-/Kleinbuchstaben-Einschränkungen.
+offset ist eine nullbasierte Zeichenposition. Bei Weglassen wird bei Null begonnen.
+version wählt die Version des erfassten Textes. Kopiere sie aus einem vorherigen Lesen derselben URL, um mit diesem Text fortzufahren.
+Eine Version gehört zu einer URL. Für eine andere URL lese zuerst diese URL und kopiere ihre eigene Version.
+links hat den Standardwert true und enthält Linkziele im Text.
+page_start wählt die erste Seite eines PDF-Fensters. Ein Lesen extrahiert höchstens 50 PDF-Seiten.
+Ein Cut-Ergebnis, ein find-Ergebnis mit mehr Treffern und ein PDF-Fenster liefern die Argumente des nächsten Aufrufs.
+Kopiere dieses Argument-Objekt unverändert. Es behält die URL, das PDF-Fenster, die links-Einstellung und die Version.
+Eine Version gehört zu einer URL und einem PDF-Fenster.
+Ein Fenster ohne Text zeigt nicht, dass die anderen Seiten der PDF keine Texte haben.
+Das wiederholte Lesen des ersten Aufrufs liest den ersten Text erneut.
+```json {"urls":["COPY_SEARCH_RESULT_URL"]} ``` ```json {"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false} ``` Zum Beispiel sagt ein PDF-Ergebnis „The text covers PDF pages 1 to 50 of 120 only" und gibt das nächste Fenster an.
+Ein find in diesem Fenster liefert mehr Treffer mit diesem Objekt. Kopiere es als nächsten Aufruf.
+```json {"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200} ```
+{% endif %}
+{% if has('whois_lookup') %}
+{{ tool('whois_lookup') }} nimmt Domains als Liste und domain als eine Domain.
+Gib Domainnamen ohne URL-Pfad an. Das Ergebnis berichtet über jede Domain separat.
+Ein null Registrant bedeutet, dass das Registry diesen Wert nicht veröffentlicht hat. Der Registrar verkauft die Domain-Registrierung.
+```json {"domains":["example.org"]} ``` ```json {"domains":["example.org","example.com"],"domain":"example.net"} ```
+{% endif %}

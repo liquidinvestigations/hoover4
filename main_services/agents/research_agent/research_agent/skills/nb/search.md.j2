@@ -1,0 +1,87 @@
+---
+name: search
+group: general
+description: hvordan du søker i dokumentsamlinger og bruker søksyntaxen
+tools: search_collections
+---
+{% if has('search_collections') %}
+Å søke i brukerens dokumenter
+
+1. Søk i dokumenter når innholdet kan svare på spørsmålet.
+2. Bruk Samling når forespørselen retter seg mot én samling. La den stå ut for å søke på tvers av samlingene denne samtalen kan lese.
+3. {{ tool('search_collections') }} accepterer flere søk. Bruk relevante former av et navn eller en adresse. Legg en eksakt frase i anførselstegn.
+4. OR, OG og IKKE er vanlige ord i et søk. Bruk | for enten og -ord for å ekskludere et ord.
+5. Kopier file_hash og collection fra en resultatrad. Skriv aldri en hash selv.{% if has('read_more') %} Hvis en rad mangler file_hash, kall {{ tool('read_more') }}.{% endif +%}
+6. Sett et dato- eller størrelsesfilter når det hjelper med å svare på spørsmålet.
+7. Når du rapporterer at et søk ikke fant noe dokument, oppgi søket, samlingene og antallet.
+8. Ett kall tar mest 12 søk. Del en lengre liste i to kall.
+9. Gi hvert søk minst ett ord å søke på. Et søk som bare består av -ord avvises.
+10. Sett filename_only til true eller false. Det tar ingen tekst.
+
+Eksempel. Brukeren ber om all data på JoeBWilkinson@cs.com. Gjør ett kall til {{ tool('search_collections') }} med søkene ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Les et dokument når resultatraden ikke gir nok bevis for påstanden.
+{% endif %}
+
+Følg disse søkstegene når tidligere søk ikke svarer på spørsmålet.
+{% if has('search_collections') %}
+1. Søk på hvert navn som en sitatfrase.
+2. Søk på ikke-sitatord, initialer, e-postadresser og navn i dokumentspråket.
+Les word_counts og staveforslag. Bruk et forslag bare for det tenkte navnet.
+Bruk dasovi?h for én varierende bokstav og dasovic% for en valgfritt avsluttende bokstav.
+Bruk skilling << resigned når ordfølge er viktig.
+3. Fjern filtre ett etter ett. Kjør et søk uten filtre.
+{% endif %}
+{% if has('search_facet_values') %}
+Verifiser filterverdier med {{ tool('search_facet_values') }}.
+{% endif %}
+{% if has('search_histogram') %}
+Verifiser datoer med {{ tool('search_histogram') }}.
+{% endif %}
+{% if has('search_passages') %}
+4. Søk på en beskrivelse av innholdet med {{ tool('search_passages') }}.
+{% endif %}
+{% if has('folder_search') %}
+5. Bruk {{ tool('folder_search') }} når forespørselen navngir en mappe, sti eller fil.
+{% endif %}
+{% if has('folder_list') %}
+Bruk {{ tool('folder_list') }} for den mappen.
+{% endif %}
+{% if has('read_documents') %}
+6. Les de beste 1 til 3 treffene med {{ tool('read_documents') }}.
+{% endif %}
+For personene eller organisasjonene i et dokument, les den delen av dokumentet som navngir dem. En referanse til et annet verk navngir det andre verket.
+{% if has('doc_search_text') %}
+Bruk {{ tool('doc_search_text') }} for relevant tekst i et dokument.
+{% endif %}
+{% if has('web_search') %}
+7. Søk på nettet bare når forespørselen tillater det.
+{% endif %}
+{% if has('read_page') %}
+Les de beste nettsidene med {{ tool('read_page') }}.
+{% endif %}
+
+{% if has('search_collections') %}
+De komplette søkargumentene er samling, søk, query, sort, date_after, date_before, date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max, folder_term_id, filename_only og facet_filters.
+Samling accepterer et navn eller en liste. Utelatt eller [] søker i hver tillatt samling.
+query har tom tekst som standard. søk legger til opsjonsvis opptil 12 skjemaer. Dupliserte skjemaer kjøres én gang.
+Et tomt søk blar gjennom alle filtertreff. Søkskjemaer slår sammen matchende dokumentidentiteter.
+sort inneholder felt og retning. felt er relevans, dato, filstørrelse eller navn. retning er asc eller desc.
+Utelatt bruker standard relevansordning.
+date_after og date_before bruker inklusiv UTC-epokesekund for dokumentdatoen.
+mentioned_date_after og mentioned_date_before bruker inklusiv UTC-epokesekund for datoer som er ekstrahert fra tekst.
+date_unknown_only=true velger dokumenter uten kjent dokumentdato. Ikke kombiner det med et datoområde med kjent dato.
+size_min og size_max er inklusiv bytegrense. folder_term_id velger et returnert mappeuttrykk.
+filename_only=true begrenser søket til navn og stier. False bruker dokumentinnhold.
+facet_filters tildeler gyldige fasettnavn til lister med returnerte verditekst. Utelatt bruker ingen fasettfilter.
+Verdier innenfor én fasett er alternativer. Ulike fasettfilter må alle matche.
+
+Hvert resultat inkluderer samling, file_hash, path, snippet og tilgjengelig type, dato og størrelse.
+q lister de nullbaserte skjemaene som fant raden. query_forms rapporterer antallet for hvert skjema.
+word_counts verifiserer indekserte ord. suggestions lister nærme indekserte stavingsmåter med tall.
+Les query_notes for reparert syntaks, ukjente filter og mislykkede søkskjemaer.
+more fortsetter resultatet. Kopier det inn i read_more. En tom første side trenger ingen gjentatt identisk kall.
+
+Søk i alle tillatte samlinger med dette minimale kallet.
+```json {"query":"\"Joe Wilkinson\""} ``` Kombiner søkformer, samlingsspektrum, sortering, datoer, størrelse og filter for facetter med dette avanserte kallet.
+```json {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}} ``` Finn filer uten kjent dokumentdato med dette separate kallet.
+```json {"query":"report","filename_only":true,"date_unknown_only":true} ``` Erstatt samling-, mappe- og facetverdier med verdier som returneres for gjeldende samtale.
+{% endif %}

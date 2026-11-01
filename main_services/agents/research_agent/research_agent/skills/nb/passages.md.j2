@@ -1,0 +1,95 @@
+---
+name: passages
+group: technique
+description: hvordan du finner nøyaktige avsnitt eller sider som svarer på et spørsmål med search_passages, i mange dokumenter eller ett
+tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
+terms: Ord for det: avsnitt, paragraf, setning, sitat, utdrag, side, seksjon, der det står, den delen som nevner, nøyaktig ordvalg, linje. Gjelder for lange tekstdokumenter: PDF, Word-filer, e-poster, rapporter og transkripter.
+not_for: Ikke nødvendig for tellinger, fillister eller metadata.
+---
+Finne avsnitt og sider
+
+{% if has('search_passages') %}
+For å søke i mange dokumenter, bruk {{ tool('search_passages') }}. Den søker i tekstavsnittene på nøkkelord og på betydning sammen. Bruk den for et spørsmål i vanlige ord, når ordene dokumentene bruker ikke er tydelige. Gi opptil 12 søk i ett kall, hver en annen form av spørsmålet. Hvert treff navngir søkene som fant det. For et eksakt navn, en adresse eller en frase, bruk {{ tool('search_collections') }}.
+
+{% endif %}
+{% if has('doc_search_text') or has('pdf_search') %}
+For å søke i ett langt dokument, bruk disse verktøyene.
+{% if has('doc_search_text') %}
+{{ tool('doc_search_text') }} lister treffene fra et søk i én tekstkilde, i siderekkefølge, med siden for hvert treff.
+{% endif %}
+{% if has('pdf_search') %}
+{{ tool('pdf_search') }} finner et søk på sidene i en PDF-kilde. Gi page_from og page_for å søke et utvalg av sider.
+{% endif %}
+
+{% endif %}
+{% if has('read_documents') %}
+Les en side med {{ tool('read_documents') }} når avsnittet ikke viser nok tekst for å støtte påstanden. Gi siden dens, eller gi søket for å åpne siden med flest treff.
+{% endif %}
+
+Gi dokumentet og siden når et avsnitt støtter svaret.
+
+{% if has('read_documents') %}
+{{ tool('read_documents') }} krever samling og file_hash.
+samling er ett navn. file_hash er en liste på 1 til 20 hash-verdier fra den samlingen.
+For dokumenter i ulike samlinger, lag en egen batch per samling.
+Kopier identiteter fra resultater. Unike filnavn eller sti kan også løse opp et dokument.
+source velger valgfritt en uttrukken kilde. Utelatt bruker den foretrukne kilden.
+page velger valgfritt en lagret sideidentifikator. Sideidentifikatorer kan ha hull.
+Utelatt page eller gi null for å velge siden med flest søketreff, eller den første lagrede siden uten et søk.
+query åpner tekst rundt nærliggende distinkte matchede ord på den siden.
+For eksakt ordlyt, sitér frasen inne i søket. En enkelt matchet verdi åpner dens første forekomst.
+offset overstyrer avsnittstarten. Den teller Unicode-tegn fra null innenfor den siden.
+length er et positivt tegnantall. Utelatt bruker 6 000 tegn.
+source_version verifiserer valgfritt det returnerte kildefingeravtrykket. Kopier det for en rereading av et utvalg.
+
+Resultatet returnerer text_range med start, eksklusiv slutt, totale side-tegn og enhet.
+page_complete betyr at området dekker hele siden.
+Et kuttmærke betyr at verktøyet leverer en del av området. Det betyr ikke at siden slutter der.
+Bruk et elements more for å fortsette dokumentet. Bruk top-level more for å fortsette resten av siden eller senere sider.
+Kopier det returnerte handle eksakt inn i {{ tool('read_more') }} som fortsettelse.
+Kopier read_before eller read_after som read_documents-argumenter for omgivende tekst. Ingen offset-beregning er nødvendig.
+Område-argumenter gjelder for hver hash i ett kall. Bruk separate kall når dokumenter har ulike kilder, områder eller kildeversjoner.
+For eksempel kopieres det første dokumentets returnerte read_after-objekt inn i ett kall.
+```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` Kopier det andre dokumentets returnerte read_after-objekt inn i et annet kall.
+```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` Bruk de faktiske returnerte verdiene for hvert dokument. Ikke legg til nummersatte felt som source2 eller offset2.
+Et gjentatt startkall returnerer samme tekst. Bruk fortsettelse når mer tekst trengs.
+Stopp lesingen når avsnittet gir nok bevis for den forespurte påstanden.
+
+Denne minimale kallen åpner den første lagrede siden.
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` Kallen åpner et målrettet avsnitt.
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` Kallen åpner et returnert intervall i en valgt kilde og side.
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` Denne fortsettelsen leser neste returnert intervall. Bruk det faktiske utstedte identifikatoren.
+```json {"continuation":"COPY_RETURNED_MORE"} ```
+{% endif %}
+{% if has('doc_search_text') %}
+{{ tool('doc_search_text') }} krever collection, file_hash og query. source velger valgfritt én uttrekk.
+Den returnerer page, ordinal, start, end og snippet for hvert treff. Offset teller tegn innenfor den siden.
+Kopier en treff-side og -start til read_documents når snippeten trenger mer kontekst.
+Bruk read_more for å hente gjenstående treff.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
+{% endif %}
+{% if has('doc_sources') %}
+{{ tool('doc_sources') }} krever collection og file_hash. query teller valgfritt matchende treff i hver uttrekk.
+Den returnerer kilde-navn og lagrede side-intervaller. Kopier et kilde-navn når du velger et bestemt uttrekk.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
+{% endif %}
+{% if has('doc_diff_sources') %}
+{{ tool('doc_diff_sources') }} krever collection, file_hash, source_a og source_b.
+page_a og page_b velger valgfritt sider. Utelatt velger den første lagrede siden av hver kilde.
+Resultatet er en samlet tekstdiff. Bruk read_more når den fortsetter.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
+{% endif %}
+{% if has('pdf_search') %}
+{{ tool('pdf_search') }} krever collection, file_hash og query.
+source velger valgfritt et PDF-uttrekk. page_from og page_to avgrenser valgfritt det lukkede PDF-side-intervallet.
+Kopier returnerte sideposisjoner. Bruk read_more for videreførte treff.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
+{% endif %}
+{% if has('search_passages') %}
+{{ tool('search_passages') }} aksepterer spørsmål som én streng eller en liste på opptil 12 former.
+collection aksepterer ett navn eller en liste. Utelatt søker den i hver tillatt samling.
+max_results velger treffantallet per spørjonsform innenfor den serverte skjemagrensen. Utelatt bruker 15.
+Resultatet gir collection, file_hash, page og snippet. q registrerer de nullbaserte spørjonsindexene.
+Les støttende tekst når avsnittet ikke svarer på spørsmålet.
+```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
+{% endif %}

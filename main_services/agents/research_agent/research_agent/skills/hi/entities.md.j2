@@ -1,0 +1,46 @@
+---
+name: entities
+group: technique
+description: दस्तावेज़ों द्वारा नामांकित लोगों, संगठनों, स्थानों, ई-मेल पतों और राशियों को सूचित करने का विधि
+tools: list_document_entities, search_entity_explainer, search_facet_values
+terms: इसके लिए शब्द: लोग, व्यक्तियाँ, नाम, संगठन, कंपनियाँ, संस्थानें, स्थान, स्थानक, शहर, देश, ई-मेल पत, फोन नंबर, राशियाँ, पैसे, पहचानकर्ता, खाता नंबर, मुख्य खिलाड़ी, किसके बारे में बोला गया है।
+not_for: जब अनुरोध एक व्यक्ति का नाम लेता है और पूछता है कि दस्तावेज़ उस व्यक्ति के बारे में क्या कहते हैं, तो इसकी आवश्यकता नहीं।
+---
+दस्तावेज़ों के नामों की सूची
+
+{% if has('list_document_entities') %}
+1. {{ tool('list_document_entities') }} एक दस्तावेज़ के लिए निकाले गए नामों की सूची देता है। उसका समग्री नाम और फ़ाइल हैश दें।
+2. परिणाम दो स्तरों में होता है। entities प्रबंधन-मॉडल का प्रोसे का पढ़ना है: लोग, संगठन और स्थान। यह गलत हो सकता है, इसलिए उस पर भरोसा करने से पहले पाठ में नाम की जाँच करें。 structured उन मान्यों को रखता है जिन्हें एक नियमने वैध माना है, जैसे वैध चेक अंक वाले पहचानक, तिथियाँ और मुद्रा कोड वाले पैसे की राशियाँ।
+3. {{ tool('search_collections') }} से नए नामों, पतों और पहचानकों की खोज़ करें। एक नाम के हर रूप को एक प्रयोग में डालें।
+{% endif %}
+{% if has('search_entity_explainer') %}
+4. जब परिणाम एक नियम और एक मान नाम दे जो आप सम्हते नहीं, तो {{ tool('search_entity_explainer') }} का प्रयोग करें।
+{% endif %}
+{% if has('search_facet_values') %}
+5. {{ tool('search_facet_values') }} एक इकाई फ़िल्टर के समग्री भर में मान्यों को उनकी गिनती के साथ देता है।
+{% endif %}
+
+पाइलइने से निकाला गा नाम इस बात का प्रमाण नहीं है कि दस्तावेज़ उसी व्यक्ति के बारे में है। उसके आस-पास का पाठ पढ़ें।
+
+जब नाम कहीं नहीं आता है, तो सूचीकृत स्पेलिंग सुझावों और उनकी जाँची गई गिनती पढ़ें।
+सुझाई गई स्पेलिंग को अनुरोधित नाम के रूप में प्रयोग न करें।
+जब सुझाई गई स्पेलिंग की खोज़ करें, तो जवाब में उसे अलग स्पेलिंग के रूप में नाम दें।
+जब कोई स्पेलिंग मैच न हो, तो रिपोर्ट करें कि खोज़ी समग्री नाम नहीं रखते।
+
+{% if has('list_document_entities') %}
+{{ tool('list_document_entities') }} दस्तावेज़नो को समग्री और file_hash वस्तुओं की सूची के रूप में स्वीकार करता है।
+यह रूप मिश्रित-समग्री पहचानों को बिना किसी असंबंधित सूचियों को जोड़े रखता है।
+वैकल्पिक रूप से, collection और file_hash मेल खाने वाले सूचियों को स्वीकार करते हैं, या एक समग्री को कई hashes के साथ।
+परिणाम निकाले गए मानों को दस्तावेज़ के अनुसार समूहित करता है। जब यह जारी रखे तब read_more का प्रयोग करें।
+```json {"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]} ``` ```json {"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]} ```
+{% endif %}
+{% if has('search_entity_explainer') %}
+{{ tool('search_entity_explainer') }} एक निकाले गए entity परिणाम से collection, entity_type और entity_value को स्वीकार करता है।
+यह extraction नियम का विवरण और मेल खाने वाले दस्तावेज़ लौटाता है।
+```json {"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"} ```
+{% endif %}
+{% if has('search_facet_values') %}
+entity वितरणों के लिए, facets और वैकल्पिक collection और query के साथ {{ tool('search_facet_values') }} का प्रयोग करें।
+परिणाम मैट्रिक्स में प्रति facet सेल में [text, count] जोड़े होते हैं।
+```json {"facets":["ner_per","ner_org","ner_loc"]} ``` ```json {"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"} ```
+{% endif %}

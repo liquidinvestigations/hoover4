@@ -1,0 +1,71 @@
+---
+name: no_results
+group: stumble
+description: ce să faci când o căutare nu găsește nimic: elimină filtrele, descompune o expresie, încearcă alte forme ale unui nume, apoi spune ce lipsește
+tools: search_collections, search_passages, web_search
+---
+Când o căutare nu găsește nimic
+
+{% if has('search_collections') %}
+Citești mai întâi word_counts.
+Când un nume nu apare nicăieri, citești sugestiile de ortografie indexate și numărate.
+Nu folosești o sugestie de ortografie ca pe numele solicitat.
+Când cauți o sugestie de ortografie, o menționezi în răspuns ca pe o altă ortografie.
+Când nicio ortografie nu se potrivește, raportezi că colecțiile căutate nu conțin numele.
+
+{% endif %}
+Urmărești acești pași de căutare când căutările anterioare nu răspund la întrebare.
+{% if has('search_collections') %}
+1. Caută fiecare nume ca pe o frază citată.
+2. Caută cuvinte necitate, inițiale, adrese de e-mail și nume în limba documentului.
+Citești word_counts și sugestiile de ortografie. Folosești o sugestie doar pentru numele intenționat.
+Folosești dasovi?h pentru o literă variabilă și dasovic% pentru o literă finală opțională.
+Folosești skilling << resigned când ordinea cuvintelor contează.
+3. Elimini filtrele pe rând. Rulezi o căutare fără filtre.
+{% if has('search_facet_values') %}
+Verifici valorile filtrelor cu {{ tool('search_facet_values') }}.
+{% endif %}
+{% if has('search_histogram') %}
+Verifici datele cu {{ tool('search_histogram') }}.
+{% endif %}
+{% if has('search_passages') %}
+4. Caută o descriere a conținutului cu {{ tool('search_passages') }}.
+{% endif %}
+{% if has('folder_search') %}
+5. Folosești {{ tool('folder_search') }} când solicitarea numește un folder, cale sau fișier.
+{% endif %}
+{% if has('folder_list') %}
+Folosești {{ tool('folder_list') }} pentru acel folder.
+{% endif %}
+{% if has('read_documents') %}
+6. Citești cele mai bune 1 la 3 rezultate cu {{ tool('read_documents') }}.
+{% endif %}
+{% if has('doc_search_text') %}
+Folosești {{ tool('doc_search_text') }} pentru text relevant dintr-un document.
+{% endif %}
+{% if has('web_search') %}
+7. Caută pe web doar când solicitarea permite acest lucru.
+{% endif %}
+{% if has('read_page') %}
+Citești cele mai bune pagini web cu {{ tool('read_page') }}.
+{% endif %}
+{% else %}
+{% if has('web_search') %}
+1. Caută fiecare nume ca pe o frază citată, apoi alte forme ale numelui, inițialele și limba locului.
+{% endif %}
+{% if has('read_page') %}
+2. Citești cele mai bune pagini web cu {{ tool('read_page') }}.
+{% endif %}
+{% endif %}
+
+După ce pașii disponibili nu găsesc niciun cuvânt cheie, răspunde cu absența și căutările.
+{% if has('search_collections') %}
+Înainte de a răspunde pentru o absență, execută cel puțin 4 căutări distincte cu cel puțin 2 instrumente de căutare disponibile.
+Nu repeta o căutare identică. Indică colecțiile căutate și faptele lipsă.
+Limitează afirmația de absență la căutările și documentele pe care le-ai examinat.
+De exemplu, spune „Minutele comitetului căutate și documentele de transfer nu au identificat o dată de aprobare." Aceste căutări nu stabilesc că nu există niciun document de aprobare în nicio colecție permisă.
+{% else %}
+Înainte de a răspunde pentru o absență, execută cel puțin 4 căutări distincte.
+Nu repeta o căutare identică. Indică căutările și paginile citite.
+Limitează afirmația de absență la căutările și paginile pe care le-ai examinat.
+{% endif %}

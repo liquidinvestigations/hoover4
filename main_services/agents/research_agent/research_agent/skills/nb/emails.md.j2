@@ -1,0 +1,45 @@
+---
+name: emails
+group: technique
+description: hvordan du leser e-postdokumenter: avsender, mottakere, dato, emne, hoder, kopier og tråder
+tools: doc_email, doc_metadata, read_documents
+---
+Lesing av e-postdokument
+
+{% if has('search_collections') %}
+Finn e-poster med {{ tool('search_collections') }}. Legg hver form av en adresse eller et navn i ett kall, for eksempel adressen, \"First Last\" og \"Last, First\".
+
+{% endif %}
+{% if has('doc_email') %}
+1. Kall {{ tool('doc_email') }} med file_hash for e-posten. Den gir avsender, mottakere, kopier, dato, emne, overordnet melding, vedlegg og meldingsgraf.
+2. For å følge en tråd, gi node, file hash for en annen melding i grafen. Grafen sentrerer da rundt den meldingen.
+3. Et vedlegg er et dokument i seg selv. Les det med sin egen file_hash.
+{% endif %}
+{% if has('read_documents') %}
+4. Les teksten i meldingen med {{ tool('read_documents') }}.
+{% endif %}
+{% if has('doc_metadata') %}
+5. For overskriftene og datoene som ikke er i teksten, kall {{ tool('doc_metadata') }}.
+{% endif %}
+
+En kopi av samme melding kan være i mer enn én postboks. Sammenlign feltene når et tall avhenger av distinkte meldinger.
+
+{% if has('doc_email') %}
+{{ tool('doc_email') }} krever samling og file_hash.
+samling er ett navn. file_hash godtar ett hash eller en liste med opptil ti hash fra den samlingen.
+node sentrerer grafen valgfritt på en returnert meldingshash. Utelatt sentreres den på den forespurte e-posten.
+Bruk mer med read_more for å inspisere gjenstående vedlegg og grafposter.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+{% endif %}
+{% if has('doc_metadata') %}
+{{ tool('doc_metadata') }} krever samling og file_hash. Den godtar ett hash eller en liste med opptil ti hash.
+Den returnerer lagret metadata, datoer, lokasjoner og nedlastingslenker. Bruk read_more for gjenstående metadatafelter.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{% endif %}
+Les det forespurte avsnittet før du tildler dets forfatter, mottakere eller dato.
+Det ytre e-postkonvoluttet tilhører den ytre meldingen.
+En videresendt eller sitert avsnitt kan ha en annen forfatter, mottakere og dato.
+Bruk det avsnittets egne overskrifter for å identifisere hvem som skrev det.
+En person som videresendte en melding har ikke nødvendigvis skrevet dens siterte uttalelse.
+Når attribusjon fortsatt er ukjent, angi den begrensningen.
+Les avsnitt for målrettede intervaller og fortsettelsesinstruksjoner. Ikke gjenta den første lesingen for å om senere tekst.

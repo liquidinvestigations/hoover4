@@ -1,0 +1,30 @@
+---
+name: browser_use
+group: technique
+description: hoe je een webbrowser bestuurt: open een adres, lees de paginasnapshot en klik vervolgens of typ of kies op basis van het elementverwijzing
+tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
+---
+Een webbrowser besturen
+
+{% if has('read_page') %}
+{{ tool('read_page') }} leest de tekst van een pagina. Gebruik een browsersonde wanneer de paginastatus of interactieve elementen van belang zijn.
+
+{% endif %}
+1. Open het adres met {{ tool('browser_navigate') }}.
+2. Roep {{ tool('browser_snapshot') }} op. De sonde lijst elk element van de pagina op met de referentie, bijvoorbeeld ref e12.
+3. Handel op één element met {{ tool('browser_click') }}, {{ tool('browser_type') }} of {{ tool('browser_select_option') }}. Geef de referentie van de laatste sonde en een korte beschrijving van het element. Gebruik {{ tool('browser_press_key') }} voor een toets zoals Enter.
+4. Roep na elke actie {{ tool('browser_snapshot') }} opnieuw op. Een actie kan de pagina veranderen, en dan zijn de oude referenties niet meer geldig.
+
+Wanneer een resultaat begint met "### Error", lees de foutmelding. Een verouderde elementreferentie betekent dat de pagina is veranderd. Maak een nieuwe sonde en gebruik de nieuwe referentie. Een lege referentie of selector betekent dat je geen element hebt gegeven.
+
+Geef in je antwoord of rapport aan welk adres je hebt geopend en wat de pagina toonde.
+
+{{ tool('browser_navigate') }} vereelt url. {{ tool('browser_snapshot') }} neemt geen argumenten aan.
+```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} vereelt target. Kopieer een referentie naar een teruggegeven element of gebruik een unieke selector.
+element beschrijft optioneel het target. button staat standaard op left en kan right of middle zijn.
+doubleClick selecteert optioneel een dubbelklik. modifiers bevat optioneel Alt, Control, ControlOrMeta, Meta of Shift.
+```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} vereelt target en text. element beschrijft optioneel het target.
+submit drukt optioneel Enter in na het typen. slowly typt optioneel individuele karakters om key-handlers te triggeren.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} vereelt target en values, een lijst van optionele waarden. element beschrijft optioneel het target.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} vereelt key, zoals Enter of Control+ArrowRight.
+```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` Elke actie geeft de status of een fout terug. Lees een nieuwe snapshot na een pagina-wijzigende actie.

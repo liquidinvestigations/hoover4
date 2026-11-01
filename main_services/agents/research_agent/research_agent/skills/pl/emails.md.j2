@@ -1,0 +1,45 @@
+---
+name: emails
+group: technique
+description: jak czytać dokumenty e-mail: nadawca, odbiorcy, data, temat, nagłówki, kopie i wątki
+tools: doc_email, doc_metadata, read_documents
+---
+Odczytywanie dokumentów e-mail
+
+{% if has('search_collections') %}
+Znajdź e-maily z {{ tool('search_collections') }}. Wstaw każdą formę adresu lub imienia w jedno wywołanie, na przykład adres, „Imię Nazwisko” i „Nazwisko, Imię”.
+
+{% endif %}
+{% if has('doc_email') %}
+1. Wywołaj {{ tool('doc_email') }} z file_hash e-maila. Daje to nadawcę, odbiorców, kopie, datę, temat, wiadomość nadrzędną, załączniki i graf wiadomości.
+2. Aby kontynuować wątek, podaj node, file_hashnej wiadomości w grafie. Graf wtedy centruje się wokół tej wiadomości.
+3. Załącznik to dokument samodzielny. Odczytaj go własnym file_hash.
+{% endif %}
+{% if has('read_documents') %}
+4. Odczytaj tekst wiadomości z {{ tool('read_documents') }}.
+{% endif %}
+{% if has('doc_metadata') %}
+5. Dla nagłówków i dat, których nie ma w tekście, wywołaj {{ tool('doc_metadata') }}.
+{% endif %}
+
+Kopia tej samej wiadomości może być w więcej niż jednej skrzynce. Porównaj jej pola, gdy licznik zależy od różnych wiadomości.
+
+{% if has('doc_email') %}
+{{ tool('doc_email') }} wymaga kolekcji i file_hash.
+kolekcja to jedna nazwa. file_hash przyjmuje jeden hash lub listę do dziesięciu hashów z tej kolekcji.
+node opcjonalnie centruje wykres na zwróconym haszu wiadomości. Pominięcie centruje go na żądanym e-mailu.
+Użyj więcej razem z read_more, aby sprawdzić pozostałe załączniki i wpisy w wykresie.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+{% endif %}
+{% if has('doc_metadata') %}
+{{ tool('doc_metadata') }} wymaga kolekcji i file_hash. Przyjmuje jeden hash lub listę do dziesięciu hashów.
+Zwraca przechowane metadane, daty, lokalizacje i linki do pobrania. Użyj read_more dla pozostałych pól metadanych.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{% endif %}
+Przeczytaj żądaną fragment tekstu przed przypisaniem jego autora, odbiorców lub daty.
+Zewnętrzna koperta e-mailu należy do zewnętrznej wiadomości.
+Przekazany lub cytowany fragment tekstu może mieć innego autora, odbiorców i datę.
+Użyj własnych nagłówków tego fragmentu tekstu, aby określić, kto go napisał.
+Osoba, która przekazała wiadomość, niekoniecznie napisала jej cytowaną treść.
+Gdy przypisanie pozostaje nieznane, wskaż to ograniczenie.
+Przeczytaj fragmenty tekstu według żądanych zakresów i instrukcji kontynuacji. Nie powtarzaj początkowego odczytu, aby poprosić o późniejszy tekst.

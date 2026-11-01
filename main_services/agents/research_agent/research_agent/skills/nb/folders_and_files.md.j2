@@ -1,0 +1,88 @@
+---
+name: folders_and_files
+group: technique
+description: hvordan du ser hva en samling inneholder: datasett, mapper, filtyper, antall og datoer, og hvordan du finner en fil på navn eller sti
+tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
+terms: Ord for det: samling, datasett, mappe, katalog, sti, filnavn, filtype, filendelse, format, antall, hvor mange filer, størrelse, største, oversikt, beholdning, hva en samling inneholder, dokumenter per år.
+not_for: Ikke nødvendig når forespørselen bare handler om dokumentenes innhold.
+---
+Mapper og filer
+
+{% if has('list_collections') and has('search_facet_values') %}
+For en samlingsoversikt, kall {{ tool('list_collections') }} med {}.
+Kall deretter {{ tool('search_facet_values') }} med {} én gang for hver tillatt samlingsfiltype og språk.
+Standardmatrisen inneholder begge dimensjonene. Ingen separat kall per samling eller dimensjon er nødvendig.
+{% endif %}
+
+{% if has('list_collections') %}
+{{ tool('list_collections') }} tar ingen argumenter. Den gir samlingsnavn, dokumentteller og datasettteller.
+```json {} ```
+
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} gir lagringsteller for hver samling og hvert datasett.
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} gir undermapperne og filene i én mappe i et datasett.
+{% endif %}
+{% if has('folder_search') %}
+For å finne en mappe eller fil ved navn i et datasett, kall {{ tool('folder_search') }}.
+{% endif %}
+{% if has('search_collections') %}
+For å finne en fil ved navn i alle samlinger, kall {{ tool('search_collections') }} med `filename_only` satt til true. Oppgi navnet eller en del av det som søk.
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} teller dokumentene i et søk etter dato eller størrelse.
+{% endif %}
+{% if has('search_facet_values') %}
+{{ tool('search_facet_values') }} gir verdiene til et filter, inkludert filtyper, med tellinger.
+{% endif %}
+
+Ett filnavn eller sti kan identifisere ett dokument. En resultatrads `file_hash` identifiserer den direkte.
+
+Bruk metadataverktøy for en inventoringsforespørsel. Deres tellinger kan svare på forespørselen direkte.
+Innholdssøk er kun nyttige når personen spør om hva dokumentene sier.
+
+{% if has('search_facet_values') %}
+Kall {{ tool('search_facet_values') }} én gang for flere samlinger og facetter.
+Argumentene er collection, facets, query og ids.
+Utelate collection eller gi [] for hver tillatt samling. Gi ett navn eller en liste for å begrense utvalget.
+Utelate facets for ["file_types", "language"]. Gi en liste med eksakte facettnavn for andre distribusjoner.
+Bruk file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc, re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money eller re_crypto_wallet.
+file_type er ugyldig. Bruk file_types.
+query finner tekst innenfor facettnverdier. Den søker ikke i dokumentinnhold.
+ids løser valgfritt kjente termer-identifikatorer. Vanlige søk bruker verditekst og trenger ingen identifikatorer.
+
+Resultatet har kolonner og elementer. Hver rad begynner med samlingen.
+Hvert facettcelle inneholder [text, count]-par. Kopier tekst til facet_filters for et senere innholdssøk.
+En null-celle har en rapportert feil. En tom celle har ingen returnerte verdier.
+Tall refererer til indekserte dokumenttreff per verdi. Flere verdier kan gjelde ett dokument.
+Legg ikke facetttall til for å påstå en distikt total. Inventartotaler kommer fra list_collections.
+Standard facetlista kan utelate uvanlige verdier. Bruk query for å finne en bestemt verdi.
+Bruk more med read_more når resultatet fortsetter.
+
+Denne minimale kallet inventarerer filformater og språk på tvers av tillatte samlinger.
+```json {} ``` Dette kallet sammenligner to valgte samlinger og søker i deres e-postadresseverdier.
+```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} krever samling. datasett velger valgfritt ett datasett.
+Dette kallet leser alle datasett-lagringsteller innenfor én samling.
+```json {"collection":"alpha"} ``` Dette kallet velger ett datasett.
+```json {"collection":"alpha","dataset":"files"} ```
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} krever samling og datasett. node_id velger valgfritt en mappe-enhet som returneres.
+La være å angi node_id for å lese datasett-roten. Kopier child-node-identifikatorer inn i senere kall.
+```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('folder_search') %}
+{{ tool('folder_search') }} krever samling, datasett og søk. node_id begrenser valgfritt søket til én mappe.
+```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} godtar samme filtere som search_collections, unntatt sort og søk.
+field er date, mentioned_date eller size. Den har standardverdi date. query har standardverdi et tomt søk.
+Uten samling dekkes hver tillatt samling. Resultatet returnerer buckets og det valgte feltet.
+```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{% endif %}

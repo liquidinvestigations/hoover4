@@ -1,0 +1,55 @@
+---
+name: spreadsheets
+group: technique
+description: hoe je een spreadsheetbestand leest met de tabeltools: de bladen, kolommen, rijen en afzonderlijke cellen
+tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
+terms: Woorden voor: tabel, tabellen, spreadsheet, Excel, werkboek, blad, werkblad, tab, CSV, TSV, tabelvormige gegevens, datatabel, grootboek, register, tracker, lijst met kolommen, rij, kolom, cel, kop, draaitabel, databasetabel, SQLite, Tabelle. Bestandstypen: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML, en tabellen binnen HTML- of PDF-documenten. Zoektreffers van type tabel.
+not_for: Niet nodig wanneer het verzoek alleen vraagt dat het antwoord als tabel wordt weergegeven, of het woord tabel in een andere betekenis gebruikt.
+---
+Een spreadsheet lezen
+
+Een spreadsheet, een CSV-bestand of een tabel in een document is een tabeldocument. Geef het de naam volgens de file_hash en de verzameling van een zoekresultaat.
+
+1. {{ tool('table_overview') }} geeft de bladen en kolommen met hun ids.
+2. Lees rijen met {{ tool('table_page') }}. Eén aanroep geeft 50 rijen. Sorteer en filter de rijen in de aanroep. Geef row_start om naar een rij van een grote spreadsheet te gaan, en kolommen om de kolommen na de 60ste te lezen.
+3. {{ tool('table_column_values') }} geeft de waarden in één kolom en hun aantallen.
+4. Om een waarde in een blad te vinden, roep {{ tool('table_search_cells') }} aan. Lees omliggende rijen met {{ tool('table_page') }} wanneer de match context nodig heeft.
+5. Wanneer {{ tool('table_page') }} een lange cel afknapt, lees hem dan helemaal met {{ tool('table_cell') }}. Geef row met de teruggegeven row_id, en column met de teruggegeven kolom-id.
+
+Geef een blad, rij en kolom wanneer de lezer opnieuw een waarde moet vinden.
+
+Roep {{ tool('table_column_values') }} op die kolom om rijen op waarde te tellen. Tel niet zelf de rijen van een tekstpagina. Geef het totaal aantal rijen, de filters en de kolom.
+Eén waarden-call geeft tot 200 waarden. Als het resultaat een continuation heeft, roep read_more tot er geen continuation meer is. Een gedeeltelijke waardenlijst geeft geen volledige verdeling.
+De waardentellingen zijn alleen voor hetzelfde blad, dezelfde rijen en dezelfde filters opgeteld het aantal rijen. Een lege cel heeft geen waarde, dus lege cellen maken de som kleiner dan het aantal rijen. Geef het aantal lege cellen als je de som met het totaal vergelijkt.
+Bijvoorbeeld: een blad met 24 bouwvergunningen heeft een typekolom. De waarden-call geeft fence 9, roof 7, deck 5 en pool 3, en geen continuation. Deze tellingen optegeld geven 24. Tellingen die 27 geven voor 24 rijen tonen een tellingsfout. Tellingen die 21 geven tonen 3 rijen met een leeg type.
+Een CSV-bestand heeft geen kopregel. Elke tabelresultaat geeft `interpretation`, het lezen van rij 1 waar hun tellingen naar verwijzen. Met state `established` is het lezen bekend. Met state `ambiguous` of `legacy` en twee `candidates` kan rij 1 de kopregel of de eerste gegevensrij zijn.
+Elke kandidaat geeft zijn rijtelling. Het resultaat leest elke rij, `all_rows`, tenzij de call `interpretation` geeft. Geef elke telling met zijn lezen, of lees het andere lezen met interpretatie `all_rows` of `first_row_header`. Rapporteer niet de telling van één lezen als het vastgestelde aantal rijen.
+Een JSON-bestand of een tekstbestand heeft geen bladen. Als {{ tool('table_overview') }} geen blad geeft, lees het document als tekst.
+
+Elke tabel-aanroep vereist collection en file_hash vanuit hetzelfde documentresultaat.
+{{ tool('table_overview') }} gives blad- en kolomidentificatoren terug.
+De overige gereedschappen voor tabellen vereisen sheet. Kopieer de identificatie uit het overzicht.
+{{ tool('table_page') }} accepteert optioneel sort, filters, columns, search, row_start en interpretatie.
+sort vereist column en direction, asc of desc. Bij weglating wordt de opgeslagen rijvolgorde gebruikt.
+filters is een lijst van kolompredikaten. Elk predikaat gebruikt één testtype.
+Een numeriek of datumbereik kan zowel een onder- als een bovengrens bevatten.
+Tests zijn contains, equals, starts_with, is_empty, number_min, number_max, date_min en date_max.
+Teksttests gebruiken strings. Numeralietests gebruiken getallen. Datumboundaries gebruiken YYYY-MM-DD-strings.
+columns selectiert kolomidentificatoren. Eén teruggegeven venster bevat maximaal 60 geselecteerde kolommen.
+search houdt optioneel rijen vast die hun tekst bevatten. row_start is een op nul gebaseerde positie in de gevraagde rijvolgorde.
+Het resultaat bevat kolommetadata en rijen. row_id is de opgeslagen rijidentiteit, ook na het sorteren.
+
+{{ tool('table_column_values') }} vereist ook column. search filtert optioneel de waardenstekst.
+Het geeft waarden en aantallen terug voor die kolom.
+{{ tool('table_search_cells') }} vereist query. Het geeft overeenkomende blad-, rij- en kolomidentificatoren terug met tekst.
+{{ tool('table_cell') }} vereist row en column. Geef de teruggegeven row_id door onder de argumentnaam row.
+Het geeft plakken van 2.000 tekens terug. Gebruik read_more voor de resterende celtekst.
+Gebruik read_more voor voortgezette tabelpaginering, waarden en zoektreffers.
+
+Deze minimale overzicht opent de tabelstructuur.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` Deze pagina-aanroep gebruikt gekopieerde blad- en kolomidentificaties.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` Deze waarden-aanroep beperkt één kolom.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` Deze waarden-aanroep leest rij 1 van een ambigu CSV-blad als kolomnamen.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` Deze celzoeken locateert een gevraagde waarde.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` Deze cel-aanroep leest row_id 71, ook als die rij eerst verscheen in een gesorteerd resultaat.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```

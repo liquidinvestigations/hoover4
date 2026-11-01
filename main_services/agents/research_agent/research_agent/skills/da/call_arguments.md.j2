@@ -1,0 +1,69 @@
+---
+name: call_arguments
+group: stumble
+description: sådan udfylder du argumenterne for et værktøjskald: kun de navne, som schemaet angiver, en liste, hvor der bedes om en liste, og ingen ekstra citatmærker
+tools:
+---
+Fyld argumenternes værdier ind for et kald
+
+{% if has('read_tool') %}
+Når du ikke er sikker på et værktøjs argumenter, kalder du {{ tool('read_tool') }} med dets navn. Det viser hvert argument, dens type og de argumenter, som værktøjet kræver.
+
+{% endif %}
+1. Angiv kun de argumentnavne, som værktøjet giver. Et argument med et andet navn afvises.
+2. Angiv hvert krævet argument.
+3. Hvor værktøjet beder om en liste, angiv en liste, også når der er én værdi. Skriv forespørgsler ["lease"]. Skriv ikke forespørgsler "lease".
+4. Hvor værktøjet beder om et tal eller true eller false, angiv værdien uden citattegn. Skriv filename_only true. Skriv ikke filename_only "true".
+5. Sæt ikke citattegn inde i en tekstværdi. Skriv status done. Skriv ikke status "\"done\"".
+6. Behold hver værdi inden for værktøjets grænser, såsom flest elementer i en liste.
+7. Hvor værktøjet beder om en liste af objekter, angiv en liste af objekter. Giv ikke en tekst
+{% if has('cite_documents') %}
+   der indeholder JSON. Skriv citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
+   Skriv ikke citations "[{\"collection\": ...}]".
+{% elif has('cite_pages') %}
+   der indeholder JSON. Skriv pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
+   Skriv ikke pages "[{\"url\": ...}]".
+{% else %}
+   der indeholder JSON.
+{% endif %}
+{% if has('write_file') %}
+8. Angiv filnavnet i hvert {{ tool('write_file') }}- og {{ tool('patch_file') }}-kald.
+{% endif %}
+
+Når et kald afvises, angiver fejlen argumentet og hvad der er galt med det. Ret det argument, og send derefter kaldet.
+
+{% if has('search_agent_tools') %}
+{{ tool('search_agent_tools') }} kræver forespørgsel, en opgavebeskrivelse på op til 160 tegn.
+Den returnerer relevante værktøjsnavne og -beskrivelser. Læs et værktøj før brug af ukendte argumenter.
+```json {"query":"Find a passage late in one long document."} ```
+{% endif %}
+{% if has('read_tool') %}
+{{ tool('read_tool') }} kræver name, det eksakte navn på et tilgængeligt værktøj.
+Den returnerer beskrivelsen og det fulde input-schema, inklusive tilladte værdier, standardværdier og obligatoriske felter.
+```json {"name":"read_documents"} ``` Læs det mislykkede værktøjs schema før genforsøg.
+{% if has('update_plan') %}
+For eksempel fejler denne {{ tool('update_plan') }} kald fordi `plan` ikke er et argument.
+```json {"plan":["Find the message."]} ``` Læs dens schema med {{ tool('read_tool') }}.
+```json {"name":"update_plan"} ``` Kald derefter {{ tool('update_plan') }} med mål og trin.
+```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"pending"}]} ```
+{% endif %}
+{% if has('read_documents') %}
+Hvis {{ tool('read_documents') }} afviser `source2` eller `offset2`, læs dens schema før genforsøg.
+Brug et separat kald for hvert dokument, der kræver forskellige range-argumenter.
+{% endif %}
+{% endif %}
+{% if has('search_skills') %}
+{{ tool('search_skills') }} accepterer forespørgsel, op til 160 tegn. Manglende eller tom tekst lister alle tilgængelige færdigheder.
+Den returnerer metodenavne og -beskrivelser.
+```json {} ``` ```json {"query":"Read a long document and continue its matching passage."} ```
+{% endif %}
+{% if has('read_skill') %}
+{{ tool('read_skill') }} kræver name, det eksakte navn returneret af færdighedsopslag.
+Den returnerer metodedeskriptionen, værktøjsargumenter og eksempler.
+```json {"name":"passages"} ```
+{% endif %}
+{% if has('write_note') %}
+{{ tool('write_note') }} kræver text, med 1 til 2.000 tegn. Den gemmer beviser og uafklarede spørgsmål til senere kontekst.
+Inkluder kildeidentiteter og det næste nyttige kald, når den kontekst skal overleve komprimering.
+```json {"text":"The approval passage is in the returned document range. Verify its original writer before attributing it."} ```
+{% endif %}

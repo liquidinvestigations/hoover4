@@ -1,0 +1,45 @@
+---
+name: emails
+group: technique
+description: come leggere i documenti di posta elettronica: mittente, destinatari, data, oggetto, intestazioni, copie e thread
+tools: doc_email, doc_metadata, read_documents
+---
+Lettura di documenti di posta elettronica
+
+{% if has('search_collections') %}
+Trova posta elettronica con {{ tool('search_collections') }}. Inserisci ogni forma di un indirizzo o di un nome in una singola chiamata, per esempio l'indirizzo, "Cognome Nome" e "Cognome, Nome".
+
+{% endif %}
+{% if has('doc_email') %}
+1. Chiama {{ tool('doc_email') }} con il file_hash della posta elettronica. Fornisci il mittente, i destinatari, le copie, la data, l'oggetto, il messaggio padre, gli allegati e il grafo del messaggio.
+2. Per seguire una conversazione, fornisci node, il file hash di un altro messaggio nel grafo. Il grafo allora si centra su quel messaggio.
+3. Un allegato è un documento a sé. Leggilo con il suo file_hash.
+{% endif %}
+{% if has('read_documents') %}
+4. Leggi il testo del messaggio con {{ tool('read_documents') }}.
+{% endif %}
+{% if has('doc_metadata') %}
+5. Per le intestazioni e le date che non sono nel testo, chiama {{ tool('doc_metadata') }}.
+{% endif %}
+
+Una copia dello stesso messaggio può essere presente in più caselle di posta. Confronta i suoi campi quando un conteggio dipende da messaggi distinti.
+
+{% if has('doc_email') %}
+{{ tool('doc_email') }} richiede collection e file_hash.
+collection è un unico nome. file_hash accetta un hash o una lista di fino a dieci hash provenienti da quella collezione.
+node opzionalmente centra il grafo su un hash di messaggio restituito. L'omissione lo centra sul messaggio di posta richiesto.
+Usa read_more per esaminare gli allegati e le voci del grafo rimanenti.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+{% endif %}
+{% if has('doc_metadata') %}
+{{ tool('doc_metadata') }} richiede collection e file_hash. Accetta un hash o una lista di fino a dieci hash.
+Restituisce i metadata memorizzati, le date, le località e i link di download. Usa read_more per i campi di metadata rimanenti.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{% endif %}
+Leggi l'estratto prima di assegnarne l'autore, i destinatari o la data.
+La busta del messaggio esterno appartiene al messaggio esterno.
+Un estratto inoltrato o citato può avere autore, destinatari e date diversi.
+Usa i propri intestazioni di quell'estratto per identificare chi lo ha scritto.
+Chi inoltra un messaggio non ha necessariamente scritto la sua affermazione citata.
+Quando l'attribuzione resta sconosciuta, dichiara questo limite.
+Leggi gli estratti per intervalli mirati e istruzioni di continuazione. Non ripetere la lettura iniziale per richiedere testo successivo.

@@ -1,0 +1,69 @@
+---
+name: call_arguments
+group: stumble
+description: come compilare gli argomenti di una chiamata di strumento: solo i nomi forniti dallo schema, una lista quando viene richiesta una lista, e nessuna citazione aggiuntiva
+tools:
+---
+Completare gli argomenti di una chiamata
+
+{% if has('read_tool') %}
+Quando non sei sicuro degli argomenti di uno strumento, chiama {{ tool('read_tool') }} indicando il suo nome. Fornisci ogni argomento, il suo tipo e gli argomenti richiesti dallo strumento.
+
+{% endif %}
+1. Fornisci solo i nomi degli argomenti che lo strumento indica. Un argomento con un altro nome viene rifiutato.
+2. Fornisci ogni argomento richiesto.
+3. Quando lo strumento chiede una lista, fornisci una lista, anche per un unico valore. Scrivi richieste ["lease"]. Non scrivere richieste "lease".
+4. Quando lo strumento chiede un numero o true o false, fornisci il valore senza virgolette. Scrivi filename_only true. Non scrivere filename_only "true".
+5. Non mettere virgolette all'interno di un valore testuale. Scrivi status done. Non scrivere status "\"done\"".
+6. Mantieni ogni valore entro i limiti del suo strumento, come il numero massimo di elementi di una lista.
+7. Quando lo strumento chiede una lista di oggetti, fornisci una lista di oggetti. Non fornire un testo
+{% if has('cite_documents') %}
+   che contenga JSON. Scrivi citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
+   Non scrivere citations "[{\"collection\": ...}]".
+{% elif has('cite_pages') %}
+   che contenga JSON. Scrivi pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"}].
+   Non scrivere pages "[{\"url\": ...}]".
+{% else %}
+   che contenga JSON.
+{% endif %}
+{% if has('write_file') %}
+8. Fornisci il nome del file in ogni {{ tool('write_file') }} e {{ tool('patch_file') }} chiamata.
+{% endif %}
+
+Quando una chiamata viene rifiutata, l'errore indica l'argomento e cosa c'è che non va in esso. Correggi quell'argomento, poi invia la chiamata.
+
+{% if has('search_agent_tools') %}
+{{ tool('search_agent_tools') }} richiede `query`, una descrizione del compito di massimo 160 caratteri.
+Restituisce i nomi e le descrizioni degli strumenti pertinenti. Leggi uno strumento prima di usare arguments sconosciuti.
+```json {"query":"Trova un estratto verso la fine di un documento lungo."} ```
+{% endif %}
+{% if has('read_tool') %}
+{{ tool('read_tool') }} richiede `name`, il nome esatto di uno strumento disponibile.
+Restituisce la descrizione e lo schema di input completo, inclusi i valori consentiti, i valori predefiniti e i campi obbligatori.
+```json {"name":"read_documents"} ``` Dopo un errore per argomento sconosciuto, leggi lo schema dello strumento che ha fallito prima di riprovare.
+{% if has('update_plan') %}
+Per esempio, questa chiamata {{ tool('update_plan') }} fallisce perché `plan` non è un argomento.
+```json {"plan":["Trova il messaggio."]} ``` Leggi lo schema con {{ tool('read_tool') }}.
+```json {"name":"update_plan"} ``` Poi chiama {{ tool('update_plan') }} con obiettivo e passi.
+```json {"goal":"Trova la date di approvazione.","steps":[{"text":"Trova il messaggio.","status":"pending"}]} ```
+{% endif %}
+{% if has('read_documents') %}
+Se {{ tool('read_documents') }} rifiuta `source2` o `offset2`, leggi lo schema prima di riprovare.
+Usa una chiamata separata per ogni documento che richiede argomenti di intervallo diversi.
+{% endif %}
+{% endif %}
+{% if has('search_skills') %}
+{{ tool('search_skills') }} accetta `query`, massimo 160 caratteri. L'omissione o un testo vuoto elencano tutte le abilità disponibili.
+Restituisce i nomi ei metodi e le descrizioni.
+```json {} ``` ```json {"query":"Leggi un documento lungo e prosegui l'estratto corrispondente."} ```
+{% endif %}
+{% if has('read_skill') %}
+{{ tool('read_skill') }} richiede `name`, il nome esatto restituito dalla scoperta delle abilità.
+Restituisce le istruzioni del metodo, gli argomenti degli strumenti e gli esempi.
+```json {"name":"passages"} ```
+{% endif %}
+{% if has('write_note') %}
+{{ tool('write_note') }} richiede `text`, con da 1 a 2.000 caratteri. Salva le prove e le domande irrisolte per il contesto successivo.
+Includi le identità delle fonti e la chiamata utile successiva quando quel contesto deve sopravvivere alla compressione.
+```json {"text":"L'estratto di approvazione è nell'intervallo di documento restituito. Verifica il suo autore originale prima di attribuirlo."} ```
+{% endif %}

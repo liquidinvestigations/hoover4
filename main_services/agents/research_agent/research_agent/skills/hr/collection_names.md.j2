@@ -1,0 +1,20 @@
+---
+name: collection_names
+group: stumble
+description: kako nazvati kolekciju ili podatak u pozivu: točno ime koje list_collections vraća
+tools: list_collections, search_collections
+---
+Imenovanje kolekcije
+
+1. Izostavite kolekciju za pretragu svake kolekcije ovog razgovora. To je točno za većinu pitanja.
+2. Kada morate dati kolekciju, kopirajte njezin točan naziv iz {{ tool('list_collections') }} ili iz kolekcije retka rezultata.
+3. Podatak nije kolekcija. Tablice podatka/ehudx nalaze se u kolekciji tablica. Dajte tablice.
+4. Nemojte mijenjati naziv. Nemojte dodavati razmak, mijenjati veliko slovo ili prevoditi ga.
+5. Kada poziv alata kaže da je kolekcija izvan dopuštenih kolekcija, ovaj razgovor je ne može pročitati. Nemojte ponovno slati poziv. Koristite kolekcije ovog razgovora.
+
+Za čitanje dokumenta dajte kolekciju istog retka rezultata kao njezin file_hash.
+
+Kada se naziv nigdje ne pojavljuje, pročitajte prijedloge pravopisne ispravke i njihove provjerene brojeve.
+Nemojte koristiti predloženi pravopis kao traženi naziv.
+Kada pretragujete predloženi pravopis, navedite ga u odgovoru kao drugi pravopis.
+Kada se nijedan pravopis ne poklapa, prijavite da tražene kolekcije ne sadrže naziv.

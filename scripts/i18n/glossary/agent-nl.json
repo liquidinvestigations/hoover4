@@ -1,0 +1,20 @@
+{
+ "glossary_revision": "38e8b095d07db8b8",
+ "terms": {
+  "skill": "vaardigheid",
+  "tool": "tool",
+  "tool call": "toolaanroep",
+  "argument": "argument",
+  "citation handle": "citathaandteken",
+  "quote": "citaten",
+  "workspace file": "werkbladbestand",
+  "report": "rapport",
+  "hit": "treffer",
+  "passage": "passage",
+  "query": "zoekopdracht",
+  "web page": "webpagina",
+  "run": "run",
+  "note": "notitie",
+  "plan": "plan"
+ }
+}

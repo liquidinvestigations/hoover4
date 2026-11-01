@@ -1,0 +1,87 @@
+---
+name: search
+group: general
+description: كيفية البحث في مجموعات الوثائق واستخدام صيغة الاستعلام
+tools: search_collections
+---
+{% if has('search_collections') %}
+البحث في وثائق المستخدم
+
+1. ابحث في الوثائق عند إمكانية مضمونها الإجابة عن السؤال.
+2. استخدم المجموعة عند استهداف المجموعة واحدة. اتركها فارغة للبحث عبر المجموعات التي يمكن لهذه المحادثة قراءتها.
+3. {{ tool('search_collections') }} تقبل عدداً من الاستعلامات. استخدم صيغاً مناسبة للاسم أو العنوان. ضع عبارة دقيقة بين علامتي تنصيص.
+4. OR وAND وNOT كلمات عادية في الاستعلام. استخدم | للاختيار بين خيارين و-word لاستبعاد كلمة.
+5. انسخ file_hash وcollection من صف نتيجة. لا تكتب الهاش بنفسك أبداً.{% if has('read_more') %} إذا لم يكن للصف file_hash، اتصل {{ tool('read_more') }}.{% endif +%}
+6. اضف فلتر تاريخ أو حجم عند مساعدته في الإجابة عن السؤال.
+7. عند الإبلاغ عن أن البحث لم يجد وثيقة، قدّم استعلامها والمجموعات والعدد.
+8. تأخذ النداء الواحد في أقصى الأمر 12 استعلاماً.قسّم القائمة الأطول إلى نداءين.
+9. زوّد كل استعلام بكلمة واحدة على الأقل للبحث عنها. يُرفض الاستعلام المكوّن من -word وحدها.
+10. اضف filename_only إلى true أو false. لا يأخذ نصاً.
+
+مثال. يطلب المستخدم كل البيانات عن JoeBWilkinson@cs.com. قدّم نداءً واحداً إلى {{ tool('search_collections') }} بالاستعلامات ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. اقرأ وثيقة عند صف نتيجتها عند عدم توفير دليل كافٍ للادّعاء.
+{% endif %}
+
+اتبع خطوات البحث هذه عندما لا تجيب البحثات السابقة على السؤال.
+{% if has('search_collections') %}
+1. ابحث عن كل اسم كعبارة مُقتبسة.
+2. ابحث عن الكلمات غير المُقتبسة والأحرف الأولى وعناوين البريد الإلكتروني والأسماء بلغة الوثيقة.
+اقرأ word_counts والاقتراحات الخاصة بالإملاء. استخدم اقتراحاً واحداً فقط للاسم المقصود.
+استخدم dasovi?h لحرف متغير واحد وdasovic% لحرف اختياري في نهاية الكلمة.
+استخدم skilling << resigned عندما يهم ترتيب الكلمات.
+3. أزل الفلات واحداً تلو الآخر. شغل بحثاً بدون فلات.
+{% endif %}
+{% if has('search_facet_values') %}
+تحقق من قيم الفلات باستخدام {{ tool('search_facet_values') }}.
+{% endif %}
+{% if has('search_histogram') %}
+تحقق من التواريخ باستخدام {{ tool('search_histogram') }}.
+{% endif %}
+{% if has('search_passages') %}
+4. ابحث عن وصف للمحتوى باستخدام {{ tool('search_passages') }}.
+{% endif %}
+{% if has('folder_search') %}
+5. استخدم {{ tool('folder_search') }} عندما يشير الطلب إلى مجلد أو مسار أو ملف.
+{% endif %}
+{% if has('folder_list') %}
+استخدم {{ tool('folder_list') }} لذلك المجلد.
+{% endif %}
+{% if has('read_documents') %}
+6. اقرأ أفضل 1 إلى 3 نتائج بحث باستخدام {{ tool('read_documents') }}.
+{% endif %}
+بالنسبة للأشخاص أو المنظمات الموجودين في وثيقة، اقرأ الجزء من تلك الوثيقة الذي يذكرهم. إشارة إلى عملٍ آخر تذكر ذلك العمل الآخر.
+{% if has('doc_search_text') %}
+استخدم {{ tool('doc_search_text') }} للنص Relevant داخل وثيقة.
+{% endif %}
+{% if has('web_search') %}
+7. ابحث في الويب فقط عندما يسمح لك الطلب بذلك.
+{% endif %}
+{% if has('read_page') %}
+اقرأ أفضل صفحات الويب باستخدام {{ tool('read_page') }}.
+{% endif %}
+
+{% if has('search_collections') %}
+تشمل وسائط البحث المجموعة، الاستعلامات، الاستعلام، الترتيب، date_after، date_before، date_unknown_only، mentioned_date_after، mentioned_date_before، size_min، size_max، folder_term_id، filename_only، وfacet_filters.
+اقبل collection اسماً أو قائمة. أجرِ الإهمال أو [] بحثاً في كل المجموعات المسموح بها.
+عيِّن query النص الفارغ افتراضياً. أضف queries اختيارياً حتى 12 نموذجاً. نفّذ النماذج المكررة مرة واحدة.
+جوّل الاستعلام الفارغ كل نتائج التصفية. ادمج نماذج البحث هويات الوثائق المتطابقة.
+احتوي sort على الحقل والاتجاه. الحقل هو relevance، date، file_size أو name. الاتجاه هو asc أو desc.
+استخدم الإهمال ترتيب الأهمية الافتراضي.
+استخدم date_after وdate_before ثوانٍ شاملة لقيمة UTC epoch لتاريخ الوثيقة.
+استخدم mentioned_date_after وmentioned_date_before ثوانٍ شاملة لقيمة UTC epoch للتواريخ المستخرجة من النص.
+حدّث date_unknown_only=true الوثائق التي لا تاريخ وثيقة معروف لها. تجنب دمجه مع نطاق تاريخ معروف.
+استخدم size_min وsize_max حدود بايت شاملة. حدّث folder_term_id مصطلح مجلد مُعاد.
+قيّد filename_only=true الاستعلام بالأسماء والمسارات. استخدم False محتوى الوثيقة.
+اربط facet_filters بين أسماء الفئات الصالحة وقوائم نص القيم المعادة. طبّق الإهمال بدون تصفية فئات.
+القيم داخل فئة واحدة بدائل. تطابق فلاتر الفئات المختلفة جميعها.
+
+تشمل كل نتيجة collection، file_hash، path، snippet، والنوع والتاريخ والحجم المتاحين.
+درِج q النماذج المُعدَّدة من الصفر التي وجدت الصف. بلّغ query_forms عن عدد كل نموذج.
+تحقق word_counts من الكلمات المُفهرَسة. درِج suggestions إملاءات مُفهرَسة قريبة مع الأعداد.
+اقرأ query_notes للإصلاحات النحوية، والفلاتر غير المعروفة، ونماذج الاستعلام الفاشلة.
+تواصل more النتيجة. انسخها إلى read_more. لا تحتاج الصفحة الأولى الفارغة إلى استدعاء متطابق متكرر.
+
+ابحث في جميع المجموعات المسموح بها.
+```json {"query":"\"Joe Wilkinson\""} ``` اجمع بين أشكال الاستقام ونطاق المجموعة والترتيب والتواريخ والحجم وفلاتر الفئات.
+```json {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}} ``` ابحث عن الملفات التي تفتقر إلى تاريخ وثيقة معروف.
+```json {"query":"report","filename_only":true,"date_unknown_only":true} ``` استبدل قيم المجموعة والمجلد والفئات بالقيم المعادة لهذه المحادثة.
+{% endif %}

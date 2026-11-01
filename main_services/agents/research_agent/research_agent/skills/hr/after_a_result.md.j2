@@ -1,0 +1,27 @@
+---
+name: after_a_result
+group: stumble
+description: što učiniti nakon rezultata alata
+tools:
+---
+Nakon svakog rezultata
+
+Nakon svakog rezultata učini jednu od ovih stvari.
+
+1. Rezultat sadrži ono što trebate. Iskoristite ga i nastavite s poslom.
+2. Rezultat je prazan ili ne pomaže. Promijenite argumente: druge riječi, drugi oblik imena,{% if has('search_collections') %} druga Kolekcija,{% endif %} druga stranica ili bez filtra.
+3. Rezultat je greška. Pročitajte tekst greške, ispravite argument koji on imenuje, a zatim pošaljite poziv.
+   Kada batch ima uspješne i neuspješne pozive, zadržite uspješne rezultate. Pošaljite ponovo samo neuspjele pozive.
+4. Imate dovoljno da odgovorite. Napišite odgovor ili izvješće kada su potrebni citati ili dokument.
+
+Koristite vidive rezultate kada odgovaraju na trenutno pitanje.
+Nakon kompakcije konteksta koristite zadržani indeks i bilješke za identificiranje ranijih rezultata.
+Osvježite traženi odsječak eksplicitno kada njegov tekst više nije vidiv.
+
+Kada pretraga vrati koristan rezultat, promijenite upit ili koristite drugi izvor.
+
+{% if has('read_more') %}
+Više znači dodatni tekst rezultata je dostupan.
+Nazovite {{ tool('read_more') }} s nastavkom postavljenim na povratnu vrijednost.
+Ponavljanje originalnog poziva vraća originalni raspon.
+{% endif %}

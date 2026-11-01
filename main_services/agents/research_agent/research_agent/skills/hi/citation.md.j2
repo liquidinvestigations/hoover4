@@ -1,0 +1,49 @@
+---
+name: citation
+group: general
+description: उत्तर को सहारा देने वाले दस्तावेज़ों को कैसे उद्धृत करें
+tools: cite_documents
+---
+उद्धरण पाठ एक कार्य-स्थल फ़ाइल में जाता है। `report` कौशल यह बताता है कि उसे कैसे लिखें और संपादित करें।
+
+{% if has('cite_documents') %}
+जब आपका {{ citation_artefact }} किसी {% if web_enabled %} आंतरिक{% else %} एक{% endif %} दस्तावेज़ पर निर्भर हो, तो {{ tool('cite_documents') }} का प्रयोग करें।
+किसी दावे या उद्तरण को सहारा देने वाले हर दस्तावेज़ को इसे दें। उस दावे के पास उसे प्रतिगत हैंडल का प्रयोग करें।
+किसी दावे के पास हैंडल का प्रयोग करें जो आंतरिक दस्तावेज़ पर निर्भर हो। आप दस्तावेज़ का नाम भी दे सकते हैं ताकि उसे पहचाना जाए या खोज़ परिणाम का वर्णन करें।
+एक प्रयोग में अधिकतम 12 उद्धरण हो सकते हैं। अपने प्रयोग को उद्धरण दें, खोज़ द्वारा लाए सभी कुछ को नहीं।
+जब खोज़ या पढ़ने से दस्तावेज़ प्राप्त हों जो किसी दावे को सहारा दें, तो उन दस्तावेज़ों को उद्धरण दें।
+
+प्रति उद्धरण के लिए दें:
+- समग्री और file_hash, एक उपकरण परिणाम से नकल किए गए। कभी file_hash गुंड़ा न बनाएं।
+- उद्तरण: दस्तावेज़ शरीर के एक पंक्ति से नकल किए गए 5 से 6 क्रमिक शब्द। शीर्षक पंक्ति नहीं (From, To, Cc, Subject, Date)। प्रश्नचिह्न रखने वाला कोई विस्तार नहीं।
+- find: वैकल्पिक। उद्तरण का सबसे छोटा सटीक वाक्यांश जो व्यक्ति को देखना चाहिए। कार्ड इस वाक्यांश पर दस्तावेज़ खोलता है।
+- why: एक पक्ति जो बताती है कि दस्तावेज़ किस बात को सहारा देता है।
+
+जो हैंडल आपको प्रतिगत मिलता है, उसे अपने {{ citation_artefact }} में लिखें जहाँ आप दावा करते हैं, उदाहरण `[D1]` की तरह।
+
+उदाहरण: {{ tool('read_documents') if has('read_documents') else 'A tool' }} ने enron समग्री में ईमेल "Re: DRAFT talking points" लौटाया।
+इसका शरीर कहता है "The talking points look great to me. Best of luck today." आपका {{ citation_artefact }} कहता है कि Jim Steffes ने ड्राफ्ट की अनुमति दी। {{ tool('cite_documents') }} को collection enron, result से file_hash, उद्तरण "talking points look great to me", "look great" को खोज़ करें, और क्यों "Steffes approves the draft of 27 December" लिखें।
+फिर "Steffes approved the draft [D1]." लिखें। "Subject: Re: DRAFT talking points" को उद्तरण में न लिखें, क्योंकि वह एक header line है। "Can you check the notes?" को उद्तरण में न लिखें, क्योंकि वह एक question mark रखता है।
+एक उद्तरणे हुए ईमेल के line breaks, punctuation और `>` marks को मिलने की जरूरत नहीं।
+गुमशुदा या absent quotes को कोई handle नहीं मिलता। error द्वारा दिए गए candidate text के 5 से 6 शब्द को quote में लिखें और retry करें।
+केवल एक returned handle एक स्रोत को labels करता है। अपना अपना label square brackets में कभी न लिखें।
+handle को claim के बगल में text के रूप में लिखें। उसे backticks में न रखें। `[D1]` backticks में कुछ भी नहीं links करता।
+अतिरिक्त verified passages के लिए returned document handle को reuse करें। दस्तावेज़ के पास एक card है।
+{% if citation_resolver == "lead" %}
+lead researcher उन्हें resolves करता है, तो एक handle जो आपने कभी नहीं allocate किया वह किसी के लिए उपयोगी नहीं।
+{% endif %}
+{% endif %}
+{% include "citation_failures.j2" %}
+
+{% if has('cite_documents') %}
+उद्धरण आरोप दस्तावेज़ उद्धरण वस्तुओं की सूची है।
+प्रत्येक वस्तु में समग्री और file_hash होना आवश्यक है। quote में स्रोत के 5 से 6 क्रमिक शब्द सटीक होने चाहिए।
+समग्री और file_hash को प्रत्येक वस्तु में दोहराएं, उसी दस्तावेज़ से आने वाले अलग-अलग उद्तरण भी शामिल हैं।
+वस्तुएं पिछली वस्तुओं से आरोप विरासत में नहीं पातीं।
+find वैकल्पिक रूप से quote के अंदर एक सटीक वाक्यांश चुनता है। छोड़ने पर पूरा उद्तरण प्रयोग होता है।
+term वैकल्पिक रूप से मूल खोज़ प्रश्नावली रक्षित करता है। why सपोर्टेड दावे को बताता है।
+परिणाम प्रत्येक सत्यापित प्रवेश के लिए एक सूचक देता है। विफल प्रवेश अपना कारण देते हैं और एक उम्मीदवार खंड भी दे सकते हैं।
+केवल विफल प्रवेशों को सटीक वाक्यांश से पुनः प्रयोज़्या करें। एक सत्यापित उद्तरण स्वयं उस उद्तरण के लेखक या तिथि को नहीं सत्यापित करता।
+```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]} ``` यह बैच उसी दस्तावेज़ के दो खंडों को सत्यापित करता है।
+```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+{% endif %}

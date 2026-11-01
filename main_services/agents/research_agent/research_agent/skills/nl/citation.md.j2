@@ -1,0 +1,49 @@
+---
+name: citation
+group: general
+description: hoe citeer je de documenten die een antwoord ondersteunen
+tools: cite_documents
+---
+Geciteerde tekst gaat naar een werkbladbestand. De `report` vaardigheid beschrijft hoe je die moet schrijven en bewerken.
+
+{% if has('cite_documents') %}
+Wanneer je {{ citation_artefact }} zich {% if web_enabled %}een interne{% else %}een{% endif %} document baseert, roep je {{ tool('cite_documents') }} aan.
+Geef elk document dat een stelling of citaat ondersteunt. Gebruik het teruggegeven citathaandteken naast die stelling.
+Gebruik een citathaandteken naast een stelling die zich op een intern document baseert. Je kan ook een document benoemen om het te identificeren of een zoekresultaat te beschrijven.
+Eén aanroep neemt maximaal 12 citaten. Citeer wat je hebt gebruikt, niet alles wat een zoekopdracht heeft teruggegeven.
+Wanneer een zoekopdracht of lezing documenten teruggeeft die een stelling ondersteunen, citeer je die documenten.
+
+Geef voor elke citaat:
+- collection en file_hash, overgenomen uit een toolresultaat. Bedenk nooit zelf een file_hash.
+- quote: 5 tot 6 opeenvolgende woorden overgenomen uit één regel van de documenttekst. Geen kopregel (From, To, Cc, Subject, Date). Geen span die een vraagteken bevat.
+- find: optioneel. De kortste exacte zin van het citaat die de persoon moet zien. De kaart opent het document op deze zin.
+- why: één regel die zegt wat het document ondersteunt.
+
+Schrijf het citathaandteken dat je terugkrijgt, bijvoorbeeld `[D1]`, in je {{ citation_artefact }} waar je de stelling maakt.
+
+Voorbeeld. {{ tool('read_documents') if has('read_documents') else 'A tool' }} gaf de e-mail "Re: DRAFT talking points" terug in de verzameling enron.
+De inhoud lacht "The talking points look great to me. Best of luck today." Je {{ citation_artefact }} zegt dat Jim Steffes het concept heeft goedgekeurd. Roep {{ tool('cite_documents') }} aan met verzameling enron, de file_hash uit het resultaat, de quote "talking points look great to me", zoek "look great", en waarom "Steffes approves the draft of 27 December".
+Schrijf daarna "Steffes approved the draft [D1]." Quote "Subject: Re: DRAFT talking points" niet, omdat het een koptekstregel is. Quote "Can you check the notes?" niet, omdat het een vraagteken bevat.
+Regelbreuken, leestekens en de `>`-markeringen van een gequoteerde e-mail hoeven niet te overeenkomen.
+Ontbrekende of afweige quotes geven geen handle. Kopieer 5 tot 6 woorden van de kandidaattekst die de fout aangeeft naar de quote en probeer opnieuw.
+Alleen een teruggegeven handle labelt een bron. Schrijf nooit je eigen label in vierkante haken.
+Schrijf de handle als tekst naast de claim. Zet hem niet in backticks. `[D1]` in backticks linkt niets.
+Herbruik de teruggegeven documenthandle voor extra geverifieerde passages. Het document heeft één kaart.
+{% if citation_resolver == "lead" %}
+De lead researcher lost ze op, dus een handle die je nooit hebt toegewezen is voor niemand bruikbaar.
+{% endif %}
+{% endif %}
+{% include "citation_failures.j2" %}
+
+{% if has('cite_documents') %}
+Het argument citations is een lijst van document-citaatobjecten.
+Elk object vereist collection en file_hash. quote bevat 5 tot 6 opeenvolgende woorden van de exacte brontekst.
+Herhaal collection en file_hash in elk object, ook bij aparte citaten uit hetzelfde document.
+Objecten erven geen argumenten van eerdere objecten.
+find selecteert optioneel een exacte zinswijze binnen quote. Bij weglating wordt de hele quote gebruikt.
+term registreert optioneel de oorspronkelijke zoekopdracht. why geeft de ondersteunde bewering aan.
+Het resultaat geeft een citathaandteken voor elk geverifieerd item. Mislukte items geven hun reden en kunnen een kandidaat-passage geven.
+Herhaal alleen mislukte items met exacte tekst. Een gverifieerd citaat verifieert op zichzelf niet de schrijver of datum van dat citaat.
+```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]} ``` Deze batch verifieert twee passages uit hetzelfde document.
+```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+{% endif %}

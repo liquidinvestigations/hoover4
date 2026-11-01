@@ -1,0 +1,46 @@
+---
+name: entities
+group: technique
+description: hoe de mensen, organisaties, plaatsen, e-mailadressen en bedragen die documenten noemen, in een lijst te zetten
+tools: list_document_entities, search_entity_explainer, search_facet_values
+terms: Woorden hiervoor: mensen, personen, namen, organisaties, bedrijven, instellingen, plaatsen, locaties, steden, landen, e-mailadressen, telefoonnummers, bedragen, geld, identificeerders, rekeningnummers, sleutelspelers, wie wordt genoemd.
+not_for: Niet nodig wanneer het verzoek één persoon noemt en vraagt wat de documenten over die persoon zeggen.
+---
+Wat documenten noemen
+
+{% if has('list_document_entities') %}
+1. {{ tool('list_document_entities') }} lijst van geëxtraheerde namen voor een document. Geef de naam van de verzameling en de bestands-hash.
+2. Het resultaat heeft twee niveaus. entities is de interpretatie van de tekst door een taalmodel: mensen, organisaties en plaatsen. Dit kan onjuist zijn, dus controleer een naam in de tekst voordat je erop vertrouwt. structured bevat de waarden die een regel heeft gevalideerd, zoals identificatiecodes met een geldige controlecijfer, datums en geldbedragen met een valutatcode.
+3. Zoek naar de nieuwe namen, adressen en identificatiecodes met {{ tool('search_collections') }}. Zet elke vorm van een naam in één toolaanroep.
+{% endif %}
+{% if has('search_entity_explainer') %}
+4. Wanneer een resultaat een regel en een waarde noemt die je niet begrijpt, roep {{ tool('search_entity_explainer') }} aan.
+{% endif %}
+{% if has('search_facet_values') %}
+5. {{ tool('search_facet_values') }} geeft de waarden van een entiteitsfilter over een verzameling, met de bijbehorende aantallen.
+{% endif %}
+
+Een naam die de pipeline heeft geëxtraheerd, is geen bewijs dat het document over die persoon gaat. Lees de tekst eromheen.
+
+Wanneer een naam nergens voorkomt, lees de geïndexerde spellingvoorstellen en hun gecontroleerde aantallen.
+Gebruik een suggested spelling niet als gevraagde naam.
+Wanneer je een suggested spelling zoekt, noem die in het antwoord als een andere spelling.
+Wanneer geen enkele spelling overeenkomt, meld dat de gezochte verzamelingen de naam niet bevatten.
+
+{% if has('list_document_entities') %}
+{{ tool('list_document_entities') }} Accepteer documenten als een lijst van verzameling-en-file_hash-objekten.
+Deze vorm behoudt gemengde-verzamelingsidentiteiten zonder ongerelateerde lijsten aan elkaar te koppelen.
+Alternatief: verzameling en file_hash accepteren overeenkomstige lijsten, of één verzameling met meerdere hashes.
+Het resultaat groepeert de geëxtraheerde waarden per document. Gebruik read_more wanneer dit verder gaat.
+```json {"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]} ``` ```json {"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]} ```
+{% endif %}
+{% if has('search_entity_explainer') %}
+{{ tool('search_entity_explainer') }} Vereist collection, entity_type en entity_value vanuit een geëxtraheerd entiteit-resultaat.
+Het retourneert de beschrijving van de extraktereel en de overeenkomstige documenten.
+```json {"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"} ```
+{% endif %}
+{% if has('search_facet_values') %}
+Voor entiteitsverdelingen roep je {{ tool('search_facet_values') }} aan met facets en optionele collection en query.
+De resultaatmatrix bevat [text, count]-paren in elk facetvak.
+```json {"facets":["ner_per","ner_org","ner_loc"]} ``` ```json {"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"} ```
+{% endif %}

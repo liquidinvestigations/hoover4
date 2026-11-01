@@ -1,0 +1,49 @@
+---
+name: citation
+group: general
+description: come citare i documenti che supportano una risposta
+tools: cite_documents
+---
+Il testo citato va in un file dello spazio di lavoro. La `report` abilità indica come scriverlo e modificarlo.
+
+{% if has('cite_documents') %}
+Quando il tuo {{ citation_artefact }} si basa su {% if web_enabled %}un interno{% else %}un{% endif %} documento, chiama {{ tool('cite_documents') }}.
+Fornisci ogni documento che sostiene una affermazione o una citazione. Usa il handle restituito accanto a quell'affermazione.
+Usa un handle accanto a una affermazione che si basa su un documento interno. Puoi anche indicare un documento per identificarlo o descrivere un risultato di ricerca.
+Una chiamata accetta al massimo 12 citazioni. Citati ciò che hai usato, non tutto ciò che una ricerca ha restituito.
+Quando una ricerca o una lettura restituisce documenti che sostengono una affermazione, cita quei documenti.
+
+Per ogni citazione dai:
+- collection e file_hash, copiati da un risultato dello strumento. Non inventare mai un file_hash.
+- quote: 5 o 6 parole consecutive copiate da una riga del corpo del documento. Non una riga di intestazione (From, To, Cc, Subject, Date). Nessun span che contenga un punto interrogativo.
+- find: opzionale. La frase esatta più breve della citazione che la persona deve vedere. La scheda apre il documento a questa frase.
+- why: una riga che dice cosa sostiene il documento.
+
+Scrivi il handle che ricevi, per esempio `[D1]`, nel tuo {{ citation_artefact }} dove fai l'affermazione.
+
+Esempio. {{ tool('read_documents') if has('read_documents') else 'A tool' }} ha restituito l'email "Re: DRAFT talking points" nella Collezione enron.
+Il suo corpo dice "The talking points look great to me. Best of luck today." Il tuo {{ citation_artefact }} dice che Jim Steffes ha approvato il draft. Chiama {{ tool('cite_documents') }} con la collezione enron, il file_hash del risultato, la citazione "talking points look great to me", trova "look great", e perché "Steffes approves the draft of 27 December".
+Poi scrivi "Steffes approved the draft [D1]." Non citare "Subject: Re: DRAFT talking points", perché è una riga di intestazione. Non citare "Can you check the notes?", perché contiene un punto interrogativo.
+I ritorni di riga, la punteggiatura e i marchi `>` di un e-mail citato non devono corrispondere.
+Citazioni mancanti o assenti non allocano alcun riferimento. Copia da 5 a 6 parole del testo candidato che l'errore indica nel quote e riprova.
+Solo un handle restituito etichetta una fonte. Non scrivere mai la tua etichetta tra parentesi quadre.
+Scrivi l'handle come testo accanto all'affermazione. Non metterlo tra i backtick. `[D1]` tra backtick non collega nulla.
+Riutilizza l'handle del documento restituito per passaggi aggiuntivi verificati. Il documento ha una scheda.
+{% if citation_resolver == "lead" %}
+Il ricercatore capo li risolve, quindi un handle che non hai mai allocato non serve a nessuno.
+{% endif %}
+{% endif %}
+{% include "citation_failures.j2" %}
+
+{% if has('cite_documents') %}
+L'argomento citations è una lista di oggetti di citazione del documento.
+Ogni oggetto richiede collection e file_hash. quote contiene 5 o 6 parole consecutive esatte del testo della fonte.
+Ripeti collection e file_hash in ogni oggetto, incluse le citazioni separate dello stesso documento.
+Gli oggetti non ereditano gli argomenti dagli oggetti precedenti.
+find seleziona opzionalmente una frase esatta dentro quote. L'omissione usa l'intera quote.
+term registra opzionalmente la richiesta di ricerca di origine. why afferma la affermazione supportata.
+Il risultato fornisce un riferimento per ogni voce verificata. Le voci fallite indicano il motivo e possono fornire un estratto candidato.
+Riprova solo le voci fallite con il testo esatto. Una citazione verificata di per sé non verifica l'autore o la data di quella citazione.
+```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]} ``` Questo batch verifica due estratti dello stesso documento.
+```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+{% endif %}

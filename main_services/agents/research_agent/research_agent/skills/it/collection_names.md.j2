@@ -1,0 +1,20 @@
+---
+name: collection_names
+group: stumble
+description: come nominare una collezione o un insieme di dati in una chiamata: il nome esatto che restituisce list_collections
+tools: list_collections, search_collections
+---
+Denominare una collezione
+
+1. Lascia vuota la collezione per cercare ogni collezione di questa chat. Questo è corretto per la maggior parte delle domande.
+2. Quando devi indicare una collezione, copia il suo nome esattamente da {{ tool('list_collections') }}, oppure dalla collezione di una riga di risultato.
+3. Un insieme di dati non è una collezione. Le tabelle dell'insieme di dati/ehudx sono nella collezione tabelle. Indica le tabelle.
+4. Non modificare un nome. Non aggiungere uno spazio, non cambiare una lettera maiuscola e non tradurlo.
+5. Quando una chiamata segnala che una collezione è al di fuori delle collezioni permesse, questa chat non può leggerla. Non inviare di nuovo la chiamata. Usa le collezioni di questa chat.
+
+Per leggere un documento, indica la collezione della stessa riga di risultato del suo file_hash.
+
+Quando un nome non compare da nessuna parte, leggi i suggerimenti di ortografia indicizzati e i loro conteggi verificati.
+Non usare un'ortografia suggerita come nome richiesto.
+Quando cerchi un'ortografia suggerita, indicila nella risposta come ortografia diversa.
+Quando nessuna ortografia corrisponde, segnala che le collezioni cercate non contengono il nome.

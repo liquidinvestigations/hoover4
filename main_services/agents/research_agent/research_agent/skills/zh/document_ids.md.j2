@@ -1,0 +1,19 @@
+---
+name: document_ids
+group: stumble
+description: 如何为文档命名，使用其文件哈希，或使用 read_documents 中的路径
+tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
+---
+为文档命名
+
+文档哈希包含 64 个十六进制字符。文档工具也接受至少 12 个字符的唯一开头。
+
+1. 复制该结果行的 file_hash 和 collection。切勿自行编写哈希。
+   占位符（如 COPY_RETURNED_HASH）或全零值都不是哈希。文件夹 id 同样来自本对话的列表或搜索结果。
+2. {% if has('read_documents') %}{{ tool('read_documents') }} 也能解析文件名或路径，当它命名一个文档时。{% endif %} 其他文档工具使用哈希。
+3. 要根据文件名查找文件的 file_hash，使用 {{ tool('search_collections') }}{% if has('folder_search') %} 或 {{ tool('folder_search') }}{% endif %} 搜索该文件名，并复制该行的 file_hash。
+{% if has('read_more') %}
+4. 当某行没有 file_hash 时，为结果的下一页调用 {{ tool('read_more') }}。
+{% endif %}
+
+当读取提示没有可读数据集持有该哈希时，将其 collection 和值与结果行进行核对。文档缺失也可能意味着该值命名了多个文档。

@@ -1,0 +1,30 @@
+---
+name: browser_use
+group: technique
+description: So steuern Sie einen Webbrowser: Adresse öffnen, Seiten-Snapshot lesen, dann per Elementreferenz klicken, tippen oder auswählen
+tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
+---
+Ein Webbrowser steuern
+
+{% if has('read_page') %}
+{{ tool('read_page') }} liest den Text einer Seite. Verwende einen Browser-Snapshot, wenn der Seitenzustand oder interaktive Elemente eine Rolle spielen.
+
+{% endif %}
+1. Öffne die Adresse mit {{ tool('browser_navigate') }}.
+2. Rufe {{ tool('browser_snapshot') }} auf. Der Snapshot listet jedes Element der Seite mit seiner Referenz auf, zum Beispiel ref e12.
+3. Handle ein Element mit {{ tool('browser_click') }}, {{ tool('browser_type') }} oder {{ tool('browser_select_option') }}. Gib die Referenz aus dem neuesten Snapshot und eine kurze Beschreibung des Elements an. Verwende {{ tool('browser_press_key') }} für eine Taste wie Eingabe.
+4. Rufe nach jeder Aktion {{ tool('browser_snapshot') }} erneut auf. Eine Aktion kann die Seite verändern, und dann sind die alten Referenzen nicht mehr gültig.
+
+Wenn ein Ergebnis mit „### Error" beginnt, lies den Fehlertext. Eine veraltete Element-Referenz bedeutet, dass sich die Seite verändert hat. Mache einen neuen Snapshot und verwende die neue Referenz. Eine leere Referenz oder Selektor bedeutet, dass du kein Element angegeben hast.
+
+Gib in deiner Antwort oder deinem Bericht an, welche Adresse du geöffnet hast und was die Seite angezeigt hat.
+
+{{ tool('browser_navigate') }} erfordert url. {{ tool('browser_snapshot') }} nimmt keine Argumente an.
+```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} erfordert target. Kopiere einen zurückgegebenen Elementverweis oder wähle einen eindeutigen Selektor.
+element beschreibt optional das Ziel. button ist standardmäßig links und kann rechts oder mittel sein.
+doubleClick wählt optional einen Doppelklick aus. modifiers enthält optional Alt, Control, ControlOrMeta, Meta oder Shift.
+```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} erfordert target und text. element beschreibt optional das Ziel.
+submit drückt optional nach dem Tippen Enter. slowly tippt optional einzelne Zeichen, um Key-Handler auszulösen.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} erfordert target und values, eine Liste von Optionswerten. element beschreibt optional das Ziel.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} erfordert key, etwa Enter oder Control+ArrowRight.
+```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` Jede Aktion gibt ihren Status oder einen Fehler zurück. Lies nach einer seitenändernden Aktion einen neuen Snapshot.

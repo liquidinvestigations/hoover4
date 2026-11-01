@@ -1,0 +1,20 @@
+---
+name: collection_names
+group: stumble
+description: como nomear uma coleção ou um conjunto de dados numa chamada: o nome exato que list_collections devolve
+tools: list_collections, search_collections
+---
+Dar nome a uma coleção
+
+1. Deixe a coleção em branco para pesquisar todas as coleções desta conversa. Isso é correto para a maioria das perguntas.
+2. Quando tiver de indicar uma coleção, copie o nome exatamente de {{ tool('list_collections') }}, ou da coleção de uma linha de resultado.
+3. Um conjunto de dados não é uma coleção. As tabelas do conjunto de dados/ehudx estão na coleção de tabelas. Dê tabelas.
+4. Não altere um nome. Não acrescente um espaço, não altere uma letra maiúscula nem o traduza.
+5. Quando uma chamada indicar que uma coleção está para lá das coleções permitidas, esta conversa não a pode ler. Não envie a chamada novamente. Use as coleções desta conversa.
+
+Para ler um documento, indique a coleção da mesma linha de resultado que o seu file_hash.
+
+Quando um nome não aparecer em lado nenhum, leia as sugestões de ortografia indexadas e os seus contagens verificadas.
+Não use uma sugestão de ortografia como nome pedido.
+Quando pesquisar uma sugestão de ortografia, nomeie-a na resposta como uma ortografia diferente.
+Quando nenhuma ortografia corresponder, informe que as coleções pesquisadas não contêm o nome.

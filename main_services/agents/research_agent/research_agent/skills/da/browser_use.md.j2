@@ -1,0 +1,30 @@
+---
+name: browser_use
+group: technique
+description: sådan styrer du en webbrowser: åbn en adresse, læs pagesnittet, og klik derefter, skriv, eller vælg ud fra elementreferencen
+tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
+---
+Kørsel af en webbrowser
+
+{% if has('read_page') %}
+{{ tool('read_page') }} læser teksten på en side. Brug et browservisualisering, når sidestatus eller interaktive elementer er vigtige.
+
+{% endif %}
+1. Åbn adressen med {{ tool('browser_navigate') }}.
+2. Kald {{ tool('browser_snapshot') }}. Visualiseringen lister hvert element på siden med dets reference, f.eks. ref e12.
+3. Handle på ét element med {{ tool('browser_click') }}, {{ tool('browser_type') }} eller {{ tool('browser_select_option') }}. Angiv reference fra den nyeste visualisering og en kort beskrivelse af elementet. Brug {{ tool('browser_press_key') }} for en tast såsom Enter.
+4. Efter hver handling, kald {{ tool('browser_snapshot') }} igen. En handling kan ændre siden, og derefter er de gamle referencer ikke gyldige.
+
+Når et resultat starter med "### Error", læs fejlteksten. En forældet elementreference betyder, at siden er ændret. Tag en ny visualisering og brug den nye reference. En tom reference eller selector betyder, at du ikke angav et element.
+
+Angiv i dit svar eller rapport hvilken adresse du åbnede og hvad siden viste.
+
+{{ tool('browser_navigate') }} kræver url. {{ tool('browser_snapshot') }} tager ingen argumenter.
+```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} kræver target. Kopier en returneret elementreference, eller brug en unik selector.
+element beskriver valgfrit målet. button er standardt venstre og kan være højre eller midte.
+doubleClick vælger valgfrit et dobbeltklik. modifiers indeholder valgfrit Alt, Control, ControlOrMeta, Meta eller Shift.
+```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} kræver target og text. element beskriver valgfrit målet.
+submit presser valgfrit Enter efter indtjning. optionally typer valgfrit enkelte tegn for at udløse key-handlers.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} kræver target og values, en liste af option-values. element beskriver valgfrit målet.
+```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} kræver key, f.eks. Enter eller Control+ArrowRight.
+```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` Hver handling returnerer sin status eller en fejl. Læs et nyt snapshot efter en sideændrende handling.

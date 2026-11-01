@@ -1,0 +1,49 @@
+---
+name: citation
+group: general
+description: hvordan du siterer dokumentene som støtter et svar
+tools: cite_documents
+---
+Citert tekst går inn i en arbeidsfil. Den `report` sier hvordan du skriver og redigerer den.
+
+{% if has('cite_documents') %}
+Når din {{ citation_artefact }} er avhengig av {% if web_enabled %}en interne{% else %}en{% endif %} dokument, kall {{ tool('cite_documents') }}.
+Gi den hvert dokument som støtter et påstand eller sitat. Bruk det returnerte handlefestet ved siden av den påstanden.
+Bruk et handlefestet ved siden av en påstand som er avhengig av et internt dokument. Du kan også navngi et dokument for å identifisere det eller beskrive et søketreff.
+Ett kall tar mest 12 sitater. Sitat det du brukte, ikke alt et søk returnerte.
+Når et søk eller en lesing returnerte dokumenter som støtter en påstand, sitat disse dokumentene.
+
+For hver sitat gi:
+- samling og file_hash, kopiert fra et verktøyresultat. Aldri oppfinn en file_hash.
+- sitat: 5 til 6 påfølgende ord kopiert fra én linje i dokumentets tekst. Ikke en headertilje (Fra, Til, Kk, Emne, Dato). Ingen span som holder et spørsmålstegn.
+- find: valgfritt. Den korteste eksakte frasen av sitatet som personen må se. Kortet åpner dokumentet på denne frasen.
+- why: én linje som sier hva dokumentet støtter.
+
+Skriv handlefestet du får tilbake, for eksempel `[D1]`, i din {{ citation_artefact }} der du gjør påstanden.
+
+Eksempel. {{ tool('read_documents') if has('read_documents') else 'A tool' }} returnerte e-posten «Re: UTKAST talpunkter» i Samlingen enron.
+Denne har teksten «Talpunktene ser bra ut hos meg. Lykke til i dag.» Din {{ citation_artefact }} sier at Jim Steffes godkjente utkastet. Kall {{ tool('cite_documents') }} med Samlingen enron, file_hash fra resultatet, sitatet «talking points look great to me», finn «look great», og hvorfor «Steffes godkjenner utkastet av 27. desember».
+Skriv deretter «Steffes godkjente utkastet [D1].» Ikke sitat «Subject: Re: UTKAST talpunkter», fordi det er en hodelinje. Ikke sitat «Can you check the notes?», fordi den inneholder et spørsmålstegn.
+Radskift, interpunksjon og de `>`-merkene til et sitert e-postdokument trenger ikke å samsvare.
+Manglende eller fraværende sitater allokerer ingen referanseidentifikator. Kopier 5 til 6 ord av kandidatteksten feilen gir, inn i sitat og prøv på nytt.
+Kun et returnert referanseidentifikator merker en Kilde. Skriv aldri ditt eget merke i klammeparentes.
+Skriv referanseidentifikatoren som tekst ved siden av påstanden. Ikke plasser den i backticks. `[D1]` i backticks kobler ingenting.
+Gjenbruk det returnerte dokument-håndtaket for ytterligere verifiserte avsnitt. Dokumentet har ett kort.
+{% if citation_resolver == "lead" %}
+Lederen av forskningen løser dem, så et referanseidentifikator du aldri allokerte er uten nytte for noen.
+{% endif %}
+{% endif %}
+{% include "citation_failures.j2" %}
+
+{% if has('cite_documents') %}
+Citations-argumentet er en liste over dokument-sitasjonsobjekter.
+Hvert objekt krever collection og file_hash. quote inneholder 5 til 6 på hverandre følgende ord i kildeform.
+Gjenta collection og file_hash i hvert objekt, også ved separate sitater fra samme dokument.
+Objekter arver ikke argumenter fra tidligere objekter.
+find velger valgfritt en eksakt frase innenfor quote. Utelattelse bruker hele sitatet.
+term registrerer valgfritt det opprinnelige søket. why angir den støttede påstanden.
+Resultatet gir et identifikator for hver verifisert oppføring. Mislykkede oppføringer gir årsaken og kan gi et kandidat-avsnitt.
+Prøv mislykkede oppføringer på nytt med eksakt ordlyt. Et verifisert sitat verifiserer ikke i seg selv forfatteren eller datoen for det sitatet.
+```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]} ``` Denne batchen verifiserer to avsnitt fra samme dokument.
+```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+{% endif %}

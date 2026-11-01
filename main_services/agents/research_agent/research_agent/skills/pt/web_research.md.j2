@@ -1,0 +1,115 @@
+---
+name: web_research
+group: technique
+description: como pesquisar a web aberta, ler uma página web ou o registo do proprietário de um domínio, e citar as páginas web que suportam um relatório
+tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
+---
+Pesquisar a web aberta
+
+Utilize fontes da web quando estas puderem responder à pergunta da pessoa.
+
+{% if has('web_search') %}
+{{ tool('web_search') }} aceita uma lista de consultas. O campo `sources` restringe a pesquisa a fontes nomeadas.{% if has('list_search_sources') %} {{ tool('list_search_sources') }} lista essas fontes.{% endif +%}
+{% endif %}
+{% if has('read_page') %}
+1. Leia os melhores resultados na íntegra com {{ tool('read_page') }}. Forneça todos os endereços numa única chamada e indique no objetivo o que procura. Um resultado marcado como BLOQUEADO POR VERIFICAÇÃO DE ROBÓTO não é a página. Não utilize o seu texto.
+{% endif %}
+{% if has('whois_lookup') %}
+{% if has('read_page') %}2.{% else %}1.{% endif %} Para o detentor, o registrador ou as datas de um domínio, chame {{ tool('whois_lookup') }} com todos os domínios numa única chamada.
+{% endif %}
+
+Leia cada fonte antes de usar as suas afirmações. Um excerto de resultado de pesquisa não é uma fonte.
+{% if has('cite_pages') %}
+
+Citar páginas web
+
+Chame {{ tool('cite_pages') }} com a URL de cada página lida e a redação exata que a sustenta em `terms`.
+Utilize os identificadores web devolvidos ao lado das afirmações que sustentam.
+Substitua as URLs de fonte soltas por esses identificadores.
+{{ tool('cite_pages') }} aceita url e termos para uma página, ou páginas para até doze objetos de página.
+Cada página requer url e termos. os termos contêm até oito expressões exatas, cada uma com no máximo 200 caracteres. A maiúscula deve coincidir.
+version seleciona opcionalmente uma versão capturada. why indica opcionalmente a afirmação sustentada, em no máximo 300 caracteres.
+O resultado dá citações verificadas e um identificador web estável. Uma página com falha dá um erro sem identificador.
+
+Exemplo. {{ tool('read_page') }} leia a URL https://example.org/report. O seu texto diz "A fábrica fechou em março de 2019." Chame {{ tool('cite_pages') }} com argumentos simples para uma página:
+url, copiada do resultado da leitura, termos com a frase exata, e o motivo.
+```json {"url":"COPY_READ_URL","terms":["A fábrica fechou em março de 2019"],"why":"O relatório dá a data de fechamento."} ``` De seguida, escreva "A fábrica fechou em março de 2019 [W1]." com o identificador que a chamada devolveu.
+Divida uma lista de mais de doze páginas em chamadas separadas.
+```json {"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"Esta passagem dá a data de aprovação."}]} ``` Copie o identificador web devolvido, por exemplo `[W1]`, ao lado da afirmação que suporta.
+Guarde cada identificador juntamente com a URL e as citações do seu objeto de citação devolvido.
+Um erro não atribui um identificador. Omita as afirmações dessa fonte até a sua citação ser bem-sucedida.
+Para redações ausentes, copie o texto exato do candidato devolvido e chame a ferramenta novamente.
+Quando um erro inclui `errors[i].retry_arguments`, copie esse objeto inalterado para a próxima chamada.
+Guarde as citações bem-sucedidas de um resultado parcial. Retente apenas as páginas falhadas.
+Por exemplo, uma chamada cita três páginas e duas têm sucesso com [W1] e [W2]. Use esses dois identificadores. Envie a próxima chamada apenas com a terceira página, e use os seus argumentos de retentativa.
+Por exemplo, esta chamada junta palavras através de uma quebra de linha da fonte e falha.
+```json {"url":"https://example.org/report","terms":["A fábrica fechou em março de 2019"]} ``` O erro pode devolver estes argumentos de retentativa com o texto exato da fonte.
+```json {"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["A fábrica fechou"]}} ``` Chame {{ tool('cite_pages') }} com esse objeto devolvido, incluindo a sua versão efetiva e os termos exatos.
+```json {"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["A fábrica fechou"]} ``` Uma janela de PDF tem a sua própria versão. Para citar uma passagem das páginas 51 a 100, copie a dessa leitura.
+```json {"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]} ``` Se uma chamada exceder oito termos, divida os seus termos em grupos de no máximo oito e cite cada grupo separadamente.
+Guarde a URL e a versão da fonte com cada grupo. Alterar a estrutura da chamada não reduz a contagem de termos.
+O identificador abre o texto da página capturada e as suas citações verificadas.
+Use uma página por chamada se um lote chegar danificado.
+Uma página não lida, bloqueada ou não verificada não pode sustentar uma afirmação.
+
+{% include "citation_failures.j2" %}
+{% endif %}
+
+Um nome ou um evento que recorda é um candidato enquanto uma fonte não o nomeia. Encontre uma fonte que o nomeie antes de o usar. Não envie uma pesquisa de novo com as mesmas palavras ou com pequenas alterações de redação. Uma pesquisa seguinte deve usar um método diferente: outros fatos identificadores do candidato, uma fonte nomeada, o idioma do local, ou uma página a que um resultado lido faz ligação. Quando nenhum método restante conseguir encontrar uma fonte, marque o candidato como não verificado e continue com outro trabalho. Uma pessoa com o mesmo nome é uma pessoa diferente enquanto uma fonte não ligar os fatos. Quando uma fonte contradiz um candidato, remova o candidato e indique o motivo.
+
+Por exemplo, você recorda que um moinho fechou em 2019. Uma pesquisa por "Harlow mill closed 2019" não encontra nenhuma página sobre o moinho. Uma pesquisa por "Harlow mill closure" encontra os mesmos resultados. Não envie uma terceira forma dessas palavras. Pesquise o nome da empresa proprietária com o nome da cidade. Uma página de notícias locais nomeia o mês do fechamento, portanto leia-a, e o candidato fica verificado.
+
+Por exemplo, você recorda um segundo processo judicial contra a mesma empresa. Pesquisas pela empresa com "lawsuit", pelo nome do tribunal e pelo formato do número do caso não encontram nenhum caso.
+Nenhum outro método resta. Escreva que as fontes lidas não confirmam um segundo caso e não o nomeie como um caso.
+
+Uma leitura cobre apenas o seu texto extraído. Uma busca sem correspondência mostra que o texto extraído não contém as palavras. Isso não mostra que o documento não as contenha. Um resultado de PDF indica as páginas que a leitura extraiu. Antes de afirmar que um documento não nomeia uma pessoa, indique as páginas ou o texto que pesquisou.
+Para uma lista de eventos datados, mantenha um registro para cada evento com a sua data, o seu nome e a sua fonte. Indique os registros sem data, os relatórios duplicados e as fontes que não conseguiu ler além dos registros datados.
+
+Aplica cada restrição pedida a cada elemento da resposta.
+Indica qual restrição um elemento falha.
+Identifica cada elemento pelos seus fatos distintivos.
+Para um caso judicial, indica o tribunal, a data e o número do processo quando as fontes os fornecem.
+Verifica na fonte cada propriedade que o pedido exige de um elemento.
+Conta um caso, evento ou entidade uma vez, e lista os identificadores das suas fases em conjunto.
+Junta os relatórios sobre o mesmo elemento.
+Indica quando as fontes estabelecem menos elementos distintos do que o pedido.
+Antes de responder, verifica os fatos distintivos de cada elemento e cada restrição contra as páginas que lês.
+Mantém um elemento que falha uma restrição fora da lista correspondente, e nomeia a sua restrição falhada.
+Lê todas as páginas que citas, incluindo uma fonte de substituição encontrada depois de uma página bloqueada.
+Quando a leitura de uma página falhar, usa outra fonte legível ou omite as suas alegações e endereço.
+
+{% if has('web_search') %}
+{{ tool('web_search') }} aceita consultas como lista ou como uma string, e consulta como uma consulta única adicional.
+Forneça pelo menos uma consulta. Omite fontes para pesquisar todas as fontes disponíveis.
+max_results por defeito é 15. timelimit é d, w, m ou y e aplica-se apenas a fontes de notícias suportadas.
+O resultado devolve URLs classificados, títulos, excertos e formas de consulta correspondentes. Lê os URLs selecionados antes de confiar nas suas afirmações.
+```json {"queries":["transfer approval"]} ``` ```json {"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"} ```
+{% endif %}
+{% if has('list_search_sources') %}
+{{ tool('list_search_sources') }} não aceita argumentos. Devolve os nomes e descrições das fontes disponíveis.
+```json {} ```
+{% endif %}
+{% if has('read_page') %}
+{{ tool('read_page') }} requer urls, uma lista de até seis endereços HTTP ou HTTPS.
+goal regista opcionalmente a pergunta. Não seleciona texto correspondente.
+find seleciona opcionalmente correspondências literais de texto, sem restrições de maiúsculas/minúsculas.
+offset é uma posição de caractere baseada em zero. A omissão começa em zero.
+version seleciona a versão do texto capturado. Copia-a de uma leitura anterior do mesmo URL para continuar esse texto.
+Uma versão pertence a um único URL. Para outro URL, lê primeiro esse URL e copia a sua própria versão.
+links por defeito é true e inclui os destinos dos links no texto.
+page_start seleciona a primeira página de uma janela de PDF. Uma leitura extrai no máximo 50 páginas de PDF.
+Um resultado de corte, um resultado de find e uma janela de PDF fornecem os argumentos da próxima chamada.
+Copia esse objeto de argumentos sem alterações. Mantém o URL, a janela de PDF, a configuração de links e a versão.
+Uma versão pertence a um único URL e a uma única janela de PDF.
+Uma janela sem texto não indica que as outras páginas do PDF não tenham texto.
+Repetir a primeira leitura lê novamente o primeiro texto.
+```json {"urls":["COPY_SEARCH_RESULT_URL"]} ``` ```json {"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false} ``` Por exemplo, um resultado de PDF diz "O texto cobre as páginas de PDF 1 a 50 de 120 apenas" e fornece a próxima janela.
+Um find nessa janela dá mais correspondências com este objeto. Copia-o como a próxima chamada.
+```json {"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200} ```
+{% endif %}
+{% if has('whois_lookup') %}
+{{ tool('whois_lookup') }} aceita domínios como lista e domain como um único domínio.
+Forneça nomes de domínios sem um caminho de URL. O resultado reporta cada domínio separadamente.
+Um registrante nulo significa que o registry não publicou esse valor. O registrar vende o registo do domínio.
+```json {"domains":["example.org"]} ``` ```json {"domains":["example.org","example.com"],"domain":"example.net"} ```
+{% endif %}

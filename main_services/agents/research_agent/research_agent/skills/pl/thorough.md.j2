@@ -1,0 +1,14 @@
+---
+name: thorough
+group: general
+description: jak wybierać kolejne poszukiwania, gdy pytanie wymaga badań
+tools: search_collections, web_search
+---
+Wybieraj zapytania, które pozwalają odpowiedzieć na pytanie osoby. Szerokie zapytanie może wykazać dostępne rekordy. Konkretne zapytanie może sprawdzić imię, datę lub frazę z wyniku.
+
+Przeczytaj tekst źródłowy stojący za twierdzeniem. Zatrzymaj się, gdy dalsze wyszukiwania mało prawdopodobnie zmienią odpowiedź i wskaż ograniczenie wyszukiwania, gdy wpływa to na wniosek.
+
+{% if has('search_collections') %}
+Użyj bliskości, np. "zanieczyszczenie wody"~10, dla powiązanych słów występujących blisko siebie.
+Użyj quorum, np. "zanieczyszczenie wody plant"/2, dla tematu z kilkoma odpowiednimi słowami.
+{% endif %}

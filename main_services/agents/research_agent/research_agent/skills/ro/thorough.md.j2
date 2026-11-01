@@ -1,0 +1,14 @@
+---
+name: thorough
+group: general
+description: cum să alegi căutări suplimentare când o întrebare necesită cercetare
+tools: search_collections, web_search
+---
+Alege căutările care pot răspunde la întrebarea persoanei. O interogare largă poate arăta înregistrările disponibile. O interogare specifică poate testa un nume, o dată sau o fraze dintr-un rezultat.
+
+Citește textul din sursă din spatele unei afirmații. Oprește-te când căutările ulterioare sunt improbabile să schimbe răspunsul și menționează limita de căutare când aceasta afectă concluzia.
+
+{% if has('search_collections') %}
+Folosiți proximitate, cum ar fi "poluarea apei"~10, pentru cuvinte corelate una lângă alta.
+Folosiți cuorum, cum ar fi "poluarea apei planta"/2, pentru un subiect mai multe cuvinte relevante.
+{% endif %}

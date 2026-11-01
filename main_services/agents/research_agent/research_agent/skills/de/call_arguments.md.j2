@@ -1,0 +1,69 @@
+---
+name: call_arguments
+group: stumble
+description: So füllen Sie die Argumente einer Werkzeugaufruf aus: nur die Namen, die das Schema angibt, eine Liste, wo nach einer Liste gefragt wird, und keine zusätzlichen Anführungszeichen
+tools:
+---
+Ausfüllen der Argumente eines Aufrufs
+
+{% if has('read_tool') %}
+Wenn Sie sich bei den Argumenten eines Werkzeugs nicht sicher sind, rufen Sie {{ tool('read_tool') }} mit dessen Namen auf. Es nennt jedes Argument, seinen Typ und die Argumente, die das Werkzeug erfordert.
+
+{% endif %}
+1. Nennen Sie nur die Argumentnamen, die das Werkzeug angibt. Ein Argument mit einem anderen Namen wird abgelehnt.
+2. Geben Sie jedes erforderliche Argument an.
+3. Wenn das Werkzeug eine Liste verlangt, geben Sie eine Liste an, auch bei einem einzelnen Wert. Schreiben Sie Abfragen ["lease"]. Schreiben Sie nicht Abfragen "lease".
+4. Wenn das Werkzeug eine Zahl oder true oder false verlangt, geben Sie den Wert ohne Anführungszeichen. Schreiben Sie filename_only true. Schreiben Sie nicht filename_only "true".
+5. Setzen Sie keine Anführungszeichen innerhalb eines Textwerts. Schreiben Sie status done. Schreiben Sie nicht status "\"done\"".
+6. Halten Sie jeden Wert innerhalb der Grenzen seines Werkzeugs, etwa der maximalen Anzahl von Listeneinträgen.
+7. Wenn das Werkzeug eine Liste von Objekten verlangt, geben Sie eine Liste von Objekten an. Geben Sie keinen Text
+{% if has('cite_documents') %}
+   an, der JSON enthält. Schreiben Sie citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
+   Schreiben Sie nicht citations "[{\"collection\": ...}]".
+{% elif has('cite_pages') %}
+   an, der JSON enthält. Schreiben Sie pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"}].
+   Schreiben Sie nicht pages "[{\"url\": ...}]".
+{% else %}
+   an, der JSON enthält.
+{% endif %}
+{% if has('write_file') %}
+8. Nennen Sie den Namen der Datei in jedem {{ tool('write_file') }}- und {{ tool('patch_file') }}-Aufruf.
+{% endif %}
+
+Wenn ein Aufruf abgelehnt wird, nennt der Fehler das Argument und was daran falsch ist. Korrigieren Sie dieses Argument und senden Sie anschließend den Aufruf.
+
+{% if has('search_agent_tools') %}
+{{ tool('search_agent_tools') }} benötigt eine Abfrage, eine Aufgabenbeschreibung von bis zu 160 Zeichen.
+Sie liefert relevante Werkzeugnamen und -beschreibungen. Lesen Sie ein Werkzeug, bevor Sie ungewohnte Argumente verwenden.
+```json {"query":"Find a passage late in one long document."} ```
+{% endif %}
+{% if has('read_tool') %}
+{{ tool('read_tool') }} benötigt name, den exakten Namen eines verfügbaren Werkzeugs.
+Sie liefert die Beschreibung und das vollständige Eingabeschema, einschließlich erlaubter Werte, Standardwerte und erforderlicher Felder.
+```json {"name":"read_documents"} ``` Lesen Sie nach einem Fehler wegen eines unbekannten Arguments das Schema des fehlerhaften Werkzeuges, bevor Sie es erneut aufrufen.
+{% if has('update_plan') %}
+Zum Beispiel schlägt dieser {{ tool('update_plan') }} fehl, weil `plan` kein Argument ist.
+```json {"plan":["Find the message."]} ``` Lesen Sie dessen Schema mit {{ tool('read_tool') }}.
+```json {"name":"update_plan"} ``` Rufen Sie dann {{ tool('update_plan') }} mit Ziel und Schritten auf.
+```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"pending"}]} ```
+{% endif %}
+{% if has('read_documents') %}
+Wenn {{ tool('read_documents') }} `source2` oder `offset2` ablehnt, lesen Sie dessen Schema, bevor Sie es erneut aufrufen.
+Verwenden Sie einen separaten Aufruf für jedes Dokument, das unterschiedliche Bereichsargumente benötigt.
+{% endif %}
+{% endif %}
+{% if has('search_skills') %}
+{{ tool('search_skills') }} akzeptiert query, bis zu 160 Zeichen. Das Auslassen oder ein leerer Text listet alle verfügbaren Fähigkeiten auf.
+Sie liefert Methodennamen und -beschreibungen.
+```json {} ``` ```json {"query":"Read a long document and continue its matching passage."} ```
+{% endif %}
+{% if has('read_skill') %}
+{{ tool('read_skill') }} benötigt name, den exakten Namen, den die Aufdeckung von Fähigkeiten zurückgibt.
+Sie liefert die Methoden-Anweisungen, Werkzeugargumente und Beispiele.
+```json {"name":"passages"} ```
+{% endif %}
+{% if has('write_note') %}
+{{ tool('write_note') }} benötigt text mit 1 bis 2.000 Zeichen. Sie speichert Belege und offene Fragen für den späteren Kontext.
+Geben Sie Quellenidentitäten und den nächsten nützlichen Aufruf an, wenn dieser Kontext beim Komprimieren erhalten bleiben muss.
+```json {"text":"The approval passage is in the returned document range. Verify its original writer before attributing it."} ```
+{% endif %}

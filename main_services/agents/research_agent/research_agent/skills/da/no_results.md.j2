@@ -1,0 +1,71 @@
+---
+name: no_results
+group: stumble
+description: hvad du skal gøre, når en søgning ikke finder noget: fjern filtre, opdel en sætning, prøv andre former for et navn, og sig derefter, hvad der mangler
+tools: search_collections, search_passages, web_search
+---
+Når en søgning ikke finder noget
+
+{% if has('search_collections') %}
+Læs word_counts først.
+Når et navn ikke forekommer nogen steder, læs de indekserede staveforslag og deres kontrollerede tællinger.
+Brug ikke et staveforslag som det ønskede navn.
+Når du søger et staveforslag, angiv det i svaret som en anden stavemåde.
+Når ingen stavemåde matcher, rapportér at de søgte samlinger ikke indeholder navnet.
+
+{% endif %}
+Følg disse søgestep, når tidligere søgninger ikke besvarer spørgsmålet.
+{% if has('search_collections') %}
+1. Søg hvert navn som en citeret sætning.
+2. Søg uciterede ord, initialer, e-mailadresser og navne i dokumentets sprog.
+Læs word_counts og staveforslag. Brug et forslag kun for det tilsigtede navn.
+Brug dasovi?h for én varierende bogstav og dasovic% for et valgfrit sidste bogstav.
+Brug skilling << resigned når ordfølgen er vigtig.
+3. Fjern filtre ét ad gangen. Kør en søgning uden filtre.
+{% if has('search_facet_values') %}
+Kontrollér filterværdier med {{ tool('search_facet_values') }}.
+{% endif %}
+{% if has('search_histogram') %}
+Kontrollér datoer med {{ tool('search_histogram') }}.
+{% endif %}
+{% if has('search_passages') %}
+4. Søg en beskrivelse af indholdet med {{ tool('search_passages') }}.
+{% endif %}
+{% if has('folder_search') %}
+5. Brug {{ tool('folder_search') }} når anmodningen navngiver en mappe, sti eller fil.
+{% endif %}
+{% if has('folder_list') %}
+Brug {{ tool('folder_list') }} for den mappe.
+{% endif %}
+{% if has('read_documents') %}
+6. Læs de bedste 1 til 3 træf med {{ tool('read_documents') }}.
+{% endif %}
+{% if has('doc_search_text') %}
+Brug {{ tool('doc_search_text') }} for relevant tekst i et dokument.
+{% endif %}
+{% if has('web_search') %}
+7. Søg kun internettet, når anmodningen tillader det.
+{% endif %}
+{% if has('read_page') %}
+Læs de bedste websider med {{ tool('read_page') }}.
+{% endif %}
+{% else %}
+{% if has('web_search') %}
+1. Søg hvert navn som en citeret sætning, og derefter andre former for navnet, dets initialer og stedet sprog.
+{% endif %}
+{% if has('read_page') %}
+2. Læs de bedste websider med {{ tool('read_page') }}.
+{% endif %}
+{% endif %}
+
+Når de tilgængelige trin ikke finder nogen søgeordmatch, svar så med fravær og søgningerne.
+{% if has('search_collections') %}
+Før et fraværssvar skal du køre mindst 4 forskellige søgninger med mindst 2 tilgængelige søgeværktøjer.
+Gentag ikke en identisk søgning. Angiv de søgte samlinger og de manglende fakta.
+Begræns et fraværssvar til de søgninger og dokumenter du har gennemgået.
+Sig for eksempel "De søgte udvalgsreferater og overføringsposter identificerede ikke en godkendelsesdato." Disse søgninger etablerer ikke, at der ikke findes nogen godkendelsespost i nogen tilladt samling.
+{% else %}
+Før et fraværssvar skal du køre mindst 4 forskellige søgninger.
+Gentag ikke en identisk søgning. Angiv de søgninger og siderne du har læst.
+Begræns et fraværssvar til de søgninger og sider du har gennemgået.
+{% endif %}

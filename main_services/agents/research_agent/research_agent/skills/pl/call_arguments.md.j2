@@ -1,0 +1,69 @@
+---
+name: call_arguments
+group: stumble
+description: jak wypełnić argumenty wywołania narzędzia: tylko te, które podaje jego schemat, listę tam, gdzie wymagana jest lista, oraz bez dodatkowych cudzysłowów
+tools:
+---
+Wypełnianie argumentów wywołania
+
+{% if has('read_tool') %}
+Kiedy nie jesteś pewien argumentów narzędzia, wywołaj {{ tool('read_tool') }} podając jego nazwę. Podaje ono każdy argument, jego typ oraz argumenty, których narzędzie wymaga.
+
+{% endif %}
+1. Podawaj tylko nazwy argumentów, które podaje narzędzie. Argument o innej nazwie zostanie odrzucony.
+2. Podawaj każdy wymagany argument.
+3. Kiedy narzędzie prosi o listę, podaj listę, także dla jednej wartości. Napisz zapytania ["lease"]. Nie pisz zapytania "lease".
+4. Kiedy narzędzie prosi o liczbę, true lub false, podaj wartość bez cudzysłowów. Napisz filename_only true. Nie pisz filename_only "true".
+5. Nie umieszczaj cudzysłowów wewnątrz wartości tekstowej. Napisz status done. Nie pisz status "\"done\"".
+6. Zawiń każdą wartość w granice jej narzędzia, takie jak maksymalna liczba elementów listy.
+7. Kiedy narzędzie prosi o listę obiektów, podaj listę obiektów. Nie podawaj tekstu
+{% if has('cite_documents') %}
+   zawierającego JSON. Napisy citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
+   Nie pisy citations "[{\"collection\": ...}]".
+{% elif has('cite_pages') %}
+   zawierającego JSON. Napisy pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
+   Nie pisy pages "[{\"url\": ...}]".
+{% else %}
+   zawierającego JSON.
+{% endif %}
+{% if has('write_file') %}
+8. Podawaj nazwę pliku w każdym {{ tool('write_file') }} i {{ tool('patch_file') }} wywołaniu.
+{% endif %}
+
+Kiedy wywołanie zostanie odrzucone, błąd podaje argument i co jest z nim nie tak. Popraw ten argument, a następnie wyślij wywołanie.
+
+{% if has('search_agent_tools') %}
+{{ tool('search_agent_tools') }} wymaga parametru query, czyli opisu zadania o długości do 160 znaków.
+Zwrot zawiera odpowiednie nazwy narzędzi i ich opisy. Przed użyciem nieznanych argumentów przeczytaj opis narzędzia.
+```json {"query":"Find a passage late in one long document."} ```
+{% endif %}
+{% if has('read_tool') %}
+{{ tool('read_tool') }} wymaga parametru name, czyli dokładnej nazwy jednego dostępnego narzędzia.
+Zwrot zawiera opis i pełny schemat wejściowy, w tym dozwolone wartości, domyślne ustawienia i wymagane pola.
+```json {"name":"read_documents"} ``` Po błędzie związanym z nieznanym argumentem przeczytaj schemat narzędzia, które zawiodło, przed ponowną próbą.
+{% if has('update_plan') %}
+Na przykład to {{ tool('update_plan') }} wywołanie narzędzia nie powiedzie się, bo `plan` nie jest argumentem.
+```json {"plan":["Find the message."]} ``` Przeczytaj jego schemat przy pomocy {{ tool('read_tool') }}.
+```json {"name":"update_plan"} ``` Następnie wywołaj {{ tool('update_plan') }} z celem i krokami.
+```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"pending"}]} ```
+{% endif %}
+{% if has('read_documents') %}
+Jeśli {{ tool('read_documents') }} odrzuci `source2` lub `offset2`, przeczytaj jego schemat przed ponowną próbą.
+Każdy dokument wymagający innych argumentów zakresu obsłuż w osobnym wywołaniu.
+{% endif %}
+{% endif %}
+{% if has('search_skills') %}
+{{ tool('search_skills') }} przyjmuje parametr query o długości do 160 znaków. Pominięcie lub pusty tekst wypisuje wszystkie dostępne umiejętności.
+Zwrot zawiera nazwy metod i ich opisy.
+```json {} ``` ```json {"query":"Read a long document and continue its matching passage."} ```
+{% endif %}
+{% if has('read_skill') %}
+{{ tool('read_skill') }} wymaga parametru name, czyli dokładnej nazwy zwracanej przez odkrywanie umiejętności.
+Zwrot zawiera instrukcje metody, argumenty narzędzia i przykłady.
+```json {"name":"passages"} ```
+{% endif %}
+{% if has('write_note') %}
+{{ tool('write_note') }} wymaga parametru text o długości od 1 do 2000 znaków. Zapisuje dowody i nierozwiązane pytania na później, w kontekście.
+Włącz tożsamości źródeł i następne przydatne wywołanie, gdy ten kontekst musi przetrwać kompresję.
+```json {"text":"The approval passage is in the returned document range. Verify its original writer before attributing it."} ```
+{% endif %}

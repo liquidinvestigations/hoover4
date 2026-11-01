@@ -1,0 +1,95 @@
+---
+name: passages
+group: technique
+description: search_passages का प्रयोग करके यह खोज़ने का विधि कि कैसे सटीक खंड या पृष्ठ जो एक प्रश्न का उत्तर देते हैं, उन्हें बहुत सारे दस्तावेज़ों या एक दस्तावेज़ के अंदर खोज़ें।
+tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
+terms: इसके लिए शब्द: खंड, पैराग्राफ, वाक्य, उद्तरण, अंश, पृष्ठ, अनुभाग, जहाँ कहा गया है, जो हिस्सा ज़करार देता है, सटीक व्यवहार, पंक्ति। लंबे पाठ दस्तावेज़ों पर लागू होता है: PDF, Word फ़ाइलें, ई-मेल, रिपोर्ट्स और ट्रांसक्रिप्ट्स।
+not_for: गिनती, फ़ाइल सूची या मेटाडेटा के लिए जरूरी नहीं।
+---
+दस्तावेज़ों और पृष्ठों का पता लगाएँ
+
+{% if has('search_passages') %}
+कई दस्तावेज़ों खोज़ने के लिए {{ tool('search_passages') }} का प्रयोग करें। यह शब्द-कुंजित और अर्थ दोनों से पाठ-खंडों खोज़ने के लिए AI का प्रयोग करता है। इसे साधारण बातों में पूछे गए प्रश्न के लिए प्रयोग करें, जब वे शब्द जो दस्तावेज़ प्रयोग करते हैं स्पष्ट न हों। एक ही प्रयोग में 12 तक प्रश्नावली दें, हर एक प्रश्न का अलग रूप। हर प्राप्ति को खोज़ने वाली प्रश्नावली से नाम दिया जाता है। किसी सटीक नाम, पते या वाक्यांश के लिए {{ tool('search_collections') }} का प्रयोग करें।
+
+{% endif %}
+{% if has('doc_search_text') or has('pdf_search') %}
+एक लंबे दस्तावेज़ खोज़ने के लिए ये उपकरण प्रयोग करें।
+{% if has('doc_search_text') %}
+{{ tool('doc_search_text') }} एक पाठ स्रोत में किसी प्रश्नावली की प्राप्तियों को पृष्ठ क्रम में, हर प्राप्ति के साथ उसके पृष्ठ के साथ सूचित करता है।
+{% endif %}
+{% if has('pdf_search') %}
+{{ tool('pdf_search') }} PDF स्रोत के पृष्ठों पर किसी प्रश्नावली को पता लगाता है। पृष्ठों की सीमा खोज़ने के लिए page_from और page_to दें।
+{% endif %}
+
+{% endif %}
+{% if has('read_documents') %}
+पृष्ठ को {{ tool('read_documents') }} से पढ़ें जब खंड दावे को सहारा देने के लिए पर्याप्त पाठ न दिखाए। उसका पृष्ठ दें, या अधिकतम प्राप्तियों से पृष्ठ खोलने के लिए प्रश्नावली दें।
+{% endif %}
+
+जब खंड उत्तर को सहारा दे तो दस्तावेज़ और पृष्ठ दें।
+
+{% if has('read_documents') %}
+{{ tool('read_documents') }} collection और file_hash को आवश्यक करता है।
+collection एक नाम है। file_hash उस समग्री से 1 से 20 hash की सूची है।
+अलग-अलग समग्री में दस्तावेज़ों के लिए, हर समग्री के लिए एक अलग बैच बनाएँ।
+पहचानों को परिणामों से कॉपी करें। एक अनूठा फ़ाइल नाम या पथ दस्तावेज़ को हल कर सकता है।
+source वैकल्पिक रूप से निकाला गए स्रोत को चुनता है। छोड़ने पर प्रिय स्रोत प्रयोग होता है।
+page वैकल्पिक रूप से सटके पृष्ठ सूचक को चुनता है। पृष्ठ सूचकों में अंतराल हो सकते हैं।
+पृष्ठ छोड़ें या शून्य दें अधिकतम प्रश्नावली प्राप्तियों वाले पृष्ठ को चुनने के लिए, या प्रश्नावली विहीन पहले सटके पृष्ठ को चुनने के लिए।
+query उस पृष्ठ पर नज़दीकी अलग-अलग मिले शब्दों के आस-पास पाठ खोलता है।
+सटीक वाक्यांश के लिए, प्रश्नावली में वाक्यांश को उद्तरण में डालें। एक अकेली मिली किम्मत उसका पहला घटना खोलती है।
+offset खंड की शुरुआत को बदलता है। यह उसी पृष्ठ में शून्य से गिने गए यूनिकोड लिपियों की संख्या है।
+length एक धनात्मक लिपि संख्या है। छोड़ने पर 6,000 लिपियों का प्रयोग होता है।
+source_version वैकल्पिक रूप से लौटाए गए स्रोत फ़िंगरप्रिंट की पुष्टि करता है। सीमा को फिर से पढ़ने के लिए इसे कॉपी करें।
+
+परिणाम में text_range शुरू, अंत (अपसारी), कुल पृष्ठ अक्षर और इकाई के साथ आता है।
+page_complete का अर्थ है कि रेंग पूरे पृष्ठ को कवर करती है।
+एक cut marker का अर्थ है कि उपकरण ने रेंग का केवल भाग ही दिया है। इसका अर्थ नहीं है कि पृष्ठ वहाँ खत्म हो जाता है।
+उस दस्तावेज़ को जारी रखने के लिए आइटम के more का प्रयोग करें। बाकी पृष्ठ या बाद के पृष्ठ को जारी रखने के लिए top-level more का प्रयोग करें।
+जारी रखने के लिए लौटाए गए handle को exactly {{ tool('read_more') }} में कॉपी करें।
+आसपास के पाठ के लिए read_documents आरोपों में read_before या read_after को कॉपी करें। कोई offset गणना की ज़रूरत नहीं है।
+Range आरोप एक कॉल में हर hash पर लागू होते हैं। दस्तावेज़ों के विभिन्न स्रोत, रेंग या स्रोत संस्करण होने पर अलग-अलग कॉल का प्रयोग करें।
+उदाहरण के लिए, पहले दस्तावेज़ के लौटाए गए read_after वस्तु को एक कॉल में कॉपी करें।
+```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` दूसरे दस्तावेज़ के लौटाए गए read_after वस्तु को एक और कॉल में कॉपी करें।
+```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` हर दस्तावेज़ के लिए वास्तविक लौटाए मानों का प्रयोग करें। source2 या offset2 जैसे क्रमांकित फ़ील्ड जोड़ें नहीं।
+एक दोहराई गई प्रारंभिक कॉल वही पाठ लौटाती है। जब और पाठ की ज़रूरत हो तो कontinuation का प्रयोग करें।
+प्राप्त दावे के लिए पर्याप्त साक्षी मिलते ही पठन रोक दें।
+
+यह न्यूनतम कार्य पहली स्थापित पृष्ठ खोलता है।
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` यह कार्य एक लक्षित खंड खोलता है।
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` यह कार्य एक चयनित स्रोत और पृष्ठ में एक प्राप्त रेंज खोलता है।
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` यह अनुबंध अगली प्राप्त रेंज पढ़ता है। जारी किए गए वास्तविक सूचक का प्रयोग करें।
+```json {"continuation":"COPY_RETURNED_MORE"} ```
+{% endif %}
+{% if has('doc_search_text') %}
+{{ tool('doc_search_text') }} को collection, file_hash और query की आवश्यकता है। source वैकल्पिक रूप से एक निष्कर्षण चयनित करता है।
+यह प्रत्येक प्राप्ति के लिए page, ordinal, start, end और snippet लाता है। Offset उसी पृष्ठ के भीतर अक्षरों को गिनते हैं।
+जब snippet को अधिक संदर्भ की आवश्यकता हो तो read_documents में एक प्राप्ति पृष्ठ और start को कॉपी करें।
+बाकी प्राप्तियों को प्राप्त करने के लिए read_more का प्रयोग करें।
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
+{% endif %}
+{% if has('doc_sources') %}
+{{ tool('doc_sources') }} को collection और file_hash की आवश्यकता है। query वैकल्पिक रूप से प्रत्येक निष्कर्षण में मिलने वाली प्राप्तियों को गिनता है।
+यह स्रोत नाम और स्थापित पृष्ठ रेंज लाता है। जब कोई विशेष निष्कर्षण चयनित करते हैं तो स्रोत नाम को कॉपी करें।
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
+{% endif %}
+{% if has('doc_diff_sources') %}
+{{ tool('doc_diff_sources') }} को collection, file_hash, source_a और source_b की आवश्यकता है।
+page_a और page_b वैकल्पिक रूप से पृष्ठ चयनित करते हैं। अनुपस्थिति प्रत्येक स्रोत की पहली स्थापित पृष्ठ चयनित करती है।
+परिणाम एक सामान्य पाठ diff है। जब यह अनुस्थित हो तो read_more का प्रयोग करें।
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
+{% endif %}
+{% if has('pdf_search') %}
+{{ tool('pdf_search') }} को collection, file_hash और query की आवश्यकता है।
+source वैकल्पिक रूप से एक PDF निष्कर्षण चयनित करता है। page_from और page_to वैकल्पिक रूप से सामिल PDF पृष्ठ रेंज को सीमित करते हैं।
+प्राप्त पृष्ठ स्थितियों को कॉपी करें। अनुस्थित प्राप्तियों के लिए read_more का प्रयोग करें।
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
+{% endif %}
+{% if has('search_passages') %}
+{{ tool('search_passages') }} प्रश्नावली को एक स्ट्रिंग या 12 तक आकृतियों की सूची के रूप में स्वीकार करता है।
+collection एक नाम या एक सूची को स्वीकार करता है। अनुपस्थिति प्रत्येक अनुमत समग्री में खोजता है।
+max_results सेवित स्कीम सीमा के भीतर प्रत्येक प्रश्नावली आकृति के लिए प्राप्ति गिनी चुनता है। अनुपस्थिति 15 का प्रयोग करती है।
+परिणाम collection, file_hash, page और snippet देता है। q शून्य-आधारित प्रश्नावली सूचकों को रिकॉर्ड करता है।
+जब खंड प्रश्न का उत्तर नहीं देता तो सहायक पाठ पढ़ें।
+```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
+{% endif %}

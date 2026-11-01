@@ -1,0 +1,19 @@
+---
+name: todo_upkeep
+group: stumble
+description: comment conserver le plan avec update_plan, ses étapes et leurs statuts
+tools: update_plan
+---
+En conservant le plan
+
+{{ tool('update_plan') }} prend l'objectif et la liste complète des étapes. Chaque étape contient un texte et un statut, et une étape terminée possède une note courte.
+
+1. Envoie la liste entière à chaque appel, dans l'ordre. Une étape que tu omettez n'est plus dans le plan.
+2. Donne chaque étape sous forme d'un objet avec un texte et un statut. Le statut est pending ou done.
+3. Une étape est pending jusqu'à la fin de son travail. Ensuite, envoie-la comme done avec une note, telle que found, not found ou replaced.
+4. Conserve le texte d'une étape identique quand seul son statut change. L'étape conserve alors son id.
+5. Un nouvel objectif démarre un nouveau plan.
+6. {{ tool('update_plan') }} ne fait que conserver le plan. Écris un rapport ou un autre fichier avec {{ tool('write_file') }}.
+
+Voici un exemple. L'étape 1 a trouvé ce dont tu as besoin, et l'étape 2 est encore ouverte.
+```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` Le résultat montre le plan entier avec l'id de chaque étape. Un appel qui ne change rien retourne l'état initial. Corrige le champ nommé avant de rappeler.

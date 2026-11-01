@@ -1,0 +1,95 @@
+---
+name: passages
+group: technique
+description: come trovare gli estratti o le pagine esatti che rispondono a una richiesta con search_passages, all'interno di molti documenti o uno solo
+tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
+terms: Parole relative: estratto, paragrafo, frase, citazione, estratto, pagina, sezione, dove si dice, la parte che menziona, parola per parola, riga. Si applica a documenti di testo lunghi: PDF, file Word, e-mail, report e trascrizioni.
+not_for: Non è necessario per conteggi, elenchi di file o metadati.
+---
+Trovare estratti e pagine
+
+{% if has('search_passages') %}
+Per cercare in molti documenti, usa {{ tool('search_passages') }}. Cerca gli estratti di testo per parole chiave e per significato insieme. Usalo per una domanda in parole semplici, quando le parole usate dai documenti non sono chiare. Fornisci fino a 12 richieste in una sola chiamata, ciascuna una forma diversa della domanda. Ogni risultato nomina le richieste che lo hanno trovato. Per un nome esatto, un indirizzo o una frase, usa {{ tool('search_collections') }}.
+
+{% endif %}
+{% if has('doc_search_text') or has('pdf_search') %}
+Per cercare un unico documento lungo, usa questi strumenti.
+{% if has('doc_search_text') %}
+{{ tool('doc_search_text') }} elenca i risultati di una richiesta in una singola fonte di testo, in ordine di pagina, con la pagina di ogni risultato.
+{% endif %}
+{% if has('pdf_search') %}
+{{ tool('pdf_search') }} trova una richiesta nelle pagine di una fonte PDF. Fornisci page_from e page_to per cercare un intervallo di pagine.
+{% endif %}
+
+{% endif %}
+{% if has('read_documents') %}
+Leggi una pagina con {{ tool('read_documents') }} quando l'estratto non mostra abbastanza testo per sostenere l'affermazione. Fornisci la sua pagina, oppure fornisci la richiesta per aprire la pagina con più risultati.
+{% endif %}
+
+Fornisci il documento e la pagina quando un estratto sostiene la risposta.
+
+{% if has('read_documents') %}
+{{ tool('read_documents') }} richiede collection e file_hash.
+collection è un unico nome. file_hash è una lista di 1 a 20 hash di quella collezione.
+Per documenti in collezioni diverse, crea un batch separato per collezione.
+Copia le identities dai risultati. Un nome file o un percorso unici possono anche risolvere un documento.
+source seleziona opzionalmente una fonte estratta. L'omissione usa la fonte preferita.
+page seleziona opzionalmente un identificatore di pagina memorizzato. Gli identificatori di pagina possono avere lacune.
+Ometti page o fornisci zero per selezionare la pagina con più risultati della richiesta, oppure la prima pagina memorizzata senza una richiesta.
+query apre il testo intorno a parole corrispondenti distinte vicine in quella pagina.
+Per la formulazione esatta, metti la frase tra virgolette dentro la richiesta. Un unico valore corrispondente apre la prima occorrenza.
+offset sovrascrive l'inizio dell'estratto. Conta i caratteri Unicode da zero dentro quella pagina.
+length è un conteggio di caratteri positivo. L'omissione usa 6.000 caratteri.
+source_version verifica opzionalmente l'impronta digitale della fonte restituita. Copiala per una rilettura di un intervallo.
+
+Il risultato restituisce text_range con start, end esclusivo, totale di caratteri per pagina e unità.
+page_complete significa che l'intervallo copre l'intera pagina.
+Un marcatore di taglio significa che lo strumento ha fornito solo una parte dell'intervallo. Non significa che la pagina finisce lì.
+Usa il more di un elemento per continuare quel documento. Usa il more di primo livello per continuare la pagina rimanente o le pagine successive.
+Copia il riferimento restituito esattamente in {{ tool('read_more') }} como continuazione.
+Copia read_before o read_after come argomenti read_documents per il testo circostante. Non è richiesto alcun calcolo di offset.
+Gli argomenti di intervallo si applicano a ogni hash in una singola chiamata. Usa chiamate separate quando i documenti hanno fonti, intervalli o versioni della fonte diversi.
+Per esempio, copia l'oggetto read_after restituito del primo documento in una chiamata.
+```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` Copia l'oggetto read_after restituito del secondo documento in un'altra chiamata.
+```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` Usa i valori reali restituiti per ogni documento. Non aggiungere campi numerati come source2 o offset2.
+Una chiamata iniziale ripetuta restituisce lo stesso testo. Usa la continuazione quando è necessario più testo.
+Smetti di leggere quando l'estratto fornisce abbastanza prove per la rivendicazione richiesta.
+
+Questa chiamata minima apre la prima pagina salvata.
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` Questa chiamata apre un estratto mirato.
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` Questa chiamata apre un intervallo restituito in una fonte e pagina selezionate.
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` Questa continuazione legge l'intervallo restituito successivo. Usa il riferimento effettivamente emesso.
+```json {"continuation":"COPY_RETURNED_MORE"} ```
+{% endif %}
+{% if has('doc_search_text') %}
+{{ tool('doc_search_text') }} richiede collection, file_hash e query. source seleziona opzionalmente una estrazione.
+Restituisce page, ordinal, start, end e snippet per ogni risultato. Gli offset contano i caratteri all'interno di quella pagina.
+Copia page e start di un risultato in read_documents quando l'estratto necessita di più contesto.
+Usa read_more per recuperare i risultati rimanenti.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
+{% endif %}
+{% if has('doc_sources') %}
+{{ tool('doc_sources') }} richiede collection e file_hash. query conta opzionalmente i risultati corrispondenti in ogni estrazione.
+Restituisce i nomi delle fonti e gli intervalli di pagina salvati. Copia un nome di fonte quando selezioni una estrazione particolare.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
+{% endif %}
+{% if has('doc_diff_sources') %}
+{{ tool('doc_diff_sources') }} richiede collection, file_hash, source_a e source_b.
+page_a e page_b selezionano opzionalmente le pagine. L'omissione seleziona la prima pagina salvata di ogni fonte.
+Il risultato è un diff del testo unificato. Usa read_more quando continua.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
+{% endif %}
+{% if has('pdf_search') %}
+{{ tool('pdf_search') }} richiede collection, file_hash e query.
+source seleziona opzionalmente una estrazione PDF. page_from e page_to restringono opzionalmente l'intervallo di pagine PDF inclusivo.
+Copia le posizioni di pagina restituite. Usa read_more per i risultati continuati.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
+{% endif %}
+{% if has('search_passages') %}
+{{ tool('search_passages') }} accetta le richieste come una stringa o una lista di fino a 12 forme.
+collection accetta un nome o una lista. L'omissione cerca in ogni collezione permessa.
+max_results seleziona il numero di risultati per forma di richiesta entro il limite dello schema servito. L'omissione usa 15.
+Il risultato fornisce collection, file_hash, page e snippet. q registra gli indici di query basati su zero.
+Leggi il testo di supporto quando l'estratto non risponde alla domanda.
+```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
+{% endif %}

@@ -1,0 +1,19 @@
+---
+name: document_ids
+group: stumble
+description: hvordan du navnger et dokument med filhashen, eller med en sti i read_documents
+tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
+---
+Navngiving av et dokument
+
+En dokument-hash har 64 heksadesimale tegn. Dokumentverktøyene aksepterer også en unik start på minst 12 tegn.
+
+1. Kopier file_hash og samlingen fra samme resultatrad. Skriv aldri en hash selv.
+   En plassholder som COPY_RETURNED_HASH eller en verdi av nuller er ikke en hash. En mappe-id kommer også fra en listing eller et søkeresultat i denne samtalen.
+2. {% if has('read_documents') %}{{ tool('read_documents') }} kan også løse opp et filnavn eller en sti når den navngir ett dokument.{% endif %} Andre dokumentverktøy bruker hash-en.
+3. For å finne file_hash for en fil ved navn, søk etter navnet med {{ tool('search_collections') }}{% if has('folder_search') %} eller {{ tool('folder_search') }}{% endif %}, og kopier file_hash fra raden.
+{% if has('read_more') %}
+4. Når en rad mangler file_hash, kall {{ tool('read_more') }} for neste side av resultatet.
+{% endif %}
+
+Når en lesing sier at ingen lesbar datasett inneholder en hash, sjekk samlingen og verdien mot resultatraden. Manglende dokument kan også bety at verdien navngir mer enn ett dokument.

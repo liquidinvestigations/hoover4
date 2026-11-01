@@ -1,0 +1,46 @@
+---
+name: entities
+group: technique
+description: hvordan man lister de personer, organisationer, steder, e-mailadresser og beløb, som dokumenter nævner
+tools: list_document_entities, search_entity_explainer, search_facet_values
+terms: Ord til det: personer, personer, navne, organisationer, virksomheder, institutioner, steder, lokaliteter, byer, lande, e-mailadresser, telefonnumre, beløb, penge, identifikatorer, kontonumre, nøgleaktører, hvem der nævnes.
+not_for: Ikke nødvendigt, når anmodningen nævner én person og spørger, hvad dokumenterne siger om den person.
+---
+Hvad dokumenterne hedder
+
+{% if has('list_document_entities') %}
+1. {{ tool('list_document_entities') }} udtrækker navne fra et dokument. Angiv dets samling og filhash.
+2. Resultatet har to niveauer. entities er en sprogmoduls fortolkning af sproget: personer, organisationer og steder. Det kan være forkert, så tjek et navnet i teksten, før du stoler på det. structured indeholder de værdier, som en regel har valideret, såsom identifikatorer med et gyldigt kontrolciffer, datoer og pengebeløb med en valutakode.
+3. Søg efter de nye navne, adresser og identifikatorer med {{ tool('search_collections') }}. Sæt hver form af ét navn i ét kald.
+{% endif %}
+{% if has('search_entity_explainer') %}
+4. Når et resultat angiver en regel og en værdi, du ikke forstår, kald {{ tool('search_entity_explainer') }}.
+{% endif %}
+{% if has('search_facet_values') %}
+5. {{ tool('search_facet_values') }} giver værdierne af en entitetsfilter på tværs af en samling, med deres tællinger.
+{% endif %}
+
+Et navn, som pipeline'en har udtrukket, er ikke et bevis for, at dokumentet handler om den person. Læs teksten omkring det.
+
+Når et navn ikke forekommer nogen steder, læs de indekserede staveforslag og deres verificerede tællinger.
+Brug ikke et foreslået stavemåde som det ønskede navn.
+Når du søger en foreslået stavemåde, angiv den i svaret som en anden stavemåde.
+Når ingen stavemåde matcher, rapportér at de søgte samlinger ikke indeholder navnet.
+
+{% if has('list_document_entities') %}
+{{ tool('list_document_entities') }} accepterer dokumenter som en liste af Samling- og file_hash-objekter.
+Denne form bevarer blandede Samling-identiteter uden at parre urelaterede lister.
+Alternativt accepterer Samling og file_hash matchende lister, eller én Samling med flere hashes.
+Resultatet grupperer udtrukkede værdier efter Dokument. Brug read_more når det fortsætter.
+```json {"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]} ``` ```json {"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]} ```
+{% endif %}
+{% if has('search_entity_explainer') %}
+{{ tool('search_entity_explainer') }} kræver Samling, entity_type og entity_value fra et udtrukket Entitet-resultat.
+Den returnerer udtruksreglens beskrivelse og matchende dokumenter.
+```json {"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"} ```
+{% endif %}
+{% if has('search_facet_values') %}
+For entitetsfordelinger, kald {{ tool('search_facet_values') }} med facetter og valgfri Samling og forespørgsel.
+Resultatmatricen har [text, count]-par i hvert facetcell.
+```json {"facets":["ner_per","ner_org","ner_loc"]} ``` ```json {"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"} ```
+{% endif %}

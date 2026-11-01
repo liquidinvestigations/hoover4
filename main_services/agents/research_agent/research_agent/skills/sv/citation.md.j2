@@ -1,0 +1,49 @@
+---
+name: citation
+group: general
+description: hur man citerar dokumenten som stöder ett svar
+tools: cite_documents
+---
+Citerad text går in i en arbetsytsfil. Den `report` färdighet säger hur du skriver och redigerar den.
+
+{% if has('cite_documents') %}
+När din {{ citation_artefact }} förlitar sig på {% if web_enabled %}ett interna{% else %}t{% endif %}t dokument, anropa {{ tool('cite_documents') }}.
+Ge det varje dokument som stödjer ett påstående eller en citat. Använd det returnerade handtaget bredvid det påståendet.
+Använd ett handtag bredvid ett påstående som förlitar sig på ett internt dokument. Du kan också namnge ett dokument för att identifiera det eller beskriva ett sökresultat.
+Ett anrop tar högst 12 citat. Citera det du använde, inte allt som en sökning returnerade.
+När en sökning eller läsning returnerade dokument som stödjer ett påstående, citera dessa dokument.
+
+För varje citat ge:
+- collection och file_hash, kopierade från ett verktygresultat. Hitta aldrig på ett file_hash.
+- quote: 5 till 6 ord i rad kopierade från en rad i dokumentets text. Ingen rubrikrad (From, To, Cc, Subject, Date). Inget stycke som innehåller en frågetecken.
+- find: valfritt. Den kortaste exakta frasen av citatet som personen måste se. Kortet öppnar dokumentet på denna fras.
+- why: en rad som säger vad dokumentet stödjer.
+
+Skriv det handtag du får tillbaka, till exempel `[D1]`, i din {{ citation_artefact }} där du gör påståendet.
+
+Exempel. {{ tool('read_documents') if has('read_documents') else 'A tool' }} returnerade e-posten »Re: DRAFT talking points« i Samlingen enron.
+Den innehåller »The talking points look great to me. Best of luck today.« Ditt {{ citation_artefact }} säger att Jim Steffes godkände utkastet. Kalla {{ tool('cite_documents') }} med Samlingen enron, file_hash från resultatet, citatet »talking points look great to me«, sök »look great« och varför »Steffes approves the draft of 27 December«.
+Skriv sedan »Steffes approved the draft [D1]«. Citiera inte »Subject: Re: DRAFT talking points«, eftersom det är en header-rad. Citiera inte »Can you check the notes?«, eftersom det innehåller en frågetecken.
+Radbyten, interpunktionen och de `>` markeringarna i ett citerat e-postmeddelande behöver inte matcha.
+Saknade eller frånvarande citat allokerar inget handtag. Kopiera 5 till 6 ord av kandidattexten som felet anger till citat och försök igen.
+Endast ett returnerat handtag märker en Källa. Skriv aldrig din egen etikett i klamrar.
+Skriv handtaget som text bredvid påståendet. Sätt det inte i backticks. `[D1]` i backticks länkar ingenting.
+Återanvänd det returnerade dokumenthandtaget för ytterligare verifierade passus. Dokumentet har ett kort.
+{% if citation_resolver == "lead" %}
+Den ledande forskaren löser dem, så ett handtag du aldrig allokerat är till ingen nytta för någon.
+{% endif %}
+{% endif %}
+{% include "citation_failures.j2" %}
+
+{% if has('cite_documents') %}
+Argumentet citations är en lista över dokumentcitationsobjekt.
+Varje objekt kräver collection och file_hash. quote innehåller 5 till 6 ord i rad från originaltexten.
+Upprepa collection och file_hash i varje objekt, även vid separata citat från samma dokument.
+Objekt ärv inte argument från tidigare objekt.
+find väljer valfritt en exakt fras inom quote. Vid utelämnande används hela citatet.
+term registrerar valfritt den ursprungliga sökfrågan. why anger det påstådda påståendet.
+Resultatet ger ett handtag för varje verifierat inlägg. Misslyckade inlägg anger skäl och kan ge ett kandidatpassus.
+Försök igen bara på misslyckade inlägg med exakt ordalag. Ett verifierat citat verifierar inte i sig skrivaren eller datumet för det citatet.
+```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]} ``` Denna batch verifierar två passus från samma dokument.
+```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+{% endif %}

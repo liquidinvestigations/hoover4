@@ -1,0 +1,126 @@
+---
+name: web_research
+group: technique
+description: hur man söker på den öppna webben, läser en webbsida eller ägarens post för en domän och citerar de webbsidor som stöder en rapport
+tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
+---
+Att forska på det öppna nätet
+
+Använd webbkällor när de kan besvara personens fråga.
+
+{% if has('web_search') %}
+{{ tool('web_search') }} accepterar en lista med frågor. Fältet `sources` begränsar sökningen till namngivna källor.{% if has('list_search_sources') %} {{ tool('list_search_sources') }} listar de där källorna.{% endif +%}
+{% endif %}
+{% if has('read_page') %}
+1. Läs de bästa resultaten helt med {{ tool('read_page') }}. Ange alla adresser i ett enda anrop och ange målet så att det framgår vad du letar efter. Ett resultat som märks BLOCKED BY A BOT CHECK är inte sidan. Använd inte dess text.
+{% endif %}
+{% if has('whois_lookup') %}
+{% if has('read_page') %}2.{% else %}1.{% endif %} För ägaren, registranten eller datum för en domän, anropar du {{ tool('whois_lookup') }} med varje domän i ett enda anrop.
+{% endif %}
+
+Läs varje källa innan du använder dess påståenden. Ett utdrag ur en sökträff är inte en källa.
+{% if has('cite_pages') %}
+
+Att citera webbsidor
+
+Anropar du {{ tool('cite_pages') }} med varje läst sidas URL och exakt stödjande ordalytelse i `terms`.
+Använd dess returnerade webbhåndtag bredvid de påståenden de stödjer.
+Ersätt blotta källans URL med de där håndtagen.
+{{ tool('cite_pages') }} accepterar url och termer för en sida, eller sidor för upp till tolv sidobjekt.
+Varje sida kräver url och termer. termer innehåller upp till åtta exakta fraser, var och en högst 200 tecken. Versal och gällande bokstav måste matcha.
+version väljer valfritt en fångad version. why anger valfritt det stödda påståendet, högst 300 tecken.
+Resultatet ger verifierade citat och ett stabilt webbhåndtag. En misslyckad sida ger ett fel utan ett håndtag.
+
+Exempel. {{ tool('read_page') }} läs webbsidan https://example.org/report. Texten säger "Anläggningen lades ner i mars 2019." Anrop {{ tool('cite_pages') }} med plana argument för en sida:
+url, kopierad från läsresultatet, termer med den exakta frasen, och varför.
+```json {"url":"COPY_READ_URL","terms":["Anläggningen lades ner i mars 2019"],"why":"Rapporten anger stängningsdatumet."} ``` Skriv sedan "Anläggningen lades ner i mars 2019 [W1]." med det handtag som anropet returnerade.
+Del upp en lista med mer än tolv sidor i separata anrop.
+```json {"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"Detta usus anger godkännandedatumet."}]} ``` Kopiera det returnerade webbhndtaget, till exempel `[W1]`, bredvid påståendet det stöder.
+Behåll varje handtag med webbsidan och citat ur dess returnerade citatobjekt.
+Ett fel allokerar inget handtag. Utelämna den källans påståenden tills dess citat lyckas.
+För saknad formulering, kopiera exakt text från det returnerade kandidaten och anrop verktyget igen.
+När ett fel innehåller `errors[i].retry_arguments`, kopiera det objektet oförändrat till nästa anrop.
+Behåll lyckliga citat från ett partiellt resultat. Försök igen bara de misslyckade sidorna.
+Till exempel citerar ett anrop tre sidor och två lyckas med [W1] och [W2]. Använd de två handtagen. Skicka nästa anrop med endast den tredje sidan, och använd dess retry-argument.
+Till exempel sammankopplar detta anrop ord över en källradbrytning och misslyckas.
+```json {"url":"https://example.org/report","terms":["Anläggningen lades ner i mars 2019"]} ``` Felet kan returnera dessa retry-argument med den exakta källtexten.
+```json {"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["Anläggningen lades ner"]}} ``` Anrop {{ tool('cite_pages') }} med det returnerade objektet, inklusive dess faktiska version och exakta termer.
+```json {"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["Anläggningen lades ner"]} ``` Ett PDF-fönster har sin egen version. För att citera ett usus med sidorna 51 till 100, kopiera versionen från den läsningen.
+```json {"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]} ``` Om ett anrop överskrider åtta termer, dela upp dess termer i grupper med högst åtta och citata varje grupp separat.
+Behåll webbsidan och källversionen med varje grupp. Ändring av anropsstrukturen minskar inte dess termantal.
+Handtaget öppnar den fångade sidtexten och dess verifierade citat.
+Använd en sida per anrop om en batch kommer skadad.
+En oläst, blockerad eller overifierad sida kan inte stödja ett påstående.
+
+{% include "citation_failures.j2" %}
+{% endif %}
+
+Ett namn eller en händelse du minns är en kandidat tills en källa namnger den. Hitta en källa som namnger den innan du använder den. Skicka inte en sökning igen med samma ord eller med små ändringar av formuleringen. En nästa sökning måste använda en annan metod: andra identifierande facts om kandidaten, en namngiven källa, språket på platsen, eller en sida som ett läst resultat länkar till. När ingen återstående metod kan hitta en källa, markera kandidaten som ej verifierad, och fortsätt med annat arbete. En person med samma namn är en annan person tills en källa kopplar ihop fakta. När en källa motsäger en kandidat, ta bort kandidaten och ange anledningen.
+
+Exempelvis minns du att en kvarn lades ned 2019. En sökning efter "Harlow mill closed 2019" hittar ingen sida om quarnen. En sökning efter "Harlow mill closure" hittar samma resultat. Skicka inte en tredje form av dessa ord. Sök ägarens företags namn med stadsnamnet. En lokal nyhetssida namnger nedläggningsmånaden, så läs den, och kandidaten är verifierad.
+
+Exempelvis minns du ett andra rättsmål mot samma företag. Sökningar efter företaget med "lawsuit", efter rättsnamnet, och efter formatet för måls numrerar hittar inget mål.
+Ingen annan metod återstår. Skriv att de lästa källorna inte bekräfname ett andra mål, och namnge det inte som ett mål.
+
+Ett läst resultat täcker endast dess extraherade text. En sökning utan träff visar att den extraherade texten inte innehåller orden. Den visar inte att dokumentet inte innehåller dem. Ett PDF-resultat ger sidorna som det lästa resultatet extraherade. Innan du påstår att ett dokument inte namger en person, ange sidorna eller texten du sökte.
+För en lista på daterade händelser, behåll en post per händelse med dess datum, dess namn och dess källa. Ange poster utan datum, duplicerade rapporter och källor du inte kunde läsa isär från de daterade posterna.
+
+Apply each requested condition to each point in the answer.
+
+State which condition a point misses.
+
+Identify each point by its distinguishing facts.
+
+For a legal case, state the court, date, and case number when the sources indicate them.
+
+Check in the source each condition the request requires of a point.
+
+Count a case, event, or entity once, and list its identifiers' addresses together.
+
+Merge reports about the same point.
+
+State when the sources establish fewer distinct points than requested.
+
+Before answering, check each point's distinguishing facts and all conditions against the pages you read.
+
+Keep a point that misses a condition outside the matching list, and name its failed condition.
+
+Read each page you cite, including a replacement source found after a blocked page.
+
+When a page read fails, use another readable source or omit its claims and address.
+
+{% if has('web_search') %}
+{{ tool('web_search') }} accepterar frågor som en lista eller som en enda sträng, och query som en ytterligare enskild fråga.
+Ange minst en fråga. Lämna källor för att söka i alla tillgängliga källor.
+max_results defaultar till 15. timelimit är d, w, m eller y och gäller endast för nyhetskällor som stöds.
+Resultatet returnerar rangordnade URL:ar, titlar, utdrag och matchande frågeformer. Läs utvalda URL:ar innan du förlitar dig på deras påståenden.
+```json {"queries":["transfer approval"]} ``` ```json {"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"} ```
+{% endif %}
+{% if has('list_search_sources') %}
+{{ tool('list_search_sources') }} tar inga argument. Det returnerar tillgängliga källnamn och beskrivningar.
+```json {} ```
+{% endif %}
+{% if has('read_page') %}
+{{ tool('read_page') }} kräver urls, en lista med upp till sex HTTP- eller HTTPS-adresser.
+goal registrerar valfritt frågan. Den väljer inte matchande text.
+find väljer valfritt ordexakta textmatcher utan skiftlägesbegränsningar.
+offset är en nollbaserad teckenposition. Utelämning börjar vid noll.
+version väljer den fångade textversionen. Kopiera den från en tidigare läsning av samma URL för att fortsätta den texten.
+En version tillhör en URL. För en annan URL, läs den URL:en först och kopiera dess egen version.
+links defaultar till true och inkluderar länksdestinationer i texten.
+page_start väljer den första sidan i ett PDF-fönster. En läsning extraherar högst 50 PDF-sidor.
+Ett cut-resultat, ett find-resultat med fler matcher och ett PDF-fönster ger argumenten till nästa anrop.
+Kopiera det argumentobjektet oförändrat. Det behåller URL:en, PDF-fönstret, länkinställningen och versionen.
+En version tillhör en URL och ett PDF-fönster.
+Ett fönster utan text visar inte att de andra sidorna i PDF:en saknar text.
+Att upprepa det första anropet läser den första texten igen.
+```json {"urls":["COPY_SEARCH_RESULT_URL"]} ``` ```json {"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false} ``` Till exempel säger ett PDF-resultat "The text covers PDF pages 1 to 50 of 120 only" och ger nästa fönster.
+En find i det fönstret ger fler matcher med det här objektet. Kopiera det som nästa anrop.
+```json {"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200} ```
+{% endif %}
+{% if has('whois_lookup') %}
+{{ tool('whois_lookup') }} accepterar domäner som en lista och domain som en domän.
+Ange domännamn utan URL-sökväg. Resultatet rapporterar varje domän separat.
+En null registrant betyder att registret inte publicerade det värdet. Registratorn säljer domänregistreringen.
+```json {"domains":["example.org"]} ``` ```json {"domains":["example.org","example.com"],"domain":"example.net"} ```
+{% endif %}

@@ -1,0 +1,20 @@
+---
+name: collection_names
+group: stumble
+description: So benennen Sie eine Sammlung oder einen Datensatz in einem Call: der genaue Name, den list_collections zurückgibt
+tools: list_collections, search_collections
+---
+Benennen einer Sammlung
+
+1. Lassen Sie „collection" weg, um jede Sammlung dieses Chats zu durchsuchen. Das ist bei den meisten Fragen korrekt.
+2. Wenn Sie eine Sammlung angeben müssen, kopieren Sie ihren Namen exakt aus {{ tool('list_collections') }} oder aus der Sammlung einer Ergebniszeile.
+3. Ein Datensatz ist keine Sammlung. Die Datensatztabelle/ehudx befindet sich in der Sammlung tables. Geben Sie tables an.
+4. Ändern Sie keinen Namen. Fügen Sie kein Leerzeichen hinzu, ändern Sie keinen Großbuchstaben und übersetzen Sie ihn nicht.
+5. Wenn ein Aufruf angibt, dass eine Sammlung außerhalb der erlaubten Sammlungen liegt, kann dieser Chat sie nicht lesen. Senden Sie den Aufruf nicht erneut. Nutzen Sie die Sammlungen dieses Chats.
+
+Zum Lesen eines Dokuments geben Sie die Sammlung derselben Ergebniszeile wie deren file_hash an.
+
+Wenn ein Namen nirgends vorkommt, lesen Sie die indizierten Rechtschlagsvorschläge und deren geprüften Zählwerte.
+Nutzen Sie keinen vorgeschlagenen Namen als angeforderten Namen.
+Wenn Sie eine vorgeschlagene Rechtschreibung durchsuchen, nennen Sie sie in der Antwort als andere Rechtschreibung.
+Wenn keine Rechtschreibung passt, berichten Sie, dass die durchsuchten Sammlungen den Namen nicht enthalten.

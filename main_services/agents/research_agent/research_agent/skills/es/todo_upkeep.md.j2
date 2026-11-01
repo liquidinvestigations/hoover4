@@ -1,0 +1,19 @@
+---
+name: todo_upkeep
+group: stumble
+description: cómo mantener el plan con update_plan, sus pasos y sus estados
+tools: update_plan
+---
+Manteniendo el plan
+
+{{ tool('update_plan') }} toma el objetivo y toda la lista de pasos. Cada paso tiene texto y estado, y un paso hecho tiene una nota corta.
+
+1. Envía toda la lista en cada llamada, en orden. Un paso que omitas deja de formar parte del plan.
+2. Entrega cada paso como un objeto con texto y estado. El estado es pendiente o hecho.
+3. Un paso es pendiente hasta que termina su trabajo. Luego envíalo como hecho con una nota, como found, not found o replaced.
+4. Mantén el texto de un paso igual cuando solo cambia su estado. El paso entonces conserva su id.
+5. Un nuevo objetivo inicia un nuevo plan.
+6. {{ tool('update_plan') }} solo mantiene el plan. Escribe un informe u otro archivo con {{ tool('write_file') }}.
+
+Este es un ejemplo. El paso 1 encontró lo que necesitas, y el paso 2 sigue abierto.
+```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` El resultado muestra todo el plan con el id de cada paso. Una llamada que no cambia nada se devuelve sin cambios. Corrige el campo indicado antes de volver a llamar.

@@ -1,0 +1,88 @@
+---
+name: folders_and_files
+group: technique
+description: cum să veți ce conține o colecție: seturi de date, foldere, tipuri de fișiere, numere și date, și cum să găsiți un fișier după nume sau cale
+tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
+terms: Cuvinte pentru aceasta: colecție, set de date, folder, director, cale, nume fișier, tip fișier, extensie, format, numere, câte fișiere, dimensiune, cel mai mare, prezentare generală, inventar, ce conține o colecție, documente pe an.
+not_for: Nu este necesar când cererea se referă doar la conținutul documentelor.
+---
+Dosare și fișiere
+
+{% if has('list_collections') and has('search_facet_values') %}
+Pentru o prezentare generală a unei Colecții, apelează {{ tool('list_collections') }} cu {}.
+Apelează apoi {{ tool('search_facet_values') }} cu {} o dată pentru fiecare tip de fișier și limbă a fiecărei Colecții permise.
+Matricea implicită conține deja ambele facete. Nu este necesară o apelare separată per colecție sau per facetă.
+{% endif %}
+
+{% if has('list_collections') %}
+{{ tool('list_collections') }} nu primește argumente. Oferă numele Colecțiilor, numărul de documente și numărul de Seturi de date.
+```json {} ```
+
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} oferă numerele de stocare pentru fiecare colecție și set de date.
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} oferă dosarele și fișierele copil ale unui dosar dintr-un set de date.
+{% endif %}
+{% if has('folder_search') %}
+Pentru a găsi un dosar sau un fișier după nume în cadrul unui set de date, apelează {{ tool('folder_search') }}.
+{% endif %}
+{% if has('search_collections') %}
+Pentru a găsi un fișier după nume în fiecare colecție, apelează {{ tool('search_collections') }} cu `filename_only` setat la true. Introdu numele sau o parte din el ca interogare.
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} numără documentele unei căutări după dată sau dimensiune.
+{% endif %}
+{% if has('search_facet_values') %}
+{{ tool('search_facet_values') }} oferă valorile unui Filtru, inclusiv tipurile de fișiere, împreună cu numerele.
+{% endif %}
+
+Un nume sau o cale către un fișier poate identifica un document. Rândul unui rezultat `file_hash` îl identifică direct.
+
+Utilizează instrumentele de metadata pentru o solicitare de inventar. Numerele lor pot răspunde direct solicitării.
+Căutările de conținut sunt utile doar când persoana întreabă ce spun documentele.
+
+{% if has('search_facet_values') %}
+Apelați {{ tool('search_facet_values') }} o singură dată pentru mai multe Colecții și facete.
+Argumentele sunt colecție, facete, interogare și id-uri.
+Omiteți colecția sau dați [] pentru fiecare colecție permisă. Dați un nume sau o listă pentru a restrânge selecția.
+Omiteți facetele pentru [\"file_types\", \"language\"]. Dați o listă de nume exacte de facete pentru alte distribuții.
+Utilizați file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc, re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money sau re_crypto_wallet.
+file_type este invalid. Utilizați file_types.
+interogarea găsește text în valorile facetei. Ea nu caută în conținutul documentelor.
+id-uri rezolvă opțional identificatori de termeni cunoscuți. Căutările obișnuite folosesc textul valorii și nu necesită identificatori.
+
+Rezultatul are coloane și elemente. Fiecare rând începe cu colecția sa.
+Fiecare celulă a facetei conține perechi [text, număr]. Copiați textul în facet_filters pentru o căutare ulterioară a conținutului.
+O celulă nulă are o eroare raportată. O celulă goală nu are valori returnate.
+Numerele se refer la potriviri de documente indexate per valoare. Mai multe valori se pot aplica unui singur document.
+Nu adăugați numerele de facete pentru a afirma un total distinct. Totalele inventarului provin din list_collections.
+Lista de facete implicită poate omite valorile neobișnuite. Utilizați interogarea pentru a găsi o valoare specifică.
+Utilizați read_more când rezultatul continuă.
+
+Acest apel minim inventarizează formatele de documente și limbile din colecțiile permise.
+```json {} ``` Acest apel compară două colecții selectate și caută valorile adreselor de e-mail.
+```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} necesită colecție. dataset selectează opțional un set de date.
+Acest apel citește toate numărătorile de stocare a seturilor de date dintr-o colecție.
+```json {"collection":"alpha"} ``` Acest apel selectează un set de date.
+```json {"collection":"alpha","dataset":"files"} ```
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} necesită colecție și set de date. node_id selectează opțional un nod de folder returnat.
+Omite node_id pentru a citi rădăcina setului de date. Copiază identifikatorii nodurilor copii în apelurile ulterioare.
+```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('folder_search') %}
+{{ tool('folder_search') }} necesită colecție, set de date și interogare. node_id limitează opțional căutarea la un folder.
+```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }} acceptă acelesași filtre căutate, cu excepția sortării și a interogărilor.
+field este date, mentioned_date sau size. Implicit este date. query implicit este o interogare goală.
+Colecția omisă acoperă fiecare colecție permisă. Rezultatul returnează bucket-uri și câmpul selectat.
+```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{% endif %}

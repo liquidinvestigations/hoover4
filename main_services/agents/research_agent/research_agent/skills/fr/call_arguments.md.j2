@@ -1,0 +1,69 @@
+---
+name: call_arguments
+group: stumble
+description: comment remplir les arguments d'un appel d'outil : uniquement les noms fournis par son schéma, une liste lorsqu'il demande une liste, et aucune guillemet supplémentaire
+tools:
+---
+Remplir les arguments d'un appel
+
+{% if has('read_tool') %}
+Lorsque vous n'êtes pas sûr des arguments d'un outil, appelez {{ tool('read_tool') }} avec son nom. Il vous donne chaque argument, son type et les arguments que l'outil exige.
+
+{% endif %}
+1. Ne donnez que les noms d'arguments que l'outil fournit. Un argument portant un autre nom est refusé.
+2. Donnez chaque argument requis.
+3. Lorsque l'outil demande une liste, donnez une liste, même pour une seule valeur. Écrivez queries ["lease"]. N'écrivez pas queries "lease".
+4. Lorsque l'outil demande un nombre ou un booléen, donnez la valeur sans guillemets. Écrivez filename_only true. N'écrivez pas filename_only "true".
+5. Ne mettez pas de guillemets à l'intérieur d'une valeur textuelle. Écrivez status done. N'écrivez pas status "\"done\"".
+6. Conservez chaque valeur dans les limites imposées par son outil, comme le nombre maximal d'éléments d'une liste.
+7. Lorsque l'outil demande une liste d'objets, donnez une liste d'objets. Ne donnez pas un texte
+{% if has('cite_documents') %}
+   contenant du JSON. Écrivez citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
+   N'écrivez pas citations "[{\"collection\": ...}]".
+{% elif has('cite_pages') %}
+   contenant du JSON. Écrivez pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
+   N'écrivez pas pages "[{\"url\": ...}]".
+{% else %}
+   contenant du JSON.
+{% endif %}
+{% if has('write_file') %}
+8. Donnez le nom du fichier dans chaque appel {{ tool('write_file') }} et {{ tool('patch_file') }}.
+{% endif %}
+
+Lorsqu'un appel est refusé, l'erreur nomme l'argument et ce qui s'y révèle incorrect. Corrigez cet argument, puis renvoyez l'appel.
+
+{% if has('search_agent_tools') %}
+{{ tool('search_agent_tools') }} nécessite une requête, une description de tâche de 160 caractères au plus.
+Elle retourne les noms et descriptions des outils pertinents. Lisez un outil avant d'utiliser des arguments que vous ne connaissez pas.
+```json {"query":"Trouver un passage vers la fin d'un long document."} ```
+{% endif %}
+{% if has('read_tool') %}
+{{ tool('read_tool') }} nécessite name, le nom exact d'un outil disponible.
+Elle retourne la description et le schéma d'entrée complet, y compris les valeurs autorisées, les valeurs par défaut et les champs obligatoires.
+```json {"name":"read_documents"} ``` Après une erreur d'argument inconnu, lisez le schéma de l'outil défaillant avant de réessayer.
+{% if has('update_plan') %}
+Par exemple, cet appel {{ tool('update_plan') }} échoue car `plan` n'est pas un argument.
+```json {"plan":["Trouver le message."]} ``` Lisez son schéma avec {{ tool('read_tool') }}.
+```json {"name":"update_plan"} ``` Appelez ensuite {{ tool('update_plan') }} avec goal et steps.
+```json {"goal":"Trouver la date d'approbation.","steps":[{"text":"Trouver le message.","status":"pending"}]} ```
+{% endif %}
+{% if has('read_documents') %}
+Si {{ tool('read_documents') }} rejette `source2` ou `offset2`, lisez son schéma avant de réessayer.
+Utilisez un appel séparé pour chaque document nécessitant des arguments de plage différents.
+{% endif %}
+{% endif %}
+{% if has('search_skills') %}
+{{ tool('search_skills') }} accepte query, jusqu'à 160 caractères. L'omission ou un texte vide liste toutes les compétences disponibles.
+Elle retourne les noms de méthode et les descriptions.
+```json {} ``` ```json {"query":"Lire un long document et poursuivre son passage correspondant."} ```
+{% endif %}
+{% if has('read_skill') %}
+{{ tool('read_skill') }} nécessite name, le nom exact retourné par la découverte de compétences.
+Elle retourne les instructions de méthode, les arguments d'outil et les exemples.
+```json {"name":"passages"} ```
+{% endif %}
+{% if has('write_note') %}
+{{ tool('write_note') }} nécessite text, de 1 à 2 000 caractères. Elle enregistre les preuves et questions non résolues pour un contexte ultérieur.
+Incluez les identités des sources et l'appel suivant utile quand ce contexte doit survivre à la compaction.
+```json {"text":"Le passage d'approbation se trouve dans la plage de document retournée. Vérifiez son auteur original avant de l'attribuer."} ```
+{% endif %}

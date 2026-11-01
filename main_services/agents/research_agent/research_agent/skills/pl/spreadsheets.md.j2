@@ -1,0 +1,55 @@
+---
+name: spreadsheets
+group: technique
+description: jak odczytać plik arkusza kalkulacyjnego za pomocą narzędzi tabelarycznych: jego arkusze, kolumny, wiersze i pojedyncze komórki
+tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
+terms: Słowa związane z tym: tabela, tabele, arkusz kalkulacyjny, Excel, skoroszyt, arkusz, kart, CSV, TSV, dane tabelaryczne, tabela danych, księga, rejestr, tracker, lista z kolumnami, wiersz, kolumna, komórka, nagłówek, tabela przestawna, tabela bazy danych, SQLite, Tabelle. Typy plików: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML oraz tabele zawarte w dokumentach HTML lub PDF. Trafienia typu tabela.
+not_for: Niepotrzebne, gdy zapytanie wyłącznie wymaga przedstawienia odpowiedzi w formie tabeli lub używa słowa „tabela” w innym znaczeniu.
+---
+Odczytywanie arkusza
+
+Arkusz, plik CSV lub tabela w dokumencie to dokument tabelaryczny. Nazwij go według file_hash i kolekcji wyniku szukania.
+
+1. {{ tool('table_overview') }} wypisz arkusze i kolumny wraz z ich identyfikatorami.
+2. Odczytuj wiersze przy pomocy {{ tool('table_page') }}. Jedno wywołanie zwraca 50 wierszy. Sortuj i filtruj wiersze w wywołaniu. Podaj row_start, aby przejść do wiersza dużego arkusza, oraz kolumny, aby odczytać kolumny po sześćdziesiątej.
+3. {{ tool('table_column_values') }} wypisz wartości w jednej kolumnie i ich liczebność.
+4. Aby znaleźć wartość w arkuszu, wywołaj {{ tool('table_search_cells') }}. Odczytuj sąsiednie wiersze przy pomocy {{ tool('table_page') }}, gdy dopasowanie wymaga kontekstu.
+5. Gdy {{ tool('table_page') }} obcina długą komórkę, odczytuj ją całą przy pomocy {{ tool('table_cell') }}. Podaj wiersz zwróconym row_id oraz kolumnę zwróconym identyfikatorem kolumny.
+
+Podaj arkusz, wiersz i kolumnę, gdy czytnik musi ponownie znaleźć wartość.
+
+Aby policzyć wiersze według wartości, wywołaj {{ tool('table_column_values') }} dla tej kolumny. Nie policz wierszy strony tekstu samodzielnie. Podaj łączną liczbę wierszy, filtry i kolumnę.
+Jedno wywołanie wartości daje do 200 wartości. Gdy wynik zawiera kontynuację, wywołaj read_more, aż nie zostanie żadna kontynuacja. Częściowa lista wartości nie daje pełnego rozkładu.
+Suma liczb wartości równa się łącznej liczbie wierszy tylko dla tego samego arkusza, tych samych wierszy i tych samych filtrów. Pusta komórka nie ma wartości, więc puste komórki zmniejszają sumę względem łącznej liczby wierszy. Podaj liczbę pustych komórek, gdy porównujesz sumę z liczbą całkowitą.
+Na przykład arkusz z 24 pozwoleniami na budowę ma kolumnę typu. Wywołanie wartości daje fence 9, roof 7, deck 5 i pool 3 i brak kontynuacji. Te liczby sumują się do 24. Liczby sumujące się do 27 dla 24 wierszy pokazują błąd liczenia. Liczby sumujące się do 21 pokazują 3 wiersze z pustym typem.
+Plik CSV nie zawiera wiersza nagłówka. Wynik tabeli daje `interpretation`, odczyt wiersza 1, który opisują jego liczby. Ze stanem `established` odczyt jest znany. Ze stanem `ambiguous` oder `legacy` i dwoma `candidates` wiersz 1 może być nagłówkiem oder pierwszym wierszem danych.
+Każdy kandydat podaje swoją liczbę wierszy. Wynik odczytuje każdy wiersz, `all_rows`, chyba że wywołanie daje `interpretation`. Podaj każdą liczbę z jej odczytem albo odczytaj drugi odczyt z interpretacją `all_rows` oder `first_row_header`. Nie raportuj liczby jednego odczytu jako ustalonej liczby wierszy.
+Plik JSON albo plik tekstowy nie mają arkuszy. Gdy {{ tool('table_overview') }} nie daje arkusza, odczytaj dokument jako tekst.
+
+Każde wywołanie tabeli wymaga kolekcji i file_hash z tego samego wyniku dokumentu.
+{{ tool('table_overview') }} zwraca identyfikatory arkusza i kolumny.
+Pozostałe narzędzia tabeli wymagają arkusza. Skopiuj jego identyfikator z przeglądu.
+{{ tool('table_page') }} opcjonalnie przyjmuje sort, filtry, kolumny, search, row_start i interpretację.
+sort wymaga kolumny i kierunku, asc lub desc. Pominięcie używa przechowywanej kolejności wierszy.
+filters to lista predykatów kolumnowych. Każdy predykat używa jednego typu testu.
+Przedział numeryczny lub datowy może obejmować dolne i górne granice.
+Testy to contains, equals, starts_with, is_empty, number_min, number_max, date_min i date_max.
+Testy tekstowe używają ciągów. Testy numeryczne używają liczb. Granice datowych używają ciągów YYYY-MM-DD.
+kolumny wybierają identyfikatory kolumn. Jedno zwracane okno zawiera najwyżej 60 wybranych kolumn.
+search opcjonalnie zachowuje wiersze zawierające jego tekst. row_start to pozycja oparta zera w żądanej kolejności wierszy.
+Wynik zawiera metadane kolumn i wiersze. row_id to przechowywana tożsamość wiersza, również po sortowaniu.
+
+{{ tool('table_column_values') }} również wymaga kolumny. search opcjonalnie filtruje tekst wartości.
+Zwraca wartości i liczniki dla tej kolumny.
+{{ tool('table_search_cells') }} wymaga zapytania. Zwraca pasujące identyfikatory arkusza, wiersza i kolumny z tekstem.
+{{ tool('table_cell') }} wymaga wiersza i kolumny. Przekaż zwrócony row_id pod nazwą argumentu row.
+Zwraca wycinki o długości 2000 znaków. Użyj read_more dla pozostałego tekstu komórki.
+Użyj read_more dla kolejnych stron tabeli, wartości i trafień search.
+
+Minimalne omówienie otwiera strukturę tabeli.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` To wywołanie strony używa kopiowanych identyfikatorów arkusza i kolumny.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` To wywołanie wartości zawęża jedną kolumnę.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` To wywołanie wartości odczytuje wiersz 1 niejednoznacznego arkusza CSV jako nazwy kolumn.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` To wyszukiwanie w komórce lokalizuje żądaną wartość.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` To wywołanie w komórce odczytuje row_id 71, nawet gdy ten wiersz pojawił się pierwszy w posortowanym wyniku.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```

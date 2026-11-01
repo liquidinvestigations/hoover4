@@ -1,0 +1,45 @@
+---
+name: emails
+group: technique
+description: cum să citiți documentele prin e-mail: expeditor, destinatari, dată, subiect, antete, copii și firuri de conversație
+tools: doc_email, doc_metadata, read_documents
+---
+Citirea documentelor de e-mail
+
+{% if has('search_collections') %}
+Găsește e-mailuri cu {{ tool('search_collections') }}. Pune fiecare formă a unei adrese sau a unui nume într-un singur apel, de exemplu adresa, „First Last” și „Last, First”.
+
+{% endif %}
+{% if has('doc_email') %}
+1. Apela {{ tool('doc_email') }} cu file_hash al e-mailului. Acesta oferă expeditorul, destinatarii, copiile, data, subiectul, mesajul părinte, atașamentele și graful de mesaje.
+2. Pentru a urmări un fir de conversație, oferă node, hash-ul fișierului altui mesaj din graf. Graful se va centra în jurul acelui mesaj.
+3. Un atașament este un document distinct. Citește-l cu propriul file_hash.
+{% endif %}
+{% if has('read_documents') %}
+4. Citește textul mesajului cu {{ tool('read_documents') }}.
+{% endif %}
+{% if has('doc_metadata') %}
+5. Pentru antetele și datele care nu sunt în text, apela {{ tool('doc_metadata') }}.
+{% endif %}
+
+O copie a aceluiași mesaj poate fi în mai mult de o căsuță poștală. Compară-ți câmpurile atunci când un număr depinde de mesaje distincte.
+
+{% if has('doc_email') %}
+{{ tool('doc_email') }} necesită colecție și file_hash.
+colecția este un singur nume. file_hash acceptă un singur hash sau o listă de până la zece hash-uri din acea colecție.
+node centrează opțional graficul pe un hash de mesaj returnat. Omisiunea îl centrează pe emailul solicitat.
+Utilizați read_more pentru a inspecta atașamentele și intrările rămase din grafic.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+{% endif %}
+{% if has('doc_metadata') %}
+{{ tool('doc_metadata') }} necesită colecție și file_hash. Acceptă un singur hash sau o listă de până la zece hash-uri.
+Returnează metadatele stocate, datele, locațiile și link-urile de descărcare. Utilizați read_more pentru câmpurile de metadate rămase.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{% endif %}
+Citiți pasajul solicitat înainte de a-i atribui autorul, destinatarii sau data.
+Anvelopa emailului exterior aparține mesajului exterior.
+Un pasaj forwarded sau citat poate avea un autor diferit, destinatari și data.
+Utilizați propriile antete ai acelui pasaj pentru a identifica cine l-a scris.
+O persoană care a redirecționat un mesaj nu a scris neapărat declarația sa citată.
+Când atribuirea rămâne necunoscută, precizați această limitare.
+Citiți pasajele pentru intervale țintite și instrucțiuni de continuare. Nu repetați citirea inițială pentru a solicita textul ulterior.

@@ -1,0 +1,20 @@
+{
+ "glossary_revision": "38e8b095d07db8b8",
+ "terms": {
+  "skill": "कौशल",
+  "tool": "उपकरण",
+  "tool call": "उपकरण प्रयोग",
+  "argument": "आरोप",
+  "citation handle": "उद्तरण सूचक",
+  "quote": "उद्तरण",
+  "workspace file": "कार्य-स्थल फ़ाइल",
+  "report": "रिपोर्ट",
+  "hit": "प्राप्ति",
+  "passage": "खंड",
+  "query": "प्रश्नावली",
+  "web page": "वेब पृष्ठ",
+  "run": "कार्य",
+  "note": "टिप्णी",
+  "plan": "योजना"
+ }
+}

@@ -1,0 +1,19 @@
+---
+name: document_ids
+group: stumble
+description: comment nommer un document avec son hachier de fichier, ou avec un chemin dans read_documents
+tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
+---
+Nommer un document
+
+Le hachage d'un document comporte 64 caractères hexadécimaux. Les outils de document acceptent également un début unique d'au moins 12 caractères.
+
+1. Copiez le file_hash et la collection de la même ligne de résultat. N'écrivez jamais vous-même un hachage.
+   Un espace réservé tel que COPY_RETURNED_HASH ou une valeur de zéros n'est pas un hachage. Un id de dossier provient également d'un listing ou d'un résultat de recherche de cette discussion.
+2. {% if has('read_documents') %}{{ tool('read_documents') }} peut aussi résoudre un nom de fichier ou un chemin lorsqu'il nomme un seul document.{% endif %} Les autres outils de document utilisent le hachage.
+3. Pour trouver le file_hash d'un fichier par son nom, recherchez le nom avec {{ tool('search_collections') }}{% if has('folder_search') %} ou {{ tool('folder_search') }}{% endif %}, et copiez le file_hash de la ligne.
+{% if has('read_more') %}
+4. Lorsqu'une ligne n'a pas de file_hash, appelez {{ tool('read_more') }} pour la page suivante du résultat.
+{% endif %}
+
+Lorsqu'une lecture indique qu'aucun jeu de données lisible ne contient de hachage, vérifiez sa collection et sa valeur par rapport à la ligne de résultat. Un document manquant peut aussi signifier que la valeur nomme plus d'un document.

@@ -1,0 +1,55 @@
+---
+name: spreadsheets
+group: technique
+description: kako pročitati datoteku proražbene tablice pomoću alata za tablice: njezine listove, stupce, retke i pojedine ćelije
+tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
+terms: Riječi za to: tablica, tablice, proražbena tablica, Excel, radna knjiga, list, radni list, kartica, CSV, TSV, tablični podatak, podatkovna tablica, knjiga, registar, praćenje, popis sa stupcima, redak, stupac, ćelija, zaglavlje, pivot tablica, podatkovna tablica, SQLite, Tabelle. Vrste datoteka: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML i tablice unutar HTML-ovih ili PDF dokumenata. Pogodki tipa tablica.
+not_for: Nije potrebno kada zahtjev samo traži da se odgovor oblikuje kao tablica ili koristi riječ tablica u drugom značenju.
+---
+Čitanje proračunske tablice
+
+Proračunska tablica, CSV datoteka ili tablica u dokumentu jest dokument tablice. Imenujte ju prema file_hash-u i kolekciji rezultata pretrace.
+
+1. {{ tool('table_overview') }} popisuje liste stupaca i stupce s njihovim id-ovima.
+2. Pročitajte retke s {{ tool('table_page') }}. Jedan poziv daje 50 redaka. Sortirajte i filtrirajte retke u pozivu. Navedite row_start kako biste došli do retka velike tablice te stupce za čitanje stupaca nakon 60.
+3. {{ tool('table_column_values') }} popisuje vrijednosti u jednom stupcu i njihove brojeve.
+4. Kako biste pronašli vrijednost u tablici, pozovite {{ tool('table_search_cells') }}. Pročitajte susjedne retke s {{ tool('table_page') }} kad matchu treba kontekst.
+5. Kad {{ tool('table_page') }} reže ćeliju, pročitajte ju cijelom s {{ tool('table_cell') }}. Navedite row s povratnim row_id-em te stupac s povratnim id-em stupca.
+
+Navedite listu, redak i stupac kad čitač treba ponovo pronaći vrijednost.
+
+Da biste brojali retke po vrijednosti, pozovite {{ tool('table_column_values') }} na toj stupcu. Ne brojite retke teksta na stranici sami. Navedite ukupan broj retaka, filtre i stupac.
+Jedan poziv za vrijednosti daje do 200 vrijednosti. Kada rezultat ima nastavak, pozovite read_more dok nema nastavka. Djelomičan popis vrijednosti ne daje potpunu distribuciju.
+Brojevi vrijednosti se zbrajaju u ukupan broj retaka samo za isti list, iste retke i iste filtre. Prazna ćelija nema vrijednost, pa prazne ćelije čine zbroj manjim od ukupnog broja retaka. Navedite broj praznih ćelija kada uspoređujete zbroj s ukupnim brojem.
+Na primjer, list s 24 građevinske dozvole ima stupac vrste. Poziv za vrijednosti daje ograda 9, krov 7, terasa 5 i bazen 3, i nema nastavka. Ovi brojevi se zbrajaju u 24. Brojevi koji se zbrajaju u 27 za 24 retka pokazuju pogrešku brojanja. Brojevi koji se zbrajaju u 21 pokazuju 3 retka s praznom vrstom.
+CSV datoteka nema redak zaglavlja. Svaki rezultat tablice daje `interpretation`, čitanje retka 1 koje opisuju njeni brojevi. Stanjem `established` čitanje je poznato. Stanjem `ambiguous` ili `legacy` i dva `candidates`, redak 1 može biti zaglavlje ili prvi redak podataka.
+Svaki kandidat daje svoj broj retaka. Rezultat čita svaki redak, `all_rows`, osim ako poziv ne daje `interpretation`. Navedite svaki broj s njegovim čitanjem, ili pročitajte drugo čitanje s interpretacijom `all_rows` ili `first_row_header`. Ne javljite broj jednog čitanja kao utvrđeni broj retaka.
+JSON datoteka ili tekstualna datoteka nemaju listove. Kad {{ tool('table_overview') }} ne daje list, pročitajte dokument kao tekst.
+
+Svaki poziv alata tablica zahtijeva kolekciju i file_hash iz istog rezultata dokumenta.
+{{ tool('table_overview') }} vraća identifikatore lista i stupaca.
+Ostali alati tablice zahtijevaju list. Identifikator prekopirajte iz pregleda.
+{{ tool('table_page') }} opcionalno prihvaća sort, filtre, stupce, pretragu, row_start i interpretaciju.
+sort zahtijeva stupac i smjer, asc ili desc. Izostavljanjem koristi se pohranjeni redoslijed redaka.
+filters je popis predikata stupaca. Svaki predikat koristi jedan tip testa.
+Numerički ili daturni raspon može sadržavati i donju i gornju granicu.
+Testovi su contains, equals, starts_with, is_empty, number_min, number_max, date_min i date_max.
+Tekstualni testovi koriste nizove znakova. Numerički testovi koriste brojeve. Datumske granice koriste nizove znakova YYYY-MM-DD.
+columns odabiru identifikatore stupaca. Jedan prozor rezultata sadrži najviše 60 odabranih stupaca.
+search opcionalno zadržava retke koji sadrže njegov tekst. row_start je pozicija temeljena na nuli u traženom redoslijedu redaka.
+Rezultat sadrži metadate stupaca i retke. row_id je pohranjeni identitet retka, uključujući nakon sortiranja.
+
+{{ tool('table_column_values') }} također zahtijeva stupac. search opcionalno filtrira tekst vrijednosti.
+Vraća vrijednosti i brojeve za stupac.
+{{ tool('table_search_cells') }} zahtijeva upit. Vraća podudarne identifikatore lista, redaka i stupaca s tekstom.
+{{ tool('table_cell') }} zahtijeva redak i stupac. Vrijednost vraćenog row_id proslijedite pod nazivom argumenta row.
+Vraća odsječke od 2.000 znakova. Za preostali tekst stanice koristite read_more.
+Za nastavak stranica tablice, vrijednosti i pogodaka pretrage koristite read_more.
+
+Ovaj minimalni pregled otvara strukturu tablice.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` Ovaj poziv stranice koristi kopirane identifikatore stolaca i stolaca.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` Ovaj poziv vrijednosti sužava jedan stolac.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` Ovaj poziv vrijednosti red 1 dvosmislenog CSV stolaca tumači kao nazive stolaca.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` Ovaj poziv pretrage stanica pronalazi traženu vrijednost.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` Ovaj poziv stanice čita row_id 71, čak i kad se taj red pojavio prvi u sortiranom rezultatu.
+```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```

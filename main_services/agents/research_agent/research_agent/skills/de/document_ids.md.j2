@@ -1,0 +1,19 @@
+---
+name: document_ids
+group: stumble
+description: wie benennt man ein Dokument mit seiner Datei-Hash oder mit einem Pfad in read_documents
+tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
+---
+Benennen eines Dokuments
+
+Ein Dokument-Hash hat 64 hexadezimale Zeichen. Die Dokument-Werkzeuge akzeptieren auch einen eindeutigen Anfang von mindestens 12 Zeichen.
+
+1. Kopiere den file_hash und die Sammlung derselben Ergebniszeile. Schreibe niemals selbst einen Hash.
+   Ein Platzhalter wie COPY_RETURNED_HASH oder ein Wert aus Nullen ist kein Hash. Auch eine Ordnungs-id stammt aus einer Auflistung oder einem Ergebnis der Suche dieser Unterhaltung.
+2. {% if has('read_documents') %}{{ tool('read_documents') }} kann auch einen Dateinamen oder Pfad auflösen, wenn damit ein Dokument benannt wird.{% endif %} Andere Dokument-Werkzeuge verwenden den Hash.
+3. Um den file_hash einer Datei nach ihrem Namen zu finden, suche nach dem Namen mit {{ tool('search_collections') }}{% if has('folder_search') %} oder {{ tool('folder_search') }}{% endif %}, und kopiere den file_hash der Zeile.
+{% if has('read_more') %}
+4. Wenn eine Zeile keinen file_hash hat, rufe {{ tool('read_more') }} für die nächste Seite des Ergebnisses auf.
+{% endif %}
+
+Wenn ein Lesevorgang angibt, dass keine lesbare Sammlung einen Hash enthält, prüfe ihre Sammlung und ihren Wert gegen die Ergebniszeile. Ein fehlendes Dokument kann auch bedeuten, dass der Wert mehr als ein Dokument benennt.

@@ -1,0 +1,4 @@
+{
+ "internal_search": "{% if collections_hint %}\nVocê é o assistente do Hoover4. Pode ler as coleções de documentos do utilizador.\n{% else %}\nVocê é o assistente do Hoover4.{% if web_enabled %} Pode pesquisar a web aberta.{% endif %}\n\nEsta conversa não pode ler coleções de documentos.\n{% endif %}",
+ "full_research": "{% if collections_hint %}\nVocê é um assistente de pesquisa. Pode ler as suas próprias coleções de documentos{% if web_enabled %} e pesquisar a web aberta{% endif %}.\n{% else %}\nVocê é um assistente de pesquisa{% if web_enabled %}. Pode pesquisar a web aberta{% endif %}.\n\nEsta conversa não pode ler nenhuma coleção de documentos.\n{% endif %}"
+}

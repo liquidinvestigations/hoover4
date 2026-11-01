@@ -1,0 +1,49 @@
+---
+name: citation
+group: general
+description: wie man die Dokumente zitiert, die eine Antwort unterstützen
+tools: cite_documents
+---
+Zitieter Text landet in einer Arbeitsbereichsdatei. Die `report`-Fähigkeit beschreibt, wie du sie schreibst und bearbeitest.
+
+{% if has('cite_documents') %}
+Verlässt sich dein {{ citation_artefact }} auf {% if web_enabled %}ein internes{% else %}a{% endif %} Dokument, rufe {{ tool('cite_documents') }} auf.
+Gib jedem Dokument, das eine Behauptung oder ein Zitat unterstützt, an. Verwende das zurückgegebene Handle neben der Behauptung.
+Verwende ein Handle neben einer Behauptung, die sich auf ein internes Dokument stützt. Du kannst auch ein Dokument benennen, um es zu identifizieren oder ein Suchergebnis zu beschreiben.
+Ein Vorgang nimmt höchstens 12 Citates. Zitiere, was du verwendet hast, nicht alles, was eine Suche zurückgegeben hat.
+Wenn eine Suche oder ein Lesen Dokumente zurückgibt, die eine Behauptung unterstützen, zitiere diese Dokumente.
+
+Gib für jeden Citat an:
+- Sammlung und file_hash, übernommen aus einem Werkzeugaufruf-Ergebnis. Erfinde niemals eine file_hash.
+- quote: 5 bis 6 aufeinanderfolgende Wörter, übernommen aus einer Zeile des Dokumententexts. Keine Überschriftszeile (From, To, Cc, Subject, Date). Kein Abschnitt, der ein Fragezeichen enthält.
+- find: optional. Die kürzeste exakte Phrase des Zitats, die die Person sehen muss. Die Karte öffnet das Dokument an dieser Phrase.
+- why: eine Zeile, die sagt, was das Dokument unterstützt.
+
+Schreibe das Handle, das du zurückbekommst, zum Beispiel `[D1]`, in deinen {{ citation_artefact }}, wo du die Behauptung machst.
+
+Beispiel. {{ tool('read_documents') if has('read_documents') else 'A tool' }} lieferte in der Sammlung Enron die E-Mail „Re: DRAFT talking points".
+Ihr Text lautet „The talking points look great to me. Best of luck today." Dein {{ citation_artefact }} sagt, dass Jim Steffes den Entwurf genehmigt hat. Rufe {{ tool('cite_documents') }} auf mit collection enron, dem file_hash aus dem Ergebnis, dem Zitat „talking points look great to me", der Suche nach "look great" und der Begründung, warum "Steffes genehmigt den Entwurf vom 27. Dezember".
+Schreibe danach „Steffes approved the draft [D1]." Zitiere nicht „Subject: Re: DRAFT talking points", weil es sich um eine Kopfzeile handelt. Zitiere nicht „Can you check the notes?", weil es eine Frage enthält.
+Zeilenumbrüche, Interpunktion und die `>`-Marken eines zitierten E-Mail müssen nicht übereinstimmen.
+Fehlende oder nicht zurückgegebene Zitate vergeben keinen Handle. Kopiere 5 bis 6 Wörter des Textes, den der Fehler angibt, in das Zitat und wiederhole den Versuch.
+Nur ein zurückgegebenes Handle kennzeichnet eine Quelle. Schreibe niemals dein eigenes Label in eckigen Klammern.
+Schreibe das Handle als Text neben die Aussage. Setze es nicht in Backticks. `[D1]` in Backticks verlinkt nichts.
+Wiederhole das zurückgegebene Dokument-Handle für zusätzliche verifizierte Passagen. Das Dokument hat eine Karte.
+{% if citation_resolver == "lead" %}
+Der leitende Forscher löst sie auf, sodass ein Handle, den du nie vergeben hast, für niemanden nützlich ist.
+{% endif %}
+{% endif %}
+{% include "citation_failures.j2" %}
+
+{% if has('cite_documents') %}
+Das Argument citations ist eine Liste von Dokument-Zitationsobjekten.
+Jedes Objekt benötigt collection und file_hash. quote enthält 5 bis 6 aufeinanderfolgende Wörter der genauen Quellformulierung.
+Wiederhole collection und file_hash in jedem Objekt, auch bei separaten Zitaten aus demselben Dokument.
+Objekte erben keine Argumente von früheren Objekten.
+find wählt optional eine genaue Phrase innerhalb von quote aus. Bei Weglassen wird das ganze Zitat verwendet.
+term hält optional die ursprüngliche Suchabfrage fest. why gibt die unterstützte Behauptung an.
+Das Ergebnis liefert eine Zitationskennung für jeden verifizierten Eintrag. Fehlende Einträge nennen ihren Grund und können eine Kandidaten-Passage angeben.
+Wiederhole nur fehlende Einträge mit genauer Formulierung. Ein verifiziertes Zitat verifiziert nicht automatisch den Verfasser oder das Datum dieses Zitats.
+```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]} ``` Diese Charge verifiziert zwei Passagen aus demselben Dokument.
+```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+{% endif %}

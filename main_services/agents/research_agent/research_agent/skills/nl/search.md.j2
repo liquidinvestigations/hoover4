@@ -1,0 +1,87 @@
+---
+name: search
+group: general
+description: hoe u documentverzamelingen doorzoekt en de zoekopdrachtsyntaxis gebruikt
+tools: search_collections
+---
+{% if has('search_collections') %}
+Zoeken in de documenten van de gebruiker
+
+1. Doorzoek documenten wanneer hun inhoud de vraag kan beantwoorden.
+2. Gebruik de verzameling wanneer het verzoek één verzameling betreft. Laat het weg om over alle verzamelingen te zoeken die dit gesprek kan lezen.
+3. {{ tool('search_collections') }} accepteert meerdere zoekopdrachten. Gebruik relevante vormen van een naam of adres. Zet een exacte zin tussen aanhalingstekens.
+4. OR, AND en NOT zijn gewone woorden in een zoekopdracht. Gebruik | voor of en -woord om een woord uit te sluiten.
+5. Kopieer file_hash en collection uit een trefferrij. Schrijf zelf nooit een hash.{% if has('read_more') %} Wanneer een rij geen file_hash heeft, roep {{ tool('read_more') }} aan.{% endif +%}
+6. Stel een datum- of groottefilter in wanneer dat helpt de vraag te beantwoorden.
+7. Wanneer je meldt dat een zoekopdracht geen document vond, geef je de zoekopdracht, de verzamelingen en het aantal.
+8. Eén aanroep neemt hoogstens 12 zoekopdrachten in. Verdeel een langere lijst in twee aanroepen.
+9. Geef elke zoekopdracht minimaal één woord om naar te zoeken. Een zoekopdracht die alleen uit -woordtermen bestaat wordt geweigerd.
+10. Stel filename_only in op true of false. Het neemt geen tekst in.
+
+Voorbeeld. De gebruiker vraagt om alle gegevens over JoeBWilkinson@cs.com. Doe één aanroep op {{ tool('search_collections') }} met zoekopdrachten ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Lees een document wanneer de trefferrij niet genoeg bewijs biedt voor de stelling.
+{% endif %}
+
+Volg deze zoekstappen wanneer eerdere zoekopdrachten de vraag niet beantwoordt.
+{% if has('search_collections') %}
+1. Zoek elke naam als een aanhalingsteken-fraze.
+2. Zoek niet-aangehaalde woorden, initialen, e-mailadressen en namen in de documenttaal.
+Lees word_counts en spellingvoorstellen. Gebruik een voorstel alleen voor de bedoelde naam.
+Gebruik dasovi?h voor één variërende letter en dasovic% voor een optionele eindletter.
+Gebruik skilling << resigned wanneer de woordvolgorde uitmaakt.
+3. Verwijder filters één voor één. Voer een zoekopdracht zonder filters uit.
+{% endif %}
+{% if has('search_facet_values') %}
+Verifieer filterwaarden met {{ tool('search_facet_values') }}.
+{% endif %}
+{% if has('search_histogram') %}
+Verifieer datums met {{ tool('search_histogram') }}.
+{% endif %}
+{% if has('search_passages') %}
+4. Zoek een beschrijving van de inhoud met {{ tool('search_passages') }}.
+{% endif %}
+{% if has('folder_search') %}
+5. Gebruik {{ tool('folder_search') }} wanneer het verzoek een map, pad of bestand noemt.
+{% endif %}
+{% if has('folder_list') %}
+Gebruik {{ tool('folder_list') }} voor die map.
+{% endif %}
+{% if has('read_documents') %}
+6. Lees de beste 1 tot 3 treffers met {{ tool('read_documents') }}.
+{% endif %}
+Voor de persoon of organisatie van een document, lees het deel van dat document dat hen noemt. Een verwijzing naar een ander werk noemt dat andere werk.
+{% if has('doc_search_text') %}
+Gebruik {{ tool('doc_search_text') }} voor relevante tekst in een document.
+{% endif %}
+{% if has('web_search') %}
+7. Zoek het web alleen wanneer het verzoek dat toelaat.
+{% endif %}
+{% if has('read_page') %}
+Lees de beste webpagina's met {{ tool('read_page') }}.
+{% endif %}
+
+{% if has('search_collections') %}
+De volledige zoekargumenten zijn collection, queries, query, sort, date_after, date_before, date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max, folder_term_id, filename_only en facet_filters.
+collection accepteert een naam of lijst. Bij ontbreken of [] wordt elke toegestane verzameling doorzocht.
+query heeft standaard een lege tekst. queries voegt optioneel maximaal 12 vormen toe. Dubbele vormen worden één keer uitgevoerd.
+Een lege zoekopdracht doorzoekt alle filter-matchingen. Zoekvormen samengevoegen matchinge document-identiteiten.
+sort bevat veld en richting. veld is relevantie, datum, bestandsgrootte of naam. richting is asc of desc.
+Bij ontbreken wordt de standaardrelevantievolgorde gebruikt.
+date_after en date_before gebruiken inclusieve UTC-epochseconden voor de documentdatum.
+mentioned_date_after en mentioned_date_before gebruiken inclusieve UTC-epochseconden voor datums die uit tekst zijn geëxtraheerd.
+date_unknown_only=true selecteert documenten zonder bekende documentdatum. Combineer dit niet met een datumrange met bekende datum.
+size_min en size_max zijn inclusieve bytegrenzen. folder_term_id selecteert een teruggegeven mapterm.
+filename_only=true beperkt de zoekopdracht tot namen en paden. False gebruikt documentinhoud.
+facet_filters koppelt geldige facetnamen aan lijsten van teruggegeven waarde tekst. Bij ontbreken wordt geen facetfilter toegepast.
+Warden binnen één facet zijn alternatieven. Verschillende facetfilters moeten allemaal matchen.
+
+Elk resultaat bevat collection, file_hash, path, snippet en het type, datum en grootte dat beschikbaar is.
+q lijst de nulgebaseerde vormen die de rij vonden. query_forms rapporteert het aantal per vorm.
+word_counts verifieert geïndexeerde woorden. suggestions lijst nabije geïndexeerde spellingen met aantallen.
+Lees query_notes voor gerepareerde syntaxis, onbekende filters en mislukte zoekvormen.
+more zet het resultaat voort. Kopieer het naar read_more. Een lege eerste pagina heeft geen herhaalde identieke aanroep nodig.
+
+Deze minimale aanroep doorzoekt alle toegestele Verzamelingen.
+```json {"query":"\"Joe Wilkinson\""} ``` Deze geavanceerde aanroep combineert zoekopdrachtvormen, verzamelingbereik, sortering, datums, grootte en facet-filters.
+```json {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}} ``` Deze aparte aanroep vindt bestanden zonder een bekende documentdatum.
+```json {"query":"report","filename_only":true,"date_unknown_only":true} ``` Vervang verzameling-, map- en facetwaarden door waarden die voor het huidige gesprek worden teruggegeven.
+{% endif %}

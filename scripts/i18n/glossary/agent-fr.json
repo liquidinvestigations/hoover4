@@ -1,0 +1,20 @@
+{
+ "glossary_revision": "38e8b095d07db8b8",
+ "terms": {
+  "skill": "compétence",
+  "tool": "outil",
+  "tool call": "appel d'outil",
+  "argument": "argument",
+  "citation handle": "référence de citation",
+  "quote": "citation",
+  "workspace file": "fichier de l'espace de travail",
+  "report": "rapport",
+  "hit": "résultat",
+  "passage": "passage",
+  "query": "requête",
+  "web page": "page Web",
+  "run": "exécution",
+  "note": "note",
+  "plan": "plan"
+ }
+}
