@@ -4,91 +4,91 @@ group: technique
 description: 如何使用 search_passages 在多个文档或单个文档中查找能够回答问题的确切段落或页面
 tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
 terms: Words for it: passage, paragraph, sentence, quote, excerpt, page, section, where it says, the part that mentions, exact wording, line. Applies to long text documents: PDF, Word files, e-mails, reports and transcripts.
-not_for: 用于计数、文件列表或元数据时不需要。
+not_for: 计数、文件列表或元数据不需要此项。
 ---
 查找段落和页面
 
 {% if has('search_passages') %}
-要搜索多个文档，请使用{{ tool('search_passages') }}。它同时按关键词和语义搜索文本段落。当用日常语言提出问题、而文档中使用的词语不够清晰时，请使用它。一次调用中最多给出 12 个查询，每个查询都是该问题的不同表述。每个命中都会标明找到它的查询。对于确切名称、地址或短语，请使用{{ tool('search_collections') }}。
+要搜索多个文档，请使用 {{ tool('search_passages') }}。它同时按关键词和语义搜索文本段落。当问题用日常语言提出、而文档所用的措辞不够清晰时，请使用它。一次调用最多提供 12 个查询，每个查询都是该问题的不同表述。每个命中都会标明找到它的查询。对于确切名称、地址或短语，请使用 {{ tool('search_collections') }}。
 
 {% endif %}
 {% if has('doc_search_text') or has('pdf_search') %}
-要搜索单个长文档，请使用以下工具。
+要搜索单个长文档，请使用这些工具。
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} 按页面顺序列出某个文本来源中某查询的所有命中，并给出每个命中的页面。
+{{ tool('doc_search_text') }} 按页面顺序列出某个文本来源中某查询的命中，并给出每个命中的页面。
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }} 在 PDF 来源的各页中查找查询。给出 page_from 和 page_to 以搜索一定范围的页面。
+{{ tool('pdf_search') }} 在 PDF 来源的各页上查找查询。给出 page_from 和 page_to 即可搜索一页范围。
 {% endif %}
 
 {% endif %}
 {% if has('read_documents') %}
-当段落显示的文本不足以支撑某论断时，请使用{{ tool('read_documents') }}读取某一页。给出其页面，或给出要打开命中最多页面的查询。
+当某段落显示的文字不足以支撑该论断时，用 {{ tool('read_documents') }} 阅读该页。给出其页面，或给出要打开命中最多那一页的查询。
 {% endif %}
 
-当某段落支撑答案时，请给出文档和页面。
+当某段落支撑该答案时，给出文档和页面。
 
 {% if has('read_documents') %}
 {{ tool('read_documents') }} 需要 collection 和 file_hash。
-collection 为单个名称。file_hash 是来自该集合的 1 到 20 个哈希值的列表。
-对于处于不同集合的文档，请为每个集合分别构建一批次。
-从结果中复制身份标识。唯一的文件名或路径也能解析出文档。
-source 可选地选择已提取的来源。省略时采用首选来源。
+collection 为单个名称。file_hash 是该集合中 1 到 20 个哈希值的列表。
+对于不同集合中的文档，请为每个集合分别建立一个批次。
+从结果中复制身份标识。唯一的文件名或路径也可解析文档。
+source 可选地选择已提取的来源。省略则使用首选来源。
 page 可选地选择已存储的页面标识。页面标识可能存在间隔。
 省略 page 或给出零值，以选择查询命中最多的页面，或第一个无查询的已存储页面。
-query 会打开该页上附近不同匹配词周围的文本。
-对于确切措辞，请在查询中引用该短语。单个匹配值会打开其首次出现处。
-offset 会覆盖段落的起始位置。它从该页内从零计数的 Unicode 字符数。
-length 为正数字符计数。省略时采用 6,000 个字符。
-source_version 可选地验证返回的来源指纹。若需对某范围重新读取，请复制它。
+query 打开该页上附近不同匹配词周围的文本。
+对于确切措辞，请在 query 内引用该短语。单个匹配值会打开其首次出现处。
+offset 会覆盖段落起点。它从该页内的零开始计 Unicode 字符数。
+length 为正数字符计数。省略则使用 6,000 个字符。
+source_version 可选地验证返回的来源指纹。对于范围重读，请复制该指纹。
 
-返回 text_range，其中包含起始位置、独占的结束位置、总页面字符数和单位。
+返回结果包含 text_range，其中给出起始位置、不含的结束位置、总页面字符数和单位。
 page_complete 表示该范围覆盖了整个页面。
-cut 标记表示工具只提供了该范围的一部分内容。它并不代表页面在此结束。
-使用某个 item 的 more 继续读取该文档。使用顶层的 more 继续读取剩余页面或后续页面。
-将返回的 handle 原样复制到 {{ tool('read_more') }} 作为续读内容。
-将 read_before 或 read_after 作为 read_documents 的参数用于读取周边文本。无需进行任何偏移量计算。
+cut 标记表示工具只返回了该范围的一部分，并不代表页面到此结束。
+使用某条记录的 more 继续读取该文档。使用顶层 more 继续读取剩余页面或后续页面。
+将返回的 handle 原样复制进 {{ tool('read_more') }} 作为续读内容。
+将 read_before 或 read_after 作为 read_documents 的参数，用于获取上下文文本。无需进行偏移量计算。
 范围参数适用于一次调用中的所有 hash。当文档的来源、范围或来源版本不同时，请分别调用。
-例如，将第一个文档返回的 read_after 对象复制到一次调用中。
-```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` 将第二个文档返回的 read_after 对象复制到另一次调用中。
-```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` 请对每个文档使用实际返回的值。请勿添加 source2 或 offset2 等带编号的字段。
+例如，将第一条文档返回的 read_after 对象复制进一次调用。
+```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` 将第二条文档返回的 read_after 对象复制进另一次调用。
+```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` 请对每条文档使用实际返回的值。请勿添加 source2 或 offset2 等带编号的字段。
 重复的初始调用会返回相同的文本。当需要更多文本时使用续读。
-当该段落为所请求的主张提供了足够证据时，停止读取。
+当该段落为所主张的论断提供了足够证据时，停止阅读。
 
 这个最小调用会打开第一个存储的页面。
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` 这个调用会打开定向段落。
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` 这个调用会打开选定来源和页面中的返回区间。
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` 这个续读会读取下一个返回区间。使用实际签发的标识。
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` 这个调用会打开一个定向段落。
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` 这个调用会打开所选来源和页面中的返回范围。
+```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` 这个续读操作读取下一个返回范围。使用实际发出的标识。
 ```json {"continuation":"COPY_RETURNED_MORE"} ```
 {% endif %}
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} 需要 collection、file_hash 和 query。source 可选地选择某个抽取结果。
+{{ tool('doc_search_text') }} 需要 collection、file_hash 和 query。source 可选地选择某一个提取。
 它为每个命中返回 page、ordinal、start、end 和 snippet。偏移量计算该页面内的字符数。
-当 snippet 需要更多上下文时，将某个命中的 page 和 start 复制到 read_documents。
+当片段需要更多上下文时，把命中页面的 page 和 start 复制到 read_documents。
 使用 read_more 检索其余命中。
 ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
 {% endif %}
 {% if has('doc_sources') %}
-{{ tool('doc_sources') }} 需要 collection 和 file_hash。query 可选地统计每个抽取结果中的匹配命中数。
-它返回来源名称和存储的页面区间。选择特定抽取结果时，复制某个来源名称。
+{{ tool('doc_sources') }} 需要 collection 和 file_hash。query 可选地统计每个提取中的匹配命中数。
+它返回来源名称和存储的页面范围。选择特定提取时，复制来源名称。
 ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
 {% endif %}
 {% if has('doc_diff_sources') %}
 {{ tool('doc_diff_sources') }} 需要 collection、file_hash、source_a 和 source_b。
-page_a 和 page_b 可选地选择页面。省略则选择每个来源的第一个存储页面。
+page_a 和 page_b 可选地选择页面。省略则选择每个存储的第一个页面。
 结果是统一的文本差异。当它继续时，使用 read_more。
 ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
 {% endif %}
 {% if has('pdf_search') %}
 {{ tool('pdf_search') }} 需要 collection、file_hash 和 query。
-source 可选地选择某个 PDF 抽取结果。page_from 和 page_to 可选地限制包含性的 PDF 页面区间。
+source 可选地选择 PDF 提取。page_from 和 page_to 可选地限制包含性的 PDF 页面范围。
 复制返回的页面位置。对于延续的命中，使用 read_more。
 ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
 {% endif %}
 {% if has('search_passages') %}
-{{ tool('search_passages') }} 接受将查询作为单个字符串或最多 12 种形式的列表。
+{{ tool('search_passages') }} 接受查询作为单个字符串或最多 12 种形式的列表。
 collection 接受单个名称或列表。省略则搜索所有允许的集合。
-max_results 选择每个查询形式在已提供 schema 限制内的命中数。省略时使用 15。
+max_results 选择每个查询形式在已服务 schema 限制内的命中数。省略时使用 15。
 结果提供 collection、file_hash、page 和 snippet。q 记录基于零的查询索引。
 当段落未能回答该问句时，读取支撑文本。
 ```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
