@@ -68,6 +68,7 @@ Keep the meaning, the order and the strength of each rule. Do not add a rule, an
 - Product names (Hoover, Hoover4), format names (PDF, CSV, JSON), and the terms that the term list marks with `keep`.
 - Jinja comments `{# ... #}` are not text for the model. A translation can omit them.
 - A string literal inside a Jinja expression is text for the model when the template prints it, for example `else 'A tool'`. Translate it.
+- A quoted phrase that the model writes in its answer, such as "not found in the documents", is translated. No code matches it.
 - `{{ citation_artefact }}` prints the English word `report` in every profile. Write the word of the language for the report in its place, with the correct grammar, and omit the variable.
 
 ## Fluent rules
