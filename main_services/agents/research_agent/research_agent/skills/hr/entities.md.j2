@@ -1,46 +1,58 @@
 ---
 name: entities
 group: technique
-description: kako izlistati ljude, organizacije, mjesta, e-mail adrese i iznose koje dokumenti navode
+description: kako navesti osobe, organizacije, mjesta, e-mail adrese i iznose koje dokumenti imenuju
 tools: list_document_entities, search_entity_explainer, search_facet_values
-terms: Riječi za to: ljudi, osobe, imena, organizacije, tvrtke, ustanove, mjesta, lokacije, gradovi, zemlje, e-mail adrese, telefonski brojevi, iznosi, novac, identifikatori, brojevi računa, ključne osobe, tko se spominje.
-not_for: Nije potrebno kada zahtjev imenuje jednu osobu i pita što dokumenti kažu o toj osobi.
+terms: Riječi za to: osobe, ljudi, imena, organizacije, tvrtke, institucije, mjesta, lokacije, gradovi, države, e-mail adrese, telefonski brojevi, iznosi, novac, identifikatori, brojevi računa, ključni akteri, tko se spominje.
+not_for: Nije potrebno kad zahtjev navodi jednu osobu i pita što dokumenti kažu o toj osobi.
 ---
-Nabrajanje dokumenata koja imenuju
+Navođenje onoga što dokumenti imenuju
 
 {% if has('list_document_entities') %}
-1. {{ tool('list_document_entities') }} nabraja izvučena imena za dokument. Navedi ime kolekcije i hash datoteke.
-2. Rezultat ima dvije razine. entities je čitanje proze pomoću jezičnog modela: ljudi, organizacije i mjesta. Može biti pogrešno, pa prije nego što se osloniš na ime, provjeri ga u tekstu. structured sadrži vrijednosti koje je pravilo validiralo, poput identifikatora s valjanom kontrolnom znamenkom, datuma i iznosa novca s kodom valute.
-3. Potraži nova imena, adrese i identifikatore s {{ tool('search_collections') }}. Svaki ob jednog imena stavi u jedan poziv.
+1. {{ tool('list_document_entities') }} navodi izdvojena imena za dokument. Navedi naziv njegove zbirke i hash datoteke.
+2. Rezultat ima dvije razine. entities je čitanje proze koje je napravio jezični model: osobe, organizacije i mjesta. Može biti pogrešno, pa provjeri ime u tekstu prije nego što se osloniš na njega. structured sadrži vrijednosti koje je potvrdilo pravilo, kao što su identifikatori s valjanom kontrolnom znamenkom, datumi i novčani iznosi s kodom valute.
+3. Pretraži nova imena, adrese i identifikatore pomoću {{ tool('search_collections') }}. Stavi svaki oblik jednog imena u jedan poziv.
 {% endif %}
 {% if has('search_entity_explainer') %}
-4. Kada rezultat imenuje pravilo i vrijednost koju ne razumiješ, pozovi {{ tool('search_entity_explainer') }}.
+4. Kad rezultat navodi pravilo i vrijednost koje ne razumiješ, pozovi {{ tool('search_entity_explainer') }}.
 {% endif %}
 {% if has('search_facet_values') %}
-5. {{ tool('search_facet_values') }} daje vrijednosti filtra entiteta preko kolekcije, s njihovim brojem pogodaka.
+5. {{ tool('search_facet_values') }} daje vrijednosti filtra entiteta kroz zbirku, s njihovim brojevima.
 {% endif %}
 
-Ime koje je pipeline izvucao nije dokaz da je dokument o toj osobi. Pročitat tekst oko nje.
+Ime koje je pipeline izdvojio nije dokaz da je dokument o toj osobi. Pročitaj tekst oko njega.
 
-Kada se ime nigdje ne pojavljuje, pročitaj indeksirane prijedloge za pravopis i njihove provjerene brojeve.
-Nemoj koristiti prijedlog za pravopis kao traženo ime.
-Kada tražiš prijedlog za pravopis, u odgovoru ga navedi kao drugo pisanje.
-Kada se nijedno pisanje ne poklapa, izvješći da tražene kolekcije ne sadrže ime.
+Kad se ime ne pojavljuje nigdje, pročitaj indeksirane prijedloge pravopisa i njihove provjerene brojeve.
+Ne koristi predloženi pravopis kao traženo ime.
+Kad pretražiš predloženi pravopis, u odgovoru ga navedi kao drugačiji pravopis.
+Kad nijedan pravopis ne odgovara, javi da pretražene zbirke ne sadrže ime.
 
 {% if has('list_document_entities') %}
-{{ tool('list_document_entities') }} prihvaća dokumente kao popis objekata kolekcije i file_hash.
-Ovaj oblik očuva identitete mješovitih kolekcija bez spajanja nenadogenih popisa.
-Alternativno, kolekcija i file_hash prihvaćaju podudarne popise ili jednu kolekciju s više hasheva.
-Rezultat grupira izvučene vrijednosti po dokumentu. Koristi read_more kada se nastavlja.
-```json {"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]} ``` ```json {"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]} ```
+{{ tool('list_document_entities') }} prihvaća documents kao popis objekata collection i file_hash.
+Taj oblik čuva identitete iz više zbirki bez uparivanja nepovezanih popisa.
+Alternativno, collection i file_hash prihvaćaju odgovarajuće popise ili jednu zbirku s više hasheva.
+Rezultat grupira izdvojene vrijednosti po dokumentu. Koristi read_more kad se nastavlja.
+```json
+{"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]}
+```
+```json
+{"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]}
+```
 {% endif %}
 {% if has('search_entity_explainer') %}
-{{ tool('search_entity_explainer') }} zahtijeva kolekciju, entity_type i entity_value iz rezultata izvučenog entiteta.
-Povraća opis pravila izvlačenja i nadomerne dokumente.
-```json {"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"} ```
+{{ tool('search_entity_explainer') }} zahtijeva collection, entity_type i entity_value iz rezultata izdvojenog entiteta.
+Vraća opis pravila izdvajanja i podudarne dokumente.
+```json
+{"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"}
+```
 {% endif %}
 {% if has('search_facet_values') %}
-Za distribucije entiteta pozovi {{ tool('search_facet_values') }} s facetama i opcionim kolekcijom i upitom.
-Matrica rezultata ima parove [text, count] u svakoj ćeliji fakete.
-```json {"facets":["ner_per","ner_org","ner_loc"]} ``` ```json {"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"} ```
+Za raspodjele entiteta pozovi {{ tool('search_facet_values') }} s facets te po želji collection i query.
+Matrica rezultata ima parove [text, count] u svakoj ćeliji faceta.
+```json
+{"facets":["ner_per","ner_org","ner_loc"]}
+```
+```json
+{"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"}
+```
 {% endif %}

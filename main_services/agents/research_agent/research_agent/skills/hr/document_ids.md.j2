@@ -1,19 +1,20 @@
 ---
 name: document_ids
 group: stumble
-description: kako nazvati dokument prema njegovom hashu datoteke ili prema putanji u read_documents
+description: kako navesti dokument pomoću njegova hasha datoteke ili pomoću putanje u read_documents
 tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
 ---
-Imenovanje dokumenta
+Navođenje dokumenta
 
-Hash dokumenta ima 64 heksadecimska znaka. Alati za dokumente također prihvaćaju jedinstveni početak od najmanje 12 znakova.
+Hash dokumenta ima 64 heksadecimalna znaka. Alati za dokumente prihvaćaju i jedinstveni početak od najmanje 12 znakova.
 
-1. Kopirajte file_hash i kolekciju istog retka rezultata. Nikad ne pišite hash sami.
-   Placeholder poput COPY_RETURNED_HASH ili vrijednost nula nije hash. Id foldera također dolazi iz popisa ili rezultata pretrace ove razgovorne sjednice.
-2. {% if has('read_documents') %}{{ tool('read_documents') }} može također riješiti ime datoteke ili put kad imenuje jedan dokument.{% endif %} Ostali alati za dokumente koriste hash.
-3. Da biste pronašli file_hash datoteke po njenom imenu, pretražite ime s {{ tool('search_collections') }}{% if has('folder_search') %} ili {{ tool('folder_search') }}{% endif %} i kopirajte file_hash retka.
+1. Kopiraj file_hash i zbirku istog retka rezultata. Nikad sam ne piši hash.
+   Rezervirano mjesto kao što je COPY_RETURNED_HASH ili vrijednost sastavljena od nula nije hash. ID mape
+   također dolazi iz popisa ili rezultata pretrage ovog razgovora.
+2. {% if has('read_documents') %}{{ tool('read_documents') }} može razriješiti i naziv datoteke ili putanju kad navodi jedan dokument.{% endif %} Ostali alati za dokumente koriste hash.
+3. Da pronađeš file_hash datoteke po njezinu nazivu, potraži naziv pomoću {{ tool('search_collections') }}{% if has('folder_search') %} ili {{ tool('folder_search') }}{% endif %} i kopiraj file_hash retka.
 {% if has('read_more') %}
-4. Kad retak nema file_hash, pozovite {{ tool('read_more') }} za sljedeću stranicu rezultata.
+4. Kad redak nema file_hash, pozovi {{ tool('read_more') }} za sljedeću stranicu rezultata.
 {% endif %}
 
-Kad čitanje kaže da nijedan čitak podatak ne drži hash, provjerite njegovu kolekciju i vrijednost protiv retka rezultata. Nedostatak dokumenta također može značiti da vrijednost imenuje više od jednog dokumenta.
+Kad čitanje kaže da nijedan čitljiv skup podataka ne sadrži hash, usporedi njegovu zbirku i vrijednost s retkom rezultata. Dokument koji nedostaje može značiti i da vrijednost navodi više od jednog dokumenta.

@@ -1,87 +1,99 @@
 ---
 name: search
 group: general
-description: kako pretragati kolekcije dokumenata i koristiti sintaksu upita
+description: kako pretraživati zbirke dokumenata i koristiti sintaksu upita
 tools: search_collections
 ---
 {% if has('search_collections') %}
-Pretraživanje dokumenata korisnika
+Pretraživanje korisnikovih dokumenata
 
-1. Pretražite dokumente kada njihov sadržaj može odgovoriti na pitanje.
-2. Koristite Kolekciju kada zahtjev cilja na jednu Kolekciju. Ostavite ga praznim za pretraživanje svih Kolekcija koji ovaj Razgovor može čitati.
-3. {{ tool('search_collections') }} prihvaća nekoliko upita. Koristite relevantne oblike imena ili adrese. Točnu frazu stavite u navodnike.
-4. OR, AND i NOT su obične riječi u upitu. Koristite | za bilo koju i-riječi za isključivanje riječi.
-5. Kopirajte file_hash i collection iz retka rezultata. Nikad ne pišite hash sami.{% if has('read_more') %} Ako redak nema file_hash, pozovite {{ tool('read_more') }}.{% endif +%}
-6. Postavite filter datuma ili veličine kada to pomaže u odgovoru na pitanje.
-7. Kada javite da pretraga nije pronašla dokument, navedite njegov upit, Kolekcije i broj.
-8. Jedno pokretanje prima najviše 12 upita. Duži popis podijelite u dva poziva.
-9. Svakom upitu dajte najmanje jednu riječ za pretraživanje. Upit koji sadrži samo -riječi bit će odbijen.
-10. Postavite filename_only na true ili false. Ne prima tekst.
+1. Pretražuj dokumente kad njihov sadržaj može odgovoriti na pitanje.
+2. Koristi collection kad zahtjev cilja jednu zbirku. Izostavi ga da pretražiš
+sve zbirke koje ovaj razgovor može čitati.
+3. {{ tool('search_collections') }} prihvaća više upita. Koristi relevantne oblike imena ili adrese. Točnu frazu stavi u dvostruke navodnike.
+4. OR, AND i NOT su obične riječi u upitu. Koristi | za jedno ili drugo i -riječ za isključivanje riječi.
+5. Kopiraj file_hash i collection iz retka rezultata. Nikad sam ne piši hash.{% if has('read_more') %} Ako redak nema file_hash, pozovi {{ tool('read_more') }}.{% endif +%}
+6. Postavi filtar datuma ili veličine kad pomaže odgovoriti na pitanje.
+7. Kad javljaš da pretraga nije pronašla dokument, navedi njezin upit, zbirke i broj.
+8. Jedan poziv prima najviše 12 upita. Dulji popis podijeli u dva poziva.
+9. Svakom upitu daj barem jednu riječ za pretragu. Upit samo od pojmova -riječ bit će odbijen.
+10. Postavi filename_only na true ili false. Ne prima tekst.
 
-Primjer. Korisnik traži sve podatke o JoeBWilkinson@cs.com. Napravite jedan poziv na {{ tool('search_collections') }} s upitima ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Pročitajte dokument kada njegov redak rezultata ne pruža dovoljno dokaza za tvrdnju.
+Primjer. Korisnik traži sve podatke o JoeBWilkinson@cs.com. Napravi jedan poziv {{ tool('search_collections') }} s queries ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Pročitaj dokument kad njegov redak rezultata ne daje dovoljno dokaza za tvrdnju.
 {% endif %}
 
-Slijedite ove korake pretraživanja kada ranije pretrage ne odgovaraju na pitanje.
+Slijedi ove korake pretrage kad ranije pretrage ne odgovaraju na pitanje.
 {% if has('search_collections') %}
-1. Pretražite svako ime kao izraz u navodima.
-2. Pretražite riječi bez navodima, inicijale, e-mail adrese i imena u jeziku dokumenta.
-Pročitajte word_counts i preporuke za pravopis. Koristite preporuku samo za namjereno ime.
-Koristite dasovo?h za jednu varijabilnu slovo i dasovic% za opcionalno završno slovo.
-Koristite skilling << resigned kada redoslijed riječi ima značenje.
-3. Uklonite filtre jedan po jedan. Pokrenite pretragu bez filtara.
+1. Pretraži svako ime kao citiranu frazu.
+2. Pretraži riječi bez navodnika, inicijale, e-mail adrese i imena na jeziku dokumenta.
+Pročitaj word_counts i prijedloge pravopisa. Koristi prijedlog samo za namjeravano ime.
+Koristi dasovi?h za jedno promjenjivo slovo i dasovic% za neobavezno završno slovo.
+Koristi skilling << resigned kad je važan redoslijed riječi.
+3. Uklanjaj filtre jedan po jedan. Pokreni pretragu bez filtara.
 {% endif %}
 {% if has('search_facet_values') %}
-Provjerite vrijednosti filtara s {{ tool('search_facet_values') }}.
+Provjeri vrijednosti filtara pomoću {{ tool('search_facet_values') }}.
 {% endif %}
 {% if has('search_histogram') %}
-Provjerite datume s {{ tool('search_histogram') }}.
+Provjeri datume pomoću {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Pretražite opis sadržaja s {{ tool('search_passages') }}.
+4. Pretraži opis sadržaja pomoću {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. Koristite {{ tool('folder_search') }} kada zahtjev imenuje mapu, putanju ili datoteku.
+5. Koristi {{ tool('folder_search') }} kad zahtjev navodi mapu, putanju ili datoteku.
 {% endif %}
 {% if has('folder_list') %}
-Koristite {{ tool('folder_list') }} za tu mapu.
+Za tu mapu koristi {{ tool('folder_list') }}.
 {% endif %}
 {% if has('read_documents') %}
-6. Pročitajte najbolje 1 do 3 pogodka s {{ tool('read_documents') }}.
+6. Pročitaj 1 do 3 najbolja pogotka pomoću {{ tool('read_documents') }}.
 {% endif %}
-Za ljude ili organizacije u dokumentu pročitajte dio tog dokumenta koji ih imenuje. Referenca na drugi djelo imenuje to drugo djelo.
+Za osobe ili organizacije dokumenta pročitaj dio tog dokumenta koji ih navodi. Upućivanje na drugo djelo navodi to drugo djelo.
 {% if has('doc_search_text') %}
-Koristite {{ tool('doc_search_text') }} za relevantan tekst u dokumentu.
+Koristi {{ tool('doc_search_text') }} za relevantan tekst u dokumentu.
 {% endif %}
 {% if has('web_search') %}
-7. Pretražite web samo kada zahtjev to dopušta.
+7. Pretražuj web samo kad zahtjev to dopušta.
 {% endif %}
 {% if has('read_page') %}
-Pročitajte najbolje web stranice s {{ tool('read_page') }}.
+Pročitaj najbolje web stranice pomoću {{ tool('read_page') }}.
 {% endif %}
 
 {% if has('search_collections') %}
-Kompletni argumenti pretrace su Kolekcija, upiti, upit, sortiranje, datum_nakon, datum_prije, samo_nepoznati_datum, spomenuti_datum_nakon, spomenuti_datum_prije, min_veličina, max_veličina, id_termina_mape, samo_ime_datoteke i filteri_mape.
-Kolekcija prihvaća ime ili popis. Izostavljanje ili [] pretražuje svaku dopuštenu Kolekciju.
-upit po zadanim postavkama ima prazan tekst. upiti opcionalno dodaje do 12 obrazaca. Duplikati obrazaca pokreću se jednom.
-Prazan upit pregledava sva podudaranja filtara. Obrasci pretrace spajaju podudarajuće identitete dokumenata.
-sortiranje sadrži polje i smjer. polje je relevantnost, datum, veličina_datoteke ili ime. smjer je asc ili desc.
-Izostavljanje koristi zadani redoslijed relevantnosti.
-datum_nakon i datum_prije koriste uključene UTC epoh sekunde za datum dokumenta.
-spomenuti_datum_nakon i spomenuti_datum_prije koriste uključene UTC epoh sekunde za datume izvučene iz teksta.
-samo_nepoznati_datum=true odabire dokumente bez poznatog datuma dokumenta. Nemojte ga kombinirati s rasponom poznatog datuma.
-min_veličina i max_veličina su uključeni byte ograničenja. id_termina_mape odabire vraćeni termin mape.
-samo_ime_datoteke=true ograničava upit na imena i putanje. False koristi sadržaj dokumenata.
-filteri_mape preslikava valjane nazive mapa u popise vraćenog teksta vrijednosti. Izostavljanje primjenuje nijedan filter mape.
-Vrijednosti unutar jedne mape alternative su. Različiti filteri mape moraju se svi podudarati.
+Potpuni argumenti pretrage su collection, queries, query, sort, date_after, date_before,
+date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max,
+folder_term_id, filename_only i facet_filters.
+collection prihvaća naziv ili popis. Izostavljanje ili [] pretražuje svaku dopuštenu zbirku.
+query je zadano prazan tekst. queries po želji dodaje do 12 oblika. Duplicirani oblici izvršavaju se jednom.
+Prazan query pregledava sva podudaranja filtara. Oblici pretrage spajaju identitete podudarnih dokumenata.
+sort sadrži field i direction. field je relevance, date, file_size ili name. direction je asc ili desc.
+Izostavljanje koristi zadani redoslijed po relevantnosti.
+date_after i date_before koriste uključive UTC epoch sekunde za datum dokumenta.
+mentioned_date_after i mentioned_date_before koriste uključive UTC epoch sekunde za datume izdvojene iz teksta.
+date_unknown_only=true odabire dokumente bez poznatog datuma dokumenta. Ne kombiniraj ga s rasponom poznatih datuma.
+size_min i size_max su uključive granice u bajtovima. folder_term_id odabire vraćeni pojam mape.
+filename_only=true ograničava upit na nazive i putanje. False koristi sadržaj dokumenata.
+facet_filters preslikava valjane nazive faceta u popise vraćenog teksta vrijednosti. Izostavljanje ne primjenjuje nijedan filtar faceta.
+Vrijednosti unutar jednog faceta su alternative. Različiti filtri faceta moraju se svi podudarati.
 
-Svaki rezultat uključuje Kolekciju, file_hash, path, odsječak i dostupne vrste, datum i veličinu.
-q navodi obrasce temeljene na nuli koji su pronašli redak. query_forms izvješćuje o broju svakog oblika.
-word_counts verificira indeksirane riječi. suggestions navodi bliske indeksirane pravopise s brojevima.
-Pročitajte query_notes za popravljenu sintaksu, nepoznate filtere i neuspjele oblike upita.
-more nastavlja rezultat. Kopirajte ga u read_more. Prazna prva stranica ne zahtijeva ponavljanje istog poziva.
+Svaki rezultat uključuje collection, file_hash, path, snippet te dostupne type, date i size.
+q navodi oblike od nule koji su pronašli redak. query_forms prijavljuje broj za svaki oblik.
+word_counts provjerava indeksirane riječi. suggestions navodi obližnje indeksirane pravopise s brojevima.
+Pročitaj query_notes za popravljenu sintaksu, nepoznate filtre i neuspjele oblike upita.
+more nastavlja rezultat. Kopiraj ga u read_more. Prazna prva stranica ne treba ponovljen identičan poziv.
 
-Ova minimalna poziva pretraga sve dopuštene kolekcije.
-```json {"query":"\"Joe Wilkinson\""} ``` Napredna poziva kombinuje forme upita, opseg kolekcije, sortiranje, datume, veličinu i filtere faceta.
-```json {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}} ``` Ova odvojena poziva pronalazi datoteke bez poznatog datuma dokumenta.
-```json {"query":"report","filename_only":true,"date_unknown_only":true} ``` Zamijeni vrijednosti kolekcije, mape i faceta vrijednostima vraćenim za trenutni razgovor.
+Ovaj minimalni poziv pretražuje sve dopuštene zbirke.
+```json
+{"query":"\"Joe Wilkinson\""}
+```
+Ovaj napredni poziv kombinira oblike upita, opseg zbirki, sortiranje, datume, veličinu i filtre faceta.
+```json
+{"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}}
+```
+Ovaj zaseban poziv pronalazi datoteke bez poznatog datuma dokumenta.
+```json
+{"query":"izvješće","filename_only":true,"date_unknown_only":true}
+```
+Zamijeni vrijednosti collection, mape i faceta vrijednostima vraćenim za trenutni razgovor.
 {% endif %}

@@ -1,115 +1,174 @@
 ---
 name: web_research
 group: technique
-description: kako pretragati otvoreni web, pročitati web stranicu ili zapis vlasnika domene i citirati web stranice koje podržavaju izvješće
+description: kako pretraživati otvoreni web, pročitati web stranicu ili zapis o vlasniku domene i citirati web stranice koje potkrepljuju izvješće
 tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
 ---
 Istraživanje otvorenog weba
 
-Koristite web izvore kada vam mogu odgovoriti na pitanje osobe.
+Koristi web izvore kad mogu odgovoriti na pitanje osobe.
 
 {% if has('web_search') %}
-{{ tool('web_search') }} prihvaća popis upita. Polje `sources` sužava pretragu na imenovane izvore.{% if has('list_search_sources') %} {{ tool('list_search_sources') }} navodi te izvore.{% endif +%}
+{{ tool('web_search') }} prihvaća popis upita. Polje `sources` sužava
+pretragu na imenovane izvore.{% if has('list_search_sources') %} {{ tool('list_search_sources') }}
+navodi te izvore.{% endif +%}
 {% endif %}
 {% if has('read_page') %}
-1. Pročitajte najbolje rezultate u cijelosti s {{ tool('read_page') }}. Dajte sve adrese u jednom pozivu i kao cilj navedite što tražite. Rezultat označen BLOKIRANO BOT PROVJEROM nije stranica. Nemojte koristiti njezin tekst.
+1. Pročitaj najbolje rezultate u cijelosti pomoću {{ tool('read_page') }}. Navedi sve adrese u jednom pozivu i navedi goal da kažeš što tražiš. Rezultat označen BLOCKED BY A BOT CHECK nije stranica. Ne koristi njegov tekst.
 {% endif %}
 {% if has('whois_lookup') %}
-{% if has('read_page') %}2.{% else %}1.{% endif %} Za vlasnika, registrara ili datume domene pozovite {{ tool('whois_lookup') }} sa svakom domenom u jednom pozivu.
+{% if has('read_page') %}2.{% else %}1.{% endif %} Za vlasnika, registrara ili datume domene pozovi {{ tool('whois_lookup') }} sa svim domenama u jednom pozivu.
 {% endif %}
 
-Pročitajte svaki izvor prije nego što iskoristite njegove tvrdnje. Isječak rezultata pretrage nije izvor.
+Pročitaj svaki izvor prije korištenja njegovih tvrdnji. Isječak rezultata pretrage nije izvor.
 {% if has('cite_pages') %}
 
 Citiranje web stranica
 
-Pozovite {{ tool('cite_pages') }} sa svakom pročitanom URL adresom stranice i točnim potpornim navodima u `terms`.
-Koristite vraćene web oznake uz tvrdnje koje podržavaju.
-Zamijenite gole URL adrese izvora tim oznakama.
-{{ tool('cite_pages') }} prihvaća url i termine za jednu stranicu ili stranice za do dvanaest objekata stranice.
-Svaka stranica zahtijeva url i termine. termini sadrže do točno osam fraza, svaka najviše 200 znakova. Velika i mala slova moraju se poklapati.
-version opcionalno odabira uhvaćenu verziju. why opcionalno navodi podržanu tvrdnju, najviše 300 znakova.
-Rezultat daje verificirane navode i stabilnu web oznaku. Neuspjela stranica daje grešku bez oznake.
+Pozovi {{ tool('cite_pages') }} sa svakim URL-om pročitane stranice i točnom formulacijom koja tvrdnju potkrepljuje u `terms`.
+Koristi vraćene web oznake uz tvrdnje koje potkrepljuju.
+Zamijeni gole URL-ove izvora tim oznakama.
+{{ tool('cite_pages') }} prihvaća url i terms za jednu stranicu ili pages za do dvanaest objekata stranica.
+Svaka stranica zahtijeva url i terms. terms sadrži do osam točnih fraza, svaku od najviše 200 znakova. Velika i mala slova moraju se podudarati.
+version po želji odabire snimljenu verziju. why po želji navodi potkrijepljenu tvrdnju, najviše 300 znakova.
+Rezultat daje provjerene navode i stabilnu web oznaku. Neuspjela stranica daje pogrešku bez oznake.
 
-Primjer. {{ tool('read_page') }} pročitaj URL https://example.org/report. Njegov tekst kaže „Tvornica je zatvorena ožujka 2019." Pozovi {{ tool('cite_pages') }} s ravnim argumentima za jednu stranicu:
-url, kopiran iz rezultata pročitavanja, izrazi s točnom frazom i zašto.
-```json {"url":"COPY_READ_URL","terms":["Tvornica je zatvorena ožujka 2019"],"why":"Izvješće navodi datum zatvaranja."} ``` Zatim napiši „Tvornica je zatvorena ožujka 2019 [W1]." s oznakom koju je poziv vratio.
+Primjer. {{ tool('read_page') }} je pročitao URL https://example.org/report. Njegov tekst kaže
+„Tvornica je zatvorena u ožujku 2019.” Pozovi {{ tool('cite_pages') }} s ravnim argumentima za jednu stranicu:
+url, kopiran iz rezultata čitanja, terms s točnom frazom i why.
+```json
+{"url":"COPY_READ_URL","terms":["Tvornica je zatvorena u ožujku 2019"],"why":"Izvješće navodi datum zatvaranja."}
+```
+Zatim napiši „Tvornica je zatvorena u ožujku 2019. [W1].” s oznakom koju je poziv vratio.
 Popis od više od dvanaest stranica podijeli u zasebne pozive.
-```json {"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"Ovaj odsječak navodi datum odobrenja."}]} ``` Kopiraj vraćenu oznaku web izvora, na primjer `[W1]`, uz tvrdnju koju podržava.
-Zadrži svaku oznaku s URL-om i navodima iz njezinog vraćenog objekta citata.
-Greška ne dodjeljuje oznaku. Izbaci tvrdnje tog izvora dok njegov citat ne uspije.
-Za nedostajuće izraze kopiraj točan tekst iz vraćenog kandidata i pozovi alat ponovo.
-Kad greška sadrži `errors[i].retry_arguments`, kopiraj taj objekt nepromijenjen u sljedeći poziv.
-Zadrži uspješne citate iz djelomičnog rezultata. Ponovi samo neuspjele stranice.
-Na primjer, poziv citira tri stranice, a dvije uspiju s [W1] i [W2]. Iskoristi te dvije oznake. Sljedeći poziv pošalji samo sa trećom stricom i iskoristi njezine argumente za ponavljanje.
-Na primjer, ovaj poziv spaja izraze preko prekida retka izvora i neuspije.
-```json {"url":"https://example.org/report","terms":["Tvornica je zatvorena ožujka 2019"]} ``` Greška može vratiti ove argumente za ponavljanje s točnim tekstom izvora.
-```json {"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["Tvornica je zatvorena"]}} ``` Pozovi {{ tool('cite_pages') }} s tim vraćenim objektom, uključujući njegovu stvarnu verziju i točne izraze.
-```json {"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["Tvornica je zatvorena"]} ``` Prozor PDF-a ima svoju verziju. Da citiraš odsječak stranica od 51 do 100, kopiraj verziju tog pročitavanja.
-```json {"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]} ``` Ako poziv prelazi osam izraza, podijeli ih u skupine od najviše osam i citiraj svaku skupinu zasebno.
-Zadrži URL i verziju izvora s svakom skupinom. Mijenjanje strukture poziva ne smanjuje broj izraza.
-Oznaka otvara uhvaćeni tekst stranice i njezine verificirane navode.
-Koristi jednu stranicu po pozivu ako stiže oštećena serija.
-Nečitljiva, blokirana ili neverificirana stranica ne može podržati tvrdnju.
+```json
+{"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"Ovaj odsječak navodi datum odobrenja."}]}
+```
+Kopiraj vraćenu web oznaku, na primjer `[W1]`, uz tvrdnju koju potkrepljuje.
+Drži svaku oznaku uz URL i navode iz njezina vraćenog objekta citata.
+Pogreška ne dodjeljuje oznaku. Izostavi tvrdnje tog izvora dok njegov citat ne uspije.
+Za formulaciju koja nedostaje kopiraj točan tekst iz vraćenog kandidata i ponovno pozovi alat.
+Kad pogreška uključuje `errors[i].retry_arguments`, kopiraj taj objekt nepromijenjen u sljedeći poziv.
+Zadrži uspješne citate iz djelomičnog rezultata. Ponovno pokušaj samo neuspjele stranice.
+Na primjer, poziv citira tri stranice, a dvije uspiju s [W1] i [W2]. Koristi te dvije
+oznake. Sljedeći poziv pošalji samo s trećom stranicom i koristi njezine argumente za ponovni pokušaj.
+Na primjer, ovaj poziv spaja riječi preko prijeloma retka izvora i ne uspijeva.
+```json
+{"url":"https://example.org/report","terms":["Tvornica je zatvorena u ožujku 2019"]}
+```
+Pogreška može vratiti ove argumente za ponovni pokušaj s točnim tekstom izvora.
+```json
+{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["Tvornica je zatvorena"]}}
+```
+Pozovi {{ tool('cite_pages') }} s tim vraćenim objektom, uključujući njegovu stvarnu verziju i točne terms.
+```json
+{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["Tvornica je zatvorena"]}
+```
+PDF prozor ima vlastitu verziju. Da citiraš odsječak sa stranica 51 do 100, kopiraj verziju tog čitanja.
+```json
+{"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]}
+```
+Ako poziv premašuje osam terms, podijeli ih u skupine od najviše osam i citiraj svaku skupinu zasebno.
+Uz svaku skupinu zadrži URL i verziju izvora. Promjena strukture poziva ne smanjuje broj terms.
+Oznaka otvara snimljeni tekst stranice i njezine provjerene navode.
+Koristi jednu stranicu po pozivu ako skupina stigne oštećena.
+Nepročitana, blokirana ili neprovjerena stranica ne može potkrijepiti tvrdnju.
 
 {% include "citation_failures.j2" %}
 {% endif %}
 
-Ime ili događaj koji se sjećete kandidat je dok ga ne imenuje izvor. Pronađite izvor koji ga imenuje prije nego što ga upotrijebite. Ne šaljite ponovno pretragu s istim riječima ili s malim promjenama formulacije. Sljedeća pretraga mora koristiti drugi metod: druge identifikacijs čine kandidata, imenovani izvor, jezik mjesta ili stranicu koju linka pročitani rezultat. Kada preostali metod ne može pronaći izvor, označite kandidata kao neprovjerenog i nastavite s drugim poslovima. Osoba s istim imenom je druga osoba dok je izvor ne poveže s činjenicama. Kada izvor protivrječi kandidatu, uklonite kandidata i navedite razlog.
+Ime ili događaj kojeg se sjećaš kandidat je dok ga neki izvor ne navede. Pronađi izvor koji
+ga navodi prije nego što ga upotrijebiš. Ne šalji ponovno pretragu s istim riječima ili s malim
+promjenama formulacije. Sljedeća pretraga mora koristiti drukčiju metodu: druge identifikacijske činjenice
+kandidata, imenovani izvor, jezik mjesta ili stranicu na koju upućuje rezultat čitanja. Kad nijedna preostala metoda ne može pronaći izvor,
+označi kandidata kao neprovjerenog i
+nastavi s drugim poslom. Osoba istog imena je druga osoba dok izvor ne poveže
+činjenice. Kad izvor proturječi kandidatu, ukloni kandidata i navedi
+razlog.
 
-Na primjer, sjećete da se mlin zatvorio 2019. Pretraga za „Harlow mill closed 2019" ne pronalazi stranicu omlinu. Pretraga za „Harlow mill closure" pronalazi iste rezultate. Ne šaljite treći oblik ovih riječi. Pretražite ime vlasničke tvrtke s imenom grada. Stranica lokalnih vijesti imenuje mjesec zatvaranja, pa je pročitajte i kandidat je provjeren.
+Na primjer, sjećaš se da je mlin zatvoren 2019. Pretraga „mlin Harlow zatvoren 2019”
+ne pronalazi nijednu stranicu o mlinu. Pretraga „zatvaranje mlina Harlow” daje iste rezultate. Ne
+šalji treći oblik tih riječi. Pretraži naziv tvrtke vlasnika s nazivom grada. Lokalna
+stranica s vijestima navodi mjesec zatvaranja, pa je pročitaj i kandidat je provjeren.
 
-Na primjer, sjećete se drugog sudskog postupka protiv iste tvrtke. Pretrge tvrtke s „lawsuit", imena suda i formata broja slučaja ne pronalaze slučaj.
-Nema drugog preostalog metoda. Napišite da izvori pročitani ne potvrđuju drugi slučaj i da ga ne imenuju kao slučaj.
+Na primjer, sjećaš se drugog sudskog slučaja protiv iste tvrtke. Pretrage tvrtke
+s „tužba”, naziva suda i oblika broja predmeta ne pronalaze slučaj.
+Nijedna druga metoda ne preostaje. Napiši da pročitani izvori ne potvrđuju drugi slučaj i ne
+navodi ga kao slučaj.
 
-Pročitano pokriva samo izvučeni tekst. Nalaz bez poklapanja pokazuje da izvučeni tekst ne sadrži riječi. To ne pokazuje da ih dokument ne sadrži. PDF result daje stranic koje je pročitano izvuklo. Prije nego što kažete da dokument ne imenuje osobu, navedite stranic ili tekst koje ste pretražili.
-Za popis datiranih događaja zadržite po jedan zapis za svaki događaj s njegovim datumom, imenom i izvorom. Navedite zapise bez datuma, duplicirane izvještaje i izvore koje niste mogli razdvojiti od datiranih zapisa.
+Čitanje pokriva samo svoj izdvojeni tekst. Find bez podudaranja pokazuje da izdvojeni tekst
+ne sadrži te riječi. Ne pokazuje da ih dokument ne sadrži. PDF
+rezultat daje stranice koje je čitanje izdvojilo. Prije nego što tvrdiš da dokument ne
+navodi osobu, navedi stranice ili tekst koje si pretražio.
+Za popis datiranih događaja vodi jedan zapis za svaki događaj s njegovim datumom, nazivom i
+izvorom. Zapise bez datuma, duplicirana izvješća i izvore koje nisi mogao pročitati navedi
+odvojeno od datiranih zapisa.
 
-Primijeni svako traženo ograničenje na svaki stavak odgovora.
-Navedi koje ograničenje stavak krši.
-Identificiraj svaki stavak po njegovim razlikovnim činjenicama.
-Za sudski slučaj navedi sud, datum i broj dokumenta kada izvori to navode.
-Provjeri u izvoru svako svojstvo koje zahtjev zahtijeva od stavka.
-Broji jedan slučaj, događaj ili entitet jednom i navedi identifikatore njegovih faza zajedno.
-Spoji izvješća o istom stavku.
-Navedi kada izvori utvrde manje različitih stavaka od traženih.
-Prije odgovora provjeri razlikovne činjenice svakog stavka i sva ograničenja protiv stranica koje si pročitao.
-Zadrži stavak koji krši ograničenje izvan odgovarajućeg popisa i navedi njegovo kršeno ograničenje.
+Primijeni svako traženo ograničenje na svaku stavku u odgovoru.
+Navedi koje ograničenje stavka ne ispunjava.
+Identificiraj svaku stavku njezinim razlikovnim činjenicama.
+Za sudski slučaj navedi sud, datum i broj predmeta kad ih izvori daju.
+Provjeri u izvoru svako svojstvo koje zahtjev traži od stavke.
+Jedan slučaj, događaj ili entitet broji jednom i navedi identifikatore njegovih faza zajedno.
+Spoji izvješća o istoj stavci.
+Navedi kad izvori utvrđuju manje različitih stavki nego što je traženo.
+Prije odgovora provjeri razlikovne činjenice svake stavke i svako ograničenje prema stranicama koje si pročitao.
+Stavku koja ne ispunjava ograničenje zadrži izvan popisa podudarnih stavki i navedi ograničenje koje ne ispunjava.
 Pročitaj svaku stranicu koju citiraš, uključujući zamjenski izvor pronađen nakon blokirane stranice.
-Kada čitanje stranice ne uspije, koristi drugi čitljiv izvor ili izostavi njegove tvrdnje i adresu.
+Kad čitanje stranice ne uspije, koristi drugi čitljiv izvor ili izostavi njegove tvrdnje i adresu.
 
 {% if has('web_search') %}
-{{ tool('web_search') }} upite prihvaća kao popis ili jednu string vrijednost, a query kao dodatni pojedinačni upit.
-Navedite barem jedan upit. Preskočite izvore za pretragu svih dostupnih izvora.
-max_results prema zadanim postavkama iznosi 15. timelimit je d, w, m ili y i odnosi se samo na podržane novinske izvore.
-Rezultat vraća rangirane URL-ove, naslove, isječke i podudarne oblike upita. Prije oslanjanja na njihove tvrdnje pročitajte odabrane URL-ove.
-```json {"queries":["transfer approval"]} ``` ```json {"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"} ```
+{{ tool('web_search') }} prihvaća queries kao popis ili jedan tekst, i query kao dodatan pojedinačan upit.
+Navedi barem jedan upit. Izostavi sources da pretražiš sve dostupne izvore.
+max_results je zadano 15. timelimit je d, w, m ili y i vrijedi samo za podržane izvore vijesti.
+Rezultat vraća rangirane URL-ove, naslove, isječke i podudarne oblike upita. Pročitaj odabrane URL-ove prije nego što se osloniš na njihove tvrdnje.
+```json
+{"queries":["odobrenje prijenosa"]}
+```
+```json
+{"queries":["odobrenje prijenosa","ovlaštenje za prijenos"],"query":"ugovor o prijenosu","sources":["gdelt"],"max_results":5,"timelimit":"m"}
+```
 {% endif %}
 {% if has('list_search_sources') %}
-{{ tool('list_search_sources') }} ne prima nikakve argumente. Vraća nazive i opise dostupnih izvora.
-```json {} ```
+{{ tool('list_search_sources') }} ne prima argumente. Vraća nazive i opise dostupnih izvora.
+```json
+{}
+```
 {% endif %}
 {% if has('read_page') %}
-{{ tool('read_page') }} zahtjeva urls, popis do šest HTTP ili HTTPS adresa.
-goal po želji bilježi pitanje. Ne odabira podudarani tekst.
-find po želji odabira doslovne udklane podudara bez ograničenja po veličini slova.
-offset je znakovna pozicija koja počinje od nule. Ako se izostavi, počinje od nule.
-version odabira verziju uhvaćenog teksta. Kopirajte ju iz prethodnog čitanja istog URL-a da biste nastavili s tim tekstom.
-Verzija pripada jednom URL-u. Za drugi URL prvo pročitajte taj URL i kopirajte njegovu vlastitu verziju.
-links prema zadanim postavkama iznosi true i uključuje odredišta poveznica u tekstu.
-page_start odabira prvu stranicu prozora PDF-a. Jednim čitanjem izdvaja se najviše 50 PDF stranica.
-Rezultat izrezivanja, rezultat s više podudara i prozor PDF-a daju argumente sljedećeg poziva.
-Kopirajte taj objekt argumenata nepromijenjen. Zadržava URL, prozor PDF-a, postavku links i verziju.
-Verzija pripada jednom URL-u i jednom prozoru PDF-a.
-Prozor bez teksta ne prikazuje da ostale stranice PDF-a nemaju tekst.
-Ponavljanjem prvog poziva čita se isti tekst ponovo.
-```json {"urls":["COPY_SEARCH_RESULT_URL"]} ``` ```json {"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false} ``` Na primjer, PDF rezultat kaže „Tekst pokriva PDF stranice 1 do 50 od ukupno 120” i daje sljedeći prozor.
-Pronalazak u tom zoru daje više podudara s ovim objektom. Kopirajte ga kao sljedeći poziv.
-```json {"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200} ```
+{{ tool('read_page') }} zahtijeva urls, popis do šest HTTP ili HTTPS adresa.
+goal po želji bilježi pitanje. Ne odabire podudarni tekst.
+find po želji odabire doslovna podudaranja teksta bez ograničenja velikih i malih slova.
+offset je položaj znaka od nule. Izostavljanje počinje od nule.
+version odabire snimljenu verziju teksta. Kopiraj je iz ranijeg čitanja istog URL-a da nastaviš taj tekst.
+Verzija pripada jednom URL-u. Za drugi URL prvo pročitaj taj URL i kopiraj njegovu vlastitu verziju.
+links je zadano true i uključuje odredišta poveznica u tekst.
+page_start odabire prvu stranicu PDF prozora. Jedno čitanje izdvaja najviše 50 PDF stranica.
+Skraćeni rezultat, rezultat find s više podudaranja i PDF prozor daju argumente sljedećeg poziva.
+Kopiraj taj objekt argumenata nepromijenjen. Zadržava URL, PDF prozor, postavku links i verziju.
+Verzija pripada jednom URL-u i jednom PDF prozoru.
+Prozor bez teksta ne pokazuje da ostale stranice PDF-a nemaju tekst.
+Ponavljanje prvog poziva ponovno čita prvi tekst.
+```json
+{"urls":["COPY_SEARCH_RESULT_URL"]}
+```
+```json
+{"urls":["COPY_READ_URL"],"goal":"Pronađi datum odobrenja.","find":"odobreno","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
+```
+Na primjer, PDF rezultat kaže "The text covers PDF pages 1 to 50 of 120 only" i daje sljedeći prozor.
+Find u tom prozoru daje više podudaranja s ovim objektom. Kopiraj ga kao sljedeći poziv.
+```json
+{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"odobreno","offset":1200}
+```
 {% endif %}
 {% if has('whois_lookup') %}
-{{ tool('whois_lookup') }} domene prihvaća kao popis, a domain kao jednu domenu.
-Navedite nazive domena bez URL puta. Rezultat izvještava o svakoj domeni zasebno.
-Prazan registrant znači da registar nije objavio tu vrijednost. Registrar prodaje registraciju domene.
-```json {"domains":["example.org"]} ``` ```json {"domains":["example.org","example.com"],"domain":"example.net"} ```
+{{ tool('whois_lookup') }} prihvaća domains kao popis i domain kao jednu domenu.
+Navedi nazive domena bez URL putanje. Rezultat prijavljuje svaku domenu zasebno.
+Null registrant znači da registar nije objavio tu vrijednost. Registrar prodaje registraciju domene.
+```json
+{"domains":["example.org"]}
+```
+```json
+{"domains":["example.org","example.com"],"domain":"example.net"}
+```
 {% endif %}

@@ -1,49 +1,65 @@
 ---
 name: citation
 group: general
-description: kako citirati dokumente koji podržavaju odgovor
+description: kako citirati dokumente koji potkrepljuju odgovor
 tools: cite_documents
 ---
-Citirani tekst ide u datoteku radnog prostora. `report` vještina objašnjava kako ga napisati i urediti.
+Citirani tekst ide u datoteku radnog prostora. Vještina `report` objašnjava kako je napisati i urediti.
 
 {% if has('cite_documents') %}
-Kada vaš {{ citation_artefact }} oslanja se na {% if web_enabled %}interni{% else %}a{% endif %} dokument, pozovite {{ tool('cite_documents') }}.
-Dajte joj svaki dokument koji podržava tvrdnju ili navod. Koristite povratnu oznaku pokraj te tvrdnje.
-Koristite oznaku pokraj tvrdnje koja se oslanja на interni dokument. Možete i imenovati dokument kako biste ga identificirali ili opisali rezultat pretrace.
-Jedan poziv prima najviše 12 citata. Citirajte što ste koristili, a ne sve što je pretraga vratila.
-Kada pretraga ili čitanje vrate dokumente koji podržavaju tvrdnju, citirajte te dokumente.
+Kad se tvoje izvješće oslanja na {% if web_enabled %}interni dokument{% else %}dokument{% endif %}, pozovi {{ tool('cite_documents') }}.
+Daj mu svaki dokument koji potkrepljuje tvrdnju ili navod. Koristi vraćenu oznaku uz tu tvrdnju.
+Koristi oznaku uz tvrdnju koja se oslanja na interni dokument. Dokument možeš i imenovati
+da ga identificiraš ili da opišeš rezultat pretrage.
+Jedan poziv prima najviše 12 citata. Citiraj ono što si upotrijebio, a ne sve što je pretraga vratila.
+Kad su pretraga ili čitanje vratili dokumente koji potkrepljuju tvrdnju, citiraj te dokumente.
 
-Za svaki citat dajte:
-- kolekciju i file_hash, kopirane iz rezultata alata. Nikad ne izmišljajte file_hash.
-- navod: 5 do 6 uzastopnih rijeća kopiranih iz jedne linije teksta dokumenta. Nije linija zaglavlja (From, To, Cc, Subject, Date). Niti raspon koji sadrži upitnik.
-- find: opcionalno. Najkraća točna fraza navoda koju osoba mora vidjeti. Kartica otvara dokument na ojoj frazi.
-- why: jedna linija koja kaže što dokument podržava.
+Za svaki citat navedi:
+- collection i file_hash, kopirane iz rezultata alata. Nikad ne izmišljaj file_hash.
+- quote: 5 do 6 uzastopnih riječi kopiranih iz jednog retka tijela dokumenta. Ne iz retka
+  zaglavlja (From, To, Cc, Subject, Date). Ne raspon koji sadrži upitnik.
+- find: neobavezno. Najkraća točna fraza navoda koju osoba mora vidjeti. Kartica
+  otvara dokument na toj frazi.
+- why: jedan redak koji kaže što dokument potkrepljuje.
 
-Napišite oznaku koju dobijete natrag, na primjer `[D1]`, u svom {{ citation_artefact }} gdje činite tvrdnju.
+Vraćenu oznaku, na primjer `[D1]`, napiši u svoje izvješće na mjestu gdje iznosiš tvrdnju.
 
-Primjer. {{ tool('read_documents') if has('read_documents') else 'A tool' }} vratio je e-mail „Re: DRAFT talking points” u Kolekciji enron.
-Njegovo tijelo kaže „The talking points look great to me. Best of luck today." Tvoj {{ citation_artefact }} kaže da je Jim Steffes odobrio nacrt. Pozovi {{ tool('cite_documents') }} s Kolekcijom enron, file_hash iz rezultata, navod „talking points look great to me", pronađi „look great" i zašto „Steffes approves the draft of 27 December".
-Zatim napiši „Steffes approved the draft [D1]." Nemoj navoditi „Subject: Re: DRAFT talking points", jer je to redak zaglavlja. Nemoj navoditi „Can you check the notes?", jer sadrži upitnik.
-Prelazi redaka, interpunkcija i `>` oznake citanog e-maila ne moraju se poklapati.
-Nedostajući ili nepovršeni navodi ne dodjeljuju oznaku. Kopiraj 5 do 6 rijeća kandidate teksta koje greška daje u navod i ponovi.
-Samo povraćena oznaka označava izvor. Nikad ne piši vlastitu oznaku u uglatim zagradama.
-Napiši oznaku kao tekst tvrdnje. Nemoj je stavljati u povratne navodnike. `[D1]` u povratnim navodnicima ništa ne povezuje.
-Iskoristi povraćenu dokumentsku oznaku za dodatne provjerene odsječke. Dokument ima jednu karticu.
+Primjer. {{ tool('read_documents') if has('read_documents') else 'Alat' }} je vratio e-poruku "Re: DRAFT talking points" u zbirci enron.
+Njezino tijelo kaže "The talking points look great to me. Best of luck today." Tvoje izvješće kaže
+da je Jim Steffes odobrio nacrt. Pozovi {{ tool('cite_documents') }} sa zbirkom enron,
+file_hash iz rezultata, navodom "talking points look great to me", find "look great"
+i why "Steffes odobrava nacrt od 27. prosinca".
+Zatim napiši "Steffes je odobrio nacrt [D1]."
+Ne navodi "Subject: Re: DRAFT talking points", jer je to redak zaglavlja. Ne navodi
+"Can you check the notes?", jer sadrži upitnik.
+Prijelomi redaka, interpunkcija i oznake `>` citirane e-poruke ne moraju se podudarati.
+Navod koji nedostaje ili ne postoji ne dodjeljuje oznaku. Kopiraj 5 do 6 riječi teksta kandidata koji daje pogreška u quote i pokušaj ponovno.
+Samo vraćena oznaka označava izvor. Nikad ne piši vlastitu oznaku u uglatim zagradama.
+Napiši oznaku kao tekst uz tvrdnju. Ne stavljaj je u obrnute navodnike. `[D1]` u obrnutim navodnicima ne povezuje ništa.
+Za dodatne provjerene odsječke ponovno koristi vraćenu oznaku dokumenta. Dokument ima jednu karticu.
 {% if citation_resolver == "lead" %}
-Vodeći istraživač ih rješava, pa ti ti oznaka koju nikad nisi dodijelio ni kome ne služi.
+Glavni istraživač ih razrješava, pa oznaka koju nisi dodijelio nikome ne koristi.
 {% endif %}
 {% endif %}
 {% include "citation_failures.j2" %}
 
 {% if has('cite_documents') %}
-Argument citata je popis objekata citata dokumenata.
-Svaki objekt zahtijeva kolekciju i file_hash. quote sadrži 5 do 6 uzastopnih riječi točnog izvornog teksta.
-Ponovite kolekciju i file_hash u svakom objektu, uključujući odvojene quote-ove istog dokumenta.
-Objekti ne nasljeđuju argumente iz prethodnih objekata.
-find opcionalno odabira točnu frazu unutar quote-a. Izostavljanjem koristi se cijeli quote.
-term opcionalno bilježi izvorni upit pretrace. why navodi podržanu tvrdnju.
-Rezultat daje oznaku citata za svaku verificiranu stavku. Neuspjele stavke daju svoj razlog i mogu dati kandidat odsječak.
-Ponovite pokretanje samo neuspjele stavke s točnim tekstom. Verificirani quote sam po sebi ne verificira pisca niti datum tog quote-a.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]} ``` Ova serija verificira dva odsječaka istog dokumenta.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+Argument citations je popis objekata citata dokumenata.
+Svaki objekt zahtijeva collection i file_hash. quote sadrži 5 do 6 uzastopnih riječi točne formulacije izvora.
+Ponovi collection i file_hash u svakom objektu, uključujući zasebne navode iz istog dokumenta.
+Objekti ne nasljeđuju argumente iz ranijih objekata.
+find po želji odabire točnu frazu unutar quote. Izostavljanje koristi cijeli navod.
+term po želji bilježi izvorni upit pretrage. why navodi potkrijepljenu tvrdnju.
+Rezultat daje oznaku za svaki provjereni unos. Neuspjeli unosi daju razlog i mogu dati odsječak kandidata.
+Ponovno pošalji samo neuspjele unose, s točnom formulacijom. Provjeren navod sam po sebi ne potvrđuje autora ni datum tog navoda.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
+```
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"izvorna pretraga","why":"Ovaj odsječak potkrepljuje navedeno odobrenje."}]}
+```
+Ova skupina provjerava dva odsječka iz istog dokumenta.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}
+```
 {% endif %}

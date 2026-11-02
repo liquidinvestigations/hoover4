@@ -1,69 +1,91 @@
 ---
 name: call_arguments
 group: stumble
-description: kako popuniti argumente poziva alata: samo imena koja daje njihova shema, popis tamo gdje se traži popis i bez dodatnih navodnika
+description: kako popuniti argumente poziva alata: samo nazivi iz njegove sheme, popis gdje se traži popis i bez dodatnih navodnika
 tools:
 ---
-Ispunjavanje argumenata poziva
+Popunjavanje argumenata poziva
 
 {% if has('read_tool') %}
-Kad niste sigurni u argumente alata, pozvajte {{ tool('read_tool') }} s njegovim imenom. Daje svaki argument, njegov tip i argumente koje alat zahtijeva.
+Kad nisi siguran u argumente alata, pozovi {{ tool('read_tool') }} s njegovim nazivom. Vraća svaki argument, njegov tip i argumente koje alat zahtijeva.
 
 {% endif %}
-1. Navedite samo imena argumenata koje alat daje. Argument s drugim imenom odbija se.
-2. Navedite svaki zahtijevani argument.
-3. Gdje alat traži popis, navedite popis, i za jednu vrijednost. Napišite upite ["lease"]. Napišite upite "lease".
-4. Gdje alat traži broj ili true ili false, navedite vrijednost bez navodnika. Napišite filename_only true. Napišite filename_only "true".
-5. Ne stavljajte navodnike unutar tekstualne vrijednosti. Napišite status done. Napišite status "\"done\"".
-6. Zadržite svaku vrijednost unutar granica njezina alata, kao što je najviše stavki popisa.
-7. Gdje alat traži popis objekata, navedite popis objekata. Ne navodite tekst
+1. Navedi samo nazive argumenata koje alat daje. Argument s drugim nazivom bit će odbijen.
+2. Navedi svaki obavezni argument.
+3. Gdje alat traži popis, daj popis, i za jednu vrijednost. Napiši queries ["zakup"]. Ne piši queries "zakup".
+4. Gdje alat traži broj ili true ili false, daj vrijednost bez navodnika. Napiši filename_only true. Ne piši filename_only "true".
+5. Ne stavljaj navodnike unutar tekstualne vrijednosti. Napiši status done. Ne piši status "\"done\"".
+6. Drži svaku vrijednost unutar ograničenja njezina alata, na primjer najvećeg broja stavki popisa.
+7. Gdje alat traži popis objekata, daj popis objekata. Ne daj tekst
 {% if has('cite_documents') %}
-   koji sadrži JSON. Napišite citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
-   Napišite citations "[{\"collection\": ...}]".
+   koji sadrži JSON. Napiši citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
+   Ne piši citations "[{\"collection\": ...}]".
 {% elif has('cite_pages') %}
-   koji sadrži JSON. Napišite pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
-   Napišite pages "[{\"url\": ...}]".
+   koji sadrži JSON. Napiši pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
+   Ne piši pages "[{\"url\": ...}]".
 {% else %}
    koji sadrži JSON.
 {% endif %}
 {% if has('write_file') %}
-8. Navedite ime datoteke u svakom {{ tool('write_file') }} i {{ tool('patch_file') }} pozivu.
+8. Navedi naziv datoteke u svakom pozivu {{ tool('write_file') }} i {{ tool('patch_file') }}.
 {% endif %}
 
-Kad se poziv odbije, greška navodi argument i što je s njim problematsko. Ispravite taj argument, a zatim pošaljite poziv.
+Kad je poziv odbijen, pogreška navodi argument i što je s njim pogrešno. Ispravi taj argument i tek onda pošalji poziv.
 
 {% if has('search_agent_tools') %}
-{{ tool('search_agent_tools') }} zahtijeva upit, opis zadka dugog do 160 znakova.
-Povraća imena i opise prikladnih alata. Prije korištenja nepoznatih argumenata pročitaj alat.
-```json {"query":"Find a passage late in one long document."} ```
+{{ tool('search_agent_tools') }} zahtijeva query, opis zadatka do 160 znakova.
+Vraća nazive i opise relevantnih alata. Pročitaj alat prije nego što upotrijebiš nepoznate argumente.
+```json
+{"query":"Pronađi odsječak pri kraju jednog dugog dokumenta."}
+```
 {% endif %}
 {% if has('read_tool') %}
-{{ tool('read_tool') }} zahtijeva name, točno ime jednog dostupnog alata.
-Povraća opis i cijelu shemu unosa, uključujući dopuštene vrijednosti, zadane vrijednosti i obavezna polja.
-```json {"name":"read_documents"} ``` Nakon pogreške za nepoznat argument, prije ponovnog pokušaja pročitaj shemu alata koji je pogriješio.
+{{ tool('read_tool') }} zahtijeva name, točan naziv jednog dostupnog alata.
+Vraća opis i potpunu ulaznu shemu, uključujući dopuštene vrijednosti, zadane vrijednosti i obavezna polja.
+```json
+{"name":"read_documents"}
+```
+Nakon pogreške o nepoznatom argumentu pročitaj shemu alata koji ne uspijeva prije ponovnog pokušaja.
 {% if has('update_plan') %}
-Na primjer, ovo {{ tool('update_plan') }} pozivanje neuspjeva jer `plan` nije argument.
-```json {"plan":["Find the message."]} ``` Njegovu shemu pročitaj s {{ tool('read_tool') }}.
-```json {"name":"update_plan"} ``` Zatim pozovi {{ tool('update_plan') }} s ciljem i koracima.
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"pending"}]} ```
+Na primjer, ovaj poziv {{ tool('update_plan') }} ne uspijeva jer `plan` nije argument.
+```json
+{"plan":["Pronađi poruku."]}
+```
+Pročitaj njegovu shemu pomoću {{ tool('read_tool') }}.
+```json
+{"name":"update_plan"}
+```
+Zatim pozovi {{ tool('update_plan') }} s goal i steps.
+```json
+{"goal":"Pronađi datum odobrenja.","steps":[{"text":"Pronađi poruku.","status":"pending"}]}
+```
 {% endif %}
 {% if has('read_documents') %}
-Ako {{ tool('read_documents') }} odbije `source2` ili `offset2`, prije ponovnog pokušaja pročitaj njegovu shemu.
-Za svaki dokument koji treba različite argumente raspona koristi zaseban poziv.
+Ako {{ tool('read_documents') }} odbije `source2` ili `offset2`, pročitaj njegovu shemu prije ponovnog pokušaja.
+Koristi poseban poziv za svaki dokument kojem trebaju drukčiji argumenti raspona.
 {% endif %}
 {% endif %}
 {% if has('search_skills') %}
-{{ tool('search_skills') }} prihvaća upit, dugog do 160 znakova. Izostavljanje ili prazan tekst popisuje sve dostupne vještine.
-Povraća imena metoda i njihove opise.
-```json {} ``` ```json {"query":"Read a long document and continue its matching passage."} ```
+{{ tool('search_skills') }} prihvaća query, do 160 znakova. Izostavljanje ili prazan tekst navodi svaku dostupnu vještinu.
+Vraća nazive i opise metoda.
+```json
+{}
+```
+```json
+{"query":"Pročitaj dugi dokument i nastavi s odsječkom koji mu odgovara."}
+```
 {% endif %}
 {% if has('read_skill') %}
-{{ tool('read_skill') }} zahtijeva name, točno ime povraćeno otkrivanjem vještina.
-Povraća upute metode, argumente alata i primjere.
-```json {"name":"passages"} ```
+{{ tool('read_skill') }} zahtijeva name, točan naziv koji vraća otkrivanje vještina.
+Vraća upute metode, argumente alata i primjere.
+```json
+{"name":"passages"}
+```
 {% endif %}
 {% if has('write_note') %}
 {{ tool('write_note') }} zahtijeva text, od 1 do 2.000 znakova. Sprema dokaze i neriješena pitanja za kasniji kontekst.
-Uključi identitete izvora i sljedeći koristan poziv kad taj kontekst mora preživjeti kompressiju.
-```json {"text":"The approval passage is in the returned document range. Verify its original writer before attributing it."} ```
+Uključi identitete izvora i sljedeći koristan poziv kad taj kontekst mora preživjeti sažimanje.
+```json
+{"text":"Odsječak o odobrenju nalazi se u vraćenom rasponu dokumenta. Provjeri tko ga je izvorno napisao prije nego što ga pripišeš."}
+```
 {% endif %}

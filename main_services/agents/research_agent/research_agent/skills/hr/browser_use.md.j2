@@ -1,30 +1,60 @@
 ---
 name: browser_use
 group: technique
-description: kako upravljati web preglednikom: otvoriti adresu, pročitati snimku stranice, a zatim kliknuti, upisati ili odabrati prema referenci elementa
+description: kako upravljati web preglednikom: otvori adresu, pročitaj snimku stranice, zatim klikni, upiši ili odaberi prema referenci elementa
 tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
 ---
-Vođenje web preglednika
+Upravljanje web preglednikom
 
 {% if has('read_page') %}
-{{ tool('read_page') }} očitava tekst stranice. Koristi snimku preglednika kada stanje stranice ili interaktivni elementi imaju značenje.
+{{ tool('read_page') }} čita tekst stranice. Koristi snimku preglednika kad su važni stanje stranice ili interaktivni elementi.
 
 {% endif %}
-1. Otvori adresu s {{ tool('browser_navigate') }}.
-2. Pozovi {{ tool('browser_snapshot') }}. Snimka popisuje svaki element stranice s njegovom referencom, npr. ref e12.
-3. Djeluj na jedan element s {{ tool('browser_click') }}, {{ tool('browser_type') }} ili {{ tool('browser_select_option') }}. Navedi referencu iz najsvijeće snimke i kratak opis elementa. Koristi {{ tool('browser_press_key') }} za tipku kao što je Enter.
-4. Nakon svakog djelovanja ponovo pozovi {{ tool('browser_snapshot') }}. Djelovanje može promijeniti stranicu, pa stare reference više nisu valjane.
+1. Otvori adresu pomoću {{ tool('browser_navigate') }}.
+2. Pozovi {{ tool('browser_snapshot') }}. Snimka navodi svaki element stranice s njegovom referencom, na primjer ref e12.
+3. Djeluj na jedan element pomoću {{ tool('browser_click') }}, {{ tool('browser_type') }} ili {{ tool('browser_select_option') }}. Daj referencu iz najnovije snimke i kratak opis elementa. Za tipku kao što je Enter koristi {{ tool('browser_press_key') }}.
+4. Nakon svake radnje ponovno pozovi {{ tool('browser_snapshot') }}. Radnja može promijeniti stranicu, a tada stare reference više ne vrijede.
 
-Kada rezultat počinje s "### Error", pročitaj tekst greške. Referenca zastarjelog elementa znači da se stranica promijenila. Napravi novu snimku i iskoristi novu referencu. Pražna referenca ili selektor znače da nisi naveo element.
+Kad rezultat počinje s "### Error", pročitaj tekst pogreške. Zastarjela referenca elementa znači da se stranica promijenila. Napravi novu snimku i koristi novu referencu. Prazna referenca ili selektor znači da nisi naveo element.
 
-U svom odgovoru ili izvješću reci koju si adresu otvorio i što je stranica prikazivala.
+U odgovoru ili izvješću navedi koju si adresu otvorio i što je stranica prikazivala.
 
 {{ tool('browser_navigate') }} zahtijeva url. {{ tool('browser_snapshot') }} ne prima argumente.
-```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} zahtijeva odredište. Kopirajte referencu vraćenog elementa ili upotrijebite jedinstveni selektor.
-element opcionalno opisuje odredište. gumb standardno je lijevi i može biti desni ili srednji.
-doubleClick opcionalno odabire dvojni klik. modifiers opcionalno sadrži Alt, Control, ControlOrMeta, Meta ili Shift.
-```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} zahtijeva odredište i text. element opcionalno opisuje odredište.
-submit opcionalno pritišće Enter nakon upisa. opcionalno slowly upisuje pojedinačne znakove kako bi potaknuo rukovatelje tipkama.
-```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} zahtijeva target i values, popis vrijednosti opcija. element opcionalno opisuje odredište.
-```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} zahtijeva key, kao što su Enter ili Control+ArrowRight.
-```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` Svaka akcija vraća svoj status ili grešku. Nakon akcije koja mijenja stranicu pročitajte novi snapshot.
+```json
+{"url":"COPY_SEARCH_RESULT_URL"}
+```
+```json
+{}
+```
+{{ tool('browser_click') }} zahtijeva target. Kopiraj vraćenu referencu elementa ili upotrijebi jedinstveni selektor.
+element po želji opisuje cilj. button je zadano left, a može biti right ili middle.
+doubleClick po želji odabire dvostruki klik. modifiers po želji sadrži Alt, Control, ControlOrMeta, Meta ili Shift.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Gumb za pretragu","button":"left","doubleClick":false,"modifiers":["Control"]}
+```
+{{ tool('browser_type') }} zahtijeva target i text. element po želji opisuje cilj.
+submit po želji pritišće Enter nakon upisa. slowly po želji upisuje pojedinačne znakove da pokrene rukovatelje tipkama.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","text":"odobrenje"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Polje za pretragu","text":"odobrenje","submit":true,"slowly":true}
+```
+{{ tool('browser_select_option') }} zahtijeva target i values, popis vrijednosti opcija. element po želji opisuje cilj.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Birač formata","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]}
+```
+{{ tool('browser_press_key') }} zahtijeva key, na primjer Enter ili Control+ArrowRight.
+```json
+{"key":"Enter"}
+```
+```json
+{"key":"Control+ArrowRight"}
+```
+Svaka radnja vraća svoj status ili pogrešku. Pročitaj novu snimku nakon radnje koja mijenja stranicu.

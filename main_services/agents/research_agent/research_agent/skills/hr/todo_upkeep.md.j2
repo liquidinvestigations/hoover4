@@ -1,19 +1,22 @@
 ---
 name: todo_upkeep
 group: stumble
-description: kako zadržati plan s update_plan, njegove korake i njihove statuse
+description: kako voditi plan pomoću update_plan, njegovih koraka i statusa
 tools: update_plan
 ---
-Zadržavanjem plana
+Vođenje plana
 
-{{ tool('update_plan') }} uzima cilj i cijeli popis koraka. Svaki korak ima tekst i status, a završeni korak ima kratku bilješku.
+{{ tool('update_plan') }} prima cilj i cijeli popis koraka. Svaki korak ima text i status, a korak done ima kratku bilješku.
 
-1. Pošalji cijeli popis u svakom pozivu, po redu. Korak koji izostaviš više nije u planu.
-2. Navedi svaki korak kao objekt s tekstom i statusom. status je pending ili done.
-3. Korak je pending dok se njegov završi rad. Zatim ga pošalji kao done s bilješkom, kao što su found, not found ili replaced.
-4. Zadrži tekst koraka istim kada se mijenja samo njegov status. Korak tada zadržava svoj id.
-5. Novi cilj pokreće novi plan.
-6. {{ tool('update_plan') }} samo zadržava plan. Navedi izvješće ili drugu datoteku s {{ tool('write_file') }}.
+1. Pošalji cijeli popis u svakom pozivu, redom. Korak koji izostaviš više nije u planu.
+2. Daj svaki korak kao objekt s text i status. status je pending ili done.
+3. Korak je pending dok se njegov rad ne završi. Zatim ga pošalji kao done s bilješkom, na primjer pronađeno, nije pronađeno ili zamijenjeno.
+4. Zadrži text koraka isti kad se mijenja samo njegov status. Korak tada zadržava svoj ID.
+5. Novi cilj započinje novi plan.
+6. {{ tool('update_plan') }} samo čuva plan. Izvješće ili drugu datoteku napiši pomoću {{ tool('write_file') }}.
 
-Ovo je primjer. Korak 1 pronašao je ono što trebate, a korak 2 je još otvoren.
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` Rezultat prikazuje cijeli plan s id-om svakog koraka. Poziv koji ništa ne mijenja vraća nepromijenjeno. Isprvi naznačeno polje prije nego što ponovo pozoveš.
+Ovo je primjer. Korak 1 je pronašao što trebaš, a korak 2 je još otvoren.
+```json
+{"goal":"Pronađi datum odobrenja.","steps":[{"text":"Pronađi poruku.","status":"done","note":"pronađeno"},{"text":"Pročitaj odsječak koji to potkrepljuje.","status":"pending"}]}
+```
+Rezultat prikazuje cijeli plan s ID-om svakog koraka. Poziv koji ništa ne mijenja vraća unchanged. Ispravi navedeno polje prije novog poziva.

@@ -1,14 +1,15 @@
 ---
 name: thorough
 group: general
-description: kako odabrati daljnje pretrage kada je potrebno istraživanje pitanja
+description: kako odabrati daljnje pretrage kad pitanje zahtijeva istraživanje
 tools: search_collections, web_search
 ---
-Odaberi pretragu koje mogu odgovoriti na pitanje osobe. Široki upit može prikazati dostupne zapise. Točan upit može testirati ime, datum ili izraz iz rezultata.
-
-Pročitaj izvorni tekst iza tvrdnje. Zaustavi se kada daljnje pretragu vjerojatno neće promijeniti odgovor i navedi ograničenje pretragu kada ono utječe na zaključak.
+Odaberi pretrage koje mogu odgovoriti na pitanje osobe. Širok upit može prikazati
+dostupne zapise. Specifičan upit može provjeriti ime, datum ili frazu iz rezultata.
+Pročitaj tekst izvora iza tvrdnje. Prestani kad dodatne pretrage vjerojatno neće
+promijeniti odgovor i navedi ograničenje pretrage kad utječe na zaključak.
 
 {% if has('search_collections') %}
-Koristite blizinu, poput "onečišćenje vode"~10, za srodne pojmove koji se nalaze jedni uz druge.
-Koristite kvorum, poput "onečišćenje vode biljana"/2, za temu s nekoliko relevantnih pojmova.
+Koristi blizinu, na primjer "onečišćenje vode"~10, za povezane riječi blizu jedna drugoj.
+Koristi kvorum, na primjer "onečišćenje vode postrojenje"/2, za temu s nekoliko relevantnih riječi.
 {% endif %}

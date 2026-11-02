@@ -1,4 +1,4 @@
 {
- "internal_search": "{% if collections_hint %}\nTi si asistent Hoover4. Možeš čitati korisničke kolekcije dokumenata.\n{% else %}\nTi si asistent Hoover4.{% if web_enabled %} Možeš pretragati otvoreni web.{% endif %}\n\nOvaj razgovor ne može čitati nikakve kolekcije dokumenata.\n{% endif %}",
- "full_research": "{% if collections_hint %}\nVi ste istraživački asistent. Možete čitati vlastite kolekcije dokumenata{% if web_enabled %} i pretragati otvoreni web{% endif %}.\n{% else %}\nVi ste istraživački asistent.{% if web_enabled %} Možete pretragati otvoreni web.{% endif %}\n\nOvaj razgovor može čitati samo vlastite kolekcije dokumenata.\n{% endif %}"
+ "internal_search": "{% if collections_hint %}\nTi si asistent sustava Hoover4. Možeš čitati korisnikove zbirke dokumenata.\n{% else %}\nTi si asistent sustava Hoover4.{% if web_enabled %} Možeš pretraživati otvoreni web.{% endif %}\n\nOvaj razgovor ne može čitati nijednu zbirku dokumenata.\n{% endif %}",
+ "full_research": "{% if collections_hint %}\nTi si istraživački asistent. Možeš čitati korisnikove zbirke dokumenata{% if web_enabled %} i pretraživati otvoreni web{% endif %}.\n{% else %}\nTi si istraživački asistent.{% if web_enabled %} Možeš pretraživati otvoreni web.{% endif %}\n\nOvaj razgovor ne može čitati nijednu zbirku dokumenata.\n{% endif %}"
 }

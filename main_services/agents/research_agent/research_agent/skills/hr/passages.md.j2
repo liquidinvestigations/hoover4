@@ -1,95 +1,138 @@
 ---
 name: passages
 group: technique
-description: kako pronaći točne odsječke ili stranice koje odgovaraju na pitanje pomoću search_passages, unutar mnogih dokumenata ili jednog
+description: kako pomoću search_passages pronaći točne odsječke ili stranice koji odgovaraju na pitanje, u mnogo dokumenata ili u jednom
 tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
-terms: Riječi za to: odsječak, odlomak, rečenica, navod, isječak, stranica, sekcija, gdje se kaže, dio koji spominje, točan tekst, redak. Primjenjuje se na dugi tekstualni dokument: PDF, Wordove datoteke, e-majlove, izvješća i transkripte.
-not_for: Nije potrebno za brojanja, popise datoteka ili metapodatke.
+terms: Riječi za to: odsječak, odlomak, rečenica, citat, izvadak, stranica, odjeljak, gdje piše, dio koji spominje, točna formulacija, redak. Odnosi se na dugačke tekstualne dokumente: PDF, Word datoteke, e-poruke, izvješća i transkripte.
+not_for: Nije potrebno za brojeve, popise datoteka ili metapodatke.
 ---
 Pronalaženje odsječaka i stranica
 
 {% if has('search_passages') %}
-Za pretragu mnoštva dokumenata upotrijebite {{ tool('search_passages') }}. Pretražuje tekstualne odsječake po ključnim riječima i po značenju istovremeno. Upotrijebite ga za pitanje izraženo običnim riječima, kada riječi koje dokumenti koriste nisu jasne. U jednom pozivu pošiljajte do 12 upita, svaki u drugom obliku istog pitanja. Svaki pogodak navodi upite koji su ga pronašli. Za točno ime, adresu ili frazu upotrijebite {{ tool('search_collections') }}.
+Za pretragu mnogo dokumenata koristi {{ tool('search_passages') }}. Pretražuje tekstualne odsječke istodobno po ključnim riječima i po značenju. Koristi ga za pitanje običnim riječima kad nije jasno koje riječi koriste dokumenti. Navedi do 12 upita u jednom pozivu, svaki kao drugačiji oblik pitanja. Svaki pogodak navodi upite koji su ga pronašli. Za točno ime, adresu ili frazu koristi {{ tool('search_collections') }}.
 
 {% endif %}
 {% if has('doc_search_text') or has('pdf_search') %}
-Za pretragu jednog dugog dokumenta upotrijebite ove alate.
+Za pretragu jednog dugačkog dokumenta koristi ove alate.
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} navodi pogotke upita u jednom tekstualnom izvoru, po redoslijedu stranica, s brojem stranice svakog pogotka.
+{{ tool('doc_search_text') }} navodi pogotke upita u jednom tekstualnom izvoru, po redoslijedu stranica, sa stranicom svakog pogotka.
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }} pronalazi upit na stranicama PDF izvora. Zadajte page_from i page_to za pretragu raspona stranica.
+{{ tool('pdf_search') }} pronalazi upit na stranicama PDF izvora. Navedi page_from i page_to da pretražiš raspon stranica.
 {% endif %}
 
 {% endif %}
 {% if has('read_documents') %}
-Stranicu pročitajte s {{ tool('read_documents') }} kada odsječak ne prikazuje dovoljno teksta za potporu tvrdnji. Zadajte njezin broj stranice ili zadajte upit za otvaranje stranice s najviše pogotaka.
+Pročitaj stranicu pomoću {{ tool('read_documents') }} kad odsječak ne prikazuje dovoljno teksta
+da potkrijepi tvrdnju. Navedi njezinu stranicu ili navedi upit da otvoriš stranicu s najviše pogodaka.
 {% endif %}
 
-Za passage koji podržava odgovor zadjite dokument i stranicu.
+Navedi dokument i stranicu kad odsječak potkrepljuje odgovor.
 
 {% if has('read_documents') %}
-{{ tool('read_documents') }} zahtijeva Kolekciju i file_hash.
-Kolekcija je jedno ime. file_hash je popis od 1 do 20 hasheva iz te kolekcije.
-Za dokumente u različitim kolekcijama napravite zaseban batch po kolekciji.
-Identitete kopirajte iz rezultata. Jedinstveno ime datoteke ili putanja može također riješiti dokument.
-source opcionalno odabire izvučeni izvor. Izostavljanjem se koristi preferirani izvor.
-page opcionalno odabire spremljeni identifikator stranice. Identifikatori stranica mogu imati praznine.
-Izostavite page ili zadajte nulu za odabir stranice s najviše pogotaka upita, ili prvu spremljenu stranicu bez upita.
-query otvara tekst oko susjednih različitih pogodaka na toj stranici.
-Za točan tekst frazu navedite u navodima unutar upita. Jedan pogodak vrijednosti otvara njezin prvi pojavni oblik.
-offset mijenja početak odsječaka. Broji Unicode znakove od nule unutar te stranice.
-length je pozitivan broj znakova. Izostavljenjem se koristi 6.000 znakova.
-source_version opcionalno verificira vraćeni otisk izvora. Kopirajte ga za ponovno čitanje raspona.
+{{ tool('read_documents') }} zahtijeva collection i file_hash.
+collection je jedan naziv. file_hash je popis od 1 do 20 hasheva iz te zbirke.
+Za dokumente u različitim zbirkama napravi zasebnu skupinu za svaku zbirku.
+Kopiraj identitete iz rezultata. Jedinstveni naziv datoteke ili putanja također mogu razriješiti dokument.
+source po želji odabire izdvojeni izvor. Izostavljanje koristi preferirani izvor.
+page po želji odabire pohranjeni identifikator stranice. Identifikatori stranica mogu imati praznine.
+Izostavi page ili daj nulu da odabereš stranicu s najviše pogodaka upita ili prvu pohranjenu stranicu bez upita.
+query otvara tekst oko obližnjih različitih podudarnih riječi na toj stranici.
+Za točnu formulaciju stavi frazu u navodnike unutar upita. Jedna podudarna vrijednost otvara svoje prvo pojavljivanje.
+offset nadjačava početak odsječka. Broji Unicode znakove od nule unutar te stranice.
+length je pozitivan broj znakova. Izostavljanje koristi 6.000 znakova.
+source_version po želji provjerava vraćeni otisak izvora. Kopiraj ga za ponovno čitanje raspona.
 
-Rezultat vraća text_range s početnom točkom, isključivim krajem, ukupnim brojem znakova na stranici i jedinicom.
-page_complete označava da raspon pokriva cijelu stranicu.
-Marker za rez znači da je alat isporučio samo dio raspona. To ne znači da se stranica tamo završava.
-Koristi more stavke za nastavak tog dokumenta. Koristi more vršenske razine za nastavak preostale stranice ili kasnijih stranica.
-Kopiraj vraćenu oznaku točno u {{ tool('read_more') }} kao nastavak.
-Kopiraj read_before ili read_after kao argumente read_documents za okolni tekst. Nije potrebna izračunata pomak.
-Argumenti raspona primjenjuju se na svaki hash u jednom pozivu. Koristi zasezne pozive kad dokumenti imaju različite izvore, raspone ili verzije izvora.
-Na primjer, kopiraj vraćeni read_after objekt prvog dokumenta u jedan poziv.
-```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` Kopiraj vraćeni read_after objekt drugog dokumenta u drugi poziv.
-```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` Koristaj stvarne vraćene vrijednosti za svaki dokument. Nemoj dodavati numerirana polja poput source2 ili offset2.
-Ponovljeni početni poziv vraća isti tekst. Koristi nastanak kad je potrebno više teksta.
-Zaustavi čitanje kad odsječak pruža dovoljno dokaza za traženu tvrdnju.
+Rezultat vraća text_range s početkom, isključivim krajem, ukupnim brojem znakova stranice i jedinicom.
+page_complete znači da raspon pokriva cijelu stranicu.
+Oznaka reza znači da je alat isporučio samo dio raspona. Ne znači da stranica tamo završava.
+Koristi more stavke da nastaviš taj dokument. Koristi more najviše razine da nastaviš preostalu stranicu ili kasnije stranice.
+Točno kopiraj vraćenu oznaku u {{ tool('read_more') }} kao continuation.
+Kopiraj read_before ili read_after kao argumente read_documents za okolni tekst. Nije potrebno računati offset.
+Argumenti raspona vrijede za svaki hash u jednom pozivu. Koristi zasebne pozive kad dokumenti imaju različite izvore, raspone ili verzije izvora.
+Na primjer, kopiraj vraćeni objekt read_after prvog dokumenta u jedan poziv.
+```json
+{"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"}
+```
+Kopiraj vraćeni objekt read_after drugog dokumenta u drugi poziv.
+```json
+{"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"}
+```
+Koristi stvarne vraćene vrijednosti za svaki dokument. Ne dodavaj numerirana polja kao što su source2 ili offset2.
+Ponovljeni početni poziv vraća isti tekst. Koristi continuation kad trebaš više teksta.
+Prestani čitati kad odsječak daje dovoljno dokaza za traženu tvrdnju.
 
-Ovaj minimalni poziv otvara prvu spremljenu stranicu.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` Ovaj poziv otvara ciljani odsječak.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` Ovaj poziv otvara povratni raspon u odabranoj izvoru i stranici.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` Ova nastavka čita sljedeći povratni raspon. Koristite stvarnu izdanu oznaku.
-```json {"continuation":"COPY_RETURNED_MORE"} ```
+Ovaj minimalni poziv otvara prvu pohranjenu stranicu.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]}
+```
+Ovaj poziv otvara ciljani odsječak.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"}
+```
+Ovaj poziv otvara vraćeni raspon u odabranom izvoru i stranici.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"}
+```
+Ovaj nastavak čita sljedeći vraćeni raspon. Koristi stvarno izdanu oznaku.
+```json
+{"continuation":"COPY_RETURNED_MORE"}
+```
 {% endif %}
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} zahtijeva kolekciju, file_hash i query. source opciono odabire jednu ekstrakciju.
-Povratuje stranicu, ordinalni broj, start, end i odsječak za svaki pogodak. Pomaci broje karaktere unutar te stranice.
-Kopirajte stranicu i start pogodka u read_documents kada odsječak treba više konteksta.
-Koristite read_more za pribavljanje preostalih pogodaka.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
+{{ tool('doc_search_text') }} zahtijeva collection, file_hash i query. source po želji odabire jedno izdvajanje.
+Za svaki pogodak vraća page, ordinal, start, end i snippet. Pomaci broje znakove unutar te stranice.
+Kopiraj page i start pogotka u read_documents kad isječak treba više konteksta.
+Koristi read_more da dohvatiš preostale pogotke.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"}
+```
 {% endif %}
 {% if has('doc_sources') %}
-{{ tool('doc_sources') }} zahtijeva kolekciju i file_hash. query opciono broji pogotke koji se poklapaju u svakoj ekstrakciji.
-Povratuje nazive izvora i spremljene raspone stranica. Kopirajte naziv izvora kada odabirate određenu ekstrakciju.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
+{{ tool('doc_sources') }} zahtijeva collection i file_hash. query po želji broji podudarne pogotke u svakom izdvajanju.
+Vraća nazive izvora i raspone pohranjenih stranica. Kopiraj naziv izvora kad biraš određeno izdvajanje.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
 {% endif %}
 {% if has('doc_diff_sources') %}
-{{ tool('doc_diff_sources') }} zahtijeva kolekciju, file_hash, source_a i source_b.
-page_a i page_b opciono odabiraju stranice. Izostavljanje odabira prvu spremljenu stranicu svakog izvora.
-Rezultat je ujedinjeni tekstualni diff. Koristite read_more kada se nastavlja.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
+{{ tool('doc_diff_sources') }} zahtijeva collection, file_hash, source_a i source_b.
+page_a i page_b po želji odabiru stranice. Izostavljanje odabire prvu pohranjenu stranicu svakog izvora.
+Rezultat je ujedinjena tekstualna razlika. Koristi read_more kad se nastavlja.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7}
+```
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }} zahtijeva kolekciju, file_hash i query.
-source opciono odabira ekstrakciju PDF-a. page_from i page_to opciono ograničavaju inkluzivni raspon PDF stranica.
-Kopirajte povratne pozicije stranica. Koristite read_more za nastavke pogotaka.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
+{{ tool('pdf_search') }} zahtijeva collection, file_hash i query.
+source po želji odabire PDF izdvajanje. page_from i page_to po želji ograničavaju uključivi raspon PDF stranica.
+Kopiraj vraćene položaje stranica. Koristi read_more za nastavak pogodaka.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12}
+```
 {% endif %}
 {% if has('search_passages') %}
-{{ tool('search_passages') }} prihvaća upite kao jednu niz ili popis do 12 oblika.
-collection prihvaća jedan naziv ili popis. Izostavljanje pretrava svaku dopuštenu kolekciju.
-max_results odabira broj pogotaka po obliku upita un_within ograničenja posluženog shema. Izostavljanje koristi 15.
-Rezultat daje kolekciju, file_hash, stranicu i odsječak. q bilježi indekse upita bazirane na nuli.
-Pročitajte prateći tekst kad odsječak ne odgovara na pitanje.
-```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
+{{ tool('search_passages') }} prihvaća queries kao jedan tekst ili popis do 12 oblika.
+collection prihvaća jedan naziv ili popis. Izostavljanje pretražuje svaku dopuštenu zbirku.
+max_results odabire broj pogodaka po obliku upita unutar ograničenja posluživane sheme. Izostavljanje koristi 15.
+Rezultat daje collection, file_hash, page i snippet. q bilježi indekse upita od nule.
+Pročitaj potkrepljujući tekst kad odsječak ne odgovara na pitanje.
+```json
+{"queries":"odobrenje prijenosa"}
+```
+```json
+{"collection":["alpha","beta"],"queries":["odobrenje prijenosa","ovlaštenje za prijenos"],"max_results":5}
+```
 {% endif %}

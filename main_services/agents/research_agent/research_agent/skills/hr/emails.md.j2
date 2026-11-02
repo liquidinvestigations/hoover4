@@ -1,45 +1,55 @@
 ---
 name: emails
 group: technique
-description: kako čitati dokumente e-pošte: pošiljatelj, primatelji, datum, predmet, zaglavlja, kopije i lanci razgovora
+description: kako čitati dokumente e-pošte: pošiljatelj, primatelji, datum, predmet, zaglavlja, kopije i niti
 tools: doc_email, doc_metadata, read_documents
 ---
 Čitanje dokumenata e-pošte
 
 {% if has('search_collections') %}
-Pronađite e-poštu s {{ tool('search_collections') }}. U svaki poziv alata stavite svaki oblik adrese ili imena, na primjer adresu, „Prvo Prezime” i „Prezime, Prvo”.
+Pronađi e-poruke pomoću {{ tool('search_collections') }}. Stavi svaki oblik adrese ili imena u jedan poziv, na primjer adresu, "Ime Prezime" i "Prezime, Ime".
 
 {% endif %}
 {% if has('doc_email') %}
-1. Pozovite {{ tool('doc_email') }} s file_hashom e-pošte. Daje pošiljatelja, primatelje, kopije, datum, temu, poruku iznad, privitke i graf poruka.
-2. Da pratite lanac, navedite node, file_hash druge poruke u grafu. Graf se tada centrir oko te poruke.
-3. Privitak je vlastiti dokument. Pročitajte ga vlastitim file_hashom.
+1. Pozovi {{ tool('doc_email') }} s file_hash e-poruke. Daje pošiljatelja, primatelje, kopije, datum, predmet, nadređenu poruku, privitke i graf poruka.
+2. Da slijediš nit, navedi node, hash druge poruke u grafu. Graf se tada centrira na tu poruku.
+3. Privitak je zaseban dokument. Pročitaj ga s njegovim vlastitim file_hash.
 {% endif %}
 {% if has('read_documents') %}
-4. Pročitajte tekst poruke s {{ tool('read_documents') }}.
+4. Pročitaj tekst poruke pomoću {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_metadata') %}
-5. Za zaglavlja i datume koji nisu u tekstu, pozovite {{ tool('doc_metadata') }}.
+5. Za zaglavlja i datume koji nisu u tekstu pozovi {{ tool('doc_metadata') }}.
 {% endif %}
 
-Kopija iste poruke može biti u više od jedne poštanske kutije. Usporedite njezina polja kad se broj računa na različite poruke.
+Kopija iste poruke može biti u više poštanskih sandučića. Usporedi njezina polja kad broj ovisi o različitim porukama.
 
 {% if has('doc_email') %}
-{{ tool('doc_email') }} zahtijeva kolekciju i file_hash.
-kolekcija je jedno ime. file_hash prihvaća jedan hash ili popis do deset hasheva iz te kolekcije.
-node opcionalno centrira graf na povratni message hash. Izostavljanjem se centrira na zatraženu e-poštu.
-Koristite više s read_more za pregled preostalih privitaka i unosa grafa.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+{{ tool('doc_email') }} zahtijeva collection i file_hash.
+collection je jedan naziv. file_hash prihvaća jedan hash ili popis do deset hasheva iz te zbirke.
+node po želji centrira graf na hash vraćene poruke. Izostavljanje ga centrira na traženu e-poruku.
+Koristi vrijednost more s read_more da pregledaš preostale privitke i unose grafa.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"}
+```
 {% endif %}
 {% if has('doc_metadata') %}
-{{ tool('doc_metadata') }} zahtijeva kolekciju i file_hash. Prihvaća jedan hash ili popis do deset hasheva.
-Vraća pohranjene metadate, datume, lokacije i poveznice za preuzimanje. Koristite read_more za preostala polja metadata.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{{ tool('doc_metadata') }} zahtijeva collection i file_hash. Prihvaća jedan hash ili popis do deset hasheva.
+Vraća pohranjene metapodatke, datume, lokacije i poveznice za preuzimanje. Koristi read_more za preostala polja metapodataka.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]}
+```
 {% endif %}
-Pročitajte zatraženi odsječak prije dodjele pisaca, primatelja ili datuma.
-Vanjsko pismo obuhvaća vanjsku poruku.
-Proslijeđeni ili navođeni odsječak može imati drugačijeg pisca, primatelje i datum.
-Koristite vlastite zaglavlja tog odsječka za utvrđivanje tko ga je napisao.
-Osoba koja je proslijedila poruku nužno nije napisala njezin navođeni stav.
-Kada pripisivanje ostane nepoznato, navedite to ograničenje.
-Pročitajte odsječke za ciljane raspona i upute o nastavku. Ne ponavljajte početno čitanje za zahtjev za kasniji tekst.
+Pročitaj traženi odsječak prije nego što mu pripišeš autora, primatelje ili datum.
+Vanjska omotnica e-poruke pripada vanjskoj poruci.
+Proslijeđeni ili citirani odsječak može imati drugog autora, druge primatelje i drugi datum.
+Koristi zaglavlja tog odsječka da utvrdiš tko ga je napisao.
+Osoba koja je proslijedila poruku nije nužno napisala njezinu citiranu izjavu.
+Kad pripisivanje ostane nepoznato, navedi to ograničenje.
+Čitaj odsječke za ciljane raspone i upute za nastavak. Ne ponavljaj početno čitanje da zatražiš kasniji tekst.

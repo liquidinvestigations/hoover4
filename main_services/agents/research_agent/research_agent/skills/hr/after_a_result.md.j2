@@ -6,22 +6,23 @@ tools:
 ---
 Nakon svakog rezultata
 
-Nakon svakog rezultata učini jednu od ovih stvari.
+Nakon svakog rezultata učini jedno od sljedećeg.
 
-1. Rezultat sadrži ono što trebate. Iskoristite ga i nastavite s poslom.
-2. Rezultat je prazan ili ne pomaže. Promijenite argumente: druge riječi, drugi oblik imena,{% if has('search_collections') %} druga Kolekcija,{% endif %} druga stranica ili bez filtra.
-3. Rezultat je greška. Pročitajte tekst greške, ispravite argument koji on imenuje, a zatim pošaljite poziv.
-   Kada batch ima uspješne i neuspješne pozive, zadržite uspješne rezultate. Pošaljite ponovo samo neuspjele pozive.
-4. Imate dovoljno da odgovorite. Napišite odgovor ili izvješće kada su potrebni citati ili dokument.
+1. Rezultat sadrži ono što trebaš. Iskoristi ga i nastavi s radom.
+2. Rezultat je prazan ili ne pomaže. Promijeni argumente: druge riječi, drugi oblik imena,{% if has('search_collections') %} drugu zbirku,{% endif %} drugu stranicu ili ukloni filtar.
+3. Rezultat je pogreška. Pročitaj tekst pogreške, ispravi argument koji ona navodi i tek onda pošalji poziv.
+   Kad skupina poziva sadrži uspješne i neuspjele pozive, zadrži uspješne rezultate. Ponovno pošalji
+   samo neuspjeli poziv.
+4. Imaš dovoljno za odgovor. Napiši odgovor ili izvješće kad ono treba citate ili dokument.
 
-Koristite vidive rezultate kada odgovaraju na trenutno pitanje.
-Nakon kompakcije konteksta koristite zadržani indeks i bilješke za identificiranje ranijih rezultata.
-Osvježite traženi odsječak eksplicitno kada njegov tekst više nije vidiv.
+Koristi vidljive rezultate kad odgovaraju na trenutno pitanje.
+Nakon sažimanja konteksta koristi zadržani indeks i bilješke da prepoznaš ranije rezultate.
+Izričito osvježi potreban odsječak kad njegov tekst više nije vidljiv.
 
-Kada pretraga vrati koristan rezultat, promijenite upit ili koristite drugi izvor.
+Kad pretraga ne vrati koristan rezultat, promijeni upit ili upotrijebi drugi izvor.
 
 {% if has('read_more') %}
-Više znači dodatni tekst rezultata je dostupan.
-Nazovite {{ tool('read_more') }} s nastavkom postavljenim na povratnu vrijednost.
-Ponavljanje originalnog poziva vraća originalni raspon.
+Vrijednost more znači da je dostupan dodatni tekst rezultata.
+Pozovi {{ tool('read_more') }} s argumentom continuation postavljenim na vraćenu vrijednost.
+Ponavljanje izvornog poziva vraća izvorni raspon.
 {% endif %}
