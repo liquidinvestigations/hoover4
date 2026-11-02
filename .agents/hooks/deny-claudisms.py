@@ -58,6 +58,8 @@ EXEMPT = (
     "/vendored/",
 )
 
+TRANSLATION = re.compile(r"/research_agent/research_agent/(?:skills|prompts)/[a-z]{2}/")
+
 PHRASES = [
     r"load[- ]bearing",
     r"\bseams?\b",
@@ -169,6 +171,10 @@ def is_exempt(path):
     if not path:
         return True
     norm = "/" + path.replace("\\", "/").lstrip("/")
+    # The translated agent texts are not English, so the English phrase list does not apply.
+    # `scripts/i18n/check_translations.py` reports an em dash in them.
+    if TRANSLATION.search(norm):
+        return True
     markdown = norm.lower().endswith((".md", ".md.j2"))
     if markdown:
         root = Path(__file__).resolve().parents[2]
