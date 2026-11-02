@@ -1,5 +1,4 @@
-# Machine translation of en/chat.ftl. Do not edit by hand: change the English catalog
-# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+# Translation of en/chat.ftl. Change it together with the English catalog.
 
 chat-activity-the-bot-is-working = הבוט עובד...
 chat-composer-ask-the-bot = שאל את הבוט...

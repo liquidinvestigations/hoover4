@@ -193,3 +193,4 @@ Rules in [.agents/rules/](.agents/rules) apply beside the code they govern.
 | Inspect stored data. | Use `querying-the-datastores`. |
 | Work on an authorized remote deployment. | Use `operating-remote-hosts`. |
 | Improve measured pipeline performance. | Use `tuning-the-pipeline`. |
+| Change an interface or agent text, or its translations. | Use `translating-texts`. |

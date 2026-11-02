@@ -1,5 +1,4 @@
-# Machine translation of en/shared.ftl. Do not edit by hand: change the English catalog
-# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+# Translation of en/shared.ftl. Change it together with the English catalog.
 
 shared-antivirus-no-virus-found = कोई वायरस नहीं मिला।
 shared-antivirus-virus-found = वायरस मिला: { $value }।

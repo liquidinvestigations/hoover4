@@ -1,7 +1,7 @@
 """The notes that the worker writes into a run, in the agent language of the run.
 
-The texts are Fluent messages in `i18n/<language>/notes.ftl`. English is the source, and
-`scripts/i18n/translate_catalogs.py` writes the other languages. The website reads its
+The texts are Fluent messages in `i18n/<language>/notes.ftl`. English is the source. A change to
+an English message changes the other languages in the same patch. The website reads its
 catalogs with the same format.
 
 The worker image has no Fluent runtime, so this module reads the subset that the notes

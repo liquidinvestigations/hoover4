@@ -1,5 +1,4 @@
-# Machine translation of en/document.ftl. Do not edit by hand: change the English catalog
-# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+# Translation of en/document.ftl. Change it together with the English catalog.
 
 file-locations-panel-document-locations = 文档位置
 file-locations-panel-this-document-is-not-recorded = 该文档未记录在任何路径中{ " " }

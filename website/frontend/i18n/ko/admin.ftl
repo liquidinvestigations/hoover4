@@ -1,5 +1,4 @@
-# Machine translation of en/admin.ftl. Do not edit by hand: change the English catalog
-# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+# Translation of en/admin.ftl. Change it together with the English catalog.
 
 admin-guard-administration-access-required = 관리자 접근 권한이 필요합니다
 admin-guard-signed-in-as = { $u_username }(으)로 로그인했습니다.

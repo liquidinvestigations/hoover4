@@ -1,5 +1,4 @@
-# Machine translation of en/main.ftl. Do not edit by hand: change the English catalog
-# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+# Translation of en/main.ftl. Change it together with the English catalog.
 
 settings-title = 언어 설정
 settings-interface-language = 인터페이스 언어

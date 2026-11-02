@@ -2903,7 +2903,7 @@
       "source": [
         "website/frontend/i18n",
         "website/frontend/src/i18n.rs",
-        "scripts/i18n/translate_catalogs.py"
+        "scripts/i18n/check_translations.py"
       ],
       "docs": [
         "docs/user-manual/User_Manual.md#choose-your-languages"

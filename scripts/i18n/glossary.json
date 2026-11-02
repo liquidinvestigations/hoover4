@@ -1,5 +1,5 @@
 {
-  "comment": "Terms for machine translation of the interface and agent catalogs. The meanings come from CONTEXT.md and the interface documentation. keep means the term stays in English.",
+  "comment": "Terms for the translations of the interface and agent catalogs. The meanings come from CONTEXT.md and the interface documentation. keep means the term stays in English.",
   "terms": [
     {"term": "Hoover", "meaning": "The product name.", "keep": true},
     {"term": "OCR", "meaning": "Optical character recognition.", "keep": true},

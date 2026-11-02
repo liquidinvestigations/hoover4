@@ -1,5 +1,4 @@
-# Machine translation of en/notes.ftl. Do not edit by hand: change the English catalog
-# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+# Translation of en/notes.ftl. Change it together with the English catalog.
 
 note-discovery-l2 = आख़िरी दो खोज़ों में कोई नया स्रोत नहीं मिला। अब उनकी बेहतरीन पर्दियों को पढ़ें: उनकी 6 तक की URLs को एक `read_page` कॉल में उसकी `urls` सूची में डालें। केवल अलग प्रश्न से फिर से खोज़ें।
 note-discovery-l3-web = आपने कोई स्रोत पृष्ठ पढ़ने से पहले उत्तर दिया। अपनी वस्तुओं को सहारा देने वाली पर्दियों की URLs से एक `read_page` कॉल करें, उसकी `urls` सूची में 6 तक। फिर स्रोतों को सहारा देते हुए उत्तर फिर से लिखें।

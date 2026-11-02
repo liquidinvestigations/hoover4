@@ -62,7 +62,7 @@ Under **Agent language**, select the language that the AI agent answers in.
 Each choice is saved at once. The agent uses a new agent language from your next message.
 In a chat, the button with the flag beside **Send** shows the agent language. Select it to open your language settings in a new tab.
 A board uses the agent language of its owner. A board whose owner saved no language uses the language of its creation.
-A machine produced the translations. Documents, file names and earlier answers keep their own language.
+An AI model produced the translations. Documents, file names and earlier answers keep their own language.
 Arabic and Hebrew show in the left-to-right layout.
 
 Some pages have a divider between two panes: search results and the preview, the storage

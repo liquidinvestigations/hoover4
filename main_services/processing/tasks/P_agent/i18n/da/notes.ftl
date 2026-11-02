@@ -1,5 +1,4 @@
-# Machine translation of en/notes.ftl. Do not edit by hand: change the English catalog
-# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+# Translation of en/notes.ftl. Change it together with the English catalog.
 
 note-discovery-l2 = De to sidste søgninger fandt ingen nye kilder. Læs de bedste resultatsider nu: sæt op til 6 af deres URL-adresser i ét read_page-opkald i dets `urls`-liste. Søg kun igen med et andet spørgsmål.
 note-discovery-l3-web = Du svarede, før du læste nogen kildeside. Kald read_page én gang med URL-adresserne til siderne, der understøtter dine punkter, op til 6 i dets `urls`-liste. Skriv derefter svaret igen med de kilder, der understøtter det.

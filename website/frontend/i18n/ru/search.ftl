@@ -1,5 +1,4 @@
-# Machine translation of en/search.ftl. Do not edit by hand: change the English catalog
-# and run scripts/i18n/translate_catalogs.py. See translations.json for the producer.
+# Translation of en/search.ftl. Change it together with the English catalog.
 
 card-action-buttons-copy-document-link = Копировать ссылку на документ
 card-action-buttons-download-document = Скачать документ

@@ -154,9 +154,9 @@ the language and the catalog revision. A context or a pinned snapshot of one lan
 used for another.
 
 [scripts/i18n/agent_tool_texts.py](../../../scripts/i18n/agent_tool_texts.py) collects
-`research_agent/tool_texts/en.json`. [scripts/i18n/translate_agent.py](../../../scripts/i18n/translate_agent.py)
-writes the translated files with a chat model and records the producer in
-`research_agent/translations.json`. Native speakers have not reviewed the translations.
+`research_agent/tool_texts/en.json`. Agents of the development harness write the translated files directly.
+[The translating-texts skill](../../../.agents/skills/translating-texts/SKILL.md) gives the files, the rules and
+the checks. Native speakers have not reviewed the translations.
 
 ## Tool packs and the catalogue
 
