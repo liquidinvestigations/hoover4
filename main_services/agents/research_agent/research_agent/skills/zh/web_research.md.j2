@@ -1,115 +1,177 @@
 ---
 name: web_research
 group: technique
-description: 如何搜索开放网络、阅读网页或域名的所有者记录，并引用支持报告的网页
+description: 如何搜索开放网络，读取网页或域名的所有者记录，并引用支持报告的网页
 tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
 ---
-研究公开网络
+{# Each tool sentence renders when the run has that tool. The web citation protocol is
+   here, and the skill `citation` holds the document protocol. Both include the failure
+   rules of `partials/citation_failures.j2`. #}
+研究开放网络
 
-当网络来源能够回答用户的问题时，就使用它们。
+当网络来源能回答用户的问题时，使用它们。
 
 {% if has('web_search') %}
-{{ tool('web_search') }} 接受一个查询列表。`sources` 字段将搜索范围缩小到指定来源。{% if has('list_search_sources') %} {{ tool('list_search_sources') }} 列出这些来源。{% endif +%}
+{{ tool('web_search') }} 接受查询列表。`sources` 字段把
+搜索限制在指定的来源。{% if has('list_search_sources') %}{{ tool('list_search_sources') }}
+会列出这些来源。{% endif +%}
 {% endif %}
 {% if has('read_page') %}
-1. 使用 {{ tool('read_page') }} 完整阅读最佳结果。在一次调用中给出所有地址，并在 goal 中说明你要查找的内容。标记为 BLOCKED BY A BOT CHECK（被机器人检查拦截）的结果不是该页面，不要使用它的文本。
+1. 用 {{ tool('read_page') }} 完整读取最相关的结果。把所有地址放进同一次调用，并给出 goal 说明你要查找什么。标有 BLOCKED BY A BOT CHECK 的结果不是该页面本身。不要使用它的文本。
 {% endif %}
 {% if has('whois_lookup') %}
-{% if has('read_page') %}2.{% else %}1.{% endif %} 对于某个域名的所有者、注册商或日期，在一次调用中对每个域名调用 {{ tool('whois_lookup') }}。
+{% if has('read_page') %}2.{% else %}1.{% endif %} 要查询域名的所有者、注册商或日期，调用 {{ tool('whois_lookup') }}，把所有域名放进同一次调用。
 {% endif %}
 
-在使用每个来源的论断前，先阅读该来源。搜索结果摘要不是来源。
+使用某个来源的论断之前，先读取该来源。搜索结果的摘要不是来源。
 {% if has('cite_pages') %}
 
 引用网页
 
-对每个已阅读页面的 URL 和 `terms` 中的精确支持性文字调用 {{ tool('cite_pages') }}。
-在它们所支持的论断旁使用返回的网页标识。
-用这些标识替换裸来源 URL。
-{{ tool('cite_pages') }} 接受一个页面的 url 和 terms，或最多十二个页面对象的 pages。
-每个页面都需要 url 和 terms。terms 包含最多八个精确短语，每个最多 200 个字符。大小写必须匹配。
-version 可选地选择某个已捕获版本。why 可选地说明所支持的论断，最多 300 个字符。
-结果会给出已验证引文和一个稳定的网页标识。失败的页面会给出错误而无标识。
+对每个已读取的页面 URL，调用 {{ tool('cite_pages') }}，并在 `terms` 中给出支持论断的准确原文。
+把返回的网页标识放在它们所支持的论断旁边。
+用这些标识替换裸露的来源 URL。
+{{ tool('cite_pages') }} 接受针对一个页面的 url 和 terms，或最多十二个页面对象组成的 pages。
+每个页面要求提供 url 和 terms。terms 最多包含八个准确的短语，每个最长 200 个字符。大小写必须一致。
+version 可选，用于选择已捕获的某个版本。why 可选，用于说明所支持的论断，最长 300 个字符。
+结果给出已核实的引文和一个稳定的网页标识。失败的页面只给出错误，没有标识。
 
-示例。{{ tool('read_page') }}读取网址 https://example.org/report。其正文写着"工厂于 2019 年 3 月关闭。"调用{{ tool('cite_pages') }}，为单个网页传入扁平参数：
-网址（从读取结果中复制）、精确短语形式的关键词，以及原因。
-```json {"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"The report gives the closing date."} ``` 然后写入"工厂于 2019 年 3 月关闭 [W1]"，并附上该调用返回的引用标识。
-将超过十二页的列表拆分为多次独立调用。
-```json {"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"This passage gives the approval date."}]} ``` 将返回的网页引用标识复制到其支撑论断旁，例如`[W1]`。
-将每个引用标识与该 URL 及其返回的引用对象中的引文一起保留。
-错误不会分配引用标识。在该对象的引用成功之前，省略该来源的论断。
-对于缺失的措辞，从返回的候选中复制精确文本，并再次调用该工具。
-当错误包含`errors[i].retry_arguments`时，将该对象原样复制到下一次调用中。
-保留部分结果中的成功引用。仅重试失败的网页。
-例如，一次调用引用了三个网页，其中两个成功，分别得到 [W1] 和 [W2]。使用这两个引用标识。下一次调用只发送第三个网页，并使用其重试参数。
-例如，这次调用的关键词跨来源行断开了，因而失败。
-```json {"url":"https://example.org/report","terms":["The plant closed in March 2019"]} ``` 该错误可返回这些重试参数，并附带精确的来源文本。
-```json {"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}} ``` 用该返回对象调用{{ tool('cite_pages') }}，包括其实际版本和精确关键词。
-```json {"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]} ``` PDF 窗口有其自己的版本。要引用第 51 到 100 页的一段正文，复制该次读取的版本。
-```json {"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]} ``` 若一次调用的关键词超过八个，将其拆分为最多八个一组，并对每组分别引用。
-将 URL 和来源版本与每组一起保留。更改调用结构不会减少其关键词数量。
-该引用标识可打开捕获的网页正文及其已验证引文。
-若批次损坏，则每次调用只处理一个网页。
-未读取、被阻止或未经验证的网页无法支撑任何论断。
+示例。{{ tool('read_page') }} 读取了 URL https://example.org/report。它的文本写着
+"The plant closed in March 2019."。用针对一个页面的平铺参数调用 {{ tool('cite_pages') }}：
+url（从读取结果中复制）、含有准确短语的 terms，以及 why。
+```json
+{"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"该报告给出了关闭日期。"}
+```
+然后用该调用返回的标识写出“工厂于 2019 年 3 月关闭 [W1]。”
+超过十二个页面的列表要拆分成多次调用。
+```json
+{"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"该段落给出了批准日期。"}]}
+```
+把返回的网页标识（例如 `[W1]`）复制到它所支持的论断旁边。
+每个标识都要与其返回的引用对象中的 URL 和引文对应起来。
+错误不会分配标识。在引用成功之前，省略该来源的论断。
+对于不存在的措辞，从返回的候选文本中复制准确的文本，再次调用该工具。
+错误中包含 `errors[i].retry_arguments` 时，把该对象原样复制到下一次调用中。
+部分成功的结果中，保留成功的引用。只重试失败的页面。
+例如，一次调用引用了三个页面，其中两个成功，标识为 [W1] 和 [W2]。使用这两个
+标识。下一次调用只发送第三个页面，并使用它的重试参数。
+又如，下面这个调用把跨越来源换行的词连在了一起，因而失败。
+```json
+{"url":"https://example.org/report","terms":["The plant closed in March 2019"]}
+```
+错误可能会返回下面这些带有准确来源文本的重试参数。
+```json
+{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}}
+```
+用返回的那个对象调用 {{ tool('cite_pages') }}，其中包括它实际的 version 和准确的 terms。
+```json
+{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}
+```
+PDF 窗口有自己的版本。要引用第 51 页到第 100 页的段落，复制该次读取的版本。
+```json
+{"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]}
+```
+如果一次调用超过八个 terms，把 terms 拆分成每组最多八个，并分别引用每一组。
+每一组都要保留 URL 和来源版本。改变调用结构并不会减少词项的数量。
+该标识会打开已捕获的页面文本及其已核实的引文。
+批量调用的结果出现损坏时，每次调用只处理一个页面。
+未读取、被拦截或未核实的页面不能支持论断。
 
 {% include "citation_failures.j2" %}
 {% endif %}
 
-你回忆起的某个名字或某件事，在来源点名它之前都只是待验证候选。在使用它之前，先找到点名它的来源。不要再用相同的词或只做细微措辞改动去发送搜索。下一次搜索必须使用不同方法：改用候选的其他识别事实、一个点名来源、该地的语言，或某条阅读结果所链接的网页。当没有剩余方法能找到来源时，把该候选标记为未经验证，然后继续做其他工作。名字相同的人是不同的人，直到有来源把事实联系起来。当来源与候选矛盾时，移除该候选并给出理由。
+你记得的名称或事件，在有来源写出它之前，只是候选项。使用它之前，先找到
+写出它的来源。不要用相同的词，或只作细微措辞改动的词，再次发送搜索。
+下一次搜索必须使用不同的方法：该候选项的其他识别事实、指定的来源、
+当地的语言，或者某个读取结果所链接的页面。没有任何剩余的方法能找到来源时，
+把该候选项标为未核实，并
+继续其他工作。同名的人，在有来源把这些事实联系起来之前，是不同的人。
+来源与某个候选项相矛盾时，删去该候选项，并说明
+理由。
 
-例如，你回忆某座工厂在 2019 年关闭。搜索 "Harlow mill closed 2019" 找不到关于该工厂的网页。搜索 "Harlow mill closure" 也只得到相同结果。不要再用这些词的第三种形式去搜索。改用业主公司名称配合镇名去搜索。某条地方新闻网页点明了关闭月份，于是阅读它，该候选即获验证。
+例如，你记得一家工厂在 2019 年关闭。搜索 "Harlow mill closed 2019"
+没有找到关于这家工厂的页面。搜索 "Harlow mill closure" 得到相同的结果。
+不要再发送这些词的第三种形式。应搜索所有者公司的名称加上城镇
+名称。一个本地新闻页面写出了关闭的月份，读取它，该候选项就得到了核实。
 
-例如，你回忆起针对同一公司的另一场诉讼。用公司配合 "lawsuit" 搜索、用法院名称搜索、用案件编号格式搜索，都找不到相关案件。
-没有其他剩余方法。写明已阅读的来源无法证实存在另一场案件，且不要把它列为案件。
+又如，你记得同一家公司还有第二起诉讼。用该公司加上 "lawsuit" 搜索、
+用法院名称搜索、用案号格式搜索，都没有找到案件。
+没有其他方法了。写明所读的来源无法证实有第二起案件，并且
+不要把它当作案件写出来。
 
-一次阅读只覆盖其提取出的文本。一次无匹配的查找，表明提取出的文本不含这些词，并不代表文档不含这些词。PDF 结果会给出阅读所提取出的页码。在你断言某文档未点名某人之前，先说明你搜索过的页码或文本。
-对于按日期排列的事件列表，为每个事件保留一条记录，包含其日期、名称与来源。除带日期的记录外，再说明无日期的记录、重复报告和你无法分开读取的来源。
+读取只涵盖它提取出的文本。find 没有匹配，只说明提取出的文本
+中没有这些词。它并不说明文档中没有这些词。PDF
+结果给出该次读取提取了哪些页。在说明某个文档
+没有提到某人之前，先说明你搜索过的页码或文本。
+对于带日期的事件列表，每个事件保留一条记录，包括日期、名称和
+来源。没有日期的记录、重复的报道和你无法读取的来源，要与带日期的记录
+分开说明。
 
-将每一项请求的约束都应用到答案中的每个条目上。
-说明某个条目违反了哪条约束。
-用每个条目的区分性事实来标识该条目。
-对于法院案件，在来源提供时给出法院、日期和案号。
-在来源中核实请求要求每个条目具备的每一项属性。
-每个案件、事件或实体只计一次，并将其各阶段的标识符一起列出。
-合并关于同一件报告的报道。
-当来源确立的独立条目少于请求数量时，说明这一情况。
-在作答前，核实每个条分的区分性事实以及每一条约束，对照你读取的页面。
-让违反约束的条目留在对应列表之外，并指明其违反的约束。
-阅读你引用的每一页，包括被拦截页面之后找到的替代来源。
-当某一页读取失败时，改用其他可读来源，或省略其主张和地址。
+对回答中的每个条目，应用所请求的每一项约束。
+说明条目不满足哪项约束。
+用其独有的事实来标识每个条目。
+对于法院案件，来源提供时，给出法院、日期和案号。
+在来源中核实请求所要求的条目的每一项属性。
+同一个案件、事件或实体只计一次，并把它各阶段的标识一并列出。
+合并关于同一条目的报道。
+来源证实的不同条目少于所请求的数量时，要说明这一点。
+回答之前，对照你读过的页面，核实每个条目的独有事实和每一项约束。
+不满足某项约束的条目，不要列入匹配列表，并说明它没有满足哪项约束。
+读取你引用的每个页面，包括页面被拦截之后找到的替代来源。
+页面读取失败时，使用另一个可读的来源，或者省略它的论断和地址。
 
 {% if has('web_search') %}
-{{ tool('web_search') }}接受以列表或单个字符串形式提供的查询，并将 query 作为额外的单个查询。
-至少提供一个查询。省略 sources 将搜索所有可用来源。
-max_results 默认为 15。timelimit 为 d、w、m 或 y，且仅适用于支持新闻来源。
-结果返回按排名排列的 URL、标题、摘要和匹配的查询形式。在依赖其主张前，请先阅读所选 URL。
-```json {"queries":["transfer approval"]} ``` ```json {"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"} ```
+{{ tool('web_search') }} 的 queries 接受列表或一个字符串，query 是额外的单个查询。
+至少给出一个查询。省略 sources，则搜索所有可用的来源。
+max_results 默认为 15。timelimit 是 d、w、m 或 y，只适用于支持的新闻来源。
+结果返回排名的 URL、标题、摘要和匹配的查询形式。依据所选 URL 的论断之前，先读取这些 URL。
+```json
+{"queries":["transfer approval"]}
+```
+```json
+{"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"}
+```
 {% endif %}
 {% if has('list_search_sources') %}
-{{ tool('list_search_sources') }}不接受任何参数。它返回可用来源的名称和描述。
-```json {} ```
+{{ tool('list_search_sources') }} 不接受参数。它返回可用的来源名称和说明。
+```json
+{}
+```
 {% endif %}
 {% if has('read_page') %}
-{{ tool('read_page') }}需要 urls，即最多六个 HTTP 或 HTTPS 地址的列表。
-goal 可选地记录该问题。它不会选择匹配的文本。
-find 可选地选择无大小写限制的逐字文本匹配。
+{{ tool('read_page') }} 要求提供 urls，即最多六个 HTTP 或 HTTPS 地址的列表。
+goal 可选，用于记录问题。它不会选择匹配的文本。
+find 可选，用于选择字面文本匹配，不区分大小写。
 offset 是从零开始的字符位置。省略时从零开始。
-version 选择所捕获文本的版本。从对该 URL 的先前读取中复制它以继续该文本。
-一个 version 属于一个 URL。对于另一个 URL，请先读取该 URL 并复制它自己的 version。
-links 默认为 true，并在文本中包含链接目标。
-page_start 选择 PDF 窗口的首页。一次读取最多提取 50 个 PDF 页面。
-cut 结果、具有更多匹配的 find 结果和 PDF 窗口会给出下一次调用的参数。
-原样复制该参数对象。它保留 URL、PDF 窗口、links 设置和 version。
-一个 version 属于一个 URL 和一个 PDF 窗口。
-一个没有文本的窗口并不会表明该 PDF 的其他页面没有文本。
-重复第一次调用会再次读取第一段文本。
-```json {"urls":["COPY_SEARCH_RESULT_URL"]} ``` ```json {"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false} ``` 例如，PDF 结果会显示"文本仅覆盖 120 页中的第 1 至 50 页"，并给出下一个窗口。
-在该窗口中的 find 会给出更多匹配及该对象。将其作为下一次调用复制。
-```json {"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200} ```
+version 选择已捕获的文本版本。要继续读取同一文本，从之前对同一 URL 的读取中复制它。
+版本属于某一个 URL。对于另一个 URL，先读取该 URL，并复制它自己的版本。
+links 默认为 true，会在文本中包含链接的目标地址。
+page_start 选择 PDF 窗口的第一页。一次读取最多提取 50 页 PDF。
+被截断的结果、还有更多匹配的 find 结果和 PDF 窗口，都会给出下一次调用的参数。
+把该参数对象原样复制。它保留了 URL、PDF 窗口、links 设置和版本。
+版本属于一个 URL 和一个 PDF 窗口。
+某个窗口没有文本，并不说明 PDF 的其他页也没有文本。
+重复第一次调用，会再次读取最前面的文本。
+```json
+{"urls":["COPY_SEARCH_RESULT_URL"]}
+```
+```json
+{"urls":["COPY_READ_URL"],"goal":"查找批准日期。","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
+```
+例如，PDF 结果写着 "The text covers PDF pages 1 to 50 of 120 only"，并给出下一个窗口。
+该窗口中的 find 会用下面这个对象给出更多匹配。把它复制为下一次调用。
+```json
+{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200}
+```
 {% endif %}
 {% if has('whois_lookup') %}
-{{ tool('whois_lookup') }}接受以列表形式提供的域名，并接受 domain 作为单个域名。
-提供不带 URL 路径的域名。结果会分别报告每个域名。
-registrant 为 null 表示注册机构未发布该值。注册商出售该域名注册。
-```json {"domains":["example.org"]} ``` ```json {"domains":["example.org","example.com"],"domain":"example.net"} ```
+{{ tool('whois_lookup') }} 的 domains 接受域名列表，domain 接受一个域名。
+给出不带 URL 路径的域名。结果会分别报告每个域名。
+registrant 为 null，表示注册机构没有公布该值。注册商出售域名注册服务。
+```json
+{"domains":["example.org"]}
+```
+```json
+{"domains":["example.org","example.com"],"domain":"example.net"}
+```
 {% endif %}

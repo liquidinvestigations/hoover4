@@ -1,19 +1,24 @@
 ---
 name: todo_upkeep
 group: stumble
-description: 如何使用 update_plan 保留计划、其步骤及其状态
+description: 如何用 update_plan 维护计划、计划的步骤及其状态
 tools: update_plan
 ---
-保持计划
+{# How to keep the plan correct. The failed plan calls send steps as plain strings, a status
+   other than pending or done, or no goal. A step has two statuses, pending and done. #}
+维护计划
 
-{{ tool('update_plan') }} 接受目标以及整份步骤列表。每个步骤都包含文本和状态，已完成步骤含一条简短备注。
+{{ tool('update_plan') }} 接受目标和完整的步骤列表。每个步骤有 text 和 status，已完成的步骤有一条简短的备注。
 
-1. 在每次调用中按顺序发送整份列表。被你省略的步骤将不再属于该计划。
-2. 将每个步骤作为含文本和状态的对象给出。状态为 pending 或 done。
-3. 步骤在其工作完成前保持 pending。随后以 done 发送并附备注，例如 found、not found 或 replaced。
-4. 当仅状态改变时，保持步骤文本不变。该步骤从而保留其 id。
-5. 新目标开启一个新计划。
-6. {{ tool('update_plan') }} 仅保留计划。使用 {{ tool('write_file') }} 撰写报告或其他文件。
+1. 每次调用都按顺序发送完整的列表。你省略的步骤就不再属于计划。
+2. 把每个步骤写成带有 text 和 status 的对象。status 是 pending 或 done。
+3. 步骤在其工作结束之前保持 pending。然后把它作为 done 发送，并附上备注，例如“已找到”“未找到”或“已替换”。
+4. 只有状态改变时，保持步骤的 text 不变。这样步骤会保留它的 id。
+5. 新的目标会开始新的计划。
+6. {{ tool('update_plan') }} 只保存计划。撰写报告或其他文件时，使用 {{ tool('write_file') }}。
 
-这是一个示例。步骤 1 找到了你所需的内容，而步骤 2 仍处于待处理状态。
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` 结果展示整份计划及每个步骤的 id。未改变任何内容的调用返回不变。在再次调用前，先修正所命名的字段。
+下面是一个示例。步骤 1 找到了你需要的内容，步骤 2 仍未完成。
+```json
+{"goal":"查找批准日期。","steps":[{"text":"查找这封邮件。","status":"done","note":"已找到"},{"text":"阅读支持的段落。","status":"pending"}]}
+```
+结果会显示完整的计划以及每个步骤的 id。没有改变任何内容的调用会返回 unchanged。再次调用之前，先更正所指出的字段。

@@ -1,69 +1,93 @@
 ---
 name: call_arguments
 group: stumble
-description: 如何填写工具调用的参数：只使用其 schema 给出的名称，需要列表时提供列表，且不要添加多余引号
+description: 如何填写工具调用的参数：只用其模式给出的名称，要求列表时给出列表，值外不加多余的引号
 tools:
 ---
+{# How to fill in the arguments of a call. The refused calls give an argument name that the
+   schema does not have, a text where the schema asks for a list, or a value in extra quotes. #}
 填写调用的参数
 
 {% if has('read_tool') %}
-当你不确定某个工具的参数时，使用其名称调用 {{ tool('read_tool') }}。它会给出每个参数、参数类型以及该工具所需的参数。
+当你不确定某个工具的参数时，用工具名称调用 {{ tool('read_tool') }}。它会给出每个参数、参数的类型，以及该工具要求提供的参数。
 
 {% endif %}
-1. 只给出工具所提供的参数名称。使用其他名称的参数会被拒绝。
-2. 给出每个必需的参数。
-3. 当工具要求提供列表时，给出列表，即使只有一个值也要用列表。写入查询 ["lease"]。不要写入查询 "lease"。
-4. 当工具要求提供数字或 true 或 false 时，给出不带引号的值。写入 filename_only true。不要写入 filename_only "true"。
-5. 不要在文本值内部使用引号。写入 status done。不要写入 status "\"done\""。
-6. 让每个值都保持在其工具允许的范围之内，例如列表的最大条目数。
-7. 当工具要求提供对象列表时，给出对象列表。不要给出一个
+1. 只使用该工具给出的参数名称。名称不同的参数会被拒绝。
+2. 给出每个必填参数。
+3. 工具要求列表时给出列表，即使只有一个值。写成 queries ["lease"]。不要写成 queries "lease"。
+4. 工具要求数字或 true、false 时，直接给出值，不加引号。写成 filename_only true。不要写成 filename_only "true"。
+5. 文本值内部不要加引号。写成 status done。不要写成 status "\"done\""。
+6. 每个值都要在该工具的限制之内，例如列表的最大项数。
+7. 工具要求对象列表时，给出对象列表。
 {% if has('cite_documents') %}
-   保存 JSON 的文本。写入 citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]。
-   不要写入 citations "[{\"collection\": ...}]"。
+   不要给出内容为 JSON 的文本。写成 citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]。
+   不要写成 citations "[{\"collection\": ...}]"。
 {% elif has('cite_pages') %}
-   保存 JSON 的文本。写入 pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
-   不要写入 pages "[{\"url\": ...}]"。
+   不要给出内容为 JSON 的文本。写成 pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}]。
+   不要写成 pages "[{\"url\": ...}]"。
 {% else %}
-   保存 JSON 的文本。
+   不要给出内容为 JSON 的文本。
 {% endif %}
 {% if has('write_file') %}
-8. 在每一个 {{ tool('write_file') }} 和 {{ tool('patch_file') }} 调用中给出文件名称。
+8. 每次调用 {{ tool('write_file') }} 和 {{ tool('patch_file') }} 时，都要给出文件名。
 {% endif %}
 
-当一次调用被拒绝时，错误信息会指出是哪个参数以及哪里出了问题。修正该参数，然后再次发送调用。
+调用被拒绝时，错误信息会指出是哪个参数，以及它有什么问题。更正该参数，然后再发送调用。
 
 {% if has('search_agent_tools') %}
-{{ tool('search_agent_tools') }} 需要 query，即最多 160 个任务的描述字符。
-它返回相关的工具名称和描述。在使用不熟悉的参数前，请先阅读该工具。
-```json {"query":"Find a passage late in one long document."} ```
+{{ tool('search_agent_tools') }} 要求提供 query，即不超过 160 个字符的任务描述。
+它会返回相关的工具名称和说明。使用不熟悉的参数之前，先读取该工具。
+```json
+{"query":"在一份很长的文档的靠后部分查找一个段落。"}
+```
 {% endif %}
 {% if has('read_tool') %}
-{{ tool('read_tool') }} 需要 name，即某个可用工具的准确名称。
-它返回描述和完整输入 schema，包括允许取值、默认值和必填字段。
-```json {"name":"read_documents"} ``` 在出现未知参数错误后，重试前请先读取失败工具的 schema。
+{{ tool('read_tool') }} 要求提供 name，即一个可用工具的准确名称。
+它会返回说明和完整的输入模式，包括允许的值、默认值和必填字段。
+```json
+{"name":"read_documents"}
+```
+出现未知参数错误之后，先读取出错工具的模式，再重试。
 {% if has('update_plan') %}
-例如，这个 {{ tool('update_plan') }} 调用会失败，因为 `plan` 不是一个参数。
-```json {"plan":["Find the message."]} ``` 使用 {{ tool('read_tool') }} 读取它的 schema。
-```json {"name":"update_plan"} ``` 然后使用 goal 和 steps 调用 {{ tool('update_plan') }}。
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"pending"}]} ```
+例如，下面这个 {{ tool('update_plan') }} 调用会失败，因为 `plan` 不是参数。
+```json
+{"plan":["查找这封邮件。"]}
+```
+用 {{ tool('read_tool') }} 读取它的模式。
+```json
+{"name":"update_plan"}
+```
+然后用 goal 和 steps 调用 {{ tool('update_plan') }}。
+```json
+{"goal":"查找批准日期。","steps":[{"text":"查找这封邮件。","status":"pending"}]}
+```
 {% endif %}
 {% if has('read_documents') %}
-如果 {{ tool('read_documents') }} 拒绝 `source2` 或 `offset2`，请在重试前读取它的 schema。
-为每个需要不同 range 参数的文档使用单独的调用。
+如果 {{ tool('read_documents') }} 拒绝 `source2` 或 `offset2`，先读取它的模式，再重试。
+对每个需要不同范围参数的文档，使用单独的调用。
 {% endif %}
 {% endif %}
 {% if has('search_skills') %}
-{{ tool('search_skills') }} 接受 query，最多 160 个字符。省略或空文本会列出所有可用技能。
-它返回方法名称和描述。
-```json {} ``` ```json {"query":"Read a long document and continue its matching passage."} ```
+{{ tool('search_skills') }} 接受 query，最多 160 个字符。省略 query 或使用空文本时，会列出所有可用的技能。
+它会返回方法的名称和说明。
+```json
+{}
+```
+```json
+{"query":"阅读一份长文档，并继续查看其中匹配的段落。"}
+```
 {% endif %}
 {% if has('read_skill') %}
-{{ tool('read_skill') }} 需要 name，即技能发现返回的准确名称。
-它返回方法说明、工具参数和示例。
-```json {"name":"passages"} ```
+{{ tool('read_skill') }} 要求提供 name，即技能发现所返回的准确名称。
+它会返回方法说明、工具参数和示例。
+```json
+{"name":"passages"}
+```
 {% endif %}
 {% if has('write_note') %}
-{{ tool('write_note') }} 需要 text，共 1 到 2,000 个字符。它保存证据和待解决问题，供后续上下文使用。
-当该上下文必须在压缩后保留时，请包含来源标识和下一个有用的调用。
-```json {"text":"The approval passage is in the returned document range. Verify its original writer before attributing it."} ```
+{{ tool('write_note') }} 要求提供 text，长度为 1 到 2,000 个字符。它会保存证据和未解决的问题，供之后的上下文使用。
+如果这些内容必须在上下文压缩后保留，请写入来源的标识和下一步有用的调用。
+```json
+{"text":"批准的段落在返回的文档范围内。在归因之前，先核实其原始作者。"}
+```
 {% endif %}

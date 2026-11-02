@@ -1,30 +1,63 @@
 ---
 name: browser_use
 group: technique
-description: 如何驱动网页浏览器：打开地址、读取页面快照，然后按元素引用进行点击、输入或选择
+description: 如何操作网页浏览器：打开地址，读取页面快照，然后按元素引用点击、输入或选择
 tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
 ---
-驱动网页浏览器
+{# How to drive the browser tools. An element reference is valid only for the snapshot that
+   gave it, so the text asks for a new snapshot after each action. The sentence on
+   `read_page` renders only when that tool is in the run. #}
+操作网页浏览器
 
 {% if has('read_page') %}
-{{ tool('read_page') }} 读取页面的文本。当页面状态或交互元素重要时，请使用浏览器快照。
+{{ tool('read_page') }} 读取页面的文本。当页面状态或交互元素很重要时，使用浏览器快照。
 
 {% endif %}
-1. 使用 {{ tool('browser_navigate') }} 打开地址。
-2. 调用 {{ tool('browser_snapshot') }}。快照会列出页面中的每个元素及其引用，例如 ref e12。
-3. 使用 {{ tool('browser_click') }}、{{ tool('browser_type') }} 或 {{ tool('browser_select_option') }} 对一个元素进行操作。提供来自最新快照的引用，并给出该元素的简短描述。对于回车等按键，使用 {{ tool('browser_press_key') }}。
-4. 每次操作后，再次调用 {{ tool('browser_snapshot') }}。某个操作可能改变页面，此时旧的引用将不再有效。
+1. 用 {{ tool('browser_navigate') }} 打开地址。
+2. 调用 {{ tool('browser_snapshot') }}。快照会列出页面上的每个元素及其引用，例如 ref e12。
+3. 用 {{ tool('browser_click') }}、{{ tool('browser_type') }} 或 {{ tool('browser_select_option') }} 操作一个元素。给出最新快照中的引用，以及对该元素的简短描述。对于 Enter 之类的按键，使用 {{ tool('browser_press_key') }}。
+4. 每次操作之后，再次调用 {{ tool('browser_snapshot') }}。操作可能会改变页面，此时旧的引用就失效了。
 
-当结果以"### Error"开头时，读取错误文本。过期的元素引用意味着页面已发生变化。重新获取快照并使用新的引用。空的引用或选择器意味着你未提供任何元素。
+当结果以 "### Error" 开头时，阅读错误文本。元素引用过期，表示页面已经改变。请重新获取快照，并使用新的引用。引用或选择器为空，表示你没有给出元素。
 
-在你的回答或报告中说明你打开了哪个地址，以及页面显示了什么内容。
+在你的回答或报告中说明你打开了哪个地址，以及页面显示了什么。
 
-{{ tool('browser_navigate') }} 需要 url。{{ tool('browser_snapshot') }} 不接受任何参数。
-```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} 需要 target。复制返回的元素引用，或使用唯一选择器。
-element 可选地描述目标。button 默认为 left，也可取 right 或 middle。
-doubleClick 可选地选择双击。modifiers 可选地包含 Alt、Control、ControlOrMeta、Meta 或 Shift。
-```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} 需要 target 和 text。element 可选地描述目标。
-submit 可选地在输入后按下回车。slowly 可选地逐个输入字符以触发键盘处理器。
-```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} 需要 target 和 values，即选项值列表。element 可选地描述目标。
-```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} 需要 key，例如 Enter 或 Control+ArrowRight。
-```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` 每个操作都会返回其状态或错误。在改变页面的操作后读取新的快照。
+{{ tool('browser_navigate') }} 要求提供 url。{{ tool('browser_snapshot') }} 不接受参数。
+```json
+{"url":"COPY_SEARCH_RESULT_URL"}
+```
+```json
+{}
+```
+{{ tool('browser_click') }} 要求提供 target。复制返回的元素引用，或使用唯一的选择器。
+element 可选，用于描述目标。button 默认为 left，也可以是 right 或 middle。
+doubleClick 可选，用于选择双击。modifiers 可选，取值为 Alt、Control、ControlOrMeta、Meta 或 Shift。
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"搜索按钮","button":"left","doubleClick":false,"modifiers":["Control"]}
+```
+{{ tool('browser_type') }} 要求提供 target 和 text。element 可选，用于描述目标。
+submit 可选，输入后按 Enter。slowly 可选，逐个字符输入，以触发按键处理程序。
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","text":"批准"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"搜索框","text":"批准","submit":true,"slowly":true}
+```
+{{ tool('browser_select_option') }} 要求提供 target 和 values（选项值列表）。element 可选，用于描述目标。
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"格式选择器","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]}
+```
+{{ tool('browser_press_key') }} 要求提供 key，例如 Enter 或 Control+ArrowRight。
+```json
+{"key":"Enter"}
+```
+```json
+{"key":"Control+ArrowRight"}
+```
+每次操作都会返回其状态或错误。会改变页面的操作之后，请读取新的快照。

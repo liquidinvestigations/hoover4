@@ -1,20 +1,22 @@
 ---
 name: collection_names
 group: stumble
-description: 在调用中为数据集集合或数据集命名的方式：list_collections 返回的确切名称
+description: 如何在调用中指定文档集或数据集的名称：使用 list_collections 返回的准确名称
 tools: list_collections, search_collections
 ---
-为数据集集合命名
+{# How to name a collection in a call. The refused calls give a dataset name, a changed name
+   or a collection that the chat cannot read. #}
+指定文档集的名称
 
-1. 若省略 collection，则搜索本聊天的所有数据集集合。这对大多数问题都是正确的。
-2. 当你必须给出数据集集合时，从 {{ tool('list_collections') }} 或结果行的数据集集合中精确复制其名称。
-3. 数据集不是数据集集合。数据集 tables/ehudx 位于数据集集合 tables 中。请给出表格。
-4. 不要更改名称。不要添加空格、更改大写字母或翻译它。
-5. 当调用声称某数据集集合超出允许的数据集合范围时，本聊天无法读取它。不要再次发送该调用。使用本聊天的数据集集合。
+1. 省略 collection，就会搜索本对话的所有文档集。对大多数问题，这样做是正确的。
+2. 必须给出 collection 时，从 {{ tool('list_collections') }} 或结果行的 collection 中原样复制其名称。
+3. 数据集不是文档集。数据集 tables/ehudx 属于文档集 tables。应给出 tables。
+4. 不要更改名称。不要添加空格，不要更改大小写，也不要翻译。
+5. 调用提示某个文档集不在允许的文档集范围内时，表示本对话无法读取它。不要再次发送该调用。使用本对话的文档集。
 
-要读取文档，请给出与其 file_hash 相同结果行的数据集集合。
+要读取文档时，给出与其 file_hash 来自同一结果行的 collection。
 
-当名称出现在任何地方时，读取索引的拼写建议及其已检查的计数。
-不要将建议的拼写用作请求的名称。
-当你搜索建议的拼写时，在答案中将其命名为不同的拼写。
-当没有拼写匹配时，报告搜索的数据集集合不包含该名称。
+名称在任何地方都找不到时，阅读已索引的拼写建议及其核对过的数量。
+不要把建议的拼写当作所请求的名称。
+搜索建议的拼写时，要在回答中说明它是另一种拼写。
+没有任何拼写匹配时，报告所搜索的文档集中没有这个名称。

@@ -1,88 +1,119 @@
 ---
 name: folders_and_files
 group: technique
-description: 如何查看数据集集合中 contents：数据集、文件夹、文件类型、计数和日期，以及如何按名称或路径查找文件
+description: 如何查看文档集中有什么：数据集、文件夹、文件类型、数量和日期，以及如何按名称或路径查找文件
 tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
-terms: 相关词汇：数据集集合、数据集、文件夹、目录、路径、文件名、文件类型、扩展名、格式、计数、文件数量、大小、最大、概览、清单、数据集集合 contents、每年文档数。
-not_for: 当请求仅涉及文档内容时，无需使用此工具。
+terms: 相关词语：文档集、数据集、文件夹、目录、路径、文件名、文件类型、扩展名、格式、数量、有多少文件、大小、最大、概览、清单、文档集里有什么、每年的文档数。
+not_for: 请求只询问文档的内容时，不需要。
 ---
+{# How to see what a collection holds and how to find a file by its name. Each sentence that
+   names a tool renders only when the run has it. #}
 文件夹和文件
 
 {% if has('list_collections') and has('search_facet_values') %}
-要获取数据集集合概览，请调用 {{ tool('list_collections') }} 并传入 {}。
-然后针对每个允许的数据集集合的文件类型和语言，各调用一次 {{ tool('search_facet_values') }}。
-默认矩阵已同时包含这两个维度，无需针对每个数据集集合或每个维度单独调用。
+要获得文档集概览，用 {} 调用 {{ tool('list_collections') }}。
+然后对每个允许访问的文档集，用 {} 调用一次 {{ tool('search_facet_values') }}，查看其文件类型和语言。
+默认矩阵已经包含这两个分面。不需要为每个文档集或每个分面单独调用。
 {% endif %}
 
 {% if has('list_collections') %}
-{{ tool('list_collections') }} 不接受任何参数。它返回数据集集合名称、文档数量和数据集数量。
-```json {} ```
+{{ tool('list_collections') }} 不接受参数。它会给出文档集名称、文档数量和数据集数量。
+```json
+{}
+```
 
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} 返回每个数据集集合和数据集的存储计数。
+{{ tool('folder_overview') }} 给出每个文档集和数据集的存储数量。
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} 返回某个数据集的一个文件夹的子文件夹和文件。
+{{ tool('folder_list') }} 给出数据集中某一个文件夹的子文件夹和文件。
 {% endif %}
 {% if has('folder_search') %}
-要在某个数据集内按名称查找文件夹或文件，请调用 {{ tool('folder_search') }}。
+要在一个数据集内按名称查找文件夹或文件，调用 {{ tool('folder_search') }}。
 {% endif %}
 {% if has('search_collections') %}
-要在每个数据集集合中按名称查找文件，请调用 {{ tool('search_collections') }} 并将 `filename_only` 设为 true。将名称或其部分作为查询传入。
+要在所有文档集中按名称查找文件，调用 {{ tool('search_collections') }}，
+并把 `filename_only` 设为 true。把名称或名称的一部分作为查询。
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }} 按日期或大小统计某次搜索命中文档的数量。
+{{ tool('search_histogram') }} 按日期或大小统计一次搜索所得文档的数量。
 {% endif %}
 {% if has('search_facet_values') %}
-{{ tool('search_facet_values') }} 返回筛选条件的取值，包括文件类型，并附带计数。
+{{ tool('search_facet_values') }} 给出某个筛选条件（包括文件类型）的各个值及其数量。
 {% endif %}
 
-文件名或路径即可标识一个文档。结果行的 `file_hash` 可直接标识它。
+文件名或路径可以标识一个文档。结果行中的 `file_hash` 可以直接标识该文档。
 
-对于清单请求，请使用元数据工具。它们的计数即可直接回答该请求。
-内容搜索仅在当事人询问文档内容时才派得上用场。
+对于清单类请求，使用元数据工具。它们给出的数量可以直接回答请求。
+只有当用户询问文档说了什么时，内容搜索才有用。
 
 {% if has('search_facet_values') %}
-为多个数据集集合和筛选项各调用一次 {{ tool('search_facet_values') }}。
-参数为 collection、facets、query 和 ids。
-省略 collection，或为每个允许的数据集集合给出 []。给出单个名称或列表以缩小选择范围。
-对 ["file_types", "language"] 省略 facets。对其他分布给出精确的筛选项名称列表。
-使用 file_types、file_paths、email_from、email_to、struct_flags、ner_per、ner_org、ner_loc、ner_misc、re_email、language、red_flags、re_phone、re_bank_account、re_company_id、re_money 或 re_crypto_wallet。
+对多个文档集和多个分面，只调用一次 {{ tool('search_facet_values') }}。
+参数是 collection、facets、query 和 ids。
+省略 collection 或给出 []，表示所有允许访问的文档集。给出一个名称或一个列表，可以缩小所选范围。
+省略 facets 时，默认为 ["file_types", "language"]。要查看其他分布，给出准确分面名称的列表。
+可用的有 file_types、file_paths、email_from、email_to、struct_flags、ner_per、ner_org、ner_loc、ner_misc、
+re_email、language、red_flags、re_phone、re_bank_account、re_company_id、re_money 或 re_crypto_wallet。
 file_type 无效。请使用 file_types。
-query 在筛选项值内查找文本。它不搜索文档内容。
-ids 可选地解析已知术语标识符。普通搜索使用值文本，无需标识符。
+query 用于在分面值中查找文本。它不搜索文档内容。
+ids 可选，用于解析已知的词项标识。普通搜索使用值文本，不需要标识。
 
-结果包含列和条目。每行以其数据集集合开头。
-每个筛选项单元格包含 [文本, 计数] 对。将文本复制到 facet_filters 以便后续内容搜索。
-空单元格表示存在报告的错误。空单元格表示无返回值。
-计数指按值统计的已索引文档匹配数。多个值可能同时适用于同一文档。
-不要添加筛选项计数来声称不同的总数。库存总数来自 list_collections。
-默认筛选项列表可能省略不常见的值。使用 query 查找特定值。
-当结果继续时，配合 read_more 使用更多。
+结果包含 columns 和 items。每一行都以其文档集开头。
+每个分面单元格中包含 [text, count] 对。把 text 复制到 facet_filters 中，供之后的内容搜索使用。
+单元格为 null，表示已报告错误。单元格为空，表示没有返回值。
+数量指每个值所对应的已索引文档匹配数。一个文档可以对应多个值。
+不要把分面数量相加来声称不重复的总数。清单总数来自 list_collections。
+默认的分面列表可能省略不常见的值。用 query 查找特定的值。
+结果还有后续内容时，配合 read_more 使用 more。
 
-此最小调用会盘点允许的数据集集合中的文件格式和语言。
-```json {} ``` 此调用会比较两个所选数据集集合，并搜索其邮件地址值。
-```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+下面这个最简调用，对所有允许访问的文档集统计文件格式和语言。
+```json
+{}
+```
+下面这个调用比较两个选定的文档集，并搜索它们的邮箱地址值。
+```json
+{"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"}
+```
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} 需要 collection。dataset 可选地选择某个数据集。
-此调用会读取某个数据集集合内所有数据集的存储计数。
-```json {"collection":"alpha"} ``` 此调用会选择某个数据集。
-```json {"collection":"alpha","dataset":"files"} ```
+{{ tool('folder_overview') }} 要求提供 collection。dataset 可选，用于选择一个数据集。
+下面这个调用读取一个文档集中所有数据集的存储数量。
+```json
+{"collection":"alpha"}
+```
+下面这个调用选择一个数据集。
+```json
+{"collection":"alpha","dataset":"files"}
+```
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} 需要 collection 和 dataset。node_id 可选地选择返回的文件夹节点。
-省略 node_id 可读取数据集根目录。将子节点标识符复制到后续调用中。
-```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_list') }} 要求提供 collection 和 dataset。node_id 可选，用于选择返回的某个文件夹节点。
+省略 node_id 则读取数据集的根。把子节点的标识复制到之后的调用中。
+```json
+{"collection":"alpha","dataset":"files"}
+```
+```json
+{"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('folder_search') %}
-{{ tool('folder_search') }} 需要 collection、dataset 和 query。node_id 可选地将搜索限制到某个文件夹。
-```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_search') }} 要求提供 collection、dataset 和 query。node_id 可选，用于把搜索限制在一个文件夹内。
+```json
+{"collection":"alpha","dataset":"files","query":"report"}
+```
+```json
+{"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }} 接受与 search_collections 相同的筛选条件，但不接受 sort 和 queries。
-field 为 date、mentioned_date 或 size。默认值为 date。query 默认取空查询。
-省略 collection 会覆盖所有允许的数据集集合。结果会返回存储桶和所选字段。
-```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{{ tool('search_histogram') }} 接受与 search_collections 相同的筛选条件，但不包括 sort 和 queries。
+field 是 date、mentioned_date 或 size，默认为 date。query 默认为空查询。
+省略 collection 则涵盖所有允许访问的文档集。结果返回各个区间和所选的字段。
+```json
+{}
+```
+```json
+{"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}}
+```
 {% endif %}

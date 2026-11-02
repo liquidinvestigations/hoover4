@@ -8,12 +8,12 @@
   "quote": "引文",
   "workspace file": "工作区文件",
   "report": "报告",
-  "hit": "命中",
+  "hit": "命中结果",
   "passage": "段落",
   "query": "查询",
   "web page": "网页",
-  "run": "运行",
-  "note": "备注",
+  "run": "本次运行",
+  "note": "系统提示",
   "plan": "计划"
  }
 }
