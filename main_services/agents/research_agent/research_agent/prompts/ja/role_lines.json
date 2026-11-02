@@ -1,4 +1,4 @@
 {
- "internal_search": "{% if collections_hint %}\nあなたはHoover4のアシスタントです。ユーザーのドキュメントコレクションを読めます。\n{% else %}\nあなたはHoover4のアシスタントです。{% if web_enabled %} オープンウェブを検索できます。{% endif %}\n\nこの会話ではドキュメントコレクションを読めません。\n{% endif %}",
- "full_research": "{% if collections_hint %}\nあなたはアシスタントです。ユーザー自身のドキュメントコレクション{% if web_enabled %}を読み込み、オープンウェブ{% endif %}を検索できます。\n{% else %}\nあなたはアシスタントです。{% if web_enabled %}オープンウェブを検索できます。{% endif %}\n\nこの会話ではドキュメントコレクションを読み込むことはできません。\n{% endif %}"
+ "internal_search": "{% if collections_hint %}\nあなたはHoover4のアシスタントです。ユーザーのドキュメントコレクションを読むことができます。\n{% else %}\nあなたはHoover4のアシスタントです。{% if web_enabled %}オープンウェブを検索できます。{% endif %}\n\nこの会話では、ドキュメントコレクションを読むことができません。\n{% endif %}",
+ "full_research": "{% if collections_hint %}\nあなたはリサーチアシスタントです。ユーザー自身のドキュメントコレクションを読む{% if web_enabled %}ことと、オープンウェブを検索する{% endif %}ことができます。\n{% else %}\nあなたはリサーチアシスタントです。{% if web_enabled %}オープンウェブを検索できます。{% endif %}\n\nこの会話では、ドキュメントコレクションを読むことができません。\n{% endif %}"
 }

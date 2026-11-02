@@ -1,95 +1,140 @@
 ---
 name: passages
 group: technique
-description: search_passages を使用して、複数のドキュメントまたは単一のドキュメント内で、質問に答える正確なパスジやページを見つける方法
+description: search_passagesで、質問に答える正確な箇所やページを、多数のドキュメントまたは1つのドキュメントの中から見つける方法
 tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
-terms: 関連用語: パスジ、段落、文、引用、抜粋、ページ、セクション、「〜とある」「〜について言及している部分」「正確な表現」「行。PDF、Word ファイル、e-mail、レポート、トランスクリプトなど、長いテキストドキュメントに適用されます。
-not_for: カウント、ファイル一覧、メタデータでは不要です。
+terms: 関連する語: 箇所、段落、文、引用、抜粋、ページ、節、どこに書いてあるか、言及している部分、正確な文言、行、該当箇所、パッセージ。長いテキストのドキュメントに使います: PDF、Wordファイル、メール、報告書、議事録、書き起こし。
+not_for: 件数、ファイルの一覧、メタデータには不要です。
 ---
-パスジとページを検索する
+{# How to find the passages and the pages that answer a question, in many documents or in
+   one. Each sentence that names a tool renders only when the run has it. #}
+箇所とページの検索
 
 {% if has('search_passages') %}
-多数のドキュメントを検索するには、{{ tool('search_passages') }}を使用します。これは、キーワードと意味の両方によってテキストのパスジを検索します。ドキュメントが使う言葉が明確でない場合など、日常言語で質問があるときに使います。1回の呼び出しで最大12個のクエリを与え、それぞれを質問の異なる形にします。各ヒットは見つけたクエリを名付けます。正確な名前、住所、フレーズには、{{ tool('search_collections') }}を使用します。
+多数のドキュメントを検索するには、{{ tool('search_passages') }}を使ってください。テキストの箇所を、キーワードと意味の両方で検索します。ドキュメントで使われている言葉が分からないときに、普通の言葉の質問に使ってください。1回の呼び出しに、質問の異なる形を最大12件指定できます。各ヒットには、それを見つけたクエリが示されます。正確な名前、アドレス、フレーズには、{{ tool('search_collections') }}を使ってください。
 
 {% endif %}
 {% if has('doc_search_text') or has('pdf_search') %}
-1つの長いドキュメントを検索するには、これらのツールを使用します。
+1つの長いドキュメントを検索するには、次のツールを使ってください。
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }}は、1つのテキストソース内のクエリのヒットをページの順序で一覧表示し、各ヒットのページを示します。
+{{ tool('doc_search_text') }}は、1つのテキストソースでのクエリのヒットを、ページ順に、各ヒットのページとともに一覧します。
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }}は、PDFソースのページ上でクエリを探します。ページ範囲を検索するには、page_from と page_to を与えます。
+{{ tool('pdf_search') }}は、PDFソースのページからクエリを探します。page_fromとpage_toを指定すると、ページの範囲を検索できます。
 {% endif %}
 
 {% endif %}
 {% if has('read_documents') %}
-パスジが主张を支えるのに十分なテキストを示していない場合、{{ tool('read_documents') }}でページを読みます。そのページを与えるか、最も多くのヒットを持つページを開くためのクエリを与えます。
+箇所に、主張を裏付けるのに十分なテキストが表示されていないときは、{{ tool('read_documents') }}でページを読んでください。
+pageを指定するか、queryを指定して、ヒットが最も多いページを開いてください。
 {% endif %}
 
-パスジが回答を支える場合、ドキュメントとページを与えます。
+箇所が回答を裏付けるときは、ドキュメントとページを明記してください。
 
 {% if has('read_documents') %}
-{{ tool('read_documents') }}は、collection と file_hash を要求します。
-collection は1つの名前です。file_hash は、そのコレクションからの1から20個のハッシュのリストです。
-異なるコレクション内のドキュメントには、コレクションごとに別々のバッチを作ります。
-結果からアイデンティティをコピーします。一意なファイル名またはパスでドキュメントを解決することもできます。
-source は抽出されたソースをオプションで選択します。省略すると優先ソースが使われます。
-page は保存されたページ識別子をオプションで選択します。ページ識別子には隙間があることがあります。
-page を省略するか、0を与えて、最も多くのクエリヒットを持つページ、またはクエリのない最初の保存されたページを選択します。
-query は、そのページ上の近くの区別された一致語の周りのテキストを開きます。
-正確な表記には、クエリ内のフレーズを引用します。1つの一致値は、その最初の出現を開きます。
-offset はパスジの開始を上書きします。それは、そのページ内のゼロからカウントするUnicode文字数です。
-length は正の文字数です。省略すると6,000文字が使われます。
-source_version は返されたソースのフィンガープリントをオプションで検証します。範囲の再読み取りには、それをコピーします。
+{{ tool('read_documents') }}にはcollectionとfile_hashが必須です。
+collectionは名前1つです。file_hashは、そのコレクションのハッシュ1〜20個のリストです。
+異なるコレクションのドキュメントは、コレクションごとに別のバッチにしてください。
+識別情報は、結果からコピーしてください。一意のファイル名やパスでも、ドキュメントを解決できます。
+sourceは任意で、抽出されたソースを選びます。省略すると、優先されるソースを使います。
+pageは任意で、保存されたページの識別子を選びます。ページの識別子には、欠番があることがあります。
+pageを省略するか0を指定すると、クエリのヒットが最も多いページ、クエリがない場合は最初に保存されたページを選びます。
+queryは、そのページで、近くにある異なる一致語の周囲のテキストを開きます。
+正確な文言には、queryの中でフレーズを引用符で囲んでください。一致した値が1つだけのときは、その最初の出現位置を開きます。
+offsetは、箇所の開始位置を上書きします。そのページ内で、Unicodeの文字数を0から数えます。
+lengthは、正の文字数です。省略すると6,000文字を使います。
+source_versionは任意で、返されたソースのフィンガープリントを検証します。範囲を読み直すときは、その値をコピーしてください。
 
-結果は、start、end（排他的）、総ページ文字数、ユニットを含む text_range を返します。
-page_complete は、その範囲がページ全体をカバーしていることを意味します。
-cut マーカーは、ツールが範囲の一部だけを渡したことを意味します。ページそこで終わることを意味しません。
-アイテムの more を使ってそのドキュメントを続けます。トップレベルの more を使って、残りのページまたは後のページを続けます。
-返されたハンドルを {{ tool('read_more') }} にそのまま続行としてコピーします。
-read_before または read_after を、周囲のテキスト用の read_documents 引数としてコピーします。オフセットの計算は不要です。
-範囲引数は、1回の呼び出し内のすべてのハッシュに適用されます。ドキュメントのソース、範囲、ソースバージョンが異なる場合は、別の呼び出しを使用します。
-例えば、最初ドキュメントの返された read_after オブジェクトを1つの呼び出しにコピーします。
-```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` 2番目ドキュメントの返された read_after オブジェクトを別の呼び出しにコピーします。
-```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` 各ドキュメントの実際の返された値を使用します。source2 や offset2 のような番号付きフィールドは追加しません。
-繰り返しの初回呼び出しは同じテキストを返します。より多くのテキストが必要な場合は続行を使用します。
-パスジが要求された主張に対して十分な証拠を提供するまで読み取りを停止します。
+結果は、開始位置、終了位置(含まない)、ページの総文字数、単位を持つtext_rangeを返します。
+page_completeは、範囲がページ全体を覆っていることを意味します。
+cutマーカーは、ツールが範囲の一部だけを渡したことを意味します。そこでページが終わるという意味ではありません。
+そのドキュメントを続けるには、項目のmoreを使ってください。残りのページや後のページを続けるには、最上位のmoreを使ってください。
+返されたハンドルを、そのまま{{ tool('read_more') }}にcontinuationとしてコピーしてください。
+前後のテキストが必要なときは、read_beforeまたはread_afterを、read_documentsの引数としてコピーしてください。オフセットの計算は不要です。
+範囲の引数は、1回の呼び出しのすべてのハッシュに適用されます。ドキュメントごとにソース、範囲、ソースのバージョンが異なるときは、別々の呼び出しを使ってください。
+例えば、最初のドキュメントについて返されたread_afterオブジェクトを、1回の呼び出しにコピーします。
+```json
+{"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"}
+```
+2番目のドキュメントについて返されたread_afterオブジェクトを、別の呼び出しにコピーします。
+```json
+{"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"}
+```
+各ドキュメントに、実際に返された値を使ってください。source2やoffset2のような番号付きのフィールドを追加しないでください。
+最初の呼び出しを繰り返すと、同じテキストが返されます。さらにテキストが必要なときは、continuationを使ってください。
+箇所が、依頼された主張に十分な証拠を提供したら、読むのをやめてください。
 
 この最小限の呼び出しは、最初に保存されたページを開きます。
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` この呼び出しは、対象のページを開きます。
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` この呼び出しは、選択されたソースとページ内の返された範囲を開きます。
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` この続行は、次に返された範囲を読みます。実際に発行されたハンドルを使用してください。
-```json {"continuation":"COPY_RETURNED_MORE"} ```
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]}
+```
+この呼び出しは、対象の箇所を開きます。
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"}
+```
+この呼び出しは、選んだソースとページで、返された範囲を開きます。
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"}
+```
+この続きの読み取りは、返された次の範囲を読みます。実際に発行されたハンドルを使ってください。
+```json
+{"continuation":"COPY_RETURNED_MORE"}
+```
 {% endif %}
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} は collection、file_hash、query を要求します。source はオプションで一つの抽出を選択します。
-各ヒットに対して page、ordinal、start、end、snippet を返します。オフセットはそのページ内の文字数を数えます。
-snippet により多くのコンテキストが必要な場合、read_documents にヒットのページと start をコピーしてください。
-read_more を使用して残りのヒットを取得してください。
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
+{{ tool('doc_search_text') }}にはcollection、file_hash、queryが必須です。sourceは任意で、1つの抽出を選びます。
+各ヒットについて、page、ordinal、start、end、snippetを返します。オフセットは、そのページ内の文字数です。
+スニペットにさらに文脈が必要なときは、ヒットのpageとstartを、read_documentsにコピーしてください。
+残りのヒットを取得するには、read_moreを使ってください。
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"}
+```
 {% endif %}
 {% if has('doc_sources') %}
-{{ tool('doc_sources') }} は collection と file_hash を要求します。query はオプションで各抽出内の一致するヒットを数えます。
-ソース名と保存されたページ範囲を返します。特定の抽出を選択する場合、ソース名をコピーしてください。
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
+{{ tool('doc_sources') }}にはcollectionとfile_hashが必須です。queryは任意で、各抽出での一致するヒットを数えます。
+ソース名と、保存されたページの範囲を返します。特定の抽出を選ぶときは、ソース名をコピーしてください。
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
 {% endif %}
 {% if has('doc_diff_sources') %}
-{{ tool('doc_diff_sources') }} は collection、file_hash、source_a、source_b を要求します。
-page_a と page_b はオプションでページを選択します。省略すると各ソースの最初に保存されたページが選択されます。
-結果は統合されたテキストの diff です。続行する場合、read_more を使用してください。
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
+{{ tool('doc_diff_sources') }}にはcollection、file_hash、source_a、source_bが必須です。
+page_aとpage_bは任意で、ページを選びます。省略すると、各ソースの最初に保存されたページを選びます。
+結果は、統合形式のテキスト差分です。続くときは、read_moreを使ってください。
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7}
+```
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }} は collection、file_hash、query を要求します。
-source はオプションで PDF 抽出を選択します。page_from と page_to はオプションで包括的な PDF ページ範囲を制限します。
-返されたページ位置をコピーしてください。続行するヒットには read_more を使用してください。
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
+{{ tool('pdf_search') }}にはcollection、file_hash、queryが必須です。
+sourceは任意で、PDFの抽出を選びます。page_fromとpage_toは任意で、PDFのページ範囲(両端を含む)を制限します。
+返されたページの位置をコピーしてください。ヒットが続くときは、read_moreを使ってください。
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12}
+```
 {% endif %}
 {% if has('search_passages') %}
-{{ tool('search_passages') }} はクエリを一つの文字列または最大12個のフォームのリストとして受け入れます。
-collection は一つの名前またはリストを受け入れます。省略すると許可されたすべてのコレクションが検索されます。
-max_results は、提供されるスキーマの制限内でのクエリフォームあたりのヒット数を選択します。省略すると15を使用します。
-結果は collection、file_hash、page、snippet を提供します。q はゼロベースのクエリインデックスを記録します。
-ページが質問に答えない場合、補足テキストを読んでください。
-```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
+{{ tool('search_passages') }}は、queriesを、1つの文字列か、最大12件の形のリストとして受け付けます。
+collectionは、名前1つかリストを受け付けます。省略すると、許可されたすべてのコレクションを検索します。
+max_resultsは、提供されるスキーマの上限の範囲内で、クエリの形ごとのヒット数を選びます。省略すると15を使います。
+結果には、collection、file_hash、page、snippetが含まれます。qは、0から数えたクエリの番号を記録します。
+箇所が質問に答えていないときは、裏付けとなるテキストを読んでください。
+```json
+{"queries":"送金の承認"}
+```
+```json
+{"collection":["alpha","beta"],"queries":["送金の承認","送金の許可"],"max_results":5}
+```
 {% endif %}

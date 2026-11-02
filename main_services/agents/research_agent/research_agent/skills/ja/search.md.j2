@@ -1,87 +1,101 @@
 ---
 name: search
 group: general
-description: ドキュメントコレクションの検索方法和クエリ構文の使用方法
+description: ドキュメントコレクションの検索方法とクエリの構文。キーワード検索、フレーズ検索、絞り込み、日付やサイズのフィルター
 tools: search_collections
 ---
+{# This method renders when the run has search_collections.
+#}
 {% if has('search_collections') %}
-ユーザーのドキュメントを検索する
+ユーザーのドキュメントの検索
 
-1. ドキュメントの内容が質問に答えられる場合、そのドキュメントを検索する。
-2. リクエストが単一のコレクションを対象とする場合は、コレクションを使用する。このチャットが読み取り可能なコレクション全体を検索するには、指定しないままにする。
-3. {{ tool('search_collections') }}は複数のクエリを受け付ける。名前や住所の関連する書式を使用する。正確なフレーズは二重引用符でくくる。
-4. OR、AND、NOTはクエリ内の通常の単語である。いずれかを選択するには | を、単語を除外するには -単語を使用する。
-5. 結果の行から file_hash と collection をコピーする。ハッシュを自分で入力することは絶対にない。{% if has('read_more') %} 行に file_hash がない場合は、{{ tool('read_more') }} を呼び出す。{% endif +%}
-6. 質問に答えるのに役立つ場合、日付またはサイズのフィルターを設定する。
-7. 検索でドキュメントが見つからなかったと報告するとき、そのクエリ、コレクション、件数を与える。
-8. 1回の呼び出しで最大12個のクエリを行う。より長いリストは2回の呼び出しに分割する。
-9. 各クエリには少なくとも1つの検索対象単語を与える。単語のみ（-単語）で構成されるクエリは拒否される。
-10. filename_only を true または false に設定する。テキストは受け取らない。
+1. ドキュメントの内容が質問に答えられるときは、ドキュメントを検索します。
+2. 依頼が1つのコレクションを対象にしているときは、collectionを使います。省略すると、
+このチャットが読めるすべてのコレクションを検索します。
+3. {{ tool('search_collections') }}は、複数のクエリを受け付けます。名前やアドレスの関連する表記を使います。正確なフレーズは、二重引用符で囲みます。
+4. OR、AND、NOTは、クエリの中では普通の語です。どちらかには|を、語の除外には-wordを使います。
+5. file_hashとcollectionは、結果の行からコピーします。ハッシュを自分で書かないでください。{% if has('read_more') %}行にfile_hashがないときは、{{ tool('read_more') }}を呼び出します。{% endif +%}
+6. 質問に答えるのに役立つときは、日付またはサイズのフィルターを設定します。
+7. 検索でドキュメントが見つからなかったと報告するときは、そのクエリ、コレクション、件数を示します。
+8. 1回の呼び出しで受け付けるクエリは、最大12件です。それより長いリストは、2回の呼び出しに分けます。
+9. 各クエリには、検索する語を1つ以上含めます。-wordの語だけのクエリは拒否されます。
+10. filename_onlyは、trueかfalseを設定します。テキストは受け付けません。
 
-例. ユーザーが JoeBWilkinson@cs.com のすべてのデータを求める。{{ tool('search_collections') }} にクエリ ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"] を指定して1回の呼び出しを行う。結果の行がその主張に十分な証拠を提供しない場合、そのドキュメントを読む。
+例。ユーザーが、JoeBWilkinson@cs.comに関するすべてのデータを求めます。{{ tool('search_collections') }}を、queries ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]で1回呼び出します。結果の行が主張に十分な証拠を提供しないときは、ドキュメントを読みます。
 {% endif %}
 
-前の検索で質問に答えられない場合、これらの検索手順に従ってください。
+以前の検索で質問に答えられないときは、次の検索ステップに従ってください。
 {% if has('search_collections') %}
-1. 各名前を引用句として検索します。
-2. 引用しない単語、イニシャル、メールアドレス、ドキュメント言語の名前を検索します。
-word_counts とスペリングの提案を読み、提案は意図した名前にのみ使用します。
-1文字のバリエーションには dasovi?h を、末尾の任意の1文字には dasovic% を使用します。
-単語の順序が重要な場合は skilling << resigned を使用します。
-3. フィルターを1つずつ外します。フィルターなしで検索を実行します。
+1. 各名前を、引用符付きのフレーズとして検索します。
+2. 引用符なしの語、イニシャル、メールアドレス、ドキュメントの言語での名前を検索します。
+word_countsと綴りの候補を読みます。候補は、意図した名前にだけ使います。
+1文字が異なる場合はdasovi?h、末尾の1文字が任意の場合はdasovic%を使います。
+語順が重要な場合はskilling << resignedを使います。
+3. フィルターを1つずつ外します。フィルターなしで検索します。
 {% endif %}
 {% if has('search_facet_values') %}
-フィルター値を {{ tool('search_facet_values') }} で確認します。
+フィルターの値は、{{ tool('search_facet_values') }}で検証します。
 {% endif %}
 {% if has('search_histogram') %}
-日付を {{ tool('search_histogram') }} で確認します。
+日付は、{{ tool('search_histogram') }}で検証します。
 {% endif %}
 {% if has('search_passages') %}
-4. コンテンツの説明を {{ tool('search_passages') }} で検索します。
+4. 内容の説明文を、{{ tool('search_passages') }}で検索します。
 {% endif %}
 {% if has('folder_search') %}
-5. リクエストでフォルダー、パス、ファイルが指定されている場合に {{ tool('folder_search') }} を使用します。
+5. 依頼がフォルダー、パス、ファイルを挙げているときは、{{ tool('folder_search') }}を使います。
 {% endif %}
 {% if has('folder_list') %}
-そのフォルダーには {{ tool('folder_list') }} を使用します。
+そのフォルダーには、{{ tool('folder_list') }}を使います。
 {% endif %}
 {% if has('read_documents') %}
-6. 最高の 1〜3 個のヒットを {{ tool('read_documents') }} で読みます。
+6. 最も有望なヒットを1〜3件、{{ tool('read_documents') }}で読みます。
 {% endif %}
-ドキュメントの人物や組織について、それらの名前が記載されたそのドキュメントの部分を読みます。別作品への言及は、その別作品の名前を特定します。
+ドキュメントの人物や組織を調べるときは、それらを挙げているドキュメントの部分を読みます。別の著作への言及は、その別の著作を指しています。
 {% if has('doc_search_text') %}
-ドキュメント内の関連テキストには {{ tool('doc_search_text') }} を使用します。
+ドキュメント内の関連するテキストには、{{ tool('doc_search_text') }}を使います。
 {% endif %}
 {% if has('web_search') %}
-7. リクエストが許容する場合にのみウェブを検索します。
+7. 依頼が許可している場合だけ、ウェブを検索します。
 {% endif %}
 {% if has('read_page') %}
-最高のウェブページを {{ tool('read_page') }} で読みます。
+最も有望なウェブページを、{{ tool('read_page') }}で読みます。
 {% endif %}
 
 {% if has('search_collections') %}
-完全検索の引数は、collection、queries、query、sort、date_after、date_before、date_unknown_only、mentioned_date_after、mentioned_date_before、size_min、size_max、folder_term_id、filename_only、facet_filtersです。
-collectionには名前またはリストを指定します。省略または[]だと、許可されたすべてのコレクションを検索します。
-queryは空テキストが既定値です。queriesには最大12形式まで任意で追加できます。重複した形式は1回だけ実行されます。
-空のクエリは、すべてのフィルター一致をブラウズします。検索形式は、一致するドキュメントの同一性をマージします。
-sortにはフィールドと方向が含まれます。フィールドはrelevance、date、file_size、nameです。方向はascまたはdescです。
-省略すると、既定の関連性順が使われます。
-date_afterとdate_beforeは、ドキュメント日に使う、上限を含むUTCエポック秒です。
-mentioned_date_afterとmentioned_date_beforeは、テキストから抽出した日に使う、上限を含むUTCエポック秒です。
-date_unknown_only=trueは、既知のドキュメント日がないドキュメントを選択します。既知の日の範囲と組み合わせてはいけません。
-size_minとsize_maxは、上限を含むバイト制限です。folder_term_idは、返されたフォルダー用語を選択します。
-filename_only=trueは、クエリを名前とパスに制限します。Falseは、ドキュメントの内容を使います。
-facet_filtersは、有効なファセット名を、返された値テキストのリストにマップします。省略すると、ファセットフィルターは適用されません。
-1つのファセット内の値は互いに代替です。異なるファセットフィルターは、すべて一致しなければなりません。
+検索の引数の全体は、collection、queries、query、sort、date_after、date_before、
+date_unknown_only、mentioned_date_after、mentioned_date_before、size_min、size_max、
+folder_term_id、filename_only、facet_filtersです。
+collectionは、名前かリストを受け付けます。省略するか[]を指定すると、許可されたすべてのコレクションを検索します。
+queryの既定値は空のテキストです。queriesは任意で、最大12件の形を追加します。重複する形は1回だけ実行されます。
+空のqueryは、フィルターに一致するすべてを閲覧します。検索の各形で一致したドキュメントの識別情報は、統合されます。
+sortは、fieldとdirectionを持ちます。fieldは、relevance、date、file_size、nameのいずれかです。directionは、ascまたはdescです。
+省略すると、既定の関連度順を使います。
+date_afterとdate_beforeは、ドキュメントの日付について、両端を含むUTCエポック秒を使います。
+mentioned_date_afterとmentioned_date_beforeは、テキストから抽出された日付について、両端を含むUTCエポック秒を使います。
+date_unknown_only=trueは、ドキュメントの日付が不明なドキュメントを選びます。既知の日付の範囲とは組み合わせないでください。
+size_minとsize_maxは、両端を含むバイトの上限と下限です。folder_term_idは、返されたフォルダーの用語を選びます。
+filename_only=trueは、クエリを名前とパスに限定します。falseは、ドキュメントの内容を使います。
+facet_filtersは、有効なファセット名を、返された値のテキストのリストに対応付けます。省略すると、ファセットのフィルターは適用されません。
+1つのファセット内の値は、代替です。異なるファセットのフィルターは、すべてに一致する必要があります。
 
-各結果には、collection、file_hash、path、snippet、type、date、sizeが含まれます。
-qは、その行を見つけた0起点の形式をリストします。query_formsは、各形式のカウントを報告します。
-word_countsは、インデックスされた単語を検証します。suggestionsは、近くでインデックスされた綴りをカウント付きでリストします。
-query_notesを読んで、修復された構文、未知のフィルター、失敗したクエリ形式を確認します。
-moreは結果を続けます。それを読み専用read_moreにコピーします。最初のページが空なら、同じ呼び出しを繰り返す必要はありません。
+各結果には、collection、file_hash、path、snippetと、利用できる場合は種類、日付、サイズが含まれます。
+qは、その行を見つけた、0から数えた形を一覧します。query_formsは、各形の件数を報告します。
+word_countsは、インデックスされた語を検証します。suggestionsは、近いインデックス済みの綴りを件数とともに一覧します。
+修復された構文、不明なフィルター、失敗したクエリの形については、query_notesを読んでください。
+moreは、結果を続けます。read_moreにコピーしてください。最初のページが空のときは、同一の呼び出しを繰り返す必要はありません。
 
 この最小限の呼び出しは、許可されたすべてのコレクションを検索します。
-```json {"query":"\"Joe Wilkinson\""} ``` この高度な呼び出しは、クエリ形式、コレクションのスコープ、ソート、日付、サイズ、ファセットフィルターを組み合わせます。
-```json {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}} ``` この別の呼び出しは、既知のドキュメント日付を持たないファイルを検出します。
-```json {"query":"report","filename_only":true,"date_unknown_only":true} ``` コレクション、フォルダー、ファセットの値を、現在のチャットに対して返された値に置き換えてください。
+```json
+{"query":"\"Joe Wilkinson\""}
+```
+この高度な呼び出しは、クエリの形、コレクションの範囲、並べ替え、日付、サイズ、ファセットのフィルターを組み合わせます。
+```json
+{"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}}
+```
+この別の呼び出しは、ドキュメントの日付が不明なファイルを探します。
+```json
+{"query":"report","filename_only":true,"date_unknown_only":true}
+```
+collection、folder、ファセットの値は、現在のチャットで返された値に置き換えてください。
 {% endif %}

@@ -1,88 +1,119 @@
 ---
 name: folders_and_files
 group: technique
-description: コレクションが何を含んでいるかを確認する方法：データセット、フォルダー、ファイル形式、件数と日付、および名前やパスからファイルを探す方法
+description: コレクションの内容の確認方法。データセット、フォルダー、ファイルの種類、件数、日付、ファイル名やパスでのファイル検索
 tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
-terms: ここで使う表現：コレクション、データセット、フォルダー、ディレクトリ、パス、ファイル名、ファイル形式、拡張子、フォーマット、件数、ファイル数、サイズ、最大、概要、目録、コレクションの内容、年別ドキュメント数。
-not_for: ドキュメントの内容のみを尋ねる依頼の場合は不要。
+terms: 関連する語: コレクション、データセット、フォルダー、ディレクトリ、パス、ファイル名、ファイルの種類、拡張子、形式、件数、ファイルがいくつあるか、サイズ、最大、概要、一覧、棚卸し、コレクションの内容、年ごとのドキュメント数。
+not_for: 依頼がドキュメントの内容だけについて尋ねているときは不要です。
 ---
-フォルダとファイル
+{# How to see what a collection holds and how to find a file by its name. Each sentence that
+   names a tool renders only when the run has it. #}
+フォルダーとファイル
 
 {% if has('list_collections') and has('search_facet_values') %}
-コレクションの概要を確認するには、{{ tool('list_collections') }}を{}で呼び出します。
-その後、許可された各コレクションのファイル形式と言語について、{{ tool('search_facet_values') }}を1回ずつ呼び出します。
-既定のマトリクスには両方の軸が含まれています。コレクションまたは軸ごとに個別に呼び出す必要はありません。
+コレクションの概要を知るには、{{ tool('list_collections') }}を{}で呼び出してください。
+次に、許可された各コレクションについて、ファイルの種類と言語を調べるため、{{ tool('search_facet_values') }}を{}で1回呼び出してください。
+既定のマトリクスには、両方のファセットが既に含まれています。コレクションごとやファセットごとに別々の呼び出しは不要です。
 {% endif %}
 
 {% if has('list_collections') %}
-{{ tool('list_collections') }}は引数を取りません。コレクション名、ドキュメント数、データセット数を返します。
-```json {} ```
+{{ tool('list_collections') }}は引数を取りません。コレクション名、ドキュメント数、データセット数が返されます。
+```json
+{}
+```
 
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }}は、各コレクションとデータセットのストレージ数を返します。
+{{ tool('folder_overview') }}は、各コレクションと各データセットのストレージの件数を返します。
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }}は、データセット内の1つのフォルダの子フォルダとファイルを返します。
+{{ tool('folder_list') }}は、データセットの1つのフォルダーの子フォルダーとファイルを返します。
 {% endif %}
 {% if has('folder_search') %}
-1つのデータセット内で名前によってフォルダまたはファイルを探すには、{{ tool('folder_search') }}を呼び出します。
+1つのデータセットの中で、名前でフォルダーやファイルを探すには、{{ tool('folder_search') }}を呼び出してください。
 {% endif %}
 {% if has('search_collections') %}
-すべてのコレクション内で名前によってファイルを探すには、{{ tool('search_collections') }}を`filename_only`をtrueに設定して呼び出します。クエリとして名前またはその一部を指定します。
+すべてのコレクションから名前でファイルを探すには、`filename_only`をtrueにして、{{ tool('search_collections') }}を呼び出してください。
+名前またはその一部を、queryに指定してください。
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }}は、日付またはサイズごとに検索のドキュメント数をカウントします。
+{{ tool('search_histogram') }}は、検索に該当するドキュメントを、日付またはサイズで集計します。
 {% endif %}
 {% if has('search_facet_values') %}
-{{ tool('search_facet_values') }}は、ファイル形式を含むフィルターの値を数を付けて返します。
+{{ tool('search_facet_values') }}は、ファイルの種類を含むフィルターの値を、件数とともに返します。
 {% endif %}
 
-ファイル名またはパスで1つのドキュメントを特定できます。結果行の`file_hash`がそれを直接特定します。
+ファイル名やパスは、1つのドキュメントを特定できます。結果の行の`file_hash`は、ドキュメントを直接特定します。
 
-インベントリ依頼にはメタツールを使用します。これらの数は依頼に直接答えられます。
-コンテンツ検索は、人物がドキュメントの内容を尋ねた場合에만有用です。
+目録の依頼には、メタデータのツールを使ってください。その件数が、依頼に直接答えられます。
+内容の検索が役立つのは、ドキュメントが何を述べているかをユーザーが尋ねたときだけです。
 
 {% if has('search_facet_values') %}
-{{ tool('search_facet_values') }}を複数のコレクションとファセットに対して1回呼び出します。
-引数は collection、facets、query、ids です。
-collection を省略するか、許可されたすべてのコレクションに対して [] を指定します。選択を絞り込むには、名前またはリストを1つ指定します。
-["file_types"、"language"] のファセットは省略します。その他の分布には、正確なファセット名の一覧を指定します。
-file_types、file_paths、email_from、email_to、struct_flags、ner_per、ner_org、ner_loc、ner_misc、re_email、language、red_flags、re_phone、re_bank_account、re_company_id、re_money、re_crypto_wallet を使用します。
-file_type は無効です。file_types を使用します。
-query はファセット値内のテキストを検索します。ドキュメント本文は検索しません。
-ids は既知の用語識別子を任意で解決します。通常の検索では値のテキストを使用し、識別子は不要です。
+複数のコレクションとファセットには、{{ tool('search_facet_values') }}を1回呼び出してください。
+引数は、collection、facets、query、idsです。
+collectionを省略するか[]を指定すると、許可されたすべてのコレクションが対象です。1つの名前かリストを指定すると、対象を絞れます。
+facetsを省略すると["file_types", "language"]になります。他の分布には、正確なファセット名のリストを指定してください。
+次のいずれかを使います: file_types、file_paths、email_from、email_to、struct_flags、ner_per、ner_org、ner_loc、ner_misc、
+re_email、language、red_flags、re_phone、re_bank_account、re_company_id、re_money、re_crypto_wallet。
+file_typeは無効です。file_typesを使ってください。
+queryは、ファセットの値の中のテキストを探します。ドキュメントの内容は検索しません。
+idsは任意で、既知の用語の識別子を解決します。通常の検索は値のテキストを使うため、識別子は不要です。
 
-結果には列と項目が含まれます。各行はコレクションから始まります。
-各ファセットセルには [text, count] ペアが含まれます。後の本文検索のためにテキストを facet_filters にコピーします。
-null のセルには報告されたエラーが含まれます。空のセルには返される値がありません。
-カウントは値あたりのインデックス付きドキュメントの一致数を示します。複数の値が1つのドキュメントに適用されることがあります。
-固有の合計を主張するためにファセットカウントを追加しないでください。在庫の合計は list_collections から取得します。
-デフォルトのファセット一覧には、まれな値が含まれていないことがあります。特定の値を見つけるには query を使用します。
-結果が続く場合は read_more を使ってさらに取得します。
+結果には、columnsとitemsがあります。各行は、そのcollectionで始まります。
+各ファセットのセルには、[テキスト, 件数]の組が入ります。後の内容の検索では、テキストをfacet_filtersにコピーしてください。
+nullのセルは、エラーが報告されています。空のセルは、返された値がありません。
+件数は、値ごとの、インデックスされたドキュメントの一致数です。1つのドキュメントに複数の値が当てはまることがあります。
+ファセットの件数を足し合わせて、重複のない合計を主張しないでください。目録の合計は、list_collectionsから取得します。
+既定のファセットのリストでは、まれな値が省かれることがあります。特定の値を探すには、queryを使ってください。
+結果が続くときは、read_moreでmoreを使ってください。
 
-この最小限の呼び出しは、許可されたコレクション全体でファイル形式と言語を調査します。
-```json {} ``` この呼び出しは2つの選択したコレクションを比較し、そのメールアドレス値を検索します。
-```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+この最小限の呼び出しは、許可されたコレクション全体のファイル形式と言語の目録を作ります。
+```json
+{}
+```
+この呼び出しは、選んだ2つのコレクションを比較し、メールアドレスの値を検索します。
+```json
+{"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"}
+```
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} は collection が必要です。dataset はオプションで1つのデータセットを選択します。
-この呼び出しは、1つのコレクション内のすべてのデータセットのストレージカウントを読み取ります。
-```json {"collection":"alpha"} ``` この呼び出しは1つのデータセットを選択します。
-```json {"collection":"alpha","dataset":"files"} ```
+{{ tool('folder_overview') }}にはcollectionが必須です。datasetは任意で、1つのデータセットを選びます。
+この呼び出しは、1つのコレクション内のすべてのデータセットのストレージの件数を読み取ります。
+```json
+{"collection":"alpha"}
+```
+この呼び出しは、1つのデータセットを選びます。
+```json
+{"collection":"alpha","dataset":"files"}
+```
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} は collection と dataset が必要です。node_id はオプションで返されたフォルダーノードを選択します。
-node_id を省略するとデータセットのルートを読み取ります。子ノードの識別子は後の呼び出しにコピーします。
-```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_list') }}にはcollectionとdatasetが必須です。node_idは任意で、返されたフォルダーのノードを選びます。
+node_idを省略すると、データセットのルートを読み取ります。子ノードの識別子は、以降の呼び出しにコピーしてください。
+```json
+{"collection":"alpha","dataset":"files"}
+```
+```json
+{"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('folder_search') %}
-{{ tool('folder_search') }} は collection、dataset、query が必要です。node_id はオプションで検索を1つのフォルダーに限定します。
-```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_search') }}にはcollection、dataset、queryが必須です。node_idは任意で、検索を1つのフォルダーに限定します。
+```json
+{"collection":"alpha","dataset":"files","query":"report"}
+```
+```json
+{"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }} は search_collections と同じフィルターを受け入れます。ただし sort と queries は除きます。
-field は date、mentioned_date、size のいずれかです。既定値は date です。query は既定値が空のクエリです。
-省略された collection は許可されたすべてのコレクションをカバーします。結果はバケットと選択したフィールドを返します。
-```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{{ tool('search_histogram') }}は、sortとqueriesを除き、search_collectionsと同じフィルターを受け付けます。
+fieldは、date、mentioned_date、sizeのいずれかです。既定値はdateです。queryの既定値は空のクエリです。
+collectionを省略すると、許可されたすべてのコレクションが対象です。結果は、バケットと、選んだfieldを返します。
+```json
+{}
+```
+```json
+{"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}}
+```
 {% endif %}

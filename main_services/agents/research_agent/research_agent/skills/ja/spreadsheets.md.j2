@@ -1,55 +1,88 @@
 ---
 name: spreadsheets
 group: technique
-description: テーブルツールを使ってスプレッドシートファイル（シート、列、行、単一のセル）を読む方法
+description: テーブルツールでスプレッドシートのファイルを読む方法。シート、列、行、単一のセル
 tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
-terms: ここで言う「テーブル」の言い換え表現: table、tables、spreadsheet、Excel、workbook、sheet、worksheet、tab、CSV、TSV、tabular data、data table、ledger、register、tracker、列のあるリスト、row、column、cell、header、pivot table、database table、SQLite、Tabelle。ファイル形式: xlsx、xls、xlsm、ods、csv、tsv、sqlite、db、SpreadsheetML XML、そしてHTMLまたはPDFドキュメント内のテーブル。検索結果のタイプはテーブル。
-not_for: リクエストが単に回答をテーブル形式で出力することを求めている場合や、tableという言葉を別の意味で使っている場合は不要です。
+terms: 関連する語: 表、テーブル、スプレッドシート、表計算、Excel、エクセル、ワークブック、シート、ワークシート、タブ、CSV、TSV、表形式のデータ、データ表、台帳、名簿、一覧表、列のある一覧、行、列、セル、ヘッダー、ピボットテーブル、データベースのテーブル、SQLite。ファイルの種類: xlsx、xls、xlsm、ods、csv、tsv、sqlite、db、SpreadsheetML XML、HTMLやPDFのドキュメント内の表。種類がtableの検索ヒット。
+not_for: 依頼が、回答を表の形に整えることだけを求めているときや、表という語を別の意味で使っているときは不要です。
 ---
+{# How to read a table document with the table tools, from the overview to one cell. The
+   order follows the tool texts: the overview gives the sheets and the column ids that the
+   other tools take. #}
 スプレッドシートの読み取り
 
-スプレッドシート、CSVファイル、またはドキュメント内のテーブルはテーブルドキュメントです。検索結果のfile_hashとコレクションによって名前を付けます。
+スプレッドシート、CSVファイル、ドキュメント内の表は、テーブルのドキュメントです。検索結果のfile_hashとcollectionで指定してください。
 
-1. {{ tool('table_overview') }}はシートと列を、そのidと共に一覧表示します。
-2. {{ tool('table_page') }}で行を読み取ります。1回の呼び出しで50行が得られます。呼び出しで行をソートおよびフィルターします。大きなシートの行へ進むためにrow_startを指定し、60番目の列以降の列を読み取るために列を指定します。
-3. {{ tool('table_column_values') }}は1つの列の値とその頻度を一覧表示します。
-4. シート内の値を見つけるには、{{ tool('table_search_cells') }}を呼び出します。一致にコンテキストが必要な場合は、{{ tool('table_page') }}で周辺の行を読み取ります。
-5. {{ tool('table_page') }}が長いセルを切り取る場合、{{ tool('table_cell') }}で全体を読み取ります。返されたrow_idを行に、返された列idを列に指定します。
+1. {{ tool('table_overview') }}は、シートと列をIDとともに一覧します。
+2. 行は、{{ tool('table_page') }}で読みます。1回の呼び出しで50行が返されます。呼び出しの中で、行を並べ替えたりフィルターしたりできます。大きなシートの特定の行に移るにはrow_startを、61番目以降の列を読むにはcolumnsを指定します。
+3. {{ tool('table_column_values') }}は、1つの列の値とその件数を一覧します。
+4. シートから値を探すには、{{ tool('table_search_cells') }}を呼び出します。一致に文脈が必要なときは、
+{{ tool('table_page') }}で前後の行を読みます。
+5. {{ tool('table_page') }}が長いセルを切り詰めたときは、{{ tool('table_cell') }}で全体を読みます。rowには返されたrow_idを、columnには返された列のIDを指定します。
 
-リーダーが再度値を見つける場合は、シート、行、列を指定します。
+読み手が値をもう一度探す必要があるときは、シート、行、列を明記してください。
 
-値で行を数えるには、その列で {{ tool('table_column_values') }} を呼び出します。テキストのページに行を自分で数えないでください。総行数、フィルター、列を述べます。
-1回の値呼び出しで最大200個の値が得られます。結果に続行がある場合、続行が無くなるまで read_more を呼び出します。部分的な値のリストは完全な分布を与えません。
-値のカウントは、同じシート、同じ行、同じフィルターに対してのみ総行数に合います。空白セルには値がないため、空白セルは合計を総行数より小さくします。合計と総行数を比較するとき、空白セルの数を述べます。
-例えば、24件の建築許可のシートには種別列があります。値の呼び出しは、fence 9、roof 7、deck 5、pool 3を与え、続行はありません。これらのカウントは24に合います。24行に対して27に合うカウントは数え間違いを示します。21に合うカウントは、種別が空白の3行を示します。
-CSVファイルはヘッダー行を述べません。各テーブル結果は `interpretation` を gives。これは、そのカウントが説明する1行目の読み取りです。状態 `established` では、読み取りは分かっています。状態 `ambiguous` または `legacy` で2つの `candidates` がある場合、1行目はヘッダーまたは最初のデータ行になり得ます。
-各候補は行カウントを与えます。結果は `all_rows` を除いて各行を読み取り、呼び出しが `interpretation` を与える場合を除きます。各カウントをその読み取りと共に述べたり、解釈 `all_rows` または `first_row_header` で別の読み取りを読み取ります。1つの読み取りのカウントを確立された行数として報告しないでください。
-JSONファイルまたはテキストファイルにはシートがありません。{{ tool('table_overview') }} がシートを与えない場合、ドキュメントをテキストとして読み取ります。
+値で行数を数えるには、その列に対して{{ tool('table_column_values') }}を呼び出してください。
+テキストの1ページ分の行を、自分で数えないでください。行の総数、フィルター、列を明記してください。
+1回のvaluesの呼び出しは、最大200個の値を返します。結果にcontinuationがあるときは、
+continuationがなくなるまでread_moreを呼び出してください。値の一覧が一部だけでは、完全な分布は分かりません。
+値の件数の合計が行の総数と一致するのは、同じシート、同じ行、同じフィルターの場合だけです。空白のセルには
+値がないため、空白のセルがあると、合計は行の総数より小さくなります。合計を総数と比較するときは、
+空白のセルの数を明記してください。
+例えば、24件の建築許可のシートに、種類の列があります。valuesの呼び出しは、
+fence 9、roof 7、deck 5、pool 3を返し、continuationはありません。これらの件数の合計は24です。
+24行に対して合計が27になる件数は、数え間違いを示します。合計が21になる件数は、種類が空白の行が
+3行あることを示します。
+CSVファイルには、ヘッダー行の指定がありません。各テーブルの結果は、`interpretation`、つまり件数が前提とする
+1行目の読み方を示します。stateが`established`のときは、読み方が確定しています。stateが
+`ambiguous`または`legacy`で`candidates`が2つあるときは、1行目がヘッダーの場合も、最初のデータ行の場合もあります。
+各candidateは、その行数を示します。呼び出しでinterpretationを指定しない限り、結果はすべての行(`all_rows`)を読みます。
+各件数は、その読み方とともに報告してください。または、interpretationに`all_rows`か`first_row_header`を
+指定して、別の読み方で読んでください。1つの読み方の件数を、確定した行数として報告しないでください。
+JSONファイルやテキストファイルには、シートがありません。{{ tool('table_overview') }}がシートを返さないときは、
+そのドキュメントをテキストとして読んでください。
 
-各テーブル呼び出しには、同じドキュメント結果から collection と file_hash が必要です。
-{{ tool('table_overview') }} はシートと列の識別子を返します。
-その他のテーブルツールは sheet が必要です。概要からその識別子をコピーしてください。
-{{ tool('table_page') }} はオプションで sort、filters、columns、search、row_start、interpretation を受け取ります。
-sort には column と direction が必要で、asc または desc です。省略すると保存された行順序が使われます。
-filters は列述語のリストです。各述語は1つのテストタイプを使います。
-数値または日付の範囲は下限と上限の両方を含められます。
-テストには contains、equals、starts_with、is_empty、number_min、number_max、date_min、date_max があります。
-テキストテストには文字列を使います。数値テストには数値を使います。日付の境界には YYYY-MM-DD 形式の文字列を使います。
-columns は列識別子を選択します。1つの返却ウィンドウには最大60個の選択された列が含まれます。
-search はオプションでそのテキストを含む行を保持します。row_start は要求された行順序における0起点の位置です。
-結果には列メタデータと行が含まれます。row_id は保存された行の識別子で、ソート後も保持されます。
+すべてのテーブル呼び出しには、同じドキュメントの結果から取得したcollectionとfile_hashが必須です。
+{{ tool('table_overview') }}は、シートと列の識別子を返します。
+他のテーブルツールには、sheetが必須です。その識別子は、概要からコピーしてください。
+{{ tool('table_page') }}は、任意でsort、filters、columns、search、row_start、interpretationを受け付けます。
+sortには、columnとdirection(ascまたはdesc)が必須です。省略すると、保存された行の順序を使います。
+filtersは、列の条件のリストです。各条件は、1種類のテストを使います。
+数値や日付の範囲は、下限と上限の両方を含められます。
+テストは、contains、equals、starts_with、is_empty、number_min、number_max、date_min、date_maxです。
+テキストのテストは文字列を使います。数値のテストは数値を使います。日付の境界はYYYY-MM-DDの文字列を使います。
+columnsは、列の識別子を選びます。返される1つのウィンドウには、選んだ列が最大60列含まれます。
+searchは任意で、そのテキストを含む行だけを残します。row_startは、要求した行の順序での、0から数える位置です。
+結果には、列のメタデータと行が含まれます。row_idは、並べ替えた後も、保存された行の識別情報です。
 
-{{ tool('table_column_values') }} もまた column が必要です。search はオプションで値のテキストをフィルターします。
-それはその列に対する値とカウントを返します。
-{{ tool('table_search_cells') }} は query が必要です。それは一致するシート、行、列の識別子とテキストを返します。
-{{ tool('table_cell') }} は row と column が必要です。返却された row_id を argument name row の下で渡してください。
-それは2,000文字のスライスを返します。残りのセルテキストには read_more を使ってください。
-テーブルの続きのページ、値、検索ヒットには read_more を使ってください。
+{{ tool('table_column_values') }}には、columnも必須です。searchは任意で、値のテキストをフィルターします。
+その列の値と件数が返されます。
+{{ tool('table_search_cells') }}にはqueryが必須です。一致したシート、行、列の識別情報を、テキストとともに返します。
+{{ tool('table_cell') }}にはrowとcolumnが必須です。返されたrow_idを、引数名rowで渡してください。
+2,000文字ずつの断片が返されます。セルの残りのテキストには、read_moreを使ってください。
+テーブルのページ、値、検索ヒットが続くときは、read_moreを使ってください。
 
-この最小限の概要はテーブル構造を開きます。
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` このページ呼び出しはコピーしたシートと列の識別子を使用します。
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` この値呼び出しは1つの列を絞り込みます。
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` この値呼び出しはあいまいなCSVシートの1行目を列名として読み取ります。
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` このセル検索は要求された値を検出します。
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` このセル呼び出しは、その行が並べ替え結果の先頭に表示された場合でもrow_id 71を読み取ります。
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```
+この最小限の概要の呼び出しは、テーブルの構造を開きます。
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+このページの呼び出しは、コピーしたシートと列の識別子を使います。
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50}
+```
+このvaluesの呼び出しは、1つの列を絞り込みます。
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"}
+```
+このvaluesの呼び出しは、あいまいなCSVシートの1行目を、列名として読みます。
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"}
+```
+このセルの検索は、依頼された値の位置を特定します。
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"}
+```
+このセルの呼び出しは、並べ替えた結果の先頭に現れた行でなくても、row_id 71を読みます。
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2}
+```

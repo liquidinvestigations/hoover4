@@ -1,49 +1,74 @@
 ---
 name: citation
 group: general
-description: 回答をサポートするドキュメントの引用方法
+description: 回答を裏付けるドキュメントの出典の付け方。引用、引用文、ハンドル、出典の失敗
 tools: cite_documents
 ---
-引用テキストはワークスペースファイルに格納されます。`report` スキルが、その書き方・編集方法を説明します。
+{# The document citation protocol of every run that has `cite_documents`. The skill
+   `web_research` holds the web citation protocol. Both include the failure rules of
+   `partials/citation_failures.j2`.
+
+   `citation_artefact` names what the model writes, for example an answer or a report.
+   `citation_resolver` says who turns a handle back into a document. A worker runs on the
+   lead's chat session, so its handles are the lead's handles, and its text names the lead.
+   The system prompt gives the order of the work. This skill gives the arguments, one
+   example, and what to do after a failed entry. The `report` skill says which file holds
+   the cited text.
+#}
+出典付きのテキストは、ワークスペースファイルに書きます。書き方と編集の方法は、`report`スキルにあります。
 
 {% if has('cite_documents') %}
-あなたの {{ citation_artefact }} が {% if web_enabled %} 内部の {% else %} 1つの {% endif %} ドキュメントに依存している場合、{{ tool('cite_documents') }} を呼び出します。
-主張や引用を支える各ドキュメントを渡します。返されたハンドルを、その主張の横に使用します。
-内部ドキュメントに依存する主張の横で、ハンドルを使用します。また、ドキュメントを特定したり、検索結果を説明するために、ドキュメントの名前を指定することもできます。
-1回の呼び出しで最大12件までの引用を取得できます。検索が返したすべてではなく、実際に使用した内容を引用します。
-検索や読み取りで主張を支えるドキュメントが返された場合、そのドキュメントを引用します。
+レポートが{% if web_enabled %}内部の{% else %}{% endif %}ドキュメントに基づく場合は、{{ tool('cite_documents') }}を呼び出してください。
+主張や引用文を裏付ける各ドキュメントを指定してください。返されたハンドルを、その主張の横に置いてください。
+内部ドキュメントに基づく主張の横には、ハンドルを置いてください。ドキュメントを特定するため、または
+検索結果を説明するために、ドキュメントの名前を挙げることもできます。
+1回の呼び出しで受け付ける出典は、最大12件です。検索が返したすべてではなく、実際に使ったものを引用してください。
+検索や読み取りで、主張を裏付けるドキュメントが返されたときは、それらのドキュメントを引用してください。
 
-各引用に対して、以下を指定します:
-- collection と file_hash: ツール結果からコピーした値。file_hash は絶対に作成しないでください。
-- quote: ドキュメント本文の1行からコピーした、連続した5〜6語。ヘッダー行（From、To、Cc、Subject、Date）は対象外。疑問符を含む部分は対象外。
-- find: 省略可能。引用の中で、人物が必ず目にする必要がある最短の正確なフレーズ。カードはこのフレーズでドキュメントを開きます。
-- why: ドキュメントが何を支えているかを説明する1行。
+各出典には、次を指定してください。
+- collectionとfile_hash。ツールの結果からコピーします。file_hashを作り出さないでください。
+- quote: ドキュメント本文の1行から、連続する5〜6語をコピーしたもの。ヘッダー行(From、To、Cc、Subject、Date)は不可です。疑問符を含む範囲も不可です。
+- find: 任意。引用文のうち、ユーザーが見る必要がある最短の正確なフレーズ。カードは、このフレーズの位置でドキュメントを開きます。
+- why: ドキュメントが何を裏付けるかを述べる1行。
 
-主張を行うあなたの {{ citation_artefact }} に、返されたハンドルを書きます。例えば `[D1]` のように。
+返されたハンドル(例: `[D1]`)を、主張を書く位置の{{ citation_artefact }}に書いてください。
 
-例。{{ tool('read_documents') if has('read_documents') else 'A tool' }}は、コレクション enron で「Re: DRAFT talking points」というメールを返しました。
-その本文は「The talking points look great to me. Best of luck today.」です。あなたの{{ citation_artefact }}は、Jim Steffes がドラフトを承認したと述べています。{{ tool('cite_documents') }}を、コレクション enron、結果の file_hash、「talking points look great to me」という引用、「look great」を検索し、「Steffes approves the draft of 27 December」の理由を尋ねて呼び出してください。
-そして「Steffes approved the draft [D1].」と書きなさい。ヘッダー行である「Subject: Re: DRAFT talking points」は引用しないこと。疑問符を含む「Can you check the notes?」は引用しないこと。
-改行、句読点、引用されたメールの`>`マークは一致する必要はありません。
-欠落または存在しない引用にはハンドルが割り当てられません。エラーが示す候補テキストの 5 から 6 語を引用へコピーし、再試行してください。
-返されたハンドルだけがソースにラベルを付けます。自分のラベルを角括弧内に書きません。
-引用ハンドルは主張の横にテキストとして書きなさい。バックティックで囲みません。`[D1]`はバックティックで囲むと何にもリンクしません。
-返されたドキュメントハンドルを追加で検証されたパスジに再利用してください。ドキュメントには 1 枚のカードがあります。
+例。{{ tool('read_documents') if has('read_documents') else 'あるツール' }}が、コレクションenronのメール "Re: DRAFT talking points" を返しました。
+本文には "The talking points look great to me. Best of luck today." とあります。{{ citation_artefact }}には、
+Jim Steffesが草案を承認したと書きます。{{ tool('cite_documents') }}を、collectionにenron、
+結果のfile_hash、quoteに "talking points look great to me"、findに "look great"、
+whyに "Steffes approves the draft of 27 December" を指定して呼び出します。
+そのうえで、「Steffesは草案を承認した [D1]。」と書きます。
+"Subject: Re: DRAFT talking points" はヘッダー行なので、引用しないでください。
+"Can you check the notes?" は疑問符を含むので、引用しないでください。
+引用したメールの改行、句読点、`>`記号は、一致している必要はありません。
+存在しない引用文や欠けている引用文には、ハンドルが割り当てられません。エラーが示す候補テキストの5〜6語をquoteにコピーして、再試行してください。
+ソースにラベルを付けるのは、返されたハンドルだけです。角括弧の中に独自のラベルを書かないでください。
+ハンドルは、主張の横にテキストとして書いてください。バッククォートで囲まないでください。バッククォートで囲んだ`[D1]`は、何にもリンクしません。
+検証した別の箇所を追加するときは、返されたドキュメントのハンドルを再利用してください。ドキュメントのカードは1枚です。
 {% if citation_resolver == "lead" %}
-主任研究員がそれらを解決するので、あなたが一度も割り当てなかったハンドルは誰の得にもなりません。
+ハンドルはリードリサーチャーが解決するので、自分で割り当てていないハンドルは誰の役にも立ちません。
 {% endif %}
 {% endif %}
 {% include "citation_failures.j2" %}
 
 {% if has('cite_documents') %}
-citations 引数は、ドキュメント引用オブジェクトのリストです。
-各オブジェクトには collection と file_hash が必要です。quote には、正確なソースの文言で5語から6語連続したものが格納されます。
-同じドキュメントからの別々の引用を含め、collection と file_hash を各オブジェクトで繰り返します。
-オブジェクトは、それ以前のオブジェクトから引数を継承しません。
-find は省略可能で、quote 内の正確な句を選択します。省略した場合は quote 全体を使用します。
-term は省略可能で、元の検索クエリを記録します。why は、支持される主張を述べます。
-結果は、検証された各エントリに対してハンドルを提供します。失敗したエントリは、その理由を述べ、候補パスジを提供できる場合があります。
-正確な文言で失敗したエントリのみを再試行します。検証された引用は、その引用の筆者や日付を単独で検証するものではありません。
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]}``` このバッチは、同じドキュメントからの2つのパスジを検証します。
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}```
+citations引数は、ドキュメントの出典オブジェクトのリストです。
+各オブジェクトには、collectionとfile_hashが必須です。quoteには、ソースの正確な文言の連続する5〜6語を指定します。
+同じドキュメントの別々の引用文も含め、すべてのオブジェクトでcollectionとfile_hashを繰り返してください。
+オブジェクトは、前のオブジェクトの引数を引き継ぎません。
+findは任意で、quoteの中の正確なフレーズを選びます。省略すると、quote全体を使います。
+termは任意で、元の検索クエリを記録します。whyは、裏付ける主張を述べます。
+結果には、検証された各項目のハンドルが含まれます。失敗した項目には、その理由が示され、候補の箇所が示されることもあります。
+失敗した項目だけを、正確な文言で再試行してください。検証された引用文だけでは、その引用文の書き手や日付は検証されません。
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
+```
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"元の検索","why":"この箇所は、述べられた承認を裏付けている。"}]}
+```
+このバッチは、同じドキュメントの2つの箇所を検証します。
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}
+```
 {% endif %}

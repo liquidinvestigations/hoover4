@@ -1,45 +1,57 @@
 ---
 name: emails
 group: technique
-description: 電子メールドキュメントの読み方：送信者、受信者、日付、件名、ヘッダー、コピー、スレッド
+description: メールのドキュメントの読み方。送信者、受信者、日付、件名、ヘッダー、コピー(CC、BCC)、スレッド、添付ファイル
 tools: doc_email, doc_metadata, read_documents
 ---
-電子メールのドキュメントを読む
+{# How to read e-mail documents. The message fields come from `doc_email`, the text from
+   `read_documents`. Each sentence that names a tool renders only when the run has it. #}
+メールのドキュメントの読み取り
 
 {% if has('search_collections') %}
-{{ tool('search_collections') }}を使って電子メールを探す。アドレスや名前のあらゆる形式を1つの呼び出しにまとめる。例えば、アドレス、「First Last」、「Last, First」など。
+メールは、{{ tool('search_collections') }}で探してください。アドレスや名前のすべての表記を、1回の呼び出しにまとめてください。例: アドレス、"First Last"、"Last, First"。
 
 {% endif %}
 {% if has('doc_email') %}
-1. 電子メールの file_hash を指定して {{ tool('doc_email') }} を呼び出す。送信者、受信者、コピー、日付、件名、親メッセージ、添付ファイル、メッセージグラフが得られる。
-2. スレッドを追跡するには、グラフ内の別のメッセージのファイルハッシュである node を指定する。グラフはそのメッセージを中心に配置される。
-3. 添付ファイルはそれ自体が一つのドキュメントである。その own file_hash を使って読む。
+1. メールのfile_hashを指定して、{{ tool('doc_email') }}を呼び出してください。送信者、受信者、コピー、日付、件名、親メッセージ、添付ファイル、メッセージグラフが返されます。
+2. スレッドをたどるには、グラフ内の別のメッセージのファイルハッシュを、nodeに指定してください。グラフは、そのメッセージを中心にします。
+3. 添付ファイルは、それ自体が1つのドキュメントです。その添付ファイル自身のfile_hashで読んでください。
 {% endif %}
 {% if has('read_documents') %}
-4. メッセージのテキストを {{ tool('read_documents') }} で読む。
+4. メッセージの本文は、{{ tool('read_documents') }}で読んでください。
 {% endif %}
 {% if has('doc_metadata') %}
-5. テキストに含まれないヘッダーと日付については、{{ tool('doc_metadata') }} を呼び出す。
+5. 本文にないヘッダーと日付は、{{ tool('doc_metadata') }}を呼び出して調べてください。
 {% endif %}
 
-同じメッセージのコピーが複数のメールボックスにあることがある。カウントが一意なメッセージに依存する場合、そのフィールドを比較する。
+同じメッセージのコピーが、複数のメールボックスにあることがあります。件数が別個のメッセージ数に依存するときは、それらのフィールドを比較してください。
 
 {% if has('doc_email') %}
-{{ tool('doc_email') }} にはコレクションと file_hash が必要です。
-collection は1つの名前です。file_hash はそのコレクションからの1つのハッシュ、または最大10個までのハッシュのリストを受け付けます。
-node はオプションで、返されたメッセージハッシュをグラフの中心に配置します。省略すると、要求されたメールを中心に配置します。
-残りの添付ファイルやグラフのエントリを確認するには read_more を使います。
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+{{ tool('doc_email') }}にはcollectionとfile_hashが必須です。
+collectionは名前1つです。file_hashは、そのコレクションのハッシュ1つか、最大10個のハッシュのリストを受け付けます。
+nodeは任意で、返されたメッセージのハッシュにグラフの中心を移します。省略すると、依頼されたメールが中心になります。
+残りの添付ファイルとグラフの項目を調べるには、read_moreでmoreを使ってください。
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"}
+```
 {% endif %}
 {% if has('doc_metadata') %}
-{{ tool('doc_metadata') }} にはコレクションと file_hash が必要です。1つのハッシュ、または最大10個までのハッシュのリストを受け付けます。
-保存されたメタデータ、日付、場所、ダウンロードリンクを返します。残りのメタデータ項目には read_more を使います。
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{{ tool('doc_metadata') }}にはcollectionとfile_hashが必須です。ハッシュ1つか、最大10個のハッシュのリストを受け付けます。
+保存されたメタデータ、日付、場所、ダウンロードリンクが返されます。残りのメタデータのフィールドには、read_moreでmoreを使ってください。
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]}
+```
 {% endif %}
-執行者、受信者、日付を割り当てる前に、要求されたパスジを読んでください。
-外側のメールエンベロープは外側のメッセージに属します。
-転送または引用されたパスジは、異なる執行者、受信者、日付を持つことがあります。
-誰がそれを書いたかを特定するには、そのパスジ自身のヘッダーを使ってください。
-メッセージを転送した人が、必ずしもその引用された発言を書いたとは限りません。
-帰属がまだ不明な場合は、その制限を述べてください。
-パスジは対象範囲と続行指示のために読んでください。後のテキストを要求するために最初の読みを繰り返さないでください。
+書き手、受信者、日付を割り当てる前に、対象の箇所を読んでください。
+メールの外側のエンベロープは、外側のメッセージのものです。
+転送された箇所や引用された箇所は、書き手、受信者、日付が異なることがあります。
+その箇所自身のヘッダーを使って、書いた人を特定してください。
+メッセージを転送した人が、引用された発言を書いたとは限りません。
+帰属が不明なままのときは、その限界を明記してください。
+対象の範囲と続きの指示には、箇所の読み取りを使ってください。後のテキストを求めるために、最初の読み取りを繰り返さないでください。

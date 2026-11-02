@@ -1,69 +1,93 @@
 ---
 name: call_arguments
 group: stumble
-description: ツール呼び出しの引数の入力方法：スキーマが指定する名前のみ、リストを要求されている場合はリスト形式で、余分な引用符は付けません
+description: ツール呼び出しの引数の指定方法。スキーマにある名前だけを使い、リストを求められたらリストで渡し、余計な引用符を付けない。引数エラー、不明な引数、拒否された呼び出し
 tools:
 ---
-呼び出しの引数を埋める
+{# How to fill in the arguments of a call. The refused calls give an argument name that the
+   schema does not have, a text where the schema asks for a list, or a value in extra quotes. #}
+呼び出しの引数の指定
 
 {% if has('read_tool') %}
-ツールの引数がわからないときは、{{ tool('read_tool') }} を名前付きで呼び出す。各引数について、その型と、そのツールが要求する引数がわかる。
+ツールの引数に自信がないときは、{{ tool('read_tool') }}を、そのツールの名前を指定して呼び出してください。各引数、その型、ツールが必須とする引数が返されます。
 
 {% endif %}
-1. ツールが示す引数名だけを指定する。別の名前の引数は拒否される。
-2. 各必須引数を指定する。
-3. ツールがリストを要求しているところでは、1つの値であってもリストを指定する。クエリに ["lease"] と書く。クエリに "lease" と書かないでください。
-4. ツールが数値や true、false を要求しているところでは、引用符なしで値を指定する。filename_only true と書く。filename_only "true" と書かないでください。
-5. テキスト値の内部に引用符を入れないでください。status done と書く。status "\"done\"" と書かないでください。
-6. 各値は、リストの最大項目数など、そのツールの範囲内に保つ。
-7. ツールがオブジェクトのリストを要求しているところでは、オブジェクトのリストを指定する。JSON を含むテキスト
+1. ツールが定める引数名だけを指定してください。それ以外の名前の引数は拒否されます。
+2. 必須の引数は、すべて指定してください。
+3. ツールがリストを求める場合は、値が1つでもリストで指定してください。queries ["賃貸借契約"]と書きます。queries "賃貸借契約"とは書かないでください。
+4. ツールが数値またはtrue、falseを求める場合は、引用符なしで値を指定してください。filename_only trueと書きます。filename_only "true"とは書かないでください。
+5. テキスト値の中に引用符を入れないでください。status doneと書きます。status "\"done\""とは書かないでください。
+6. 各値は、そのツールの上限(リストの最大項目数など)の範囲内にしてください。
+7. ツールがオブジェクトのリストを求める場合は、オブジェクトのリストで指定してください。JSONを含む
 {% if has('cite_documents') %}
-   を書かないでください。citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}] と書く。
-   citations "[{\"collection\": ...}]" と書かないでください。
+   テキストで指定しないでください。citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]と書きます。
+   citations "[{\"collection\": ...}]"とは書かないでください。
 {% elif has('cite_pages') %}
-   を書かないでください。pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}] と書く。
-   pages "[{\"url\": ...}]" と書かないでください。
+   テキストで指定しないでください。pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}]と書きます。
+   pages "[{\"url\": ...}]"とは書かないでください。
 {% else %}
-   を書かないでください。
+   テキストで指定しないでください。
 {% endif %}
 {% if has('write_file') %}
-8. 各 {{ tool('write_file') }} と {{ tool('patch_file') }} 呼び出しで、ファイルの名前を指定する。
+8. {{ tool('write_file') }}と{{ tool('patch_file') }}のすべての呼び出しで、ファイル名を指定してください。
 {% endif %}
 
-呼び出しが拒否されると、エラーが引数と、そこで何が問題なのかを指定する。その引数を修正してから、呼び出しを送信する。
+呼び出しが拒否されたときは、エラーが引数の名前と問題点を示します。その引数を修正してから、呼び出しを送ってください。
 
 {% if has('search_agent_tools') %}
-{{ tool('search_agent_tools') }} にはクエリ（最大160文字）とタスクの説明が必要です。
-関連するツール名と説明を返します。不慣れな引数を使う前に、そのツールを読んでください。
-```json {"query":"Find a passage late in one long document."} ```
+{{ tool('search_agent_tools') }}にはqueryが必須です。queryは、160文字以内の作業の説明です。
+関連するツールの名前と説明が返されます。使い慣れない引数を使う前に、そのツールを読んでください。
+```json
+{"query":"長い1つのドキュメントの後半にある箇所を探す。"}
+```
 {% endif %}
 {% if has('read_tool') %}
-{{ tool('read_tool') }} には name、利用可能なツールの正確な名前が必要です。
-許可値、既定値、必須フィールドを含む、説明と完全な入力スキーマを返します。
-```json {"name":"read_documents"} ``` 不明な引数エラーの後、再試行前に失敗したツールのスキーマを読んでください。
+{{ tool('read_tool') }}にはnameが必須です。nameは、利用できる1つのツールの正確な名前です。
+説明と、許可される値、既定値、必須フィールドを含む入力スキーマの全体が返されます。
+```json
+{"name":"read_documents"}
+```
+不明な引数のエラーの後は、再試行する前に、失敗したツールのスキーマを読んでください。
 {% if has('update_plan') %}
-例えば、この{{ tool('update_plan') }} は`plan` が引数ではないため失敗します。
-```json {"plan":["Find the message."]} ``` {{ tool('read_tool') }} でそのスキーマを読んでください。
-```json {"name":"update_plan"} ``` 目標と手順を指定して{{ tool('update_plan') }} を呼び出してください。
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"pending"}]} ```
+例として、次の{{ tool('update_plan') }}の呼び出しは、`plan`が引数ではないため失敗します。
+```json
+{"plan":["メッセージを見つける。"]}
+```
+{{ tool('read_tool') }}で、そのスキーマを読みます。
+```json
+{"name":"update_plan"}
+```
+そのうえで、goalとstepsを指定して{{ tool('update_plan') }}を呼び出します。
+```json
+{"goal":"承認の日付を見つける。","steps":[{"text":"メッセージを見つける。","status":"pending"}]}
+```
 {% endif %}
 {% if has('read_documents') %}
-{{ tool('read_documents') }} が`source2` や`offset2` を拒否した場合、再試行前にそのスキーマを読んでください。
-異なる範囲引数が必要なドキュメントごとに、別の呼び出しを使用してください。
+{{ tool('read_documents') }}が`source2`または`offset2`を拒否したときは、再試行する前にスキーマを読んでください。
+範囲の引数が異なるドキュメントごとに、別々の呼び出しを使ってください。
 {% endif %}
 {% endif %}
 {% if has('search_skills') %}
-{{ tool('search_skills') }} は query を受け取り、最大160文字です。省略または空のテキストは利用可能なすべてのスキルをリストします。
-メソッド名と説明を返します。
-```json {} ``` ```json {"query":"Read a long document and continue its matching passage."} ```
+{{ tool('search_skills') }}は、160文字以内のqueryを受け付けます。省略するか空のテキストにすると、利用できるすべてのスキルが一覧されます。
+方法の名前と説明が返されます。
+```json
+{}
+```
+```json
+{"query":"長いドキュメントを読み、一致する箇所の続きを読む。"}
+```
 {% endif %}
 {% if has('read_skill') %}
-{{ tool('read_skill') }} には skill discovery が返す正確な名前の name が必要です。
-メソッドの説明、ツールの引数、例を返します。
-```json {"name":"passages"} ```
+{{ tool('read_skill') }}にはnameが必須です。nameは、スキルの検索で返された正確な名前です。
+方法の指示、ツールの引数、例が返されます。
+```json
+{"name":"passages"}
+```
 {% endif %}
 {% if has('write_note') %}
-{{ tool('write_note') }} は text を受け取り、1から2,000文字です。証拠と未解決の質問を保存して、後の文脈に備えます。
-その文脈が圧縮に耐える必要がある場合、ソースの特定と次の有用な呼び出しを含めてください。
-```json {"text":"The approval passage is in the returned document range. Verify its original writer before attributing it."} ```
+{{ tool('write_note') }}にはtextが必須で、1〜2,000文字です。後のコンテキストのために、証拠と未解決の問いを保存します。
+コンテキストの圧縮後も残す必要があるときは、ソースの識別情報と、次に有用な呼び出しを含めてください。
+```json
+{"text":"承認の箇所は、返されたドキュメントの範囲にある。作成者を帰属させる前に、元の書き手を確認すること。"}
+```
 {% endif %}

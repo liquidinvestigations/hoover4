@@ -1,30 +1,63 @@
 ---
 name: browser_use
 group: technique
-description: ウェブブラウザの操作方法: アドレスを開き、ページのスナップショットを読み取り、その後、要素参照によってクリック、入力、または選択する
+description: ウェブブラウザの操作方法。アドレスを開き、ページのスナップショットを読み、要素の参照でクリック、入力、選択を行う
 tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
 ---
-ウェブブラウザを操作する
+{# How to drive the browser tools. An element reference is valid only for the snapshot that
+   gave it, so the text asks for a new snapshot after each action. The sentence on
+   `read_page` renders only when that tool is in the run. #}
+ウェブブラウザの操作
 
 {% if has('read_page') %}
-{{ tool('read_page') }} はページのテキストを読み取ります。ページの状態やインタラクティブな要素が重要な場合は、ブラウザのスナップショットを使用してください。
+{{ tool('read_page') }}は、ページのテキストを読みます。ページの状態や操作できる要素が重要なときは、ブラウザのスナップショットを使ってください。
 
 {% endif %}
-1. {{ tool('browser_navigate') }} でアドレスを開きます。
-2. {{ tool('browser_snapshot') }} を呼び出します。スナップショットは、ref e12 のような参照付きでページの各要素をリストします。
-3. {{ tool('browser_click') }}、{{ tool('browser_type') }} または {{ tool('browser_select_option') }} で要素に対して操作します。最新のスナップショットからの参照と、要素の簡単な説明を指定します。Enter のようなキーには {{ tool('browser_press_key') }} を使用します。
-4. 各操作の後、{{ tool('browser_snapshot') }} を再度呼び出します。操作でページが変化することがあり、その場合、古い参照は有効ではありません。
+1. {{ tool('browser_navigate') }}で、アドレスを開きます。
+2. {{ tool('browser_snapshot') }}を呼び出します。スナップショットには、ページの各要素が、ref e12のような参照とともに一覧されます。
+3. {{ tool('browser_click') }}、{{ tool('browser_type') }}、{{ tool('browser_select_option') }}のいずれかで、1つの要素を操作します。最新のスナップショットの参照と、要素の短い説明を指定します。Enterなどのキーには、{{ tool('browser_press_key') }}を使います。
+4. 操作のたびに、{{ tool('browser_snapshot') }}を再度呼び出します。操作によってページが変わることがあり、その場合は古い参照が無効になります。
 
-結果が "### Error" で始まる場合は、エラーテキストを読み取ります。期限切れの要素参照（stale element reference）とは、ページが変化したことを意味します。新しいスナップショットを取り、新しい参照を使用します。参照またはセレクタが空とは、要素を指定しなかったことを意味します。
+結果が"### Error"で始まるときは、エラーのテキストを読んでください。古い要素の参照は、ページが変わったことを意味します。新しいスナップショットを取り、新しい参照を使ってください。参照またはセレクターが空の場合は、要素を指定していません。
 
-どのアドレスを開き、ページが何を表示していたかを、あなたの回答やレポートで述べてください。
+回答またはレポートに、開いたアドレスと、ページに表示された内容を書いてください。
 
-{{ tool('browser_navigate') }} は url が必要です。{{ tool('browser_snapshot') }} は引数を取りません。
-```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} は target が必要です。返された要素参照をコピーするか、一意のセレクタを使用してください。
-element はオプションで対象を説明します。button は既定で left であり、right または middle にできます。
-doubleClick はオプションでダブルクリックを選択します。modifiers はオプションで Alt、Control、ControlOrMeta、Meta、Shift を含みます。
-```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} は target と text が必要です。element はオプションで対象を説明します。
-submit はオプションで入力後に Enter を押します。slowly はオプションで文字を個別に入力してキーハンドラを起動します。
-```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} は target と values（オプション値のリスト）が必要です。element はオプションで対象を説明します。
-```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} は key が必要です。例えば Enter や Control+ArrowRight などです。
-```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` 各アクションはステータスまたはエラーを返します。ページを変更するアクションの後、新しいスナップショットを読んでください。
+{{ tool('browser_navigate') }}にはurlが必須です。{{ tool('browser_snapshot') }}は引数を取りません。
+```json
+{"url":"COPY_SEARCH_RESULT_URL"}
+```
+```json
+{}
+```
+{{ tool('browser_click') }}にはtargetが必須です。返された要素の参照をコピーするか、一意のセレクターを使ってください。
+elementは任意で、対象の説明です。buttonの既定値はleftで、rightまたはmiddleも指定できます。
+doubleClickは任意で、ダブルクリックを選びます。modifiersは任意で、Alt、Control、ControlOrMeta、Meta、Shiftを指定できます。
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"検索ボタン","button":"left","doubleClick":false,"modifiers":["Control"]}
+```
+{{ tool('browser_type') }}にはtargetとtextが必須です。elementは任意で、対象の説明です。
+submitは任意で、入力後にEnterを押します。slowlyは任意で、キーハンドラーを動作させるために1文字ずつ入力します。
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","text":"承認"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"検索フィールド","text":"承認","submit":true,"slowly":true}
+```
+{{ tool('browser_select_option') }}にはtargetとvaluesが必須です。valuesは、選択肢の値のリストです。elementは任意で、対象の説明です。
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"形式の選択","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]}
+```
+{{ tool('browser_press_key') }}にはkeyが必須です。EnterやControl+ArrowRightなどを指定します。
+```json
+{"key":"Enter"}
+```
+```json
+{"key":"Control+ArrowRight"}
+```
+各操作は、ステータスまたはエラーを返します。ページが変わる操作の後は、新しいスナップショットを読んでください。
