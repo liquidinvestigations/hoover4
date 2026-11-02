@@ -1,19 +1,22 @@
 ---
 name: todo_upkeep
 group: stumble
-description: jak utrzymać plan z użyciem update_plan, jego kroki i ich statusy
+description: jak prowadzić plan za pomocą update_plan, jego kroki i ich statusy
 tools: update_plan
 ---
-Zachowując plan
+Prowadzenie planu
 
-{{ tool('update_plan') }} pobiera cel i całą listę kroków. Każdy krok ma tekst i status, a wykonany krok ma krótką notatkę.
+{{ tool('update_plan') }} przyjmuje cel i całą listę kroków. Każdy krok ma text i status, a wykonany krok ma krótką notatkę.
 
-1. Wysyłaj całą listę w każdym wywołaniu, w kolejności. Krok, który pominiesz, przestaje być częścią planu.
-2. Przekazuj każdy krok jako obiekt z polem tekst i status. status to pending lub done.
-3. Krok jest pending dopóki nie zakończy się jego praca. Następnie wyślij go jako done z notatką, taką jak found, not found lub replaced.
-4. Zachowaj tekst kroku bez zmian, gdy zmienia się tylko jego status. Wtedy krok zachowuje swoje id.
+1. Wysyłaj całą listę w każdym wywołaniu, po kolei. Krok, który pominiesz, nie jest już w planie.
+2. Podaj każdy krok jako obiekt z text i status. status to pending lub done.
+3. Krok ma status pending, dopóki jego praca się nie skończy. Potem wyślij go jako done z notatką, na przykład znaleziono, nie znaleziono lub zastąpiono.
+4. Zachowaj ten sam text kroku, gdy zmienia się tylko jego status. Krok zachowuje wtedy swój id.
 5. Nowy cel rozpoczyna nowy plan.
-6. {{ tool('update_plan') }} tylko trzyma plan. Napisz raport lub inny plik z {{ tool('write_file') }}.
+6. {{ tool('update_plan') }} tylko przechowuje plan. Raport lub inny plik zapisz za pomocą {{ tool('write_file') }}.
 
 To jest przykład. Krok 1 znalazł to, czego potrzebujesz, a krok 2 jest nadal otwarty.
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` Wynik pokazuje cały plan z id każdego kroku. Wywołanie, które nic nie zmienia, zwraca stan bez zmian. Popraw nazwane pole przed ponownym wywołaniem.
+```json
+{"goal":"Znajdź datę zatwierdzenia.","steps":[{"text":"Znajdź wiadomość.","status":"done","note":"znaleziono"},{"text":"Przeczytaj fragment potwierdzający.","status":"pending"}]}
+```
+Wynik pokazuje cały plan z id każdego kroku. Wywołanie, które niczego nie zmienia, zwraca unchanged. Popraw wskazane pole, zanim wywołasz ponownie.

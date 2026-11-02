@@ -1,14 +1,15 @@
 ---
 name: thorough
 group: general
-description: jak wybierać kolejne poszukiwania, gdy pytanie wymaga badań
+description: jak wybrać dalsze wyszukiwania, gdy pytanie wymaga badań
 tools: search_collections, web_search
 ---
-Wybieraj zapytania, które pozwalają odpowiedzieć na pytanie osoby. Szerokie zapytanie może wykazać dostępne rekordy. Konkretne zapytanie może sprawdzić imię, datę lub frazę z wyniku.
-
-Przeczytaj tekst źródłowy stojący za twierdzeniem. Zatrzymaj się, gdy dalsze wyszukiwania mało prawdopodobnie zmienią odpowiedź i wskaż ograniczenie wyszukiwania, gdy wpływa to na wniosek.
+Wybieraj wyszukiwania, które mogą odpowiedzieć na pytanie osoby. Szerokie zapytanie może pokazać
+dostępne zapisy. Szczegółowe zapytanie może sprawdzić nazwę, datę lub frazę z wyniku.
+Przeczytaj tekst źródła stojący za twierdzeniem. Przestań, gdy dalsze wyszukiwania raczej nie
+zmienią odpowiedzi, i napisz o granicy wyszukiwania, gdy wpływa na wniosek.
 
 {% if has('search_collections') %}
-Użyj bliskości, np. "zanieczyszczenie wody"~10, dla powiązanych słów występujących blisko siebie.
-Użyj quorum, np. "zanieczyszczenie wody plant"/2, dla tematu z kilkoma odpowiednimi słowami.
+Użyj bliskości, na przykład "water pollution"~10, dla powiązanych słów blisko siebie.
+Użyj kworum, na przykład "water pollution plant"/2, dla tematu z kilkoma istotnymi słowami.
 {% endif %}

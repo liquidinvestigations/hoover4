@@ -6,22 +6,23 @@ tools:
 ---
 Po każdym wyniku
 
-Po każdym wyniku wykonaj jedną z tych czynności.
+Po każdym wyniku zrób jedną z tych rzeczy.
 
-1. Wynik zawiera to, czego potrzebujesz. Wykorzystaj go i kontynuuj pracę.
-2. Wynik jest pusty lub nie pomaga. Zmień argumenty: inne słowa, inną formę imienia,{% if has('search_collections') %} inną kolekcję,{% endif %} inną stronę lub brak filtra.
-3. Wynik to błąd. Przeczytaj tekst błędu, popraw argument, który wskazuje, a następnie wyślij wywołanie.
-   Gdy partia zawiera udane i nieudane wywołania, zachowaj udane wyniki. Wyślij ponownie tylko nieudane wywołanie.
-4. Masz dość, aby odpowiedzieć. Napisw odpowiedź lub raport, gdy wymaga on cytatów lub dokumentu.
+1. Wynik zawiera to, czego potrzebujesz. Użyj go i kontynuuj pracę.
+2. Wynik jest pusty albo nie pomaga. Zmień argumenty: inne słowa, inną formę nazwy,{% if has('search_collections') %} inną kolekcję,{% endif %} inną stronę albo usuń filtr.
+3. Wynik jest błędem. Przeczytaj tekst błędu, popraw argument, który on wskazuje, i dopiero wtedy wyślij wywołanie.
+   Gdy w jednej partii są wywołania udane i nieudane, zachowaj udane wyniki. Wyślij ponownie
+   tylko wywołanie nieudane.
+4. Masz dość, aby odpowiedzieć. Napisz odpowiedź albo raport, gdy wymaga cytowań lub dokumentu.
 
-Wykorzystuj widoczne wyniki, gdy odpowiadają one na aktualne pytanie.
-Po skompresowaniu kontekstu użyj zachowanego indeksu i notatek, aby zidentyfikować wcześniejsze wyniki.
-Odświeżaj wymagany fragment tekstu wprost, gdy jego treść przestała być widoczna.
+Używaj widocznych wyników, gdy odpowiadają na bieżące pytanie.
+Po kompaktowaniu kontekstu użyj zachowanego indeksu i notatek, aby rozpoznać wcześniejsze wyniki.
+Odśwież wymagany fragment jawnie, gdy jego tekst nie jest już widoczny.
 
-Gdy wyszukiwanie zwraca przydatny wynik, zmień zapytanie lub użyj innego źródła.
+Gdy wyszukiwanie nie zwraca użytecznego wyniku, zmień zapytanie albo użyj innego źródła.
 
 {% if has('read_more') %}
-Większa wartość oznacza, że dostępne są dodatkowe teksty wyników.
-Wywołaj {{ tool('read_more') }} z kontynuacją ustawioną na zwróconą wartość.
-Ponowne wywołanie oryginalnego wywołania zwraca oryginalny zakres.
+Wartość more oznacza, że jest dostępny dalszy tekst wyniku.
+Wywołaj {{ tool('read_more') }} z argumentem continuation ustawionym na zwróconą wartość.
+Powtórzenie pierwotnego wywołania zwraca pierwotny zakres.
 {% endif %}

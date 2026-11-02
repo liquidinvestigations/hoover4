@@ -1,71 +1,72 @@
 ---
 name: no_results
 group: stumble
-description: co zrobić, gdy szukaj nie zwraca wyników: usuń filtry, rozdziel frazę, wypróbuj inne formy imienia, a następnie powiedz, czego brakuje
+description: co zrobić, gdy wyszukiwanie nic nie znajduje: usuń filtry, podziel frazę, spróbuj innych form nazwy, potem napisz, czego brakuje
 tools: search_collections, search_passages, web_search
 ---
-Gdy szukanie nie daje wyników
+Gdy wyszukiwanie nic nie znajduje
 
 {% if has('search_collections') %}
 Najpierw przeczytaj word_counts.
-Gdy imię i nazwisko nie występuje nigdzie, przeczytaj zindeksowane sugestie pisowni i ich sprawdzone liczby.
-Nie używaj sugerowanej pisowni jako wymaganego imienia i nazwiska.
-Gdy szukasz sugerowanej pisowni, w odpowiedzi podaj ją jako inną pisownię.
-Gdy żadna pisownia nie pasuje, zgłoś, że szukane Kolekcje nie zawierają tego imienia i nazwiska.
+Gdy nazwa nie występuje nigdzie, przeczytaj zindeksowane propozycje pisowni i ich sprawdzone liczby.
+Nie używaj proponowanej pisowni jako żądanej nazwy.
+Gdy wyszukasz proponowaną pisownię, nazwij ją w odpowiedzi inną pisownią.
+Gdy żadna pisownia nie pasuje, napisz, że przeszukane kolekcje nie zawierają tej nazwy.
 
 {% endif %}
-Zastosuj te kroki szukania, gdy wcześniejsze szukania nie odpowiadają na pytanie.
+Wykonaj te kroki wyszukiwania, gdy wcześniejsze wyszukiwania nie odpowiadają na pytanie.
 {% if has('search_collections') %}
-1. Szukaj każdego imienia i nazwiska jako frazy w cudzysłowie.
-2. Szukaj słów bez cudzysłowia, inicjałów, adresów e-mail i imion i nazwisk w języku dokumentu.
-Przeczytaj word_counts i sugestie pisowni. Użyj sugestii tylko dla zamierzonego imienia i nazwiska.
-Użyj dasovi?h dla jednej zmiennej litery i dasovic% dla opcjonalnej litery końcowej.
-Użyj skilling << resigned, gdy kolejność słów ma znaczenie.
-3. Usuń filtry jeden po drugim. Uruchom szukanie bez filtrów.
+1. Wyszukaj każdą nazwę jako frazę w cudzysłowie.
+2. Wyszukaj słowa bez cudzysłowu, inicjały, adresy e-mail i nazwy w języku dokumentu.
+Przeczytaj word_counts i propozycje pisowni. Użyj propozycji tylko dla zamierzonej nazwy.
+Użyj dasovi?h dla jednej zmiennej litery i dasovic% dla opcjonalnej ostatniej litery.
+Użyj skilling << resigned, gdy liczy się kolejność słów.
+3. Usuwaj filtry po jednym. Wykonaj wyszukiwanie bez filtrów.
 {% if has('search_facet_values') %}
-Sprawdź wartości filtrów z {{ tool('search_facet_values') }}.
+Sprawdź wartości filtrów za pomocą {{ tool('search_facet_values') }}.
 {% endif %}
 {% if has('search_histogram') %}
-Sprawdź daty z {{ tool('search_histogram') }}.
+Sprawdź daty za pomocą {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Szukaj opisu treści z {{ tool('search_passages') }}.
+4. Wyszukaj opis treści za pomocą {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. Użyj {{ tool('folder_search') }}, gdy zapytanie wymienia folder, ścieżkę lub plik.
+5. Użyj {{ tool('folder_search') }}, gdy prośba wymienia folder, ścieżkę lub plik.
 {% endif %}
 {% if has('folder_list') %}
 Użyj {{ tool('folder_list') }} dla tego folderu.
 {% endif %}
 {% if has('read_documents') %}
-6. Przeczynaj najlepsze 1 do 3 trafień z {{ tool('read_documents') }}.
+6. Przeczytaj 1 do 3 najlepszych trafień za pomocą {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_search_text') %}
-Użyj {{ tool('doc_search_text') }} dla istotnego tekstu w dokumencie.
+Użyj {{ tool('doc_search_text') }} dla odpowiedniego tekstu w dokumencie.
 {% endif %}
 {% if has('web_search') %}
-7. Szukaj w sieci tylko gdy zapytanie to pozwala.
+7. Przeszukuj internet tylko wtedy, gdy prośba na to pozwala.
 {% endif %}
 {% if has('read_page') %}
-Przeczynaj najlepsze strony internetowe z {{ tool('read_page') }}.
+Przeczytaj najlepsze strony internetowe za pomocą {{ tool('read_page') }}.
 {% endif %}
 {% else %}
 {% if has('web_search') %}
-1. Szukaj każdego imienia i nazwiska jako frazy w cudzysłowie, a potem innych form imienia i nazwiska, jego inicjałów i języka miejsca.
+1. Wyszukaj każdą nazwę jako frazę w cudzysłowie, a potem inne formy nazwy, jej inicjały i język miejsca.
 {% endif %}
 {% if has('read_page') %}
-2. Przeczynaj najlepsze strony internetowe z {{ tool('read_page') }}.
+2. Przeczytaj najlepsze strony internetowe za pomocą {{ tool('read_page') }}.
 {% endif %}
 {% endif %}
 
-Po wyczerpaniu dostępnych kroków, gdy nie znaleziono dopasowania do słowa kluczowego, odpowiedz z informacją o braku i wynikami wyszukiwań.
+Gdy dostępne kroki nie znajdą dopasowania słów kluczowych, odpowiedz, że czegoś brakuje, i podaj wyszukiwania.
 {% if has('search_collections') %}
-Zanim udzielisz odpowiedzi o braku, uruchom минимум 4 różne wyszukiwania z użyciem минимум 2 dostępnych narzędzi wyszukiwania.
+Zanim odpowiesz, że czegoś brakuje, wykonaj co najmniej 4 różne wyszukiwania za pomocą co najmniej 2 dostępnych narzędzi wyszukiwania.
 Nie powtarzaj identycznego wyszukiwania. Podaj przeszukane kolekcje i brakujące fakty.
-Ogranicz oświadczenie o braku do wyszukiwań i dokumentów, które zbadałeś.
-Na przykład powiedz: „Przeszukane protokoły komitetu i zapisy transferu nie wskazały daty zatwierdzenia”. Te wyszukiwania nie potwierdzają, że żaden zapis zatwierdzenia nie istnieje w żadnej dozwolonej kolekcji.
+Ogranicz stwierdzenie braku do wyszukiwań i dokumentów, które sprawdzono.
+Na przykład napisz "Przeszukane protokoły komisji i zapisy transferów nie wskazały daty zatwierdzenia."
+Te wyszukiwania nie dowodzą, że w żadnej dozwolonej kolekcji nie ma zapisu zatwierdzenia.
 {% else %}
-Zanim udzielisz odpowiedzi o braku, uruchom минимум 4 różne wyszukiwania.
+Zanim odpowiesz, że czegoś brakuje, wykonaj co najmniej 4 różne wyszukiwania.
 Nie powtarzaj identycznego wyszukiwania. Podaj wyszukiwania i przeczytane strony.
-Ogranicz oświadczenie o braku do wyszukiwań i stron, które zbadałeś.
+Ogranicz stwierdzenie braku do wyszukiwań i stron, które sprawdzono.
 {% endif %}

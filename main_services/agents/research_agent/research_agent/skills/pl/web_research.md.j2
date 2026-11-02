@@ -1,115 +1,172 @@
 ---
 name: web_research
 group: technique
-description: jak szukać w otwartym internecie, czytać strony internetowe lub rekord właściciela domeny i cytować strony internetowe, które potwierdzają raport
+description: jak przeszukiwać otwarty internet, czytać stronę internetową lub rekord właściciela domeny i cytować strony internetowe, które potwierdzają raport
 tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
 ---
 Badanie otwartego internetu
 
-Korzystaj z źródeł sieciowych, gdy mogą odpowiedzieć na pytanie osoby.
+Używaj źródeł internetowych, gdy mogą odpowiedzieć na pytanie osoby.
 
 {% if has('web_search') %}
-{{ tool('web_search') }} przyjmuje listę zapytań. Pole `sources` zawęża szukanie do nazwanych źródeł.{% if has('list_search_sources') %} {{ tool('list_search_sources') }} wypisuje te źródła.{% endif +%}
+{{ tool('web_search') }} przyjmuje listę zapytań. Pole `sources` zawęża
+wyszukiwanie do nazwanych źródeł.{% if has('list_search_sources') %} {{ tool('list_search_sources') }}
+wypisuje te źródła.{% endif +%}
 {% endif %}
 {% if has('read_page') %}
-1. Przeczyraj najlepsze wyniki w całości z {{ tool('read_page') }}. Podaj wszystkie adresy w jednym wywołaniu i wskaż cel, mówiąc, czego szukasz. Wynik oznaczony BLOCKED BY A BOT CHECK to nie jest strona. Nie używaj jej tekstu.
+1. Przeczytaj najlepsze wyniki w całości za pomocą {{ tool('read_page') }}. Podaj wszystkie adresy w jednym wywołaniu i podaj goal, aby napisać, czego szukasz. Wynik oznaczony BLOCKED BY A BOT CHECK nie jest stroną. Nie używaj jego tekstu.
 {% endif %}
 {% if has('whois_lookup') %}
-{% if has('read_page') %}2.{% else %}1.{% endif %} Dla właściciela, rejestratora albo dat domeny wywołaj {{ tool('whois_lookup') }} z każdym domeną w jednym wywołaniu.
+{% if has('read_page') %}2.{% else %}1.{% endif %} Dla właściciela, rejestratora lub dat domeny wywołaj {{ tool('whois_lookup') }} z każdą domeną w jednym wywołaniu.
 {% endif %}
 
-Przeczyraj każde źródło przed użyciem jego twierdzeń. Snippet wynik szukania to nie jest źródło.
+Przeczytaj każde źródło, zanim użyjesz jego twierdzeń. Fragment wyniku wyszukiwania nie jest źródłem.
 {% if has('cite_pages') %}
 
 Cytowanie stron internetowych
 
-Wywołaj {{ tool('cite_pages') }} z każdym adresem przeczytanej strony i dokładnym cytowanym fragmentem w `terms`.
-Użyj zwróconych sygatur sieciowych przy twierdzeniach, które potwierdzają.
-Zastąp gołe adresy źródeł tymi sygaturami.
-{{ tool('cite_pages') }} przyjmuje url i terms dla jednej strony albo strony do dwunastu obiektów strony.
-Każda strona wymaga url i terms. terms zawiera do ośmiu dokładnych fraz, każdo po najwyżej 200 znaków. Wielkość liter musi się zgadzać.
-version opcjonalnie wybiera przechwyconą wersję. why opcjonalnie wskazuje potwierdzane twierdzenie, po najwyżej 300 znaków.
-Wynik daje zweryfikowane cytaty i stabilną sygaturę sieciową. Nieudana strona daje błąd bez sygatury.
+Wywołaj {{ tool('cite_pages') }} z adresem URL każdej przeczytanej strony i dokładnym potwierdzającym brzmieniem w `terms`.
+Użyj zwróconych sygnatur stron obok twierdzeń, które potwierdzają.
+Zastąp gołe adresy URL źródeł tymi sygnaturami.
+{{ tool('cite_pages') }} przyjmuje url i terms dla jednej strony albo pages dla najwyżej dwunastu obiektów stron.
+Każda strona wymaga url i terms. terms zawiera do ośmiu dokładnych fraz, każda najwyżej 200 znaków. Wielkość liter musi się zgadzać.
+version opcjonalnie wybiera przechwyconą wersję. why opcjonalnie podaje potwierdzane twierdzenie, najwyżej 300 znaków.
+Wynik podaje zweryfikowane cytaty i stałą sygnaturę strony. Nieudana strona daje błąd bez sygnatury.
 
-Przykład. {{ tool('read_page') }} odczytaj adres https://example.org/report. Jego tekst mówi: „Zakład zamknięto w marcu 2019 roku”. Wywołaj {{ tool('cite_pages') }} z płaskimi argumentami dla jednej strony:
-url, skopiowane z wyniku odczytu, terminy w dokładnej frazie oraz dlaczego.
-```json {"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"The report gives the closing date."} ``` Następnie napisz „Zakład zamknięto w marcu 2019 roku [W1].” z sygnaturą, jaką zwrócono w wywołaniu.
-Listę więcej niż dwunastu stron rozbij na osobne wywołania.
-```json {"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"This passage gives the approval date."}]} ``` Skopiuj zwróconą sygnaturę sieciową, na przykład `[W1]`, obok twierdzenia, które on wspiera.
-Przechowuj każdą sygnaturę razem z adresem URL i cytatami z jego zwróconego obiektu cytatu.
-Błąd nie przydziela sygnatury. Pominj twierdzenia tego Źródła, aż jego cytat się powiedzie.
-Dla nieobecnej frazologii skopiuj dokładny tekst ze zwróconego kandydata i wywołaj narzędzie ponownie.
-Gdy błąd zawiera `errors[i].retry_arguments`, skopiuj ten obiekt bez zmian w kolejne wywołanie.
-Przechowuj udane cytaty z częściowego wyniku. Powtarzaj tylko nieudane strony.
-Na przykład jedno wywołanie cytuje trzy strony, a dwie powodują [W1] i [W2]. Użyj tych dwóch sygnatur. Wyślij kolejne wywołanie tylko z trzecią stroną i użyj jej argumentów powtórzenia.
-Na przykład to wywołanie łączy słowa przez przerwę wiersza Źródła i nie powoduje się.
-```json {"url":"https://example.org/report","terms":["The plant closed in March 2019"]} ``` Błąd może zwrócić te argumenty powtórzenia z dokładnym tekstem Źródła.
-```json {"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}} ``` Wywołaj {{ tool('cite_pages') }} z tym zwróconym obiektem, w tym jego faktyczną wersję i dokładne terminy.
-```json {"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]} ``` Okno PDF ma własną wersję. Aby cytować fragment stron 51 do 100, skopiuj wersję tego odczytu.
-```json {"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]} ``` Jeśli wywołanie przekroczy osiem terminów, rozbij jego terminy na grupy po najwyżej osiem i cytuj każdą grupę osobno.
-Przechowuj adres URL i wersję Źródła z każdą grupą. Zmiana struktury wywołania nie zmniejsza liczby terminów.
+Przykład. {{ tool('read_page') }} przeczytało adres URL https://example.org/report. Jego tekst mówi
+"Zakład zamknięto w marcu 2019." Wywołaj {{ tool('cite_pages') }} z płaskimi argumentami dla jednej strony:
+url, skopiowany z wyniku odczytu, terms z dokładną frazą i why.
+```json
+{"url":"COPY_READ_URL","terms":["Zakład zamknięto w marcu 2019"],"why":"Raport podaje datę zamknięcia."}
+```
+Potem napisz "Zakład zamknięto w marcu 2019 [W1]." ze zwróconą przez wywołanie sygnaturą.
+Podziel listę ponad dwunastu stron na osobne wywołania.
+```json
+{"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"Ten fragment podaje datę zatwierdzenia."}]}
+```
+Skopiuj zwróconą sygnaturę strony, na przykład `[W1]`, obok twierdzenia, które potwierdza.
+Trzymaj każdą sygnaturę razem z adresem URL i cytatami z jej zwróconego obiektu cytowania.
+Błąd nie przydziela sygnatury. Pomiń twierdzenia tego źródła, dopóki jego cytowanie się nie powiedzie.
+Dla brakującego brzmienia skopiuj dokładny tekst ze zwróconego kandydata i wywołaj narzędzie ponownie.
+Gdy błąd zawiera `errors[i].retry_arguments`, skopiuj ten obiekt bez zmian do następnego wywołania.
+Zachowaj udane cytowania z częściowego wyniku. Ponów tylko nieudane strony.
+Na przykład wywołanie cytuje trzy strony, a dwie udają się z [W1] i [W2]. Użyj tych dwóch
+sygnatur. Wyślij następne wywołanie tylko z trzecią stroną i użyj jej argumentów ponowienia.
+Na przykład to wywołanie łączy słowa przez złamanie wiersza źródła i nie udaje się.
+```json
+{"url":"https://example.org/report","terms":["Zakład zamknięto w marcu 2019"]}
+```
+Błąd może zwrócić te argumenty ponowienia z dokładnym tekstem źródła.
+```json
+{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["Zakład zamknięto"]}}
+```
+Wywołaj {{ tool('cite_pages') }} z tym zwróconym obiektem, razem z jego rzeczywistą wersją i dokładnymi terms.
+```json
+{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["Zakład zamknięto"]}
+```
+Okno PDF ma własną wersję. Aby zacytować fragment stron od 51 do 100, skopiuj wersję tego odczytu.
+```json
+{"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]}
+```
+Jeśli wywołanie przekracza osiem terms, podziel je na grupy po najwyżej osiem i zacytuj każdą grupę osobno.
+Trzymaj adres URL i wersję źródła z każdą grupą. Zmiana struktury wywołania nie zmniejsza liczby terms.
 Sygnatura otwiera przechwycony tekst strony i jej zweryfikowane cytaty.
-Użyj jednej strony na wywołanie, gdy partia przyjdzie uszkodzona.
-Strona nieodczytna, zablokowana lub niezweryfikowana nie może wspierać twierdzenia.
+Użyj jednej strony na wywołanie, jeśli partia przyjdzie uszkodzona.
+Strona nieprzeczytana, zablokowana lub niezweryfikowana nie może potwierdzić twierdzenia.
 
 {% include "citation_failures.j2" %}
 {% endif %}
 
-Imię lub wydarzenie, sobie przypominasz, jest kandydatem dopóki nie wskażesz źródła, które je nazywa. Znajdź źródło nazywające kandydata przed jego użyciem. Nie wysyłaj ponownie tego samego zapytania ani zapytania z małymi zmianami sformułowań. Kolejowe zapytanie musi użyć innej metody: innych cech identyfikujących kandydata, innego źródła, języka miejsca lub strony, na którą wskazuje przeczytany wynik. Gdy żadna z pozostałych metod nie pozwala znaleźć źródła, oznacz kandydata jako niezweryfikowany i kontynuuj inne prace. Ta sama osoba o tym samym imieniu to inna osoba dopóki źródło nie połączy tych faktów. Gdy źródło sprzeciwia się kandydatowi, usuń kandydata i podaj powód.
+Nazwa lub wydarzenie, które pamiętasz, jest kandydatem, dopóki źródło go nie wymieni. Znajdź źródło, które
+go wymienia, zanim go użyjesz. Nie wysyłaj ponownie wyszukiwania z tymi samymi słowami ani z drobnymi
+zmianami brzmienia. Następne wyszukiwanie musi użyć innej metody: innych faktów identyfikujących
+kandydata, nazwanego źródła, języka miejsca albo strony, do której prowadzi wynik odczytu. Gdy żadna pozostała metoda nie może znaleźć źródła, oznacz kandydata jako niezweryfikowanego i
+kontynuuj inną pracę. Osoba o tym samym nazwisku jest inną osobą, dopóki źródło
+nie połączy faktów. Gdy źródło zaprzecza kandydatowi, usuń kandydata i podaj
+powód.
 
-Na przykład sobie przypominasz, że młyn zamknięto w 2019 roku. Wyszukiwanie „Harlow mill closed 2019” nie znajduje strony o tym młynie. Wyszukiwanie „Harlow mill closure” daje te same wyniki. Nie wysyłaj trzeciej formy tych słów. Wyszukaj nazwę firmy właściciela wraz z nazwą miasta. Strona lokalnych wiadomości podaje miesiąc zamknięcia, więc przeczytaj ją, a kandydat jest zweryfikowany.
+Na przykład pamiętasz, że młyn zamknięto w 2019 roku. Wyszukiwanie "młyn Harlow zamknięty 2019"
+nie znajduje strony o młynie. Wyszukiwanie "młyn Harlow zamknięcie" daje te same wyniki. Nie
+wysyłaj trzeciej formy tych słów. Wyszukaj nazwę firmy właściciela z nazwą miasta. Lokalna strona z wiadomościami podaje miesiąc zamknięcia, więc ją przeczytaj, a kandydat jest zweryfikowany.
 
-Na przykład sobie przypominasz drugi proces przeciwko tej samej firmie. Wyszukiwanie firmy ze słowem „lawsuit”, nazwy sądu oraz formatu numeru sprawy nie znajduje żadnej sprawy.
-Nie pozostaje żadna inna metoda. Zapisz, że przeczytane źródła nie potwierdzają drugiej sprawy, i nie nazywaj jej sprawą.
+Na przykład pamiętasz drugą sprawę sądową przeciw tej samej firmie. Wyszukiwania firmy
+z "pozew", nazwy sądu i formatu numeru sprawy nie znajdują sprawy.
+Nie ma innej metody. Napisz, że przeczytane źródła nie potwierdzają drugiej sprawy, i
+nie nazywaj jej sprawą.
 
-Przeczytanie obejmuje tylko wyekstrahowany tekst. Wynik bez trafienia pokazuje, że wyekstrahowany tekst nie zawiera tych słów. Nie pokazuje to, że dokument ich nie zawiera. Wynik PDF podaje strony, z których tekst został wyekstrahowany. Przed stwierdzeniem, że dokument nie nazywa osoby, podaj strony lub tekst, które przeszukałeś.
-Dla listy datowanych wydarzeń zachowaj po jednym rekordzie dla każdego wydarzenia z jego datą, imieniem i źródłem. Podaj rekordy bez daty, zduplikowane raporty i źródła, których nie udało się odczytać, oprócz rekordów datowanych.
+Odczyt obejmuje tylko wyodrębniony tekst. Find bez dopasowania pokazuje, że wyodrębniony tekst
+nie zawiera tych słów. Nie pokazuje, że dokument ich nie zawiera. Wynik PDF
+podaje strony, które odczyt wyodrębnił. Zanim napiszesz, że dokument nie
+wymienia osoby, podaj strony lub tekst, które przeszukano.
+Dla listy wydarzeń z datami trzymaj jeden zapis dla każdego wydarzenia z jego datą, nazwą i
+źródłem. Zapisy bez daty, zduplikowane doniesienia i źródła, których nie mogłeś przeczytać, podaj
+osobno od zapisów z datami.
 
-Zastosuj każdą żądaną zasadę do każdego elementu odpowiedzi.
-Wskaż, które zasady dany element narusza.
-Identyfikuj każdy element według jego wyróżniających cech.
-W przypadku sprawy sądowej podaj sąd, datę i numer akt, gdy źródła je podają.
-Sprawdź w źródle każdą właściwość, którą żądania wymaga element.
-Liczyć jedną sprawę, wydarzenie lub encję raz i wypisać razem sygnatury jej etapów.
-Scal raporty dotyczące tego samego elementu.
-Wskaż, gdy źródła ustalają mniej różnych elementów niż prosi się o podanie.
-Zanim odpowiesz, sprawdś wyróżniające cechy każdego elementu i każdą zasadę względem stron, które przeczytałeś.
-Utrzymaj element, który narusza zasadę, poza paszącą listą i podaj naruszoną zasadę.
-Przeczytaj każdą stronę, którą cytujesz, w tym źródło zastępcze znalezione po zablokowanej stronie.
-Gdy odczyt strony się nie powiedzie, użyj innego czytelnego źródła lub pomiń jego twierdzenia i adres.
+Zastosuj każde żądane ograniczenie do każdej pozycji w odpowiedzi.
+Napisz, którego ograniczenia pozycja nie spełnia.
+Określ każdą pozycję jej wyróżniającymi faktami.
+Dla sprawy sądowej podaj sąd, datę i numer sprawy, gdy źródła je podają.
+Sprawdź w źródle każdą właściwość, której prośba wymaga od pozycji.
+Policz jedną sprawę, jedno wydarzenie lub jeden podmiot raz i wypisz razem identyfikatory jego etapów.
+Połącz doniesienia o tej samej pozycji.
+Napisz, gdy źródła ustalają mniej odrębnych pozycji, niż żądano.
+Zanim odpowiesz, sprawdź wyróżniające fakty każdej pozycji i każde ograniczenie na przeczytanych stronach.
+Pozycję, która nie spełnia ograniczenia, trzymaj poza listą pasujących i nazwij niespełnione ograniczenie.
+Przeczytaj każdą stronę, którą cytujesz, także źródło zastępcze znalezione po zablokowanej stronie.
+Gdy odczyt strony się nie powiedzie, użyj innego czytelnego źródła albo pomiń jej twierdzenia i adres.
 
 {% if has('web_search') %}
-{{ tool('web_search') }} przyjmuje zapytania w formie listy lub jednego ciągu, a zapytanie jako dodatkowe pojedyncze zapytanie.
-Podaj przynajmniej jedno zapytanie. Pomiń źródła, aby wyszukać wszystkie dostępne źródła.
-max_results domyślnie przyjmuje wartość 15. timelimit to d, w, m lub r i dotyczy tylko obsługiwanych źródeł newsowych.
-Wynik zwraca posortowane URL, tytuły, fragmenty i dopasowane formy zapytania. Przeczytaj wybrane URL przed oparciem się na ich утверждениях.
-```json {"queries":["transfer approval"]} ``` ```json {"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"} ```
+{{ tool('web_search') }} przyjmuje queries jako listę lub jeden tekst, a query jako dodatkowe pojedyncze zapytanie.
+Podaj co najmniej jedno zapytanie. Pomiń sources, aby przeszukać wszystkie dostępne źródła.
+max_results domyślnie wynosi 15. timelimit to d, w, m lub y i dotyczy tylko obsługiwanych źródeł wiadomości.
+Wynik zwraca uszeregowane adresy URL, tytuły, fragmenty i pasujące formy zapytań. Przeczytaj wybrane adresy URL, zanim oprzesz się na ich twierdzeniach.
+```json
+{"queries":["zatwierdzenie transferu"]}
+```
+```json
+{"queries":["zatwierdzenie transferu","autoryzacja transferu"],"query":"umowa transferowa","sources":["gdelt"],"max_results":5,"timelimit":"m"}
+```
 {% endif %}
 {% if has('list_search_sources') %}
-{{ tool('list_search_sources') }} nie przyjmuje argumentów. Zwraca dostępne nazwy i opisy źródeł.
-```json {} ```
+{{ tool('list_search_sources') }} nie przyjmuje argumentów. Zwraca nazwy i opisy dostępnych źródeł.
+```json
+{}
+```
 {% endif %}
 {% if has('read_page') %}
-{{ tool('read_page') }} wymaga urls, listy do sześciu adresów HTTP lub HTTPS.
-goal opcjonalnie zapisuje pytanie. Nie wybiera dopasowanego tekstu.
-find opcjonalnie wybiera dosłowne dopasowania tekstu bez ograniczeń dotyczących wielkości liter.
-offset to pozycja znakowa liczona od zera. Pominięcie zaczyna się od zera.
-version wybiera wersję przechwyconego tekstu. Skopiuj ją z poprzedniego odczytu tego samego URL, aby kontynuować ten tekst.
-Wersja należy do jednego URL. Dla innego URL najpierw przeczytaj ten URL i skopiuj jego własną wersję.
-links domyślnie przyjmuje wartość true i zawiera miejsca docelowe linków w tekście.
-page_start wybiera pierwszą stronę okna PDF. Jedno odczytanie wyciąga najwyżej 50 stron PDF.
-Wynik odcięcia, wynik find z większą liczbą dopasowań i okno PDF dają argumenty następnego wywołania.
-Skopiuj ten obiekt argumentów bez zmian. Zachowuje URL, okno PDF, ustawienie links i wersję.
-Wersja należy do jednego URL i jednego okna PDF.
-Okno bez tekstu nie wskazuje, że pozostałe strony PDF nie mają tekstu.
-Powtórzenie pierwszego wywołania przeczyta pierwszy tekst ponownie.
-```json {"urls":["COPY_SEARCH_RESULT_URL"]} ``` ```json {"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false} ``` Na przykład wynik PDF mówi „Tekst obejmuje strony PDF od 1 do 50 z 120 tylko” i podaje następne okno.
-find w tym oknie daje więcej dopasowań z tym obiektem. Skopiuj go jako następne wywołanie.
-```json {"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200} ```
+{{ tool('read_page') }} wymaga urls, czyli listy do sześciu adresów HTTP lub HTTPS.
+goal opcjonalnie zapisuje pytanie. Nie wybiera pasującego tekstu.
+find opcjonalnie wybiera dosłowne dopasowania tekstu bez rozróżniania wielkości liter.
+offset to pozycja znaku liczona od zera. Pominięcie go zaczyna od zera.
+version wybiera wersję przechwyconego tekstu. Skopiuj ją z wcześniejszego odczytu tego samego adresu URL, aby kontynuować ten tekst.
+Wersja należy do jednego adresu URL. Dla innego adresu URL najpierw przeczytaj ten adres i skopiuj jego własną wersję.
+links domyślnie ma wartość true i dołącza do tekstu adresy docelowe linków.
+page_start wybiera pierwszą stronę okna PDF. Jeden odczyt wyodrębnia najwyżej 50 stron PDF.
+Obcięty wynik, wynik find z kolejnymi dopasowaniami i okno PDF podają argumenty następnego wywołania.
+Skopiuj ten obiekt argumentów bez zmian. Zachowuje adres URL, okno PDF, ustawienie links i wersję.
+Wersja należy do jednego adresu URL i jednego okna PDF.
+Okno bez tekstu nie pokazuje, że pozostałe strony PDF nie mają tekstu.
+Powtórzenie pierwszego wywołania czyta ponownie pierwszy tekst.
+```json
+{"urls":["COPY_SEARCH_RESULT_URL"]}
+```
+```json
+{"urls":["COPY_READ_URL"],"goal":"Znajdź datę zatwierdzenia.","find":"zatwierdz","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
+```
+Na przykład wynik PDF mówi "The text covers PDF pages 1 to 50 of 120 only" i podaje następne okno.
+Find w tym oknie zwraca kolejne dopasowania z tym obiektem. Skopiuj go jako następne wywołanie.
+```json
+{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"zatwierdz","offset":1200}
+```
 {% endif %}
 {% if has('whois_lookup') %}
-{{ tool('whois_lookup') }} przyjmuje domeny w formie listy i domenę jako jedną domenę.
-Podaj nazwy domen bez ścieżki URL. Wynik raportuje każdą domenę osobno.
-Null registrant oznacza, że rejestr nie opublikował tej wartości. Registrar sprzedaje rejestrację domeny.
-```json {"domains":["example.org"]} ``` ```json {"domains":["example.org","example.com"],"domain":"example.net"} ```
+{{ tool('whois_lookup') }} przyjmuje domains jako listę, a domain jako jedną domenę.
+Podaj nazwy domen bez ścieżki URL. Wynik opisuje każdą domenę osobno.
+Pusty rejestrujący (null) oznacza, że rejestr nie opublikował tej wartości. Rejestrator sprzedaje rejestrację domeny.
+```json
+{"domains":["example.org"]}
+```
+```json
+{"domains":["example.org","example.com"],"domain":"example.net"}
+```
 {% endif %}

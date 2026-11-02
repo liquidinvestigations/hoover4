@@ -1,46 +1,58 @@
 ---
 name: entities
 group: technique
-description: jak wylistować osoby, organizacje, miejsca, adresy e-mail i kwoty wymieniane w dokumentach
+description: jak wypisać osoby, organizacje, miejsca, adresy e-mail i kwoty, które wymieniają dokumenty
 tools: list_document_entities, search_entity_explainer, search_facet_values
-terms: Słowa dla tego: osoby, osoby, imiona, organizacje, firmy, instytucje, miejsca, lokalizacje, miasta, kraje, adresy e-mail, numery telefonów, kwoty, pieniądze, identyfikatory, numery kont, kluczowe postacie, kto jest wspomniany.
-not_for: Niepotrzebne, gdy zapytanie wskazuje jedną osobę i pyta, co dokumenty mówią o tej osobie.
+terms: Słowa na to: osoby, ludzie, nazwiska, organizacje, firmy, instytucje, miejsca, lokalizacje, miasta, kraje, adresy e-mail, numery telefonów, kwoty, pieniądze, identyfikatory, numery kont, kluczowe postacie, kto jest wymieniony.
+not_for: Niepotrzebne, gdy prośba wymienia jedną osobę i pyta, co dokumenty o niej mówią.
 ---
-Wypisywanie dokumentów o nazwach
+Wypisywanie tego, co wymieniają dokumenty
 
 {% if has('list_document_entities') %}
-1. {{ tool('list_document_entities') }} wypisuje wyciągnięte nazwy dla dokumentu. Podaj nazwę kolekcji i hash pliku.
-2. Wynik ma dwa poziomy. entities to odczyt prozy przez model językowy: ludzie, organizacje i miejsca. Może się mylić, więc przed oparciem się na nazwie sprawdź ją w tekście. structured zawiera wartości, które zweryfikowało правило, takie jak identyfikatory z poprawną cyfrą kontrolną, daty i kwoty pieniędzy z kodem waluty.
-3. Szukaj nowych nazw, adresów i identyfikatorów za pomocą {{ tool('search_collections') }}. Umieszczaj każdą formę jednej nazwy w jednym wywołaniu.
+1. {{ tool('list_document_entities') }} wypisuje wyodrębnione nazwy dokumentu. Podaj nazwę jego kolekcji i skrót pliku.
+2. Wynik ma dwa poziomy. entities to odczyt prozy wykonany przez model językowy: osoby, organizacje i miejsca. Może być błędny, więc sprawdź nazwę w tekście, zanim na niej oprzesz wniosek. structured zawiera wartości zweryfikowane regułą, takie jak identyfikatory z poprawną cyfrą kontrolną, daty i kwoty pieniężne z kodem waluty.
+3. Wyszukaj nowe nazwy, adresy i identyfikatory za pomocą {{ tool('search_collections') }}. Umieść każdą formę jednej nazwy w jednym wywołaniu.
 {% endif %}
 {% if has('search_entity_explainer') %}
-4. Gdy wynik wymienia правило i wartość, której nie rozumiesz, wywołaj {{ tool('search_entity_explainer') }}.
+4. Gdy wynik wymienia regułę i wartość, których nie rozumiesz, wywołaj {{ tool('search_entity_explainer') }}.
 {% endif %}
 {% if has('search_facet_values') %}
-5. {{ tool('search_facet_values') }} podaje wartości filtra encji dla całej kolekcji wraz z ich licznikami.
+5. {{ tool('search_facet_values') }} zwraca wartości filtra encji w całej kolekcji, razem z ich liczbami.
 {% endif %}
 
-Nazwa wyciągnięta przez pipeline nie dowodzi, że dokument jest o tej osobie. Przeczyj tekst wokół niej.
+Nazwa wyodrębniona przez potok nie dowodzi, że dokument dotyczy tej osoby. Przeczytaj tekst wokół niej.
 
-Gdy nazwa nie występuje nigdzie, przeczyj zindeksowane sugestie pisowni i ich zweryfikowane liczniki.
-Nie używaj sugerowanej pisowni jako nazwy wymaganej.
-Gdy szukasz sugerowanej pisowni, podaj ją w odpowiedzi jako inną pisownię.
-Gdy żadna pisownia nie pasuje, zgłoś, że szukane kolekcje nie zawierają nazwy.
+Gdy nazwa nie występuje nigdzie, przeczytaj zindeksowane propozycje pisowni i ich sprawdzone liczby.
+Nie używaj proponowanej pisowni jako żądanej nazwy.
+Gdy wyszukasz proponowaną pisownię, nazwij ją w odpowiedzi inną pisownią.
+Gdy żadna pisownia nie pasuje, napisz, że przeszukane kolekcje nie zawierają tej nazwy.
 
 {% if has('list_document_entities') %}
-{{ tool('list_document_entities') }} przyjmuj dokumenty jako listę obiektów kolekcja i file_hash.
-Ta forma zachowuje tożsamości w mieszanych kolekcjach bez parowania niepowiązanych list.
-Alternatywnie kolekcja i file_hash przyjmują dopasowane listy lub jedną kolekcję z kilkoma haszami.
-Wynik grupuje wybrane wartości według dokumentu. Użyj read_more, gdy ciąg dalszy jest możliwy.
-```json {"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]} ``` ```json {"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]} ```
+{{ tool('list_document_entities') }} przyjmuje documents jako listę obiektów z collection i file_hash.
+Ta forma zachowuje tożsamości z mieszanych kolekcji i nie paruje niepowiązanych list.
+Można też podać collection i file_hash jako pasujące do siebie listy albo jedną kolekcję z kilkoma skrótami.
+Wynik grupuje wyodrębnione wartości według dokumentu. Użyj read_more, gdy wynik jest ciągły.
+```json
+{"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]}
+```
+```json
+{"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]}
+```
 {% endif %}
 {% if has('search_entity_explainer') %}
-{{ tool('search_entity_explainer') }} wymaga kolekcji, entity_type i entity_value z wyniku wybrania encji.
-Zwrot zawiera opis reguły wybrania i dokumenty pasujące.
-```json {"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"} ```
+{{ tool('search_entity_explainer') }} wymaga collection, entity_type i entity_value z wyniku wyodrębnionej encji.
+Zwraca opis reguły wyodrębniania i pasujące dokumenty.
+```json
+{"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"}
+```
 {% endif %}
 {% if has('search_facet_values') %}
-Dla rozkładów encji wywołaj {{ tool('search_facet_values') }} z facetami i opcjonalnymi kolekcją i zapytaniem.
-Macierz wyników ma pary [text, count] w każdej komórce faceta.
-```json {"facets":["ner_per","ner_org","ner_loc"]} ``` ```json {"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"} ```
+Dla rozkładów encji wywołaj {{ tool('search_facet_values') }} z facets oraz opcjonalnie collection i query.
+Macierz wyniku ma pary [tekst, liczba] w każdej komórce filtra.
+```json
+{"facets":["ner_per","ner_org","ner_loc"]}
+```
+```json
+{"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"}
+```
 {% endif %}

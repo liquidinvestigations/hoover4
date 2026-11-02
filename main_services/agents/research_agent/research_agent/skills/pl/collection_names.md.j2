@@ -1,20 +1,20 @@
 ---
 name: collection_names
 group: stumble
-description: jak nazywać kolekcję lub zbiór danych w wywołaniu: dokładna nazwa zwracana przez list_collections
+description: jak nazwać kolekcję lub zbiór danych w wywołaniu: dokładna nazwa, którą zwraca list_collections
 tools: list_collections, search_collections
 ---
-Nazwanie kolekcji
+Nazywanie kolekcji
 
-1. Pomijaj kolekcję, aby szukać we wszystkich kolekcjach tego czatu. To jest poprawne dla większości pytań.
-2. Gdy musisz podać kolekcję, skopiuj jej nazwę dokładnie ze {{ tool('list_collections') }} albo z kolekcji wiersza wyniku.
-3. Zbiór danych to nie kolekcja. Tabele zbioru danych /ehudx są w kolekcji tables. Podawaj tabele.
-4. Nie zmieniaj nazwy. Nie addawaj spacji, nie zmieniaj wielkiej litery ani nie tłumacz jej.
-5. Gdy wywołanie mówi, że kolekcja jest poza dozwolonymi kolekcjami, ten czat nie może jej odczytać. Nie wysyłaj wywołania ponownie. Użyj kolekcji tego czatu.
+1. Pomiń collection, aby przeszukać każdą kolekcję tego czatu. To jest poprawne przy większości pytań.
+2. Gdy musisz podać kolekcję, skopiuj jej nazwę dokładnie z {{ tool('list_collections') }} albo z kolekcji wiersza wyniku.
+3. Zbiór danych nie jest kolekcją. Zbiór danych tables/ehudx należy do kolekcji tables. Podaj tables.
+4. Nie zmieniaj nazwy. Nie dodawaj spacji, nie zmieniaj wielkości liter i nie tłumacz jej.
+5. Gdy wywołanie mówi, że kolekcja jest poza dozwolonymi kolekcjami, ten czat nie może jej czytać. Nie wysyłaj tego wywołania ponownie. Użyj kolekcji tego czatu.
 
-Aby odczytać dokument, podaj kolekcję tego samego wiersza wyniku jako jego file_hash.
+Aby przeczytać dokument, podaj kolekcję z tego samego wiersza wyniku co jego file_hash.
 
-Gdy nazwa nie występuje nigdzie, przeczytaj zindeksowane sugestie pisowni i ich sprawdzone liczniki.
-Nie używay sugerowanej pisowni jako nazwy żądanej.
-Gdy szukasz sugerowanej pisowni, nazwij ją w odpowiedzi jako inną pisownię.
-Gdy żadna pisownia nie pasuje, zgłoś, że szukane kolekcje nie zawierają nazwy.
+Gdy nazwa nie występuje nigdzie, przeczytaj zindeksowane propozycje pisowni i ich sprawdzone liczby.
+Nie używaj proponowanej pisowni jako żądanej nazwy.
+Gdy wyszukasz proponowaną pisownię, nazwij ją w odpowiedzi inną pisownią.
+Gdy żadna pisownia nie pasuje, napisz, że przeszukane kolekcje nie zawierają tej nazwy.

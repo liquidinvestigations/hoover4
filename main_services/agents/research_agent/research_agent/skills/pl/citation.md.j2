@@ -1,49 +1,65 @@
 ---
 name: citation
 group: general
-description: jak cytować dokumenty potwierdzające odpowiedź
+description: jak cytować dokumenty, które potwierdzają odpowiedź
 tools: cite_documents
 ---
-Cytowany tekst trafia do pliku w przestrzeni roboczej. `report` mówi, jak go napisać i edytować.
+Cytowany tekst trafia do pliku w przestrzeni roboczej. Umiejętność `report` mówi, jak go napisać i edytować.
 
 {% if has('cite_documents') %}
-Gdy twój {{ citation_artefact }} opiera się {% if web_enabled %} na wewnętrznym {% else %}a {% endif %} dokumencie, wywołaj {{ tool('cite_documents') }}.
-Podaj każdy dokument, który potwierdza tezę lub cytat. Użyj zwracanej sygnatury cytatu przy tej tezie.
-Użyj sygnatury cytatu przy tezie, która opiera się na wewnętrznym dokumencie. Możesz też podać dokument, by go zidentyfikować, lub opisać trafienie w wynikach wyszukiwania.
-Jedna operacja przyjmuje najwyżej 12 cytatów. Cytuj to, czego użyłeś, a nie wszystko, co zwróciło wyszukiwanie.
-Gdy wyszukiwanie lub odczyt zwróciły dokumenty potwierzające tezę, cytuj te dokumenty.
+Gdy raport opiera się na {% if web_enabled %}dokumencie wewnętrznym{% else %}dokumencie{% endif %}, wywołaj {{ tool('cite_documents') }}.
+Podaj każdy dokument, który potwierdza twierdzenie lub cytat. Użyj zwróconej sygnatury obok tego twierdzenia.
+Użyj sygnatury obok twierdzenia, które opiera się na dokumencie wewnętrznym. Możesz też nazwać
+dokument, aby go określić albo opisać wynik wyszukiwania.
+Jedno wywołanie przyjmuje najwyżej 12 cytowań. Cytuj to, czego użyłeś, a nie wszystko, co zwróciło wyszukiwanie.
+Gdy wyszukiwanie lub odczyt zwróciły dokumenty, które potwierdzają twierdzenie, zacytuj te dokumenty.
 
-Dla każdego cytatu podaj:
-- kolekcję i file_hash, skopiowane z wyniku narzędzia. Nigdy nie wymyślaj file_hash.
-- cytat: 5 do 6 kolejnych słów skopiowanych z jednej linii treści dokumentu. Nie z linii nagłówka (From, To, Cc, Subject, Date). Nie z fragmentu zawierającego znak zapytania.
-- find: opcjonalnie. Najkrótsza dokładna fraza cytatu, którą osoba musi zobaczyć. Karta otwiera dokument na tej frazie.
-- why: jedna linia mówiąca, co dokument potwierdza.
+Dla każdego cytowania podaj:
+- collection i file_hash, skopiowane z wyniku narzędzia. Nigdy nie wymyślaj file_hash.
+- quote: od 5 do 6 kolejnych słów skopiowanych z jednego wiersza treści dokumentu. Nie z wiersza
+  nagłówka (From, To, Cc, Subject, Date). Bez fragmentu, który zawiera znak zapytania.
+- find: opcjonalnie. Najkrótsza dokładna fraza z quote, którą osoba musi zobaczyć. Karta
+  otwiera dokument przy tej frazie.
+- why: jeden wiersz, który mówi, co dokument potwierdza.
 
-Napisz sygnaturę cytatu, którą otrzymasz, na przykład `[D1]`, w swojej {{ citation_artefact }}, gdzie formułujesz tezę.
+Wpisz otrzymaną sygnaturę, na przykład `[D1]`, w raporcie tam, gdzie formułujesz twierdzenie.
 
-Przykład. {{ tool('read_documents') if has('read_documents') else 'A tool' }} zwrócił e-mail „Re: DRAFT talking points” w kolekcji enron.
-Jego treść mówi „The talking points look great to me. Best of luck today.” Twój {{ citation_artefact }} mówi, że Jim Steffes zatwierdził projekt. Wywołaj {{ tool('cite_documents') }} z kolekcją enron, file_hash z wyniku, cytat „talking points look great to me”, znajdź „look great” i dlaczego „Steffes approves the draft of 27 December”.
-Napisz potem „Steffes approved the draft [D1].” Nie cytuj „Subject: Re: DRAFT talking points”, bo to jest linia nagłówka. Nie cytuj „Can you check the notes?”, bo zawiera znak zapytania.
-Złamania linii, interpunkcja i oznaczenia `>` cytowanego e-maila nie muszą się zgadzać.
-Brakujący lub nieobecny cytat nie przydziela sygatury. Skopiuj 5 do 6 słów tekstu kandydata, który wskazuje błąd, do cytat i powtórz.
-Tylko zwrócona sygnatura oznacza źródło. Nigdy nie pisz własnej sygnatury w nawiasach kwadratowych.
-Napisz sygnaturę jako tekst przy twierdzeniu. Nie umieszczaj jej w backtickach. `[D1]` w backtickach nic nie łączy.
-Ponownie użyj zwrócarzej sygnatury dokumentu dla dodatkowych zweryfikowanych fragmentów. Dokument ma jedną kartę.
+Przykład. {{ tool('read_documents') if has('read_documents') else 'Narzędzie' }} zwróciło e-mail "Re: DRAFT talking points" w kolekcji enron.
+Jego treść mówi "The talking points look great to me. Best of luck today." Raport mówi,
+że Jim Steffes zatwierdził projekt. Wywołaj {{ tool('cite_documents') }} z collection enron,
+file_hash z wyniku, quote "talking points look great to me", find "look great"
+i why "Steffes zatwierdza projekt z 27 grudnia".
+Potem napisz "Steffes zatwierdził projekt [D1]."
+Nie cytuj "Subject: Re: DRAFT talking points", bo to wiersz nagłówka. Nie cytuj
+"Can you check the notes?", bo zawiera znak zapytania.
+Podziały wierszy, interpunkcja i znaki `>` cytowanego e-maila nie muszą się zgadzać.
+Brakujące lub nieobecne cytaty nie dostają sygnatury. Skopiuj do quote 5 do 6 słów z tekstu kandydującego, który podaje błąd, i ponów wywołanie.
+Tylko zwrócona sygnatura oznacza źródło. Nigdy nie wpisuj własnej etykiety w nawiasach kwadratowych.
+Wpisz sygnaturę jako tekst obok twierdzenia. Nie umieszczaj jej w grawisach. `[D1]` w grawisach niczego nie łączy.
+Użyj zwróconej sygnatury dokumentu ponownie dla dalszych zweryfikowanych fragmentów. Dokument ma jedną kartę.
 {% if citation_resolver == "lead" %}
-Prowadzący badacz je rozwiązuje, więc sygnatura, której nigdy nie przydzieliłeś, nikomu nie przyda się.
+Sygnatury rozwiązuje główny badacz, więc sygnatura, której nie przydzielono, nikomu się nie przyda.
 {% endif %}
 {% endif %}
 {% include "citation_failures.j2" %}
 
 {% if has('cite_documents') %}
-Argument citations to lista obiektów cytatów dokumentów.
-Każdy obiekt wymaga kolekcji i file_hash. quote zawiera 5 do 6 kolejnych słów dosłownego brzmienia źródła.
-Powtarzaj kolekcję i file_hash w każdym obiekcie, również dla oddzielnych cytatów z tego samego dokumentu.
-Obiekty nie dziedziczą argumentów z poprzednich obiektów.
-find wybiera opcjonalnie dokładne słowowe połączenie wewnątrz quote. Pominięcie używa całego quote.
-term opcjonalnie zapisuje pierwotne zapytanie wyszukiwania. why opisuje popieraną tezę.
-Wynik daje sygaturę cytatu dla każdego zweryfikowanego wpisu. Nieudane wpisy podają swój powód i mogą podać kandydacki fragment tekstu.
-Ponów tylko nieudane wpisy z dokładnym brzmieniem. Zweryfikowany cytat sam w sobie nie weryfikuje autora ani daty tego cytatu.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]}``` This batch verifies two passages from the same document.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}```
+Argument citations to lista obiektów cytowania dokumentu.
+Każdy obiekt wymaga collection i file_hash. quote zawiera od 5 do 6 kolejnych słów dokładnego brzmienia źródła.
+Powtórz collection i file_hash w każdym obiekcie, także przy osobnych cytatach z tego samego dokumentu.
+Obiekty nie dziedziczą argumentów z wcześniejszych obiektów.
+find opcjonalnie wybiera dokładną frazę wewnątrz quote. Pominięcie go używa całego quote.
+term opcjonalnie zapisuje pierwotne zapytanie wyszukiwania. why podaje potwierdzane twierdzenie.
+Wynik podaje sygnaturę dla każdego zweryfikowanego wpisu. Nieudane wpisy podają swój powód i mogą podać fragment kandydujący.
+Ponów tylko nieudane wpisy z dokładnym brzmieniem. Zweryfikowany cytat sam nie weryfikuje autora ani daty tego cytatu.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
+```
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"pierwotne wyszukiwanie","why":"Ten fragment potwierdza podane zatwierdzenie."}]}
+```
+Ta partia weryfikuje dwa fragmenty z tego samego dokumentu.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}
+```
 {% endif %}

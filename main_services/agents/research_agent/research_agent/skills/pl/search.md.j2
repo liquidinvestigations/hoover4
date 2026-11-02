@@ -1,87 +1,99 @@
 ---
 name: search
 group: general
-description: jak szukać w kolekcjach dokumentów i korzystać z składni zapytań
+description: jak przeszukiwać kolekcje dokumentów i używać składni zapytań
 tools: search_collections
 ---
 {% if has('search_collections') %}
-Wyszukiwanie w dokumentach użytkownika
+Przeszukiwanie dokumentów użytkownika
 
-1. Wyszukaj dokumenty, gdy ich treść może odpowiedzieć na pytanie.
-2. Użyj Kolekcji, gdy zapytanie dotyczy jednej kolekcji. Pomiń to, aby szukać we wszystkich kolekcjach, które ten czat może odczytać.
-3. {{ tool('search_collections') }} przyjmuje kilka zapytań. Użyj odpowiednich form imienia i nazwiska lub adresu. Zwrot dokładny umieść w cudzysłowie.
-4. OR, AND i NOT to zwykłe słowa w zapytaniu. Użyj | dla alternatywy i -słowo, aby wykluczyć słowo.
-5. Skopiuj file_hash i collection z wiersza wyniku. Nigdy nie wpisuj hasha samodzielnie.{% if has('read_more') %} Jeśli wiersz nie ma file_hash, wywołaj {{ tool('read_more') }}.{% endif +%}
-6. Ustaw filtr daty lub rozmiaru, gdy pomaga to odpowiedzieć na pytanie.
-7. Gdy zgłaszasz, że wyszukiwanie nie znalazło dokumentu, podaj jego zapytanie, kolekcje i liczbę.
-8. Jedno wywołanie przyjmuje najwyżej 12 zapytań. Dłuższą listę podziel na dwa wywołania.
-9. Każde zapytanie musi mieć przynajmniej jedno słowo do wyszukania. Same zapytania składające się z -słów są odrzucane.
+1. Przeszukuj dokumenty, gdy ich treść może odpowiedzieć na pytanie.
+2. Użyj collection, gdy prośba dotyczy jednej kolekcji. Pomiń je, aby przeszukać
+wszystkie kolekcje, które ten czat może czytać.
+3. {{ tool('search_collections') }} przyjmuje kilka zapytań. Użyj odpowiednich form nazwy lub adresu. Umieść dokładną frazę w cudzysłowie.
+4. OR, AND i NOT to zwykłe słowa w zapytaniu. Użyj | dla "lub" i -słowo, aby wykluczyć słowo.
+5. Skopiuj file_hash i collection z wiersza wyniku. Nigdy nie pisz skrótu sam.{% if has('read_more') %} Jeśli wiersz nie ma file_hash, wywołaj {{ tool('read_more') }}.{% endif +%}
+6. Ustaw filtr daty lub rozmiaru, gdy pomaga odpowiedzieć na pytanie.
+7. Gdy piszesz, że wyszukiwanie nie znalazło dokumentu, podaj jego zapytanie, kolekcje i liczbę.
+8. Jedno wywołanie przyjmuje najwyżej 12 zapytań. Podziel dłuższą listę na dwa wywołania.
+9. Do każdego zapytania dodaj co najmniej jedno słowo do wyszukania. Zapytanie złożone wyłącznie z wyrażeń -słowo zostanie odrzucone.
 10. Ustaw filename_only na true lub false. Nie przyjmuje tekstu.
 
-Przykład. Użytkownik prosi o wszystkie dane dla JoeBWilkinson@cs.com. Wykonaj jedno wywołanie {{ tool('search_collections') }} z zapytaniami ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Odczytaj dokument, gdy wiersz wyniku nie dostarcza wystarczających dowodów na potwierdzenie twierdzenia.
+Przykład. Użytkownik prosi o wszystkie dane o JoeBWilkinson@cs.com. Wykonaj jedno wywołanie {{ tool('search_collections') }} z queries ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Przeczytaj dokument, gdy jego wiersz wyniku nie daje dość dowodów dla twierdzenia.
 {% endif %}
 
-Postępuj zgodnie z tymi krokami wyszukiwania, gdy wcześniejsze wyszukiwania nie dają odpowiedzi na pytanie.
+Wykonaj te kroki wyszukiwania, gdy wcześniejsze wyszukiwania nie odpowiadają na pytanie.
 {% if has('search_collections') %}
-1. Wyszukaj każde imię i nazwisko jako frazę w cudzysłowie.
-2. Wyszukaj nieucytowane słowa, inicjały, adresy e-mail i imiona i nazwiska w języku dokumentu.
-Przeczytaj word_counts i sugestie pisarskie. Użyj sugestii tylko dla zamierzonego imienia i nazwiska.
-Użyj dasovi?h dla jednej zmieniającej się litery i dasovic% dla opcjonalnej litery końcowej.
-Użyj skilling << resigned, gdy kolejność słów ma znaczenie.
-3. Usuń filtrysz jeden po drugim. Uruchom wyszukiwanie bez filtrów.
+1. Wyszukaj każdą nazwę jako frazę w cudzysłowie.
+2. Wyszukaj słowa bez cudzysłowu, inicjały, adresy e-mail i nazwy w języku dokumentu.
+Przeczytaj word_counts i propozycje pisowni. Użyj propozycji tylko dla zamierzonej nazwy.
+Użyj dasovi?h dla jednej zmiennej litery i dasovic% dla opcjonalnej ostatniej litery.
+Użyj skilling << resigned, gdy liczy się kolejność słów.
+3. Usuwaj filtry po jednym. Wykonaj wyszukiwanie bez filtrów.
 {% endif %}
 {% if has('search_facet_values') %}
-Zweryfikuj wartości filtrów z {{ tool('search_facet_values') }}.
+Sprawdź wartości filtrów za pomocą {{ tool('search_facet_values') }}.
 {% endif %}
 {% if has('search_histogram') %}
-Zweryfikuj daty z {{ tool('search_histogram') }}.
+Sprawdź daty za pomocą {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Wyszukaj opis treści z {{ tool('search_passages') }}.
+4. Wyszukaj opis treści za pomocą {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. Użyj {{ tool('folder_search') }}, gdy zapytanie wskazuje folder, ścieżkę lub plik.
+5. Użyj {{ tool('folder_search') }}, gdy prośba wymienia folder, ścieżkę lub plik.
 {% endif %}
 {% if has('folder_list') %}
 Użyj {{ tool('folder_list') }} dla tego folderu.
 {% endif %}
 {% if has('read_documents') %}
-6. Przeczynaj najlepsze 1 do 3 trafień z {{ tool('read_documents') }}.
+6. Przeczytaj 1 do 3 najlepszych trafień za pomocą {{ tool('read_documents') }}.
 {% endif %}
-Dla osób lub organizacji dokumentu przeczytaj część tego dokumentu, która je nazywa. Referencja do innej pracy nazywa tę inną pracę.
+Dla osób lub organizacji z dokumentu przeczytaj część tego dokumentu, która je wymienia. Odwołanie do innego dzieła wskazuje to inne dzieło.
 {% if has('doc_search_text') %}
-Użyj {{ tool('doc_search_text') }} dla odpowiedniego tekstu w dokumente.
+Użyj {{ tool('doc_search_text') }} dla odpowiedniego tekstu w dokumencie.
 {% endif %}
 {% if has('web_search') %}
-7. Wyszukaj w sieci tylko wtedy, gdy zapytanie to pozwala.
+7. Przeszukuj internet tylko wtedy, gdy prośba na to pozwala.
 {% endif %}
 {% if has('read_page') %}
-Przeczynaj najlepsze strony internetowe z {{ tool('read_page') }}.
+Przeczytaj najlepsze strony internetowe za pomocą {{ tool('read_page') }}.
 {% endif %}
 
 {% if has('search_collections') %}
-Pełne argumenty szukania to collection, queries, query, sort, date_after, date_before, date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max, folder_term_id, filename_only i facet_filters.
-collection przyjmuje nazwę lub listę. Pominięcie lub [] szukają każdej dozwolonej kolekcji.
-query domyślnie jest pustym tekstem. queries opcjonalnie dodaje do 12 form. Duplikowane formy uruchamiają się raz.
-Puste pytanie przegląda wszystkie dopasowania filtra. Formy szukania scalają dopasowane tożsamości dokumentów.
-sort zawiera pole i kierunek. Pole to relevance, date, file_size lub name. Kierunek to asc lub desc.
-Pominięcie używa domyślnego porządku według relevance.
-date_after i date_before używają inclusive sekund epoch UTC dla daty dokumentu.
-mentioned_date_after i mentioned_date_before używaju inclusive sekund epoch UTC dla dat wyodrębnionych z tekstu.
-date_unknown_only=true wybiera dokumenty bez znanej daty dokumentu. Nie łącz tego z zakresem znanej daty.
-size_min i size_max to inclusive limity bajtów. folder_term_id wybiera zwrócony termin folderu.
-filename_only=true ogranicza zapytanie do nazw i ścieżek. False używa zawartości dokumentu.
-facet_filters mapuje poprawne nazwy facetów na listy zwróconego tekstu wartości. Pominięcie nie stosuje filtra faceta.
-Wartości w obrębie jednego faceta to alternatywy. Różne filtry facetów muszą się wszystkie dopasować.
+Pełne argumenty wyszukiwania to collection, queries, query, sort, date_after, date_before,
+date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max,
+folder_term_id, filename_only i facet_filters.
+collection przyjmuje nazwę lub listę. Pominięcie jej albo [] przeszukuje każdą dozwoloną kolekcję.
+query domyślnie jest pustym tekstem. queries opcjonalnie dodaje do 12 form. Zduplikowane formy wykonują się raz.
+Puste query przegląda wszystkie dopasowania filtrów. Formy wyszukiwania łączą pasujące tożsamości dokumentów.
+sort zawiera field i direction. field to relevance, date, file_size lub name. direction to asc lub desc.
+Pominięcie go używa domyślnej kolejności według trafności.
+date_after i date_before używają włącznie sekund epoki UTC dla daty dokumentu.
+mentioned_date_after i mentioned_date_before używają włącznie sekund epoki UTC dla dat wyodrębnionych z tekstu.
+date_unknown_only=true wybiera dokumenty bez znanej daty dokumentu. Nie łącz go z zakresem znanych dat.
+size_min i size_max to włączne limity w bajtach. folder_term_id wybiera zwrócony termin folderu.
+filename_only=true ogranicza zapytanie do nazw i ścieżek. False używa treści dokumentów.
+facet_filters mapuje poprawne nazwy filtrów na listy zwróconego tekstu wartości. Pominięcie go nie stosuje żadnego filtra.
+Wartości w jednym filtrze są alternatywami. Różne filtry muszą pasować wszystkie.
 
-Każdy wynik zawiera collection, file_hash, path, snippet i dostępne typ, datę i rozmiar.
-q wypisuje oparte od zera formy, które znalazły wiersz. query_forms raportuje liczbę każdej formy.
-word_counts weryfikuje zindeksowane słowa. suggestions wypisuje pobliskie zindeksowane pisownie z liczbami.
-Read query_notes dla naprawionej składni, nieznanych filtrów i nieudanych form zapytania.
-more kontynuuje wynik. Wklej go do read_more. Pusta pierwsza stronica nie wymaga powtarzania tej samej operacji.
+Każdy wynik zawiera collection, file_hash, path, snippet oraz dostępny typ, datę i rozmiar.
+q wymienia formy liczone od zera, które znalazły wiersz. query_forms podaje liczbę dla każdej formy.
+word_counts weryfikuje zindeksowane słowa. suggestions wymienia pobliskie zindeksowane pisownie z liczbami.
+Przeczytaj query_notes, aby poznać naprawioną składnię, nieznane filtry i nieudane formy zapytania.
+more kontynuuje wynik. Skopiuj je do read_more. Pusta pierwsza strona nie wymaga powtarzania identycznego wywołania.
 
-To minimalne wywołanie szuka we wszystkich dozwolonych Kolekcjach.
-```json {"query":"\"Joe Wilkinson\""} ``` To zaawansowane wywołanie łączy formy zapytania, zakres kolekcji, sortowanie, daty, rozmiar i filtry faktów.
-```json {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}} ``` To osobne wywołanie znajduje dokumenty bez znanej daty.
-```json {"query":"report","filename_only":true,"date_unknown_only":true} ``` Zmień wartości kolekcji, folderu i faktów na wartości zwrócone dla bieżącego Czatu.
+To minimalne wywołanie przeszukuje wszystkie dozwolone kolekcje.
+```json
+{"query":"\"Joe Wilkinson\""}
+```
+To zaawansowane wywołanie łączy formy zapytania, zakres kolekcji, sortowanie, daty, rozmiar i filtry.
+```json
+{"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}}
+```
+To osobne wywołanie znajduje pliki bez znanej daty dokumentu.
+```json
+{"query":"report","filename_only":true,"date_unknown_only":true}
+```
+Zastąp wartości collection, folderu i filtrów wartościami zwróconymi dla bieżącego czatu.
 {% endif %}

@@ -1,19 +1,20 @@
 ---
 name: document_ids
 group: stumble
-description: jak nazwać dokument według jego hasha pliku lub ścieżki w read_documents
+description: jak nazwać dokument jego skrótem pliku albo ścieżką w read_documents
 tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
 ---
 Nazywanie dokumentu
 
-Hash dokumentu ma 64 znaki szesnastkowe. Narzędia dokumentu akceptują również unikalny początek o długości co najmniej 12 znaków.
+Skrót dokumentu ma 64 znaki szesnastkowe. Narzędzia dokumentów przyjmują też unikalny początek o długości co najmniej 12 znaków.
 
-1. Skopiuj file_hash i kolekcję tego samego wiersza wyniku. Nigdy nie wpisuj hash'a samodzielnie.
-   Placeholder taki jak COPY_RETURNED_HASH lub wartość zerowa to nie jest hash. Identyfikator folderu również pochodzi z listingu lub wyniku wyszukiwania w tej rozmowie.
-2. {% if has('read_documents') %}{{ tool('read_documents') }} może również rozstrzygnąć nazwę pliku lub ścieżkę, gdy wskazuje jeden dokument.{% endif %} Inne narzędia dokumentu używają hash'a.
-3. Aby znaleźć file_hash pliku po jego nazwie, wyszukaj nazwę przy pomocy {{ tool('search_collections') }}{% if has('folder_search') %} lub {{ tool('folder_search') }}{% endif %} i skopiuj file_hash wiersza.
+1. Skopiuj file_hash i collection z tego samego wiersza wyniku. Nigdy nie pisz skrótu sam.
+   Zastępnik taki jak COPY_RETURNED_HASH albo wartość złożona z zer nie jest skrótem. Identyfikator
+   folderu też pochodzi z listy lub z wyniku wyszukiwania tej rozmowy.
+2. {% if has('read_documents') %}{{ tool('read_documents') }} potrafi też rozwiązać nazwę pliku lub ścieżkę, gdy wskazuje jeden dokument.{% endif %} Inne narzędzia dokumentów używają skrótu.
+3. Aby znaleźć file_hash pliku po jego nazwie, wyszukaj nazwę za pomocą {{ tool('search_collections') }}{% if has('folder_search') %} lub {{ tool('folder_search') }}{% endif %} i skopiuj file_hash z wiersza.
 {% if has('read_more') %}
-4. Gdy wiersz nie ma file_hash, wywołaj {{ tool('read_more') }} dla następnej strony wyniku.
+4. Gdy wiersz nie ma file_hash, wywołaj {{ tool('read_more') }}, aby dostać następną stronę wyniku.
 {% endif %}
 
-Gdy odczyt mówi, że żanyi czytelny zbiór danych nie contains hash'a, sprawdź jego kolekcję i wartość względem wiersza wyniku. Brak dokumentu może również oznaczać, że wartość wskazuje więcej niż jeden dokument.
+Gdy odczyt mówi, że żaden czytelny zbiór danych nie zawiera skrótu, porównaj jego kolekcję i wartość z wierszem wyniku. Brakujący dokument może też oznaczać, że wartość wskazuje więcej niż jeden dokument.
