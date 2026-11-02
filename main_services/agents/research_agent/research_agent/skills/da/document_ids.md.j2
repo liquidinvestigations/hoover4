@@ -1,19 +1,20 @@
 ---
 name: document_ids
 group: stumble
-description: hvordan man navngiver et dokument med dets filhash eller med en sti i read_documents
+description: hvordan du angiver et dokument med dets filhash eller med en sti i read_documents
 tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
 ---
-Navngivning af et dokument
+Angivelse af et dokument
 
-En dokument-hash har 64 hexadecimaltegn. Dokumentværktøjerne accepterer også et unikt start på mindst 12 tegn.
+En dokumenthash har 64 hexadecimale tegn. Dokumentværktøjerne accepterer også en entydig begyndelse på mindst 12 tegn.
 
-1. Kopier file_hash og samlingen for samme resultatrække. Skriv aldrig selv en hash.
-   En pladsholder som COPY_RETURNED_HASH eller en værdi af nuller er ikke en hash. En mappe-id kommer også fra en liste eller et søgeresultat i denne samtale.
-2. {% if has('read_documents') %}{{ tool('read_documents') }} kan også opløse et filnavn eller en sti, når den navngiver ét dokument.{% endif %} Andre dokumentværktøjer bruger hash'en.
-3. For at finde file_hash for en fil ved dets navn, søg efter navnet med {{ tool('search_collections') }}{% if has('folder_search') %} eller {{ tool('folder_search') }}{% endif %}, og kopier file_hash fra rækken.
+1. Kopiér file_hash og collection fra den samme resultatrække. Skriv aldrig en hash selv.
+   En pladsholder som COPY_RETURNED_HASH eller en værdi af nuller er ikke en hash. Et mappe-id
+   kommer også fra en liste eller et søgeresultat i denne samtale.
+2. {% if has('read_documents') %}{{ tool('read_documents') }} kan også finde et filnavn eller en sti, når den angiver ét dokument.{% endif %} Andre dokumentværktøjer bruger hashen.
+3. For at finde en fils file_hash ud fra dens navn skal du søge efter navnet med {{ tool('search_collections') }}{% if has('folder_search') %} eller {{ tool('folder_search') }}{% endif %} og kopiere rækkens file_hash.
 {% if has('read_more') %}
-4. Når en række ikke har file_hash, kald {{ tool('read_more') }} for næste side af resultatet.
+4. Når en række ikke har nogen file_hash, kald {{ tool('read_more') }} for resultatets næste side.
 {% endif %}
 
-Når en læsning siger, at intet læsbart datasæt indeholder en hash, tjek dits samling og værdi mod resultatrækken. Et manglende dokument kan også betyde, at værdien navngiver mere end ét dokument.
+Når en læsning siger, at intet læsbart datasæt indeholder en hash, så sammenlign dens samling og værdi med resultatrækken. Et manglende dokument kan også betyde, at værdien angiver mere end ét dokument.

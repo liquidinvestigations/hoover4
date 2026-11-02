@@ -1,95 +1,138 @@
 ---
 name: passages
 group: technique
-description: hvordan man finder de præcise passuser eller sider, der svarer på et spørgsmål med search_passages, i mange dokumenter eller ét
+description: hvordan du finder de præcise passager eller sider, der besvarer et spørgsmål, med search_passages, i mange dokumenter eller i ét
 tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
-terms: Ord for det: passage, afsnit, sætning, citat, uddrag, side, sektion, hvor der står, den del, der nævner, præcis ordlyd, linje. Gælder for lange tekstdokumenter: PDF, Word-filer, e-mails, rapporter og transkriptioner.
-not_for: Ikke nødvendigt for tællinger, fillister eller metadata.
+terms: Ord for det: passage, afsnit, sætning, citat, uddrag, side, sektion, hvor der står, den del der nævner, nøjagtig ordlyd, linje. Gælder lange tekstdokumenter: PDF, Word-filer, e-mails, rapporter og udskrifter.
+not_for: Behøves ikke til antal, fillister eller metadata.
 ---
-Fund af passagerer og sider
+Find passager og sider
 
 {% if has('search_passages') %}
-For at søge i mange dokumenter bruger du {{ tool('search_passages') }}. Den søger i tekstpassagerer på baggrund af søgeord og betydning på samme tid. Brug den til et spørgsmål i almindelige ord, når de ord, som dokumenterne bruger, ikke er tydelige. Indsend op til 12 forespørgsler i ét kald, hvor hver er en anden form af spørgsmålet. Hvert træf angiver de forespørgsler, der fandt det. Til et præcist navn, en adresse eller en sætning bruger du {{ tool('search_collections') }}.
+For at søge i mange dokumenter brug {{ tool('search_passages') }}. Det søger i tekstpassagerne efter både nøgleord og betydning. Brug det til et spørgsmål i almindelige ord, når de ord, som dokumenterne bruger, ikke er klare. Angiv op til 12 søgeforespørgsler i ét kald, hver med en anden form af spørgsmålet. Hvert træf nævner de søgeforespørgsler, der fandt det. Til et nøjagtigt navn, en adresse eller en frase brug {{ tool('search_collections') }}.
 
 {% endif %}
 {% if has('doc_search_text') or has('pdf_search') %}
-For at søge i ét langt dokument bruger du disse værktøjer.
+For at søge i ét langt dokument brug disse værktøjer.
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} lister træfferne fra en forespørgsel i én tekstkilde i siderekkefølge med siden for hvert træf.
+{{ tool('doc_search_text') }} opregner en søgeforespørgsels træf i én tekstkilde, i siderækkefølge, med hvert træfs side.
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }} finder en forespørgsel på siderne af en PDF-kilde. Angiv page_from og page_for at søge i et sideområde.
+{{ tool('pdf_search') }} finder en søgeforespørgsel på siderne i en PDF-kilde. Angiv page_from og page_to for at søge i et sideinterval.
 {% endif %}
 
 {% endif %}
 {% if has('read_documents') %}
-Læs en side med {{ tool('read_documents') }}, når passageren ikke viser nok tekst til at underbygge påstanden. Angiv dens side, eller angiv forespørgslen for at åbne siden med flest træf.
+Læs en side med {{ tool('read_documents') }}, når passagen ikke viser nok tekst
+til at understøtte påstanden. Angiv dens page, eller angiv query for at åbne den side, der har flest træf.
 {% endif %}
 
-Giv dokumentet og siden, når en passager underbygger svaret.
+Angiv dokumentet og siden, når en passage understøtter svaret.
 
 {% if has('read_documents') %}
 {{ tool('read_documents') }} kræver collection og file_hash.
 collection er ét navn. file_hash er en liste på 1 til 20 hashes fra den samling.
-For dokumenter i forskellige samlinger laver du en separat batch per samling.
-Kopier identiteter fra resultater. Et unikt filnavn eller sti kan også opløse et dokument.
-source vælger optionally en udtrakt kilde. Udeladelse bruger den foretrukne kilde.
-page vælger optionally et gemt sidens identifikator. Sidens identifikatorer kan have huller.
-Udelad page eller angiv nul for at vælge siden med flest træf, eller den først gemte side uden en forespørgsel.
-query åbner tekst omkring nærliggende distinkte matchede ord på den side.
-Til præcis ordvalg citater du sætningen inde i forespørgslen. Et enkelt matchet værdi åbner dets første forekomst.
-offset tilsidesætter passagerens start. Den tæller Unicode-tegn fra nul inden for den side.
-length er et positivt tegntal. Udeladelse bruger 6.000 tegn.
-source_version verificerer optionally det returnerede kildes fingeraftryk. Kopier det for en omindlæsning af et område.
+For dokumenter i forskellige samlinger skal du lave en separat gruppe pr. samling.
+Kopiér identiteter fra resultater. Et entydigt filnavn eller en sti kan også finde et dokument.
+source vælger valgfrit en udtrukket kilde. Hvis den udelades, bruges den foretrukne kilde.
+page vælger valgfrit en gemt sideidentifikator. Sideidentifikatorer kan have huller.
+Udelad page, eller angiv nul, for at vælge den side med flest træf for query, eller den første gemte side uden query.
+query åbner teksten omkring nærliggende forskellige matchede ord på den side.
+For nøjagtig ordlyd skal du sætte frasen i citationstegn i query. En enkelt matchet værdi åbner sit første forekomststed.
+offset tilsidesætter passagens start. Den tæller Unicode-tegn fra nul inden for den side.
+length er et positivt antal tegn. Hvis den udelades, bruges 6.000 tegn.
+source_version bekræfter valgfrit den returnerede kildes fingeraftryk. Kopiér den ved en ny læsning af et interval.
 
-Resultatet returnerer text_range med start, eksklusiv end, totale side-tegn og enhed.
-page_complete betyder, at rækkevidden dækker hele siden.
-Et cut-marker betyder, at værktøjet leverede kun en del af rækkevidden. Det betyder ikke, at siden slutter der.
-Brug et items more for at fortsætte det dokument. Brug top-level more for at fortsætte den resterende side eller senere sider.
-Kopier det returnerede_handle præcist ind i {{ tool('read_more') }} som fortsættelse.
-Kopier read_before eller read_after som read_documents-argumenter for omgørende tekst. Der kræves ingen offset-beregning.
-Rækkevidde-argumenter gælder for hvert hash i ét kald. Brug separate kald, når dokumenterne har forskellige kilder, rækkevidder eller source-versioner.
-For eksempel kopieres det første dokuments returnerede read_after-objekt ind i ét kald.
-```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` Kopier det andet dokuments returnerede read_after-objekt ind i et andet kald.
-```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` Brug de faktiske returnerede værdier for hvert dokument. Tilføj ikke numrede felter såsom source2 eller offset2.
-En gentaget initialt kald returnerer den samme tekst. Brug fortsættelse, når der skal læses mere tekst.
-Stop med at læse, når passage giver nok beviser for den anfordrede påstand.
+Resultatet returnerer text_range med start, eksklusiv slutning, sidens samlede antal tegn og enhed.
+page_complete betyder, at intervallet dækker hele siden.
+En afskæringsmarkering betyder, at værktøjet kun leverede en del af intervallet. Det betyder ikke, at siden slutter dér.
+Brug et elements more til at fortsætte det dokument. Brug more på øverste niveau til at fortsætte den resterende side eller senere sider.
+Kopiér det returnerede mærke nøjagtigt ind i {{ tool('read_more') }} som continuation.
+Kopiér read_before eller read_after som read_documents-argumenter for omgivende tekst. Der kræves ingen beregning af offset.
+Intervalargumenter gælder for hver hash i ét kald. Brug separate kald, når dokumenter har forskellige kilder, intervaller eller kildeversioner.
+Kopiér for eksempel det første dokuments returnerede read_after-objekt ind i ét kald.
+```json
+{"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"}
+```
+Kopiér det andet dokuments returnerede read_after-objekt ind i et andet kald.
+```json
+{"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"}
+```
+Brug de faktiske returnerede værdier for hvert dokument. Tilføj ikke nummererede argumenter som source2 eller offset2.
+Et gentaget første kald returnerer den samme tekst. Brug continuation, når du har brug for mere tekst.
+Stop med at læse, når passagen giver nok bevis for den ønskede påstand.
 
-Denne minimale kald åbner den første gemte side.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` Dette kald åbner et målrettet pasus.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` Dette kald åbner et returneret interval i en udvalgt kilde og side.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` Denne fortsættelse læser det næste returnerede interval. Brug det faktiske udstedte citationsmærke.
-```json {"continuation":"COPY_RETURNED_MORE"} ```
+Dette minimale kald åbner den første gemte side.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]}
+```
+Dette kald åbner en målrettet passage.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"}
+```
+Dette kald åbner et returneret interval i en valgt kilde og side.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"}
+```
+Denne fortsættelse læser det næste returnerede interval. Brug det faktisk udstedte mærke.
+```json
+{"continuation":"COPY_RETURNED_MORE"}
+```
 {% endif %}
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} kræver collection, file_hash og query. source vælger optionalt én udtrækning.
-Den returnerer side, ordinal, start, end og snippet for hvert træf. Offset tæller tegn inden for den pågældende side.
-Kopier et træfs side og start i read_documents, når snippetpoten har brug for mere kontekst.
+{{ tool('doc_search_text') }} kræver collection, file_hash og query. source vælger valgfrit én ekstraktion.
+Det returnerer page, ordinal, start, end og snippet for hvert træf. Offsets tæller tegn inden for den side.
+Kopiér et træfs page og start ind i read_documents, når uddraget kræver mere kontekst.
 Brug read_more til at hente de resterende træf.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"}
+```
 {% endif %}
 {% if has('doc_sources') %}
-{{ tool('doc_sources') }} kræver collection og file_hash. query vælger optionalt tæller matching hits i hver udtrækning.
-Den returnerer kilde-navne og gemte side-intervaller. Kopier et kilde-navn, når du vælger en bestemt udtrækning.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
+{{ tool('doc_sources') }} kræver collection og file_hash. query tæller valgfrit matchende træf i hver ekstraktion.
+Det returnerer kildenavne og gemte sideintervaller. Kopiér et kildenavn, når du vælger en bestemt ekstraktion.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
 {% endif %}
 {% if has('doc_diff_sources') %}
 {{ tool('doc_diff_sources') }} kræver collection, file_hash, source_a og source_b.
-page_a og page_b vælger optionalt sider. Udeladelse vælger den første gemte side af hver kilde.
-Resultatet er en samlet tekstdiff. Brug read_more, når den fortsætter.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
+page_a og page_b vælger valgfrit sider. Hvis de udelades, vælges den første gemte side i hver kilde.
+Resultatet er en samlet tekstdiff. Brug read_more, når det fortsætter.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7}
+```
 {% endif %}
 {% if has('pdf_search') %}
 {{ tool('pdf_search') }} kræver collection, file_hash og query.
-source vælger optionalt en PDF-udtrækning. page_from og page_to begrænser optionalt det inklusive PDF-side-interval.
-Kopier returnerede sidepositioner. Brug read_more for fortsatte træf.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
+source vælger valgfrit en PDF-ekstraktion. page_from og page_to begrænser valgfrit det inklusive PDF-sideinterval.
+Kopiér returnerede sidepositioner. Brug read_more til fortsatte træf.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12}
+```
 {% endif %}
 {% if has('search_passages') %}
-{{ tool('search_passages') }} accepterer forespørgsler som én streng eller en liste på op til 12 former.
-collection accepterer ét navn eller en liste. Udeladelse søger i alle tilladte samlinger.
-max_results vælger træftallet pr. forespørgselsform inden for den serverede skemagrænse. Udeladelse bruger 15.
-Resultatet giver collection, file_hash, side og snippet. q registrerer de nulbaserede forespørgsels-indekser.
-Læs supplerende tekst, når pasuset ikke besvarer spørgsmålet.
-```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
+{{ tool('search_passages') }} accepterer queries som én streng eller en liste på op til 12 former.
+collection accepterer ét navn eller en liste. Hvis den udelades, søges i alle tilladte samlinger.
+max_results vælger antallet af træf pr. søgeforespørgselsform inden for det leverede skemas grænse. Hvis den udelades, bruges 15.
+Resultatet giver collection, file_hash, page og snippet. q registrerer de nulbaserede søgeforespørgselsindeks.
+Læs den understøttende tekst, når passagen ikke besvarer spørgsmålet.
+```json
+{"queries":"godkendelse af overførslen"}
+```
+```json
+{"collection":["alpha","beta"],"queries":["godkendelse af overførslen","bemyndigelse til overførsel"],"max_results":5}
+```
 {% endif %}

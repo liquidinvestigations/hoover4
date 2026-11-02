@@ -1,55 +1,86 @@
 ---
 name: spreadsheets
 group: technique
-description: sådan læser du et regnearksfil med tabelværktøjerne: dets ark, kolonner, rækker og enkeltceller
+description: hvordan du læser en regnearksfil med tabelværktøjerne: dens ark, kolonner, rækker og enkelte celler
 tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
-terms: Ord for det: tabel, tabeller, regneark, Excel, workbook, ark, worksheet, faneblad, CSV, TSV, tabeldata, datatabel, ledger, register, tracker, liste med kolonner, række, kolonne, celle, header, pivot-table, database-tabel, SQLite, Tabelle. Filtyper: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML samt tabeller inde i HTML- eller PDF-dokumenter. Søgtræf af type tabel.
-not_for: Ikke nødvendigt, når anmodningen kun beder om, at svaret formidles som en tabel, eller når ordet tabel bruges i en anden betydning.
+terms: Ord for det: tabel, tabeller, regneark, Excel, projektmappe, ark, fane, CSV, TSV, tabeldata, datatabel, kontobog, register, oversigt, liste med kolonner, række, kolonne, celle, overskrift, pivottabel, databasetabel, SQLite. Filtyper: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML og tabeller i HTML- eller PDF-dokumenter. Søgetræf af typen table.
+not_for: Behøves ikke, når forespørgslen kun beder om, at svaret opstilles som en tabel, eller bruger ordet tabel i en anden betydning.
 ---
 Læsning af et regneark
 
-Et regneark, en CSV-fil eller en tabel i et dokument er et tabeldokument. Navngiv det ved hjælp af file_hash og samlingen for et søgningstræf.
+Et regneark, en CSV-fil eller en tabel i et dokument er et tabeldokument. Angiv det med file_hash og collection fra et søgeresultat.
 
-1. {{ tool('table_overview') }} lister arkene og kolonnerne med deres id'er.
-2. Læs rækker med {{ tool('table_page') }}. Ét kald giver 50 rækker. Sortér og filtrér rækkerne i kaldet. Giv row_start for at gå til en række i et stort ark, og kolonner for at læse kolonnerne efter den 60.
-3. {{ tool('table_column_values') }} lister værdier i én kolonne og deres tællinger.
-4. For at finde en værdi i et ark, kald {{ tool('table_search_cells') }}. Læs omgivende rækker med {{ tool('table_page') }} når matchen har brug for kontekst.
-5. När {{ tool('table_page') }} afkorter en lang celle, læs den hele med {{ tool('table_cell') }}. Giv row med det returnerede row_id, og kolonne med det returnerede kolonne-id.
+1. {{ tool('table_overview') }} opregner arkene og kolonnerne med deres id'er.
+2. Læs rækker med {{ tool('table_page') }}. Ét kald giver 50 rækker. Sortér og filtrér rækkerne i kaldet. Angiv row_start for at gå til en række i et stort ark, og columns for at læse kolonnerne efter den 60.
+3. {{ tool('table_column_values') }} opregner værdierne i én kolonne og deres antal.
+4. For at finde en værdi i et ark kald {{ tool('table_search_cells') }}. Læs omgivende rækker
+med {{ tool('table_page') }}, når matchet kræver kontekst.
+5. Når {{ tool('table_page') }} afkorter en lang celle, så læs den i sin helhed med {{ tool('table_cell') }}. Angiv row med det returnerede row_id og column med det returnerede kolonne-id.
 
-Giv et ark, en række og en kolonne når læseren skal finde en værdi igen.
+Angiv et ark, en række og en kolonne, når læseren skal kunne finde en værdi igen.
 
-For at tælle rækker ud fra en værdi kalder du {{ tool('table_column_values') }} på den kolonne. Tæl ikke rækkerne i en tekstside selv. Angiv det samlede rækketal, filtrene og kolonnen.
-Et værdikald giver op til 200 værdier. Når resultatet har en fortsættelse, kalder du read_more indtil der ikke længere er en fortsættelse. En delvis værdiliste giver ingen komplet fordeling.
-Værditællingerne summerer kun til rækketallet for samme ark, samme rækker og samme filtre. En tom celle har ingen værdi, så tomme celler gør summen mindre end rækketallet. Angiv antallet af tomme celler, når du sammenligner summen med det samlede rækketal.
-For eksempel har et ark med 24 byggetillelser en typekolonne. Værdikaldet giver fence 9, roof 7, deck 5 og pool 3, og ingen fortsættelse. Disse tællinger summerer til 24. Tællinger, der summerer til 27 for 24 rækker, viser en tællefejl. Tællinger, der summerer til 21, viser 3 rækker med en tom type.
-En CSV-fil angiver ingen overskriftsrække. Hvert tabelresultat giver `interpretation`, læsningen af række 1, som dens tællinger beskriver. Med state `established` er læsningen kendt. Med state `ambiguous` eller `legacy` og to `candidates` kan række 1 være overskriftsrækken eller den første datarække.
-Hver kandidat giver sin rækketal. Resultatet læser alle rækker, `all_rows`, medmindre kaldet giver `interpretation`. Giv hver tælling med sin læsning, eller læs den anden læsning med interpretation `all_rows` eller `first_row_header`. Rapporter ikke én læsnings tælling som det etablerede rækketal.
-En JSON-fil eller en tekstfil har ingen ark. När {{ tool('table_overview') }} giver ingen ark, læser du dokumentet som tekst.
+For at tælle rækker efter en værdi kald {{ tool('table_column_values') }} på den kolonne. Tæl ikke
+rækkerne på en tekstside selv. Angiv det samlede antal rækker, filtrene og kolonnen.
+Ét værdikald giver op til 200 værdier. Når resultatet har en continuation, kald read_more,
+indtil der ikke er flere. En delvis værdiliste giver ikke en komplet fordeling.
+Værdiantallene summerer kun til rækkesummen for det samme ark, de samme rækker og de
+samme filtre. En tom celle har ingen værdi, så tomme celler gør summen mindre end
+rækkesummen. Angiv antallet af tomme celler, når du sammenligner summen med totalen.
+Et ark med 24 byggetilladelser har for eksempel en type-kolonne. Værdikaldet giver
+fence 9, roof 7, deck 5 og pool 3, og ingen continuation. Disse antal summerer til 24. Antal,
+der summerer til 27 for 24 rækker, viser en tællefejl. Antal, der summerer til 21, viser 3 rækker
+med en tom type.
+En CSV-fil angiver ingen overskriftsrække. Hvert tabelresultat giver `interpretation`, den læsning af
+række 1, som dets antal beskriver. Med tilstanden `established` er læsningen kendt. Med tilstanden
+`ambiguous` eller `legacy` og to `candidates` kan række 1 være overskriften eller den første datarække.
+Hver kandidat giver sit rækkeantal. Resultatet læser hver række, `all_rows`, medmindre
+kaldet angiver `interpretation`. Angiv hvert antal sammen med dets læsning, eller læs den anden læsning
+med interpretation `all_rows` eller `first_row_header`. Meld ikke én læsnings antal som
+det fastlagte rækkeantal.
+En JSON-fil eller en tekstfil har ingen ark. Når {{ tool('table_overview') }} ikke giver noget ark,
+så læs dokumentet som tekst.
 
-Hvert tabelkald kræver samling og file_hash fra samme dokumentresultat.
-{{ tool('table_overview') }} returnerer sheet- og kolonneidentifikatorer.
-De øvrige tabelværktøjer kræver sheet. Kopier dets identifikator fra oversigten.
+Hvert tabelkald kræver collection og file_hash fra det samme dokumentresultat.
+{{ tool('table_overview') }} returnerer ark- og kolonneidentifikatorer.
+De andre tabelværktøjer kræver sheet. Kopiér dens identifikator fra oversigten.
 {{ tool('table_page') }} accepterer valgfrit sort, filters, columns, search, row_start og interpretation.
-sort kræver column og direction, asc eller desc. Ved udeladelse bruges den gemte rækkefølge.
-filters er en liste af kolonkeyprikater. Hvert prikatum bruger én testtype.
-Et numerisk eller datointerval kan indeholde både nedre og øvre grænser.
-Tests er contains, equals, starts_with, is_empty, number_min, number_max, date_min og date_max.
-Teksttests bruger strenge. Numriske tests bruger tal. Datogrænser bruger YYYY-MM-DD-strenge.
-columns vælger kolonneidentifikatorer. Et returneret vindu indeholder højst 60 udvalgte kolonner.
-search beholder valgfrit rækker, der indeholder dets tekst. row_start er en nulbaseret position i den anfordrede rækkefølge.
-Resultatet indeholder kolonnedata og rækker. row_id er den gemte rækkenethed, også efter sortering.
+sort kræver column og direction, asc eller desc. Hvis den udelades, bruges den gemte rækkefølge.
+filters er en liste af kolonnebetingelser. Hver betingelse bruger én testtype.
+Et tal- eller datointerval kan have både nedre og øvre grænse.
+Testene er contains, equals, starts_with, is_empty, number_min, number_max, date_min og date_max.
+Teksttest bruger strenge. Taltest bruger tal. Datogrænser bruger strenge i formatet YYYY-MM-DD.
+columns vælger kolonneidentifikatorer. Ét returneret vindue indeholder højst 60 valgte kolonner.
+search beholder valgfrit rækker, der indeholder dens tekst. row_start er en nulbaseret position i den ønskede rækkefølge.
+Resultatet indeholder kolonnemetadata og rækker. row_id er den gemte rækkeidentitet, også efter sortering.
 
-{{ tool('table_column_values') }} kræver også column. search filtrerer valgfrit værditekst.
-Den returnerer værdier og tælletal for den kolonne.
-{{ tool('table_search_cells') }} kræver query. Den returnerer matchende sheet-, række- og kolonneidentifikatorer med tekst.
-{{ tool('table_cell') }} kræver row og column. Overfør den returnerede row_id under argumentnavnet row.
-Den returnerer 2.000-tegnssnit. Brug read_more for den resterende celletekst.
-Brug read_more for fortsatte tablesider, værdier og træff i søgningen.
+{{ tool('table_column_values') }} kræver også column. search filtrerer valgfrit værditeksten.
+Det returnerer værdier og antal for den kolonne.
+{{ tool('table_search_cells') }} kræver query. Det returnerer matchende ark-, række- og kolonneidentiteter med tekst.
+{{ tool('table_cell') }} kræver row og column. Send det returnerede row_id under argumentnavnet row.
+Det returnerer udsnit på 2.000 tegn. Brug read_more til den resterende celletekst.
+Brug read_more til fortsatte tabelsider, værdier og søgetræf.
 
 Denne minimale oversigt åbner tabelstrukturen.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` Denne sidekald bruger kopierede ark- og kolonneidentifikatorer.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` Denne værdikald indsnævrer én kolonne.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` Denne værdikald læser række 1 af et tvetydigt CSV-ark som kolonnenavne.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` Denne cellesøgning finder en ønsket værdi.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` Denne cellekald læser row_id 71, selv om den række først dukkede op i et sorteret resultat.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+Dette sidekald bruger kopierede ark- og kolonneidentifikatorer.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50}
+```
+Dette værdikald indsnævrer én kolonne.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"}
+```
+Dette værdikald læser række 1 i et tvetydigt CSV-ark som kolonnenavnene.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"}
+```
+Denne cellesøgning finder en ønsket værdi.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"}
+```
+Dette cellekald læser row_id 71, også når den række stod først i et sorteret resultat.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2}
+```

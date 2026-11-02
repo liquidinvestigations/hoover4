@@ -1,49 +1,65 @@
 ---
 name: citation
 group: general
-description: sådan citerer du de dokumenter, der understøtter et svar
+description: hvordan du henviser til de dokumenter, der understøtter et svar
 tools: cite_documents
 ---
-Citeret tekst goes into a workspace file. Den `report` færdighed siger, hvordan man skriver og retter den.
+Tekst med kildehenvisninger skrives i en arbejdsfil. Færdigheden `report` beskriver, hvordan du skriver og redigerer den.
 
 {% if has('cite_documents') %}
-Når din {{ citation_artefact }} er afhængig af {% if web_enabled %}en interne{% else %}a{% endif %} dokument, så kald {{ tool('cite_documents') }}.
-Giv den hvert dokument, der understøtter en påstand eller citat. Brug det returnerede citationsmærke ved siden af den påstand.
-Brug et citationsmærke ved siden af en påstand, der er afhængig af et internt dokument. Du kan også navngive et dokument for at identificere det eller beskrive et søgningstræf.
-Et kald tager højst 12 citations. Citér det, du har brugt, ikke alt hvad en søgning returnerede.
-Når en søgning eller læsning returnerede dokumenter, der understøtter en påstand, så citér disse dokumenter.
+Når din rapport bygger på {% if web_enabled %}et internt{% else %}et{% endif %} dokument, kald {{ tool('cite_documents') }}.
+Angiv hvert dokument, der understøtter en påstand eller et citat. Brug det returnerede mærke ved siden af den påstand.
+Brug et mærke ved siden af en påstand, der bygger på et internt dokument. Du kan også nævne et
+dokument for at identificere det eller beskrive et søgeresultat.
+Ét kald tager højst 12 kildehenvisninger. Henvis til det, du har brugt, ikke til alt, en søgning returnerede.
+Når en søgning eller en læsning returnerede dokumenter, der understøtter en påstand, så henvis til dem.
 
-For hver citat give:
-- collection og file_hash, kopieret fra et værktøjskald-resultat. Omdig et file_hash aldrig.
-- quote: 5 til 6 efter hinanden liggende ord kopieret fra én linje i dokumentets tekst. Ikke en header-linje (From, To, Cc, Subject, Date). Intet span, der indeholder et spørgsmålstegn.
-- find: valgfrit. Den korteste eksakte sætning af citatet, som personen skal se. Kortet åbner dokumentet på denne sætning.
+Angiv for hver kildehenvisning:
+- collection og file_hash, kopieret fra et værktøjsresultat. Opfind aldrig en file_hash.
+- quote: 5 til 6 sammenhængende ord kopieret fra én linje i dokumentets brødtekst. Ikke en headerlinje
+  (From, To, Cc, Subject, Date). Ikke et stykke, der indeholder et spørgsmålstegn.
+- find: valgfri. Den korteste nøjagtige frase i citatet, som personen skal se. Kortet
+  åbner dokumentet ved denne frase.
 - why: én linje, der siger, hvad dokumentet understøtter.
 
-Skriv det citationsmærke, du får tilbage, for example `[D1]`, i din {{ citation_artefact }}, hvor du laver påstanden.
+Skriv det mærke, du får tilbage, for eksempel `[D1]`, i din rapport det sted, hvor du fremsætter påstanden.
 
-Eksempel. {{ tool('read_documents') if has('read_documents') else 'A tool' }} returnerede e-mailen "Re: DRAFT talking points" i Samlingen enron.
-Dens brødtekst siger "The talking points look great to me. Best of luck today." Din {{ citation_artefact }} siger, at Jim Steffes godkendte udkastet. Kald {{ tool('cite_documents') }} med Samlingen enron, file_hash fra resultatet, citatet "talking points look great to me", find "look great", og hvorfor "Steffes godkender udkastet af 27. december".
-Skriv derefter "Steffes godkendte udkastet [D1]." Ikke citér "Subject: Re: DRAFT talking points", fordi det er en headerlinje. Ikke citér "Can you check the notes?", fordi det indeholder et spørgsmålstegn.
-Linjeskift, tegnsætning og de `>` marks i en citeret e-mail behøver ikke at matche.
-Manglende eller fraværende citater allokerer intet citationsmærke. Kopier 5 til 6 ord af det kandidattekst, som fejlen angiver, ind i citatet og prøv igen.
-Kun et returneret citationsmærke labeler en Kilde. Skriv aldrig dit eget mærke i klammer.
-Skriv citationsmærket som tekst ved siden af påstanden. Sæt det ikke i backticks. `[D1]` i backticks linker intet.
-Genbrug det returnerede dokumenthandle til yderligere verificerede passager. Dokumentet har ét kort.
+Eksempel. {{ tool('read_documents') if has('read_documents') else 'Et værktøj' }} returnerede e-mailen "Re: DRAFT talking points" i samlingen enron.
+Dens brødtekst siger "The talking points look great to me. Best of luck today." Din rapport siger,
+at Jim Steffes godkendte udkastet. Kald {{ tool('cite_documents') }} med collection enron, den
+file_hash, der står i resultatet, quote "talking points look great to me", find "look great"
+og why "Steffes godkender udkastet fra 27. december".
+Skriv derefter "Steffes godkendte udkastet [D1]."
+Citér ikke "Subject: Re: DRAFT talking points", fordi det er en headerlinje. Citér ikke
+"Can you check the notes?", fordi det indeholder et spørgsmålstegn.
+Linjeskift, tegnsætning og `>`-tegnene i en citeret e-mail behøver ikke at stemme overens.
+Manglende eller fraværende citater tildeler intet mærke. Kopiér 5 til 6 ord af den kandidattekst, som fejlen giver, ind i quote, og prøv igen.
+Kun et returneret mærke betegner en kilde. Skriv aldrig din egen betegnelse i kantede parenteser.
+Skriv mærket som tekst ved siden af påstanden. Sæt det ikke i backticks. `[D1]` i backticks linker ikke til noget.
+Genbrug det returnerede dokumentmærke til yderligere verificerede passager. Dokumentet har ét kort.
 {% if citation_resolver == "lead" %}
-Den ledende forsker løser dem, så et handle du aldrig allokerede er til ingen nytte for nogen.
+Den ledende forsker omsætter dem, så et mærke, du aldrig har fået tildelt, er til ingen nytte.
 {% endif %}
 {% endif %}
 {% include "citation_failures.j2" %}
 
 {% if has('cite_documents') %}
-Argumentet citations er en liste over dokumentcitationsobjekter.
-Hvert objekt kræver collection og file_hash. quote indeholder 5 til 6 efterfølgende ord i kildens ordvalg.
-Gentag collection og file_hash i hvert objekt, også ved separate citater fra samme dokument.
+Argumentet citations er en liste af objekter for dokumenthenvisninger.
+Hvert objekt kræver collection og file_hash. quote indeholder 5 til 6 sammenhængende ord med kildens nøjagtige ordlyd.
+Gentag collection og file_hash i hvert objekt, også ved særskilte citater fra det samme dokument.
 Objekter arver ikke argumenter fra tidligere objekter.
-find vælger optionally en præcis sætning inde i quote. Ved udeladelse hele citatet.
-term registrerer optionally den oprindelige forespørgsel. why angiver den understøttede påstand.
-Resultatet giver et citationsmærke for hvert verificeret indhold. Mislykkede indhold giver deres årsag og kan give et kandidatpasus.
-Prøv kun mislykkede indhold igen med præcis ordvalg. Et verificeret citat verificerer ikke i sig selv forfatteren eller datoen for det citat.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]} ``` Denne batch verificerer to pasus fra samme dokument.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+find vælger valgfrit en nøjagtig frase inde i quote. Hvis den udelades, bruges hele citatet.
+term registrerer valgfrit den søgeforespørgsel, der førte til citatet. why angiver den understøttede påstand.
+Resultatet giver et mærke for hver verificeret post. Mislykkede poster giver deres årsag og kan give en kandidatpassage.
+Prøv kun de mislykkede poster igen, med nøjagtig ordlyd. Et verificeret citat verificerer ikke i sig selv citatets forfatter eller dato.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
+```
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"oprindelig søgning","why":"Denne passage understøtter den angivne godkendelse."}]}
+```
+Denne gruppe verificerer to passager fra det samme dokument.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}
+```
 {% endif %}

@@ -1,88 +1,117 @@
 ---
 name: folders_and_files
 group: technique
-description: sådan ser du, hvad en samling indeholder: datasæt, mapper, filtyper, tællinger og datoer, og hvordan du finder en fil ved hjælp af dens navn eller sti
+description: hvordan du ser, hvad en samling indeholder: datasæt, mapper, filtyper, antal og datoer, og hvordan du finder en fil via dens navn eller sti
 tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
-terms: Ord til det: samling, datasæt, mappe, katalog, sti, filnavn, filtype, filendelse, format, tællinger, hvor mange filer, størrelse, største, oversigt, lagerfortegnelse, hvad en samling indeholder, dokumenter per år.
-not_for: Ikke nødvendigt, når forespørgslen kun handler om dokumenternes indhold.
+terms: Ord for det: samling, datasæt, mappe, bibliotek, sti, filnavn, filtype, filendelse, format, antal, hvor mange filer, størrelse, største, oversigt, fortegnelse, hvad en samling indeholder, dokumenter pr. år.
+not_for: Behøves ikke, når forespørgslen kun handler om dokumenternes indhold.
 ---
 Mapper og filer
 
 {% if has('list_collections') and has('search_facet_values') %}
-Til en samlingsoversigt, kald {{ tool('list_collections') }} med {}.
-Kald derefter {{ tool('search_facet_values') }} med {} én gang for hver tilladt samlingsfiltype og sprog.
-Standardmatricen indeholder allerede begge facetter. Der behøver ikke kaldes separat per samling eller facet.
+For en oversigt over samlingerne kald {{ tool('list_collections') }} med {}.
+Kald derefter {{ tool('search_facet_values') }} med {} én gang for filtyperne og sprogene i hver tilladt samling.
+Standardmatricen indeholder allerede begge facetter. Der er ikke brug for et separat kald pr. samling eller facet.
 {% endif %}
 
 {% if has('list_collections') %}
-{{ tool('list_collections') }} tager ingen argumenter. Den giver samlingsnavne, dokumenttællinger og datasættællinger.
-```json {} ```
+{{ tool('list_collections') }} tager ingen argumenter. Det giver samlingsnavne, dokumentantal og datasætantal.
+```json
+{}
+```
 
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} giver lagringstællingerne for hver samling og datasæt.
+{{ tool('folder_overview') }} giver lagerantallene for hver samling og hvert datasæt.
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} giver børnemapperne og filerne i én mappe i et datasæt.
+{{ tool('folder_list') }} giver undermapperne og filerne i én mappe i et datasæt.
 {% endif %}
 {% if has('folder_search') %}
-For at finde en mappe eller fil ved navn inde i ét datasæt, kall {{ tool('folder_search') }}.
+For at finde en mappe eller fil via navn inde i ét datasæt kald {{ tool('folder_search') }}.
 {% endif %}
 {% if has('search_collections') %}
-For at finde en fil ved navn i hver samling, kall {{ tool('search_collections') }} med `filename_only` sat til true. Giv navnet eller en del af det som forespørgsel.
+For at finde en fil via navn i alle samlinger kald {{ tool('search_collections') }} med
+`filename_only` sat til true. Angiv navnet eller en del af det som søgeforespørgsel.
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }} tæller dokumenterne i en søgning efter dato eller størrelse.
+{{ tool('search_histogram') }} tæller en søgnings dokumenter efter dato eller størrelse.
 {% endif %}
 {% if has('search_facet_values') %}
-{{ tool('search_facet_values') }} giver værdierne for et filter, inklusive filtyper, med tællinger.
+{{ tool('search_facet_values') }} giver værdierne af et filter, blandt andet filtyper, med antal.
 {% endif %}
 
-Ett filnavn eller sti kan identificere ett dokument. Ett træfræs `file_hash` identificerer den direkte.
+Et filnavn eller en sti kan identificere ét dokument. En resultatrækkes `file_hash` identificerer det direkte.
 
-Brug metadataværktøjer til en lageropgave. Deres tællinger kan svare på opgaven direkte.
+Brug metadataværktøjer til en forespørgsel om en fortegnelse. Deres antal kan besvare forespørgslen direkte.
 Indholdssøgninger er kun nyttige, når personen spørger, hvad dokumenterne siger.
 
 {% if has('search_facet_values') %}
 Kald {{ tool('search_facet_values') }} én gang for flere samlinger og facetter.
 Argumenterne er collection, facets, query og ids.
-Udelad collection eller angiv [] for hver tilladt samling. Angiv ét navn eller en liste for at begrænse udvalget.
-Udelad facets for ["file_types", "language"]. Angiv en liste med eksakte facetnavne for andre fordelinger.
-Brug file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc, re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money eller re_crypto_wallet.
+Udelad collection, eller angiv [] for alle tilladte samlinger. Angiv ét navn eller en liste for at indsnævre udvalget.
+Udelad facets for ["file_types", "language"]. Angiv en liste af nøjagtige facetnavne for andre fordelinger.
+Brug file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc,
+re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money eller re_crypto_wallet.
 file_type er ugyldig. Brug file_types.
-query finder tekst inden i facetværdier. Den søger ikke i dokumentindhold.
-ids opløser eventuelt kendte termer-id. Almindelige søgninger bruger værditekst og behøver ingen identifikatorer.
+query finder tekst i facetværdier. Den søger ikke i dokumentindhold.
+ids afklarer valgfrit kendte termidentifikatorer. Almindelige søgninger bruger værditekst og behøver ingen identifikatorer.
 
-Resultatet har kolonner og emner. Hver række begynder med sin samling.
-Hvert facetcell indeholder [text, count]-par. Kopier tekst til facet_filters til en senere indholdssøgning.
+Resultatet har columns og items. Hver række begynder med sin samling.
+Hver facetcelle indeholder [text, count]-par. Kopiér text ind i facet_filters til en senere indholdssøgning.
 En null-celle har en rapporteret fejl. En tom celle har ingen returnerede værdier.
-Tællerne refererer til indekserede dokumenttræf per værdi. Flere værdier kan gælde for ét dokument.
-Læg ikke facettæller til for at påstå en distikt total. Inventartotaler kommer fra list_collections.
-Standardfacetlisten kan udelade ualmindelige værdier. Brug query for at finde en specifik værdi.
-Brug mere med read_more når resultatet fortsætter.
+Antal henviser til indekserede dokumentmatch pr. værdi. Flere værdier kan gælde for ét dokument.
+Læg ikke facetantal sammen for at påstå et samlet antal forskellige dokumenter. Totaler for en fortegnelse kommer fra list_collections.
+Standardlisten af facetter kan udelade sjældne værdier. Brug query til at finde en bestemt værdi.
+Brug more med read_more, når resultatet fortsætter.
 
-Denne minimale kald inventariserer filformater og sprog på tværs af tilladte Samlinger.
-```json {} ``` Dette kald sammenligner to udvalgte Samlinger og søger i deres e-mailadresseværdier.
-```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+Dette minimale kald gør status over filformater og sprog på tværs af tilladte samlinger.
+```json
+{}
+```
+Dette kald sammenligner to valgte samlinger og søger i deres e-mailadresseværdier.
+```json
+{"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"}
+```
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} kræver Samling. datasæt vælger optionelt ét datasæt.
-Dette kald læser alle datasæts-lagringsantal inden for én Samling.
-```json {"collection":"alpha"} ``` Dette vælger ét datasæt.
-```json {"collection":"alpha","dataset":"files"} ```
+{{ tool('folder_overview') }} kræver collection. dataset vælger valgfrit ét datasæt.
+Dette kald læser alle datasætlagerantal i én samling.
+```json
+{"collection":"alpha"}
+```
+Dette kald vælger ét datasæt.
+```json
+{"collection":"alpha","dataset":"files"}
+```
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} kræver Samling og datasæt. node_id vælger optionelt en mappe-node blandt de returnerede.
-Udelad node_id for at læse datasættets rod. Kopier child-node-identifikatorer ind i senere kald.
-```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_list') }} kræver collection og dataset. node_id vælger valgfrit en returneret mappenode.
+Udelad node_id for at læse datasættets rod. Kopiér undernodernes identifikatorer ind i senere kald.
+```json
+{"collection":"alpha","dataset":"files"}
+```
+```json
+{"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('folder_search') %}
-{{ tool('folder_search') }} kræver Samling, datasæt og forespørgsel. node_id begrænser optionelt søgningen til én mappe.
-```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_search') }} kræver collection, dataset og query. node_id begrænser valgfrit søgningen til én mappe.
+```json
+{"collection":"alpha","dataset":"files","query":"report"}
+```
+```json
+{"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }} accepterer de samme filtrerer som search_collections, undtagen sort og queries.
-field er date, mentioned_date eller size. Den defaulter til date. query defaulter til en tom forespørgsel.
-Udeladt Samling dækker alle tilladte Samlinger. Resultatet returnerer buckets og det valgte felt.
-```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{{ tool('search_histogram') }} accepterer de samme filtre som search_collections, undtagen sort og queries.
+field er date, mentioned_date eller size. Standarden er date. query er som standard en tom søgeforespørgsel.
+Hvis collection udelades, dækkes alle tilladte samlinger. Resultatet returnerer buckets og den valgte field.
+```json
+{}
+```
+```json
+{"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}}
+```
 {% endif %}

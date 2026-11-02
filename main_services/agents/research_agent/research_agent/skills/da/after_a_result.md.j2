@@ -1,27 +1,28 @@
 ---
 name: after_a_result
 group: stumble
-description: hvad man skal gøre efter et værktøjskald
+description: hvad du skal gøre efter et værktøjsresultat
 tools:
 ---
 Efter hvert resultat
 
-Efter hvert resultat udfør ét af disse trin.
+Efter hvert resultat gør du én af disse ting.
 
-1. Resultatet indeholder det, du skal bruge. Brug det, og fortsæt arbejdet.
-2. Resultatet er tomt eller hjælper ikke. Ændr argumenterne: andre ord, en anden form af et navn,{% if has('search_collections') %} en anden samling,{% endif %} en anden side, eller intet filter.
-3. Resultatet er en fejl. Læs fejlteksten, ret det argument, den angiver, og send derefter kaldet.
-   Når en batch har både succesfulde og fejlede kald, behold de succesfulde resultater. Send kun det fejlede kald igen.
-4. Du har nok til at svare. Skriv svaret, eller rapporten når den skal have citater eller et dokument.
+1. Resultatet indeholder det, du har brug for. Brug det, og fortsæt arbejdet.
+2. Resultatet er tomt eller hjælper ikke. Ændr argumenterne: andre ord, en anden form af et navn,{% if has('search_collections') %} en anden samling,{% endif %} en anden side eller intet filter.
+3. Resultatet er en fejl. Læs fejlteksten, ret det argument, den nævner, og send så kaldet.
+   Når en gruppe af kald har både vellykkede og mislykkede kald, behold de vellykkede resultater. Send kun
+   det mislykkede kald igen.
+4. Du har nok til at svare. Skriv svaret, eller rapporten, hvis den kræver kildehenvisninger eller et dokument.
 
-Brug synlige resultater, når de svarer på den aktuelle spørgsmål.
-Efter kontekstkomprimering skal du bruge det beholdte indeks og noter til at identificere tidligere resultater.
-Opdatér et påkrævet pasus eksplicit, når dets tekst ikke længere er synlig.
+Brug synlige resultater, når de besvarer det aktuelle spørgsmål.
+Efter en komprimering af konteksten bruger du det bevarede indeks og de bevarede noter til at finde tidligere resultater.
+Hent en nødvendig passage eksplicit igen, når dens tekst ikke længere er synlig.
 
-Når en søgning ikke returnerer et nyttigt resultat, skal du ændre forespørgslen eller bruge en anden kilde.
+Når en søgning ikke giver et brugbart resultat, ændr søgeforespørgslen, eller brug en anden kilde.
 
 {% if has('read_more') %}
-En større værdi betyder, at der er yderligere resultattekst tilgængelig.
+En more-værdi betyder, at der findes mere resultattekst.
 Kald {{ tool('read_more') }} med continuation sat til den returnerede værdi.
-Gentagelse af det oprindelige kald returnerer det oprindelige interval.
+Hvis du gentager det oprindelige kald, får du det oprindelige interval.
 {% endif %}

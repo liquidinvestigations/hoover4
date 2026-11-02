@@ -1,87 +1,99 @@
 ---
 name: search
 group: general
-description: sådan søger du i dokumentsamlinger og bruger forespørgselsyntaxen
+description: hvordan du søger i dokumentsamlinger og bruger søgesyntaksen
 tools: search_collections
 ---
 {% if has('search_collections') %}
-Søg i brugerens dokumenter
+Søgning i brugerens dokumenter
 
 1. Søg i dokumenter, når deres indhold kan besvare spørgsmålet.
-2. Brug Samling, når anmodningen retter mod én samling. Lad den stå ud for at søge på tværs af de samlinger, denne chat kan læse.
-3. {{ tool('search_collections') }} accepterer flere forespørgsler. Brug relevante former af et navn eller en adresse. Sæt en præcis sætning i anførselstegn.
-4. OR, OG og IKKE er almindelige ord i en forespørgsel. Brug | for enten-eller og -ord for at ekskludere et ord.
-5. Kopier file_hash og collection fra en resultatræk. Skriv aldrig selv et hash.{% if has('read_more') %} Hvis en ræk mangler file_hash, kald {{ tool('read_more') }}.{% endif +%}
-6. Sæt et dato- eller størrelsesfilter, når det hjælper med at besvare spørgsmålet.
-7. Når du rapporterer, at en søgning ikke fandt noget dokument, angiv dets forespørgsel, samlinger og antal.
-8. Et kald tager højst 12 forespørgsler. Del en længere liste op i to kald.
-9. Giv hver forespørgsel mindst ét ord at søge på. En forespørgsel, der kun består af -ord, afvises.
-10. Sæt filename_only til true eller false. Den accepterer ingen tekst.
+2. Brug collection, når forespørgslen er rettet mod én samling. Udelad den for at søge
+på tværs af de samlinger, som denne chat kan læse.
+3. {{ tool('search_collections') }} accepterer flere søgeforespørgsler. Brug relevante former af et navn eller en adresse. Sæt en nøjagtig frase i dobbelte anførselstegn.
+4. OR, AND og NOT er almindelige ord i en søgeforespørgsel. Brug | for enten og -ord for at udelukke et ord.
+5. Kopiér file_hash og collection fra en resultatrække. Skriv aldrig en hash selv.{% if has('read_more') %} Hvis en række ikke har nogen file_hash, kald {{ tool('read_more') }}.{% endif +%}
+6. Angiv et dato- eller størrelsesfilter, når det hjælper med at besvare spørgsmålet.
+7. Når du melder, at en søgning ikke fandt noget dokument, så angiv dens søgeforespørgsel, samlinger og antal.
+8. Ét kald tager højst 12 søgeforespørgsler. Del en længere liste i to kald.
+9. Giv hver søgeforespørgsel mindst ét ord at søge efter. En søgeforespørgsel med kun -ord-udtryk afvises.
+10. Sæt filename_only til true eller false. Det tager ingen tekst.
 
-Eksempel. Brugeren spørger efter alle data for JoeBWilkinson@cs.com. Lav et kald til {{ tool('search_collections') }} med forespørgslerne ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Læs et dokument, når dets resultatræk ikke giver nok bevis for påstanden.
+Eksempel. Brugeren beder om alle data om JoeBWilkinson@cs.com. Foretag ét kald til {{ tool('search_collections') }} med queries ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Læs et dokument, når dets resultatrække ikke giver nok bevis for påstanden.
 {% endif %}
 
-Følg disse søgestep, når tidligere søgninger ikke besvarer spørgsmålet.
+Følg disse søgetrin, når tidligere søgninger ikke besvarer spørgsmålet.
 {% if has('search_collections') %}
-1. Søg på hvert navn som en citeret sætning.
-2. Søg på ukitterede ord, initialer, e-mailadresser og navne i dokumentsproget.
-Læs word_counts og stillesforslag. Brug kun et forslag til det menede navn.
-Brug dasovi?h for ét varierende bogstav og dasovic% for et valgfrit sidste bogstav.
-Brug skilling << resigned når ordfølgen betyder noget.
+1. Søg efter hvert navn som en citeret frase.
+2. Søg efter ord uden citationstegn, initialer, e-mailadresser og navne på dokumentets sprog.
+Læs word_counts og stavneforslag. Brug et forslag kun til det tilsigtede navn.
+Brug dasovi?h til ét varierende bogstav og dasovic% til et valgfrit sidste bogstav.
+Brug skilling << resigned, når ordrækkefølgen har betydning.
 3. Fjern filtre ét ad gangen. Kør en søgning uden filtre.
 {% endif %}
 {% if has('search_facet_values') %}
-Bekræft filterværdier med {{ tool('search_facet_values') }}.
+Kontrollér filterværdier med {{ tool('search_facet_values') }}.
 {% endif %}
 {% if has('search_histogram') %}
-Bekræft datoer med {{ tool('search_histogram') }}.
+Kontrollér datoer med {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Søg på en beskrivelse af indholdet med {{ tool('search_passages') }}.
+4. Søg efter en beskrivelse af indholdet med {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. Brug {{ tool('folder_search') }} når anmodningen navngiver en mappe, sti eller fil.
+5. Brug {{ tool('folder_search') }}, når forespørgslen angiver en mappe, sti eller fil.
 {% endif %}
 {% if has('folder_list') %}
 Brug {{ tool('folder_list') }} til den mappe.
 {% endif %}
 {% if has('read_documents') %}
-6. Læs de bedste 1 til 3 træf med {{ tool('read_documents') }}.
+6. Læs de 1 til 3 bedste træf med {{ tool('read_documents') }}.
 {% endif %}
-Til personerne eller organisationerne i et dokument, læs den del af det dokument, der navngiver dem. En reference til et andet værk navngiver det andet værk.
+For et dokuments personer eller organisationer skal du læse den del af dokumentet, der nævner dem. En henvisning til et andet værk nævner det andet værk.
 {% if has('doc_search_text') %}
 Brug {{ tool('doc_search_text') }} til relevant tekst i et dokument.
 {% endif %}
 {% if has('web_search') %}
-7. Søg på nettet kun når anmodningen tillader det.
+7. Søg kun på nettet, når forespørgslen tillader det.
 {% endif %}
 {% if has('read_page') %}
 Læs de bedste websider med {{ tool('read_page') }}.
 {% endif %}
 
 {% if has('search_collections') %}
-De fuldstændige søgeargumenter er collection, queries, query, sort, date_after, date_before, date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max, folder_term_id, filename_only og facet_filters.
-collection accepterer et navn eller en liste. Udeladelse eller [] søger i alle tilladte samlinger.
-query har tom tekst som standard. queries kan tilføje op til 12 former. Duplikerede former køres én gang.
-En tom søgning browser alle filtræf. Søgeformer samler matchende dokumentidentiteter.
-sort indeholder felt og retning. felt er relevance, date, file_size eller name. retning er asc eller desc.
-Udeladelse bruger standard relevansorden.
-date_after og date_before bruger inklusiv UTC epoch-sekunder for dokumentdatoen.
-mentioned_date_after og mentioned_date_before bruger inklusiv UTC epoch-sekunder for datoer udtrækket fra tekst.
-date_unknown_only=true vælger dokumenter uden kendt dokumentdato. Kombiner det ikke med et kendt datointerval.
-size_min og size_max er inklusiv bytegrænser. folder_term_id vælger en returneret mappeterm.
-filename_only=true begrænser forespørgslen til navne og stier. False bruger dokumentindhold.
-facet_filters kortlælder gyldige facetnavne til lister af returnerede værditekster. Udeladelse anvender ingen facetfiltrering.
-Værdier inden for én facet er alternativer. Forskellige facetfiltreringer skal alle matche.
+De fulde søgeargumenter er collection, queries, query, sort, date_after, date_before,
+date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max,
+folder_term_id, filename_only og facet_filters.
+collection accepterer et navn eller en liste. Hvis den udelades eller er [], søges i alle tilladte samlinger.
+query er som standard tom tekst. queries tilføjer valgfrit op til 12 former. Dubletformer køres én gang.
+En tom query gennemser alle filtermatch. Søgeformerne slår matchende dokumentidentiteter sammen.
+sort indeholder field og direction. field er relevance, date, file_size eller name. direction er asc eller desc.
+Hvis den udelades, bruges standardrækkefølgen efter relevans.
+date_after og date_before bruger inklusive UTC-epokesekunder for dokumentdatoen.
+mentioned_date_after og mentioned_date_before bruger inklusive UTC-epokesekunder for datoer udtrukket fra teksten.
+date_unknown_only=true vælger dokumenter uden en kendt dokumentdato. Kombinér den ikke med et interval af kendte datoer.
+size_min og size_max er inklusive bytegrænser. folder_term_id vælger en returneret mappeterm.
+filename_only=true begrænser søgeforespørgslen til navne og stier. False bruger dokumenternes indhold.
+facet_filters knytter gyldige facetnavne til lister af returneret værditekst. Hvis den udelades, anvendes intet facetfilter.
+Værdier inden for én facet er alternativer. Forskellige facetfiltre skal alle matche.
 
 Hvert resultat indeholder collection, file_hash, path, snippet og tilgængelig type, dato og størrelse.
-q lister de nulbaserede former, der fandt rækken. query_forms rapporterer hver forms antal.
-word_counts verificerer indekserede ord. suggestions lister nærmeende indekserede stavefejl med antal.
-Læs query_notes for repareret syntaks, ukendte filtre og mislykkede søgeformer.
-more fortsætter resultatet. Kopier det into read_more. En tom første side behøver ingen gentagen identisk kald.
+q opregner de nulbaserede former, der fandt rækken. query_forms rapporterer hver forms antal.
+word_counts verificerer indekserede ord. suggestions opregner nærliggende indekserede stavemåder med antal.
+Læs query_notes for repareret syntaks, ukendte filtre og mislykkede søgeforespørgselsformer.
+more fortsætter resultatet. Kopiér det ind i read_more. En tom første side kræver ikke et gentaget identisk kald.
 
-Denne minimale kald søger i alle tilladte samlinger.
-```json {"query":"\"Joe Wilkinson\""} ``` Dette avancerede kald kombinerer forespørgselsformer, samlingsscope, sortering, datoer, størrelse og facet-filtre.
-```json {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}} ``` Dette separate kald finder filer uden kendt dokumentdato.
-```json {"query":"report","filename_only":true,"date_unknown_only":true} ``` Erstat collection, folder og facet-værdier med værdier returneret for den nuværende chat.
+Dette minimale kald søger i alle tilladte samlinger.
+```json
+{"query":"\"Joe Wilkinson\""}
+```
+Dette avancerede kald kombinerer søgeformer, samlingsomfang, sortering, datoer, størrelse og facetfiltre.
+```json
+{"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}}
+```
+Dette separate kald finder filer uden en kendt dokumentdato.
+```json
+{"query":"report","filename_only":true,"date_unknown_only":true}
+```
+Erstat collection-, mappe- og facetværdier med værdier, der er returneret for den aktuelle chat.
 {% endif %}

@@ -1,45 +1,55 @@
 ---
 name: emails
 group: technique
-description: sådan læser du e-maildokumenter: afsender, modtagere, dato, emne, headers, kopier og tråde
+description: hvordan du læser e-maildokumenter: afsender, modtagere, dato, emne, headers, kopier og tråde
 tools: doc_email, doc_metadata, read_documents
 ---
-Læs e-maildokumenter
+Læsning af e-maildokumenter
 
 {% if has('search_collections') %}
-Find e-mails med {{ tool('search_collections') }}. Sæt hver form af en adresse eller et navn i ét kald, for eksempel adressen, "Først Sidst" og "Sidst, Først".
+Find e-mails med {{ tool('search_collections') }}. Læg alle former af en adresse eller et navn i ét kald, for eksempel adressen, "Fornavn Efternavn" og "Efternavn, Fornavn".
 
 {% endif %}
 {% if has('doc_email') %}
-1. Kald {{ tool('doc_email') }} med file_hash for e-mailen. Den giver afsenderen, modtagerne, kopierne, datoen, emnet, forældremeddelelsen, vedhæftningsfilerne og meddelelsesgrafen.
-2. For at følge en tråd, giv node, file_hash for en anden meddelelse i grafen. Grafen centrerer derefter om den meddelelse.
-3. En vedhæftningsfil er et dokument i sig selv. Læs den med sin egen file_hash.
+1. Kald {{ tool('doc_email') }} med e-mailens file_hash. Det giver afsenderen, modtagerne, kopimodtagerne, datoen, emnet, den overordnede besked, vedhæftningerne og beskedgrafen.
+2. For at følge en tråd skal du angive node, filhashen for en anden besked i grafen. Grafen centreres så på den besked.
+3. En vedhæftning er et dokument i sig selv. Læs den med dens egen file_hash.
 {% endif %}
 {% if has('read_documents') %}
-4. Læs teksten i meddelelsen med {{ tool('read_documents') }}.
+4. Læs beskedens tekst med {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_metadata') %}
-5. For hovederne og datoen, der ikke er i teksten, kald {{ tool('doc_metadata') }}.
+5. Til headers og datoer, der ikke står i teksten, kald {{ tool('doc_metadata') }}.
 {% endif %}
 
-En kopi af samme meddelelse kan være i mere end én postkasse. Sammenlign dens felter, når et tal afhænger af distinkte meddelelser.
+En kopi af den samme besked kan ligge i mere end én postkasse. Sammenlign dens felter, når et antal afhænger af forskellige beskeder.
 
 {% if has('doc_email') %}
 {{ tool('doc_email') }} kræver collection og file_hash.
-collection er ét navn. file_hash acceptere ét hash eller en liste på op til ti hashes fra den samling.
-node centrerer valgfrit grafen på et returneret message-hash. Udeladelse centrerer den på den forespurte e-mail.
-Brug read_more til at inspicere resterende vedhæftninger og grafposter.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+collection er ét navn. file_hash accepterer én hash eller en liste på op til ti hashes fra den samling.
+node centrerer valgfrit grafen på en returneret beskedhash. Hvis den udelades, centreres grafen på den ønskede e-mail.
+Brug more med read_more til at se de resterende vedhæftninger og grafposter.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"}
+```
 {% endif %}
 {% if has('doc_metadata') %}
-{{ tool('doc_metadata') }} kræver collection og file_hash. Den accepterer ét hash eller en liste på op til ti hashes.
-Den returnerer gemt metadata, datoer, lokationer og downloadlinks. Brug read_more til resterende metadatafelter.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{{ tool('doc_metadata') }} kræver collection og file_hash. Det accepterer én hash eller en liste på op til ti hashes.
+Det returnerer gemte metadata, datoer, placeringer og downloadlinks. Brug read_more til de resterende metadatafelter.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]}
+```
 {% endif %}
-Læs det forespurte pasus for tildeling af dets afsender, modtagere eller dato.
-Den ydre e-mailkonvort tilhører den ydre besked.
-En videresendt eller citeret pasus kan have en afsender, modtagere og dato.
-Brug den pasus egne headers til at identificere, hvem der skrev den.
-En person, der videresendte en besked, skrev ikke nødvendigvis dens citerede udtalelse.
-Når attribution forbliver ukendt, angiv den begrænsning.
-Læs pasus for målrettede intervaller og fortsættelsesinstruktioner. Gentag ikke den indledende læsning for at anmode om senere tekst.
+Læs den ønskede passage, før du tilskriver den en forfatter, modtagere eller dato.
+E-mailens ydre kuvert tilhører den ydre besked.
+En videresendt eller citeret passage kan have en anden forfatter, andre modtagere og en anden dato.
+Brug den passages egne headers til at afgøre, hvem der skrev den.
+En person, der videresendte en besked, har ikke nødvendigvis skrevet dens citerede udsagn.
+Når tilskrivningen forbliver ukendt, så angiv den begrænsning.
+Læs passager for målrettede intervaller og fortsættelsesinstruktioner. Gentag ikke den første læsning for at få senere tekst.

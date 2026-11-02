@@ -1,19 +1,22 @@
 ---
 name: todo_upkeep
 group: stumble
-description: sådan opbeholder du planen med update_plan, dens trin og deres status
+description: hvordan du fører planen med update_plan, dens trin og deres statusser
 tools: update_plan
 ---
-Med planen
+Føring af planen
 
-{{ tool('update_plan') }} tager målet og hele listen over trin. Hvert trin har tekst og status, og et færdigt trin har en kort note.
+{{ tool('update_plan') }} tager målet og hele listen af trin. Hvert trin har text og status, og et trin, der er done, har en kort note.
 
-1. Send hele listen i hvert kald, i rækkefølge. Et trin, du lader være med, er ikke længere en del af planen.
-2. Angiv hvert trin som et objekt med tekst og status. status er pending eller done.
-3. Et trin er pending, indtil dets arbejde er afsluttet. Send det derefter som done med en note, såsom found, not found eller replaced.
-4. Behold teksten i et trin uændret, når kun dens status ændres. Trinnet bevarer da dens id.
+1. Send hele listen i hvert kald, i rækkefølge. Et trin, du udelader, er ikke længere i planen.
+2. Angiv hvert trin som et objekt med text og status. status er pending eller done.
+3. Et trin er pending, indtil dets arbejde er slut. Send det så som done med en note, for eksempel found, not found eller replaced.
+4. Behold et trins tekst uændret, når kun dets status ændres. Trinnet beholder så sit id.
 5. Et nyt mål starter en ny plan.
-6. {{ tool('update_plan') }} beholder kun planen. Skriv en rapport eller en anden fil med {{ tool('write_file') }}.
+6. {{ tool('update_plan') }} fører kun planen. Skriv en rapport eller en anden fil med {{ tool('write_file') }}.
 
-Dette er et eksempel. Trin 1 har fundet det, du skal bruge, og trin 2 er stadig åbent.
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` Resultatet viser hele planen med id'et for hvert trin. Et kald, der ændrer intet, returneres uændret. Ret det angivne felt, før du kalder igen.
+Her er et eksempel. Trin 1 fandt det, du har brug for, og trin 2 er stadig åbent.
+```json
+{"goal":"Find godkendelsesdatoen.","steps":[{"text":"Find beskeden.","status":"done","note":"found"},{"text":"Læs den understøttende passage.","status":"pending"}]}
+```
+Resultatet viser hele planen med hvert trins id. Et kald, der ikke ændrer noget, returnerer unchanged. Ret det argument, som resultatet nævner, før du kalder igen.
