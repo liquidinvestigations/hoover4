@@ -2,7 +2,7 @@
  "terms": {
   "skill": "habilidad",
   "tool": "herramienta",
-  "tool call": "llamada a la herramienta",
+  "tool call": "llamada a una herramienta",
   "argument": "argumento",
   "citation handle": "identificador de cita",
   "quote": "cita textual",

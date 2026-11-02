@@ -1,115 +1,175 @@
 ---
 name: web_research
 group: technique
-description: cómo buscar en la web abierta, leer una página web o el registro del propietario de un dominio, y citar las páginas web que respaldan un informe
+description: cómo buscar en la web abierta, leer una página web o el registro del titular de un dominio, y citar las páginas web que respaldan un informe
 tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
 ---
-Investigación en la web abierta
+{# Cada frase de herramienta se muestra cuando la ejecución tiene esa herramienta. El protocolo de cita web está
+   aquí, y la habilidad `citation` contiene el protocolo de documentos. Las dos incluyen las reglas
+   de fallo de `partials/citation_failures.j2`. #}
+Investigar en la web abierta
 
-Utiliza las fuentes web cuando puedan responder a la pregunta de la persona.
+Usa fuentes web cuando puedan responder a la pregunta de la persona.
 
 {% if has('web_search') %}
-{{ tool('web_search') }} acepta una lista de consultas. El campo `sources` restringe la búsqueda a fuentes concretas.{% if has('list_search_sources') %} {{ tool('list_search_sources') }} lista esas fuentes.{% endif +%}
+{{ tool('web_search') }} acepta una lista de consultas. El campo `sources` limita la
+búsqueda a fuentes con nombre.{% if has('list_search_sources') %} {{ tool('list_search_sources') }}
+lista esas fuentes.{% endif +%}
 {% endif %}
 {% if has('read_page') %}
-1. Lee los mejores resultados en completo con {{ tool('read_page') }}. Da todas las direcciones en una sola llamada, e indica en el objetivo qué es lo que buscas. Un resultado marcado como BLOQUEADO POR UN CONTROL DE ROBOTS no es la página. No uses su texto.
+1. Lee completos los mejores resultados con {{ tool('read_page') }}. Da todas las direcciones en una llamada y da goal para decir qué buscas. Un resultado marcado BLOCKED BY A BOT CHECK no es la página. No uses su texto.
 {% endif %}
 {% if has('whois_lookup') %}
-{% if has('read_page') %}2.{% else %}1.{% endif %} Para el propietario, el registrador o las fechas de un dominio, llama a {{ tool('whois_lookup') }} con cada dominio en una sola llamada.
+{% if has('read_page') %}2.{% else %}1.{% endif %} Para el titular, el registrador o las fechas de un dominio, llama a {{ tool('whois_lookup') }} con todos los dominios en una llamada.
 {% endif %}
 
 Lee cada fuente antes de usar sus afirmaciones. El fragmento de un resultado de búsqueda no es una fuente.
 {% if has('cite_pages') %}
 
-Citación de páginas web
+Citar páginas web
 
-Llama a {{ tool('cite_pages') }} con la URL de cada página leída y las palabras exactas que la respaldan en `terms`.
-Utiliza los identificadores web devueltos al lado de las afirmaciones que respaldan.
-Reemplaza las URLs de fuente sin identificar por esos identificadores.
+Llama a {{ tool('cite_pages') }} con la URL de cada página leída y la redacción exacta que la respalda en `terms`.
+Usa los identificadores web devueltos junto a las afirmaciones que respaldan.
+Sustituye las URL de fuente sueltas por esos identificadores.
 {{ tool('cite_pages') }} acepta url y terms para una página, o pages para hasta doce objetos de página.
-Cada página requiere url y terms. terms contiene hasta ocho frases exactas, cada una de como máximo 200 caracteres. Deben coincidir las mayúsculas y minúsculas.
-version selecciona opcionalmente una versión capturada. why indica opcionalmente la afirmación respaldada, como máximo en 300 caracteres.
-El resultado da citas verificadas y un identificador web estable. Una página fallida da un error sin identificador.
+Cada página requiere url y terms. terms contiene hasta ocho frases exactas, de como máximo 200 caracteres cada una. Las mayúsculas y minúsculas deben coincidir.
+version selecciona de forma opcional una versión capturada. why indica de forma opcional la afirmación respaldada, en como máximo 300 caracteres.
+El resultado da las citas textuales verificadas y un identificador web estable. Una página fallida da un error sin identificador.
 
-Ejemplo. {{ tool('read_page') }} lee la URL https://example.org/report. Su texto dice "The plant closed in March 2019." Llama {{ tool('cite_pages') }} con argumentos planos para una página:
-url, copiada del resultado de read, términos con la frase exacta, y por qué.
-```json {"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"The report gives the closing date."} ``` Luego escribe "The plant closed in March 2019 [W1]." con el identificador que devolvió la llamada.
-Divide una lista de más de doce páginas en llamadas separadas.
-```json {"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"This passage gives the approval date."}]} ``` Copia el identificador web devuelto, por ejemplo `[W1]`, al lado de la afirmación que respalda.
-Mantene cada identificador con la URL y las citas textuales de su objeto de citación devuelto.
-Un fallo no asigna un identificador. Omite las afirmaciones de esa fuente hasta que su citación tenga éxito.
-Para redacciones ausentes, copia el texto exacto del candidato devuelto y vuelve a llamar a la herramienta.
-Cuando un fallo incluye `errors[i].retry_arguments`, copia ese objeto sin cambios en la siguiente llamada.
-Mantene las citaciones exitosas de un resultado parcial. Reintentá solo las páginas fallidas.
-Por ejemplo, una llamada cita tres páginas y dos tienen éxito con [W1] y [W2]. Usa esos dos identificadores. Envía la siguiente llamada solo con la tercera página, y usa sus argumentos de reintento.
+Ejemplo. {{ tool('read_page') }} leyó la URL https://example.org/report. Su texto dice
+"The plant closed in March 2019." Llama a {{ tool('cite_pages') }} con argumentos planos para una página:
+url, copiada del resultado de la lectura, terms con la frase exacta y why.
+```json
+{"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"The report gives the closing date."}
+```
+Luego escribe "La planta cerró en marzo de 2019 [W1]." con el identificador que devolvió la llamada.
+Divide en llamadas separadas una lista de más de doce páginas.
+```json
+{"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"This passage gives the approval date."}]}
+```
+Copia el identificador web devuelto, por ejemplo `[W1]`, junto a la afirmación que respalda.
+Mantén cada identificador con la URL y las citas textuales de su objeto de cita devuelto.
+Un error no asigna un identificador. Omite las afirmaciones de esa fuente hasta que su cita tenga éxito.
+Para una redacción ausente, copia el texto exacto del candidato devuelto y llama de nuevo a la herramienta.
+Cuando un error incluya `errors[i].retry_arguments`, copia ese objeto sin cambios en la llamada siguiente.
+Conserva las citas correctas de un resultado parcial. Reintenta solo las páginas fallidas.
+Por ejemplo, una llamada cita tres páginas y dos tienen éxito con [W1] y [W2]. Usa esos dos
+identificadores. Envía la llamada siguiente solo con la tercera página y usa sus argumentos de reintento.
 Por ejemplo, esta llamada une palabras a través de un salto de línea de la fuente y falla.
-```json {"url":"https://example.org/report","terms":["The plant closed in March 2019"]} ``` El fallo puede devolver estos argumentos de reintento con el texto exacto de la fuente.
-```json {"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}} ``` Llama {{ tool('cite_pages') }} con ese objeto devuelto, incluida su versión real y sus términos exactos.
-```json {"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]} ``` Una ventana de PDF tiene su propia versión. Para citar un pasaje de las páginas 51 a 100, copia la versión de esa lectura.
-```json {"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]} ``` Si una llamada supera los ocho términos, divide sus términos en grupos de a lo más ocho y cita cada grupo por separado.
-Mantene la URL y la versión de la fuente con cada grupo. Cambiar la estructura de la llamada no reduce su número de términos.
-El identificador abre el texto de la página capturada y sus citas textuales verificadas.
+```json
+{"url":"https://example.org/report","terms":["The plant closed in March 2019"]}
+```
+El error puede devolver estos argumentos de reintento con el texto exacto de la fuente.
+```json
+{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}}
+```
+Llama a {{ tool('cite_pages') }} con ese objeto devuelto, con su versión real y sus terms exactos.
+```json
+{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}
+```
+Una ventana de PDF tiene su propia versión. Para citar un pasaje de las páginas 51 a 100, copia la versión de esa lectura.
+```json
+{"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]}
+```
+Si una llamada supera los ocho terms, divide sus terms en grupos de como máximo ocho y cita cada grupo por separado.
+Mantén la URL y la versión de la fuente con cada grupo. Cambiar la estructura de la llamada no reduce su número de terms.
+El identificador abre el texto capturado de la página y sus citas textuales verificadas.
 Usa una página por llamada si un lote llega dañado.
-Una página no leída, bloqueada o no verificada no puede respaldar una afirmación.
+Una página sin leer, bloqueada o sin verificar no puede respaldar una afirmación.
 
 {% include "citation_failures.j2" %}
 {% endif %}
 
-Un nombre o un evento que recuerdas es un candidato hasta que una fuente lo nombre. Encuentra una fuente que lo nombre antes de usarlo. No envíes una búsqueda de nuevo con las mismas palabras o con cambios pequeños en la redacción. Una búsqueda siguiente debe usar un método distinto: otros hechos identificadores del candidato, una fuente nombrada, el idioma del lugar, o una página a la que enlace un resultado leído. Cuando ningún método restante pueda encontrar una fuente, marca el candidato como no verificado y continúa con otro trabajo. Una persona con el mismo nombre es una persona distinta hasta que una fuente conecte los hechos. Cuando una fuente contradice a un candidato, retíralo y da la razón.
+Un nombre o un hecho que recuerdas es un candidato hasta que una fuente lo nombra. Encuentra una fuente que
+lo nombre antes de usarlo. No envíes de nuevo una búsqueda con las mismas palabras ni con pequeños
+cambios de redacción. La búsqueda siguiente debe usar un método distinto: otros datos que identifiquen
+al candidato, una fuente con nombre, el idioma del lugar o una página a la que enlace el resultado de una
+lectura. Cuando ningún método restante pueda encontrar una fuente, marca el candidato como no verificado y
+continúa con otro trabajo. Una persona con el mismo nombre es una persona distinta hasta que una
+fuente conecte los hechos. Cuando una fuente contradiga a un candidato, elimina el candidato y
+da el motivo.
 
-Por ejemplo, recuerdas que un molino cerró en 2019. Una búsqueda de "Harlow mill closed 2019" no encuentra ninguna página sobre el molino. Una búsqueda de "Harlow mill closure" encuentra los mismos resultados. No envíes una tercera forma de estas palabras. Busca el nombre de la empresa propietaria con el nombre de la ciudad. Una página de noticias locales nombra el mes del cierre, así que léela, y el candidato queda verificado.
+Por ejemplo, recuerdas que una fábrica cerró en 2019. Una búsqueda de "Harlow mill closed 2019"
+no encuentra ninguna página sobre la fábrica. Una búsqueda de "Harlow mill closure" encuentra los mismos resultados. No
+envíes una tercera forma de estas palabras. Busca el nombre de la empresa propietaria junto con el nombre
+de la localidad. Una página de noticias locales nombra el mes del cierre, así que léela, y el candidato queda verificado.
 
-Por ejemplo, recuerdas un segundo caso judicial contra la misma empresa. Las búsquedas de la empresa con "lawsuit", del nombre del tribunal, y del formato del número de caso no encuentran ningún caso.
-No queda ningún otro método. Escribe que las fuentes leídas no confirman un segundo caso, y no lo nombres como un caso.
+Por ejemplo, recuerdas un segundo caso judicial contra la misma empresa. Las búsquedas de la
+empresa con "lawsuit", del nombre del tribunal y del formato del número de caso no encuentran ningún caso.
+No queda ningún otro método. Escribe que las fuentes leídas no confirman un segundo caso, y no
+lo nombres como un caso.
 
-Una lectura cubre solo su texto extraído. Un hallazgo sin coincidencia muestra que el texto extraído no contiene las palabras. No muestra que el documento no las contenga. Un resultado PDF da las páginas que la lectura extrajo. Antes de afirmar que un documento no nombra a una persona, indica las páginas o el texto que buscaste.
-Para una lista de eventos fechados, conserva un registro para cada evento con su fecha, su nombre y su fuente. Indica los registros sin fecha, los reportes duplicados y las fuentes que no pudiste leer aparte de los registros fechados.
+Una lectura cubre solo su texto extraído. Un find sin coincidencias muestra que el texto extraído
+no contiene las palabras. No muestra que el documento no las contenga. El resultado de un PDF da las páginas que
+extrajo la lectura. Antes de afirmar que un documento no nombra a una persona, indica las páginas o el texto en que buscaste.
+Para una lista de acontecimientos fechados, conserva un registro por cada acontecimiento con su fecha, su nombre y su
+fuente. Indica aparte de los registros fechados los registros sin fecha, los informes duplicados y las fuentes que no pudiste leer.
 
 Aplica cada restricción solicitada a cada elemento de la respuesta.
-Indica qué restricción incumple cada elemento.
-Identifica cada elemento por sus hechos distintivos.
-Para un caso judicial, indica el tribunal, la fecha y el número de expediente cuando las fuentes los proporcionan.
-Verifica en la fuente cada propiedad que la petición exige de un elemento.
-Cuenta un caso, evento o entidad una sola vez, y lista los identificadores de sus etapas juntos.
-Combina los informes sobre el mismo elemento.
-Indica cuando las fuentes establecen menos elementos distintos de los solicitados.
-Antes de responder, verifica los hechos distintivos de cada elemento y cada restricción en las páginas que lees.
-Mantén un elemento que incumple una restricción fuera de la lista correspondiente, y nombra su restricción fallida.
-Lee cada página que citas, incluida una fuente de reemplazo encontrada tras una página bloqueada.
-Cuando la lectura de una página falle, usa otra fuente legible u omite sus afirmaciones y su dirección.
+Indica qué restricción incumple un elemento.
+Identifica cada elemento por sus datos distintivos.
+Para un caso judicial, da el tribunal, la fecha y el número de expediente cuando las fuentes los den.
+Verifica en la fuente cada propiedad que la solicitud exige de un elemento.
+Cuenta una vez un mismo caso, hecho o entidad, y lista juntos los identificadores de sus etapas.
+Fusiona los informes sobre el mismo elemento.
+Indica cuándo las fuentes establecen menos elementos distintos de los solicitados.
+Antes de responder, verifica los datos distintivos de cada elemento y cada restricción con las páginas que leíste.
+Mantén fuera de la lista de coincidencias un elemento que incumpla una restricción, y nombra la restricción incumplida.
+Lee cada página que cites, incluida una fuente de reemplazo encontrada después de una página bloqueada.
+Cuando falle la lectura de una página, usa otra fuente legible u omite sus afirmaciones y su dirección.
 
 {% if has('web_search') %}
-{{ tool('web_search') }} acepta las consultas como lista o como una sola cadena, y query como una consulta adicional.
-Proporciona al menos una consulta. Omite las fuentes para buscar en todas las fuentes disponibles.
-max_results tiene por defecto el valor 15. timelimit puede ser d, w, m o y y solo se aplica a las fuentes de noticias compatibles.
-El resultado devuelve URLs ordenadas, títulos, fragmentos y formas de consulta coincidentes. Lee las URLs seleccionadas antes de fiarte de sus afirmaciones.
-```json {"queries":["transfer approval"]} ``` ```json {"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"} ```
+{{ tool('web_search') }} acepta queries como una lista o una cadena, y query como una consulta única adicional.
+Da al menos una consulta. Omite sources para buscar en todas las fuentes disponibles.
+max_results es 15 por omisión. timelimit es d, w, m o y y se aplica solo a las fuentes de noticias compatibles.
+El resultado devuelve URL clasificadas, títulos, fragmentos y las formas de consulta que coincidieron. Lee las URL seleccionadas antes de fiarte de sus afirmaciones.
+```json
+{"queries":["transfer approval"]}
+```
+```json
+{"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"}
+```
 {% endif %}
 {% if has('list_search_sources') %}
-{{ tool('list_search_sources') }} no acepta argumentos. Devuelve los nombres y descripciones de las fuentes disponibles.
-```json {} ```
+{{ tool('list_search_sources') }} no recibe argumentos. Devuelve los nombres y las descripciones de las fuentes disponibles.
+```json
+{}
+```
 {% endif %}
 {% if has('read_page') %}
 {{ tool('read_page') }} requiere urls, una lista de hasta seis direcciones HTTP o HTTPS.
-goal registra opcionalmente la pregunta. No selecciona el texto coincidente.
-find selecciona opcionalmente las coincidencias literales sin restricciones de mayúsculas o minúsculas.
-offset es una posición de carácter basada en cero. La omición comienza en cero.
-version selecciona la versión del texto capturado. Cópiala de una lectura previa de la misma URL para continuar con ese texto.
+goal registra la pregunta de forma opcional. No selecciona el texto coincidente.
+find selecciona de forma opcional coincidencias de texto literal sin distinguir mayúsculas de minúsculas.
+offset es una posición de carácter que empieza en cero. Si se omite, empieza en cero.
+version selecciona la versión del texto capturado. Cópiala de una lectura anterior de la misma URL para continuar ese texto.
 Una versión pertenece a una sola URL. Para otra URL, lee primero esa URL y copia su propia versión.
-links tiene por defecto el valor true e incluye los destinos de los enlaces en el texto.
+links es true por omisión e incluye en el texto los destinos de los enlaces.
 page_start selecciona la primera página de una ventana de PDF. Una lectura extrae como máximo 50 páginas de PDF.
-Un resultado de corte, un resultado de find con más coincidencias y una ventana de PDF ofrecen los argumentos de la próxima llamada.
-Copia ese objeto de argumentos sin cambios. Mantiene la URL, la ventana de PDF, el ajuste de links y la versión.
+Un resultado cortado, un resultado de find con más coincidencias y una ventana de PDF dan los argumentos de la llamada siguiente.
+Copia ese objeto de argumentos sin cambios. Conserva la URL, la ventana de PDF, el ajuste de links y la versión.
 Una versión pertenece a una sola URL y a una sola ventana de PDF.
-Una ventana sin texto no indica que las demás páginas del PDF no tengan texto.
-Repetir la primera lectura vuelve a leer el primer texto.
-```json {"urls":["COPY_SEARCH_RESULT_URL"]} ``` ```json {"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false} ``` Por ejemplo, un resultado de PDF dice "The text covers PDF pages 1 to 50 of 120 only" y ofrece la próxima ventana.
-Un find en esa ventana da más coincidencias con este objeto. Cópialo como la próxima llamada.
-```json {"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200} ```
+Una ventana sin texto no muestra que las demás páginas del PDF no tengan texto.
+Repetir la primera llamada vuelve a leer el primer texto.
+```json
+{"urls":["COPY_SEARCH_RESULT_URL"]}
+```
+```json
+{"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
+```
+Por ejemplo, el resultado de un PDF dice "The text covers PDF pages 1 to 50 of 120 only" y da la ventana siguiente.
+Un find en esa ventana da más coincidencias con este objeto. Cópialo como la llamada siguiente.
+```json
+{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200}
+```
 {% endif %}
 {% if has('whois_lookup') %}
-{{ tool('whois_lookup') }} acepta los dominios como lista y domain como un solo dominio.
-Proporciona los nombres de dominio sin la ruta de URL. El resultado informa de cada dominio por separado.
-Un registrante nulo significa que el registro no publicó ese valor. El registrador vende el registro del dominio.
-```json {"domains":["example.org"]} ``` ```json {"domains":["example.org","example.com"],"domain":"example.net"} ```
+{{ tool('whois_lookup') }} acepta domains como una lista y domain como un solo dominio.
+Da los nombres de dominio sin ruta de URL. El resultado informa de cada dominio por separado.
+Un registrant nulo significa que el registro no publicó ese valor. El registrador vende el registro del dominio.
+```json
+{"domains":["example.org"]}
+```
+```json
+{"domains":["example.org","example.com"],"domain":"example.net"}
+```
 {% endif %}

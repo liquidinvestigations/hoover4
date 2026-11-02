@@ -1,30 +1,64 @@
 ---
 name: browser_use
 group: technique
-description: cómo controlar un navegador web: abrir una dirección, leer la captura de pantalla de la página y luego hacer clic, escribir o elegir según la referencia del elemento
+description: cómo manejar un navegador web: abrir una dirección, leer la instantánea de la página y luego hacer clic, escribir o elegir con la referencia del elemento
 tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
 ---
-Conducir un navegador web
+{# Cómo manejar las herramientas del navegador. Una referencia de elemento solo vale para la
+   instantánea que la dio, así que el texto pide una instantánea nueva después de cada acción. La frase sobre
+   `read_page` se muestra solo cuando esa herramienta está en la ejecución. #}
+Manejar un navegador web
 
 {% if has('read_page') %}
-{{ tool('read_page') }} lee el texto de una página. Usa una captura de pantalla del navegador cuando el estado de la página o los elementos interactivos sean importantes.
+{{ tool('read_page') }} lee el texto de una página. Usa una instantánea del navegador cuando importen el estado de la página o los
+elementos interactivos.
 
 {% endif %}
 1. Abre la dirección con {{ tool('browser_navigate') }}.
-2. Llama a {{ tool('browser_snapshot') }}. La captura lista cada elemento de la página con su referencia, como ref e12.
-3. Actúa sobre un elemento con {{ tool('browser_click') }}, {{ tool('browser_type') }} o {{ tool('browser_select_option') }}. Indica la referencia de la captura más reciente y una descripción breve del elemento. Usa {{ tool('browser_press_key') }} para una tecla como Enter.
-4. Tras cada acción, llama a {{ tool('browser_snapshot') }} de nuevo. Una acción puede cambiar la página y entonces las referencias antiguas dejan de ser válidas.
+2. Llama a {{ tool('browser_snapshot') }}. La instantánea lista cada elemento de la página con su referencia, como ref e12.
+3. Actúa sobre un elemento con {{ tool('browser_click') }}, {{ tool('browser_type') }} o {{ tool('browser_select_option') }}. Da la referencia de la última instantánea y una descripción breve del elemento. Usa {{ tool('browser_press_key') }} para una tecla como Enter.
+4. Después de cada acción, llama de nuevo a {{ tool('browser_snapshot') }}. Una acción puede cambiar la página, y entonces las referencias antiguas dejan de ser válidas.
 
-Cuando un resultado comienza con "### Error", lee el texto del error. Una referencia de elemento caducado significa que la página cambió. Toma una nueva captura y usa la nueva referencia. Una referencia o selector vacío significa que no indicaste ningún elemento.
+Cuando un resultado empieza con "### Error", lee el texto del error. Una referencia de elemento obsoleta significa que la página cambió. Toma una instantánea nueva y usa la referencia nueva. Una referencia o un selector vacío significa que no diste ningún elemento.
 
-Indica en tu respuesta o informe qué abre y qué mostraba la página.
+Indica en tu respuesta o informe qué dirección abriste y qué mostró la página.
 
-{{ tool('browser_navigate') }} requiere url. {{ tool('browser_snapshot') }} no toma argumentos.
-```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} requiere target. Copia la referencia de un elemento devuelto o usa un selector único.
-element describe opcionalmente el target. button por defecto es left y puede ser right o middle.
-doubleClick opcionalmente selecciona un doble clic. modifiers opcionalmente contiene Alt, Control, ControlOrMeta, Meta o Shift.
-```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} requiere target y text. element describe opcionalmente el target.
-submit opcionalmente presiona Enter después de escribir. opcionalmente escribe caracteres individuales para activar los manejadores de teclas.
-```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} requiere target y values, una lista de valores de opción. element describe opcionalmente el target.
-```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} requiere key, como Enter o Control+ArrowRight.
-```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` Cada acción devuelve su estado o un error. Lee una nueva captura después de una acción que cambia de página.
+{{ tool('browser_navigate') }} requiere url. {{ tool('browser_snapshot') }} no recibe argumentos.
+```json
+{"url":"COPY_SEARCH_RESULT_URL"}
+```
+```json
+{}
+```
+{{ tool('browser_click') }} requiere target. Copia una referencia de elemento devuelta o usa un selector único.
+element describe el destino de forma opcional. button es left por omisión y puede ser right o middle.
+doubleClick selecciona un doble clic de forma opcional. modifiers contiene de forma opcional Alt, Control, ControlOrMeta, Meta o Shift.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]}
+```
+{{ tool('browser_type') }} requiere target y text. element describe el destino de forma opcional.
+submit pulsa Enter después de escribir, de forma opcional. slowly escribe los caracteres uno a uno para activar los controladores de teclas, de forma opcional.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true}
+```
+{{ tool('browser_select_option') }} requiere target y values, una lista de valores de opción. element describe el destino de forma opcional.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]}
+```
+{{ tool('browser_press_key') }} requiere key, como Enter o Control+ArrowRight.
+```json
+{"key":"Enter"}
+```
+```json
+{"key":"Control+ArrowRight"}
+```
+Cada acción devuelve su estado o un error. Lee una instantánea nueva después de una acción que cambie la página.

@@ -1,55 +1,89 @@
 ---
 name: spreadsheets
 group: technique
-description: cómo leer un archivo de hoja de cálculo con las herramientas de tabla: sus hojas, columnas, filas y celdas individuales
+description: cómo leer un archivo de hoja de cálculo con las herramientas de tablas: sus hojas, columnas, filas y celdas sueltas
 tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
-terms: Palabras para ello: tabla, tablas, hoja de cálculo, Excel, libro de trabajo, hoja, hoja de cálculo, pestaña, CSV, TSV, datos tabulares, tabla de datos, libro de contabilidad, registro, controlador, lista con columnas, fila, columna, celda, encabezado, tabla dinámica, tabla de base de datos, SQLite, Tabelle. Tipos de archivo: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML, y tablas dentro de documentos HTML o PDF. Resultados de búsqueda de tipo tabla.
-not_for: No es necesario cuando la solicitud solo pide que la respuesta se presente como tabla, o usa la palabra tabla en otro sentido.
+terms: Palabras para ello: tabla, tablas, hoja de cálculo, planilla, Excel, libro, hoja, pestaña, CSV, TSV, datos tabulares, tabla de datos, libro de registro, registro, seguimiento, lista con columnas, fila, columna, celda, encabezado, tabla dinámica, tabla de base de datos, SQLite. Tipos de archivo: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, XML SpreadsheetML y tablas dentro de documentos HTML o PDF. Resultados de búsqueda de tipo table.
+not_for: No hace falta cuando la solicitud solo pide que la respuesta se presente como una tabla, o usa la palabra tabla en otro sentido.
 ---
+{# Cómo leer un documento de tabla con las herramientas de tablas, desde el resumen hasta una celda. El
+   orden sigue los textos de las herramientas: el resumen da las hojas y los identificadores de columna que toman las
+   demás herramientas. #}
 Leer una hoja de cálculo
 
-Una hoja de cálculo, un archivo CSV o una tabla en un documento es un documento tabular. Nómbralo con el file_hash y la Colección de un resultado de búsqueda.
+Una hoja de cálculo, un archivo CSV o una tabla de un documento es un documento de tabla. Nómbralo con el file_hash y la colección de un resultado de búsqueda.
 
-1. {{ tool('table_overview') }} lista las hojas de cálculo y las columnas con sus identificadores.
-2. Lee filas con {{ tool('table_page') }}. Una llamada devuelve 50 filas. Ordena y filtra las filas en la llamada. Indica row_start para ir a una fila de una hoja de cálculo grande, y columns para leer las columnas después de la 60ª.
-3. {{ tool('table_column_values') }} lista los valores de una columna y sus conteos.
-4. Para encontrar un valor en una hoja de cálculo, llama a {{ tool('table_search_cells') }}. Lee las filas cercanas con {{ tool('table_page') }} cuando el ajuste necesita contexto.
-5. Cuando {{ tool('table_page') }} corta una celda larga, léela completa con {{ tool('table_cell') }}. Indica row con el row_id devuelto, y column con el identificador de columna devuelto.
+1. {{ tool('table_overview') }} lista las hojas y las columnas con sus identificadores.
+2. Lee filas con {{ tool('table_page') }}. Una llamada da 50 filas. Ordena y filtra las filas en la llamada. Da row_start para ir a una fila de una hoja grande, y columns para leer las columnas posteriores a la 60.
+3. {{ tool('table_column_values') }} lista los valores de una columna y sus recuentos.
+4. Para encontrar un valor en una hoja, llama a {{ tool('table_search_cells') }}. Lee las filas circundantes
+con {{ tool('table_page') }} cuando la coincidencia necesite contexto.
+5. Cuando {{ tool('table_page') }} corte una celda larga, léela entera con {{ tool('table_cell') }}. Da row con el row_id devuelto y column con el identificador de columna devuelto.
 
-Indica una hoja de cálculo, fila y columna cuando el lector necesita volver a encontrar un valor.
+Da una hoja, una fila y una columna cuando el lector necesite volver a encontrar un valor.
 
-Para contar filas por un valor, llama {{ tool('table_column_values') }} sobre esa columna. No cuentes tú mismo las filas de una página de texto. Indica el total de filas, los filtros y la columna.
-Una llamada de valores da hasta 200 valores. Cuando el resultado tiene una continuación, llama read_more hasta que no quede ninguna. Una lista de valores parcial no da una distribución completa.
-Los conteos de valores suman el total de filas solo para la misma hoja, las mismas filas y los mismos filtros. Una celda vaca no tiene valor, así que las celdas vacas hacen que la suma sea menor que el total de filas. Indica el número de celdas vacas cuando comparas la suma con el total.
-Por ejemplo, una hoja de 24 permisos de construcción tiene una columna de tipo. La llamada de valores da cerca 9, techo 7, terraza 5 y piscina 3, y sin continuación. Estos conteos suman 24. Los conteos que suman 27 para 24 filas muestran un error de conteo. Los conteos que suman 21 muestran 3 filas con un tipo vacío.
-Un archivo CSV no indica fila de encabezado. Cada resultado de tabla da `interpretation`, la lectura de la fila 1 para la que sus conteos describen. Con estado `established`, la lectura es conocida. Con estado `ambiguous` o `legacy` y dos `candidates`, la fila 1 puede ser el encabezado o la primera fila de datos.
-Cada candidato da su conteo de filas. El resultado lee cada fila, `all_rows`, a menos que la llamada dé `interpretation`. Da cada conteo con su lectura, o lee la otra lectura con interpretación `all_rows` o `first_row_header`. No reportes el conteo de una lectura como el total de filas establecido.
-Un archivo JSON o un archivo de texto no tiene hojas. Cuando {{ tool('table_overview') }} no da ninguna hoja, lee el documento como texto.
+Para contar filas por un valor, llama a {{ tool('table_column_values') }} sobre esa columna. No cuentes
+tú mismo las filas de una página de texto. Indica el total de filas, los filtros y la columna.
+Una llamada de valores da hasta 200 valores. Cuando el resultado tenga continuation, llama a read_more
+hasta que no quede ninguna continuation. Una lista parcial de valores no da una distribución completa.
+Los recuentos de valores suman el total de filas solo para la misma hoja, las mismas filas y los
+mismos filtros. Una celda en blanco no tiene valor, así que las celdas en blanco hacen que la suma sea menor que el
+total de filas. Indica el número de celdas en blanco cuando compares la suma con el total.
+Por ejemplo, una hoja de 24 permisos de obra tiene una columna de tipo. La llamada de valores da
+valla 9, tejado 7, terraza 5 y piscina 3, y ninguna continuation. Estos recuentos suman 24. Unos recuentos
+que sumen 27 para 24 filas muestran un error de recuento. Unos recuentos que sumen 21 muestran 3 filas
+con el tipo en blanco.
+Un archivo CSV no declara ninguna fila de encabezado. Cada resultado de tabla da `interpretation`, la lectura de la
+fila 1 que describen sus recuentos. Con el estado `established`, la lectura es conocida. Con el estado
+`ambiguous` o `legacy` y dos `candidates`, la fila 1 puede ser el encabezado o la primera fila de datos.
+Cada candidato da su recuento de filas. El resultado lee todas las filas, `all_rows`, a menos que la
+llamada dé `interpretation`. Da cada recuento con su lectura, o lee la otra lectura
+con interpretation `all_rows` o `first_row_header`. No informes del recuento de una lectura como el
+recuento de filas establecido.
+Un archivo JSON o un archivo de texto no tiene hojas. Cuando {{ tool('table_overview') }} no dé ninguna hoja,
+lee el documento como texto.
 
-Cada llamada a tabla requiere la colección y el file_hash del mismo resultado de documento.
-{{ tool('table_overview') }} devuelve los identificadores de hoja y columna.
-Las demás herramientas de tabla requieren sheet. Copia su identificador desde la vista general.
-{{ tool('table_page') }} acepta opcionalmente sort, filters, columns, search, row_start y interpretación.
-sort requiere column y direction, asc o desc. La omisión usa el orden de fila almacenado.
-filters es una lista de predicados de columna. Cada predicado usa un tipo de prueba.
-Un rango numérico o de fecha puede incluir límites inferior y superior.
+Cada llamada de tabla requiere collection y file_hash del mismo resultado de documento.
+{{ tool('table_overview') }} devuelve los identificadores de hoja y de columna.
+Las demás herramientas de tablas requieren sheet. Copia su identificador del resumen.
+{{ tool('table_page') }} acepta de forma opcional sort, filters, columns, search, row_start e interpretation.
+sort requiere column y direction, asc o desc. Si se omite, se usa el orden de filas almacenado.
+filters es una lista de predicados de columna. Cada predicado usa un solo tipo de prueba.
+Un intervalo numérico o de fechas puede incluir los límites inferior y superior.
 Las pruebas son contains, equals, starts_with, is_empty, number_min, number_max, date_min y date_max.
-Las pruebas de texto usan cadenas. Las pruebas numéricas usan números. Los límites de fecha usan cadenas YYYY-MM-DD.
-columns selecciona identificadores de columna. Cada ventana devuelta contiene como máximo 60 columnas seleccionadas.
-search opcionalmente conserva las filas que contienen su texto. row_start es una posición basada en cero dentro del orden de fila solicitado.
-El resultado contiene metadatos de columna y filas. row_id es la identidad de fila almacenada, también tras ordenar.
+Las pruebas de texto usan cadenas. Las pruebas numéricas usan números. Los límites de fecha usan cadenas AAAA-MM-DD.
+columns selecciona identificadores de columna. Una ventana devuelta contiene como máximo 60 columnas seleccionadas.
+search conserva de forma opcional las filas que contienen su texto. row_start es una posición que empieza en cero en el orden de filas solicitado.
+El resultado contiene metadatos de columnas y filas. row_id es la identidad de fila almacenada, también después de ordenar.
 
-{{ tool('table_column_values') }} también requiere column. search opcionalmente filtra el texto de los valores.
-Devuelve valores y conteos para esa columna.
-{{ tool('table_search_cells') }} requiere query. Devuelve los identificadores de hoja, fila y columna coincidentes con el texto.
-{{ tool('table_cell') }} requiere row y column. Pasa el row_id devuelto bajo el nombre de argumento row.
-Devuelve fragmentos de 2.000 caracteres. Usa read_more para el resto del texto de la celda.
-Usa read_more para las páginas continuas de tabla, valores y resultados de búsqueda.
+{{ tool('table_column_values') }} requiere además column. search filtra de forma opcional el texto de los valores.
+Devuelve valores y recuentos de esa columna.
+{{ tool('table_search_cells') }} requiere query. Devuelve las identidades de hoja, fila y columna que coinciden, con su texto.
+{{ tool('table_cell') }} requiere row y column. Pasa el row_id devuelto con el nombre de argumento row.
+Devuelve fragmentos de 2000 caracteres. Usa read_more para el texto restante de la celda.
+Usa read_more para las páginas de tabla, los valores y los resultados de búsqueda que continúan.
 
-Abre esta vista mínima la estructura de la tabla.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` Usa esta llamada de página los identificadores de hoja y columna copiados.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` Recorta esta llamada de valores una columna.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` Lee esta llamada de valores la fila 1 de una hoja CSV ambigua como nombres de columna.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` Localiza esta búsqueda de célula un valor solicitado.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` Lee esta llamada de célula row_id 71, incluso cuando esa fila apareció primero en un resultado ordenado.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```
+Este resumen mínimo abre la estructura de la tabla.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+Esta llamada de página usa identificadores de hoja y de columna copiados.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50}
+```
+Esta llamada de valores acota una columna.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"}
+```
+Esta llamada de valores lee la fila 1 de una hoja CSV ambigua como los nombres de las columnas.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"}
+```
+Esta búsqueda de celdas localiza un valor solicitado.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"}
+```
+Esta llamada de celda lee el row_id 71, aunque esa fila apareciera primero en un resultado ordenado.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2}
+```

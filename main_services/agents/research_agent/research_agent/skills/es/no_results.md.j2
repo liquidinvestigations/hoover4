@@ -1,71 +1,72 @@
 ---
 name: no_results
 group: stumble
-description: qué hacer cuando una búsqueda no encuentra resultados: quitar los filtros, dividir una frase, probar otras formas de un nombre y luego indicar qué falta
+description: qué hacer cuando una búsqueda no encuentra nada: quitar filtros, dividir una frase, probar otras formas de un nombre y luego decir qué falta
 tools: search_collections, search_passages, web_search
 ---
 Cuando una búsqueda no encuentra nada
 
 {% if has('search_collections') %}
-Lea primero word_counts.
-Cuando un nombre no aparece en ningún lugar, lea las sugerencias de ortografía indexadas y sus controles verificados.
-No use una sugerencia de ortografía como nombre solicitado.
-Cuando busque una sugerencia de ortografía, indíquelo en la respuesta como una ortografía diferente.
-Cuando ninguna ortografía coincida, informe que las Colecciones buscadas no contienen el nombre.
+Lee primero word_counts.
+Cuando un nombre no aparece en ninguna parte, lee las sugerencias de ortografía indexadas y sus recuentos comprobados.
+No uses una ortografía sugerida como el nombre solicitado.
+Cuando busques una ortografía sugerida, nómbrala en la respuesta como una ortografía distinta.
+Cuando ninguna ortografía coincida, informa de que las colecciones buscadas no contienen el nombre.
 
 {% endif %}
-Siga estos pasos de búsqueda cuando las búsquedas previas no responden la pregunta.
+Sigue estos pasos de búsqueda cuando las búsquedas anteriores no respondan a la pregunta.
 {% if has('search_collections') %}
-1. Busque cada nombre como una frase entre comillas.
-2. Busque palabras sin comillas, iniciales, direcciones de correo electrónico y nombres en el idioma del documento.
-Lea word_counts y las sugerencias de ortografía. Use una sugerencia solo para el nombre pretendido.
-Use dasovi?h para una letra variable y dasovic% para una letra final opcional.
-Use skilling << resignado cuando el orden de las palabras importa.
-3. Quite los filtros uno a uno. Ejecute una búsqueda sin filtros.
+1. Busca cada nombre como una frase entre comillas.
+2. Busca palabras sin comillas, iniciales, direcciones de correo electrónico y nombres en el idioma del documento.
+Lee word_counts y las sugerencias de ortografía. Usa una sugerencia solo para el nombre que buscas.
+Usa dasovi?h para una letra que varía y dasovic% para una letra final opcional.
+Usa skilling << resigned cuando importe el orden de las palabras.
+3. Quita los filtros de uno en uno. Ejecuta una búsqueda sin filtros.
 {% if has('search_facet_values') %}
-Verifique los valores de los filtros con {{ tool('search_facet_values') }}.
+Verifica los valores de los filtros con {{ tool('search_facet_values') }}.
 {% endif %}
 {% if has('search_histogram') %}
-Verifique las fechas con {{ tool('search_histogram') }}.
+Verifica las fechas con {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Busque una descripción del contenido con {{ tool('search_passages') }}.
+4. Busca una descripción del contenido con {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. Use {{ tool('folder_search') }} cuando la solicitud nombre una carpeta, ruta o archivo.
+5. Usa {{ tool('folder_search') }} cuando la solicitud nombre una carpeta, una ruta o un archivo.
 {% endif %}
 {% if has('folder_list') %}
-Use {{ tool('folder_list') }} para esa carpeta.
+Usa {{ tool('folder_list') }} para esa carpeta.
 {% endif %}
 {% if has('read_documents') %}
-6. Lea los mejores 1 a 3 resultados con {{ tool('read_documents') }}.
+6. Lee los mejores 1 a 3 resultados con {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_search_text') %}
-Use {{ tool('doc_search_text') }} para el texto relevante dentro de un documento.
+Usa {{ tool('doc_search_text') }} para el texto relevante de un documento.
 {% endif %}
 {% if has('web_search') %}
-7. Busque en la web solo cuando la solicitud lo permite.
+7. Busca en la web solo cuando la solicitud lo permita.
 {% endif %}
 {% if has('read_page') %}
-Lea las mejores páginas web con {{ tool('read_page') }}.
+Lee las mejores páginas web con {{ tool('read_page') }}.
 {% endif %}
 {% else %}
 {% if has('web_search') %}
-1. Busque cada nombre como una frase entre comillas, y luego otras formas del nombre, sus iniciales y el idioma del lugar.
+1. Busca cada nombre como una frase entre comillas, y luego otras formas del nombre, sus iniciales y el idioma del lugar.
 {% endif %}
 {% if has('read_page') %}
-2. Lea las mejores páginas web con {{ tool('read_page') }}.
+2. Lee las mejores páginas web con {{ tool('read_page') }}.
 {% endif %}
 {% endif %}
 
-Después de que los pasos disponibles no encuentren ninguna coincidencia de palabra clave, responde indicando la ausencia y las búsquedas realizadas.
+Cuando los pasos disponibles no encuentren ninguna coincidencia de palabras clave, responde con la ausencia y las búsquedas.
 {% if has('search_collections') %}
-Antes de indicar una ausencia, ejecuta al menos 4 búsquedas distintas con al menos 2 herramientas de búsqueda disponibles.
+Antes de una respuesta de ausencia, ejecuta al menos 4 búsquedas distintas con al menos 2 herramientas de búsqueda disponibles.
 No repitas una búsqueda idéntica. Indica las colecciones buscadas y los hechos que faltan.
-Limita la afirmación de ausencia a las búsquedas y los documentos que examinaste.
-Por ejemplo, di "Las actas del comité buscadas y los registros de transferencia no identificaron una fecha de aprobación." Estas búsquedas no establecen que no exista ningún registro de aprobación en ninguna colección permitida.
+Limita una declaración de ausencia a las búsquedas y los documentos que examinaste.
+Por ejemplo, di "Las actas del comité y los registros de transferencias buscados no identificaron una fecha de aprobación."
+Estas búsquedas no establecen que no exista ningún registro de aprobación en ninguna colección permitida.
 {% else %}
-Antes de indicar una ausencia, ejecuta al menos 4 búsquedas distintas.
+Antes de una respuesta de ausencia, ejecuta al menos 4 búsquedas distintas.
 No repitas una búsqueda idéntica. Indica las búsquedas y las páginas leídas.
-Limita la afirmación de ausencia a las búsquedas y las páginas que examinaste.
+Limita una declaración de ausencia a las búsquedas y las páginas que examinaste.
 {% endif %}
