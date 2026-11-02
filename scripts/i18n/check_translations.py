@@ -141,7 +141,9 @@ def jinja_skeleton(text: str) -> list[str]:
     for statement, expression in JINJA_TAG.findall(text):
         body = JINJA_STRING.sub("STR", (statement or expression)).strip()
         parts.append(("%" if statement else "=") + " ".join(body.split()))
-    return parts
+    # `citation_artefact` is the English word `report` in every profile, so a translation
+    # writes its own word for it (`skill_store.ROLE_CONTEXT`).
+    return [part for part in parts if part != "=citation_artefact"]
 
 
 def code_spans(text: str) -> set[str]:

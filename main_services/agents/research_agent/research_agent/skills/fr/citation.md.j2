@@ -7,7 +7,7 @@ tools: cite_documents
 Le texte cité va dans un fichier de l’espace de travail. La compétence `report` explique comment l’écrire et le modifier.
 
 {% if has('cite_documents') %}
-Quand votre {{ citation_artefact }} s’appuie sur {% if web_enabled %}un document interne{% else %}un document{% endif %}, appelez {{ tool('cite_documents') }}.
+Quand votre rapport s’appuie sur {% if web_enabled %}un document interne{% else %}un document{% endif %}, appelez {{ tool('cite_documents') }}.
 Donnez-lui chaque document qui étaye une affirmation ou un extrait. Placez le repère renvoyé à côté de cette affirmation.
 Placez un repère à côté d’une affirmation qui s’appuie sur un document interne. Vous pouvez aussi nommer un
 document pour l’identifier ou décrire un résultat de recherche.
@@ -22,10 +22,10 @@ Pour chaque citation, donnez :
   ouvre le document à cette expression.
 - why : une ligne qui dit ce que le document étaye.
 
-Écrivez le repère que vous recevez, par exemple `[D1]`, dans votre {{ citation_artefact }} à l’endroit où vous faites l’affirmation.
+Écrivez le repère que vous recevez, par exemple `[D1]`, dans votre rapport à l’endroit où vous faites l’affirmation.
 
 Exemple. {{ tool('read_documents') if has('read_documents') else 'Un outil' }} a renvoyé l’e-mail « Re: DRAFT talking points » dans la collection enron.
-Son corps dit « The talking points look great to me. Best of luck today. » Votre {{ citation_artefact }} dit
+Son corps dit « The talking points look great to me. Best of luck today. » Votre rapport dit
 que Jim Steffes a approuvé le brouillon. Appelez {{ tool('cite_documents') }} avec collection enron, le
 file_hash du résultat, quote « talking points look great to me », find « look great »,
 et why « Steffes approuve le brouillon du 27 décembre ».

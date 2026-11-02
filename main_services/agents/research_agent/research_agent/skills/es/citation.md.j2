@@ -18,7 +18,7 @@ tools: cite_documents
 El texto citado va en un archivo del espacio de trabajo. La habilidad `report` dice cómo escribirlo y editarlo.
 
 {% if has('cite_documents') %}
-Cuando tu {{ citation_artefact }} se apoye en {% if web_enabled %}un documento interno{% else %}un documento{% endif %}, llama a {{ tool('cite_documents') }}.
+Cuando tu informe se apoye en {% if web_enabled %}un documento interno{% else %}un documento{% endif %}, llama a {{ tool('cite_documents') }}.
 Dale cada documento que respalde una afirmación o una cita textual. Usa el identificador devuelto junto a esa afirmación.
 Usa un identificador junto a una afirmación que se apoye en un documento interno. También puedes nombrar un
 documento para identificarlo o para describir un resultado de búsqueda.
@@ -33,10 +33,10 @@ Para cada cita da:
   abre el documento en esa frase.
 - why: una línea que dice qué respalda el documento.
 
-Escribe el identificador que recibes, por ejemplo `[D1]`, en tu {{ citation_artefact }} donde haces la afirmación.
+Escribe el identificador que recibes, por ejemplo `[D1]`, en tu informe donde haces la afirmación.
 
 Ejemplo. {{ tool('read_documents') if has('read_documents') else 'Una herramienta' }} devolvió el correo "Re: DRAFT talking points" de la colección enron.
-Su cuerpo dice "The talking points look great to me. Best of luck today." Tu {{ citation_artefact }} dice
+Su cuerpo dice "The talking points look great to me. Best of luck today." Tu informe dice
 que Jim Steffes aprobó el borrador. Llama a {{ tool('cite_documents') }} con collection enron, el
 file_hash del resultado, la cita textual "talking points look great to me", find "look great"
 y why "Steffes approves the draft of 27 December".

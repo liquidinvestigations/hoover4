@@ -7,7 +7,7 @@ tools: cite_documents
 Belegter Text kommt in eine Arbeitsbereichsdatei. Der Skill `report` erklärt, wie Sie sie schreiben und bearbeiten.
 
 {% if has('cite_documents') %}
-Wenn Ihre {{ citation_artefact }} sich auf {% if web_enabled %}ein internes{% else %}ein{% endif %} Dokument stützt, rufen Sie {{ tool('cite_documents') }} auf.
+Wenn Ihr Bericht sich auf {% if web_enabled %}ein internes{% else %}ein{% endif %} Dokument stützt, rufen Sie {{ tool('cite_documents') }} auf.
 Geben Sie jedes Dokument an, das eine Aussage oder ein Zitat stützt. Setzen Sie die zurückgegebene Belegkennung neben diese Aussage.
 Setzen Sie eine Belegkennung neben eine Aussage, die sich auf ein internes Dokument stützt. Sie können
 ein Dokument auch nennen, um es zu identifizieren oder ein Suchergebnis zu beschreiben.
@@ -22,10 +22,10 @@ Geben Sie für jeden Beleg an:
   öffnet das Dokument an dieser Wendung.
 - why: eine Zeile, die sagt, was das Dokument stützt.
 
-Schreiben Sie die Belegkennung, die Sie zurückbekommen, zum Beispiel `[D1]`, an der Stelle in Ihre {{ citation_artefact }}, an der Sie die Aussage machen.
+Schreiben Sie die Belegkennung, die Sie zurückbekommen, zum Beispiel `[D1]`, an der Stelle in Ihrem Bericht, an der Sie die Aussage machen.
 
 Beispiel. {{ tool('read_documents') if has('read_documents') else 'Ein Werkzeug' }} hat die E-Mail "Re: DRAFT talking points" in der Sammlung enron geliefert.
-Ihr Text sagt "The talking points look great to me. Best of luck today." Ihre {{ citation_artefact }} sagt,
+Ihr Text sagt "The talking points look great to me. Best of luck today." Ihr Bericht sagt,
 dass Jim Steffes den Entwurf genehmigt hat. Rufen Sie {{ tool('cite_documents') }} auf, mit collection enron, dem
 file_hash aus dem Ergebnis, dem quote "talking points look great to me", find "look great"
 und why "Steffes genehmigt den Entwurf vom 27. Dezember".
