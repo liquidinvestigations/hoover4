@@ -1,6 +1,6 @@
 # The translated texts
 
-The supported codes are `de`, `es`, `fr`, `pl`, `pt`, `ar`, `he`, `hi`, `zh`, `it`, `nl`, `da`, `nb`, `sv`, `el`, `hr`, `ro`, `ru`, `ja` and `ko`.
+The supported codes are `de`, `es`, `fr`, `pl`, `pt`, `ar`, `he`, `hi`, `zh`, `it`, `nl`, `da`, `nb`, `sv`, `el`, `hr`, `ro`, `ru`, `ja`, `ko` and `tr`.
 `pt` is Portuguese of Portugal. `zh` is Simplified Chinese. `nb` is Norwegian Bokmål, so use no Nynorsk forms. `hr` is Croatian, so use no Serbian forms.
 
 ## Files of one language
@@ -75,6 +75,15 @@ Keep the meaning, the order and the strength of each rule. Do not add a rule, an
 - Some messages are parts of one sentence. The page puts a link, a value or a name between them in the English order. Translate each part so that the sentence reads correctly in that order.
 - A selector `{ $count -> [one] ... *[other] ... }` selects a plural form. Use the CLDR cardinal categories of the language, and keep the default variant `*[other]`. Chinese, Japanese and Korean have only `other`, so a translation can drop a selector that only selects the plural.
 - A selector on a named value, such as `{ $state -> [running] ... }`, keeps the variant keys of English.
+- A variable named `$if_<name>_1_else_s` holds the English plural ending, `""` or `"s"`. The count variable beside it is a number. Select the plural on the count, and keep the ending variable in a selector that prints nothing. Chinese, Japanese and Korean can omit it. The variant starts on a new line, as in every Fluent selector:
+
+  ```
+  { $if_retries_len_1_else_s ->
+     *[other] {""}
+  }
+  ```
+
+- A variable named `$if_<name>_1_tr_chat_transcript_...` holds the word "call" or "calls" from the messages `chat-transcript-call` and `chat-transcript-calls` of the same language. Place it where that word belongs.
 - The worker notes allow only plain text, `{ $name }` variables and `{"..."}` literals. Do not add a selector there.
 - Keep the first comment line of each translated catalog: `# Translation of en/<file>. Change it together with the English catalog.`
 

@@ -8,7 +8,7 @@ description: Change an English interface or agent text together with its transla
 English is the source of every text that the website and the research agent show in another language.
 Read [the text reference](reference/texts.md) for the files, what each text does, and the format rules.
 
-A change to an English text changes the same text in all 20 other languages in the same patch.
+A change to an English text changes the same text in all 21 other languages in the same patch.
 An agent of the harness writes each translation directly in the file.
 Do not send the texts to a translation service or to a model endpoint of the stack.
 A message that a translation lacks shows in English, so a missing message is a defect.

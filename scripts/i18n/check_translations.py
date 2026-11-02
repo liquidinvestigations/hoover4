@@ -39,7 +39,7 @@ AGENT = ROOT / "main_services/agents/research_agent/research_agent"
 GLOSSARY = ROOT / "scripts/i18n/glossary"
 
 LANGUAGES = ["de", "es", "fr", "pl", "pt", "ar", "he", "hi", "zh", "it", "nl", "da", "nb",
-             "sv", "el", "hr", "ro", "ru", "ja", "ko"]
+             "sv", "el", "hr", "ro", "ru", "ja", "ko", "tr"]
 
 #: The CLDR cardinal plural categories of each language.
 PLURALS = {
@@ -51,6 +51,7 @@ PLURALS = {
     "nb": {"one", "other"}, "sv": {"one", "other"}, "el": {"one", "other"},
     "hr": {"one", "few", "other"}, "ro": {"one", "few", "other"},
     "ru": {"one", "few", "many", "other"}, "ja": {"other"}, "ko": {"other"},
+    "tr": {"one", "other"},
 }
 ONE_FORM = {"zh", "ja", "ko"}
 
@@ -86,7 +87,7 @@ def messages(text: str) -> dict[str, str]:
         if match:
             current = match.group(1)
             found[current] = [match.group(2)]
-        elif current and line[:1] in (" ", "\t") and line.strip():
+        elif current and line[:1] in (" ", "\t", "}") and line.strip():
             found[current].append(line)
         elif line.strip():
             current = None
@@ -115,6 +116,8 @@ def check_catalog(report: Report, code: str, english_path: Path, path: Path, not
                 report.error(where, f"{key} has the variables {sorted(got)}, English has {sorted(wanted)}")
         if value.count("{") != value.count("}"):
             report.error(where, f"{key} has unbalanced braces")
+        if re.search(r"->[ \t]*\*?\[", value):
+            report.error(where, f"{key} has a variant on the line of its selector; start each variant on a new line")
         if "->" in value:
             if notes:
                 report.error(where, f"{key} has a selector, which the worker cannot read")
