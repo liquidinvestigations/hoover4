@@ -1,46 +1,58 @@
 ---
 name: entities
 group: technique
-description: como listar as pessoas, organizações, locais, endereços de correio eletrônico e valores que os documentos mencionam
+description: como listar as pessoas, organizações, locais, endereços de correio eletrónico e montantes que os documentos mencionam
 tools: list_document_entities, search_entity_explainer, search_facet_values
-terms: Palavras para isso: pessoas, indivíduos, nomes, organizações, empresas, instituições, locais, lugares, cidades, países, endereços de correio eletrônico, números de telefone, valores, dinheiro, identificadores, números de conta, elementos-chave, quem é mencionado.
-not_for: Não é necessário quando a consulta menciona uma pessoa e pergunta o que os documentos dizem sobre essa pessoa.
+terms: Palavras para isto: pessoas, nomes, organizações, empresas, instituições, locais, localizações, cidades, países, endereços de correio eletrónico, emails, números de telefone, montantes, dinheiro, identificadores, números de conta, intervenientes principais, quem é mencionado.
+not_for: Não é necessária quando o pedido indica uma só pessoa e pergunta o que os documentos dizem sobre ela.
 ---
-Lista os documentos que têm nome
+Listar o que os documentos mencionam
 
 {% if has('list_document_entities') %}
-1. {{ tool('list_document_entities') }} lista os nomes extraídos de um documento. Indica o nome da coleção e o hash do ficheiro.
-2. O resultado tem dois níveis. entities é a interpretação feita por um modelo de linguagem do texto: pessoas, organizações e lugares. Pode estar errado, por isso verifica um nome no texto antes de lhe confiars. structured contém os valores validados por uma regra, como identificadores com dígito de validação válido, datas e valores monetários com código de moeda.
-3. Procura os novos nomes, endereços e identificadores com {{ tool('search_collections') }}. Junta todas as formas de um mesmo nome numa única chamada.
+1. {{ tool('list_document_entities') }} lista os nomes extraídos de um documento. Indica o nome da sua coleção e o seu hash de ficheiro.
+2. O resultado tem dois níveis. entities é a leitura que um modelo de linguagem faz da prosa: pessoas, organizações e locais. Pode estar errada, por isso verifica um nome no texto antes de te apoiares nele. structured contém os valores que uma regra validou, como identificadores com um dígito de controlo válido, datas e montantes de dinheiro com um código de moeda.
+3. Pesquisa os novos nomes, endereços e identificadores com {{ tool('search_collections') }}. Coloca todas as formas de um nome numa só chamada.
 {% endif %}
 {% if has('search_entity_explainer') %}
-4. Quando um resultado nomeia uma regra e um valor que não compreendes, chama {{ tool('search_entity_explainer') }}.
+4. Quando um resultado indica uma regra e um valor que não compreendes, chama {{ tool('search_entity_explainer') }}.
 {% endif %}
 {% if has('search_facet_values') %}
-5. {{ tool('search_facet_values') }} fornece os valores de um filtro de entidade ao longo de uma coleção, com as respetivas contagens.
+5. {{ tool('search_facet_values') }} devolve os valores de um filtro de entidades numa coleção, com as respetivas contagens.
 {% endif %}
 
-Um nome extraído pelo pipeline não é prova de que o documento trate dessa pessoa. Lê o texto à sua volta.
+Um nome que o pipeline extraiu não prova que o documento trata dessa pessoa. Lê o texto à volta dele.
 
-Quando um nome não aparecer em lado nenhum, lê as sugestões de ortografia indexadas e as suas contagens validadas.
-Não uses uma sugestão de ortografia como nome pretendido.
-Quando procurares uma sugestão de ortografia, nome-a na resposta como uma ortografia diferente.
-Quando nenhuma ortografia corresponder, informa que as coleções pesquisadas não contêm o nome.
+Quando um nome não ocorre em lado nenhum, lê as sugestões de grafia indexadas e as respetivas contagens verificadas.
+Não uses uma grafia sugerida como o nome pedido.
+Quando pesquisares uma grafia sugerida, indica-a na resposta como uma grafia diferente.
+Quando nenhuma grafia corresponder, comunica que as coleções pesquisadas não contêm o nome.
 
 {% if has('list_document_entities') %}
-{{ tool('list_document_entities') }} aceita documentos como uma lista de objetos de coleção e file_hash.
-Esta forma preserva identidades de coleções mistas sem emparelhar listas não relacionadas.
-Alternativamente, a coleção e o file_hash aceitam listas correspondentes, ou uma coleção com vários hashes.
-O resultado agrupa os valores extraídos por documento. Use read_more quando a continuação ocorrer.
-```json {"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]} ``` ```json {"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]} ```
+{{ tool('list_document_entities') }} aceita documents como uma lista de objetos com collection e file_hash.
+Esta forma preserva as identidades de coleções mistas sem emparelhar listas não relacionadas.
+Em alternativa, collection e file_hash aceitam listas correspondentes, ou uma coleção com vários hashes.
+O resultado agrupa os valores extraídos por documento. Usa read_more quando continua.
+```json
+{"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]}
+```
+```json
+{"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]}
+```
 {% endif %}
 {% if has('search_entity_explainer') %}
-{{ tool('search_entity_explainer') }} exige collection, entity_type e entity_value a partir de um resultado de entidade extraída.
+{{ tool('search_entity_explainer') }} exige collection, entity_type e entity_value de um resultado de entidade extraída.
 Devolve a descrição da regra de extração e os documentos correspondentes.
-```json {"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"} ```
+```json
+{"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"}
+```
 {% endif %}
 {% if has('search_facet_values') %}
-Para distribuições de entidades, chame {{ tool('search_facet_values') }} com facets e collection e query opcionais.
-A matriz de resultados tem pares [text, count] em cada célula de facet.
-```json {"facets":["ner_per","ner_org","ner_loc"]} ``` ```json {"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"} ```
+Para distribuições de entidades, chama {{ tool('search_facet_values') }} com facets e, opcionalmente, collection e query.
+A matriz de resultados tem pares [text, count] em cada célula de faceta.
+```json
+{"facets":["ner_per","ner_org","ner_loc"]}
+```
+```json
+{"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"}
+```
 {% endif %}

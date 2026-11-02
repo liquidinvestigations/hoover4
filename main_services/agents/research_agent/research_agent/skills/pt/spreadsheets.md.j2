@@ -1,55 +1,86 @@
 ---
 name: spreadsheets
 group: technique
-description: como ler um ficheiro de folha de cálculo com as ferramentas de tabela: as suas folhas, colunas, linhas e células individuais
+description: como ler um ficheiro de folha de cálculo com as ferramentas de tabelas: as suas folhas, colunas, linhas e células individuais
 tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
-terms: Palavras para isso: tabela, tabelas, folha de cálculo, Excel, livro de trabalho, folha, folha de cálculo, separador, CSV, TSV, dados tabulares, tabela de dados, livro de registos, registo, controlador, lista com colunas, linha, coluna, célula, cabeçalho, tabela dinâmica, tabela de base de dados, SQLite, Tabelle. Tipos de ficheiro: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML, e tabelas dentro de documentos HTML ou PDF. Resultados do tipo tabela.
-not_for: Não é necessário quando o pedido apenas pede que a resposta seja apresentada como uma tabela, ou usa a palavra tabela noutro sentido.
+terms: Palavras para isto: tabela, tabelas, folha de cálculo, Excel, livro, folha, separador, CSV, TSV, dados tabulares, quadro de dados, registo, lista com colunas, linha, coluna, célula, cabeçalho, tabela dinâmica, tabela de base de dados, SQLite. Tipos de ficheiro: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, XML SpreadsheetML, e tabelas dentro de documentos HTML ou PDF. Resultados de pesquisa do tipo table.
+not_for: Não é necessária quando o pedido só pede que a resposta seja apresentada como uma tabela, ou usa a palavra tabela noutro sentido.
 ---
 Ler uma folha de cálculo
 
-Uma folha de cálculo, um ficheiro CSV ou uma tabela num documento é um documento de tabela. Dê-lhe nome pelo file_hash e pela Coleção de um resultado de pesquisa.
+Uma folha de cálculo, um ficheiro CSV ou uma tabela num documento é um documento de tabela. Indica-o pelo file_hash e pela collection de um resultado de pesquisa.
 
-1. {{ tool('table_overview') }} lista as folhas e colunas com os seus identificadores.
-2. Ler linhas com {{ tool('table_page') }}. Uma chamada devolve 50 linhas. Ordene e filtre as linhas na chamada. Dê row_start para saltar para uma linha de uma folha grande, e colunas para ler as colunas depois da 60ª.
-3. {{ tool('table_column_values') }} lista os valores de uma coluna e as suas contagens.
-4. Para encontrar um valor numa folha, chamar {{ tool('table_search_cells') }}. Ler as linhas circundantes com {{ tool('table_page') }} quando a correspondência precisar de contexto.
-5. Quando {{ tool('table_page') }} cortar uma célula longa, lê-a inteira com {{ tool('table_cell') }}. Dê row com o row_id devolvido, e column com o identificador de coluna devolvido.
+1. {{ tool('table_overview') }} lista as folhas e as colunas com os respetivos identificadores.
+2. Lê linhas com {{ tool('table_page') }}. Uma chamada devolve 50 linhas. Ordena e filtra as linhas na chamada. Indica row_start para ir para uma linha de uma folha grande, e columns para ler as colunas depois da 60.ª.
+3. {{ tool('table_column_values') }} lista os valores de uma coluna e as respetivas contagens.
+4. Para encontrar um valor numa folha, chama {{ tool('table_search_cells') }}. Lê as linhas à volta
+com {{ tool('table_page') }} quando a correspondência precisa de contexto.
+5. Quando {{ tool('table_page') }} corta uma célula longa, lê-a inteira com {{ tool('table_cell') }}. Indica row com o row_id devolvido, e column com o identificador de coluna devolvido.
 
-Dê uma folha, linha e coluna quando o leitor precisar de encontrar um valor novamente.
+Indica uma folha, uma linha e uma coluna quando o leitor precisa de voltar a encontrar um valor.
 
-Para contar linhas por um valor, chama {{ tool('table_column_values') }} nessa coluna. Não contes as linhas de uma página de texto tu mesmo. Indica o total de linhas, os filtros e a coluna.
-Uma chamada de valores fornece até 200 valores. Quando o resultado tem uma continuação, chama read_more até não haver continuação. Uma lista de valores parcial não fornece uma distribuição completa.
-As contagens de valores somam o total de linhas apenas para a mesma folha, as mesmas linhas e os mesmos filtros. Uma célula em branco não tem valor, pelo que as células em branco tornam a soma inferior ao total de linhas. Indica o número de células em branco quando comparares a soma com o total.
-Por exemplo, uma folha de 24 licenças de construção tem uma coluna de tipo. A chamada de valores fornece fence 9, roof 7, deck 5 e pool 3, e sem continuação. Estas contagens somam 24. Contagens que somam 27 para 24 linhas indicam um erro de contagem. Contagens que somam 21 indicam 3 linhas com um tipo em branco.
-Um ficheiro CSV não indica uma linha de cabeçalho. Cada resultado de tabela fornece `interpretation`, a leitura da linha 1 cujas contagens descrevem. Com estado `established`, a leitura é conhecida. Com estado `ambiguous` ou `legacy` e dois `candidates`, a linha 1 pode ser o cabeçalho ou a primeira linha de dados.
-Cada candidato fornece a sua contagem de linhas. O resultado lê todas as linhas, `all_rows`, salvo se a chamada fornecer `interpretation`. Indica cada contagem com a sua leitura, ou lê a outra leitura com interpretação `all_rows` ou `first_row_header`. Não reports a contagem de uma leitura como o total de linhas estabelecido.
-Um ficheiro JSON ou um ficheiro de texto não tem folhas. Quando {{ tool('table_overview') }} não fornecer nenhuma folha, lê o documento como texto.
+Para contar linhas por um valor, chama {{ tool('table_column_values') }} nessa coluna. Não contes
+tu próprio as linhas de uma página de texto. Indica o total de linhas, os filtros e a coluna.
+Uma chamada de valores devolve até 200 valores. Quando o resultado tem uma continuação, chama read_more
+até não restar nenhuma continuação. Uma lista parcial de valores não dá uma distribuição completa.
+As contagens dos valores somam o total de linhas apenas para a mesma folha, as mesmas linhas e os
+mesmos filtros. Uma célula em branco não tem valor, por isso as células em branco tornam a soma menor do que o
+total de linhas. Indica o número de células em branco quando comparas a soma com o total.
+Por exemplo, uma folha de 24 licenças de construção tem uma coluna de tipo. A chamada de valores devolve
+fence 9, roof 7, deck 5 e pool 3, e nenhuma continuação. Estas contagens somam 24. Contagens
+que somam 27 para 24 linhas mostram um erro de contagem. Contagens que somam 21 mostram 3 linhas
+com o tipo em branco.
+Um ficheiro CSV não indica nenhuma linha de cabeçalho. Cada resultado de tabela indica `interpretation`, a leitura da
+linha 1 que as suas contagens descrevem. Com o estado `established`, a leitura é conhecida. Com o estado
+`ambiguous` ou `legacy` e dois `candidates`, a linha 1 pode ser o cabeçalho ou a primeira linha de dados.
+Cada candidato indica a sua contagem de linhas. O resultado lê todas as linhas, `all_rows`, a menos que a
+chamada indique `interpretation`. Indica cada contagem com a sua leitura, ou lê a outra leitura
+com interpretation `all_rows` ou `first_row_header`. Não comuniques a contagem de uma leitura como
+a contagem de linhas estabelecida.
+Um ficheiro JSON ou um ficheiro de texto não tem folhas. Quando {{ tool('table_overview') }} não devolve nenhuma folha,
+lê o documento como texto.
 
-Cada chamada de tabela exige collection e file_hash provenientes do mesmo resultado de documento.
-{{ tool('table_overview') }} devolve identificadores de folha e de coluna.
-As outras ferramentas de tabela exigem a folha. Copie o seu identificador da visão geral.
-{{ tool('table_page') }} aceita opcionalmente sort, filters, columns, search, row_start e interpretação.
-sort exige column e direction, asc ou desc. A omissão usa a ordem das linhas armazenada.
-filters é uma lista de predicados de coluna. Cada predicado usa um único tipo de teste.
-Um intervalo numérico ou de datas pode incluir limites inferiores e superiores.
+Todas as chamadas de tabelas exigem collection e file_hash do mesmo resultado de documento.
+{{ tool('table_overview') }} devolve os identificadores das folhas e das colunas.
+As outras ferramentas de tabelas exigem sheet. Copia o seu identificador da visão geral.
+{{ tool('table_page') }} aceita opcionalmente sort, filters, columns, search, row_start e interpretation.
+sort exige column e direction, asc ou desc. Se for omitido, usa-se a ordem de linhas guardada.
+filters é uma lista de predicados de colunas. Cada predicado usa um tipo de teste.
+Um intervalo numérico ou de datas pode incluir limites inferior e superior.
 Os testes são contains, equals, starts_with, is_empty, number_min, number_max, date_min e date_max.
-Os testes de texto usam strings. Os testes numéricos usam números. Os limites de datas usam strings no formato YYYY-MM-DD.
-columns seleciona identificadores de coluna. Cada janela devolvida contém no máximo 60 colunas selecionadas.
-search opcionalmente mantém as linhas que contêm o seu texto. row_start é uma posição baseada em zero na ordem das linhas solicitada.
-O resultado contém metadados de colunas e linhas. row_id é a identidade da linha armazenada, incluindo após a ordenação.
+Os testes de texto usam cadeias de texto. Os testes de números usam números. Os limites de datas usam cadeias YYYY-MM-DD.
+columns seleciona identificadores de colunas. Uma janela devolvida contém no máximo 60 colunas selecionadas.
+search mantém opcionalmente as linhas que contêm o seu texto. row_start é uma posição a partir de zero na ordem de linhas pedida.
+O resultado contém metadados das colunas e linhas. row_id é a identidade guardada da linha, inclusive depois de ordenar.
 
-{{ tool('table_column_values') }} também exige column. search filtra opcionalmente o texto dos valores.
-Devolve valores e contagens para essa coluna.
-{{ tool('table_search_cells') }} exige query. Devolve identificadores de folha, linha e coluna correspondentes, com texto.
-{{ tool('table_cell') }} exige row e column. Passe o row_id devolvido sob o nome de argumento row.
-Devolve fatias de 2.000 caracteres. Use read_more para o resto do texto da célula.
-Use read_more para páginas de tabela continuadas, valores e resultados de pesquisa.
+{{ tool('table_column_values') }} exige também column. search filtra opcionalmente o texto dos valores.
+Devolve valores e contagens dessa coluna.
+{{ tool('table_search_cells') }} exige query. Devolve as identidades de folha, linha e coluna correspondentes com o texto.
+{{ tool('table_cell') }} exige row e column. Passa o row_id devolvido com o nome de argumento row.
+Devolve fatias de 2000 carateres. Usa read_more para o texto restante da célula.
+Usa read_more para páginas de tabelas, valores e resultados de pesquisa que continuam.
 
-Este overview mínimo abre a estrutura da tabela.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` Esta chamada de página usa identificadores de folha e de coluna copiados.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` Esta chamada de valores restringe uma coluna.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` Esta chamada de valores lê a linha 1 de uma folha CSV ambígua como nomes de coluna.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` Esta pesquisa de célula localiza um valor solicitado.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` Esta chamada de célula lê o row_id 71, mesmo quando essa linha apareceu primeiro num resultado ordenado.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```
+Esta visão geral mínima abre a estrutura da tabela.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+Esta chamada de página usa identificadores de folha e de coluna copiados.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50}
+```
+Esta chamada de valores restringe uma coluna.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"}
+```
+Esta chamada de valores lê a linha 1 de uma folha CSV ambígua como os nomes das colunas.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"}
+```
+Esta pesquisa de células localiza um valor pedido.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"}
+```
+Esta chamada de célula lê o row_id 71, mesmo que essa linha tenha aparecido primeiro num resultado ordenado.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2}
+```

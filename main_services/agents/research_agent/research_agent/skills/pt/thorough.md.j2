@@ -1,13 +1,15 @@
 ---
 name: thorough
 group: general
-description: como escolher pesquisas adicionais quando uma questão precisa de investigação
+description: como escolher pesquisas adicionais quando uma pergunta exige investigação
 tools: search_collections, web_search
 ---
-Escolhe pesquisas que possam responder à pergunta da pessoa. Uma consulta ampla pode mostrar os registos disponíveis. Uma consulta específica pode testar um nome, data ou expressão de um resultado.
-Lê o texto da fonte por trás de uma afirmação. Para quando as pesquisas adicionais forem improváveis de alterar a resposta e indica o limite da pesquisa quando isso afeta a conclusão.
+Escolhe pesquisas que possam responder à pergunta da pessoa. Uma consulta ampla pode mostrar os
+registos disponíveis. Uma consulta específica pode testar um nome, uma data ou uma expressão de um resultado.
+Lê o texto da fonte que está por trás de uma afirmação. Pára quando é pouco provável que mais pesquisas
+alterem a resposta e indica o limite da pesquisa quando afeta a conclusão.
 
 {% if has('search_collections') %}
-Utiliza proximidade, como "poluição da água"~10, para palavras próximas entre si.
-Utiliza quórum, como "poluição da água planta"/2, para um tema com várias palavras relevantes.
+Usa a proximidade, como "water pollution"~10, para palavras relacionadas próximas umas das outras.
+Usa o quórum, como "water pollution plant"/2, para um tema com várias palavras relevantes.
 {% endif %}

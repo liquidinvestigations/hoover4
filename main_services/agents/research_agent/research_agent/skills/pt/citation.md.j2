@@ -4,46 +4,62 @@ group: general
 description: como citar os documentos que sustentam uma resposta
 tools: cite_documents
 ---
-O texto citado vai para um ficheiro do espaço de trabalho. A `report` competência diz como escrevê-lo e editá-lo.
+O texto citado vai para um ficheiro do espaço de trabalho. A competência `report` explica como o escrever e editar.
 
 {% if has('cite_documents') %}
-Quando a tua {{ citation_artefact }} depender de {% if web_enabled %}um documento interno{% else %}um{% endif %}, chama {{ tool('cite_documents') }}.
-Fornece cada documento que sustente uma afirmação ou citação. Usa o identificador de citação devolvido ao lado dessa afirmação.
-Usa um identificador de citação ao lado de uma afirmação que dependa de um documento interno. Também podes indicar um documento para o identificar ou descrever um resultado de pesquisa.
+Quando o teu relatório se apoia em {% if web_enabled %}um documento interno{% else %}um documento{% endif %}, chama {{ tool('cite_documents') }}.
+Indica cada documento que sustenta uma afirmação ou uma citação. Usa o identificador devolvido junto a essa afirmação.
+Usa um identificador junto a uma afirmação que se apoia num documento interno. Podes também indicar um
+documento para o identificar ou para descrever um resultado de pesquisa.
 Uma chamada aceita no máximo 12 citações. Cita o que usaste, não tudo o que uma pesquisa devolveu.
-Quando uma pesquisa ou leitura devolve documentos que sustentam uma afirmação, cita esses documentos.
+Quando uma pesquisa ou uma leitura devolveu documentos que sustentam uma afirmação, cita esses documentos.
 
-Para cada citação, fornece:
-- collection e file_hash, copiados de um resultado de ferramenta. Nunca inventes um file_hash.
-- quote: 5 a 6 palavras consecutivas copiadas de uma linha do corpo do documento. Não uma linha de cabeçalho (From, To, Cc, Subject, Date). Nenhum intervalo que contenha um ponto de interrogação.
-- find: opcional. A frase exacta mais curta da citação que a pessoa deve ver. O cartão abre o documento nessa frase.
+Para cada citação indica:
+- collection e file_hash, copiados do resultado de uma ferramenta. Nunca inventes um file_hash.
+- quote: 5 a 6 palavras consecutivas copiadas de uma linha do corpo do documento. Não de uma linha de cabeçalho
+  (From, To, Cc, Subject, Date). Nenhum trecho que contenha um ponto de interrogação.
+- find: opcional. A expressão exata mais curta da citação que a pessoa deve ver. O cartão
+  abre o documento nessa expressão.
 - why: uma linha que diz o que o documento sustenta.
 
-Escreve o identificador de citação que obtiveres de volta, por exemplo `[D1]`, no teu {{ citation_artefact }} onde fazes a afirmação.
+Escreve o identificador que recebes, por exemplo `[D1]`, no teu relatório no ponto em que fazes a afirmação.
 
-Exemplo. {{ tool('read_documents') if has('read_documents') else 'A tool' }} devolveu o email "Re: RASCUNHO dos pontos de fala" na Coleção Enron.
-O seu corpo diz "Os pontos de fala parecem-me muito bem. Muito sucesso hoje." O seu {{ citation_artefact }} diz que Jim Steffes aprovou o rascunho. Chame {{ tool('cite_documents') }} com a coleção Enron, o file_hash do resultado, a citação "talking points look great to me", localize "look great", e por que razão "Steffes aprova o rascunho de 27 de dezembro".
-Depois escreva "Steffes aprovou o rascunho [D1]." Não cite "Subject: Re: RASCUNHO dos pontos de fala", porque é uma linha de cabeçalho. Não cite "Can you check the notes?", porque contém um ponto de interrogação.
-As quebras de linha, a pontuação e as marcas `>` de um email citado não precisam de coincidir.
-Citações em falta ou ausentes não atribuem nenhum identificador. Copie de 5 a 6 palavras do texto candidato que o erro indica para a citação e tente novamente.
-Só um identificador devolvido classifica uma fonte. Nunca escreva o seu próprio rótulo entre parênteses retos.
-Escreva o identificador como texto ao lado da afirmação. Não o ponha em backticks. `[D1]` em backticks não liga nada.
-Reaprove o identificador do documento devolvido para passagens verificadas adicionais. O documento tem um cartão.
+Exemplo. {{ tool('read_documents') if has('read_documents') else 'Uma ferramenta' }} devolveu a mensagem "Re: DRAFT talking points" na coleção enron.
+O seu corpo diz "The talking points look great to me. Best of luck today." O teu relatório diz
+que Jim Steffes aprovou o rascunho. Chama {{ tool('cite_documents') }} com collection enron, o
+file_hash do resultado, a quote "talking points look great to me", find "look great"
+e why "Steffes aprova o rascunho de 27 de dezembro".
+Depois escreve "Steffes aprovou o rascunho [D1]."
+Não cites "Subject: Re: DRAFT talking points", porque é uma linha de cabeçalho. Não cites
+"Can you check the notes?", porque contém um ponto de interrogação.
+As quebras de linha, a pontuação e as marcas `>` de uma mensagem citada não precisam de coincidir.
+Citações em falta ou ausentes não atribuem nenhum identificador. Copia para quote 5 a 6 palavras do texto candidato que o erro indica e tenta de novo.
+Só um identificador devolvido identifica uma fonte. Nunca escrevas uma etiqueta própria entre parênteses retos.
+Escreve o identificador como texto junto à afirmação. Não o coloques entre acentos graves. `[D1]` entre acentos graves não liga a nada.
+Reutiliza o identificador de documento devolvido para outras passagens verificadas. O documento tem um só cartão.
 {% if citation_resolver == "lead" %}
-O investigador principal resolve-os, por isso um identificador que nunca atribuiu não serve ninguém.
+O investigador principal resolve-os, por isso um identificador que nunca atribuíste não serve a ninguém.
 {% endif %}
 {% endif %}
 {% include "citation_failures.j2" %}
 
 {% if has('cite_documents') %}
-O argumento citations é uma lista de objetos de citação de documento.
-Cada objeto requer collection e file_hash. quote contém 5 a 6 palavras consecutivas da redação exacta da fonte.
+O argumento citations é uma lista de objetos de citação de documentos.
+Cada objeto exige collection e file_hash. quote contém 5 a 6 palavras consecutivas da formulação exata da fonte.
 Repete collection e file_hash em cada objeto, incluindo citações separadas do mesmo documento.
-Os objetos não herdam argumentos de objetos anteriores.
-find seleciona opcionalmente uma frase exacta dentro de quote. A omissão usa a quote inteira.
-term regista opcionalmente a consulta de pesquisa de origem. why afirma a afirmação suportada.
-O resultado dá um identificador para cada entrada verificada. As entradas com falha dão a razão e podem dar uma passagem candidata.
-Tenta de novo apenas as entradas com falha com redação exacta. Uma citação verificada não verifica por si só o autor ou a data dessa citação.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]} ``` Este lote verifica duas passagens do mesmo documento.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+Os objetos não herdam argumentos dos objetos anteriores.
+find seleciona opcionalmente uma expressão exata dentro de quote. Se for omitido, usa-se a citação inteira.
+term regista opcionalmente a consulta de pesquisa de origem. why indica a afirmação sustentada.
+O resultado dá um identificador para cada entrada verificada. As entradas falhadas dão o seu motivo e podem dar uma passagem candidata.
+Tenta de novo apenas as entradas falhadas, com a formulação exata. Uma citação verificada não verifica, por si só, o autor nem a data dessa citação.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
+```
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"Esta passagem sustenta a aprovação indicada."}]}
+```
+Este lote verifica duas passagens do mesmo documento.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}
+```
 {% endif %}

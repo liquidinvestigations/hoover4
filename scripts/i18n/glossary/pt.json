@@ -16,9 +16,9 @@
   "agent": "Agente",
   "chat": "Conversa",
   "board": "Quadro",
-  "finding": "Descoberta",
+  "finding": "Conclusão",
   "open question": "Questão em aberto",
-  "processing update": "Atualização de processamento",
+  "processing update": "Atualização do processamento",
   "upload": "Carregamento",
   "administrator": "Administrador",
   "operation": "Operação",
@@ -29,6 +29,6 @@
   "interface language": "Idioma da interface",
   "agent language": "Idioma do agente",
   "document language": "Idioma do documento",
-  "settings": "Configurações"
+  "settings": "Definições"
  }
 }

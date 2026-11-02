@@ -1,71 +1,72 @@
 ---
 name: no_results
 group: stumble
-description: o que fazer quando uma pesquisa não encontra nada: remover filtros, dividir uma frase, tentar outras formas de um nome e, de seguida, indicar o que está a faltar
+description: o que fazer quando uma pesquisa não encontra nada: remover filtros, dividir uma expressão, experimentar outras formas de um nome e depois dizer o que falta
 tools: search_collections, search_passages, web_search
 ---
 Quando uma pesquisa não encontra nada
 
 {% if has('search_collections') %}
-Leia primeiro o word_counts.
-Quando um nome não aparecer em nenhum sítio, leia as sugestões de ortografia indexadas e as suas contagens verificadas.
-Não use uma sugestão de ortografia como o nome pedido.
-Quando pesquisar uma sugestão de ortografia, nomeie-a na resposta como uma ortografia diferente.
-Quando nenhuma ortografia corresponder, informe que as coleções pesquisadas não contêm o nome.
+Lê primeiro word_counts.
+Quando um nome não ocorre em lado nenhum, lê as sugestões de grafia indexadas e as respetivas contagens verificadas.
+Não uses uma grafia sugerida como o nome pedido.
+Quando pesquisares uma grafia sugerida, indica-a na resposta como uma grafia diferente.
+Quando nenhuma grafia corresponder, comunica que as coleções pesquisadas não contêm o nome.
 
 {% endif %}
-Siga estes passos de pesquisa quando as pesquisas anteriores não responderem à pergunta.
+Segue estes passos de pesquisa quando as pesquisas anteriores não respondem à pergunta.
 {% if has('search_collections') %}
-1. Pesquise cada nome como uma frase entre aspas.
-2. Pesquisar palavras sem aspas, iniciais, endereços de e-mail e nomes no idioma do documento.
-Leia o word_counts e as sugestões de ortografia. Use uma sugestão apenas para o nome pretendido.
-Use dasovi?h para uma letra variável e dasovic% para uma letra final opcional.
-Use skilling << resignar quando a ordem das palavras for importante.
-3. Remova os filtros um de cada vez. Execute uma pesquisa sem filtros.
+1. Pesquisa cada nome como uma expressão entre aspas.
+2. Pesquisa palavras sem aspas, iniciais, endereços de correio eletrónico e nomes no idioma do documento.
+Lê word_counts e as sugestões de grafia. Usa uma sugestão apenas para o nome pretendido.
+Usa dasovi?h para uma letra variável e dasovic% para uma letra final opcional.
+Usa skilling << resigned quando a ordem das palavras importa.
+3. Remove os filtros um de cada vez. Executa uma pesquisa sem filtros.
 {% if has('search_facet_values') %}
-Verifique os valores dos filtros com {{ tool('search_facet_values') }}.
+Verifica os valores dos filtros com {{ tool('search_facet_values') }}.
 {% endif %}
 {% if has('search_histogram') %}
-Verifique as datas com {{ tool('search_histogram') }}.
+Verifica as datas com {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Pesquisar uma descrição do conteúdo com {{ tool('search_passages') }}.
+4. Pesquisa uma descrição do conteúdo com {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. Use {{ tool('folder_search') }} quando a solicitação nomeia uma pasta, caminho ou ficheiro.
+5. Usa {{ tool('folder_search') }} quando o pedido indica uma pasta, um caminho ou um ficheiro.
 {% endif %}
 {% if has('folder_list') %}
-Use {{ tool('folder_list') }} para essa pasta.
+Usa {{ tool('folder_list') }} para essa pasta.
 {% endif %}
 {% if has('read_documents') %}
-6. Leia os melhores 1 a 3 resultados com {{ tool('read_documents') }}.
+6. Lê os 1 a 3 melhores resultados com {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_search_text') %}
-Use {{ tool('doc_search_text') }} para texto relevante num documento.
+Usa {{ tool('doc_search_text') }} para o texto relevante num documento.
 {% endif %}
 {% if has('web_search') %}
-7. Pesquisar a web apenas quando a solicitação o permitir.
+7. Pesquisa na web apenas quando o pedido o permite.
 {% endif %}
 {% if has('read_page') %}
-Leia as melhores páginas web com {{ tool('read_page') }}.
+Lê as melhores páginas web com {{ tool('read_page') }}.
 {% endif %}
 {% else %}
 {% if has('web_search') %}
-1. Pesquise cada nome como uma frase entre aspas e depois outras formas do nome, as suas iniciais e o idioma do local.
+1. Pesquisa cada nome como uma expressão entre aspas e depois outras formas do nome, as suas iniciais e o idioma do local.
 {% endif %}
 {% if has('read_page') %}
-2. Leia as melhores páginas web com {{ tool('read_page') }}.
+2. Lê as melhores páginas web com {{ tool('read_page') }}.
 {% endif %}
 {% endif %}
 
-Depois de os passos disponíveis não encontrarem nenhuma correspondência de palavra-chave, responda indicando a ausência e as pesquisas realizadas.
+Depois de os passos disponíveis não encontrarem nenhuma correspondência de palavras-chave, responde com a ausência e as pesquisas.
 {% if has('search_collections') %}
-Antes de responder sobre a ausência, execute pelo menos 4 pesquisas distintas com pelo menos 2 ferramentas de pesquisa disponíveis.
-Não repita uma pesquisa idêntica. Indique as coleções pesquisadas e os factos em falta.
-Limite a afirmação sobre a ausência às pesquisas e aos documentos que examinou.
-Por exemplo, diga "As atas do comité pesquisadas e os registos de transferência não identificaram uma data de aprovação". Estas pesquisas não estabelecem que não existe nenhum registo de aprovação em qualquer coleção permitida.
+Antes de uma resposta de ausência, executa pelo menos 4 pesquisas distintas com pelo menos 2 ferramentas de pesquisa disponíveis.
+Não repitas uma pesquisa idêntica. Indica as coleções pesquisadas e os factos em falta.
+Limita uma declaração de ausência às pesquisas e aos documentos que examinaste.
+Por exemplo, diz "As atas da comissão e os registos de transferências pesquisados não identificaram uma data de aprovação."
+Estas pesquisas não estabelecem que não existe nenhum registo de aprovação em nenhuma coleção permitida.
 {% else %}
-Antes de responder sobre a ausência, execute pelo menos 4 pesquisas distintas.
-Não repita uma pesquisa idêntica. Indique as pesquisas e as páginas lidas.
-Limite a afirmação sobre a ausência às pesquisas e às páginas que examinou.
+Antes de uma resposta de ausência, executa pelo menos 4 pesquisas distintas.
+Não repitas uma pesquisa idêntica. Indica as pesquisas e as páginas lidas.
+Limita uma declaração de ausência às pesquisas e às páginas que examinaste.
 {% endif %}

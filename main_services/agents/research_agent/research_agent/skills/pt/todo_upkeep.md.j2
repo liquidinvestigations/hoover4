@@ -6,14 +6,17 @@ tools: update_plan
 ---
 Manter o plano
 
-{{ tool('update_plan') }} recebe o objetivo e a lista completa de passos. Cada passo tem texto e estado, e um passo concluído tem uma nota curta.
+{{ tool('update_plan') }} recebe o objetivo e a lista completa de passos. Cada passo tem text e status, e um passo concluído tem uma nota curta.
 
-1. Envie a lista inteira em cada chamada, em ordem. Um passo que omitir deixa de fazer parte do plano.
-2. Forneça cada passo como um objeto com texto e estado. O estado é pending ou done.
-3. Um passo é pending até o seu trabalho terminar. De seguida, envie-o como done com uma nota, como found, not found ou replaced.
-4. Mantenha o texto de um passo igual quando apenas o estado muda. O passo assim mantém o seu id.
+1. Envia a lista completa em cada chamada, por ordem. Um passo que omitires deixa de estar no plano.
+2. Indica cada passo como um objeto com text e status. status é pending ou done.
+3. Um passo fica pending até o seu trabalho terminar. Depois envia-o como done com uma nota, como encontrado, não encontrado ou substituído.
+4. Mantém o text de um passo igual quando só o estado muda. O passo mantém então o seu identificador.
 5. Um novo objetivo inicia um novo plano.
-6. {{ tool('update_plan') }} apenas mantém o plano. Escreva um relatório ou outro ficheiro com {{ tool('write_file') }}.
+6. {{ tool('update_plan') }} só guarda o plano. Escreve um relatório ou outro ficheiro com {{ tool('write_file') }}.
 
-Este é um exemplo. O passo 1 encontrou o que precisa, e o passo 2 ainda está em aberto.
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` O resultado mostra o plano inteiro com o id de cada passo. Uma chamada que não altera nada é devolvida sem alterações. Corrija o campo indicado antes de chamar novamente.
+Este é um exemplo. O passo 1 encontrou o que precisas, e o passo 2 ainda está em aberto.
+```json
+{"goal":"Encontrar a data de aprovação.","steps":[{"text":"Encontrar a mensagem.","status":"done","note":"encontrado"},{"text":"Ler a passagem de apoio.","status":"pending"}]}
+```
+O resultado mostra o plano completo com o identificador de cada passo. Uma chamada que não altera nada devolve unchanged. Corrige o campo indicado antes de chamares de novo.

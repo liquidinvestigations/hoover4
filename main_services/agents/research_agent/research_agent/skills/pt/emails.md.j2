@@ -1,45 +1,55 @@
 ---
 name: emails
 group: technique
-description: como ler documentos de correio eletrônico: remetente, destinatários, data, assunto, cabeçalhos, cópias e conversas
+description: como ler documentos de correio eletrónico: remetente, destinatários, data, assunto, cabeçalhos, cópias e conversas
 tools: doc_email, doc_metadata, read_documents
 ---
-Leitura de documentos de correio eletrónico
+Ler documentos de correio eletrónico
 
 {% if has('search_collections') %}
-Encontre correios eletrónicos com {{ tool('search_collections') }}. Coloque cada forma de um endereço ou nome numa única chamada, por exemplo o endereço, "Primeiro Último" e "Último, Primeiro".
+Encontra mensagens de correio eletrónico com {{ tool('search_collections') }}. Coloca todas as formas de um endereço ou de um nome numa só chamada, por exemplo o endereço, "Nome Apelido" e "Apelido, Nome".
 
 {% endif %}
 {% if has('doc_email') %}
-1. Chame {{ tool('doc_email') }} com o file_hash do correio eletrónico. Isto fornece o remetente, os destinatários, as cópias, a data, o assunto, a mensagem pai, os anexos e o grafo da mensagem.
-2. Para seguir um fio de conversa, forneça o node, o file hash de outra mensagem no grafo. O grafo então se centraliza nessa mensagem.
-3. Um anexo é um documento por si só. Leia-o com o seu próprio file_hash.
+1. Chama {{ tool('doc_email') }} com o file_hash da mensagem. Devolve o remetente, os destinatários, as cópias, a data, o assunto, a mensagem de origem, os anexos e o grafo de mensagens.
+2. Para seguir uma conversa, indica node, o hash de ficheiro de outra mensagem do grafo. O grafo passa então a centrar-se nessa mensagem.
+3. Um anexo é um documento próprio. Lê-o com o seu próprio file_hash.
 {% endif %}
 {% if has('read_documents') %}
-4. Leia o texto da mensagem com {{ tool('read_documents') }}.
+4. Lê o texto da mensagem com {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_metadata') %}
-5. Para os cabeçalhos e as datas que não estão no texto, chame {{ tool('doc_metadata') }}.
+5. Para os cabeçalhos e as datas que não estão no texto, chama {{ tool('doc_metadata') }}.
 {% endif %}
 
-Uma cópia da mesma mensagem pode estar em mais de uma caixa de correio. Compare os seus campos quando uma contagem depende de mensagens distintas.
+Uma cópia da mesma mensagem pode estar em mais de uma caixa de correio. Compara os seus campos quando uma contagem depende de mensagens distintas.
 
 {% if has('doc_email') %}
-{{ tool('doc_email') }} requer a coleção e o file_hash.
-A coleção é um nome. O file_hash aceita um hash ou uma lista de até dez hashes dessa coleção.
-O node opcionalmente centraliza o gráfico num hash de mensagem retornado. A omissão centraliza-o no email solicitado.
-Use mais com read_more para inspecionar os anexos e entradas do gráfico restantes.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+{{ tool('doc_email') }} exige collection e file_hash.
+collection é um só nome. file_hash aceita um hash ou uma lista de até dez hashes dessa coleção.
+node centra opcionalmente o grafo no hash de uma mensagem devolvida. Se for omitido, o grafo centra-se no correio eletrónico pedido.
+Usa more com read_more para ver os anexos e as entradas do grafo que faltam.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"}
+```
 {% endif %}
 {% if has('doc_metadata') %}
-{{ tool('doc_metadata') }} requer a coleção e o file_hash. Aceita um hash ou uma lista de até dez hashes.
-Retorna metadados armazenados, datas, localizações e links de descarga. Use read_more para os campos de metadados restantes.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{{ tool('doc_metadata') }} exige collection e file_hash. Aceita um hash ou uma lista de até dez hashes.
+Devolve os metadados guardados, as datas, as localizações e as ligações de transferência. Usa read_more para os restantes campos de metadados.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]}
+```
 {% endif %}
-Leia a passagem solicitada antes de atribuir o seu autor, destinatários ou data.
-O envelope do email externo pertence à mensagem externa.
-Uma passagem encaminhada ou citada pode ter um autor, destinatários e data diferentes.
-Use os próprios cabeçalhos dessa passagem para identificar quem a escreveu.
-Uma pessoa que encaminhou uma mensagem não escreveu necessariamente a sua afirmação citada.
-Quando a atribuição permanecer desconhecida, indique essa limitação.
-Leia as passagens para intervalos direcionados e instruções de continuação. Não repita a leitura inicial para solicitar texto posterior.
+Lê a passagem pedida antes de lhe atribuíres o autor, os destinatários ou a data.
+O envelope externo da mensagem pertence à mensagem externa.
+Uma passagem reencaminhada ou citada pode ter um autor, destinatários e uma data diferentes.
+Usa os cabeçalhos da própria passagem para identificar quem a escreveu.
+Uma pessoa que reencaminhou uma mensagem não escreveu necessariamente a declaração citada.
+Quando a atribuição continua desconhecida, indica esse limite.
+Lê as passagens com intervalos específicos e instruções de continuação. Não repitas a leitura inicial para pedires texto posterior.
