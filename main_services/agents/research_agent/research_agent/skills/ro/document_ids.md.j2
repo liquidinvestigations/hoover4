@@ -1,19 +1,20 @@
 ---
 name: document_ids
 group: stumble
-description: cum să numești un document cu hash-ul fișierului sau cu o cale în read_documents
+description: cum numești un document prin hash-ul fișierului sau, în read_documents, printr-o cale
 tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
 ---
-Denumirea unui document
+Numirea unui document
 
-Un hash de document are 64 de caractere hexadecimale. Instrumentele de document acceptă și un început unic de cel puțin 12 caractere.
+Hash-ul unui document are 64 de caractere hexazecimale. Instrumentele pentru documente acceptă și un început unic de cel puțin 12 caractere.
 
-1. Copiază file_hash și colecția din același rând de rezultat. Nu scrie niciodată un hash tu însuți.
-   Un placeholder precum COPY_RETURNED_HASH sau o valoare de zerouri nu este un hash. Un id de folder vine și el dintr-o listare sau dintr-un rezultat de căutare al acestei conversații.
-2. {% if has('read_documents') %}{{ tool('read_documents') }} poate rezolva și un nume de fișier sau o cale când numești un singur document.{% endif %} Alte instrumente de document folosesc hash-ul.
-3. Pentru a găsi file_hash-ul unui fișier după numele său, caută numele cu {{ tool('search_collections') }}{% if has('folder_search') %} sau {{ tool('folder_search') }}{% endif %} și copiază file_hash-ul rândului.
+1. Copiază file_hash și collection din același rând de rezultat. Nu scrie niciodată singur un hash.
+   Un substituent precum COPY_RETURNED_HASH sau o valoare formată din zerouri nu este un hash. Un id
+   de folder provine tot dintr-o listare sau dintr-un rezultat de căutare al acestei conversații.
+2. {% if has('read_documents') %}{{ tool('read_documents') }} poate rezolva și un nume de fișier sau o cale, când numesc un singur document.{% endif %} Celelalte instrumente pentru documente folosesc hash-ul.
+3. Pentru a afla file_hash al unui fișier după nume, caută numele cu {{ tool('search_collections') }}{% if has('folder_search') %} sau {{ tool('folder_search') }}{% endif %} și copiază file_hash din rând.
 {% if has('read_more') %}
-4. Când un rând nu are file_hash, apelează {{ tool('read_more') }} pentru următoarea pagină a rezultatului.
+4. Când un rând nu are file_hash, apelează {{ tool('read_more') }} pentru pagina următoare a rezultatului.
 {% endif %}
 
-Când o citire spune că niciun set de date lizibil nu deține un hash, verifică colecția și valoarea sa față de rândul de rezultat. Un document lipsă poate însemna și că valoarea numește mai mult de un document.
+Când o citire spune că niciun set de date care poate fi citit nu conține un hash, compară colecția și valoarea cu rândul de rezultat. Un document lipsă poate însemna și că valoarea numește mai multe documente.

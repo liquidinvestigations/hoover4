@@ -1,21 +1,23 @@
 ---
 name: web_research
 group: technique
-description: cum să cauți pe web deschis, să citești o pagină web sau înregistrarea proprietarului unui domeniu și să citezi paginile web care susțin un raport
+description: cum cauți pe web-ul deschis, citești o pagină web sau înregistrarea proprietarului unui domeniu și citezi paginile web care susțin un raport
 tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
 ---
-Căutarea pe web deschis
+Cercetarea web-ului deschis
 
-Folosește sursele web când pot răspunde la întrebarea persoanei.
+Folosește surse web când pot răspunde la întrebarea persoanei.
 
 {% if has('web_search') %}
-{{ tool('web_search') }} acceptă o listă de interogări. Câmpul `sources` restrânge căutarea la surse numite.{% if has('list_search_sources') %} {{ tool('list_search_sources') }} listează acele surse.{% endif +%}
+{{ tool('web_search') }} acceptă o listă de interogări. Câmpul `sources` restrânge
+căutarea la surse numite.{% if has('list_search_sources') %} {{ tool('list_search_sources') }}
+listează acele surse.{% endif +%}
 {% endif %}
 {% if has('read_page') %}
-1. Citește rezultatele cele mai bune în integrală cu {{ tool('read_page') }}. Dă toate adresele într-un singur apel și precizează în scop ce cauți. Un rezultat marcat BLOCAT DE UN CONTROL AUTOMAT nu este pagina. Nu folosi textul ei.
+1. Citește integral cele mai bune rezultate cu {{ tool('read_page') }}. Dă toate adresele într-un singur apel și dă goal pentru a spune ce cauți. Un rezultat marcat BLOCKED BY A BOT CHECK nu este pagina. Nu folosi textul lui.
 {% endif %}
 {% if has('whois_lookup') %}
-{% if has('read_page') %}2.{% else %}1.{% endif %} Pentru proprietar, registrar sau datele unui domeniu, apelează {{ tool('whois_lookup') }} cu fiecare domeniu într-un singur apel.
+{% if has('read_page') %}2.{% else %}1.{% endif %} Pentru proprietarul, registratorul sau datele unui domeniu, apelează {{ tool('whois_lookup') }} cu toate domeniile într-un singur apel.
 {% endif %}
 
 Citește fiecare sursă înainte de a folosi afirmațiile ei. Fragmentul unui rezultat de căutare nu este o sursă.
@@ -23,93 +25,149 @@ Citește fiecare sursă înainte de a folosi afirmațiile ei. Fragmentul unui re
 
 Citarea paginilor web
 
-Apelează {{ tool('cite_pages') }} cu URL-ul fiecărei citite și cu wording-ul exact de susținere în `terms`.
+Apelează {{ tool('cite_pages') }} cu URL-ul fiecărei pagini citite și cu formularea exactă care susține afirmația, în `terms`.
 Folosește etichetele web returnate lângă afirmațiile pe care le susțin.
-Înlocuiește URL-urile de sursă simple cu acele etichete.
-{{ tool('cite_pages') }} acceptă url și terms pentru o pagină, sau pagini pentru până la douăsprezece obiecte de pagină.
-Fiecare pagină necesită url și terms. terms conține până la opt fraze exacte, fiecare de cel mult 200 de caractere. Litera trebuie să corespundă.
-version selectează opțional o versiune captată. why menționează opțional afirmația susținută, în cel mult 300 de caractere.
-Rezultatul oferă citate verificate și o etichetă web stabilă. O pagină eșuată dă o eroare fără etichetă.
+Înlocuiește URL-urile simple ale surselor cu acele etichete.
+{{ tool('cite_pages') }} acceptă url și terms pentru o pagină sau pages pentru până la douăsprezece obiecte de pagină.
+Fiecare pagină cere url și terms. terms conține până la opt expresii exacte, fiecare de cel mult 200 de caractere. Literele mari și mici trebuie să se potrivească.
+version selectează opțional o versiune capturată. why spune opțional ce afirmație este susținută, în cel mult 300 de caractere.
+Rezultatul dă citatele verificate și o etichetă web stabilă. O pagină eșuată dă o eroare, fără etichetă.
 
-Exemplu. {{ tool('read_page') }} citează URL-ul https://example.org/report. Textul spune "Fabrica s-a închis în martie 2019." Apela {{ tool('cite_pages') }} cu argumente plate pentru o singură pagină:
-url, copiat din rezultatul citării, termeni cu fraza exactă și motivul.
-```json {"url":"COPY_READ_URL","terms":["Fabrica s-a închis în martie 2019"],"why":"Raportul oferă data închiderii."} ``` Apuni scrie "Fabrica s-a închis în martie 2019 [W1]." cu eticheta pe care apelul a returnat-o.
+Exemplu. {{ tool('read_page') }} a citit URL-ul https://example.org/report. Textul lui spune
+"The plant closed in March 2019." Apelează {{ tool('cite_pages') }} cu argumente simple pentru o pagină:
+url, copiat din rezultatul citirii, terms cu expresia exactă și why.
+```json
+{"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"Raportul dă data închiderii."}
+```
+Apoi scrie "Fabrica s-a închis în martie 2019 [W1]." cu eticheta pe care a returnat-o apelul.
 Împarte o listă de mai mult de douăsprezece pagini în apeluri separate.
-```json {"pages":[{"url":"COPY_FIRST_READ_URL","terms":["FRAZA_EXACTA"]},{"url":"COPY_SECOND_READ_URL","terms":["FRAZA_EXACTA"],"version":"VERSION_RETURNATĂ","why":"Acest pasaj oferă data aprobării."}]} ``` Copiază eticheta web returnată, de exemplu `[W1]`, lângă afirmația pe care o susține.
-Păstrează fiecare etichetă împreună cu URL-ul și citatele din obiectul de citare returnat.
+```json
+{"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"Acest pasaj dă data aprobării."}]}
+```
+Copiază eticheta web returnată, de exemplu `[W1]`, lângă afirmația pe care o susține.
+Păstrează fiecare etichetă împreună cu URL-ul și citatele din obiectul ei de citare returnat.
 O eroare nu alocă o etichetă. Omite afirmațiile acelei surse până când citarea ei reușește.
-Pentru formulări lipsă, copiază textul exact din candidatul returnat și apela din nou instrumentul.
-Când o eroare include `errors[i].retry_arguments`, copiază acel obiect nealterat în următorul apel.
-Păstrează citările reușite dintr-un rezultat parțial. Reîncepe doar paginile eșuate.
-De exemplu, un apel citează trei pagini și două reușesc cu [W1] și [W2]. Folosește cele două etichete. Trimite următorul apel doar cu a treia pagină și folosește argumentele de reîncercare.
-De exemplu, acest apel unește cuvinte peste o întrerupere de linie a sursei și eșuează.
-```json {"url":"https://example.org/report","terms":["Fabrica s-a închis în martie 2019"]} ``` Eroarea poate returna aceste argumente de reîncercare împreună cu textul exact al sursei.
-```json {"retry_arguments":{"url":"https://example.org/report","version":"VERSION_RETURNATĂ","terms":["Fabrica s-a închis"]}} ``` Apela {{ tool('cite_pages') }} cu acel obiect returnat, inclusiv cu versiunea sa reală și termenii exacti.
-```json {"url":"https://example.org/report","version":"VERSION_RETURNATĂ","terms":["Fabrica s-a închis"]} ``` O fereastră PDF are propria sa versiune. Pentru a cita un pasaj de pe paginile 51 până la 100, copiază versiunea acelei citări.
-```json {"url":"COPY_READ_URL","version":"VERSION_PAGINI_51_LA_100","terms":["FRAZA_EXACTA"]} ``` Dacă un apel depășeșe opt termeni, împarte termenii în grupuri de cel mult opt și citează fiecare grup separat.
-Păstrează URL-ul și versiunea sursei împreună cu fiecare grup. Modificarea structurii apelului nu reduce numărul de termeni.
-Eticheta deschide textul paginii capturat și citatele verificate.
-Folosește o pagină per apel dacă un lot ajunge deteriorat.
+Pentru formulare absentă, copiază textul exact din candidatul returnat și apelează din nou instrumentul.
+Când o eroare include `errors[i].retry_arguments`, copiază acel obiect neschimbat în următorul apel.
+Păstrează citările reușite dintr-un rezultat parțial. Reîncearcă doar paginile eșuate.
+De exemplu, un apel citează trei pagini, iar două reușesc cu [W1] și [W2]. Folosește acele două
+etichete. Trimite următorul apel doar cu a treia pagină și folosește argumentele ei de reîncercare.
+De exemplu, acest apel unește cuvinte peste o întrerupere de rând a sursei și eșuează.
+```json
+{"url":"https://example.org/report","terms":["The plant closed in March 2019"]}
+```
+Eroarea poate returna aceste argumente de reîncercare, cu textul exact al sursei.
+```json
+{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}}
+```
+Apelează {{ tool('cite_pages') }} cu acel obiect returnat, inclusiv versiunea lui reală și terms exacte.
+```json
+{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}
+```
+O fereastră PDF are propria versiune. Pentru a cita un pasaj din paginile 51 până la 100, copiază versiunea acelei citiri.
+```json
+{"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]}
+```
+Dacă un apel depășește opt terms, împarte terms în grupuri de cel mult opt și citează fiecare grup separat.
+Păstrează URL-ul și versiunea sursei pentru fiecare grup. Schimbarea structurii apelului nu reduce numărul de terms.
+Eticheta deschide textul paginii capturate și citatele ei verificate.
+Folosește o singură pagină pe apel dacă un lot ajunge deteriorat.
 O pagină necitită, blocată sau neverificată nu poate susține o afirmație.
 
 {% include "citation_failures.j2" %}
 {% endif %}
 
-Pune un nume sau un eveniment pe care le ții ca candidat până când o sursă îl numește. Găsește o sursă care îl numește înainte de a-l folosi. Nu trimite din nou o căutare cu aceleași cuvinte sau cu mici modificări de formulare. O căutare următoare trebuie să folosească o metodă diferită: alte fapte de identificare a candidatului, o sursă numită, limba locului sau o pagină la care linkuește un rezultat citit. Când nicio metodă rămasă nu poate găsi o sursă, marchează candidatul ca neverificat și continuă cu alte activități. O persoană cu același nume este o persoană diferită până când o sursă leagă faptele. Când o sursă contrazice un candidat, elimină candidatul și dă motivul.
+Un nume sau un eveniment pe care ți-l amintești este un candidat până când o sursă îl numește. Găsește o sursă care
+îl numește înainte de a-l folosi. Nu trimite din nou o căutare cu aceleași cuvinte sau cu mici
+schimbări de formulare. O căutare următoare trebuie să folosească o metodă diferită: alte fapte de identificare ale
+candidatului, o sursă numită, limba locului sau o pagină la care trimite un rezultat citit.
+Când nicio metodă rămasă nu poate găsi o sursă, marchează candidatul ca neverificat și
+continuă cu altă muncă. O persoană cu același nume este o persoană diferită până când o
+sursă leagă faptele. Când o sursă contrazice un candidat, elimină candidatul și
+spune motivul.
 
-De exemplu, ții că o moară s-a închis în 2019. O căutare pentru „Harlow mill closed 2019" nu găsește nicio pagină despre moară. O căutare pentru „Harlow mill closure" găsește aceleași rezultate. Nu trimite o a treia formă a acestor cuvinte. Caută numele companiei proprietare împreună cu numele orașului. O pagină de știri locale numește luna închiderii, așa că citește-o, iar candidatul este verificat.
+De exemplu, îți amintești că o fabrică s-a închis în 2019. O căutare pentru "Harlow mill closed 2019"
+nu găsește nicio pagină despre fabrică. O căutare pentru "Harlow mill closure" găsește aceleași rezultate. Nu
+trimite o a treia formă a acestor cuvinte. Caută numele companiei proprietare împreună cu numele orașului. O
+pagină de știri locale numește luna închiderii, deci citește-o, iar candidatul este verificat.
 
-De exemplu, ții un al doilea proces în sarcina aceleiași companii. Căutările pentru companie împreună cu „lawsuit", pentru numele instanței și pentru formatul numărului de caz nu găsesc niciun caz.
-Nicio altă metodă nu mai rămâne. Scrie că sursele citite nu confirmă un al doilea caz și nu îl numești ca fiind un caz.
+De exemplu, îți amintești un al doilea proces împotriva aceleiași companii. Căutările pentru
+companie cu "lawsuit", pentru numele instanței și pentru formatul numărului de dosar nu găsesc niciun caz.
+Nu mai rămâne nicio altă metodă. Scrie că sursele citite nu confirmă un al doilea caz și nu
+îl numi caz.
 
-O citire acoperă doar textul extras. O căutare fără potrivire arată că textul extras nu conține cuvintele. Nu arată că documentul nu le conține. Un rezultat PDF oferă paginile pe care le-a extras citirea. Înainte de a afirma că un document nu numește o persoană, spune paginile sau textul pe care le-ai căutat.
-Pentru o listă de evenimente dateate, păstrează un record pentru fiecare eveniment cu data sa, numele și sursa sa. Menționează recordurile fără dată, rapoartele duplicate și sursele pe care nu ai putut să le citești aparte de recordurile dateate.
+O citire acoperă doar textul ei extras. Un find fără potrivire arată că textul extras
+nu conține cuvintele. Nu arată că documentul nu le conține. Un rezultat PDF
+dă paginile pe care le-a extras citirea. Înainte de a afirma că un document nu
+numește o persoană, spune paginile sau textul în care ai căutat.
+Pentru o listă de evenimente datate, păstrează o înregistrare pentru fiecare eveniment cu data, numele și
+sursa lui. Spune separat de înregistrările datate înregistrările fără dată, rapoartele duplicate și sursele pe care nu le-ai putut citi.
 
 Aplică fiecare constrângere cerută fiecărui element din răspuns.
-Indică ce constrângere nu respectă un element.
-Identifică fiecare element după faptele care îl diferențiază.
-Pentru un proces, menționează instanța, data și numărul dosarului când sursele le oferă.
-Verifică în sursă fiecare proprietate pe care o cerință o cere de la un element.
-Numără o dată un proces, un eveniment sau o entitate și listează împreună identificatorii etapelor sale.
-Contopește rapoartele despre același element.
-Menționează când sursele stabilește mai puține elemente distincte decât s-au cerut.
-Înainte de a răspunde, verifică faptele care diferențiază fiecare element și fiecare constrângere pe paginile pe care le-ai citit.
-Păstrează un element care nu respectă o constrângere în afara listei care corespunde și numețe constrângerea care nu a fost respectată.
+Spune ce constrângere nu o respectă un element.
+Identifică fiecare element prin faptele lui distinctive.
+Pentru un proces, dă instanța, data și numărul dosarului când sursele le oferă.
+Verifică în sursă fiecare proprietate pe care cererea o cere de la un element.
+Numără un caz, un eveniment sau o entitate o singură dată și listează împreună identificatorii etapelor lui.
+Îmbină rapoartele despre același element.
+Spune când sursele stabilesc mai puține elemente distincte decât s-a cerut.
+Înainte de a răspunde, verifică faptele distinctive ale fiecărui element și fiecare constrângere în paginile pe care le-ai citit.
+Păstrează un element care nu respectă o constrângere în afara listei de potriviri și numește constrângerea nerespectată.
 Citește fiecare pagină pe care o citezi, inclusiv o sursă de înlocuire găsită după o pagină blocată.
-Când citirea unei pagini eșuează, folosește altă sursă lizibilă sau omite afirmațiile și adresa ei.
+Când citirea unei pagini eșuează, folosește altă sursă care poate fi citită sau omite afirmațiile și adresa ei.
 
 {% if has('web_search') %}
-{{ tool('web_search') }} acceptă interogări sub formă de listă sau de un singur șir, iar `query` reprezintă o interogare suplimentară, unică.
-Furnizează cel puțin o interogare. Omite sursele pentru a căuta în toate sursele disponibile.
-`max_results` are valoarea implicită 15. `timelimit` este `d`, `w`, `m` sau `y` și se aplică doar la sursele de știri suportate.
-Rezultatul returnează URL-uri clasate, titluri, fragmente și forme ale interogării care au corespuns. Citește URL-urile selectate înainte de a te baza pe afirmațiile lor.
-```json {"queries":["transfer approval"]} ``` ```json {"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"} ```
+{{ tool('web_search') }} acceptă queries ca listă sau ca un singur șir și query ca interogare unică suplimentară.
+Dă cel puțin o interogare. Omite sources pentru a căuta în toate sursele disponibile.
+max_results este implicit 15. timelimit este d, w, m sau y și se aplică doar surselor de știri acceptate.
+Rezultatul returnează URL-uri ordonate, titluri, fragmente și formele de interogare potrivite. Citește URL-urile selectate înainte de a te baza pe afirmațiile lor.
+```json
+{"queries":["aprobarea transferului"]}
+```
+```json
+{"queries":["aprobarea transferului","autorizarea transferului"],"query":"acord de transfer","sources":["gdelt"],"max_results":5,"timelimit":"m"}
+```
 {% endif %}
 {% if has('list_search_sources') %}
-{{ tool('list_search_sources') }} nu primește argumente. Returnează numele și descrierile surselor disponibile.
-```json {} ```
+{{ tool('list_search_sources') }} nu are argumente. Returnează numele și descrierile surselor disponibile.
+```json
+{}
+```
 {% endif %}
 {% if has('read_page') %}
-{{ tool('read_page') }} necesită `urls`, o listă de până la șase adrese HTTP sau HTTPS.
-`goal` înregistrează opțional întrebarea. Nu selectează textul care corespunde.
-`find` selectează opțional potriviri literale fără restricții de majuscule/minuscule.
-`offset` este o poziție de caracter bazată pe zero. Omitearea începe de la zero.
-`version` selectează versiunea textului capturat. Copiază-o din o citare anterioară a acelui URL pentru a continua acel text.
-O versiune aparține unui singur URL. Pentru un alt URL, citește mai întâi acel URL și copiază propria-i versiune.
-`links` are valoarea implicită `true` și include destinațiile de link în text.
-`page_start` selectează prima pagină a ferestrei unui PDF. O singură citare extrage cel mult 50 de pagini PDF.
-Un rezultat de tip tăiere, un rezultat de tip `find` cu mai multe potriviri și o fereastră PDF oferă argumentele pentru următorul apel.
-Copiază obiectul de argumente fără modificări. Păstrează URL-ul, fereastra PDF, setarea `links` și versiunea.
-O versiune aparține unui singur URL și unei singure fereastre PDF.
-O fereastră fără text nu arată că celelalte pagini PDF nu au text.
+{{ tool('read_page') }} cere urls, o listă de cel mult șase adrese HTTP sau HTTPS.
+goal înregistrează opțional întrebarea. Nu selectează textul care se potrivește.
+find selectează opțional potriviri literale de text, fără restricții de litere mari și mici.
+offset este o poziție de caracter de la zero. Dacă îl omiți, începe de la zero.
+version selectează versiunea capturată a textului. Copiază-o dintr-o citire anterioară a aceluiași URL pentru a continua acel text.
+O versiune aparține unui singur URL. Pentru alt URL, citește mai întâi acel URL și copiază versiunea lui proprie.
+links este implicit true și include destinațiile linkurilor în text.
+page_start selectează prima pagină a unei ferestre PDF. O citire extrage cel mult 50 de pagini PDF.
+Un rezultat tăiat, un rezultat find cu mai multe potriviri și o fereastră PDF dau argumentele următorului apel.
+Copiază acel obiect de argumente neschimbat. El păstrează URL-ul, fereastra PDF, setarea links și versiunea.
+O versiune aparține unui singur URL și unei singure ferestre PDF.
+O fereastră fără text nu arată că celelalte pagini ale PDF-ului nu au text.
 Repetarea primului apel citește din nou primul text.
-```json {"urls":["COPY_SEARCH_RESULT_URL"]} ``` ```json {"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false} ``` De exemplu, un rezultat PDF spune „Textul acoperă paginile PDF 1–50 din 120 doar” și oferă următoarea fereastră.
-Un `find` în acea fereastră oferă mai multe potriviri cu acest obiect. Copiază-l ca următorul apel.
-```json {"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200} ```
+```json
+{"urls":["COPY_SEARCH_RESULT_URL"]}
+```
+```json
+{"urls":["COPY_READ_URL"],"goal":"Găsește data aprobării.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
+```
+De exemplu, un rezultat PDF spune "The text covers PDF pages 1 to 50 of 120 only" și dă fereastra următoare.
+Un find în acea fereastră dă mai multe potriviri cu acest obiect. Copiază-l ca următorul apel.
+```json
+{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200}
+```
 {% endif %}
 {% if has('whois_lookup') %}
-{{ tool('whois_lookup') }} acceptă `domains` sub formă de listă și `domain` ca un singur domeniu.
-Furnizează numele de domeniu fără un path de URL. Rezultatul raporteă fiecare domeniu separat.
-Un `registrant` nul înseamnă că registry nu a publicat acea valoare. Registrarul vinde înregistrarea domeniului.
-```json {"domains":["example.org"]} ``` ```json {"domains":["example.org","example.com"],"domain":"example.net"} ```
+{{ tool('whois_lookup') }} acceptă domains ca listă și domain ca un singur domeniu.
+Dă numele de domenii fără o cale URL. Rezultatul raportează fiecare domeniu separat.
+Un registrant null înseamnă că registrul nu a publicat acea valoare. Registratorul vinde înregistrarea domeniului.
+```json
+{"domains":["example.org"]}
+```
+```json
+{"domains":["example.org","example.com"],"domain":"example.net"}
+```
 {% endif %}

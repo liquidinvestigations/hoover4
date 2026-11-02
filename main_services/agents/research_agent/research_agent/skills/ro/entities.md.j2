@@ -1,46 +1,58 @@
 ---
 name: entities
 group: technique
-description: cum să listați persoanele, organizațiile, locurile, adresele de e-mail și sumele pe care documentele le menționează
+description: cum listezi persoanele, organizațiile, locurile, adresele de e-mail și sumele pe care le numesc documentele
 tools: list_document_entities, search_entity_explainer, search_facet_values
-terms: Cuvinte pentru aceasta: persoane, persoane, nume, organizații, companii, instituții, locuri, localități, orașe, țări, adrese de e-mail, numere de telefon, sume, bani, identificatori, numere de cont, actori cheie, cine este menționat.
-not_for: Nu este necesar când solicitarea numește o persoană și cere ce spun documentele despre acea persoană.
+terms: Cuvinte pentru acest subiect: oameni, persoane, nume, organizații, companii, instituții, locuri, localități, orașe, țări, adrese de e-mail, numere de telefon, sume, bani, identificatori, numere de cont, actori principali, cine este menționat.
+not_for: Nu este necesară când cererea numește o singură persoană și întreabă ce spun documentele despre ea.
 ---
-Listarea numelor documentelor
+Listarea a ceea ce numesc documentele
 
 {% if has('list_document_entities') %}
-1. {{ tool('list_document_entities') }} listează numele extrase pentru un document. Indică numele colecției și hash-ul fișierului.
-2. Rezultatul are două niveluri. `entities` este interpretarea textului făcută de un model lingvistic: persoane, organizații și locuri. Poate greși, așa că verifică un nume în text înainte de a te baza pe el. `structured` conține valorile validate de o regulă, cum ar fi identificatorii cu cifră de control validă, datele și sumele de bani cu cod de valutară.
-3. Caută noile nume, adrese și identificatori cu {{ tool('search_collections') }}. Grupează toate formele unui nume într-un sing apel.
+1. {{ tool('list_document_entities') }} listează numele extrase pentru un document. Dă numele colecției și hash-ul fișierului.
+2. Rezultatul are două niveluri. Nivelul entities este interpretarea textului de către un model de limbaj: persoane, organizații și locuri. Poate fi greșit, deci verifică un nume în text înainte de a te baza pe el. Nivelul structured conține valorile validate de o regulă, de exemplu identificatori cu cifră de control validă, date și sume de bani cu cod de monedă.
+3. Caută numele, adresele și identificatorii noi cu {{ tool('search_collections') }}. Pune toate formele unui nume într-un singur apel.
 {% endif %}
 {% if has('search_entity_explainer') %}
-4. Când un rezultat numeste o regulă și o valoare pe care nu le înțelegi, apelează {{ tool('search_entity_explainer') }}.
+4. Când un rezultat numește o regulă și o valoare pe care nu le înțelegi, apelează {{ tool('search_entity_explainer') }}.
 {% endif %}
 {% if has('search_facet_values') %}
-5. {{ tool('search_facet_values') }} oferă valorile unui filtru de entități pe o colecție, împreună cu numărătoarea lor.
+5. {{ tool('search_facet_values') }} dă valorile unui filtru de entități într-o colecție, împreună cu numărul lor.
 {% endif %}
 
-Un nume extras de pipeline nu este dovada că documentul tratează acea persoană. Citește textul din jurul lui.
+Un nume extras de flux nu dovedește că documentul este despre acea persoană. Citește textul din jurul lui.
 
-Când un nume nu apare nicăieri, citește sugestiile de ortografie indexate și numărătorile lor verificate.
-Nu folosi o sugestie de ortografie ca nume solicitat.
-Când cauți o sugestie de ortografie, menționeaz-o în răspuns ca o altă ortografie.
-Când nicio ortografie nu se potrivește, raportează că colecțiile căutate nu conțin numele.
+Când un nume nu apare nicăieri, citește sugestiile de grafie indexate și numerele lor verificate.
+Nu folosi o grafie sugerată în locul numelui cerut.
+Când cauți o grafie sugerată, numește-o în răspuns ca o altă grafie.
+Când nicio grafie nu se potrivește, raportează că în colecțiile căutate nu există numele.
 
 {% if has('list_document_entities') %}
-{{ tool('list_document_entities') }} acceptă documentele sub formă de listă de obiecte-colecție și file_hash.
-Această formă păstrează identitățile colecțiilor mixte fără a asocia liste fără legătură.
-Alternativ, colecția și file_hash acceptă liste care se potrivesc, sau o colecție cu mai multe hash-uri.
-Rezultatul grupează valorile extrase după document. Folosește read_more când se continuă.
-```json {"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]} ``` ```json {"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]} ```
+{{ tool('list_document_entities') }} acceptă documents ca listă de obiecte cu collection și file_hash.
+Această formă păstrează identitățile din colecții diferite, fără a asocia liste fără legătură între ele.
+Alternativ, collection și file_hash acceptă liste care se potrivesc, sau o colecție cu mai multe hash-uri.
+Rezultatul grupează valorile extrase pe documente. Folosește read_more când rezultatul continuă.
+```json
+{"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]}
+```
+```json
+{"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]}
+```
 {% endif %}
 {% if has('search_entity_explainer') %}
-{{ tool('search_entity_explainer') }} necesită colecția, entity_type și entity_value dintr-un rezultat de entitate extras.
-Returnează descrierea regulii de extracție și documentele care corespund.
-```json {"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"} ```
+{{ tool('search_entity_explainer') }} cere collection, entity_type și entity_value dintr-un rezultat de entitate extrasă.
+Returnează descrierea regulii de extragere și documentele care se potrivesc.
+```json
+{"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"}
+```
 {% endif %}
 {% if has('search_facet_values') %}
-Pentru distribuțiile de entități, apelează {{ tool('search_facet_values') }} cu facete și colecție și interogare opționale.
-Matricea de rezultat are perechi [text, count] în fiecare celulă a facetei.
-```json {"facets":["ner_per","ner_org","ner_loc"]} ``` ```json {"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"} ```
+Pentru distribuții de entități, apelează {{ tool('search_facet_values') }} cu facets și, opțional, collection și query.
+Matricea rezultatului are perechi [text, count] în fiecare celulă de facetă.
+```json
+{"facets":["ner_per","ner_org","ner_loc"]}
+```
+```json
+{"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"}
+```
 {% endif %}

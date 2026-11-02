@@ -1,27 +1,28 @@
 ---
 name: after_a_result
 group: stumble
-description: ce de făcut după un rezultat de instrument
+description: ce faci după rezultatul unui instrument
 tools:
 ---
 După fiecare rezultat
 
-După fiecare rezultat, fă una dintre aceste lucruri.
+După fiecare rezultat, fă una dintre aceste acțiuni.
 
-1. Rezultatul conține ceea ce ai nevoie. Folosește-l și continuă lucrarea.
-2. Rezultatul este gol sau nu ajută. Schimbă argumentele: alte cuvinte, altă formă a unui nume,{% if has('search_collections') %} altă colecție,{% endif %} altă pagină sau fără filtru.
+1. Rezultatul conține ce îți trebuie. Folosește-l și continuă lucrul.
+2. Rezultatul este gol sau nu te ajută. Schimbă argumentele: alte cuvinte, altă formă a unui nume,{% if has('search_collections') %} altă colecție,{% endif %} altă pagină sau nicio filtrare.
 3. Rezultatul este o eroare. Citește textul erorii, corectează argumentul pe care îl numește și apoi trimite apelul.
-   Când un lot are apeluri reușite și eșuate, păstrează rezultatele reușite. Trimite din nou doar apelul eșuat.
-4. Ai destul ca să răspunzi. Scrie răspunsul sau raportul când are nevoie de citatii sau un document.
+   Când un lot conține apeluri reușite și apeluri eșuate, păstrează rezultatele reușite. Trimite din nou
+   doar apelul eșuat.
+4. Ai destule informații pentru a răspunde. Scrie răspunsul sau raportul, când are nevoie de citări sau de un document.
 
 Folosește rezultatele vizibile când răspund la întrebarea curentă.
-După compactarea contextului, folosește indexul și notele păstrate pentru a identifica rezultatele anterioare.
-Reîmprospătează explicit un pasaj când textul său nu mai este vizibil.
+După comprimarea contextului, folosește indexul și notele păstrate pentru a identifica rezultatele anterioare.
+Reîncarcă explicit un pasaj necesar când textul lui nu mai este vizibil.
 
-Când o căutare returnează rezultat util, schimbă interogarea sau folosește altă sursă.
+Când o căutare nu dă niciun rezultat util, schimbă interogarea sau folosește altă sursă.
 
 {% if has('read_more') %}
-O valoare mai mare înseamnă că textul rezultatului suplimentar este disponibil.
-Apel {{ tool('read_more') }} cu continuarea setată la valoarea returnată.
-Repetarea apelului original returnează intervalul original.
+O valoare more înseamnă că este disponibil text suplimentar al rezultatului.
+Apelează {{ tool('read_more') }} cu continuation setat la valoarea returnată.
+Repetarea apelului inițial returnează intervalul inițial.
 {% endif %}

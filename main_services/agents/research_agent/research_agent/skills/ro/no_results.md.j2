@@ -1,71 +1,72 @@
 ---
 name: no_results
 group: stumble
-description: ce să faci când o căutare nu găsește nimic: elimină filtrele, descompune o expresie, încearcă alte forme ale unui nume, apoi spune ce lipsește
+description: ce faci când o căutare nu găsește nimic: elimină filtrele, împarte expresia, încearcă alte forme ale unui nume, apoi spune ce lipsește
 tools: search_collections, search_passages, web_search
 ---
 Când o căutare nu găsește nimic
 
 {% if has('search_collections') %}
-Citești mai întâi word_counts.
-Când un nume nu apare nicăieri, citești sugestiile de ortografie indexate și numărate.
-Nu folosești o sugestie de ortografie ca pe numele solicitat.
-Când cauți o sugestie de ortografie, o menționezi în răspuns ca pe o altă ortografie.
-Când nicio ortografie nu se potrivește, raportezi că colecțiile căutate nu conțin numele.
+Citește mai întâi word_counts.
+Când un nume nu apare nicăieri, citește sugestiile de grafie indexate și numerele lor verificate.
+Nu folosi o grafie sugerată în locul numelui cerut.
+Când cauți o grafie sugerată, numește-o în răspuns ca o altă grafie.
+Când nicio grafie nu se potrivește, raportează că în colecțiile căutate nu există numele.
 
 {% endif %}
-Urmărești acești pași de căutare când căutările anterioare nu răspund la întrebare.
+Urmează acești pași de căutare când căutările anterioare nu răspund la întrebare.
 {% if has('search_collections') %}
-1. Caută fiecare nume ca pe o frază citată.
-2. Caută cuvinte necitate, inițiale, adrese de e-mail și nume în limba documentului.
-Citești word_counts și sugestiile de ortografie. Folosești o sugestie doar pentru numele intenționat.
-Folosești dasovi?h pentru o literă variabilă și dasovic% pentru o literă finală opțională.
-Folosești skilling << resigned când ordinea cuvintelor contează.
-3. Elimini filtrele pe rând. Rulezi o căutare fără filtre.
+1. Caută fiecare nume ca expresie între ghilimele.
+2. Caută cuvinte fără ghilimele, inițiale, adrese de e-mail și nume în limba documentului.
+Citește word_counts și sugestiile de grafie. Folosește o sugestie doar pentru numele intenționat.
+Folosește dasovi?h pentru o literă care variază și dasovic% pentru o literă finală opțională.
+Folosește skilling << resigned când contează ordinea cuvintelor.
+3. Elimină filtrele pe rând. Rulează o căutare fără filtre.
 {% if has('search_facet_values') %}
-Verifici valorile filtrelor cu {{ tool('search_facet_values') }}.
+Verifică valorile filtrelor cu {{ tool('search_facet_values') }}.
 {% endif %}
 {% if has('search_histogram') %}
-Verifici datele cu {{ tool('search_histogram') }}.
+Verifică datele cu {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
 4. Caută o descriere a conținutului cu {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. Folosești {{ tool('folder_search') }} când solicitarea numește un folder, cale sau fișier.
+5. Folosește {{ tool('folder_search') }} când cererea numește un folder, o cale sau un fișier.
 {% endif %}
 {% if has('folder_list') %}
-Folosești {{ tool('folder_list') }} pentru acel folder.
+Folosește {{ tool('folder_list') }} pentru acel folder.
 {% endif %}
 {% if has('read_documents') %}
-6. Citești cele mai bune 1 la 3 rezultate cu {{ tool('read_documents') }}.
+6. Citește cele mai bune 1 până la 3 rezultate cu {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_search_text') %}
-Folosești {{ tool('doc_search_text') }} pentru text relevant dintr-un document.
+Folosește {{ tool('doc_search_text') }} pentru textul relevant dintr-un document.
 {% endif %}
 {% if has('web_search') %}
-7. Caută pe web doar când solicitarea permite acest lucru.
+7. Caută pe web doar când cererea permite acest lucru.
 {% endif %}
 {% if has('read_page') %}
-Citești cele mai bune pagini web cu {{ tool('read_page') }}.
+Citește cele mai bune pagini web cu {{ tool('read_page') }}.
 {% endif %}
 {% else %}
 {% if has('web_search') %}
-1. Caută fiecare nume ca pe o frază citată, apoi alte forme ale numelui, inițialele și limba locului.
+1. Caută fiecare nume ca expresie între ghilimele, apoi alte forme ale numelui, inițialele lui și limba locului.
 {% endif %}
 {% if has('read_page') %}
-2. Citești cele mai bune pagini web cu {{ tool('read_page') }}.
+2. Citește cele mai bune pagini web cu {{ tool('read_page') }}.
 {% endif %}
 {% endif %}
 
-După ce pașii disponibili nu găsesc niciun cuvânt cheie, răspunde cu absența și căutările.
+După ce pașii disponibili nu găsesc nicio potrivire de cuvinte-cheie, răspunde cu absența și cu căutările.
 {% if has('search_collections') %}
-Înainte de a răspunde pentru o absență, execută cel puțin 4 căutări distincte cu cel puțin 2 instrumente de căutare disponibile.
-Nu repeta o căutare identică. Indică colecțiile căutate și faptele lipsă.
-Limitează afirmația de absență la căutările și documentele pe care le-ai examinat.
-De exemplu, spune „Minutele comitetului căutate și documentele de transfer nu au identificat o dată de aprobare." Aceste căutări nu stabilesc că nu există niciun document de aprobare în nicio colecție permisă.
+Înainte de un răspuns de absență, rulează cel puțin 4 căutări distincte cu cel puțin 2 instrumente de căutare disponibile.
+Nu repeta o căutare identică. Spune colecțiile căutate și faptele lipsă.
+Limitează o afirmație de absență la căutările și documentele pe care le-ai examinat.
+De exemplu, spune „Procesele-verbale ale comitetului și evidențele transferurilor, căutate de mine, nu au identificat o dată de aprobare.”
+Aceste căutări nu stabilesc că nu există nicio înregistrare de aprobare în vreo colecție permisă.
 {% else %}
-Înainte de a răspunde pentru o absență, execută cel puțin 4 căutări distincte.
-Nu repeta o căutare identică. Indică căutările și paginile citite.
-Limitează afirmația de absență la căutările și paginile pe care le-ai examinat.
+Înainte de un răspuns de absență, rulează cel puțin 4 căutări distincte.
+Nu repeta o căutare identică. Spune căutările și paginile citite.
+Limitează o afirmație de absență la căutările și paginile pe care le-ai examinat.
 {% endif %}

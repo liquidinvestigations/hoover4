@@ -1,14 +1,15 @@
 ---
 name: thorough
 group: general
-description: cum să alegi căutări suplimentare când o întrebare necesită cercetare
+description: cum alegi căutările următoare când o întrebare cere cercetare
 tools: search_collections, web_search
 ---
-Alege căutările care pot răspunde la întrebarea persoanei. O interogare largă poate arăta înregistrările disponibile. O interogare specifică poate testa un nume, o dată sau o fraze dintr-un rezultat.
-
-Citește textul din sursă din spatele unei afirmații. Oprește-te când căutările ulterioare sunt improbabile să schimbe răspunsul și menționează limita de căutare când aceasta afectă concluzia.
+Alege căutări care pot răspunde la întrebarea persoanei. O interogare largă poate arăta
+înregistrările disponibile. O interogare precisă poate testa un nume, o dată sau o expresie dintr-un rezultat.
+Citește textul sursei din spatele unei afirmații. Oprește-te când căutările suplimentare nu vor
+schimba probabil răspunsul și spune limita căutării când ea afectează concluzia.
 
 {% if has('search_collections') %}
-Folosiți proximitate, cum ar fi "poluarea apei"~10, pentru cuvinte corelate una lângă alta.
-Folosiți cuorum, cum ar fi "poluarea apei planta"/2, pentru un subiect mai multe cuvinte relevante.
+Folosește proximitatea, de exemplu "water pollution"~10, pentru cuvinte înrudite aflate aproape unul de altul.
+Folosește cvorumul, de exemplu "water pollution plant"/2, pentru un subiect cu mai multe cuvinte relevante.
 {% endif %}

@@ -1,95 +1,138 @@
 ---
 name: passages
 group: technique
-description: cum să găsești pasajele sau paginile exacte care răspund la o întrebare cu search_passages, în mai multe documente sau într-unul singur
+description: cum găsești pasajele sau paginile exacte care răspund la o întrebare cu search_passages, în mai multe documente sau într-unul singur
 tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
-terms: Cuvinte pentru aceasta: pasaj, paragraf, propoziție, citat, excerpt, pagină, secțiune, unde se spune, partea care menționează, formulare exactă, linie. Se aplică la documente text lungi: PDF, fișiere Word, e-mailuri, rapoarte și transcrieri.
-not_for: Nu este necesar pentru numărătoare, liste de fișiere sau metadate.
+terms: Cuvinte pentru acest subiect: pasaj, paragraf, propoziție, citat, fragment, pagină, secțiune, unde scrie, partea care menționează, formulare exactă, rând. Se aplică documentelor text lungi: PDF, fișiere Word, e-mailuri, rapoarte și transcrieri.
+not_for: Nu este necesară pentru numere, liste de fișiere sau metadate.
 ---
-Găsirea pasajelor și paginilor
+Găsirea pasajelor și a paginilor
 
 {% if has('search_passages') %}
-Pentru a căuta în multe documente, use {{ tool('search_passages') }}. El caută pasajele de text după cuvinte cheie și după semnificație în același timp. Folosește-l pentru o întrebare formulată simplu, când cuvintele folosite de documente nu sunt clare. Introdu până la 12 interogări într-un apel, fiecare o formă diferită a întrebării. Fiecare rezultat numește interogările care l-au găsit. Pentru un nume exact, o adresă sau o frază, use {{ tool('search_collections') }}.
+Pentru a căuta în mai multe documente, folosește {{ tool('search_passages') }}. Instrumentul caută pasajele de text după cuvinte-cheie și după sens, împreună. Folosește-l pentru o întrebare formulată simplu, când cuvintele pe care le folosesc documentele nu sunt clare. Dă până la 12 interogări într-un singur apel, fiecare o altă formă a întrebării. Fiecare rezultat numește interogările care l-au găsit. Pentru un nume exact, o adresă sau o expresie, folosește {{ tool('search_collections') }}.
 
 {% endif %}
 {% if has('doc_search_text') or has('pdf_search') %}
-Pentru a căuta într-un document lung, use aceste instrumente.
+Pentru a căuta într-un singur document lung, folosește aceste instrumente.
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} listează rezultatele unei interogări într-o sursă de text, în ordine pe pagini, împreună cu pagina fiecărui rezultat.
+{{ tool('doc_search_text') }} listează rezultatele unei interogări dintr-o sursă de text, în ordinea paginilor, cu pagina fiecărui rezultat.
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }} găsește o interogare pe paginile unei surse PDF. Dă page_from și page_to pentru a căuta un interval de pagini.
+{{ tool('pdf_search') }} găsește o interogare în paginile unei surse PDF. Dă page_from și page_to pentru a căuta într-un interval de pagini.
 {% endif %}
 
 {% endif %}
 {% if has('read_documents') %}
-Citește o pagină cu {{ tool('read_documents') }} când pasajul nu afișează suficient text pentru a susține afirmația. Dă pagina sau dă interogarea care deschide pagina cu cele mai multe rezultate.
+Citește o pagină cu {{ tool('read_documents') }} când pasajul nu arată destul text
+pentru a susține afirmația. Dă pagina ei sau dă interogarea, pentru a deschide pagina cu cele mai multe rezultate.
 {% endif %}
 
 Dă documentul și pagina când un pasaj susține răspunsul.
 
 {% if has('read_documents') %}
-{{ tool('read_documents') }} necesită collection și file_hash.
-collection este un singur nume. file_hash este o listă de 1 la 20 de hash-uri din acea colecție.
-Pentru documentele din colecții diferite, creează un lot separat per colecție.
-Copiază identitățile din rezultate. Un nume sau o cale unică pot rezolva și un document.
-source selectează opțional o sursă extrasă. Omisiunea folosește sursa preferată.
-page selectează opțional un identificator de pagină stocat. Identificatorii de pagină pot avea gapuri.
-Omite page sau dă zero pentru a selecta pagina cu cele mai multe rezultate a interogării, sau prima pagină stocată fără o interogare.
-query deschide textul în jurul cuvintelor distincte potrivite din apropiere pe acea pagină.
-Pentru wording exact, pune fraza între ghilimele în interiorul interogării. O singură valoare potrivită deschide prima ei apariție.
-offset suprascrie începutul pasajului. Numără caractere Unicode de la zero în interiorul acei pagini.
-length este un număr pozitiv de caractere. Omisiunea folosește 6.000 de caractere.
-source_version verifică opțional amprenta sursei returnate. Copiază-o pentru o recitire a unui interval.
+{{ tool('read_documents') }} cere collection și file_hash.
+collection este un singur nume. file_hash este o listă de 1 până la 20 de hash-uri din acea colecție.
+Pentru documente din colecții diferite, fă un lot separat pentru fiecare colecție.
+Copiază identitățile din rezultate. Un nume de fișier sau o cale unică poate rezolva, de asemenea, un document.
+source selectează opțional o sursă extrasă. Dacă îl omiți, se folosește sursa preferată.
+page selectează opțional un identificator de pagină stocată. Identificatorii de pagină pot avea goluri.
+Omite page sau dă zero pentru a selecta pagina cu cele mai multe rezultate ale interogării sau, fără interogare, prima pagină stocată.
+query deschide textul din jurul unor cuvinte distincte potrivite, apropiate între ele, de pe acea pagină.
+Pentru formulare exactă, pune expresia între ghilimele în query. O singură valoare potrivită deschide prima ei apariție.
+offset înlocuiește începutul pasajului. Contorizează caractere Unicode de la zero, în interiorul acelei pagini.
+length este un număr pozitiv de caractere. Dacă îl omiți, se folosesc 6.000 de caractere.
+source_version verifică opțional amprenta returnată a sursei. Copiază-o pentru o recitire a unui interval.
 
-Rezultatul returnează text_range cu start, end exclusiv, total de caractere pe pagină și unitate.
-page_complete înseamnă că intervalul acoperă întreaga pagină.
-Un marker de tăiere înseamnă că instrumentul a livrat doar o parte din interval. Acesta nu înseamnă că pagina se termină aici.
-Folosește more-ul unui element pentru a continua documentul. Folosește more-ul de nivel superior pentru a continua pagina sau paginile ulterioare.
-Copiază eticheta returnată exact în {{ tool('read_more') }} ca continuare.
-Copiază read_before sau read_after ca argumente read_documents pentru textul înconjurător. Nu este necesară nicio calculație de offset.
-Argumentele de interval se aplică fiecărui hash dintr-o singură apelare. Folosește apeluri separate când documentele au surse, intervale sau versiuni de sursă diferite.
-De exemplu, copiază obiectul read_after returnat al primului document într-un apel.
-```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` Copiază obiectul read_after returnat al doilea document în alt apel.
-```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` Folosește valorile returnate reale pentru fiecare document. Nu adăuga câmpuri numărate cum ar fi source2 sau offset2.
-O apelare inițială repetată returnează același text. Folosește continuarea când este nevoie de mai mult text.
-Oprește citirea când pasajul oferă suficiente dovezi pentru afirmația solicitată.
+Rezultatul returnează text_range cu start, end exclusiv, totalul de caractere ale paginii și unit.
+page_complete înseamnă că intervalul acoperă toată pagina.
+Un marcaj de tăiere înseamnă că instrumentul a livrat doar o parte din interval. Nu înseamnă că pagina se termină acolo.
+Folosește more al unui element pentru a continua acel document. Folosește more de la nivelul de sus pentru a continua pagina rămasă sau paginile următoare.
+Copiază exact eticheta returnată în {{ tool('read_more') }} ca continuation.
+Copiază read_before sau read_after ca argumente pentru read_documents, pentru a citi textul din jur. Nu este nevoie de niciun calcul de offset.
+Argumentele de interval se aplică fiecărui hash dintr-un apel. Folosește apeluri separate când documentele au surse, intervale sau versiuni de sursă diferite.
+De exemplu, copiază obiectul read_after returnat pentru primul document într-un apel.
+```json
+{"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"}
+```
+Copiază obiectul read_after returnat pentru al doilea document în alt apel.
+```json
+{"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"}
+```
+Folosește valorile returnate efectiv pentru fiecare document. Nu adăuga câmpuri numerotate, precum source2 sau offset2.
+Un apel inițial repetat returnează același text. Folosește continuation când ai nevoie de mai mult text.
+Oprește citirea când pasajul oferă destule dovezi pentru afirmația cerută.
 
-Acest apel deschide prima pagină stocată.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` Acest apel deschide un pasaj țintit.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` Acest apel deschide un interval returnat într-o sursă și pagină selectate.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` Această continuare citește următorul interval returnat. Folosește eticheta de citare efectivă.
-```json {"continuation":"COPY_RETURNED_MORE"} ```
+Acest apel minimal deschide prima pagină stocată.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]}
+```
+Acest apel deschide un pasaj țintit.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"}
+```
+Acest apel deschide un interval returnat dintr-o sursă și o pagină selectate.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"}
+```
+Această continuare citește următorul interval returnat. Folosește eticheta efectiv emisă.
+```json
+{"continuation":"COPY_RETURNED_MORE"}
+```
 {% endif %}
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} necesită collection, file_hash și query. source selectează opțional o extracție.
-Returnează page, ordinal, start, end și snippet pentru fiecare rezultat. Offseturile numără caracterele în acea pagină.
-Copiază page-ul și start-ul unui rezultat în read_documents când snippet-ul are nevoie de mai mult context.
-Folosește read_more pentru a recupera rezultatele rămase.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
+{{ tool('doc_search_text') }} cere collection, file_hash și query. source selectează opțional o extragere.
+Returnează page, ordinal, start, end și snippet pentru fiecare rezultat. Offseturile contorizează caractere în interiorul acelei pagini.
+Copiază page și start ale unui rezultat în read_documents când fragmentul are nevoie de mai mult context.
+Folosește read_more pentru a primi rezultatele rămase.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"}
+```
 {% endif %}
 {% if has('doc_sources') %}
-{{ tool('doc_sources') }} necesită collection și file_hash. query numără opțional rezultatele care corespund în fiecare extracție.
-Returnează numele surselor și intervalele de pagini stocate. Copiază numele unei surse când selectezi o extracție anume.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
+{{ tool('doc_sources') }} cere collection și file_hash. query numără opțional rezultatele care se potrivesc în fiecare extragere.
+Returnează numele surselor și intervalele de pagini stocate. Copiază numele unei surse când selectezi o anumită extragere.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
 {% endif %}
 {% if has('doc_diff_sources') %}
-{{ tool('doc_diff_sources') }} necesită collection, file_hash, source_a și source_b.
-page_a și page_b selectează opțional pagini. Omisiunea selectează prima pagină stocată a fiecărei surse.
-Rezultatul este un diff de text unificat. Folosește read_more când continuă.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
+{{ tool('doc_diff_sources') }} cere collection, file_hash, source_a și source_b.
+page_a și page_b selectează opțional paginile. Dacă le omiți, se selectează prima pagină stocată a fiecărei surse.
+Rezultatul este o diferență de text în format unificat. Folosește read_more când continuă.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7}
+```
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }} necesită collection, file_hash și query.
-source selectează opțional o extracție PDF. page_from și page_to restricționează opțional intervalul inclus de pagini PDF.
-Copiază pozițiile de pagini returnate. Folosește read_more pentru rezultatele continuate.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
+{{ tool('pdf_search') }} cere collection, file_hash și query.
+source selectează opțional o extragere PDF. page_from și page_to restrâng opțional intervalul inclusiv de pagini PDF.
+Copiază pozițiile paginilor returnate. Folosește read_more pentru rezultatele care continuă.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12}
+```
 {% endif %}
 {% if has('search_passages') %}
-{{ tool('search_passages') }} acceptă interogări ca un singur string sau o listă de până la 12 forme.
-collection acceptă un singur nume sau o listă. Omisiunea caută în fiecare colecție permisă.
-max_results selectează numărul de rezultate per formă de interogare în limita schemei servite. Omisiunea folosește 15.
-Rezultatul oferă collection, file_hash, page și snippet. q înregistrează indecșii de interogare bazate pe zero.
-Citește textul de suport când pasajul nu răspunde la întrebare.
-```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
+{{ tool('search_passages') }} acceptă queries ca un singur șir sau ca o listă de până la 12 forme.
+collection acceptă un nume sau o listă. Dacă o omiți, se caută în fiecare colecție permisă.
+max_results selectează numărul de rezultate pentru fiecare formă de interogare, în limita schemei servite. Dacă îl omiți, se folosește 15.
+Rezultatul dă collection, file_hash, page și snippet. q înregistrează indicii interogărilor, începând de la zero.
+Citește textul care susține răspunsul când pasajul nu răspunde la întrebare.
+```json
+{"queries":"aprobarea transferului"}
+```
+```json
+{"collection":["alpha","beta"],"queries":["aprobarea transferului","autorizarea transferului"],"max_results":5}
+```
 {% endif %}

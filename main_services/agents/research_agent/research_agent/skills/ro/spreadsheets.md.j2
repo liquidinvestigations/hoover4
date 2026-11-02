@@ -1,61 +1,86 @@
 ---
 name: spreadsheets
 group: technique
-description: cum să citești un fișier spreadsheet cu instrumentele de tabel: foile de lucru, coloanele, rândurile și celulele individuale
+description: cum citești un fișier de foi de calcul cu instrumentele pentru tabele: foile, coloanele, rândurile și celulele lui
 tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
-terms: Cuvinte pentru aceasta: tabel, tabele, spreadsheet, Excel, cartografie, foaie, foaie de lucru, filă, CSV, TSV, date tabulare, tabel de date, registrul de contabilitate, registru, urmăritor, listă cu coloane, rând, coloană, celulă, antet, tabel pivot, tabel de baze de date, SQLite, Tabelle. Tipuri de fișiere: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML, și tabele din interiorul documentelor HTML sau PDF. Rezultate de căutare de tip tabel.
-not_for: Nu este necesar când cererea cere doar ca răspunsul să fie prezentat sub formă de tabel, sau folosește cuvântul tabel într-un alt sens.
+terms: Cuvinte pentru acest subiect: tabel, tabele, foaie de calcul, Excel, registru de calcul, foaie, filă, CSV, TSV, date tabelare, tabel de date, registru, evidență, listă cu coloane, rând, coloană, celulă, antet, tabel pivot, tabel de bază de date, SQLite, Tabelle. Tipuri de fișiere: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML și tabele din documente HTML sau PDF. Rezultate de căutare de tip table.
+not_for: Nu este necesară când cererea cere doar ca răspunsul să fie așezat într-un tabel sau folosește cuvântul tabel în alt sens.
 ---
-Citirea unui foiar de calcul
+Citirea unei foi de calcul
 
-Un foiar de calcul, un fișier CSV sau un tabel dintr-un document este un document tabular. Numește-l după file_hash și colecția unui rezultat de căutare.
+O foaie de calcul, un fișier CSV sau un tabel dintr-un document este un document de tip tabel. Numește-l prin file_hash și collection ale unui rezultat de căutare.
 
-1. {{ tool('table_overview') }} listează foii și coloanele cu id-urile lor.
-2. Citește rândurile cu {{ tool('table_page') }}. O apelare oferă 50 de rânduri. Sortează și filtrează rândurile în apelare. Dă row_start pentru a ajunge la un rând al unui foiar mare, și coloane pentru a cit coloanele după a 60-a.
-3. {{ tool('table_column_values') }} listează valorile dintr-o coloană și numărul lor de apariții.
-4. Pentru a găsi o valoare într-un foiar, apelează {{ tool('table_search_cells') }}. Citește rândurile învecinate cu {{ tool('table_page') }} când potrivirea necesită context.
-5. Când {{ tool('table_page') }} taie o celulă lungă, citește-o întreagă cu {{ tool('table_cell') }}. Dă row cu row_id returnat, și column cu id-ul coloanei returnat.
+1. {{ tool('table_overview') }} listează foile și coloanele cu identificatorii lor.
+2. Citește rânduri cu {{ tool('table_page') }}. Un apel dă 50 de rânduri. Sortează și filtrează rândurile în apel. Dă row_start pentru a merge la un rând al unei foi mari și columns pentru a citi coloanele de după a 60-a.
+3. {{ tool('table_column_values') }} listează valorile dintr-o coloană și numărul lor.
+4. Pentru a găsi o valoare într-o foaie, apelează {{ tool('table_search_cells') }}. Citește rândurile din jur
+cu {{ tool('table_page') }} când potrivirea are nevoie de context.
+5. Când {{ tool('table_page') }} taie o celulă lungă, citește-o întreagă cu {{ tool('table_cell') }}. Dă row cu row_id returnat și column cu id-ul de coloană returnat.
 
-Dă un foiar, un rând și o coloană când cititorul trebuie să găsească din nou o valoare.
+Dă o foaie, un rând și o coloană când cititorul trebuie să găsească din nou o valoare.
 
-Pentru a număra rândurile după o valoare, apelează {{ tool('table_column_values') }} asupra acelei coloane. Nu număra singur rândurile unei pagini de text. Menționează totalul de rânduri, filtrele și coloana.
+Pentru a număra rândurile după o valoare, apelează {{ tool('table_column_values') }} pentru acea coloană. Nu număra
+singur rândurile unei pagini de text. Spune numărul total de rânduri, filtrele și coloana.
+Un apel pentru valori dă până la 200 de valori. Când rezultatul are o continuare, apelează read_more
+până când nu mai rămâne nicio continuare. O listă parțială de valori nu dă o distribuție completă.
+Numerele valorilor se adună la totalul de rânduri doar pentru aceeași foaie, aceleași rânduri și
+aceleași filtre. O celulă goală nu are valoare, deci celulele goale fac suma mai mică decât
+totalul de rânduri. Spune numărul de celule goale când compari suma cu totalul.
+De exemplu, o foaie cu 24 de autorizații de construire are o coloană type. Apelul pentru valori dă
+fence 9, roof 7, deck 5 și pool 3, fără continuare. Aceste numere se adună la 24. Numerele
+care se adună la 27 pentru 24 de rânduri arată o eroare de numărare. Numerele care se adună la 21 arată 3 rânduri
+cu tip gol.
+Un fișier CSV nu declară un rând de antet. Fiecare rezultat de tabel dă `interpretation`, citirea
+rândului 1 pe care o descriu numerele lui. Cu starea `established`, citirea este cunoscută. Cu starea
+`ambiguous` sau `legacy` și două `candidates`, rândul 1 poate fi antetul sau primul rând de date.
+Fiecare candidat dă numărul lui de rânduri. Rezultatul citește fiecare rând, `all_rows`, dacă
+apelul nu dă `interpretation`. Dă fiecare număr împreună cu citirea lui sau citește cealaltă citire
+cu interpretation `all_rows` sau `first_row_header`. Nu raporta numărul unei singure citiri drept
+numărul stabilit de rânduri.
+Un fișier JSON sau un fișier text nu are foi. Când {{ tool('table_overview') }} nu dă nicio foaie,
+citește documentul ca text.
 
-Un apel de valori oferă până la 200 de valori. Când rezultatul are o continuare, apelează read_more până când nu mai rămâne nicio continuare. O listă de valori incompletă nu oferă o distribuție completă.
+Fiecare apel pentru tabele cere collection și file_hash din același rezultat de document.
+{{ tool('table_overview') }} returnează identificatorii foilor și ai coloanelor.
+Celelalte instrumente pentru tabele cer sheet. Copiază identificatorul lui din privirea de ansamblu.
+{{ tool('table_page') }} acceptă opțional sort, filters, columns, search, row_start și interpretation.
+sort cere column și direction, asc sau desc. Dacă îl omiți, se folosește ordinea stocată a rândurilor.
+filters este o listă de predicate pe coloane. Fiecare predicat folosește un singur tip de test.
+Un interval numeric sau de date poate include atât limita inferioară, cât și pe cea superioară.
+Testele sunt contains, equals, starts_with, is_empty, number_min, number_max, date_min și date_max.
+Testele de text folosesc șiruri. Testele numerice folosesc numere. Limitele de dată folosesc șiruri YYYY-MM-DD.
+columns selectează identificatori de coloane. O fereastră returnată conține cel mult 60 de coloane selectate.
+search păstrează opțional rândurile care conțin textul lui. row_start este o poziție de la zero în ordinea cerută a rândurilor.
+Rezultatul conține metadatele coloanelor și rândurile. row_id este identitatea stocată a rândului, inclusiv după sortare.
 
-Numărarea valorilor se adună la totalul de rânduri doar pentru aceeași foaie, același set de rânduri și același filtru. O celulă goală nu are valoare, așa că celulele goale fac suma mai mică decât totalul de rânduri. Menționează numărul de celule goale când compari suma cu totalul.
+{{ tool('table_column_values') }} cere și column. search filtrează opțional textul valorilor.
+Returnează valorile și numerele pentru acea coloană.
+{{ tool('table_search_cells') }} cere query. Returnează identitățile foii, rândului și coloanei care se potrivesc, cu text.
+{{ tool('table_cell') }} cere row și column. Trimite row_id returnat sub numele de argument row.
+Returnează felii de 2.000 de caractere. Folosește read_more pentru textul rămas al celulei.
+Folosește read_more pentru paginile de tabel, valorile și rezultatele de căutare care continuă.
 
-De exemplu, o foaie cu 24 de permise de construcție are o coloană de tip. Apelul de valori oferă fence 9, roof 7, deck 5 și pool 3, fără continuare. Aceste numărări se adună la 24. Numărările care se adună la 27 pentru 24 de rânduri arată o eroare de numărare. Numărările care se adună la 21 arată 3 rânduri cu un tip gol.
-
-Un fișier CSV nu are o linie de antet. Fiecare rezultat de tabel oferă `interpretation`, citirea rândului 1 pentru care se referă numărările. Cu state `established`, citirea este cunoscută. Cu state `ambiguous` sau `legacy` și două `candidates`, rândul 1 poate fi antetul sau primul rând de date.
-
-Fiecare candidat își oferă numărul de rânduri. Rezultatul citește fiecare rând, `all_rows`, cu excepția cazului în care apelul oferă `interpretation`. Oferă fiecare numărare împreună cu citirea ei, sau citește citirea alternativă cu interpretarea `all_rows` sau `first_row_header`. Nu raporta numărarea unei singure citiri ca număr stabilit de rânduri.
-
-Un fișier JSON sau un fișier text nu are foi. Când {{ tool('table_overview') }} nu oferă nicio foaie, citește documentul ca text.
-
-Fiecare apel către tabel necesită colecția și file_hash din același rezultat de document.
-{{ tool('table_overview') }} returnează identificatorii de foaie și coloană.
-Celelalte instrumente pentru tabel necesită foaia. Copiază identificatorul ei din prezentarea generală.
-{{ tool('table_page') }} acceptă opțional sortare, filtre, coloane, căutare, start_rând și interpretare.
-sortare necesită coloană și direcție, asc sau desc. Omisiunea folosește ordinea stocată a rândurilor.
-filtre sunt o listă de predicati de coloană. Fiecare predicat folosește un singur tip de test.
-Un interval numeric sau de date poate include atât limita inferioară, cât și cea superioară.
-Testele sunt: contains, equals, starts_with, is_empty, number_min, number_max, date_min și date_max.
-Testele de text folosesc șiruri. Testele numerice folosesc numere. Limitele de date folosesc șiruri YYYY-MM-DD.
-coloane selectează identificatori de coloană. O singură fereastră returnată conține cel mult 60 coloane selectate.
-căutare păstrează opțional rândurile care conțin textul ei. row_start este o poziție bazată pe zero în ordinea rândurilor cerute.
-Rezultatul conține metadata coloanelor și rânduri. row_id este identitatea rândului stocată, inclusiv după sortare.
-
-{{ tool('table_column_values') }} necesită și coloană. căutare filtrează opțional textul valorilor.
-Returnează valori și contorizări pentru acea coloană.
-{{ tool('table_search_cells') }} necesită interogare. Returnează identitățile de foaie, rând și coloană care corespund, împreună cu textul.
-{{ tool('table_cell') }} necesită rând și coloană. Transmite row_id returnat sub numele de argument row.
-Returnează fragmente de 2.000 de caractere. Folosește read_more pentru textul rămas din celulă.
-Folosește read_more pentru paginarea continuă a tabelelor, valori și rezultate de căutare.
-
-Acest overview minim deschide structura taboului.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` Această apelare de pagină folosește identificatorii de foaie și coloții copiați.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` Această apelare de valori restrânge o coloană.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` Această apelare de valori citește rândul 1 al unei foi CSV ambigue ca pe numele coloanelor.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` Această căutare de celule localizează o valoare solicitată.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` Această apelare de celule citește row_id 71, chiar și atunci când acel rând a apărut primul într-un rezultat sortat.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```
+Această privire de ansamblu minimală deschide structura tabelului.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+Acest apel pentru pagină folosește identificatori copiați de foaie și de coloană.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50}
+```
+Acest apel pentru valori restrânge o coloană.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"}
+```
+Acest apel pentru valori citește rândul 1 al unei foi CSV ambigue ca nume de coloane.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"}
+```
+Această căutare în celule localizează o valoare cerută.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"}
+```
+Acest apel pentru celulă citește row_id 71, chiar dacă acel rând a apărut primul într-un rezultat sortat.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2}
+```

@@ -1,19 +1,22 @@
 ---
 name: todo_upkeep
 group: stumble
-description: cum să păstrați planul cu update_plan, pașii săi și statusurile lor
+description: cum ții planul cu update_plan, pașii lui și stările lor
 tools: update_plan
 ---
-Păstrând planul
+Ținerea planului
 
-{{ tool('update_plan') }} ia obiectivul și întreaga listă de pași. Fiecare step are text și status, iar un step finalizat are o notă scurtă.
+{{ tool('update_plan') }} primește obiectivul și întreaga listă de pași. Fiecare pas are text și status, iar un pas finalizat are o notă scurtă.
 
-1. Trimite întreaga listă în fiecare apel, în ordine. Un step care îl omiti nu mai face parte din plan.
-2. Oferă fiecare step sub formă de obiect cu text și status. status este pending sau done.
-3. Un step este pending până când munca sa se încheie. Apoi trimite-l ca done, împreună cu o notă, cum ar fi found, not found sau replaced.
-4. Păstrează textul unui step identic când se schimbă doar statusul. Stepul își păstrează astfel id-ul.
+1. Trimite întreaga listă în fiecare apel, în ordine. Un pas pe care îl omiți nu mai face parte din plan.
+2. Dă fiecare pas ca obiect cu text și status. status este pending sau done.
+3. Un pas rămâne pending până când se termină munca lui. Apoi trimite-l ca done, cu o notă, de exemplu found, not found sau replaced.
+4. Păstrează neschimbat textul unui pas când se schimbă doar statusul. Pasul își păstrează atunci id-ul.
 5. Un obiectiv nou începe un plan nou.
-6. {{ tool('update_plan') }} păstrează doar planul. Scrie un raport sau alt fișier cu {{ tool('write_file') }}.
+6. {{ tool('update_plan') }} doar păstrează planul. Scrie un raport sau alt fișier cu {{ tool('write_file') }}.
 
-Acesta este un exemplu. Stepul 1 a găsit ceea ce ai nevoie, iar stepul 2 este încă deschis.
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` Rezultatul arată întregul plan, cu id-ul fiecărui step. Un apel care nu schimbă nimic returnează totul neschimbat. Corectează câmpul numit înainte de a numi din nou.
+Acesta este un exemplu. Pasul 1 a găsit ce îți trebuie, iar pasul 2 este încă deschis.
+```json
+{"goal":"Găsește data aprobării.","steps":[{"text":"Găsește mesajul.","status":"done","note":"found"},{"text":"Citește pasajul care susține.","status":"pending"}]}
+```
+Rezultatul arată întregul plan cu id-ul fiecărui pas. Un apel care nu schimbă nimic returnează unchanged. Corectează câmpul numit înainte de a apela din nou.

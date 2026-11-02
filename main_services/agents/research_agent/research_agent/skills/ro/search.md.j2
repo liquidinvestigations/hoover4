@@ -1,34 +1,35 @@
 ---
 name: search
 group: general
-description: cum să cauți în colecții de documente și să utilizezi sintaxa de interogare
+description: cum cauți în colecțiile de documente și cum folosești sintaxa interogărilor
 tools: search_collections
 ---
 {% if has('search_collections') %}
 Căutarea în documentele utilizatorului
 
-1. Caută documente când conținutul lor poate răspunde la întrebare.
-2. Utilizează Clecție când solicitarea vizează o singură colecție. Lasă-o de parte pentru a căuta în toate colecțiile pe care această conversație le poate citi.
-3. {{ tool('search_collections') }} acceptă mai multe interogări. Utilizează forme relevante ale unui nume sau ale unei adrese. Introduci o frază exactă între ghilimele duble.
-4. OR, AND și NOT sunt cuvinte obișnuite într-o interogare. Utilizează | pentru oricare și -cuvânt pentru a exclude un cuvânt.
-5. Copiază file_hash și collection dintr-un rând de rezultat. Scrieți întotdeauna un hash vostru.{% if has('read_more') %} Dacă un rând nu are file_hash, apelează {{ tool('read_more') }}.{% endif +%}
-6. Stabilești un filtru de dată sau de dimensiune când acest lucru ajută la răspunsul la întrebare.
-7. Când raportezi că o căutare nu a găsit niciun document, dai interogarea, colecțiile și numărul.
-8. O singură rulare acceptă cel mult 12 interogări. Împarți o listă mai lungă în două rulari.
-9. Dai fiecărei interogării cel puțin un cuvânt de căutat. O interogare formată doar din termeni -cuvânt este refuzată.
-10. Stabilești filename_only pe true sau false. Nu primește text.
+1. Caută în documente când conținutul lor poate răspunde la întrebare.
+2. Folosește collection când cererea vizează o singură colecție. Omite-l pentru a căuta
+în colecțiile pe care această conversație le poate citi.
+3. {{ tool('search_collections') }} acceptă mai multe interogări. Folosește formele relevante ale unui nume sau ale unei adrese. Pune o expresie exactă între ghilimele duble.
+4. OR, AND și NOT sunt cuvinte obișnuite într-o interogare. Folosește | pentru „unul sau altul” și -cuvânt pentru a exclude un cuvânt.
+5. Copiază file_hash și collection dintr-un rând de rezultat. Nu scrie niciodată singur un hash.{% if has('read_more') %} Dacă un rând nu are file_hash, apelează {{ tool('read_more') }}.{% endif +%}
+6. Setează un filtru de dată sau de dimensiune când te ajută să răspunzi la întrebare.
+7. Când raportezi că o căutare nu a găsit niciun document, dă interogarea, colecțiile și numărul ei.
+8. Un apel primește cel mult 12 interogări. Împarte o listă mai lungă în două apeluri.
+9. Dă fiecărei interogări cel puțin un cuvânt de căutat. O interogare formată doar din termeni -cuvânt este refuzată.
+10. Setează filename_only la true sau false. Nu primește text.
 
-Exemplu. Utilizatorul cere toate datele despre JoeBWilkinson@cs.com. Faci o singură rulare la {{ tool('search_collections') }} cu interogările ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Citezi un document când rândul său de rezultat nu oferă suficiente dovezi pentru afirmație.
+Exemplu. Utilizatorul cere toate datele despre JoeBWilkinson@cs.com. Fă un singur apel {{ tool('search_collections') }} cu queries ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Citește un document când rândul lui de rezultat nu oferă destule dovezi pentru afirmație.
 {% endif %}
 
-Urmărești acești pași de căutare când căutările anterioare nu răspund la întrebare.
+Urmează acești pași de căutare când căutările anterioare nu răspund la întrebare.
 {% if has('search_collections') %}
-1. Caută fiecare nume ca pe o frază citată.
-2. Caută cuvinte necitate, inițiale, adrese de e-mail și nume în limba documentului.
-Citește word_counts și sugestiile de ortografie. Folosește o sugestie doar pentru numele intenționat.
-Folosește dasovi?h pentru o literă variabilă și dasovic% pentru o literă finală opțională.
-Folosește skilling << resigned când ordinea cuvintelor contează.
-3. Elimină filtrele câte unul. Execută o căutare fără filtre.
+1. Caută fiecare nume ca expresie între ghilimele.
+2. Caută cuvinte fără ghilimele, inițiale, adrese de e-mail și nume în limba documentului.
+Citește word_counts și sugestiile de grafie. Folosește o sugestie doar pentru numele intenționat.
+Folosește dasovi?h pentru o literă care variază și dasovic% pentru o literă finală opțională.
+Folosește skilling << resigned când contează ordinea cuvintelor.
+3. Elimină filtrele pe rând. Rulează o căutare fără filtre.
 {% endif %}
 {% if has('search_facet_values') %}
 Verifică valorile filtrelor cu {{ tool('search_facet_values') }}.
@@ -46,11 +47,11 @@ Verifică datele cu {{ tool('search_histogram') }}.
 Folosește {{ tool('folder_list') }} pentru acel folder.
 {% endif %}
 {% if has('read_documents') %}
-6. Citește cele mai bune 1 la 3 rezultate cu {{ tool('read_documents') }}.
+6. Citește cele mai bune 1 până la 3 rezultate cu {{ tool('read_documents') }}.
 {% endif %}
-Pentru persoanele sau organizațiile unui document, citește partea din acel document care le numește. O referință la o altă lucrare numește acea altă lucrare.
+Pentru persoanele sau organizațiile unui document, citește partea documentului care le numește. O referire la altă lucrare numește acea altă lucrare.
 {% if has('doc_search_text') %}
-Folosește {{ tool('doc_search_text') }} pentru textul relevant din un document.
+Folosește {{ tool('doc_search_text') }} pentru textul relevant dintr-un document.
 {% endif %}
 {% if has('web_search') %}
 7. Caută pe web doar când cererea permite acest lucru.
@@ -60,28 +61,39 @@ Citește cele mai bune pagini web cu {{ tool('read_page') }}.
 {% endif %}
 
 {% if has('search_collections') %}
-Argumentele complete de căutare sunt collection, queries, query, sort, date_after, date_before, date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max, folder_term_id, filename_only și facet_filters.
-collection acceptă un nume sau o listă. Omisiunea sau [] caută în fiecare colecție permisă.
-query are implicit textul gol. queries adaugă opțional până la 12 formulare. Formularele duplicate se execută o singură dată.
-O interogare goală navighează prin toate potrivirile filtrului. Formularele de căutare fuzionează identitățile documentelor potrivite.
-sort conține câmpul și direcția. câmpul este relevance, date, file_size sau name. direcția este asc sau desc.
-Omisiunea folosește ordinea implicită de relevanță.
-date_after și date_before folosesc secunde epoch UTC inclusive pentru data documentului.
-mentioned_date_after și mentioned_date_before folosesc secunde epoch UTC inclusive pentru datele extrase din text.
-date_unknown_only=true selectează documentele fără data cunoscută. Nu o combina cu un interval de date cunoscute.
-size_min și size_max sunt limite de octeti inclusive. folder_term_id selectează un termen de folder returnat.
-filename_only=true restricționează interogarea la nume și căi. False folosește conținutul documentului.
-facet_filters mapează numele valide de facet la liste de text de valori returnate. Omisiunea aplică un filtru de facet nul.
-Valorile dintr-un facet sunt alternative. Filtrele de facet diferite trebuie să se potrivească toate.
+Argumentele complete ale căutării sunt collection, queries, query, sort, date_after, date_before,
+date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max,
+folder_term_id, filename_only și facet_filters.
+collection acceptă un nume sau o listă. Dacă îl omiți sau dai [], se caută în fiecare colecție permisă.
+query este implicit text gol. queries adaugă opțional până la 12 forme. Formele duplicate rulează o singură dată.
+O interogare goală parcurge toate rezultatele filtrelor. Formele de căutare îmbină identitățile documentelor care se potrivesc.
+sort conține field și direction. field este relevance, date, file_size sau name. direction este asc sau desc.
+Dacă îl omiți, se folosește ordinea implicită după relevanță.
+date_after și date_before folosesc secunde epoch UTC, inclusiv, pentru data documentului.
+mentioned_date_after și mentioned_date_before folosesc secunde epoch UTC, inclusiv, pentru datele extrase din text.
+date_unknown_only=true selectează documentele fără o dată cunoscută a documentului. Nu îl combina cu un interval de date cunoscute.
+size_min și size_max sunt limite în octeți, inclusiv. folder_term_id selectează un termen de folder returnat.
+filename_only=true restrânge interogarea la nume și căi. Cu false se folosește conținutul documentelor.
+facet_filters asociază nume valide de fațete cu liste de texte de valori returnate. Dacă îl omiți, nu se aplică niciun filtru de fațetă.
+Valorile din aceeași fațetă sunt alternative. Filtrele de fațete diferite trebuie să se potrivească toate.
 
-Fiecare rezultat include collection, file_hash, path, snippet și tipul, data și dimensiunea disponibile.
-q listează formarele bazate pe zero care au găsit rândul. query_forms raportează numărul fiecărui formular.
-word_counts verifică cuvintele indexate. suggestions listează ortografiile indexate apropiate cu numere.
-Citește query_notes pentru sintaxă reparată, filtre necunoscute și formare de interogare eșuate.
-more continuă rezultatul. Copiază-l în read_more. O primă pagină goală nu necesită un apel identic repetat.
+Fiecare rezultat include collection, file_hash, path, snippet și, când sunt disponibile, tipul, data și dimensiunea.
+q listează formele, începând de la zero, care au găsit rândul. query_forms raportează numărul fiecărei forme.
+word_counts verifică cuvintele indexate. suggestions listează grafiile indexate apropiate, cu numere.
+Citește query_notes pentru sintaxa reparată, filtrele necunoscute și formele de interogare eșuate.
+more continuă rezultatul. Copiază-l în read_more. O primă pagină goală nu are nevoie de un apel identic repetat.
 
-Acest apel minim caută în toate colecțiile permise.
-```json {"query":"\"Joe Wilkinson\""} ``` Acest apel combină formele de interogare, sfera colecției, sortarea, datele, dimensiunea și filtrele de facetă.
-```json {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}} ``` Acest apel găsește fișiere fără o dată de document cunoscută.
-```json {"query":"report","filename_only":true,"date_unknown_only":true} ``` Înlocuiește valorile colecției, dosarului și facetelor cu valorile returnate pentru conversația curentă.
+Acest apel minimal caută în toate colecțiile permise.
+```json
+{"query":"\"Joe Wilkinson\""}
+```
+Acest apel avansat combină forme de interogare, domeniul colecțiilor, sortarea, datele, dimensiunea și filtrele de fațete.
+```json
+{"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}}
+```
+Acest apel separat găsește fișiere fără o dată cunoscută a documentului.
+```json
+{"query":"raport","filename_only":true,"date_unknown_only":true}
+```
+Înlocuiește valorile pentru collection, folder și fațete cu valori returnate pentru conversația curentă.
 {% endif %}

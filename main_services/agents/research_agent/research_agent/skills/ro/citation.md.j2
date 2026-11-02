@@ -1,49 +1,65 @@
 ---
 name: citation
 group: general
-description: cum să citezi documentele care susțin un răspuns
+description: cum citezi documentele care susțin un răspuns
 tools: cite_documents
 ---
-Textul citat se introduce într-un fișier din spațiul de lucru. Abilitatea `report` spune cum să îl scrii și să îl editezi.
+Textul citat intră într-un fișier din spațiul de lucru. Abilitatea `report` spune cum îl scrii și cum îl editezi.
 
 {% if has('cite_documents') %}
-Când te bazezi {{ citation_artefact }} pe {% if web_enabled %}un document{% else %}intern{% endif %}a{{ tool('cite_documents') }}, apelați.
-Dați fiecărui document care susține o afirmație sau un citat. Folosiți eticheta de citare returnată lângă acea afirmație.
-Folosiți o etichetă de citare lângă o afirmație care se bazează pe un document intern. Puteți și să numiți un document pentru a-l identifica sau a descrie un rezultat de căutare.
-O singură apelare primește cel mult 12 citări. Citați ceea ce ați folosit, nu totul ce a returnat o căutare.
-Când o căutare sau o citire returnează documente care susțin o afirmație, citați acele documente.
+Când raportul tău se sprijină pe {% if web_enabled %}un document intern{% else %}un document{% endif %}, apelează {{ tool('cite_documents') }}.
+Dă-i fiecare document care susține o afirmație sau un citat. Folosește eticheta returnată lângă acea afirmație.
+Folosește o etichetă lângă o afirmație care se sprijină pe un document intern. Poți numi și un
+document pentru a-l identifica sau pentru a descrie un rezultat de căutare.
+Un apel primește cel mult 12 citări. Citează ce ai folosit, nu tot ce a returnat o căutare.
+Când o căutare sau o citire a returnat documente care susțin o afirmație, citează acele documente.
 
-Pentru fiecare citație, oferă:
-- colecția și file_hash, copiate dintr-un rezultat de instrument. Nu inventa niciodată un file_hash.
-- quote: 5 până la 6 cuvinte consecutive copiate dintr-o singură linie din corpul documentului. Nu o linie de antet (From, To, Cc, Subject, Date). Fără niciun span care conține un semn de întrebare.
-- find: opțional. Cea mai scurtă frază exactă din quote pe care persoana trebuie să o vadă. Cardul deschide documentul la această frază.
-- why: o linie care spune ce documentează documentul.
+Pentru fiecare citare dă:
+- collection și file_hash, copiate dintr-un rezultat al unui instrument. Nu inventa niciodată un file_hash.
+- quote: 5 până la 6 cuvinte consecutive copiate dintr-un singur rând al corpului documentului. Nu dintr-un
+  rând de antet (From, To, Cc, Subject, Date). Nu un fragment care conține semn de întrebare.
+- find: opțional. Cea mai scurtă expresie exactă din citat pe care persoana trebuie să o vadă. Fișa
+  deschide documentul la această expresie.
+- why: un rând care spune ce susține documentul.
 
-Scrie eticheta pe care o primești înapoi, de exemplu `[D1]`, în {{ citation_artefact }} unde faci afirmația.
+Scrie eticheta pe care o primești înapoi, de exemplu `[D1]`, în raportul tău, acolo unde faci afirmația.
 
-Exemplu. {{ tool('read_documents') if has('read_documents') else 'A tool' }} a returnat e-mailul „Re: PUNCTE DE VORBIRE DRAFT” din Colecția enron.
-Corpul său spune „Punctele de vorbire arată bine la mine. Mult succes azi.” Tu {{ citation_artefact }} spune că Jim Steffes a aprobat draftul. Apelează {{ tool('cite_documents') }} cu colecția enron, file_hash din rezultat, citatul „talking points look great to me", caută „look great" și de ce „Steffes aprobă draftul din 27 decembrie".
-Apoi scrie „Steffes a approbat draftul [D1]." Nu da citate la „Subject: Re: DRAFT talking points", pentru că este o linie de antet. Nu da citate la „Can you check the notes?", pentru că conține un semn de întrebare.
-Întreferile, punctuația și marcurile `>` unui e-mail citat nu trebuie să se potrivească.
-Citatele lipsă sau absente nu alocă nicio etichetă. Copiază între 5 și 6 cuvinte din textul candidat pe care eroarea le indică în citat și încearcă din nou.
-Doar o etichetă returnată etichetează o sursă. Niciodată nu scrii propria etichetă în antente pătrate.
-Scrie eticheta ca text lângă afirmație. Nu o pune în backticks. `[D1]` în backticks nu leagă nimic.
-Reutilizează eticheta documentului returnată pentru pasaje suplimentare verificate. Documentul are o singură carte.
+Exemplu. {{ tool('read_documents') if has('read_documents') else 'Un instrument' }} a returnat e-mailul "Re: DRAFT talking points" din colecția enron.
+Corpul lui spune "The talking points look great to me. Best of luck today." Raportul tău spune
+că Jim Steffes a aprobat ciorna. Apelează {{ tool('cite_documents') }} cu collection enron, cu
+file_hash din rezultat, cu quote "talking points look great to me", cu find "look great"
+și cu why "Steffes aprobă ciorna din 27 decembrie".
+Apoi scrie "Steffes a aprobat ciorna [D1]."
+Nu cita "Subject: Re: DRAFT talking points", deoarece este un rând de antet. Nu cita
+"Can you check the notes?", deoarece conține semn de întrebare.
+Întreruperile de rând, punctuația și semnele `>` ale unui e-mail citat nu trebuie să se potrivească.
+Citatele lipsă sau absente nu alocă nicio etichetă. Copiază în quote 5 până la 6 cuvinte din textul candidat pe care îl dă eroarea și reîncearcă.
+Doar o etichetă returnată marchează o sursă. Nu scrie niciodată propria ta etichetă între paranteze pătrate.
+Scrie eticheta ca text lângă afirmație. Nu o pune între backticks. `[D1]` între backticks nu leagă nimic.
+Refolosește eticheta documentului returnată pentru pasaje verificate suplimentare. Documentul are o singură fișă.
 {% if citation_resolver == "lead" %}
-Cercetătorul principal le rezolvă, așa că o etichetă pe care niciodată nu ai alocat-o nu folosește nimănui.
+Cercetătorul principal le rezolvă, deci o etichetă pe care nu ai alocat-o nu folosește nimănui.
 {% endif %}
 {% endif %}
 {% include "citation_failures.j2" %}
 
 {% if has('cite_documents') %}
 Argumentul citations este o listă de obiecte de citare a documentelor.
-Fiecare obiect necesită collection și file_hash. quote conține 5 până la 6 cuvinte consecutive din wording-ul exact al sursei.
-Repetă collection și file_hash în fiecare obiect, inclusiv pentru citările separate din același document.
-Obiectele nu moștenesc argumente din obiectele anterioare.
-find selectează opțional o frază exactă în interiorul quote. Omisiunea folosește întreaga quote.
-term înregistrează opțional interogarea de căutare care a generat pasajul. why enunță afirmația susținută.
-Rezultatul oferă o etichetă de citare pentru fiecare intrare verificată. Intrările eșuate își indică motivul și pot oferi un pasaj candidat.
-Reîncepe doar intrările euate cu wording exact. O citare verificată nu verifică de una singură autorul sau data acelei citări.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]}``` This batch verifies two passages from the same document.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}```
+Fiecare obiect cere collection și file_hash. quote conține 5 până la 6 cuvinte consecutive cu formularea exactă din sursă.
+Repetă collection și file_hash în fiecare obiect, inclusiv pentru citate separate din același document.
+Obiectele nu moștenesc argumente de la obiectele anterioare.
+find selectează opțional o expresie exactă din quote. Dacă îl omiți, se folosește întregul citat.
+term înregistrează opțional interogarea de căutare de la care a pornit citarea. why spune ce afirmație este susținută.
+Rezultatul dă o etichetă pentru fiecare intrare verificată. Intrările eșuate dau motivul și pot da un pasaj candidat.
+Reîncearcă doar intrările eșuate, cu formulare exactă. Un citat verificat nu verifică prin el însuși autorul sau data acelui citat.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
+```
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"căutarea inițială","why":"Acest pasaj susține aprobarea menționată."}]}
+```
+Acest lot verifică două pasaje din același document.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}
+```
 {% endif %}
