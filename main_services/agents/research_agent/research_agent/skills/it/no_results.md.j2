@@ -1,27 +1,27 @@
 ---
 name: no_results
 group: stumble
-description: cosa fare quando una ricerca non trova nulla: rimuovere i filtri, dividere una frase, provare altre forme di un nome, poi indicare ciò che manca
+description: che cosa fare quando una ricerca non trova nulla: rimuovi i filtri, dividi una frase, prova altre forme di un nome, poi indica che cosa manca
 tools: search_collections, search_passages, web_search
 ---
 Quando una ricerca non trova nulla
 
 {% if has('search_collections') %}
 Leggi prima word_counts.
-Quando un nome non compare da nessuna parte, leggi i suggerimenti di ortografia indicizzati e i rispettivi conteggi verificati.
-Non usare un'ortografia suggerita come nome richiesto.
-Quando cerchi un'ortografia suggerita, indicila nella risposta come ortografia diversa.
-Quando nessuna ortografia corrisponde, segnala che le collezioni cercate non contengono il nome.
+Quando un nome non compare da nessuna parte, leggi i suggerimenti di grafia indicizzati e i loro conteggi verificati.
+Non usare una grafia suggerita come nome richiesto.
+Quando cerchi una grafia suggerita, indicala nella risposta come grafia diversa.
+Quando nessuna grafia corrisponde, riferisci che le raccolte cercate non contengono il nome.
 
 {% endif %}
-Segui questi passi di ricerca quando le ricerche precedenti non rispondono alla domanda.
+Segui questi passaggi di ricerca quando le ricerche precedenti non rispondono alla domanda.
 {% if has('search_collections') %}
 1. Cerca ogni nome come frase tra virgolette.
-2. Cerca parole non virgolettate, iniziali, indirizzi e-mail e nomi nella lingua del documento.
-Leggi word_counts e i suggerimenti di ortografia. Usa un suggerimento solo per il nome inteso.
-Usa dasovi?h per una lettera variabile e dasovic% per una lettera finale opzionale.
+2. Cerca parole senza virgolette, iniziali, indirizzi email e nomi nella lingua del documento.
+Leggi word_counts e i suggerimenti di grafia. Usa un suggerimento solo per il nome previsto.
+Usa dasovi?h per una lettera variabile e dasovic% per una lettera finale facoltativa.
 Usa skilling << resigned quando l'ordine delle parole conta.
-3. Rimovi i filtri uno alla volta. Esegui una ricerca senza filtri.
+3. Rimuovi i filtri uno alla volta. Esegui una ricerca senza filtri.
 {% if has('search_facet_values') %}
 Verifica i valori dei filtri con {{ tool('search_facet_values') }}.
 {% endif %}
@@ -29,10 +29,10 @@ Verifica i valori dei filtri con {{ tool('search_facet_values') }}.
 Verifica le date con {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Cerca una descrizione del contenuto con {{ tool('search_passages') }}.
+4. Cerca la descrizione del contenuto con {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. Usa {{ tool('folder_search') }} quando la richiesta nomina una cartella, un percorso o un file.
+5. Usa {{ tool('folder_search') }} quando la richiesta indica una cartella, un percorso o un file.
 {% endif %}
 {% if has('folder_list') %}
 Usa {{ tool('folder_list') }} per quella cartella.
@@ -41,31 +41,32 @@ Usa {{ tool('folder_list') }} per quella cartella.
 6. Leggi i migliori 1-3 risultati con {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_search_text') %}
-Usa {{ tool('doc_search_text') }} per il testo rilevante in un documento.
+Usa {{ tool('doc_search_text') }} per il testo pertinente in un documento.
 {% endif %}
 {% if has('web_search') %}
-7. Cerca nel web solo quando la richiesta lo consente.
+7. Cerca sul web solo quando la richiesta lo consente.
 {% endif %}
 {% if has('read_page') %}
 Leggi le migliori pagine web con {{ tool('read_page') }}.
 {% endif %}
 {% else %}
 {% if has('web_search') %}
-1. Cerca ogni nome come frase tra virgolette, e poi le altre forme del nome, le sue iniziali e la lingua del luogo.
+1. Cerca ogni nome come frase tra virgolette, poi altre forme del nome, le sue iniziali e la lingua del luogo.
 {% endif %}
 {% if has('read_page') %}
 2. Leggi le migliori pagine web con {{ tool('read_page') }}.
 {% endif %}
 {% endif %}
 
-Dopo aver eseguito i passi disponibili e non aver trovato corrispondenze per la parola chiave, rispondi con l'assenza e le ricerche effettuate.
+Quando i passaggi disponibili non trovano nessuna corrispondenza di parole chiave, rispondi indicando l'assenza e le ricerche.
 {% if has('search_collections') %}
-Prima di rispondere in caso di assenza, esegui almeno 4 ricerche distinte con almeno 2 strumenti di ricerca disponibili.
-Non ripetere una ricerca identica. Indica le collezioni cercate e i facts mancanti.
-Limita l'affermazione di alle alle ricerche e alle pagine esaminate.
-Per esempio, scrivi "Le verbali della commissione e i registri dei trasferimenti cercati non hanno identificato una data di approvazione." Queste ricerche non stabiliscono che non esista alcun documento di approvazione in alcuna collezione consentita.
+Prima di una risposta di assenza, esegui almeno 4 ricerche distinte con almeno 2 strumenti di ricerca disponibili.
+Non ripetere una ricerca identica. Indica le raccolte cercate e i fatti mancanti.
+Limita l'affermazione di assenza alle ricerche e ai documenti che hai esaminato.
+Per esempio, di' "I verbali del comitato e i registri dei trasferimenti cercati non hanno individuato una data di approvazione."
+Queste ricerche non stabiliscono che non esista nessun documento di approvazione in alcuna raccolta consentita.
 {% else %}
-Prima di rispondere in caso di assenza, esegui almeno 4 ricerche distinte.
+Prima di una risposta di assenza, esegui almeno 4 ricerche distinte.
 Non ripetere una ricerca identica. Indica le ricerche e le pagine lette.
-Limita l'affermazione di alle alle ricerche e alle pagine esaminate.
+Limita l'affermazione di assenza alle ricerche e alle pagine che hai esaminato.
 {% endif %}

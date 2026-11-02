@@ -1,14 +1,15 @@
 ---
 name: thorough
 group: general
-description: come scegliere ricerche ulteriori quando una domanda richiede ricerca
+description: come scegliere ulteriori ricerche quando una domanda richiede un'indagine
 tools: search_collections, web_search
 ---
-Scegli le ricerche che possono rispondere alla domanda della persona. Una richiesta ampia può mostrare i record disponibili. Una richiesta specifica può verificare un nome, una data o una frase presenti in un risultato.
-
-Leggi il testo della fonte alla base di una affermazione. Fermati quando ulteriori ricerche sono improbabili che cambino la risposta, e indica il limite della ricerca quando incide sulla conclusione.
+Scegli le ricerche che possono rispondere alla domanda della persona. Una query ampia può mostrare i
+record disponibili. Una query specifica può verificare un nome, una data o una frase tratti da un risultato.
+Leggi il testo della fonte che sta dietro un'affermazione. Fermati quando ulteriori ricerche difficilmente
+cambiano la risposta, e indica il limite della ricerca quando incide sulla conclusione.
 
 {% if has('search_collections') %}
-Usa la prossimità, ad esempio "inquinamento dell'acqua"~10, per parole correlate vicine tra loro.
-Usa il quorum, ad esempio "impianto di inquinamento dell'acqua"/2, per un argomento con diverse parole rilevanti.
+Usa la prossimità, come "water pollution"~10, per parole correlate vicine tra loro.
+Usa il quorum, come "water pollution plant"/2, per un argomento con più parole pertinenti.
 {% endif %}

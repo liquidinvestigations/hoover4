@@ -1,19 +1,22 @@
 ---
 name: todo_upkeep
 group: stumble
-description: come mantenere il piano con update_plan, i suoi passi e i loro stati
+description: come tenere il piano con update_plan, i suoi passaggi e i loro stati
 tools: update_plan
 ---
-Mantenendo il piano
+Tenere il piano
 
-{{ tool('update_plan') }} prende l'obiettivo e l'intera lista di step. Ogni step ha testo e stato, e uno step completato ha una nota breve.
+{{ tool('update_plan') }} accetta l'obiettivo e l'intero elenco dei passaggi. Ogni passaggio ha text e status, e un passaggio completato ha una nota breve.
 
-1. Invia l'intera lista in ogni chiamata, in ordine. Uno step che omitte non è più nel piano.
-2. Fornisci ogni step come oggetto con testo e stato. Lo stato è pending o done.
-3. Uno step è pending fino alla fine del suo lavoro. Poi invialo come done con una nota, come found, not found o replaced.
-4. Mantieni il testo di uno step uguale quando cambia solo il suo stato. Lo step così mantiene il suo id.
-5. Un nuovo obiettivo inizia un nuovo piano.
-6. {{ tool('update_plan') }} mantiene solo il piano. Scrivi un report o un altro file con {{ tool('write_file') }}.
+1. Invia l'intero elenco in ogni chiamata, in ordine. Un passaggio che ometti non fa più parte del piano.
+2. Indica ogni passaggio come oggetto con text e status. status è pending o done.
+3. Un passaggio è pending finché il suo lavoro non termina. Poi invialo come done con una nota, come trovato, non trovato o sostituito.
+4. Mantieni invariato il testo di un passaggio quando cambia solo il suo stato. Il passaggio conserva allora il suo id.
+5. Un nuovo obiettivo avvia un nuovo piano.
+6. {{ tool('update_plan') }} conserva soltanto il piano. Scrivi un report o un altro file con {{ tool('write_file') }}.
 
-Questo è un esempio. Lo step 1 ha trovato ciò di cui hai bisogno, e lo step 2 è ancora aperto.
-```json {"goal":"Trova la date di approvazione.","steps":[{"text":"Trova il messaggio.","status":"done","note":"found"},{"text":"Leggi l'estratto di supporto.","status":"pending"}]} ``` Il risultato mostra l'intero piano con l'id di ogni step. Una chiamata che non cambia nulla torna invariata. Correggi il campo nominato prima di chiamare di nuovo.
+Questo è un esempio. Il passaggio 1 ha trovato ciò che serve e il passaggio 2 è ancora aperto.
+```json
+{"goal":"Trova la data di approvazione.","steps":[{"text":"Trova il messaggio.","status":"done","note":"trovato"},{"text":"Leggi il passaggio di supporto.","status":"pending"}]}
+```
+Il risultato mostra l'intero piano con l'id di ogni passaggio. Una chiamata che non cambia nulla restituisce unchanged. Correggi il campo indicato prima di chiamare di nuovo.

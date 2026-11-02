@@ -1,55 +1,86 @@
 ---
 name: spreadsheets
 group: technique
-description: come leggere un file di calcolo con gli strumenti per le tabelle: i suoi fogli, le colonne, le righe e le singole celle
+description: come leggere un file di foglio di calcolo con gli strumenti per tabelle: i suoi fogli, le colonne, le righe e le singole celle
 tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
-terms: Parole correlate: tabella, tabelle, file di calcolo, Excel, libro di lavoro, foglio, foglio di lavoro, scheda, CSV, TSV, dati tabellari, tabella dati, registro, registro contabile, tracciatore, elenco con colonne, riga, colonna, cella, intestazione, tabella pivot, tabella di database, SQLite, Tabelle. Tipi di file: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML, e tabelle all'interno di documenti HTML o PDF. Risultati di ricerca di tipo tabella.
-not_for: Non è necessario quando la richiesta chiede solo che la risposta venga presentata come tabella, o usa la parola tabella in un altro senso.
+terms: Parole per indicarlo: tabella, tabelle, foglio di calcolo, Excel, cartella di lavoro, foglio, scheda, CSV, TSV, dati tabellari, registro, elenco con colonne, riga, colonna, cella, intestazione, tabella pivot, tabella di database, SQLite. Tipi di file: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, XML SpreadsheetML e tabelle dentro documenti HTML o PDF. Risultati di ricerca di tipo table.
+not_for: Non serve quando la richiesta chiede solo di presentare la risposta come tabella, oppure usa la parola tabella in un altro senso.
 ---
-Leggere un foglio di calcolo
+Lettura di un foglio di calcolo
 
-Un foglio di calcolo, un file CSV o una tabella in un documento sono un documento tabella. Chiamalo con il file_hash e la Collezione di un risultato di ricerca.
+Un foglio di calcolo, un file CSV o una tabella in un documento è un documento tabellare. Nominalo con il file_hash e la collection di un risultato di ricerca.
 
-1. {{ tool('table_overview') }} elenca i fogli e le colonne con i propri id.
-2. Leggi le righe con {{ tool('table_page') }}. Una chiamata restituisce 50 righe. Ordina e filtra le righe nella chiamata. Fornisci row_start per arrivare a una riga di un foglio grande, e columns per leggere le colonne dopo la 60ª.
-3. {{ tool('table_column_values') }} elenca i valori di una colonna e i rispettivi conteggi.
-4. Per trovare un valore in un foglio, chiama {{ tool('table_search_cells') }}. Leggi le righe circostanti con {{ tool('table_page') }} quando il match richiede contesto.
-5. Quando {{ tool('table_page') }} tronca una cella lunga, leggila intera con {{ tool('table_cell') }}. Fornisci row con il row_id restituito, e column con l'id della colonna restituito.
+1. {{ tool('table_overview') }} elenca i fogli e le colonne con i loro id.
+2. Leggi le righe con {{ tool('table_page') }}. Una chiamata restituisce 50 righe. Ordina e filtra le righe nella chiamata. Indica row_start per andare a una riga di un foglio grande, e columns per leggere le colonne dopo la 60ª.
+3. {{ tool('table_column_values') }} elenca i valori di una colonna e i loro conteggi.
+4. Per trovare un valore in un foglio, chiama {{ tool('table_search_cells') }}. Leggi le righe circostanti
+con {{ tool('table_page') }} quando la corrispondenza richiede contesto.
+5. Quando {{ tool('table_page') }} taglia una cella lunga, leggila per intero con {{ tool('table_cell') }}. Indica row con il row_id restituito e column con l'id di colonna restituito.
 
-Fornisci un foglio, una riga e una colonna quando il lettore deve trovare di nuovo un valore.
+Indica un foglio, una riga e una colonna quando il lettore deve ritrovare un valore.
 
-Per contare le righe in base a un valore, chiama {{ tool('table_column_values') }} su quella colonna. Non contare tu stesso le righe di una pagina di testo. Indica il totale delle righe, i filtri e la colonna.
-Una chiamata con i valori fornisce fino a 200 valori. Quando il risultato contiene una continuazione, chiama read_more finché non rimane più alcuna continuazione. Un elenco di valori parziale non fornisce una distribuzione completa.
-I conteggi dei valori si sommano al totale delle righe solo per lo stesso foglio, le stesse righe e gli stessi filtri. Una cella vuota non ha valore, quindi le cells vuote rendono la somma inferiore al totale delle righe. Indica il numero di cells vuote quando confronti la somma con il totale.
-Per esempio, un foglio di 24 permesti di costruzione ha una colonna di tipo. La chiamata con i valori fornisce fence 9, roof 7, deck 5 e pool 3, e nessuna continuazione. Questi conteggi si sommano a 24. Contegni che si sommano a 27 per 24 righe indicano un errore di conteggio. Contegni che si sommano a 21 indicano 3 righe con un tipo vuoto.
-Un file CSV non indica alcuna riga di intestazione. Ogni risultato di tabella fornisce `interpretation`, la lettura della riga 1 per cui i suoi conteggi descrivono. Con state `established`, la lettura è nota. Con state `ambiguous` o `legacy` e due `candidates`, la riga 1 può essere l'intestazione o la prima riga di dati.
-Ogni candidato fornisce il suo conteggio di righe. Il risultato legge ogni riga, `all_rows`, a meno che la chiamata non fornisca `interpretation`. Fornisci ogni conteggio con la rispettiva lettura, o leggi l'altra lettura con l'interpretazione `all_rows` o `first_row_header`. Non segnalare il conteggio di una lettura come totale di righe stabilito.
-Un file JSON o un file di testo non ha fogli. Quando {{ tool('table_overview') }} non fornisce alcun foglio, leggi il documento come testo.
+Per contare le righe per valore, chiama {{ tool('table_column_values') }} su quella colonna. Non contare
+da solo le righe di una pagina di testo. Indica il totale delle righe, i filtri e la colonna.
+Una chiamata dei valori restituisce fino a 200 valori. Quando il risultato ha una continuazione, chiama read_more
+finché non resta nessuna continuazione. Un elenco parziale di valori non dà una distribuzione completa.
+I conteggi dei valori danno il totale delle righe solo per lo stesso foglio, le stesse righe e gli
+stessi filtri. Una cella vuota non ha un valore, quindi le celle vuote rendono la somma più piccola del
+totale delle righe. Indica il numero di celle vuote quando confronti la somma con il totale.
+Per esempio, un foglio di 24 permessi edilizi ha una colonna del tipo. La chiamata dei valori restituisce
+recinzione 9, tetto 7, terrazzo 5 e piscina 3, e nessuna continuazione. Questi conteggi sommano 24. Conteggi
+che sommano 27 per 24 righe indicano un errore di conteggio. Conteggi che sommano 21 indicano 3 righe
+con il tipo vuoto.
+Un file CSV non indica nessuna riga di intestazione. Ogni risultato di tabella dà `interpretation`, la lettura della
+riga 1 che i suoi conteggi descrivono. Con lo stato `established`, la lettura è nota. Con lo stato
+`ambiguous` o `legacy` e due `candidates`, la riga 1 può essere l'intestazione o la prima riga di dati.
+Ogni candidato dà il proprio numero di righe. Il risultato legge ogni riga, `all_rows`, a meno che la
+chiamata indichi `interpretation`. Indica ogni conteggio con la sua lettura, oppure leggi l'altra lettura
+con interpretation `all_rows` o `first_row_header`. Non riferire il conteggio di una lettura come
+numero di righe accertato.
+Un file JSON o un file di testo non ha fogli. Quando {{ tool('table_overview') }} non restituisce nessun foglio,
+leggi il documento come testo.
 
-Ogni chiamata a tabella richiede collection e file_hash provenienti dallo stesso risultato del documento.
-{{ tool('table_overview') }} restituisce gli identificatori di foglio e colonna.
+Ogni chiamata a una tabella richiede collection e file_hash dallo stesso risultato di documento.
+{{ tool('table_overview') }} restituisce gli identificatori dei fogli e delle colonne.
 Gli altri strumenti per tabelle richiedono sheet. Copia il suo identificatore dalla panoramica.
-{{ tool('table_page') }} accetta opzionalmente sort, filters, columns, search, row_start e interpretation.
-sort richiede column e direction, asc o desc. L'omissione usa l'ordine delle righe memorizzato.
-filters è una lista di predicati di colonna. Ogni predicato usa un tipo di test.
-Un intervallo numerico o di date può includere sia il limite inferiore che quello superiore.
+{{ tool('table_page') }} accetta facoltativamente sort, filters, columns, search, row_start e interpretation.
+sort richiede column e direction, asc o desc. Se manca, si usa l'ordine di riga memorizzato.
+filters è un elenco di predicati sulle colonne. Ogni predicato usa un solo tipo di test.
+Un intervallo numerico o di date può includere limiti inferiore e superiore.
 I test sono contains, equals, starts_with, is_empty, number_min, number_max, date_min e date_max.
-I test su testo usano stringhe. I test su numeri usano numeri. I limiti di date usano stringhe YYYY-MM-DD.
-columns seleziona gli identificatori di colonna. Ogni finestra restituita contiene al massimo 60 colonne selezionate.
-search mantiene opzionalmente le righe che contengono il suo testo. row_start è una posizione basata su zero nell'ordine delle righe richiesto.
-Il risultato contiene i metadati delle colonne e le righe. row_id è l'identità della righe memorizzata, anche dopo l'ordinamento.
+I test di testo usano stringhe. I test numerici usano numeri. I limiti di data usano stringhe YYYY-MM-DD.
+columns seleziona identificatori di colonna. Una finestra restituita contiene al massimo 60 colonne selezionate.
+search mantiene facoltativamente le righe che contengono il suo testo. row_start è una posizione, contata da zero, nell'ordine di riga richiesto.
+Il risultato contiene i metadati delle colonne e le righe. row_id è l'identità memorizzata della riga, anche dopo l'ordinamento.
 
-{{ tool('table_column_values') }} richiede anche column. search filtra opzionalmente il testo del valore.
-Restituisce valori e conteggi per quella colonna.
-{{ tool('table_search_cells') }} richiede query. Restituisce gli identificatori di foglio, riga e colonna corrispondenti insieme al testo.
-{{ tool('table_cell') }} richiede row e column. Passa il row_id restituito sotto il nome dell'argomento row.
-Restituisce porzioni di 2.000 caratteri. Usa read_more per il resto del testo della cella.
-Usa read_more per le pagine di tabella successive, i valori e i risultati della ricerca.
+{{ tool('table_column_values') }} richiede anche column. search filtra facoltativamente il testo dei valori.
+Restituisce i valori e i conteggi per quella colonna.
+{{ tool('table_search_cells') }} richiede query. Restituisce le identità di foglio, riga e colonna corrispondenti con il testo.
+{{ tool('table_cell') }} richiede row e column. Passa il row_id restituito con il nome di parametro row.
+Restituisce porzioni di 2.000 caratteri. Usa read_more per il testo rimanente della cella.
+Usa read_more per le pagine di tabella, i valori e i risultati di ricerca che continuano.
 
 Questa panoramica minima apre la struttura della tabella.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` Questa chiamata di pagina usa i riferimenti di scheda e colonna copiati.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` Questa chiamata di valori restringe una colonna.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` Questa chiamata di valori legge la riga 1 di una scheda CSV ambigua come nomi di colonna.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` Questa ricerca di cella localizza un valore richiesto.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` Questa chiamata di cella legge row_id 71, anche quando quella riga è apparsa per prima in un risultato ordinato.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+Questa chiamata di pagina usa identificatori di foglio e di colonna copiati.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50}
+```
+Questa chiamata dei valori restringe una colonna.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"}
+```
+Questa chiamata dei valori legge la riga 1 di un foglio CSV ambiguo come nomi delle colonne.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"}
+```
+Questa ricerca nelle celle individua un valore richiesto.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"}
+```
+Questa chiamata di cella legge il row_id 71, anche quando quella riga è comparsa per prima in un risultato ordinato.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2}
+```

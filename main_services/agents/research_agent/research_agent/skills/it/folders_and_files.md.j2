@@ -1,88 +1,117 @@
 ---
 name: folders_and_files
 group: technique
-description: come vedere cosa contiene una collezione: insiemi di dati, cartelle, tipi di file, conteggi e date, e come trovare un file per nome o percorso
+description: come vedere che cosa contiene una raccolta: dataset, cartelle, tipi di file, conteggi e date, e come trovare un file dal suo nome o percorso
 tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
-terms: Parole relative: collezione, insieme di dati, cartella, directory, percorso, nome del file, tipo di file, estensione, formato, conteggi, quanti file, dimensione, più grande, panoramica, inventario, cosa contiene una collezione, documenti per anno.
-not_for: Non necessario quando la richiesta riguarda solo il contenuto dei documenti.
+terms: Parole per indicarlo: raccolta, dataset, cartella, directory, percorso, nome del file, tipo di file, estensione, formato, conteggi, quanti file, dimensione, il più grande, panoramica, inventario, che cosa contiene una raccolta, documenti per anno.
+not_for: Non serve quando la richiesta riguarda solo il contenuto dei documenti.
 ---
 Cartelle e file
 
 {% if has('list_collections') and has('search_facet_values') %}
-Per una panoramica della Collezione, chiama {{ tool('list_collections') }} con {}.
-Poi chiama {{ tool('search_facet_values') }} con {} una volta per ogni tipo di file e lingua di ogni collezione permessa.
-La matrice predefinita contiene già entrambe le facciate. Non è necessaria una chiamata separata per collezione o facciata.
+Per una panoramica delle raccolte, chiama {{ tool('list_collections') }} con {}.
+Poi chiama {{ tool('search_facet_values') }} con {} una sola volta per i tipi di file e le lingue di ogni raccolta consentita.
+La matrice predefinita contiene già entrambe le faccette. Non serve una chiamata separata per ogni raccolta o faccetta.
 {% endif %}
 
 {% if has('list_collections') %}
-{{ tool('list_collections') }} non accetta argomenti. Fornisce i nomi delle collezioni, i conteggi dei documenti e i conteggi degli insiemi di dati.
-```json {} ```
+{{ tool('list_collections') }} non accetta parametri. Restituisce i nomi delle raccolte, il numero di documenti e il numero di dataset.
+```json
+{}
+```
 
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} fornisce i conteggi di archiviazione di ogni collezione e insieme di dati.
+{{ tool('folder_overview') }} restituisce i conteggi di archiviazione di ogni raccolta e di ogni dataset.
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} fornisce le cartelle e i file figli di una cartella di un insieme di dati.
+{{ tool('folder_list') }} restituisce le cartelle e i file figli di una cartella di un dataset.
 {% endif %}
 {% if has('folder_search') %}
-Per trovare una cartella o un file per nome all'interno di un insieme di dati, chiama {{ tool('folder_search') }}.
+Per trovare una cartella o un file dal nome all'interno di un dataset, chiama {{ tool('folder_search') }}.
 {% endif %}
 {% if has('search_collections') %}
-Per trovare un file per nome in ogni collezione, chiama {{ tool('search_collections') }} con `filename_only` impostato su true. Fornisci il nome o una sua parte come richiesta.
+Per trovare un file dal nome in tutte le raccolte, chiama {{ tool('search_collections') }} con
+`filename_only` impostato su true. Indica il nome, o una sua parte, come query.
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }} conta i documenti di una ricerca per data o dimensione.
+{{ tool('search_histogram') }} conta i documenti di una ricerca per data o per dimensione.
 {% endif %}
 {% if has('search_facet_values') %}
-{{ tool('search_facet_values') }} fornisce i valori di un filtro, inclusi i tipi di file, con i conteggi.
+{{ tool('search_facet_values') }} restituisce i valori di un filtro, compresi i tipi di file, con i conteggi.
 {% endif %}
 
-Il nome o il percorso di un file può identificare un documento. La riga di risultato `file_hash` lo identifica direttamente.
+Il nome o il percorso di un file può identificare un documento. Il `file_hash` di una riga di risultato lo identifica direttamente.
 
-Usa gli strumenti di metadati per una richiesta di inventario. I loro conteggi possono rispondere alla richiesta direttamente.
-Le ricerche di contenuto sono utili solo quando la persona chiede cosa dicono i documenti.
+Usa gli strumenti dei metadati per una richiesta di inventario. I loro conteggi possono rispondere direttamente alla richiesta.
+Le ricerche di contenuto servono solo quando la persona chiede che cosa dicono i documenti.
 
 {% if has('search_facet_values') %}
-Chiama {{ tool('search_facet_values') }} una volta per più collezioni e facette.
-Gli argomenti sono collection, facets, query e ids.
-Ometti collection o fornisci [] per ogni collezione consentita. Fornisci un nome o una lista per restringere la selezione.
-Ometti facets per ["file_types", "language"]. Fornisci una lista di nomi di facette esatti per altre distribuzioni.
-Usa file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc, re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money o re_crypto_wallet.
+Chiama {{ tool('search_facet_values') }} una sola volta per più raccolte e faccette.
+I parametri sono collection, facets, query e ids.
+Ometti collection o indica [] per tutte le raccolte consentite. Indica un nome o un elenco per restringere la selezione.
+Ometti facets per ["file_types", "language"]. Indica un elenco di nomi esatti di faccette per le altre distribuzioni.
+Usa file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc,
+re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money o re_crypto_wallet.
 file_type non è valido. Usa file_types.
-query trova testo all'interno dei valori di facetta. Non cerca nei contenuti dei documenti.
-ids risolve opvolmente gli identificatori di termine noti. Le ricerche ordinarie usano il testo del valore e non richiedono identificatori.
+query trova testo nei valori delle faccette. Non cerca nel contenuto dei documenti.
+ids risolve facoltativamente identificatori di termini noti. Le ricerche ordinarie usano il testo dei valori e non richiedono identificatori.
 
-Il risultato ha colonne e elementi. Ogni riga inizia con la propria collezione.
-Ogni cella di facetta contiene coppie [testo, conteggio]. Copia il testo in facet_filters per una successiva ricerca per contenuto.
+Il risultato ha columns e items. Ogni riga inizia con la sua raccolta.
+Ogni cella di faccetta contiene coppie [text, count]. Copia text in facet_filters per una ricerca di contenuto successiva.
 Una cella null ha un errore segnalato. Una cella vuota non ha valori restituiti.
-I conteggi si riferiscono ai documenti indicizzati corrispondenti per valore. Più valori possono applicarsi a un singolo documento.
-Non aggiungere i conteggi delle facette per affermare un totale distinto. I totali dell'inventario provengono da list_collections.
-La lista di facette predefinita può omettere valori non comuni. Usa query per trovare un valore specifico.
-Usa read_more quando il risultato continua.
+I conteggi si riferiscono alle corrispondenze di documenti indicizzati per valore. Più valori possono applicarsi a un documento.
+Non sommare i conteggi delle faccette per dichiarare un totale distinto. I totali di inventario vengono da list_collections.
+L'elenco predefinito delle faccette può omettere valori rari. Usa query per trovare un valore specifico.
+Usa more con read_more quando il risultato continua.
 
-Questa chiamata minima inventaria i formati di file e le lingue tra le collezioni permesse.
-```json {} ``` Questa chiamata confronta due collezioni selezionate e cerca i valori degli indirizzi email.
-```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+Questa chiamata minima fa l'inventario dei formati di file e delle lingue in tutte le raccolte consentite.
+```json
+{}
+```
+Questa chiamata confronta due raccolte selezionate e cerca i valori degli indirizzi email.
+```json
+{"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"}
+```
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} richiede collection. dataset seleziona opzionalmente un insieme di dati.
-Questa legge tutti i conteggi di storage dell'insieme di dati all'interno di una collezione.
-```json {"collection":"alpha"} ``` Questa seleziona un insieme di dati.
-```json {"collection":"alpha","dataset":"files"} ```
+{{ tool('folder_overview') }} richiede collection. dataset seleziona facoltativamente un dataset.
+Questa chiamata legge tutti i conteggi di archiviazione dei dataset di una raccolta.
+```json
+{"collection":"alpha"}
+```
+Questa chiamata seleziona un dataset.
+```json
+{"collection":"alpha","dataset":"files"}
+```
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} richiede collection e dataset. node_id seleziona opzionalmente un nodo cartella restituito.
-Ometti node_id per leggere la radice dell'insieme di dati. Copia gli identificatori dei nodi figlio in chiamate successive.
-```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_list') }} richiede collection e dataset. node_id seleziona facoltativamente un nodo cartella restituito.
+Ometti node_id per leggere la radice del dataset. Copia gli identificatori dei nodi figli nelle chiamate successive.
+```json
+{"collection":"alpha","dataset":"files"}
+```
+```json
+{"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('folder_search') %}
-{{ tool('folder_search') }} richiede collection, dataset e query. node_id limita opzionalmente la ricerca a una cartella.
-```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_search') }} richiede collection, dataset e query. node_id limita facoltativamente la ricerca a una cartella.
+```json
+{"collection":"alpha","dataset":"files","query":"report"}
+```
+```json
+{"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }} accetta gli stessi filtri di search_collections, escluso sort e queries.
-field è date, mentioned_date o size. Il valore predefinito è date. query è predefinito come query vuota.
-collection omesso copre ogni collezione permessa. Il risultato restituisce bucket e il campo selezionato.
-```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{{ tool('search_histogram') }} accetta gli stessi filtri di search_collections, tranne sort e queries.
+field è date, mentioned_date o size. Il valore predefinito è date. query ha come valore predefinito una query vuota.
+Se collection manca, il risultato copre tutte le raccolte consentite. Il risultato restituisce buckets e il campo selezionato.
+```json
+{}
+```
+```json
+{"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}}
+```
 {% endif %}
