@@ -1,49 +1,65 @@
 ---
 name: citation
 group: general
-description: 답변을 지원하는 문서의 인용 방법
+description: 답변을 뒷받침하는 문서를 인용하는 방법
 tools: cite_documents
 ---
-인용된 텍스트는 작업장 파일로 들어갑니다. `report` 스킬이 이를 작성하고 수정하는 방법을 알려줍니다.
+인용한 텍스트는 작업 공간 파일에 들어갑니다. `report` 스킬이 작성과 편집 방법을 설명합니다.
 
 {% if has('cite_documents') %}
-당신의 {{ citation_artefact }}이(가) {% if web_enabled %}내부{% else %}의{% endif %} 문서에 의존할 때, {{ tool('cite_documents') }}을(를) 호출하십시오.
-주장을 인용으로 지원하는 각 문서를 전달하십시오. 반환된 표지를 그 주장 옆에 사용하십시오.
-내부 문서에 의존하는 주장 옆에 표지를 사용하십시오. 문서를 지정하여 식별하거나 검색 결과를 설명할 수도 있습니다.
-한 번의 호출은 최대 12개의 인용을 처리합니다. 검색이 반환한 모든 것이 아니라 당신이 사용한 것을 인용하십시오.
-검색이나 읽기 결과 주장을 지원하는 문서가 있으면, 그 문서를 인용하십시오.
+보고서가 {% if web_enabled %}내부 {% else %}{% endif %}문서에 의존하면 {{ tool('cite_documents') }}을(를) 호출하십시오.
+주장이나 인용문을 뒷받침하는 각 문서를 지정하십시오. 반환된 핸들을 해당 주장 옆에 쓰십시오.
+내부 문서에 의존하는 주장 옆에 핸들을 쓰십시오. 문서를 식별하거나 검색 결과를 설명할 때는
+문서를 이름으로 지칭해도 됩니다.
+한 번의 호출에는 인용을 최대 12개까지 넣을 수 있습니다. 검색이 반환한 모든 문서가 아니라 사용한 문서를 인용하십시오.
+검색이나 읽기가 주장을 뒷받침하는 문서를 반환했으면 그 문서를 인용하십시오.
 
-각 인용에 대해 다음을 제공하십시오:
-- 컬렉션과 file_hash: 툴 결과에서 그대로 복사하십시오. file_hash를 임의로 만들어서는 안 됩니다.
-- 인용구: 문서 본문 한 줄에서 그대로 복사한 5에서 6개의 연속된 단어. 헤더 줄(From, To, Cc, Subject, Date)은 아닙니다. 물음표를 포함한 구절은 아닙니다.
-- find: 선택 사항. 사람이 반드시 봐야 할 인용구의 가장 짧은 정확 일치 구절입니다. 카드가 이 구절에서 문서를 엽니다.
-- why: 문서가 무엇을 지원하는지 설명하는 한 줄.
+각 인용에는 다음을 지정하십시오.
+- collection과 file_hash: 도구 결과에서 복사하십시오. file_hash를 지어내지 마십시오.
+- quote: 문서 본문의 한 줄에서 복사한 5~6개의 연속된 단어. 헤더
+  줄(From, To, Cc, Subject, Date)은 제외합니다. 물음표를 포함하는 구절은 제외합니다.
+- find: 선택 사항. 사용자가 보아야 하는 quote의 가장 짧은 정확한 구절. 카드는
+  이 구절에서 문서를 엽니다.
+- why: 문서가 무엇을 뒷받침하는지 설명하는 한 줄.
 
-당신이 주장을 만드는 {{ citation_artefact }}에 되돌려 받은 표지를 작성하십시오, 예를 들어 `[D1]`와 같이.
+돌려받은 핸들(예: `[D1]`)을 보고서에서 주장을 하는 위치에 쓰십시오.
 
-예시. {{ tool('read_documents') if has('read_documents') else 'A tool' }}이(가) 컬렉션 enron에서 "Re: DRAFT talking points"라는 이메일을 반환했습니다.
-본문은 "The talking points look great to me. Best of luck today."라고 합니다. 당신의 {{ citation_artefact }}은(는) Jim Steffes가 초안을 승인했다고 말합니다. {{ tool('cite_documents') }}을(를) collection enron, 결과의 file_hash, 인용구 "talking points look great to me", 검색어 "look great", 그리고 "Steffes approves the draft of 27 December"의 이유로 호출하십시오.
-그다음 "Steffes approved the draft [D1]."라고 쓰십시오. "Subject: Re: DRAFT talking points"는 인용하지 마십시오. 왜냐하면 그것은 헤더 라인이기 때문입니다. "Can you check the notes?"는 인용하지 마십시오. 왜냐하면 그것이 물음표를 담고 있기 때문입니다.
-줄바꿈, 문장 부호 및 `>` 표시는 인용된 이메일과 일치할 필요가 없습니다.
-없거나 존재하지 않는 인용구는 표지를 할당하지 않습니다. 오류가 제시한 후보 텍스트의 5에서 6단어를 quote에 복사하고 다시 시도하십시오.
-반환된 표지 하나만이 출처에 라벨을 붙입니다. 제3자 대괄호 안에 당신의 라벨을 절대 쓰지 마십시오.
-표지는 주장 옆에 텍스트로 쓰십시오. 백틱 안에 넣지 마십시오. 백틱 안의 `[D1]`은(는) 아무것도 연결하지 않습니다.
-추가로 검증된 구절에 대해 반환된 문서 표지를 재사용하십시오. 문서에는 하나의 카드가 있습니다.
+예시. {{ tool('read_documents') if has('read_documents') else '도구' }}이(가) 컬렉션 enron에서 이메일 "Re: DRAFT talking points"를 반환했습니다.
+본문에는 "The talking points look great to me. Best of luck today."라고 되어 있습니다. 보고서에는
+Jim Steffes가 초안을 승인했다고 씁니다. collection은 enron, file_hash는 결과의 값,
+quote는 "talking points look great to me", find는 "look great",
+why는 "Steffes가 12월 27일의 초안을 승인함"으로 {{ tool('cite_documents') }}을(를) 호출하십시오.
+그런 다음 "Steffes가 초안을 승인했습니다 [D1]."라고 쓰십시오.
+"Subject: Re: DRAFT talking points"는 헤더 줄이므로 인용하지 마십시오.
+"Can you check the notes?"는 물음표를 포함하므로 인용하지 마십시오.
+줄 바꿈, 문장 부호, 인용된 이메일의 `>` 표시는 일치하지 않아도 됩니다.
+없거나 누락된 인용문에는 핸들이 할당되지 않습니다. 오류가 제시한 후보 텍스트의 5~6개 단어를 quote에 복사하여 다시 시도하십시오.
+반환된 핸들만 출처를 나타냅니다. 대괄호 안에 직접 만든 레이블을 쓰지 마십시오.
+핸들은 주장 옆에 텍스트로 쓰십시오. 백틱 안에 넣지 마십시오. 백틱 안의 `[D1]`은 아무 곳에도 연결되지 않습니다.
+검증된 구절을 추가할 때는 반환된 문서 핸들을 재사용하십시오. 문서에는 카드가 하나 있습니다.
 {% if citation_resolver == "lead" %}
-리드 연구원이 그것들을 해결하므로, 당신이 절대 할당하지 않은 표지는 누구에게도 소용이 없습니다.
+선임 연구원이 핸들을 해석하므로, 할당받지 않은 핸들은 누구에게도 쓸모가 없습니다.
 {% endif %}
 {% endif %}
 {% include "citation_failures.j2" %}
 
 {% if has('cite_documents') %}
-인용구 인자는 문서 인용 개체의 목록입니다.
-각 개체에는 컬렉션과 file_hash가 필요합니다. quote에는 정확한 출처 표현으로 5에서 6개의 연속된 단어가 들어갑니다.
-문서에서 따로따로 인용하더라도 모든 개체에 컬렉션과 file_hash를 반복해서 넣으십시오.
-개체는 이전 개체로부터 인자를 물려받지 않습니다.
-find는 quote 안에서 정확한 구절을 선택합니다. 생략하면 인용구 전체를 사용합니다.
-term는 원래 검색 질문의 출처를 기록합니다. why는 지원하는 주장을 설명합니다.
-결과는 검증된 각 항목에 인용 표지를 제공합니다. 실패한 항목은 그 이유를 제공하고 후보 구절을 제공할 수 있습니다.
-실패한 항목만 정확한 표현으로 다시 실행하십시오. 검증된 인용구는 그 인용구의 작성자나 날짜를 그 자체로 검증하지 않습니다.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]} ``` 이 일괄 처리는 같은 문서의 두 구절을 검증합니다.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+citations 인자는 문서 인용 객체의 목록입니다.
+각 객체에는 collection과 file_hash가 필요합니다. quote는 출처의 정확한 표현에서 5~6개의 연속된 단어를 담습니다.
+같은 문서의 별도 인용문을 포함하여 모든 객체에서 collection과 file_hash를 반복하십시오.
+객체는 앞선 객체의 인자를 상속하지 않습니다.
+find는 선택적으로 quote 안의 정확한 구절을 선택합니다. 생략하면 quote 전체를 사용합니다.
+term은 선택적으로 출처가 된 검색어를 기록합니다. why는 뒷받침되는 주장을 나타냅니다.
+결과는 검증된 각 항목에 핸들을 제공합니다. 실패한 항목은 사유를 제공하며 후보 구절을 제공할 수 있습니다.
+실패한 항목만 정확한 표현으로 다시 시도하십시오. 검증된 인용문이 그 인용문의 작성자나 날짜까지 검증하는 것은 아닙니다.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
+```
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"이 구절은 명시된 승인을 뒷받침합니다."}]}
+```
+이 배치는 같은 문서의 구절 두 개를 검증합니다.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}
+```
 {% endif %}
