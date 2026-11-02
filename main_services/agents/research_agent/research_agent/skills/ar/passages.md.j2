@@ -1,95 +1,138 @@
 ---
 name: passages
 group: technique
-description: كيف تجد الفصول النصية أو الصفحات التي تجيب على سؤال بدقة باستخدام search_passages، داخل العديد من الوثائق أو وثيقة واحدة
+description: كيف تعثر على المقاطع أو الصفحات الدقيقة التي تجيب عن سؤال باستخدام search_passages، داخل مستندات كثيرة أو مستند واحد
 tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
-terms: الكلمات المناسبة لذلك: فصل نصي، فقرة، جملة، نص منقول، مقطع، صفحة، قسم، المكان الذي يذكر فيه، الجزء الذي يشير إليه، الصيغة الحرفية، سطر. ينطبق على وثائق نصية طويلة: PDF، وWord، والرسائل الإلكترونية، والتقارير، والنصوص المحفوظة.
-not_for: غير مطلوب للعد، أو قوائم الملفات، أو البيانات الوصفية.
+terms: كلمات تدل عليه: مقطع، فقرة، جملة، اقتباس، مقتطف، صفحة، قسم، أين يقول، الجزء الذي يذكر، الصياغة الدقيقة، سطر. ينطبق على المستندات النصية الطويلة: PDF وملفات Word ورسائل البريد الإلكتروني والتقارير والنصوص المفرغة.
+not_for: غير لازمة للأعداد أو قوائم الملفات أو البيانات الوصفية.
 ---
-ابحث عن فصول نصية وصفحات
+العثور على المقاطع والصفحات
 
 {% if has('search_passages') %}
-للبحث في العديد من الوثائق، استخدم {{ tool('search_passages') }}. فهو يبحث في فصول النص بمفتاح البحث ومعناه معًا. استخدمه عند طرح سؤال بكلمات بسيطة، عندما لا تكون الكلمات التي تستخدمها الوثائق واضحة. قدّم حتى 12 استعلامًا في نداء واحد، يكون كل منها صيغة مختلفة للسؤال. يُسمّي كل نتيجة بحث الاستعلامات التي وجدتها. وللأسماء الدقيقة، أو العنوان، أو عبارة، استخدم {{ tool('search_collections') }}.
+للبحث في مستندات كثيرة، استخدم {{ tool('search_passages') }}. يبحث في المقاطع النصية بالكلمات المفتاحية وبالمعنى معًا. استخدمه لسؤال بكلمات عادية، عندما لا تكون الكلمات التي تستخدمها المستندات واضحة. أعطِ حتى 12 استعلامًا في استدعاء واحد، كل منها صيغة مختلفة للسؤال. تسمي كل نتيجة الاستعلامات التي وجدتها. لاسم دقيق أو عنوان أو عبارة، استخدم {{ tool('search_collections') }}.
 
 {% endif %}
 {% if has('doc_search_text') or has('pdf_search') %}
-للبحث في وثيقة طويلة واحدة، استخدم هذه الأدوات.
+للبحث في مستند طويل واحد، استخدم هذه الأدوات.
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} يُدرج نتائج استعلام في مصدر نصي واحد، بترتيب الصفحات، مع صفحة كل نتيجة بحث.
+{{ tool('doc_search_text') }} يسرد نتائج استعلام في مصدر نصي واحد، بترتيب الصفحات، مع صفحة كل نتيجة.
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }} يبحث عن استعلام في صفحات مصدر PDF. قدّم page_from و page_to للبحث عن مدى من الصفحات.
+{{ tool('pdf_search') }} يجد استعلامًا في صفحات مصدر PDF. أعطِ page_from وpage_to للبحث في نطاق من الصفحات.
 {% endif %}
 
 {% endif %}
 {% if has('read_documents') %}
-اقرأ صفحة مع {{ tool('read_documents') }} عندما لا يعرض الفصل النصي ما يكفي من النص لدعم الادّعاء. قدّم صفحته، أو قدّم الاستعلام لفتح الصفحة التي تحتوي على أكبر عدد من النتائج.
+اقرأ صفحة باستخدام {{ tool('read_documents') }} عندما لا يعرض المقطع نصًا كافيًا
+لدعم الادعاء. أعطِ صفحته، أو أعطِ الاستعلام لفتح الصفحة التي فيها أكثر عدد من النتائج.
 {% endif %}
 
-قدّم الوثيقة والصفحة عندما يدعم الفصل النصي الإجابة.
+أعطِ المستند والصفحة عندما يدعم مقطع الإجابة.
 
 {% if has('read_documents') %}
-{{ tool('read_documents') }} يتطلب collection و file_hash.
-collection اسم واحد. file_hash قائمة من 1 إلى 20 بصمة من تلك المجموعة.
-بالنسبة للوثائق في مجموعات مختلفة، أنشئ دفعة منفصلة لكل مجموعة.
-انcep الهويات من النتائج. كما يمكن لاسم ملف أو مسار فريد أن يحلّ وثيقة.
-يختار source اختياريًا مصدرًا مستخرجًا. والاستخدام بدون تحديد يأخذ المصدر المفضّل.
-يختار page اختياريًا معرّف صفحة مخزّن. وقد تحتوي معرّفات الصفحات على فجوات.
-تجاهل page أو قدّم صفرًا لاختيار الصفحة التي تحتوي على أكبر عدد من نتائج الاستعلام، أو أول صفحة مخزّنة بلا استعلام.
-يفتح query النص حول كلمات متطابقة قريبة مميزة في تلك الصفحة.
-للمطابقة الحرفية، انصغ عبارة داخل query. وتفتح القيمة المتطابقة الأولى لحدوثها الأول.
-يغيّر offset بداية الفصل النصي. ويحسب الأحرف الموحّدة من صفر داخل تلك الصفحة.
-length عدد أحرف موجب. والاستخدام بدون تحديد يأخذ 6,000 حرف.
-يتحقق source_version اختياريًا من بصمة المصدر المعادة. انcepها لإعادة القراءة مدىً ما.
+{{ tool('read_documents') }} يتطلب collection وfile_hash.
+collection اسم واحد. file_hash قائمة من 1 إلى 20 تجزئة من تلك المجموعة.
+للمستندات في مجموعات مختلفة، اعمل دفعة منفصلة لكل مجموعة.
+انسخ الهويات من النتائج. ويمكن لاسم ملف فريد أو مسار فريد أن يحلّ مستندًا أيضًا.
+source يحدد اختياريًا مصدرًا مستخرجًا. الحذف يستخدم المصدر المفضل.
+page يحدد اختياريًا معرّف صفحة مخزَّنة. قد تكون في معرّفات الصفحات فجوات.
+احذف page أو أعطِ صفرًا لتحديد الصفحة ذات أكثر عدد من نتائج الاستعلام، أو أول صفحة مخزَّنة بلا استعلام.
+query يفتح النص حول الكلمات المطابقة المتمايزة المتقاربة في تلك الصفحة.
+للصياغة الدقيقة، ضع العبارة بين علامتي اقتباس داخل query. القيمة المطابقة الواحدة تفتح أول موضع لها.
+offset يستبدل بداية المقطع. يعدّ أحرف Unicode من الصفر داخل تلك الصفحة.
+length عدد أحرف موجب. الحذف يستخدم 6,000 حرف.
+source_version يتحقق اختياريًا من بصمة المصدر المُعادة. انسخه لإعادة قراءة نطاق.
 
-تعيد النتيجة text_range تحتوي على start، ونهاية منقوصة، وإجمالي أحرف الصفحة، والوحدة.
-يعني page_complete أن النطاق يغطي الصفحة كاملة.
-تعني علامة القطع أن الأداة قدّمت جزءًا فقط من النطاق. لا تعني أن الصفحة تنتهي هنا.
-استخدم more العنصر لمتابعة تلك الوثيقة. استخدم more على المستوى الأعلى لمتابعة الصفحة المتبقية أو الصفحات التالية.
-انسخ المقبض المعاد حرفيًا إلى {{ tool('read_more') }} كمُتابعة.
-انسخ read_before أو read_after كوسيطات read_documents للنص المحيط. لا حاجة لأي حساب إزاحة.
-تنطبق وسيطات النطاق على كل هاش في نداء واحد. استخدم نداءات منفصلة عندما تختلف المصادر أو النطاقات أو إصدارات المصدر.
-على سبيل المثال، انسخ object read_after المعاد من الوثيقة الأولى إلى نداء واحد.
-```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` انسخ object read_after المعاد من الوثيقة الثانية إلى نداء آخر.
-```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` استخدم القيم الفعلية المعادة لكل وثيقة. لا تضف حقولًا مرقّمة مثل source2 أو offset2.
-تعيد النداء الأول المتكرر نفس النص. استخدم المُتابعة عند الحاجة إلى نص أكثر.
-توقّف عن القراءة عندما يوفّر الفصل النصي ما يكفي من الأدلة للمزعم المطلوب.
+تعيد النتيجة text_range مع start والنهاية الحصرية وإجمالي أحرف الصفحة والوحدة.
+page_complete يعني أن النطاق يغطي الصفحة كاملة.
+علامة القطع تعني أن الأداة سلّمت جزءًا من النطاق فقط. ولا تعني أن الصفحة تنتهي هناك.
+استخدم more الخاص بعنصر لمتابعة ذلك المستند. استخدم more في المستوى الأعلى لمتابعة بقية الصفحة أو الصفحات اللاحقة.
+انسخ المعرّف المُعاد بدقة إلى {{ tool('read_more') }} بوصفه continuation.
+انسخ read_before أو read_after بوصفهما معاملات read_documents للنص المحيط. لا يلزم حساب إزاحة.
+تنطبق معاملات النطاق على كل تجزئة في الاستدعاء الواحد. استخدم استدعاءات منفصلة عندما تختلف المصادر أو النطاقات أو إصدارات المصدر بين المستندات.
+مثال: انسخ كائن read_after المُعاد للمستند الأول إلى استدعاء واحد.
+```json
+{"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"}
+```
+انسخ كائن read_after المُعاد للمستند الثاني إلى استدعاء آخر.
+```json
+{"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"}
+```
+استخدم القيم المُعادة الفعلية لكل مستند. لا تضف حقولًا مرقّمة مثل source2 أو offset2.
+الاستدعاء الأول المكرر يعيد النص نفسه. استخدم continuation عندما تحتاج إلى مزيد من النص.
+توقف عن القراءة عندما يقدم المقطع دليلًا كافيًا للادعاء المطلوب.
 
-افتح هذه الندوة أول صفحة محفوظة.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` افتح هذه الندوة فصلاً نصياً مستهدفاً.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` افتح هذه الندوة نطاقاً مستردّاً في مصدر وصفحة محدّدين.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` اقرأ هذا الاستكمال النطاق المسترد التالي. استخدم المقبض المُصدَر الفعلي.
-```json {"continuation":"COPY_RETURNED_MORE"} ```
+يفتح هذا الاستدعاء الأدنى أول صفحة مخزَّنة.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]}
+```
+يفتح هذا الاستدعاء مقطعًا مستهدفًا.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"}
+```
+يفتح هذا الاستدعاء نطاقًا مُعادًا في مصدر وصفحة محددين.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"}
+```
+تقرأ هذه المتابعة النطاق المُعاد التالي. استخدم المعرّف الفعلي الصادر.
+```json
+{"continuation":"COPY_RETURNED_MORE"}
+```
 {% endif %}
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} اطلب مجموعة، file_hash، وquery. قد تختار source استخلاصاً واحداً اختيارياً.
-أعد page، ordinal، start، end، وsnippet لكل نتيجة بحث. احسب الإزاحات عدد الأحرف داخل تلك الصفحة.
-انسخ صفحة نتيجة البحث وstart عند الحاجة إلى سياق إضافي في read_documents.
-استخدم read_more لاسترداد النتائج المتبقية.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
+{{ tool('doc_search_text') }} يتطلب collection وfile_hash وquery. source يحدد اختياريًا استخراجًا واحدًا.
+يعيد page وordinal وstart وend وsnippet لكل نتيجة. تعدّ الإزاحات الأحرف داخل تلك الصفحة.
+انسخ page وstart لنتيجة إلى read_documents عندما يحتاج المقتطف إلى سياق أكثر.
+استخدم read_more لجلب النتائج المتبقية.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"}
+```
 {% endif %}
 {% if has('doc_sources') %}
-{{ tool('doc_sources') }} اطلب مجموعة وfile_hash. قد يحسب query نتائج البحث المتطابقة في كل استخلاص اختيارياً.
-أعد أسماء المصادر والنطاقات الصفحية المحفوظة. انسخ اسم المصدر عند اختيار استخلاص معيّن.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
+{{ tool('doc_sources') }} يتطلب collection وfile_hash. query يعدّ اختياريًا النتائج المطابقة في كل استخراج.
+يعيد أسماء المصادر ونطاقات الصفحات المخزَّنة. انسخ اسم مصدر عند اختيار استخراج معين.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
 {% endif %}
 {% if has('doc_diff_sources') %}
-{{ tool('doc_diff_sources') }} اطلب مجموعة، file_hash، وsource_a وsource_b.
-قد تختار page_a وpage_b الصفحات اختيارياً. يحدد الإهمال أول صفحة محفوظة لكل مصدر.
-النتيجة فرق نصي موحّد. استخدم read_more عند الاستمرار.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
+{{ tool('doc_diff_sources') }} يتطلب collection وfile_hash وsource_a وsource_b.
+page_a وpage_b يحددان الصفحتين اختياريًا. الحذف يحدد أول صفحة مخزَّنة في كل مصدر.
+النتيجة فرق نصي موحّد. استخدم read_more عندما يستمر.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7}
+```
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }} اطلب مجموعة، file_hash، وquery.
-قد تختار source استخلاص PDF اختيارياً. قد تحدّ page_from وpage_to نطاق صفحات PDF الشامل اختيارياً.
-انسخ مواقع الصفحات المستردّة. استخدم read_more للنتائج المستمرة.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
+{{ tool('pdf_search') }} يتطلب collection وfile_hash وquery.
+source يحدد اختياريًا استخراج PDF. page_from وpage_to يقيّدان اختياريًا نطاق صفحات PDF شاملًا الطرفين.
+انسخ مواضع الصفحات المُعادة. استخدم read_more للنتائج المتواصلة.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12}
+```
 {% endif %}
 {% if has('search_passages') %}
-{{ tool('search_passages') }} تقبل الاستعلامات كنص واحد أو قائمة من حتى 12 صيغة.
-تقبل collection اسماً واحداً أو قائمة. يحدد الإهمال البحث في كل المجموعات المسموح بها.
-تختار max_results عدد نتائج البحث لكل صيغة استعلام ضمن حد مخطط الخدمة. يستخدم الإهمال 15.
-تعيد النتيجة مجموعة، file_hash، وpage وsnippet. تسجل q فهارس الاستعلام من الصفر.
-اقرأ النص الداعم عندما لا يجيب الفصل النصي على السؤال.
-```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
+{{ tool('search_passages') }} يقبل queries نصًا واحدًا أو قائمة من 12 صيغة على الأكثر.
+collection يقبل اسمًا واحدًا أو قائمة. الحذف يبحث في كل مجموعة مسموح بها.
+max_results يحدد عدد النتائج لكل صيغة استعلام ضمن حد المخطط المخدوم. الحذف يستخدم 15.
+تعطي النتيجة collection وfile_hash وpage وsnippet. يسجل q فهارس الاستعلامات التي تبدأ من الصفر.
+اقرأ النص الداعم عندما لا يجيب المقطع عن السؤال.
+```json
+{"queries":"approval of the transfer"}
+```
+```json
+{"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5}
+```
 {% endif %}

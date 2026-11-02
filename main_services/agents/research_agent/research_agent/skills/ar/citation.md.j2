@@ -1,49 +1,65 @@
 ---
 name: citation
 group: general
-description: كيف تُشير إلى الوثائق التي تدعم إجابة
+description: كيف تستشهد بالمستندات التي تدعم إجابة
 tools: cite_documents
 ---
-يُدرج النص المقتبس في ملف مساحة العمل. تُوضّح المهارة `report` كيفية كتابه وتعديل ذلك.
+النص المستشهد به يُكتب في ملف مساحة العمل. تبيّن مهارة `report` كيف تكتبه وتعدّله.
 
 {% if has('cite_documents') %}
-عندما يعتمد {{ citation_artefact }} على {% if web_enabled %} وثيقة {% else %} داخلية {% endif %}، فاستدعي {{ tool('cite_documents') }}.
-زوّده بكل وثيقة تدعم ادّعاءً أو نصاً منقولاً. استخدم المقبض المرتجع بجانب ذلك الادّعاء.
-استخدم مقبضاً بجانب ادّعاءٍ يعتمد على وثيقة داخلية. يمكنك أيضاً تسمية وثيقة لتحديدها أو لوصف نتيجة بحث.
-تأخذ النداء الواحدة في أقصى تقدير 12 اقتباساً. اقبس ما استخدمته، لا كل ما داره البحث.
-عندما يُعيد بحثٌ أو قراءة وثائق تدعم ادّعاءً، فاقبس تلك الوثائق.
+عندما يعتمد {{ citation_artefact }} الخاص بك على {% if web_enabled %}مستند داخلي{% else %}مستند{% endif %}، استدعِ {{ tool('cite_documents') }}.
+أعطه كل مستند يدعم ادعاءً أو اقتباسًا. استخدم المعرّف المُعاد بجانب ذلك الادعاء.
+استخدم معرّفًا بجانب ادعاء يعتمد على مستند داخلي. ويمكنك أيضًا ذكر
+مستند لتعريفه أو لوصف نتيجة بحث.
+يقبل الاستدعاء الواحد 12 استشهادًا على الأكثر. استشهد بما استخدمته، لا بكل ما أعاده البحث.
+عندما أعاد بحث أو قراءة مستندات تدعم ادعاءً، استشهد بتلك المستندات.
 
-بالنسبة لكل اقتباس، قدّم:
-- مجموعة file_hash، منسوختين من نتيجة الأداة. لا تختلق ever file_hash.
-- quote: من 5 إلى 6 كلمات متتالية منسوخة من سطر واحد من نص الوثيقة. ليس سطر عنوان (From, To, Cc, Subject, Date). ولا فاصلة تحتوي على علامة استفهام.
-- find: اختياري. أقصر عبارة حرفية من النص المنقول يجب أن يراها الشخص. تفتح البطاقة الوثيقة عند هذه العبارة.
-- why: سطر واحد يوضح ما تدعمه الوثيقة.
+أعطِ لكل استشهاد:
+- collection وfile_hash، منسوخين من نتيجة أداة. لا تختلق file_hash أبدًا.
+- quote: من 5 إلى 6 كلمات متتالية منسوخة من سطر واحد في متن المستند. لا من سطر ترويسة
+  (From، To، Cc، Subject، Date). ولا مقطعًا يحتوي على علامة استفهام.
+- find: اختياري. أقصر عبارة دقيقة من الاقتباس يجب أن يراها الشخص. تفتح البطاقة
+  المستند عند هذه العبارة.
+- why: سطر واحد يبيّن ما يدعمه المستند.
 
-اكتب المقبض الذي تحصل عليه في المقابل، مثلاً `[D1]`، في {{ citation_artefact }} حيث تضع الادّعاء.
+اكتب المعرّف الذي تحصل عليه، مثل `[D1]`، في {{ citation_artefact }} الخاص بك حيث تكتب الادعاء.
 
-مثال. {{ tool('read_documents') if has('read_documents') else 'A tool' }} أعاد البريد الإلكتروني «Re: DRAFT talking points» في المجموعة enron.
-يُظهر نصه «The talking points look great to me. Best of luck today.» ويُشير {{ citation_artefact }} إلى أن Jim Steffes وافق على المسودة. نفّذ {{ tool('cite_documents') }} بالمجموعة enron، وfile_hash من النتيجة، والنص «talking points look great to me»، للبحث عن «look great»، ولماذا «Steffes approves the draft of 27 December».
-ثم اكتب «Steffes approved the draft [D1].» لا تُقتبس «Subject: Re: DRAFT talking points»، لأنه سطر عنوان. ولا تُقتبس «Can you check the notes؟» لأنه يحمل علامة استفهام.
-لا يلزم أن تتطابق فواصل الأسطر، والترقيم، وعلامات `>` في البريد الإلكتروني المنقول.
-المستشهادات الناقصة أو غير الموجودة لا تخصص مقبضاً. انسخ 5 إلى 6 كلمات من نص المرشح الذي يشير إليه الخطأ إلى quote وأعد المحاولة.
-المقبض المرتجع وحده هو ما يُسمّي المصدر. لا تكتب لقبضك الخاص في مربعات مربعة.
-اكتب المقبض كنص بجانب الادّعاء. لا تضعه بين علامات اقتباس مائلة. `[D1]` بين علامات اقتباس مائلة لا تربط شيئاً.
-أعد استخدام مقبض الوثيقة المرتجع لفصول نصية مُتحقَّق منها إضافية. الوثيقة تحتوي على بطاقة واحدة.
+مثال. أعاد {{ tool('read_documents') if has('read_documents') else 'أداة' }} رسالة البريد "Re: DRAFT talking points" في المجموعة enron.
+يقول متنها "The talking points look great to me. Best of luck today." ويقول {{ citation_artefact }} الخاص بك
+إن Jim Steffes وافق على المسودة. استدعِ {{ tool('cite_documents') }} مع collection enron، و
+file_hash من النتيجة، وquote "talking points look great to me"، وfind "look great"،
+وwhy "Steffes approves the draft of 27 December".
+ثم اكتب "Steffes approved the draft [D1]."
+لا تقتبس "Subject: Re: DRAFT talking points" لأنه سطر ترويسة. ولا تقتبس
+"Can you check the notes?" لأنه يحتوي على علامة استفهام.
+لا يلزم أن تتطابق فواصل الأسطر وعلامات الترقيم وعلامات `>` في رسالة بريد مقتبسة.
+الاقتباسات المفقودة أو الغائبة لا تخصص معرّفًا. انسخ من 5 إلى 6 كلمات من النص المرشح الذي يعطيه الخطأ إلى quote وأعد المحاولة.
+المعرّف المُعاد وحده يُعنون المصدر. لا تكتب تسمية من عندك بين قوسين معقوفين.
+اكتب المعرّف نصًا بجانب الادعاء. لا تضعه بين علامتي الاقتباس المائلتين (backticks). المعرّف `[D1]` داخل backticks لا يربط بشيء.
+أعد استخدام معرّف المستند المُعاد لمقاطع إضافية تحققت منها. للمستند بطاقة واحدة.
 {% if citation_resolver == "lead" %}
-المحلّل الرئيسي هو من يحلّها، لذا فإن المقبض الذي لم تخصصه قط لا نفع منه لأحد.
+الباحث الرئيسي هو من يحلّ المعرّفات، لذا لا يفيد أحدًا معرّف لم تخصصه.
 {% endif %}
 {% endif %}
 {% include "citation_failures.j2" %}
 
 {% if has('cite_documents') %}
-حجزة الاقتباسات هي قائمة بكائنات اقتباس وثيقة.
-يُطلب من كل كائن الحقول collection و file_hash. تحتوي quote على 5 إلى 6 كلمات متتابعة من نص المصدر حرفياً.
-كرّر collection و file_hash في كل كائن، حتى لو كانت الاقتباسات منفصلة من نفس الوثيقة.
-لا ترث الكائنات الحجج من الكائنات السابقة.
-تختار find عبارة دقيقة داخل quote اختيارياً. عند تجاهلها يُستخدم نص الاقتباس كله.
-يسجّل term اختيارياً استعلام البحث الأصلي. يوضح why الادعاء المدعوم.
-تُعطى النتيجة مقبضاً لكل إدخال مُتحقَّق منه. الإدخالات الفاشلة تُقدّم سببها وقد تُقدّم فاصلاً نصياً مرشحاً.
-أعد المحاولة فقط للإدخالات الفاشلة بنص دقيق. فالنص المنقول المُتحقَّق منه لا يُثبت وحده صحة الكاتب أو تاريخ هذا النص.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]} ``` تحقق هذه الدفعة فاصلي نصيين من نفس الوثيقة.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+المعامل citations قائمة بكائنات استشهاد المستندات.
+كل كائن يتطلب collection وfile_hash. يحمل quote من 5 إلى 6 كلمات متتالية من صياغة المصدر الدقيقة.
+كرر collection وfile_hash في كل كائن، بما فيها الاقتباسات المنفصلة من المستند نفسه.
+الكائنات لا ترث المعاملات من الكائنات السابقة.
+find يحدد اختياريًا عبارة دقيقة داخل quote. الحذف يستخدم الاقتباس كله.
+term يسجل اختياريًا استعلام البحث الأصلي. why يذكر الادعاء المدعوم.
+تعطي النتيجة معرّفًا لكل إدخال تم التحقق منه. تعطي الإدخالات الفاشلة سببها، وقد تعطي مقطعًا مرشحًا.
+أعد محاولة الإدخالات الفاشلة فقط بصياغة دقيقة. التحقق من اقتباس لا يتحقق بحد ذاته من كاتب ذلك الاقتباس أو تاريخه.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
+```
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"يدعم هذا المقطع الموافقة المذكورة."}]}
+```
+تتحقق هذه الدفعة من مقطعين من المستند نفسه.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}
+```
 {% endif %}

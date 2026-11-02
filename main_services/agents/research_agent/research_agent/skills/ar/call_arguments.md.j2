@@ -1,69 +1,91 @@
 ---
 name: call_arguments
 group: stumble
-description: كيف تملأ وسيطات نداء أداة: فقط الأسماء التي يوفرها مخططه، وقائمة عند طلب قائمة، بدون علامات تنصير إضافية
+description: كيف تملأ معاملات استدعاء أداة: الأسماء التي يعطيها مخططها فقط، وقائمة حيث يطلب قائمة، وبلا علامات اقتباس زائدة
 tools:
 ---
-ملء وسيطات النداء
+ملء معاملات الاستدعاء
 
 {% if has('read_tool') %}
-عندما لا تكون متأكدًا من وسيطات أداة، فاستدعِ {{ tool('read_tool') }} باسمها. فهي تُعطيك كل وسيطة، ونوعها، والوسيطات التي تتطلبها الأداة.
+عندما لا تكون متأكدًا من معاملات أداة، استدعِ {{ tool('read_tool') }} باسمها. يعطيك كل معامل ونوعه والمعاملات التي تتطلبها الأداة.
 
 {% endif %}
-1. قدّم أسماء الوسيطات التي تعطيها الأداة فقط. فكل وسيطة باسم آخر تُرفض.
-2. قدّم كل وسيطة مطلوبة.
-3. حيث تطلب الأداة قائمة، قدّم قائمة، حتى لو كانت قيمة واحدة. اكتب queries ["lease"]. ولا تكتب queries "lease".
-4. حيث تطلب الأداة رقمًا أو true أو false، قدّم القيمة بدون علامات تنصيص. اكتب filename_only true. ولا تكتب filename_only "true".
-5. لا تضع علامات تنصيص داخل قيمة نصية. اكتب status done. ولا تكتب status "\"done\"".
-6. احفظ كل قيمة داخل حدود أداةها، مثل أكثر عناصر في قائمة.
-7. حيث تطلب الأداة قائمة من كائنات، قدّم قائمة من كائنات. ولا قدّم نصًا
+1. أعطِ أسماء المعاملات التي تعطيها الأداة فقط. المعامل باسم آخر يُرفض.
+2. أعطِ كل معامل مطلوب.
+3. حيث تطلب الأداة قائمة، أعطِ قائمة، حتى لقيمة واحدة. اكتب queries ["lease"]. لا تكتب queries "lease".
+4. حيث تطلب الأداة رقمًا أو true أو false، أعطِ القيمة بلا علامات اقتباس. اكتب filename_only true. لا تكتب filename_only "true".
+5. لا تضع علامات اقتباس داخل قيمة نصية. اكتب status done. لا تكتب status "\"done\"".
+6. أبقِ كل قيمة ضمن حدود أداتها، مثل أكبر عدد من عناصر قائمة.
+7. حيث تطلب الأداة قائمة كائنات، أعطِ قائمة كائنات. لا تعطِ نصًا
 {% if has('cite_documents') %}
-   يحمل JSON. اكتب citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
-   ولا تكتب citations "[{\"collection\": ...}]".
+   يحتوي على JSON. اكتب citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
+   لا تكتب citations "[{\"collection\": ...}]".
 {% elif has('cite_pages') %}
-   يحمل JSON. اكتب pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
-   ولا تكتب pages "[{\"url\": ...}]".
+   يحتوي على JSON. اكتب pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
+   لا تكتب pages "[{\"url\": ...}]".
 {% else %}
-   يحمل JSON.
+   يحتوي على JSON.
 {% endif %}
 {% if has('write_file') %}
-8. قدّم اسم الملف في كل نداء {{ tool('write_file') }} و{{ tool('patch_file') }}.
+8. أعطِ اسم الملف في كل استدعاء لـ {{ tool('write_file') }} و{{ tool('patch_file') }}.
 {% endif %}
 
-عندما يُرفض النداء، يذكر الخطأ الوطية وما الخطأ فيها. أصلْ تلك الوطية، ثم أرسل النداء.
+عندما يُرفض استدعاء، يسمي الخطأ المعامل وما الخطأ فيه. صحّح ذلك المعامل، ثم أرسل الاستدعاء.
 
 {% if has('search_agent_tools') %}
-{{ tool('search_agent_tools') }} يتطلب استعلامًا، وهو وصف للمهمة يصل طولها إلى 160 حرفًا.
-يُعيد أسماء الأدوات ووصفها. اقرأ الأداة قبل استخدام وسيطات غير مألوفة.
-```json {"query":"Find a passage late in one long document."} ```
+{{ tool('search_agent_tools') }} يتطلب query، وهو وصف للمهمة حتى 160 حرفًا.
+يعيد أسماء الأدوات ذات الصلة وأوصافها. اقرأ أداة قبل استخدام معاملات غير مألوفة.
+```json
+{"query":"Find a passage late in one long document."}
+```
 {% endif %}
 {% if has('read_tool') %}
-{{ tool('read_tool') }} يتطلب اسمًا، وهو الاسم الدقيق لأداة متاحة واحدة.
-يُعيد الوصف والمخطط الإدخالي الكامل، بما في ذلك القيم المسموح بها والقيم الافتراضية والحقول المطلوبة.
-```json {"name":"read_documents"} ``` بعد خطأ بسبب وسيطة غير معروفة، اقرأ مخطط الأداة الفاشلة قبل إعادة المحاولة.
+{{ tool('read_tool') }} يتطلب name، وهو الاسم الدقيق لأداة متاحة واحدة.
+يعيد الوصف ومخطط المدخلات الكامل، بما فيه القيم المسموح بها والقيم الافتراضية والحقول المطلوبة.
+```json
+{"name":"read_documents"}
+```
+بعد خطأ معامل غير معروف، اقرأ مخطط الأداة الفاشلة قبل إعادة المحاولة.
 {% if has('update_plan') %}
-على سبيل المثال، تفشل هذه {{ tool('update_plan') }} لأن `plan` ليست وسيطة.
-```json {"plan":["Find the message."]} ``` اقرأ مخططها عبر {{ tool('read_tool') }}.
-```json {"name":"update_plan"} ``` ثم استدعِ {{ tool('update_plan') }} بالهدف والخطوات.
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"pending"}]} ```
+مثال: يفشل هذا الاستدعاء لـ {{ tool('update_plan') }} لأن `plan` ليس معاملًا.
+```json
+{"plan":["Find the message."]}
+```
+اقرأ مخططها باستخدام {{ tool('read_tool') }}.
+```json
+{"name":"update_plan"}
+```
+ثم استدعِ {{ tool('update_plan') }} مع goal وsteps.
+```json
+{"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"pending"}]}
+```
 {% endif %}
 {% if has('read_documents') %}
-إذا رفض {{ tool('read_documents') }} `source2` أو `offset2`، اقرأ مخططها قبل إعادة المحاولة.
-استخدم نداءً منفصلًا لكل وثيقة تحتاج وسيطات نطاق مختلفة.
+إذا رفض {{ tool('read_documents') }} المعامل `source2` أو `offset2`، فاقرأ مخططه قبل إعادة المحاولة.
+استخدم استدعاءً منفصلًا لكل مستند يحتاج إلى معاملات نطاق مختلفة.
 {% endif %}
 {% endif %}
 {% if has('search_skills') %}
-{{ tool('search_skills') }} يقبل استعلامًا، يصل طولها إلى 160 حرفًا. يؤدي إهمال النص أو فارغًا إلى عرض كل المهارة المتاحة.
-يُعيد أسماء الأساليب ووصفها.
-```json {} ``` ```json {"query":"Read a long document and continue its matching passage."} ```
+{{ tool('search_skills') }} يقبل query حتى 160 حرفًا. الحذف أو النص الفارغ يسرد كل مهارة متاحة.
+يعيد أسماء الطرق وأوصافها.
+```json
+{}
+```
+```json
+{"query":"Read a long document and continue its matching passage."}
+```
 {% endif %}
 {% if has('read_skill') %}
-{{ tool('read_skill') }} يتطلب اسمًا، وهو الاسم الدقيق الذي تُعيده اكتشاف المهارة.
-يُعيد تعليمات الأسلوب، وسيطات الأداة والأمثلة.
-```json {"name":"passages"} ```
+{{ tool('read_skill') }} يتطلب name، وهو الاسم الدقيق الذي أعاده اكتشاف المهارات.
+يعيد تعليمات الطريقة ومعاملات الأدوات والأمثلة.
+```json
+{"name":"passages"}
+```
 {% endif %}
 {% if has('write_note') %}
-{{ tool('write_note') }} يتطلب نصًا، بين حرف واحد و2,000 حرف. يحفظ الأدلة والأسئلة غير المجاب عليها للسياق لاحقًا.
-تضمّن هويات المصادر والنداء المفيد التالي عندما يجب أن يبقى هذا السياق بعد الانكماش.
-```json {"text":"The approval passage is in the returned document range. Verify its original writer before attributing it."} ```
+{{ tool('write_note') }} يتطلب text، من 1 إلى 2,000 حرف. يحفظ الأدلة والأسئلة غير المحسومة للسياق اللاحق.
+أدرج هويات المصادر والاستدعاء التالي المفيد عندما يجب أن يبقى ذلك السياق بعد الضغط.
+```json
+{"text":"The approval passage is in the returned document range. Verify its original writer before attributing it."}
+```
 {% endif %}

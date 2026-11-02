@@ -1,88 +1,117 @@
 ---
 name: folders_and_files
 group: technique
-description: كيف ترى محتويات المجموعة: المجموعات، والمجلدات، وأنواع الملفات، والعدد والتواريخ، وكيف تجد ملفاً باسمه أو مساره
+description: كيف ترى ما تحتويه مجموعة: مجموعات البيانات والمجلدات وأنواع الملفات والأعداد والتواريخ، وكيف تجد ملفًا باسمه أو مساره
 tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
-terms: كلمات متعلقة بها: مجموعة، مجموعة بيانات، مجلد، دليل، مسار، اسم الملف، نوع الملف، امتداد، تنسيق، أعداد، عدد الملفات، الحجم، الأكبر، نظرة عامة، جرد، محتويات المجموعة، الوثائق لكل عام.
-not_for: غير مطلوبة عندما يقتصر الطلب على محتوى الوثائق.
+terms: كلمات تدل عليه: مجموعة، مجموعة بيانات، مجلد، دليل، مسار، اسم الملف، نوع الملف، امتداد، صيغة، أعداد، كم ملفًا، حجم، الأكبر، نظرة عامة، جرد، ما تحتويه المجموعة، المستندات في كل سنة.
+not_for: غير لازمة عندما يسأل الطلب عن محتوى المستندات فقط.
 ---
 المجلدات والملفات
 
 {% if has('list_collections') and has('search_facet_values') %}
-لمحة عامة عن المجموعة، استدعي {{ tool('list_collections') }} مع {}.
-بعد ذلك، استدعي {{ tool('search_facet_values') }} مع {} مرة واحدة لكل أنواع الملفات واللغات الخاصة بكل مجموعة مُصرّح بها.
-تحتوي المصفوفة الافتراضية بالفعل على البُعدَين. لا حاجة إلى استدعاء منفصل لكل مجموعة أو بُعد.
+لنظرة عامة على المجموعات، استدعِ {{ tool('list_collections') }} مع {}.
+ثم استدعِ {{ tool('search_facet_values') }} مع {} مرة واحدة لأنواع الملفات واللغات في كل مجموعة مسموح بها.
+تحتوي المصفوفة الافتراضية على الوجهين معًا. لا حاجة إلى استدعاء منفصل لكل مجموعة أو وجه.
 {% endif %}
 
 {% if has('list_collections') %}
-{{ tool('list_collections') }} لا Takes no arguments. It gives collection names, document counts and dataset counts.
-```json {} ```
+{{ tool('list_collections') }} لا يأخذ معاملات. يعطي أسماء المجموعات وأعداد المستندات وأعداد مجموعات البيانات.
+```json
+{}
+```
 
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} يعطي أعداد التخزين لكل مجموعة ومجموعة بيانات.
+{{ tool('folder_overview') }} يعطي أعداد التخزين لكل مجموعة ولكل مجموعة بيانات.
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} يعطي المجلدات الفرعية والملفات الخاصة بمجلد واحد من مجموعة بيانات.
+{{ tool('folder_list') }} يعطي المجلدات والملفات الفرعية لمجلد واحد من مجموعة بيانات.
 {% endif %}
 {% if has('folder_search') %}
-لإيجاد مجلد أو ملف بالاسم داخل مجموعة بيانات واحدة، استدعي {{ tool('folder_search') }}.
+للعثور على مجلد أو ملف باسمه داخل مجموعة بيانات واحدة، استدعِ {{ tool('folder_search') }}.
 {% endif %}
 {% if has('search_collections') %}
-لإيجاد ملف بالاسم في كل المجموعات، استدعي {{ tool('search_collections') }} مع تعيين `filename_only` إلى true. قدّم الاسم أو جزءًا منه كمطلوب.
+للعثور على ملف باسمه في كل المجموعات، استدعِ {{ tool('search_collections') }} مع
+ضبط `filename_only` على true. أعطِ الاسم أو جزءًا منه بوصفه الاستعلام.
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }} يعدّ وثائق البحث حسب التاريخ أو الحجم.
+{{ tool('search_histogram') }} يعدّ مستندات بحث بحسب التاريخ أو الحجم.
 {% endif %}
 {% if has('search_facet_values') %}
-{{ tool('search_facet_values') }} يعطي قيم تصفية، بما في ذلك أنواع الملفات، مع الأعداد.
+{{ tool('search_facet_values') }} يعطي قيم مرشّح، بما فيها أنواع الملفات، مع أعدادها.
 {% endif %}
 
-يمكن أن يُعرّف اسم ملف أو مسار وثيقة واحدة. يُعرّف `file_hash` في صف النتيجة الوثيقة مباشرة.
+قد يحدد اسم الملف أو مساره مستندًا واحدًا. و`file_hash` في صف النتيجة يحدده مباشرة.
 
-استخدمي أدوات الوصفات لطلب جرد. يمكن أن تجيب الأعداد على الطلب مباشرة.
-بحث المحتوى مفيد فقط عندما يسأل الشخص عما تقوله الوثائق.
+استخدم أدوات البيانات الوصفية لطلب الجرد. يمكن لأعدادها أن تجيب عن الطلب مباشرة.
+عمليات البحث في المحتوى مفيدة فقط عندما يسأل الشخص عما تقوله المستندات.
 
 {% if has('search_facet_values') %}
-استدعِ {{ tool('search_facet_values') }} مرة واحدة لمجموعة من المجموعات والسمات.
-الوسيطات هي collection و facets و query و ids.
-تجاهل collection أو أعطِ [] لكل مجموعة مُرخّصة. قدّم اسماً واحداً أو قائمة لتضييق الاختيار.
-تجاهل facets بالنسبة لـ ["file_types", "language"]. قدّم قائمة بأسماء سمات دقيقة للتوزيعات الأخرى.
-استخدم file_types و file_paths و email_from و email_to و struct_flags و ner_per و ner_org و ner_loc و ner_misc و re_email و language و red_flags و re_phone و re_bank_account و re_company_id و re_money أو re_crypto_wallet.
-file_type غير صالحة. استخدم file_types.
-يبحث query عن نص داخل قيم السمة. لا يبحث في محتوى الوثيقة.
-قد يحل ids، بشكل اختياري، معرفات الحدود المعروفة. تستخدم عمليات البحث العادية نص القيمة ولا تحتاج إلى معرّفات.
+استدعِ {{ tool('search_facet_values') }} مرة واحدة لعدة مجموعات وعدة أوجه.
+المعاملات هي collection وfacets وquery وids.
+احذف collection أو أعطِ [] لكل المجموعات المسموح بها. أعطِ اسمًا واحدًا أو قائمة لتضييق الاختيار.
+احذف facets لتستخدم ["file_types", "language"]. أعطِ قائمة بأسماء أوجه دقيقة لتوزيعات أخرى.
+استخدم file_types أو file_paths أو email_from أو email_to أو struct_flags أو ner_per أو ner_org أو ner_loc أو ner_misc أو
+re_email أو language أو red_flags أو re_phone أو re_bank_account أو re_company_id أو re_money أو re_crypto_wallet.
+file_type غير صالح. استخدم file_types.
+query يبحث عن نص داخل قيم الأوجه. لا يبحث في محتوى المستندات.
+ids يحلّ اختياريًا معرّفات مصطلحات معروفة. تستخدم عمليات البحث العادية نص القيمة ولا تحتاج إلى معرّفات.
 
-يحتوي النتيجة على أعمدة وعناصر. كل صف يبدأ بمجموعته.
-يحتوي كل خلية سمة على أزواج [text, count]. انسخ النص إلى facet_filters لبحث محتوى لاحق.
-الخلية الفارغة (null) تحتوي على خطأ مُبلّغ عنه. الخلية الفارغة (empty) لا تحتوي على قيم مُعادَة.
-تشير العدّات إلى مطابقات الوثائق المُفهرسة لكل قيمة. يمكن أن تنطبق عدة قيم على وثيقة واحدة.
-لا تضف عدّات السمات لادعاء إجمالي مُميّز. تأتي الإجماليات من list_collections.
-قد تتجاهل القائمة الافتراضية للسمات القيم غير الشائعة. استخدم query للعثور على قيمة محددة.
-استخدم المزيد مع read_more عندما تستمر النتيجة.
+للنتيجة columns وitems. يبدأ كل صف بمجموعته.
+تحتوي كل خلية وجه على أزواج [text, count]. انسخ text إلى facet_filters لبحث لاحق في المحتوى.
+الخلية null فيها خطأ مُبلَّغ عنه. الخلية الفارغة ليست فيها قيم معادة.
+تشير الأعداد إلى مطابقات المستندات المفهرسة لكل قيمة. قد تنطبق عدة قيم على مستند واحد.
+لا تجمع أعداد الأوجه لتدّعي إجماليًا متمايزًا. تأتي إجماليات الجرد من list_collections.
+قد تحذف قائمة الأوجه الافتراضية قيمًا نادرة. استخدم query للعثور على قيمة محددة.
+استخدم more مع read_more عندما تستمر النتيجة.
 
-هذا النداء الأدنى يستعرض تنسيقات الملفات واللغات عبر المجموعات المُرخّصة.
-```json {} ``` هذا النداء يقارن بين مجموعتين مُختارتين ويبحث في قيم عناوين البريد الإلكتروني.
-```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+يجرد هذا الاستدعاء الأدنى صيغ الملفات واللغات عبر المجموعات المسموح بها.
+```json
+{}
+```
+يقارن هذا الاستدعاء مجموعتين مختارتين ويبحث في قيم عناوين البريد الإلكتروني فيهما.
+```json
+{"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"}
+```
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} يتطلب مجموعة. تختار المجموعة البيانية اختياريًا مجموعة بيانات واحدة.
-هذا النداء يقرأ جميع إحصائيات تخزين المجموعات البيانية ضمن مجموعة واحدة.
-```json {"collection":"alpha"} ``` هذا النداء يختار مجموعة بيانات واحدة.
-```json {"collection":"alpha","dataset":"files"} ```
+{{ tool('folder_overview') }} يتطلب collection. dataset يحدد اختياريًا مجموعة بيانات واحدة.
+يقرأ هذا الاستدعاء أعداد تخزين كل مجموعات البيانات في مجموعة واحدة.
+```json
+{"collection":"alpha"}
+```
+يحدد هذا الاستدعاء مجموعة بيانات واحدة.
+```json
+{"collection":"alpha","dataset":"files"}
+```
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} يتطلب مجموعة ومجموعة بيانات. يختار node_id اختياريًا كيان مجلد مُعاد.
-تجاهل node_id لقراءة جذر المجموعة البيانية. انسخ معرّفات العقد الفرعية إلى النداءات اللاحقة.
-```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_list') }} يتطلب collection وdataset. node_id يحدد اختياريًا عقدة مجلد معادة.
+احذف node_id لقراءة جذر مجموعة البيانات. انسخ معرّفات العقد الفرعية إلى الاستدعاءات اللاحقة.
+```json
+{"collection":"alpha","dataset":"files"}
+```
+```json
+{"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('folder_search') %}
-{{ tool('folder_search') }} يتطلب مجموعة ومجموعة بيانات واستعلام. يحد node_id اختياريًا بالبحث في مجلد واحد.
-```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_search') }} يتطلب collection وdataset وquery. node_id يحصر البحث اختياريًا في مجلد واحد.
+```json
+{"collection":"alpha","dataset":"files","query":"report"}
+```
+```json
+{"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }} يقبل نفس الفلاتر الخاصة بـ search_collections، باستثناء sort والاستعلامات.
-field هي date، mentioned_date أو size. تفترض افتراضيًا date. يفترض query افتراضيًا استفارًا فارغًا.
-تغطي مجموعة مُتروكة كل المجموعات المُرخّصة. تُعيد النتيجة buckets والحقل المُختار.
-```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{{ tool('search_histogram') }} يقبل المرشّحات نفسها التي يقبلها search_collections، عدا sort وqueries.
+field هو date أو mentioned_date أو size. قيمته الافتراضية date. query قيمته الافتراضية استعلام فارغ.
+حذف collection يشمل كل مجموعة مسموح بها. تعيد النتيجة الحاويات والحقل المختار.
+```json
+{}
+```
+```json
+{"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}}
+```
 {% endif %}
