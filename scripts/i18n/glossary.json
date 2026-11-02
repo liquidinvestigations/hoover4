@@ -5,6 +5,7 @@
     {"term": "OCR", "meaning": "Optical character recognition.", "keep": true},
     {"term": "PDF", "meaning": "The file format.", "keep": true},
     {"term": "AI", "meaning": "Artificial intelligence, as in AI Chat.", "keep": true},
+    {"term": "System one", "meaning": "The name of the model checks that read each chat turn. It is a name, not a number.", "keep": true},
     {"term": "collection", "meaning": "An administrative group of datasets that a group of users can read."},
     {"term": "dataset", "meaning": "One ingested folder of files inside a collection."},
     {"term": "document", "meaning": "One file, email or archive member that the search finds."},
