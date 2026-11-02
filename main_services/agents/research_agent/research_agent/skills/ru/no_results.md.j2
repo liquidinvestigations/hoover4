@@ -1,71 +1,72 @@
 ---
 name: no_results
 group: stumble
-description: что делать, когда поиск ничего не находит: снимите фильтры, разбейте фразу, попробуйте другие формы имени, затем скажите, чего не хватает
+description: что делать, если поиск ничего не нашёл: убрать фильтры, разбить фразу, попробовать другие формы имени, затем сказать, чего не хватает
 tools: search_collections, search_passages, web_search
 ---
-When a search finds nothing
+Если поиск ничего не нашёл
 
 {% if has('search_collections') %}
-Прочитайте word_counts в первую очередь.
-When a name occurs nowhere, read the indexed spelling suggestions and their checked counts.
-Do not use a suggested spelling as the requested name.
-When you search a suggested spelling, name it in the answer as a different spelling.
-When no spelling matches, report that the searched collections do not hold the name.
+Сначала прочитай word_counts.
+Если имя нигде не встречается, прочитай предложения написания из индекса и их проверенные количества.
+Не используй предложенное написание как запрошенное имя.
+Если ищешь по предложенному написанию, назови его в ответе другим написанием.
+Если ни одно написание не совпало, сообщи, что в просмотренных коллекциях этого имени нет.
 
 {% endif %}
-Follow these search steps when earlier searches do not answer the question.
+Выполняй эти шаги поиска, если прежние поиски не отвечают на вопрос.
 {% if has('search_collections') %}
-1. Search each name as a quoted phrase.
-2. Search unquoted words, initials, e-mail addresses and names in the document language.
-Read word_counts and spelling suggestions. Use a suggestion only for the intended name.
-Use dasovi?h for one varying letter and dasovic% for an optional final letter.
-Use skilling << resigned when word order matters.
-3. Remove filters one at a time. Run a search without filters.
+1. Ищи каждое имя как фразу в кавычках.
+2. Ищи слова без кавычек, инициалы, адреса электронной почты и имена на языке документа.
+Прочитай word_counts и предложения написания. Используй предложение только для нужного имени.
+Используй dasovi?h для одной меняющейся буквы и dasovic% для необязательной последней буквы.
+Используй skilling << resigned, когда важен порядок слов.
+3. Убирай фильтры по одному. Выполни поиск без фильтров.
 {% if has('search_facet_values') %}
-Verify filter values with {{ tool('search_facet_values') }}.
+Проверь значения фильтров с помощью {{ tool('search_facet_values') }}.
 {% endif %}
 {% if has('search_histogram') %}
-Verify dates with {{ tool('search_histogram') }}.
+Проверь даты с помощью {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Search a description of the content with {{ tool('search_passages') }}.
+4. Ищи описание содержания с помощью {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. Use {{ tool('folder_search') }} when the request names a folder, path or file.
+5. Используй {{ tool('folder_search') }}, если запрос называет папку, путь или файл.
 {% endif %}
 {% if has('folder_list') %}
-Use {{ tool('folder_list') }} for that folder.
+Используй {{ tool('folder_list') }} для этой папки.
 {% endif %}
 {% if has('read_documents') %}
-6. Read the best 1 to 3 hits with {{ tool('read_documents') }}.
+6. Прочитай от 1 до 3 лучших результатов с помощью {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_search_text') %}
-Use {{ tool('doc_search_text') }} for relevant text in a document.
+Используй {{ tool('doc_search_text') }} для нужного текста в документе.
 {% endif %}
 {% if has('web_search') %}
-7. Search the web only when the request allows it.
+7. Ищи в вебе, только если запрос это позволяет.
 {% endif %}
 {% if has('read_page') %}
-Read the best web pages with {{ tool('read_page') }}.
+Прочитай лучшие веб-страницы с помощью {{ tool('read_page') }}.
 {% endif %}
 {% else %}
 {% if has('web_search') %}
-1. Search each name as a quoted phrase, and then other forms of the name, its initials and the language of the place.
+1. Ищи каждое имя как фразу в кавычках, затем другие формы имени, его инициалы и язык места.
 {% endif %}
 {% if has('read_page') %}
-2. Read the best web pages with {{ tool('read_page') }}.
+2. Прочитай лучшие веб-страницы с помощью {{ tool('read_page') }}.
 {% endif %}
 {% endif %}
 
-После того как доступные шаги не найдут совпадений по ключевым словам, ответьте об отсутствии и приведите выполненные поиски.
+Если доступные шаги не нашли совпадения по ключевым словам, ответь, что результата нет, и перечисли поиски.
 {% if has('search_collections') %}
-Перед тем как дать ответ об отсутствии, выполните не менее 4 различных поисков с использованием не менее 2 доступных инструментов поиска.
-Не повторяйте идентичный поиск. Укажите исследованные Коллекции и отсутствующие факты.
-Ограничьте утверждение об отсутствии поисками и документами, которые вы осмотрели.
-Например, скажите: «Поиски протоколов комитета и записей о переводах не выявили дату утверждения». Эти поиски не устанавливают, что ни в одной разрешённой Коллекции нет записи об утверждении.
+Прежде чем отвечать, что результата нет, выполни не меньше 4 различных поисков не меньше чем двумя доступными инструментами поиска.
+Не повторяй одинаковый поиск. Укажи просмотренные коллекции и недостающие факты.
+Ограничь утверждение об отсутствии теми поисками и документами, которые ты просмотрел.
+Например, скажи «В просмотренных протоколах комитета и записях о переводах дата утверждения не указана».
+Эти поиски не устанавливают, что в какой-либо разрешённой коллекции нет записи об утверждении.
 {% else %}
-Перед тем как дать ответ об отсутствии, выполните не менее 4 различных поисков.
-Не повторяйте идентичный поиск. Укажите поиски и прочитанные страницы.
-Ограничьте утверждение об отсутствии поисками и страницами, которые вы осмотрели.
+Прежде чем отвечать, что результата нет, выполни не меньше 4 различных поисков.
+Не повторяй одинаковый поиск. Укажи поиски и прочитанные страницы.
+Ограничь утверждение об отсутствии теми поисками и страницами, которые ты просмотрел.
 {% endif %}

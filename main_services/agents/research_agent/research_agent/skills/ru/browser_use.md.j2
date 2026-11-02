@@ -1,30 +1,61 @@
 ---
 name: browser_use
 group: technique
-description: как управлять веб-браузером: открыть адрес, прочитать снимок страницы, затем нажать, ввести или выбрать по ссылке на элемент
+description: как управлять веб-браузером: открыть адрес, прочитать снимок страницы, затем нажать, ввести текст или выбрать вариант по ссылке на элемент
 tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
 ---
 Управление веб-браузером
 
 {% if has('read_page') %}
-{{ tool('read_page') }} читает текст страницы. Используйте снимок браузера, когда важны состояние страницы или интерактивные элементы.
+{{ tool('read_page') }} читает текст страницы. Используй снимок браузера, если важны состояние страницы или
+интерактивные элементы.
 
 {% endif %}
-1. Откройте адрес с помощью {{ tool('browser_navigate') }}.
-2. Вызовите {{ tool('browser_snapshot') }}. Снимок перечисляет каждый элемент страницы с его идентификатором, например ref e12.
-3. Воздействуйте на один элемент с помощью {{ tool('browser_click') }}, {{ tool('browser_type') }} или {{ tool('browser_select_option') }}. Укажите идентификатор из последнего снапка и краткое описание элемента. Используйте {{ tool('browser_press_key') }} для клавиши, например Enter.
-4. После каждого действия снова вызывайте {{ tool('browser_snapshot') }}. Действие может изменить страницу, и тогда старые идентификаторы становятся недействительными.
+1. Открой адрес с помощью {{ tool('browser_navigate') }}.
+2. Вызови {{ tool('browser_snapshot') }}. Снимок перечисляет каждый элемент страницы с его ссылкой, например ref e12.
+3. Действуй над одним элементом с помощью {{ tool('browser_click') }}, {{ tool('browser_type') }} или {{ tool('browser_select_option') }}. Передай ссылку из последнего снимка и краткое описание элемента. Для клавиши, например Enter, используй {{ tool('browser_press_key') }}.
+4. После каждого действия снова вызови {{ tool('browser_snapshot') }}. Действие может изменить страницу, и тогда старые ссылки недействительны.
 
-Если результат начинается с "### Error", прочитайте текст ошибки. Указание на устаревший элемент означает, что страница изменилась. Сделайте новый снимок и используйте новый идентификатор. Пустой идентификатор или селектор означает, что вы не указали элемент.
+Если результат начинается с "### Error", прочитай текст ошибки. Устаревшая ссылка на элемент означает, что страница изменилась. Сделай новый снимок и используй новую ссылку. Пустая ссылка или пустой селектор означает, что ты не указал элемент.
 
-Укажите в ответе или отчёте, какой адрес вы открыли и что показывала страница.
+В ответе или отчёте укажи, какой адрес ты открыл и что показала страница.
 
 {{ tool('browser_navigate') }} требует url. {{ tool('browser_snapshot') }} не принимает аргументов.
-```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} требует target. Скопируйте возвращённую ссылку на элемент или используйте уникальный селектор.
-element описывает цель. button по умолчанию — left, может быть right или middle.
-doubleClick выбирает двойной клик. modifiers содержит Alt, Control, ControlOrMeta, Meta или Shift.
-```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} требует target и text. element описывает цель.
-submit нажимает Enter после ввода. slowly вводит символы по одному, чтобы срабатывали обработчики клавиш.
-```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} требует target и values — список значений опций. element описывает цель.
-```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} требует key, например Enter или Control+ArrowRight.
-```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` Каждое действие возвращает свой статус или ошибку. После действия, меняющего страницу, прочитайте новый снимок.
+```json
+{"url":"COPY_SEARCH_RESULT_URL"}
+```
+```json
+{}
+```
+{{ tool('browser_click') }} требует target. Скопируй возвращённую ссылку на элемент или используй уникальный селектор.
+element необязательно описывает цель. button по умолчанию равен left и может быть right или middle.
+doubleClick необязательно выбирает двойной щелчок. modifiers необязательно содержит Alt, Control, ControlOrMeta, Meta или Shift.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Кнопка поиска","button":"left","doubleClick":false,"modifiers":["Control"]}
+```
+{{ tool('browser_type') }} требует target и text. element необязательно описывает цель.
+submit необязательно нажимает Enter после ввода. slowly необязательно вводит символы по одному, чтобы сработали обработчики клавиш.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","text":"утверждение"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Поле поиска","text":"утверждение","submit":true,"slowly":true}
+```
+{{ tool('browser_select_option') }} требует target и values, список значений вариантов. element необязательно описывает цель.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Выбор формата","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]}
+```
+{{ tool('browser_press_key') }} требует key, например Enter или Control+ArrowRight.
+```json
+{"key":"Enter"}
+```
+```json
+{"key":"Control+ArrowRight"}
+```
+Каждое действие возвращает свой статус или ошибку. После действия, которое меняет страницу, прочитай новый снимок.
