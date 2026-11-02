@@ -140,7 +140,7 @@ pub fn EntitiesCard(
         })
         .unwrap_or(1);
     let count = if running { asked_for } else { documents.len().max(1) };
-    let label = tr!("cards-entities-card-listed-entities-document", count: count.to_string(), if_count_1_else_s: (if count == 1 { "" } else { "s" }).to_string());
+    let label = tr!("cards-entities-card-listed-entities-document", count: count, if_count_1_else_s: (if count == 1 { "" } else { "s" }).to_string());
     let openable: usize = documents
         .iter()
         .filter(|d| datasets.contains_key(&d.file_hash))

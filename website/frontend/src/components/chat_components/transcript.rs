@@ -250,7 +250,7 @@ pub fn ChatTranscript(
                             tr!("chat-transcript-running-tool", tool_run_summary_messages_start_end_run_: (tool_run_summary(
                                     &messages[start..end],
                                     run_duration_ms(start.checked_sub(1).map(|b| &messages[b]), &messages[start..end]),
-                                )).to_string(), joined_live_end: joined_live_end.to_string(), if_joined_live_end_1_tr_chat_transcript_: (if joined_live_end == 1 { tr!("chat-transcript-call") } else { tr!("chat-transcript-calls") }).to_string())
+                                )).to_string(), joined_live_end: joined_live_end, if_joined_live_end_1_tr_chat_transcript_: (if joined_live_end == 1 { tr!("chat-transcript-call") } else { tr!("chat-transcript-calls") }).to_string())
                         } else {
                             tool_run_summary(
                                 &messages[start..end],
@@ -316,7 +316,7 @@ pub fn ChatTranscript(
                 if joined_live_end == 0 && !turn.tool_rows.is_empty() {
                     ToolRunGroup {
                         key: "tools-{turn.tool_rows[0].seq}",
-                        summary: tr!("chat-transcript-running-tool-2", turn_tool_rows_len: turn.tool_rows.len().to_string(), if_turn_tool_rows_len_1_tr_chat_transcri: (if turn.tool_rows.len() == 1 { tr!("chat-transcript-call") } else { tr!("chat-transcript-calls") }).to_string()),
+                        summary: tr!("chat-transcript-running-tool-2", turn_tool_rows_len: turn.tool_rows.len(), if_turn_tool_rows_len_1_tr_chat_transcri: (if turn.tool_rows.len() == 1 { tr!("chat-transcript-call") } else { tr!("chat-transcript-calls") }).to_string()),
                         force_open: true,
                         live: true,
                         elapsed_ms: live_elapsed,
@@ -1196,7 +1196,7 @@ fn MessageEntry(
                     // unhealthy agent tier. Worth saying, quietly, rather than hiding.
                     if !retries.is_empty() {
                         AttemptDisclosure {
-                            summary: tr!("chat-transcript-answered-after-failed-attempt", retries_len: retries.len().to_string(), if_retries_len_1_else_s: (if retries.len() == 1 { "" } else { "s" }).to_string()),
+                            summary: tr!("chat-transcript-answered-after-failed-attempt", retries_len: retries.len(), if_retries_len_1_else_s: (if retries.len() == 1 { "" } else { "s" }).to_string()),
                             errors: retries,
                             tone_color: "var(--x-warning)",
                         }
@@ -1296,7 +1296,7 @@ fn MessageEntry(
                     // one failure into a report of a turn that failed twice.
                     if !retries.is_empty() {
                         AttemptDisclosure {
-                            summary: tr!("chat-transcript-failed-attempt", retries_len: retries.len().to_string(), if_retries_len_1_else_s: (if retries.len() == 1 { "" } else { "s" }).to_string()),
+                            summary: tr!("chat-transcript-failed-attempt", retries_len: retries.len(), if_retries_len_1_else_s: (if retries.len() == 1 { "" } else { "s" }).to_string()),
                             errors: retries,
                             tone_color: "var(--x-danger)",
                         }
