@@ -1,20 +1,22 @@
 ---
 name: collection_names
 group: stumble
-description: hur man namnger en samling eller ett dataset i ett anrop: det exakta namn som list_collections returnerar
+description: hur du anger en samling eller en datamängd i ett anrop: det exakta namn som list_collections returnerar
 tools: list_collections, search_collections
 ---
-Namngivande av en Samling
+{# How to name a collection in a call. The refused calls give a dataset name, a changed name
+   or a collection that the chat cannot read. #}
+Ange en samling
 
-1. Lämna Samling tom för att söka i alla Samlingar i denna Chatt. Det är korrekt för de flesta frågor.
-2. När du måste ange en Samling, kopiera dess namn exakt från {{ tool('list_collections') }}, eller från Samlingen hos en träff-rad.
-3. Ett Dataset är inte en Samling. Datasettabellerna/ehudx finns i Samlingstabellerna. Ange tabeller.
-4. Ändra inte ett namn. Lägg inte till ett mellanslag, ändra inte en stor bokstav eller översätt det.
-5. När ett verktygskall säger att en Samling ligger utanför de tillåtna Samlingarna, kan denna Chatt inte läsa den. Skicka inte anroppet igen. Använd den här Samlingarnas Samlingar.
+1. Utelämna collection för att söka i alla samlingar i den här chatten. Det är rätt för de flesta frågor.
+2. När du måste ange en samling, kopiera dess namn exakt från {{ tool('list_collections') }}, eller från samlingen på en resultatrad.
+3. En datamängd är inte en samling. Datamängden tables/ehudx ligger i samlingen tables. Ange tables.
+4. Ändra inte ett namn. Lägg inte till något mellanslag, ändra inte någon versal och översätt det inte.
+5. När ett anrop säger att en samling ligger utanför de tillåtna samlingarna kan den här chatten inte läsa den. Skicka inte anropet igen. Använd den här chattens samlingar.
 
-För att läsa ett Dokument, ange Samlingen för samma träff-rad som dess file_hash.
+För att läsa ett dokument, ange samlingen från samma resultatrad som dess file_hash.
 
-När ett namn varken förekommer någonstans, läs de indexerade stavningsförslagen och deras kontrollerade räkningar.
-Använd inte ett förslag på stavning som det begärta namnet.
-När du söker på ett förslag på stavning, namngiv det i svaret som en annan stavning.
-När ingen stavning matchar, rapportera att de sökta Samlingarna inte innehåller namnet.
+När ett namn inte förekommer någonstans, läs de indexerade stavningsförslagen och deras kontrollerade antal.
+Använd inte en föreslagen stavning som det begärda namnet.
+När du söker på en föreslagen stavning, ange i svaret att det är en annan stavning.
+När ingen stavning matchar, rapportera att de genomsökta samlingarna inte innehåller namnet.

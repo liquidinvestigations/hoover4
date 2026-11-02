@@ -1,27 +1,29 @@
 ---
 name: after_a_result
 group: stumble
-description: vad man gör efter ett verktygssvar
+description: vad du gör efter ett verktygsresultat
 tools:
 ---
+{# What to do after a call returns. #}
 Efter varje resultat
 
-Efter varje resultat gör du en av följande åtgärder.
+Gör efter varje resultat något av följande.
 
-1. Resultatet innehåller det du behöver. Använd det och fortsätt med arbetet.
-2. Resultatet är tomt eller hjälper inte. Ändra argumenten: andra ord, en annan form av ett namn,{% if has('search_collections') %} en annan samling,{% endif %} en annan sida, eller inget filter.
-3. Resultatet är ett fel. Läs feltexten, korrigera argumentet det namnger, och skicka sedan kallan.
-   När en batch har både lyckade och misslyckade anrop, behåll de lyckade resultaten. Skicka igen endast den misslyckade kallan.
-4. Du har tillräckligt för att svara. Skriv svaret, eller rapporten när den behöver citat eller ett dokument.
+1. Resultatet innehåller det du behöver. Använd det och gå vidare med arbetet.
+2. Resultatet är tomt eller hjälper inte. Ändra argumenten: andra ord, en annan form av ett namn,{% if has('search_collections') %} en annan samling,{% endif %} en annan sida eller inget filter.
+3. Resultatet är ett fel. Läs feltexten, rätta det argument som den nämner och skicka sedan anropet.
+   När en grupp anrop innehåller lyckade och misslyckade anrop, behåll de lyckade resultaten. Skicka bara
+   det misslyckade anropet igen.
+4. Du har tillräckligt för att svara. Skriv svaret, eller rapporten när den behöver källhänvisningar eller ett dokument.
 
-Använd synliga resultat när de svarar på den aktuella frågan.
-Efter kontextkomprimering, använd det behållna indexet och noterna för att identifiera tidigare resultat.
-Uppdatera ett required passage explicit när dess text inte längre är synlig.
+Använd synliga resultat när de besvarar den aktuella frågan.
+Efter komprimering av kontexten, använd det bevarade indexet och noteringarna för att identifiera tidigare resultat.
+Hämta ett nödvändigt avsnitt uttryckligen på nytt när dess text inte längre syns.
 
-När en sökning inte returnerar något användbart resultat, ändra frågan eller använd en annan källa.
+När en sökning inte ger något användbart resultat, ändra sökfrågan eller använd en annan källa.
 
 {% if has('read_more') %}
-Ett större värde betyder att ytterligare resultattext finns tillgänglig.
-Ring {{ tool('read_more') }} med continuation satt till det returnerade värdet.
-Upprepa den ursprungliga kallan returnerar det ursprungliga intervallet.
+Ett more-värde betyder att ytterligare resultattext finns.
+Anropa {{ tool('read_more') }} med continuation satt till det returnerade värdet.
+Om du upprepar det ursprungliga anropet får du det ursprungliga intervallet.
 {% endif %}

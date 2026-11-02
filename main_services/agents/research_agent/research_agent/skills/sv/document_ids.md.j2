@@ -1,19 +1,22 @@
 ---
 name: document_ids
 group: stumble
-description: hur man namnger ett dokument med dess filhash, eller med en sökväg i read_documents
+description: hur du anger ett dokument med dess filhashvärde, eller med en sökväg i read_documents
 tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
 ---
-Namnge ett dokument
+{# How to name a document in a call. The failed reads give a file name, a path or a hash of
+   the wrong length in place of the file_hash. #}
+Ange ett dokument
 
-En dokument-hash har 64 hexadesimala tecken. Dokumentverktygen accepterar också ett unikt startvärde på minst 12 tecken.
+Ett dokumenthashvärde har 64 hexadecimala tecken. Dokumentverktygen accepterar också en unik början på minst 12 tecken.
 
-1. Kopiera file_hash och den samling som tillhör samma resultatrad. Skriv aldrig en hash själv.
-   En platshållare som COPY_RETURNED_HASH eller ett värde av nior är inte en hash. Ett mapp-id hämtas också ur en katalog- eller sökresultat för denna konversation.
-2. {% if has('read_documents') %}{{ tool('read_documents') }} kan också lösa upp ett filnamn eller en sökväg när den namnger ett dokument.{% endif %} Övriga dokumentverktyg använder hashen.
-3. För att hitta file_hash för en fil utifrån dess namn, sök efter namnet med {{ tool('search_collections') }}{% if has('folder_search') %} eller {{ tool('folder_search') }}{% endif %}, och kopiera file_hash för raden.
+1. Kopiera file_hash och collection från samma resultatrad. Skriv aldrig ett hashvärde själv.
+   En platshållare som COPY_RETURNED_HASH eller ett värde av nollor är inte ett hashvärde. Ett mapp-id
+   kommer också från en lista eller ett sökresultat i den här konversationen.
+2. {% if has('read_documents') %}{{ tool('read_documents') }} kan också tolka ett filnamn eller en sökväg när den anger ett enda dokument.{% endif %} Andra dokumentverktyg använder hashvärdet.
+3. För att hitta en fils file_hash utifrån dess namn, sök efter namnet med {{ tool('search_collections') }}{% if has('folder_search') %} eller {{ tool('folder_search') }}{% endif %} och kopiera radens file_hash.
 {% if has('read_more') %}
-4. När en rad saknar file_hash, kalla {{ tool('read_more') }} för nästa sida av resultatet.
+4. När en rad saknar file_hash, anropa {{ tool('read_more') }} för resultatets nästa sida.
 {% endif %}
 
-När en läsning säger att ingen läsbar dataset innehåller en hash, kontrollera dess samling och värde mot resultatraden. Ett saknat dokument kan också betyda att värdet namnger mer än ett dokument.
+När en läsning säger att ingen läsbar datamängd innehåller ett hashvärde, jämför dess samling och värde med resultatraden. Ett dokument som saknas kan också betyda att värdet anger fler än ett dokument.

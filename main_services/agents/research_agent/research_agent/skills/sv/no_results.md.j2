@@ -1,71 +1,72 @@
 ---
 name: no_results
 group: stumble
-description: vad man gör när en sökning inte hittar något: ta bort filter, dela upp en fras, testa andra namnformer och förklara sedan vad som saknas
+description: vad du gör när en sökning inte hittar något: ta bort filter, dela upp en fras, pröva andra former av ett namn och ange sedan vad som saknas
 tools: search_collections, search_passages, web_search
 ---
 När en sökning inte hittar något
 
 {% if has('search_collections') %}
-Läs först word_counts.
-När ett namn varken förekommer någonstans läser du de indexerade stavningsförslagen och deras kontrollerade antal.
-Använd inte ett stavningsförslag som det begärta namnet.
-När du söker på ett stavningsförslag anger du det i svaret som en annan stavning.
-När ingen stavning matchar rapporterar du att de sökta samlingarna inte innehåller namnet.
+Läs word_counts först.
+När ett namn inte förekommer någonstans, läs de indexerade stavningsförslagen och deras kontrollerade antal.
+Använd inte en föreslagen stavning som det begärda namnet.
+När du söker på en föreslagen stavning, ange i svaret att det är en annan stavning.
+När ingen stavning matchar, rapportera att de genomsökta samlingarna inte innehåller namnet.
 
 {% endif %}
-Följ dessa steg för sökning när tidigare sökningar inte besvarar frågan.
+Följ de här sökstegen när tidigare sökningar inte besvarar frågan.
 {% if has('search_collections') %}
-1. Sök på varje namn som en citerad fras.
-2. Sök oparade ord, initialer, e-postadresser och namn i dokumentets språk.
-Läs word_counts och stavningsförslag. Använd ett förslag endast för det avsedda namnet.
+1. Sök efter varje namn som en citerad fras.
+2. Sök efter ord utan citattecken, initialer, e-postadresser och namn på dokumentets språk.
+Läs word_counts och stavningsförslag. Använd ett förslag bara för det avsedda namnet.
 Använd dasovi?h för en varierande bokstav och dasovic% för en valfri slutbokstav.
-Använd skilling << resigned när ordningen spelar roll.
-3. Ta bort filter ett efter ett. Kör en sökning utan filter.
+Använd skilling << resigned när ordföljden har betydelse.
+3. Ta bort filter ett i taget. Kör en sökning utan filter.
 {% if has('search_facet_values') %}
-Kontrollera filtervärden med {{ tool('search_facet_values') }}.
+Verifiera filtervärden med {{ tool('search_facet_values') }}.
 {% endif %}
 {% if has('search_histogram') %}
-Kontrollera datum med {{ tool('search_histogram') }}.
+Verifiera datum med {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Sök på en beskrivning av innehållet med {{ tool('search_passages') }}.
+4. Sök efter en beskrivning av innehållet med {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. Använd {{ tool('folder_search') }} när begäran avser en mapp, sökväg eller fil.
+5. Använd {{ tool('folder_search') }} när begäran anger en mapp, sökväg eller fil.
 {% endif %}
 {% if has('folder_list') %}
 Använd {{ tool('folder_list') }} för den mappen.
 {% endif %}
 {% if has('read_documents') %}
-6. Läs de bästa 1 till 3 träffarna med {{ tool('read_documents') }}.
+6. Läs de 1 till 3 bästa träffarna med {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_search_text') %}
 Använd {{ tool('doc_search_text') }} för relevant text i ett dokument.
 {% endif %}
 {% if has('web_search') %}
-7. Sök på webben endast när begäran tillåter det.
+7. Sök på webben bara när begäran tillåter det.
 {% endif %}
 {% if has('read_page') %}
 Läs de bästa webbsidorna med {{ tool('read_page') }}.
 {% endif %}
 {% else %}
 {% if has('web_search') %}
-1. Sök på varje namn som en citerad fras, och sedan andra former av namnet, dess initialer och platsens språk.
+1. Sök efter varje namn som en citerad fras, sedan efter andra former av namnet, dess initialer och platsens språk.
 {% endif %}
 {% if has('read_page') %}
 2. Läs de bästa webbsidorna med {{ tool('read_page') }}.
 {% endif %}
 {% endif %}
 
-När de tillgängliga stegen inte hittar någon nyckordsmatchning, svara med frånvaron och sökningen.
+När de tillgängliga stegen inte hittar någon nyckelordsträff, svara med frånvaron och sökningarna.
 {% if has('search_collections') %}
-Innan du svarar på en frånvaro, kör minst 4 distinkta sökningar med minst 2 tillgängliga verktyg för sökning.
-Upprepa inte en identisk sökning. Ange de sökta samlingarna och de saknade uppgifterna.
-Begränsa ett frånvaropåstående till sökningarna och dokumenten du har granskat.
-Exempelvis: „De sökta mötesprotokollen och överföringsregister identifierade inget godkännandedatum." Dessa sökningar fastställer inte att inget godkännanderegister finns i någon tillåten samling.
+Innan ett svar om frånvaro, kör minst 4 distinkta sökningar med minst 2 tillgängliga sökverktyg.
+Upprepa inte en identisk sökning. Ange de genomsökta samlingarna och de fakta som saknas.
+Begränsa ett påstående om frånvaro till de sökningar och dokument som du har undersökt.
+Säg till exempel "De genomsökta kommittéprotokollen och överföringsunderlagen angav inget godkännandedatum."
+De här sökningarna fastställer inte att ingen godkännandepost finns i någon tillåten samling.
 {% else %}
-Innan du svarar på en frånvaro, kör minst 4 distinkta sökningar.
+Innan ett svar om frånvaro, kör minst 4 distinkta sökningar.
 Upprepa inte en identisk sökning. Ange sökningarna och de lästa sidorna.
-Begränsa ett frånvaropåstående till sökningarna och sidorna du har granskat.
+Begränsa ett påstående om frånvaro till de sökningar och sidor som du har undersökt.
 {% endif %}

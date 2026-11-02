@@ -1,30 +1,64 @@
 ---
 name: browser_use
 group: technique
-description: hur man styr en webbläddrare: öppna en adress, läs sidans översikt, klicka sedan, skriv eller välj via elementreferensen
+description: hur du styr en webbläsare: öppna en adress, läs sidans ögonblicksbild och klicka, skriv eller välj med elementreferensen
 tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
 ---
-Att köra en webbläddrare
+{# How to drive the browser tools. An element reference is valid only for the snapshot that
+   gave it, so the text asks for a new snapshot after each action. The sentence on
+   `read_page` renders only when that tool is in the run. #}
+Styra en webbläsare
 
 {% if has('read_page') %}
-{{ tool('read_page') }} läser texten på en sida. Använd en browser snapshot när sidans tillstånd eller interaktiva element är viktiga.
+{{ tool('read_page') }} läser en sidas text. Använd en ögonblicksbild från webbläsaren när sidans tillstånd eller
+interaktiva element har betydelse.
 
 {% endif %}
 1. Öppna adressen med {{ tool('browser_navigate') }}.
-2. Anropa {{ tool('browser_snapshot') }}. Snapshoten listar varje element på sidan med dess referens, till exempel ref e12.
-3. Påverka ett element med {{ tool('browser_click') }}, {{ tool('browser_type') }} eller {{ tool('browser_select_option') }}. Ange referensen från den senaste snapshoten och en kort beskrivning av elementet. Använd {{ tool('browser_press_key') }} för en tangent som t.ex. Enter.
-4. Efter varje åtgärd, anropa {{ tool('browser_snapshot') }} igen. En åtgärd kan ändra sidan, och då är de gamla referenserna inte giltiga.
+2. Anropa {{ tool('browser_snapshot') }}. Ögonblicksbilden listar varje element på sidan med dess referens, till exempel ref e12.
+3. Agera på ett element med {{ tool('browser_click') }}, {{ tool('browser_type') }} eller {{ tool('browser_select_option') }}. Ange referensen från den senaste ögonblicksbilden och en kort beskrivning av elementet. Använd {{ tool('browser_press_key') }} för en tangent som Enter.
+4. Anropa {{ tool('browser_snapshot') }} igen efter varje åtgärd. En åtgärd kan ändra sidan, och då är de gamla referenserna inte giltiga.
 
-När ett resultat börjar med "### Error", läses feltexten. En stale element reference betyder att sidan ändrats. Ta en ny snapshot och använd den nya referensen. En tom referens eller selector betyder att du inte angav något element.
+När ett resultat börjar med "### Error", läs feltexten. En inaktuell elementreferens betyder att sidan ändrades. Ta en ny ögonblicksbild och använd den nya referensen. En tom referens eller en tom selektor betyder att du inte angav något element.
 
-Ange i ditt svar eller rapport vilken adress du öppnade och vad sidan visade.
+Ange i ditt svar eller din rapport vilken adress du öppnade och vad sidan visade.
 
 {{ tool('browser_navigate') }} kräver url. {{ tool('browser_snapshot') }} tar inga argument.
-```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} kräver target. Kopiera en returnerad elementsreferens eller använd en unik selector.
-element beskriver valfritt målet. button är standardvänster och kan vara höger eller mitt.
+```json
+{"url":"COPY_SEARCH_RESULT_URL"}
+```
+```json
+{}
+```
+{{ tool('browser_click') }} kräver target. Kopiera en returnerad elementreferens eller använd en unik selektor.
+element beskriver valfritt målet. button är som standard left och kan vara right eller middle.
 doubleClick väljer valfritt ett dubbelklick. modifiers innehåller valfritt Alt, Control, ControlOrMeta, Meta eller Shift.
-```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} kräver target och text. element beskriver valfritt målet.
-submit trycker valfritt på Enter efter inmatningen. slowly matar in valfritt tecken för tecken för att utlösa tangenthandlers.
-```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} kräver target och values, en lista med alternativens värden. element beskriver valfritt målet.
-```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} kräver key, till exempel Enter eller Control+ArrowRight.
-```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` Varje åtgärd returnerar status eller ett fel. Läs en ny snapshot efter en sidändrande åtgärd.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Sökknapp","button":"left","doubleClick":false,"modifiers":["Control"]}
+```
+{{ tool('browser_type') }} kräver target och text. element beskriver valfritt målet.
+submit trycker valfritt på Enter efter inmatningen. slowly skriver valfritt ett tecken i taget för att utlösa tangenthanterare.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Sökfält","text":"approval","submit":true,"slowly":true}
+```
+{{ tool('browser_select_option') }} kräver target och values, en lista med alternativvärden. element beskriver valfritt målet.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Formatväljare","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]}
+```
+{{ tool('browser_press_key') }} kräver key, till exempel Enter eller Control+ArrowRight.
+```json
+{"key":"Enter"}
+```
+```json
+{"key":"Control+ArrowRight"}
+```
+Varje åtgärd returnerar sin status eller ett fel. Läs en ny ögonblicksbild efter en åtgärd som ändrar sidan.

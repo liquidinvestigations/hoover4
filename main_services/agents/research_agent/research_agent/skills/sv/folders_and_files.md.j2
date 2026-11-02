@@ -1,35 +1,40 @@
 ---
 name: folders_and_files
 group: technique
-description: hur du ser vad en samling innehåller: dataset, mappar, filtyper, antal och datum samt hur du hittar en fil utifrån dess namn eller sökväg
+description: hur du ser vad en samling innehåller: datamängder, mappar, filtyper, antal och datum, och hur du hittar en fil med dess namn eller sökväg
 tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
-terms: Ord för det: samling, dataset, mapp, katalog, sökväg, filnamn, filtyp, filändelse, format, antal, hur många filer, storlek, störst, översikt, förteckning, vad en samling innehåller, dokument per år.
-not_for: Behövs inte när begäran endast gäller dokumentens innehåll.
+terms: Ord för det: samling, datamängd, mapp, katalog, sökväg, filnamn, filtyp, filändelse, format, antal, hur många filer, storlek, största, översikt, inventering, vad en samling innehåller, dokument per år.
+not_for: Behövs inte när begäran bara gäller dokumentens innehåll.
 ---
+{# How to see what a collection holds and how to find a file by its name. Each sentence that
+   names a tool renders only when the run has it. #}
 Mappar och filer
 
 {% if has('list_collections') and has('search_facet_values') %}
-För en samlingsöversikt anropar du {{ tool('list_collections') }} med {}.
-Anropa sedan {{ tool('search_facet_values') }} med {} en gång för varje tillåten samlingsfiltyp och språk.
-Standardmatrisen innehåller redan båda aspekterna. Ingen separat anropning per samling eller aspekt behövs.
+För en översikt över samlingarna, anropa {{ tool('list_collections') }} med {}.
+Anropa sedan {{ tool('search_facet_values') }} med {} en gång för varje tillåten samlings filtyper och språk.
+Standardmatrisen innehåller redan båda facetterna. Inget separat anrop per samling eller facett behövs.
 {% endif %}
 
 {% if has('list_collections') %}
-{{ tool('list_collections') }} tar inga argument. Den ger samlingsnamn, dokumentantal och datasetantal.
-```json {} ```
+{{ tool('list_collections') }} tar inga argument. Det ger samlingsnamn, dokumentantal och datamängdsantal.
+```json
+{}
+```
 
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} ger lagringsantalen för varje samling och dataset.
+{{ tool('folder_overview') }} ger lagringsantalen för varje samling och datamängd.
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} ger barnmapparna och filerna i en mapp i ett dataset.
+{{ tool('folder_list') }} ger undermapparna och filerna i en mapp i en datamängd.
 {% endif %}
 {% if has('folder_search') %}
-För att hitta en mapp eller fil efter namn inuti ett dataset, anropar du {{ tool('folder_search') }}.
+För att hitta en mapp eller fil med namn inom en datamängd, anropa {{ tool('folder_search') }}.
 {% endif %}
 {% if has('search_collections') %}
-För att hitta en fil efter namn i varje samling, anropar du {{ tool('search_collections') }} med `filename_only` satt till true. Ange namnet eller en del av det som fråga.
+För att hitta en fil med namn i alla samlingar, anropa {{ tool('search_collections') }} med
+`filename_only` satt till true. Ange namnet eller en del av det som sökfråga.
 {% endif %}
 {% if has('search_histogram') %}
 {{ tool('search_histogram') }} räknar dokumenten i en sökning efter datum eller storlek.
@@ -38,51 +43,77 @@ För att hitta en fil efter namn i varje samling, anropar du {{ tool('search_col
 {{ tool('search_facet_values') }} ger värdena för ett filter, inklusive filtyper, med antal.
 {% endif %}
 
-Ett filnamn eller en sökväg kan identifiera ett dokument. Resultatradens `file_hash` identifierar den direkt.
+Ett filnamn eller en sökväg kan identifiera ett dokument. En resultatrads `file_hash` identifierar det direkt.
 
-Använd metadataverktyg för en inventeringsförfrågan. Deras antal kan svara på förfrågan direkt.
-Innehållssökningar är endast användbara när personen frågar vad dokumenten säger.
+Använd metadataverktyg för en begäran om inventering. Deras antal kan besvara begäran direkt.
+Innehållssökningar är bara användbara när personen frågar vad dokumenten säger.
 
 {% if has('search_facet_values') %}
-Anrop {{ tool('search_facet_values') }} en gång för flera samlingar och facetter.
+Anropa {{ tool('search_facet_values') }} en gång för flera samlingar och facetter.
 Argumenten är collection, facets, query och ids.
-Låt collection vara utelämnat eller ange [] för varje tillåten samling. Ange ett namn eller en lista för att begränsa urvalet.
-Låt facets vara utelämnat för ["file_types", "language"]. Ange en lista med exakta facetnamn för andra fördelningar.
-Använd file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc, re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money eller re_crypto_wallet.
+Utelämna collection eller ange [] för alla tillåtna samlingar. Ange ett namn eller en lista för att begränsa urvalet.
+Utelämna facets för ["file_types", "language"]. Ange en lista med exakta facettnamn för andra fördelningar.
+Använd file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc,
+re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money eller re_crypto_wallet.
 file_type är ogiltigt. Använd file_types.
-query hittar text inom facetvärden. Den söker inte i dokumentinnehåll.
-ids löser valfritt kända termidentifikatorer. Vanliga sökningar använder värdetext och behöver inga identifikatorer.
+query hittar text inom facettvärden. Det söker inte i dokumentens innehåll.
+ids löser valfritt upp kända termidentifierare. Vanliga sökningar använder värdetext och behöver inga identifierare.
 
-Resultatet har kolumner och objekt. Varje rad inleds med sin samling.
-Varje facetcell innehåller [text, count]-par. Kopiera text till facet_filters för en senare innehållssökning.
-En nullcell har ett rapporterat fel. En tom cell har inga returnerade värden.
-Räkningarna avser indexerade dokumentträffar per värde. Flera värden kan gälla ett dokument.
-Lägg inte till faceträkningar för att påstå en distinkt total. Inventeringstotaler kommer från list_collections.
-Standardfacetlistan kan utelämna ovanliga värden. Använd query för att hitta ett specifikt värde.
-Använd read_more när resultatet fortsätter.
+Resultatet har columns och items. Varje rad börjar med sin samling.
+Varje facettcell innehåller [text, count]-par. Kopiera text till facet_filters för en senare innehållssökning.
+En null-cell har ett rapporterat fel. En tom cell har inga returnerade värden.
+Antalen avser indexerade dokumenträffar per värde. Flera värden kan gälla för ett dokument.
+Addera inte facettantal för att hävda en distinkt summa. Inventeringssummor kommer från list_collections.
+Standardlistan med facetter kan utelämna ovanliga värden. Använd query för att hitta ett specifikt värde.
+Använd more med read_more när resultatet fortsätter.
 
-Detta minimala anrop inventerar filformat och språk i tillåtna samlingar.
-```json {} ``` Detta anrop jämför två utvalda samlingar och söker i deras e-postadressvärden.
-```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+Det här minimala anropet inventerar filformat och språk över de tillåtna samlingarna.
+```json
+{}
+```
+Det här anropet jämför två valda samlingar och söker i deras värden för e-postadresser.
+```json
+{"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"}
+```
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} kräver samling. dataset väljer valfritt ut en dataset.
-Detta anrop läser alla dataset-lagringsantal inom en samling.
-```json {"collection":"alpha"} ``` Detta anrop väljer en dataset.
-```json {"collection":"alpha","dataset":"files"} ```
+{{ tool('folder_overview') }} kräver collection. dataset väljer valfritt en datamängd.
+Det här anropet läser alla datamängders lagringsantal inom en samling.
+```json
+{"collection":"alpha"}
+```
+Det här anropet väljer en datamängd.
+```json
+{"collection":"alpha","dataset":"files"}
+```
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} kräver samling och dataset. node_id väljer valfritt ut en returnerad mappnod.
-Låt vara node_id för att läsa datasetets rot. Kopiera barnnoders identiteter till senare anrop.
-```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_list') }} kräver collection och dataset. node_id väljer valfritt en returnerad mappnod.
+Utelämna node_id för att läsa datamängdens rot. Kopiera underordnade nodidentifierare till senare anrop.
+```json
+{"collection":"alpha","dataset":"files"}
+```
+```json
+{"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('folder_search') %}
-{{ tool('folder_search') }} kräver samling, dataset och fråga. node_id begränsar valfritt sökningen till en mapp.
-```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_search') }} kräver collection, dataset och query. node_id begränsar valfritt sökningen till en mapp.
+```json
+{"collection":"alpha","dataset":"files","query":"report"}
+```
+```json
+{"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }} accepterar samma filter som search_collections, utom sortering och frågor.
-field är date, mentioned_date eller size. Den defaultar till date. query defaultar till en tom fråga.
-Utelämnad samling täcker varje tillåten samling. Resultatet returnerar bucketar och det utvalda fältet.
-```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{{ tool('search_histogram') }} tar emot samma filter som search_collections, utom sort och queries.
+field är date, mentioned_date eller size. Standardvärdet är date. query är som standard en tom sökfråga.
+Om collection utelämnas gäller det alla tillåtna samlingar. Resultatet returnerar intervall och det valda fältet.
+```json
+{}
+```
+```json
+{"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}}
+```
 {% endif %}

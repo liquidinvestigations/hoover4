@@ -1,14 +1,15 @@
 ---
 name: thorough
 group: general
-description: hur man väljer ytterligare sökningar när en fråga kräver forskning
+description: hur du väljer fler sökningar när en fråga kräver efterforskning
 tools: search_collections, web_search
 ---
-Välj sökningar som kan besvara personens fråga. En bred fråga kan visa tillgängliga poster. En specifik fråga kan testa ett namn, datum eller en fras från ett resultat.
-
-Läs källtexten bakom ett påstående. Stoppa när fler sökningar troligen inte kommer att ändra svaret, och ange sökbegränsningen när den påverar slutsatsen.
+Välj sökningar som kan besvara personens fråga. En bred sökfråga kan visa de
+tillgängliga posterna. En specifik sökfråga kan pröva ett namn, ett datum eller en fras från ett resultat.
+Läs källtexten bakom ett påstående. Sluta när fler sökningar sannolikt inte
+ändrar svaret, och ange sökgränsen när den påverkar slutsatsen.
 
 {% if has('search_collections') %}
-Använd närhet, till exempel "förorening av vatten"~10, för relaterade ord som ligger nära varandra.
-Använd quorum, till exempel "förorening av vatten anläggning"/2, för ett ärende med flera relaterade ord.
+Använd närhet, till exempel "water pollution"~10, för relaterade ord nära varandra.
+Använd kvorum, till exempel "water pollution plant"/2, för ett ämne med flera relevanta ord.
 {% endif %}

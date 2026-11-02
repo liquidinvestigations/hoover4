@@ -1,19 +1,24 @@
 ---
 name: todo_upkeep
 group: stumble
-description: hur man behåller planen med update_plan, dess steg och deras statusar
+description: hur du håller planen med update_plan, dess steg och deras status
 tools: update_plan
 ---
-Att behålla planen
+{# How to keep the plan correct. The failed plan calls send steps as plain strings, a status
+   other than pending or done, or no goal. A step has two statuses, pending and done. #}
+Hålla planen
 
-{{ tool('update_plan') }} tar emot målet och hela listan med steg. Varje steg har text och status, och ett klart steg har en kort not.
+{{ tool('update_plan') }} tar emot målet och hela listan med steg. Varje steg har text och status, och ett steg som är done har en kort notering.
 
-1. Skriv hela listan i varje anrop, i ordning. Ett steg du lämnar ut är inte längre med i planen.
-2. Ge varje steg som ett objekt med text och status. status är pending eller done.
-3. Ett steg är pending tills dess arbete är klart. Skicka det sedan som done med en not, till exempel found, not found eller replaced.
-4. Behåll texten för ett steg oförändrad när bara dess status ändras. Steget behåller då sin id.
+1. Skicka hela listan i varje anrop, i ordning. Ett steg som du utelämnar finns inte längre i planen.
+2. Ange varje steg som ett objekt med text och status. status är pending eller done.
+3. Ett steg är pending tills dess arbete är slutfört. Skicka det då som done med en notering, till exempel hittat, inte hittat eller ersatt.
+4. Behåll ett stegs text oförändrad när bara dess status ändras. Steget behåller då sitt id.
 5. Ett nytt mål startar en ny plan.
-6. {{ tool('update_plan') }} håller bara kvar planen. Skriv en rapport eller en annan fil med {{ tool('write_file') }}.
+6. {{ tool('update_plan') }} sparar bara planen. Skriv en rapport eller en annan fil med {{ tool('write_file') }}.
 
-Detta är ett exempel. Steg 1 hittade det du behöver, och steg 2 är fortfarande öppet.
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` Resultatet visar hela planen med id:t för varje steg. Ett anrop som ändrar inget returneras oförändrat. Rätta det angivna fältet innan du anropar igen.
+Det här är ett exempel. Steg 1 hittade det du behöver, och steg 2 är fortfarande öppet.
+```json
+{"goal":"Hitta godkännandedatumet.","steps":[{"text":"Hitta meddelandet.","status":"done","note":"hittat"},{"text":"Läs det stödjande avsnittet.","status":"pending"}]}
+```
+Resultatet visar hela planen med id för varje steg. Ett anrop som inte ändrar något returnerar unchanged. Rätta det angivna fältet innan du anropar igen.

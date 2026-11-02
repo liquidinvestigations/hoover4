@@ -1,45 +1,57 @@
 ---
 name: emails
 group: technique
-description: hur man läser e-postdokument: avsändare, mottagare, datum, ämne, rubriker, kopior och trådar
+description: hur du läser e-postdokument: avsändare, mottagare, datum, ämne, huvuden, kopior och trådar
 tools: doc_email, doc_metadata, read_documents
 ---
+{# How to read e-mail documents. The message fields come from `doc_email`, the text from
+   `read_documents`. Each sentence that names a tool renders only when the run has it. #}
 Läsa e-postdokument
 
 {% if has('search_collections') %}
-Hitta e-post med {{ tool('search_collections') }}. Placera varje form av en adress eller ett namn i ett anrop, till exempel adressen, „Första Efternamn” och „Efternamn, Första”.
+Hitta e-postmeddelanden med {{ tool('search_collections') }}. Lägg alla former av en adress eller ett namn i ett enda anrop, till exempel adressen, "Förnamn Efternamn" och "Efternamn, Förnamn".
 
 {% endif %}
 {% if has('doc_email') %}
-1. Anrop {{ tool('doc_email') }} med fil_hash för e-posten. Det ger avsändaren, mottagarna, kopiorna, datumet, ämnet, föräldramessaget, bilagorna och mejselnätet.
-2. För att följa en tråd, ange node, filhashen för ett annat meddelande i nätet. Nätet centrerar då det mejselnätet.
-3. En bilaga är ett dokument i sig. Läs den med sin egen fil_hash.
+1. Anropa {{ tool('doc_email') }} med file_hash för e-postmeddelandet. Det ger avsändaren, mottagarna, kopiorna, datumet, ämnet, det överordnade meddelandet, bilagorna och meddelandegrafen.
+2. För att följa en tråd, ange node, filhashvärdet för ett annat meddelande i grafen. Grafen centreras då på det meddelandet.
+3. En bilaga är ett eget dokument. Läs den med dess eget file_hash.
 {% endif %}
 {% if has('read_documents') %}
-4. Läs texten i mejselnätet med {{ tool('read_documents') }}.
+4. Läs meddelandets text med {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_metadata') %}
-5. För rubrikerna och datum som inte finns i texten, anrop {{ tool('doc_metadata') }}.
+5. För de huvuden och datum som inte finns i texten, anropa {{ tool('doc_metadata') }}.
 {% endif %}
 
-En kopia av samma mejselnät kan finnas i mer än ett postfält. Jämför dess fält när en beräkning beror på distinkta mejselnät.
+En kopia av samma meddelande kan finnas i fler än en brevlåda. Jämför dess fält när ett antal beror på distinkta meddelanden.
 
 {% if has('doc_email') %}
-{{ tool('doc_email') }} Kräv samling och file_hash.
-Samling är ett namn. file_hash accepterar ett hash eller en lista med upp till tio hash från samlingen.
-node centrerar valfritt grafen på ett returnerat meddelandehash. Utelämning centrerar den på det begärada e-postmeddelandet.
-Använd read_more för att inspektera återstående bilagor och grafposter.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+{{ tool('doc_email') }} kräver collection och file_hash.
+collection är ett namn. file_hash tar emot ett hashvärde eller en lista med upp till tio hashvärden från den samlingen.
+node centrerar valfritt grafen på ett returnerat meddelandehashvärde. Om det utelämnas centreras grafen på det begärda e-postmeddelandet.
+Använd more med read_more för att granska återstående bilagor och grafposter.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"}
+```
 {% endif %}
 {% if has('doc_metadata') %}
-{{ tool('doc_metadata') }} Kräv samling och file_hash. Den accepterar ett hash eller en lista med upp till tio hash.
-Den returnerar lagrad metadata, datum, platser och nedlänkningsadresser. Använd read_more för återstående metadatafält.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{{ tool('doc_metadata') }} kräver collection och file_hash. Det tar emot ett hashvärde eller en lista med upp till tio hashvärden.
+Det returnerar lagrad metadata, datum, platser och nedladdningslänkar. Använd read_more för återstående metadatafält.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]}
+```
 {% endif %}
-Läs det begärade passuset innan du tilldelar dess författare, mottagare eller datum.
+Läs det begärda avsnittet innan du tillskriver det en skribent, mottagare eller ett datum.
 Det yttre e-postkuvertet tillhör det yttre meddelandet.
-Ett vidarebefordrat eller citerat passus kan ha en annan författare, mottagare och datum.
-Använd det passusets egna huvudrubriker för att identifiera vem som skrev det.
-En person som vidarebefordrade ett meddelande har inte nödvändigtvis skrivit dess citerade påstående.
-När tillskrivningen är okänd anger du den begränsningen.
-Läs passus för riktade intervall och fortsättningsinstruktioner. Upprepa inte den inledande läsningen för att begära senare text.
+Ett vidarebefordrat eller citerat avsnitt kan ha en annan skribent, andra mottagare och ett annat datum.
+Använd avsnittets egna huvuden för att identifiera vem som skrev det.
+En person som vidarebefordrade ett meddelande skrev inte nödvändigtvis det citerade uttalandet.
+När tillskrivningen fortfarande är okänd, ange den begränsningen.
+Läs avsnitt för riktade intervall och fortsättningsanvisningar. Upprepa inte den första läsningen för att begära senare text.

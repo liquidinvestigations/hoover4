@@ -2,18 +2,18 @@
  "terms": {
   "skill": "färdighet",
   "tool": "verktyg",
-  "tool call": "verktygskall",
+  "tool call": "verktygsanrop",
   "argument": "argument",
-  "citation handle": "citationshandtag",
+  "citation handle": "källhandtag",
   "quote": "citat",
-  "workspace file": "arbetsytsfil",
+  "workspace file": "arbetsytefil",
   "report": "rapport",
   "hit": "träff",
-  "passage": "passus",
-  "query": "fråga",
+  "passage": "avsnitt",
+  "query": "sökfråga",
   "web page": "webbsida",
   "run": "körning",
-  "note": "not",
+  "note": "notering",
   "plan": "plan"
  }
 }

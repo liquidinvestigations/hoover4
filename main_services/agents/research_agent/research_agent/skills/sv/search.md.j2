@@ -1,87 +1,101 @@
 ---
 name: search
 group: general
-description: hur man söker i dokumentsamlingar och använder frågesyntaxen
+description: hur du söker i dokumentsamlingar och använder söksyntaxen
 tools: search_collections
 ---
+{# This method renders when the run has search_collections.
+#}
 {% if has('search_collections') %}
-Att söka i användarens dokument
+Söka i användarens dokument
 
 1. Sök i dokument när deras innehåll kan besvara frågan.
-2. Använd Samling när begäran riktar sig mot en samling. Låt vara den utanför för att söka över de samlingar som denna chatt kan läsa.
-3. {{ tool('search_collections') }} accepterar flera frågor. Använd relevanta former av ett namn eller en adress. Sätt en exakt fras inom dubbelparenteser.
-4. OR, AND och NOT är vanliga ord i en fråga. Använd | för antingen och -ord för att uteslotta ett ord.
-5. Kopiera file_hash och collection från en resultatrad. Skriv aldrig ett hash-värde själv.{% if has('read_more') %} Om en rad saknar file_hash, kalla på {{ tool('read_more') }}.{% endif +%}
-6. Sätt ett filter på datum eller storlek när det hjälper till att besvara frågan.
-7. När du rapporterar att en sökning inte hittat något dokument,ange dess fråga, samlingar och antal.
-8. En anrop tar högst 12 frågor. Dela en längre lista i två anrop.
-9. Ge varje fråga minst ett ord att söka på. En fråga som bara består av -ord avvisas.
-10. Sätt filename_only till true eller false. Den tar inget textinnehåll.
+2. Använd collection när begäran gäller en samling. Utelämna det för att söka
+i alla samlingar som den här chatten kan läsa.
+3. {{ tool('search_collections') }} tar emot flera sökfrågor. Använd relevanta former av ett namn eller en adress. Sätt en exakt fras inom dubbla citattecken.
+4. OR, AND och NOT är vanliga ord i en sökfråga. Använd | för det ena eller det andra och -ord för att utesluta ett ord.
+5. Kopiera file_hash och collection från en resultatrad. Skriv aldrig ett hashvärde själv.{% if has('read_more') %} Om en rad saknar file_hash, anropa {{ tool('read_more') }}.{% endif +%}
+6. Ange ett datum- eller storleksfilter när det hjälper till att besvara frågan.
+7. När du rapporterar att en sökning inte hittade något dokument, ange dess sökfråga, samlingar och antal.
+8. Ett anrop tar högst 12 sökfrågor. Dela upp en längre lista i två anrop.
+9. Ge varje sökfråga minst ett ord att söka efter. En sökfråga med enbart -ord-termer avvisas.
+10. Sätt filename_only till true eller false. Det tar ingen text.
 
-Exempel. Användaren ber om all data på JoeBWilkinson@cs.com. Gör ett anrop till {{ tool('search_collections') }} med frågorna ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Läs ett dokument när dess resultatrad inte ger tillräckligt med bevis för påståendet.
+Exempel. Användaren ber om alla data om JoeBWilkinson@cs.com. Gör ett anrop till {{ tool('search_collections') }} med queries ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Läs ett dokument när dess resultatrad inte ger tillräckligt med belägg för påståendet.
 {% endif %}
 
-Följ dessa söksteg när tidigare sökningar inte besvarar frågan.
+Följ de här sökstegen när tidigare sökningar inte besvarar frågan.
 {% if has('search_collections') %}
-1. Sök på varje namn som en citerad fras.
-2. Sök oparade ord, initialer, e-postadresser och namn i dokumentets språk.
-Läs word_counts och stavningsförslag. Använd ett förslag endast för det avsedda namnet.
+1. Sök efter varje namn som en citerad fras.
+2. Sök efter ord utan citattecken, initialer, e-postadresser och namn på dokumentets språk.
+Läs word_counts och stavningsförslag. Använd ett förslag bara för det avsedda namnet.
 Använd dasovi?h för en varierande bokstav och dasovic% för en valfri slutbokstav.
-Använd skilling << resignerad när ordningsordningen är viktig.
-3. Ta bort filter ett efter ett. Kör en sökning utan filter.
+Använd skilling << resigned när ordföljden har betydelse.
+3. Ta bort filter ett i taget. Kör en sökning utan filter.
 {% endif %}
 {% if has('search_facet_values') %}
-Kontrollera filtervärden med {{ tool('search_facet_values') }}.
+Verifiera filtervärden med {{ tool('search_facet_values') }}.
 {% endif %}
 {% if has('search_histogram') %}
-Kontrollera datum med {{ tool('search_histogram') }}.
+Verifiera datum med {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Sök på en beskrivning av innehållet med {{ tool('search_passages') }}.
+4. Sök efter en beskrivning av innehållet med {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. Använd {{ tool('folder_search') }} när begäran namnger en mapp, sökväg eller fil.
+5. Använd {{ tool('folder_search') }} när begäran anger en mapp, sökväg eller fil.
 {% endif %}
 {% if has('folder_list') %}
 Använd {{ tool('folder_list') }} för den mappen.
 {% endif %}
 {% if has('read_documents') %}
-6. Läs de bästa 1 till 3 träffarna med {{ tool('read_documents') }}.
+6. Läs de 1 till 3 bästa träffarna med {{ tool('read_documents') }}.
 {% endif %}
-För personerna eller organisationerna i ett dokument, läs den del av det dokumentet som namnger dem. En hänvisning till ett annat verk namnger det andra verket.
+För ett dokuments personer eller organisationer, läs den del av dokumentet som nämner dem. En hänvisning till ett annat verk nämner det andra verket.
 {% if has('doc_search_text') %}
 Använd {{ tool('doc_search_text') }} för relevant text i ett dokument.
 {% endif %}
 {% if has('web_search') %}
-7. Sök på webben endast när begäran tillåter det.
+7. Sök på webben bara när begäran tillåter det.
 {% endif %}
 {% if has('read_page') %}
 Läs de bästa webbsidorna med {{ tool('read_page') }}.
 {% endif %}
 
 {% if has('search_collections') %}
-De fullständiga sökargumenten är collection, queries, query, sort, date_after, date_before, date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max, folder_term_id, filename_only och facet_filters.
-collection accepterar ett namn eller en lista. Utelämning eller [] söker i varje tillåten samling.
-query har standardvärdet tom text. queries lägger upp till 12 former valfritt. Duplicerade former körs en gång.
-En tom fråga bläddrar genom alla filterträffar. Sökformer sammanfogar matchande dokumentidentiteter.
+De fullständiga sökargumenten är collection, queries, query, sort, date_after, date_before,
+date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max,
+folder_term_id, filename_only och facet_filters.
+collection tar emot ett namn eller en lista. Om det utelämnas eller är [] söks alla tillåtna samlingar.
+query är som standard tom text. queries lägger valfritt till upp till 12 former. Dubbletter av former körs en gång.
+En tom query bläddrar bland alla filterträffar. Sökformerna slår ihop matchande dokumentidentiteter.
 sort innehåller field och direction. field är relevance, date, file_size eller name. direction är asc eller desc.
-Utelämning använder standardordningen för relevance.
-date_after och date_before använder inclusiva UTC-epoksekunder för dokumentets datum.
-mentioned_date_after och mentioned_date_before använder inclusiva UTC-epoksekunder för datum som extraherats ur text.
-date_unknown_only=true väljer dokument utan känt dokumentdatum. Kombinera det inte med ett intervall med känt datum.
-size_min och size_max är inclusiva bytegränser. folder_term_id väljer en returnerad folder_term.
-filename_only=true begränsar frågan till namn och sökvägar. False använder dokumentens innehåll.
-facet_filters avbildar giltiga facetnamn till listor av returnerade värdestringar. Utelämning tillämpar inget facetfilter.
-Värden inom en facett är alternativ. Olika facetfilter måste matcha alla.
+Om det utelämnas används standardordningen efter relevans.
+date_after och date_before använder inklusiva UTC-epoksekunder för dokumentdatumet.
+mentioned_date_after och mentioned_date_before använder inklusiva UTC-epoksekunder för datum som extraherats ur text.
+date_unknown_only=true väljer dokument utan känt dokumentdatum. Kombinera det inte med ett intervall av kända datum.
+size_min och size_max är inklusiva bytegränser. folder_term_id väljer en returnerad mapp-term.
+filename_only=true begränsar sökfrågan till namn och sökvägar. False använder dokumentens innehåll.
+facet_filters mappar giltiga facettnamn till listor med returnerad värdetext. Om det utelämnas tillämpas inget facettfilter.
+Värden inom en facett är alternativ. Olika facettfilter måste alla matcha.
 
-Varje resultat innehåller collection, file_hash, path, snippet och tillgänglig typ, datum och storlek.
+Varje resultat innehåller collection, file_hash, path, snippet och tillgängliga type, date och size.
 q listar de nollbaserade former som hittade raden. query_forms rapporterar varje forms antal.
-word_counts verifierar indexerade ord. suggestions listar närliggande indexerade stavningsfel med antal.
-Läs query_notes för reparerad syntax, okända filter och misslyckade former.
-more fortsätter resultatet. Kopiera det till read_more. En tom första sida kräver ingen upprepad identisk anrop.
+word_counts verifierar indexerade ord. suggestions listar närliggande indexerade stavningar med antal.
+Läs query_notes för reparerad syntax, okända filter och misslyckade sökformer.
+more fortsätter resultatet. Kopiera det till read_more. En tom första sida behöver inget upprepat identiskt anrop.
 
-Detta minimala anrop söker i alla tillåtna samlingar.
-```json {"query":"\"Joe Wilkinson\""} ``` Detta avancerade anrop kombinerar frågeformer, samlingsomfång, sortering, datum, storlek och facetfilter.
-```json {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}} ``` Detta separata anrop hittar filer utan känt dokumentdatum.
-```json {"query":"report","filename_only":true,"date_unknown_only":true} ``` Ersätt samlings-, mapp- och facetvärden med de värden som returnerades för den aktuella chatten.
+Det här minimala anropet söker i alla tillåtna samlingar.
+```json
+{"query":"\"Joe Wilkinson\""}
+```
+Det här avancerade anropet kombinerar sökformer, samlingsomfång, sortering, datum, storlek och facettfilter.
+```json
+{"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}}
+```
+Det här separata anropet hittar filer utan känt dokumentdatum.
+```json
+{"query":"report","filename_only":true,"date_unknown_only":true}
+```
+Ersätt värdena för collection, mapp och facett med värden som returnerats för den aktuella chatten.
 {% endif %}

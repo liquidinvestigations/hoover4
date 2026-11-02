@@ -1,95 +1,140 @@
 ---
 name: passages
 group: technique
-description: hur man hittar de exakta passus eller sidor som svarar på en fråga med search_passages, i många dokument eller ett
+description: hur du hittar de exakta avsnitt eller sidor som besvarar en fråga med search_passages, i många dokument eller i ett enda
 tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
-terms: Ord för det: passus, stycke, mening, citat, utdrag, sida, avsnitt, där det står, den del som nämner, exakt ordalytelse, rad. Gäller för långtextdokument: PDF, Word-filer, e-post, rapporter och transkript.
-not_for: Behövs inte för räkningar, fillistor eller metadata.
+terms: Ord för det: avsnitt, stycke, mening, citat, utdrag, sida, del, där det står, den del som nämner, exakt ordalydelse, rad. Gäller långa textdokument: PDF, Word-filer, e-postmeddelanden, rapporter och transkript.
+not_for: Behövs inte för antal, fillistor eller metadata.
 ---
-Hitta passus och sidor
+{# How to find the passages and the pages that answer a question, in many documents or in
+   one. Each sentence that names a tool renders only when the run has it. #}
+Hitta avsnitt och sidor
 
 {% if has('search_passages') %}
-För att söka i många dokument, använd {{ tool('search_passages') }}. Den söker i textpassus med nyckelord och med betydelse tillsammans. Använd den för en fråga på vanliga ord, när orden som dokumenten använder inte är tydliga. Ge upp till 12 frågor i ett anrop, var och en en annan form av frågan. Varje träff namnger de frågor som hittade den. För ett exakt namn, en adress eller en fras, använd {{ tool('search_collections') }}.
+För att söka i många dokument, använd {{ tool('search_passages') }}. Det söker i textavsnitten med nyckelord och betydelse tillsammans. Använd det för en fråga med vardagliga ord, när det inte är klart vilka ord dokumenten använder. Ange upp till 12 sökfrågor i ett anrop, var och en en annan form av frågan. Varje träff anger de sökfrågor som hittade den. För ett exakt namn, en adress eller en fras, använd {{ tool('search_collections') }}.
 
 {% endif %}
 {% if has('doc_search_text') or has('pdf_search') %}
-För att söka i ett långt dokument, använd dessa verktyg.
+För att söka i ett långt dokument, använd de här verktygen.
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} listar träffarna för en fråga i en textkälla, i sidordning, med sidan för varje träff.
+{{ tool('doc_search_text') }} listar träffarna för en sökfråga i en textkälla, i sidordning, med sidan för varje träff.
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }} hittar en fråga på sidorna i en PDF-källa. Ge page_from och page_tom för att söka i ett sidintervall.
+{{ tool('pdf_search') }} hittar en sökfråga på sidorna i en PDF-källa. Ange page_from och page_to för att söka i ett sidintervall.
 {% endif %}
 
 {% endif %}
 {% if has('read_documents') %}
-Läs en sida med {{ tool('read_documents') }} när passuset inte visar tillräckligt med text för att stödja påståendet. Ge dess sida, eller ge frågan för att öppna sidan med flest träffar.
+Läs en sida med {{ tool('read_documents') }} när avsnittet inte visar tillräckligt med text
+för att stödja påståendet. Ange dess sida, eller ange sökfrågan för att öppna sidan med flest träffar.
 {% endif %}
 
-Ge dokumentet och sidan när ett passus stödjer svaret.
+Ange dokumentet och sidan när ett avsnitt stöder svaret.
 
 {% if has('read_documents') %}
-{{ tool('read_documents') }} kräver samling och file_hash.
-samling är ett namn. file_hash är en lista med 1 till 20 hashar från den samlingen.
-För dokument i olika samlingar, gör en separat batch per samling.
-Kopiera identiteter från resultat. Ett unikt filnamn eller sökväg kan också lösa ett dokument.
-source väljer valfritt en extraherad källa. Utelämning använder den föredragna källan.
-page väljer valfritt ett lagrat sididentifierare. Sididentifierare kan ha luckor.
-Utelämna page eller noll för att välja sidan med flest träffar, eller den första lagrade sidan utan fråga.
-query öppnar text runt närstående distinkta matchande ord på den sidan.
-För exakt ordalag, citera frasen inuti frågan. Ett enda matchat värde öppnar dess första förekomst.
-offset åsidosätter passusstarten. Den räknar Unicode-tecken från noll inuti den sidan.
-length är ett positivt teckantal. Utelämning använder 6 000 tecken.
-source_version verifierar valfrint den returnerade källans fingeravtryck. Kopiera det för en omläsning av ett intervall.
+{{ tool('read_documents') }} kräver collection och file_hash.
+collection är ett namn. file_hash är en lista med 1 till 20 hashvärden från den samlingen.
+För dokument i olika samlingar, gör en separat grupp per samling.
+Kopiera identiteter från resultat. Ett unikt filnamn eller en unik sökväg kan också identifiera ett dokument.
+source väljer valfritt en extraherad källa. Om det utelämnas används den föredragna källan.
+page väljer valfritt en lagrad sididentifierare. Sididentifierare kan ha luckor.
+Utelämna page eller ange noll för att välja sidan med flest sökträffar, eller den första lagrade sidan utan sökfråga.
+query öppnar text runt närliggande distinkta matchade ord på den sidan.
+För exakt ordalydelse, sätt frasen inom citattecken i sökfrågan. Ett enda matchat värde öppnar sin första förekomst.
+offset åsidosätter avsnittets början. Det räknar Unicode-tecken från noll inom den sidan.
+length är ett positivt antal tecken. Om det utelämnas används 6 000 tecken.
+source_version verifierar valfritt det returnerade källfingeravtrycket. Kopiera det för en ny läsning av ett intervall.
 
-Resultatet returnerar text_range med start, exklusivt slut, totalt antal tecken på sidan och enhet.
+Resultatet returnerar text_range med start, exklusivt slut, sidans totala antal tecken och enhet.
 page_complete betyder att intervallet täcker hela sidan.
-En cut-marker betyder att verktyget bara levererade en del av intervallet. Det betyder inte att sidan slutar där.
-Använd en items_more för att fortsätta det dokumentet. Använd top-level_more för att fortsätta med den återstående sidan eller senare sidor.
-Kopiera det returnerade handtaget exakt in i {{ tool('read_more') }} som fortsättning.
-Kopiera read_before eller read_after som read_documents-argument för omgivande text. Ingen offset-beräkning krävs.
-Intervallet-argument gäller för varje hash i en anrop. Använd separata anrop när dokument har olika källor, intervall eller källversioner.
-Exempelvis kopierar du det första dokumentets returnerade read_after-objekt in i ett anrop.
-```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` Kopiera det andra dokumentets returnerade read_after-objekt in i ett annat anrop.
-```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` Använd de faktiska returnerade värdena för varje dokument. Lägg inte till numrerade fält såsom source2 eller offset2.
-Ett upprepat initialt anrop returnerar samma text. Använd fortsättning när mer text behövs.
-Sluta läsa när passuset ger tillräckligt med bevis för den begärta påståendet.
+En avskärningsmarkering betyder att verktyget bara levererade en del av intervallet. Det betyder inte att sidan slutar där.
+Använd en posts more för att fortsätta det dokumentet. Använd more på översta nivån för att fortsätta med resten av sidan eller senare sidor.
+Kopiera det returnerade handtaget exakt till {{ tool('read_more') }} som continuation.
+Kopiera read_before eller read_after som argument till read_documents för omgivande text. Ingen offsetberäkning behövs.
+Intervallargument gäller för varje hashvärde i ett anrop. Använd separata anrop när dokument har olika källor, intervall eller källversioner.
+Kopiera till exempel det första dokumentets returnerade read_after-objekt till ett anrop.
+```json
+{"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"}
+```
+Kopiera det andra dokumentets returnerade read_after-objekt till ett annat anrop.
+```json
+{"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"}
+```
+Använd de faktiska returnerade värdena för varje dokument. Lägg inte till numrerade fält som source2 eller offset2.
+Ett upprepat första anrop returnerar samma text. Använd continuation när mer text behövs.
+Sluta läsa när avsnittet ger tillräckligt med belägg för det begärda påståendet.
 
-Detta minimala anrop öppnar den första lagrade sidan.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` Detta anrop öppnar ett riktat passus.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` Detta anrop öppnar ett returnerat intervall i en utvald källa och sida.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` Denna fortsättning läser nästa returnerat intervall. Använd det faktiska utfärdade handtaget.
-```json {"continuation":"COPY_RETURNED_MORE"} ```
+Det här minimala anropet öppnar den första lagrade sidan.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]}
+```
+Det här anropet öppnar ett riktat avsnitt.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"}
+```
+Det här anropet öppnar ett returnerat intervall i en vald källa och sida.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"}
+```
+Den här fortsättningen läser nästa returnerade intervall. Använd det faktiska utfärdade handtaget.
+```json
+{"continuation":"COPY_RETURNED_MORE"}
+```
 {% endif %}
 {% if has('doc_search_text') %}
 {{ tool('doc_search_text') }} kräver collection, file_hash och query. source väljer valfritt en extraktion.
-Den returnerar page, ordinal, start, end och snippet för varje träff. Offset räknar tecken inom den sidan.
-Kopiera en träffs sida och start i read_documents när snippet behöver mer kontext.
+Det returnerar page, ordinal, start, end och snippet för varje träff. Offset räknar tecken inom den sidan.
+Kopiera en träffs page och start till read_documents när utdraget behöver mer sammanhang.
 Använd read_more för att hämta återstående träffar.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"}
+```
 {% endif %}
 {% if has('doc_sources') %}
 {{ tool('doc_sources') }} kräver collection och file_hash. query räknar valfritt matchande träffar i varje extraktion.
-Den returnerar källnamn och lagrade sidointervall. Kopiera ett källnamn vid urval av en särskild extraktion.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
+Det returnerar källnamn och lagrade sidintervall. Kopiera ett källnamn när du väljer en viss extraktion.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
 {% endif %}
 {% if has('doc_diff_sources') %}
 {{ tool('doc_diff_sources') }} kräver collection, file_hash, source_a och source_b.
-page_a och page_b väljer valfritt sidor. Utelämnande väljer den första lagrade sidan för varje källa.
-Resultatet är en sammanslagen textdiff. Använd read_more när det fortsätter.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
+page_a och page_b väljer valfritt sidor. Om de utelämnas väljs den första lagrade sidan i varje källa.
+Resultatet är en enhetlig textdiff. Använd read_more när den fortsätter.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7}
+```
 {% endif %}
 {% if has('pdf_search') %}
 {{ tool('pdf_search') }} kräver collection, file_hash och query.
-source väljer valfritt en PDF-extraktion. page_from och page_to begränsar valfritt det inklusiva PDF-sidointervallet.
+source väljer valfritt en PDF-extraktion. page_from och page_to begränsar valfritt det inklusiva PDF-sidintervallet.
 Kopiera returnerade sidpositioner. Använd read_more för fortsatta träffar.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12}
+```
 {% endif %}
 {% if has('search_passages') %}
-{{ tool('search_passages') }} accepterar frågor som en enda sträng eller en lista med upp till 12 former.
-collection accepterar ett namn eller en lista. Utelämnande söker i varje tillåten samling.
-max_results väljar träffantalet per frågeform inom serverad schemas gräns. Utelämnande använder 15.
-Resultatet ger collection, file_hash, page och snippet. q registrerar de nollbaserade frågeindexen.
-Läs stödtext när passuset inte besvarar frågan.
-```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
+{{ tool('search_passages') }} tar emot queries som en sträng eller en lista med upp till 12 former.
+collection tar emot ett namn eller en lista. Om det utelämnas söks alla tillåtna samlingar.
+max_results väljer antalet träffar per sökfrågeform inom det levererade schemats gräns. Om det utelämnas används 15.
+Resultatet ger collection, file_hash, page och snippet. q registrerar de nollbaserade sökfrågeindexen.
+Läs stödjande text när avsnittet inte besvarar frågan.
+```json
+{"queries":"godkännande av överföringen"}
+```
+```json
+{"collection":["alpha","beta"],"queries":["godkännande av överföringen","tillstånd för överföringen"],"max_results":5}
+```
 {% endif %}

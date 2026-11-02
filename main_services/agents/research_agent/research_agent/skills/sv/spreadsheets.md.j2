@@ -1,55 +1,89 @@
 ---
 name: spreadsheets
 group: technique
-description: hur man läser ett kalkylarksfil med hjälp av tabellverktygen: dess ark, kolumner, rader och enskilda celler
+description: hur du läser en kalkylbladsfil med tabellverktygen: dess blad, kolumner, rader och enskilda celler
 tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
-terms: Ord för det: tabell, tabeller, kalkylark, Excel, arbetsbok, ark, kalkylblad, flik, CSV, TSV, tabulär data, datatabell, räkenskapsbok, register, spårare, lista med kolumner, rad, kolumn, cell, rubrik, pivottabell, databastabell, SQLite, Tabelle. Filtyper: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML samt tabeller in HTML- eller PDF-dokument. Sökträffar av typen tabell.
-not_for: Behövs inte när begäran bara ber om att svaret läggs ut som en tabell, eller använder ordet tabell i en annan betydelse.
+terms: Ord för det: tabell, tabeller, kalkylblad, kalkylark, Excel, arbetsbok, blad, flik, CSV, TSV, tabelldata, datatabell, liggare, register, uppföljningslista, lista med kolumner, rad, kolumn, cell, rubrik, pivottabell, databastabell, SQLite. Filtyper: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML och tabeller i HTML- eller PDF-dokument. Sökträffar av typen table.
+not_for: Behövs inte när begäran bara gäller att svaret ska läggas upp som en tabell, eller använder ordet tabell i en annan betydelse.
 ---
+{# How to read a table document with the table tools, from the overview to one cell. The
+   order follows the tool texts: the overview gives the sheets and the column ids that the
+   other tools take. #}
 Läsa ett kalkylblad
 
-Ett kalkylblad, en CSV-fil eller en tabell i ett dokument är ett tabelldokument. Namnge det med file_hash och samlingen från en sökträff.
+Ett kalkylblad, en CSV-fil eller en tabell i ett dokument är ett tabelldokument. Ange det med file_hash och collection från ett sökresultat.
 
-1. {{ tool('table_overview') }} listar ark och kolumner med deras id:n.
-2. Läs rader med {{ tool('table_page') }}. Ett anrop ger 50 rader. Sortera och filtrera raderna i anropet. Ange row_start för att gå till en rad i ett stort ark, och kolumner för att läsa kolumnerna efter den 60:e.
+1. {{ tool('table_overview') }} listar bladen och kolumnerna med deras id.
+2. Läs rader med {{ tool('table_page') }}. Ett anrop ger 50 rader. Sortera och filtrera raderna i anropet. Ange row_start för att gå till en rad i ett stort blad, och columns för att läsa kolumnerna efter den 60:e.
 3. {{ tool('table_column_values') }} listar värden i en kolumn och deras antal.
-4. För att hitta ett värde i ett ark, anropen {{ tool('table_search_cells') }}. Läs omgivande rader med {{ tool('table_page') }} när matchen behöver kontext.
-5. När {{ tool('table_page') }} klipper av en lång cell, läs den hel med {{ tool('table_cell') }}. Ange row med det returnerade row_id:n, och kolumn med det returnerade kolumn-id:t.
+4. För att hitta ett värde i ett blad, anropa {{ tool('table_search_cells') }}. Läs omgivande rader
+med {{ tool('table_page') }} när träffen behöver sammanhang.
+5. När {{ tool('table_page') }} kapar en lång cell, läs den hel med {{ tool('table_cell') }}. Ange row med det returnerade row_id och column med det returnerade kolumn-id:t.
 
-Ange ark, rad och kolumn när läsaren behöver hitta ett värde igen.
+Ange ett blad, en rad och en kolumn när läsaren behöver hitta ett värde igen.
 
-För att räkna rader utifrån ett värde, anropa {{ tool('table_column_values') }} på den kolumnen. Räkna inte raderna i en textsida själv. Ange det totala antalet rader, filtren och kolumnen.
-Ett värdeskall ger upp till 200 värden. När resultatet har en fortsättning, anropa read_more tills ingen fortsättning finns kvar. En ofullständig värdeslista ger ingen komplett fördelning.
-Värderäkningarna summerar till radtotalen endast för samma kalkylblad, samma rader och samma filter. En tom cell har inget värde, så tomma celler gör att summan blir mindre än radtotalen. Ange antalet tomma celler när du jämför summan med totalen.
-Ett exempel: ett kalkylblad med 24 byggloper har en typkolumn. Värdeskallet ger staket 9, tak 7, altan 5 och pool 3, och ingen fortsättning. Dessa räkningar summerar till 24. Räkningar som summerar till 27 för 24 rader visar ett räkningsfel. Räkningar som summerar till 21 visar 3 rader med en tom typ.
-En CSV-fil anger ingen rubrikrad. Varje tabellresultat ger `interpretation`, läsningen av rad 1 som dess räkningar beskriver. Med state `established` är läsningen känd. Med state `ambiguous` eller `legacy` och två `candidates` kan rad 1 vara rubrikraden eller den första dataraden.
-Varje kandidat ger sitt radantal. Resultatet läser varje rad, `all_rows`, om inte kallet ger `interpretation`. Ge varje räkning med dess läsning, eller läs den andra läsningen med interpretation `all_rows` eller `first_row_header`. Rapportera inte en läsnings räkning som det etablerade radantalet.
-En JSON-fil eller en textfil har inga kalkylblad. När {{ tool('table_overview') }} ger ingen kalkylblad, läs dokumentet som text.
+För att räkna rader efter ett värde, anropa {{ tool('table_column_values') }} för den kolumnen. Räkna inte
+raderna på en textsida själv. Ange det totala antalet rader, filtren och kolumnen.
+Ett anrop för värden ger upp till 200 värden. När resultatet har en fortsättning, anropa read_more
+tills ingen fortsättning återstår. En ofullständig värdelista ger ingen fullständig fördelning.
+Värdeantalen summerar till radsumman bara för samma blad, samma rader och samma
+filter. En tom cell har inget värde, så tomma celler gör summan mindre än
+radsumman. Ange antalet tomma celler när du jämför summan med totalen.
+Till exempel har ett blad med 24 bygglov en kolumn för typ. Anropet för värden ger
+staket 9, tak 7, altan 5 och pool 3, och ingen fortsättning. De antalen summerar till 24. Antal
+som summerar till 27 för 24 rader visar ett räknefel. Antal som summerar till 21 visar 3 rader
+med tom typ.
+En CSV-fil anger ingen rubrikrad. Varje tabellresultat ger `interpretation`, den tolkning av
+rad 1 som dess antal beskriver. Med tillståndet `established` är tolkningen känd. Med tillståndet
+`ambiguous` eller `legacy` och två `candidates` kan rad 1 vara rubriken eller den första dataraden.
+Varje kandidat ger sitt radantal. Resultatet läser varje rad, `all_rows`, om inte
+anropet anger `interpretation`. Ange varje antal med sin tolkning, eller läs den andra tolkningen
+med interpretation `all_rows` eller `first_row_header`. Rapportera inte en tolknings antal som
+det fastställda radantalet.
+En JSON-fil eller en textfil har inga blad. När {{ tool('table_overview') }} inte ger något blad,
+läs dokumentet som text.
 
-Varje tabellanrop kräver samling och file_hash från samma dokumentresultat.
-{{ tool('table_overview') }} returnerar sheet- och kolumnidentifierare.
-De övriga tabellverktygen kräver sheet. Kopiera dess identifiering från översikten.
-{{ tool('table_page') }} accepterar valfritt sort, filter, columns, search, row_start och tolkning.
-sort kräver column och direction, antingen asc eller desc. Vid utelämning används den lagrade radordningen.
-filters är en lista av kolumnpredikat. Varje predikat använder en testtyp.
-Ett numeriskt eller datumomfång kan inkludera både nedre och övre gränser.
-Testen är contains, equals, starts_with, is_empty, number_min, number_max, date_min och date_max.
-Texttesten använder strängar. Numeriska testen använder tal. Datumgränser använder YYYY-MM-DD-strängar.
-columns väljer kolumnidentifierare. Ett returnerat fönster innehåller högst 60 utvalda kolumner.
+Varje tabellanrop kräver collection och file_hash från samma dokumentresultat.
+{{ tool('table_overview') }} returnerar blad- och kolumnidentifierare.
+De andra tabellverktygen kräver sheet. Kopiera dess identifierare från översikten.
+{{ tool('table_page') }} tar valfritt emot sort, filters, columns, search, row_start och interpretation.
+sort kräver column och direction, asc eller desc. Om det utelämnas används den lagrade radordningen.
+filters är en lista med kolumnvillkor. Varje villkor använder en testtyp.
+Ett numeriskt intervall eller datumintervall kan ha både nedre och övre gräns.
+Testerna är contains, equals, starts_with, is_empty, number_min, number_max, date_min och date_max.
+Texttester använder strängar. Taltester använder tal. Datumgränser använder strängar av formen YYYY-MM-DD.
+columns väljer kolumnidentifierare. Ett returnerat fönster innehåller högst 60 valda kolumner.
 search behåller valfritt rader som innehåller dess text. row_start är en nollbaserad position i den begärda radordningen.
 Resultatet innehåller kolumnmetadata och rader. row_id är den lagrade radidentiteten, även efter sortering.
 
-{{ tool('table_column_values') }} kräver också column. search filtrerar valfritt värdetext.
-Den returnerar värden och antal för den kolumnen.
-{{ tool('table_search_cells') }} kräver query. Den returnerar matchande sheet-, rad- och kolumnidentiteter med text.
-{{ tool('table_cell') }} kräver row och column. Använd den returnerade row_id under argumentnamnet row.
-Den returnerar 2 000-teckens segment. Använd read_more för det återstående celltexten.
+{{ tool('table_column_values') }} kräver också column. search filtrerar valfritt värdetexten.
+Det returnerar värden och antal för den kolumnen.
+{{ tool('table_search_cells') }} kräver query. Det returnerar matchande blad-, rad- och kolumnidentiteter med text.
+{{ tool('table_cell') }} kräver row och column. Skicka det returnerade row_id under argumentnamnet row.
+Det returnerar delar på 2 000 tecken. Använd read_more för återstående celltext.
 Använd read_more för fortsatta tabellsidor, värden och sökträffar.
 
-Denna minimala översikt öppnar tabellstrukturen.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` Detta sidopkall använder kopierade sheet- och kolumnidentifierare.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` Detta värdeopkall begränsar en kolumn.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` Detta värdeopkall läser rad 1 av ett tvetydigt CSV-sheet som kolumnnamn.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` Detta cellsök lokaliserar ett begärt värde.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` Detta cellopkall läser row_id 71, även när den raden dök upp först i ett sorterat resultat.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```
+Den här minimala översikten öppnar tabellstrukturen.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+Det här sidanropet använder kopierade blad- och kolumnidentifierare.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50}
+```
+Det här anropet för värden avgränsar en kolumn.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"}
+```
+Det här anropet för värden läser rad 1 i ett tvetydigt CSV-blad som kolumnnamn.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"}
+```
+Den här cellsökningen hittar ett begärt värde.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"}
+```
+Det här cellanropet läser row_id 71, även när den raden kom först i ett sorterat resultat.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2}
+```
