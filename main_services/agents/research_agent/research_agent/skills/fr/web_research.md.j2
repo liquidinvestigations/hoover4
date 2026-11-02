@@ -1,115 +1,173 @@
 ---
 name: web_research
 group: technique
-description: comment rechercher sur le web ouvert, lire une page Web ou l'enregistrement du propriétaire d'un domaine, et citer les pages Web qui soutiennent un rapport
+description: comment chercher sur le Web ouvert, lire une page Web ou la fiche de propriétaire d’un domaine, et citer les pages Web qui étayent un rapport
 tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
 ---
-Recherche sur le web ouvert
+Faire des recherches sur le Web ouvert
 
-Utilisez les sources web lorsqu'elles peuvent répondre à la question de la personne.
+Utilisez des sources Web quand elles peuvent répondre à la question de la personne.
 
 {% if has('web_search') %}
-{{ tool('web_search') }} accepte une liste de requêtes. Le champ `sources` limite la recherche à des sources nommées.{% if has('list_search_sources') %} {{ tool('list_search_sources') }} liste ces sources.{% endif +%}
+{{ tool('web_search') }} accepte une liste de requêtes. Le champ `sources` restreint la
+recherche à des sources nommées.{% if has('list_search_sources') %} {{ tool('list_search_sources') }}
+liste ces sources.{% endif +%}
 {% endif %}
 {% if has('read_page') %}
-1. Lisez les meilleurs résultats en entier avec {{ tool('read_page') }}. Donnez toutes les adresses dans un seul appel, et précisez dans goal ce que vous cherchez. Un résultat marqué BLOCKED BY A BOT CHECK n'est pas la page. N'utilisez pas son texte.
+1. Lisez en entier les meilleurs résultats avec {{ tool('read_page') }}. Donnez toutes les adresses dans un seul appel, et donnez goal pour dire ce que vous cherchez. Un résultat marqué BLOCKED BY A BOT CHECK n’est pas la page. N’utilisez pas son texte.
 {% endif %}
 {% if has('whois_lookup') %}
-{% if has('read_page') %}2.{% else %}1.{% endif %} Pour le propriétaire, l'enregistreur ou les dates d'un domaine, appelez {{ tool('whois_lookup') }} avec chaque domaine dans un seul appel.
+{% if has('read_page') %}2.{% else %}1.{% endif %} Pour le propriétaire, le bureau d’enregistrement ou les dates d’un domaine, appelez {{ tool('whois_lookup') }} avec tous les domaines dans un seul appel.
 {% endif %}
 
-Lisez chaque source avant d'utiliser ses affirmations. Un extrait de résultat de recherche n'est pas une source.
+Lisez chaque source avant d’utiliser ses affirmations. L’extrait d’un résultat de recherche n’est pas une source.
 {% if has('cite_pages') %}
 
-Citation des pages Web
+Citer des pages Web
 
-Appelez {{ tool('cite_pages') }} avec l'URL de chaque page lue et le texte exact qui la soutient dans `terms`.
-Utilisez les références web retournées à côté des affirmations qu'elles soutiennent.
-Remplacez les URLs de source brues par ces références.
-{{ tool('cite_pages') }} accepte url et terms pour une page, ou pages pour jusqu'à douze objets page.
-Chaque page nécessite url et terms. terms contient jusqu'à huit expressions exactes, chacune d'au plus 200 caractères. La casse doit correspondre.
-version sélectionne optionnellement une version capturée. why énonce optionnellement l'affirmation soutenue, sur au plus 300 caractères.
-Le résultat donne des citations vérifiées et une référence web stable. Une page en échec donne une erreur sans référence.
+Appelez {{ tool('cite_pages') }} avec l’URL de chaque page lue et la formulation exacte qui l’étaye dans `terms`.
+Placez les repères Web renvoyés à côté des affirmations qu’ils étayent.
+Remplacez les URL de sources nues par ces repères.
+{{ tool('cite_pages') }} accepte url et terms pour une page, ou pages pour au plus douze objets de page.
+Chaque page exige url et terms. terms contient au plus huit expressions exactes, de 200 caractères au plus chacune. La casse doit correspondre.
+version sélectionne facultativement une version capturée. why énonce facultativement l’affirmation étayée, en 300 caractères au plus.
+Le résultat donne les extraits vérifiés et un repère Web stable. Une page en échec donne une erreur sans repère.
 
-Exemple. {{ tool('read_page') }} l'URL https://example.org/report. Son texte dit « L'usine a fermé en mars 2019. » Appelez {{ tool('cite_pages') }} avec des arguments plats pour une seule page :
-url, copiée depuis le résultat de lecture, termes avec la phrase exacte, et pourquoi.
-```json {"url":"COPY_READ_URL","terms":["L'usine a fermé en mars 2019"],"why":"Le rapport donne la date de fermeture."} ``` Puis écrivez « L'usine a fermé en mars 2019 [W1]. » avec la référence que l'appel a renvoyée.
-Divisez une liste de plus de douze pages en appels séparés.
-```json {"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"Ce passage donne la date d'approbation."}]} ``` Copiez la référence Web renvoyée, par exemple `[W1]`, à côté de l'affirmation qu'elle soutient.
-Conservez chaque référence avec l'URL et les citations de son objet citation renvoyé.
-Une erreur n'attribue pas de référence. Omitez les affirmations de cette source jusqu'à ce que sa citation réussisse.
-Pour un libellé absent, copiez le texte exact du candidat renvoyé et appelez de nouveau l'outil.
-Quand une erreur comprend `errors[i].retry_arguments`, copiez cet objet tel quel dans l'appel suivant.
-Conservez les citations réussies d'un résultat partiel. Ne réessayez que les pages échouées.
-Par exemple, un appel cite trois pages dont deux réussissent avec [W1] et [W2]. Utilisez ces deux références. Envoyez le prochain appel avec la seule troisième page, et utilisez ses arguments de réessai.
-Par exemple, cet appel joint des mots à travers une rupture de ligne dans une source et échoue.
-```json {"url":"https://example.org/report","terms":["L'usine a fermé en mars 2019"]} ``` L'erreur peut renvoyer ces arguments de réessai avec le texte source exact.
-```json {"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["L'usine a fermé"]}} ``` Appelez {{ tool('cite_pages') }} avec cet objet renvoyé, y compris sa version réelle et ses termes exacts.
-```json {"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["L'usine a fermé"]} ``` Une fenêtre PDF a sa propre version. Pour citer un passage des pages 51 à 100, copiez la version de cette lecture.
-```json {"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]} ``` Si un appel dépasse huit termes, divisez ses termes en groupes d'au plus huit et citez chaque groupe séparément.
-Conservez l'URL et la version de la source avec chaque groupe. Modifier la structure de l'appel ne réduit pas son nombre de termes.
-La référence ouvre le texte de la page capturée et ses citations vérifiées.
-Utilisez une seule page par appel si un lot arrive endommagé.
-Une page non lue, bloquée ou non vérifiée ne peut pas soutenir une affirmation.
+Exemple. {{ tool('read_page') }} a lu l’URL https://example.org/report. Son texte dit
+« L’usine a fermé en mars 2019. » Appelez {{ tool('cite_pages') }} avec des arguments à plat pour une page :
+url, copiée du résultat de lecture, terms avec l’expression exacte, et why.
+```json
+{"url":"COPY_READ_URL","terms":["L’usine a fermé en mars 2019"],"why":"Le rapport donne la date de fermeture."}
+```
+Écrivez ensuite « L’usine a fermé en mars 2019 [W1]. » avec le repère que l’appel a renvoyé.
+Scindez en appels séparés une liste de plus de douze pages.
+```json
+{"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"Ce passage donne la date d’approbation."}]}
+```
+Copiez le repère Web renvoyé, par exemple `[W1]`, à côté de l’affirmation qu’il étaye.
+Gardez chaque repère avec l’URL et les extraits de son objet de citation renvoyé.
+Une erreur n’alloue aucun repère. Omettez les affirmations de cette source jusqu’à ce que sa citation réussisse.
+Pour une formulation absente, copiez le texte exact du candidat renvoyé et appelez à nouveau l’outil.
+Quand une erreur inclut `errors[i].retry_arguments`, copiez cet objet sans le modifier dans l’appel suivant.
+Gardez les citations réussies d’un résultat partiel. Réessayez seulement les pages en échec.
+Par exemple, un appel cite trois pages et deux réussissent avec [W1] et [W2]. Utilisez ces deux
+repères. Envoyez l’appel suivant avec la troisième page seulement, et utilisez ses arguments de nouvel essai.
+Par exemple, cet appel joint des mots à travers un saut de ligne de la source et échoue.
+```json
+{"url":"https://example.org/report","terms":["L’usine a fermé en mars 2019"]}
+```
+L’erreur peut renvoyer ces arguments de nouvel essai avec le texte exact de la source.
+```json
+{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["L’usine a fermé"]}}
+```
+Appelez {{ tool('cite_pages') }} avec cet objet renvoyé, y compris sa version réelle et ses termes exacts.
+```json
+{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["L’usine a fermé"]}
+```
+Une fenêtre PDF a sa propre version. Pour citer un passage des pages 51 à 100, copiez la version de cette lecture.
+```json
+{"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]}
+```
+Si un appel dépasse huit termes, scindez ses termes en groupes d’au plus huit et citez chaque groupe séparément.
+Gardez l’URL et la version de la source avec chaque groupe. Changer la structure de l’appel ne réduit pas son nombre de termes.
+Le repère ouvre le texte capturé de la page et ses extraits vérifiés.
+Utilisez une page par appel si un lot arrive abîmé.
+Une page non lue, bloquée ou non vérifiée ne peut pas étayer une affirmation.
 
 {% include "citation_failures.j2" %}
 {% endif %}
 
-Un nom ou un événement dont vous vous souvenez est un candidat tant qu'une source ne le nomme pas. Trouvez une source qui le nomme avant de l'utiliser. N'envoyez pas une nouvelle recherche avec les mêmes mots ou avec de légers changements de formulation. Une recherche suivante doit utiliser une méthode différente : d'autres faits d'identification du candidat, une source nommée, la langue du lieu, ou une page vers laquelle renvoie un résultat lu. Quand aucune méthode restante ne peut trouver une source, marquez le candidat comme non vérifié, et continuez avec d'autres travaux. Une personne portant le même nom est une personne différente tant qu'une source ne relie pas les faits. Quand une source contredit un candidat, retirez le candidat et donnez la raison.
+Un nom ou un événement dont vous vous souvenez est un candidat tant qu’une source ne le nomme pas. Trouvez une source qui
+le nomme avant de l’utiliser. N’envoyez pas à nouveau une recherche avec les mêmes mots ou avec de petits
+changements de formulation. La recherche suivante doit utiliser une méthode différente : d’autres faits qui identifient
+le candidat, une source nommée, la langue du lieu, ou une page qu’un résultat de lecture
+relie. Quand aucune méthode restante ne peut trouver de source, marquez le candidat comme non vérifié et
+poursuivez avec un autre travail. Une personne qui porte le même nom est une autre personne tant qu’une
+source ne relie pas les faits. Quand une source contredit un candidat, retirez le candidat et
+donnez la raison.
 
-Par exemple, vous vous souvenez qu'un moulin a fermé en 2019. Une recherche de « Harlow mill closed 2019 » ne trouve aucune page à propos du moulin. Une recherche de « Harlow mill closure » trouve les mêmes résultats. N'envoyez pas une troisième forme de ces mots. Recherchez le nom de la société propriétaire avec le nom de la ville. Une page de presse locale nomme le mois de la fermeture, donc lisez-la, et le candidat est vérifié.
+Par exemple, vous vous souvenez qu’une usine a fermé en 2019. Une recherche « fermeture usine Harlow 2019 »
+ne trouve aucune page sur l’usine. Une recherche « fermeture de l’usine de Harlow » donne les mêmes résultats. N’envoyez
+pas une troisième forme de ces mots. Cherchez le nom de la société propriétaire avec le nom de la ville.
+Une page d’actualités locales nomme le mois de fermeture, donc lisez-la, et le candidat est vérifié.
 
-Par exemple, vous vous souvenez d'un second procès contre la même société. Des recherches de la société avec « lawsuit », du nom du tribunal, et du format du numéro de affaire ne trouvent aucune affaire.
-Aucune autre méthode ne reste. Écrivez que les sources lues ne confirment pas un second procès, et ne le nommez pas comme une affaire.
+Par exemple, vous vous souvenez d’une seconde procédure judiciaire contre la même société. Des recherches sur la
+société avec « procès », sur le nom du tribunal et sur le format du numéro de dossier ne trouvent aucune affaire.
+Aucune autre méthode ne reste. Écrivez que les sources lues ne confirment pas une seconde affaire, et
+ne la nommez pas comme une affaire.
 
-Une lecture ne couvre que son texte extrait. Une recherche sans résultat montre que le texte extrait ne contient pas les mots. Elle ne montre pas que le document ne les contient pas. Un résultat PDF donne les pages que la lecture a extraites. Avant d'affirquer qu'un document ne nomme pas une personne, indiquez les pages ou le texte que vous avez recherchés.
-Pour une liste d'événements datés, gardez une fiche pour chaque événement avec sa date, son nom et sa source. Indiquez les fiches sans date, les rapports en double et les sources que vous n'avez pas pu lire en dehors des fiches datées.
+Une lecture couvre seulement son texte extrait. Un find sans correspondance montre que le texte extrait
+ne contient pas les mots. Il ne montre pas que le document ne les contient pas. Un résultat PDF
+donne les pages que la lecture a extraites. Avant d’indiquer qu’un document ne nomme pas une
+personne, indiquez les pages ou le texte que vous avez cherchés.
+Pour une liste d’événements datés, gardez un enregistrement par événement avec sa date, son nom et sa
+source. Indiquez séparément des enregistrements datés ceux sans date, les comptes rendus en double et les sources que vous n’avez pas pu lire.
 
-Applique chaque contrainte demandée à chaque élément de la réponse.
-Indique quelle contrainte un élément échoue à respecter.
-Identifie chaque élément par ses faits distinctifs.
-Pour une affaire de justice, indique la juridiction, la date et le numéro de dossier lorsque les sources les fournissent.
-Vérifie dans la source chaque propriété qu'une demande exige d'un élément.
-Compte un cas, un événement ou une entité une seule fois, et liste les identifiants de ses étapes ensemble.
-Fusionne les rapports concernant le même élément.
-Indique quand les sources établissent moins d'éléments distincts que demandé.
-Avant de répondre, vérifie les faits distinctifs de chaque élément et chaque contrainte contre les pages que tu as lues.
-Conserve un élément qui échoue à une contrainte en dehors de la liste correspondante, et nomme sa contrainte échouée.
-Lis chaque page que tu cites, y compris une source de remplacement trouvée après une page bloquée.
-Lorsqu'une lecture de page échoue, utilise une autre source lisible ou omet ses affirmations et son adresse.
+Appliquez chaque contrainte demandée à chaque élément de la réponse.
+Indiquez quelle contrainte un élément ne respecte pas.
+Identifiez chaque élément par ses faits distinctifs.
+Pour une affaire judiciaire, donnez le tribunal, la date et le numéro de dossier quand les sources les fournissent.
+Vérifiez dans la source chaque propriété que la demande exige d’un élément.
+Comptez une seule fois une affaire, un événement ou une entité, et listez ensemble les identifiants de ses étapes.
+Fusionnez les comptes rendus du même élément.
+Indiquez quand les sources établissent moins d’éléments distincts que demandé.
+Avant de répondre, vérifiez les faits distinctifs de chaque élément et chaque contrainte à l’aide des pages que vous avez lues.
+Gardez hors de la liste des correspondances un élément qui ne respecte pas une contrainte, et nommez la contrainte non respectée.
+Lisez chaque page que vous citez, y compris une source de remplacement trouvée après une page bloquée.
+Quand la lecture d’une page échoue, utilisez une autre source lisible ou omettez ses affirmations et son adresse.
 
 {% if has('web_search') %}
-{{ tool('web_search') }} accepte les requêtes sous forme de liste ou de unique chaîne de caractères, et query comme requête unique supplémentaire.
-Indiquez au moins une requête. Omettez les sources pour rechercher toutes les sources disponibles.
-max_results vaut par défaut 15. timelimit est d, w, m ou y et ne s'applique qu'aux sources d'information prises en charge.
-Le résultat retourne des URLs, des titres, des extraits et des formes de requête correspondantes, classés par pertinence. Lisez les URLs sélectionnées avant de vous fier à leurs affirmations.
-```json {"queries":["transfer approval"]} ``` ```json {"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"} ```
+{{ tool('web_search') }} accepte queries sous forme de liste ou de chaîne, et query comme requête unique supplémentaire.
+Donnez au moins une requête. Omettez sources pour chercher dans toutes les sources disponibles.
+max_results vaut 15 par défaut. timelimit vaut d, w, m ou y et s’applique seulement aux sources d’actualités prises en charge.
+Le résultat renvoie les URL classées, les titres, les extraits et les formes de requête correspondantes. Lisez les URL sélectionnées avant de vous appuyer sur leurs affirmations.
+```json
+{"queries":["approbation du transfert"]}
+```
+```json
+{"queries":["approbation du transfert","autorisation de transfert"],"query":"accord de transfert","sources":["gdelt"],"max_results":5,"timelimit":"m"}
+```
 {% endif %}
 {% if has('list_search_sources') %}
-{{ tool('list_search_sources') }} ne prend aucun argument. Il retourne les noms et descriptions des sources disponibles.
-```json {} ```
+{{ tool('list_search_sources') }} ne prend aucun argument. Il renvoie les noms et les descriptions des sources disponibles.
+```json
+{}
+```
 {% endif %}
 {% if has('read_page') %}
-{{ tool('read_page') }} nécessite urls, une liste d'au plus six adresses HTTP ou HTTPS.
-goal permet d'enregistrer la question. Il ne sélectionne pas le texte correspondant.
-find permet de sélectionner des correspondances de texte littérales sans restriction de casse.
-offset est une position de caractère à base zéro. L'omission commence à zéro.
+{{ tool('read_page') }} exige urls, une liste d’au plus six adresses HTTP ou HTTPS.
+goal enregistre facultativement la question. Il ne sélectionne pas de texte correspondant.
+find sélectionne facultativement des correspondances de texte littérales, sans distinction de casse.
+offset est une position de caractère à partir de zéro. Sans offset, la lecture commence à zéro.
 version sélectionne la version du texte capturé. Copiez-la depuis une lecture précédente de la même URL pour poursuivre ce texte.
-Une version appartient à une seule URL. Pour une autre URL, lisez d'abord cette URL et copiez sa propre version.
-links vaut par défaut true et inclut les destinations de lien dans le texte.
-page_start sélectionne la première page d'une fenêtre PDF. Une lecture extrait au plus 50 pages PDF.
-Un résultat de coupe, un résultat de find avec plus de correspondances et une fenêtre PDF fournissent les arguments de l'appel suivant.
-Copiez cet objet d'arguments tel quel. Il conserve l'URL, la fenêtre PDF, le réglage links et la version.
-Une version appartient à une seule URL et à une seule fenêtre PDF.
-Une fenêtre sans texte ne montre pas que les autres pages du PDF n'ont pas de texte.
-Répéter le premier appel relit le premier texte à nouveau.
-```json {"urls":["COPY_SEARCH_RESULT_URL"]} ``` ```json {"urls":["COPY_READ_URL"],"goal":"Find the approval date.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false} ``` Par exemple, un résultat PDF indique « Le texte couvre les pages PDF 1 à 50 sur 120 uniquement » et donne la fenêtre suivante.
-Un find dans cette fenêtre donne plus de correspondances avec cet objet. Copiez-le comme appel suivant.
-```json {"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200} ```
+Une version appartient à une URL. Pour une autre URL, lisez d’abord cette URL et copiez sa propre version.
+links vaut true par défaut et inclut les destinations des liens dans le texte.
+page_start sélectionne la première page d’une fenêtre PDF. Une lecture extrait au plus 50 pages PDF.
+Un résultat coupé, un résultat de find avec d’autres correspondances et une fenêtre PDF donnent les arguments de l’appel suivant.
+Copiez cet objet d’arguments sans le modifier. Il conserve l’URL, la fenêtre PDF, le réglage links et la version.
+Une version appartient à une URL et à une fenêtre PDF.
+Une fenêtre sans texte ne montre pas que les autres pages du PDF n’ont pas de texte.
+Répéter le premier appel relit le même début de texte.
+```json
+{"urls":["COPY_SEARCH_RESULT_URL"]}
+```
+```json
+{"urls":["COPY_READ_URL"],"goal":"Trouver la date d’approbation.","find":"approuvé","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
+```
+Par exemple, un résultat PDF dit « The text covers PDF pages 1 to 50 of 120 only » et donne la fenêtre suivante.
+Un find dans cette fenêtre donne d’autres correspondances avec cet objet. Copiez-le comme appel suivant.
+```json
+{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approuvé","offset":1200}
+```
 {% endif %}
 {% if has('whois_lookup') %}
-{{ tool('whois_lookup') }} accepte les domaines sous forme de liste et domain comme unique domaine.
-Indiquez les noms de domaines sans chemin d'URL. Le résultat rapporte chaque domaine séparément.
-Un registrant nul signifie que le registre n'a pas publié cette valeur. Le registraire vend l'enregistrement du domaine.
-```json {"domains":["example.org"]} ``` ```json {"domains":["example.org","example.com"],"domain":"example.net"} ```
+{{ tool('whois_lookup') }} accepte domains sous forme de liste et domain pour un seul domaine.
+Donnez des noms de domaine sans chemin d’URL. Le résultat rapporte chaque domaine séparément.
+Un titulaire null signifie que le registre n’a pas publié cette valeur. Le bureau d’enregistrement vend l’enregistrement du domaine.
+```json
+{"domains":["example.org"]}
+```
+```json
+{"domains":["example.org","example.com"],"domain":"example.net"}
+```
 {% endif %}

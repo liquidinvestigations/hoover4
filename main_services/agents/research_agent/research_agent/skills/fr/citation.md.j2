@@ -4,46 +4,62 @@ group: general
 description: comment citer les documents qui étayent une réponse
 tools: cite_documents
 ---
-Le texte cité est écrit dans un fichier de l'espace de travail. La `report` compétence explique comment l'écrire et le modifier.
+Le texte cité va dans un fichier de l’espace de travail. La compétence `report` explique comment l’écrire et le modifier.
 
 {% if has('cite_documents') %}
-Lorsque votre {{ citation_artefact }} s'appuie sur {% if web_enabled %}un document interne{% else %}un{% endif %}, appelez {{ tool('cite_documents') }}.
-Donnez-lui chaque document qui soutient une affirmation ou une citation. Utilisez la référence retournée à côté de cette affirmation.
-Utilisez une référence à côté d'une affirmation qui s'appuie sur un document interne. Vous pouvez aussi nommer un document pour l'identifier ou décrire un résultat de recherche.
-Un appel prend au plus 12 citations. Citez ce que vous avez utilisé, pas tout ce qu'une recherche a retourné.
-Lorsqu'une recherche ou une lecture a retourné des documents qui soutiennent une affirmation, citez ces documents.
+Quand votre {{ citation_artefact }} s’appuie sur {% if web_enabled %}un document interne{% else %}un document{% endif %}, appelez {{ tool('cite_documents') }}.
+Donnez-lui chaque document qui étaye une affirmation ou un extrait. Placez le repère renvoyé à côté de cette affirmation.
+Placez un repère à côté d’une affirmation qui s’appuie sur un document interne. Vous pouvez aussi nommer un
+document pour l’identifier ou décrire un résultat de recherche.
+Un appel accepte au plus 12 citations. Citez ce que vous avez utilisé, pas tout ce qu’une recherche a renvoyé.
+Quand une recherche ou une lecture a renvoyé des documents qui étayent une affirmation, citez ces documents.
 
 Pour chaque citation, donnez :
-- collection et file_hash, copiés depuis un résultat d'outil. Ne jamais inventer de file_hash.
-- quote : 5 à 6 mots consécutifs copiés depuis une seule ligne du corps du document. Pas une ligne d'en-tête (From, To, Cc, Subject, Date). Pas de span qui contient un point d'interrogation.
-- find : optionnel. La phrase exacte la plus courte de la citation que la personne doit voir. La carte ouvre le document à cette phrase.
-- why : une ligne qui dit ce que le document soutient.
+- collection et file_hash, copiés d’un résultat d’outil. N’inventez jamais un file_hash.
+- quote : 5 à 6 mots consécutifs copiés d’une ligne du corps du document. Pas une ligne d’en-tête
+  (From, To, Cc, Subject, Date). Pas d’extrait qui contient un point d’interrogation.
+- find : facultatif. L’expression exacte la plus courte de l’extrait que la personne doit voir. La carte
+  ouvre le document à cette expression.
+- why : une ligne qui dit ce que le document étaye.
 
-Écrivez la référence que vous obtenez en retour, par exemple `[D1]`, dans votre {{ citation_artefact }} où vous faites l'affirmation.
+Écrivez le repère que vous recevez, par exemple `[D1]`, dans votre {{ citation_artefact }} à l’endroit où vous faites l’affirmation.
 
-Exemple. {{ tool('read_documents') if has('read_documents') else 'A tool' }} a retourné l'e-mail « Re : Brouillon des points de parole » dans la Collection enron.
-Son corps dit « Les points de parole me semblent parfaits. Bonne chance aujourd'hui. » Votre {{ citation_artefact }} indique que Jim Steffes a approuvé le brouillon. Appelez {{ tool('cite_documents') }} avec la Collection enron, le file_hash du résultat, la citation « talking points look great to me », trouvez « look great », et pourquoi « Steffes approuve le brouillon du 27 décembre ».
-Puis écrivez « Steffes a approuvé le brouillon [D1]. » Ne citez pas « Subject: Re: DRAFT talking points », car c'est une ligne d'en-tête. Ne citez pas « Can you check the notes? », car elle contient un point d'interrogation.
-Les sauts de ligne, la ponctuation et les marques `>` d'un e-mail cité n'ont pas besoin de correspondre.
-Une citation manquante ou absente n'attribue aucune référence. Copiez 5 à 6 mots du texte candidat que l'erreur indique dans quote, puis réessayez.
-Seule une référence retournée étaye une Source. N'écrivez jamais votre propre label entre crochets.
-Écrivez la référence en texte à côté de l'affirmation. Ne la mettez pas dans des backticks. `[D1]` dans des backticks ne lie rien.
-Réutilisez la référence de document retournée pour des passages vérifiés supplémentaires. Le document a une seule carte.
+Exemple. {{ tool('read_documents') if has('read_documents') else 'Un outil' }} a renvoyé l’e-mail « Re: DRAFT talking points » dans la collection enron.
+Son corps dit « The talking points look great to me. Best of luck today. » Votre {{ citation_artefact }} dit
+que Jim Steffes a approuvé le brouillon. Appelez {{ tool('cite_documents') }} avec collection enron, le
+file_hash du résultat, quote « talking points look great to me », find « look great »,
+et why « Steffes approuve le brouillon du 27 décembre ».
+Écrivez ensuite « Steffes a approuvé le brouillon [D1]. »
+Ne citez pas « Subject: Re: DRAFT talking points », car c’est une ligne d’en-tête. Ne citez pas
+« Can you check the notes? », car elle contient un point d’interrogation.
+Les sauts de ligne, la ponctuation et les marques `>` d’un e-mail cité n’ont pas besoin de correspondre.
+Un extrait manquant ou absent n’alloue aucun repère. Copiez dans quote 5 à 6 mots du texte candidat que l’erreur donne, puis réessayez.
+Seul un repère renvoyé désigne une source. N’écrivez jamais votre propre étiquette entre crochets.
+Écrivez le repère comme du texte à côté de l’affirmation. Ne le mettez pas entre accents graves. `[D1]` entre accents graves ne crée aucun lien.
+Réutilisez le repère de document renvoyé pour d’autres passages vérifiés. Le document a une seule carte.
 {% if citation_resolver == "lead" %}
-Le chercheur en tête les résout, donc une référence que vous n'avez jamais attribuée ne sert personne.
+Le chercheur principal les résout, donc un repère que vous n’avez jamais alloué ne sert à personne.
 {% endif %}
 {% endif %}
 {% include "citation_failures.j2" %}
 
 {% if has('cite_documents') %}
-L'argument citations est une liste d'objets de citation de document.
-Chaque objet nécessite collection et file_hash. quote contient 5 à 6 mots consécutifs de la formulation exacte de la source.
-Répétez collection et file_hash dans chaque objet, y compris pour les citations distinctes du même document.
-Les objets n'héritent pas des arguments des objets précédents.
-find sélectionne optionnellement une phrase exacte à l'intérieur de quote. L'omission utilise la citation entière.
-term enregistre optionnellement la requête de recherche d'origine. why énonce la affirmation prise en charge.
-Le résultat donne une référence pour chaque entrée vérifiée. Les entrées échouées donnent leur raison et peuvent fournir un passage candidat.
-Réessayez uniquement les entrées échouées avec la formulation exacte. Une citation vérifiée ne vérifie pas par elle-même l'auteur ou la date de cette citation.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"recherche d'origine","why":"Ce passage soutient l'approbation déclarée."}]} ``` Ce lot vérifie deux passages du même document.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+L’argument citations est une liste d’objets de citation de document.
+Chaque objet exige collection et file_hash. quote contient 5 à 6 mots consécutifs de la formulation exacte de la source.
+Répétez collection et file_hash dans chaque objet, y compris pour des extraits distincts du même document.
+Les objets n’héritent pas des arguments des objets précédents.
+find sélectionne facultativement une expression exacte dans quote. Sans find, l’extrait entier est utilisé.
+term enregistre facultativement la requête de recherche d’origine. why énonce l’affirmation étayée.
+Le résultat donne un repère pour chaque entrée vérifiée. Les entrées en échec donnent leur raison et peuvent donner un passage candidat.
+Réessayez seulement les entrées en échec, avec la formulation exacte. Un extrait vérifié ne vérifie pas à lui seul le rédacteur ni la date de cet extrait.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
+```
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"recherche d’origine","why":"Ce passage étaye l’approbation indiquée."}]}
+```
+Ce lot vérifie deux passages du même document.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}
+```
 {% endif %}

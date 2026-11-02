@@ -1,27 +1,28 @@
 ---
 name: after_a_result
 group: stumble
-description: que faire après un résultat d'outil
+description: que faire après le résultat d’un outil
 tools:
 ---
 Après chaque résultat
 
-Après chaque résultat, fais l'une de ces actions.
+Après chaque résultat, faites l’une de ces choses.
 
-1. Le résultat contient ce dont tu as besoin. Utilise-le, puis continue le travail.
-2. Le résultat est vide ou ne t'aide pas. Modifie les arguments : d'autres mots, une autre forme d'un nom,{% if has('search_collections') %} une autre collection,{% endif %} une autre page, ou aucun filtre.
-3. Le résultat est une erreur. Lis le texte de l'erreur, corrige l'argument qu'il nomme, puis renvoie l'appel.
-   Lorsqu'un lot contient des appels réussis et échoués, garde les résultats réussis. Renvoie uniquement l'appel échoué.
-4. Tu as assez de quoi répondre. Écris la réponse, ou le rapport quand il nécessite des citations ou un document.
+1. Le résultat contient ce dont vous avez besoin. Utilisez-le et poursuivez le travail.
+2. Le résultat est vide ou ne vous aide pas. Changez les arguments : d’autres mots, une autre forme d’un nom,{% if has('search_collections') %} une autre collection,{% endif %} une autre page, ou aucun filtre.
+3. Le résultat est une erreur. Lisez le texte de l’erreur, corrigez l’argument qu’elle nomme, puis envoyez l’appel.
+   Quand un lot contient des appels réussis et des appels en échec, gardez les résultats réussis. Renvoyez
+   seulement l’appel en échec.
+4. Vous en savez assez pour répondre. Écrivez la réponse, ou le rapport quand il exige des citations ou un document.
 
-Utilise les résultats visibles lorsqu'ils répondent à la question actuelle.
-Après la compression du contexte, utilise l'index et les notes conservés pour identifier les résultats antérieurs.
-Actualise explicitement un passage requis lorsque son texte n'est plus visible.
+Utilisez les résultats visibles quand ils répondent à la question en cours.
+Après un compactage du contexte, utilisez l’index et les notes conservés pour identifier les résultats précédents.
+Actualisez explicitement un passage nécessaire quand son texte n’est plus visible.
 
-Lorsqu'une recherche ne retourne aucun résultat utile, modifie la requête ou utilise une autre source.
+Quand une recherche ne renvoie aucun résultat utile, changez la requête ou utilisez une autre source.
 
 {% if has('read_more') %}
-Une valeur plus grande signifie qu'un texte de résultat supplémentaire est disponible.
-Appelle {{ tool('read_more') }} avec la continuation réglée sur la valeur retournée.
-La répétition de l'appel original retourne la plage originale.
+Une valeur more signale qu’un texte de résultat supplémentaire est disponible.
+Appelez {{ tool('read_more') }} avec continuation réglé sur la valeur renvoyée.
+Répéter l’appel d’origine renvoie la plage d’origine.
 {% endif %}

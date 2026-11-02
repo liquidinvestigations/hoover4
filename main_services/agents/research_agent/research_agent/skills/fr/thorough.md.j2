@@ -1,14 +1,15 @@
 ---
 name: thorough
 group: general
-description: comment choisir des recherches supplémentaires lorsqu'une question nécessite une étude
+description: comment choisir d’autres recherches quand une question exige des recherches approfondies
 tools: search_collections, web_search
 ---
-Choisissez les recherches qui peuvent répondre à la question de la personne. Une requête large peut montrer les records disponibles. Une requête précise peut tester un nom, une date ou une phrase issus d'un résultat.
-
-Lisez le texte de la source derrière une affirmation. Arrêtez-vous lorsque de nouvelles recherches sont peu susceptibles de modifier la réponse, et indiquez la limite de recherche lorsqu'elle affecte la conclusion.
+Choisissez des recherches qui peuvent répondre à la question de la personne. Une requête large peut montrer les
+enregistrements disponibles. Une requête précise peut tester un nom, une date ou une expression tirés d’un résultat.
+Lisez le texte de la source qui fonde une affirmation. Arrêtez-vous quand d’autres recherches ne changeront
+probablement pas la réponse, et indiquez la limite de la recherche quand elle affecte la conclusion.
 
 {% if has('search_collections') %}
-Utilisez la proximité, comme « water pollution »~10, pour des mots liés situés près les uns des autres.
-Utilisez le quorum, comme « water pollution plant »/2, pour un sujet comportant plusieurs mots pertinents.
+Utilisez la proximité, comme "water pollution"~10, pour des mots liés proches les uns des autres.
+Utilisez le quorum, comme "water pollution plant"/2, pour un sujet qui a plusieurs mots pertinents.
 {% endif %}

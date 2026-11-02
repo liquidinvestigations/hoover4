@@ -1,88 +1,117 @@
 ---
 name: folders_and_files
 group: technique
-description: comment voir ce qu'une Collection contient : jeux de données, dossiers, types de fichiers, comptes et dates, et comment trouver un fichier par son nom ou son chemin
+description: comment voir ce qu’une collection contient, jeux de données, dossiers, types de fichiers, décomptes et dates, et comment trouver un fichier par son nom ou son chemin
 tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
-terms: Mots pour cela : collection, jeu de données, dossier, répertoire, chemin, nom de fichier, type de fichier, extension, format, comptes, combien de fichiers, taille, plus grand, aperçu, inventaire, ce qu'une collection contient, documents par année.
-not_for: Non nécessaire lorsque la demande ne porte que sur le contenu des documents.
+terms: Mots pour le désigner : collection, jeu de données, dossier, répertoire, chemin, nom de fichier, type de fichier, extension, format, décomptes, combien de fichiers, taille, plus gros, aperçu, inventaire, ce qu’une collection contient, documents par année.
+not_for: Inutile quand la demande porte seulement sur le contenu des documents.
 ---
 Dossiers et fichiers
 
 {% if has('list_collections') and has('search_facet_values') %}
-Pour une vue d'ensemble d'une Collection, appelez {{ tool('list_collections') }} avec {}.
-Puis appelez {{ tool('search_facet_values') }} avec {} une fois pour chaque type de fichier et chaque langue des Collections autorisées.
-La matrice par défaut contient déjà les deux facettes. Aucun appel séparé par Collection ou par facette n'est nécessaire.
+Pour un aperçu des collections, appelez {{ tool('list_collections') }} avec {}.
+Appelez ensuite {{ tool('search_facet_values') }} avec {} une seule fois pour les types de fichiers et les langues de toutes les collections autorisées.
+La matrice par défaut contient déjà les deux facettes. Aucun appel séparé par collection ou par facette n’est nécessaire.
 {% endif %}
 
 {% if has('list_collections') %}
-{{ tool('list_collections') }} ne prend aucun argument. Il fournit les noms de Collection, les nombres de Documents et les nombres de Jeux de données.
-```json {} ```
+{{ tool('list_collections') }} ne prend aucun argument. Il donne les noms des collections, leurs nombres de documents et leurs nombres de jeux de données.
+```json
+{}
+```
 
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} fournit les comptes de stockage de chaque Collection et de chaque Jeu de données.
+{{ tool('folder_overview') }} donne les décomptes de stockage de chaque collection et de chaque jeu de données.
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} fournit les dossiers et fichiers enfants d'un dossier d'un Jeu de données.
+{{ tool('folder_list') }} donne les sous-dossiers et les fichiers d’un dossier d’un jeu de données.
 {% endif %}
 {% if has('folder_search') %}
-Pour trouver un dossier ou un fichier par nom dans un seul Jeu de données, appelez {{ tool('folder_search') }}.
+Pour trouver un dossier ou un fichier par son nom dans un jeu de données, appelez {{ tool('folder_search') }}.
 {% endif %}
 {% if has('search_collections') %}
-Pour trouver un fichier par nom dans chaque Collection, appelez {{ tool('search_collections') }} avec `filename_only` réglé sur true. Donnez le nom ou une partie de celui-ci comme requête.
+Pour trouver un fichier par son nom dans toutes les collections, appelez {{ tool('search_collections') }} avec
+`filename_only` réglé sur true. Donnez le nom, ou une partie du nom, comme requête.
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }} compte les Documents d'une Recherche par date ou par taille.
+{{ tool('search_histogram') }} compte par date ou par taille les documents d’une recherche.
 {% endif %}
 {% if has('search_facet_values') %}
-{{ tool('search_facet_values') }} fournit les valeurs d'un Filtre, y compris les types de fichier, avec des comptes.
+{{ tool('search_facet_values') }} donne les valeurs d’un filtre, y compris les types de fichiers, avec leurs décomptes.
 {% endif %}
 
-Le nom ou le chemin d'un fichier peut identifier un Document. La ⟨⟩ d'une ligne de résultat `file_hash` l'identifie directement.
+Un nom ou un chemin de fichier peut identifier un document. Le `file_hash` d’une ligne de résultat l’identifie directement.
 
-Utilisez les outils de métadonnées pour une demande d'inventaire. Leurs comptes peuvent répondre à la demande directement.
-Les Recherches de contenu ne sont utiles que lorsque la personne demande ce que disent les Documents.
+Utilisez les outils de métadonnées pour une demande d’inventaire. Leurs décomptes peuvent répondre directement à la demande.
+Les recherches de contenu ne sont utiles que si la personne demande ce que les documents disent.
 
 {% if has('search_facet_values') %}
-Appelez {{ tool('search_facet_values') }} une seule fois pour plusieurs collections et facettes.
-Les arguments sont collection, facettes, requête et ids.
-Omettez collection ou indiquez [] pour chaque collection autorisée. Indiquez un nom ou une liste pour resserrer la sélection.
-Omettez les facettes pour [« file_types », « language »]. Indiquez une liste de noms de facettes exacts pour les autres distributions.
-Utilisez file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc, re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money ou re_crypto_wallet.
+Appelez {{ tool('search_facet_values') }} une seule fois pour plusieurs collections et plusieurs facettes.
+Les arguments sont collection, facets, query et ids.
+Omettez collection ou donnez [] pour toutes les collections autorisées. Donnez un nom ou une liste pour restreindre la sélection.
+Omettez facets pour ["file_types", "language"]. Donnez une liste de noms de facettes exacts pour d’autres répartitions.
+Utilisez file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc,
+re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money ou re_crypto_wallet.
 file_type est invalide. Utilisez file_types.
-la requête trouve du texte à l'intérieur des valeurs de facette. Elle ne recherche pas le contenu des documents.
-les ids résolvent optionnellement des identifiants de termes connus. Les recherches ordinaires utilisent le texte de valeur et n'ont pas besoin d'identifiants.
+query cherche du texte dans les valeurs des facettes. Il ne cherche pas dans le contenu des documents.
+ids résout facultativement des identifiants de termes connus. Les recherches ordinaires utilisent le texte des valeurs et n’ont pas besoin d’identifiants.
 
-Le résultat contient des colonnes et des éléments. Chaque ligne commence par sa collection.
-Chaque cellule de facette contient des paires [texte, comptage]. Copiez le texte dans facet_filters pour une recherche de contenu ultérieure.
-Une cellule nulle signale une erreur. Une cellule vide ne renvoie aucune valeur.
-Les comptages se rapportent aux documents indexés correspondant par valeur. Plusieurs valeurs peuvent s'appliquer à un seul document.
-N'ajoutez pas les comptages de facettes pour affirmer un total distinct. Les totaux d'inventure proviennent de list_collections.
-La liste de facettes par défaut peut omettre les valeurs rares. Utilisez la requête pour trouver une valeur précise.
-Utilisez davantage avec read_more lorsque le résultat se poursuit.
+Le résultat a des colonnes et des éléments. Chaque ligne commence par sa collection.
+Chaque cellule de facette contient des paires [text, count]. Copiez text dans facet_filters pour une recherche de contenu ultérieure.
+Une cellule null a une erreur signalée. Une cellule vide n’a renvoyé aucune valeur.
+Les décomptes se rapportent aux documents indexés qui correspondent à chaque valeur. Plusieurs valeurs peuvent s’appliquer à un même document.
+N’additionnez pas les décomptes de facettes pour affirmer un total distinct. Les totaux d’inventaire viennent de list_collections.
+La liste de facettes par défaut peut omettre des valeurs rares. Utilisez query pour trouver une valeur précise.
+Utilisez more avec read_more quand le résultat se poursuit.
 
-Cet appel minimal inventorie les formats de fichiers et les langues dans les collections autorisées.
-```json {} ``` Cet appel compare deux collections sélectionnées et recherche leurs valeurs d'adresse électronique.
-```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+Cet appel minimal inventorie les formats de fichiers et les langues de toutes les collections autorisées.
+```json
+{}
+```
+Cet appel compare deux collections sélectionnées et cherche leurs valeurs d’adresses e-mail.
+```json
+{"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"}
+```
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} nécessite une collection. Le jeu de données sélectionne optionnellement un seul jeu de données.
-Cet appel lit tous les comptes de stockage de jeu de données dans une collection.
-```json {"collection":"alpha"} ``` Cet appel sélectionne un seul jeu de données.
-```json {"collection":"alpha","dataset":"files"} ```
+{{ tool('folder_overview') }} exige collection. dataset sélectionne facultativement un jeu de données.
+Cet appel lit tous les décomptes de stockage des jeux de données d’une collection.
+```json
+{"collection":"alpha"}
+```
+Cet appel sélectionne un jeu de données.
+```json
+{"collection":"alpha","dataset":"files"}
+```
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} nécessitent une collection et un jeu de données. node_id sélectionne optionnellement un nœud de dossier retourné.
-Omettez node_id pour lire la racine du jeu de données. Copiez les identifiants de nœud enfant dans les appels suivants.
-```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_list') }} exige collection et dataset. node_id sélectionne facultativement un nœud de dossier renvoyé.
+Omettez node_id pour lire la racine du jeu de données. Copiez les identifiants des nœuds enfants dans les appels suivants.
+```json
+{"collection":"alpha","dataset":"files"}
+```
+```json
+{"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('folder_search') %}
-{{ tool('folder_search') }} nécessitent une collection, un jeu de données et une requête. node_id limite optionnellement la recherche à un dossier.
-```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_search') }} exige collection, dataset et query. node_id limite facultativement la recherche à un dossier.
+```json
+{"collection":"alpha","dataset":"files","query":"rapport"}
+```
+```json
+{"collection":"alpha","dataset":"files","query":"rapport","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('search_histogram') %}
 {{ tool('search_histogram') }} accepte les mêmes filtres que search_collections, sauf sort et queries.
-field est date, mentioned_date ou size. Il vaut par défaut date. query vaut par défaut une requête vide.
-Une collection omise couvre chaque collection autorisée. Le résultat retourne des buckets et le champ sélectionné.
-```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+field vaut date, mentioned_date ou size. Il vaut date par défaut. query vaut par défaut une requête vide.
+Sans collection, toutes les collections autorisées sont couvertes. Le résultat renvoie les intervalles et le champ sélectionné.
+```json
+{}
+```
+```json
+{"collection":["alpha","beta"],"field":"size","query":"rapport","size_min":1024,"facet_filters":{"file_types":["pdf"]}}
+```
 {% endif %}

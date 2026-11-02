@@ -1,27 +1,27 @@
 ---
 name: no_results
 group: stumble
-description: que faire lorsqu'une recherche ne donne aucun résultat : supprimer les filtres, découper une expression, essayer d'autres formes d'un nom, puis indiquer ce qui manque
+description: que faire quand une recherche ne trouve rien, retirer les filtres, scinder une expression, essayer d’autres formes d’un nom, puis dire ce qui manque
 tools: search_collections, search_passages, web_search
 ---
-Lorsqu'une recherche ne trouve rien
+Quand une recherche ne trouve rien
 
 {% if has('search_collections') %}
-Lisez d'abord word_counts.
-Lorsqu'un nom n'apparaît nulle part, lisez les suggestions d'orthographe indexées et leurs comptes vérifiés.
-N'utilisez pas une suggestion d'orthographe comme nom demandé.
-Lorsque vous recherchez une suggestion d'orthographe, indiquez-la dans la réponse comme une autre orthographe.
-Lorsqu'aucune orthographe ne correspond, signalez que les collections recherchées ne contiennent pas le nom.
+Lisez d’abord word_counts.
+Quand un nom n’apparaît nulle part, lisez les suggestions d’orthographe indexées et leurs décomptes vérifiés.
+N’utilisez pas une orthographe suggérée comme nom demandé.
+Quand vous cherchez une orthographe suggérée, nommez-la dans la réponse comme une autre orthographe.
+Quand aucune orthographe ne correspond, indiquez que les collections cherchées ne contiennent pas le nom.
 
 {% endif %}
 Suivez ces étapes de recherche quand les recherches précédentes ne répondent pas à la question.
 {% if has('search_collections') %}
-1. Recherchez chaque nom comme une phrase entre guillemets.
-2. Recherchez les mots non guillemetés, les initiales, les adresses e-mail et les noms dans la langue du document.
-Lisez word_counts et les suggestions d'orthographe. N'utilisez une suggestion que pour le nom voulu.
-Utilisez dasovi?h pour une lettre variable et dasovic% pour une lettre finale optionnelle.
-Utilisez skilling << resigned quand l'ordre des mots compte.
-3. Retirez les filtres un par un. Exécutez une recherche sans filtre.
+1. Cherchez chaque nom comme expression entre guillemets.
+2. Cherchez des mots sans guillemets, des initiales, des adresses e-mail et des noms dans la langue du document.
+Lisez word_counts et les suggestions d’orthographe. N’utilisez une suggestion que pour le nom visé.
+Utilisez dasovi?h pour une lettre variable et dasovic% pour une lettre finale facultative.
+Utilisez skilling << resigned quand l’ordre des mots compte.
+3. Retirez les filtres un par un. Lancez une recherche sans filtre.
 {% if has('search_facet_values') %}
 Vérifiez les valeurs des filtres avec {{ tool('search_facet_values') }}.
 {% endif %}
@@ -29,7 +29,7 @@ Vérifiez les valeurs des filtres avec {{ tool('search_facet_values') }}.
 Vérifiez les dates avec {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Recherchez une description du contenu avec {{ tool('search_passages') }}.
+4. Cherchez une description du contenu avec {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
 5. Utilisez {{ tool('folder_search') }} quand la demande nomme un dossier, un chemin ou un fichier.
@@ -41,31 +41,32 @@ Utilisez {{ tool('folder_list') }} pour ce dossier.
 6. Lisez les 1 à 3 meilleurs résultats avec {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_search_text') %}
-Utilisez {{ tool('doc_search_text') }} pour le texte pertinent dans un document.
+Utilisez {{ tool('doc_search_text') }} pour le texte pertinent d’un document.
 {% endif %}
 {% if has('web_search') %}
-7. Recherchez le web uniquement quand la demande l'autorise.
+7. Cherchez sur le Web seulement quand la demande l’autorise.
 {% endif %}
 {% if has('read_page') %}
 Lisez les meilleures pages Web avec {{ tool('read_page') }}.
 {% endif %}
 {% else %}
 {% if has('web_search') %}
-1. Recherchez chaque nom comme une phrase entre guillemets, puis les autres formes du nom, ses initiales et la langue du lieu.
+1. Cherchez chaque nom comme expression entre guillemets, puis les autres formes du nom, ses initiales et la langue du lieu.
 {% endif %}
 {% if has('read_page') %}
 2. Lisez les meilleures pages Web avec {{ tool('read_page') }}.
 {% endif %}
 {% endif %}
 
-Après que les étapes disponibles n'ont trouvé aucune correspondance de mot-clé, répondez par l'absence et les recherches.
+Quand les étapes disponibles ne trouvent aucune correspondance de mots-clés, répondez par l’absence et les recherches.
 {% if has('search_collections') %}
-Avant de répondre par l'absence, lancez au moins 4 recherches distinctes avec au moins 2 outils de recherche disponibles.
-Ne répétez pas une recherche identique. Indiquez les collections recherchées et les faits manquants.
-Limitez une affirmation d'absence aux recherches et aux documents que vous avez examinés.
-Par exemple, dites « Les comptes rendus du comité recherchés et les dossiers de transfert n'ont identifié aucune date d'approbation. » Ces recherches n'établissent pas qu'il n'existe aucun dossier d'approbation dans une collection permise quel qu'elle soit.
+Avant une réponse d’absence, effectuez au moins 4 recherches distinctes avec au moins 2 outils de recherche disponibles.
+Ne répétez pas une recherche identique. Indiquez les collections cherchées et les faits manquants.
+Limitez une déclaration d’absence aux recherches et aux documents que vous avez examinés.
+Par exemple, dites « Les procès-verbaux de comité et les registres de transfert examinés n’ont pas permis d’identifier une date d’approbation. »
+Ces recherches n’établissent pas qu’aucun enregistrement d’approbation n’existe dans une collection autorisée.
 {% else %}
-Avant de répondre par l'absence, lancez au moins 4 recherches distinctes.
+Avant une réponse d’absence, effectuez au moins 4 recherches distinctes.
 Ne répétez pas une recherche identique. Indiquez les recherches et les pages lues.
-Limitez une affirmation d'absence aux recherches et aux pages que vous avez examinés.
+Limitez une déclaration d’absence aux recherches et aux pages que vous avez examinées.
 {% endif %}

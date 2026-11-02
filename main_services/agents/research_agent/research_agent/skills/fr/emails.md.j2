@@ -1,45 +1,55 @@
 ---
 name: emails
 group: technique
-description: comment lire les documents par courriel : expéditeur, destinataires, date, objet, en-têtes, copies et fils de discussion
+description: comment lire des documents e-mail, expéditeur, destinataires, date, objet, en-têtes, copies et fils de discussion
 tools: doc_email, doc_metadata, read_documents
 ---
-Lecture des documents de courriel
+Lire des documents e-mail
 
 {% if has('search_collections') %}
-Trouvez les courriels avec {{ tool('search_collections') }}. Mettez chaque forme d'une adresse ou d'un nom dans un seul appel, par exemple l'adresse, « Prénom Nom » et « Nom, Prénom ».
+Trouvez des e-mails avec {{ tool('search_collections') }}. Mettez toutes les formes d’une adresse ou d’un nom dans un seul appel, par exemple l’adresse, « Prénom Nom » et « Nom, Prénom ».
 
 {% endif %}
 {% if has('doc_email') %}
-1. Appelez {{ tool('doc_email') }} avec le file_hash du courriel. Il fournit l'expéditeur, les destinataires, les copies, la date, l'objet, le message parent, les pièces jointes et le graphe du message.
-2. Pour suivre une filiation, donnez node, le file hash d'un autre message dans le graphe. Le graphe se centre alors sur ce message.
-3. Une pièce jointe est un document à part entière. Lisez-le avec son propre file_hash.
+1. Appelez {{ tool('doc_email') }} avec le file_hash de l’e-mail. Il donne l’expéditeur, les destinataires, les copies, la date, l’objet, le message parent, les pièces jointes et le graphe des messages.
+2. Pour suivre un fil de discussion, donnez node, l’empreinte d’un autre message du graphe. Le graphe se centre alors sur ce message.
+3. Une pièce jointe est un document à part entière. Lisez-la avec son propre file_hash.
 {% endif %}
 {% if has('read_documents') %}
 4. Lisez le texte du message avec {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_metadata') %}
-5. Pour les en-têtes et les dates qui ne sont pas dans le texte, appelez {{ tool('doc_metadata') }}.
+5. Pour les en-têtes et les dates qui ne figurent pas dans le texte, appelez {{ tool('doc_metadata') }}.
 {% endif %}
 
-Une copie du même message peut se trouver dans plus d'une boîte aux lettres. Comparez ses champs lorsqu'un nombre dépend de messages distincts.
+Une copie du même message peut se trouver dans plusieurs boîtes aux lettres. Comparez ses champs quand un décompte dépend de messages distincts.
 
 {% if has('doc_email') %}
-{{ tool('doc_email') }} nécessite collection et file_hash.
-collection est un seul nom. file_hash accepte un seul hash ou une liste de jusqu'à dix hashes de cette collection.
-node centre optionnellement le graphe sur un hash de message retourné. L'omission le centre sur le courriel demandé.
-Utilisez read_more avec read_more pour inspecter les pièces jointes et les entrées de graphe restantes.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+{{ tool('doc_email') }} exige collection et file_hash.
+collection est un seul nom. file_hash accepte une empreinte ou une liste d’au plus dix empreintes de cette collection.
+node centre facultativement le graphe sur l’empreinte d’un message renvoyé. Sans node, le graphe se centre sur l’e-mail demandé.
+Utilisez more avec read_more pour examiner les pièces jointes et les entrées du graphe restantes.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"}
+```
 {% endif %}
 {% if has('doc_metadata') %}
-{{ tool('doc_metadata') }} nécessite collection et file_hash. Il accepte un seul hash ou une liste de jusqu'à dix hashes.
-Il retourne les métadonnées stockées, les dates, les lieux et les liens de téléchargement. Utilisez read_more pour les champs de métadonnées restants.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{{ tool('doc_metadata') }} exige collection et file_hash. Il accepte une empreinte ou une liste d’au plus dix empreintes.
+Il renvoie les métadonnées enregistrées, les dates, les emplacements et les liens de téléchargement. Utilisez read_more pour les champs de métadonnées restants.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]}
+```
 {% endif %}
-Lisez le passage demandé avant d'attribuer son auteur, ses destinataires ou sa date.
-L'enveloppe de courriel extérieure appartient au message extérieur.
-Un passage transmis ou cité peut avoir un auteur, des destinataires et une date différents.
-Utilisez ses propres en-têtes pour identifier qui l'a écrit.
-Une personne qui a transmis un message n'a pas nécessairement écrit sa citation.
-Lorsque l'attribution reste inconnue, indiquez cette limite.
-Lisez les passages pour les plages ciblées et les instructions de continuation. Ne répétez pas la lecture initiale pour demander le texte ultérieur.
+Lisez le passage demandé avant d’en attribuer le rédacteur, les destinataires ou la date.
+L’enveloppe externe d’un e-mail appartient au message externe.
+Un passage transféré ou cité peut avoir un autre rédacteur, d’autres destinataires et une autre date.
+Utilisez les en-têtes propres à ce passage pour identifier qui l’a écrit.
+Une personne qui a transféré un message n’a pas forcément écrit la déclaration qu’il cite.
+Quand l’attribution reste inconnue, indiquez cette limite.
+Lisez les passages pour obtenir les plages ciblées et les instructions de continuation. Ne répétez pas la lecture initiale pour demander la suite du texte.

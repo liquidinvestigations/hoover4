@@ -1,19 +1,22 @@
 ---
 name: todo_upkeep
 group: stumble
-description: comment conserver le plan avec update_plan, ses étapes et leurs statuts
+description: comment tenir le plan avec update_plan, ses étapes et leurs statuts
 tools: update_plan
 ---
-En conservant le plan
+Tenir le plan
 
-{{ tool('update_plan') }} prend l'objectif et la liste complète des étapes. Chaque étape contient un texte et un statut, et une étape terminée possède une note courte.
+{{ tool('update_plan') }} prend l’objectif et la liste complète des étapes. Chaque étape a text et status, et une étape done a une courte note.
 
-1. Envoie la liste entière à chaque appel, dans l'ordre. Une étape que tu omettez n'est plus dans le plan.
-2. Donne chaque étape sous forme d'un objet avec un texte et un statut. Le statut est pending ou done.
-3. Une étape est pending jusqu'à la fin de son travail. Ensuite, envoie-la comme done avec une note, telle que found, not found ou replaced.
-4. Conserve le texte d'une étape identique quand seul son statut change. L'étape conserve alors son id.
+1. Envoyez la liste complète à chaque appel, dans l’ordre. Une étape que vous omettez n’est plus dans le plan.
+2. Donnez chaque étape comme un objet avec text et status. status vaut pending ou done.
+3. Une étape reste pending jusqu’à la fin de son travail. Envoyez-la ensuite comme done avec une note, par exemple trouvé, non trouvé ou remplacé.
+4. Gardez le texte d’une étape identique quand seul son statut change. L’étape garde alors son identifiant.
 5. Un nouvel objectif démarre un nouveau plan.
-6. {{ tool('update_plan') }} ne fait que conserver le plan. Écris un rapport ou un autre fichier avec {{ tool('write_file') }}.
+6. {{ tool('update_plan') }} conserve seulement le plan. Écrivez un rapport ou un autre fichier avec {{ tool('write_file') }}.
 
-Voici un exemple. L'étape 1 a trouvé ce dont tu as besoin, et l'étape 2 est encore ouverte.
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` Le résultat montre le plan entier avec l'id de chaque étape. Un appel qui ne change rien retourne l'état initial. Corrige le champ nommé avant de rappeler.
+Voici un exemple. L’étape 1 a trouvé ce dont vous avez besoin, et l’étape 2 est encore ouverte.
+```json
+{"goal":"Trouver la date d’approbation.","steps":[{"text":"Trouver le message.","status":"done","note":"trouvé"},{"text":"Lire le passage à l’appui.","status":"pending"}]}
+```
+Le résultat montre le plan complet avec l’identifiant de chaque étape. Un appel qui ne change rien renvoie unchanged. Corrigez le champ nommé avant d’appeler à nouveau.

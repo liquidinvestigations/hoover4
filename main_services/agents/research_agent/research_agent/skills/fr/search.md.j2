@@ -1,34 +1,35 @@
 ---
 name: search
 group: general
-description: comment rechercher dans les collections de documents et utiliser la syntaxe de requête
+description: comment chercher dans les collections de documents et utiliser la syntaxe des requêtes
 tools: search_collections
 ---
 {% if has('search_collections') %}
-Rechercher dans les documents de l'utilisateur
+Chercher dans les documents de l’utilisateur
 
-1. Recherchez dans les documents lorsque leur contenu peut répondre à la question.
-2. Utilisez la Collection lorsque la requête cible une seule collection. Laissez-la de côté pour rechercher dans l'ensemble des collections que cette discussion peut lire.
-3. {{ tool('search_collections') }} accepte plusieurs requêtes. Utilisez les formes pertinentes d'un nom ou d'une adresse. Mettez une phrase exacte entre guillemets.
-4. OR, AND et NOT sont des mots ordinaires dans une requête. Utilisez | pour l'alternative et -mot pour exclure un mot.
-5. Copiez file_hash et collection depuis une ligne de résultat. N'écrivez jamais un hash vous-même.{% if has('read_more') %} Si une ligne n'a pas de file_hash, appelez {{ tool('read_more') }}.{% endif +%}
-6. Définissez un filtre de date ou de taille lorsqu'il aide à répondre à la question.
-7. Lorsque vous annoncez qu'une recherche n'a trouvé aucun document, indiquez sa requête, ses collections et son comptage.
-8. Un appel prend au plus 12 requêtes. Partagez une liste plus longue en deux appels.
-9. Donnez à chaque requête au moins un mot à rechercher. Une requête composée uniquement de termes -mot est refusée.
-10. Définissez filename_only à true ou false. Il ne prend aucun texte.
+1. Cherchez dans les documents quand leur contenu peut répondre à la question.
+2. Utilisez collection quand la demande cible une collection. Omettez-le pour chercher
+dans toutes les collections que cette conversation peut lire.
+3. {{ tool('search_collections') }} accepte plusieurs requêtes. Utilisez les formes pertinentes d’un nom ou d’une adresse. Mettez une expression exacte entre guillemets doubles.
+4. OR, AND et NOT sont des mots ordinaires dans une requête. Utilisez | pour l’un ou l’autre et -mot pour exclure un mot.
+5. Copiez file_hash et collection depuis une ligne de résultat. N’écrivez jamais une empreinte vous-même.{% if has('read_more') %} Si une ligne n’a pas de file_hash, appelez {{ tool('read_more') }}.{% endif +%}
+6. Réglez un filtre de date ou de taille quand il aide à répondre à la question.
+7. Quand vous indiquez qu’une recherche n’a trouvé aucun document, donnez sa requête, ses collections et son décompte.
+8. Un appel accepte au plus 12 requêtes. Scindez une liste plus longue en deux appels.
+9. Donnez à chaque requête au moins un mot à chercher. Une requête composée seulement de termes -mot est refusée.
+10. Réglez filename_only sur true ou false. Il n’accepte aucun texte.
 
-Exemple. L'utilisateur demande toutes les données sur JoeBWilkinson@cs.com. Faites un appel à {{ tool('search_collections') }} avec les requêtes ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Lisez un document lorsque sa ligne de résultat ne fournit pas assez de preuves pour l'affirmation.
+Exemple. L’utilisateur demande toutes les données sur JoeBWilkinson@cs.com. Faites un seul appel à {{ tool('search_collections') }} avec queries ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. Lisez un document quand sa ligne de résultat ne fournit pas assez d’éléments pour l’affirmation.
 {% endif %}
 
-Suivez ces étapes de recherche lorsque les recherches précédentes ne répondent pas à la question.
+Suivez ces étapes de recherche quand les recherches précédentes ne répondent pas à la question.
 {% if has('search_collections') %}
-1. Recherchez chaque nom sous forme de phrase entre guillemets.
-2. Recherchez les mots sans guillemets, les initiales, les adresses e-mail et les noms dans la langue du document.
-Lisez word_counts et les suggestions d'orthographe. N'utilisez une suggestion que pour le nom voulu.
-Utilisez dasovi?h pour une lettre variable et dasovic% pour une lettre finale optionnelle.
-Utilisez skilling << resigned quand l'ordre des mots compte.
-3. Retirez les filtres un à un. Exécutez une recherche sans filtre.
+1. Cherchez chaque nom comme expression entre guillemets.
+2. Cherchez des mots sans guillemets, des initiales, des adresses e-mail et des noms dans la langue du document.
+Lisez word_counts et les suggestions d’orthographe. N’utilisez une suggestion que pour le nom visé.
+Utilisez dasovi?h pour une lettre variable et dasovic% pour une lettre finale facultative.
+Utilisez skilling << resigned quand l’ordre des mots compte.
+3. Retirez les filtres un par un. Lancez une recherche sans filtre.
 {% endif %}
 {% if has('search_facet_values') %}
 Vérifiez les valeurs des filtres avec {{ tool('search_facet_values') }}.
@@ -37,7 +38,7 @@ Vérifiez les valeurs des filtres avec {{ tool('search_facet_values') }}.
 Vérifiez les dates avec {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Recherchez une description du contenu avec {{ tool('search_passages') }}.
+4. Cherchez une description du contenu avec {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
 5. Utilisez {{ tool('folder_search') }} quand la demande nomme un dossier, un chemin ou un fichier.
@@ -48,49 +49,51 @@ Utilisez {{ tool('folder_list') }} pour ce dossier.
 {% if has('read_documents') %}
 6. Lisez les 1 à 3 meilleurs résultats avec {{ tool('read_documents') }}.
 {% endif %}
-Pour les personnes ou organisations d'un document, lisez la partie de ce document qui les nomme. Une référence vers un autre travail nomme cet autre travail.
+Pour les personnes ou les organisations d’un document, lisez la partie de ce document qui les nomme. Une référence à un autre ouvrage nomme cet autre ouvrage.
 {% if has('doc_search_text') %}
-Utilisez {{ tool('doc_search_text') }} pour le texte pertinent dans un document.
+Utilisez {{ tool('doc_search_text') }} pour le texte pertinent d’un document.
 {% endif %}
 {% if has('web_search') %}
-7. Recherchez le web uniquement quand la demande l'autorise.
+7. Cherchez sur le Web seulement quand la demande l’autorise.
 {% endif %}
 {% if has('read_page') %}
-Lisez les meilleures pages web avec {{ tool('read_page') }}.
+Lisez les meilleures pages Web avec {{ tool('read_page') }}.
 {% endif %}
 
 {% if has('search_collections') %}
-Les arguments de recherche complents sont collection, queries, query, sort, date_after, date_before, date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max, folder_term_id, filename_only et facet_filters.
-collection accepte un nom ou une liste. L'omission ou [] effectue la recherche dans toutes les collections permises.
-query vaut par défaut le texte vide. queries ajoute optionnellement jusqu'à 12 formes. Les formes en double s'exécutent une seule fois.
+Les arguments de recherche complets sont collection, queries, query, sort, date_after, date_before,
+date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max,
+folder_term_id, filename_only et facet_filters.
+collection accepte un nom ou une liste. Sans collection, ou avec [], toutes les collections autorisées sont cherchées.
+query vaut par défaut un texte vide. queries ajoute facultativement jusqu’à 12 formes. Les formes en double s’exécutent une fois.
 Une requête vide parcourt toutes les correspondances des filtres. Les formes de recherche fusionnent les identités de documents correspondants.
-sort contient le champ et la direction. Le champ est relevance, date, file_size ou name. La direction est asc ou desc.
-L'omission utilise l'ordre de pertinence par défaut.
-date_after et date_before utilisent les secondes epoch UTC incluses pour la date du document.
-mentioned_date_after et mentioned_date_before utilisent les secondes epoch UTC incluses pour les dates extraites du texte.
-date_unknown_only=true sélectionne les documents sans date de document connue. Ne pas le combiner avec une plage de date connue.
-size_min et size_max sont des limites en octets incluses. folder_term_id sélectionne un terme de dossier retourné.
-filename_only=true restreint la requête aux noms et chemins. False utilise le contenu des documents.
-facet_filters mappe les noms de facettes valides vers des listes de texte de valeur retourné. L'omission n'applique aucun filtre de facette.
-Les valeurs au sein d'une même facette sont des alternatives. Les filtres de facette différents doivent tous correspondre.
+sort contient field et direction. field vaut relevance, date, file_size ou name. direction vaut asc ou desc.
+Sans sort, l’ordre de pertinence par défaut est utilisé.
+date_after et date_before utilisent des secondes d’époque UTC, bornes incluses, pour la date du document.
+mentioned_date_after et mentioned_date_before utilisent des secondes d’époque UTC, bornes incluses, pour les dates extraites du texte.
+date_unknown_only=true sélectionne les documents sans date de document connue. Ne le combinez pas avec une plage de dates connues.
+size_min et size_max sont des limites en octets, bornes incluses. folder_term_id sélectionne un terme de dossier renvoyé.
+filename_only=true restreint la requête aux noms et aux chemins. false utilise le contenu des documents.
+facet_filters associe des noms de facettes valides à des listes de textes de valeurs renvoyés. Sans facet_filters, aucun filtre de facette n’est appliqué.
+Les valeurs d’une même facette sont des alternatives. Les filtres de facettes différentes doivent tous correspondre.
 
-Chaque résultat inclut collection, file_hash, path, snippet et le type, la date et la taille disponibles.
-q liste les formes basées sur zéro qui ont trouvé la ligne. query_forms rapporte le compteur de chaque forme.
-word_counts vérifie les mots indexés. suggestions liste les orthographes indexées proches avec des compteurs.
-Lisez query_notes pour la syntaxe réparée, les filtres inconnus et les formes de requête échouées.
-more poursuit le résultat. Copiez-le dans read_more. Une première page vide n'a pas besoin d'un appel identique répété.
+Chaque résultat inclut collection, file_hash, path, snippet et, quand ils sont disponibles, le type, la date et la taille.
+q liste les formes, comptées à partir de zéro, qui ont trouvé la ligne. query_forms indique le décompte de chaque forme.
+word_counts vérifie les mots indexés. suggestions liste les orthographes indexées voisines avec leurs décomptes.
+Lisez query_notes pour la syntaxe réparée, les filtres inconnus et les formes de requête en échec.
+more poursuit le résultat. Copiez-le dans read_more. Une première page vide n’exige pas de répéter l’appel identique.
 
-This minimal call searches all permitted collections.
+Cet appel minimal cherche dans toutes les collections autorisées.
 ```json
 {"query":"\"Joe Wilkinson\""}
 ```
-This advanced call combines query forms, collection scope, sort, dates, size and facet filters.
+Cet appel avancé combine des formes de requête, un périmètre de collections, un tri, des dates, une taille et des filtres de facettes.
 ```json
 {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}}
 ```
-This separate call finds files without a known document date.
+Cet appel distinct trouve les fichiers sans date de document connue.
 ```json
 {"query":"report","filename_only":true,"date_unknown_only":true}
 ```
-Replace collection, folder and facet values with values returned for the current chat.
+Remplacez les valeurs de collection, de dossier et de facette par des valeurs renvoyées pour la conversation en cours.
 {% endif %}

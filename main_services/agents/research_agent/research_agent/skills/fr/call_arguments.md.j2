@@ -1,69 +1,91 @@
 ---
 name: call_arguments
 group: stumble
-description: comment remplir les arguments d'un appel d'outil : uniquement les noms fournis par son schéma, une liste lorsqu'il demande une liste, et aucune guillemet supplémentaire
+description: comment remplir les arguments d’un appel d’outil, seulement les noms que son schéma donne, une liste là où il demande une liste, et pas de guillemets en trop
 tools:
 ---
-Remplir les arguments d'un appel
+Remplir les arguments d’un appel
 
 {% if has('read_tool') %}
-Lorsque vous n'êtes pas sûr des arguments d'un outil, appelez {{ tool('read_tool') }} avec son nom. Il vous donne chaque argument, son type et les arguments que l'outil exige.
+Quand vous n’êtes pas sûr des arguments d’un outil, appelez {{ tool('read_tool') }} avec son nom. Il donne chaque argument, son type et les arguments que l’outil exige.
 
 {% endif %}
-1. Ne donnez que les noms d'arguments que l'outil fournit. Un argument portant un autre nom est refusé.
-2. Donnez chaque argument requis.
-3. Lorsque l'outil demande une liste, donnez une liste, même pour une seule valeur. Écrivez queries ["lease"]. N'écrivez pas queries "lease".
-4. Lorsque l'outil demande un nombre ou un booléen, donnez la valeur sans guillemets. Écrivez filename_only true. N'écrivez pas filename_only "true".
-5. Ne mettez pas de guillemets à l'intérieur d'une valeur textuelle. Écrivez status done. N'écrivez pas status "\"done\"".
-6. Conservez chaque valeur dans les limites imposées par son outil, comme le nombre maximal d'éléments d'une liste.
-7. Lorsque l'outil demande une liste d'objets, donnez une liste d'objets. Ne donnez pas un texte
+1. Donnez seulement les noms d’arguments que l’outil donne. Un argument portant un autre nom est refusé.
+2. Donnez chaque argument obligatoire.
+3. Là où l’outil demande une liste, donnez une liste, même pour une seule valeur. Écrivez queries ["lease"]. N’écrivez pas queries "lease".
+4. Là où l’outil demande un nombre ou true ou false, donnez la valeur sans guillemets. Écrivez filename_only true. N’écrivez pas filename_only "true".
+5. Ne mettez pas de guillemets à l’intérieur d’une valeur de texte. Écrivez status done. N’écrivez pas status "\"done\"".
+6. Gardez chaque valeur dans les limites de son outil, par exemple le nombre maximal d’éléments d’une liste.
+7. Là où l’outil demande une liste d’objets, donnez une liste d’objets. Ne donnez pas un texte
 {% if has('cite_documents') %}
-   contenant du JSON. Écrivez citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
-   N'écrivez pas citations "[{\"collection\": ...}]".
+   qui contient du JSON. Écrivez citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
+   N’écrivez pas citations "[{\"collection\": ...}]".
 {% elif has('cite_pages') %}
-   contenant du JSON. Écrivez pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
-   N'écrivez pas pages "[{\"url\": ...}]".
+   qui contient du JSON. Écrivez pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
+   N’écrivez pas pages "[{\"url\": ...}]".
 {% else %}
-   contenant du JSON.
+   qui contient du JSON.
 {% endif %}
 {% if has('write_file') %}
-8. Donnez le nom du fichier dans chaque appel {{ tool('write_file') }} et {{ tool('patch_file') }}.
+8. Donnez le nom du fichier dans chaque appel de {{ tool('write_file') }} et de {{ tool('patch_file') }}.
 {% endif %}
 
-Lorsqu'un appel est refusé, l'erreur nomme l'argument et ce qui s'y révèle incorrect. Corrigez cet argument, puis renvoyez l'appel.
+Quand un appel est refusé, l’erreur nomme l’argument et ce qui ne va pas. Corrigez cet argument, puis envoyez l’appel.
 
 {% if has('search_agent_tools') %}
-{{ tool('search_agent_tools') }} nécessite une requête, une description de tâche de 160 caractères au plus.
-Elle retourne les noms et descriptions des outils pertinents. Lisez un outil avant d'utiliser des arguments que vous ne connaissez pas.
-```json {"query":"Trouver un passage vers la fin d'un long document."} ```
+{{ tool('search_agent_tools') }} exige query, une description de la tâche de 160 caractères au plus.
+Il renvoie les noms et les descriptions des outils pertinents. Lisez un outil avant d’utiliser des arguments inconnus.
+```json
+{"query":"Trouver un passage situé tard dans un long document."}
+```
 {% endif %}
 {% if has('read_tool') %}
-{{ tool('read_tool') }} nécessite name, le nom exact d'un outil disponible.
-Elle retourne la description et le schéma d'entrée complet, y compris les valeurs autorisées, les valeurs par défaut et les champs obligatoires.
-```json {"name":"read_documents"} ``` Après une erreur d'argument inconnu, lisez le schéma de l'outil défaillant avant de réessayer.
+{{ tool('read_tool') }} exige name, le nom exact d’un outil disponible.
+Il renvoie la description et le schéma d’entrée complet, avec les valeurs autorisées, les valeurs par défaut et les champs obligatoires.
+```json
+{"name":"read_documents"}
+```
+Après une erreur d’argument inconnu, lisez le schéma de l’outil en échec avant de réessayer.
 {% if has('update_plan') %}
-Par exemple, cet appel {{ tool('update_plan') }} échoue car `plan` n'est pas un argument.
-```json {"plan":["Trouver le message."]} ``` Lisez son schéma avec {{ tool('read_tool') }}.
-```json {"name":"update_plan"} ``` Appelez ensuite {{ tool('update_plan') }} avec goal et steps.
-```json {"goal":"Trouver la date d'approbation.","steps":[{"text":"Trouver le message.","status":"pending"}]} ```
+Par exemple, cet appel de {{ tool('update_plan') }} échoue parce que `plan` n’est pas un argument.
+```json
+{"plan":["Trouver le message."]}
+```
+Lisez son schéma avec {{ tool('read_tool') }}.
+```json
+{"name":"update_plan"}
+```
+Appelez ensuite {{ tool('update_plan') }} avec goal et steps.
+```json
+{"goal":"Trouver la date d’approbation.","steps":[{"text":"Trouver le message.","status":"pending"}]}
+```
 {% endif %}
 {% if has('read_documents') %}
 Si {{ tool('read_documents') }} rejette `source2` ou `offset2`, lisez son schéma avant de réessayer.
-Utilisez un appel séparé pour chaque document nécessitant des arguments de plage différents.
+Utilisez un appel distinct pour chaque document qui exige des arguments de plage différents.
 {% endif %}
 {% endif %}
 {% if has('search_skills') %}
-{{ tool('search_skills') }} accepte query, jusqu'à 160 caractères. L'omission ou un texte vide liste toutes les compétences disponibles.
-Elle retourne les noms de méthode et les descriptions.
-```json {} ``` ```json {"query":"Lire un long document et poursuivre son passage correspondant."} ```
+{{ tool('search_skills') }} accepte query, 160 caractères au plus. Sans query, ou avec un texte vide, il liste toutes les compétences disponibles.
+Il renvoie les noms et les descriptions des méthodes.
+```json
+{}
+```
+```json
+{"query":"Lire un long document et poursuivre avec son passage correspondant."}
+```
 {% endif %}
 {% if has('read_skill') %}
-{{ tool('read_skill') }} nécessite name, le nom exact retourné par la découverte de compétences.
-Elle retourne les instructions de méthode, les arguments d'outil et les exemples.
-```json {"name":"passages"} ```
+{{ tool('read_skill') }} exige name, le nom exact renvoyé par la découverte des compétences.
+Il renvoie les instructions de la méthode, les arguments des outils et des exemples.
+```json
+{"name":"passages"}
+```
 {% endif %}
 {% if has('write_note') %}
-{{ tool('write_note') }} nécessite text, de 1 à 2 000 caractères. Elle enregistre les preuves et questions non résolues pour un contexte ultérieur.
-Incluez les identités des sources et l'appel suivant utile quand ce contexte doit survivre à la compaction.
-```json {"text":"Le passage d'approbation se trouve dans la plage de document retournée. Vérifiez son auteur original avant de l'attribuer."} ```
+{{ tool('write_note') }} exige text, de 1 à 2 000 caractères. Il enregistre des éléments de preuve et des questions non résolues pour le contexte ultérieur.
+Incluez l’identité des sources et le prochain appel utile quand ce contexte doit survivre au compactage.
+```json
+{"text":"Le passage d’approbation se trouve dans la plage du document renvoyé. Vérifiez son rédacteur d’origine avant de lui attribuer le passage."}
+```
 {% endif %}
