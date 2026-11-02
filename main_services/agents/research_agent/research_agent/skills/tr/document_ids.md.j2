@@ -1,0 +1,20 @@
+---
+name: document_ids
+group: stumble
+description: bir belgenin dosya karmasıyla ya da read_documents'ta bir yolla nasıl adlandırılacağı
+tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
+---
+Bir belgeyi adlandırma
+
+Bir belge karması 64 onaltılık karakterden oluşur. Belge araçları, en az 12 karakterlik benzersiz bir başlangıcı da kabul eder.
+
+1. Aynı sonuç satırının file_hash ve collection değerini kopyala. Bir karmayı asla kendin yazma.
+   COPY_RETURNED_HASH gibi bir yer tutucu ya da sıfırlardan oluşan bir değer karma değildir. Bir klasör kimliği de
+   bu konuşmanın bir listesinden ya da arama sonucundan gelir.
+2. {% if has('read_documents') %}{{ tool('read_documents') }}, tek bir belgeyi adlandırıyorsa bir dosya adını ya da yolu da çözebilir.{% endif %} Diğer belge araçları karmayı kullanır.
+3. Bir dosyanın file_hash değerini adıyla bulmak için adı {{ tool('search_collections') }}{% if has('folder_search') %} ya da {{ tool('folder_search') }}{% endif %} ile ara ve satırın file_hash değerini kopyala.
+{% if has('read_more') %}
+4. Bir satırın file_hash değeri yoksa sonucun sonraki sayfası için {{ tool('read_more') }} aracını çağır.
+{% endif %}
+
+Bir okuma, hiçbir okunabilir veri kümesinin bir karmayı içermediğini söylüyorsa koleksiyonunu ve değerini sonuç satırıyla karşılaştır. Eksik bir belge, değerin birden fazla belgeyi adlandırdığı anlamına da gelebilir.

@@ -56,7 +56,7 @@ Hold the pointer over an icon to show its name beside it.
 
 Select the flag at the bottom of the rail to open your language settings.
 Under **Interface language**, select the language of the menus, buttons and messages.
-**Browser language** uses the first of the 21 languages that your browser prefers, else English.
+**Browser language** uses the first of the 22 languages that your browser prefers, else English.
 Under **Agent language**, select the language that the AI agent answers in.
 **Same as the interface** uses the interface language.
 Each choice is saved at once. The agent uses a new agent language from your next message.

@@ -1,0 +1,19 @@
+{
+ "terms": {
+  "skill": "beceri",
+  "tool": "araç",
+  "tool call": "araç çağrısı",
+  "argument": "argüman",
+  "citation handle": "atıf etiketi",
+  "quote": "alıntı",
+  "workspace file": "çalışma alanı dosyası",
+  "report": "rapor",
+  "hit": "sonuç",
+  "passage": "pasaj",
+  "query": "sorgu",
+  "web page": "web sayfası",
+  "run": "çalışma",
+  "note": "not",
+  "plan": "plan"
+ }
+}

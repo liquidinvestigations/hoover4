@@ -1,0 +1,72 @@
+---
+name: no_results
+group: stumble
+description: bir arama hiçbir şey bulmadığında ne yapılacağı: filtreleri kaldır, bir ifadeyi böl, bir adın başka biçimlerini dene, sonra neyin eksik olduğunu söyle
+tools: search_collections, search_passages, web_search
+---
+Bir arama hiçbir şey bulmadığında
+
+{% if has('search_collections') %}
+Önce word_counts'u oku.
+Bir ad hiçbir yerde geçmiyorsa dizinlenmiş yazım önerilerini ve denetlenmiş sayılarını oku.
+Önerilen bir yazımı istenen ad olarak kullanma.
+Önerilen bir yazımı aradığında yanıtta bunu farklı bir yazım olarak belirt.
+Hiçbir yazım eşleşmiyorsa aranan koleksiyonların adı içermediğini bildir.
+
+{% endif %}
+Önceki aramalar soruyu yanıtlamıyorsa şu arama adımlarını izle.
+{% if has('search_collections') %}
+1. Her adı tırnak içinde bir ifade olarak ara.
+2. Tırnaksız sözcükleri, baş harfleri, e-posta adreslerini ve belge dilindeki adları ara.
+word_counts'u ve yazım önerilerini oku. Bir öneriyi yalnızca amaçlanan ad için kullan.
+Değişen tek harf için dasovi?h, isteğe bağlı bir son harf için dasovic% kullan.
+Sözcük sırası önemliyse skilling << resigned kullan.
+3. Filtreleri birer birer kaldır. Filtresiz bir arama yap.
+{% if has('search_facet_values') %}
+Filtre değerlerini {{ tool('search_facet_values') }} ile doğrula.
+{% endif %}
+{% if has('search_histogram') %}
+Tarihleri {{ tool('search_histogram') }} ile doğrula.
+{% endif %}
+{% if has('search_passages') %}
+4. İçeriğin bir tanımını {{ tool('search_passages') }} ile ara.
+{% endif %}
+{% if has('folder_search') %}
+5. İstek bir klasörü, yolu ya da dosyayı adlandırıyorsa {{ tool('folder_search') }} kullan.
+{% endif %}
+{% if has('folder_list') %}
+O klasör için {{ tool('folder_list') }} kullan.
+{% endif %}
+{% if has('read_documents') %}
+6. En iyi 1 ila 3 sonucu {{ tool('read_documents') }} ile oku.
+{% endif %}
+{% if has('doc_search_text') %}
+Bir belgedeki ilgili metin için {{ tool('doc_search_text') }} kullan.
+{% endif %}
+{% if has('web_search') %}
+7. Web'de yalnızca istek buna izin veriyorsa ara.
+{% endif %}
+{% if has('read_page') %}
+En iyi web sayfalarını {{ tool('read_page') }} ile oku.
+{% endif %}
+{% else %}
+{% if has('web_search') %}
+1. Her adı tırnak içinde bir ifade olarak ara, sonra adın diğer biçimlerini, baş harflerini ve yerin dilini ara.
+{% endif %}
+{% if has('read_page') %}
+2. En iyi web sayfalarını {{ tool('read_page') }} ile oku.
+{% endif %}
+{% endif %}
+
+Kullanılabilir adımlar bir anahtar sözcük eşleşmesi bulmazsa yokluğu ve aramaları bildirerek yanıt ver.
+{% if has('search_collections') %}
+Bir yokluk yanıtından önce, kullanılabilir en az 2 arama aracıyla en az 4 farklı arama yap.
+Özdeş bir aramayı yineleme. Aranan koleksiyonları ve eksik olguları belirt.
+Yokluk ifadesini incelediğin aramalar ve belgelerle sınırla.
+Örneğin şunu söyle: "Aranan komite tutanakları ve transfer kayıtları bir onay tarihi belirlemedi."
+Bu aramalar, izin verilen hiçbir koleksiyonda onay kaydı bulunmadığını kanıtlamaz.
+{% else %}
+Bir yokluk yanıtından önce en az 4 farklı arama yap.
+Özdeş bir aramayı yineleme. Aramaları ve okunan sayfaları belirt.
+Yokluk ifadesini incelediğin aramalar ve sayfalarla sınırla.
+{% endif %}

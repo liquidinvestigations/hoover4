@@ -35,7 +35,7 @@ macro_rules! catalog {
 }
 
 /// The catalog text of each supported language, in the order of `LANGUAGES`.
-pub const CATALOGS: [(&str, &str); 21] = [
+pub const CATALOGS: [(&str, &str); 22] = [
     ("en", catalog!("en")),
     ("de", catalog!("de")),
     ("es", catalog!("es")),
@@ -57,6 +57,7 @@ pub const CATALOGS: [(&str, &str); 21] = [
     ("ru", catalog!("ru")),
     ("ja", catalog!("ja")),
     ("ko", catalog!("ko")),
+    ("tr", catalog!("tr")),
 ];
 
 /// Arabic and Hebrew wrap each inserted value in Unicode isolation marks, so a Latin

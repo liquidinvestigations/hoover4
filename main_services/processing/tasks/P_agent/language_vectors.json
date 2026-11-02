@@ -15,6 +15,7 @@
     {"tag": "ru-RU", "expected": "ru"},
     {"tag": "ja-JP", "expected": "ja"},
     {"tag": "ko", "expected": "ko"},
+    {"tag": "tr-TR", "expected": "tr"},
     {"tag": "tlh", "expected": null},
     {"tag": "", "expected": null},
     {"tag": "*", "expected": null},

@@ -1,0 +1,99 @@
+---
+name: search
+group: general
+description: belge koleksiyonlarında nasıl arama yapılacağı ve sorgu sözdiziminin nasıl kullanılacağı
+tools: search_collections
+---
+{% if has('search_collections') %}
+Kullanıcının belgelerinde arama
+
+1. İçerikleri soruyu yanıtlayabiliyorsa belgelerde ara.
+2. İstek tek bir koleksiyonu hedefliyorsa collection kullan. Bu sohbetin okuyabildiği tüm
+koleksiyonlarda aramak için onu atla.
+3. {{ tool('search_collections') }} birkaç sorgu kabul eder. Bir adın ya da adresin ilgili biçimlerini kullan. Tam bir ifadeyi çift tırnağa koy.
+4. OR, AND ve NOT bir sorguda sıradan sözcüklerdir. İkisinden biri için | kullan, bir sözcüğü dışlamak için -sözcük kullan.
+5. file_hash ve collection değerlerini bir sonuç satırından kopyala. Bir karmayı asla kendin yazma.{% if has('read_more') %} Bir satırın file_hash değeri yoksa {{ tool('read_more') }} aracını çağır.{% endif +%}
+6. Soruyu yanıtlamaya yarıyorsa bir tarih ya da boyut filtresi koy.
+7. Bir aramanın hiçbir belge bulmadığını bildirdiğinde sorgusunu, koleksiyonlarını ve sayısını ver.
+8. Bir çağrı en fazla 12 sorgu alır. Daha uzun bir listeyi iki çağrıya böl.
+9. Her sorguya aranacak en az bir sözcük ver. Yalnızca -sözcük terimlerinden oluşan bir sorgu reddedilir.
+10. filename_only'yi true ya da false yap. Metin almaz.
+
+Örnek. Kullanıcı JoeBWilkinson@cs.com hakkındaki tüm verileri ister. {{ tool('search_collections') }} aracına queries ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"] ile tek bir çağrı yap. Sonuç satırı iddia için yeterli kanıt sağlamıyorsa bir belge oku.
+{% endif %}
+
+Önceki aramalar soruyu yanıtlamıyorsa şu arama adımlarını izle.
+{% if has('search_collections') %}
+1. Her adı tırnak içinde bir ifade olarak ara.
+2. Tırnaksız sözcükleri, baş harfleri, e-posta adreslerini ve belge dilindeki adları ara.
+word_counts'u ve yazım önerilerini oku. Bir öneriyi yalnızca amaçlanan ad için kullan.
+Değişen tek harf için dasovi?h, isteğe bağlı bir son harf için dasovic% kullan.
+Sözcük sırası önemliyse skilling << resigned kullan.
+3. Filtreleri birer birer kaldır. Filtresiz bir arama yap.
+{% endif %}
+{% if has('search_facet_values') %}
+Filtre değerlerini {{ tool('search_facet_values') }} ile doğrula.
+{% endif %}
+{% if has('search_histogram') %}
+Tarihleri {{ tool('search_histogram') }} ile doğrula.
+{% endif %}
+{% if has('search_passages') %}
+4. İçeriğin bir tanımını {{ tool('search_passages') }} ile ara.
+{% endif %}
+{% if has('folder_search') %}
+5. İstek bir klasörü, yolu ya da dosyayı adlandırıyorsa {{ tool('folder_search') }} kullan.
+{% endif %}
+{% if has('folder_list') %}
+O klasör için {{ tool('folder_list') }} kullan.
+{% endif %}
+{% if has('read_documents') %}
+6. En iyi 1 ila 3 sonucu {{ tool('read_documents') }} ile oku.
+{% endif %}
+Bir belgenin kişileri ya da kuruluşları için, belgenin onları adlandıran kısmını oku. Başka bir esere yapılan atıf, o başka eseri adlandırır.
+{% if has('doc_search_text') %}
+Bir belgedeki ilgili metin için {{ tool('doc_search_text') }} kullan.
+{% endif %}
+{% if has('web_search') %}
+7. Web'de yalnızca istek buna izin veriyorsa ara.
+{% endif %}
+{% if has('read_page') %}
+En iyi web sayfalarını {{ tool('read_page') }} ile oku.
+{% endif %}
+
+{% if has('search_collections') %}
+Eksiksiz arama argümanları collection, queries, query, sort, date_after, date_before,
+date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max,
+folder_term_id, filename_only ve facet_filters'dır.
+collection bir ad ya da liste kabul eder. Atlanırsa ya da [] verilirse izin verilen her koleksiyonda arar.
+query varsayılan olarak boş metindir. queries isteğe bağlı olarak en fazla 12 biçim ekler. Yinelenen biçimler bir kez çalışır.
+Boş bir query tüm filtre eşleşmelerine göz atar. Arama biçimleri eşleşen belge kimliklerini birleştirir.
+sort, field ve direction içerir. field, relevance, date, file_size ya da name olur. direction, asc ya da desc olur.
+Atlanırsa varsayılan ilgi düzeyi sırası kullanılır.
+date_after ve date_before, belge tarihi için uçları dahil UTC epoch saniyelerini kullanır.
+mentioned_date_after ve mentioned_date_before, metinden çıkarılan tarihler için uçları dahil UTC epoch saniyelerini kullanır.
+date_unknown_only=true, bilinen belge tarihi olmayan belgeleri seçer. Bilinen bir tarih aralığıyla birleştirme.
+size_min ve size_max uçları dahil bayt sınırlarıdır. folder_term_id dönen bir klasör terimini seçer.
+filename_only=true sorguyu adlarla ve yollarla kısıtlar. False belge içeriklerini kullanır.
+facet_filters geçerli facet adlarını, dönen değer metinlerinin listelerine eşler. Atlanırsa facet filtresi uygulanmaz.
+Bir facet içindeki değerler alternatiftir. Farklı facet filtrelerinin hepsi eşleşmelidir.
+
+Her sonuç collection, file_hash, path, snippet ve varsa tür, tarih ve boyut içerir.
+q, satırı bulan sıfır tabanlı biçimleri listeler. query_forms her biçimin sayısını bildirir.
+word_counts dizinlenmiş sözcükleri doğrular. suggestions, yakın dizinlenmiş yazımları sayılarıyla listeler.
+Onarılan sözdizimi, bilinmeyen filtreler ve başarısız sorgu biçimleri için query_notes'u oku.
+more sonucu sürdürür. Onu read_more'a kopyala. Boş bir ilk sayfa, özdeş bir çağrının yinelenmesini gerektirmez.
+
+Bu asgari çağrı izin verilen tüm koleksiyonlarda arar.
+```json
+{"query":"\"Joe Wilkinson\""}
+```
+Bu gelişmiş çağrı sorgu biçimlerini, koleksiyon kapsamını, sıralamayı, tarihleri, boyutu ve facet filtrelerini birleştirir.
+```json
+{"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}}
+```
+Bu ayrı çağrı, bilinen bir belge tarihi olmayan dosyaları bulur.
+```json
+{"query":"report","filename_only":true,"date_unknown_only":true}
+```
+collection, klasör ve facet değerlerini geçerli sohbet için dönen değerlerle değiştir.
+{% endif %}

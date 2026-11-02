@@ -1,0 +1,90 @@
+---
+name: call_arguments
+group: stumble
+description: bir araç çağrısının argümanlarının nasıl doldurulacağı: yalnızca şemasının verdiği adlar, liste istenen yerde liste ve fazladan tırnak yok
+tools:
+---
+Bir çağrının argümanlarını doldurma
+
+{% if has('read_tool') %}
+Bir aracın argümanlarından emin değilsen {{ tool('read_tool') }} aracını onun adıyla çağır. Her argümanı, türünü ve aracın gerektirdiği argümanları verir.
+
+{% endif %}
+1. Yalnızca aracın verdiği argüman adlarını ver. Başka adlı bir argüman reddedilir.
+2. Gerekli her argümanı ver.
+3. Araç bir liste istiyorsa, tek değer için bile bir liste ver. queries ["lease"] yaz. queries "lease" yazma.
+4. Araç bir sayı ya da true veya false istiyorsa değeri tırnaksız ver. filename_only true yaz. filename_only "true" yazma.
+5. Bir metin değerinin içine tırnak koyma. status done yaz. status "\"done\"" yazma.
+6. Her değeri aracın sınırları içinde tut, örneğin bir listenin en fazla öğe sayısı.
+7. Araç bir nesne listesi istiyorsa bir nesne listesi ver. JSON içeren bir metin verme.
+{% if has('cite_documents') %}
+   Şöyle yaz: citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
+   Şöyle yazma: citations "[{\"collection\": ...}]".
+{% elif has('cite_pages') %}
+   Şöyle yaz: pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
+   Şöyle yazma: pages "[{\"url\": ...}]".
+{% else %}
+{% endif %}
+{% if has('write_file') %}
+8. Her {{ tool('write_file') }} ve {{ tool('patch_file') }} çağrısında dosyanın adını ver.
+{% endif %}
+
+Bir çağrı reddedildiğinde hata, argümanı ve neyin yanlış olduğunu adlandırır. O argümanı düzelt ve sonra çağrıyı gönder.
+
+{% if has('search_agent_tools') %}
+{{ tool('search_agent_tools') }} için query gerekir; bu, en fazla 160 karakterlik bir görev tanımıdır.
+İlgili araç adlarını ve tanımlarını döndürür. Tanıdık olmayan argümanları kullanmadan önce bir aracı oku.
+```json
+{"query":"Uzun bir belgenin sonlarındaki bir pasajı bul."}
+```
+{% endif %}
+{% if has('read_tool') %}
+{{ tool('read_tool') }} için name gerekir; bu, kullanılabilir bir aracın tam adıdır.
+Tanımı ve izin verilen değerler, varsayılanlar ve zorunlu alanlar dahil tam girdi şemasını döndürür.
+```json
+{"name":"read_documents"}
+```
+Bilinmeyen bir argüman hatasından sonra, yeniden denemeden önce başarısız olan aracın şemasını oku.
+{% if has('update_plan') %}
+Örneğin bu {{ tool('update_plan') }} çağrısı başarısız olur, çünkü `plan` bir argüman değildir.
+```json
+{"plan":["İletiyi bul."]}
+```
+Şemasını {{ tool('read_tool') }} ile oku.
+```json
+{"name":"update_plan"}
+```
+Sonra {{ tool('update_plan') }} aracını goal ve steps ile çağır.
+```json
+{"goal":"Onay tarihini bul.","steps":[{"text":"İletiyi bul.","status":"pending"}]}
+```
+{% endif %}
+{% if has('read_documents') %}
+{{ tool('read_documents') }} `source2` ya da `offset2` değerini reddederse yeniden denemeden önce şemasını oku.
+Farklı aralık argümanları gerektiren her belge için ayrı bir çağrı kullan.
+{% endif %}
+{% endif %}
+{% if has('search_skills') %}
+{{ tool('search_skills') }} en fazla 160 karakterlik query kabul eder. Query'yi atlamak ya da boş metin vermek kullanılabilir her beceriyi listeler.
+Yöntem adlarını ve tanımlarını döndürür.
+```json
+{}
+```
+```json
+{"query":"Uzun bir belgeyi oku ve eşleşen pasajından devam et."}
+```
+{% endif %}
+{% if has('read_skill') %}
+{{ tool('read_skill') }} için name gerekir; bu, beceri keşfinin döndürdüğü tam addır.
+Yöntem yönergelerini, araç argümanlarını ve örnekleri döndürür.
+```json
+{"name":"passages"}
+```
+{% endif %}
+{% if has('write_note') %}
+{{ tool('write_note') }} için text gerekir; 1 ile 2.000 karakter arasında olmalıdır. Kanıtları ve çözülmemiş soruları sonraki bağlam için saklar.
+Bu bağlamın sıkıştırmadan sağ çıkması gerekiyorsa kaynak kimliklerini ve sonraki yararlı çağrıyı ekle.
+```json
+{"text":"Onay pasajı dönen belge aralığında. Atfetmeden önce özgün yazarını doğrula."}
+```
+{% endif %}

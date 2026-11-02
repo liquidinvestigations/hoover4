@@ -1,0 +1,117 @@
+---
+name: folders_and_files
+group: technique
+description: bir koleksiyonun neler içerdiğinin nasıl görüleceği: veri kümeleri, klasörler, dosya türleri, sayılar ve tarihler; ayrıca bir dosyanın adıyla ya da yoluyla nasıl bulunacağı
+tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
+terms: Bunun sözcükleri: koleksiyon, veri kümesi, klasör, dizin, yol, dosya adı, dosya türü, uzantı, biçim, sayılar, kaç dosya, boyut, en büyük, genel bakış, envanter, bir koleksiyonun içeriği, yıla göre belgeler.
+not_for: İstek yalnızca belgelerin içeriğini soruyorsa gerekmez.
+---
+Klasörler ve dosyalar
+
+{% if has('list_collections') and has('search_facet_values') %}
+Bir koleksiyon genel bakışı için {{ tool('list_collections') }} aracını {} ile çağır.
+Sonra izin verilen her koleksiyonun dosya türleri ve dilleri için {{ tool('search_facet_values') }} aracını {} ile bir kez çağır.
+Varsayılan matris iki facet'i de içerir. Koleksiyon ya da facet başına ayrı bir çağrı gerekmez.
+{% endif %}
+
+{% if has('list_collections') %}
+{{ tool('list_collections') }} argüman almaz. Koleksiyon adlarını, belge sayılarını ve veri kümesi sayılarını verir.
+```json
+{}
+```
+
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }}, her koleksiyonun ve veri kümesinin depolama sayılarını verir.
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }}, bir veri kümesinin bir klasörünün alt klasörlerini ve dosyalarını verir.
+{% endif %}
+{% if has('folder_search') %}
+Bir veri kümesi içinde bir klasörü ya da dosyayı adıyla bulmak için {{ tool('folder_search') }} aracını çağır.
+{% endif %}
+{% if has('search_collections') %}
+Bir dosyayı tüm koleksiyonlarda adıyla bulmak için {{ tool('search_collections') }} aracını
+`filename_only` true olarak ayarlayıp çağır. Sorgu olarak adı ya da bir kısmını ver.
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }}, bir aramanın belgelerini tarihe ya da boyuta göre sayar.
+{% endif %}
+{% if has('search_facet_values') %}
+{{ tool('search_facet_values') }}, dosya türleri dahil bir filtrenin değerlerini sayılarıyla verir.
+{% endif %}
+
+Bir dosya adı ya da yol, tek bir belgeyi belirleyebilir. Bir sonuç satırının `file_hash` değeri onu doğrudan belirler.
+
+Bir envanter isteği için üst veri araçlarını kullan. Sayıları isteği doğrudan yanıtlayabilir.
+İçerik aramaları yalnızca kişi belgelerin ne söylediğini sorduğunda yararlıdır.
+
+{% if has('search_facet_values') %}
+{{ tool('search_facet_values') }} aracını birkaç koleksiyon ve facet için bir kez çağır.
+Argümanlar collection, facets, query ve ids'dir.
+İzin verilen her koleksiyon için collection'ı atla ya da [] ver. Seçimi daraltmak için bir ad ya da bir liste ver.
+["file_types", "language"] için facets'i atla. Diğer dağılımlar için tam facet adlarından oluşan bir liste ver.
+file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc,
+re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money ya da re_crypto_wallet kullan.
+file_type geçersizdir. file_types kullan.
+query, facet değerlerinin içinde metin bulur. Belge içeriğinde aramaz.
+ids isteğe bağlı olarak bilinen terim tanımlayıcılarını çözer. Sıradan aramalar değer metnini kullanır ve tanımlayıcı gerektirmez.
+
+Sonuçta columns ve items vardır. Her satır koleksiyonuyla başlar.
+Her facet hücresi [text, count] çiftleri içerir. Sonraki bir içerik araması için text'i facet_filters'a kopyala.
+Boş (null) bir hücrenin bildirilmiş bir hatası vardır. Boş bir dizi hücresinin dönen değeri yoktur.
+Sayılar, değer başına dizinlenmiş belge eşleşmelerini ifade eder. Bir belgeye birkaç değer uygulanabilir.
+Ayrı bir toplam öne sürmek için facet sayılarını toplama. Envanter toplamları list_collections'dan gelir.
+Varsayılan facet listesi seyrek değerleri dışarıda bırakabilir. Belirli bir değeri bulmak için query kullan.
+Sonuç sürüyorsa more ile read_more kullan.
+
+Bu asgari çağrı, izin verilen koleksiyonlar genelinde dosya biçimlerinin ve dillerin envanterini çıkarır.
+```json
+{}
+```
+Bu çağrı seçilen iki koleksiyonu karşılaştırır ve e-posta adresi değerlerini arar.
+```json
+{"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"}
+```
+{% endif %}
+{% if has('folder_overview') %}
+{{ tool('folder_overview') }} için collection gerekir. dataset isteğe bağlı olarak tek bir veri kümesini seçer.
+Bu çağrı, bir koleksiyondaki tüm veri kümelerinin depolama sayılarını okur.
+```json
+{"collection":"alpha"}
+```
+Bu çağrı tek bir veri kümesini seçer.
+```json
+{"collection":"alpha","dataset":"files"}
+```
+{% endif %}
+{% if has('folder_list') %}
+{{ tool('folder_list') }} için collection ve dataset gerekir. node_id isteğe bağlı olarak dönen bir klasör düğümünü seçer.
+Veri kümesi kökünü okumak için node_id'yi atla. Alt düğüm tanımlayıcılarını sonraki çağrılara kopyala.
+```json
+{"collection":"alpha","dataset":"files"}
+```
+```json
+{"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"}
+```
+{% endif %}
+{% if has('folder_search') %}
+{{ tool('folder_search') }} için collection, dataset ve query gerekir. node_id isteğe bağlı olarak aramayı tek bir klasörle sınırlar.
+```json
+{"collection":"alpha","dataset":"files","query":"report"}
+```
+```json
+{"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"}
+```
+{% endif %}
+{% if has('search_histogram') %}
+{{ tool('search_histogram') }}, sort ve queries dışında search_collections ile aynı filtreleri kabul eder.
+field, date, mentioned_date ya da size olur. Varsayılanı date'tir. query varsayılan olarak boş bir sorgudur.
+Atlanan collection, izin verilen her koleksiyonu kapsar. Sonuç, kovaları ve seçilen alanı döndürür.
+```json
+{}
+```
+```json
+{"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}}
+```
+{% endif %}

@@ -1,0 +1,138 @@
+---
+name: passages
+group: technique
+description: bir soruyu yanıtlayan tam pasajların ya da sayfaların, çok sayıda belgenin içinde ya da tek bir belgede, search_passages ile nasıl bulunacağı
+tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
+terms: Bunun sözcükleri: pasaj, paragraf, cümle, alıntı, alıntı parçası, sayfa, bölüm, nerede yazıyor, şundan söz eden kısım, tam ifade, satır. Uzun metin belgeleri için geçerli: PDF, Word dosyaları, e-postalar, raporlar ve dökümler.
+not_for: Sayılar, dosya listeleri ya da üst veri için gerekmez.
+---
+Pasajları ve sayfaları bulma
+
+{% if has('search_passages') %}
+Çok sayıda belgede aramak için {{ tool('search_passages') }} kullan. Metin pasajlarını anahtar sözcüklere ve anlama göre birlikte arar. Sade sözcüklerle bir soru için ve belgelerin kullandığı sözcükler belli değilse kullan. Tek çağrıda, her biri sorunun farklı bir biçimi olan en fazla 12 sorgu ver. Her sonuç, onu bulan sorguları adlandırır. Tam bir ad, bir adres ya da bir ifade için {{ tool('search_collections') }} kullan.
+
+{% endif %}
+{% if has('doc_search_text') or has('pdf_search') %}
+Tek bir uzun belgede aramak için şu araçları kullan.
+{% if has('doc_search_text') %}
+{{ tool('doc_search_text') }}, bir sorgunun sonuçlarını tek bir metin kaynağında, sayfa sırasıyla ve her sonucun sayfasıyla listeler.
+{% endif %}
+{% if has('pdf_search') %}
+{{ tool('pdf_search') }}, bir sorguyu bir PDF kaynağının sayfalarında bulur. Bir sayfa aralığında aramak için page_from ve page_to ver.
+{% endif %}
+
+{% endif %}
+{% if has('read_documents') %}
+Pasaj, iddiayı desteklemeye yetecek kadar metin göstermiyorsa bir sayfayı {{ tool('read_documents') }} ile oku.
+Sayfasını ver ya da en çok sonucu olan sayfayı açmak için sorguyu ver.
+{% endif %}
+
+Bir pasaj yanıtı destekliyorsa belgeyi ve sayfayı ver.
+
+{% if has('read_documents') %}
+{{ tool('read_documents') }} için collection ve file_hash gerekir.
+collection tek bir addır. file_hash, o koleksiyondan 1 ila 20 karmalık bir listedir.
+Farklı koleksiyonlardaki belgeler için koleksiyon başına ayrı bir toplu çağrı yap.
+Kimlikleri sonuçlardan kopyala. Benzersiz bir dosya adı ya da yol da bir belgeyi çözebilir.
+source isteğe bağlı olarak çıkarılmış bir kaynağı seçer. Atlanırsa tercih edilen kaynak kullanılır.
+page isteğe bağlı olarak kayıtlı bir sayfa tanımlayıcısını seçer. Sayfa tanımlayıcılarında boşluklar olabilir.
+En çok sorgu sonucu olan sayfayı ya da sorgusuz ilk kayıtlı sayfayı seçmek için page'i atla ya da sıfır ver.
+query, o sayfada yakındaki farklı eşleşen sözcüklerin çevresindeki metni açar.
+Tam ifade için ifadeyi query içinde tırnağa al. Tek bir eşleşen değer ilk geçtiği yeri açar.
+offset pasajın başlangıcını geçersiz kılar. O sayfa içinde sıfırdan Unicode karakterlerini sayar.
+length pozitif bir karakter sayısıdır. Atlanırsa 6.000 karakter kullanılır.
+source_version isteğe bağlı olarak dönen kaynak parmak izini doğrular. Bir aralığı yeniden okumak için onu kopyala.
+
+Sonuç; başlangıcı, dahil olmayan sonu, sayfanın toplam karakterini ve birimi olan text_range döndürür.
+page_complete, aralığın sayfanın tamamını kapsadığı anlamına gelir.
+Bir kesme işareti, aracın aralığın yalnızca bir kısmını verdiği anlamına gelir. Sayfanın orada bittiği anlamına gelmez.
+O belgeyi sürdürmek için bir öğenin more değerini kullan. Kalan sayfayı ya da sonraki sayfaları sürdürmek için üst düzey more değerini kullan.
+Dönen etiketi {{ tool('read_more') }} aracına continuation olarak tam olarak kopyala.
+Çevresindeki metin için read_before ya da read_after değerini read_documents argümanları olarak kopyala. Offset hesabı gerekmez.
+Aralık argümanları bir çağrıdaki her karmaya uygulanır. Belgelerin kaynakları, aralıkları ya da kaynak sürümleri farklıysa ayrı çağrılar kullan.
+Örneğin ilk belgenin dönen read_after nesnesini bir çağrıya kopyala.
+```json
+{"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"}
+```
+İkinci belgenin dönen read_after nesnesini başka bir çağrıya kopyala.
+```json
+{"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"}
+```
+Her belge için dönen gerçek değerleri kullan. source2 ya da offset2 gibi numaralı alanlar ekleme.
+Yinelenen bir ilk çağrı aynı metni döndürür. Daha fazla metin gerekirse continuation kullan.
+Pasaj, istenen iddia için yeterli kanıt sağladığında okumayı bırak.
+
+Bu asgari çağrı ilk kayıtlı sayfayı açar.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]}
+```
+Bu çağrı hedeflenen bir pasajı açar.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"}
+```
+Bu çağrı, seçilen bir kaynak ve sayfadaki dönen bir aralığı açar.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"}
+```
+Bu devam çağrısı sonraki dönen aralığı okur. Verilen gerçek etiketi kullan.
+```json
+{"continuation":"COPY_RETURNED_MORE"}
+```
+{% endif %}
+{% if has('doc_search_text') %}
+{{ tool('doc_search_text') }} için collection, file_hash ve query gerekir. source isteğe bağlı olarak tek bir çıkarımı seçer.
+Her sonuç için page, ordinal, start, end ve snippet döndürür. Ofsetler o sayfa içindeki karakterleri sayar.
+Özet daha fazla bağlam gerektiriyorsa bir sonucun page ve start değerini read_documents'a kopyala.
+Kalan sonuçları almak için read_more kullan.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"}
+```
+{% endif %}
+{% if has('doc_sources') %}
+{{ tool('doc_sources') }} için collection ve file_hash gerekir. query isteğe bağlı olarak her çıkarımdaki eşleşen sonuçları sayar.
+Kaynak adlarını ve kayıtlı sayfa aralıklarını döndürür. Belirli bir çıkarımı seçerken bir kaynak adını kopyala.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+{% endif %}
+{% if has('doc_diff_sources') %}
+{{ tool('doc_diff_sources') }} için collection, file_hash, source_a ve source_b gerekir.
+page_a ve page_b isteğe bağlı olarak sayfaları seçer. Atlanırsa her kaynağın ilk kayıtlı sayfası seçilir.
+Sonuç, birleşik biçimde bir metin farkıdır. Sürüyorsa read_more kullan.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7}
+```
+{% endif %}
+{% if has('pdf_search') %}
+{{ tool('pdf_search') }} için collection, file_hash ve query gerekir.
+source isteğe bağlı olarak bir PDF çıkarımını seçer. page_from ve page_to isteğe bağlı olarak PDF sayfa aralığını, uçlar dahil, kısıtlar.
+Dönen sayfa konumlarını kopyala. Süren sonuçlar için read_more kullan.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12}
+```
+{% endif %}
+{% if has('search_passages') %}
+{{ tool('search_passages') }}, queries olarak tek bir dize ya da en fazla 12 biçimlik bir liste kabul eder.
+collection tek bir ad ya da bir liste kabul eder. Atlanırsa izin verilen her koleksiyonda arar.
+max_results, sunulan şema sınırı içinde sorgu biçimi başına sonuç sayısını seçer. Atlanırsa 15 kullanılır.
+Sonuç collection, file_hash, page ve snippet verir. q, sıfır tabanlı sorgu dizinlerini kaydeder.
+Pasaj soruyu yanıtlamıyorsa destekleyici metni oku.
+```json
+{"queries":"transferin onayı"}
+```
+```json
+{"collection":["alpha","beta"],"queries":["transferin onayı","transfer yetkilendirmesi"],"max_results":5}
+```
+{% endif %}

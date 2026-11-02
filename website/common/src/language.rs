@@ -23,8 +23,8 @@ pub struct Language {
 /// The fallback language and the source of every catalog.
 pub const DEFAULT_LANGUAGE: &str = "en";
 
-/// The 21 supported languages, in the order of the language controls.
-pub const LANGUAGES: [Language; 21] = [
+/// The 22 supported languages, in the order of the language controls.
+pub const LANGUAGES: [Language; 22] = [
     Language { code: "en", endonym: "English", english: "English" },
     Language { code: "de", endonym: "Deutsch", english: "German" },
     Language { code: "es", endonym: "Español", english: "Spanish" },
@@ -46,6 +46,7 @@ pub const LANGUAGES: [Language; 21] = [
     Language { code: "ru", endonym: "Русский", english: "Russian" },
     Language { code: "ja", endonym: "日本語", english: "Japanese" },
     Language { code: "ko", endonym: "한국어", english: "Korean" },
+    Language { code: "tr", endonym: "Türkçe", english: "Turkish" },
 ];
 
 /// The setting key of the interface language.

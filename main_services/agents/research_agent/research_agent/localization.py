@@ -62,6 +62,7 @@ LANGUAGES: Dict[str, tuple] = {
     "ru": ("Русский", "Russian"),
     "ja": ("日本語", "Japanese"),
     "ko": ("한국어", "Korean"),
+    "tr": ("Türkçe", "Turkish"),
 }
 
 PACKAGE_DIR = Path(__file__).parent

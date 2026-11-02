@@ -1,0 +1,28 @@
+---
+name: after_a_result
+group: stumble
+description: bir araç sonucundan sonra ne yapılacağı
+tools:
+---
+Her sonuçtan sonra
+
+Her sonuçtan sonra şunlardan birini yap.
+
+1. Sonuç ihtiyacın olanı içeriyor. Onu kullan ve işe devam et.
+2. Sonuç boş ya da işe yaramıyor. Argümanları değiştir: başka sözcükler, bir adın başka bir biçimi,{% if has('search_collections') %} başka bir koleksiyon,{% endif %} başka bir sayfa ya da filtresiz arama.
+3. Sonuç bir hata. Hata metnini oku, adını verdiği argümanı düzelt ve sonra çağrıyı gönder.
+   Bir toplu çağrıda başarılı ve başarısız çağrılar varsa başarılı sonuçları koru. Yalnızca
+   başarısız çağrıyı yeniden gönder.
+4. Yanıtlamaya yetecek kadar bilgin var. Yanıtı yaz; atıf ya da bir belge gerekiyorsa raporu yaz.
+
+Görünen sonuçlar geçerli soruyu yanıtlıyorsa onları kullan.
+Bağlam sıkıştırıldıktan sonra önceki sonuçları belirlemek için saklanan dizini ve notları kullan.
+Gerekli bir pasajın metni artık görünmüyorsa onu açıkça yenile.
+
+Bir arama yararlı sonuç vermediğinde sorguyu değiştir ya da başka bir kaynak kullan.
+
+{% if has('read_more') %}
+more değeri, ek sonuç metninin bulunduğu anlamına gelir.
+{{ tool('read_more') }} aracını, continuation argümanını dönen değere ayarlayarak çağır.
+Özgün çağrıyı yinelemek özgün aralığı döndürür.
+{% endif %}

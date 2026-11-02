@@ -1,0 +1,58 @@
+---
+name: entities
+group: technique
+description: belgelerin adlandırdığı kişilerin, kuruluşların, yerlerin, e-posta adreslerinin ve tutarların nasıl listeleneceği
+tools: list_document_entities, search_entity_explainer, search_facet_values
+terms: Bunun sözcükleri: kişiler, şahıslar, isimler, adlar, kuruluşlar, şirketler, kurumlar, yerler, konumlar, şehirler, ülkeler, e-posta adresleri, telefon numaraları, tutarlar, para, tanımlayıcılar, hesap numaraları, kilit isimler, kimden söz ediliyor, varlıklar.
+not_for: İstek tek bir kişiyi adlandırıyor ve belgelerin o kişi hakkında ne söylediğini soruyorsa gerekmez.
+---
+Belgelerin adlandırdıklarını listeleme
+
+{% if has('list_document_entities') %}
+1. {{ tool('list_document_entities') }}, bir belge için çıkarılan adları listeler. Koleksiyon adını ve dosya karmasını ver.
+2. Sonucun iki katmanı vardır. entities, bir dil modelinin düzyazıyı okuyuşudur: kişiler, kuruluşlar ve yerler. Yanlış olabilir, bu yüzden güvenmeden önce bir adı metinde kontrol et. structured, bir kuralın doğruladığı değerleri içerir; örneğin geçerli bir kontrol basamağı olan tanımlayıcılar, tarihler ve para birimi kodlu para tutarları.
+3. Yeni adları, adresleri ve tanımlayıcıları {{ tool('search_collections') }} ile ara. Bir adın her biçimini tek bir çağrıya koy.
+{% endif %}
+{% if has('search_entity_explainer') %}
+4. Bir sonuç, anlamadığın bir kuralı ve değeri adlandırıyorsa {{ tool('search_entity_explainer') }} aracını çağır.
+{% endif %}
+{% if has('search_facet_values') %}
+5. {{ tool('search_facet_values') }}, bir koleksiyon genelinde bir varlık filtresinin değerlerini sayılarıyla birlikte verir.
+{% endif %}
+
+İşlem hattının çıkardığı bir ad, belgenin o kişi hakkında olduğunun kanıtı değildir. Çevresindeki metni oku.
+
+Bir ad hiçbir yerde geçmiyorsa dizinlenmiş yazım önerilerini ve denetlenmiş sayılarını oku.
+Önerilen bir yazımı istenen ad olarak kullanma.
+Önerilen bir yazımı aradığında yanıtta bunu farklı bir yazım olarak belirt.
+Hiçbir yazım eşleşmiyorsa aranan koleksiyonların adı içermediğini bildir.
+
+{% if has('list_document_entities') %}
+{{ tool('list_document_entities') }}, documents olarak collection ve file_hash nesnelerinin bir listesini kabul eder.
+Bu biçim, ilgisiz listeleri eşleştirmeden karma koleksiyon kimliklerini korur.
+Alternatif olarak collection ve file_hash eşleşen listeleri ya da birkaç karmalı tek bir koleksiyonu kabul eder.
+Sonuç, çıkarılan değerleri belgeye göre gruplar. Sürüyorsa read_more kullan.
+```json
+{"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]}
+```
+```json
+{"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]}
+```
+{% endif %}
+{% if has('search_entity_explainer') %}
+{{ tool('search_entity_explainer') }} için, çıkarılmış bir varlık sonucundan collection, entity_type ve entity_value gerekir.
+Çıkarma kuralının tanımını ve eşleşen belgeleri döndürür.
+```json
+{"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"}
+```
+{% endif %}
+{% if has('search_facet_values') %}
+Varlık dağılımları için {{ tool('search_facet_values') }} aracını facets ve isteğe bağlı collection ile query ile çağır.
+Sonuç matrisinin her facet hücresinde [text, count] çiftleri vardır.
+```json
+{"facets":["ner_per","ner_org","ner_loc"]}
+```
+```json
+{"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"}
+```
+{% endif %}

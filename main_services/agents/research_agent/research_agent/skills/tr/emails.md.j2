@@ -1,0 +1,55 @@
+---
+name: emails
+group: technique
+description: e-posta belgelerinin nasıl okunacağı: gönderen, alıcılar, tarih, konu, başlıklar, kopyalar ve konuşma dizileri
+tools: doc_email, doc_metadata, read_documents
+---
+E-posta belgelerini okuma
+
+{% if has('search_collections') %}
+E-postaları {{ tool('search_collections') }} ile bul. Bir adresin ya da adın her biçimini tek bir çağrıya koy, örneğin adres, "Ad Soyad" ve "Soyad, Ad".
+
+{% endif %}
+{% if has('doc_email') %}
+1. E-postanın file_hash değeriyle {{ tool('doc_email') }} aracını çağır. Göndereni, alıcıları, kopyaları, tarihi, konuyu, üst iletiyi, ekleri ve ileti grafiğini verir.
+2. Bir konuşma dizisini izlemek için node'u, yani grafikteki başka bir iletinin dosya karmasını ver. Grafik o zaman o iletiye odaklanır.
+3. Bir ek, kendi başına bir belgedir. Onu kendi file_hash değeriyle oku.
+{% endif %}
+{% if has('read_documents') %}
+4. İletinin metnini {{ tool('read_documents') }} ile oku.
+{% endif %}
+{% if has('doc_metadata') %}
+5. Metinde olmayan başlıklar ve tarihler için {{ tool('doc_metadata') }} aracını çağır.
+{% endif %}
+
+Aynı iletinin bir kopyası birden fazla posta kutusunda olabilir. Bir sayı ayrı iletilere bağlıysa alanlarını karşılaştır.
+
+{% if has('doc_email') %}
+{{ tool('doc_email') }} için collection ve file_hash gerekir.
+collection tek bir addır. file_hash, o koleksiyondan bir karma ya da en fazla on karmalık bir liste kabul eder.
+node isteğe bağlı olarak grafiği dönen bir ileti karmasına odaklar. Atlanırsa grafik istenen e-postaya odaklanır.
+Kalan ekleri ve grafik girdilerini incelemek için more ile read_more kullan.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"}
+```
+{% endif %}
+{% if has('doc_metadata') %}
+{{ tool('doc_metadata') }} için collection ve file_hash gerekir. Bir karma ya da en fazla on karmalık bir liste kabul eder.
+Saklanan üst veriyi, tarihleri, konumları ve indirme bağlantılarını döndürür. Kalan üst veri alanları için read_more kullan.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]}
+```
+{% endif %}
+İstenen pasajın yazarını, alıcılarını ya da tarihini atamadan önce pasajı oku.
+Dış e-posta zarfı, dış iletiye aittir.
+İletilen ya da alıntılanan bir pasajın yazarı, alıcıları ve tarihi farklı olabilir.
+Kimin yazdığını belirlemek için o pasajın kendi başlıklarını kullan.
+Bir iletiyi ileten kişi, alıntılanan ifadeyi mutlaka yazmış olmaz.
+Atıf bilinmeyen kalıyorsa bu sınırı belirt.
+Hedeflenen aralıklar ve devam yönergeleri için pasajları oku. Sonraki metni istemek için ilk okumayı yineleme.

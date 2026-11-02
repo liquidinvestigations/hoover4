@@ -9,8 +9,8 @@ The flag at the bottom of the navigation rail opens it for every signed-in perso
 
 | Control | Behavior | Constraint |
 |---|---|---|
-| Interface language choices | Select Browser language or one of 21 languages. The page saves the choice and shows the interface in that language at once. | Browser language follows the first supported language of the browser's `Accept-Language` header, else English. Each language shows its own name, its code and its flag. |
-| Agent language choices | Select Same as the interface or one of 21 languages. The page saves the choice. | The agent uses the choice from the next message. A turn that already started keeps its language. |
+| Interface language choices | Select Browser language or one of 22 languages. The page saves the choice and shows the interface in that language at once. | Browser language follows the first supported language of the browser's `Accept-Language` header, else English. Each language shows its own name, its code and its flag. |
+| Agent language choices | Select Same as the interface or one of 22 languages. The page saves the choice. | The agent uses the choice from the next message. A turn that already started keeps its language. |
 
 ## States
 

@@ -1,0 +1,84 @@
+---
+name: spreadsheets
+group: technique
+description: bir elektronik tablo dosyasının tablo araçlarıyla nasıl okunacağı: sayfaları, sütunları, satırları ve tek hücreleri
+tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
+terms: Bunun sözcükleri: tablo, tablolar, elektronik tablo, Excel, çalışma kitabı, sayfa, çalışma sayfası, sekme, CSV, TSV, tablo biçimli veri, veri tablosu, defter, sicil, takip çizelgesi, sütunlu liste, satır, sütun, hücre, başlık, özet tablo, veritabanı tablosu, SQLite. Dosya türleri: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML ve HTML ya da PDF belgelerinin içindeki tablolar. Tablo türündeki arama sonuçları.
+not_for: İstek yalnızca yanıtın tablo olarak düzenlenmesini istiyorsa ya da tablo sözcüğünü başka bir anlamda kullanıyorsa gerekmez.
+---
+Bir elektronik tabloyu okuma
+
+Bir elektronik tablo, bir CSV dosyası ya da bir belgedeki bir tablo, tablo belgesidir. Onu bir arama sonucunun file_hash ve collection değerleriyle adlandır.
+
+1. {{ tool('table_overview') }}, sayfaları ve sütunları kimlikleriyle listeler.
+2. Satırları {{ tool('table_page') }} ile oku. Bir çağrı 50 satır verir. Satırları çağrıda sırala ve filtrele. Büyük bir sayfanın bir satırına gitmek için row_start, 60. sütundan sonraki sütunları okumak için columns ver.
+3. {{ tool('table_column_values') }}, bir sütundaki değerleri ve sayılarını listeler.
+4. Bir sayfada bir değer bulmak için {{ tool('table_search_cells') }} aracını çağır. Eşleşme bağlam gerektiriyorsa
+çevresindeki satırları {{ tool('table_page') }} ile oku.
+5. {{ tool('table_page') }} uzun bir hücreyi keserse onu {{ tool('table_cell') }} ile bütünüyle oku. row için dönen row_id'yi, column için dönen sütun kimliğini ver.
+
+Okuyucunun bir değeri yeniden bulması gerekiyorsa bir sayfa, satır ve sütun ver.
+
+Satırları bir değere göre saymak için o sütunda {{ tool('table_column_values') }} aracını çağır. Bir metin
+sayfasının satırlarını kendin sayma. Toplam satırları, filtreleri ve sütunu belirt.
+Bir değerler çağrısı en fazla 200 değer verir. Sonucun bir continuation değeri varsa devam kalmayana kadar
+read_more çağır. Kısmi bir değer listesi eksiksiz bir dağılım vermez.
+Değer sayıları, satır toplamına yalnızca aynı sayfa, aynı satırlar ve aynı filtreler için eşittir. Boş bir hücrenin
+değeri yoktur, bu yüzden boş hücreler toplamı satır toplamından küçük yapar. Toplamı satır sayısıyla
+karşılaştırırken boş hücrelerin sayısını belirt.
+Örneğin 24 yapı ruhsatının bulunduğu bir sayfada bir tür sütunu var. Değerler çağrısı çit 9, çatı 7, teras 5 ve
+havuz 3 verir ve devam yoktur. Bu sayılar 24 eder. 24 satır için 27 eden sayılar bir sayma hatasını gösterir.
+21 eden sayılar türü boş 3 satırı gösterir.
+Bir CSV dosyası başlık satırı belirtmez. Her tablo sonucu, sayılarının tanımladığı 1. satır okumasını
+veren `interpretation` değerini verir. `established` durumunda okuma bilinir. `ambiguous` ya da `legacy`
+durumunda ve iki `candidates` ile 1. satır başlık ya da ilk veri satırı olabilir.
+Her aday satır sayısını verir. Çağrı `interpretation` vermedikçe sonuç her satırı, `all_rows`, okur.
+Her sayıyı okumasıyla birlikte ver ya da diğer okumayı `all_rows` ya da `first_row_header`
+interpretation ile oku. Bir okumanın sayısını kesinleşmiş satır sayısı olarak bildirme.
+Bir JSON dosyasının ya da bir metin dosyasının sayfaları yoktur. {{ tool('table_overview') }} hiçbir sayfa vermezse
+belgeyi metin olarak oku.
+
+Her tablo çağrısı için aynı belge sonucundan collection ve file_hash gerekir.
+{{ tool('table_overview') }} sayfa ve sütun tanımlayıcılarını döndürür.
+Diğer tablo araçları için sheet gerekir. Tanımlayıcısını genel bakıştan kopyala.
+{{ tool('table_page') }} isteğe bağlı olarak sort, filters, columns, search, row_start ve interpretation kabul eder.
+sort için column ve direction gerekir; direction asc ya da desc olur. Atlanırsa saklanan satır sırası kullanılır.
+filters, sütun yüklemlerinin bir listesidir. Her yüklem tek bir test türü kullanır.
+Sayısal ya da tarih aralığı hem alt hem üst sınırı içerebilir.
+Testler contains, equals, starts_with, is_empty, number_min, number_max, date_min ve date_max'tır.
+Metin testleri dize kullanır. Sayı testleri sayı kullanır. Tarih sınırları YYYY-MM-DD dizeleri kullanır.
+columns sütun tanımlayıcılarını seçer. Dönen bir pencere en fazla 60 seçili sütun içerir.
+search isteğe bağlı olarak metnini içeren satırları tutar. row_start, istenen satır sırasında sıfır tabanlı bir konumdur.
+Sonuç sütun üst verisini ve satırları içerir. row_id, sıralamadan sonra bile saklanan satır kimliğidir.
+
+{{ tool('table_column_values') }} için ayrıca column gerekir. search isteğe bağlı olarak değer metnini filtreler.
+O sütunun değerlerini ve sayılarını döndürür.
+{{ tool('table_search_cells') }} için query gerekir. Eşleşen sayfa, satır ve sütun kimliklerini metinle döndürür.
+{{ tool('table_cell') }} için row ve column gerekir. Dönen row_id'yi row argüman adı altında ilet.
+2.000 karakterlik dilimler döndürür. Kalan hücre metni için read_more kullan.
+Süren tablo sayfaları, değerler ve arama sonuçları için read_more kullan.
+
+Bu asgari genel bakış tablo yapısını açar.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+Bu sayfa çağrısı kopyalanmış sayfa ve sütun tanımlayıcılarını kullanır.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50}
+```
+Bu değerler çağrısı tek bir sütunu daraltır.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"}
+```
+Bu değerler çağrısı, belirsiz bir CSV sayfasının 1. satırını sütun adları olarak okur.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"}
+```
+Bu hücre araması istenen bir değeri bulur.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"}
+```
+Bu hücre çağrısı, o satır sıralı bir sonuçta ilk göründüğünde bile row_id 71'i okur.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2}
+```

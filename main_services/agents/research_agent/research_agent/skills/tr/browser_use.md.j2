@@ -1,0 +1,60 @@
+---
+name: browser_use
+group: technique
+description: bir web tarayıcısının nasıl kullanılacağı: bir adres aç, sayfa anlık görüntüsünü oku, sonra öğe referansıyla tıkla, yaz ya da seç
+tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
+---
+Bir web tarayıcısını kullanma
+
+{% if has('read_page') %}
+{{ tool('read_page') }} bir sayfanın metnini okur. Sayfa durumu ya da etkileşimli öğeler önemliyse bir tarayıcı anlık görüntüsü kullan.
+
+{% endif %}
+1. Adresi {{ tool('browser_navigate') }} ile aç.
+2. {{ tool('browser_snapshot') }} aracını çağır. Anlık görüntü, sayfanın her öğesini referansıyla listeler, örneğin ref e12.
+3. Bir öğe üzerinde {{ tool('browser_click') }}, {{ tool('browser_type') }} ya da {{ tool('browser_select_option') }} ile işlem yap. En son anlık görüntüdeki referansı ve öğenin kısa bir tanımını ver. Enter gibi bir tuş için {{ tool('browser_press_key') }} kullan.
+4. Her işlemden sonra {{ tool('browser_snapshot') }} aracını yeniden çağır. Bir işlem sayfayı değiştirebilir ve bu durumda eski referanslar geçerli olmaz.
+
+Bir sonuç "### Error" ile başlıyorsa hata metnini oku. Eskimiş bir öğe referansı, sayfanın değiştiği anlamına gelir. Yeni bir anlık görüntü al ve yeni referansı kullan. Boş bir referans ya da seçici, hiçbir öğe vermediğin anlamına gelir.
+
+Yanıtında ya da raporunda hangi adresi açtığını ve sayfanın ne gösterdiğini belirt.
+
+{{ tool('browser_navigate') }} için url gerekir. {{ tool('browser_snapshot') }} argüman almaz.
+```json
+{"url":"COPY_SEARCH_RESULT_URL"}
+```
+```json
+{}
+```
+{{ tool('browser_click') }} için target gerekir. Dönen bir öğe referansını kopyala ya da benzersiz bir seçici kullan.
+element isteğe bağlı olarak hedefi tanımlar. button varsayılan olarak left değerini alır ve right ya da middle olabilir.
+doubleClick isteğe bağlı olarak çift tıklamayı seçer. modifiers isteğe bağlı olarak Alt, Control, ControlOrMeta, Meta ya da Shift değerlerini içerir.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Ara düğmesi","button":"left","doubleClick":false,"modifiers":["Control"]}
+```
+{{ tool('browser_type') }} için target ve text gerekir. element isteğe bağlı olarak hedefi tanımlar.
+submit isteğe bağlı olarak yazdıktan sonra Enter'a basar. slowly isteğe bağlı olarak tuş işleyicilerini tetiklemek için karakterleri tek tek yazar.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","text":"onay"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Arama alanı","text":"onay","submit":true,"slowly":true}
+```
+{{ tool('browser_select_option') }} için target ve values gerekir; values bir seçenek değerleri listesidir. element isteğe bağlı olarak hedefi tanımlar.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Biçim seçici","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]}
+```
+{{ tool('browser_press_key') }} için key gerekir, örneğin Enter ya da Control+ArrowRight.
+```json
+{"key":"Enter"}
+```
+```json
+{"key":"Control+ArrowRight"}
+```
+Her işlem durumunu ya da bir hatayı döndürür. Sayfayı değiştiren bir işlemden sonra yeni bir anlık görüntü oku.

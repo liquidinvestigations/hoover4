@@ -1,0 +1,65 @@
+---
+name: citation
+group: general
+description: yanıtı destekleyen belgelere nasıl atıf yapılacağı
+tools: cite_documents
+---
+Atıf yapılan metin bir çalışma alanı dosyasına gider. `report` becerisi onu nasıl yazacağını ve düzenleyeceğini anlatır.
+
+{% if has('cite_documents') %}
+Raporun {% if web_enabled %}bir iç belgeye{% else %}bir belgeye{% endif %} dayanıyorsa {{ tool('cite_documents') }} aracını çağır.
+Ona, bir iddiayı ya da alıntıyı destekleyen her belgeyi ver. Dönen etiketi o iddianın yanında kullan.
+Bir iç belgeye dayanan iddianın yanında bir etiket kullan. Bir belgeyi tanıtmak ya da bir arama sonucunu
+betimlemek için de onu adlandırabilirsin.
+Bir çağrı en fazla 12 atıf alır. Kullandığına atıf yap, bir aramanın döndürdüğü her şeye değil.
+Bir arama ya da okuma, bir iddiayı destekleyen belgeler döndürdüyse o belgelere atıf yap.
+
+Her atıf için şunları ver:
+- collection ve file_hash, bir araç sonucundan kopyalanmış. file_hash'i asla uydurma.
+- quote: belge gövdesinin tek bir satırından kopyalanmış, art arda 5 ila 6 sözcük. Bir başlık
+  satırı olmasın (From, To, Cc, Subject, Date). Soru işareti içeren bir aralık olmasın.
+- find: isteğe bağlı. Kişinin görmesi gereken, alıntının en kısa tam ifadesi. Kart belgeyi bu
+  ifadede açar.
+- why: belgenin neyi desteklediğini söyleyen tek satır.
+
+Geri aldığın etiketi, örneğin `[D1]`, iddiayı yaptığın yerde raporuna yaz.
+
+Örnek. {{ tool('read_documents') if has('read_documents') else 'Bir araç' }}, enron koleksiyonunda "Re: DRAFT talking points" e-postasını döndürdü.
+Gövdesinde "The talking points look great to me. Best of luck today." yazıyor. Raporun
+Jim Steffes'in taslağı onayladığını söylüyor. {{ tool('cite_documents') }} aracını collection enron, sonuçtaki
+file_hash, quote "talking points look great to me", find "look great"
+ve why "Steffes, 27 Aralık taslağını onaylıyor" ile çağır.
+Sonra "Steffes taslağı onayladı [D1]." yaz.
+"Subject: Re: DRAFT talking points" ifadesini alıntılama, çünkü bu bir başlık satırı. "Can you check the notes?"
+ifadesini alıntılama, çünkü soru işareti içeriyor.
+Satır sonlarının, noktalamanın ve alıntılanmış bir e-postanın `>` işaretlerinin eşleşmesi gerekmez.
+Eksik ya da bulunmayan alıntılar etiket ayırmaz. Hatanın verdiği aday metnin 5 ila 6 sözcüğünü quote'a kopyala ve yeniden dene.
+Bir kaynağı yalnızca dönen bir etiket adlandırır. Köşeli parantez içinde kendi etiketini asla yazma.
+Etiketi iddianın yanına metin olarak yaz. Ters tırnak içine alma. Ters tırnak içindeki `[D1]` hiçbir yere bağlanmaz.
+Doğrulanmış ek pasajlar için dönen belge etiketini yeniden kullan. Belgenin tek bir kartı vardır.
+{% if citation_resolver == "lead" %}
+Etiketleri baş araştırmacı çözer, bu yüzden senin ayırmadığın bir etiket kimseye yaramaz.
+{% endif %}
+{% endif %}
+{% include "citation_failures.j2" %}
+
+{% if has('cite_documents') %}
+citations argümanı, belge atıf nesnelerinin bir listesidir.
+Her nesne için collection ve file_hash gerekir. quote, tam kaynak ifadesinin art arda 5 ila 6 sözcüğünü içerir.
+collection ve file_hash'i her nesnede tekrarla; aynı belgeden ayrı alıntılar için de.
+Nesneler argümanları önceki nesnelerden devralmaz.
+find isteğe bağlı olarak quote içinden tam bir ifade seçer. Atlanırsa alıntının tamamı kullanılır.
+term isteğe bağlı olarak kaynak arama sorgusunu kaydeder. why desteklenen iddiayı belirtir.
+Sonuç, doğrulanan her girdi için bir etiket verir. Başarısız girdiler nedenlerini verir ve bir aday pasaj verebilir.
+Yalnızca başarısız girdileri tam ifadeyle yeniden dene. Doğrulanmış bir alıntı, tek başına o alıntının yazarını ya da tarihini doğrulamaz.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
+```
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"özgün arama","why":"Bu pasaj belirtilen onayı destekliyor."}]}
+```
+Bu toplu çağrı aynı belgeden iki pasajı doğrular.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}
+```
+{% endif %}

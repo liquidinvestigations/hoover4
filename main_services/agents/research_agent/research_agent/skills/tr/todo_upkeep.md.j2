@@ -1,0 +1,22 @@
+---
+name: todo_upkeep
+group: stumble
+description: update_plan ile planın, adımlarının ve durumlarının nasıl tutulacağı
+tools: update_plan
+---
+Planı tutma
+
+{{ tool('update_plan') }} hedefi ve adımların tam listesini alır. Her adımın text ve status değeri vardır; tamamlanmış bir adımın kısa bir notu vardır.
+
+1. Her çağrıda tüm listeyi sırayla gönder. Dışarıda bıraktığın bir adım artık planda değildir.
+2. Her adımı text ve status içeren bir nesne olarak ver. status pending ya da done olur.
+3. Bir adım, işi bitene kadar pending durumundadır. İşi bitince onu found, not found ya da replaced gibi bir notla done olarak gönder.
+4. Yalnızca durumu değiştiğinde bir adımın metnini aynı tut. Böylece adım kimliğini korur.
+5. Yeni bir hedef yeni bir plan başlatır.
+6. {{ tool('update_plan') }} yalnızca planı saklar. Rapor ya da başka bir dosyayı {{ tool('write_file') }} ile yaz.
+
+Bu bir örnektir. 1. adım ihtiyacın olanı buldu, 2. adım hâlâ açık.
+```json
+{"goal":"Onay tarihini bul.","steps":[{"text":"İletiyi bul.","status":"done","note":"found"},{"text":"Destekleyen pasajı oku.","status":"pending"}]}
+```
+Sonuç, her adımın kimliğiyle birlikte planın tamamını gösterir. Hiçbir şeyi değiştirmeyen bir çağrı unchanged döndürür. Yeniden çağırmadan önce adı verilen alanı düzelt.

@@ -1,0 +1,172 @@
+---
+name: web_research
+group: technique
+description: açık web'de nasıl arama yapılacağı, bir web sayfasının ya da bir alan adının sahip kaydının nasıl okunacağı ve bir raporu destekleyen web sayfalarına nasıl atıf yapılacağı
+tools: web_search, read_page, cite_pages, whois_lookup, list_search_sources
+---
+Açık web'i araştırma
+
+Kişinin sorusunu yanıtlayabiliyorlarsa web kaynaklarını kullan.
+
+{% if has('web_search') %}
+{{ tool('web_search') }} bir sorgu listesi kabul eder. `sources` alanı aramayı adlandırılmış
+kaynaklarla daraltır.{% if has('list_search_sources') %} {{ tool('list_search_sources') }}
+bu kaynakları listeler.{% endif +%}
+{% endif %}
+{% if has('read_page') %}
+1. En iyi sonuçları {{ tool('read_page') }} ile tam olarak oku. Tüm adresleri tek bir çağrıda ver ve neyi aradığını söylemek için goal ver. BLOCKED BY A BOT CHECK işaretli bir sonuç sayfa değildir. Metnini kullanma.
+{% endif %}
+{% if has('whois_lookup') %}
+{% if has('read_page') %}2.{% else %}1.{% endif %} Bir alan adının sahibi, kayıt kuruluşu ya da tarihleri için tüm alan adlarını tek bir çağrıda vererek {{ tool('whois_lookup') }} aracını çağır.
+{% endif %}
+
+Bir kaynağın iddialarını kullanmadan önce onu oku. Bir arama sonucu özeti kaynak değildir.
+{% if has('cite_pages') %}
+
+Web sayfalarına atıf yapma
+
+{{ tool('cite_pages') }} aracını, okunan her sayfa URL'siyle ve `terms` içinde tam destekleyici ifadeyle çağır.
+Dönen web etiketlerini desteklediği iddiaların yanında kullan.
+Yalın kaynak URL'lerini bu etiketlerle değiştir.
+{{ tool('cite_pages') }}, tek bir sayfa için url ve terms ya da en fazla on iki sayfa nesnesi için pages kabul eder.
+Her sayfa için url ve terms gerekir. terms, her biri en fazla 200 karakter olan en fazla sekiz tam ifade içerir. Büyük/küçük harf eşleşmelidir.
+version isteğe bağlı olarak yakalanmış bir sürümü seçer. why isteğe bağlı olarak desteklenen iddiayı, en fazla 300 karakterle belirtir.
+Sonuç, doğrulanmış alıntıları ve kalıcı bir web etiketi verir. Başarısız bir sayfa, etiket olmadan bir hata verir.
+
+Örnek. {{ tool('read_page') }} https://example.org/report URL'sini okudu. Metni
+"The plant closed in March 2019." diyor. {{ tool('cite_pages') }} aracını tek bir sayfa için düz argümanlarla çağır:
+okuma sonucundan kopyalanan url, tam ifadeyle terms ve why.
+```json
+{"url":"COPY_READ_URL","terms":["The plant closed in March 2019"],"why":"Rapor kapanış tarihini veriyor."}
+```
+Sonra çağrının döndürdüğü etiketle "Fabrika Mart 2019'da kapandı [W1]." yaz.
+On ikiden fazla sayfalık bir listeyi ayrı çağrılara böl.
+```json
+{"pages":[{"url":"COPY_FIRST_READ_URL","terms":["COPY_EXACT_PHRASE"]},{"url":"COPY_SECOND_READ_URL","terms":["COPY_EXACT_PHRASE"],"version":"COPY_RETURNED_VERSION","why":"Bu pasaj onay tarihini veriyor."}]}
+```
+Dönen web etiketini, örneğin `[W1]`, desteklediği iddianın yanına kopyala.
+Her etiketi, dönen atıf nesnesindeki URL ve alıntılarla birlikte tut.
+Bir hata etiket ayırmaz. Atfı başarılı olana kadar o kaynağın iddialarını çıkar.
+Bulunmayan ifade için dönen adaydan tam metni kopyala ve aracı yeniden çağır.
+Bir hata `errors[i].retry_arguments` içeriyorsa o nesneyi değiştirmeden sonraki çağrıya kopyala.
+Kısmi bir sonuçtaki başarılı atıfları koru. Yalnızca başarısız sayfaları yeniden dene.
+Örneğin bir çağrı üç sayfaya atıf yapıyor ve ikisi [W1] ve [W2] ile başarılı oluyor. Bu iki etiketi
+kullan. Sonraki çağrıyı yalnızca üçüncü sayfayla gönder ve onun yeniden deneme argümanlarını kullan.
+Örneğin bu çağrı, bir kaynak satır sonunun ötesindeki sözcükleri birleştirir ve başarısız olur.
+```json
+{"url":"https://example.org/report","terms":["The plant closed in March 2019"]}
+```
+Hata, tam kaynak metniyle şu yeniden deneme argümanlarını döndürebilir.
+```json
+{"retry_arguments":{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}}
+```
+{{ tool('cite_pages') }} aracını, o dönen nesneyle, gerçek sürümü ve tam terms dahil, çağır.
+```json
+{"url":"https://example.org/report","version":"COPY_RETURNED_VERSION","terms":["The plant closed"]}
+```
+Bir PDF penceresinin kendi sürümü vardır. 51 ila 100. sayfaların bir pasajına atıf yapmak için o okumanın sürümünü kopyala.
+```json
+{"url":"COPY_READ_URL","version":"COPY_VERSION_OF_PAGES_51_TO_100","terms":["COPY_EXACT_PHRASE"]}
+```
+Bir çağrı sekiz terimi aşıyorsa terimlerini en fazla sekizlik gruplara böl ve her gruba ayrı atıf yap.
+URL'yi ve kaynak sürümünü her grupla birlikte tut. Çağrı yapısını değiştirmek terim sayısını azaltmaz.
+Etiket, yakalanan sayfa metnini ve doğrulanmış alıntılarını açar.
+Bir toplu çağrı bozuk gelirse çağrı başına bir sayfa kullan.
+Okunmamış, engellenmiş ya da doğrulanmamış bir sayfa bir iddiayı destekleyemez.
+
+{% include "citation_failures.j2" %}
+{% endif %}
+
+Hatırladığın bir ad ya da olay, bir kaynak onu adlandırana kadar bir adaydır. Kullanmadan önce onu
+adlandıran bir kaynak bul. Bir aramayı aynı sözcüklerle ya da küçük ifade değişiklikleriyle yeniden
+gönderme. Sonraki bir arama farklı bir yöntem kullanmalıdır: adayın başka tanımlayıcı olguları, adlandırılmış
+bir kaynak, yerin dili ya da bir okuma sonucunun bağlandığı bir sayfa. Kalan hiçbir yöntem bir kaynak bulamıyorsa
+adayı doğrulanmamış olarak işaretle ve başka işle devam et. Aynı ada sahip bir kişi, bir kaynak olguları
+bağlayana kadar farklı bir kişidir. Bir kaynak bir adayla çelişiyorsa adayı çıkar ve
+nedenini ver.
+
+Örneğin bir değirmenin 2019'da kapandığını hatırlıyorsun. "Harlow mill closed 2019" araması
+değirmen hakkında hiçbir sayfa bulmuyor. "Harlow mill closure" araması aynı sonuçları buluyor. Bu
+sözcüklerin üçüncü bir biçimini gönderme. Sahip şirketin adını kasaba adıyla ara. Yerel bir haber
+sayfası kapanış ayını adlandırıyor, bu yüzden onu oku; aday doğrulanmıştır.
+
+Örneğin aynı şirkete karşı ikinci bir dava hatırlıyorsun. Şirketi "lawsuit" ile, mahkeme adını ve
+dava numarası biçimini arayan aramalar hiçbir dava bulmuyor.
+Başka yöntem kalmadı. Okunan kaynakların ikinci bir davayı doğrulamadığını yaz ve
+onu dava olarak adlandırma.
+
+Bir okuma yalnızca çıkarılan metnini kapsar. Eşleşmesi olmayan bir find, çıkarılan metnin
+sözcükleri içermediğini gösterir. Belgenin içermediğini göstermez. Bir PDF sonucu, okumanın
+çıkardığı sayfaları verir. Bir belgenin bir kişiyi adlandırmadığını belirtmeden önce aradığın
+sayfaları ya da metni belirt.
+Tarihli olayların bir listesi için her olay için tarihini, adını ve kaynağını içeren bir kayıt tut.
+Tarihsiz kayıtları, yinelenen haberleri ve okuyamadığın kaynakları tarihli kayıtlardan ayrı belirt.
+
+İstenen her kısıtı yanıttaki her öğeye uygula.
+Bir öğenin hangi kısıtı karşılamadığını belirt.
+Her öğeyi ayırt edici olgularıyla tanımla.
+Bir mahkeme davası için kaynaklar veriyorsa mahkemeyi, tarihi ve dosya numarasını ver.
+İsteğin bir öğeden gerektirdiği her özelliği kaynakta doğrula.
+Bir davayı, olayı ya da varlığı bir kez say ve aşamalarının tanımlayıcılarını birlikte listele.
+Aynı öğe hakkındaki raporları birleştir.
+Kaynaklar istenenden daha az farklı öğe kanıtlıyorsa bunu belirt.
+Yanıtlamadan önce her öğenin ayırt edici olgularını ve her kısıtı okuduğun sayfalara karşı doğrula.
+Bir kısıtı karşılamayan bir öğeyi eşleşen listenin dışında tut ve karşılamadığı kısıtı adlandır.
+Atıf yaptığın her sayfayı, engellenmiş bir sayfadan sonra bulunan yedek kaynak dahil, oku.
+Bir sayfa okuması başarısız olursa okunabilir başka bir kaynak kullan ya da iddialarını ve adresini çıkar.
+
+{% if has('web_search') %}
+{{ tool('web_search') }}, queries olarak bir liste ya da tek bir dize, ek bir tek sorgu olarak query kabul eder.
+En az bir sorgu ver. Tüm kullanılabilir kaynaklarda aramak için sources'u atla.
+max_results varsayılan olarak 15'tir. timelimit d, w, m ya da y olur ve yalnızca desteklenen haber kaynaklarına uygulanır.
+Sonuç, sıralı URL'leri, başlıkları, özetleri ve eşleşen sorgu biçimlerini döndürür. İddialarına güvenmeden önce seçilen URL'leri oku.
+```json
+{"queries":["transfer approval"]}
+```
+```json
+{"queries":["transfer approval","transfer authorization"],"query":"transfer agreement","sources":["gdelt"],"max_results":5,"timelimit":"m"}
+```
+{% endif %}
+{% if has('list_search_sources') %}
+{{ tool('list_search_sources') }} argüman almaz. Kullanılabilir kaynak adlarını ve tanımlarını döndürür.
+```json
+{}
+```
+{% endif %}
+{% if has('read_page') %}
+{{ tool('read_page') }} için urls gerekir; bu, en fazla altı HTTP ya da HTTPS adresinden oluşan bir listedir.
+goal isteğe bağlı olarak soruyu kaydeder. Eşleşen metni seçmez.
+find isteğe bağlı olarak büyük/küçük harf kısıtı olmadan sabit metin eşleşmelerini seçer.
+offset sıfır tabanlı bir karakter konumudur. Atlanırsa sıfırdan başlar.
+version yakalanan metin sürümünü seçer. O metni sürdürmek için aynı URL'nin önceki bir okumasından kopyala.
+Bir sürüm tek bir URL'ye aittir. Başka bir URL için önce o URL'yi oku ve onun kendi sürümünü kopyala.
+links varsayılan olarak true'dur ve bağlantı hedeflerini metne ekler.
+page_start bir PDF penceresinin ilk sayfasını seçer. Bir okuma en fazla 50 PDF sayfası çıkarır.
+Kesilmiş bir sonuç, daha fazla eşleşmesi olan bir find sonucu ve bir PDF penceresi sonraki çağrının argümanlarını verir.
+O argüman nesnesini değiştirmeden kopyala. URL'yi, PDF penceresini, links ayarını ve sürümü korur.
+Bir sürüm tek bir URL'ye ve tek bir PDF penceresine aittir.
+Metni olmayan bir pencere, PDF'in diğer sayfalarının metni olmadığını göstermez.
+İlk çağrıyı yinelemek ilk metni yeniden okur.
+```json
+{"urls":["COPY_SEARCH_RESULT_URL"]}
+```
+```json
+{"urls":["COPY_READ_URL"],"goal":"Onay tarihini bul.","find":"approved","offset":50000,"version":"COPY_RETURNED_VERSION","links":false}
+```
+Örneğin bir PDF sonucu "The text covers PDF pages 1 to 50 of 120 only" diyor ve sonraki pencereyi veriyor.
+O penceredeki bir find, bu nesneyle daha fazla eşleşme verir. Onu sonraki çağrı olarak kopyala.
+```json
+{"urls":["COPY_READ_URL"],"page_start":51,"version":"COPY_RETURNED_VERSION","find":"approved","offset":1200}
+```
+{% endif %}
+{% if has('whois_lookup') %}
+{{ tool('whois_lookup') }}, domains olarak bir liste, domain olarak tek bir alan adı kabul eder.
+Alan adlarını URL yolu olmadan ver. Sonuç her alan adını ayrı bildirir.
+Boş (null) bir registrant, kayıt defterinin o değeri yayımlamadığı anlamına gelir. Kayıt kuruluşu alan adı kaydını satar.
+```json
+{"domains":["example.org"]}
+```
+```json
+{"domains":["example.org","example.com"],"domain":"example.net"}
+```
+{% endif %}

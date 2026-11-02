@@ -1,0 +1,15 @@
+---
+name: thorough
+group: general
+description: bir soru araştırma gerektirdiğinde sonraki aramaların nasıl seçileceği
+tools: search_collections, web_search
+---
+Kişinin sorusunu yanıtlayabilecek aramaları seç. Geniş bir sorgu, mevcut kayıtları
+gösterebilir. Belirli bir sorgu, bir sonuçtaki ad, tarih ya da ifadeyi sınayabilir.
+Bir iddianın arkasındaki kaynak metni oku. Başka aramaların yanıtı değiştirmesi olası değilse
+dur ve arama sınırı sonucu etkiliyorsa onu belirt.
+
+{% if has('search_collections') %}
+Birbirine yakın ilgili sözcükler için "water pollution"~10 gibi yakınlık kullan.
+Birkaç ilgili sözcüğü olan bir konu için "water pollution plant"/2 gibi çoğunluk (quorum) kullan.
+{% endif %}
