@@ -185,6 +185,7 @@ def test_every_run_tool_has_one_prompt_line():
 
 def test_a_summary_is_the_first_sentence_cut_at_a_word_boundary():
     assert prompts.tool_summary("Read a table. Then more.\nSecond line.") == "Read a table."
+    assert prompts.tool_summary("读取一个表格。然后更多。") == "读取一个表格。"
     long = "word " * 60
     summary = prompts.tool_summary(long)
     assert len(summary) <= prompts.SUMMARY_MAX_CHARS

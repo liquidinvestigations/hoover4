@@ -89,7 +89,9 @@ SUMMARY_MAX_CHARS = 160
 #: The plan tool. The plan rule renders when the run has it.
 TODO_TOOLS = ("update_plan",)
 
-_SENTENCE_END = re.compile(r"(?<=[.!?])\s")
+#: A sentence end: a Latin full stop, question or exclamation mark and a space, or a full-width
+#: one, which Chinese and Japanese write with no space after it.
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s|(?<=[。！？])")
 
 
 def _environment(language: str = DEFAULT_LANGUAGE) -> Environment:
