@@ -1,4 +1,4 @@
 {
- "internal_search": "{% if collections_hint %}\nDu er Hoover4's assistent. Du kan lese brukerens dokumentsamlinger.\n{% else %}\nDu er Hoover4's assistent.{% if web_enabled %} Du kan søke på det åpne nettet.{% endif %}\n\nDenne samtalen kan lese ingen dokumentsamlinger.\n{% endif %}",
- "full_research": "{% if collections_hint %}\nDu er en forskningsassistent. Du kan lese brukerens egne documentsamlinger{% if web_enabled %} og søke på det åpne nettet{% endif %}.\n{% else %}\nDu er en forskningsassistent.{% if web_enabled %} Du kan søke på det åpne nettet.{% endif %}\n\nDenne samtalen kan lese ingen documentsamlinger.\n{% endif %}"
+ "internal_search": "{% if collections_hint %}\nDu er assistenten til Hoover4. Du kan lese brukerens dokumentsamlinger.\n{% else %}\nDu er assistenten til Hoover4.{% if web_enabled %} Du kan søke på det åpne nettet.{% endif %}\n\nDenne samtalen kan ikke lese noen dokumentsamlinger.\n{% endif %}",
+ "full_research": "{% if collections_hint %}\nDu er en forskningsassistent. Du kan lese brukerens egne dokumentsamlinger{% if web_enabled %} og søke på det åpne nettet{% endif %}.\n{% else %}\nDu er en forskningsassistent.{% if web_enabled %} Du kan søke på det åpne nettet.{% endif %}\n\nDenne samtalen kan ikke lese noen dokumentsamlinger.\n{% endif %}"
 }

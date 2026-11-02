@@ -1,30 +1,60 @@
 ---
 name: browser_use
 group: technique
-description: hvordan du styrer en nettleser: åpne en adresse, lese netsiden, og deretter klikke, skrive eller velge ved hjelp av elementreferansen
+description: hvordan du styrer en nettleser: åpne en adresse, les sidens snapshot, og klikk, skriv eller velg deretter med elementreferansen
 tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
 ---
-Å kjøre en nettleser
+Styre en nettleser
 
 {% if has('read_page') %}
-{{ tool('read_page') }} leser teksten på en side. Bruk en nettleserskatt når sidestatus eller interaktive elementer er viktige.
+{{ tool('read_page') }} leser teksten på en side. Bruk et nettleser-snapshot når sidens tilstand eller interaktive elementer har betydning.
 
 {% endif %}
 1. Åpne adressen med {{ tool('browser_navigate') }}.
-2. Kall {{ tool('browser_snapshot') }}. Skatten lister opp hvert element på siden med referansen sin, for eksempel ref e12.
-3. Handl på ett element med {{ tool('browser_click') }}, {{ tool('browser_type') }} eller {{ tool('browser_select_option') }}. Oppgi referansen fra siste skatt og en kort beskrivelse av elementet. Bruk {{ tool('browser_press_key') }} for en tast som Enter.
-4. Etter hver handling, kall {{ tool('browser_snapshot') }} igjen. En handling kan endre siden, og da er de gamle referansene ikke lenger gyldige.
+2. Kall {{ tool('browser_snapshot') }}. Snapshotet lister hvert element på siden med referansen sin, for eksempel ref e12.
+3. Handle på ett element med {{ tool('browser_click') }}, {{ tool('browser_type') }} eller {{ tool('browser_select_option') }}. Oppgi referansen fra det siste snapshotet og en kort beskrivelse av elementet. Bruk {{ tool('browser_press_key') }} for en tast som Enter.
+4. Etter hver handling kaller du {{ tool('browser_snapshot') }} på nytt. En handling kan endre siden, og da er de gamle referansene ikke gyldige.
 
-Når et resultat starter med "### Error", les feilteksten. En utdatert elementreferanse betyr at siden er endret. Ta en ny skatt og bruk den nye referansen. En tom referanse eller selector betyr at du ga ingenting som element.
+Når et resultat begynner med "### Error", les feilteksten. En utdatert elementreferanse betyr at siden har endret seg. Ta et nytt snapshot og bruk den nye referansen. En tom referanse eller velger betyr at du ikke oppga noe element.
 
 Oppgi i svaret eller rapporten hvilken adresse du åpnet og hva siden viste.
 
 {{ tool('browser_navigate') }} krever url. {{ tool('browser_snapshot') }} tar ingen argumenter.
-```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} krever target. Kopier en returnert elementreferanse eller bruk en unik selector.
-element beskriver valgfritt målet. button er standard venstre og kan være høyre eller midt.
-doubleClick velger valgfritt en dobbeltklikk. modifiers holder valgfritt Alt, Control, ControlOrMeta, Meta eller Shift.
-```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} krever target og text. element beskriver valgfritt målet.
-submit trykker valgfritt Enter etter skriving. valgfritt skriver den enkelte tegn for å utløse key-handlere.
-```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} krever target og values, en liste av option-values. element beskriver valgfritt målet.
-```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} krever key, for eksempel Enter eller Control+ArrowRight.
-```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` Hver operasjon returnerer status eller en feil. Les et nytt snapshot etter en sideendringende operasjon.
+```json
+{"url":"COPY_SEARCH_RESULT_URL"}
+```
+```json
+{}
+```
+{{ tool('browser_click') }} krever target. Kopier en returnert elementreferanse eller bruk en unik velger.
+element beskriver eventuelt målet. button er som standard left og kan være right eller middle.
+doubleClick velger eventuelt et dobbeltklikk. modifiers inneholder eventuelt Alt, Control, ControlOrMeta, Meta eller Shift.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Søkeknapp","button":"left","doubleClick":false,"modifiers":["Control"]}
+```
+{{ tool('browser_type') }} krever target og text. element beskriver eventuelt målet.
+submit trykker eventuelt Enter etter skrivingen. slowly skriver eventuelt ett tegn om gangen for å utløse tasthåndterere.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Søkefelt","text":"approval","submit":true,"slowly":true}
+```
+{{ tool('browser_select_option') }} krever target og values, en liste med alternativverdier. element beskriver eventuelt målet.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"Formatvelger","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]}
+```
+{{ tool('browser_press_key') }} krever key, for eksempel Enter eller Control+ArrowRight.
+```json
+{"key":"Enter"}
+```
+```json
+{"key":"Control+ArrowRight"}
+```
+Hver handling returnerer statusen sin eller en feil. Les et nytt snapshot etter en handling som endrer siden.

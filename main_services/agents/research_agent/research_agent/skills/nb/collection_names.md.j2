@@ -1,20 +1,20 @@
 ---
 name: collection_names
 group: stumble
-description: hvordan man navnger en samling eller et datasett i et kall: det eksakte navnet som list_collections returnerer
+description: hvordan du navngir en samling eller et datasett i et kall: det nøyaktige navnet som list_collections returnerer
 tools: list_collections, search_collections
 ---
-Å navngive en samling
+Navngi en samling
 
-1. La være å angi samlingen for å søke i alle samlingene i denne samtalen. Det er riktig for de fleste spørsmål.
-2. Når du må angi en samling, kopier navnet nøyaktig fra {{ tool('list_collections') }}, eller fra samlingen i en resultatrad.
-3. Et datasett er ikke en samling. Datasett-tabellene ligger i samlingen "tabeller". Gi "tabeller".
-4. Ikke endre et navn. Ikke legg til et mellomrom, ikke endre en stor bokstav og ikke oversett det.
-5. Når et verktøykall sier at en samling ligger utenfor de tillatte samlingene, kan denne samtalen ikke lese den. Ikke send kallet igjen. Bruk samlingene i denne samtalen.
+1. Utelat collection for å søke i alle samlingene i denne samtalen. Det er riktig for de fleste spørsmål.
+2. Når du må oppgi en samling, kopier navnet nøyaktig fra {{ tool('list_collections') }}, eller fra samlingen i en resultatrad.
+3. Et datasett er ikke en samling. Datasettet tables/ehudx ligger i samlingen tables. Oppgi tables.
+4. Ikke endre et navn. Ikke legg til mellomrom, endre en stor bokstav eller oversett det.
+5. Når et kall sier at en samling er utenfor de tillatte samlingene, kan ikke denne samtalen lese den. Ikke send kallet på nytt. Bruk samlingene i denne samtalen.
 
-For å lese et dokument, gi samlingen i samme resultatrad som dens file_hash.
+For å lese et dokument oppgir du samlingen fra samme resultatrad som file_hash.
 
-Når et navn ikke finnes noen sted, les de indekserte staveforslagene og deres kontrollerte tellinger.
-Ikke bruk et staveforslag som det forespurte navnet.
-Når du søker på et staveforslag, angi det i svaret som en annen staving.
-Når ingen staving matcher, rapporter at de søkte samlingene ikke inneholder navnet.
+Når et navn ikke forekommer noe sted, les de indekserte stavemåteforslagene og de kontrollerte antallene deres.
+Ikke bruk en foreslått stavemåte som det forespurte navnet.
+Når du søker etter en foreslått stavemåte, oppgi den i svaret som en annen stavemåte.
+Når ingen stavemåte samsvarer, meld at de søkte samlingene ikke inneholder navnet.

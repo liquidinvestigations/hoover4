@@ -1,55 +1,86 @@
 ---
 name: spreadsheets
 group: technique
-description: hvordan du leser et regnearksfil med tabellverktøyene: arkene, kolonnene, radene og enkeltcellene
+description: hvordan du leser en regnearkfil med tabellverktøyene: ark, kolonner, rader og enkeltceller
 tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
-terms: Ord for det: tabell, tabeller, regneark, Excel, arbeidsbok, ark, arbeidsark, fane, CSV, TSV, tabelldata, datatabell, hovedbok, register, sporring, liste med kolonner, rad, kolonne, celle, topplinje, pivot-tabell, databasetabell, SQLite, Tabelle. Filtyper: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML, samt tabeller inne i HTML- eller PDF-dokumenter. Søketreff av typen tabell.
-not_for: Ikke nødvendig når forespørselen bare ber om at svaret legges ut som en tabell, eller bruker ordet tabell i en annen betydning.
+terms: Ord for det: tabell, tabeller, regneark, Excel, arbeidsbok, ark, regnearkfane, fane, CSV, TSV, tabelldata, datatabell, regnskap, register, oppfølgingsliste, liste med kolonner, rad, kolonne, celle, overskrift, pivottabell, databasetabell, SQLite, Tabelle. Filtyper: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML, og tabeller i HTML- eller PDF-dokumenter. Søketreff av typen table.
+not_for: Ikke nødvendig når forespørselen bare ber om at svaret settes opp som en tabell, eller bruker ordet tabell i en annen betydning.
 ---
-Å lese et regneark
+Lese et regneark
 
-Ett regneark, en CSV-fil eller en tabell i et dokument er et tabelldokument. Navngi den med file_hash og samlingen til et søketreff.
+Et regneark, en CSV-fil eller en tabell i et dokument er et tabelldokument. Navngi det med file_hash og samlingen fra et søkeresultat.
 
-1. {{ tool('table_overview') }} lister arkene og kolonnene med deres id-er.
-2. Les rader med {{ tool('table_page') }}. Ett kall gir 50 rader. Sorter og filtrer radene i kallet. Gi row_start for å gå til en rad i et stort ark, og kolonner for å lese kolonnene etter den 60.
-3. {{ tool('table_column_values') }} lister verdier i én kolonne og antallene deres.
-4. For å finne en verdi i et ark, kall {{ tool('table_search_cells') }}. Les omkringliggende rader med {{ tool('table_page') }} når matchen trenger kontekst.
-5. Når {{ tool('table_page') }} klipper av en lang celle, les den helt med {{ tool('table_cell') }}. Gi row med den returnerte row_id, og kolonne med den returnerte kolonne-id.
+1. {{ tool('table_overview') }} lister arkene og kolonnene med identifikatorene deres.
+2. Les rader med {{ tool('table_page') }}. Ett kall gir 50 rader. Sorter og filtrer radene i kallet. Oppgi row_start for å gå til en rad i et stort ark, og columns for å lese kolonnene etter kolonne 60.
+3. {{ tool('table_column_values') }} lister verdiene i én kolonne og antallene deres.
+4. For å finne en verdi i et ark kaller du {{ tool('table_search_cells') }}. Les omkringliggende rader
+med {{ tool('table_page') }} når treffet trenger sammenheng.
+5. Når {{ tool('table_page') }} kutter en lang celle, les den i sin helhet med {{ tool('table_cell') }}. Oppgi row med den returnerte row_id, og column med den returnerte kolonneidentifikatoren.
 
-Gi et ark, en rad og en kolonne når leseren skal finne en verdi igjen.
+Oppgi ark, rad og kolonne når leseren må finne en verdi igjen.
 
-For å telle rader etter en verdi, kall {{ tool('table_column_values') }} på den kolonnen. Ikke tell radene i en textsida selv. Oppgi det totale antallet rader, filterne og kolonnen.
-Et verdikall gir opptil 200 verdier. Når resultatet har en fortsettelse, kall read_more til det ikke lenger finnes en fortsettelse. En delvis verdiliste gir ingen komplett fordeling.
-Verdtallene summerer seg til radtotalen kun for samme ark, samme rader og samme filter. En tom celle har ingen verdi, så tomme celler gjør at summen blir mindre enn radtotalen. Oppgi antallet tomme celler når du sammenligner summen med totalen.
-For eksempel har et ark med 24 byggetillatelser en typekolonne. Verdikallet gir gjerde 9, tak 7, terrasse 5 og basseng 3, og ingen fortsettelse. Disse tellingene summerer seg til 24. Telling som summerer seg til 27 for 24 rader viser en tellingsfeil. Telling som summerer seg til 21 viser 3 rader med en tom type.
-En CSV-fil oppgir ingen headerrad. Hvert tabellresultat gir `interpretation`, readingen av rad 1 som tellingene beskriver. Med tilstand `established` er readingen kjent. Med tilstand `ambiguous` eller `legacy` og to `candidates` kan rad 1 være headerraden eller den første dataraden.
-Hvert kandidat gir sin radtelling. Resultatet leser alle rader, `all_rows`, med mindre kallet gir `interpretation`. Oppgi hver telling med sin reading, eller les den andre readingen med tolking `all_rows` eller `first_row_header`. Ikke rapporter én readingens telling som den fastsatte radtellingen.
-En JSON-fil eller en textfil har ingen ark. När {{ tool('table_overview') }} gir ingen ark, les dokumentet som tekst.
+For å telle rader etter en verdi kaller du {{ tool('table_column_values') }} på den kolonnen. Ikke tell
+radene på en tekstside selv. Oppgi totalt antall rader, filtrene og kolonnen.
+Ett verdikall gir inntil 200 verdier. Når resultatet har en continuation, kall read_more
+til ingen continuation gjenstår. En delvis verdiliste gir ingen fullstendig fordeling.
+Verdiantallene summerer seg til radsummen bare for samme ark, samme rader og
+samme filtre. En tom celle har ingen verdi, så tomme celler gjør summen mindre enn
+radsummen. Oppgi antallet tomme celler når du sammenligner summen med totalen.
+Et ark med 24 byggetillatelser har for eksempel en typekolonne. Verdikallet gir
+fence 9, roof 7, deck 5 og pool 3, og ingen continuation. Disse antallene summerer seg til 24. Antall
+som summerer seg til 27 for 24 rader viser en telefeil. Antall som summerer seg til 21 viser 3 rader
+med tom type.
+En CSV-fil oppgir ingen overskriftsrad. Hvert tabellresultat gir `interpretation`, tolkningen av
+rad 1 som antallene beskriver. Med tilstanden `established` er tolkningen kjent. Med tilstanden
+`ambiguous` eller `legacy` og to `candidates` kan rad 1 være overskriften eller den første dataraden.
+Hver kandidat gir radantallet sitt. Resultatet leser hver rad, `all_rows`, med mindre
+kallet oppgir `interpretation`. Oppgi hvert antall med tolkningen sin, eller les den andre tolkningen
+med interpretation `all_rows` eller `first_row_header`. Ikke meld antallet fra én tolkning som
+det fastslåtte radantallet.
+En JSON-fil eller en tekstfil har ingen ark. Når {{ tool('table_overview') }} ikke gir noe ark,
+les dokumentet som tekst.
 
-Hver tabellkall krever samling og file_hash fra samme dokumentresultat.
+Hvert tabellkall krever collection og file_hash fra samme dokumentresultat.
 {{ tool('table_overview') }} returnerer ark- og kolonneidentifikatorer.
-De andre tabellverktøyene krever ark. Kopier identifikatoren fra oversikten.
-{{ tool('table_page') }} aksepterer valgfritt sort, filter, kolonner, søk, row_start og tolkning.
-sort krever kolonne og retning, asc eller desc. Utelatt brukes den lagrede radordenen.
-filter er en liste med kolonnepredikater. Hvert predikat bruker én testtype.
-Ett numerisk eller datoomfang kan inkludere både nedre og øvre grenser.
+De andre tabellverktøyene krever sheet. Kopier identifikatoren fra oversikten.
+{{ tool('table_page') }} godtar eventuelt sort, filters, columns, search, row_start og interpretation.
+sort krever column og direction, asc eller desc. Hvis det utelates, brukes den lagrede radrekkefølgen.
+filters er en liste med kolonnepredikater. Hvert predikat bruker én testtype.
+Et tall- eller datoområde kan ha både nedre og øvre grense.
 Testene er contains, equals, starts_with, is_empty, number_min, number_max, date_min og date_max.
-Teksttester bruker strenger. Numriske tester bruker tall. Datogrenser bruker YYYY-MM-DD-strenger.
-kolonner velger kolonneidentifikatorer. Ett returnert vindu inneholder maks 60 utvalgte kolonner.
-søk beholder valgfritt rader som inneholder teksten. row_start er en nullbasert posisjon i den forespurte radordenen.
+Teksttester bruker strenger. Talltester bruker tall. Datogrenser bruker strenger i formatet YYYY-MM-DD.
+columns velger kolonneidentifikatorer. Ett returnert vindu inneholder høyst 60 valgte kolonner.
+search beholder eventuelt rader som inneholder teksten. row_start er en nullbasert posisjon i den forespurte radrekkefølgen.
 Resultatet inneholder kolonnemetadata og rader. row_id er den lagrede radidentiteten, også etter sortering.
 
-{{ tool('table_column_values') }} krever også kolonne. søk filtrerer valgfritt verditekst.
-Det returnerer verdiger og tellinger for den kolonnen.
-{{ tool('table_search_cells') }} krever query. Det returnerer matchende ark-, rad- og kolonneidentifikatorer med tekst.
-{{ tool('table_cell') }} krever row og kolonne. Bruk den returnerte row_id under argumentnavnet row.
-Det returnerer 2.000-tegnssnitt. Bruk read_more for gjenstående celletekst.
-Bruk read_more for vidertabellsider, verdiger og søketreff.
+{{ tool('table_column_values') }} krever også column. search filtrerer eventuelt verditeksten.
+Det returnerer verdier og antall for den kolonnen.
+{{ tool('table_search_cells') }} krever query. Det returnerer samsvarende ark-, rad- og kolonneidentiteter med tekst.
+{{ tool('table_cell') }} krever row og column. Send den returnerte row_id under argumentnavnet row.
+Det returnerer deler på 2 000 tegn. Bruk read_more for resten av celleteksten.
+Bruk read_more for fortsatte tabellsider, verdier og søketreff.
 
 Denne minimale oversikten åpner tabellstrukturen.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` Denne kall-siden bruker kopierte arkk- og kolonneidentifikatorer.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` Denne verdikall utvider én kolonne.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` Denne verdikall leser rad 1 av et tvetydig CSV-ark som kolonneoverskrift.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` Denne cellsøket finner en forespurt verdi.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` Denne cellekall leser row_id 71, selv om den raden kom først i et sortert resultat.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+Dette sidekallet bruker kopierte ark- og kolonneidentifikatorer.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50}
+```
+Dette verdikallet avgrenser én kolonne.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"}
+```
+Dette verdikallet leser rad 1 i et tvetydig CSV-ark som kolonnenavnene.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"}
+```
+Dette cellesøket finner en forespurt verdi.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"}
+```
+Dette cellekallet leser row_id 71, også når den raden stod først i et sortert resultat.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2}
+```

@@ -1,71 +1,72 @@
 ---
 name: no_results
 group: stumble
-description: hva du skal gjøre når et søk ikke finner noe: fjern filtre, del en frase, prøv andre former av et navn, og forklar deretter hva som mangler
+description: hva du skal gjøre når et søk ikke finner noe: fjern filtre, del opp en frase, prøv andre former av et navn, og si deretter hva som mangler
 tools: search_collections, search_passages, web_search
 ---
 Når et søk ikke finner noe
 
 {% if has('search_collections') %}
 Les word_counts først.
-Når et navn ikke forekommer noen sted, les de indekserte staveforslagene og de kontrollerte tellingene.
-Bruk ikke et staveforslag som det forespurte navnet.
-Når du søker på et staveforslag, nevne det i svaret som en annen staving.
-Når ingen staving matcher, rapporter at de søkte samlingene ikke inneholder navnet.
+Når et navn ikke forekommer noe sted, les de indekserte stavemåteforslagene og de kontrollerte antallene deres.
+Ikke bruk en foreslått stavemåte som det forespurte navnet.
+Når du søker etter en foreslått stavemåte, oppgi den i svaret som en annen stavemåte.
+Når ingen stavemåte samsvarer, meld at de søkte samlingene ikke inneholder navnet.
 
 {% endif %}
-Følg søkstegene når tidligere søk ikke svarer på spørsmålet.
+Følg disse søketrinnene når tidligere søk ikke besvarer spørsmålet.
 {% if has('search_collections') %}
-1. Søk på hvert navn som en sitert frase.
-2. Søk på ikke-siterte ord, initialer, e-postadresser og navn i dokumentets språk.
-Les word_counts og staveforslag. Bruk et forslag kun for det tiltenkte navnet.
-Bruk dasovi?h for én varierende bokstav og dasovic% for en valgfritt siste bokstav.
-Bruk skilling << resigned når ordfølge er viktig.
-3. Fjern filtre ett etter ett. Kjør et søk uten filtre.
+1. Søk etter hvert navn som en sitert frase.
+2. Søk etter ord uten anførselstegn, initialer, e-postadresser og navn på dokumentspråket.
+Les word_counts og stavemåteforslag. Bruk et forslag bare for det tiltenkte navnet.
+Bruk dasovi?h for én varierende bokstav og dasovic% for en valgfri siste bokstav.
+Bruk skilling << resigned når ordrekkefølgen har betydning.
+3. Fjern filtre ett om gangen. Kjør et søk uten filtre.
 {% if has('search_facet_values') %}
-Kontroller filterverdier med {{ tool('search_facet_values') }}.
+Kontroller filterverdiene med {{ tool('search_facet_values') }}.
 {% endif %}
 {% if has('search_histogram') %}
-Kontroller datoer med {{ tool('search_histogram') }}.
+Kontroller datoene med {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Søk på en beskrivelse av innholdet med {{ tool('search_passages') }}.
+4. Søk etter en beskrivelse av innholdet med {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. Bruk {{ tool('folder_search') }} når forespørselen navngir en mappe, sti eller fil.
+5. Bruk {{ tool('folder_search') }} når forespørselen nevner en mappe, sti eller fil.
 {% endif %}
 {% if has('folder_list') %}
-Bruk {{ tool('folder_list') }} for den mappa.
+Bruk {{ tool('folder_list') }} for den mappen.
 {% endif %}
 {% if has('read_documents') %}
-6. Les de beste 1 til 3 treffene med {{ tool('read_documents') }}.
+6. Les de 1 til 3 beste treffene med {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_search_text') %}
 Bruk {{ tool('doc_search_text') }} for relevant tekst i et dokument.
 {% endif %}
 {% if has('web_search') %}
-7. Søk på nettet kun når forespørselen tillarer det.
+7. Søk på nettet bare når forespørselen tillater det.
 {% endif %}
 {% if has('read_page') %}
 Les de beste nettsidene med {{ tool('read_page') }}.
 {% endif %}
 {% else %}
 {% if has('web_search') %}
-1. Søk på hvert navn som en sitert frase, og deretter andre former av navnet, initialene og språket til stedet.
+1. Søk etter hvert navn som en sitert frase, og deretter andre former av navnet, initialene og språket på stedet.
 {% endif %}
 {% if has('read_page') %}
 2. Les de beste nettsidene med {{ tool('read_page') }}.
 {% endif %}
 {% endif %}
 
-Når de tilgjengelige trinnene ikke finner noen nøkkelordsøkning, svar med fravær og søkene.
+Når de tilgjengelige trinnene ikke finner noe nøkkelordtreff, svar med fraværet og søkene.
 {% if has('search_collections') %}
-Før et fraværsvar skal du kjøre minst 4 distinkte søk med minst 2 tilgjengelige søkverktøy.
-Gjenta ikke et identisk søk. Oppgi de søkte samlingene og de manglende faktumene.
-Begrens et fraværsvar til søkene og dokumentene du har undersøkt.
-Eksempel: si «De søkte utvalgsprotokollene og overføringspostene identifiserte ikke en godkjenningsdato.» Disse søkene fastslår ikke at det ikke finnes noen godkjenningspost i noen tillatt samling.
+Før et svar om fravær kjør minst 4 distinkte søk med minst 2 tilgjengelige søkeverktøy.
+Ikke gjenta et identisk søk. Oppgi de søkte samlingene og de manglende faktaene.
+Begrens en uttalelse om fravær til søkene og dokumentene du undersøkte.
+Si for eksempel "De søkte komitémøteprotokollene og overføringsregistrene identifiserte ikke noen godkjenningsdato."
+Disse søkene fastslår ikke at det ikke finnes noen godkjenningsregistrering i noen tillatt samling.
 {% else %}
-Før et fraværsvar skal du kjøre minst 4 distinkte søk.
-Gjenta ikke et identisk søk. Oppgi søkene og de lest nettsidene.
-Begrens et fraværsvar til søkene og nettsidene du har undersøkt.
+Før et svar om fravær kjør minst 4 distinkte søk.
+Ikke gjenta et identisk søk. Oppgi søkene og sidene du har lest.
+Begrens en uttalelse om fravær til søkene og sidene du undersøkte.
 {% endif %}

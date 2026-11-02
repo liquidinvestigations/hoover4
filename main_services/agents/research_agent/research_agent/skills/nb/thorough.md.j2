@@ -1,14 +1,15 @@
 ---
 name: thorough
 group: general
-description: hvordan du velger videre søk når et spørsmål trenger forskning
+description: hvordan du velger flere søk når et spørsmål krever undersøkelse
 tools: search_collections, web_search
 ---
-Velg søk som kan svare på personens spørsmål. Et bredt søk kan vise tilgjengelige poster. Et spesifikt søk kan teste et navn, dato eller uttrykk fra et resultat.
-
-Les kildeteksten bak et påstand. Stopp når videre søk er usannsynlig å endre svaret, og oppsøk søkelimiten når den påvirker konklusjonen.
+Velg søk som kan besvare spørsmålet til personen. En bred søkestreng kan vise de
+tilgjengelige postene. En spesifikk søkestreng kan teste et navn, en dato eller en frase fra et resultat.
+Les kildeteksten bak en påstand. Stopp når flere søk neppe vil
+endre svaret, og oppgi søkegrensen når den påvirker konklusjonen.
 
 {% if has('search_collections') %}
-Bruk nærhet, for eksempel "forurensning av vann"~10, for ord som ligger nær hverandre.
-Bruk quorum, for eksempel "forurensning av vann anlegg"/2, for et tema med flere relevante ord.
+Bruk nærhet, for eksempel "water pollution"~10, for beslektede ord nær hverandre.
+Bruk quorum, for eksempel "water pollution plant"/2, for et emne med flere relevante ord.
 {% endif %}

@@ -9,19 +9,19 @@ Etter hvert resultat
 Etter hvert resultat gjør du ett av disse punktene.
 
 1. Resultatet inneholder det du trenger. Bruk det, og fortsett arbeidet.
-2. Resultatet er tomt eller hjelper ikke. Endre argumentene: andre ord, en annen form av et navn,{% if has('search_collections') %} en annen samling,{% endif %} en annen side, eller ingen filter.
-3. Resultatet er en feil. Les feilteksten, rett på argumentet den navngir, og send deretter kallene.
-   Når en batch har både suksessfulle og mislykkede kall, behold de suksessfulle resultatene. Send kun det mislykkede kallet igjen.
-4. Du har nok til å svare. Skriv svaret, eller rapporten når den trenger sitater eller et dokument.
+2. Resultatet er tomt eller hjelper ikke. Endre argumentene: andre ord, en annen form av et navn,{% if has('search_collections') %} en annen samling,{% endif %} en annen side, eller uten filter.
+3. Resultatet er en feil. Les feilteksten, rett argumentet som den nevner, og send deretter kallet.
+   Når en gruppe kall har vellykkede og mislykkede kall, behold de vellykkede resultatene. Send bare det mislykkede kallet på nytt.
+4. Du har nok til å svare. Skriv svaret, eller rapporten når den trenger kildehenvisninger eller et dokument.
 
-Bruk synlige resultater når de svarer på gjeldende spørsmål.
-Etter kontekstkomprimering, bruk det bevarte indeksen og notatene for å identifisere tidligere resultater.
-Oppfrisk et nødvendig avsnitt eksplisitt når teksten ikke lenger er synlig.
+Bruk synlige resultater når de besvarer det gjeldende spørsmålet.
+Etter komprimering av konteksten bruker du den bevarte indeksen og notatene til å identifisere tidligere resultater.
+Hent et nødvendig tekstutdrag på nytt uttrykkelig når teksten ikke lenger er synlig.
 
-Når et søk ikke gir noe nyttig resultat, endre søket eller bruk en annen kilde.
+Når et søk ikke gir noe nyttig resultat, endre søkestrengen eller bruk en annen kilde.
 
 {% if has('read_more') %}
-En større verdi betyr at det finnes resultattekst utover det som allerede er hentet.
-Kall {{ tool('read_more') }} med fortsettelse satt til den returnerte verdien.
-Gjentakelse av det opprinnelige kallet gir det opprinnelige området.
+En more-verdi betyr at mer resultattekst er tilgjengelig.
+Kall {{ tool('read_more') }} med continuation satt til den returnerte verdien.
+Hvis du gjentar det opprinnelige kallet, får du det opprinnelige området på nytt.
 {% endif %}

@@ -1,19 +1,22 @@
 ---
 name: todo_upkeep
 group: stumble
-description: hvordan du holder planen oppdatert med update_plan, stegene og deres status
+description: hvordan du holder planen oppdatert med update_plan, trinnene og statusene deres
 tools: update_plan
 ---
-Å beholde planen
+Holde planen oppdatert
 
-{{ tool('update_plan') }} tar målet og hele listen over trinn. Hvert trinn har tekst og status, og et ferdig trinn har en kort notat.
+{{ tool('update_plan') }} tar målet og hele listen over trinn. Hvert trinn har text og status, og et done-trinn har et kort notat.
 
-1. Send hele listen i hvert kall, i rekkefølge. Et trinn du lar være å ta med, er ikke lenger del av planen.
-2. Gi hvert trinn som et objekt med tekst og status. status er pending eller done.
-3. Et trinn er pending til arbeidet er ferdig. Send det deretter som done med en notat, som found, not found eller replaced.
-4. Behold teksten til et trinn det samme når bare statusen endres. Trinnet beholder da id-en.
+1. Send hele listen i hvert kall, i rekkefølge. Et trinn du utelater, er ikke lenger i planen.
+2. Oppgi hvert trinn som et objekt med text og status. status er pending eller done.
+3. Et trinn er pending til arbeidet er ferdig. Send det da som done med et notat, for eksempel found, not found eller replaced.
+4. La teksten i et trinn være uendret når bare statusen endres. Trinnet beholder da id-en sin.
 5. Et nytt mål starter en ny plan.
-6. {{ tool('update_plan') }} holder bare planen. Skriv en rapport eller en annen fil med {{ tool('write_file') }}.
+6. {{ tool('update_plan') }} lagrer bare planen. Skriv en rapport eller en annen fil med {{ tool('write_file') }}.
 
 Dette er et eksempel. Trinn 1 fant det du trenger, og trinn 2 er fortsatt åpent.
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` Resultatet viser hele planen med id-en til hvert trinn. Et kall som ikke endrer noe, returneres uendret. Korriger det angitte feltet før du kaller igjen.
+```json
+{"goal":"Finn godkjenningsdatoen.","steps":[{"text":"Finn meldingen.","status":"done","note":"found"},{"text":"Les det støttende tekstutdraget.","status":"pending"}]}
+```
+Resultatet viser hele planen med id-en til hvert trinn. Et kall som ikke endrer noe, returnerer unchanged. Rett det nevnte feltet før du kaller på nytt.
