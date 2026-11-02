@@ -1,3 +1,5 @@
+# Translation of en/notes.ftl. Change it together with the English catalog.
+
 # The notes that the worker writes into a run, and the text of a turn that the worker ends.
 # The model reads each note. The transcript shows the notes and the ending to the person.
 # The worker reads plain text and { $name } variables only (`tasks.P_agent.notes`).

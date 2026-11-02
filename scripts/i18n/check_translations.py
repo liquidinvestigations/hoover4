@@ -101,6 +101,9 @@ def check_catalog(report: Report, code: str, english_path: Path, path: Path, not
         return
     english = messages(english_path.read_text(encoding="utf-8"))
     text = path.read_text(encoding="utf-8")
+    header = f"# Translation of en/{english_path.name}. Change it together with the English catalog."
+    if text.splitlines()[:1] != [header]:
+        report.error(where, f"the first line must be: {header}")
     translated = messages(text)
     for key in sorted(set(english) - set(translated)):
         report.error(where, f"{key} is missing, so it shows in English")

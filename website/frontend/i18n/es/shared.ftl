@@ -1,4 +1,4 @@
-## Translation of en/shared.ftl. Change it together with the English catalog.
+# Translation of en/shared.ftl. Change it together with the English catalog.
 
 shared-antivirus-no-virus-found = No se encontró ningún virus.
 shared-antivirus-virus-found = Virus encontrado: { $value }.

@@ -1,3 +1,5 @@
+# Translation of en/admin.ftl. Change it together with the English catalog.
+
 admin-guard-administration-access-required = 관리 권한이 필요합니다
 admin-guard-signed-in-as = { $u_username }(으)로 로그인했습니다.
 admin-guard-ask-an-administrator-for-access = 이 영역에 접근하려면 관리자에게 권한을 요청하세요.

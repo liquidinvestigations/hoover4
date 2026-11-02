@@ -1,3 +1,5 @@
+# Translation of en/shared.ftl. Change it together with the English catalog.
+
 ## Text that the shared Rust code and the server return in English. The frontend matches
 ## the English text against these messages and shows the translation.
 
