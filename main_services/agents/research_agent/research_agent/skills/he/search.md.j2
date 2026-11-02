@@ -1,87 +1,101 @@
 ---
 name: search
 group: general
-description: איך לחפש באספי מסמכים ולמש את תחביר השאילתה
+description: איך לחפש באוספי מסמכים ולהשתמש בתחביר השאילתות
 tools: search_collections
 ---
+{# This method renders when the run has search_collections.
+#}
 {% if has('search_collections') %}
-חיפוש במסמכי המשתמש
+חיפוש במסמכים של המשתמש
 
-1. חפש מסמכים כאשר תוכנם יכול לענות על השאלה.
-2. השתמש באוףסל כאשר הבקשה מכוונת לאוףסל אחד. השאר ללא כדי לחפש בכל האופסלים שהשיחה יכולה לקרוא.
-3. {{ tool('search_collections') }} מקבלת מספר שאילתות. השתמש בצורות רלוונטיות של שם או כתובת. הנח משפט מדויק בתוך מרכבות.
-4. OR, AND ו-NOT הן מילים רגילות בשאילתה. השתמש ב-| כדי לבחור אחד מהם וב-word- כדי לשלול מילה.
-5. העתק את file_hash ואת collection משורת תוצאה. לעולם אל תכתוב hash בעצמך.{% if has('read_more') %} אם שורה אין בה file_hash, קרא {{ tool('read_more') }}.{% endif +%}
-6. הגדר פילטר תאריך או גודל כאשר זה עוזר לענות על השאלה.
-7. כאשר אתה מדווח שחיפוש מצא מסמך אחד, תן את השאילתה, האופסלים והספירה.
-8. קריאה אחת לוקחת לכל היותר 12 שאילתות. פצל רשימה ארוכה לשתי קריאות.
-9. תן לכל שאילתה לפחות מילה אחת לחפש אותה. שאילתה המורכת ממילים של -word בלבד תידחה.
-10. הגדר filename_only ל-true או false. היא לוקחת טקסט.
+1. חפש במסמכים כשהתוכן שלהם יכול לענות על השאלה.
+2. השתמש ב-collection כשהבקשה מכוונת לאוסף אחד. השמט אותו כדי לחפש
+בכל האוספים שהצ'אט הזה יכול לקרוא.
+3. {{ tool('search_collections') }} מקבל כמה שאילתות. השתמש בצורות רלוונטיות של שם או כתובת. שים ביטוי מדויק במרכאות כפולות.
+4. OR, AND ו-NOT הן מילים רגילות בשאילתה. השתמש ב-| לאחד מהם, ובמקף לפני מילה כדי להוציא אותה, לדוגמה water -draft.
+5. העתק file_hash ו-collection משורת תוצאה. לעולם אל תכתוב גיבוב בעצמך.{% if has('read_more') %} אם בשורה אין file_hash, קרא ל-{{ tool('read_more') }}.{% endif +%}
+6. הגדר מסנן תאריך או גודל כשהוא עוזר לענות על השאלה.
+7. כשאתה מדווח שחיפוש לא מצא מסמך, תן את השאילתה שלו, את האוספים ואת הספירה.
+8. קריאה אחת מקבלת לכל היותר 12 שאילתות. פצל רשימה ארוכה יותר לשתי קריאות.
+9. תן לכל שאילתה לפחות מילה אחת לחיפוש. שאילתה של מונחי -word בלבד נדחית.
+10. הגדר את filename_only ל-true או ל-false. הוא אינו מקבל טקסט.
 
-דוגמה. המשתמש מבקש את כל הנתונים על JoeBWilkinson@cs.com. בצע קריאה אחת ל{{ tool('search_collections') }} עם ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. קרא מסמך כאשר שורת התוצאה שלו לא מספקת מספיק ראיות לטענה.
+דוגמה. המשתמש מבקש את כל הנתונים על JoeBWilkinson@cs.com. בצע קריאה אחת ל-{{ tool('search_collections') }} עם queries ["JoeBWilkinson@cs.com", "\"Joe Wilkinson\"", "\"Wilkinson, Joe\"", "JoeBWilkinson"]. קרא מסמך כששורת התוצאה שלו אינה מספקת מספיק ראיות לטענה.
 {% endif %}
 
-עקוב אחר שלבי החיפוש האלה כאשר חיפושים קודמים אינם עונים על השאלה.
+בצע את שלבי החיפוש האלה כשחיפושים קודמים אינם עונים על השאלה.
 {% if has('search_collections') %}
-1. חפש כל שם כביטוי מוקף סימני ציטוט.
-2. חפש מילים ללא סימני ציטוט, ראשי תיבות, כתובות דוא"ל ושמות בשפת המסמך.
-קרא את word_counts והצעות תיקון כתיב. השתמש בהצעה בלבד עבור השם המיועד.
-השתמש ב-dasovi?h עבור אות משתנה אחת וב-dasovic% עבור אות סופית אופציונלית.
-השתמש ב-skilling << resigned כאשר סדר המילים חשוב.
-3. הסר סינונים אחד אחד. הרץ חיפוש ללא סינונים.
+1. חפש כל שם כביטוי במרכאות.
+2. חפש מילים ללא מרכאות, ראשי תיבות, כתובות דוא"ל ושמות בשפת המסמך.
+קרא את word_counts ואת הצעות האיות. השתמש בהצעה רק לשם המכוון.
+השתמש ב-dasovi?h לאות אחת משתנה וב-dasovic% לאות סופית לא חובה.
+השתמש ב-skilling << resigned כשסדר המילים חשוב.
+3. הסר מסננים אחד אחד. הרץ חיפוש בלי מסננים.
 {% endif %}
 {% if has('search_facet_values') %}
-אמת ערכי סינון עם {{ tool('search_facet_values') }}.
+אמת ערכי מסננים באמצעות {{ tool('search_facet_values') }}.
 {% endif %}
 {% if has('search_histogram') %}
-אמת תאריכים עם {{ tool('search_histogram') }}.
+אמת תאריכים באמצעות {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. חפש תיאור של התוכן עם {{ tool('search_passages') }}.
+4. חפש תיאור של התוכן באמצעות {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. השתמש {{ tool('folder_search') }} כאשר הבקשה מציינת תיקיה, נתיב או קובץ.
+5. השתמש ב-{{ tool('folder_search') }} כשהבקשה נוקבת בתיקייה, בנתיב או בקובץ.
 {% endif %}
 {% if has('folder_list') %}
-השתמש {{ tool('folder_list') }} עבור תיקיה זו.
+השתמש ב-{{ tool('folder_list') }} לתיקייה הזו.
 {% endif %}
 {% if has('read_documents') %}
-6. קרא את 1 עד 3 הפגיעות הטובות עם {{ tool('read_documents') }}.
+6. קרא את 1 עד 3 ההתאמות הטובות ביותר באמצעות {{ tool('read_documents') }}.
 {% endif %}
-עבור האנשים או הארגונים של מסמך, קרא את החלק של אותו מסמך שמזכיר אותם. התייחסות לעבודה אחרת מזכירה את העבודה האחרת.
+לאנשים או לארגונים של מסמך, קרא את החלק במסמך שנוקב בהם. התייחסות ליצירה אחרת נוקבת ביצירה האחרת.
 {% if has('doc_search_text') %}
-השתמש {{ tool('doc_search_text') }} עבור טקסט רלוונטי במסמך.
+השתמש ב-{{ tool('doc_search_text') }} לטקסט רלוונטי במסמך.
 {% endif %}
 {% if has('web_search') %}
-7. חפש את הרשת רק כאשר הבקשה מתירה זאת.
+7. חפש ברשת רק כשהבקשה מתירה זאת.
 {% endif %}
 {% if has('read_page') %}
-קרא את דפי האינטרנט הטובים עם {{ tool('read_page') }}.
+קרא את דפי האינטרנט הטובים ביותר באמצעות {{ tool('read_page') }}.
 {% endif %}
 
 {% if has('search_collections') %}
-ארגומטרי החיפוש המלאים הם collection, queries, query, sort, date_after, date_before, date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max, folder_term_id, filename_only ו-facet_filters.
-collection מקבל שם או רשימה. הימנעות או [] מחפש בכל האספים המותרים.
-query מוגבר כברירת מילוי לטקסט ריק. queries מוסיף באופציונלית עד 12 טפסים. טפסים חוזרים מופעלים פעם אחת.
-חיפוש ריק גולש בכל התאמות הסינון. טפסי חיפוש משלבים זהויות מסמכים תואמות.
-sort מכיל שדה וכיוון. השדה הוא relevance, date, file_size או name. הכיוון הוא asc או desc.
-הימנעות משתמשים בסדר הרלוונטיות המברירת מילוי.
-date_after ו-date_before משתמשים בשניות אפס UTC כלולות לתאריך המסמך.
-mentioned_date_after ו-mentioned_date_before משתמשים בשניות אפס UTC כלולות לתאריכים שנחשבו מהטקסט.
-date_unknown_only=true בוחר מסמכים ללא תאריך מסמך ידוע. אין לשלב אותו עם טווח תאריך ידוע.
-size_min ו-size_max הן מגבלות בייט כלולות. folder_term_id בוחר מונח תיקיה מוחזר.
-filename_only=true מגביל את השאילתה לשמות ולנתיבים. False משתמש בתוכן המסמך.
-facet_filters מציג שמות אבצת תקינים לרשימות של טקסט ערך מוחזר. הימנעות מיישמת סינון אבצת.
-ערכים בתוך אבצת אחת הם חלופות. סינוני אבצת שונים חייבים להתאים כולם.
+ארגומנטי החיפוש המלאים הם collection, queries, query, sort, date_after, date_before,
+date_unknown_only, mentioned_date_after, mentioned_date_before, size_min, size_max,
+folder_term_id, filename_only ו-facet_filters.
+collection מקבל שם או רשימה. השמטה או [] מחפשות בכל האוספים המותרים.
+ברירת המחדל של query היא טקסט ריק. queries מוסיף עד 12 צורות, ואינו חובה. צורות כפולות רצות פעם אחת.
+שאילתה ריקה מעיינת בכל ההתאמות למסננים. צורות החיפוש ממזגות זהויות של מסמכים תואמים.
+sort מכיל field ו-direction. field הוא relevance, date, file_size או name. direction הוא asc או desc.
+השמטה משתמשת בסדר הרלוונטיות המוגדר כברירת מחדל.
+date_after ו-date_before משתמשים בשניות epoch של UTC, כולל הקצוות, לתאריך המסמך.
+mentioned_date_after ו-mentioned_date_before משתמשים בשניות epoch של UTC, כולל הקצוות, לתאריכים שחולצו מהטקסט.
+date_unknown_only=true בוחר מסמכים בלי תאריך מסמך ידוע. אל תשלב אותו עם טווח של תאריך ידוע.
+size_min ו-size_max הם גבולות בבייטים, כולל הקצוות. folder_term_id בוחר מונח תיקייה שהוחזר.
+filename_only=true מגביל את השאילתה לשמות ולנתיבים. false משתמש בתוכן המסמכים.
+facet_filters ממפה שמות facet תקפים לרשימות של טקסט ערכים שהוחזרו. השמטה אינה מחילה מסנן facet.
+ערכים בתוך facet אחד הם חלופות. מסנני facet שונים חייבים להתאים כולם.
 
-כל תוצאה מכיל collection, file_hash, path, snippet ואת הסוג, התאריך והגודל הזמינים.
-q מציג את הטפסים המבוססים על אפס שמצאו את השורה. query_forms מדווח על ספירת כל טופס.
-word_counts מאמתת מילים מדורסות. suggestions מציגת דפוסים קרובים מדורסות עם ספירות.
-קרא את query_notes לתיקון תחביר, סינונים לא ידועים וטפסי שאילתה שנכשלו.
-more ממשיך את התוצאה. העתק אותה ל-read_more. דף ראשון ריק אינו דורש קריאה זהה חוזרת.
+כל תוצאה כוללת collection, file_hash, path, snippet ואת הסוג, התאריך והגודל הזמינים.
+q מפרט את הצורות, שמתחילות באפס, שמצאו את השורה. query_forms מדווח את הספירה של כל צורה.
+word_counts מאמת מילים שבאינדקס. suggestions מפרט איותים קרובים באינדקס עם ספירות.
+קרא את query_notes לתחביר שתוקן, למסננים לא ידועים ולצורות שאילתה שנכשלו.
+more ממשיך את התוצאה. העתק אותו אל read_more. עמוד ראשון ריק אינו מצריך קריאה זהה חוזרת.
 
-קריאה מינימלית זו מחפשת את כל האוספים המותרים.
-```json {"query":"\"Joe Wilkinson\""} ``` קריאה מתקדמת זו משלבת צורות שאילתה, היקף אוסף, מיון, תאריכים, גודל וסינוני פאסט.
-```json {"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}} ``` קריאה נפרדת זו מוצאת קבצים ללא תאריך מסמך ידוע.
-```json {"query":"report","filename_only":true,"date_unknown_only":true} ``` החלף את ערכי האוסף, התיקון והפאסט בערכים שהוחזרו בשיחה הנוכחית.
+הקריאה המינימלית הזו מחפשת בכל האוספים המותרים.
+```json
+{"query":"\"Joe Wilkinson\""}
+```
+הקריאה המתקדמת הזו משלבת צורות שאילתה, היקף אוספים, מיון, תאריכים, גודל ומסנני facet.
+```json
+{"collection":["alpha","beta"],"queries":["JoeBWilkinson@cs.com","\"Joe Wilkinson\""],"query":"Wilkinson","sort":{"field":"date","direction":"asc"},"date_after":1577836800,"date_before":1609459199,"mentioned_date_after":1577836800,"mentioned_date_before":1609459199,"size_min":100,"size_max":1000000,"folder_term_id":42,"filename_only":false,"facet_filters":{"file_types":["email"],"email_to":["JoeBWilkinson@cs.com"]}}
+```
+הקריאה הנפרדת הזו מוצאת קבצים בלי תאריך מסמך ידוע.
+```json
+{"query":"דוח","filename_only":true,"date_unknown_only":true}
+```
+החלף ערכי collection, תיקייה ו-facet בערכים שהוחזרו עבור הצ'אט הנוכחי.
 {% endif %}

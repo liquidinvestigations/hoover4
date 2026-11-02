@@ -1,19 +1,24 @@
 ---
 name: todo_upkeep
 group: stumble
-description: כיצד לשמר את התכנון עם update_plan, את שלביו ואת סטטוסיהם
+description: איך לתחזק את התוכנית באמצעות update_plan, השלבים שלה והסטטוסים שלהם
 tools: update_plan
 ---
-שמירה על התכנון
+{# How to keep the plan correct. The failed plan calls send steps as plain strings, a status
+   other than pending or done, or no goal. A step has two statuses, pending and done. #}
+תחזוקת התוכנית
 
-{{ tool('update_plan') }} לוקח את היעד ואת רשימת הצעדים השלמה. לכל צעד יש טקסט ומצב, וצעד שהושלם נושא הערה קצרה.
+{{ tool('update_plan') }} מקבל את היעד ואת כל רשימת השלבים. לכל שלב יש text ו-status, ולשלב done יש הערה קצרה.
 
-1. שלח את הרשימה השלמה בכל קריאה, לפי הסדר. צעד שאתה משאיר מחוץ לרשימה אינו נכלל עוד בתכנון.
-2. תן כל צעד כאובייקט עם טקסט ומצב. המצב הוא pending או done.
-3. צעד הוא pending עד סיום העבודה שלו. אז שלח אותו כ-done עם הערה, כגון found, not found או replaced.
-4. שמור על הטקסט של צעד ללא שינוי כשהוא משנה רק את המצב. הצעד שומר על ה-id שלו.
-5. יעד חדש מתחיל תכנון חדש.
-6. {{ tool('update_plan') }} שומר רק את התכנון. כתב דוח או קובץ אחר עם {{ tool('write_file') }}.
+1. שלח את כל הרשימה בכל קריאה, לפי הסדר. שלב שהשמטת כבר אינו בתוכנית.
+2. תן כל שלב כאובייקט עם text ו-status. status הוא pending או done.
+3. שלב נשאר pending עד שהעבודה שלו מסתיימת. אז שלח אותו כ-done עם הערה, כמו found, not found או replaced.
+4. שמור על ה-text של שלב כשרק ה-status שלו משתנה. השלב ישמור אז על ה-id שלו.
+5. יעד חדש מתחיל תוכנית חדשה.
+6. {{ tool('update_plan') }} רק שומר את התוכנית. כתוב דוח או קובץ אחר באמצעות {{ tool('write_file') }}.
 
-זהו דוגמה. צעד 1 מצא את מה שאתה צריך, וצעד 2 עדיין פתוח.
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` התוצאה מציגה את התכנון השלם עם ה-id של כל צעד. קריאה שאינה משנה דבר מחזירה ללא שינוי. תתקן את השדה המצוין לפני שאתה קורא שוב.
+זו דוגמה. שלב 1 מצא מה שאתה צריך, ושלב 2 עדיין פתוח.
+```json
+{"goal":"מצא את תאריך האישור.","steps":[{"text":"מצא את ההודעה.","status":"done","note":"found"},{"text":"קרא את הקטע התומך.","status":"pending"}]}
+```
+התוצאה מציגה את כל התוכנית עם ה-id של כל שלב. קריאה שאינה משנה דבר מחזירה unchanged. תקן את השדה הנקוב לפני שאתה קורא שוב.

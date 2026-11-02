@@ -1,19 +1,19 @@
 {
  "terms": {
-  "skill": "כישור",
+  "skill": "מיומנות",
   "tool": "כלי",
   "tool call": "קריאה לכלי",
-  "argument": "ארגומטר",
-  "citation handle": "תגית ציטוט",
+  "argument": "ארגומנט",
+  "citation handle": "תגית הפניה",
   "quote": "ציטוט",
   "workspace file": "קובץ עבודה",
   "report": "דוח",
-  "hit": "פגיעה",
-  "passage": "פסוק",
+  "hit": "התאמה",
+  "passage": "קטע",
   "query": "שאילתה",
   "web page": "דף אינטרנט",
-  "run": "הרצה",
+  "run": "ריצה",
   "note": "הערה",
-  "plan": "תכנון"
+  "plan": "תוכנית"
  }
 }

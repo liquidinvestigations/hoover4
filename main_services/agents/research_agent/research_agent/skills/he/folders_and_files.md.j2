@@ -1,88 +1,119 @@
 ---
 name: folders_and_files
 group: technique
-description: איך לראות מה אוסף מכיל: סטים של נתונים, תיקיות, סוגי קבצים, ספירות ותאריכים, ואיך למצוא קובץ לפי שמו או הנתיב שלו
+description: איך לראות מה אוסף מכיל: מערכי נתונים, תיקיות, סוגי קבצים, ספירות ותאריכים, ואיך למצוא קובץ לפי שמו או נתיבו
 tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
-terms: מילים לו: אוסף, סט נתונים, תיקיה, נתיב, שם קובץ, סוג קובץ, סיומת, פורמט, ספירות, כמה קבצים, גודל, הגדול ביותר, סקירה, מלאי, מה אוסף מכיל, מסמכים לפי שנה.
-not_for: לא נדרש כאשר הבקשה עוסקת רק בתוכן המסמכים.
+terms: מילים לנושא: אוסף, מערך נתונים, תיקייה, ספרייה, נתיב, שם קובץ, סוג קובץ, סיומת, פורמט, ספירות, כמה קבצים, גודל, הגדול ביותר, סקירה, מלאי, מה אוסף מכיל, מסמכים לפי שנה.
+not_for: לא נדרש כשהבקשה עוסקת רק בתוכן של מסמכים.
 ---
+{# How to see what a collection holds and how to find a file by its name. Each sentence that
+   names a tool renders only when the run has it. #}
 תיקיות וקבצים
 
 {% if has('list_collections') and has('search_facet_values') %}
-לסיכום אוסף, קרא {{ tool('list_collections') }} עם {}.
-אז קרא {{ tool('search_facet_values') }} עם {} פעם אחת עבור כל סוגי הקבצים והשפות של כל אוסף מורשה.
-המטריקס ברירת המחדל כבר מכיל את שני הצדדים. אין צורך בקריאה נפרדת לפי אוסף או צד.
+לסקירה של אוספים, קרא ל-{{ tool('list_collections') }} עם {}.
+אחר כך קרא ל-{{ tool('search_facet_values') }} עם {} פעם אחת לסוגי הקבצים ולשפות של כל האוספים המותרים.
+המטריצה המוגדרת כברירת מחדל כבר מכילה את שני ה-facets. אין צורך בקריאה נפרדת לכל אוסף או facet.
 {% endif %}
 
 {% if has('list_collections') %}
-{{ tool('list_collections') }} לא לוקח ארגומטרים. הוא נותן שמות אוספים, ספרי מסמכים וספרי סטים של נתונים.
-```json {} ```
+{{ tool('list_collections') }} אינו מקבל ארגומנטים. הוא נותן שמות אוספים, ספירות מסמכים וספירות מערכי נתונים.
+```json
+{}
+```
 
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} נותן את ספרי האחסון של כל אוף וסט של נתונים.
+{{ tool('folder_overview') }} נותן את ספירות האחסון של כל אוסף ושל כל מערך נתונים.
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} נותן את התיקיות והקבצים המשניים של תיקיה אחת של סט של נתונים.
+{{ tool('folder_list') }} נותן את תיקיות המשנה והקבצים של תיקייה אחת במערך נתונים.
 {% endif %}
 {% if has('folder_search') %}
-כדי למצוא תיקיה או קובץ לפי שם בתוך סט של נתונים, קרא {{ tool('folder_search') }}.
+כדי למצוא תיקייה או קובץ לפי שם בתוך מערך נתונים אחד, קרא ל-{{ tool('folder_search') }}.
 {% endif %}
 {% if has('search_collections') %}
-כדי למצוא קובץ לפי שם בכל האוספים, קרא {{ tool('search_collections') }} עם `filename_only` מוגדר כ-true. תן את השם או חלק ממנו כשאלת חיפוש.
+כדי למצוא קובץ לפי שם בכל האוספים, קרא ל-{{ tool('search_collections') }} כש-
+`filename_only` מוגדר ל-true. תן את השם או חלק ממנו כשאילתה.
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }} סופר את מסכי המסמכים של חיפוש לפי תאריך או גודל.
+{{ tool('search_histogram') }} סופר את המסמכים של חיפוש לפי תאריך או גודל.
 {% endif %}
 {% if has('search_facet_values') %}
-{{ tool('search_facet_values') }} נותן את ערכי סינון, כולל סוגי קבצים, עם ספרים.
+{{ tool('search_facet_values') }} נותן את הערכים של מסנן, כולל סוגי קבצים, עם ספירות.
 {% endif %}
 
-שם קובץ או נתיב יכולים לזהות מסמך אחד. ה-`file_hash` של שורת תוצאה מזהה אותו ישירות.
+שם קובץ או נתיב יכולים לזהות מסמך אחד. `file_hash` של שורת תוצאה מזהה אותו ישירות.
 
-השתמש בכלי מטא-נתונים לבקשת מלאי. הספרים שלהם יכולים לענות על הבקשה ישירות.
-חיפושי תוכן מועילים רק כשאדם שואל מה המסמכים אומרים.
+השתמש בכלי מטא-נתונים לבקשת מלאי. הספירות שלהם יכולות לענות על הבקשה ישירות.
+חיפושי תוכן שימושיים רק כשהאדם שואל מה המסמכים אומרים.
 
 {% if has('search_facet_values') %}
-קרא {{ tool('search_facet_values') }} פעם אחת עבור מספר אוספים ופאטסים.
-הארגומטרים הם collection, facets, query ו-ids.
-השלם את collection או תן [] עבור כל אוסף מורשה. תן שם אחד או רשימה כדי לצמצם את הבחירה.
-השלם facets עבור ["file_types", "language"]. תן רשימה של שמות פאטס מדויקים עבור התפלגויות אחרות.
-השתמש ב-file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc, re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money או re_crypto_wallet.
-file_type הוא לא תקין. השתמש ב-file_types.
-query מוצא טקסט ערך בתוך ערכי פאטס. הוא לא מחפש בתוך תוכן המסמכים.
-ids באופציונלי פותר מזהי מונחים ידועים. חיפושים רגילים משתמשים בטקסט ערך ולא צריכים מזהים.
+קרא ל-{{ tool('search_facet_values') }} פעם אחת לכמה אוספים ו-facets.
+הארגומנטים הם collection, facets, query ו-ids.
+השמט collection או תן [] לכל האוספים המותרים. תן שם אחד או רשימה כדי לצמצם את הבחירה.
+השמט facets כדי לקבל ["file_types", "language"]. תן רשימה של שמות facet מדויקים להתפלגויות אחרות.
+השתמש ב-file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc,
+re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money או re_crypto_wallet.
+file_type אינו תקף. השתמש ב-file_types.
+query מוצא טקסט בתוך ערכי facet. הוא אינו מחפש בתוכן המסמכים.
+ids פותר מזהי מונחים ידועים, ואינו חובה. חיפושים רגילים משתמשים בטקסט הערך ואינם צריכים מזהים.
 
-התוצאה מכילה עמודות ופריטים. כל שורה מתחילה עם האוףס שלה.
-כל תא פאטס מכיל זוגות [text, count]. העתק טקסט אל facet_filters לחיפוש תוכן מאוחר.
-תא null מכיל שגיאה מדווחת. תא ריק מכיל ללא ערכים שהוחזרו.
-הספירות מתייחסות לזיהויי מסמכים מואיים לפי ערך. ערכים מרובים יכולים לחול על מסמך אחד.
-אל תוסיף ספירות פאטס כדי לטעון לסך נפרד. סכומי המלאה מגיעים מ-list_collections.
-הרשימה הפאטית הרגילה יכולה להשלים ערכים נדירים. השתמש ב-query כדי למצוא ערך ספציפי.
-השתמש ב-more עם read_more כשהתוצאה ממשיכה.
+התוצאה מכילה columns ו-items. כל שורה מתחילה באוסף שלה.
+כל תא של facet מכיל זוגות [text, count]. העתק את text אל facet_filters לחיפוש תוכן מאוחר יותר.
+תא null מציין שגיאה שדווחה. תא ריק מציין שלא הוחזרו ערכים.
+הספירות מתייחסות להתאמות מסמכים באינדקס לכל ערך. כמה ערכים יכולים לחול על מסמך אחד.
+אל תחבר ספירות של facet כדי לטעון לסך ייחודי. סכומי מלאי מגיעים מ-list_collections.
+רשימת ה-facets המוגדרת כברירת מחדל יכולה להשמיט ערכים נדירים. השתמש ב-query כדי למצוא ערך מסוים.
+השתמש ב-more עם read_more כשהתוצאה נמשכת.
 
-הקריאה המינימלית הזו מנהלת את פורמטי הקבצים והשפות בכל האוספים המותרים.
-```json {} ``` קריאה זו משווית בין שני אוספים נבחרים וחופשת את ערכי כתובות הדוא"ל.
-```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+הקריאה המינימלית הזו עושה מלאי של פורמטי קבצים ושפות באוספים המותרים.
+```json
+{}
+```
+הקריאה הזו משווה בין שני אוספים נבחרים ומחפשת בערכי כתובות הדוא"ל שלהם.
+```json
+{"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"}
+```
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} דורש אוסף. dataset בוחר באופן אופציונלי סט נתונים אחד.
-קריאה זו קוראת את כל ספרי האחסון של סט הנתונים בתוך אוסף אחד.
-```json {"collection":"alpha"} ``` קריאה זו בוחרת סט נתונים אחד.
-```json {"collection":"alpha","dataset":"files"} ```
+{{ tool('folder_overview') }} דורש collection. dataset בוחר מערך נתונים אחד, ואינו חובה.
+הקריאה הזו קוראת את כל ספירות האחסון של מערכי הנתונים באוסף אחד.
+```json
+{"collection":"alpha"}
+```
+הקריאה הזו בוחרת מערך נתונים אחד.
+```json
+{"collection":"alpha","dataset":"files"}
+```
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} דורש אוסף וסט נתונים. node_id בוחר באופן אופציונלי צומת תיקיה שהוחזר.
-השמט את node_id כדי לקרוא את שורש סט הנתונים. העתק את מזהי הצמתים של הילדים לקריאות מאוחרות.
-```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_list') }} דורש collection ו-dataset. node_id בוחר צומת תיקייה שהוחזר, ואינו חובה.
+השמט את node_id כדי לקרוא את שורש מערך הנתונים. העתק מזהי צמתים של ילדים לקריאות מאוחרות יותר.
+```json
+{"collection":"alpha","dataset":"files"}
+```
+```json
+{"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('folder_search') %}
-{{ tool('folder_search') }} דורש אוסף, סט נתונים ו-query. node_id מגביל באופן אופציונלי את החיפוש לתיקיה אחת.
-```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_search') }} דורש collection, dataset ו-query. node_id מגביל את החיפוש לתיקייה אחת, ואינו חובה.
+```json
+{"collection":"alpha","dataset":"files","query":"דוח"}
+```
+```json
+{"collection":"alpha","dataset":"files","query":"דוח","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('search_histogram') %}
-{{ tool('search_histogram') }} מקבל את אותם הסינונים ש-search_collections, פרט ל-sort ול-queries.
-field היא date, mentioned_date או size. ברירת המחדל היא date. query ברירת המידה היא query ריקה.
-השמטת אוסף מכסה את כל האוספים המותרים. התוצאה מחזרת buckets ואת השדה הנבחר.
-```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+{{ tool('search_histogram') }} מקבל את אותם מסננים כמו search_collections, חוץ מ-sort ו-queries.
+field הוא date, mentioned_date או size. ברירת המחדל היא date. ברירת המחדל של query היא שאילתה ריקה.
+השמטת collection מכסה את כל האוספים המותרים. התוצאה מחזירה buckets ואת השדה שנבחר.
+```json
+{}
+```
+```json
+{"collection":["alpha","beta"],"field":"size","query":"דוח","size_min":1024,"facet_filters":{"file_types":["pdf"]}}
+```
 {% endif %}

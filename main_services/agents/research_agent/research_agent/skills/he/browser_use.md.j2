@@ -1,30 +1,64 @@
 ---
 name: browser_use
 group: technique
-description: כיצד להניע דפדפן אינטרנט: פתיחת כתובת, קריאת תמונת-דף, ואז לחיצה, הקלטה או בחירה לפי הפניה לאלמנט
+description: איך לשלוט בדפדפן אינטרנט: לפתוח כתובת, לקרוא את תצלום הדף, ואז ללחוץ, להקליד או לבחור לפי הפניית האלמנט
 tools: browser_navigate, browser_snapshot, browser_click, browser_type, browser_select_option, browser_press_key
 ---
-הנעת דפדפן אינטרנט
+{# How to drive the browser tools. An element reference is valid only for the snapshot that
+   gave it, so the text asks for a new snapshot after each action. The sentence on
+   `read_page` renders only when that tool is in the run. #}
+שליטה בדפדפן אינטרנט
 
 {% if has('read_page') %}
-{{ tool('read_page') }} קרא את טקסט הדף. השתמש בתמונת מצב של דפדפן כאשר מצב הדף או אלמנטים אינטראקטיביים חשובים.
+{{ tool('read_page') }} קורא את הטקסט של דף. השתמש בתצלום דפדפן כשמצב הדף או האלמנטים
+האינטראקטיביים חשובים.
 
 {% endif %}
-1. פתח את הכתובת עם {{ tool('browser_navigate') }}.
-2. קרא {{ tool('browser_snapshot') }}. התמונה מרשימה כל אלמנט של הדף יחד עם הייחוס שלו, כגון ref e12.
-3. פעל על אלמנט אחד עם {{ tool('browser_click') }}, {{ tool('browser_type') }} או {{ tool('browser_select_option') }}. תן את הייחוס מהתמונה האחרונה ותיאור קצר של האלמנט. השתמש {{ tool('browser_press_key') }} למקש כגון Enter.
-4. אחרי כל פעולה, קרא {{ tool('browser_snapshot') }} שוב. פעולה יכולה לשנות את הדף, ואז הייחוסים הישנים אינם תקפים.
+1. פתח את הכתובת באמצעות {{ tool('browser_navigate') }}.
+2. קרא ל-{{ tool('browser_snapshot') }}. התצלום מפרט כל אלמנט בדף עם ההפניה שלו, כמו ref e12.
+3. פעל על אלמנט אחד באמצעות {{ tool('browser_click') }}, {{ tool('browser_type') }} או {{ tool('browser_select_option') }}. תן את ההפניה מהתצלום האחרון ותיאור קצר של האלמנט. השתמש ב-{{ tool('browser_press_key') }} למקש כמו Enter.
+4. אחרי כל פעולה, קרא שוב ל-{{ tool('browser_snapshot') }}. פעולה יכולה לשנות את הדף, ואז ההפניות הישנות אינן תקפות.
 
-כאשר תוצאה מתחילה ב-\"### Error\", קרא את טקסט השגיאה. ייחוס אלמנט מיושן משמעו שהדף השתנה. קח תמונה חדשה והשתמש בייחוס החדש. ייחוס ריק או סלקטור משמעו שנתת אלמנט ריק.
+כשתוצאה מתחילה ב-"### Error", קרא את טקסט השגיאה. הפניית אלמנט מיושנת פירושה שהדף השתנה. צלם תצלום חדש והשתמש בהפניה החדשה. הפניה או סלקטור ריקים פירושם שלא נתת אלמנט.
 
-תציין בתשובה או בדוח איזה כתובת פתחת ומה הדף הציג.
+ציין בתשובה או בדוח איזו כתובת פתחת ומה הדף הראה.
 
-{{ tool('browser_navigate') }} דורש url. {{ tool('browser_snapshot') }} מקבל ארגומטרים.
-```json {"url":"COPY_SEARCH_RESULT_URL"} ``` ```json {} ``` {{ tool('browser_click') }} דורש target. העתק ייחוס של רכיב שהוחזר או השתמש בבחירה ייחודית.
-element מתאר את ה-target באופציונלית. button מוגבר כברירת מחדל ל-left ויכול להיות right או middle.
-doubleClick בוחר באופציונלית לחיצה כפולה. modifiers מחזיק באופציונלית את Alt, Control, ControlOrMeta, Meta או Shift.
-```json {"target":"COPY_SNAPSHOT_REFERENCE"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search button","button":"left","doubleClick":false,"modifiers":["Control"]} ``` {{ tool('browser_type') }} דורש target ו-text. element מתאר את ה-target באופציונלית.
-submit לוחץ באופציונלית על Enter אחרי הקלדה. slowly מקליד באופציונלית תווים בודדים כדי להפעיל handlers של מקשים.
-```json {"target":"COPY_SNAPSHOT_REFERENCE","text":"approval"} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Search field","text":"approval","submit":true,"slowly":true} ``` {{ tool('browser_select_option') }} דורש target ו-values, רשימה של ערכי אפשרויות. element מתאר את ה-target באופציונלית.
-```json {"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]} ``` ```json {"target":"COPY_SNAPSHOT_REFERENCE","element":"Format selector","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]} ``` {{ tool('browser_press_key') }} דורש key, כגון Enter או Control+ArrowRight.
-```json {"key":"Enter"} ``` ```json {"key":"Control+ArrowRight"} ``` לכל פעולה מוחזר הסטטוס שלה או שגיאה. קרא תמונת מצב חדשה אחרי פעולה המשנה את הדף.
+{{ tool('browser_navigate') }} דורש url. {{ tool('browser_snapshot') }} אינו מקבל ארגומנטים.
+```json
+{"url":"COPY_SEARCH_RESULT_URL"}
+```
+```json
+{}
+```
+{{ tool('browser_click') }} דורש target. העתק הפניית אלמנט שהוחזרה או השתמש בסלקטור ייחודי.
+element מתאר את היעד, ואינו חובה. button הוא left כברירת מחדל, ויכול להיות right או middle.
+doubleClick בוחר לחיצה כפולה, ואינו חובה. modifiers מכיל Alt, Control, ControlOrMeta, Meta או Shift, ואינו חובה.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"כפתור חיפוש","button":"left","doubleClick":false,"modifiers":["Control"]}
+```
+{{ tool('browser_type') }} דורש target ו-text. element מתאר את היעד, ואינו חובה.
+submit לוחץ על Enter אחרי ההקלדה, ואינו חובה. slowly מקליד תו אחר תו כדי להפעיל מטפלי מקשים, ואינו חובה.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","text":"אישור"}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"שדה חיפוש","text":"אישור","submit":true,"slowly":true}
+```
+{{ tool('browser_select_option') }} דורש target ו-values, רשימה של ערכי אפשרויות. element מתאר את היעד, ואינו חובה.
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","values":["COPY_OPTION_VALUE"]}
+```
+```json
+{"target":"COPY_SNAPSHOT_REFERENCE","element":"בורר פורמט","values":["COPY_OPTION_VALUE_A","COPY_OPTION_VALUE_B"]}
+```
+{{ tool('browser_press_key') }} דורש key, כמו Enter או Control+ArrowRight.
+```json
+{"key":"Enter"}
+```
+```json
+{"key":"Control+ArrowRight"}
+```
+כל פעולה מחזירה את הסטטוס שלה או שגיאה. קרא תצלום חדש אחרי פעולה ששינתה את הדף.

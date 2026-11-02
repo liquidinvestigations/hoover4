@@ -1,95 +1,140 @@
 ---
 name: passages
 group: technique
-description: איך למצוא את הפסוקים או העמודים המדויקים שמשיבים על שאלה באמצעות search_passages, בתוך מסמכים רבים או אחד
+description: איך למצוא את הקטעים או העמודים המדויקים שעונים על שאלה באמצעות search_passages, בתוך הרבה מסמכים או במסמך אחד
 tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
-terms: מילים הרלוונטיות לכך: passage, paragraph, sentence, quote, excerpt, עמוד, section, where it says, החלק שמזכיר, ניסוח מדויק, שורה. חל על מסמכי טקסט ארוכים: PDF, קבצי Word, מיילים, דוחות ותמלילים.
-not_for: לא נדרש לספירות, רשימות קבצים או מטא-נתונים.
+terms: מילים לנושא: קטע, פסקה, משפט, ציטוט, מובאה, עמוד, סעיף, איפה כתוב, החלק שמזכיר, ניסוח מדויק, שורה, passage, quote. חל על מסמכי טקסט ארוכים: PDF, קובצי Word, הודעות דוא"ל, דוחות ותמלילים.
+not_for: לא נדרש לספירות, לרשימות קבצים או למטא-נתונים.
 ---
-איתור פסוקים ועמודים
+{# How to find the passages and the pages that answer a question, in many documents or in
+   one. Each sentence that names a tool renders only when the run has it. #}
+מציאת קטעים ועמודים
 
 {% if has('search_passages') %}
-כדי לחפש במסמכים רבים, השמש {{ tool('search_passages') }}. הוא מחפש פסוקי טקסט לפי מילות מפתח ולפי משמעות יחד. השמש בו לשאלה במילים פשוטות, כשהמילים שהמסמכים משתמשים בהן אינן ברורות. תן עד 12 שאילתות בקריאה אחת, כל אחת בצורה שונה של השאלה. כל פגיעה מצינה את השאילתות שמצאו אותה. לשם שם מדויק, כתובת או משפט, השמש {{ tool('search_collections') }}.
+כדי לחפש בהרבה מסמכים, השתמש ב-{{ tool('search_passages') }}. הוא מחפש בקטעי הטקסט לפי מילות מפתח ולפי משמעות יחד. השתמש בו לשאלה במילים רגילות, כשהמילים שהמסמכים משתמשים בהן אינן ברורות. תן עד 12 שאילתות בקריאה אחת, כל אחת צורה שונה של השאלה. כל התאמה נוקבת בשאילתות שמצאו אותה. לשם מדויק, לכתובת או לביטוי, השתמש ב-{{ tool('search_collections') }}.
 
 {% endif %}
 {% if has('doc_search_text') or has('pdf_search') %}
-כדי לחפש במסמך ארוך אחד, השמש בכלים אלה.
+כדי לחפש במסמך ארוך אחד, השתמש בכלים האלה.
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} מציג את הפגיעות של שאילתה במקור טקסט אחד, לפי סדר עמודים, עם העמוד של כל פגיעה.
+{{ tool('doc_search_text') }} מפרט את ההתאמות של שאילתה במקור טקסט אחד, לפי סדר העמודים, עם העמוד של כל התאמה.
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }} מוצא שאילתה בעמודים של מקור PDF. תן page_from ו-page_to כדי לחפש טווח עמודים.
+{{ tool('pdf_search') }} מוצא שאילתה בעמודים של מקור PDF. תן page_from ו-page_to כדי לחפש בטווח עמודים.
 {% endif %}
 
 {% endif %}
 {% if has('read_documents') %}
-קרא עמוד עם {{ tool('read_documents') }} כשהפסוק לא מציג מספיק טקסט כדי לתמוך בטענה. תן את העמוד שלו, או תן את השאילתה לפתיחת העמוד עם הכי הרבה פגיעות.
+קרא עמוד באמצעות {{ tool('read_documents') }} כשהקטע אינו מציג מספיק טקסט
+כדי לתמוך בטענה. תן את העמוד שלו, או תן את query כדי לפתוח את העמוד עם מספר ההתאמות הגדול ביותר.
 {% endif %}
 
-תן את המסמך ואת העמוד כשהפסוק תומך בתשובה.
+תן את המסמך ואת העמוד כשקטע תומך בתשובה.
 
 {% if has('read_documents') %}
 {{ tool('read_documents') }} דורש collection ו-file_hash.
-collection הוא שם אחד. file_hash היא רשימה של 1 עד 20 hashes מאותו אוסף.
-למסמכים באוספים שונים, צור חבילה נפרדת לכל אוסף.
-העתק זהויות מהתוצאות. שם קובץ או נתיב ייחודי יכולים גם כן לפרק מסמך.
-source בוחר במקור מפוקח באופציונל. השמטה משתמ במקור המועדף.
-page בוחר מזהה עמוד מאוחסן באופציונל. מזהעי עמודים יכולים להכיל פגמים.
-השמת page או תן אפס כדי לבחור את העמוד עם הכי הרבה פגיעות שאילתה, או את העמוד המאוחסן הראשון ללא שאילתה.
-query פותח טקסט סביב מילות מפתח נבדקות קרובות באותו עמוד.
-לשם ניסוח מדויק, ציטט את המשפט בתוך השאילתה. ערך נבדק אחד פותח את ההופעה הראשונה שלו.
-offset מבטל את תחילת הפסוק. הוא סופר תווים של Unicode מאפס בתוך אותו עמוד.
-length הוא ספירת תווים חיובית. השמטה משתמ ב-6,000 תווים.
-source_version מאמתת באופציונל את טביעת האצבע של המקור המוחזר. העתק אותה לרeread של טווח.
+collection הוא שם אחד. file_hash היא רשימה של 1 עד 20 גיבובים מאותו אוסף.
+למסמכים באוספים שונים, צור קבוצה נפרדת לכל אוסף.
+העתק זהויות מתוצאות. שם קובץ או נתיב ייחודיים יכולים גם הם לפענח מסמך.
+source בוחר מקור מחולץ, ואינו חובה. השמטה משתמשת במקור המועדף.
+page בוחר מזהה עמוד שמור, ואינו חובה. במזהי עמודים יכולים להיות פערים.
+השמט את page או תן אפס כדי לבחור את העמוד עם מספר ההתאמות הגדול ביותר לשאילתה, או את העמוד השמור הראשון בלי שאילתה.
+query פותח טקסט סביב מילים שהותאמו ונמצאות קרוב זו לזו בעמוד הזה.
+לניסוח מדויק, שים את הביטוי במרכאות בתוך query. ערך מותאם יחיד פותח את המופע הראשון שלו.
+offset עוקף את תחילת הקטע. הוא סופר תווי Unicode מאפס בתוך העמוד הזה.
+length הוא מספר תווים חיובי. השמטה משתמשת ב-6,000 תווים.
+source_version מאמת את טביעת האצבע של המקור שהוחזרה, ואינו חובה. העתק אותו לקריאה חוזרת של טווח.
 
-התוצאה מחזרת text_range עם start, סוף אקסקלוסיבי, סך תווים בעמוד ויחידה.
-page_complete משמעו שהטווח מכסה את כל העמוד.
-סמן חיתום משמעו שהכלי מסר רק חלק מהטווח. זה לא משמעו שהעמוד נגמר שם.
-השתמש ב-more של פריט כדי להמשיך את המסמך. השתמש ב-more ברמה העליונה כדי להמשיך את העמוד הנותר או עמודים מאוחרים יותר.
-העתק את ה-handle המוחזר בדיוק לתוך {{ tool('read_more') }} כהמשך.
-העתק את read_before או read_after כארגומטרים של read_documents לטקסט סביב. אין צורך בחישוב offset.
-ארגומטרי טווח חלים על כל hash בקריאה אחת. השתמש בקריאות נפרדות כשמסמכים מקורות, טווחים או גרסות מקור שונות.
-לדוגמה, העתק את אובייקט read_after שהוחזר מהמסמך הראשון לקריאה אחת.
-```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` העתק את אובייקט read_after שהוחזר מהמסמך השני לקריאה אחרת.
-```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` השתמש בערכים המוחזרים האמתיים לכל מסמך. אל תוסיף שדות ממוספרים כמו source2 או offset2.
-קריאה ראשונית חוזרת מחזרת את אותו טקסט. השתמש בהמשך כשנדרש טקסט נוסף.
-עצור את הקריאה כשהפסוק מספק מספיק ראיות לטענה המבוקשת.
+התוצאה מחזירה text_range עם start, end בלעדי, סך תווי העמוד ו-unit.
+page_complete פירושו שהטווח מכסה את כל העמוד.
+סימן חיתוך פירושו שהכלי מסר רק חלק מהטווח. הוא אינו אומר שהעמוד נגמר שם.
+השתמש ב-more של פריט כדי להמשיך את המסמך הזה. השתמש ב-more ברמה העליונה כדי להמשיך את שאר העמוד או עמודים מאוחרים יותר.
+העתק את התגית שהוחזרה במדויק אל {{ tool('read_more') }} כ-continuation.
+העתק את read_before או את read_after כארגומנטים של read_documents לטקסט הסובב. אין צורך לחשב offset.
+ארגומנטי טווח חלים על כל גיבוב בקריאה אחת. השתמש בקריאות נפרדות כשלמסמכים יש מקורות, טווחים או גרסאות מקור שונים.
+לדוגמה, העתק את אובייקט read_after שהוחזר למסמך הראשון אל קריאה אחת.
+```json
+{"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"}
+```
+העתק את אובייקט read_after שהוחזר למסמך השני אל קריאה אחרת.
+```json
+{"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"}
+```
+השתמש בערכים בפועל שהוחזרו לכל מסמך. אל תוסיף שדות ממוספרים כמו source2 או offset2.
+קריאה ראשונית חוזרת מחזירה את אותו טקסט. השתמש ב-continuation כשצריך עוד טקסט.
+הפסק לקרוא כשהקטע מספק מספיק ראיות לטענה המבוקשת.
 
-קריאה מינימלית זו פותחת את הדף השמור הראשון.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` קריאה זו פותחת פסוק ממוקד.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` קריאה זו פותחת טווח שהוחזר במקור ובדף נבחרים.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` המשך זה קורא את הטווח המוחזר הבא. השתמש בתגית הציטוט בפועל.
-```json {"continuation":"COPY_RETURNED_MORE"} ```
+הקריאה המינימלית הזו פותחת את העמוד השמור הראשון.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]}
+```
+הקריאה הזו פותחת קטע ממוקד.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"}
+```
+הקריאה הזו פותחת טווח שהוחזר במקור ובעמוד שנבחרו.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"}
+```
+ההמשך הזה קורא את הטווח הבא שהוחזר. השתמש בתגית שהונפקה בפועל.
+```json
+{"continuation":"COPY_RETURNED_MORE"}
+```
 {% endif %}
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} דורש collection, file_hash ו-query. source באופציונלית בוחרת חילוץ אחד.
-היא מחזרת page, ordinal, start, end ו-snippet עבור כל פגיעה. הספירות סופרות תווים בתוך אותו דף.
-העתק דף ו-start של פגיעה אל read_documents כשה-snippet צריך הקשר נוסף.
-השתמש ב-read_more כדי לאחזר פגיעות שנותרו.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
+{{ tool('doc_search_text') }} דורש collection, file_hash ו-query. source בוחר חילוץ אחד, ואינו חובה.
+הוא מחזיר page, ordinal, start, end ו-snippet לכל התאמה. ההיסטים סופרים תווים בתוך העמוד הזה.
+העתק את page ואת start של התאמה אל read_documents כשהקטע צריך עוד הקשר.
+השתמש ב-read_more כדי לאחזר התאמות שנותרו.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"}
+```
 {% endif %}
 {% if has('doc_sources') %}
-{{ tool('doc_sources') }} דורש collection ו-file_hash. query באופציונלית סופרת פגיעות תואמות בכל חילוץ.
-היא מחזרת שמות מקור וטווחי דפים שמורים. העתק שם מקור כשאתה בוחר חילוץ מסוים.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
+{{ tool('doc_sources') }} דורש collection ו-file_hash. query סופר התאמות בכל חילוץ, ואינו חובה.
+הוא מחזיר שמות מקורות וטווחי עמודים שמורים. העתק שם מקור כשבוחרים חילוץ מסוים.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
 {% endif %}
 {% if has('doc_diff_sources') %}
 {{ tool('doc_diff_sources') }} דורש collection, file_hash, source_a ו-source_b.
-page_a ו-page_b באופציונלית בוחרות דפים. הימנעות בוחרת את הדף השמור הראשון של כל מקור.
-התוצאה היא diff טקסט מאוחד. השתמש ב-read_more כשהוא ממשיך.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
+page_a ו-page_b בוחרים עמודים, ואינם חובה. השמטה בוחרת את העמוד השמור הראשון של כל מקור.
+התוצאה היא diff טקסטואלי מאוחד. השתמש ב-read_more כשהיא נמשכת.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7}
+```
 {% endif %}
 {% if has('pdf_search') %}
 {{ tool('pdf_search') }} דורש collection, file_hash ו-query.
-source באופציונלית בוחרת חילוץ PDF. page_from ו-page_to באופציונלית מגבילות את טווח הדפים ההדוק של ה-PDF.
-העתק עמקי דף מוחזרים. השתמש ב-read_more לפגיעות ממשכיות.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
+source בוחר חילוץ PDF, ואינו חובה. page_from ו-page_to מגבילים את טווח עמודי ה-PDF הכולל, ואינם חובה.
+העתק מיקומי עמודים שהוחזרו. השתמש ב-read_more להתאמות שנמשכות.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12}
+```
 {% endif %}
 {% if has('search_passages') %}
-{{ tool('search_passages') }} מקבלת שאלות כמחרוזת אחת או רשימה של עד 12 צורות.
-collection מקבלת שם אחד או רשימה. הימנעות מחפשת בכל האספים המותרים.
-max_results בוחרת את ספירת הפגיעות לכל צורת שאלה בתוך מגבלת הסכמה המוגשת. הימנעות משתמשת ב-15.
-התוצאה נותנת collection, file_hash, page ו-snippet. q מתעדת את אינדקסי השאלות המבוססים על אפס.
-קרא טקסט תומך כשהפסוק לא עונה על השאלה.
-```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
+{{ tool('search_passages') }} מקבל queries כמחרוזת אחת או כרשימה של עד 12 צורות.
+collection מקבל שם אחד או רשימה. השמטה מחפשת בכל האוספים המותרים.
+max_results בוחר את מספר ההתאמות לכל צורת שאילתה בתוך מגבלת הסכמה המשורתת. השמטה משתמשת ב-15.
+התוצאה נותנת collection, file_hash, page ו-snippet. q רושם את אינדקסי השאילתות שמתחילים באפס.
+קרא טקסט תומך כשהקטע אינו עונה על השאלה.
+```json
+{"queries":"אישור ההעברה"}
+```
+```json
+{"collection":["alpha","beta"],"queries":["אישור ההעברה","הרשאה להעברה"],"max_results":5}
+```
 {% endif %}

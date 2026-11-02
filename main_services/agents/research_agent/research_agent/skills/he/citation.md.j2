@@ -1,49 +1,76 @@
 ---
 name: citation
 group: general
-description: כיצד לציטט את המסמכים התומכים בתשובה
+description: איך לצטט את המסמכים שתומכים בתשובה
 tools: cite_documents
 ---
-טקסט מצוטט נכנס לקובץ עבודה. הכישור `report` מראה כיצד לכתוב ולערוך אותו.
+{# The document citation protocol of every run that has `cite_documents`. The skill
+   `web_research` holds the web citation protocol. Both include the failure rules of
+   `partials/citation_failures.j2`.
+
+   `citation_artefact` names what the model writes, for example an answer or a report.
+   `citation_resolver` says who turns a handle back into a document. A worker runs on the
+   lead's chat session, so its handles are the lead's handles, and its text names the lead.
+   The system prompt gives the order of the work. This skill gives the arguments, one
+   example, and what to do after a failed entry. The `report` skill says which file holds
+   the cited text.
+#}
+טקסט עם הפניות נכנס לקובץ עבודה. המיומנות `report` אומרת איך לכתוב ולערוך אותו.
 
 {% if has('cite_documents') %}
-כאשר ה{{ citation_artefact }} שלך מסתמך על {% if web_enabled %}פנימי{% else %}ה{% endif %} מסמך, קרא {{ tool('cite_documents') }}.
-תן לו כל מסמך שתומך בטענה או בציטוט. השתמש ב־handle המוחזר ליד הטענה.
-השתמש ב־handle ליד טענה המסתמכת על מסמך פנימי. ניתן גם לנקב מסמך כדי לזהותו או לתאר תוצאת חיפוש.
-קריאה אחת לוקחת לכל היותר 12 ציטוטים. ציטט את מה שבושת, לא את כל מה שהחיפוש החזיר.
-כאשר חיפוש או קריאה החזירו מסמכים התומכים בטענה, ציטט את המסמכים האלה.
+כשהדוח שלך נשען על מסמך {% if web_enabled %}פנימי{% else %}כלשהו{% endif %}, קרא ל-{{ tool('cite_documents') }}.
+תן לו כל מסמך שתומך בטענה או בציטוט. השתמש בתגית שהוחזרה לצד הטענה הזו.
+השתמש בתגית לצד טענה שנשענת על מסמך פנימי. אפשר גם לנקוב בשם של מסמך
+כדי לזהות אותו או לתאר תוצאת חיפוש.
+קריאה אחת מקבלת לכל היותר 12 הפניות. הפנה למה שהשתמשת בו, לא לכל מה שחיפוש החזיר.
+כשחיפוש או קריאה החזירו מסמכים שתומכים בטענה, הפנה למסמכים האלה.
 
-עבור כל ציטוט תן:
-- collection ו־file_hash, המועתקים מתוצאת כלי. אף־פעם לא המצאת file_hash.
-- quote: 5 עד 6 מילים רצופות המועתקות משורה אחת בגוף המסמך. לא שורת כותרת (From, To, Cc, Subject, Date). לא טווח המכיל סימן שאלה.
-- find: רשות. הפסוק המדויק הקצר ביותר מהציטוט שהאדם חייב לראות. הכרטיח פותח את המסמך בפסוק הזה.
-- why: שורה אחת המסברת מה המסמך תומך בו.
+לכל הפניה תן:
+- collection ו-file_hash, שהועתקו מתוצאת כלי. לעולם אל תמציא file_hash.
+- quote: 5 עד 6 מילים רצופות שהועתקו משורה אחת של גוף המסמך. לא שורת כותרת
+  (From, To, Cc, Subject, Date). לא קטע שמכיל סימן שאלה.
+- find: לא חובה. הביטוי המדויק הקצר ביותר מתוך הציטוט שהאדם צריך לראות. הכרטיס
+  פותח את המסמך בביטוי הזה.
+- why: שורה אחת שאומרת במה המסמך תומך.
 
-כתוב את ה־handle שקבלת בחזרה, לדוגמה `[D1]`, ב־{{ citation_artefact }} שבו אתה מצי את הטענה.
+כתוב את התגית שקיבלת, לדוגמה `[D1]`, בדוח שלך במקום שבו אתה טוען את הטענה.
 
-דוגמה. {{ tool('read_documents') if has('read_documents') else 'A tool' }} החזיר את הדוא"ל \"Re: DRAFT talking points\" בתוך האוףסף enron.
-הגוף שלו אומר \"The talking points look great to me. Best of luck today.\" ה-{{ citation_artefact }} שלך אומר ש-Jim Steffes אישר את הטיוטה. קרא {{ tool('cite_documents') }} עם collection enron, את file_hash מהתוצאה, את ה-quote \"talking points look great to me\", מצא את \"look great\", ואת \"Steffes approves the draft of 27 December\".
-אז כתוב \"Steffes approved the draft [D1].\" אל תציטט \"Subject: Re: DRAFT talking points\", כי זה שורת כותרת. אל תציטט \"Can you check the notes?\", כי זה מכיל סימן שאלה.
-שבירות שורה, פיסוק וה-`>` מסמרי המייל מציטוט אין צורך שיתאימו.
-ציטוטים חסרים או שאינם מוחזרים מקצים ללא תגית. העתק 5 עד 6 מילים של טקסט מועמד שהשגיאה נותנת לתוך quote ונסה שוב.
-רק תגית מוחזרת תתווה מקור. אף פעם אל תכתוב תגית משל עצמך בתוך סוגריים מרובעים.
-כתוב את התגית כטקסט ליד הטענה. אל תשים אותה בתוך backticks. `[D1]` בתוך backticks מקשר ללא דבר.
-בצע שימוש חוזר בתגית המסמך המוחזרת לפסוקים מאומתים נוספים. למסמך יש כרטיס אחד.
+דוגמה. {{ tool('read_documents') if has('read_documents') else 'כלי' }} החזיר את הדוא"ל "Re: DRAFT talking points" באוסף enron.
+גוף ההודעה אומר "The talking points look great to me. Best of luck today." הדוח שלך אומר
+שג'ים סטפס אישר את הטיוטה. קרא ל-{{ tool('cite_documents') }} עם collection enron, ה-
+file_hash מהתוצאה, ה-quote "talking points look great to me", find "look great",
+ו-why "Steffes approves the draft of 27 December".
+אחר כך כתוב "סטפס אישר את הטיוטה [D1]."
+אל תצטט "Subject: Re: DRAFT talking points", כי זו שורת כותרת. אל תצטט
+"Can you check the notes?", כי היא מכילה סימן שאלה.
+מעברי שורה, פיסוק וסימני `>` של דוא"ל מצוטט אינם צריכים להתאים.
+ציטוט חסר או שאינו קיים אינו מקצה תגית. העתק ל-quote 5 עד 6 מילים מטקסט המועמד שהשגיאה נותנת ונסה שוב.
+רק תגית שהוחזרה מסמנת מקור. לעולם אל תכתוב תווית משלך בסוגריים מרובעים.
+כתוב את התגית כטקסט לצד הטענה. אל תשים אותה בגרשיים הפוכים. `[D1]` בגרשיים הפוכים אינו מקשר לשום דבר.
+השתמש שוב בתגית המסמך שהוחזרה לקטעים נוספים שאומתו. למסמך יש כרטיס אחד.
 {% if citation_resolver == "lead" %}
-חוקר הראש פותר אותם, כך שתגית שאתה אף פעם לא ציית היא ללא שימוש לאף אחד.
+החוקר הראשי מפענח אותן, ולכן תגית שלא הוקצתה לך אינה שימושית לאיש.
 {% endif %}
 {% endif %}
 {% include "citation_failures.j2" %}
 
 {% if has('cite_documents') %}
-ארגומטר הציטוטים הוא רשימה של אובייקטי ציטוטי מסמכים.
+הארגומנט citations הוא רשימה של אובייקטי הפניה למסמכים.
 כל אובייקט דורש collection ו-file_hash. quote מכיל 5 עד 6 מילים רצופות של ניסוח מקור מדויק.
-חזרו על collection ועל file_hash בכל אובייקט, כולל ציטוטים נפרדים מאותו מסמך.
-אובייקטים אינם יורשים ארגומטרים מאובייקטים קודמים.
-find בוחר באופצייה מילת-ביטוי מדויקות בתוך quote. השמעה משתמש בכל ה-quote.
-term מקליט באופצייה את שאילת החיפוש המקורית. why מציין את הטענה הנתמכת.
-התוצאה נותנת תגית ציטוט לכל רשומה מאומתת. רשומות שנכשלו נותנות את הסיבה ויכולות לתת פסוק מועמד.
-חזרו רק על רשומות שנכשלו עם ניסוח מדויק. ציטוט מאומתת אינו מאמת בעצמו את הכותב או את התאריך של אותו ציטוט.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]} ``` בלוק זה מאמת שני פסוקים מאותו מסמך.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+חזור על collection ו-file_hash בכל אובייקט, גם בציטוטים נפרדים מאותו מסמך.
+אובייקטים אינם יורשים ארגומנטים מאובייקטים קודמים.
+find בוחר ביטוי מדויק בתוך quote, ואינו חובה. השמטה משתמשת בכל הציטוט.
+term רושם את שאילתת החיפוש שממנה הגיע הציטוט, ואינו חובה. why מציין את הטענה הנתמכת.
+התוצאה נותנת תגית לכל רשומה שאומתה. רשומות שנכשלו נותנות את הסיבה שלהן ויכולות לתת קטע מועמד.
+נסה שוב רק את הרשומות שנכשלו, עם ניסוח מדויק. ציטוט שאומת אינו מאמת בעצמו את כותב הציטוט או את תאריכו.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
+```
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"החיפוש המקורי","why":"הקטע הזה תומך באישור שצוין."}]}
+```
+הקבוצה הזו מאמתת שני קטעים מאותו מסמך.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}
+```
 {% endif %}

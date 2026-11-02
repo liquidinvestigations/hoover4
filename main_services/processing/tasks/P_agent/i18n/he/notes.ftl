@@ -1,40 +1,54 @@
 # Translation of en/notes.ftl. Change it together with the English catalog.
 
-note-discovery-l2 = שתי החיפושים האחרונים לא מצאו מקור חדש. כעת קראו את דפי התוצאה הטובים ביותר: הוסיפו עד 6 מכתובות האתר שלהם לקריאה בקריאת_עמוד אחת, ברשימת ה-`urls`. חפשו שוב רק עם שאלה אחרת.
-note-discovery-l3-web = ענית לפני שקראת דף מקור כלשהו. קרא דף אחד עם רשימת ה-URLs של הדפים התומכים בפריטים שלך, עד 6 ברשימת ה-`urls`. לאחר מכן כתוב את התשובה שוב עם המקורים התומכים בה.
-note-discovery-l3-documents = ענית לפני שקראת כל מסמך. קרא את המסמכים התומכים בפריטים שלך באמצעות read_documents, תוך הצגת מספר hashes של קבצים בקריאה אחת. לאחר מכן כתוב את התשובה שוב יחד עם המקורים התומכים בה.
-note-discovery-l4 = קראו את דפי התוצעות שעשויים לענות על הבקשה כעת: הוסיפו עד 6 מכתובות האתר שלהם לרשימת `urls` בקריאת read_page אחת. קריאה אחת קוראת את כולם בו-זמנית.
-note-capture-empty = אין טקסט מאמר בתפיסת { $urls }. קרא מקור אחר. אל תציטט דף זה.
-note-web-tools-absent = לסיבוב זה אין כלי אתר, ולכן הוא לא יכול לקרוא דפים ציבוריים באינטרnet. השתמש באספים הנבחרים וציין איזה חלק מהבקשה הם לא עונים עליו.
-note-sources-documents = חפש תחילה באספים שהורשו למסמכים. קרא את המסמכים הרלוונטיים שלהם.
-note-sources-documents-before-web = חפשו תחילה באספים שהורשו. קראו את המסמכים הרלוונטי בהם. קראו את המסמכים הללו לפני השימוש ברשת.
-note-absent-collection = אין אסף שהורש בשם { $name }. האספים שהורשו הם { $collections }.
-note-absent-name = לא קיים התאמה מובנית לאוספים הנבחרים עבור { $name }.
-note-absent-close-forms = צורות סגירה מדוגמות: { $forms }. אין להשתמש בצורת סגירה כשם המבוקש. בעת חיפוש אחת, יש לנקבה בתשובה כדוגמה אחרת.
+## Discovery
+
+note-discovery-l2 = שני החיפושים האחרונים לא מצאו מקור חדש. קרא עכשיו את דפי התוצאות הטובים ביותר: הכנס עד 6 מכתובות ה-URL שלהם לקריאה אחת של read_page, ברשימה `urls` שלה. חפש שוב רק עם שאלה אחרת.
+note-discovery-l3-web = ענית לפני שקראת דף מקור כלשהו. קרא ל-read_page פעם אחת עם כתובות ה-URL של הדפים שתומכים בפריטים שלך, עד 6 ברשימה `urls` שלה. לאחר מכן כתוב את התשובה מחדש עם המקורות שתומכים בה.
+note-discovery-l3-documents = ענית לפני שקראת מסמך כלשהו. קרא באמצעות read_documents את המסמכים שתומכים בפריטים שלך, כמה גיבובי קבצים בקריאה אחת. לאחר מכן כתוב את התשובה מחדש עם המקורות שתומכים בה.
+note-discovery-l4 = קרא עכשיו את דפי התוצאות שעשויים לענות על הבקשה: הכנס עד 6 מכתובות ה-URL שלהם לקריאה אחת של read_page, ברשימה `urls` שלה. קריאה אחת קוראת את כולם בו זמנית.
+
+## Page captures
+
+note-capture-empty = בלכידה של { $urls } אין טקסט של מאמר. קרא מקור אחר. אל תצטט את הדף הזה.
+
+## Sources
+
+note-web-tools-absent = בתור הזה אין כלי אינטרנט, ולכן הוא אינו יכול לקרוא דפי אינטרנט ציבוריים. השתמש באוספים שנבחרו, וציין איזה חלק מהבקשה הם אינם עונים עליו.
+note-sources-documents = חפש תחילה באוספי המסמכים המותרים. קרא את המסמכים הרלוונטיים שלהם.
+note-sources-documents-before-web = חפש תחילה באוספי המסמכים המותרים. קרא את המסמכים הרלוונטיים שלהם. קרא את המסמכים האלה לפני שתשתמש ברשת.
+
+## Named things
+
+note-absent-collection = אין אוסף מותר בשם { $name }. האוספים המותרים הם { $collections }.
+note-absent-name = באוספים שנבחרו אין התאמה באינדקס עבור { $name }.
+note-absent-close-forms = צורות קרובות באינדקס: { $forms }. אל תשתמש בצורה קרובה כשם המבוקש. כשאתה מחפש צורה כזו, ציין בתשובה שזו איות אחר.
 note-absent-close-form = { $form } ({ $count } מסמכים)
-note-absent-web = כלי הרשת של המחזור הזה יכולים לחפש את השם.
+note-absent-web = כלי האינטרנט של התור הזה יכולים לחפש את השם.
+
+## Search progress
+
 note-progress-level = רמת התקדמות החיפוש { $level }.
-note-progress-searches = חיפושים שכבר הורצו:
-note-progress-search = { $name } { $args }: { $items } פריטים, { $matches } התאמות מילת מפתח.
-note-progress-available = צעדי חיפוש שנותרו:
-note-progress-complete = צעדי החיפוש הזמינים הושלמו.
-note-progress-write-now = כתבו את התשובה או את הדוח כעת. ציינו אילו מקורות נקראו ואינם תקפים ושמו את החיפושים.
-note-progress-answer-next = התשובה הבאה חייבת להיות התשובה. יש לנסות את העובדות החסרות ואת החיפושים שהורצו.
-note-progress-step-quoted = חפשו כל שם כביטוי מוקף ציטוטים עם search_collections.
-note-progress-step-variants = חפש מילים ללא גרשיים ווריאנטים של שם. קרא ספירות מילים ומומחיות תחביריות.
-note-progress-step-filters = הסירו סינון אחד בכל פעם והריצו חיפוש ללא סינון.
-note-progress-step-facets = אמת ערכי סינון באמצעות search_facet_values.
-note-progress-step-dates = אמתו תאריכים עם search_histogram.
-note-progress-step-passages = חפש תיאור תוכן באמצעות search_passages.
-note-progress-step-folder = השתמשו ב- { $tool } עבור התיקיה, הנתיב או הקובץ המבוקשים.
-note-progress-step-read-hits = קראו את 1 עד 3 הפגיעות הטובות ביותר עם { $tool }.
-note-progress-step-web-search = חפש באינטרnet באמצעות web_search וקרא את דפי התוצאות הטובים ביותר.
-note-progress-step-page-find = חפשו את הטקסט הנשמר של עמוד ארוך עם read_page ו-find.
-note-progress-step-page-retry = קרא כתובת תוצאה אחרת או את העותק המאגר של דף שנכשל.
-note-advice-stuck = בדיקת שיחה מעריכה שהחיפושים האחרים חוזרים על אותן תוצאות. מיומנות no_results מתארת צורות אחרות של חיפוש.
-note-advice-absent = בדיקת שיחה מעריכה שהתוצאות אינן מכילות את מה שהמשימה דורשת. ציין את תחום החיפוש לפני שאתה מדווח על היעדרות.
-note-advice-completion = בדיקת שיחה מעריכה שהתוצאות יכולות לענות על המשימה. השוו כל חלק מבוקש למקורות שקראת לפני שאתה עונה.
-note-progress-ended = הרצה הסתיימה אחרי חיפושים חוזרים ללא התקדמות.
-note-progress-ended-none = לא נמצא מקור תואם מילות מפתח.
-note-progress-ended-some = החיפושים מצאו { $count } מקורות תואמי מילות מפתח. הסוכן לא השלים את תשובתו.
-note-progress-ended-searches = חיפושים שהורצו:
+note-progress-searches = חיפושים שכבר רצו:
+note-progress-search = { $name } { $args }: { $items } פריטים, { $matches } התאמות של מילות מפתח.
+note-progress-available = שלבי חיפוש שעדיין זמינים:
+note-progress-complete = שלבי החיפוש הזמינים הושלמו.
+note-progress-write-now = כתוב עכשיו את התשובה או את הדוח. ציין מה המקורות שקראת אינם מכילים, ופרט את החיפושים.
+note-progress-answer-next = התגובה הבאה חייבת להיות התשובה. ציין את העובדות החסרות ואת החיפושים שהרצת.
+note-progress-step-quoted = חפש כל שם כביטוי במרכאות באמצעות search_collections.
+note-progress-step-variants = חפש מילים ללא מרכאות וגרסאות של שמות. קרא ספירות מילים ומועמדים לאיות.
+note-progress-step-filters = הסר מסננים אחד אחד והרץ חיפוש בלי מסננים.
+note-progress-step-facets = אמת ערכי מסננים באמצעות search_facet_values.
+note-progress-step-dates = אמת תאריכים באמצעות search_histogram.
+note-progress-step-passages = חפש תיאור של תוכן באמצעות search_passages.
+note-progress-step-folder = השתמש ב-{ $tool } עבור התיקייה, הנתיב או הקובץ המבוקשים.
+note-progress-step-read-hits = קרא את 1 עד 3 ההתאמות הטובות ביותר באמצעות { $tool }.
+note-progress-step-web-search = חפש ברשת באמצעות web_search וקרא את דפי התוצאות הטובים ביותר.
+note-progress-step-page-find = חפש בטקסט השמור של דף ארוך באמצעות read_page ו-find.
+note-progress-step-page-retry = קרא כתובת תוצאה אחרת, או את העותק בארכיון של דף שנכשל.
+note-advice-stuck = בדיקת צ'אט מעריכה שהחיפושים האחרונים חוזרים על תוצאותיהם. המיומנות no_results מתארת צורות אחרות של חיפוש.
+note-advice-absent = בדיקת צ'אט מעריכה שהתוצאות אינן מכילות את מה שהמשימה דורשת. ציין את היקף החיפוש לפני שאתה מדווח על היעדר.
+note-advice-completion = בדיקת צ'אט מעריכה שהתוצאות יכולות לענות על המשימה. השווה כל חלק מבוקש למקורות שקראת לפני שאתה עונה.
+note-progress-ended = הריצה הסתיימה אחרי חיפושים חוזרים בלי התקדמות.
+note-progress-ended-none = לא נמצא מקור שתואם למילות מפתח.
+note-progress-ended-some = החיפושים מצאו { $count } מקורות שתואמים למילות מפתח. הסוכן לא השלים את התשובה שלו.
+note-progress-ended-searches = חיפושים שרצו:

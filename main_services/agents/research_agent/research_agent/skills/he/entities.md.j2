@@ -1,46 +1,60 @@
 ---
 name: entities
 group: technique
-description: כיצד לרשום את האנשים, הארגונים, המקומות, כתובות הדוא"ל והסכמים שהמסמכים מציינים
+description: איך לפרט את האנשים, הארגונים, המקומות, כתובות הדוא"ל והסכומים שמסמכים נוקבים בהם
 tools: list_document_entities, search_entity_explainer, search_facet_values
-terms: מילים עבור זאת: אנשים, פרטים, שמות, ארגונים, חברות, מוסדות, מקומות, מיקומים, ערים, מדינות, כתובות דוא"ל, מספרי טלפון, סכמים, כסף, מזהים, מספרי חשבונות, שחקנים מרכזיים, מי מוזכר.
-not_for: לא נדרש כאשר הבקשה מציינת אדם אחד ושואלת מה המסמכים אומרים על אותו אדם.
+terms: מילים לנושא: אנשים, אדם, שמות, ארגונים, חברות, מוסדות, מקומות, מיקומים, ערים, מדינות, כתובות דוא"ל, מספרי טלפון, סכומים, כסף, מזהים, מספרי חשבון, שחקנים מרכזיים, מי מוזכר, ישויות.
+not_for: לא נדרש כשהבקשה נוקבת באדם אחד ושואלת מה המסמכים אומרים עליו.
 ---
-רשימה של שמות המסמכים
+{# How to list what the pipeline extracted from documents, and how to treat its two tiers.
+   Each sentence that names a tool renders only when the run has it. #}
+פירוט מה שמסמכים נוקבים בו
 
 {% if has('list_document_entities') %}
-1. {{ tool('list_document_entities') }} מציג שמות שנחשפו ממסמך. תן את שם האוסף ואת ה-hash של הקובץ.
-2. התוצרה מכילה שתי רמות. entities הוא הקריאה של מודל שפה בטקסט: אנשים, ארגונים ומקומות. הוא עלול להיות שגוי, ולכן יש לבדוק כל שם בטקסט לפני שסומכים עליו. structured מכיל את הערכים שחוקה אימתה, כגון מזהים עם ספרת בדיקה תקינה, תאריכים וסכומי כסף עם קוד מטבע.
-3. חפש את השמות, הכתובות והמזהים החדשים עם {{ tool('search_collections') }}. שים כל צורה של שם אחד לתוך קריאה אחת.
+1. {{ tool('list_document_entities') }} מפרט שמות שחולצו ממסמך. תן את שם האוסף שלו ואת גיבוב הקובץ.
+2. התוצאה כוללת שתי שכבות. entities היא קריאה של מודל שפה בטקסט: אנשים, ארגונים ומקומות. היא עלולה להיות שגויה, ולכן בדוק שם בטקסט לפני שאתה נשען עליו. structured מכיל את הערכים שכלל אימת, כמו מזהים עם ספרת ביקורת תקינה, תאריכים וסכומי כסף עם קוד מטבע.
+3. חפש את השמות, הכתובות והמזהים החדשים באמצעות {{ tool('search_collections') }}. שים כל צורה של שם אחד בקריאה אחת.
 {% endif %}
 {% if has('search_entity_explainer') %}
-4. כאשר תוצרה מציפה חוקה ושם שאתה לא מבין, קרא {{ tool('search_entity_explainer') }}.
+4. כשתוצאה נוקבת בכלל ובערך שאינך מבין, קרא ל-{{ tool('search_entity_explainer') }}.
 {% endif %}
 {% if has('search_facet_values') %}
-5. {{ tool('search_facet_values') }} נותן את ערכי הסינון של ישות על פני אוסף, יחד עם הספירות שלהם.
+5. {{ tool('search_facet_values') }} נותן את הערכים של מסנן ישויות על פני אוסף, עם הספירות שלהם.
 {% endif %}
 
-שם שנחשף על ידי ה-pipeline אינו הוכחה שהמסמך עוסק באותו אדם. קרא את הטקסט סביבו.
+שם שצינור העיבוד חילץ אינו הוכחה שהמסמך עוסק באדם הזה. קרא את הטקסט סביבו.
 
-כאשר שם מופיע במקום כלשהו, קרא את הצעות הכתיב המסומנות ואת הספירות המאומתות שלהן.
-אין להשתמש בצורת כתיב מוצעת כשם המבוקש.
-כאשר אתה מחפש צורת כתיב מוצעת, יש לציין אותה בתשובה כצורת כתיב אחרת.
-כאשר אין התאמת כתיב, דווח שהאספים שחפשת אינם מכילים את השם.
+כששם אינו מופיע בשום מקום, קרא את הצעות האיות שהאינדקס נותן ואת הספירות שנבדקו שלהן.
+אל תשתמש באיות מוצע כשם המבוקש.
+כשאתה מחפש איות מוצע, ציין בתשובה שזה איות אחר.
+כשאין איות שמתאים, דווח שהאוספים שחיפשת בהם אינם מכילים את השם.
 
 {% if has('list_document_entities') %}
-{{ tool('list_document_entities') }} קבל מסמכים כרשימה של אובייקטי אוסף ו-file_hash.
-צורה זו שומרת על זהויות מעורבות-אוסף ללא צימוד בלתי-קשור של רשימות.
-לחלופין, collection ו-file_hash מקבלים רשימות תואמות, או אוסף אחד עם מספר hashes.
-התוצמה מקבצת ערכים פקוחים לפי מסמך. השתמש ב-read_more כאשר זה נמשך.
-```json {"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]} ``` ```json {"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]} ```
+{{ tool('list_document_entities') }} מקבל documents כרשימה של אובייקטים עם collection ו-file_hash.
+הצורה הזו שומרת על זהויות מכמה אוספים בלי לזווג רשימות שאינן קשורות.
+לחלופין, collection ו-file_hash מקבלים רשימות תואמות, או אוסף אחד עם כמה גיבובים.
+התוצאה מקבצת את הערכים שחולצו לפי מסמך. השתמש ב-read_more כשהיא נמשכת.
+```json
+{"documents":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}]}
+```
+```json
+{"documents":[{"collection":"alpha","file_hash":"COPY_HASH_A"},{"collection":"beta","file_hash":"COPY_HASH_B"}]}
+```
 {% endif %}
 {% if has('search_entity_explainer') %}
-{{ tool('search_entity_explainer') }} דורש collection, entity_type ו-entity_value מתוצאת ישות מפורשת.
-הוא מחזיר את תיאור חוק ההפקה ואת המסמכים התואמים.
-```json {"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"} ```
+{{ tool('search_entity_explainer') }} דורש collection, entity_type ו-entity_value מתוצאת ישות שחולצה.
+הוא מחזיר את התיאור של כלל החילוץ ואת המסמכים התואמים.
+```json
+{"collection":"alpha","entity_type":"COPY_RETURNED_TYPE","entity_value":"COPY_RETURNED_VALUE"}
+```
 {% endif %}
 {% if has('search_facet_values') %}
-לצורך התפלגויות ישות, קרא {{ tool('search_facet_values') }} עם facets ואוסף ו-query אופציונליים.
-מטריצת התוצמה מכילה זוגות [text, count] בכל תא facet.
-```json {"facets":["ner_per","ner_org","ner_loc"]} ``` ```json {"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"} ```
+להתפלגויות של ישויות, קרא ל-{{ tool('search_facet_values') }} עם facets, ועם collection ו-query אם רוצים.
+מטריצת התוצאה מכילה זוגות [text, count] בכל תא של facet.
+```json
+{"facets":["ner_per","ner_org","ner_loc"]}
+```
+```json
+{"collection":["alpha","beta"],"facets":["re_email"],"query":"example.org"}
+```
 {% endif %}
