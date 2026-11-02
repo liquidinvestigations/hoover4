@@ -103,8 +103,14 @@ chat-transcript-summary-parts-failed-the-record = { $failed } dijelova sažetka 
 chat-transcript-show-the-record = Prikaži zapis
 chat-transcript-hide-reasoning = Sakrij razlog
 chat-transcript-show-reasoning = Prikaži razlog
-chat-transcript-from-u-hide = { $count } { $noun } iz alata { $tool } — sakrij
-chat-transcript-from-u-show = { $count } { $noun } iz alata { $tool } — prikaži
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } iz alata { $tool } — sakrij
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } iz alata { $tool } — prikaži
 chat-transcript-u-hide = { $summary } — sakrij
 chat-transcript-u-show = { $summary } — prikaži
 chat-transcript-citations-of-this-conversation-give = Citati ovog razgovora dodjeljuju { $doc_handle } više od jednog dokumenta. Odgovor ga ne povezuje ni s jednim.

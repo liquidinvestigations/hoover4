@@ -102,8 +102,14 @@ chat-transcript-summary-parts-failed-the-record = {" "}{ $failed } partes do res
 chat-transcript-show-the-record = Mostrar o registo
 chat-transcript-hide-reasoning = Ocultar o raciocínio
 chat-transcript-show-reasoning = Mostrar o raciocínio
-chat-transcript-from-u-hide = { $count } { $noun } de { $tool } — ocultar
-chat-transcript-from-u-show = { $count } { $noun } de { $tool } — mostrar
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] documento
+       *[other] documentos
+    } de { $tool } — ocultar
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] documento
+       *[other] documentos
+    } de { $tool } — mostrar
 chat-transcript-u-hide = { $summary } — ocultar
 chat-transcript-u-show = { $summary } — mostrar
 chat-transcript-citations-of-this-conversation-give = As citações desta conversa dão { $doc_handle } a mais do que um documento. A resposta não o liga a nenhum deles.

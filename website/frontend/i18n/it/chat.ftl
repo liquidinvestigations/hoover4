@@ -102,8 +102,14 @@ chat-transcript-summary-parts-failed-the-record = {" "}{ $failed } parti del rie
 chat-transcript-show-the-record = Mostra il registro
 chat-transcript-hide-reasoning = Nascondi il ragionamento
 chat-transcript-show-reasoning = Mostra il ragionamento
-chat-transcript-from-u-hide = { $count } { $noun } da { $tool }: nascondi
-chat-transcript-from-u-show = { $count } { $noun } da { $tool }: mostra
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] documento
+       *[other] documenti
+    } da { $tool }: nascondi
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] documento
+       *[other] documenti
+    } da { $tool }: mostra
 chat-transcript-u-hide = { $summary }: nascondi
 chat-transcript-u-show = { $summary }: mostra
 chat-transcript-citations-of-this-conversation-give = Le citazioni di questa conversazione assegnano { $doc_handle } a più di un documento. La risposta non lo collega a nessuno di essi.

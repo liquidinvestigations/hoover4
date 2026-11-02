@@ -103,8 +103,12 @@ chat-transcript-summary-parts-failed-the-record = { " " }{ $failed }개의 요�
 chat-transcript-show-the-record = 기록 표시
 chat-transcript-hide-reasoning = 추론 숨기기
 chat-transcript-show-reasoning = 추론 표시
-chat-transcript-from-u-hide = { $count } { $noun } — { $tool }에서 숨기기
-chat-transcript-from-u-show = { $count } { $noun } — { $tool }에서 표시
+chat-transcript-from-u-hide = { $count } { $count ->
+       *[other] documents
+    } — { $tool }에서 숨기기
+chat-transcript-from-u-show = { $count } { $count ->
+       *[other] documents
+    } — { $tool }에서 표시
 chat-transcript-u-hide = { $summary } — 숨기기
 chat-transcript-u-show = { $summary } — 표시
 chat-transcript-citations-of-this-conversation-give = 이 대화의 인용이 { $doc_handle }을(를) 여러 문서에 부여합니다. 답변은 그중 어느 것에도 연결하지 않습니다.

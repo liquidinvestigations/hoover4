@@ -103,8 +103,14 @@ chat-transcript-summary-parts-failed-the-record = { $failed } חלקי סיכו�
 chat-transcript-show-the-record = הצג את הרקום
 chat-transcript-hide-reasoning = הסתר את ההצדקה
 chat-transcript-show-reasoning = הצג את ההצדקה
-chat-transcript-from-u-hide = { $count } { $noun } מ- { $tool } — הסתר
-chat-transcript-from-u-show = { $count } { $noun } מ- { $tool } — הצג
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } מ- { $tool } — הסתר
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } מ- { $tool } — הצג
 chat-transcript-u-hide = { $summary } — הסתר
 chat-transcript-u-show = { $summary } — הצג
 chat-transcript-citations-of-this-conversation-give = ציטוטי השיחה הזו נותנים { $doc_handle } ליותר ממסמך אחד. התשובה מקשרת אותה לאף אחד מהם.

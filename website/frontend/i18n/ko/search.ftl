@@ -69,12 +69,18 @@ search-storage-tree-loading = 로드 중…
 search-storage-tree-could-not-load-the-collections = 컬렉션을 로드할 수 없습니다: { $error }
 search-storage-tree-no-collections = 컬렉션이 없습니다.
 search-storage-tree-show-all-here = 여기에 { $label } 모두 표시
-search-storage-tree-more = { $direction }… { $hidden }개 더 { $label }
+search-storage-tree-more = { $direction ->
+        [above] above
+       *[below] below
+    }… { $hidden }개 더 { $label }
 search-vfs-tree-could-not-load-the-folder = 폴더 경로를 로드할 수 없습니다: { $error }
 search-vfs-tree-show-the-folder-levels-between = 여기에 있는 폴더와 현재 폴더 사이의 { $hidden }단계 폴더 표시
 search-vfs-tree-more-levels = { $hidden }단계 더…
 search-vfs-tree-show-all-folders-here = 여기에 { $fetched }개의 폴더 모두 표시
-search-vfs-tree-more = { $direction }… { $hidden }개 더
+search-vfs-tree-more = { $direction ->
+        [above] above
+       *[below] below
+    }… { $hidden }개 더
 search-vfs-tree-load-the-next-of-the = 여기에 있는 { $total }개의 폴더 중 다음 { $children_page_size_min_more }개를 로드하세요
 search-vfs-tree-more-2 = { $more }개 더…
 search-vfs-tree-loading = 로드 중…

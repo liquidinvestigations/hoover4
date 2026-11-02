@@ -102,8 +102,14 @@ chat-transcript-summary-parts-failed-the-record = {" "}{ $failed } samenvattings
 chat-transcript-show-the-record = Het overzicht tonen
 chat-transcript-hide-reasoning = Redenering verbergen
 chat-transcript-show-reasoning = Redenering tonen
-chat-transcript-from-u-hide = { $count } { $noun } van { $tool } — verbergen
-chat-transcript-from-u-show = { $count } { $noun } van { $tool } — tonen
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] document
+       *[other] documenten
+    } van { $tool } — verbergen
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] document
+       *[other] documenten
+    } van { $tool } — tonen
 chat-transcript-u-hide = { $summary } — verbergen
 chat-transcript-u-show = { $summary } — tonen
 chat-transcript-citations-of-this-conversation-give = Bronverwijzingen in dit gesprek geven { $doc_handle } aan meer dan één document. Het antwoord linkt het naar geen ervan.

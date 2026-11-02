@@ -102,8 +102,14 @@ chat-transcript-summary-parts-failed-the-record = {" "}{ $failed } dele af resum
 chat-transcript-show-the-record = Vis optegnelsen
 chat-transcript-hide-reasoning = Skjul ræsonnement
 chat-transcript-show-reasoning = Vis ræsonnement
-chat-transcript-from-u-hide = { $count } { $noun } fra { $tool } – skjul
-chat-transcript-from-u-show = { $count } { $noun } fra { $tool } – vis
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] dokument
+       *[other] dokumenter
+    } fra { $tool } – skjul
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] dokument
+       *[other] dokumenter
+    } fra { $tool } – vis
 chat-transcript-u-hide = { $summary } – skjul
 chat-transcript-u-show = { $summary } – vis
 chat-transcript-citations-of-this-conversation-give = Kildehenvisninger i denne samtale giver { $doc_handle } til mere end ét dokument. Svaret linker det til ingen af dem.

@@ -102,8 +102,14 @@ chat-transcript-summary-parts-failed-the-record = {" "}{ $failed } parties du r�
 chat-transcript-show-the-record = Afficher le registre
 chat-transcript-hide-reasoning = Masquer le raisonnement
 chat-transcript-show-reasoning = Afficher le raisonnement
-chat-transcript-from-u-hide = { $count } { $noun } de { $tool } — masquer
-chat-transcript-from-u-show = { $count } { $noun } de { $tool } — afficher
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } de { $tool } — masquer
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } de { $tool } — afficher
 chat-transcript-u-hide = { $summary } — masquer
 chat-transcript-u-show = { $summary } — afficher
 chat-transcript-citations-of-this-conversation-give = Les citations de cette conversation donnent le repère { $doc_handle } à plusieurs documents. La réponse ne le relie à aucun d’eux.

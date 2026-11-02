@@ -103,8 +103,14 @@ chat-transcript-summary-parts-failed-the-record = { " " }{ $failed } सार�
 chat-transcript-show-the-record = रिकॉर्ड दिखाएँ
 chat-transcript-hide-reasoning = तार्किकता छुपाएँ
 chat-transcript-show-reasoning = तार्किकता दिखाएँ
-chat-transcript-from-u-hide = { $count } { $noun } { $tool } से — छुपाएँ
-chat-transcript-from-u-show = { $count } { $noun } { $tool } से — दिखाएँ
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } { $tool } से — छुपाएँ
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } { $tool } से — दिखाएँ
 chat-transcript-u-hide = { $summary } — छुपाएँ
 chat-transcript-u-show = { $summary } — दिखाएँ
 chat-transcript-citations-of-this-conversation-give = इस बातचीत के उद्धरण { $doc_handle } को एक से अधिक दस्तावेज़ों में देते हैं। उत्तर उसे किसी भी दस्तावेज़ से नहीं जोड़ता।

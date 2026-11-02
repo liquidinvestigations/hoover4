@@ -103,8 +103,14 @@ chat-transcript-summary-parts-failed-the-record = { " " }فشلت { $failed } أ
 chat-transcript-show-the-record = عرض السجل
 chat-transcript-hide-reasoning = إخفاء الاستدلال
 chat-transcript-show-reasoning = عرض الاستدلال
-chat-transcript-from-u-hide = { $count } { $noun } من { $tool } — إخفاء
-chat-transcript-from-u-show = { $count } { $noun } من { $tool } — عرض
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } من { $tool } — إخفاء
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } من { $tool } — عرض
 chat-transcript-u-hide = { $summary } — إخفاء
 chat-transcript-u-show = { $summary } — عرض
 chat-transcript-citations-of-this-conversation-give = تمنح اقتباسات هذه المحادثة { $doc_handle } لأكثر من وثيقة. ولا تربط الإجابة أيًا منها.

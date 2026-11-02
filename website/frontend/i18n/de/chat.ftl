@@ -103,8 +103,14 @@ chat-transcript-summary-parts-failed-the-record = {" "}Bei { $failed } Teilen de
 chat-transcript-show-the-record = Aufzeichnung anzeigen
 chat-transcript-hide-reasoning = Überlegungen ausblenden
 chat-transcript-show-reasoning = Überlegungen anzeigen
-chat-transcript-from-u-hide = { $count } { $noun } aus { $tool } – ausblenden
-chat-transcript-from-u-show = { $count } { $noun } aus { $tool } – anzeigen
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] Dokument
+       *[other] Dokumente
+    } aus { $tool } – ausblenden
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] Dokument
+       *[other] Dokumente
+    } aus { $tool } – anzeigen
 chat-transcript-u-hide = { $summary } – ausblenden
 chat-transcript-u-show = { $summary } – anzeigen
 chat-transcript-citations-of-this-conversation-give = Belege dieser Unterhaltung geben { $doc_handle } mehr als einem Dokument. Die Antwort verlinkt es mit keinem davon.

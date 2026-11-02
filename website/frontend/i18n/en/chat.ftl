@@ -100,8 +100,14 @@ chat-transcript-summary-parts-failed-the-record = {" "}{ $failed } summary parts
 chat-transcript-show-the-record = Show the record
 chat-transcript-hide-reasoning = Hide reasoning
 chat-transcript-show-reasoning = Show reasoning
-chat-transcript-from-u-hide = { $count } { $noun } from { $tool } — hide
-chat-transcript-from-u-show = { $count } { $noun } from { $tool } — show
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } from { $tool } — hide
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } from { $tool } — show
 chat-transcript-u-hide = { $summary } — hide
 chat-transcript-u-show = { $summary } — show
 chat-transcript-citations-of-this-conversation-give = Citations of this conversation give { $doc_handle } to more than one document. The answer links it to none of them.

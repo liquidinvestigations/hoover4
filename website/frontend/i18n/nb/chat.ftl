@@ -103,8 +103,14 @@ chat-transcript-summary-parts-failed-the-record = { " " }{ $failed } sammendrags
 chat-transcript-show-the-record = Vis posten
 chat-transcript-hide-reasoning = Skjul resonnement
 chat-transcript-show-reasoning = Vis resonnement
-chat-transcript-from-u-hide = { $count } { $noun } fra { $tool } — skjul
-chat-transcript-from-u-show = { $count } { $noun } fra { $tool } — vis
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } fra { $tool } — skjul
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } fra { $tool } — vis
 chat-transcript-u-hide = { $summary } — skjul
 chat-transcript-u-show = { $summary } — vis
 chat-transcript-citations-of-this-conversation-give = Sitater fra denne samtalen gir { $doc_handle } til mer enn ett dokument. Svaret knytter det til ingen av dem.

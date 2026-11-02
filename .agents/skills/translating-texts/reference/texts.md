@@ -86,6 +86,8 @@ Keep the meaning, the order and the strength of each rule. Do not add a rule, an
   }
   ```
 
+- `$direction` is `above` or `below`. A selector on it keeps those two keys and gives the word of the language for each.
+- `$tool` is the name of a tool, such as `search_collections`. `$label` and `$kind` are text that the page already translated.
 - A variable named `$if_<name>_1_tr_chat_transcript_...` holds the word "call" or "calls" from the messages `chat-transcript-call` and `chat-transcript-calls` of the same language. Place it where that word belongs.
 - The worker notes allow only plain text, `{ $name }` variables and `{"..."}` literals. Do not add a selector there.
 - Keep the first comment line of each translated catalog: `# Translation of en/<file>. Change it together with the English catalog.`

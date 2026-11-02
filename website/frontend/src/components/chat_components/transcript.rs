@@ -1394,7 +1394,6 @@ fn ReasoningDisclosure(reasoning: String) -> Element {
 fn DocRefsDisclosure(tool_name: String, refs: Vec<ChatDocRef>) -> Element {
     let mut open = use_signal(|| false);
     let count = refs.len();
-    let noun = if count == 1 { "document" } else { "documents" };
     let tool = if tool_name.is_empty() || tool_name == "tool" {
         "the tool".to_string()
     } else {
@@ -1412,9 +1411,9 @@ fn DocRefsDisclosure(tool_name: String, refs: Vec<ChatDocRef>) -> Element {
                     open.set(next);
                 },
                 if *open.read() {
-                    {tr!("chat-transcript-from-u-hide", count: count, noun: noun.to_string(), tool: tool.to_string())}
+                    {tr!("chat-transcript-from-u-hide", count: count, tool: tool.to_string())}
                 } else {
-                    {tr!("chat-transcript-from-u-show", count: count, noun: noun.to_string(), tool: tool.to_string())}
+                    {tr!("chat-transcript-from-u-show", count: count, tool: tool.to_string())}
                 }
             }
             if *open.read() && matches!(tool.as_str(), "search_collections" | "search_passages") {

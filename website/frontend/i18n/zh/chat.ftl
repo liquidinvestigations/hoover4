@@ -103,8 +103,12 @@ chat-transcript-summary-parts-failed-the-record = { $failed } 个摘要部分失
 chat-transcript-show-the-record = 显示记录
 chat-transcript-hide-reasoning = 隐藏推理
 chat-transcript-show-reasoning = 显示推理
-chat-transcript-from-u-hide = { $count } 个来自 { $tool } 的 { $noun } — 隐藏
-chat-transcript-from-u-show = { $count } 个来自 { $tool } 的 { $noun } — 显示
+chat-transcript-from-u-hide = { $count } 个来自 { $tool } 的 { $count ->
+       *[other] documents
+    } — 隐藏
+chat-transcript-from-u-show = { $count } 个来自 { $tool } 的 { $count ->
+       *[other] documents
+    } — 显示
 chat-transcript-u-hide = { $summary } — 隐藏
 chat-transcript-u-show = { $summary } — 显示
 chat-transcript-citations-of-this-conversation-give = 本次对话的引用将 { $doc_handle } 指向多个文档。答案未将其链接到其中任何一个。

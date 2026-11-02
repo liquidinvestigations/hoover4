@@ -102,8 +102,14 @@ chat-transcript-summary-parts-failed-the-record = {" "}Fallaron { $failed } part
 chat-transcript-show-the-record = Mostrar el registro
 chat-transcript-hide-reasoning = Ocultar el razonamiento
 chat-transcript-show-reasoning = Mostrar el razonamiento
-chat-transcript-from-u-hide = { $count } { $noun } de { $tool } — ocultar
-chat-transcript-from-u-show = { $count } { $noun } de { $tool } — mostrar
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] documento
+       *[other] documentos
+    } de { $tool } — ocultar
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] documento
+       *[other] documentos
+    } de { $tool } — mostrar
 chat-transcript-u-hide = { $summary } — ocultar
 chat-transcript-u-show = { $summary } — mostrar
 chat-transcript-citations-of-this-conversation-give = Las citas de esta conversación dan { $doc_handle } a más de un documento. La respuesta no lo enlaza con ninguno.

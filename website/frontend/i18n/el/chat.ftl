@@ -103,8 +103,14 @@ chat-transcript-summary-parts-failed-the-record = { " " }{ $failed } μέρη σ
 chat-transcript-show-the-record = Εμφάνιση του αρχείου
 chat-transcript-hide-reasoning = Απόκρυψη σκέψης
 chat-transcript-show-reasoning = Εμφάνιση σκέψης
-chat-transcript-from-u-hide = { $count } { $noun } από { $tool } — αποκάλυψη
-chat-transcript-from-u-show = { $count } { $noun } από { $tool } — αποκάλυψη
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } από { $tool } — αποκάλυψη
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } από { $tool } — αποκάλυψη
 chat-transcript-u-hide = { $summary } — αποκάλυψη
 chat-transcript-u-show = { $summary } — αποκάλυψη
 chat-transcript-citations-of-this-conversation-give = Αναφορές αυτής της συνομιλίας δίνουν { $doc_handle } σε περισσότερα από ένα έγγραφα. Η απάντηση δεν το συνδέει με κανένα.

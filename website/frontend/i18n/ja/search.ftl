@@ -69,12 +69,18 @@ search-storage-tree-loading = 読み込み中…
 search-storage-tree-could-not-load-the-collections = コレクションを読み込めませんでした：{ $error }
 search-storage-tree-no-collections = コレクションがありません。
 search-storage-tree-show-all-here = ここで { $label } をすべて表示
-search-storage-tree-more = { $hidden } 件の { $label } が { $direction }…
+search-storage-tree-more = { $hidden } 件の { $label } が { $direction ->
+        [above] above
+       *[below] below
+    }…
 search-vfs-tree-could-not-load-the-folder = フォルダパスを読み込めませんでした：{ $error }
 search-vfs-tree-show-the-folder-levels-between = 現在の場所とこの間の { $hidden } 階層のフォルダを表示
 search-vfs-tree-more-levels = { $hidden } 階層…
 search-vfs-tree-show-all-folders-here = ここで { $fetched } 件のフォルダをすべて表示
-search-vfs-tree-more = { $hidden } 件… { $direction }
+search-vfs-tree-more = { $hidden } 件… { $direction ->
+        [above] above
+       *[below] below
+    }
 search-vfs-tree-load-the-next-of-the = ここで { $total } 件のフォルダのうちの次の { $children_page_size_min_more } を読み込み
 search-vfs-tree-more-2 = { $more } 件…
 search-vfs-tree-loading = 読み込み中…

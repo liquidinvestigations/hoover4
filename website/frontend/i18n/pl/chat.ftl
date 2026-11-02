@@ -103,8 +103,14 @@ chat-transcript-summary-parts-failed-the-record = { $failed } części podsumowa
 chat-transcript-show-the-record = Pokaż rekord
 chat-transcript-hide-reasoning = Ukryj rozumowanie
 chat-transcript-show-reasoning = Pokaż rozumowanie
-chat-transcript-from-u-hide = { $count } { $noun } z { $tool } — ukryj
-chat-transcript-from-u-show = { $count } { $noun } z { $tool } — pokaż
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } z { $tool } — ukryj
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } z { $tool } — pokaż
 chat-transcript-u-hide = { $summary } — ukryj
 chat-transcript-u-show = { $summary } — pokaż
 chat-transcript-citations-of-this-conversation-give = Cytaty tej rozmowy wskazują { $doc_handle } na więcej niż jeden dokument. Odpowiedź łączy go z żadnym z nich.

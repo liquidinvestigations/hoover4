@@ -103,8 +103,14 @@ chat-transcript-summary-parts-failed-the-record = { $failed } părți de sintez�
 chat-transcript-show-the-record = Afișează înregistrarea
 chat-transcript-hide-reasoning = Ascunde raționamentul
 chat-transcript-show-reasoning = Afișează raționamentul
-chat-transcript-from-u-hide = { $count } { $noun } din { $tool } — ascunde
-chat-transcript-from-u-show = { $count } { $noun } din { $tool } — afișează
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } din { $tool } — ascunde
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } din { $tool } — afișează
 chat-transcript-u-hide = { $summary } — ascunde
 chat-transcript-u-show = { $summary } — afișează
 chat-transcript-citations-of-this-conversation-give = Citațiile acestei conversații atribuie { $doc_handle } mai multor documente. Răspunsul nu îl leagă de niciunul.

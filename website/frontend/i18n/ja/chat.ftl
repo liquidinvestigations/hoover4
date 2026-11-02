@@ -103,8 +103,12 @@ chat-transcript-summary-parts-failed-the-record = { $failed } 件の要約パー
 chat-transcript-show-the-record = レコードを表示
 chat-transcript-hide-reasoning = 推論を非表示
 chat-transcript-show-reasoning = 推論を表示
-chat-transcript-from-u-hide = { $count } { $noun } — { $tool } 由来 — 非表示
-chat-transcript-from-u-show = { $count } { $noun } — { $tool } 由来 — 表示
+chat-transcript-from-u-hide = { $count } { $count ->
+       *[other] documents
+    } — { $tool } 由来 — 非表示
+chat-transcript-from-u-show = { $count } { $count ->
+       *[other] documents
+    } — { $tool } 由来 — 表示
 chat-transcript-u-hide = { $summary } — 非表示
 chat-transcript-u-show = { $summary } — 表示
 chat-transcript-citations-of-this-conversation-give = この会話の出典は { $doc_handle } を複数のドキュメントに付与します。回答はどれにも結び付けません。

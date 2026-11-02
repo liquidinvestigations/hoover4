@@ -103,8 +103,14 @@ chat-transcript-summary-parts-failed-the-record = { $failed } частей ре�
 chat-transcript-show-the-record = Показать запись
 chat-transcript-hide-reasoning = Скрыть рассуждения
 chat-transcript-show-reasoning = Показать рассуждения
-chat-transcript-from-u-hide = { $count } { $noun } из { $tool } — скрыть
-chat-transcript-from-u-show = { $count } { $noun } из { $tool } — показать
+chat-transcript-from-u-hide = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } из { $tool } — скрыть
+chat-transcript-from-u-show = { $count } { $count ->
+        [one] document
+       *[other] documents
+    } из { $tool } — показать
 chat-transcript-u-hide = { $summary } — скрыть
 chat-transcript-u-show = { $summary } — показать
 chat-transcript-citations-of-this-conversation-give = Ссылки в этом разговоре дают { $doc_handle } более чем к одному документу. Ответ связывает его ни с одним из них.
