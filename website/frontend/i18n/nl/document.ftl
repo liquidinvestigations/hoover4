@@ -3,7 +3,7 @@
 file-locations-panel-document-locations = Documentlocaties
 file-locations-panel-this-document-is-not-recorded = Dit document is op geen enkel pad vastgelegd in{" "}
 file-locations-panel-so-there-is-nothing-to = , dus er valt niets om naartoe te bladeren.
-file-locations-panel-and-more-use-storage-to = …en nog { $hidden }. Gebruik Opslag om de rest te bekijken.
+file-locations-panel-and-more-use-storage-to = …en nog { $hidden }. Gebruik de Bestandsbrowser om de rest te bekijken.
 file-locations-panel-open-the-containing-folder-in = Open de map waarin het staat in de bestandsbrowser
 file-locations-panel-copy-this-path = Dit pad kopiëren
 preview-find-query-search-in-document = Zoeken in document
@@ -129,7 +129,7 @@ raw-metadata-collector-from = Van
 raw-metadata-collector-to = Aan
 raw-metadata-collector-cc = Cc
 raw-metadata-collector-bcc = Bcc
-raw-metadata-collector-attachment-s-browse-them-by = { $value_attachment_count } bijlage(n). Bekijk ze door deze e-mail te openen in Opslag.
+raw-metadata-collector-attachment-s-browse-them-by = { $value_attachment_count } bijlage(n). Bekijk ze door deze e-mail te openen in de Bestandsbrowser.
 raw-metadata-collector-table = Tabel
 raw-metadata-collector-could-not-load-the-table = De tabelstructuur kon niet worden geladen: { $error }
 raw-metadata-collector-format = Formaat

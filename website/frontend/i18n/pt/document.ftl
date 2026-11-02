@@ -3,7 +3,7 @@
 file-locations-panel-document-locations = Localizações do documento
 file-locations-panel-this-document-is-not-recorded = Este documento não está registado em nenhum caminho de{" "}
 file-locations-panel-so-there-is-nothing-to = , por isso não há nada para explorar.
-file-locations-panel-and-more-use-storage-to = …e mais { $hidden }. Utilize o Armazenamento para explorar o resto.
+file-locations-panel-and-more-use-storage-to = …e mais { $hidden }. Utilize o Explorador de ficheiros para explorar o resto.
 file-locations-panel-open-the-containing-folder-in = Abrir a pasta que contém o ficheiro no explorador de ficheiros
 file-locations-panel-copy-this-path = Copiar este caminho
 preview-find-query-search-in-document = Pesquisar no documento
@@ -129,7 +129,7 @@ raw-metadata-collector-from = De
 raw-metadata-collector-to = Para
 raw-metadata-collector-cc = Cc
 raw-metadata-collector-bcc = Bcc
-raw-metadata-collector-attachment-s-browse-them-by = { $value_attachment_count } anexo(s). Para os explorar, abra esta mensagem em Armazenamento.
+raw-metadata-collector-attachment-s-browse-them-by = { $value_attachment_count } anexo(s). Para os explorar, abra esta mensagem no Explorador de ficheiros.
 raw-metadata-collector-table = Tabela
 raw-metadata-collector-could-not-load-the-table = Não foi possível carregar a estrutura da tabela: { $error }
 raw-metadata-collector-format = Formato

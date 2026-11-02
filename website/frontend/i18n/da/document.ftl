@@ -3,7 +3,7 @@
 file-locations-panel-document-locations = Dokumentets placeringer
 file-locations-panel-this-document-is-not-recorded = Dette dokument er ikke registreret på nogen sti i{" "}
 file-locations-panel-so-there-is-nothing-to = , så der er intet at gå til.
-file-locations-panel-and-more-use-storage-to = …og { $hidden } flere. Brug Lager til at gennemse resten.
+file-locations-panel-and-more-use-storage-to = …og { $hidden } flere. Brug Filbrowser til at gennemse resten.
 file-locations-panel-open-the-containing-folder-in = Åbn den indeholdende mappe i filbrowseren
 file-locations-panel-copy-this-path = Kopiér denne sti
 preview-find-query-search-in-document = Søg i dokument
@@ -129,7 +129,7 @@ raw-metadata-collector-from = Fra
 raw-metadata-collector-to = Til
 raw-metadata-collector-cc = Cc
 raw-metadata-collector-bcc = Bcc
-raw-metadata-collector-attachment-s-browse-them-by = { $value_attachment_count } vedhæftede fil(er). Gennemse dem ved at åbne denne e-mail i Lager.
+raw-metadata-collector-attachment-s-browse-them-by = { $value_attachment_count } vedhæftede fil(er). Gennemse dem ved at åbne denne e-mail i Filbrowser.
 raw-metadata-collector-table = Tabel
 raw-metadata-collector-could-not-load-the-table = Tabelstrukturen kunne ikke indlæses: { $error }
 raw-metadata-collector-format = Format

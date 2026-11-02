@@ -3,7 +3,7 @@
 file-locations-panel-document-locations = Orte des Dokuments
 file-locations-panel-this-document-is-not-recorded = Dieses Dokument ist unter keinem Pfad in{" "}
 file-locations-panel-so-there-is-nothing-to = {" "}erfasst, daher gibt es nichts zum Ansteuern.
-file-locations-panel-and-more-use-storage-to = …und { $hidden } weitere. Verwenden Sie „Speicher“, um den Rest zu durchblättern.
+file-locations-panel-and-more-use-storage-to = …und { $hidden } weitere. Verwenden Sie den Dateibrowser, um den Rest zu durchblättern.
 file-locations-panel-open-the-containing-folder-in = Den übergeordneten Ordner im Dateibrowser öffnen
 file-locations-panel-copy-this-path = Diesen Pfad kopieren
 preview-find-query-search-in-document = Im Dokument suchen
@@ -129,7 +129,7 @@ raw-metadata-collector-from = Von
 raw-metadata-collector-to = An
 raw-metadata-collector-cc = CC
 raw-metadata-collector-bcc = BCC
-raw-metadata-collector-attachment-s-browse-them-by = { $value_attachment_count } Anhang/Anhänge. Zum Durchsehen öffnen Sie diese E-Mail im Speicher.
+raw-metadata-collector-attachment-s-browse-them-by = { $value_attachment_count } Anhang/Anhänge. Zum Durchsehen öffnen Sie diese E-Mail im Dateibrowser.
 raw-metadata-collector-table = Tabelle
 raw-metadata-collector-could-not-load-the-table = Tabellenstruktur konnte nicht geladen werden: { $error }
 raw-metadata-collector-format = Format

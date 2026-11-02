@@ -1,7 +1,7 @@
 file-locations-panel-document-locations = Document locations
 file-locations-panel-this-document-is-not-recorded = This document is not recorded at any path in{" "}
 file-locations-panel-so-there-is-nothing-to = , so there is nothing to browse to.
-file-locations-panel-and-more-use-storage-to = …and { $hidden } more. Use Storage to browse the rest.
+file-locations-panel-and-more-use-storage-to = …and { $hidden } more. Use the File Browser to browse the rest.
 file-locations-panel-open-the-containing-folder-in = Open the containing folder in the file browser
 file-locations-panel-copy-this-path = Copy this path
 preview-find-query-search-in-document = Search in document
@@ -127,7 +127,7 @@ raw-metadata-collector-from = From
 raw-metadata-collector-to = To
 raw-metadata-collector-cc = Cc
 raw-metadata-collector-bcc = Bcc
-raw-metadata-collector-attachment-s-browse-them-by = { $value_attachment_count } attachment(s). Browse them by opening this email in Storage.
+raw-metadata-collector-attachment-s-browse-them-by = { $value_attachment_count } attachment(s). Browse them by opening this email in the File Browser.
 raw-metadata-collector-table = Table
 raw-metadata-collector-could-not-load-the-table = Could not load the table structure: { $error }
 raw-metadata-collector-format = Format
