@@ -1,38 +1,38 @@
 ---
 name: no_results
 group: stumble
-description: wat te doen als een zoekopdracht niets vindt: filters verwijderen, een zin splitsen, andere vormen van een naam proberen, en dan zeggen wat ontbreekt
+description: wat je doet als een zoekopdracht niets vindt: filters verwijderen, een zin splitsen, andere vormen van een naam proberen en dan zeggen wat ontbreekt
 tools: search_collections, search_passages, web_search
 ---
 Wanneer een zoekopdracht niets vindt
 
 {% if has('search_collections') %}
 Lees eerst word_counts.
-Wanneer een naam nergens voorkomt, lees de geïndexerde spellingvoorstellen en hun gecontroleerde aantallen.
-Gebruik een spellingvoorstel niet als de gevraagde naam.
-Wanneer je een spellingvoorstel zoekt, noem het in het antwoord als een andere spelling.
-Wanneer geen spelling overeenkomt, meld dat de gezochte verzamelingen de naam niet bevatten.
+Wanneer een naam nergens voorkomt, lees dan de geïndexeerde spellingsuggesties en hun gecontroleerde aantallen.
+Gebruik een voorgestelde spelling niet als de gevraagde naam.
+Wanneer je een voorgestelde spelling zoekt, benoem die in het antwoord als een andere spelling.
+Wanneer geen spelling overeenkomt, meld dan dat de doorzochte collecties de naam niet bevatten.
 
 {% endif %}
 Volg deze zoekstappen wanneer eerdere zoekopdrachten de vraag niet beantwoorden.
 {% if has('search_collections') %}
-1. Zoek elke naam als een aanhalingsteken-frazering.
-2. Zoek ongeciteerde woorden, initialen, e-mailadressen en namen in de documenttaal.
-Lees word_counts en spellingvoorstellen. Gebruik een voorstel alleen voor de bedoelde naam.
-Gebruik dasovi?h voor één variërende letter en dasovic% voor een optionele eindletter.
-Gebruik skilling << resigned wanneer de woordvolgorde uitmaakt.
-3. Verwijder filters één voor één. Voer een zoekopdracht zonder filters uit.
+1. Zoek elke naam als zin tussen aanhalingstekens.
+2. Zoek woorden zonder aanhalingstekens, initialen, e-mailadressen en namen in de taal van het document.
+Lees word_counts en de spellingsuggesties. Gebruik een suggestie alleen voor de bedoelde naam.
+Gebruik dasovi?h voor één wisselende letter en dasovic% voor een optionele slotletter.
+Gebruik skilling << resigned wanneer de woordvolgorde ertoe doet.
+3. Verwijder filters een voor een. Voer een zoekopdracht zonder filters uit.
 {% if has('search_facet_values') %}
-Verifieer filterwaarden met {{ tool('search_facet_values') }}.
+Controleer filterwaarden met {{ tool('search_facet_values') }}.
 {% endif %}
 {% if has('search_histogram') %}
-Verifieer datums met {{ tool('search_histogram') }}.
+Controleer datums met {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Zoek een beschrijving van de inhoud met {{ tool('search_passages') }}.
+4. Zoek met een beschrijving van de inhoud via {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. Gebruik {{ tool('folder_search') }} wanneer het verzoek een map, pad of bestand noemt.
+5. Gebruik {{ tool('folder_search') }} wanneer de vraag een map, een pad of een bestand noemt.
 {% endif %}
 {% if has('folder_list') %}
 Gebruik {{ tool('folder_list') }} voor die map.
@@ -44,28 +44,29 @@ Gebruik {{ tool('folder_list') }} voor die map.
 Gebruik {{ tool('doc_search_text') }} voor relevante tekst in een document.
 {% endif %}
 {% if has('web_search') %}
-7. Zoek het web alleen wanneer het verzoek dat toelaat.
+7. Zoek alleen op het web wanneer de vraag dat toestaat.
 {% endif %}
 {% if has('read_page') %}
 Lees de beste webpagina's met {{ tool('read_page') }}.
 {% endif %}
 {% else %}
 {% if has('web_search') %}
-1. Zoek elke naam als een aanhalingsteken-frazering, en dan andere vormen van de naam, zijn initialen en de taal van de plek.
+1. Zoek elke naam als zin tussen aanhalingstekens, en daarna andere vormen van de naam, de initialen en de taal van de plaats.
 {% endif %}
 {% if has('read_page') %}
 2. Lees de beste webpagina's met {{ tool('read_page') }}.
 {% endif %}
 {% endif %}
 
-Nadat de beschikbare stappen geen trefwoordmatch vinden, antwoord met de afwezigheid en de zoekopdrachten.
+Wanneer de beschikbare stappen geen overeenkomst met een trefwoord vinden, antwoord dan met de afwezigheid en de zoekopdrachten.
 {% if has('search_collections') %}
-Voer voor een antwoord over afwezigheid minimaal 4 verschillende zoekopdrachten uit met minimaal 2 beschikbare zoektools.
-Herhaal geen identieke zoekopdracht. Geef de onderzochte verzamelingen en ontbrekende feiten aan.
-Beperk een verklaring over afwezigheid tot de zoekopdrachten en documenten die je hebt onderzocht.
-Zeg bijvoorbeeld "De onderzochte commissievergaderingsverslagen en overdrachtsdocumenten noemen geen goedkeuringsdatum." Deze zoekopdrachten bewijzen niet dat er in geen enkele toegestane verzameling een goedkeuringsrecord bestaat.
+Voer vóór een antwoord over een afwezigheid minstens 4 verschillende zoekopdrachten uit met minstens 2 beschikbare zoektools.
+Herhaal geen identieke zoekopdracht. Vermeld de doorzochte collecties en de ontbrekende feiten.
+Beperk een uitspraak over afwezigheid tot de zoekopdrachten en documenten die je hebt onderzocht.
+Zeg bijvoorbeeld "De doorzochte notulen van de commissie en overschrijvingsgegevens noemden geen datum van goedkeuring."
+Deze zoekopdrachten tonen niet aan dat in geen enkele toegestane collectie een goedkeuring is vastgelegd.
 {% else %}
-Voer voor een antwoord over afwezigheid minimaal 4 verschillende zoekopdrachten uit.
-Herhaal geen identieke zoekopdracht. Geef de zoekopdrachten en de gelezen pagina's aan.
-Beperk een verklaring over afwezigheid tot de zoekopdrachten en pagina's die je hebt onderzocht.
+Voer vóór een antwoord over een afwezigheid minstens 4 verschillende zoekopdrachten uit.
+Herhaal geen identieke zoekopdracht. Vermeld de zoekopdrachten en de gelezen pagina's.
+Beperk een uitspraak over afwezigheid tot de zoekopdrachten en pagina's die je hebt onderzocht.
 {% endif %}

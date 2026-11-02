@@ -1,19 +1,22 @@
 ---
 name: document_ids
 group: stumble
-description: hoe noot je een document aan de hand van zijn bestandshash of met een pad in read_documents
+description: hoe je een document noemt met zijn bestandshash, of met een pad in read_documents
 tools: read_documents, doc_metadata, doc_email, doc_sources, doc_search_text, list_document_entities, cite_documents
 ---
-Een document benoemen
+{# How to name a document in a call. The failed reads give a file name, a path or a hash of
+   the wrong length in place of the file_hash. #}
+Een document noemen
 
-Een document-hash heeft 64 hexadecale tekens. De document-tools accepteren ook een unieke begin van ten minste 12 tekens.
+Een documenthash heeft 64 hexadecimale tekens. De documenttools accepteren ook een uniek begin van minstens 12 tekens.
 
-1. Kopieer de file_hash en de verzameling van dezelfde resultaatregel. Schrijf nooit zelf een hash.
-   Een placeholder zoals COPY_RETURNED_HASH of een waarde van nullen is geen hash. Ook een map-id komt uit een listing of een zoekresultaat van dit gesprek.
-2. {% if has('read_documents') %}{{ tool('read_documents') }} kan ook een bestandsnaam of pad oplossen wanneer het één document benoemt.{% endif %} Andere document-tools gebruiken de hash.
-3. Om de file_hash van een bestand op naam te vinden, zoek de naam met {{ tool('search_collections') }}{% if has('folder_search') %} of {{ tool('folder_search') }}{% endif %}, en kopieer de file_hash van de regel.
+1. Kopieer de file_hash en de collectie van dezelfde resultaatrij. Schrijf nooit zelf een hash.
+   Een tijdelijke aanduiding zoals COPY_RETURNED_HASH of een waarde van nullen is geen hash. Een map-id
+   komt ook uit een lijst of een zoekresultaat van dit gesprek.
+2. {% if has('read_documents') %}{{ tool('read_documents') }} kan ook een bestandsnaam of pad omzetten wanneer die één document aanduidt.{% endif %} Andere documenttools gebruiken de hash.
+3. Om de file_hash van een bestand op naam te vinden, zoek je op de naam met {{ tool('search_collections') }}{% if has('folder_search') %} of {{ tool('folder_search') }}{% endif %} en kopieer je de file_hash van de rij.
 {% if has('read_more') %}
-4. Wanneer een regel geen file_hash heeft, roep {{ tool('read_more') }} aan voor de volgende pagina van het resultaat.
+4. Wanneer een rij geen file_hash heeft, roep je {{ tool('read_more') }} aan voor de volgende pagina van het resultaat.
 {% endif %}
 
-Wanneer een lezing zegt dat geen leesbaar dataset een hash vasthoudt, controleer de verzameling en waarde tegen de resultaatregel. Een ontbrekend document kan ook betekenen dat de waarde meer dan één document benoemt.
+Wanneer een leesopdracht meldt dat geen leesbare dataset een hash bevat, vergelijk dan de collectie en de waarde met de resultaatrij. Een ontbrekend document kan ook betekenen dat de waarde meer dan één document aanduidt.

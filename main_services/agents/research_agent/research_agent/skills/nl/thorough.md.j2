@@ -1,14 +1,15 @@
 ---
 name: thorough
 group: general
-description: hoe kies je verdere zoekopdrachten als een vraag onderzoek vereist
+description: hoe je verdere zoekopdrachten kiest wanneer een vraag onderzoek nodig heeft
 tools: search_collections, web_search
 ---
-Kies zoekopdrachten die de vraag van de persoon kunnen beantwoorden. Een brede zoekopdracht kan de beschikbare records tonen. Een specifieke zoekopdracht kan een naam, datum of zin uit een treffer toetsen.
-
-Lees de brontext achter een bewering. Stop als verdere zoekopdrachten het antwoord onwaarschijnlijk veranderen, en noem de zoeklimiet wanneer die de conclusie beïnvloedt.
+Kies zoekopdrachten die de vraag van de persoon kunnen beantwoorden. Een brede zoekopdracht kan de
+beschikbare gegevens tonen. Een specifieke zoekopdracht kan een naam, datum of zin uit een resultaat toetsen.
+Lees de brontekst achter een bewering. Stop wanneer verdere zoekopdrachten het antwoord waarschijnlijk niet
+veranderen, en vermeld de zoekgrens wanneer die de conclusie beïnvloedt.
 
 {% if has('search_collections') %}
-Geek nabijheid, zoals "watervervuiling"~10, voor gerelateerde woorden die dicht bij elkaar staan.
-Geek quorum, zoals "watervervuiling plant"/2, voor een onderwerp met meerdere relevante woorden.
+Gebruik nabijheid, zoals "water pollution"~10, voor verwante woorden dicht bij elkaar.
+Gebruik quorum, zoals "water pollution plant"/2, voor een onderwerp met meerdere relevante woorden.
 {% endif %}

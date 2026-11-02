@@ -1,95 +1,140 @@
 ---
 name: passages
 group: technique
-description: hoe je de exacte passages of pagina's kunt vinden die een vraag beantwoorden met search_passages, binnen veel documenten of één
+description: hoe je met search_passages de exacte passages of pagina's vindt die een vraag beantwoorden, in veel documenten of in één
 tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
-terms: Woorden voor: passage, paragraaf, zin, citaat, fragment, pagina, sectie, waar het staat, het deel dat noemt, exacte woordkeuze, regel. Van toepassing op lange tekstdocumenten: PDF, Word-bestanden, e-mails, rapporten en transcripties.
+terms: Woorden ervoor: passage, alinea, zin, citaat, fragment, pagina, sectie, waar staat, het deel dat noemt, exacte bewoording, regel. Geldt voor lange tekstdocumenten: PDF, Word-bestanden, e-mails, rapporten en transcripten.
 not_for: Niet nodig voor aantallen, bestandslijsten of metadata.
 ---
-Vondsten van passages en pagina's
+{# How to find the passages and the pages that answer a question, in many documents or in
+   one. Each sentence that names a tool renders only when the run has it. #}
+Passages en pagina's vinden
 
 {% if has('search_passages') %}
-Gebruik {{ tool('search_passages') }} om veel documenten door te zoeken. Dit doorzoekt tekstpassages op trefwoorden en op betekenis. Gebruik het bij een vraag in gewone woorden, wanneer de woorden die de documenten gebruiken niet duidelijk zijn. Geef maximaal 12 zoekopdrachten in één aanroep, elk een andere formulering van de vraag. Elke treffer noemt de zoekopdrachten die hem gevonden hebben. Voor een exacte naam, een adres of een zin gebruik je {{ tool('search_collections') }}.
+Gebruik {{ tool('search_passages') }} om veel documenten te doorzoeken. Het doorzoekt de tekstpassages tegelijk op trefwoorden en op betekenis. Gebruik het voor een vraag in gewone woorden, wanneer niet duidelijk is welke woorden de documenten gebruiken. Geef maximaal 12 zoekopdrachten in één aanroep, elk een andere vorm van de vraag. Elke treffer noemt de zoekopdrachten die hem vonden. Gebruik {{ tool('search_collections') }} voor een exacte naam, een adres of een zin.
 
 {% endif %}
 {% if has('doc_search_text') or has('pdf_search') %}
-Gebruik deze tools om één lang document door te zoeken.
+Gebruik deze tools om één lang document te doorzoeken.
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }}
+{{ tool('doc_search_text') }} toont de treffers van een zoekopdracht in één tekstbron, in paginavolgorde, met de pagina van elke treffer.
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }} zoekt een zoekopdracht op de pagina's van een PDF-bron. Geef page_from en page_to om een reeks pagina's door te zoeken.
+{{ tool('pdf_search') }} vindt een zoekopdracht op de pagina's van een PDF-bron. Geef page_from en page_to om een paginabereik te doorzoeken.
 {% endif %}
 
 {% endif %}
 {% if has('read_documents') %}
-Lees een pagina met {{ tool('read_documents') }} wanneer de passage niet genoeg tekst toont om de bewering te ondersteunen. Geef haar pagina, of geef de zoekopdracht om de pagina met de meeste treffers te openen.
+Lees een pagina met {{ tool('read_documents') }} wanneer de passage onvoldoende tekst toont
+om de bewering te onderbouwen. Geef de pagina, of geef de query om de pagina met de meeste treffers te openen.
 {% endif %}
 
-Geef het document en de pagina wanneer een passage het antwoord ondersteunt.
+Geef het document en de pagina wanneer een passage het antwoord onderbouwt.
 
 {% if has('read_documents') %}
 {{ tool('read_documents') }} vereist collection en file_hash.
-collection is één naam. file_hash is een lijst van 1 tot 20 hashes uit die verzameling.
-Voor documenten in verschillende verzamelingen maak je een aparte batch per verzameling.
-Kopieer identiteiten uit resultaten. Een unieke bestandsnaam of pad kan een document ook vaststellen.
-source selecteert optioneel een geëxtraheerde bron. Bij weglating gebruik je de voorkeursbron.
-page selecteert optioneel een opgeslagen paginaindicator. Paginaindicatoren kunnen gaten hebben.
-Laat page weg of geef nul om de pagina met de meeste zoekopdrachttreffers te selecteren, of de eerste opgeslagen pagina zonder zoekopdracht.
-query opent tekst rond nabije, aparte, overeenkomende woorden op die pagina.
-Voor exacte woordkeuze zet je de zin binnen aanhalingstekens in de zoekopdracht. Eén overeenkomende waarde opent de eerste voorkoming.
-offset overschrijft het startpunt van de passage. Het telt Unicode-tekens vanaf nul binnen die pagina.
-length is een positief tekenaantal. Bij weglating gebruik je 6.000 tekens.
-source_version verifieert optioneel het teruggave fingerprint van de bron. Kopieer het voor een herlezing van een reeks.
+collection is één naam. file_hash is een lijst van 1 tot 20 hashes uit die collectie.
+Maak voor documenten in verschillende collecties een aparte batch per collectie.
+Kopieer identiteiten uit resultaten. Een unieke bestandsnaam of een uniek pad kan ook een document omzetten.
+source selecteert optioneel een uitgepakte bron. Weglaten gebruikt de voorkeursbron.
+page selecteert optioneel een opgeslagen pagina-id. Pagina-id's kunnen gaten hebben.
+Laat page weg of geef nul om de pagina met de meeste treffers van de query te selecteren, of zonder query de eerste opgeslagen pagina.
+query opent tekst rond nabije verschillende gevonden woorden op die pagina.
+Zet voor exacte bewoording de zin tussen aanhalingstekens in de query. Een enkele gevonden waarde opent zijn eerste voorkomen.
+offset vervangt het begin van de passage. Het telt Unicode-tekens vanaf nul binnen die pagina.
+length is een positief aantal tekens. Weglaten gebruikt 6.000 tekens.
+source_version verifieert optioneel de teruggegeven bronvingerafdruk. Kopieer het voor een nieuwe lezing van een bereik.
 
-Het resultaat geeft text_range terug met start, exclusieve eind, totaal aantal tekens op de pagina en eenheid.
+Het resultaat geeft text_range terug met start, exclusief einde, totaal aantal tekens van de pagina en unit.
 page_complete betekent dat het bereik de hele pagina beslaat.
-Een cut-marker betekent dat de tool slechts een deel van het bereik heeft geleverd. Dit betekent niet dat de pagina daar eindigt.
-Gebruik de more van een item om dat document verder te lezen. Gebruik de more op topniveau om de resterende pagina of latere pagina's verder te lezen.
-Kopieer het teruggegeven handle exact in {{ tool('read_more') }} als voortzetting.
-Kopieer read_before of read_after als read_documents-argumenten voor de omliggende tekst. Er is geen offsetberekening nodig.
-Reik-argumenten zijn van toepassing op elke hash in één aanroep. Gebruik aparte aanroepen wanneer documenten verschillende bronnen, reiken of bronversies hebben.
-Kopieer bijvoorbeeld het read_after-object van het eerste document dat teruggegeven wordt in één aanroep.
-```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` Kopieer het read_after-object van het tweede document dat teruggegeven wordt in een andere aanroep.
-```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` Gebruik de daadwerkelijke teruggegeven waarden voor elk document. Voeg geen genummerde velden toe zoals source2 of offset2.
-Een herhaalde initiële aanroep geeft dezelfde tekst terug. Gebruik voortzetting wanneer meer tekst nodig is.
-Stop met lezen wanneer de passage genoeg bewijs biedt voor de gevraagde stelling.
+Een afkapmarkering betekent dat de tool slechts een deel van het bereik leverde. Het betekent niet dat de pagina daar eindigt.
+Gebruik de more van een item om dat document voort te zetten. Gebruik de more op het hoogste niveau om de resterende pagina of latere pagina's voort te zetten.
+Kopieer het teruggegeven label exact in {{ tool('read_more') }} als continuation.
+Kopieer read_before of read_after als argumenten van read_documents voor omringende tekst. Berekenen van een offset is niet nodig.
+Bereikargumenten gelden voor elke hash in één aanroep. Gebruik aparte aanroepen wanneer documenten verschillende bronnen, bereiken of bronversies hebben.
+Kopieer bijvoorbeeld het teruggegeven read_after-object van het eerste document in één aanroep.
+```json
+{"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"}
+```
+Kopieer het teruggegeven read_after-object van het tweede document in een andere aanroep.
+```json
+{"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"}
+```
+Gebruik de werkelijk teruggegeven waarden van elk document. Voeg geen genummerde velden toe zoals source2 of offset2.
+Een herhaalde eerste aanroep geeft dezelfde tekst. Gebruik continuation wanneer meer tekst nodig is.
+Stop met lezen wanneer de passage genoeg bewijs geeft voor de gevraagde bewering.
 
 Deze minimale aanroep opent de eerste opgeslagen pagina.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` Deze aanroep opent een gerichte passage.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` Deze aanroep opent een teruggegeven bereik in een geselecteerde bron en pagina.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` Deze vervolgactie leet het volgende teruggegeven bereik. Gebruik het daadwerkelijke uitgegeven citathaandteken.
-```json {"continuation":"COPY_RETURNED_MORE"} ```
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]}
+```
+Deze aanroep opent een gerichte passage.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"}
+```
+Deze aanroep opent een teruggegeven bereik in een gekozen bron en pagina.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"}
+```
+Deze voortzetting leest het volgende teruggegeven bereik. Gebruik het werkelijk afgegeven label.
+```json
+{"continuation":"COPY_RETURNED_MORE"}
+```
 {% endif %}
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} vereisen collection, file_hash en query. source selecteert optioneel één extractie.
-Hij geeft page, ordinal, start, end en snippet terug voor elke treffer. Offsets tellen karakters binnen die pagina.
-Kopieer een treffer-pagina en start bij read_documents wanneer de snippet meer context nodig heeft.
-Gebruik read_more om resterende treffers op te halen.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
+{{ tool('doc_search_text') }} vereist collection, file_hash en query. source selecteert optioneel één extractie.
+Het geeft voor elke treffer page, ordinal, start, end en snippet terug. Offsets tellen tekens binnen die pagina.
+Kopieer de page en start van een treffer naar read_documents wanneer het fragment meer context nodig heeft.
+Gebruik read_more om de resterende treffers op te halen.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"}
+```
 {% endif %}
 {% if has('doc_sources') %}
-{{ tool('doc_sources') }} vereisen collection en file_hash. query telt optioneel matchende treffers in elke extractie.
-Hij geeft bronnamen en opgeslagen paginabereiken terug. Kopieer een bronnaam bij het selecteren van een bepaalde extractie.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
+{{ tool('doc_sources') }} vereist collection en file_hash. query telt optioneel de overeenkomende treffers in elke extractie.
+Het geeft bronnamen en opgeslagen paginabereiken terug. Kopieer een bronnaam wanneer je een bepaalde extractie selecteert.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
 {% endif %}
 {% if has('doc_diff_sources') %}
-{{ tool('doc_diff_sources') }} vereisen collection, file_hash, source_a en source_b.
+{{ tool('doc_diff_sources') }} vereist collection, file_hash, source_a en source_b.
 page_a en page_b selecteren optioneel pagina's. Weglaten selecteert de eerste opgeslagen pagina van elke bron.
-Het resultaat is een geünificeerd tekstdiff. Gebruik read_more wanneer het verder gaat.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
+Het resultaat is een unified tekstdiff. Gebruik read_more wanneer het doorloopt.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7}
+```
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }} vereisen collection, file_hash en query.
+{{ tool('pdf_search') }} vereist collection, file_hash en query.
 source selecteert optioneel een PDF-extractie. page_from en page_to beperken optioneel het inclusieve PDF-paginabereik.
-Kopieer teruggegeven paginaposities. Gebruik read_more voor voortgezette treffers.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
+Kopieer teruggegeven paginaposities. Gebruik read_more voor doorlopende treffers.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12}
+```
 {% endif %}
 {% if has('search_passages') %}
-{{ tool('search_passages') }} accepteert queries als één string of een lijst van maximaal 12 vormen.
-collection accepteert één naam of een lijst. Weglaten zoekt in elke toegestane verzameling.
-max_results selecteert het treftertelling per queryvorm binnen de geboden schema-beperking. Weglaten gebruikt 15.
-Het resultaat geeft collection, file_hash, page en snippet terug. q registreert de nulgebaseerde queryindexes.
-Lees ondersteunende tekst wanneer de passage de vraag niet beantwoordt.
-```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
+{{ tool('search_passages') }} accepteert queries als één tekenreeks of een lijst van maximaal 12 vormen.
+collection accepteert één naam of een lijst. Weglaten doorzoekt alle toegestane collecties.
+max_results selecteert het aantal treffers per zoekvorm binnen de limiet van het aangeboden schema. Weglaten gebruikt 15.
+Het resultaat geeft collection, file_hash, page en snippet. q noteert de zoekindexen, geteld vanaf nul.
+Lees onderbouwende tekst wanneer de passage de vraag niet beantwoordt.
+```json
+{"queries":"approval of the transfer"}
+```
+```json
+{"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5}
+```
 {% endif %}

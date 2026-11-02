@@ -1,45 +1,57 @@
 ---
 name: emails
 group: technique
-description: hoe je e-maildocumenten leest: afzender, ontvangers, datum, onderwerp, kopteksten, kopieën en threads
+description: hoe je e-maildocumenten leest: afzender, ontvangers, datum, onderwerp, headers, kopieën en gesprekslijnen
 tools: doc_email, doc_metadata, read_documents
 ---
+{# How to read e-mail documents. The message fields come from `doc_email`, the text from
+   `read_documents`. Each sentence that names a tool renders only when the run has it. #}
 E-maildocumenten lezen
 
 {% if has('search_collections') %}
-Zoek e-mails met {{ tool('search_collections') }}. Zet elke vorm van een adres of een naam in één toolaanroep, bijvoorbeeld het adres, "Voel Naam" en "Naam, Voel".
+Vind e-mails met {{ tool('search_collections') }}. Zet elke vorm van een adres of een naam in één aanroep, bijvoorbeeld het adres, "First Last" en "Last, First".
 
 {% endif %}
 {% if has('doc_email') %}
-1. Roep {{ tool('doc_email') }} aan met de file_hash van de e-mail. Dit geeft de afzender, de ontvangers, de kopieën, de datum, het onderwerp, het bovenliggende bericht, de bijlagen en de berichtgraph.
-2. Om een draad te volgen, geef je node, de file hash van een ander bericht in de graph. De graph centreert zich dan op dat bericht.
-3. Een bijlag is een document op zich. Lees het met zijn eigen file_hash.
+1. Roep {{ tool('doc_email') }} aan met de file_hash van de e-mail. Het geeft de afzender, de ontvangers, de kopieën, de datum, het onderwerp, het bovenliggende bericht, de bijlagen en de berichtgrafiek.
+2. Om een gesprekslijn te volgen, geef je node, de bestandshash van een ander bericht in de grafiek. De grafiek centreert dan op dat bericht.
+3. Een bijlage is een document op zich. Lees haar met haar eigen file_hash.
 {% endif %}
 {% if has('read_documents') %}
 4. Lees de tekst van het bericht met {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_metadata') %}
-5. Voor de headers en de datums die niet in de tekst staan, roep je {{ tool('doc_metadata') }} aan.
+5. Roep {{ tool('doc_metadata') }} aan voor de headers en de datums die niet in de tekst staan.
 {% endif %}
 
-Eén kopie van hetzelfde bericht kan in meer dan één mailbox staan. Vergelijk de velden ervan als een aantal afhangt van unieke berichten.
+Een kopie van hetzelfde bericht kan in meer dan één mailbox staan. Vergelijk de velden ervan wanneer een aantal afhangt van verschillende berichten.
 
 {% if has('doc_email') %}
 {{ tool('doc_email') }} vereist collection en file_hash.
-collection is één naam. file_hash accepteert één hash of een lijst van maximaal tien hashes uit die verzameling.
-node centreert optioneel de grafiek op een teruggestuurde mededelingshash. Bij weglating wordt deze gecentreerd op de gevraagde e-mail.
-Gebruik read_more om resterende bijlagen en grafiekelementen te inspecteren.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+collection is één naam. file_hash accepteert één hash of een lijst van maximaal tien hashes uit die collectie.
+node centreert de grafiek optioneel op de hash van een teruggegeven bericht. Weglaten centreert haar op de gevraagde e-mail.
+Gebruik more met read_more om de resterende bijlagen en grafiekitems te bekijken.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"}
+```
 {% endif %}
 {% if has('doc_metadata') %}
 {{ tool('doc_metadata') }} vereist collection en file_hash. Het accepteert één hash of een lijst van maximaal tien hashes.
-Het geeft opgeslagen metadata, data, locaties en downloadlinks terug. Gebruik read_more voor resterende metadatavelden.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+Het geeft opgeslagen metadata, datums, locaties en downloadlinks terug. Gebruik read_more voor de resterende metadatavelden.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]}
+```
 {% endif %}
-Lees de gevraagde passage voordat je de schrijver, ontvangers of datum toekent.
-De externe e-mailomslag behoort tot de externe meddeling.
-Een doorgestuurde of geciteerde passage kan een andere schrijver, ontvangers en datum hebben.
-Gebruik de eigen koppen van die passage om te identificeren wie deze schreef.
-Iemand die een meddeling doorgestuurd heeft, heeft de geciteerde uitspraak niet per se geschreven.
-Wanneer de toeschrijving onbekend blijft, geef dan die beperking aan.
-Lees passages voor gerichte bereiken en doorinstructies. Herhaal het initiële lezen niet om latere tekst aan te vragen.
+Lees de gevraagde passage voordat je haar schrijver, ontvangers of datum toewijst.
+De buitenste enveloppe van de e-mail hoort bij het buitenste bericht.
+Een doorgestuurde of geciteerde passage kan een andere schrijver, andere ontvangers en een andere datum hebben.
+Gebruik de eigen headers van die passage om vast te stellen wie haar schreef.
+Een persoon die een bericht doorstuurde, schreef niet noodzakelijk de geciteerde uitspraak ervan.
+Vermeld die beperking wanneer de toeschrijving onbekend blijft.
+Lees passages voor gerichte bereiken en instructies om voort te zetten. Herhaal de eerste leesopdracht niet om latere tekst te vragen.

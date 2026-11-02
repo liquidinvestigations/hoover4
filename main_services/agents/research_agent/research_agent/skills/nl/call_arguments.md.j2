@@ -1,69 +1,93 @@
 ---
 name: call_arguments
 group: stumble
-description: hoe vul je de argumenten van een toolaanroep in: alleen de namen die het schema geeft, een lijst waar om een lijst wordt gevraagd, en geen extra aanhalingstekens
+description: hoe je de argumenten van een toolaanroep invult: alleen de namen uit het schema, een lijst waar een lijst wordt gevraagd en geen extra aanhalingstekens
 tools:
 ---
-De argumenten van een toolaanroep invullen
+{# How to fill in the arguments of a call. The refused calls give an argument name that the
+   schema does not have, a text where the schema asks for a list, or a value in extra quotes. #}
+De argumenten van een aanroep invullen
 
 {% if has('read_tool') %}
-Als je niet zeker bent van de argumenten van een tool, roep je {{ tool('read_tool') }} op met de naam. Dat geeft per argument de naam, het type en de argumenten die de tool vereist.
+Als je niet zeker bent van de argumenten van een tool, roep dan {{ tool('read_tool') }} aan met de naam ervan. Het toont elk argument, zijn type en de argumenten die de tool vereist.
 
 {% endif %}
-1. Geef alleen de argumamtnamen die de tool geeft. Een argument met een andere naam wordt geweigerd.
+1. Geef alleen de argumentnamen die de tool opgeeft. Een argument met een andere naam wordt geweigerd.
 2. Geef elk vereist argument.
-3. Waar de tool om een lijst vraagt, geef je een lijst, ook bij één waarde. Schrijf queries ["lease"]. Schrijf niet queries "lease".
-4. Waar de tool om een getal of true of false vraagt, geef je de waarde zonder aanhalingstekens. Schrijf filename_only true. Schrijf niet filename_only "true".
-5. Geef geen aanhalingstekens binnen een tekstwaarde. Schrijf status done. Schrijf niet status "\"done\"".
-6. Houd elke waarde binnen de grenzen van de tool, zoals het aantal items van een lijst.
-7. Waar de tool om een lijst van objecten vraagt, geef je een lijst van objecten. Geef geen tekst
+3. Geef een lijst waar de tool om een lijst vraagt, ook voor één waarde. Schrijf queries ["lease"]. Schrijf niet queries "lease".
+4. Geef een getal of true of false zonder aanhalingstekens. Schrijf filename_only true. Schrijf niet filename_only "true".
+5. Zet geen aanhalingstekens binnen een tekstwaarde. Schrijf status done. Schrijf niet status "\"done\"".
+6. Houd elke waarde binnen de grenzen van de tool, zoals het maximale aantal items van een lijst.
+7. Geef een lijst met objecten waar de tool om een lijst met objecten vraagt. Geef geen tekst
 {% if has('cite_documents') %}
-   met daarin JSON. Schrijf citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
+   die JSON bevat. Schrijf citations [{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}].
    Schrijf niet citations "[{\"collection\": ...}]".
 {% elif has('cite_pages') %}
-   met daarin JSON. Schrijf pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
+   die JSON bevat. Schrijf pages [{"url":"COPY_READ_URL","terms":["COPY_EXACT_PHRASE"]}].
    Schrijf niet pages "[{\"url\": ...}]".
 {% else %}
-   met daarin JSON.
+   die JSON bevat.
 {% endif %}
 {% if has('write_file') %}
-8. Geef de naam van het bestand in elke {{ tool('write_file') }}- en {{ tool('patch_file') }}-toolaanroep.
+8. Geef de naam van het bestand in elke aanroep van {{ tool('write_file') }} en {{ tool('patch_file') }}.
 {% endif %}
 
-Wanneer een toolaanroep geweigerd wordt, noemt de fout het argument en wat er mis mee is. Corrigeer dat argument en stuur daarna de toolaanroep.
+Wanneer een aanroep wordt geweigerd, noemt de foutmelding het argument en wat ermee mis is. Corrigeer dat argument en verstuur de aanroep dan.
 
 {% if has('search_agent_tools') %}
 {{ tool('search_agent_tools') }} vereist query, een taakbeschrijving van maximaal 160 tekens.
-Lees een tool voordat je onbekende argumenten gebruikt.
-```json {"query":"Zoek een passage laat in een lang document."} ```
+Het geeft namen en beschrijvingen van relevante tools terug. Lees een tool voordat je onbekende argumenten gebruikt.
+```json
+{"query":"Find a passage late in one long document."}
+```
 {% endif %}
 {% if has('read_tool') %}
-{{ tool('read_tool') }} vereist name, de exacte naam van een beschikbare tool.
-Lees de beschrijving en volledige input-schema terug, inclusief toegestane waarden, standaarden en verplichte velden.
-```json {"name":"read_documents"} ``` Lees het schema van de mislukte tool voordat je het opnieuw probeert na een fout voor een onbekend argument.
+{{ tool('read_tool') }} vereist name, de exacte naam van één beschikbare tool.
+Het geeft de beschrijving en het volledige invoerschema terug, met toegestane waarden, standaardwaarden en verplichte velden.
+```json
+{"name":"read_documents"}
+```
+Lees na een fout over een onbekend argument het schema van de mislukte tool voordat je het opnieuw probeert.
 {% if has('update_plan') %}
-Bijvoorbeeld, deze {{ tool('update_plan') }}-aanroep faalt omdat `plan` geen argument is.
-```json {"plan":["Zoek het bericht."]} ``` Lees het schema met {{ tool('read_tool') }}.
-```json {"name":"update_plan"} ``` Roep daarna {{ tool('update_plan') }} op met doel en stappen.
-```json {"goal":"Zoek de goedkeuringsdatum.","steps":[{"text":"Zoek het bericht.","status":"pending"}]} ```
+Deze aanroep van {{ tool('update_plan') }} mislukt bijvoorbeeld, omdat `plan` geen argument is.
+```json
+{"plan":["Find the message."]}
+```
+Lees het schema met {{ tool('read_tool') }}.
+```json
+{"name":"update_plan"}
+```
+Roep daarna {{ tool('update_plan') }} aan met goal en steps.
+```json
+{"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"pending"}]}
+```
 {% endif %}
 {% if has('read_documents') %}
 Als {{ tool('read_documents') }} `source2` of `offset2` weigert, lees dan het schema voordat je het opnieuw probeert.
-Gebruik een aparte aanroep voor elk document dat verschillende range-argumenten nodig heeft.
+Gebruik een aparte aanroep voor elk document dat andere bereikargumenten nodig heeft.
 {% endif %}
 {% endif %}
 {% if has('search_skills') %}
-{{ tool('search_skills') }} accepteert query, maximaal 160 tekens. Bij het weglaten of lege tekst worden alle beschikbare vaardigheden opgesomd.
-Lees methodenamen en beschrijvingen terug.
-```json {} ``` ```json {"query":"Lees een lang document en ga door met de overeenkomstige passage."} ```
+{{ tool('search_skills') }} accepteert query, maximaal 160 tekens. Als je query weglaat of leeg laat, toont het alle beschikbare vaardigheden.
+Het geeft namen en beschrijvingen van methoden terug.
+```json
+{}
+```
+```json
+{"query":"Read a long document and continue its matching passage."}
+```
 {% endif %}
 {% if has('read_skill') %}
-{{ tool('read_skill') }} vereist name, de exacte naam die terugkomt bij het ontdekken van vaardigheden.
-Lees de methodeginstructies, toolargumenten en voorbeelden terug.
-```json {"name":"passages"} ```
+{{ tool('read_skill') }} vereist name, de exacte naam die het zoeken naar vaardigheden teruggaf.
+Het geeft de instructies van de methode, de toolargumenten en voorbeelden terug.
+```json
+{"name":"passages"}
+```
 {% endif %}
 {% if has('write_note') %}
-{{ tool('write_note') }} vereist text, met 1 tot 2.000 tekens. Het bewijst bewijsstukken en onopgeloste vragen voor later context.
-Voeg identiteiten van bronnen en de volgende nuttige aanroep toe wanneer die context de inkorting moet overleven.
-```json {"text":"De goedkeuringspassage zit in het teruggegeven documentbereik. Verifieer de oorspronkelijke schrijver voordat je het toeschrijft."} ```
+{{ tool('write_note') }} vereist text, met 1 tot 2.000 tekens. Het bewaart bewijs en onopgeloste vragen voor latere context.
+Neem de identiteit van bronnen en de volgende nuttige aanroep op wanneer die context een samenvatting van de context moet overleven.
+```json
+{"text":"The approval passage is in the returned document range. Verify its original writer before attributing it."}
+```
 {% endif %}

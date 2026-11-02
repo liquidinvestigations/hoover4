@@ -1,20 +1,22 @@
 ---
 name: collection_names
 group: stumble
-description: hoe een verzameling of dataset te benoemen in een aanroep: de exacte naam die list_collections teruggeeft
+description: hoe je een collectie of een dataset in een aanroep noemt: de exacte naam die list_collections teruggeeft
 tools: list_collections, search_collections
 ---
-Een verzameling benoemen
+{# How to name a collection in a call. The refused calls give a dataset name, a changed name
+   or a collection that the chat cannot read. #}
+Een collectie noemen
 
-1. Laat de verzameling weg om elke verzameling van dit gesprek te doorzoeken. Dat klopt voor de meeste vragen.
-2. Als je een verzameling moet geven, kopieer de naam exact uit {{ tool('list_collections') }}, of uit de verzameling van een trefferrij.
-3. Een dataset is geen verzameling. De dataset tabellen/ehudx zit in de verzameling tabellen. Geef tabellen.
-4. Wijzig geen naam. Voeg geen space toe, verander geen hoofdletter of vertaal hem niet.
-5. Als een aanroep zegt dat een verzameling buiten de toegestane verzamelingen zit, kan dit gesprek die niet lezen. Stuur de aanroep niet opnieuw. Gebruik de verzamelingen van dit gesprek.
+1. Laat collection weg om alle collecties van deze chat te doorzoeken. Dat is voor de meeste vragen juist.
+2. Wanneer je een collectie moet opgeven, kopieer de naam exact uit {{ tool('list_collections') }}, of uit de collectie van een resultaatrij.
+3. Een dataset is geen collectie. De dataset tables/ehudx zit in de collectie tables. Geef tables.
+4. Wijzig een naam niet. Voeg geen spatie toe, wijzig geen hoofdletter en vertaal de naam niet.
+5. Wanneer een aanroep meldt dat een collectie buiten de toegestane collecties valt, kan deze chat haar niet lezen. Verstuur de aanroep niet opnieuw. Gebruik de collecties van deze chat.
 
-Om een document te lezen, geef de verzameling van dezelfde trefferrij als zijn file_hash.
+Om een document te lezen, geef je de collectie van dezelfde resultaatrij als de file_hash.
 
-Als een naam nergens voorkomt, lees de geïndexeerde spellingvoorstellen en hun gecontroleerde aantallen.
-Gebruik geen voorgespelde spelling als de gevraagde naam.
-Als je een voorgespelde spelling doorzoekt, benoem die in het antwoord als een andere spelling.
-Als geen enkele spelling overeenkomt, meld dat de doorzochte verzamelingen de naam niet bevatten.
+Wanneer een naam nergens voorkomt, lees dan de geïndexeerde spellingsuggesties en hun gecontroleerde aantallen.
+Gebruik een voorgestelde spelling niet als de gevraagde naam.
+Wanneer je een voorgestelde spelling zoekt, benoem die in het antwoord als een andere spelling.
+Wanneer geen spelling overeenkomt, meld dan dat de doorzochte collecties de naam niet bevatten.
