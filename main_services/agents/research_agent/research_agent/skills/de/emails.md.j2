@@ -1,45 +1,55 @@
 ---
 name: emails
 group: technique
-description: so, how do we read an email? well, let's start with the sender. the sender's name and email address are usually at the top of the message. this is the person who sent the email. next, we have the recipients. there are two types of recipients. the first is the main recipient, the person or people the email was sent to. the second is the person in the carbon copy, or CC, field. these people also receive the email, but they are not the main recipients. sometimes, there is a person in the blind carbon copy, or BCC, field. these people receive the email too, but the other recipients don't know about them. now, let's look at the date. the date tells us when the email was sent. it's usually at the top of the message. next, we have the subject. the subject is a short description of the email's content. it helps us know what the email is about before we even open it. sometimes, the subject can be empty, which means the sender didn't write anything. headers are like the metadata of the email. they contain information about the email, like where it came from and how it was sent. they're not usually visible to the user, but they're important for the email to work correctly. copies are duplicate versions of the email. they're used to keep track of the email's history. threads are a series of related emails. they help us keep track of a conversation. so, that's how we read an email. we look at the sender, the recipients, the date, the subject, the headers, the copies, and the threads. understanding these elements can help us communicate more effectively via email.
+description: wie Sie E-Mail-Dokumente lesen: Absender, Empfänger, Datum, Betreff, Header, Kopien und Threads
 tools: doc_email, doc_metadata, read_documents
 ---
 E-Mail-Dokumente lesen
 
 {% if has('search_collections') %}
-Finden Sie E-Mails mit {{ tool('search_collections') }}. Geben Sie jede Form einer Adresse oder eines Namens in einem Aufruf an, zum Beispiel die Adresse, „Vor Nachname" und „Nachname, Vorname".
+Finden Sie E-Mails mit {{ tool('search_collections') }}. Geben Sie jede Form einer Adresse oder eines Namens in einem Aufruf an, zum Beispiel die Adresse, "Vorname Nachname" und "Nachname, Vorname".
 
 {% endif %}
 {% if has('doc_email') %}
-1. Rufen Sie {{ tool('doc_email') }} mit dem file_hash der E-Mail auf. Damit erhalten Sie den Absender, die Empfänger, die Kopien, das Datum, den Betreff, die Eltern-Nachricht, die Anhänge und den Nachrichten-Graphen.
-2. Um einem Thread zu folgen, geben Sie node, den file_hash einer anderen Nachricht im Graphen, an. Der Graph zentriert sich dann um diese Nachricht.
-3. Ein Anhang ist ein Dokument eigenständiger Art. Lesen Sie es mit seinem eigenen file_hash.
+1. Rufen Sie {{ tool('doc_email') }} mit dem file_hash der E-Mail auf. Es liefert den Absender, die Empfänger, die Kopien, das Datum, den Betreff, die übergeordnete Nachricht, die Anhänge und den Nachrichtengraphen.
+2. Um einem Thread zu folgen, geben Sie node an, den Datei-Hash einer anderen Nachricht im Graphen. Der Graph zentriert sich dann auf diese Nachricht.
+3. Ein Anhang ist ein eigenes Dokument. Lesen Sie ihn mit seinem eigenen file_hash.
 {% endif %}
 {% if has('read_documents') %}
 4. Lesen Sie den Text der Nachricht mit {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_metadata') %}
-5. Für die Kopfzeilen und Daten, die nicht im Text stehen, rufen Sie {{ tool('doc_metadata') }} auf.
+5. Rufen Sie {{ tool('doc_metadata') }} auf, um die Header und die Daten zu lesen, die nicht im Text stehen.
 {% endif %}
 
-Eine Kopie derselben Nachricht kann in mehr als einem Postfach stehen. Vergleichen Sie deren Felder, wenn eine Zählung von distinct-Nachrichten abhängt.
+Eine Kopie derselben Nachricht kann in mehr als einem Postfach liegen. Vergleichen Sie ihre Felder, wenn eine Zählung von verschiedenen Nachrichten abhängt.
 
 {% if has('doc_email') %}
-{{ tool('doc_email') }} erfordert Sammlung und file_hash.
-Die Sammlung ist ein Name. file_hash akzeptiert einen Hash oder eine Liste von bis zu zehn Hashes aus dieser Sammlung.
-node zentriert optional den Graphen auf einen zurückgegebenen Message-Hash. Beim Weglassen wird er auf die angeforderte E-Mail zentriert.
-Nutzen Sie read_more, um verbleibende Anhänge und Graph-Einträge zu prüfen.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"} ```
+{{ tool('doc_email') }} erfordert collection und file_hash.
+collection ist ein Name. file_hash akzeptiert einen Hash oder eine Liste von bis zu zehn Hashes aus dieser Sammlung.
+node zentriert den Graphen optional auf den Hash einer zurückgegebenen Nachricht. Wenn Sie es weglassen, zentriert er sich auf die angeforderte E-Mail.
+Verwenden Sie more mit read_more, um verbleibende Anhänge und Graph-Einträge zu prüfen.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"],"node":"COPY_GRAPH_MESSAGE_HASH"}
+```
 {% endif %}
 {% if has('doc_metadata') %}
-{{ tool('doc_metadata') }} erfordert Sammlung und file_hash. Es akzeptiert einen Hash oder eine Liste von bis zu zehn Hashes.
-Es gibt gespeicherte Metadaten, Daten, Orte und Download-Links zurück. Nutzen Sie read_more für verbleibende Metadaten-Felder.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]} ```
+{{ tool('doc_metadata') }} erfordert collection und file_hash. Es akzeptiert einen Hash oder eine Liste von bis zu zehn Hashes.
+Es liefert gespeicherte Metadaten, Daten, Speicherorte und Download-Links. Verwenden Sie read_more für verbleibende Metadatenfelder.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":["COPY_EMAIL_HASH_1","COPY_EMAIL_HASH_2"]}
+```
 {% endif %}
-Lesen Sie die angeforderte Passage, bevor Sie deren Verfasser, Empfänger oder Datum zuordnen.
-Das äußere E-Mail-Umschlag gehört zur äußeren Nachricht.
-Eine weitergeleitete oder zitierte Passage kann einen anderen Verfasser, andere Empfänger und ein anderes Datum haben.
-Nutzen Sie die eigenen Header dieser Passage, um zu ermitteln, wer sie verfasst hat.
-Eine Person, die eine Nachricht weitergeleitet hat, hat deren Zitat nicht unbedingt selbst verfasst.
-Wenn die Zuschreibung unklar bleibt, geben Sie diese Grenze an.
-Lesen Sie Passagen für gezielte Bereiche und Fortsetzungsanweisungen. Wiederholen Sie den ersten nicht, um späteren Text anzufordern.
+Lesen Sie die angeforderte Textstelle, bevor Sie ihren Verfasser, ihre Empfänger oder ihr Datum zuordnen.
+Der äußere E-Mail-Umschlag gehört zur äußeren Nachricht.
+Eine weitergeleitete oder zitierte Textstelle kann einen anderen Verfasser, andere Empfänger und ein anderes Datum haben.
+Verwenden Sie die eigenen Header dieser Textstelle, um zu bestimmen, wer sie geschrieben hat.
+Eine Person, die eine Nachricht weitergeleitet hat, hat die zitierte Aussage nicht unbedingt geschrieben.
+Wenn die Zuordnung unbekannt bleibt, nennen Sie diese Grenze.
+Lesen Sie Textstellen für gezielte Bereiche und Anweisungen zum Fortsetzen. Wiederholen Sie nicht den ersten Lesevorgang, um späteren Text anzufordern.

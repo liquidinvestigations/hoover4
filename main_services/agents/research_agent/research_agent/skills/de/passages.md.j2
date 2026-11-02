@@ -1,95 +1,138 @@
 ---
 name: passages
 group: technique
-description: Wie man mit search_passages die genauen Passagen oder Seiten findet, die eine Frage beantworten, innerhalb vieler Dokumente oder eines einzigen
+description: wie Sie mit search_passages die genauen Textstellen oder Seiten finden, die eine Frage beantworten, in vielen Dokumenten oder in einem
 tools: search_passages, read_documents, read_more, doc_search_text, doc_sources, doc_diff_sources, pdf_search
-terms: Wörter dafür: Passage, Absatz, Satz, Zitat, Ausschnitt, Seite, Abschnitt, wo es heißt, der Teil, der erwähnt, wörtliche Formulierung, Zeile. Gilt für lange Textdokumente: PDF, Word-Dateien, E-Mails, Berichte und Transkripte.
-not_for: Nicht erforderlich für Zählungen, Dateilisten oder Metadaten.
+terms: Wörter dafür: Textstelle, Absatz, Satz, Zitat, Auszug, Seite, Abschnitt, wo es heißt, die Stelle, die erwähnt, genauer Wortlaut, Zeile. Gilt für lange Textdokumente: PDF, Word-Dateien, E-Mails, Berichte und Transkripte.
+not_for: Nicht nötig für Anzahlen, Dateilisten oder Metadaten.
 ---
-Passagen und Seiten finden
+Textstellen und Seiten finden
 
 {% if has('search_passages') %}
-Zur Suche in vielen Dokumenten verwenden Sie {{ tool('search_passages') }}. Sie durchsucht Textpassagen nach Schlüsselwörtern und nach Bedeutung zugleich. Nutzen Sie es für eine Frage in einfachen Worten, wenn die von den Dokumenten verwendeten Begriffe nicht eindeutig sind. Geben Sie bis zu 12 Abfragen in einem Aufruf an, jeweils eine andere Formulierung der Frage. Jeder Treffer nennt die Abfragen, die ihn gefunden haben. Für einen exakten Namen, eine Adresse oder eine Phrase verwenden Sie {{ tool('search_collections') }}.
+Um viele Dokumente zu durchsuchen, verwenden Sie {{ tool('search_passages') }}. Es durchsucht die Textstellen gemeinsam nach Schlüsselwörtern und nach Bedeutung. Verwenden Sie es für eine Frage in einfachen Worten, wenn die Wörter, die die Dokumente verwenden, nicht klar sind. Geben Sie bis zu 12 Suchanfragen in einem Aufruf an, jede eine andere Form der Frage. Jeder Treffer nennt die Suchanfragen, die ihn gefunden haben. Für einen genauen Namen, eine Adresse oder eine Phrase verwenden Sie {{ tool('search_collections') }}.
 
 {% endif %}
 {% if has('doc_search_text') or has('pdf_search') %}
-Zur Suche in einem langen Dokument verwenden Sie diese Werkzeuge.
+Um ein langes Dokument zu durchsuchen, verwenden Sie diese Werkzeuge.
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} listet die Treffer einer Abfrage in einer Textquelle in Seitenordnung auf, je Treffer mit der Seite.
+{{ tool('doc_search_text') }} listet die Treffer einer Suchanfrage in einer Textquelle in der Reihenfolge der Seiten auf, mit der Seite jedes Treffers.
 {% endif %}
 {% if has('pdf_search') %}
-{{ tool('pdf_search') }} findet eine Abfrage auf den Seiten einer PDF-Quelle. Geben Sie page_from und page_to an, um einen Seitenbereich zu durchsuchen.
+{{ tool('pdf_search') }} findet eine Suchanfrage auf den Seiten einer PDF-Quelle. Geben Sie page_from und page_to an, um einen Seitenbereich zu durchsuchen.
 {% endif %}
 
 {% endif %}
 {% if has('read_documents') %}
-Lesen Sie eine Seite mit {{ tool('read_documents') }}, wenn die Passage nicht genug Text zeigt, um die Behauptung zu stützen. Geben Sie ihre Seite an oder die Abfrage, um die Seite mit den meisten Treffern zu öffnen.
+Lesen Sie eine Seite mit {{ tool('read_documents') }}, wenn die Textstelle nicht genug Text zeigt,
+um die Aussage zu stützen. Geben Sie ihre Seite an, oder geben Sie die Suchanfrage an, um die Seite mit den meisten Treffern zu öffnen.
 {% endif %}
 
-Geben Sie Dokument und Seite an, wenn eine Passage die Antwort stützt.
+Nennen Sie das Dokument und die Seite, wenn eine Textstelle die Antwort stützt.
 
 {% if has('read_documents') %}
-{{ tool('read_documents') }} benötigt collection und file_hash.
+{{ tool('read_documents') }} erfordert collection und file_hash.
 collection ist ein Name. file_hash ist eine Liste von 1 bis 20 Hashes aus dieser Sammlung.
-Für Dokumente in verschiedenen Sammlungen erstellen Sie einen separaten Batch pro Sammlung.
-Kopieren Sie Identitäten aus den Ergebnissen. Ein eindeutiger Dateiname oder Pfad kann ein Dokument auch auflösen.
-source wählt optional eine extrahierte Quelle aus. Das Weglassen verwendet die bevorzugte Quelle.
-page wählt optional eine gespeicherte Seitenkennung aus. Seitenkennungen können Lücken haben.
-Lassen Sie page weg oder geben Sie null an, um die Seite mit den meisten Treffern auszuwählen oder die erste gespeicherte Seite ohne Abfrage.
-query öffnet Text um benachbarte, deutlich übereinstimmende Wörter auf dieser Seite.
-Für exakten Wortlaut zitieren Sie die Phrase innerhalb der Abfrage. Ein einzelner übereinstammender Wert öffnet sein erstes Vorkommen.
-offset überschreibt den Passagebeginn. Es zählt Unicode-Zeichen von null aus innerhalb dieser Seite.
-length ist eine positive Zeichenanzahl. Das Weglassen verwendet 6.000 Zeichen.
-source_version überprüft optional den zurückgegebenen Quellen-Fingerprint. Kopieren Sie ihn für ein erneutes Lesen eines Bereichs.
+Bilden Sie für Dokumente in verschiedenen Sammlungen einen eigenen Stapel je Sammlung.
+Kopieren Sie die Kennungen aus Ergebnissen. Ein eindeutiger Dateiname oder Pfad kann ein Dokument ebenfalls auflösen.
+source wählt optional eine extrahierte Quelle. Wenn Sie es weglassen, gilt die bevorzugte Quelle.
+page wählt optional eine gespeicherte Seitenkennung. Seitenkennungen können Lücken haben.
+Lassen Sie page weg oder geben Sie null an, um die Seite mit den meisten Treffern der Suchanfrage zu wählen, oder ohne Suchanfrage die erste gespeicherte Seite.
+query öffnet Text um nahe beieinanderliegende, verschiedene gefundene Wörter auf dieser Seite.
+Setzen Sie für einen genauen Wortlaut die Phrase in query in Anführungszeichen. Ein einzelner gefundener Wert öffnet sein erstes Vorkommen.
+offset überschreibt den Beginn der Textstelle. Er zählt Unicode-Zeichen ab null innerhalb dieser Seite.
+length ist eine positive Anzahl von Zeichen. Wenn Sie es weglassen, gelten 6.000 Zeichen.
+source_version prüft optional den zurückgegebenen Fingerabdruck der Quelle. Kopieren Sie ihn für ein erneutes Lesen eines Bereichs.
 
-Das Ergebnis liefert text_range mit Start, exklusem Ende, Gesamtzahl der Seitenzeichen und Einheit.
+Das Ergebnis liefert text_range mit Anfang, ausschließendem Ende, Gesamtzahl der Zeichen der Seite und Einheit.
 page_complete bedeutet, dass der Bereich die ganze Seite abdeckt.
-Ein Cut-Marker bedeutet, dass das Werkzeug nur einen Teil des Bereichs geliefert hat. Es bedeutet nicht, dass die Seite dort endet.
-Verwende das eines Elements, um dieses Dokument fortzusetzen. Verwende das der obersten Ebene, um die verbleibende Seite oder spätere Seiten fortzusetzen.
-Kopiere die zurückgegebene Kennung exakt in {{ tool('read_more') }} als Fortsetzung.
-Kopiere read_before oder read_after als read_documents-Argumente für umgebenden Text. Eine Offset-Berechnung ist nicht erforderlich.
-Bereichs-Argumente gelten für jeden Hash in einem Aufruf. Verwende separate Aufrufe, wenn Dokumente verschiedene Quellen, Bereiche oder Quellversionen haben.
-Zum Beispiel kopierst du das zurückgegebene read_after-Objekt des ersten Dokuments in einen Aufruf.
-```json {"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"} ``` Kopierst das zurückgegebene read_after-Objekt des zweiten Dokuments in einen weiteren Aufruf.
-```json {"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"} ``` Verwende die tatsächlich zurückgegebenen Werte für jedes Dokument. Füge keine nummerierten Felder wie source2 oder offset2 hinzu.
-Ein wiederholter initialer Aufruf liefert denselben Text. Verwende die Fortsetzung, wenn mehr Text benötigt wird.
-Höre beim Lesen auf, sobald die Passage genügend Evidenz für die angeforderte Behauptung liefert.
+Eine Schnittmarke bedeutet, dass das Werkzeug nur einen Teil des Bereichs geliefert hat. Sie bedeutet nicht, dass die Seite dort endet.
+Verwenden Sie more eines Eintrags, um dieses Dokument fortzusetzen. Verwenden Sie more auf oberster Ebene, um den Rest der Seite oder spätere Seiten fortzusetzen.
+Kopieren Sie die zurückgegebene Kennung genau als continuation in {{ tool('read_more') }}.
+Kopieren Sie read_before oder read_after als Argumente von read_documents, um umgebenden Text zu lesen. Eine Berechnung von offset ist nicht nötig.
+Bereichsargumente gelten für jeden Hash eines Aufrufs. Verwenden Sie getrennte Aufrufe, wenn Dokumente verschiedene Quellen, Bereiche oder Quellenversionen haben.
+Kopieren Sie zum Beispiel das zurückgegebene Objekt read_after des ersten Dokuments in einen Aufruf.
+```json
+{"collection":"alpha","file_hash":["COPY_FIRST_HASH"],"source":"COPY_FIRST_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_FIRST_VERSION"}
+```
+Kopieren Sie das zurückgegebene Objekt read_after des zweiten Dokuments in einen anderen Aufruf.
+```json
+{"collection":"alpha","file_hash":["COPY_SECOND_HASH"],"source":"COPY_SECOND_SOURCE","page":2,"offset":6000,"length":4000,"source_version":"COPY_SECOND_VERSION"}
+```
+Verwenden Sie für jedes Dokument die tatsächlich zurückgegebenen Werte. Fügen Sie keine nummerierten Felder wie source2 oder offset2 hinzu.
+Ein wiederholter erster Aufruf liefert denselben Text. Verwenden Sie continuation, wenn Sie mehr Text brauchen.
+Hören Sie auf zu lesen, wenn die Textstelle genug Belege für die verlangte Aussage liefert.
 
 Dieser minimale Aufruf öffnet die erste gespeicherte Seite.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]} ``` Dieser Aufruf öffnet eine gezielte Passage.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"} ``` Dieser Aufruf öffnet einen zurückgegebenen Bereich in einer ausgewählten Quelle und Seite.
-```json {"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"} ``` Diese Fortsetzung liest den nächsten zurückgegebenen Bereich. Verwende das tatsächlich ausgegebene Handle.
-```json {"continuation":"COPY_RETURNED_MORE"} ```
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"]}
+```
+Dieser Aufruf öffnet eine gezielte Textstelle.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"query":"Greenvelope"}
+```
+Dieser Aufruf öffnet einen zurückgegebenen Bereich in einer gewählten Quelle und Seite.
+```json
+{"collection":"alpha","file_hash":["COPY_RETURNED_HASH"],"source":"COPY_RETURNED_SOURCE","page":7,"offset":50000,"length":4000,"source_version":"COPY_RETURNED_SOURCE_VERSION"}
+```
+Diese Fortsetzung liest den nächsten zurückgegebenen Bereich. Verwenden Sie die tatsächlich ausgegebene Kennung.
+```json
+{"continuation":"COPY_RETURNED_MORE"}
+```
 {% endif %}
 {% if has('doc_search_text') %}
-{{ tool('doc_search_text') }} erfordert collection, file_hash und query. source wählt optional eine Extraktion aus.
-Es gibt Seite, Ordinal, Start, Ende und Snippet für jeden Treffer zurück. Offset zählen Zeichen innerhalb dieser Seite.
-Kopiere eine Seiten- und Startposition eines Treffers in read_documents, wenn das Snippet mehr Kontext benötigt.
-Verwende read_more, um verbleibende Treffer abzurufen.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"} ```
+{{ tool('doc_search_text') }} erfordert collection, file_hash und query. source wählt optional eine Extraktion.
+Es liefert für jeden Treffer page, ordinal, start, end und snippet. Die Offsets zählen Zeichen innerhalb dieser Seite.
+Kopieren Sie page und start eines Treffers in read_documents, wenn der Auszug mehr Kontext braucht.
+Verwenden Sie read_more, um die übrigen Treffer abzurufen.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE"}
+```
 {% endif %}
 {% if has('doc_sources') %}
-{{ tool('doc_sources') }} erfordert collection und file_hash. query zählt optional übereinstimmende Treffer in jeder Extraktion.
-Es gibt Quellennamen und gespeicherte Seitenbereiche zurück. Kopiere einen Quellennamen beim Auswählen einer bestimmten Extraktion.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ```
+{{ tool('doc_sources') }} erfordert collection und file_hash. query zählt optional die passenden Treffer in jeder Extraktion.
+Es liefert Quellennamen und gespeicherte Seitenbereiche. Kopieren Sie einen Quellennamen, wenn Sie eine bestimmte Extraktion wählen.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
 {% endif %}
 {% if has('doc_diff_sources') %}
 {{ tool('doc_diff_sources') }} erfordert collection, file_hash, source_a und source_b.
-page_a und page_b wählen optional Seiten aus. Das Weglassen wählt die erste gespeicherte Seite jeder Quelle aus.
-Das Ergebnis ist ein einheitlicher Text-Diff. Verwende read_more, wenn es weitergeht.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7} ```
+page_a und page_b wählen optional Seiten. Wenn Sie sie weglassen, gilt die erste gespeicherte Seite jeder Quelle.
+Das Ergebnis ist ein einheitlicher Textvergleich (Unified Diff). Verwenden Sie read_more, wenn es weitergeht.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","source_a":"COPY_SOURCE_A","source_b":"COPY_SOURCE_B","page_a":7,"page_b":7}
+```
 {% endif %}
 {% if has('pdf_search') %}
 {{ tool('pdf_search') }} erfordert collection, file_hash und query.
-source wählt optional eine PDF-Extraktion aus. page_from und page_to beschränken optional den inklusiven PDF-Seitenbereich.
-Kopiere zurückgegebene Seitenpositionen. Verwende read_more für fortgesetzte Treffer.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"} ``` ```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12} ```
+source wählt optional eine PDF-Extraktion. page_from und page_to beschränken optional den Seitenbereich der PDF einschließlich der Grenzen.
+Kopieren Sie die zurückgegebenen Seitenpositionen. Verwenden Sie read_more für weitere Treffer.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope"}
+```
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","query":"Greenvelope","source":"COPY_RETURNED_SOURCE","page_from":7,"page_to":12}
+```
 {% endif %}
 {% if has('search_passages') %}
-{{ tool('search_passages') }} akzeptiert Abfragen als einen String oder eine Liste von bis zu 12 Formen.
-collection akzeptiert einen Namen oder eine Liste. Das Wegsuchen durchsucht jede erlaubte Sammlung.
-max_results wählt die Trefferzahl je Abfrageform innerhalb des bedienten Schema-Limits. Das Weglassen verwendet 15.
-Das Ergebnis gibt collection, file_hash, Seite und Snippet zurück. q zeichnet die nullbasierten Abfrageindizes auf.
-Lies unterstützenden Text, wenn die Passage die Frage nicht beantwortet.
-```json {"queries":"approval of the transfer"} ``` ```json {"collection":["alpha","beta"],"queries":["approval of the transfer","transfer authorization"],"max_results":5} ```
+{{ tool('search_passages') }} akzeptiert queries als einen String oder als Liste von bis zu 12 Formen.
+collection akzeptiert einen Namen oder eine Liste. Wenn Sie es weglassen, werden alle erlaubten Sammlungen durchsucht.
+max_results wählt die Anzahl der Treffer je Form der Suchanfrage innerhalb der Grenze des bereitgestellten Schemas. Wenn Sie es weglassen, gelten 15.
+Das Ergebnis liefert collection, file_hash, page und snippet. q hält die nullbasierten Indizes der Suchanfragen fest.
+Lesen Sie stützenden Text, wenn die Textstelle die Frage nicht beantwortet.
+```json
+{"queries":"Genehmigung der Überweisung"}
+```
+```json
+{"collection":["alpha","beta"],"queries":["Genehmigung der Überweisung","Überweisung Freigabe"],"max_results":5}
+```
 {% endif %}

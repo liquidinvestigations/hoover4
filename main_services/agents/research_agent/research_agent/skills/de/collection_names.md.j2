@@ -1,20 +1,20 @@
 ---
 name: collection_names
 group: stumble
-description: So benennen Sie eine Sammlung oder einen Datensatz in einem Call: der genaue Name, den list_collections zurückgibt
+description: wie Sie in einem Aufruf eine Sammlung oder einen Datensatz benennen: den genauen Namen, den list_collections liefert
 tools: list_collections, search_collections
 ---
-Benennen einer Sammlung
+Eine Sammlung benennen
 
-1. Lassen Sie „collection" weg, um jede Sammlung dieses Chats zu durchsuchen. Das ist bei den meisten Fragen korrekt.
-2. Wenn Sie eine Sammlung angeben müssen, kopieren Sie ihren Namen exakt aus {{ tool('list_collections') }} oder aus der Sammlung einer Ergebniszeile.
-3. Ein Datensatz ist keine Sammlung. Die Datensatztabelle/ehudx befindet sich in der Sammlung tables. Geben Sie tables an.
-4. Ändern Sie keinen Namen. Fügen Sie kein Leerzeichen hinzu, ändern Sie keinen Großbuchstaben und übersetzen Sie ihn nicht.
-5. Wenn ein Aufruf angibt, dass eine Sammlung außerhalb der erlaubten Sammlungen liegt, kann dieser Chat sie nicht lesen. Senden Sie den Aufruf nicht erneut. Nutzen Sie die Sammlungen dieses Chats.
+1. Lassen Sie collection weg, um alle Sammlungen dieses Chats zu durchsuchen. Das ist für die meisten Fragen richtig.
+2. Wenn Sie eine Sammlung angeben müssen, kopieren Sie ihren Namen genau aus {{ tool('list_collections') }} oder aus der Sammlung einer Ergebniszeile.
+3. Ein Datensatz ist keine Sammlung. Der Datensatz tables/ehudx gehört zur Sammlung tables. Geben Sie tables an.
+4. Ändern Sie einen Namen nicht. Fügen Sie kein Leerzeichen hinzu, ändern Sie keinen Großbuchstaben und übersetzen Sie ihn nicht.
+5. Wenn ein Aufruf meldet, dass eine Sammlung außerhalb der erlaubten Sammlungen liegt, kann dieser Chat sie nicht lesen. Senden Sie den Aufruf nicht erneut. Verwenden Sie die Sammlungen dieses Chats.
 
-Zum Lesen eines Dokuments geben Sie die Sammlung derselben Ergebniszeile wie deren file_hash an.
+Um ein Dokument zu lesen, geben Sie die Sammlung aus derselben Ergebniszeile an wie seinen file_hash.
 
-Wenn ein Namen nirgends vorkommt, lesen Sie die indizierten Rechtschlagsvorschläge und deren geprüften Zählwerte.
-Nutzen Sie keinen vorgeschlagenen Namen als angeforderten Namen.
-Wenn Sie eine vorgeschlagene Rechtschreibung durchsuchen, nennen Sie sie in der Antwort als andere Rechtschreibung.
-Wenn keine Rechtschreibung passt, berichten Sie, dass die durchsuchten Sammlungen den Namen nicht enthalten.
+Wenn ein Name nirgends vorkommt, lesen Sie die indizierten Schreibweisenvorschläge und ihre geprüften Anzahlen.
+Verwenden Sie eine vorgeschlagene Schreibweise nicht als den gesuchten Namen.
+Wenn Sie nach einer vorgeschlagenen Schreibweise suchen, nennen Sie sie in der Antwort als abweichende Schreibweise.
+Wenn keine Schreibweise passt, melden Sie, dass die durchsuchten Sammlungen den Namen nicht enthalten.

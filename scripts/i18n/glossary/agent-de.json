@@ -1,18 +1,18 @@
 {
  "terms": {
-  "skill": "Fähigkeit",
+  "skill": "Skill",
   "tool": "Werkzeug",
   "tool call": "Werkzeugaufruf",
   "argument": "Argument",
-  "citation handle": "Zitationskennung",
+  "citation handle": "Belegkennung",
   "quote": "Zitat",
   "workspace file": "Arbeitsbereichsdatei",
   "report": "Bericht",
   "hit": "Treffer",
-  "passage": "Passage",
-  "query": "Abfrage",
+  "passage": "Textstelle",
+  "query": "Suchanfrage",
   "web page": "Webseite",
-  "run": "Lauf",
+  "run": "Durchlauf",
   "note": "Hinweis",
   "plan": "Plan"
  }

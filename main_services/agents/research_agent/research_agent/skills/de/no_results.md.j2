@@ -1,71 +1,72 @@
 ---
 name: no_results
 group: stumble
-description: Was tun, wenn eine Suche nichts findet: Filter entfernen, eine Phrase aufteilen, andere Namensformen ausprobieren und dann sagen, was fehlt
+description: was zu tun ist, wenn eine Suche nichts findet: Filter entfernen, eine Phrase aufteilen, andere Formen eines Namens versuchen, dann sagen, was fehlt
 tools: search_collections, search_passages, web_search
 ---
 Wenn eine Suche nichts findet
 
 {% if has('search_collections') %}
-Lese zuerst word_counts.
-Wenn ein Name nirgends vorkommt, lies die indizierten Rechtschlagsvorschläge und ihre geprüften Zählwerte.
-Verwende einen vorgeschlagenen Schreibweg nicht als den angeforderten Namen.
-Wenn du eine vorgeschlagene Schreibweise suchst, nenne sie in der Antwort als andere Schreibweise.
-Wenn keine Schreibweise passt, melde, dass die gesuchten Sammlungen den Namen nicht enthalten.
+Lesen Sie zuerst word_counts.
+Wenn ein Name nirgends vorkommt, lesen Sie die indizierten Schreibweisenvorschläge und ihre geprüften Anzahlen.
+Verwenden Sie eine vorgeschlagene Schreibweise nicht als den gesuchten Namen.
+Wenn Sie nach einer vorgeschlagenen Schreibweise suchen, nennen Sie sie in der Antwort als abweichende Schreibweise.
+Wenn keine Schreibweise passt, melden Sie, dass die durchsuchten Sammlungen den Namen nicht enthalten.
 
 {% endif %}
-Befolge diese Suchschritte, wenn frühere Suchen die Frage nicht beantworten.
+Folgen Sie diesen Suchschritten, wenn frühere Suchen die Frage nicht beantworten.
 {% if has('search_collections') %}
-1. Suche jeden Namen als zitierten Ausdruck.
-2. Suche nicht zitierte Wörter, Initialen, E-Mail-Adressen und Namen in der Sprache des Dokuments.
-Lese word_counts und Rechtschlagsvorschläge. Verw-useinen Vorschlag nur für den beabsichtigten Namen.
-Verwende dasovi?h für eine variierende Buchstabe und dasovic% für eine optionale Endbuchstabe.
-Verwende skilling << resigned, wenn die Wortreihenfolge zählt.
-3. Entferne Filter nacheinander. Führe eine Suche ohne Filter durch.
+1. Suchen Sie jeden Namen als Phrase in Anführungszeichen.
+2. Suchen Sie Wörter ohne Anführungszeichen, Initialen, E-Mail-Adressen und Namen in der Sprache des Dokuments.
+Lesen Sie word_counts und die Schreibweisenvorschläge. Verwenden Sie einen Vorschlag nur für den gemeinten Namen.
+Verwenden Sie dasovi?h für einen wechselnden Buchstaben und dasovic% für einen optionalen letzten Buchstaben.
+Verwenden Sie skilling << resigned, wenn die Wortreihenfolge zählt.
+3. Entfernen Sie Filter einzeln. Führen Sie eine Suche ohne Filter aus.
 {% if has('search_facet_values') %}
-Prüfe Filterwerte mit {{ tool('search_facet_values') }}.
+Prüfen Sie Filterwerte mit {{ tool('search_facet_values') }}.
 {% endif %}
 {% if has('search_histogram') %}
-Prüfe Daten mit {{ tool('search_histogram') }}.
+Prüfen Sie Daten mit {{ tool('search_histogram') }}.
 {% endif %}
 {% if has('search_passages') %}
-4. Suche eine Beschreibung des Inhalts mit {{ tool('search_passages') }}.
+4. Suchen Sie eine Beschreibung des Inhalts mit {{ tool('search_passages') }}.
 {% endif %}
 {% if has('folder_search') %}
-5. Verwende {{ tool('folder_search') }}, wenn die Anfrage einen Ordner, Pfad oder Datei benennt.
+5. Verwenden Sie {{ tool('folder_search') }}, wenn die Anfrage einen Ordner, Pfad oder eine Datei nennt.
 {% endif %}
 {% if has('folder_list') %}
-Verwende {{ tool('folder_list') }} für diesen Ordner.
+Verwenden Sie {{ tool('folder_list') }} für diesen Ordner.
 {% endif %}
 {% if has('read_documents') %}
-6. Lese die besten 1 bis 3 Treffer mit {{ tool('read_documents') }}.
+6. Lesen Sie die besten 1 bis 3 Treffer mit {{ tool('read_documents') }}.
 {% endif %}
 {% if has('doc_search_text') %}
-Verwende {{ tool('doc_search_text') }} für relevanten Text in einem Dokument.
+Verwenden Sie {{ tool('doc_search_text') }} für relevanten Text in einem Dokument.
 {% endif %}
 {% if has('web_search') %}
-7. Suche das Web nur, wenn die Anfrage es erlaubt.
+7. Durchsuchen Sie das Web nur, wenn die Anfrage es erlaubt.
 {% endif %}
 {% if has('read_page') %}
-Lese die besten Webseiten mit {{ tool('read_page') }}.
+Lesen Sie die besten Webseiten mit {{ tool('read_page') }}.
 {% endif %}
 {% else %}
 {% if has('web_search') %}
-1. Suche jeden Namen als zitierten Ausdruck und dann andere Formen des Namens, seine Initialen und die Sprache des Ortes.
+1. Suchen Sie jeden Namen als Phrase in Anführungszeichen, danach andere Formen des Namens, seine Initialen und die Sprache des Ortes.
 {% endif %}
 {% if has('read_page') %}
-2. Lese die besten Webseiten mit {{ tool('read_page') }}.
+2. Lesen Sie die besten Webseiten mit {{ tool('read_page') }}.
 {% endif %}
 {% endif %}
 
-Nachdem die verfügbaren Schritte kein Schlüsselwortübereinstimmung gefunden haben, antworte mit dem Fehlen und den Suchen.
+Wenn die verfügbaren Schritte keinen Treffer für Schlüsselwörter finden, antworten Sie mit der Abwesenheit und den Suchen.
 {% if has('search_collections') %}
-Führe vor einer Ablehnung mindestens 4 verschiedene Suchen mit mindestens 2 verfügbaren Suchwerkzeugen aus.
-Wiederhole keine identische Suche. Gib die durchsuchten Sammlungen und fehlenden Fakten an.
-Beschränke eine Ablehnungsaussage auf die von dir untersuchten Suchen und Dokumente.
-Sage zum Beispiel: „Die durchsuchten Ausschussprotokolle und Überweisungsbelege haben kein Genehmigungsdatum ermittelt." Diese Suchen belegen nicht, dass in keiner zulässigen Sammlung ein Genehmigungsbestand existiert.
+Führen Sie vor einer Antwort über eine Abwesenheit mindestens 4 verschiedene Suchen mit mindestens 2 verfügbaren Suchwerkzeugen aus.
+Wiederholen Sie keine identische Suche. Nennen Sie die durchsuchten Sammlungen und die fehlenden Tatsachen.
+Beschränken Sie eine Aussage über eine Abwesenheit auf die Suchen und Dokumente, die Sie geprüft haben.
+Sagen Sie zum Beispiel "Die durchsuchten Ausschussprotokolle und Überweisungsunterlagen nannten kein Genehmigungsdatum."
+Diese Suchen belegen nicht, dass in keiner erlaubten Sammlung ein Genehmigungsnachweis existiert.
 {% else %}
-Führe vor einer Ablehnung mindestens 4 verschiedene Suchen aus.
-Wiederhole keine identische Suche. Gib die Suchen und die gelesenen Seiten an.
-Beschränke eine Ablehnungsaussage auf die von dir untersuchten Suchen und Seiten.
+Führen Sie vor einer Antwort über eine Abwesenheit mindestens 4 verschiedene Suchen aus.
+Wiederholen Sie keine identische Suche. Nennen Sie die Suchen und die gelesenen Seiten.
+Beschränken Sie eine Aussage über eine Abwesenheit auf die Suchen und Seiten, die Sie geprüft haben.
 {% endif %}

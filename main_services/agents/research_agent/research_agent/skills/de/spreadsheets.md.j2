@@ -1,55 +1,86 @@
 ---
 name: spreadsheets
 group: technique
-description: So lesen Sie eine Tabellenkalkulationsdatei mit den Tabellenwerkzeugen: ihre Blätter, Spalten, Zeilen und einzelne Zellen
+description: wie Sie eine Tabellendatei mit den Tabellenwerkzeugen lesen: ihre Blätter, Spalten, Zeilen und einzelnen Zellen
 tools: table_overview, table_page, table_cell, table_column_values, table_search_cells
-terms: Wörter dafür: Tabelle, Tabellen, Tabellenkalkulation, Excel, Arbeitsmappe, Blatt, Arbeitsblatt, Registerkarte, CSV, TSV, tabellarische Daten, Datentabelle, Kassenbuch, Verzeichnis, Tracker, Liste mit Spalten, Zeile, Spalte, Zelle, Kopfzeile, Pivot-Tabelle, Datenbanktabelle, SQLite, Tabelle. Dateitypen: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML sowie Tabellen innerhalb von HTML- oder PDF-Dokumenten. Treffer vom Typ Tabelle.
-not_for: Nicht erforderlich, wenn die Anfrage nur verlangt, dass die Antwort als Tabelle dargestellt wird, oder das Wort Tabelle in einem anderen Sinne verwendet.
+terms: Wörter dafür: Tabelle, Tabellen, Tabellenkalkulation, Excel, Arbeitsmappe, Blatt, Tabellenblatt, Reiter, CSV, TSV, tabellarische Daten, Datentabelle, Hauptbuch, Register, Tracker, Liste mit Spalten, Zeile, Spalte, Zelle, Kopfzeile, Pivot-Tabelle, Datenbanktabelle, SQLite. Dateitypen: xlsx, xls, xlsm, ods, csv, tsv, sqlite, db, SpreadsheetML XML und Tabellen in HTML- oder PDF-Dokumenten. Suchtreffer vom Typ table.
+not_for: Nicht nötig, wenn die Anfrage nur verlangt, die Antwort als Tabelle zu gestalten, oder das Wort Tabelle in einem anderen Sinn verwendet.
 ---
-Ein Kalkulationstblatt lesen
+Eine Tabellendatei lesen
 
-Ein Kalkulationstblatt, eine CSV-Datei oder eine Tabelle in einem Dokument ist ein Tabellendokument. Benenne es nach dem file_hash und der Sammlung eines Suchergebnisses.
+Eine Tabellenkalkulation, eine CSV-Datei oder eine Tabelle in einem Dokument ist ein Tabellendokument. Benennen Sie es mit file_hash und collection aus einem Suchergebnis.
 
-1. {{ tool('table_overview') }} listet die Tabellenblätter und Spalten mit deren IDs auf.
-2. Lese Zeilen mit {{ tool('table_page') }}. Ein Aufruf liefert 50 Zeilen. Sortiere und filtere die Zeilen im Aufruf. Gib row_start an, um zu einer Zeile eines großen Tabellenblatts zu gelangen, und columns, um die Spalten nach der 60. zu lesen.
-3. {{ tool('table_column_values') }} listet Werte in einer Spalte und deren Häufigkeiten auf.
-4. Um einen Wert in einem Tabellenblatt zu finden, rufe {{ tool('table_search_cells') }} auf. Lese umliegende Zeilen mit {{ tool('table_page') }}, wenn das Ergebnis Kontext benötigt.
-5. Wenn {{ tool('table_page') }} eine lange Zelle abschneidet, lese sie ganz mit {{ tool('table_cell') }}. Gib row mit der zurückgegebenen row_id und column mit dem zurückgegebenen Spalten-ID an.
+1. {{ tool('table_overview') }} listet die Blätter und Spalten mit ihren Kennungen auf.
+2. Lesen Sie Zeilen mit {{ tool('table_page') }}. Ein Aufruf liefert 50 Zeilen. Sortieren und filtern Sie die Zeilen im Aufruf. Geben Sie row_start an, um zu einer Zeile eines großen Blatts zu springen, und columns, um die Spalten nach der 60. zu lesen.
+3. {{ tool('table_column_values') }} listet die Werte einer Spalte und ihre Anzahlen auf.
+4. Um einen Wert in einem Blatt zu finden, rufen Sie {{ tool('table_search_cells') }} auf. Lesen Sie umgebende Zeilen
+mit {{ tool('table_page') }}, wenn der Treffer Kontext braucht.
+5. Wenn {{ tool('table_page') }} eine lange Zelle abschneidet, lesen Sie sie vollständig mit {{ tool('table_cell') }}. Geben Sie row mit der zurückgegebenen row_id an und column mit der zurückgegebenen Spaltenkennung.
 
-Gib ein Tabellenblatt, eine Zeile und eine Spalte an, wenn der Reader einen Wert erneut finden muss.
+Geben Sie Blatt, Zeile und Spalte an, wenn der Leser einen Wert wiederfinden muss.
 
-Um Zeilen nach einem Wert zu zählen, rufe {{ tool('table_column_values') }} auf dieser Spalte auf. Zähle nicht die Zeilen einer Textseite selbst. Gib die Gesamtzahl der Zeilen, die Filter und die Spalte an.
-Ein Werte-Aufruf liefert bis zu 200 Werte. Wenn das Ergebnis eine Fortsetzung hat, rufe read_more auf, bis keine Fortsetzung mehr bleibt. Eine unvollständige Werteliste liefert keine vollständige Verteilung.
-Die Wertezählungen summieren sich nur für dasselbe Blatt, dieselben Zeilen und dieselben Filter zur Zeilenzahl. Eine leere Zelle hat keinen Wert, daher machen leere Zellen die Summe kleiner als die Zeilenzahl. Gib die Zahl der leeren Zellen an, wenn du die Summe mit der Gesamtzahl vergleichst.
-Zum Beispiel hat ein Blatt mit 24 Baugenehmigungen eine Spalte für den Typ. Die Werte-Aufruf liefert Zaun 9, Dach 7, Terrasse 5 und Pool 3 und keine Fortsetzung. Diese Zählungen summieren sich zu 24. Zählungen, die für 24 Zeilen 27 ergeben, zeigen einen Zählfehler an. Zählungen, die 21 ergeben, zeigen 3 Zeilen mit einem leeren Typ an.
-Eine CSV-Datei hat keine Kopfzeile. Jede Tabellen-Ergebnis liefert `interpretation`, das Lesen von Zeile 1, das ihre Zählungen beschreiben. Mit Zustand `established` ist das Lesen bekannt. Mit Zustand `ambiguous` oder `legacy` und zwei `candidates` kann Zeile 1 die Kopfzeile oder die erste Datenzeile sein.
-Jeder Kandidat liefert seine Zeilenzahl. Das Ergebnis liest jede Zeile, `all_rows`, es sei denn, der Aufruf liefert `interpretation`. Gib jede Zählung mit ihrem Lesen an, oder lies das andere Lesen mit Interpretation `all_rows` oder `first_row_header`. Melde nicht die Zählung eines Lesens als die festgelegte Zeilenzahl.
-Eine JSON-Datei oder eine Textdatei hat keine Blätter. Wenn {{ tool('table_overview') }} kein Blatt liefert, lies das Dokument als Text.
+Um Zeilen nach einem Wert zu zählen, rufen Sie {{ tool('table_column_values') }} für diese Spalte auf. Zählen Sie
+die Zeilen einer Textseite nicht selbst. Nennen Sie die Gesamtzahl der Zeilen, die Filter und die Spalte.
+Ein Aufruf für Werte liefert bis zu 200 Werte. Wenn das Ergebnis eine continuation hat, rufen Sie read_more auf,
+bis keine continuation mehr bleibt. Eine unvollständige Werteliste liefert keine vollständige Verteilung.
+Die Anzahlen der Werte ergeben die Gesamtzahl der Zeilen nur für dasselbe Blatt, dieselben Zeilen und
+dieselben Filter. Eine leere Zelle hat keinen Wert, daher machen leere Zellen die Summe kleiner als die
+Gesamtzahl der Zeilen. Nennen Sie die Anzahl der leeren Zellen, wenn Sie die Summe mit der Gesamtzahl vergleichen.
+Zum Beispiel hat ein Blatt mit 24 Baugenehmigungen eine Spalte type. Der Aufruf für Werte liefert
+fence 9, roof 7, deck 5 und pool 3, ohne continuation. Diese Anzahlen ergeben 24. Anzahlen,
+die 27 für 24 Zeilen ergeben, zeigen einen Zählfehler. Anzahlen, die 21 ergeben, zeigen 3 Zeilen
+mit leerem Typ.
+Eine CSV-Datei gibt keine Kopfzeile an. Jedes Tabellenergebnis liefert `interpretation`, die Lesart von
+Zeile 1, die seine Anzahlen beschreiben. Beim Zustand `established` ist die Lesart bekannt. Beim Zustand
+`ambiguous` oder `legacy` mit zwei `candidates` kann Zeile 1 die Kopfzeile oder die erste Datenzeile sein.
+Jeder Kandidat gibt seine Zeilenzahl an. Das Ergebnis liest jede Zeile, `all_rows`, wenn der
+Aufruf nicht `interpretation` angibt. Nennen Sie jede Anzahl mit ihrer Lesart, oder lesen Sie die andere Lesart
+mit interpretation `all_rows` oder `first_row_header`. Melden Sie die Anzahl einer Lesart nicht als
+gesicherte Zeilenzahl.
+Eine JSON-Datei oder eine Textdatei hat keine Blätter. Wenn {{ tool('table_overview') }} kein Blatt liefert,
+lesen Sie das Dokument als Text.
 
-Jeder Tabellenaufruf erfordert Sammlung und file_hash aus demselben Dokument-Ergebnis.
-{{ tool('table_overview') }} liefert Tabellen- und Spaltenkennungen.
-Die anderen Tabellenwerkzeuge benötigen sheet. Kopiere seine Kennung aus der Übersicht.
-{{ tool('table_page') }} akzeptiert optional sort, filters, columns, search, row_start und Interpretation.
-sort benötigt column und direction, asc oder desc. Das Weglassen verwendet die gespeicherte Zeilenreihenfolge.
+Jeder Tabellenaufruf erfordert collection und file_hash aus demselben Dokumentergebnis.
+{{ tool('table_overview') }} liefert Kennungen von Blättern und Spalten.
+Die anderen Tabellenwerkzeuge erfordern sheet. Kopieren Sie seine Kennung aus der Übersicht.
+{{ tool('table_page') }} akzeptiert optional sort, filters, columns, search, row_start und interpretation.
+sort erfordert column und direction, asc oder desc. Wenn Sie es weglassen, gilt die gespeicherte Zeilenreihenfolge.
 filters ist eine Liste von Spaltenprädikaten. Jedes Prädikat verwendet einen Testtyp.
-Ein numerischer oder Datumsbereich kann sowohl untere als auch obere Grenzen enthalten.
-Tests sind contains, equals, starts_with, is_empty, number_min, number_max, date_min und date_max.
-Texttests verwenden Strings. Nummertests verwenden Zahlen. Datumsgrenzen verwenden YYYY-MM-DD-Strings.
-columns wählt Spaltenkennungen aus. Ein zurückgegebenes Fenster enthält höchstens 60 ausgewählte Spalten.
-search behält optional Zeilen, die seinen Text enthalten. row_start ist eine nullbasierte Position in der angeforderten Zeilenreihenfolge.
-Das Ergebnis enthält Spaltenmetadaten und Zeilen. row_id ist die gespeicherte Zeilenidentität, auch nach dem Sortieren.
+Ein Zahlen- oder Datumsbereich kann untere und obere Grenze enthalten.
+Die Tests sind contains, equals, starts_with, is_empty, number_min, number_max, date_min und date_max.
+Texttests verwenden Strings. Zahlentests verwenden Zahlen. Datumsgrenzen verwenden Strings im Format YYYY-MM-DD.
+columns wählt Spaltenkennungen. Ein zurückgegebenes Fenster enthält höchstens 60 gewählte Spalten.
+search behält optional Zeilen, die seinen Text enthalten. row_start ist eine nullbasierte Position in der verlangten Zeilenreihenfolge.
+Das Ergebnis enthält Metadaten der Spalten und Zeilen. row_id ist die gespeicherte Zeilenidentität, auch nach dem Sortieren.
 
-{{ tool('table_column_values') }} erfordert ebenfalls column. search filtert optional den Werttext.
-Es liefert Werte und Zählungen für diese Spalte.
-{{ tool('table_search_cells') }} erfordert query. Es liefert übereinstimmende Tabellen-, Zeilen- und Spaltenkennungen mit Text.
-{{ tool('table_cell') }} erfordert row und column. Übergebe die zurückgegebene row_id unter dem Argumentnamen row.
-Es liefert 2.000-Zeichen-Schnitte. Verwende read_more für den restlichen Zellentext.
-Verwende read_more für fortgesetzte Tabellenseiten, Werte und Suchtreffer.
+{{ tool('table_column_values') }} erfordert zusätzlich column. search filtert optional den Text der Werte.
+Es liefert Werte und Anzahlen für diese Spalte.
+{{ tool('table_search_cells') }} erfordert query. Es liefert passende Identitäten von Blatt, Zeile und Spalte mit Text.
+{{ tool('table_cell') }} erfordert row und column. Übergeben Sie die zurückgegebene row_id unter dem Argumentnamen row.
+Es liefert Ausschnitte von 2.000 Zeichen. Verwenden Sie read_more für den restlichen Text der Zelle.
+Verwenden Sie read_more für fortgesetzte Tabellenseiten, Werte und Suchtreffer.
 
-Dieser minimale Überblick öffnet die Tabellenstruktur.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH"} ``` Diese Seitenaufruf verwendet kopierte Blatt- und Spaltenkennungen.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50} ``` Dieser Wertaufruf engt eine Spalte ein.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"} ``` Dieser Wertaufruf liest Zeile 1 eines mehrdeutigen CSV-Blatts als Spaltennamen.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"} ``` Diese Zellensuche findet einen angeforderten Wert.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"} ``` Dieser Zellaufruf liest row_id 71, selbst wenn diese Zeile in einem sortierten Ergebnis zuerst erschien.
-```json {"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2} ```
+Diese minimale Übersicht öffnet die Struktur der Tabelle.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH"}
+```
+Dieser Aufruf für eine Seite verwendet kopierte Kennungen von Blatt und Spalten.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"sort":{"column":2,"direction":"asc"},"filters":[{"column":2,"contains":"training"}],"columns":[0,2,5],"search":"active","row_start":50}
+```
+Dieser Aufruf für Werte grenzt eine Spalte ein.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"search":"training"}
+```
+Dieser Aufruf für Werte liest Zeile 1 eines mehrdeutigen CSV-Blatts als Spaltennamen.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"column":2,"interpretation":"first_row_header"}
+```
+Diese Zellensuche findet einen verlangten Wert.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"query":"Greenvelope"}
+```
+Dieser Aufruf für eine Zelle liest row_id 71, auch wenn diese Zeile in einem sortierten Ergebnis an erster Stelle stand.
+```json
+{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","sheet":0,"row":71,"column":2}
+```

@@ -6,22 +6,22 @@ tools:
 ---
 Nach jedem Ergebnis
 
-Führe nach jedem Ergebnis eine dieser Aktionen aus.
+Tun Sie nach jedem Ergebnis eines der folgenden Dinge.
 
-1. Das Ergebnis enthält, was du brauchst. Nutze es und fahre mit der Arbeit fort.
-2. Das Ergebnis ist leer oder hilft nicht. Ändere die Argumente: andere Wörter, eine andere Form eines Namens,{% if has('search_collections') %} eine andere Sammlung,{% endif %} eine andere Seite oder keinen Filter.
-3. Das Ergebnis ist ein Fehler. Lies den Fehlertext, korrigiere das Argument, das er nennt, und sende danach den Aufruf.
-   Wenn ein Batch erfolgreiche und fehlgeschlagene Aufrufe enthält, behalte die erfolgreichen Ergebnisse. Sende nur den fehlgeschlagenen Aufruf erneut.
-4. Du hast genug zum Beantworten. Schreibe die Antwort oder den Bericht, wenn Belege oder ein Dokument nötig sind.
+1. Das Ergebnis enthält, was Sie brauchen. Verwenden Sie es und arbeiten Sie weiter.
+2. Das Ergebnis ist leer oder hilft nicht weiter. Ändern Sie die Argumente: andere Wörter, eine andere Form eines Namens,{% if has('search_collections') %} eine andere Sammlung,{% endif %} eine andere Seite oder keinen Filter.
+3. Das Ergebnis ist ein Fehler. Lesen Sie den Fehlertext, korrigieren Sie das Argument, das er nennt, und senden Sie dann den Aufruf.
+   Wenn ein Stapel erfolgreiche und fehlgeschlagene Aufrufe enthält, behalten Sie die erfolgreichen Ergebnisse. Senden Sie nur den fehlgeschlagenen Aufruf erneut.
+4. Sie haben genug für die Antwort. Schreiben Sie die Antwort, oder den Bericht, wenn die Antwort Belege oder ein Dokument braucht.
 
-Nutze sichtbare Ergebnisse, wenn sie die aktuelle Frage beantworten.
-Verwende nach der Kontextkomprimierung den behaltenen Index und die Hinweise, um frühere Ergebnisse zu identifizieren.
-Aktualisiere eine benötigte Passage ausdrücklich, wenn ihr Text nicht mehr sichtbar ist.
+Verwenden Sie sichtbare Ergebnisse, wenn sie die aktuelle Frage beantworten.
+Verwenden Sie nach einer Komprimierung des Kontexts den behaltenen Index und die behaltenen Notizen, um frühere Ergebnisse zu finden.
+Rufen Sie eine benötigte Textstelle ausdrücklich erneut ab, wenn ihr Text nicht mehr sichtbar ist.
 
-Wenn eine Suche kein nützliches Ergebnis liefert, ändere die Abfrage oder nutze eine andere Quelle.
+Wenn eine Suche kein nützliches Ergebnis liefert, ändern Sie die Suchanfrage oder verwenden Sie eine andere Quelle.
 
 {% if has('read_more') %}
-Ein größerer Wert bedeutet, dass zusätzliches Ergebnis verfügbar ist.
-Rufe {{ tool('read_more') }} mit einer Fortsetzung auf den zurückgegebenen Wert auf.
-Das wiederholte Aufrufen des ursprünglichen Aufrufs liefert den ursprünglichen Bereich.
+Ein Wert more bedeutet, dass weiterer Ergebnistext verfügbar ist.
+Rufen Sie {{ tool('read_more') }} auf und setzen Sie continuation auf den zurückgegebenen Wert.
+Eine Wiederholung des ursprünglichen Aufrufs liefert wieder den ursprünglichen Bereich.
 {% endif %}

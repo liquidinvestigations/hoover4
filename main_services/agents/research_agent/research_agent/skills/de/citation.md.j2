@@ -1,49 +1,65 @@
 ---
 name: citation
 group: general
-description: wie man die Dokumente zitiert, die eine Antwort unterstützen
+description: wie Sie die Dokumente belegen, die eine Antwort stützen
 tools: cite_documents
 ---
-Zitieter Text landet in einer Arbeitsbereichsdatei. Die `report`-Fähigkeit beschreibt, wie du sie schreibst und bearbeitest.
+Belegter Text kommt in eine Arbeitsbereichsdatei. Der Skill `report` erklärt, wie Sie sie schreiben und bearbeiten.
 
 {% if has('cite_documents') %}
-Verlässt sich dein {{ citation_artefact }} auf {% if web_enabled %}ein internes{% else %}a{% endif %} Dokument, rufe {{ tool('cite_documents') }} auf.
-Gib jedem Dokument, das eine Behauptung oder ein Zitat unterstützt, an. Verwende das zurückgegebene Handle neben der Behauptung.
-Verwende ein Handle neben einer Behauptung, die sich auf ein internes Dokument stützt. Du kannst auch ein Dokument benennen, um es zu identifizieren oder ein Suchergebnis zu beschreiben.
-Ein Vorgang nimmt höchstens 12 Citates. Zitiere, was du verwendet hast, nicht alles, was eine Suche zurückgegeben hat.
-Wenn eine Suche oder ein Lesen Dokumente zurückgibt, die eine Behauptung unterstützen, zitiere diese Dokumente.
+Wenn Ihre {{ citation_artefact }} sich auf {% if web_enabled %}ein internes{% else %}ein{% endif %} Dokument stützt, rufen Sie {{ tool('cite_documents') }} auf.
+Geben Sie jedes Dokument an, das eine Aussage oder ein Zitat stützt. Setzen Sie die zurückgegebene Belegkennung neben diese Aussage.
+Setzen Sie eine Belegkennung neben eine Aussage, die sich auf ein internes Dokument stützt. Sie können
+ein Dokument auch nennen, um es zu identifizieren oder ein Suchergebnis zu beschreiben.
+Ein Aufruf nimmt höchstens 12 Belege an. Belegen Sie, was Sie verwendet haben, nicht alles, was eine Suche geliefert hat.
+Wenn eine Suche oder ein Lesevorgang Dokumente geliefert hat, die eine Aussage stützen, belegen Sie diese Dokumente.
 
-Gib für jeden Citat an:
-- Sammlung und file_hash, übernommen aus einem Werkzeugaufruf-Ergebnis. Erfinde niemals eine file_hash.
-- quote: 5 bis 6 aufeinanderfolgende Wörter, übernommen aus einer Zeile des Dokumententexts. Keine Überschriftszeile (From, To, Cc, Subject, Date). Kein Abschnitt, der ein Fragezeichen enthält.
-- find: optional. Die kürzeste exakte Phrase des Zitats, die die Person sehen muss. Die Karte öffnet das Dokument an dieser Phrase.
-- why: eine Zeile, die sagt, was das Dokument unterstützt.
+Geben Sie für jeden Beleg an:
+- collection und file_hash, kopiert aus einem Werkzeugergebnis. Erfinden Sie nie einen file_hash.
+- quote: 5 bis 6 aufeinanderfolgende Wörter, kopiert aus einer Zeile des Dokumenttexts. Keine Kopfzeile
+  (From, To, Cc, Subject, Date). Keine Textspanne mit einem Fragezeichen.
+- find: optional. Die kürzeste genaue Wendung des Zitats, die die Person sehen muss. Die Karte
+  öffnet das Dokument an dieser Wendung.
+- why: eine Zeile, die sagt, was das Dokument stützt.
 
-Schreibe das Handle, das du zurückbekommst, zum Beispiel `[D1]`, in deinen {{ citation_artefact }}, wo du die Behauptung machst.
+Schreiben Sie die Belegkennung, die Sie zurückbekommen, zum Beispiel `[D1]`, an der Stelle in Ihre {{ citation_artefact }}, an der Sie die Aussage machen.
 
-Beispiel. {{ tool('read_documents') if has('read_documents') else 'A tool' }} lieferte in der Sammlung Enron die E-Mail „Re: DRAFT talking points".
-Ihr Text lautet „The talking points look great to me. Best of luck today." Dein {{ citation_artefact }} sagt, dass Jim Steffes den Entwurf genehmigt hat. Rufe {{ tool('cite_documents') }} auf mit collection enron, dem file_hash aus dem Ergebnis, dem Zitat „talking points look great to me", der Suche nach "look great" und der Begründung, warum "Steffes genehmigt den Entwurf vom 27. Dezember".
-Schreibe danach „Steffes approved the draft [D1]." Zitiere nicht „Subject: Re: DRAFT talking points", weil es sich um eine Kopfzeile handelt. Zitiere nicht „Can you check the notes?", weil es eine Frage enthält.
-Zeilenumbrüche, Interpunktion und die `>`-Marken eines zitierten E-Mail müssen nicht übereinstimmen.
-Fehlende oder nicht zurückgegebene Zitate vergeben keinen Handle. Kopiere 5 bis 6 Wörter des Textes, den der Fehler angibt, in das Zitat und wiederhole den Versuch.
-Nur ein zurückgegebenes Handle kennzeichnet eine Quelle. Schreibe niemals dein eigenes Label in eckigen Klammern.
-Schreibe das Handle als Text neben die Aussage. Setze es nicht in Backticks. `[D1]` in Backticks verlinkt nichts.
-Wiederhole das zurückgegebene Dokument-Handle für zusätzliche verifizierte Passagen. Das Dokument hat eine Karte.
+Beispiel. {{ tool('read_documents') if has('read_documents') else 'Ein Werkzeug' }} hat die E-Mail "Re: DRAFT talking points" in der Sammlung enron geliefert.
+Ihr Text sagt "The talking points look great to me. Best of luck today." Ihre {{ citation_artefact }} sagt,
+dass Jim Steffes den Entwurf genehmigt hat. Rufen Sie {{ tool('cite_documents') }} auf, mit collection enron, dem
+file_hash aus dem Ergebnis, dem quote "talking points look great to me", find "look great"
+und why "Steffes genehmigt den Entwurf vom 27. Dezember".
+Schreiben Sie dann "Steffes hat den Entwurf genehmigt [D1]."
+Zitieren Sie nicht "Subject: Re: DRAFT talking points", denn das ist eine Kopfzeile. Zitieren Sie nicht
+"Can you check the notes?", denn es enthält ein Fragezeichen.
+Zeilenumbrüche, Satzzeichen und die `>`-Zeichen einer zitierten E-Mail müssen nicht übereinstimmen.
+Fehlende oder nicht vorhandene Zitate vergeben keine Belegkennung. Kopieren Sie 5 bis 6 Wörter des Kandidatentexts, den der Fehler nennt, in quote und versuchen Sie es erneut.
+Nur eine zurückgegebene Belegkennung kennzeichnet eine Quelle. Schreiben Sie nie eine eigene Kennzeichnung in eckigen Klammern.
+Schreiben Sie die Belegkennung als Text neben die Aussage. Setzen Sie sie nicht in Backticks. `[D1]` in Backticks verlinkt nichts.
+Verwenden Sie die zurückgegebene Belegkennung des Dokuments für weitere geprüfte Textstellen erneut. Das Dokument hat eine Karte.
 {% if citation_resolver == "lead" %}
-Der leitende Forscher löst sie auf, sodass ein Handle, den du nie vergeben hast, für niemanden nützlich ist.
+Die leitende Recherche löst sie auf, daher nützt eine Belegkennung, die Sie nie vergeben haben, niemandem.
 {% endif %}
 {% endif %}
 {% include "citation_failures.j2" %}
 
 {% if has('cite_documents') %}
-Das Argument citations ist eine Liste von Dokument-Zitationsobjekten.
-Jedes Objekt benötigt collection und file_hash. quote enthält 5 bis 6 aufeinanderfolgende Wörter der genauen Quellformulierung.
-Wiederhole collection und file_hash in jedem Objekt, auch bei separaten Zitaten aus demselben Dokument.
+Das Argument citations ist eine Liste von Dokumentbeleg-Objekten.
+Jedes Objekt erfordert collection und file_hash. quote enthält 5 bis 6 aufeinanderfolgende Wörter im genauen Wortlaut der Quelle.
+Wiederholen Sie collection und file_hash in jedem Objekt, auch bei getrennten Zitaten aus demselben Dokument.
 Objekte erben keine Argumente von früheren Objekten.
-find wählt optional eine genaue Phrase innerhalb von quote aus. Bei Weglassen wird das ganze Zitat verwendet.
-term hält optional die ursprüngliche Suchabfrage fest. why gibt die unterstützte Behauptung an.
-Das Ergebnis liefert eine Zitationskennung für jeden verifizierten Eintrag. Fehlende Einträge nennen ihren Grund und können eine Kandidaten-Passage angeben.
-Wiederhole nur fehlende Einträge mit genauer Formulierung. Ein verifiziertes Zitat verifiziert nicht automatisch den Verfasser oder das Datum dieses Zitats.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]} ``` ```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"original search","why":"This passage supports the stated approval."}]} ``` Diese Charge verifiziert zwei Passagen aus demselben Dokument.
-```json {"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]} ```
+find wählt optional eine genaue Wendung innerhalb von quote. Wenn Sie es weglassen, gilt das ganze Zitat.
+term hält optional die ursprüngliche Suchanfrage fest. why nennt die gestützte Aussage.
+Das Ergebnis liefert für jeden geprüften Eintrag eine Belegkennung. Fehlgeschlagene Einträge nennen ihren Grund und können eine Kandidatentextstelle liefern.
+Wiederholen Sie nur fehlgeschlagene Einträge, mit genauem Wortlaut. Ein geprüftes Zitat prüft für sich allein weder den Verfasser noch das Datum dieses Zitats.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS"}]}
+```
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_5_TO_6_SOURCE_WORDS","find":"COPY_EXACT_PHRASE_INSIDE_QUOTE","term":"ursprüngliche Suche","why":"Diese Textstelle stützt die genannte Genehmigung."}]}
+```
+Dieser Stapel prüft zwei Textstellen aus demselben Dokument.
+```json
+{"citations":[{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_FIRST_5_TO_6_SOURCE_WORDS"},{"collection":"alpha","file_hash":"COPY_RETURNED_HASH","quote":"COPY_SECOND_5_TO_6_SOURCE_WORDS"}]}
+```
 {% endif %}

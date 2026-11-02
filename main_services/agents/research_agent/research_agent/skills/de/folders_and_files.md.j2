@@ -1,88 +1,117 @@
 ---
 name: folders_and_files
 group: technique
-description: So sehen Sie, was eine Sammlung enthält: Datensätze, Ordner, Dateitypen, Anzahl und Daten sowie wie Sie eine Datei nach Name oder Pfad finden
+description: wie Sie sehen, was eine Sammlung enthält: Datensätze, Ordner, Dateitypen, Anzahlen und Daten, und wie Sie eine Datei über ihren Namen oder Pfad finden
 tools: folder_overview, folder_list, folder_search, search_histogram, search_facet_values
-terms: Wörter dafür: Sammlung, Datensatz, Ordner, Verzeichnis, Pfad, Dateiname, Dateityp, Erweiterung, Format, Anzahl, wie viele Dateien, Größe, größte, Übersicht, Inventar, was eine Sammlung enthält, Dokumente pro Jahr.
-not_for: Nicht erforderlich, wenn die Anfrage nur den Inhalt von Dokumenten betrifft.
+terms: Wörter dafür: Sammlung, Datensatz, Ordner, Verzeichnis, Pfad, Dateiname, Dateityp, Endung, Format, Anzahlen, wie viele Dateien, Größe, größte, Überblick, Inventar, was eine Sammlung enthält, Dokumente pro Jahr.
+not_for: Nicht nötig, wenn die Anfrage nur nach dem Inhalt von Dokumenten fragt.
 ---
 Ordner und Dateien
 
 {% if has('list_collections') and has('search_facet_values') %}
-Rufe für eine Sammlungsübersicht {{ tool('list_collections') }} mit {} auf.
-Rufe danach {{ tool('search_facet_values') }} mit {} je einmal für die Dateitypen und Sprachen jeder erlaubten Sammlung auf.
-Die Standardmatrix enthält bereits beide Facetten. Es ist kein separater Aufruf je Sammlung oder Facette nötig.
+Für einen Überblick über die Sammlungen rufen Sie {{ tool('list_collections') }} mit {} auf.
+Rufen Sie dann {{ tool('search_facet_values') }} mit {} einmal für die Dateitypen und Sprachen aller erlaubten Sammlungen auf.
+Die Standardmatrix enthält beide Facetten bereits. Ein getrennter Aufruf je Sammlung oder Facette ist nicht nötig.
 {% endif %}
 
 {% if has('list_collections') %}
-{{ tool('list_collections') }} nimmt keine Argumente an. Es liefert Sammlungsnamen, Dokumentenzahlen und Datensatzahlen.
-```json {} ```
+{{ tool('list_collections') }} hat keine Argumente. Es liefert Sammlungsnamen, Dokumentanzahlen und Datensatzanzahlen.
+```json
+{}
+```
 
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} liefert die Speicherzahlen jeder Sammlung und jedes Datensatzes.
+{{ tool('folder_overview') }} liefert die Speicheranzahlen jeder Sammlung und jedes Datensatzes.
 {% endif %}
 {% if has('folder_list') %}
 {{ tool('folder_list') }} liefert die Unterordner und Dateien eines Ordners eines Datensatzes.
 {% endif %}
 {% if has('folder_search') %}
-Um einen Ordner oder eine Datei nach Name innerhalb eines Datensatzes zu finden, rufe {{ tool('folder_search') }} auf.
+Um einen Ordner oder eine Datei innerhalb eines Datensatzes über den Namen zu finden, rufen Sie {{ tool('folder_search') }} auf.
 {% endif %}
 {% if has('search_collections') %}
-Um eine Datei nach Name in jeder Sammlung zu finden, rufe {{ tool('search_collections') }} mit `filename_only` auf, das auf true gesetzt ist. Gib den Namen oder einen Teil davon als Abfrage an.
+Um eine Datei über den Namen in allen Sammlungen zu finden, rufen Sie {{ tool('search_collections') }} mit
+`filename_only` auf true gesetzt auf. Geben Sie den Namen oder einen Teil davon als Suchanfrage an.
 {% endif %}
 {% if has('search_histogram') %}
 {{ tool('search_histogram') }} zählt die Dokumente einer Suche nach Datum oder Größe.
 {% endif %}
 {% if has('search_facet_values') %}
-{{ tool('search_facet_values') }} liefert die Werte eines Filters, einschließlich Dateitypen, mit Zahlen.
+{{ tool('search_facet_values') }} liefert die Werte eines Filters, auch der Dateitypen, mit Anzahlen.
 {% endif %}
 
-Ein Dateiname oder Pfad kann ein Dokument identifizieren. Die Zeile eines Ergebnisses mit `file_hash` identifiziert es direkt.
+Ein Dateiname oder Pfad kann ein einziges Dokument bezeichnen. Der `file_hash` einer Ergebniszeile bezeichnet es direkt.
 
-Nutze Metadatenwerkzeuge für einen Inventar-Antrag. Deren Zahlen können den Antrag direkt beantworten.
-Inhaltsuchen sind nur nützlich, wenn die Person fragt, was die Dokumente sagen.
+Verwenden Sie Metadatenwerkzeuge für eine Anfrage nach einem Inventar. Ihre Anzahlen können die Anfrage direkt beantworten.
+Inhaltssuchen sind nur nützlich, wenn die Person fragt, was die Dokumente sagen.
 
 {% if has('search_facet_values') %}
-Rufe {{ tool('search_facet_values') }} für mehrere Sammlungen und Facetten auf.
+Rufen Sie {{ tool('search_facet_values') }} einmal für mehrere Sammlungen und Facetten auf.
 Die Argumente sind collection, facets, query und ids.
-Lass collection weg oder gib [] für jede erlaubte Sammlung an. Gib einen Namen oder eine Liste an, um die Auswahl einzuengen.
-Lass facets für ["file_types", "language"] weg. Gib eine Liste exakter Facettennamen für andere Verteilungen an.
-Verwende file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc, re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money oder re_crypto_wallet.
-file_type ist ungültig. Verwende file_types.
-query findet Text innerhalb von Facettewerten. Sie durchsucht nicht den Dokumentinhalt.
-ids löst optional bekannte Term-Identifikatoren auf. Gewöhnliche Suchen verwenden Wertetext und benötigen keine Identifikatoren.
+Lassen Sie collection weg oder geben Sie [] an für alle erlaubten Sammlungen. Geben Sie einen Namen oder eine Liste an, um die Auswahl einzuschränken.
+Lassen Sie facets weg für ["file_types", "language"]. Geben Sie eine Liste genauer Facettennamen für andere Verteilungen an.
+Verwenden Sie file_types, file_paths, email_from, email_to, struct_flags, ner_per, ner_org, ner_loc, ner_misc,
+re_email, language, red_flags, re_phone, re_bank_account, re_company_id, re_money oder re_crypto_wallet.
+file_type ist ungültig. Verwenden Sie file_types.
+query findet Text innerhalb von Facettenwerten. Es durchsucht nicht den Inhalt von Dokumenten.
+ids löst optional bekannte Begriffskennungen auf. Gewöhnliche Suchen verwenden den Text der Werte und brauchen keine Kennungen.
 
-Das Ergebnis hat Spalten und Artikel. Jede Zeile beginnt mit ihrer Sammlung.
-Jede Facettenzelle enthält [text, count]-Paare. Kopiere den Text in facet_filters für eine spätere Inhaltssuche.
-Eine Nullzelle hat einen gemeldeten Fehler. Eine leere Zelle hat keine zurückgegebenen Werte.
-Zähler beziehen sich auf indizierte Dokumenttreffer je Wert. Mehrere Werte können auf ein Dokument zutreffen.
-Füge keine Facettenzähler hinzu, um eine eindeutige Gesamtzahl zu behaupten. Inventargesamtzahlen kommen aus list_collections.
-Die Standard-Facetteliste kann unübliche Werte auslassen. Verwende query, um einen bestimmten Wert zu finden.
-Verwende mehr mit read_more, wenn das Ergebnis weitergeht.
+Das Ergebnis hat columns und items. Jede Zeile beginnt mit ihrer Sammlung.
+Jede Facettenzelle enthält Paare [text, count]. Kopieren Sie text für eine spätere Inhaltssuche in facet_filters.
+Eine Zelle mit null hat einen gemeldeten Fehler. Eine leere Zelle hat keine zurückgegebenen Werte.
+Die Anzahlen beziehen sich auf indizierte Dokumenttreffer je Wert. Auf ein Dokument können mehrere Werte zutreffen.
+Addieren Sie keine Facettenanzahlen, um eine Gesamtzahl verschiedener Dokumente zu behaupten. Inventarsummen stammen aus list_collections.
+Die Standardliste der Facetten kann seltene Werte auslassen. Verwenden Sie query, um einen bestimmten Wert zu finden.
+Verwenden Sie more mit read_more, wenn das Ergebnis weitergeht.
 
-Dieser minimale Aufruf inventarisiert Dateiformate und Sprachen in erlaubten Sammlungen.
-```json {} ``` Dieser Aufruf vergleicht zwei ausgewählte Sammlungen und durchsucht deren E-Mail-Adressen-Werte.
-```json {"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"} ```
+Dieser minimale Aufruf erstellt ein Inventar der Dateiformate und Sprachen über alle erlaubten Sammlungen.
+```json
+{}
+```
+Dieser Aufruf vergleicht zwei ausgewählte Sammlungen und durchsucht ihre Werte für E-Mail-Adressen.
+```json
+{"collection":["alpha","beta"],"facets":["email_from","email_to","re_email"],"query":"example.org"}
+```
 {% endif %}
 {% if has('folder_overview') %}
-{{ tool('folder_overview') }} erfordert collection. dataset wählt optional ein Dataset aus.
-Dieser Aufruf liest alle Dataset-Speicherzahlen innerhalb einer Sammlung.
-```json {"collection":"alpha"} ``` Dieser Aufruf wählt ein Dataset aus.
-```json {"collection":"alpha","dataset":"files"} ```
+{{ tool('folder_overview') }} erfordert collection. dataset wählt optional einen Datensatz.
+Dieser Aufruf liest alle Speicheranzahlen der Datensätze einer Sammlung.
+```json
+{"collection":"alpha"}
+```
+Dieser Aufruf wählt einen Datensatz.
+```json
+{"collection":"alpha","dataset":"files"}
+```
 {% endif %}
 {% if has('folder_list') %}
-{{ tool('folder_list') }} erfordert collection und dataset. node_id wählt optional einen zurückgegebenen Ordnerknoten aus.
-Lasse node_id weg, um den Dataset-Wurzelknoten zu lesen. Kopiere Knoten-Identifikatoren von Kindern in spätere Aufrufe.
-```json {"collection":"alpha","dataset":"files"} ``` ```json {"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_list') }} erfordert collection und dataset. node_id wählt optional einen zurückgegebenen Ordnerknoten.
+Lassen Sie node_id weg, um die Wurzel des Datensatzes zu lesen. Kopieren Sie die Knotenkennungen der Unterordner in spätere Aufrufe.
+```json
+{"collection":"alpha","dataset":"files"}
+```
+```json
+{"collection":"alpha","dataset":"files","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('folder_search') %}
-{{ tool('folder_search') }} erfordert collection, dataset und query. node_id begrenzt die Suche optional auf einen Ordner.
-```json {"collection":"alpha","dataset":"files","query":"report"} ``` ```json {"collection":"alpha","dataset":"files","query":"report","node_id":"COPY_RETURNED_NODE_ID"} ```
+{{ tool('folder_search') }} erfordert collection, dataset und query. node_id beschränkt die Suche optional auf einen Ordner.
+```json
+{"collection":"alpha","dataset":"files","query":"Bericht"}
+```
+```json
+{"collection":"alpha","dataset":"files","query":"Bericht","node_id":"COPY_RETURNED_NODE_ID"}
+```
 {% endif %}
 {% if has('search_histogram') %}
 {{ tool('search_histogram') }} akzeptiert dieselben Filter wie search_collections, außer sort und queries.
-field ist date, mentioned_date oder size. Es ist standardmäßig date. query ist standardmäßig eine leere Abfrage.
-Ein weggelassenes collection deckt jede erlaubte Sammlung ab. Das Ergebnis liefert Buckets und das ausgewählte Feld.
-```json {} ``` ```json {"collection":["alpha","beta"],"field":"size","query":"report","size_min":1024,"facet_filters":{"file_types":["pdf"]}} ```
+field ist date, mentioned_date oder size. Der Standard ist date. query ist standardmäßig eine leere Suchanfrage.
+Wenn collection fehlt, gilt es für alle erlaubten Sammlungen. Das Ergebnis liefert buckets und das gewählte Feld.
+```json
+{}
+```
+```json
+{"collection":["alpha","beta"],"field":"size","query":"Bericht","size_min":1024,"facet_filters":{"file_types":["pdf"]}}
+```
 {% endif %}

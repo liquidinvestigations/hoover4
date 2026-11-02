@@ -1,19 +1,22 @@
 ---
 name: todo_upkeep
 group: stumble
-description: So behalten Sie den Plan mit update_plan, seine Schritte und deren Status
+description: wie Sie den Plan mit update_plan, seinen Schritten und deren Status führen
 tools: update_plan
 ---
-Den Plan beibehalten
+Den Plan führen
 
-{{ tool('update_plan') }} nimmt das Ziel und die ganze Liste der Schritte. Jeder Schritt hat Text und Status, und ein abgeschrittener Schritt hat eine kurze Notiz.
+{{ tool('update_plan') }} nimmt das Ziel und die ganze Liste der Schritte. Jeder Schritt hat text und status, und ein Schritt mit dem Status done hat eine kurze Notiz.
 
-1. Sende die ganze Liste in jedem Aufruf in der richtigen Reihenfolge. Ein Schritt, den du welässt, ist nicht mehr im Plan.
-2. Gib jeden Schritt als Objekt mit Text und Status an. status ist pending oder done.
-3. Ein Schritt ist pending, bis seine Arbeit endet. Dann sende ihn als done mit einer Notiz, etwa found, not found oder replaced.
-4. Behalte den Text eines Schritts gleich, wenn nur sein Status ändert. Der Schritt behält dann seine id.
-5. Ein neues Ziel startet einen neuen Plan.
-6. {{ tool('update_plan') }} behält nur den Plan. Schreibe einen Bericht oder eine andere Datei mit {{ tool('write_file') }}.
+1. Senden Sie in jedem Aufruf die ganze Liste, in der Reihenfolge. Ein Schritt, den Sie weglassen, ist nicht mehr im Plan.
+2. Geben Sie jeden Schritt als Objekt mit text und status an. status ist pending oder done.
+3. Ein Schritt hat den Status pending, bis seine Arbeit endet. Senden Sie ihn dann als done mit einer Notiz, zum Beispiel gefunden, nicht gefunden oder ersetzt.
+4. Lassen Sie den Text eines Schritts gleich, wenn sich nur sein Status ändert. Der Schritt behält dann seine ID.
+5. Ein neues Ziel beginnt einen neuen Plan.
+6. {{ tool('update_plan') }} speichert nur den Plan. Schreiben Sie einen Bericht oder eine andere Datei mit {{ tool('write_file') }}.
 
-Dies ist ein Beispiel. Schritt 1 hat gefunden, was du brauchst, und Schritt 2 ist noch offen.
-```json {"goal":"Find the approval date.","steps":[{"text":"Find the message.","status":"done","note":"found"},{"text":"Read the supporting passage.","status":"pending"}]} ``` Das Ergebnis zeigt den ganzen Plan mit der id jedes Schritts. Ein Aufruf, der nichts ändert, wird unverändert zurückgegeben. Korrigiere das genannte Feld, bevor du erneut aufrufst.
+Dies ist ein Beispiel. Schritt 1 hat gefunden, was Sie brauchen, und Schritt 2 ist noch offen.
+```json
+{"goal":"Das Genehmigungsdatum finden.","steps":[{"text":"Die Nachricht finden.","status":"done","note":"gefunden"},{"text":"Die stützende Textstelle lesen.","status":"pending"}]}
+```
+Das Ergebnis zeigt den ganzen Plan mit der ID jedes Schritts. Ein Aufruf, der nichts ändert, liefert unchanged. Korrigieren Sie das genannte Feld, bevor Sie erneut aufrufen.
