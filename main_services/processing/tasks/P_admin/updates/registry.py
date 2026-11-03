@@ -101,7 +101,8 @@ STEPS: Tuple[UpdateStep, ...] = (
         explanation="{files} files are JSON or JSON Lines files without a table of the current reader, or "
                     "tables that an earlier reader cut at 300 columns. They are read again. JSON files "
                     "that an earlier reader read as CSV get their JSON table, and the earlier cells stop "
-                    "being shown.",
+                    "being shown. The current reader stores a JSON null as an empty cell, and nested JSON "
+                    "as indented text.",
         runs="Table reading, then the file type and indexing of these files"),
     UpdateStep(
         step_id="ocr", scope=SCOPE_DATASET, version=1,

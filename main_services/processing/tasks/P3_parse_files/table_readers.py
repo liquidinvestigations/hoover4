@@ -830,7 +830,10 @@ def json_number_cell(source_row: int, column_id: int, text: str) -> RawCell:
 
 
 def json_cell(source_row: int, column_id: int, code: str, text: str) -> RawCell:
-    """One cell of the reader protocol: `s` string, `n` number, `b` bool, `z` null, `j` JSON text."""
+    """One cell of the reader protocol: `s` string, `n` number, `b` bool, `j` JSON text.
+
+    The reader writes no cell for a JSON `null`, so the cell stays empty.
+    """
     if code == "n":
         return json_number_cell(source_row, column_id, text)
     if code == "b":

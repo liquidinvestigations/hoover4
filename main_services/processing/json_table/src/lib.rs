@@ -29,6 +29,9 @@ pub const MAX_VALUE_BYTES: u64 = 64 * 1024 * 1024;
 /// Bytes of cell text that the program writes. The collector truncates at 64 KiB and
 /// records the truncation, so the program writes a few bytes more than that limit.
 pub const MAX_CELL_OUTPUT_BYTES: usize = 64 * 1024 + 4;
+/// The most bytes of an indented JSON cell. A nested value whose indented text is longer
+/// is written compact and cut at [`MAX_CELL_OUTPUT_BYTES`].
+pub const MAX_PRETTY_BYTES: usize = 64 * 1024;
 /// Bytes that the format check reads.
 pub const SAMPLE_BYTES: usize = 64 * 1024;
 
@@ -398,7 +401,6 @@ pub enum CellKind {
     Text,
     Number,
     Bool,
-    Null,
     Json,
 }
 
@@ -408,7 +410,6 @@ impl CellKind {
             CellKind::Text => "s",
             CellKind::Number => "n",
             CellKind::Bool => "b",
-            CellKind::Null => "z",
             CellKind::Json => "j",
         }
     }
@@ -449,7 +450,7 @@ impl FrozenSchema {
         self.emit(0, value, 0, &mut out, &mut rest);
         if !rest.is_empty() {
             if let Some(id) = self.rest_column {
-                out.push((id, CellKind::Json, cap_text(Value::Object(rest).to_string())));
+                out.push((id, CellKind::Json, json_text(&Value::Object(rest))));
             }
         }
         out.sort_by_key(|cell| cell.0);
@@ -460,7 +461,7 @@ impl FrozenSchema {
         let n = &self.schema.nodes[node];
         if n.collapsed {
             if let Some(&id) = self.scalar_column.get(&node) {
-                out.push(cell_of(id, value));
+                out.extend(cell_of(id, value));
             }
             return;
         }
@@ -480,21 +481,36 @@ impl FrozenSchema {
             }
             _ => {
                 if let Some(&id) = self.scalar_column.get(&node) {
-                    out.push(cell_of(id, value));
+                    out.extend(cell_of(id, value));
                 }
             }
         }
     }
 }
 
-fn cell_of(id: u32, value: &Value) -> OutCell {
-    match value {
+/// The cell of one value. A JSON `null` is an empty cell, so the program writes none.
+fn cell_of(id: u32, value: &Value) -> Option<OutCell> {
+    Some(match value {
         Value::String(text) => (id, CellKind::Text, cap_text(text.clone())),
         Value::Number(number) => (id, CellKind::Number, number.to_string()),
         Value::Bool(flag) => (id, CellKind::Bool, flag.to_string()),
-        Value::Null => (id, CellKind::Null, "null".into()),
-        other => (id, CellKind::Json, cap_text(other.to_string())),
+        Value::Null => return None,
+        other => (id, CellKind::Json, json_text(other)),
+    })
+}
+
+/// The text of a nested value: indented when it fits [`MAX_PRETTY_BYTES`], otherwise
+/// compact and cut at [`MAX_CELL_OUTPUT_BYTES`].
+pub fn json_text(value: &Value) -> String {
+    let compact = value.to_string();
+    if compact.len() <= MAX_PRETTY_BYTES {
+        if let Ok(pretty) = serde_json::to_string_pretty(value) {
+            if pretty.len() <= MAX_PRETTY_BYTES {
+                return pretty;
+            }
+        }
     }
+    cap_text(compact)
 }
 
 /// Text cut at [`MAX_CELL_OUTPUT_BYTES`] on a character boundary.

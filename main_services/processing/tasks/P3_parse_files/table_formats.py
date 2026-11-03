@@ -100,8 +100,9 @@ READER_JSON = "json"
 #: Version 3 also records every plausible reading of row 1 in `table_sheets`
 #: (`parse_table.header_reading`). Version 4 adds the JSON reader, keeps up to 1000
 #: columns, writes each parse as a new generation, and records a valid parse without a
-#: table as an `empty` manifest.
-READER_VERSION = 4
+#: table as an `empty` manifest. Version 5 stores a JSON `null` as an empty cell, and a
+#: nested JSON value as indented text when it fits the cell limit.
+READER_VERSION = 5
 
 #: How a reader read row 1 of a sheet, as `table_sheets.header_state` stores it.
 HEADER_ESTABLISHED = "established"

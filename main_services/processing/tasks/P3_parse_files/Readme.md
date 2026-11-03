@@ -450,7 +450,11 @@ it as CSV. A CSV file with JSON values in its cells stays a CSV table. `sniff_ta
 not accept JSON Lines as delimited text.
 
 Numbers keep their source text. An integer inside Int64 is an `int` cell. A larger
-integer is a `text` cell with the source digits. A finite decimal is a `float` cell.
+integer is a `text` cell with the source digits. A finite decimal is a `float` cell. A JSON
+`null` is an empty cell, so search does not match the word `null` there. A nested object or
+array is a `text` cell with JSON indented by two spaces when that text has at most 64 KiB,
+and compact JSON cut at 64 KiB otherwise. Reader version 5 introduced both rules, and the
+`tables` processing update reads the JSON files of earlier versions again.
 
 Two rules decide whether something is a table at all, and the asymmetry is the point. A
 binary spreadsheet is a table on the strength of its format, so one non-empty cell is

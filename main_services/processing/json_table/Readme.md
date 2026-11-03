@@ -31,10 +31,11 @@ Every other file is one JSON value. The Python check `json_grammar` uses the sam
   A key escapes a backslash and a dot with a backslash. An empty key is `\e`. A key `$` or `*` alone gets a backslash.
   The label of `{"a.b": 1}` is `a\.b`, and the label of `{"a": {"b": 2}}` is `a.b`.
 - Columns follow the first appearance of their path. A key that a later row adds gets a later column.
-- An object becomes dot paths up to 16 levels. A deeper object, an empty object and an array are compact JSON text in one cell.
+- An object becomes dot paths up to 16 levels. A deeper object, an empty object and an array are JSON text in one cell.
+  The text is indented with two spaces when the indented text has at most 64 KiB. A larger value is compact JSON, cut at 64 KiB.
 - A path that holds a scalar in one row and an object in another gets two columns: the path and its child paths.
 - A row that is not an object fills the column `$`.
-- `null` is a cell with the text `null`. A missing key is an empty cell.
+- `null` and a missing key are empty cells. The program writes no cell for them.
 - A duplicate key keeps its last value.
 - A sheet with more than 1000 columns collapses objects into JSON text columns.
   The object with the most columns collapses first, and the earliest one wins a tie. This repeats until the sheet fits.
@@ -68,7 +69,7 @@ Each stdout line is one JSON object.
 |---|---|
 | `{"t":"none","reason":...}` | Valid input without a table. Exit status 0. |
 | `{"t":"sheets","mode":"json" or "jsonl","sheets":[...]}` | The frozen sheets with their columns: `id`, `label`, `path`, `json`, `rest`. |
-| `{"t":"row","s":<sheet>,"r":<row>,"c":[[<column>,<kind>,<text>],...]}` | One row. Kind `s` string, `n` number, `b` bool, `z` null, `j` JSON text. |
+| `{"t":"row","s":<sheet>,"r":<row>,"c":[[<column>,<kind>,<text>],...]}` | One row. Kind `s` string, `n` number, `b` bool, `j` JSON text. |
 | `{"t":"end"}` | The last line of a complete read. |
 
 A read error exits with status 1 and writes the message to stderr. A JSON file that is malformed before any sheet is found gives `none`.

@@ -54,13 +54,22 @@ fn numbers_keep_their_source_text() {
 }
 
 #[test]
-fn null_is_a_cell_and_missing_is_none() {
+fn null_and_missing_are_empty_cells() {
     let text = "{\"a\": null, \"b\": 1}\n{\"b\": 2}\n";
     let sheets = sheets_of(text);
     assert_eq!(sheets[0].name, "");
     assert_eq!(labels(&sheets[0]), vec!["a", "b"]);
-    assert_eq!(sheets[0].schema.cells(&json!({"a": null, "b": 1}))[0], (1, CellKind::Null, "null".into()));
+    assert_eq!(sheets[0].schema.cells(&json!({"a": null, "b": 1})), vec![(2, CellKind::Number, "1".into())]);
     assert_eq!(sheets[0].schema.cells(&json!({"b": 2})), vec![(2, CellKind::Number, "2".into())]);
+}
+
+#[test]
+fn nested_json_is_indented_when_it_fits_and_compact_and_cut_otherwise() {
+    assert_eq!(json_text(&json!({"k": [1, null]})), "{\n  \"k\": [\n    1,\n    null\n  ]\n}");
+    let big = Value::Array(vec![Value::String("x".repeat(1000)); 100]);
+    let text = json_text(&big);
+    assert_eq!(text.len(), MAX_CELL_OUTPUT_BYTES);
+    assert!(text.starts_with("[\"xxx"));
 }
 
 #[test]
@@ -68,7 +77,7 @@ fn late_columns_get_later_ids_and_mixed_rows_use_the_root_column() {
     let text = "{\"a\": 1}\n[1, 2]\n{\"a\": 2, \"z\": {\"y\": true}}\n";
     let sheets = sheets_of(text);
     assert_eq!(labels(&sheets[0]), vec!["$", "a", "z.y"]);
-    assert_eq!(sheets[0].schema.cells(&json!([1, 2])), vec![(1, CellKind::Json, "[1,2]".into())]);
+    assert_eq!(sheets[0].schema.cells(&json!([1, 2])), vec![(1, CellKind::Json, "[\n  1,\n  2\n]".into())]);
 }
 
 #[test]
@@ -89,8 +98,8 @@ fn duplicate_keys_keep_the_last_value() {
 fn arrays_inside_rows_are_json_text() {
     let sheets = sheets_of(r#"[{"tags": ["x", "y"], "kids": [{"n": 1}]}]"#);
     let cells = sheets[0].schema.cells(&json!({"tags": ["x", "y"], "kids": [{"n": 1}]}));
-    assert_eq!(cells[0].2, "[\"x\",\"y\"]");
-    assert_eq!(cells[1].2, "[{\"n\":1}]");
+    assert_eq!(cells[0].2, "[\n  \"x\",\n  \"y\"\n]");
+    assert_eq!(cells[1].2, "[\n  {\n    \"n\": 1\n  }\n]");
 }
 
 #[test]
@@ -132,7 +141,7 @@ fn wide_nested_objects_collapse_deterministically() {
     assert!(a[0].schema.columns[0].json);
     assert_eq!(a[0].schema.columns.len(), 1 + 600 + 1);
     let cells = a[0].schema.cells(&Value::Object(row));
-    assert!(cells[0].2.starts_with("{\"k0\":0"));
+    assert!(cells[0].2.starts_with("{\n  \"k0\": 0"));
 }
 
 #[test]
