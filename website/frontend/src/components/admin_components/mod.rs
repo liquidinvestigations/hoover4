@@ -15,6 +15,10 @@ pub use live_chats_panel::LiveChatsPanel;
 pub use processing_updates_panel::ProcessingUpdatesPanel;
 
 use dioxus::prelude::*;
+use dioxus_free_icons::icons::md_file_icons::MdCloudUpload;
+use dioxus_free_icons::Icon;
+
+use crate::tr;
 
 // Administration styles. Every value reads a property from `assets/main.css`, which
 // holds the reference values of the search and document pages, so administration text
@@ -35,6 +39,16 @@ pub const LINK: &str = "color: var(--x-link); text-decoration: none; font-weight
 pub const BTN: &str = "background: white; color: var(--x-ink-strong); border: 1px solid; border-color: var(--x-border-strong); padding: 4px 11px; border-radius: 16px; cursor: pointer; font-size: var(--x-text-body); font-weight: 500; white-space: nowrap;";
 pub const BTN_PRIMARY: &str = "background-color: var(--x-link); color: white; border: none; padding: 4px 15px; border-radius: 16px; cursor: pointer; font-size: var(--x-text-body); font-weight: 500; white-space: nowrap;";
 pub const BTN_DANGER: &str = "background-color: var(--x-danger); color: white; border: none; padding: 4px 11px; border-radius: 16px; cursor: pointer; font-size: var(--x-text-body); font-weight: 500; white-space: nowrap;";
+/// The opacity and cursor of a button that can be disabled. Both states write both
+/// properties: the interpreter keeps an old longhand that a new style string lacks, so a
+/// style that only drops `opacity` leaves an enabled button faded.
+pub fn action_state(enabled: bool) -> &'static str {
+    if enabled {
+        "opacity: 1; cursor: pointer;"
+    } else {
+        "opacity: 0.5; cursor: not-allowed;"
+    }
+}
 pub const BTN_SMALL: &str = "background: white; color: var(--x-ink-strong); border: 1px solid; border-color: var(--x-border-strong); padding: 4px 11px; border-radius: 14px; cursor: pointer; font-size: var(--x-text-detail); white-space: nowrap;";
 pub const BTN_SMALL_DANGER: &str = "background: white; color: var(--x-danger); border: 1px solid; border-color: var(--x-danger); padding: 4px 11px; border-radius: 14px; cursor: pointer; font-size: var(--x-text-detail); white-space: nowrap;";
 
@@ -52,6 +66,22 @@ pub const SUBHEADING: &str = "margin: 15px 0 4px; font-size: var(--x-text-body);
 
 pub const PAGE_TITLE: &str = "margin: 0 0 15px; color: var(--x-ink-strong); font-size: var(--x-text-page); line-height: var(--x-line-page); font-weight: 600;";
 pub const HELP_TEXT: &str = "color: var(--x-ink-muted); font-size: var(--x-text-detail);";
+
+/// The mark of a collection or dataset that accepts uploads, after its name in a list.
+#[component]
+pub fn UploadsBadge() -> Element {
+    rsx! {
+        span {
+            class: "x-uploads-badge",
+            title: tr!("admin-uploads-badge-title"),
+            style: "display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 0 7px; \
+                    border: 1px solid; border-color: var(--x-link); border-radius: 999px; color: var(--x-link); \
+                    font-size: var(--x-text-xs); font-weight: 500; vertical-align: middle; white-space: nowrap;",
+            Icon { icon: MdCloudUpload, width: 12, height: 12 }
+            {tr!("admin-uploads-badge")}
+        }
+    }
+}
 
 /// A green success bar with a check mark.
 #[component]

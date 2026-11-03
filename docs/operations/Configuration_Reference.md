@@ -495,7 +495,7 @@ again.
 | `max_batch_files` | `10000` | The most files in one batch. |
 | `max_batch_bytes` | `10737418240` | The most bytes in one batch. |
 | `max_file_bytes` | `10737418240` | The most bytes in one file. |
-| `chunk_bytes` | `33554432` | The most bytes of one tus `PATCH`. Keep it below the body limit of every proxy in front of the website. |
+| `chunk_bytes` | `786432` | The most bytes of one tus `PATCH`. Keep it below the body limit of every proxy in front of the website. The default stays below the 1 MiB body limit of an nginx proxy with its default settings. |
 | `abandon_hours` | `24` | A batch with no acknowledged chunk for this many hours is committed with the files that arrived. `0` commits every idle batch at the next hourly sweep. |
 
 Each value is a whole number. [deploy.py](../../deploy.py) refuses a value below 1, except `abandon_hours`,

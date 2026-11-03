@@ -24,7 +24,7 @@
 use std::time::Duration;
 
 use common::admin_types::{
-    DatasetFolderOption, DatasetMountOption, DatasetOcrPanel, DatasetOperationStatus, DatasetPdfVariant,
+    CollectionOcrDefaults, DatasetFolderOption, DatasetMountOption, DatasetOcrPanel, DatasetOperationStatus, DatasetPdfVariant,
     DatasetTextVariant, DatasetUploadsSetting,
 };
 use common::current_user::CurrentUser;
@@ -669,18 +669,26 @@ pub async fn admin_apply_ocr_languages(
     })
 }
 
-/// The collection's default languages, as `(tesseract, easyocr)`.
+/// The collection's default languages and the languages that each service reports.
 ///
-/// Falls back to the same values `tasks/dataset_config.py` falls back to, so the form
-/// shows what a new dataset would actually get rather than an empty box.
+/// The defaults fall back to the same values `tasks/dataset_config.py` falls back to, so
+/// the form shows what a new dataset would actually get.
 pub async fn admin_get_collection_ocr_defaults(
     user: &CurrentUser,
     collectionname: String,
-) -> anyhow::Result<(String, String)> {
+) -> anyhow::Result<CollectionOcrDefaults> {
     guard::require_admin(user)?;
     collection_db_name(&collectionname)?;
     let (tesseract, easyocr) = inherited_ocr_languages(&collectionname).await?;
-    Ok((tesseract.value, easyocr.value))
+    let (inventory, tesseract_available) = tokio::join!(easyocr_inventory(), tesseract_languages_available());
+    Ok(CollectionOcrDefaults {
+        tesseract_languages: tesseract.value,
+        easyocr_languages: easyocr.value,
+        tesseract_available,
+        easyocr_supported: inventory.supported,
+        easyocr_preloaded: inventory.preloaded,
+        easyocr_configured: !env_url("OCR_EASYOCR_URL").is_empty(),
+    })
 }
 
 /// Save the collection defaults and start the processing updates of the datasets that

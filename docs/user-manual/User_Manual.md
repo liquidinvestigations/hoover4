@@ -732,8 +732,9 @@ Inside a folder of the upload dataset, **Upload** opens the upload page at that 
    A path that exists in the folder stops the upload, and the page lists those paths.
 
 A dialog shows the progress. **Pause** stops after the current part of each file, and **Continue** goes on.
-**Stop upload** ends the transfer. The files that arrived are kept and processed, and the rest are marked not sent.
-A file that fails after the automatic retries is listed with its error, and **Retry failed files** sends it again.
+The page tries each file up to 3 times. A file that fails 3 times is listed with its error and is not uploaded.
+After the last file, processing starts without an action from you, also when some files failed. Upload the failed files again later.
+**Abort** stops the upload and deletes its files, also the files that are already in the folder. Nothing is processed, and the page returns to an empty selection.
 The browser asks before you close the tab while files are in transfer.
 
 After the last file, the detail page of the upload opens.
@@ -750,7 +751,7 @@ The upload ends when every file has arrived, or when you select **Finish upload*
 
 **Uploads** lists every upload into your upload collections, newest first, with the account that sent it.
 An upload that gets no new bytes for 24 hours, the default, ends automatically, and the files that arrived are processed.
-You cannot delete an uploaded file from these pages.
+You cannot delete an uploaded file from these pages after its upload ended. While an upload is open, **Abort** on its detail page deletes it.
 
 The administrator sets the limits of one upload. The default limits are 10,000 files and 10 GiB.
 Uploads were tested up to 1,000 files, one file of 256 MiB, and an archive of 1,000 files.

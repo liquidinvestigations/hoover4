@@ -137,6 +137,7 @@ shared-uploads-this-upload-has-ended = Bu yükleme sona erdi.
 shared-uploads-the-path-exists-in-the-dataset = Yol, veri kümesi klasöründe zaten var.
 shared-uploads-the-server-could-not-recover-this = Sunucu bu dosyayı kurtaramadı.
 shared-uploads-the-dataset-was-deleted-during-this = Veri kümesi bu yükleme sırasında silindi.
+shared-uploads-the-upload-was-aborted = Yükleme iptal edildi.
 shared-uploads-the-dataset-was-purged-during-this = Veri kümesi bu yükleme sırasında temizlendi.
 shared-uploads-selected-twice = İki kez seçildi.
 shared-uploads-the-path-is-also-a-folder = Yol, seçilen başka bir dosyanın klasörü de olmaktadır.

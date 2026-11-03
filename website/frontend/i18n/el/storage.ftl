@@ -85,12 +85,9 @@ uploads-batch-list-uploads = Μεταφορτώσεις
 uploads-driver-drop-files-or-folders-here = Αποθέστε αρχεία ή φακέλους εδώ
 uploads-driver-or-click-to-choose-files = ή κάντε κλικ για να επιλέξετε αρχεία
 uploads-driver-choose-a-folder = Επιλογή φακέλου
-uploads-driver-failed = { $failed_path } Απέτυχε: { $failed_error }
 uploads-driver-retry-finish = Επανάληψη ολοκλήρωσης
-uploads-driver-retry-failed-files = Επανάληψη για τα αρχεία που απέτυχαν
 uploads-driver-continue = Συνέχεια
 uploads-driver-pause = Παύση
-uploads-driver-stop-upload = Διακοπή μεταφόρτωσης
 uploads-upload-button-upload = Μεταφόρτωση
 uploads-upload-loading = Φόρτωση...
 uploads-upload-this-collection-has-two-upload = Αυτή η συλλογή έχει δύο σύνολα δεδομένων μεταφόρτωσης. Ένας διαχειριστής πρέπει να απενεργοποιήσει το ένα.
@@ -130,3 +127,12 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } από { $for
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = { $format_count_problems_len_as_u64 } αρχεία δεν μπορούν να μεταφορτωθούν:
 uploads-upload-files-cannot-be-uploaded-2 = { $format_count_r_problems_len_as_u64 } αρχεία δεν μπορούν να μεταφορτωθούν:
+uploads-driver-abort = Ακύρωση
+uploads-driver-aborting-upload = Ακύρωση μεταφόρτωσης...
+uploads-driver-the-upload-could-not-be-aborted = Η μεταφόρτωση δεν μπόρεσε να ακυρωθεί. Επιλέξτε ξανά Ακύρωση.
+uploads-driver-files-failed = { $count ->
+    [one] { $count } αρχείο απέτυχε μετά από 3 προσπάθειες. Δεν μεταφορτώνεται.
+   *[other] { $count } αρχεία απέτυχαν μετά από 3 προσπάθειες. Δεν μεταφορτώνονται.
+}
+uploads-batch-detail-aborting-upload = Ακύρωση μεταφόρτωσης
+uploads-batch-detail-abort-deletes-the-files = Η Ακύρωση διαγράφει τα αρχεία αυτής της μεταφόρτωσης, και όσα βρίσκονται ήδη στον φάκελο. Δεν ευρετηριάζεται τίποτα.

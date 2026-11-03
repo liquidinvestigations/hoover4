@@ -137,6 +137,7 @@ shared-uploads-this-upload-has-ended = To przesyłanie zakończyło się.
 shared-uploads-the-path-exists-in-the-dataset = Ścieżka istnieje w folderze zbioru danych.
 shared-uploads-the-server-could-not-recover-this = Serwer nie mógł odzyskać tego pliku.
 shared-uploads-the-dataset-was-deleted-during-this = Zbiór danych usunięto podczas tego przesyłania.
+shared-uploads-the-upload-was-aborted = Przesyłanie zostało przerwane.
 shared-uploads-the-dataset-was-purged-during-this = Zbiór danych wyczyszczono podczas tego przesyłania.
 shared-uploads-selected-twice = Wybrano dwa razy.
 shared-uploads-the-path-is-also-a-folder = Ta ścieżka jest też folderem innego wybranego pliku.

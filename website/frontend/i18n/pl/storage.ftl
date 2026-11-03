@@ -85,12 +85,9 @@ uploads-batch-list-uploads = Przesłane pliki
 uploads-driver-drop-files-or-folders-here = Upuść tutaj pliki lub foldery
 uploads-driver-or-click-to-choose-files = lub kliknij, aby wybrać pliki
 uploads-driver-choose-a-folder = Wybierz folder
-uploads-driver-failed = { $failed_path } Niepowodzenie: { $failed_error }
 uploads-driver-retry-finish = Ponów zakończenie
-uploads-driver-retry-failed-files = Ponów dla plików z niepowodzeniem
 uploads-driver-continue = Kontynuuj
 uploads-driver-pause = Wstrzymaj
-uploads-driver-stop-upload = Zatrzymaj przesyłanie
 uploads-upload-button-upload = Prześlij
 uploads-upload-loading = Ładowanie...
 uploads-upload-this-collection-has-two-upload = Ta kolekcja ma dwa zbiory danych do przesyłania. Administrator musi wyłączyć jeden z nich.
@@ -130,3 +127,14 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } z { $format_u
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = Pliki, których nie można przesłać: { $format_count_problems_len_as_u64 }
 uploads-upload-files-cannot-be-uploaded-2 = Pliki, których nie można przesłać: { $format_count_r_problems_len_as_u64 }
+uploads-driver-abort = Przerwij
+uploads-driver-aborting-upload = Przerywanie przesyłania...
+uploads-driver-the-upload-could-not-be-aborted = Nie udało się przerwać przesyłania. Wybierz ponownie Przerwij.
+uploads-driver-files-failed = { $count ->
+    [one] { $count } plik nie powiódł się po 3 próbach. Nie zostanie przesłany.
+    [few] { $count } pliki nie powiodły się po 3 próbach. Nie zostaną przesłane.
+    [many] { $count } plików nie powiodło się po 3 próbach. Nie zostaną przesłane.
+   *[other] { $count } pliku nie powiodło się po 3 próbach. Nie zostaną przesłane.
+}
+uploads-batch-detail-aborting-upload = Przerywanie przesyłania
+uploads-batch-detail-abort-deletes-the-files = Przerwij usuwa pliki tego przesyłania, także pliki, które są już w folderze. Nic nie jest indeksowane.

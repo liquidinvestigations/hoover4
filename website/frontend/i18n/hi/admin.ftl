@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = अपलोड स्वीकार क�
 dataset-create-panel-the-upload-datasets-of-this = इस संग्रह के अपलोड डेटासेट पढ़े नहीं जा सके: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = `+` से जुड़े भाषा कोड, जैसे eng+ron। EasyOCR का खाली मान EasyOCR को बंद कर देता है।{" "}
 dataset-create-panel-saved-as-this-collection-s = इस संग्रह के डिफ़ॉल्ट के रूप में सहेजा गया। किसी डेटासेट की भाषाएँ नहीं बदलतीं।
 dataset-create-panel-saving-u = सहेजा जा रहा है…
 dataset-create-panel-save-as-collection-defaults = संग्रह के डिफ़ॉल्ट के रूप में सहेजें
@@ -155,8 +154,6 @@ admin-collection-detail-created = बनाया गया
 admin-collection-detail-settings = सेटिंग
 admin-collection-detail-the-collection-database-is-not = संग्रह का डेटाबेस अभी तैयार नहीं है।
 admin-collection-detail-the-last-storage-provisioning-failed = अंतिम स्टोरेज प्रोविज़निंग विफल रही: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = स्टोरेज प्रोविज़न करें
-admin-collection-detail-this-creates-the-database-and = यह संग्रह का डेटाबेस और फ़ाइल बकेट बनाता है, यदि उनमें से कोई न हो। यह किसी मौजूदा डेटा को नहीं बदलता।
 admin-collection-detail-processing-progress-and-estimates = प्रोसेसिंग की प्रगति और अनुमान
 admin-collection-detail-display-name = प्रदर्शित नाम
 admin-collection-detail-display-name-2 = प्रदर्शित नाम
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = { $others } पहले से �
 admin-dataset-detail-already-accept-uploads = { $others } पहले से अपलोड स्वीकार करते हैं।
 admin-dataset-detail-operation-started = ऑपरेशन शुरू हुआ: { $run_id }
 admin-collection-detail-collection = संग्रह { $collection_id }
-admin-collection-detail-storage-provisioning-started = स्टोरेज प्रोविज़निंग शुरू हुई: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = वेक्टर सेटिंग पढ़ी नहीं जा सकी: { $err }
-admin-collections-list-the-collection-was-added = संग्रह “{ $c }” जोड़ा गया।
 admin-collection-processing-processing-of = { $collection_id } की प्रोसेसिंग
 admin-collection-processing-collections = संग्रह › { $collection_id }
 admin-collection-processing-executions-2 = { $b_total_executions } निष्पादन
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = { $plans } प्लान फिर से 
 dataset-create-panel-already-accepts-uploads = { $one } पहले से अपलोड स्वीकार करता है।
 dataset-create-panel-already-accept-uploads = { $many_join } पहले से अपलोड स्वीकार करते हैं।
 dataset-create-panel-saved-as-this-collection-s-2 = इस संग्रह के डिफ़ॉल्ट के रूप में सहेजा गया। ये डेटासेट उन्हें अपनाते हैं, और उनके OCR अपडेट एक-एक करके शुरू होते हैं: { $changed_join }। अपनी भाषाओं वाले डेटासेट उन्हें बनाए रखते हैं।
-dataset-create-panel-created-ingestion-has-started-follow = { $collection_dataset } बनाया गया। इन्जेशन शुरू हो गया है। इसे संग्रह के प्रोसेसिंग पेज पर देखें।
 processing-updates-unit = { $unit ->
     [folders] { $count ->
         [one] फ़ोल्डर
@@ -853,7 +847,7 @@ processing-update-tables-title = तालिकाएँ
 processing-update-tables-explanation = { $files ->
     [one] { $count } फ़ाइल JSON या JSON Lines फ़ाइल है जिसकी वर्तमान रीडर की तालिका नहीं है, या ऐसी तालिका है जिसे पुराने रीडर ने 300 कॉलम पर काट दिया था।
    *[other] { $count } फ़ाइलें JSON या JSON Lines फ़ाइलें हैं जिनकी वर्तमान रीडर की तालिका नहीं है, या ऐसी तालिकाएँ हैं जिन्हें पुराने रीडर ने 300 कॉलम पर काट दिया था।
-} उन्हें फिर से पढ़ा जाता है। जिन JSON फ़ाइलों को पुराने रीडर ने CSV के रूप में पढ़ा था, उन्हें उनकी JSON तालिका मिलती है, और पुराने सेल दिखना बंद हो जाते हैं।
+} उन्हें फिर से पढ़ा जाता है। जिन JSON फ़ाइलों को पुराने रीडर ने CSV के रूप में पढ़ा था, उन्हें उनकी JSON तालिका मिलती है, और पुराने सेल दिखना बंद हो जाते हैं। मौजूदा रीडर JSON के null मान को खाली सेल के रूप में और नेस्टेड JSON को इंडेंट किए गए टेक्स्ट के रूप में सहेजता है।
 processing-update-tables-runs = तालिका पढ़ना, फिर इन फ़ाइलों का फ़ाइल प्रकार और इंडेक्सिंग
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -873,3 +867,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] { $count } फ़ोल्डरों की न फ़ाइल संख्या है न आकार, या उनके मान पुराने संस्करण के हैं।
 } गिनतियाँ फिर से निकाली जाती हैं।
 processing-update-folder_counts-runs = फ़ोल्डर ट्री
+admin-uploads-badge = अपलोड
+admin-uploads-badge-title = अपलोड स्वीकार करता है

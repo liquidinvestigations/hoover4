@@ -134,6 +134,7 @@ shared-uploads-this-upload-has-ended = Ovaj prijenos je završen.
 shared-uploads-the-path-exists-in-the-dataset = Putanja postoji u mapi skupa podataka.
 shared-uploads-the-server-could-not-recover-this = Poslužitelj nije mogao oporaviti ovu datoteku.
 shared-uploads-the-dataset-was-deleted-during-this = Skup podataka izbrisan je tijekom ovog prijenosa.
+shared-uploads-the-upload-was-aborted = Prijenos je prekinut.
 shared-uploads-the-dataset-was-purged-during-this = Skup podataka trajno je uklonjen tijekom ovog prijenosa.
 shared-uploads-selected-twice = Odabrano dvaput.
 shared-uploads-the-path-is-also-a-folder = Putanja je ujedno mapa druge odabrane datoteke.

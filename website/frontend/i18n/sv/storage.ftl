@@ -85,12 +85,9 @@ uploads-batch-list-uploads = Uppladdningar
 uploads-driver-drop-files-or-folders-here = Släpp filer eller mappar här
 uploads-driver-or-click-to-choose-files = eller klicka för att välja filer
 uploads-driver-choose-a-folder = Välj en mapp
-uploads-driver-failed = { $failed_path } Misslyckades: { $failed_error }
 uploads-driver-retry-finish = Försök slutföra igen
-uploads-driver-retry-failed-files = Försök igen med misslyckade filer
 uploads-driver-continue = Fortsätt
 uploads-driver-pause = Pausa
-uploads-driver-stop-upload = Avbryt uppladdningen
 uploads-upload-button-upload = Ladda upp
 uploads-upload-loading = Läser in...
 uploads-upload-this-collection-has-two-upload = Den här samlingen har två uppladdningsdatamängder. En administratör måste inaktivera en av dem.
@@ -130,3 +127,12 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } av { $format_
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = { $format_count_problems_len_as_u64 } filer kan inte laddas upp:
 uploads-upload-files-cannot-be-uploaded-2 = { $format_count_r_problems_len_as_u64 } filer kan inte laddas upp:
+uploads-driver-abort = Avbryt
+uploads-driver-aborting-upload = Avbryter uppladdningen...
+uploads-driver-the-upload-could-not-be-aborted = Uppladdningen kunde inte avbrytas. Välj Avbryt igen.
+uploads-driver-files-failed = { $count ->
+    [one] { $count } fil misslyckades efter 3 försök. Den laddas inte upp.
+   *[other] { $count } filer misslyckades efter 3 försök. De laddas inte upp.
+}
+uploads-batch-detail-aborting-upload = Avbryter uppladdningen
+uploads-batch-detail-abort-deletes-the-files = Avbryt raderar filerna i den här uppladdningen, även filerna som redan finns i mappen. Inget indexeras.

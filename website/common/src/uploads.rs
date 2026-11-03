@@ -192,7 +192,7 @@ impl Default for UploadLimits {
             max_batch_files: 10_000,
             max_batch_bytes: 10 * 1024 * 1024 * 1024,
             max_file_bytes: 10 * 1024 * 1024 * 1024,
-            chunk_bytes: 32 * 1024 * 1024,
+            chunk_bytes: 768 * 1024,
             abandon_hours: 24,
             manifest_max_bytes: MANIFEST_MAX_BYTES as u64,
             max_path_bytes: MAX_PATH_BYTES as u64,
@@ -319,6 +319,8 @@ pub const PATH_EXISTS_MESSAGE: &str = "The path exists in the dataset folder.";
 pub const NOT_RECOVERED_MESSAGE: &str = "The server could not recover this file.";
 /// The error of an unplaced file and of its batch after the dataset was deleted.
 pub const DATASET_DELETED_MESSAGE: &str = "The dataset was deleted during this upload.";
+/// The error of each file and of the batch after its owner aborted the upload.
+pub const ABORTED_MESSAGE: &str = "The upload was aborted.";
 /// The error of an unplaced file and of its batch after the dataset was purged.
 pub const DATASET_PURGED_MESSAGE: &str = "The dataset was purged during this upload.";
 /// The text of a duplicate path in one manifest.

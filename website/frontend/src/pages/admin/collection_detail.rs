@@ -5,11 +5,11 @@ use dioxus::prelude::*;
 use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{
     admin_delete_collection, admin_get_collection, admin_grant_permission, admin_list_groups,
-    admin_provision_collection, admin_revoke_permission, admin_set_collection_public,
+    admin_revoke_permission, admin_set_collection_public,
     admin_update_collection, admin_get_collection_vectors, admin_set_collection_vectors,
 };
 use crate::components::admin_components::{
-    AdminGuard, AdminShell, DatasetCreatePanel, ErrorBar, ProcessingUpdatesPanel, SuccessBar, BTN, BTN_DANGER,
+    AdminGuard, AdminShell, DatasetCreatePanel, ErrorBar, ProcessingUpdatesPanel, SuccessBar, UploadsBadge, BTN, BTN_DANGER,
     BTN_SMALL_DANGER, HELP_TEXT, INPUT, LABEL, LINK, MODULE, MODULE_BODY, MODULE_CAPTION, SELECT,
     TABLE, TD, TH,
 };
@@ -118,6 +118,7 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                                         style: LINK,
                                         "{ds.dataset_name}"
                                     }
+                                    if ds.accepts_uploads { UploadsBadge {} }
                                     if !ds.dataset_display_name.is_empty() && ds.dataset_display_name != ds.dataset_name {
                                         div { style: HELP_TEXT, "{ds.dataset_display_name}" }
                                     }
@@ -140,33 +141,6 @@ fn CollectionDetailContent(collection_id: String) -> Element {
                 if detail.provisioning_state == "errored" {
                     p { style: "margin: 0 0 8px; color: var(--x-danger);",
                         {tr!("admin-collection-detail-the-last-storage-provisioning-failed", detail_provisioning_error: detail.provisioning_error.to_string())}
-                    }
-                }
-                div { style: "display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 8px;",
-                    button {
-                        style: BTN,
-                        disabled: matches!(detail.provisioning_state.as_str(), "pending" | "queued" | "running"),
-                        onclick: {
-                            let cname = cname.clone();
-                            move |_| {
-                                let cname = cname.clone();
-                                spawn(async move {
-                                    msg.set(None);
-                                    error_msg.set(None);
-                                    match admin_provision_collection(cname).await {
-                                        Ok(op_id) => {
-                                            msg.set(Some(tr!("admin-collection-detail-storage-provisioning-started", op_id: op_id.to_string())));
-                                            detail_res.restart();
-                                        }
-                                        Err(e) => error_msg.set(Some(user_facing_message(&e))),
-                                    }
-                                });
-                            }
-                        },
-                        {tr!("admin-collection-detail-provision-storage")}
-                    }
-                    span { style: HELP_TEXT,
-                        {tr!("admin-collection-detail-this-creates-the-database-and")}
                     }
                 }
                 Link {

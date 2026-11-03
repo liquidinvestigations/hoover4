@@ -10,7 +10,7 @@ use dioxus::prelude::*;
 use crate::api::error_util::user_facing_message;
 use crate::api::admin_api::{admin_create_collection, admin_list_collections, admin_list_datasets};
 use crate::components::admin_components::{
-    AdminGuard, AdminShell, ErrorBar, SuccessBar, BTN_PRIMARY, HELP_TEXT, INPUT, LINK, MODULE,
+    action_state, AdminGuard, AdminShell, ErrorBar, UploadsBadge, BTN_PRIMARY, HELP_TEXT, INPUT, LINK, MODULE,
     MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
 };
 use crate::components::suspend_boundary::SuspendWrapper;
@@ -41,12 +41,11 @@ const NUM_TD: &str = "text-align: right; white-space: nowrap;";
 
 #[component]
 fn CollectionsListContent() -> Element {
-    let mut cols_res = use_resource(admin_list_collections);
+    let cols_res = use_resource(admin_list_collections);
     let datasets_res = use_resource(admin_list_datasets);
     let mut collectionname = use_signal(String::new);
     let mut fullname = use_signal(String::new);
     let mut error_msg = use_signal(|| None::<String>);
-    let mut success_msg = use_signal(|| None::<String>);
     // The dashboard links here with a fragment. Both tables load after the page does, so
     // the browser's own fragment scroll finds no target. The scroll waits until both
     // tables are on the page, because the collection table moves the section down.
@@ -66,10 +65,10 @@ fn CollectionsListContent() -> Element {
             .and_then(|r| r.as_ref().ok())
             .is_some_and(|cols| cols.iter().any(|c| c.collectionname == new_name));
 
+    let can_add = !new_name.is_empty() && !name_taken;
+    let add_style = action_state(can_add);
+
     rsx! {
-        if let Some(msg) = success_msg.read().clone() {
-            SuccessBar { message: msg }
-        }
         if let Some(err) = error_msg.read().clone() {
             ErrorBar { message: err }
         }
@@ -96,20 +95,17 @@ fn CollectionsListContent() -> Element {
                 input { style: INPUT, placeholder: tr!("admin-collections-list-name-for-example-enron"), value: "{collectionname}", oninput: move |e| collectionname.set(e.value()) }
                 input { style: INPUT, placeholder: tr!("admin-collections-list-display-name"), value: "{fullname}", oninput: move |e| fullname.set(e.value()) }
                 button {
-                    style: BTN_PRIMARY,
-                    disabled: new_name.is_empty() || name_taken,
+                    style: "{BTN_PRIMARY} {add_style}",
+                    disabled: !can_add,
                     onclick: move |_| {
                         let c = normalize_identifier(&collectionname.read());
                         let f = fullname.read().clone();
                         spawn(async move {
                             error_msg.set(None);
-                            success_msg.set(None);
                             match admin_create_collection(c.clone(), f).await {
+                                // The collection page is the confirmation.
                                 Ok(()) => {
-                                    success_msg.set(Some(tr!("admin-collections-list-the-collection-was-added", c: c.to_string())));
-                                    collectionname.set(String::new());
-                                    fullname.set(String::new());
-                                    cols_res.restart();
+                                    navigator().push(Route::AdminCollectionPage { collection_id: c });
                                 }
                                 Err(e) => error_msg.set(Some(user_facing_message(&e))),
                             }
@@ -154,6 +150,7 @@ fn CollectionsTable(cols: Vec<AdminCollectionItem>) -> Element {
                     tr { key: "{c.collectionname}",
                         td { style: TD,
                             Link { to: Route::AdminCollectionPage { collection_id: c.collectionname.clone() }, style: LINK, "{c.collectionname}" }
+                            if c.accepts_uploads { UploadsBadge {} }
                             if !c.fullname.is_empty() && c.fullname != c.collectionname {
                                 div { style: HELP_TEXT, "{c.fullname}" }
                             }
@@ -248,6 +245,7 @@ fn DatasetsTable(datasets: Vec<AdminDatasetListItem>) -> Element {
                                 style: LINK,
                                 "{d.dataset_name}"
                             }
+                            if d.accepts_uploads { UploadsBadge {} }
                             if !d.dataset_display_name.is_empty() && d.dataset_display_name != d.dataset_name {
                                 div { style: HELP_TEXT, "{d.dataset_display_name}" }
                             }

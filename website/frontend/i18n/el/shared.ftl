@@ -137,6 +137,7 @@ shared-uploads-this-upload-has-ended = Αυτή η μεταφόρτωση έχε
 shared-uploads-the-path-exists-in-the-dataset = Η διαδρομή υπάρχει ήδη στον φάκελο του συνόλου δεδομένων.
 shared-uploads-the-server-could-not-recover-this = Ο διακομιστής δεν μπόρεσε να ανακτήσει αυτό το αρχείο.
 shared-uploads-the-dataset-was-deleted-during-this = Το σύνολο δεδομένων διαγράφηκε κατά τη διάρκεια αυτής της μεταφόρτωσης.
+shared-uploads-the-upload-was-aborted = Η μεταφόρτωση ακυρώθηκε.
 shared-uploads-the-dataset-was-purged-during-this = Το σύνολο δεδομένων εκκαθαρίστηκε κατά τη διάρκεια αυτής της μεταφόρτωσης.
 shared-uploads-selected-twice = Επιλέχθηκε δύο φορές.
 shared-uploads-the-path-is-also-a-folder = Η διαδρομή είναι επίσης φάκελος άλλου επιλεγμένου αρχείου.

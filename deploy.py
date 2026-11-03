@@ -530,7 +530,7 @@ DEFAULTS = {
         "max_file_bytes": "10737418240",
         # The bytes of one PATCH. Keep it below the body limit of every proxy in front of
         # the website.
-        "chunk_bytes": "33554432",
+        "chunk_bytes": "786432",
         # A batch with no transfer for this many hours is committed with the files that
         # arrived.
         "abandon_hours": "24",

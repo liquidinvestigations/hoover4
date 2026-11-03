@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = Accepter uploads
 dataset-create-panel-the-upload-datasets-of-this = Denne samlings uploaddatasæt kunne ikke læses: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = Sprogkoder sammenføjet med `+`, for eksempel eng+ron. En tom EasyOCR-værdi slår EasyOCR fra.{" "}
 dataset-create-panel-saved-as-this-collection-s = Gemt som denne samlings standarder. Intet datasæt ændrer sine sprog.
 dataset-create-panel-saving-u = Gemmer…
 dataset-create-panel-save-as-collection-defaults = Gem som samlingens standarder
@@ -155,8 +154,6 @@ admin-collection-detail-created = Oprettet
 admin-collection-detail-settings = Indstillinger
 admin-collection-detail-the-collection-database-is-not = Samlingens database er endnu ikke klar.
 admin-collection-detail-the-last-storage-provisioning-failed = Den seneste klargøring af lager mislykkedes: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = Klargør lager
-admin-collection-detail-this-creates-the-database-and = Dette opretter samlingens database og filbøtte, hvis en af dem mangler. Det ændrer ingen eksisterende data.
 admin-collection-detail-processing-progress-and-estimates = Behandlingens fremgang og skøn
 admin-collection-detail-display-name = Visningsnavn
 admin-collection-detail-display-name-2 = visningsnavn
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = { $others } accepterer allerede u
 admin-dataset-detail-already-accept-uploads = { $others } accepterer allerede uploads.
 admin-dataset-detail-operation-started = Operation startet: { $run_id }
 admin-collection-detail-collection = Samling { $collection_id }
-admin-collection-detail-storage-provisioning-started = Klargøring af lager startet: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = Vektorindstillingen kunne ikke læses: { $err }
-admin-collections-list-the-collection-was-added = Samlingen “{ $c }” blev tilføjet.
 admin-collection-processing-processing-of = Behandling af { $collection_id }
 admin-collection-processing-collections = Samlinger › { $collection_id }
 admin-collection-processing-executions-2 = { $b_total_executions } kørsler
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = { $plans } plan(er) genåbnet
 dataset-create-panel-already-accepts-uploads = { $one } accepterer allerede uploads.
 dataset-create-panel-already-accept-uploads = { $many_join } accepterer allerede uploads.
 dataset-create-panel-saved-as-this-collection-s-2 = Gemt som denne samlings standarder. Disse datasæt arver dem, og deres OCR-opdateringer starter én ad gangen: { $changed_join }. Datasæt med egne sprog beholder dem.
-dataset-create-panel-created-ingestion-has-started-follow = { $collection_dataset } er oprettet. Indlæsningen er startet. Følg den på samlingens behandlingsside.
 processing-updates-unit = { $unit ->
     [folders] { $count ->
         [one] mappe
@@ -853,7 +847,7 @@ processing-update-tables-title = Tabeller
 processing-update-tables-explanation = { $files ->
     [one] { $count } fil er en JSON- eller JSON Lines-fil uden en tabel fra den nuværende læser, eller en tabel, som en tidligere læser afkortede ved 300 kolonner.
    *[other] { $count } filer er JSON- eller JSON Lines-filer uden en tabel fra den nuværende læser, eller tabeller, som en tidligere læser afkortede ved 300 kolonner.
-} De læses igen. JSON-filer, som en tidligere læser læste som CSV, får deres JSON-tabel, og de tidligere celler vises ikke længere.
+} De læses igen. JSON-filer, som en tidligere læser læste som CSV, får deres JSON-tabel, og de tidligere celler vises ikke længere. Den aktuelle læser gemmer et JSON-null som en tom celle og indlejret JSON som indrykket tekst.
 processing-update-tables-runs = Tabellæsning, derefter filtype og indeksering af disse filer
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -873,3 +867,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] { $count } mapper har ikke noget filantal eller nogen størrelse, eller har værdier fra en tidligere version.
 } Tallene beregnes igen.
 processing-update-folder_counts-runs = Mappetræ
+admin-uploads-badge = Uploads
+admin-uploads-badge-title = Accepterer uploads

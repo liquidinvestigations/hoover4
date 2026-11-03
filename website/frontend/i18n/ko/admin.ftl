@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = 업로드 받기
 dataset-create-panel-the-upload-datasets-of-this = 이 컬렉션의 업로드 데이터셋을 읽을 수 없습니다: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = `+`로 연결한 언어 코드입니다. 예: eng+ron. EasyOCR 값을 비워 두면 EasyOCR이 꺼집니다.{" "}
 dataset-create-panel-saved-as-this-collection-s = 이 컬렉션의 기본값으로 저장했습니다. 어떤 데이터셋도 언어가 바뀌지 않습니다.
 dataset-create-panel-saving-u = 저장하는 중…
 dataset-create-panel-save-as-collection-defaults = 컬렉션 기본값으로 저장
@@ -155,8 +154,6 @@ admin-collection-detail-created = 생성 시각
 admin-collection-detail-settings = 설정
 admin-collection-detail-the-collection-database-is-not = 컬렉션 데이터베이스가 아직 준비되지 않았습니다.
 admin-collection-detail-the-last-storage-provisioning-failed = 마지막 스토리지 프로비저닝에 실패했습니다: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = 스토리지 프로비저닝
-admin-collection-detail-this-creates-the-database-and = 컬렉션의 데이터베이스와 파일 버킷 중 없는 것을 만듭니다. 기존 데이터는 변경하지 않습니다.
 admin-collection-detail-processing-progress-and-estimates = 처리 진행 상황 및 예상 시간
 admin-collection-detail-display-name = 표시 이름
 admin-collection-detail-display-name-2 = 표시 이름
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = { $others }이(가) 이미 업로
 admin-dataset-detail-already-accept-uploads = { $others }이(가) 이미 업로드를 받고 있습니다.
 admin-dataset-detail-operation-started = 작업을 시작했습니다: { $run_id }
 admin-collection-detail-collection = 컬렉션 { $collection_id }
-admin-collection-detail-storage-provisioning-started = 스토리지 프로비저닝을 시작했습니다: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = 벡터 설정을 읽을 수 없습니다: { $err }
-admin-collections-list-the-collection-was-added = “{ $c }” 컬렉션을 추가했습니다.
 admin-collection-processing-processing-of = { $collection_id } 처리
 admin-collection-processing-collections = 컬렉션 › { $collection_id }
 admin-collection-processing-executions-2 = 실행 { $b_total_executions }회
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = 플랜 { $plans }개 다시 열림
 dataset-create-panel-already-accepts-uploads = { $one }이(가) 이미 업로드를 받고 있습니다.
 dataset-create-panel-already-accept-uploads = { $many_join }이(가) 이미 업로드를 받고 있습니다.
 dataset-create-panel-saved-as-this-collection-s-2 = 이 컬렉션의 기본값으로 저장했습니다. 다음 데이터셋은 이 기본값을 상속하며, OCR 업데이트가 한 번에 하나씩 시작됩니다: { $changed_join }. 자체 언어가 있는 데이터셋은 그 언어를 유지합니다.
-dataset-create-panel-created-ingestion-has-started-follow = { $collection_dataset }을(를) 만들었습니다. 수집이 시작되었습니다. 컬렉션의 처리 페이지에서 진행 상황을 확인하세요.
 processing-updates-unit = { $unit ->
     [folders] { $count ->
        *[other] 폴더
@@ -844,7 +838,7 @@ processing-update-virus_scan-runs = 바이러스 백신 검사, 이후 감염된
 processing-update-tables-title = 표
 processing-update-tables-explanation = { $files ->
    *[other] 파일 { $count }개가 현재 판독기의 표가 없는 JSON 또는 JSON Lines 파일이거나, 이전 판독기가 열 300개에서 잘라 낸 표입니다.
-} 해당 파일을 다시 읽습니다. 이전 판독기가 CSV로 읽은 JSON 파일은 JSON 표를 얻고, 이전 셀은 더 이상 표시되지 않습니다.
+} 해당 파일을 다시 읽습니다. 이전 판독기가 CSV로 읽은 JSON 파일은 JSON 표를 얻고, 이전 셀은 더 이상 표시되지 않습니다. 현재 판독기는 JSON null을 빈 셀로, 중첩된 JSON을 들여쓴 텍스트로 저장합니다.
 processing-update-tables-runs = 표 읽기, 이후 이 파일의 파일 형식과 색인
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -861,3 +855,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] 폴더 { $count }개에 파일 수나 크기가 없거나 이전 버전의 값이 있습니다.
 } 개수를 다시 계산합니다.
 processing-update-folder_counts-runs = 폴더 트리
+admin-uploads-badge = 업로드
+admin-uploads-badge-title = 업로드를 받습니다

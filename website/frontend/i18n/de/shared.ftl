@@ -134,6 +134,7 @@ shared-uploads-this-upload-has-ended = Dieser Upload ist beendet.
 shared-uploads-the-path-exists-in-the-dataset = Der Pfad ist im Datensatzordner vorhanden.
 shared-uploads-the-server-could-not-recover-this = Der Server konnte diese Datei nicht wiederherstellen.
 shared-uploads-the-dataset-was-deleted-during-this = Der Datensatz wurde während dieses Uploads gelöscht.
+shared-uploads-the-upload-was-aborted = Der Upload wurde abgebrochen.
 shared-uploads-the-dataset-was-purged-during-this = Der Datensatz wurde während dieses Uploads endgültig gelöscht.
 shared-uploads-selected-twice = Zweimal ausgewählt.
 shared-uploads-the-path-is-also-a-folder = Der Pfad ist auch ein Ordner einer anderen ausgewählten Datei.

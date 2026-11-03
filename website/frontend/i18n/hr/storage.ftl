@@ -85,12 +85,9 @@ uploads-batch-list-uploads = Prijenosi
 uploads-driver-drop-files-or-folders-here = Ispustite datoteke ili mape ovdje
 uploads-driver-or-click-to-choose-files = ili kliknite za odabir datoteka
 uploads-driver-choose-a-folder = Odaberi mapu
-uploads-driver-failed = { $failed_path } Neuspjelo: { $failed_error }
 uploads-driver-retry-finish = Ponovi završetak
-uploads-driver-retry-failed-files = Ponovi neuspjele datoteke
 uploads-driver-continue = Nastavi
 uploads-driver-pause = Pauziraj
-uploads-driver-stop-upload = Zaustavi prijenos
 uploads-upload-button-upload = Prenesi
 uploads-upload-loading = Učitavanje...
 uploads-upload-this-collection-has-two-upload = Ova zbirka ima dva skupa podataka za prijenos. Administrator mora onemogućiti jedan od njih.
@@ -130,3 +127,13 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } od { $format_
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = Datoteke koje se ne mogu prenijeti ({ $format_count_problems_len_as_u64 }):
 uploads-upload-files-cannot-be-uploaded-2 = Datoteke koje se ne mogu prenijeti ({ $format_count_r_problems_len_as_u64 }):
+uploads-driver-abort = Prekini
+uploads-driver-aborting-upload = Prekidanje prijenosa...
+uploads-driver-the-upload-could-not-be-aborted = Prijenos se nije mogao prekinuti. Ponovno odaberite Prekini.
+uploads-driver-files-failed = { $count ->
+    [one] { $count } datoteka nije uspjela nakon 3 pokušaja. Ne prenosi se.
+    [few] { $count } datoteke nisu uspjele nakon 3 pokušaja. Ne prenose se.
+   *[other] { $count } datoteka nije uspjelo nakon 3 pokušaja. Ne prenose se.
+}
+uploads-batch-detail-aborting-upload = Prekidanje prijenosa
+uploads-batch-detail-abort-deletes-the-files = Prekini briše datoteke ovog prijenosa, i one koje su već u mapi. Ništa se ne indeksira.

@@ -81,6 +81,7 @@ mod tests {
             "/_upload/files/",
             "/_upload/files/0123456789abcdef0123456789abcdef-0",
             "/_upload/0123456789abcdef0123456789abcdef/commit",
+            "/_upload/0123456789abcdef0123456789abcdef/abort",
             "/_upload/0123456789abcdef0123456789abcdef/prefix/0",
         ] {
             assert!(requires_session(path), "{path} must require a session");

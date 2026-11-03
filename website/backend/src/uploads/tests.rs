@@ -712,6 +712,62 @@ const CRASH_POINTS: &[&str] = &[
 ];
 
 #[test]
+fn abort_removes_the_placed_files_of_the_batch_and_its_upload_space() {
+    for cross_device in [false, true] {
+        let env = Env::new(cross_device);
+        let service = env.service();
+        // Entries that existed before the batch stay.
+        std::fs::create_dir_all(env.dataset.join("in/a")).unwrap();
+        std::fs::write(env.dataset.join("in/keep"), b"keep").unwrap();
+        let files = [("a/x", 20), ("a/b/y", 20), ("c/z", 20), ("w", 20)];
+        let begun = service.begin(USER, &request("abort-1", &files)).unwrap();
+        let id = begun.batch_id.clone();
+        send_file(&service, &id, 0, &content(0, 20)).unwrap();
+        send_file(&service, &id, 1, &content(1, 20)).unwrap();
+        send_file(&service, &id, 3, &content(3, 20)).unwrap();
+        // Another writer replaced a placed file. Its identity differs, so it stays.
+        std::fs::remove_file(env.dataset.join("in/w")).unwrap();
+        std::fs::write(env.dataset.join("in/w"), b"other").unwrap();
+        // File 2 has a prefix only.
+        service.tus_create(USER, &id, 2, 20).unwrap();
+        let mut session = service.tus_patch_open(USER, &id, 2, 0, Some(8)).unwrap();
+        assert!(session.write(&content(2, 8)).unwrap());
+        session.finish(BodyEnd::Complete).unwrap();
+        assert_eq!(read_dest(&env, "/in/a/b/y"), Some(content(1, 20)));
+
+        service.abort(USER, &id).unwrap();
+        assert_eq!(tree(&env.dataset), vec!["in", "in/a", "in/keep", "in/w"], "cross device {cross_device}");
+        assert_eq!(read_dest(&env, "/in/w"), Some(b"other".to_vec()));
+        assert!(!service.space.batch_dir(&id).exists());
+        let batch = env.store.latest_batch(&id).unwrap();
+        assert_eq!(batch.state, batch_state::CANCELLED);
+        assert_eq!(batch.error, common::uploads::ABORTED_MESSAGE);
+        assert_eq!(env.store.latest_file(&id, 0).unwrap().state, "rejected");
+        assert_eq!(env.store.latest_file(&id, 2).unwrap().state, "not_sent");
+        assert!(env.notifier.calls.lock().unwrap().is_empty());
+        // A repeated abort succeeds. A transfer request and a commit see the ended batch.
+        service.abort(USER, &id).unwrap();
+        assert_eq!(service.tus_create(USER, &id, 2, 20).unwrap_err().status, 410);
+        assert_eq!(service.commit(USER, &id).unwrap().state, batch_state::CANCELLED);
+        // The paths are free for a new upload.
+        let again = service.begin(USER, &request("abort-2", &files[..2])).unwrap();
+        assert_eq!(again.files.len(), 2);
+    }
+}
+
+#[test]
+fn abort_refuses_another_owner_and_a_committed_batch() {
+    let env = Env::new(false);
+    let service = env.service();
+    let begun = service.begin(USER, &request("abort-3", &[("one", 4)])).unwrap();
+    assert_eq!(service.abort("mallory", &begun.batch_id).unwrap_err().status, 403);
+    send_file(&service, &begun.batch_id, 0, &content(0, 4)).unwrap();
+    service.commit(USER, &begun.batch_id).unwrap();
+    assert_eq!(service.abort(USER, &begun.batch_id).unwrap_err().status, 409);
+    assert_eq!(read_dest(&env, "/in/one"), Some(content(0, 4)));
+}
+
+#[test]
 fn a_deleted_or_purged_dataset_stops_its_transfers_and_keeps_placed_files() {
     let env = Env::new(false);
     let service = env.service();

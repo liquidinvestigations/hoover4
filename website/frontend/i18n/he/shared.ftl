@@ -134,6 +134,7 @@ shared-uploads-this-upload-has-ended = ההעלאה הזו הסתיימה.
 shared-uploads-the-path-exists-in-the-dataset = הנתיב קיים בתיקיית מערך הנתונים.
 shared-uploads-the-server-could-not-recover-this = השרת לא הצליח לשחזר את הקובץ הזה.
 shared-uploads-the-dataset-was-deleted-during-this = מערך הנתונים נמחק במהלך ההעלאה הזו.
+shared-uploads-the-upload-was-aborted = ההעלאה בוטלה.
 shared-uploads-the-dataset-was-purged-during-this = מערך הנתונים נוקה לצמיתות במהלך ההעלאה הזו.
 shared-uploads-selected-twice = נבחר פעמיים.
 shared-uploads-the-path-is-also-a-folder = הנתיב הוא גם תיקייה של קובץ אחר שנבחר.

@@ -84,12 +84,9 @@ uploads-batch-list-uploads = Yüklemeler
 uploads-driver-drop-files-or-folders-here = Dosyaları ya da klasörleri buraya bırakın
 uploads-driver-or-click-to-choose-files = veya dosya seçmek için tıklayın
 uploads-driver-choose-a-folder = Klasör seç
-uploads-driver-failed = { $failed_path } Başarısız: { $failed_error }
 uploads-driver-retry-finish = Bitirmeyi yeniden dene
-uploads-driver-retry-failed-files = Başarısız dosyaları yeniden dene
 uploads-driver-continue = Devam et
 uploads-driver-pause = Duraklat
-uploads-driver-stop-upload = Yüklemeyi durdur
 uploads-upload-button-upload = Yükle
 uploads-upload-loading = Yükleniyor...
 uploads-upload-this-collection-has-two-upload = Bu koleksiyonun iki yükleme veri kümesi var. Bir yönetici birini devre dışı bırakmalı.
@@ -129,3 +126,12 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } / { $format_u
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = { $format_count_problems_len_as_u64 } dosya yüklenemiyor:
 uploads-upload-files-cannot-be-uploaded-2 = { $format_count_r_problems_len_as_u64 } dosya yüklenemiyor:
+uploads-driver-abort = İptal et
+uploads-driver-aborting-upload = Yükleme iptal ediliyor...
+uploads-driver-the-upload-could-not-be-aborted = Yükleme iptal edilemedi. İptal et düğmesini yeniden seçin.
+uploads-driver-files-failed = { $count ->
+    [one] { $count } dosya 3 denemeden sonra başarısız oldu. Yüklenmedi.
+   *[other] { $count } dosya 3 denemeden sonra başarısız oldu. Yüklenmedi.
+}
+uploads-batch-detail-aborting-upload = Yükleme iptal ediliyor
+uploads-batch-detail-abort-deletes-the-files = İptal et, bu yüklemenin dosyalarını, klasördeki dosyalar dahil siler. Hiçbir şey dizine eklenmez.

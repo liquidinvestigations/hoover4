@@ -85,12 +85,9 @@ uploads-batch-list-uploads = Cargas
 uploads-driver-drop-files-or-folders-here = Suelta aquí archivos o carpetas
 uploads-driver-or-click-to-choose-files = o haz clic para elegir archivos
 uploads-driver-choose-a-folder = Elegir una carpeta
-uploads-driver-failed = { $failed_path } Error: { $failed_error }
 uploads-driver-retry-finish = Reintentar la finalización
-uploads-driver-retry-failed-files = Reintentar los archivos fallidos
 uploads-driver-continue = Continuar
 uploads-driver-pause = Pausar
-uploads-driver-stop-upload = Detener la carga
 uploads-upload-button-upload = Subir
 uploads-upload-loading = Cargando...
 uploads-upload-this-collection-has-two-upload = Esta colección tiene dos conjuntos de datos de carga. Un administrador debe desactivar uno.
@@ -130,3 +127,12 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } de { $format_
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = No se pueden cargar { $format_count_problems_len_as_u64 } archivos:
 uploads-upload-files-cannot-be-uploaded-2 = No se pueden cargar { $format_count_r_problems_len_as_u64 } archivos:
+uploads-driver-abort = Cancelar
+uploads-driver-aborting-upload = Cancelando la carga...
+uploads-driver-the-upload-could-not-be-aborted = No se pudo cancelar la carga. Vuelve a seleccionar Cancelar.
+uploads-driver-files-failed = { $count ->
+    [one] { $count } archivo falló tras 3 intentos. No se carga.
+   *[other] { $count } archivos fallaron tras 3 intentos. No se cargan.
+}
+uploads-batch-detail-aborting-upload = Cancelando la carga
+uploads-batch-detail-abort-deletes-the-files = Cancelar elimina los archivos de esta carga, también los que ya están en la carpeta. No se indexa nada.

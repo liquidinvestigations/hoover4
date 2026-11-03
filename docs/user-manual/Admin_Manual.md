@@ -44,10 +44,10 @@ dash, a space or a full stop becomes an underscore. The form refuses a name that
 <a href="img/admin-collections.png"><img src="img/admin-collections.png" alt="Admin, collections" width="100%"></a>
 
 A collection's own page lists its datasets first, then renames it, links to its processing
-view, sets its access, and shows its newest ten operations. **Provision storage** creates the
-database and the file bucket of the collection when one of them is missing. Use it when the
-page reports that the last storage provisioning failed. It keeps the collection and its
-settings.
+view, sets its access, and shows its newest ten operations. Adding a collection creates its
+database and its file bucket, then opens the collection page. When the page reports that the
+last storage provisioning failed, repeat the `ensure_collection` operation on the operations
+page. A collection or a dataset that accepts uploads has an **Uploads** mark in the lists.
 
 
 <a href="img/admin-collection.png"><img src="img/admin-collection.png" alt="Admin, one collection" width="100%"></a>

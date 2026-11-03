@@ -85,12 +85,9 @@ uploads-batch-list-uploads = Uploads
 uploads-driver-drop-files-or-folders-here = Dateien oder Ordner hier ablegen
 uploads-driver-or-click-to-choose-files = oder klicken, um Dateien auszuwählen
 uploads-driver-choose-a-folder = Ordner auswählen
-uploads-driver-failed = { $failed_path } Fehlgeschlagen: { $failed_error }
 uploads-driver-retry-finish = Abschluss wiederholen
-uploads-driver-retry-failed-files = Fehlgeschlagene Dateien wiederholen
 uploads-driver-continue = Fortsetzen
 uploads-driver-pause = Pause
-uploads-driver-stop-upload = Upload stoppen
 uploads-upload-button-upload = Upload
 uploads-upload-loading = Wird geladen…
 uploads-upload-this-collection-has-two-upload = Diese Sammlung enthält zwei Upload-Datensätze. Ein Administrator muss einen davon deaktivieren.
@@ -130,3 +127,12 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } von { $format
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = { $format_count_problems_len_as_u64 } Dateien können nicht hochgeladen werden:
 uploads-upload-files-cannot-be-uploaded-2 = { $format_count_r_problems_len_as_u64 } Dateien können nicht hochgeladen werden:
+uploads-driver-abort = Abbrechen
+uploads-driver-aborting-upload = Upload wird abgebrochen…
+uploads-driver-the-upload-could-not-be-aborted = Der Upload konnte nicht abgebrochen werden. Wählen Sie erneut „Abbrechen“.
+uploads-driver-files-failed = { $count ->
+    [one] { $count } Datei ist nach 3 Versuchen fehlgeschlagen. Sie wird nicht hochgeladen.
+   *[other] { $count } Dateien sind nach 3 Versuchen fehlgeschlagen. Sie werden nicht hochgeladen.
+}
+uploads-batch-detail-aborting-upload = Upload wird abgebrochen
+uploads-batch-detail-abort-deletes-the-files = „Abbrechen“ löscht die Dateien dieses Uploads, auch die Dateien, die bereits im Ordner sind. Nichts wird indexiert.

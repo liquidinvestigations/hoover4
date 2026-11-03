@@ -85,12 +85,9 @@ uploads-batch-list-uploads = Caricamenti
 uploads-driver-drop-files-or-folders-here = Trascina qui file o cartelle
 uploads-driver-or-click-to-choose-files = oppure fai clic per scegliere i file
 uploads-driver-choose-a-folder = Scegli una cartella
-uploads-driver-failed = { $failed_path } Non riuscito: { $failed_error }
 uploads-driver-retry-finish = Riprova a completare
-uploads-driver-retry-failed-files = Riprova i file non riusciti
 uploads-driver-continue = Continua
 uploads-driver-pause = Pausa
-uploads-driver-stop-upload = Interrompi il caricamento
 uploads-upload-button-upload = Carica
 uploads-upload-loading = Caricamento in corso...
 uploads-upload-this-collection-has-two-upload = Questa raccolta ha due dataset di caricamento. Un amministratore deve disattivarne uno.
@@ -130,3 +127,12 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } di { $format_
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = Impossibile caricare { $format_count_problems_len_as_u64 } file:
 uploads-upload-files-cannot-be-uploaded-2 = Impossibile caricare { $format_count_r_problems_len_as_u64 } file:
+uploads-driver-abort = Annulla
+uploads-driver-aborting-upload = Annullamento del caricamento...
+uploads-driver-the-upload-could-not-be-aborted = Non è stato possibile annullare il caricamento. Seleziona di nuovo Annulla.
+uploads-driver-files-failed = { $count ->
+    [one] { $count } file non è riuscito dopo 3 tentativi. Non viene caricato.
+   *[other] { $count } file non sono riusciti dopo 3 tentativi. Non vengono caricati.
+}
+uploads-batch-detail-aborting-upload = Annullamento del caricamento
+uploads-batch-detail-abort-deletes-the-files = Annulla elimina i file di questo caricamento, anche quelli già presenti nella cartella. Non viene indicizzato nulla.

@@ -65,6 +65,9 @@ pub struct AdminCollectionItem {
     /// The summed cached statistics of the collection's datasets.
     #[serde(default)]
     pub stats: crate::storage_tree::CollectionAggregates,
+    /// True when a live dataset of the collection has `uploads_enabled`.
+    #[serde(default)]
+    pub accepts_uploads: bool,
 }
 
 /// One row of the administration Datasets list, which covers every collection.
@@ -77,6 +80,9 @@ pub struct AdminDatasetListItem {
     pub date_created: String,
     /// `None` until the pipeline writes the dataset's first statistics row.
     pub stats: Option<crate::storage_tree::DatasetAggregates>,
+    /// True when the dataset has `uploads_enabled`.
+    #[serde(default)]
+    pub accepts_uploads: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -103,6 +109,9 @@ pub struct AdminDatasetItem {
     /// The cached statistics, `None` until the pipeline writes the first row.
     #[serde(default)]
     pub stats: Option<crate::storage_tree::DatasetAggregates>,
+    /// True when the dataset has `uploads_enabled`.
+    #[serde(default)]
+    pub accepts_uploads: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -190,6 +199,24 @@ pub struct DatasetPdfVariant {
     pub languages: String,
     pub pdf_count: u64,
     pub total_bytes: u64,
+}
+
+/// The OCR languages of the dataset create form: the collection defaults that the form
+/// starts with, and the languages that each service reports.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+pub struct CollectionOcrDefaults {
+    /// `+`-joined, in the stored order.
+    pub tesseract_languages: String,
+    /// `+`-joined. Empty turns EasyOCR off.
+    pub easyocr_languages: String,
+    /// From the Tesseract `/health`. Empty when the service did not answer.
+    pub tesseract_available: Vec<String>,
+    /// From the EasyOCR `/health`. Empty when the service did not report them.
+    pub easyocr_supported: Vec<String>,
+    /// The EasyOCR languages whose models the image preloads.
+    pub easyocr_preloaded: Vec<String>,
+    /// Whether an EasyOCR endpoint is configured.
+    pub easyocr_configured: bool,
 }
 
 /// Everything the dataset OCR panel renders, in one round trip.

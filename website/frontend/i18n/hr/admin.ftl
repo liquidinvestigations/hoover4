@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = Prihvaćaj prijenose
 dataset-create-panel-the-upload-datasets-of-this = Skupove podataka za prijenos ove zbirke nije moguće pročitati: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = Jezični kodovi spojeni znakom `+`, na primjer eng+ron. Prazna vrijednost za EasyOCR isključuje EasyOCR.{" "}
 dataset-create-panel-saved-as-this-collection-s = Spremljeno kao zadane vrijednosti ove zbirke. Nijedan skup podataka ne mijenja svoje jezike.
 dataset-create-panel-saving-u = Spremanje…
 dataset-create-panel-save-as-collection-defaults = Spremi kao zadane vrijednosti zbirke
@@ -155,8 +154,6 @@ admin-collection-detail-created = Stvoreno
 admin-collection-detail-settings = Postavke
 admin-collection-detail-the-collection-database-is-not = Baza podataka zbirke još nije spremna.
 admin-collection-detail-the-last-storage-provisioning-failed = Zadnje postavljanje pohrane nije uspjelo: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = Postavi pohranu
-admin-collection-detail-this-creates-the-database-and = Ovo stvara bazu podataka i spremnik datoteka zbirke ako jedno od njih nedostaje. Ne mijenja postojeće podatke.
 admin-collection-detail-processing-progress-and-estimates = Napredak obrade i procjene
 admin-collection-detail-display-name = Prikazni naziv
 admin-collection-detail-display-name-2 = prikazni naziv
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = { $others } već prihvaća prijen
 admin-dataset-detail-already-accept-uploads = { $others } već prihvaćaju prijenose.
 admin-dataset-detail-operation-started = Operacija je pokrenuta: { $run_id }
 admin-collection-detail-collection = Zbirka { $collection_id }
-admin-collection-detail-storage-provisioning-started = Postavljanje pohrane je pokrenuto: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = Postavku vektora nije moguće pročitati: { $err }
-admin-collections-list-the-collection-was-added = Zbirka „{ $c }” je dodana.
 admin-collection-processing-processing-of = Obrada zbirke { $collection_id }
 admin-collection-processing-collections = Zbirke › { $collection_id }
 admin-collection-processing-executions-2 = Izvršavanja: { $b_total_executions }
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = ponovno otvoreno planova: { $plans }
 dataset-create-panel-already-accepts-uploads = { $one } već prihvaća prijenose.
 dataset-create-panel-already-accept-uploads = { $many_join } već prihvaćaju prijenose.
 dataset-create-panel-saved-as-this-collection-s-2 = Spremljeno kao zadane vrijednosti ove zbirke. Ovi skupovi podataka nasljeđuju ih, a njihova OCR ažuriranja pokreću se jedno po jedno: { $changed_join }. Skupovi podataka s vlastitim jezicima zadržavaju ih.
-dataset-create-panel-created-ingestion-has-started-follow = Stvoreno: { $collection_dataset }. Unos je počeo. Pratite ga na stranici obrade zbirke.
 processing-updates-unit = { $unit ->
     [folders] { $count ->
         [one] mapa
@@ -862,7 +856,7 @@ processing-update-tables-explanation = { $files ->
     [one] { $count } datoteka je JSON ili JSON Lines datoteka bez tablice trenutnog čitača ili tablica koju je raniji čitač skratio na 300 stupaca.
     [few] { $count } datoteke su JSON ili JSON Lines datoteke bez tablice trenutnog čitača ili tablice koje je raniji čitač skratio na 300 stupaca.
    *[other] { $count } datoteka je JSON ili JSON Lines datoteka bez tablice trenutnog čitača ili tablica koje je raniji čitač skratio na 300 stupaca.
-} Čitaju se ponovno. JSON datoteke koje je raniji čitač pročitao kao CSV dobivaju svoju JSON tablicu, a ranije ćelije više se ne prikazuju.
+} Čitaju se ponovno. JSON datoteke koje je raniji čitač pročitao kao CSV dobivaju svoju JSON tablicu, a ranije ćelije više se ne prikazuju. Trenutačni čitač sprema JSON vrijednost null kao praznu ćeliju, a ugniježđeni JSON kao uvučeni tekst.
 processing-update-tables-runs = Čitanje tablica, zatim vrsta datoteke i indeksiranje ovih datoteka
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -885,3 +879,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] { $count } mapa nema broj datoteka ni veličinu ili ima vrijednosti iz ranije verzije.
 } Brojevi se ponovno izračunavaju.
 processing-update-folder_counts-runs = Stablo mapa
+admin-uploads-badge = Prijenosi
+admin-uploads-badge-title = Prihvaća prijenose

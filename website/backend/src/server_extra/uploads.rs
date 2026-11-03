@@ -1,7 +1,8 @@
 //! The upload routes other than tus: `GET /_upload/limits`, `POST /_upload/begin`,
-//! `POST /_upload/{batch_id}/commit` and `GET /_upload/{batch_id}/prefix/{file_no}`.
+//! `POST /_upload/{batch_id}/commit`, `POST /_upload/{batch_id}/abort` and
+//! `GET /_upload/{batch_id}/prefix/{file_no}`.
 //!
-//! The session middleware resolves the user. `begin` and `commit` accept
+//! The session middleware resolves the user. `begin`, `commit` and `abort` accept
 //! `Content-Type: application/json` only, so a request from another origin needs a CORS
 //! preflight, which the site does not answer. The receiver work runs on the blocking
 //! thread pool ([`run_blocking`]), outside the Dioxus server-function runtime.
@@ -151,6 +152,30 @@ pub async fn commit(
             });
             Json(response).into_response()
         }
+        Err(e) => error_response(e),
+    }
+}
+
+/// `POST /_upload/{batch_id}/abort`. The answer comes after the placed files left the
+/// dataset folder and the upload space of the batch is deleted.
+pub async fn abort(
+    Extension(user): Extension<CurrentUser>,
+    Path(batch_id): Path<String>,
+    headers: HeaderMap,
+    body: Body,
+) -> Response {
+    if !is_json(&headers) {
+        return not_json();
+    }
+    if let Err(e) = read_body(&headers, body, 4096).await {
+        return error_response(e);
+    }
+    let service = match uploads::service() {
+        Ok(service) => service,
+        Err(e) => return error_response(e),
+    };
+    match run_blocking(move || service.abort(&user.username, &batch_id)).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => error_response(e),
     }
 }

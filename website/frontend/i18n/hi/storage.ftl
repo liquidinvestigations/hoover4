@@ -85,12 +85,9 @@ uploads-batch-list-uploads = अपलोड
 uploads-driver-drop-files-or-folders-here = फ़ाइलें या फ़ोल्डर यहाँ छोड़ें
 uploads-driver-or-click-to-choose-files = या फ़ाइलें चुनने के लिए क्लिक करें
 uploads-driver-choose-a-folder = फ़ोल्डर चुनें
-uploads-driver-failed = { $failed_path } विफल: { $failed_error }
 uploads-driver-retry-finish = पूरा करना फिर आज़माएँ
-uploads-driver-retry-failed-files = विफल फ़ाइलें फिर आज़माएँ
 uploads-driver-continue = जारी रखें
 uploads-driver-pause = रोकें
-uploads-driver-stop-upload = अपलोड बंद करें
 uploads-upload-button-upload = अपलोड
 uploads-upload-loading = लोड हो रहा है...
 uploads-upload-this-collection-has-two-upload = इस संग्रह में दो अपलोड डेटासेट हैं। प्रशासक को एक को अक्षम करना होगा।
@@ -130,3 +127,12 @@ uploads-driver-of-of-files = { $format_upload_size_progress_total } में �
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = { $format_count_problems_len_as_u64 } फ़ाइलें अपलोड नहीं हो सकतीं:
 uploads-upload-files-cannot-be-uploaded-2 = { $format_count_r_problems_len_as_u64 } फ़ाइलें अपलोड नहीं हो सकतीं:
+uploads-driver-abort = रद्द करें
+uploads-driver-aborting-upload = अपलोड रद्द किया जा रहा है...
+uploads-driver-the-upload-could-not-be-aborted = अपलोड रद्द नहीं हो सका। फिर से रद्द करें चुनें।
+uploads-driver-files-failed = { $count ->
+    [one] { $count } फ़ाइल 3 प्रयासों के बाद विफल रही। वह अपलोड नहीं हुई।
+   *[other] { $count } फ़ाइलें 3 प्रयासों के बाद विफल रहीं। वे अपलोड नहीं हुईं।
+}
+uploads-batch-detail-aborting-upload = अपलोड रद्द किया जा रहा है
+uploads-batch-detail-abort-deletes-the-files = रद्द करें इस अपलोड की फ़ाइलें हटा देता है, उन फ़ाइलों को भी जो पहले से फ़ोल्डर में हैं। कुछ भी इंडेक्स नहीं होता।

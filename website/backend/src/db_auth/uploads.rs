@@ -138,6 +138,20 @@ pub async fn upload_datasets_of_collection(collectionname: &str) -> anyhow::Resu
         .map_err(Into::into)
 }
 
+/// Every live dataset that has `uploads_enabled`, in every collection.
+pub async fn all_upload_datasets() -> anyhow::Result<std::collections::HashSet<String>> {
+    let client = get_global_client();
+    let rows: Vec<String> = client
+        .query(&format!(
+            "SELECT d.collection_dataset AS collection_dataset FROM dataset AS d FINAL \
+             INNER JOIN ({ENABLED_DATASETS}) AS s ON s.collection_dataset = d.collection_dataset \
+             WHERE d.is_deleted = 0"
+        ))
+        .fetch_all::<String>()
+        .await?;
+    Ok(rows.into_iter().collect())
+}
+
 /// The registry facts of one live dataset that the upload setting checks.
 #[derive(Debug, Clone, clickhouse::Row, serde::Deserialize)]
 pub struct DatasetUploadFacts {

@@ -85,12 +85,9 @@ uploads-batch-list-uploads = Uploads
 uploads-driver-drop-files-or-folders-here = Sleep bestanden of mappen hierheen
 uploads-driver-or-click-to-choose-files = of klik om bestanden te kiezen
 uploads-driver-choose-a-folder = Kies een map
-uploads-driver-failed = { $failed_path } Mislukt: { $failed_error }
 uploads-driver-retry-finish = Afronden opnieuw proberen
-uploads-driver-retry-failed-files = Mislukte bestanden opnieuw proberen
 uploads-driver-continue = Hervatten
 uploads-driver-pause = Pauzeren
-uploads-driver-stop-upload = Upload stoppen
 uploads-upload-button-upload = Uploaden
 uploads-upload-loading = Laden...
 uploads-upload-this-collection-has-two-upload = Deze collectie heeft twee uploaddatasets. Een beheerder moet er een uitschakelen.
@@ -130,3 +127,12 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } van { $format
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = { $format_count_problems_len_as_u64 } bestanden kunnen niet worden geüpload:
 uploads-upload-files-cannot-be-uploaded-2 = { $format_count_r_problems_len_as_u64 } bestanden kunnen niet worden geüpload:
+uploads-driver-abort = Afbreken
+uploads-driver-aborting-upload = Upload afbreken...
+uploads-driver-the-upload-could-not-be-aborted = De upload kon niet worden afgebroken. Kies opnieuw Afbreken.
+uploads-driver-files-failed = { $count ->
+    [one] { $count } bestand is na 3 pogingen mislukt. Het wordt niet geüpload.
+   *[other] { $count } bestanden zijn na 3 pogingen mislukt. Ze worden niet geüpload.
+}
+uploads-batch-detail-aborting-upload = Upload afbreken
+uploads-batch-detail-abort-deletes-the-files = Afbreken verwijdert de bestanden van deze upload, ook de bestanden die al in de map staan. Er wordt niets geïndexeerd.

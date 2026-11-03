@@ -134,6 +134,7 @@ shared-uploads-this-upload-has-ended = このアップロードは終了しま�
 shared-uploads-the-path-exists-in-the-dataset = このパスは、データセットのフォルダーに既にあります。
 shared-uploads-the-server-could-not-recover-this = サーバーはこのファイルを復旧できませんでした。
 shared-uploads-the-dataset-was-deleted-during-this = このアップロード中にデータセットが削除されました。
+shared-uploads-the-upload-was-aborted = アップロードは中止されました。
 shared-uploads-the-dataset-was-purged-during-this = このアップロード中にデータセットが完全に消去されました。
 shared-uploads-selected-twice = 2回選択されています。
 shared-uploads-the-path-is-also-a-folder = このパスは、選択された別のファイルのフォルダーでもあります。

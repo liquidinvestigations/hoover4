@@ -137,6 +137,7 @@ shared-uploads-this-upload-has-ended = 이 업로드는 종료되었습니다.
 shared-uploads-the-path-exists-in-the-dataset = 이 경로는 데이터셋 폴더에 이미 있습니다.
 shared-uploads-the-server-could-not-recover-this = 서버가 이 파일을 복구하지 못했습니다.
 shared-uploads-the-dataset-was-deleted-during-this = 이 업로드 중에 데이터셋이 삭제되었습니다.
+shared-uploads-the-upload-was-aborted = 업로드가 중단되었습니다.
 shared-uploads-the-dataset-was-purged-during-this = 이 업로드 중에 데이터셋이 완전히 삭제되었습니다.
 shared-uploads-selected-twice = 두 번 선택되었습니다.
 shared-uploads-the-path-is-also-a-folder = 이 경로는 선택한 다른 파일의 폴더이기도 합니다.

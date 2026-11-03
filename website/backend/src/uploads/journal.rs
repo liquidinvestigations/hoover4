@@ -261,6 +261,10 @@ pub struct Placement {
     /// still remove an owned part file. A record written before this field has none.
     #[serde(default)]
     pub folder: Option<PlacementFolder>,
+    /// The folders that this placement created above the file, as paths relative to the
+    /// dataset folder, outermost first. An abort removes them when they are empty.
+    #[serde(default)]
+    pub created_folders: Vec<String>,
 }
 
 /// The dataset folder that a placement writes into: the writable mount and the dataset

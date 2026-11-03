@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = Przyjmuj przesłane pliki
 dataset-create-panel-the-upload-datasets-of-this = Nie udało się odczytać zbiorów danych do przesyłania tej kolekcji: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = Kody języków połączone znakiem `+`, na przykład eng+ron. Pusta wartość EasyOCR wyłącza EasyOCR.{" "}
 dataset-create-panel-saved-as-this-collection-s = Zapisano jako ustawienia domyślne tej kolekcji. Żaden zbiór danych nie zmienia swoich języków.
 dataset-create-panel-saving-u = Zapisywanie…
 dataset-create-panel-save-as-collection-defaults = Zapisz jako ustawienia domyślne kolekcji
@@ -155,8 +154,6 @@ admin-collection-detail-created = Utworzono
 admin-collection-detail-settings = Ustawienia
 admin-collection-detail-the-collection-database-is-not = Baza danych kolekcji nie jest jeszcze gotowa.
 admin-collection-detail-the-last-storage-provisioning-failed = Ostatnie udostępnianie magazynu nie powiodło się: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = Udostępnij magazyn
-admin-collection-detail-this-creates-the-database-and = To tworzy bazę danych i kosz plików (bucket) kolekcji, jeśli któregoś z nich brakuje. Nie zmienia istniejących danych.
 admin-collection-detail-processing-progress-and-estimates = Postęp przetwarzania i szacunki
 admin-collection-detail-display-name = Nazwa wyświetlana
 admin-collection-detail-display-name-2 = nazwa wyświetlana
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = { $others } już przyjmuje przes�
 admin-dataset-detail-already-accept-uploads = { $others } już przyjmują przesłane pliki.
 admin-dataset-detail-operation-started = Rozpoczęto operację: { $run_id }
 admin-collection-detail-collection = Kolekcja { $collection_id }
-admin-collection-detail-storage-provisioning-started = Rozpoczęto udostępnianie magazynu: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = Nie udało się odczytać ustawienia wektorów: { $err }
-admin-collections-list-the-collection-was-added = Kolekcja „{ $c }” została dodana.
 admin-collection-processing-processing-of = Przetwarzanie { $collection_id }
 admin-collection-processing-collections = Kolekcje › { $collection_id }
 admin-collection-processing-executions-2 = Wykonania: { $b_total_executions }
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = Ponownie otwarte plany: { $plans }
 dataset-create-panel-already-accepts-uploads = { $one } już przyjmuje przesłane pliki.
 dataset-create-panel-already-accept-uploads = { $many_join } już przyjmują przesłane pliki.
 dataset-create-panel-saved-as-this-collection-s-2 = Zapisano jako ustawienia domyślne tej kolekcji. Te zbiory danych je dziedziczą, a ich aktualizacje OCR uruchamiają się po kolei: { $changed_join }. Zbiory danych z własnymi językami zachowują je.
-dataset-create-panel-created-ingestion-has-started-follow = Utworzono { $collection_dataset }. Import się rozpoczął. Śledź go na stronie przetwarzania kolekcji.
 processing-updates-unit = { $unit ->
     [folders] { $count ->
         [one] folder
@@ -871,7 +865,7 @@ processing-update-tables-explanation = { $files ->
     [few] { $count } pliki to pliki JSON lub JSON Lines bez tabeli bieżącego czytnika albo z tabelami, które wcześniejszy czytnik obciął do 300 kolumn.
     [many] { $count } plików to pliki JSON lub JSON Lines bez tabeli bieżącego czytnika albo z tabelami, które wcześniejszy czytnik obciął do 300 kolumn.
    *[other] { $count } pliku to pliki JSON lub JSON Lines bez tabeli bieżącego czytnika albo z tabelami, które wcześniejszy czytnik obciął do 300 kolumn.
-} Zostaną odczytane ponownie. Pliki JSON, które wcześniejszy czytnik odczytał jako CSV, dostaną swoją tabelę JSON, a wcześniejsze komórki przestaną być pokazywane.
+} Zostaną odczytane ponownie. Pliki JSON, które wcześniejszy czytnik odczytał jako CSV, dostaną swoją tabelę JSON, a wcześniejsze komórki przestaną być pokazywane. Obecny czytnik zapisuje wartość null z JSON jako pustą komórkę, a zagnieżdżony JSON jako tekst z wcięciami.
 processing-update-tables-runs = Odczyt tabel, potem typ pliku i indeksowanie tych plików
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -897,3 +891,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] { $count } folderu nie ma liczby plików ani rozmiaru albo ma wartości z wcześniejszej wersji.
 } Liczniki zostaną obliczone ponownie.
 processing-update-folder_counts-runs = Drzewo folderów
+admin-uploads-badge = Przesyłanie
+admin-uploads-badge-title = Przyjmuje przesłane pliki

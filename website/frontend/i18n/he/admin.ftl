@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = קבלת העלאות
 dataset-create-panel-the-upload-datasets-of-this = לא ניתן היה לקרוא את מערכי הנתונים להעלאות של האוסף הזה: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = קודי שפה מחוברים ב-`+`, לדוגמה eng+ron. ערך ריק ב-EasyOCR מכבה את EasyOCR.{" "}
 dataset-create-panel-saved-as-this-collection-s = נשמר כברירות המחדל של האוסף הזה. אף מערך נתונים אינו משנה את השפות שלו.
 dataset-create-panel-saving-u = שומר…
 dataset-create-panel-save-as-collection-defaults = שמירה כברירות מחדל של האוסף
@@ -155,8 +154,6 @@ admin-collection-detail-created = נוצר
 admin-collection-detail-settings = הגדרות
 admin-collection-detail-the-collection-database-is-not = מסד הנתונים של האוסף עדיין לא מוכן.
 admin-collection-detail-the-last-storage-provisioning-failed = הקצאת האחסון האחרונה נכשלה: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = הקצאת אחסון
-admin-collection-detail-this-creates-the-database-and = הפעולה יוצרת את מסד הנתונים ואת דלי הקבצים של האוסף כשאחד מהם חסר. היא אינה משנה נתונים קיימים.
 admin-collection-detail-processing-progress-and-estimates = התקדמות העיבוד והערכות
 admin-collection-detail-display-name = שם תצוגה
 admin-collection-detail-display-name-2 = שם תצוגה
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = { $others } כבר מקבל הע�
 admin-dataset-detail-already-accept-uploads = { $others } כבר מקבלים העלאות.
 admin-dataset-detail-operation-started = הפעולה התחילה: { $run_id }
 admin-collection-detail-collection = אוסף { $collection_id }
-admin-collection-detail-storage-provisioning-started = הקצאת האחסון התחילה: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = לא ניתן היה לקרוא את הגדרת הווקטורים: { $err }
-admin-collections-list-the-collection-was-added = האוסף “{ $c }” נוסף.
 admin-collection-processing-processing-of = עיבוד של { $collection_id }
 admin-collection-processing-collections = אוספים › { $collection_id }
 admin-collection-processing-executions-2 = { $b_total_executions } הרצות
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = { $plans } תוכניות נפתחו מחד�
 dataset-create-panel-already-accepts-uploads = { $one } כבר מקבל העלאות.
 dataset-create-panel-already-accept-uploads = { $many_join } כבר מקבלים העלאות.
 dataset-create-panel-saved-as-this-collection-s-2 = נשמר כברירות המחדל של האוסף הזה. מערכי הנתונים האלה יורשים אותן, ועדכוני ה-OCR שלהם מתחילים בזה אחר זה: { $changed_join }. מערכי נתונים עם שפות משלהם שומרים עליהן.
-dataset-create-panel-created-ingestion-has-started-follow = { $collection_dataset } נוצר. הקליטה התחילה. אפשר לעקוב אחריה בדף העיבוד של האוסף.
 processing-updates-unit = { $unit ->
     [folders] { $count ->
         [one] תיקייה
@@ -862,7 +856,7 @@ processing-update-tables-explanation = { $files ->
     [one] קובץ JSON או JSON Lines אחד בלי טבלה של הקורא הנוכחי, או טבלה שקורא קודם חתך ב-300 עמודות.
     [two] שני קובצי JSON או JSON Lines בלי טבלה של הקורא הנוכחי, או טבלאות שקורא קודם חתך ב-300 עמודות.
    *[other] { $count } קובצי JSON או JSON Lines בלי טבלה של הקורא הנוכחי, או טבלאות שקורא קודם חתך ב-300 עמודות.
-} הם נקראים שוב. קובצי JSON שקורא קודם קרא כ-CSV מקבלים את טבלת ה-JSON שלהם, והתאים הקודמים מפסיקים להיות מוצגים.
+} הם נקראים שוב. קובצי JSON שקורא קודם קרא כ-CSV מקבלים את טבלת ה-JSON שלהם, והתאים הקודמים מפסיקים להיות מוצגים. הקורא הנוכחי שומר ערך null של JSON כתא ריק, ו-JSON מקונן כטקסט עם הזחה.
 processing-update-tables-runs = קריאת טבלאות, ואחריה סוג הקובץ והאינדוקס של הקבצים האלה
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -885,3 +879,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] ל-{ $count } תיקיות אין מספר קבצים או גודל, או שיש להן ערכים מגרסה קודמת.
 } הספירות מחושבות מחדש.
 processing-update-folder_counts-runs = עץ התיקיות
+admin-uploads-badge = העלאות
+admin-uploads-badge-title = מקבל העלאות

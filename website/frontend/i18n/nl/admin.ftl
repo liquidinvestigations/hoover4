@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = Uploads accepteren
 dataset-create-panel-the-upload-datasets-of-this = De uploaddatasets van deze collectie konden niet worden gelezen: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = Met `+` verbonden taalcodes, bijvoorbeeld eng+ron. Een lege EasyOCR-waarde schakelt EasyOCR uit.{" "}
 dataset-create-panel-saved-as-this-collection-s = Opgeslagen als standaardwaarden van deze collectie. Geen enkele dataset wijzigt zijn talen.
 dataset-create-panel-saving-u = Opslaan…
 dataset-create-panel-save-as-collection-defaults = Opslaan als standaardwaarden van de collectie
@@ -155,8 +154,6 @@ admin-collection-detail-created = Aangemaakt
 admin-collection-detail-settings = Instellingen
 admin-collection-detail-the-collection-database-is-not = De database van de collectie is nog niet gereed.
 admin-collection-detail-the-last-storage-provisioning-failed = De laatste inrichting van de opslag is mislukt: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = Opslag inrichten
-admin-collection-detail-this-creates-the-database-and = Dit maakt de database en de bestandsbucket van de collectie aan als een van beide ontbreekt. Bestaande gegevens worden niet gewijzigd.
 admin-collection-detail-processing-progress-and-estimates = Verwerkingsvoortgang en schattingen
 admin-collection-detail-display-name = Weergavenaam
 admin-collection-detail-display-name-2 = weergavenaam
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = { $others } accepteert al uploads
 admin-dataset-detail-already-accept-uploads = { $others } accepteren al uploads.
 admin-dataset-detail-operation-started = Bewerking gestart: { $run_id }
 admin-collection-detail-collection = Collectie { $collection_id }
-admin-collection-detail-storage-provisioning-started = Inrichten van de opslag gestart: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = De vectorinstelling kon niet worden gelezen: { $err }
-admin-collections-list-the-collection-was-added = De collectie “{ $c }” is toegevoegd.
 admin-collection-processing-processing-of = Verwerking van { $collection_id }
 admin-collection-processing-collections = Collecties › { $collection_id }
 admin-collection-processing-executions-2 = { $b_total_executions } uitvoeringen
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = { $plans } plan(nen) heropend
 dataset-create-panel-already-accepts-uploads = { $one } accepteert al uploads.
 dataset-create-panel-already-accept-uploads = { $many_join } accepteren al uploads.
 dataset-create-panel-saved-as-this-collection-s-2 = Opgeslagen als standaardwaarden van deze collectie. Deze datasets nemen ze over en hun OCR-updates starten een voor een: { $changed_join }. Datasets met eigen talen houden die.
-dataset-create-panel-created-ingestion-has-started-follow = { $collection_dataset } aangemaakt. Het inlezen is gestart. Volg het op de verwerkingspagina van de collectie.
 processing-updates-unit = { $unit ->
     [folders] { $count ->
         [one] map
@@ -853,7 +847,7 @@ processing-update-tables-title = Tabellen
 processing-update-tables-explanation = { $files ->
     [one] { $count } bestand is een JSON- of JSON Lines-bestand zonder tabel van de huidige reader, of een tabel die een eerdere reader bij 300 kolommen heeft afgekapt.
    *[other] { $count } bestanden zijn JSON- of JSON Lines-bestanden zonder tabel van de huidige reader, of tabellen die een eerdere reader bij 300 kolommen heeft afgekapt.
-} Ze worden opnieuw gelezen. JSON-bestanden die een eerdere reader als CSV las, krijgen hun JSON-tabel en de eerdere cellen worden niet meer getoond.
+} Ze worden opnieuw gelezen. JSON-bestanden die een eerdere reader als CSV las, krijgen hun JSON-tabel en de eerdere cellen worden niet meer getoond. De huidige reader slaat een JSON-null op als lege cel en geneste JSON als ingesprongen tekst.
 processing-update-tables-runs = Tabellen lezen, daarna het bestandstype en de indexering van deze bestanden
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -873,3 +867,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] { $count } mappen hebben geen aantal bestanden of grootte, of hebben waarden van een eerdere versie.
 } De aantallen worden opnieuw berekend.
 processing-update-folder_counts-runs = Mappenboom
+admin-uploads-badge = Uploads
+admin-uploads-badge-title = Accepteert uploads

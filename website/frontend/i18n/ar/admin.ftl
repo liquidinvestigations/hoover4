@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = قبول عمليات الرفع
 dataset-create-panel-the-upload-datasets-of-this = تعذّرت قراءة مجموعات بيانات الرفع لهذه المجموعة: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = رموز اللغات مرتبطة بعلامة `+`، مثل eng+ron. القيمة الفارغة لـ EasyOCR تعطّله.{" "}
 dataset-create-panel-saved-as-this-collection-s = حُفظت بوصفها الإعدادات الافتراضية لهذه المجموعة. لا تتغير لغات أي مجموعة بيانات.
 dataset-create-panel-saving-u = جارٍ الحفظ…
 dataset-create-panel-save-as-collection-defaults = حفظ كإعدادات افتراضية للمجموعة
@@ -155,8 +154,6 @@ admin-collection-detail-created = تاريخ الإنشاء
 admin-collection-detail-settings = الإعدادات
 admin-collection-detail-the-collection-database-is-not = قاعدة بيانات المجموعة ليست جاهزة بعد.
 admin-collection-detail-the-last-storage-provisioning-failed = فشلت آخر تهيئة للتخزين: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = تهيئة التخزين
-admin-collection-detail-this-creates-the-database-and = ينشئ هذا قاعدة البيانات وحاوية الملفات الخاصتين بالمجموعة إذا كانت إحداهما مفقودة. ولا يغيّر أي بيانات موجودة.
 admin-collection-detail-processing-progress-and-estimates = تقدم المعالجة والتقديرات
 admin-collection-detail-display-name = الاسم المعروض
 admin-collection-detail-display-name-2 = الاسم المعروض
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = تقبل { $others } عمليات
 admin-dataset-detail-already-accept-uploads = تقبل { $others } عمليات الرفع بالفعل.
 admin-dataset-detail-operation-started = بدأت العملية: { $run_id }
 admin-collection-detail-collection = المجموعة { $collection_id }
-admin-collection-detail-storage-provisioning-started = بدأت تهيئة التخزين: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = تعذّرت قراءة إعداد المتجهات: { $err }
-admin-collections-list-the-collection-was-added = أُضيفت المجموعة “{ $c }”.
 admin-collection-processing-processing-of = معالجة { $collection_id }
 admin-collection-processing-collections = المجموعات › { $collection_id }
 admin-collection-processing-executions-2 = التنفيذات: { $b_total_executions }
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = الخطط المعاد فتحها: { $plans
 dataset-create-panel-already-accepts-uploads = يقبل { $one } عمليات الرفع بالفعل.
 dataset-create-panel-already-accept-uploads = تقبل { $many_join } عمليات الرفع بالفعل.
 dataset-create-panel-saved-as-this-collection-s-2 = حُفظت بوصفها الإعدادات الافتراضية لهذه المجموعة. ترثها مجموعات البيانات هذه، وتبدأ تحديثات OCR الخاصة بها واحدًا تلو الآخر: { $changed_join }. تحتفظ مجموعات البيانات ذات اللغات الخاصة بها بلغاتها.
-dataset-create-panel-created-ingestion-has-started-follow = أُنشئت { $collection_dataset }. بدأ الاستيعاب. تابعه في صفحة معالجة المجموعة.
 processing-updates-unit = { $unit ->
     [folders] { $count ->
         [one] مجلد
@@ -874,7 +868,7 @@ processing-update-tables-explanation = { $files ->
     [two] ملفان هما ملفا JSON أو JSON Lines بلا جدول من القارئ الحالي، أو بجدولين قصّهما قارئ سابق عند 300 عمود.
     [few] { $count } ملفات هي ملفات JSON أو JSON Lines بلا جدول من القارئ الحالي، أو بجداول قصّها قارئ سابق عند 300 عمود.
    *[other] { $count } ملفًا هي ملفات JSON أو JSON Lines بلا جدول من القارئ الحالي، أو بجداول قصّها قارئ سابق عند 300 عمود.
-} تُقرأ من جديد. تحصل ملفات JSON التي قرأها قارئ سابق على أنها CSV على جدول JSON الخاص بها، وتتوقف خلاياها السابقة عن الظهور.
+} تُقرأ من جديد. تحصل ملفات JSON التي قرأها قارئ سابق على أنها CSV على جدول JSON الخاص بها، وتتوقف خلاياها السابقة عن الظهور. يحفظ القارئ الحالي قيمة null في JSON كخلية فارغة، وJSON المتداخل كنص بمسافات بادئة.
 processing-update-tables-runs = قراءة الجداول، ثم نوع الملف وفهرسة هذه الملفات
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -900,3 +894,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] { $count } مجلدًا بلا عدد ملفات أو حجم، أو بقيم من إصدار سابق.
 } تُحسب الأعداد من جديد.
 processing-update-folder_counts-runs = شجرة المجلدات
+admin-uploads-badge = عمليات الرفع
+admin-uploads-badge-title = تقبل عمليات الرفع

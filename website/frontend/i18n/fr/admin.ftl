@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = Accepter les téléversements
 dataset-create-panel-the-upload-datasets-of-this = Les jeux de données de téléversement de cette collection n’ont pas pu être lus : { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = Codes de langue reliés par `+`, par exemple eng+ron. Une valeur EasyOCR vide désactive EasyOCR.{" "}
 dataset-create-panel-saved-as-this-collection-s = Enregistré comme valeurs par défaut de cette collection. Aucun jeu de données ne change de langues.
 dataset-create-panel-saving-u = Enregistrement…
 dataset-create-panel-save-as-collection-defaults = Enregistrer comme valeurs par défaut de la collection
@@ -155,8 +154,6 @@ admin-collection-detail-created = Créé
 admin-collection-detail-settings = Paramètres
 admin-collection-detail-the-collection-database-is-not = La base de données de la collection n’est pas encore prête.
 admin-collection-detail-the-last-storage-provisioning-failed = Le dernier provisionnement du stockage a échoué : { $detail_provisioning_error }
-admin-collection-detail-provision-storage = Provisionner le stockage
-admin-collection-detail-this-creates-the-database-and = Cela crée la base de données et le bucket de fichiers de la collection quand l’un des deux manque. Aucune donnée existante n’est modifiée.
 admin-collection-detail-processing-progress-and-estimates = Progression du traitement et estimations
 admin-collection-detail-display-name = Nom d’affichage
 admin-collection-detail-display-name-2 = nom d’affichage
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = { $others } accepte déjà les t�
 admin-dataset-detail-already-accept-uploads = { $others } acceptent déjà les téléversements.
 admin-dataset-detail-operation-started = Opération démarrée : { $run_id }
 admin-collection-detail-collection = Collection { $collection_id }
-admin-collection-detail-storage-provisioning-started = Provisionnement du stockage démarré : { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = Le paramètre des vecteurs n’a pas pu être lu : { $err }
-admin-collections-list-the-collection-was-added = La collection « { $c } » a été ajoutée.
 admin-collection-processing-processing-of = Traitement de { $collection_id }
 admin-collection-processing-collections = Collections › { $collection_id }
 admin-collection-processing-executions-2 = { $b_total_executions } exécutions
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = { $plans } plan(s) rouvert(s)
 dataset-create-panel-already-accepts-uploads = { $one } accepte déjà les téléversements.
 dataset-create-panel-already-accept-uploads = { $many_join } acceptent déjà les téléversements.
 dataset-create-panel-saved-as-this-collection-s-2 = Enregistré comme valeurs par défaut de cette collection. Ces jeux de données en héritent, et leurs mises à jour de l’OCR démarrent l’une après l’autre : { $changed_join }. Les jeux de données qui ont leurs propres langues les gardent.
-dataset-create-panel-created-ingestion-has-started-follow = { $collection_dataset } créé. L’ingestion a démarré. Suivez-la sur la page de traitement de la collection.
 processing-updates-unit = { $unit ->
     [folders] { $count ->
         [one] dossier
@@ -853,7 +847,7 @@ processing-update-tables-title = Tableaux
 processing-update-tables-explanation = { $files ->
     [one] { $count } fichier est un fichier JSON ou JSON Lines sans tableau du lecteur actuel, ou un tableau qu’un lecteur antérieur a coupé à 300 colonnes.
    *[other] { $count } fichiers sont des fichiers JSON ou JSON Lines sans tableau du lecteur actuel, ou des tableaux qu’un lecteur antérieur a coupés à 300 colonnes.
-} Ils sont relus. Les fichiers JSON qu’un lecteur antérieur avait lus comme du CSV obtiennent leur tableau JSON, et les cellules antérieures ne sont plus affichées.
+} Ils sont relus. Les fichiers JSON qu’un lecteur antérieur avait lus comme du CSV obtiennent leur tableau JSON, et les cellules antérieures ne sont plus affichées. Le lecteur actuel enregistre un null JSON comme une cellule vide, et le JSON imbriqué comme texte indenté.
 processing-update-tables-runs = Lecture des tableaux, puis type de fichier et indexation de ces fichiers
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -873,3 +867,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] { $count } dossiers n’ont ni nombre de fichiers ni taille, ou ont des valeurs d’une version antérieure.
 } Les totaux sont recalculés.
 processing-update-folder_counts-runs = Arborescence des dossiers
+admin-uploads-badge = Téléversements
+admin-uploads-badge-title = Accepte les téléversements

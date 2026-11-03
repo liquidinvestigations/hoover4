@@ -85,12 +85,9 @@ uploads-batch-list-uploads = העלאות
 uploads-driver-drop-files-or-folders-here = יש לשחרר כאן קבצים או תיקיות
 uploads-driver-or-click-to-choose-files = או ללחוץ כדי לבחור קבצים
 uploads-driver-choose-a-folder = בחירת תיקייה
-uploads-driver-failed = { $failed_path } נכשל: { $failed_error }
 uploads-driver-retry-finish = ניסיון חוזר לסיום
-uploads-driver-retry-failed-files = ניסיון חוזר לקבצים שנכשלו
 uploads-driver-continue = המשך
 uploads-driver-pause = השהיה
-uploads-driver-stop-upload = עצירת ההעלאה
 uploads-upload-button-upload = העלאה
 uploads-upload-loading = טוען...
 uploads-upload-this-collection-has-two-upload = באוסף הזה יש שני מערכי נתונים להעלאה. מנהל מערכת צריך להשבית אחד מהם.
@@ -130,3 +127,13 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } מתוך { $f
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = לא ניתן להעלות { $format_count_problems_len_as_u64 } קבצים:
 uploads-upload-files-cannot-be-uploaded-2 = לא ניתן להעלות { $format_count_r_problems_len_as_u64 } קבצים:
+uploads-driver-abort = ביטול
+uploads-driver-aborting-upload = ההעלאה מבוטלת...
+uploads-driver-the-upload-could-not-be-aborted = לא ניתן היה לבטל את ההעלאה. יש לבחור שוב ב"ביטול".
+uploads-driver-files-failed = { $count ->
+    [one] קובץ { $count } נכשל אחרי 3 ניסיונות. הוא לא הועלה.
+    [two] { $count } קבצים נכשלו אחרי 3 ניסיונות. הם לא הועלו.
+   *[other] { $count } קבצים נכשלו אחרי 3 ניסיונות. הם לא הועלו.
+}
+uploads-batch-detail-aborting-upload = ההעלאה מבוטלת
+uploads-batch-detail-abort-deletes-the-files = "ביטול" מוחק את הקבצים של ההעלאה הזו, גם את הקבצים שכבר נמצאים בתיקייה. שום דבר לא עובר אינדוקס.

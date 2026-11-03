@@ -34,7 +34,6 @@ dataset-create-panel-accept-uploads = Accept uploads
 dataset-create-panel-the-upload-datasets-of-this = The upload datasets of this collection could not be read: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = `+`-joined language codes, for example eng+ron. An empty EasyOCR value turns EasyOCR off.{" "}
 dataset-create-panel-saved-as-this-collection-s = Saved as this collection's defaults. No dataset changes its languages.
 dataset-create-panel-saving-u = Saving…
 dataset-create-panel-save-as-collection-defaults = Save as collection defaults
@@ -153,8 +152,6 @@ admin-collection-detail-created = Created
 admin-collection-detail-settings = Settings
 admin-collection-detail-the-collection-database-is-not = The collection database is not ready yet.
 admin-collection-detail-the-last-storage-provisioning-failed = The last storage provisioning failed: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = Provision storage
-admin-collection-detail-this-creates-the-database-and = This creates the database and the file bucket of the collection when one of them is missing. It changes no existing data.
 admin-collection-detail-processing-progress-and-estimates = Processing progress and estimates
 admin-collection-detail-display-name = Display name
 admin-collection-detail-display-name-2 = display name
@@ -779,9 +776,7 @@ admin-dataset-detail-already-accepts-uploads = { $others } already accepts uploa
 admin-dataset-detail-already-accept-uploads = { $others } already accept uploads.
 admin-dataset-detail-operation-started = Operation started: { $run_id }
 admin-collection-detail-collection = Collection { $collection_id }
-admin-collection-detail-storage-provisioning-started = Storage provisioning started: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = The vectors setting could not be read: { $err }
-admin-collections-list-the-collection-was-added = The collection “{ $c }” was added.
 admin-collection-processing-processing-of = Processing of { $collection_id }
 admin-collection-processing-collections = Collections › { $collection_id }
 admin-collection-processing-executions-2 = { $b_total_executions } executions
@@ -804,7 +799,6 @@ dataset-ocr-panel-plan-s-reopened = { $plans } plan(s) reopened
 dataset-create-panel-already-accepts-uploads = { $one } already accepts uploads.
 dataset-create-panel-already-accept-uploads = { $many_join } already accept uploads.
 dataset-create-panel-saved-as-this-collection-s-2 = Saved as this collection's defaults. These datasets inherit them, and their OCR updates start one at a time: { $changed_join }. Datasets with their own languages keep them.
-dataset-create-panel-created-ingestion-has-started-follow = Created { $collection_dataset }. Ingestion has started. Follow it on the collection's processing page.
 processing-updates-unit = { $unit ->
     [folders] { $count ->
         [one] folder
@@ -851,7 +845,7 @@ processing-update-tables-title = Tables
 processing-update-tables-explanation = { $files ->
     [one] { $count } file is a JSON or JSON Lines file without a table of the current reader, or a table that an earlier reader cut at 300 columns.
    *[other] { $count } files are JSON or JSON Lines files without a table of the current reader, or tables that an earlier reader cut at 300 columns.
-} They are read again. JSON files that an earlier reader read as CSV get their JSON table, and the earlier cells stop being shown.
+} They are read again. JSON files that an earlier reader read as CSV get their JSON table, and the earlier cells stop being shown. The current reader stores a JSON null as an empty cell, and nested JSON as indented text.
 processing-update-tables-runs = Table reading, then the file type and indexing of these files
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -871,3 +865,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] { $count } folders have no file count or size, or have values of an earlier version.
 } The counts are calculated again.
 processing-update-folder_counts-runs = Folder tree
+admin-uploads-badge = Uploads
+admin-uploads-badge-title = Accepts uploads

@@ -137,6 +137,7 @@ shared-uploads-this-upload-has-ended = Questo caricamento è terminato.
 shared-uploads-the-path-exists-in-the-dataset = Il percorso esiste già nella cartella del dataset.
 shared-uploads-the-server-could-not-recover-this = Il server non ha potuto recuperare questo file.
 shared-uploads-the-dataset-was-deleted-during-this = Il dataset è stato eliminato durante questo caricamento.
+shared-uploads-the-upload-was-aborted = Il caricamento è stato annullato.
 shared-uploads-the-dataset-was-purged-during-this = Il dataset è stato rimosso definitivamente durante questo caricamento.
 shared-uploads-selected-twice = Selezionato due volte.
 shared-uploads-the-path-is-also-a-folder = Il percorso è anche una cartella di un altro file selezionato.

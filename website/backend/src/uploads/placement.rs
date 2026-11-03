@@ -141,6 +141,69 @@ impl Service {
         Ok(())
     }
 
+    /// Remove from the dataset folder what this batch published for one file of an
+    /// aborted batch, and an owned part. An entry is removed only when its identity is
+    /// the one that the placement record names: the recorded device and inode of a placed
+    /// file, the source of an interrupted rename, or the part of an interrupted copy.
+    /// Returns true when an entry was removed.
+    pub(super) fn unplace(&self, manifest: &Manifest, file: &FileJournal) -> anyhow::Result<bool> {
+        let Some(placement) = file.placement.as_ref() else { return Ok(false) };
+        if !matches!(file.state, FileState::Placed | FileState::Placing) {
+            return Ok(false);
+        }
+        let Some(folder) = placement.folder.as_ref() else { return Ok(false) };
+        let Some(root) = open_recorded_folder(folder)? else { return Ok(false) };
+        self.remove_owned_part(manifest, file, Some(&root))?;
+        let names = path_names(&manifest.files[file.file_no as usize].path);
+        let Some((last, parents)) = names.split_last() else { return Ok(false) };
+        let parent = match fsutil::open_folders(&root, parents, false) {
+            Ok(Some(parent)) => parent,
+            Ok(None) | Err(WalkError::Blocked) => return Ok(false),
+            Err(WalkError::Io(e)) => return Err(e.into()),
+        };
+        let Some((_, dev, ino, _)) = fsutil::stat_entry(&parent, last)? else { return Ok(false) };
+        let ours = match (file.state, placement.method) {
+            (FileState::Placed, _) => placement.dest_dev == Some(dev) && placement.dest_ino == Some(ino),
+            (_, PlaceMethod::Rename) => dev == placement.src_dev && ino == placement.src_ino,
+            (_, PlaceMethod::Copy) => placement.part_ino == Some(ino),
+        };
+        if !ours {
+            return Ok(false);
+        }
+        match rustix::fs::unlinkat(&parent, *last, AtFlags::empty()) {
+            Ok(()) => {}
+            Err(Errno::NOENT) => return Ok(false),
+            Err(e) => return Err(e.into()),
+        }
+        fsutil::sync_fd(&parent)?;
+        Ok(true)
+    }
+
+    /// Remove the folders that the placements of an aborted batch created, deepest first,
+    /// when they are empty. A folder that existed before the batch, or that holds an
+    /// entry, stays.
+    pub(super) fn remove_empty_folders(&self, folder: &PlacementFolder, created: &[String]) -> anyhow::Result<()> {
+        let Some(root) = open_recorded_folder(folder)? else { return Ok(()) };
+        let candidates: std::collections::BTreeSet<Vec<&str>> =
+            created.iter().map(|path| path.split('/').collect()).collect();
+        let mut ordered: Vec<Vec<&str>> = candidates.into_iter().collect();
+        ordered.sort_by_key(|names| std::cmp::Reverse(names.len()));
+        for names in ordered {
+            let Some((last, parents)) = names.split_last() else { continue };
+            let parent = match fsutil::open_folders(&root, parents, false) {
+                Ok(Some(parent)) => parent,
+                Ok(None) | Err(WalkError::Blocked) => continue,
+                Err(WalkError::Io(e)) => return Err(e.into()),
+            };
+            match rustix::fs::unlinkat(&parent, *last, AtFlags::REMOVEDIR) {
+                Ok(()) => fsutil::sync_fd(&parent)?,
+                Err(Errno::NOTEMPTY) | Err(Errno::EXIST) | Err(Errno::NOENT) | Err(Errno::NOTDIR) => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(())
+    }
+
     /// End a file as rejected: remove its source bytes and an owned part. Without `root`,
     /// the part is found through the folder of the placement record. Nothing else in the
     /// dataset folder changes.
@@ -221,6 +284,25 @@ impl Service {
             }
         }
 
+        // The folders that this placement creates, kept for an abort. An interrupted
+        // placement keeps the folders that its earlier attempt created.
+        let mut created_folders = file.placement.as_ref().map(|p| p.created_folders.clone()).unwrap_or_default();
+        for depth in 1..=parents.len() {
+            match fsutil::open_folders(&root, &parents[..depth], false) {
+                Ok(Some(_)) => continue,
+                Ok(None) => {
+                    for end in depth..=parents.len() {
+                        let path = parents[..end].join("/");
+                        if !created_folders.contains(&path) {
+                            created_folders.push(path);
+                        }
+                    }
+                }
+                Err(WalkError::Blocked) => {}
+                Err(WalkError::Io(e)) => return Err(e.into()),
+            }
+            break;
+        }
         let parent = match fsutil::open_folders(&root, parents, true) {
             Ok(Some(parent)) => parent,
             Ok(None) => anyhow::bail!("a created folder is missing"),
@@ -259,6 +341,7 @@ impl Service {
                 mount_path: target.mount.path.clone(),
                 dataset_path: target.dataset_path.clone(),
             }),
+            created_folders,
         });
         file.version += 1;
         self.save_file(&manifest.batch_id, file, "place.prepared")?;

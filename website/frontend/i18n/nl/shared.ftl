@@ -137,6 +137,7 @@ shared-uploads-this-upload-has-ended = Deze upload is beëindigd.
 shared-uploads-the-path-exists-in-the-dataset = Het pad bestaat al in de map van de dataset.
 shared-uploads-the-server-could-not-recover-this = De server kon dit bestand niet herstellen.
 shared-uploads-the-dataset-was-deleted-during-this = De dataset is tijdens deze upload verwijderd.
+shared-uploads-the-upload-was-aborted = De upload is afgebroken.
 shared-uploads-the-dataset-was-purged-during-this = De dataset is tijdens deze upload gewist.
 shared-uploads-selected-twice = Twee keer geselecteerd.
 shared-uploads-the-path-is-also-a-folder = Het pad is ook een map van een ander geselecteerd bestand.

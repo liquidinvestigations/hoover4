@@ -85,12 +85,9 @@ uploads-batch-list-uploads = Încărcări
 uploads-driver-drop-files-or-folders-here = Trage aici fișiere sau foldere
 uploads-driver-or-click-to-choose-files = sau fă clic pentru a alege fișiere
 uploads-driver-choose-a-folder = Alege un folder
-uploads-driver-failed = { $failed_path } a eșuat: { $failed_error }
 uploads-driver-retry-finish = Reîncearcă finalizarea
-uploads-driver-retry-failed-files = Reîncearcă fișierele eșuate
 uploads-driver-continue = Continuă
 uploads-driver-pause = Întrerupe
-uploads-driver-stop-upload = Oprește încărcarea
 uploads-upload-button-upload = Încarcă
 uploads-upload-loading = Se încarcă...
 uploads-upload-this-collection-has-two-upload = Această colecție are două seturi de date pentru încărcare. Un administrator trebuie să dezactiveze unul dintre ele.
@@ -130,3 +127,13 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } din { $format
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = Fișiere care nu pot fi încărcate: { $format_count_problems_len_as_u64 }
 uploads-upload-files-cannot-be-uploaded-2 = Fișiere care nu pot fi încărcate: { $format_count_r_problems_len_as_u64 }
+uploads-driver-abort = Anulează
+uploads-driver-aborting-upload = Se anulează încărcarea...
+uploads-driver-the-upload-could-not-be-aborted = Încărcarea nu a putut fi anulată. Selectează din nou Anulează.
+uploads-driver-files-failed = { $count ->
+    [one] { $count } fișier a eșuat după 3 încercări. Nu este încărcat.
+    [few] { $count } fișiere au eșuat după 3 încercări. Nu sunt încărcate.
+   *[other] { $count } de fișiere au eșuat după 3 încercări. Nu sunt încărcate.
+}
+uploads-batch-detail-aborting-upload = Se anulează încărcarea
+uploads-batch-detail-abort-deletes-the-files = Anulează șterge fișierele acestei încărcări, inclusiv pe cele care sunt deja în folder. Nu se indexează nimic.

@@ -134,6 +134,7 @@ shared-uploads-this-upload-has-ended = Această încărcare s-a încheiat.
 shared-uploads-the-path-exists-in-the-dataset = Calea există în folderul setului de date.
 shared-uploads-the-server-could-not-recover-this = Serverul nu a putut recupera acest fișier.
 shared-uploads-the-dataset-was-deleted-during-this = Setul de date a fost șters în timpul acestei încărcări.
+shared-uploads-the-upload-was-aborted = Încărcarea a fost anulată.
 shared-uploads-the-dataset-was-purged-during-this = Setul de date a fost eliminat definitiv în timpul acestei încărcări.
 shared-uploads-selected-twice = Selectat de două ori.
 shared-uploads-the-path-is-also-a-folder = Calea este și un folder al altui fișier selectat.

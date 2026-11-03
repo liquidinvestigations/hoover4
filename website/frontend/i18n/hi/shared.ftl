@@ -137,6 +137,7 @@ shared-uploads-this-upload-has-ended = यह अपलोड समाप्त
 shared-uploads-the-path-exists-in-the-dataset = यह पथ डेटासेट फ़ोल्डर में पहले से मौजूद है।
 shared-uploads-the-server-could-not-recover-this = सर्वर इस फ़ाइल को पुनः प्राप्त नहीं कर सका।
 shared-uploads-the-dataset-was-deleted-during-this = इस अपलोड के दौरान डेटासेट हटा दिया गया।
+shared-uploads-the-upload-was-aborted = अपलोड रद्द कर दिया गया।
 shared-uploads-the-dataset-was-purged-during-this = इस अपलोड के दौरान डेटासेट पूरी तरह मिटा दिया गया।
 shared-uploads-selected-twice = दो बार चुना गया।
 shared-uploads-the-path-is-also-a-folder = यह पथ चुनी गई किसी दूसरी फ़ाइल का फ़ोल्डर भी है।

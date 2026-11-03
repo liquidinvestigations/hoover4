@@ -25,7 +25,7 @@
 //! A batch whose exclusive lock is held is busy and is skipped, so the sweep never
 //! touches an active transfer, copy or commit.
 
-use common::uploads::CommitResponse;
+use common::uploads::{CommitResponse, ABORTED_MESSAGE};
 
 use super::fsutil;
 use super::journal::{self, batch_state, BatchJournal, DoneRecord, FileJournal, FileState, Manifest};
@@ -468,6 +468,92 @@ impl Service {
             stop.stopped += 1;
         }
         Ok(stop)
+    }
+
+    /// Abort an `uploading` batch for its owner. The stop marker refuses new bytes. Under
+    /// the exclusive batch lock, each file that the batch placed or was placing leaves the
+    /// dataset folder when its identity is the recorded one, and each folder that its
+    /// placements created is removed when it is empty. Every file and the batch
+    /// get the error [`ABORTED_MESSAGE`], the batch becomes `cancelled`, and its upload
+    /// space is deleted. Nothing is queued for indexing.
+    ///
+    /// A repeated abort of an aborted batch succeeds. A batch whose commit started is 409.
+    pub fn abort(&self, username: &str, batch_id: &str) -> UploadResult<()> {
+        let (manifest, batch) = match self.owned_batch(username, batch_id) {
+            Ok(found) => found,
+            Err(e) if e.status == 410 => {
+                let done = fsutil::read_json::<DoneRecord>(&self.space.done_record(batch_id))?
+                    .ok_or_else(UploadError::not_found)?;
+                if done.state == batch_state::CANCELLED {
+                    return Ok(());
+                }
+                return Err(UploadError::ended(409));
+            }
+            Err(e) => return Err(e),
+        };
+        if batch.state != batch_state::UPLOADING {
+            return Err(UploadError::ended(409));
+        }
+        let marker = self.space.stopping(batch_id);
+        if !marker.exists() {
+            std::fs::File::create(&marker).map_err(anyhow::Error::from)?;
+            fsutil::sync_dir(&self.space.batch_dir(batch_id))?;
+        }
+        let lock = fsutil::lock_within(&self.space.batch_lock(batch_id), true, self.lock_wait)?
+            .ok_or_else(UploadError::busy)?;
+        let mut batch = journal::read_batch(&self.space, batch_id)?.ok_or_else(|| UploadError::ended(410))?;
+        if batch.state != batch_state::UPLOADING {
+            return Err(UploadError::ended(409));
+        }
+        let mut files: Vec<FileJournal> = Vec::with_capacity(manifest.files.len());
+        let mut removed: Vec<u32> = Vec::new();
+        let mut folder = None;
+        let mut created: Vec<String> = Vec::new();
+        for entry in &manifest.files {
+            let mut file = journal::read_file(&self.space, &manifest, entry.file_no)?;
+            match file.state {
+                FileState::Placed | FileState::Placing => {
+                    if self.unplace(&manifest, &file)? {
+                        removed.push(file.file_no);
+                    }
+                    if let Some(placement) = file.placement.as_ref() {
+                        if folder.is_none() {
+                            folder = placement.folder.clone();
+                        }
+                        created.extend(placement.created_folders.iter().cloned());
+                    }
+                    file.state = FileState::Rejected;
+                }
+                FileState::Pending | FileState::Complete => file.state = FileState::NotSent,
+                FileState::Rejected | FileState::NotSent => {}
+            }
+            file.error = ABORTED_MESSAGE.to_string();
+            file.version += 1;
+            files.push(file);
+        }
+        if let Some(folder) = folder.as_ref() {
+            self.remove_empty_folders(folder, &created)?;
+        }
+        self.flush_files(&manifest, &mut files)?;
+        let now = self.clock.now_ms();
+        batch.state = batch_state::CANCELLED.to_string();
+        batch.committed_ms = now;
+        batch.finished_ms = now;
+        batch.last_activity_ms = now;
+        batch.error = ABORTED_MESSAGE.to_string();
+        batch.version += 1;
+        self.save_batch(&batch, "abort.cancelled")?;
+        self.flush_batch(&manifest, &mut batch)?;
+        self.archive(&manifest, &batch)?;
+        drop(lock);
+        let _dataset = fsutil::lock(&self.space.dataset_lock(&manifest.upload_dataset), true, true)?;
+        fsutil::remove_file(&self.space.live_dir(&manifest.upload_dataset).join(batch_id))?;
+        tracing::info!(
+            "upload batch {batch_id} aborted by its owner: {} of {} files removed from the dataset folder",
+            removed.len(),
+            manifest.files.len()
+        );
+        Ok(())
     }
 
     /// Keep a done record and remove the journal, the data and the request record of a

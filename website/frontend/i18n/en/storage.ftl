@@ -83,12 +83,9 @@ uploads-batch-list-uploads = Uploads
 uploads-driver-drop-files-or-folders-here = Drop files or folders here
 uploads-driver-or-click-to-choose-files = or click to choose files
 uploads-driver-choose-a-folder = Choose a folder
-uploads-driver-failed = { $failed_path } Failed: { $failed_error }
 uploads-driver-retry-finish = Retry finish
-uploads-driver-retry-failed-files = Retry failed files
 uploads-driver-continue = Continue
 uploads-driver-pause = Pause
-uploads-driver-stop-upload = Stop upload
 uploads-upload-button-upload = Upload
 uploads-upload-loading = Loading...
 uploads-upload-this-collection-has-two-upload = This collection has two upload datasets. An administrator must disable one.
@@ -128,3 +125,12 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } of { $format_
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = { $format_count_problems_len_as_u64 } files cannot be uploaded:
 uploads-upload-files-cannot-be-uploaded-2 = { $format_count_r_problems_len_as_u64 } files cannot be uploaded:
+uploads-driver-abort = Abort
+uploads-driver-aborting-upload = Aborting the upload...
+uploads-driver-the-upload-could-not-be-aborted = The upload could not be aborted. Select Abort again.
+uploads-driver-files-failed = { $count ->
+    [one] { $count } file failed after 3 attempts. It is not uploaded.
+   *[other] { $count } files failed after 3 attempts. They are not uploaded.
+}
+uploads-batch-detail-aborting-upload = Aborting the upload
+uploads-batch-detail-abort-deletes-the-files = Abort deletes the files of this upload, also the files that are already in the folder. Nothing is indexed.

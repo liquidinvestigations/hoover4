@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = Αποδοχή μεταφορτώσεων
 dataset-create-panel-the-upload-datasets-of-this = Τα σύνολα δεδομένων μεταφόρτωσης αυτής της συλλογής δεν μπόρεσαν να διαβαστούν: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = Κωδικοί γλωσσών ενωμένοι με `+`, για παράδειγμα eng+ron. Μια κενή τιμή EasyOCR απενεργοποιεί το EasyOCR.{" "}
 dataset-create-panel-saved-as-this-collection-s = Αποθηκεύτηκε ως προεπιλογές αυτής της συλλογής. Κανένα σύνολο δεδομένων δεν αλλάζει γλώσσες.
 dataset-create-panel-saving-u = Αποθήκευση…
 dataset-create-panel-save-as-collection-defaults = Αποθήκευση ως προεπιλογές συλλογής
@@ -155,8 +154,6 @@ admin-collection-detail-created = Δημιουργήθηκε
 admin-collection-detail-settings = Ρυθμίσεις
 admin-collection-detail-the-collection-database-is-not = Η βάση δεδομένων της συλλογής δεν είναι ακόμη έτοιμη.
 admin-collection-detail-the-last-storage-provisioning-failed = Η τελευταία προετοιμασία αποθήκευσης απέτυχε: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = Προετοιμασία αποθήκευσης
-admin-collection-detail-this-creates-the-database-and = Δημιουργεί τη βάση δεδομένων και τον κάδο αρχείων της συλλογής όταν λείπει κάποιο από τα δύο. Δεν αλλάζει υπάρχοντα δεδομένα.
 admin-collection-detail-processing-progress-and-estimates = Πρόοδος επεξεργασίας και εκτιμήσεις
 admin-collection-detail-display-name = Εμφανιζόμενο όνομα
 admin-collection-detail-display-name-2 = εμφανιζόμενο όνομα
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = Το { $others } δέχεται �
 admin-dataset-detail-already-accept-uploads = Τα { $others } δέχονται ήδη μεταφορτώσεις.
 admin-dataset-detail-operation-started = Η εργασία ξεκίνησε: { $run_id }
 admin-collection-detail-collection = Συλλογή { $collection_id }
-admin-collection-detail-storage-provisioning-started = Η προετοιμασία αποθήκευσης ξεκίνησε: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = Η ρύθμιση διανυσμάτων δεν μπόρεσε να διαβαστεί: { $err }
-admin-collections-list-the-collection-was-added = Η συλλογή «{ $c }» προστέθηκε.
 admin-collection-processing-processing-of = Επεξεργασία του { $collection_id }
 admin-collection-processing-collections = Συλλογές › { $collection_id }
 admin-collection-processing-executions-2 = { $b_total_executions } εκτελέσεις
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = { $plans } σχέδια άνοιξαν ξα�
 dataset-create-panel-already-accepts-uploads = Το { $one } δέχεται ήδη μεταφορτώσεις.
 dataset-create-panel-already-accept-uploads = Τα { $many_join } δέχονται ήδη μεταφορτώσεις.
 dataset-create-panel-saved-as-this-collection-s-2 = Αποθηκεύτηκε ως προεπιλογές αυτής της συλλογής. Αυτά τα σύνολα δεδομένων τις κληρονομούν και οι ενημερώσεις OCR τους ξεκινούν μία τη φορά: { $changed_join }. Τα σύνολα δεδομένων με δικές τους γλώσσες τις κρατούν.
-dataset-create-panel-created-ingestion-has-started-follow = Δημιουργήθηκε το { $collection_dataset }. Η εισαγωγή ξεκίνησε. Παρακολουθήστε την στη σελίδα επεξεργασίας της συλλογής.
 processing-updates-unit = { $unit ->
     [folders] { $count ->
         [one] φάκελο
@@ -853,7 +847,7 @@ processing-update-tables-title = Πίνακες
 processing-update-tables-explanation = { $files ->
     [one] { $count } αρχείο είναι αρχείο JSON ή JSON Lines χωρίς πίνακα του τρέχοντος αναγνώστη, ή πίνακας που ένας παλαιότερος αναγνώστης έκοψε στις 300 στήλες.
    *[other] { $count } αρχεία είναι αρχεία JSON ή JSON Lines χωρίς πίνακα του τρέχοντος αναγνώστη, ή πίνακες που ένας παλαιότερος αναγνώστης έκοψε στις 300 στήλες.
-} Διαβάζονται ξανά. Τα αρχεία JSON που ένας παλαιότερος αναγνώστης διάβασε ως CSV παίρνουν τον πίνακα JSON τους και τα παλαιότερα κελιά παύουν να εμφανίζονται.
+} Διαβάζονται ξανά. Τα αρχεία JSON που ένας παλαιότερος αναγνώστης διάβασε ως CSV παίρνουν τον πίνακα JSON τους και τα παλαιότερα κελιά παύουν να εμφανίζονται. Ο τρέχων αναγνώστης αποθηκεύει μια τιμή null του JSON ως κενό κελί και το ένθετο JSON ως κείμενο με εσοχές.
 processing-update-tables-runs = Ανάγνωση πινάκων, έπειτα ο τύπος αρχείου και η ευρετηρίαση αυτών των αρχείων
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -873,3 +867,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] { $count } φάκελοι δεν έχουν πλήθος αρχείων ή μέγεθος, ή έχουν τιμές παλαιότερης έκδοσης.
 } Τα πλήθη υπολογίζονται ξανά.
 processing-update-folder_counts-runs = Δέντρο φακέλων
+admin-uploads-badge = Μεταφορτώσεις
+admin-uploads-badge-title = Δέχεται μεταφορτώσεις

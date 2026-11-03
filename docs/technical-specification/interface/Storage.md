@@ -54,6 +54,7 @@ Rows `F-store-10` to `F-store-13` of [the feature register](../Features.md) give
 | tus requests under `/_upload/files/` | Create, read the offset of, append to and end the transfer of one file. | Each request needs `Tus-Resumable: 1.0.0` and `X-Hoover-Upload: 1`. Only the batch owner may send it. |
 | `GET /_upload/<batch_id>/prefix/<file_no>` | Return the SHA-256 of the acknowledged prefix. | Only the batch owner may read it. |
 | `POST /_upload/<batch_id>/commit` | End the transfer and return the detail address `/uploads/<collection>/<batch_id>`. | The body is JSON. A repeat returns the same address. |
+| `POST /_upload/<batch_id>/abort` | Delete an `uploading` batch, the files that it placed and the folders that it created. | The body is JSON. Only the batch owner may send it. A batch whose commit started is a 409. |
 
 A transfer change needs the batch owner and a current upload target: the uploader membership,
 the dataset setting and the writable mount. A removed permission stops new bytes and
@@ -83,8 +84,7 @@ Rows `F-store-15` and `F-store-16` of [the feature register](../Features.md) sta
 | Upload | Send `begin` and start the transfer. | It is disabled with no file and while a page check fails. |
 | Pause, Continue | Stop each transfer after its current chunk, and resume from the server offset. | |
 | Retry finish | Repeat a failed commit of the same batch. | It appears after a commit failure. |
-| Stop upload | End the transfers and commit the batch. | The files that arrived are ingested. |
-| Retry failed files | Send the failed files again. | It shows after a file fails its last retry. |
+| Abort | Stop the transfers and delete the batch, the files that it placed and its upload space. The page then shows an empty selection. | It is disabled during initialization, prefix verification, commit and an abort request. It is enabled again after a failed abort. The batch detail shows it to the owner of an `uploading` batch. |
 | Collection filter | List the batches of one collection or of every readable collection. | The filter is in the address. |
 | Batch row | Open the batch detail. | |
 | Show all | Read the remaining batches in pages of 200. | |
@@ -102,13 +102,14 @@ Rows `F-store-15` and `F-store-16` of [the feature register](../Features.md) sta
 | Page check failure | The files that break a rule with the rule, and each batch limit that the selection exceeds. |
 | `begin` refusal | The files and rules, or the existing paths under "These paths exist in the folder:". |
 | Continue upload selection | The page shows the count of selected files outside the batch and each file whose bytes differ. It lists the waiting files that were not sent. |
-| Transfer | A bar of acknowledged bytes, the acknowledged bytes and files, and at most 3 files in transfer. |
+| Transfer | The dialog fills 80 % of the window. It shows a bar and the counts of acknowledged bytes and files. It shows one line for each file in transfer, at most 8. A path longer than 120 characters loses its middle, and a line that is too narrow cuts the start of the path with an ellipsis. |
+| Failed files | A file gets three attempts. The dialog counts the files that failed their last attempt and lists each one with its error. The commit starts without a person when no file waits. |
 | Running batch | The detail page reads the counts again every 3 seconds until the state is terminal. |
 | No history access | The batch pages show the refusal. |
 
 Upload and Finish upload reject repeated clicks while their request runs.
 The dialog shows starting, prefix verification, transfer, pause, and commit states.
-Pause and Stop upload are disabled during initialization, prefix verification, and commit.
+Pause is disabled during initialization, prefix verification, commit and abort.
 The dialog prevents interaction with the page behind it.
 A prefix request failure closes the dialog and shows an error beside the selection controls.
 An unavailable collection in the address does not select another collection.

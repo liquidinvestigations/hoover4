@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = Принимать загрузки
 dataset-create-panel-the-upload-datasets-of-this = Не удалось прочитать наборы данных для загрузки этой коллекции: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = Коды языков, соединённые знаком `+`, например eng+ron. Пустое значение EasyOCR отключает EasyOCR.{" "}
 dataset-create-panel-saved-as-this-collection-s = Сохранено как значения коллекции по умолчанию. Языки ни одного набора данных не меняются.
 dataset-create-panel-saving-u = Сохранение…
 dataset-create-panel-save-as-collection-defaults = Сохранить как значения коллекции по умолчанию
@@ -155,8 +154,6 @@ admin-collection-detail-created = Создано
 admin-collection-detail-settings = Настройки
 admin-collection-detail-the-collection-database-is-not = База данных коллекции ещё не готова.
 admin-collection-detail-the-last-storage-provisioning-failed = Последняя подготовка хранилища завершилась сбоем: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = Подготовить хранилище
-admin-collection-detail-this-creates-the-database-and = Создаёт базу данных и файловый бакет коллекции, если одного из них нет. Существующие данные не меняются.
 admin-collection-detail-processing-progress-and-estimates = Ход обработки и оценки
 admin-collection-detail-display-name = Отображаемое имя
 admin-collection-detail-display-name-2 = отображаемое имя
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = { $others } уже принима
 admin-dataset-detail-already-accept-uploads = { $others } уже принимают загрузки.
 admin-dataset-detail-operation-started = Операция запущена: { $run_id }
 admin-collection-detail-collection = Коллекция { $collection_id }
-admin-collection-detail-storage-provisioning-started = Подготовка хранилища запущена: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = Не удалось прочитать настройку векторов: { $err }
-admin-collections-list-the-collection-was-added = Коллекция «{ $c }» добавлена.
 admin-collection-processing-processing-of = Обработка { $collection_id }
 admin-collection-processing-collections = Коллекции › { $collection_id }
 admin-collection-processing-executions-2 = Выполнений: { $b_total_executions }
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = Планов открыто заново: { 
 dataset-create-panel-already-accepts-uploads = { $one } уже принимает загрузки.
 dataset-create-panel-already-accept-uploads = { $many_join } уже принимают загрузки.
 dataset-create-panel-saved-as-this-collection-s-2 = Сохранено как значения коллекции по умолчанию. Эти наборы данных наследуют их, а их обновления OCR запускаются по одному: { $changed_join }. Наборы данных со своими языками сохраняют их.
-dataset-create-panel-created-ingestion-has-started-follow = Создан набор { $collection_dataset }. Приём данных начался. Следите за ним на странице обработки коллекции.
 processing-updates-unit = { $unit ->
     [folders] { $count ->
         [one] папка
@@ -871,7 +865,7 @@ processing-update-tables-explanation = { $files ->
     [few] { $count } файла JSON или JSON Lines не имеют таблицы текущего средства чтения либо имеют таблицы, которые прежнее средство чтения обрезало на 300 столбцах.
     [many] { $count } файлов JSON или JSON Lines не имеют таблицы текущего средства чтения либо имеют таблицы, которые прежнее средство чтения обрезало на 300 столбцах.
    *[other] { $count } файла JSON или JSON Lines не имеют таблицы текущего средства чтения либо имеют таблицы, которые прежнее средство чтения обрезало на 300 столбцах.
-} Эти файлы читаются заново. Для файлов JSON, которые прежнее средство чтения прочитало как CSV, создаётся таблица JSON, а прежние ячейки перестают показываться.
+} Эти файлы читаются заново. Для файлов JSON, которые прежнее средство чтения прочитало как CSV, создаётся таблица JSON, а прежние ячейки перестают показываться. Текущее средство чтения сохраняет значение null из JSON как пустую ячейку, а вложенный JSON как текст с отступами.
 processing-update-tables-runs = Чтение таблиц, затем тип файла и индексация этих файлов
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -897,3 +891,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] У { $count } папок нет числа файлов или размера либо значения устарели.
 } Счётчики рассчитываются заново.
 processing-update-folder_counts-runs = Дерево папок
+admin-uploads-badge = Загрузки
+admin-uploads-badge-title = Принимает загрузки

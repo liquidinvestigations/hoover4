@@ -73,6 +73,7 @@ pub async fn admin_list_collections(user: &CurrentUser) -> anyhow::Result<Vec<Ad
     guard::require_admin(user)?;
     let cols = collections::list_collections().await?;
     let stored = stored_stats_by_dataset().await?;
+    let upload_datasets = crate::db_auth::uploads::all_upload_datasets().await?;
     let mut result = Vec::with_capacity(cols.len());
     for c in cols {
         let datasets = collections::list_collection_datasets(&c.collectionname).await?;
@@ -83,6 +84,7 @@ pub async fn admin_list_collections(user: &CurrentUser) -> anyhow::Result<Vec<Ad
             .filter_map(|d| stored.get(&d.collection_dataset))
             .collect();
         let stats = CollectionAggregates::sum(&c.collectionname, datasets.len() as u64, &counted);
+        let accepts_uploads = datasets.iter().any(|d| upload_datasets.contains(&d.collection_dataset));
         result.push(AdminCollectionItem {
             collectionname: c.collectionname,
             fullname: c.fullname,
@@ -91,6 +93,7 @@ pub async fn admin_list_collections(user: &CurrentUser) -> anyhow::Result<Vec<Ad
             db_ready,
             is_public: c.is_public == 1,
             stats,
+            accepts_uploads,
         });
     }
     Ok(result)
@@ -126,10 +129,12 @@ pub async fn admin_list_datasets(user: &CurrentUser) -> anyhow::Result<Vec<Admin
         .fetch_all()
         .await?;
     let mut stored = stored_stats_by_dataset().await?;
+    let upload_datasets = crate::db_auth::uploads::all_upload_datasets().await?;
     Ok(rows
         .into_iter()
         .map(|row| AdminDatasetListItem {
             stats: stored.remove(&row.collection_dataset),
+            accepts_uploads: upload_datasets.contains(&row.collection_dataset),
             collectionname: row.collectionname,
             collection_dataset: row.collection_dataset,
             dataset_name: row.dataset_name,
@@ -151,6 +156,7 @@ pub async fn admin_get_collection(
     let perms = collections::list_permissions_for_collection(&collectionname).await?;
     let client = crate::db_utils::clickhouse_utils::get_global_client();
     let mut stored = stored_stats_by_dataset().await?;
+    let upload_datasets = crate::db_auth::uploads::upload_datasets_of_collection(&collectionname).await?;
     let mut datasets = Vec::new();
     for link in &dataset_links {
         let rows = client
@@ -161,6 +167,7 @@ pub async fn admin_get_collection(
         if let Some(row) = rows.into_iter().next() {
             datasets.push(AdminDatasetItem {
                 stats: stored.remove(&row.collection_dataset),
+                accepts_uploads: upload_datasets.contains(&row.collection_dataset),
                 collection_dataset: row.collection_dataset,
                 dataset_name: row.dataset_name,
                 dataset_display_name: row.dataset_display_name,
@@ -183,6 +190,7 @@ pub async fn admin_get_collection(
             db_ready,
             is_public: c.is_public == 1,
             stats,
+            accepts_uploads: !upload_datasets.is_empty(),
         },
         datasets,
         groups_with_access: perms.into_iter().map(|p| p.groupname).collect(),
@@ -203,22 +211,6 @@ async fn latest_provisioning(collectionname: &str) -> anyhow::Result<(String, St
         .fetch_all()
         .await?;
     Ok(rows.into_iter().next().unwrap_or_default())
-}
-
-/// Provision the storage of an existing collection again: its database and its bucket.
-///
-/// `ensure_collection` creates what is missing and changes nothing that exists, so this
-/// repairs a collection whose provisioning failed, for example at its bucket, without
-/// deleting the collection row, its settings or its group grants.
-pub async fn admin_provision_collection(
-    user: &CurrentUser,
-    collectionname: String,
-) -> anyhow::Result<String> {
-    guard::require_admin(user)?;
-    if collections::get_collection(&collectionname).await?.is_none() {
-        anyhow::bail!("collection not found");
-    }
-    operations::dispatch_operation("ensure_collection", &collectionname, "", &user.username, "", "").await
 }
 
 pub async fn admin_create_collection(
@@ -256,8 +248,8 @@ pub async fn admin_create_collection(
     // record behind it to explain why.
     //
     // If the operation cannot even be dispatched, undo the row. A failed provisioning
-    // after a successful dispatch keeps the row, and `admin_provision_collection` runs
-    // the same operation again.
+    // after a successful dispatch keeps the row, and the Repeat control of the operations
+    // page runs the same operation again.
     if let Err(e) =
         operations::dispatch_operation("ensure_collection", &collectionname, "", &user.username, "", "")
             .await

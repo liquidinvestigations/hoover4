@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = アップロードを受け付ける
 dataset-create-panel-the-upload-datasets-of-this = このコレクションのアップロード用データセットを読み取れませんでした: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = `+` でつなげた言語コードです。例: eng+ron。EasyOCRの値を空にすると、EasyOCRはオフになります。{" "}
 dataset-create-panel-saved-as-this-collection-s = このコレクションの既定値として保存しました。どのデータセットの言語も変更されません。
 dataset-create-panel-saving-u = 保存中…
 dataset-create-panel-save-as-collection-defaults = コレクションの既定値として保存
@@ -155,8 +154,6 @@ admin-collection-detail-created = 作成日時
 admin-collection-detail-settings = 設定
 admin-collection-detail-the-collection-database-is-not = コレクションのデータベースは、まだ準備できていません。
 admin-collection-detail-the-last-storage-provisioning-failed = 直近のストレージのプロビジョニングに失敗しました: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = ストレージをプロビジョニング
-admin-collection-detail-this-creates-the-database-and = コレクションのデータベースとファイルのバケットのどちらかが存在しない場合に、それを作成します。既存のデータは変更されません。
 admin-collection-detail-processing-progress-and-estimates = 処理の進捗と見積もり
 admin-collection-detail-display-name = 表示名
 admin-collection-detail-display-name-2 = 表示名
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = { $others } は既にアップロ
 admin-dataset-detail-already-accept-uploads = { $others } は既にアップロードを受け付けています。
 admin-dataset-detail-operation-started = オペレーションを開始しました: { $run_id }
 admin-collection-detail-collection = コレクション { $collection_id }
-admin-collection-detail-storage-provisioning-started = ストレージのプロビジョニングを開始しました: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = ベクトルの設定を読み取れませんでした: { $err }
-admin-collections-list-the-collection-was-added = コレクション「{ $c }」を追加しました。
 admin-collection-processing-processing-of = { $collection_id } の処理
 admin-collection-processing-collections = コレクション › { $collection_id }
 admin-collection-processing-executions-2 = 実行 { $b_total_executions } 回
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = プラン { $plans } 件を再開
 dataset-create-panel-already-accepts-uploads = { $one } は既にアップロードを受け付けています。
 dataset-create-panel-already-accept-uploads = { $many_join } は既にアップロードを受け付けています。
 dataset-create-panel-saved-as-this-collection-s-2 = このコレクションの既定値として保存しました。次のデータセットが既定値を引き継ぎ、それぞれのOCR更新が1つずつ順に始まります: { $changed_join }。独自の言語を設定しているデータセットは、その設定を保持します。
-dataset-create-panel-created-ingestion-has-started-follow = { $collection_dataset } を作成しました。取り込みを開始しました。経過は、コレクションの処理ページで確認できます。
 processing-updates-unit = { $unit ->
     [folders] { $count ->
        *[other] フォルダー
@@ -844,7 +838,7 @@ processing-update-virus_scan-runs = ウイルス対策スキャン、続いて�
 processing-update-tables-title = テーブル
 processing-update-tables-explanation = { $files ->
    *[other] 現行のリーダーによるテーブルがないJSONまたはJSON Linesのファイル、もしくは以前のリーダーが300列で切り詰めたテーブルが { $count } 個あります。
-} これらを読み直します。以前のリーダーがCSVとして読み取ったJSONファイルには、JSONのテーブルが作られ、以前のセルは表示されなくなります。
+} これらを読み直します。以前のリーダーがCSVとして読み取ったJSONファイルには、JSONのテーブルが作られ、以前のセルは表示されなくなります。現行のリーダーは、JSONのnullを空のセルとして、入れ子のJSONをインデント付きのテキストとして保存します。
 processing-update-tables-runs = テーブルの読み取り、続いてこれらのファイルのファイルの種類の判定とインデックス作成
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -861,3 +855,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] ファイル数やサイズがない、または以前のバージョンの値を持つフォルダーが { $count } 個あります。
 } 件数を計算し直します。
 processing-update-folder_counts-runs = フォルダーツリー
+admin-uploads-badge = アップロード
+admin-uploads-badge-title = アップロードを受け付けます

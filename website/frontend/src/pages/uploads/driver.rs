@@ -12,7 +12,7 @@ use dioxus::prelude::*;
 use dioxus_free_icons::icons::md_file_icons::MdCloudUpload;
 use dioxus_free_icons::Icon;
 
-use crate::components::admin_components::{BTN, BTN_PRIMARY};
+use crate::components::admin_components::{BTN, BTN_DANGER, BTN_PRIMARY};
 use crate::tr;
 
 const TUS_JS: Asset = asset!("/assets/vendor/tus.min.js");
@@ -42,6 +42,8 @@ pub struct Progress {
     pub done: u64,
     pub count: u64,
     pub in_flight: Vec<String>,
+    /// The most files in transfer at one time, so the dialog keeps one line for each.
+    pub slots: u64,
     pub failed: Vec<FailedFile>,
     pub paused: bool,
     pub phase: String,
@@ -64,11 +66,17 @@ pub enum DriverEvent {
         done: u64,
         count: u64,
         in_flight: Vec<String>,
+        #[serde(default)]
+        slots: u64,
         failed: Vec<FailedFile>,
         paused: bool,
         phase: String,
     },
     Committed { detail: String },
+    /// The server deleted the aborted batch.
+    Aborted { batch_id: String },
+    /// The abort request failed. Abort can be sent again.
+    AbortFailed { message: String },
     CommitFailed { message: String },
     /// A "Continue upload" run sent its files without a commit, because other files of
     /// the batch still wait for bytes.
@@ -82,12 +90,13 @@ impl DriverEvent {
     /// The progress fields of a `Progress` event.
     pub fn progress(&self) -> Option<Progress> {
         match self {
-            DriverEvent::Progress { sent, total, done, count, in_flight, failed, paused, phase } => Some(Progress {
+            DriverEvent::Progress { sent, total, done, count, in_flight, slots, failed, paused, phase } => Some(Progress {
                 sent: *sent,
                 total: *total,
                 done: *done,
                 count: *count,
                 in_flight: in_flight.clone(),
+                slots: *slots,
                 failed: failed.clone(),
                 paused: *paused,
                 phase: phase.clone(),
@@ -174,15 +183,56 @@ pub fn DropZone(driver: UploadDriver) -> Element {
 }
 
 const OVERLAY_STYLE: &str = "position: fixed; inset: 0; background-color: rgba(0,0,0,0.3); z-index: 2000; display: flex; align-items: center; justify-content: center;";
-const DIALOG_STYLE: &str = "background: white; border-radius: 10px; padding: 18px 20px; width: 520px; max-width: 92%; box-shadow: 0 8px 30px rgba(0,0,0,0.2); display: flex; flex-direction: column; gap: 8px; font-size: var(--x-text-body); color: var(--x-ink);";
+/// The dialog keeps one size during a transfer: 80 % of the window, one line for each path.
+const DIALOG_STYLE: &str = "background: white; border-radius: 10px; padding: 18px 20px; width: 80vw; height: 80vh; box-sizing: border-box; box-shadow: 0 8px 30px rgba(0,0,0,0.2); display: flex; flex-direction: column; gap: 8px; font-size: var(--x-text-body); color: var(--x-ink); overflow: hidden;";
+const PATH_LINE_STYLE: &str = "display: flex; min-width: 0; white-space: nowrap; line-height: 1.5;";
+const PATH_HEAD_STYLE: &str = "flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;";
+const PATH_TAIL_STYLE: &str = "flex: 0 0 auto;";
+
+/// The most characters of a path in the dialog. A longer path loses its middle.
+pub const PATH_CHARS: usize = 120;
+/// The characters at the end of a path that always stay visible.
+const PATH_TAIL_CHARS: usize = 40;
+
+/// A path with at most `max` characters: its start, an ellipsis and its end.
+pub fn trim_middle(path: &str, max: usize) -> String {
+    let chars: Vec<char> = path.chars().collect();
+    if chars.len() <= max {
+        return path.to_string();
+    }
+    let tail = PATH_TAIL_CHARS.min(max.saturating_sub(1));
+    let head = max.saturating_sub(tail + 1);
+    let mut out: String = chars[..head].iter().collect();
+    out.push('\u{2026}');
+    out.extend(&chars[chars.len() - tail..]);
+    out
+}
+
+/// One path on one line. When the line is too narrow, CSS cuts the start part with an
+/// ellipsis, and the end part, with the file name, stays.
+#[component]
+fn PathLine(path: String, #[props(default)] class: String, #[props(default)] color: String) -> Element {
+    let shown = trim_middle(&path, PATH_CHARS);
+    let chars: Vec<char> = shown.chars().collect();
+    let split = chars.len().saturating_sub(PATH_TAIL_CHARS);
+    let head: String = chars[..split].iter().collect();
+    let tail: String = chars[split..].iter().collect();
+    let color = if color.is_empty() { "var(--x-ink-muted)".to_string() } else { color };
+    rsx! {
+        div { class: "{class}", style: "{PATH_LINE_STYLE} color: {color};", title: "{path}",
+            span { style: PATH_HEAD_STYLE, "{head}" }
+            span { style: PATH_TAIL_STYLE, "{tail}" }
+        }
+    }
+}
 
 /// The progress dialog of a transfer. It has no close control: the transfer ends by
-/// itself, or with Stop upload.
+/// itself and starts indexing, or Abort deletes it.
 #[component]
 pub fn ProgressDialog(
     heading: String,
     state: Progress,
-    /// A failed `commit`, shown under the bar.
+    /// A failed `commit` or abort, shown under the bar.
     error: Option<String>,
     driver: UploadDriver,
 ) -> Element {
@@ -190,23 +240,28 @@ pub fn ProgressDialog(
     let percent = if progress.total == 0 { 100 } else { progress.sent.saturating_mul(100) / progress.total };
     let count_line = tr!("uploads-driver-of-of-files", format_upload_size_progress_sent: (format_upload_size(progress.sent)).to_string(), format_upload_size_progress_total: (format_upload_size(progress.total)).to_string(), format_count_progress_done: (format_count(progress.done)).to_string(), format_count_progress_count: (format_count(progress.count)).to_string());
     let paused = progress.paused;
-    let has_failed = !progress.failed.is_empty();
     let committing = progress.phase == "committing";
+    let aborting = progress.phase == "aborting";
+    let abort_failed = progress.phase == "abort_failed";
+    let failed_commit = progress.phase == "commit_failed";
     let ready = progress.phase == "transferring" && error.is_none();
-    let failed_commit = error.is_some();
+    let can_abort = ready || abort_failed || failed_commit;
     let status = match progress.phase.as_str() {
         "starting" => tr!("uploads-driver-starting-upload"),
         "checking" => tr!("uploads-driver-checking-selected-files"),
         "committing" => tr!("uploads-driver-finishing-upload"),
+        "aborting" => tr!("uploads-driver-aborting-upload"),
+        "abort_failed" => tr!("uploads-driver-the-upload-could-not-be-aborted"),
         _ if failed_commit => tr!("uploads-driver-the-upload-could-not-finish"),
         _ if paused => tr!("uploads-driver-upload-paused"),
         _ => tr!("uploads-driver-sending-files"),
     };
+    let slots = progress.slots.max(progress.in_flight.len() as u64).max(1) as usize;
     rsx! {
         div { style: OVERLAY_STYLE,
             div { class: "x-upload-progress", style: DIALOG_STYLE, role: "dialog", "aria-modal": "true", tabindex: "-1",
                 onmounted: move |_| { document::eval("document.querySelector('.x-upload-progress')?.focus()"); },
-                p { class: "x-upload-status", role: "status", "{status}" }
+                p { class: "x-upload-status", role: "status", style: "margin: 0;", "{status}" }
                 h2 { style: "margin: 0; font-size: var(--x-text-section); font-weight: 600; color: var(--x-ink-strong); overflow-wrap: anywhere;",
                     "{heading}"
                 }
@@ -220,18 +275,36 @@ pub fn ProgressDialog(
                     span { "{percent} %" }
                 }
                 div { class: "x-upload-count", "{count_line}" }
-                for (index, path) in progress.in_flight.iter().enumerate() {
-                    div { key: "{index}", style: "color: var(--x-ink-muted); overflow-wrap: anywhere;", "{path}" }
+                div { class: "x-upload-in-flight", style: "display: flex; flex-direction: column; min-height: calc({slots} * 1.5em);",
+                    for (index, path) in progress.in_flight.iter().enumerate() {
+                        PathLine { key: "{index}", path: path.clone() }
+                    }
                 }
-                for (index, failed) in progress.failed.iter().enumerate() {
-                    div { key: "failed-{index}", class: "x-upload-failed", style: "color: var(--x-danger); overflow-wrap: anywhere;",
-                        {tr!("uploads-driver-failed", failed_path: failed.path.to_string(), failed_error: failed.error.to_string())}
+                if !progress.failed.is_empty() {
+                    div { class: "x-upload-failed-count", style: "color: var(--x-danger); font-weight: 500;",
+                        {tr!("uploads-driver-files-failed", count: progress.failed.len())}
+                    }
+                }
+                div { style: "flex: 1 1 auto; min-height: 0; overflow-y: auto;",
+                    for (index, failed) in progress.failed.iter().enumerate() {
+                        div { key: "failed-{index}", class: "x-upload-failed", style: "margin-bottom: 4px;",
+                            PathLine { path: failed.path.clone(), color: "var(--x-danger)".to_string() }
+                            div { style: "color: var(--x-danger); font-size: var(--x-text-detail); overflow: hidden; white-space: nowrap; text-overflow: ellipsis;", title: "{failed.error}", "{failed.error}" }
+                        }
                     }
                 }
                 if let Some(error) = error {
                     div { style: "color: var(--x-danger);", "{error}" }
                 }
                 div { style: "display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px;",
+                    button {
+                        class: "x-upload-abort",
+                        style: BTN_DANGER,
+                        disabled: !can_abort || aborting,
+                        onclick: move |_| driver.send(serde_json::json!({"cmd": "abort"})),
+                        {tr!("uploads-driver-abort")}
+                    }
+                    span { style: "flex: 1 1 auto;" }
                     if failed_commit {
                         button {
                             class: "x-upload-retry-commit",
@@ -239,15 +312,6 @@ pub fn ProgressDialog(
                             disabled: committing,
                             onclick: move |_| driver.send(serde_json::json!({"cmd": "retry_commit"})),
                             {tr!("uploads-driver-retry-finish")}
-                        }
-                    }
-                    if has_failed {
-                        button {
-                            class: "x-upload-retry",
-                            style: BTN,
-                            disabled: !ready,
-                            onclick: move |_| driver.send(serde_json::json!({"cmd": "retry"})),
-                            {tr!("uploads-driver-retry-failed-files")}
                         }
                     }
                     if paused {
@@ -267,15 +331,23 @@ pub fn ProgressDialog(
                             {tr!("uploads-driver-pause")}
                         }
                     }
-                    button {
-                        class: "x-upload-stop",
-                        style: BTN_PRIMARY,
-                        disabled: !ready,
-                        onclick: move |_| driver.send(serde_json::json!({"cmd": "stop"})),
-                        {tr!("uploads-driver-stop-upload")}
-                    }
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn trim_middle_keeps_short_paths_and_cuts_the_middle_of_long_ones() {
+        assert_eq!(trim_middle("docs/a.md", PATH_CHARS), "docs/a.md");
+        let long = format!("{}/{}", "d".repeat(150), "file-name.png");
+        let trimmed = trim_middle(&long, PATH_CHARS);
+        assert_eq!(trimmed.chars().count(), PATH_CHARS);
+        assert!(trimmed.ends_with("file-name.png"));
+        assert!(trimmed.contains('\u{2026}'));
     }
 }

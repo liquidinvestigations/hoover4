@@ -23,7 +23,7 @@ use super::driver::{use_upload_driver, DriverEvent, DropZone, FailedFile, Progre
 use super::upload_page::{browser_route, show_path, Transfer, H1_STYLE, PAGE_STYLE, SURFACE_STYLE};
 use crate::api::error_util::user_facing_message;
 use crate::api::uploads_api::{upload_batch_detail, upload_batch_resume_files, upload_page_info};
-use crate::components::admin_components::{ErrorBar, BTN, LINK, TABLE, TD, TH};
+use crate::components::admin_components::{ErrorBar, BTN, BTN_DANGER, LINK, TABLE, TD, TH};
 use crate::routes::Route;
 use crate::tr;
 use crate::i18n::SharedText;
@@ -200,6 +200,19 @@ fn UploadBatchContent(collection: String, batch_id: String, page: u32) -> Elemen
                 finish_error.set(Some(message));
             }
         }
+        DriverEvent::Aborted { .. } => {
+            transfer.set(None);
+            resuming.set(false);
+            not_sent_yet.set(Vec::new());
+            mismatched.set(Vec::new());
+            *tick.write() += 1;
+        }
+        DriverEvent::AbortFailed { message } => {
+            if let Some(t) = transfer.write().as_mut() {
+                t.state.phase = "abort_failed".into();
+                t.error = Some(message);
+            }
+        }
         DriverEvent::Refused { .. } | DriverEvent::Begun { .. } => {}
         other => {
             if let (Some(state), Some(t)) = (other.progress(), transfer.write().as_mut()) {
@@ -286,6 +299,28 @@ fn UploadBatchContent(collection: String, batch_id: String, page: u32) -> Elemen
                             }
                             span { style: "color: var(--x-ink-muted);",
                                 {tr!("uploads-batch-detail-finish-upload-ingests-the-files")}
+                            }
+                        }
+                        div { style: "display: flex; align-items: center; gap: 10px; margin-top: 8px;",
+                            button {
+                                class: "x-upload-abort-batch",
+                                style: BTN_DANGER,
+                                disabled: transfer().is_some(),
+                                onclick: move |_| {
+                                    if transfer.peek().is_some() { return; }
+                                    finish_error.set(None);
+                                    transfer.set(Some(Transfer {
+                                        heading: tr!("uploads-batch-detail-aborting-upload").into(),
+                                        state: Progress { phase: "aborting".into(), ..Default::default() },
+                                        error: None,
+                                        batch_id: Some(key.peek().1.clone()),
+                                    }));
+                                    driver.send(serde_json::json!({"cmd": "abort", "batch_id": key.peek().1.clone()}));
+                                },
+                                {tr!("uploads-driver-abort")}
+                            }
+                            span { style: "color: var(--x-ink-muted);",
+                                {tr!("uploads-batch-detail-abort-deletes-the-files")}
                             }
                         }
                         if let Some(e) = finish_error() {

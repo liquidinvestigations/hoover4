@@ -135,6 +135,7 @@ shared-uploads-this-upload-has-ended = This upload has ended.
 shared-uploads-the-path-exists-in-the-dataset = The path exists in the dataset folder.
 shared-uploads-the-server-could-not-recover-this = The server could not recover this file.
 shared-uploads-the-dataset-was-deleted-during-this = The dataset was deleted during this upload.
+shared-uploads-the-upload-was-aborted = The upload was aborted.
 shared-uploads-the-dataset-was-purged-during-this = The dataset was purged during this upload.
 shared-uploads-selected-twice = Selected twice.
 shared-uploads-the-path-is-also-a-folder = The path is also a folder of another selected file.

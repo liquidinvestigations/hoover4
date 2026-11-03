@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = Acceptă încărcări
 dataset-create-panel-the-upload-datasets-of-this = Seturile de date pentru încărcări ale acestei colecții nu au putut fi citite: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = Coduri de limbă unite cu `+`, de exemplu eng+ron. O valoare goală pentru EasyOCR dezactivează EasyOCR.{" "}
 dataset-create-panel-saved-as-this-collection-s = Salvat ca valori implicite ale acestei colecții. Niciun set de date nu își schimbă limbile.
 dataset-create-panel-saving-u = Se salvează…
 dataset-create-panel-save-as-collection-defaults = Salvează ca valori implicite ale colecției
@@ -155,8 +154,6 @@ admin-collection-detail-created = Creat
 admin-collection-detail-settings = Setări
 admin-collection-detail-the-collection-database-is-not = Baza de date a colecției nu este încă pregătită.
 admin-collection-detail-the-last-storage-provisioning-failed = Ultima pregătire a stocării a eșuat: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = Pregătește stocarea
-admin-collection-detail-this-creates-the-database-and = Aceasta creează baza de date și bucket-ul de fișiere al colecției când lipsește unul dintre ele. Nu modifică datele existente.
 admin-collection-detail-processing-progress-and-estimates = Progresul procesării și estimările
 admin-collection-detail-display-name = Nume afișat
 admin-collection-detail-display-name-2 = nume afișat
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = { $others } acceptă deja încăr
 admin-dataset-detail-already-accept-uploads = { $others } acceptă deja încărcări.
 admin-dataset-detail-operation-started = Operația a pornit: { $run_id }
 admin-collection-detail-collection = Colecția { $collection_id }
-admin-collection-detail-storage-provisioning-started = Pregătirea stocării a pornit: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = Setarea pentru vectori nu a putut fi citită: { $err }
-admin-collections-list-the-collection-was-added = Colecția „{ $c }” a fost adăugată.
 admin-collection-processing-processing-of = Procesarea pentru { $collection_id }
 admin-collection-processing-collections = Colecții › { $collection_id }
 admin-collection-processing-executions-2 = execuții: { $b_total_executions }
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = planuri redeschise: { $plans }
 dataset-create-panel-already-accepts-uploads = { $one } acceptă deja încărcări.
 dataset-create-panel-already-accept-uploads = { $many_join } acceptă deja încărcări.
 dataset-create-panel-saved-as-this-collection-s-2 = Salvat ca valori implicite ale acestei colecții. Aceste seturi de date le moștenesc, iar actualizările lor OCR pornesc pe rând: { $changed_join }. Seturile de date cu limbi proprii le păstrează.
-dataset-create-panel-created-ingestion-has-started-follow = { $collection_dataset } a fost creat. Preluarea a început. Urmărește-o în pagina de procesare a colecției.
 processing-updates-unit = { $unit ->
     [folders] { $count ->
         [one] folder
@@ -862,7 +856,7 @@ processing-update-tables-explanation = { $files ->
     [one] { $count } fișier este un fișier JSON sau JSON Lines fără un tabel al cititorului curent sau cu un tabel pe care un cititor anterior l-a tăiat la 300 de coloane.
     [few] { $count } fișiere sunt fișiere JSON sau JSON Lines fără un tabel al cititorului curent sau cu tabele pe care un cititor anterior le-a tăiat la 300 de coloane.
    *[other] { $count } de fișiere sunt fișiere JSON sau JSON Lines fără un tabel al cititorului curent sau cu tabele pe care un cititor anterior le-a tăiat la 300 de coloane.
-} Fișierele sunt citite din nou. Fișierele JSON pe care un cititor anterior le-a citit ca CSV primesc tabelul lor JSON, iar celulele anterioare nu mai sunt afișate.
+} Fișierele sunt citite din nou. Fișierele JSON pe care un cititor anterior le-a citit ca CSV primesc tabelul lor JSON, iar celulele anterioare nu mai sunt afișate. Cititorul actual salvează o valoare null din JSON ca celulă goală, iar JSON-ul imbricat ca text indentat.
 processing-update-tables-runs = Citirea tabelelor, apoi tipul de fișier și indexarea acestor fișiere
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -885,3 +879,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] { $count } de foldere nu au număr de fișiere sau dimensiune, ori au valori dintr-o versiune anterioară.
 } Numerele sunt calculate din nou.
 processing-update-folder_counts-runs = Arborele de foldere
+admin-uploads-badge = Încărcări
+admin-uploads-badge-title = Acceptă încărcări

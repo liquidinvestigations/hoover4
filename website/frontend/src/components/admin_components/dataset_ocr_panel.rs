@@ -15,7 +15,7 @@ use crate::api::admin_api::{
     admin_apply_ocr_languages, admin_get_dataset_ocr, admin_get_dataset_operation,
 };
 use crate::components::admin_components::{
-    ErrorBar, SuccessBar, BTN, HELP_TEXT, SUBHEADING, INPUT, MODULE, MODULE_BODY, MODULE_CAPTION,
+    action_state, ErrorBar, SuccessBar, BTN, HELP_TEXT, SUBHEADING, INPUT, MODULE, MODULE_BODY, MODULE_CAPTION,
 };
 use crate::tr;
 use crate::i18n::SharedText;
@@ -182,7 +182,7 @@ pub fn DatasetOperationStrip(
 /// file hours later. The backend refuses that too, but the form should not be able to
 /// compose the request in the first place.
 #[component]
-fn LanguageChecklist(
+pub(crate) fn LanguageChecklist(
     available: Vec<String>,
     selected: Signal<Vec<String>>,
     disabled: bool,
@@ -260,11 +260,22 @@ fn source_label(source: &str) -> &'static str {
     }
 }
 
-fn split_languages(raw: &str) -> Vec<String> {
+pub(crate) fn split_languages(raw: &str) -> Vec<String> {
     raw.split('+')
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
+        .collect()
+}
+
+/// The Tesseract codes that the form offers. Debian installs the script models under
+/// capitalised names such as `Latin`. The server accepts only lowercase codes, because the
+/// setting becomes part of a storage key.
+pub(crate) fn tesseract_choices(available: &[String]) -> Vec<String> {
+    available
+        .iter()
+        .filter(|c| c.chars().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_'))
+        .cloned()
         .collect()
 }
 
@@ -344,17 +355,10 @@ pub fn DatasetOcrSettingsPanel(collection_dataset: ReadSignal<String>) -> Elemen
     let easyocr_ok = *inherit_easyocr.read() || !*easyocr_on.read() || !easyocr.read().is_empty();
     let can_apply = dirty && !*submitting.read() && tesseract_ok && easyocr_ok;
 
-    let apply_style = if can_apply { "" } else { "opacity: 0.5; cursor: not-allowed;" };
+    let apply_style = action_state(can_apply);
     let dataset_for_apply = panel.collection_dataset.clone();
     let dataset_for_strip = panel.collection_dataset.clone();
-    // Debian installs the script models under capitalised names such as `Latin`. The
-    // server accepts only lowercase codes, because the setting becomes part of a storage key.
-    let tesseract_choices: Vec<String> = panel
-        .tesseract_available
-        .iter()
-        .filter(|c| c.chars().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_'))
-        .cloned()
-        .collect();
+    let tesseract_choices = tesseract_choices(&panel.tesseract_available);
     let script_models = panel.tesseract_available.len() - tesseract_choices.len();
     let easyocr_choices = if panel.easyocr_supported.is_empty() {
         // The service did not report its inventory. The stored codes stay selectable.

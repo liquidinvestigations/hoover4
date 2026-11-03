@@ -85,12 +85,9 @@ uploads-batch-list-uploads = Téléversements
 uploads-driver-drop-files-or-folders-here = Déposez des fichiers ou des dossiers ici
 uploads-driver-or-click-to-choose-files = ou cliquez pour choisir des fichiers
 uploads-driver-choose-a-folder = Choisir un dossier
-uploads-driver-failed = { $failed_path } Échec : { $failed_error }
 uploads-driver-retry-finish = Réessayer la finalisation
-uploads-driver-retry-failed-files = Réessayer les fichiers en échec
 uploads-driver-continue = Poursuivre
 uploads-driver-pause = Pause
-uploads-driver-stop-upload = Arrêter le téléversement
 uploads-upload-button-upload = Téléverser
 uploads-upload-loading = Chargement...
 uploads-upload-this-collection-has-two-upload = Cette collection a deux jeux de données de téléversement. Un administrateur doit en désactiver un.
@@ -130,3 +127,12 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } sur { $format
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = { $format_count_problems_len_as_u64 } fichiers ne peuvent pas être téléversés :
 uploads-upload-files-cannot-be-uploaded-2 = { $format_count_r_problems_len_as_u64 } fichiers ne peuvent pas être téléversés :
+uploads-driver-abort = Annuler
+uploads-driver-aborting-upload = Annulation du téléversement...
+uploads-driver-the-upload-could-not-be-aborted = Le téléversement n’a pas pu être annulé. Sélectionnez de nouveau Annuler.
+uploads-driver-files-failed = { $count ->
+    [one] { $count } fichier a échoué après 3 tentatives. Il n’est pas téléversé.
+   *[other] { $count } fichiers ont échoué après 3 tentatives. Ils ne sont pas téléversés.
+}
+uploads-batch-detail-aborting-upload = Annulation du téléversement
+uploads-batch-detail-abort-deletes-the-files = Annuler supprime les fichiers de ce téléversement, y compris ceux qui sont déjà dans le dossier. Rien n’est indexé.

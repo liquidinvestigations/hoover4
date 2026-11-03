@@ -603,7 +603,7 @@ max_batch_bytes    = 10737418240
 max_file_bytes     = 10737418240
 ; The bytes of one PATCH request. Keep it below the body limit of every proxy in front
 ; of the website.
-chunk_bytes        = 33554432
+chunk_bytes        = 786432
 ; A batch with no transfer for this many hours is committed with the files that
 ; arrived. 0 commits every idle batch at the next hourly sweep.
 abandon_hours      = 24

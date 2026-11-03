@@ -137,6 +137,7 @@ shared-uploads-this-upload-has-ended = Ce téléversement est terminé.
 shared-uploads-the-path-exists-in-the-dataset = Le chemin existe déjà dans le dossier du jeu de données.
 shared-uploads-the-server-could-not-recover-this = Le serveur n’a pas pu récupérer ce fichier.
 shared-uploads-the-dataset-was-deleted-during-this = Le jeu de données a été supprimé pendant ce téléversement.
+shared-uploads-the-upload-was-aborted = Le téléversement a été annulé.
 shared-uploads-the-dataset-was-purged-during-this = Le jeu de données a été purgé pendant ce téléversement.
 shared-uploads-selected-twice = Sélectionné deux fois.
 shared-uploads-the-path-is-also-a-folder = Le chemin est aussi un dossier d’un autre fichier sélectionné.

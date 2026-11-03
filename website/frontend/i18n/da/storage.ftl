@@ -85,12 +85,9 @@ uploads-batch-list-uploads = Uploads
 uploads-driver-drop-files-or-folders-here = Slip filer eller mapper her
 uploads-driver-or-click-to-choose-files = eller klik for at vælge filer
 uploads-driver-choose-a-folder = Vælg en mappe
-uploads-driver-failed = { $failed_path } Mislykkedes: { $failed_error }
 uploads-driver-retry-finish = Prøv at afslutte igen
-uploads-driver-retry-failed-files = Prøv de mislykkede filer igen
 uploads-driver-continue = Fortsæt
 uploads-driver-pause = Sæt på pause
-uploads-driver-stop-upload = Stop upload
 uploads-upload-button-upload = Upload
 uploads-upload-loading = Indlæser...
 uploads-upload-this-collection-has-two-upload = Denne samling har to uploaddatasæt. En administrator skal deaktivere det ene.
@@ -130,3 +127,12 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } af { $format_
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = { $format_count_problems_len_as_u64 } filer kan ikke uploades:
 uploads-upload-files-cannot-be-uploaded-2 = { $format_count_r_problems_len_as_u64 } filer kan ikke uploades:
+uploads-driver-abort = Afbryd
+uploads-driver-aborting-upload = Afbryder upload...
+uploads-driver-the-upload-could-not-be-aborted = Uploaden kunne ikke afbrydes. Vælg Afbryd igen.
+uploads-driver-files-failed = { $count ->
+    [one] { $count } fil mislykkedes efter 3 forsøg. Den uploades ikke.
+   *[other] { $count } filer mislykkedes efter 3 forsøg. De uploades ikke.
+}
+uploads-batch-detail-aborting-upload = Afbryder upload
+uploads-batch-detail-abort-deletes-the-files = Afbryd sletter filerne i denne upload, også de filer, der allerede er i mappen. Intet indekseres.

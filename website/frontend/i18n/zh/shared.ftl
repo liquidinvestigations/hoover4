@@ -137,6 +137,7 @@ shared-uploads-this-upload-has-ended = 此上传已结束。
 shared-uploads-the-path-exists-in-the-dataset = 该路径已存在于数据集文件夹中。
 shared-uploads-the-server-could-not-recover-this = 服务器无法恢复此文件。
 shared-uploads-the-dataset-was-deleted-during-this = 在此次上传期间，数据集已被删除。
+shared-uploads-the-upload-was-aborted = 上传已中止。
 shared-uploads-the-dataset-was-purged-during-this = 在此次上传期间，数据集已被清除。
 shared-uploads-selected-twice = 被选择了两次。
 shared-uploads-the-path-is-also-a-folder = 该路径同时是另一个所选文件的文件夹。

@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = Ta imot opplastinger
 dataset-create-panel-the-upload-datasets-of-this = Opplastingsdatasettene i denne samlingen kunne ikke leses: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = Språkkoder satt sammen med `+`, for eksempel eng+ron. En tom EasyOCR-verdi slår av EasyOCR.{" "}
 dataset-create-panel-saved-as-this-collection-s = Lagret som standardverdier for denne samlingen. Ingen datasett endrer språkene sine.
 dataset-create-panel-saving-u = Lagrer …
 dataset-create-panel-save-as-collection-defaults = Lagre som standardverdier for samlingen
@@ -155,8 +154,6 @@ admin-collection-detail-created = Opprettet
 admin-collection-detail-settings = Innstillinger
 admin-collection-detail-the-collection-database-is-not = Samlingsdatabasen er ikke klar ennå.
 admin-collection-detail-the-last-storage-provisioning-failed = Den siste klargjøringen av lagring mislyktes: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = Klargjør lagring
-admin-collection-detail-this-creates-the-database-and = Dette oppretter databasen og fil-bucketen til samlingen hvis en av dem mangler. Det endrer ingen eksisterende data.
 admin-collection-detail-processing-progress-and-estimates = Behandlingsfremdrift og estimater
 admin-collection-detail-display-name = Visningsnavn
 admin-collection-detail-display-name-2 = visningsnavn
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = { $others } tar allerede imot opp
 admin-dataset-detail-already-accept-uploads = { $others } tar allerede imot opplastinger.
 admin-dataset-detail-operation-started = Operasjon startet: { $run_id }
 admin-collection-detail-collection = Samling { $collection_id }
-admin-collection-detail-storage-provisioning-started = Klargjøring av lagring startet: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = Vektorinnstillingen kunne ikke leses: { $err }
-admin-collections-list-the-collection-was-added = Samlingen «{ $c }» ble lagt til.
 admin-collection-processing-processing-of = Behandling av { $collection_id }
 admin-collection-processing-collections = Samlinger › { $collection_id }
 admin-collection-processing-executions-2 = { $b_total_executions } kjøringer
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = { $plans } plan(er) gjenåpnet
 dataset-create-panel-already-accepts-uploads = { $one } tar allerede imot opplastinger.
 dataset-create-panel-already-accept-uploads = { $many_join } tar allerede imot opplastinger.
 dataset-create-panel-saved-as-this-collection-s-2 = Lagret som standardverdier for denne samlingen. Disse datasettene arver dem, og OCR-oppdateringene deres starter én om gangen: { $changed_join }. Datasett med egne språk beholder dem.
-dataset-create-panel-created-ingestion-has-started-follow = Opprettet { $collection_dataset }. Innhentingen har startet. Følg den på behandlingssiden til samlingen.
 processing-updates-unit = { $unit ->
     [folders] { $count ->
         [one] mappe
@@ -853,7 +847,7 @@ processing-update-tables-title = Tabeller
 processing-update-tables-explanation = { $files ->
     [one] { $count } fil er en JSON- eller JSON Lines-fil uten tabell fra den nåværende leseren, eller en tabell som en tidligere leser kuttet ved 300 kolonner.
    *[other] { $count } filer er JSON- eller JSON Lines-filer uten tabell fra den nåværende leseren, eller tabeller som en tidligere leser kuttet ved 300 kolonner.
-} De leses på nytt. JSON-filer som en tidligere leser leste som CSV, får JSON-tabellen sin, og de tidligere cellene vises ikke lenger.
+} De leses på nytt. JSON-filer som en tidligere leser leste som CSV, får JSON-tabellen sin, og de tidligere cellene vises ikke lenger. Den gjeldende leseren lagrer en JSON-null som en tom celle og nestet JSON som innrykket tekst.
 processing-update-tables-runs = Tabellesing, deretter filtype og indeksering av disse filene
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -873,3 +867,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] { $count } mapper mangler antall filer og størrelse, eller har verdier fra en tidligere versjon.
 } Tallene beregnes på nytt.
 processing-update-folder_counts-runs = Mappetre
+admin-uploads-badge = Opplastinger
+admin-uploads-badge-title = Tar imot opplastinger

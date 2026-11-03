@@ -35,7 +35,6 @@ dataset-create-panel-accept-uploads = Yükleme kabul et
 dataset-create-panel-the-upload-datasets-of-this = Bu koleksiyonun yükleme veri kümeleri okunamadı: { $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = `+` ile birleştirilmiş dil kodları, örneğin eng+ron. Boş bir EasyOCR değeri EasyOCR'ı kapatır.{" "}
 dataset-create-panel-saved-as-this-collection-s = Bu koleksiyonun varsayılanları olarak kaydedildi. Hiçbir veri kümesinin dilleri değişmez.
 dataset-create-panel-saving-u = Kaydediliyor…
 dataset-create-panel-save-as-collection-defaults = Koleksiyon varsayılanı olarak kaydet
@@ -154,8 +153,6 @@ admin-collection-detail-created = Oluşturulma
 admin-collection-detail-settings = Ayarlar
 admin-collection-detail-the-collection-database-is-not = Koleksiyon veritabanı henüz hazır değil.
 admin-collection-detail-the-last-storage-provisioning-failed = Son depolama hazırlığı başarısız oldu: { $detail_provisioning_error }
-admin-collection-detail-provision-storage = Depolamayı hazırla
-admin-collection-detail-this-creates-the-database-and = Bu işlem, eksik olanı varsa koleksiyonun veritabanını ve dosya kovasını oluşturur. Mevcut verileri değiştirmez.
 admin-collection-detail-processing-progress-and-estimates = İşleme ilerlemesi ve tahminler
 admin-collection-detail-display-name = Görünen ad
 admin-collection-detail-display-name-2 = görünen ad
@@ -780,9 +777,7 @@ admin-dataset-detail-already-accepts-uploads = { $others } zaten yükleme kabul 
 admin-dataset-detail-already-accept-uploads = { $others } zaten yükleme kabul ediyor.
 admin-dataset-detail-operation-started = İşlem başlatıldı: { $run_id }
 admin-collection-detail-collection = Koleksiyon { $collection_id }
-admin-collection-detail-storage-provisioning-started = Depolama hazırlığı başlatıldı: { $op_id }
 admin-collection-detail-the-vectors-setting-could-not = Vektör ayarı okunamadı: { $err }
-admin-collections-list-the-collection-was-added = “{ $c }” koleksiyonu eklendi.
 admin-collection-processing-processing-of = { $collection_id } işlemesi
 admin-collection-processing-collections = Koleksiyonlar › { $collection_id }
 admin-collection-processing-executions-2 = { $b_total_executions } yürütme
@@ -805,7 +800,6 @@ dataset-ocr-panel-plan-s-reopened = { $plans } plan yeniden açıldı
 dataset-create-panel-already-accepts-uploads = { $one } zaten yükleme kabul ediyor.
 dataset-create-panel-already-accept-uploads = { $many_join } zaten yükleme kabul ediyor.
 dataset-create-panel-saved-as-this-collection-s-2 = Bu koleksiyonun varsayılanları olarak kaydedildi. Şu veri kümeleri bunları devralır ve OCR güncellemeleri birer birer başlar: { $changed_join }. Kendi dilleri olan veri kümeleri onları korur.
-dataset-create-panel-created-ingestion-has-started-follow = Oluşturuldu: { $collection_dataset }. İçe aktarma başladı. Koleksiyonun işleme sayfasında izleyin.
 processing-updates-unit = { $unit ->
     [folders] { $count ->
         [one] klasör
@@ -852,7 +846,7 @@ processing-update-tables-title = Tablolar
 processing-update-tables-explanation = { $files ->
     [one] { $count } dosya, güncel okuyucunun tablosu olmayan bir JSON ya da JSON Lines dosyası veya önceki bir okuyucunun 300 sütunda kestiği bir tablo.
    *[other] { $count } dosya, güncel okuyucunun tablosu olmayan JSON ya da JSON Lines dosyaları veya önceki bir okuyucunun 300 sütunda kestiği tablolar.
-} Yeniden okunurlar. Daha önce bir okuyucunun CSV olarak okuduğu JSON dosyaları JSON tablolarını alır ve önceki hücreler gösterilmeyi bırakır.
+} Yeniden okunurlar. Daha önce bir okuyucunun CSV olarak okuduğu JSON dosyaları JSON tablolarını alır ve önceki hücreler gösterilmeyi bırakır. Geçerli okuyucu, bir JSON null değerini boş hücre olarak, iç içe JSON'u ise girintili metin olarak kaydeder.
 processing-update-tables-runs = Tablo okuma, ardından bu dosyaların dosya türü ve dizinlemesi
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -872,3 +866,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] { $count } klasörün dosya sayısı ya da boyutu yok ya da değerleri önceki bir sürümden.
 } Sayılar yeniden hesaplanır.
 processing-update-folder_counts-runs = Klasör ağacı
+admin-uploads-badge = Yüklemeler
+admin-uploads-badge-title = Yükleme kabul eder

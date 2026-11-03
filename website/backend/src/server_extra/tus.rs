@@ -1,4 +1,6 @@
-//! The tus 1.0 subset under `/_upload/files/`: creation, expiration and termination.
+//! The tus 1.0 subset under `/_upload/files/`: creation, creation with upload,
+//! expiration and termination. A creation request with a body writes it from offset 0,
+//! so a file that fits one chunk needs one request.
 //!
 //! The upload id is `<batch_id>-<file_no>`, so the address names its manifest row. Every
 //! request except `OPTIONS` must carry `Tus-Resumable: 1.0.0` (412 otherwise) and
@@ -27,7 +29,7 @@ use crate::uploads::transfer::{parse_upload_id, BodyEnd, TransferInfo};
 use crate::uploads::{self, http_date, upload_url, UploadError};
 
 pub const TUS_VERSION: &str = "1.0.0";
-pub const TUS_EXTENSIONS: &str = "creation,expiration,termination";
+pub const TUS_EXTENSIONS: &str = "creation,creation-with-upload,expiration,termination";
 pub const OFFSET_CONTENT_TYPE: &str = "application/offset+octet-stream";
 
 fn header<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
@@ -121,8 +123,71 @@ pub async fn options() -> Response {
     response
 }
 
-/// `POST /_upload/files/`: create the transfer of one manifest file.
-pub async fn create(Extension(user): Extension<CurrentUser>, headers: HeaderMap) -> Response {
+/// The `Content-Length` of a request, `None` for a chunked body.
+fn content_length(headers: &HeaderMap) -> Result<Option<u64>, Response> {
+    match header(headers, "content-length") {
+        Some(v) => match v.parse::<u64>() {
+            Ok(n) => Ok(Some(n)),
+            Err(_) => Err(tus_error(UploadError::new(400, "Content-Length must be a whole number."))),
+        },
+        None => Ok(None),
+    }
+}
+
+/// True when the request names the tus body type.
+fn has_offset_body(headers: &HeaderMap) -> bool {
+    header(headers, "content-type").and_then(|v| v.split(';').next()).map(str::trim) == Some(OFFSET_CONTENT_TYPE)
+}
+
+/// Write a request body at `offset` and start placement when the file is complete. The
+/// body streams to a blocking writer thread through a bounded channel.
+async fn write_body(
+    service: std::sync::Arc<uploads::Service>,
+    username: String,
+    batch_id: String,
+    file_no: u32,
+    offset: u64,
+    content_length: Option<u64>,
+    body: Body,
+) -> Result<TransferInfo, UploadError> {
+    let worker = service.clone();
+    let id = batch_id.clone();
+    let session = run_blocking(move || worker.tus_patch_open(&username, &id, file_no, offset, content_length)).await?;
+    let (sender, mut receiver) = tokio::sync::mpsc::channel::<Piece>(4);
+    let writer = tokio::task::spawn_blocking(move || {
+        let mut session = session;
+        while let Some(piece) = receiver.blocking_recv() {
+            match piece {
+                Piece::Bytes(bytes) => match session.write(&bytes) {
+                    Ok(true) => {}
+                    Ok(false) => return session.finish(BodyEnd::Overflow),
+                    Err(e) => {
+                        tracing::warn!("upload batch write failed, the received prefix is kept: {e:#}");
+                        return session.finish(BodyEnd::Interrupted);
+                    }
+                },
+                Piece::End(end) => return session.finish(end),
+            }
+        }
+        session.finish(BodyEnd::Interrupted)
+    });
+    let end = pump_body(body.into_data_stream(), &sender, uploads::PATCH_IDLE_TIMEOUT).await;
+    let _ = sender.send(Piece::End(end)).await;
+    drop(sender);
+    let info = match writer.await {
+        Ok(result) => result?,
+        Err(e) => return Err(UploadError::new(500, format!("the upload writer failed: {e}"))),
+    };
+    if info.complete {
+        place_in_background(service, batch_id, file_no);
+    }
+    Ok(info)
+}
+
+/// `POST /_upload/files/`: create the transfer of one manifest file. With the tus body
+/// type and a body, the body is written from offset 0 when the transfer has no
+/// acknowledged byte. The answer carries the offset either way.
+pub async fn create(Extension(user): Extension<CurrentUser>, headers: HeaderMap, body: Body) -> Response {
     if let Err(refused) = check_protocol(&headers) {
         return refused;
     }
@@ -144,19 +209,29 @@ pub async fn create(Extension(user): Extension<CurrentUser>, headers: HeaderMap)
         Ok(service) => service,
         Err(e) => return tus_error(e),
     };
+    let body_length = match content_length(&headers) {
+        Ok(n) => n,
+        Err(refused) => return refused,
+    };
+    let with_body = has_offset_body(&headers) && body_length != Some(0);
     let worker = service.clone();
     let id = batch_id.clone();
-    match run_blocking(move || worker.tus_create(&user.username, &id, file_no, length)).await {
-        Ok(info) => {
-            if info.complete {
-                place_in_background(service, batch_id.clone(), file_no);
-            }
-            let mut extra = transfer_headers(&info);
-            extra.push(("location", upload_url(&batch_id, file_no)));
-            tus_response(StatusCode::CREATED, &extra, String::new())
+    let username = user.username.clone();
+    let mut info = match run_blocking(move || worker.tus_create(&username, &id, file_no, length)).await {
+        Ok(info) => info,
+        Err(e) => return tus_error(e),
+    };
+    if info.complete {
+        place_in_background(service.clone(), batch_id.clone(), file_no);
+    } else if with_body && info.offset == 0 {
+        match write_body(service, user.username.clone(), batch_id.clone(), file_no, 0, body_length, body).await {
+            Ok(written) => info = written,
+            Err(e) => return tus_error(e),
         }
-        Err(e) => tus_error(e),
     }
+    let mut extra = transfer_headers(&info);
+    extra.push(("location", upload_url(&batch_id, file_no)));
+    tus_response(StatusCode::CREATED, &extra, String::new())
 }
 
 /// `HEAD /_upload/files/<id>`: the acknowledged offset.
@@ -215,19 +290,15 @@ pub async fn patch(
     if let Err(refused) = check_protocol(&headers) {
         return refused;
     }
-    let content_type = header(&headers, "content-type").and_then(|v| v.split(';').next()).map(str::trim);
-    if content_type != Some(OFFSET_CONTENT_TYPE) {
+    if !has_offset_body(&headers) {
         return tus_error(UploadError::new(415, "The request must have Content-Type: application/offset+octet-stream."));
     }
     let Some(offset) = header(&headers, "upload-offset").and_then(|v| v.parse::<u64>().ok()) else {
         return tus_error(UploadError::new(400, "Upload-Offset must be a whole number."));
     };
-    let content_length = match header(&headers, "content-length") {
-        Some(v) => match v.parse::<u64>() {
-            Ok(n) => Some(n),
-            Err(_) => return tus_error(UploadError::new(400, "Content-Length must be a whole number.")),
-        },
-        None => None,
+    let content_length = match content_length(&headers) {
+        Ok(n) => n,
+        Err(refused) => return refused,
     };
     let Some((batch_id, file_no)) = parse_upload_id(&upload_id) else {
         return tus_error(UploadError::not_found());
@@ -236,44 +307,8 @@ pub async fn patch(
         Ok(service) => service,
         Err(e) => return tus_error(e),
     };
-    let worker = service.clone();
-    let id = batch_id.clone();
-    let session =
-        match run_blocking(move || worker.tus_patch_open(&user.username, &id, file_no, offset, content_length)).await {
-            Ok(session) => session,
-            Err(e) => return tus_error(e),
-        };
-
-    let (sender, mut receiver) = tokio::sync::mpsc::channel::<Piece>(4);
-    let writer = tokio::task::spawn_blocking(move || {
-        let mut session = session;
-        while let Some(piece) = receiver.blocking_recv() {
-            match piece {
-                Piece::Bytes(bytes) => match session.write(&bytes) {
-                    Ok(true) => {}
-                    Ok(false) => return session.finish(BodyEnd::Overflow),
-                    Err(e) => {
-                        tracing::warn!("upload batch write failed, the received prefix is kept: {e:#}");
-                        return session.finish(BodyEnd::Interrupted);
-                    }
-                },
-                Piece::End(end) => return session.finish(end),
-            }
-        }
-        session.finish(BodyEnd::Interrupted)
-    });
-    let end = pump_body(body.into_data_stream(), &sender, uploads::PATCH_IDLE_TIMEOUT).await;
-    let _ = sender.send(Piece::End(end)).await;
-    drop(sender);
-    let result = match writer.await {
-        Ok(result) => result,
-        Err(e) => Err(UploadError::new(500, format!("the upload writer failed: {e}"))),
-    };
-    match result {
+    match write_body(service, user.username, batch_id, file_no, offset, content_length, body).await {
         Ok(info) => {
-            if info.complete {
-                place_in_background(service, batch_id, file_no);
-            }
             let extra = vec![("upload-offset", info.offset.to_string()), ("upload-expires", http_date(info.expires_ms))];
             tus_response(StatusCode::NO_CONTENT, &extra, String::new())
         }

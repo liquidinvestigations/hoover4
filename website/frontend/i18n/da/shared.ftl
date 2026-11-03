@@ -136,6 +136,7 @@ shared-uploads-this-upload-has-ended = Denne upload er afsluttet.
 shared-uploads-the-path-exists-in-the-dataset = Stien findes i datasættets mappe.
 shared-uploads-the-server-could-not-recover-this = Serveren kunne ikke gendanne denne fil.
 shared-uploads-the-dataset-was-deleted-during-this = Datasættet blev slettet under denne upload.
+shared-uploads-the-upload-was-aborted = Uploaden blev afbrudt.
 shared-uploads-the-dataset-was-purged-during-this = Datasættet blev ryddet under denne upload.
 shared-uploads-selected-twice = Valgt to gange.
 shared-uploads-the-path-is-also-a-folder = Stien er også en mappe for en anden valgt fil.

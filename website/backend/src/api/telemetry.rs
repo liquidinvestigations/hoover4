@@ -254,7 +254,6 @@ const KNOWN_FUNCTIONS: &[&str] = &[
     "admin_get_collection_vectors",
     "admin_set_collection_vectors",
     "admin_get_processing_updates",
-    "admin_provision_collection",
     "admin_request_update_check",
     "admin_start_collection_update",
     "admin_start_processing_update",

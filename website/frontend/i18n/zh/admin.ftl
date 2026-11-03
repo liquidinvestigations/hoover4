@@ -36,7 +36,6 @@ dataset-create-panel-accept-uploads = 接受上传
 dataset-create-panel-the-upload-datasets-of-this = 无法读取此文档集的上传数据集：{ $err }
 dataset-create-panel-tesseract = Tesseract
 dataset-create-panel-easyocr = EasyOCR
-dataset-create-panel-joined-language-codes-for-example = 用 `+` 连接的语言代码，例如 eng+ron。EasyOCR 的值为空时，将关闭 EasyOCR。{" "}
 dataset-create-panel-saved-as-this-collection-s = 已保存为此文档集的默认值。不会更改任何数据集的语言。
 dataset-create-panel-saving-u = 正在保存…
 dataset-create-panel-save-as-collection-defaults = 保存为文档集默认值
@@ -155,8 +154,6 @@ admin-collection-detail-created = 创建时间
 admin-collection-detail-settings = 设置
 admin-collection-detail-the-collection-database-is-not = 文档集数据库尚未就绪。
 admin-collection-detail-the-last-storage-provisioning-failed = 上一次存储配置失败：{ $detail_provisioning_error }
-admin-collection-detail-provision-storage = 配置存储
-admin-collection-detail-this-creates-the-database-and = 当文档集的数据库或文件存储桶缺失时，此操作会创建它们。不会更改任何现有数据。
 admin-collection-detail-processing-progress-and-estimates = 处理进度与预估
 admin-collection-detail-display-name = 显示名称
 admin-collection-detail-display-name-2 = 显示名称
@@ -781,9 +778,7 @@ admin-dataset-detail-already-accepts-uploads = { $others } 已接受上传。
 admin-dataset-detail-already-accept-uploads = { $others } 已接受上传。
 admin-dataset-detail-operation-started = 作业已启动：{ $run_id }
 admin-collection-detail-collection = 文档集 { $collection_id }
-admin-collection-detail-storage-provisioning-started = 存储配置已启动：{ $op_id }
 admin-collection-detail-the-vectors-setting-could-not = 无法读取向量设置：{ $err }
-admin-collections-list-the-collection-was-added = 文档集“{ $c }”已添加。
 admin-collection-processing-processing-of = { $collection_id } 的处理
 admin-collection-processing-collections = 文档集 › { $collection_id }
 admin-collection-processing-executions-2 = { $b_total_executions } 次执行
@@ -806,7 +801,6 @@ dataset-ocr-panel-plan-s-reopened = 已重新打开 { $plans } 个计划
 dataset-create-panel-already-accepts-uploads = { $one } 已接受上传。
 dataset-create-panel-already-accept-uploads = { $many_join } 已接受上传。
 dataset-create-panel-saved-as-this-collection-s-2 = 已保存为此文档集的默认值。下列数据集会继承这些默认值，它们的 OCR 更新会逐个开始：{ $changed_join }。使用自己语言设置的数据集保持不变。
-dataset-create-panel-created-ingestion-has-started-follow = 已创建 { $collection_dataset }。导入已开始。可在文档集的处理页面中查看进度。
 processing-updates-unit = { $unit ->
     [folders] 个文件夹
     [tables] 个表格
@@ -836,7 +830,7 @@ processing-update-virus_scan-runs = 杀毒扫描，然后是被感染文件的�
 processing-update-tables-title = 表格
 processing-update-tables-explanation = { $files ->
    *[other] 有 { $count } 个 JSON 或 JSON Lines 文件，没有当前读取器生成的表格，或者其表格被早期的读取器在 300 列处截断。
-} 系统会重新读取这些文件。早期读取器当作 CSV 读取的 JSON 文件会得到其 JSON 表格，早期的单元格将不再显示。
+} 系统会重新读取这些文件。早期读取器当作 CSV 读取的 JSON 文件会得到其 JSON 表格，早期的单元格将不再显示。当前读取器将 JSON 的 null 存为空单元格，将嵌套的 JSON 存为带缩进的文本。
 processing-update-tables-runs = 读取表格，然后是这些文件的文件类型和索引
 processing-update-ocr-title = OCR
 processing-update-ocr-explanation = { $files ->
@@ -853,3 +847,5 @@ processing-update-folder_counts-explanation = { $files ->
    *[other] 有 { $count } 个文件夹没有文件数或大小，或者其值属于早期版本。
 } 系统会重新计算这些计数。
 processing-update-folder_counts-runs = 文件夹树
+admin-uploads-badge = 上传
+admin-uploads-badge-title = 接受上传

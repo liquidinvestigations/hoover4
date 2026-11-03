@@ -85,12 +85,9 @@ uploads-batch-list-uploads = Загрузки
 uploads-driver-drop-files-or-folders-here = Перетащите сюда файлы или папки
 uploads-driver-or-click-to-choose-files = или нажмите, чтобы выбрать файлы
 uploads-driver-choose-a-folder = Выбрать папку
-uploads-driver-failed = { $failed_path } Не удалось: { $failed_error }
 uploads-driver-retry-finish = Повторить завершение
-uploads-driver-retry-failed-files = Повторить неудавшиеся файлы
 uploads-driver-continue = Продолжить
 uploads-driver-pause = Пауза
-uploads-driver-stop-upload = Остановить загрузку
 uploads-upload-button-upload = Загрузить
 uploads-upload-loading = Загрузка...
 uploads-upload-this-collection-has-two-upload = В этой коллекции два набора данных для загрузки. Администратор должен отключить один из них.
@@ -130,3 +127,14 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } из { $forma
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = Файлов, которые нельзя загрузить: { $format_count_problems_len_as_u64 }
 uploads-upload-files-cannot-be-uploaded-2 = Файлов, которые нельзя загрузить: { $format_count_r_problems_len_as_u64 }
+uploads-driver-abort = Прервать
+uploads-driver-aborting-upload = Прерывание загрузки...
+uploads-driver-the-upload-could-not-be-aborted = Не удалось прервать загрузку. Выберите «Прервать» ещё раз.
+uploads-driver-files-failed = { $count ->
+    [one] { $count } файл не загружен после 3 попыток.
+    [few] { $count } файла не загружены после 3 попыток.
+    [many] { $count } файлов не загружены после 3 попыток.
+   *[other] { $count } файла не загружены после 3 попыток.
+}
+uploads-batch-detail-aborting-upload = Прерывание загрузки
+uploads-batch-detail-abort-deletes-the-files = «Прервать» удаляет файлы этой загрузки, в том числе файлы, которые уже находятся в папке. Ничего не индексируется.

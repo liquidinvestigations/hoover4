@@ -103,6 +103,9 @@ pub async fn admin_get_dataset(
             dataset_path: row.dataset_path,
             date_created: format_datetime(row.date_created),
             stats: aggregates.clone(),
+            accepts_uploads: crate::db_auth::uploads::upload_datasets_of_collection(&row.collectionname)
+                .await?
+                .contains(&collection_dataset),
         },
         collectionname: row.collectionname,
         stats,

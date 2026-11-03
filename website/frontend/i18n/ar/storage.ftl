@@ -85,12 +85,9 @@ uploads-batch-list-uploads = عمليات الرفع
 uploads-driver-drop-files-or-folders-here = أفلت الملفات أو المجلدات هنا
 uploads-driver-or-click-to-choose-files = أو انقر لاختيار الملفات
 uploads-driver-choose-a-folder = اختيار مجلد
-uploads-driver-failed = { $failed_path } فشل: { $failed_error }
 uploads-driver-retry-finish = إعادة محاولة الإنهاء
-uploads-driver-retry-failed-files = إعادة محاولة الملفات الفاشلة
 uploads-driver-continue = متابعة
 uploads-driver-pause = إيقاف مؤقت
-uploads-driver-stop-upload = إيقاف الرفع
 uploads-upload-button-upload = رفع
 uploads-upload-loading = جارٍ التحميل...
 uploads-upload-this-collection-has-two-upload = تحتوي هذه المجموعة على مجموعتي بيانات للرفع. يجب أن يعطّل مسؤول إحداهما.
@@ -130,3 +127,16 @@ uploads-driver-of-of-files = { $format_upload_size_progress_sent } من { $forma
 uploads-upload-http = HTTP { $status }
 uploads-upload-files-cannot-be-uploaded = ملفات لا يمكن رفعها: { $format_count_problems_len_as_u64 }
 uploads-upload-files-cannot-be-uploaded-2 = ملفات لا يمكن رفعها: { $format_count_r_problems_len_as_u64 }
+uploads-driver-abort = إلغاء
+uploads-driver-aborting-upload = جارٍ إلغاء الرفع...
+uploads-driver-the-upload-could-not-be-aborted = تعذّر إلغاء الرفع. اختر «إلغاء» مرة أخرى.
+uploads-driver-files-failed = { $count ->
+    [zero] فشل { $count } ملف بعد 3 محاولات، ولن يُرفع.
+    [one] فشل { $count } ملف بعد 3 محاولات، ولن يُرفع.
+    [two] فشل { $count } ملفان بعد 3 محاولات، ولن يُرفعا.
+    [few] فشلت { $count } ملفات بعد 3 محاولات، ولن تُرفع.
+    [many] فشل { $count } ملفًا بعد 3 محاولات، ولن تُرفع.
+   *[other] فشل { $count } ملف بعد 3 محاولات، ولن تُرفع.
+}
+uploads-batch-detail-aborting-upload = جارٍ إلغاء الرفع
+uploads-batch-detail-abort-deletes-the-files = يحذف «إلغاء» ملفات عملية الرفع هذه، ومنها الملفات الموجودة في المجلد. لا يُفهرس أي شيء.

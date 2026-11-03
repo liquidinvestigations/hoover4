@@ -21,7 +21,7 @@ use crate::api::admin_api::{
 };
 use crate::api::error_util::user_facing_message;
 use crate::components::admin_components::{
-    ErrorBar, SuccessBar, BTN, BTN_PRIMARY, HELP_TEXT, MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
+    action_state, ErrorBar, SuccessBar, BTN, BTN_PRIMARY, HELP_TEXT, MODULE, MODULE_BODY, MODULE_CAPTION, TABLE, TD, TH,
 };
 use crate::routes::Route;
 use crate::tr;
@@ -113,7 +113,7 @@ pub fn ProcessingUpdatesPanel(
     let summary = selection_summary(&view.steps, &chosen).shared();
     let running = !view.running_op_id.is_empty();
     let can_start = !chosen.is_empty() && !running && !*submitting.read();
-    let start_style = if can_start { "" } else { "opacity: 0.5; cursor: not-allowed;" };
+    let start_style = action_state(can_start);
     let status = view.status_line().shared();
     let unique_unit = count_unit(view.unique_files, "files");
     let runs_word = tr!("processing-updates-step-runs", count: view.executions);

@@ -137,6 +137,7 @@ shared-uploads-this-upload-has-ended = انتهت عملية الرفع هذه.
 shared-uploads-the-path-exists-in-the-dataset = المسار موجود في مجلد مجموعة البيانات.
 shared-uploads-the-server-could-not-recover-this = تعذّر على الخادم استرداد هذا الملف.
 shared-uploads-the-dataset-was-deleted-during-this = حُذفت مجموعة البيانات أثناء عملية الرفع هذه.
+shared-uploads-the-upload-was-aborted = أُلغي الرفع.
 shared-uploads-the-dataset-was-purged-during-this = أُزيلت مجموعة البيانات نهائيًا أثناء عملية الرفع هذه.
 shared-uploads-selected-twice = حُدد مرتين.
 shared-uploads-the-path-is-also-a-folder = المسار هو أيضًا مجلد لملف آخر محدد.

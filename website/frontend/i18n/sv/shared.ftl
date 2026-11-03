@@ -137,6 +137,7 @@ shared-uploads-this-upload-has-ended = Den här uppladdningen har avslutats.
 shared-uploads-the-path-exists-in-the-dataset = Sökvägen finns redan i datamängdens mapp.
 shared-uploads-the-server-could-not-recover-this = Servern kunde inte återställa den här filen.
 shared-uploads-the-dataset-was-deleted-during-this = Datamängden raderades under uppladdningen.
+shared-uploads-the-upload-was-aborted = Uppladdningen avbröts.
 shared-uploads-the-dataset-was-purged-during-this = Datamängden rensades bort under uppladdningen.
 shared-uploads-selected-twice = Vald två gånger.
 shared-uploads-the-path-is-also-a-folder = Sökvägen är också en mapp för en annan vald fil.

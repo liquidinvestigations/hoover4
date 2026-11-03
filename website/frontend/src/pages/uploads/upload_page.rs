@@ -125,6 +125,19 @@ pub fn UploadPage(collection: String, folder: String) -> Element {
                 t.error = Some(message);
             }
         }
+        // The server deleted the batch. The page returns to an empty form.
+        DriverEvent::Aborted { .. } => {
+            transfer.set(None);
+            refusal.set(None);
+            unconfirmed.set(None);
+            selection.set(Vec::new());
+        }
+        DriverEvent::AbortFailed { message } => {
+            if let Some(t) = transfer.write().as_mut() {
+                t.state.phase = "abort_failed".into();
+                t.error = Some(message);
+            }
+        }
         other => {
             if let (Some(state), Some(t)) = (other.progress(), transfer.write().as_mut()) {
                 t.state = state;

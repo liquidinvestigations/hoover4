@@ -22,17 +22,25 @@ use common::admin_types::{DatasetFolderOption, DatasetMountOption};
 use common::storage_tree::normalize_identifier;
 
 use crate::api::admin_api::{
-    admin_create_dataset, admin_get_collection_ocr_defaults, admin_list_collection_upload_datasets,
+    admin_create_dataset, admin_get_collection_ocr_defaults, admin_get_dataset, admin_list_collection_upload_datasets,
     admin_list_dataset_folders, admin_list_dataset_mounts, admin_set_collection_ocr_defaults,
 };
+use crate::components::admin_components::dataset_ocr_panel::{split_languages, tesseract_choices, LanguageChecklist};
+use crate::routes::Route;
 use crate::tr;
 
 /// The value of the folder option that asks for a new folder. It holds a `/`, so no
 /// folder name can be equal to it.
 const NEW_FOLDER: &str = "/new";
 use crate::components::admin_components::{
-    ErrorBar, SuccessBar, BTN, HELP_TEXT, INPUT, LABEL, MODULE, MODULE_BODY, MODULE_CAPTION, SELECT,
+    action_state, ErrorBar, SuccessBar, BTN, BTN_PRIMARY, HELP_TEXT, INPUT, LABEL, MODULE, MODULE_BODY,
+    MODULE_CAPTION, SELECT, SUBHEADING,
 };
+
+/// How many times the panel reads the new dataset before it opens the dataset page, and
+/// the wait between two reads.
+const OPEN_ATTEMPTS: u32 = 20;
+const OPEN_WAIT_MS: u64 = 500;
 
 /// Turn a folder name into the pipeline's dataset-name shape: lowercase, `_` separators.
 /// The backend applies the same rule and refuses what does not match, so this is a
@@ -89,8 +97,9 @@ pub fn DatasetCreatePanel(
     let mut folder = use_signal(String::new);
     let mut new_folder_name = use_signal(String::new);
     let mut dataset_name = use_signal(String::new);
-    let mut tesseract = use_signal(|| "eng".to_string());
-    let mut easyocr = use_signal(|| "en".to_string());
+    let mut tesseract = use_signal(|| vec!["eng".to_string()]);
+    let mut easyocr = use_signal(|| vec!["en".to_string()]);
+    let mut easyocr_on = use_signal(|| true);
     let mut seeded = use_signal(|| false);
     let mut saving_defaults = use_signal(|| false);
 
@@ -103,10 +112,11 @@ pub fn DatasetCreatePanel(
     // the whole page painted but dead.
     use_effect(move || {
         let defaults = defaults_res.read().as_ref().cloned();
-        if let Some(Ok((tess, easy))) = defaults {
+        if let Some(Ok(defaults)) = defaults {
             if !*seeded.peek() {
-                tesseract.set(tess);
-                easyocr.set(easy);
+                tesseract.set(split_languages(&defaults.tesseract_languages));
+                easyocr.set(split_languages(&defaults.easyocr_languages));
+                easyocr_on.set(!defaults.easyocr_languages.is_empty());
                 seeded.set(true);
             }
         }
@@ -177,12 +187,35 @@ pub fn DatasetCreatePanel(
         normalize_identifier(&dataset_name.read())
     };
     let name_taken = !saved_name.is_empty() && existing_datasets.iter().any(|d| d == &saved_name);
-    let can_create = !target_folder.is_empty() && !mount_name.is_empty() && !*submitting.read() && !name_taken;
-    let create_style = if can_create {
-        ""
+    let ocr = defaults_res.read().as_ref().and_then(|r| r.as_ref().ok()).cloned().unwrap_or_default();
+    let tesseract_value = tesseract.read().join("+");
+    let easyocr_value = if *easyocr_on.read() { easyocr.read().join("+") } else { String::new() };
+    let languages_ok = !tesseract.read().is_empty() && (!*easyocr_on.read() || !easyocr.read().is_empty());
+    // A service that lists nothing leaves the stored codes selectable.
+    let tesseract_offer = if ocr.tesseract_available.is_empty() {
+        split_languages(&ocr.tesseract_languages)
     } else {
-        "opacity: 0.5; cursor: not-allowed;"
+        tesseract_choices(&ocr.tesseract_available)
     };
+    let easyocr_offer = if ocr.easyocr_supported.is_empty() {
+        split_languages(&ocr.easyocr_languages)
+    } else {
+        ocr.easyocr_supported.clone()
+    };
+    let not_preloaded: Vec<String> = easyocr
+        .read()
+        .iter()
+        .filter(|code| !ocr.easyocr_preloaded.is_empty() && !ocr.easyocr_preloaded.contains(code))
+        .cloned()
+        .collect();
+    let can_create = !target_folder.is_empty()
+        && !mount_name.is_empty()
+        && !*submitting.read()
+        && !name_taken
+        && languages_ok;
+    let create_style = action_state(can_create);
+    let can_save_defaults = !*saving_defaults.read() && languages_ok;
+    let save_style = action_state(can_save_defaults);
 
     rsx! {
         div { class: "x-admin-module", style: MODULE,
@@ -318,38 +351,62 @@ pub fn DatasetCreatePanel(
                         }
                     }
 
-                    label { style: LABEL,
-                        span { style: "width: 130px; color: var(--x-ink-muted);", {tr!("dataset-create-panel-tesseract")} }
-                        input {
-                            style: "{INPUT} flex: 1;",
-                            value: "{tesseract}",
-                            oninput: move |e| tesseract.set(e.value()),
+                    div {
+                        h3 { style: SUBHEADING, {tr!("dataset-create-panel-tesseract")} }
+                        if ocr.tesseract_available.is_empty() {
+                            p { style: "{HELP_TEXT} margin: 0 0 6px;",
+                                {tr!("dataset-ocr-panel-the-tesseract-service-did-not")}
+                                {tr!("dataset-ocr-panel-the-list-comes-from-the")}
+                            }
+                        }
+                        LanguageChecklist { available: tesseract_offer.clone(), selected: tesseract, disabled: false }
+                        p { style: "{HELP_TEXT} margin: 6px 0 0;",
+                            {tr!("dataset-ocr-panel-the-first-language-is-the")}
+                            strong { "{tesseract_value}" }
                         }
                     }
-                    label { style: LABEL,
-                        span { style: "width: 130px; color: var(--x-ink-muted);", {tr!("dataset-create-panel-easyocr")} }
-                        input {
-                            style: "{INPUT} flex: 1;",
-                            value: "{easyocr}",
-                            oninput: move |e| easyocr.set(e.value()),
+                    div {
+                        h3 { style: SUBHEADING, {tr!("dataset-create-panel-easyocr")} }
+                        if !ocr.easyocr_configured {
+                            p { style: "{HELP_TEXT} margin: 0 0 6px;", {tr!("dataset-ocr-panel-easyocr-is-off-on-this")} }
+                        }
+                        label { style: "display: flex; align-items: center; gap: 6px; font-size: var(--x-text-sm); margin-bottom: 8px;",
+                            input {
+                                r#type: "checkbox",
+                                checked: *easyocr_on.read(),
+                                onchange: move |e| easyocr_on.set(e.checked()),
+                            }
+                            {tr!("dataset-ocr-panel-enabled")}
+                        }
+                        if *easyocr_on.read() {
+                            if ocr.easyocr_supported.is_empty() {
+                                p { style: "{HELP_TEXT} margin: 0 0 6px;", {tr!("dataset-ocr-panel-the-easyocr-service-did-not")} }
+                            }
+                            LanguageChecklist { available: easyocr_offer.clone(), selected: easyocr, disabled: false }
+                            if !not_preloaded.is_empty() {
+                                p { style: "{HELP_TEXT} margin: 6px 0 0;",
+                                    {tr!("admin-dataset-ocr-panel-models-not-in-image", languages: not_preloaded.join(", "))}
+                                }
+                            }
                         }
                     }
                     p { style: "{HELP_TEXT} margin: 0;",
-                        {tr!("dataset-create-panel-joined-language-codes-for-example")}
                         {tr!("dataset-create-panel-the-form-starts-with-the")}
                         {tr!("dataset-create-panel-and-a-dataset-created-with")}
                     }
 
                     div {
                         button {
-                            style: "{BTN} background: #999;",
-                            disabled: *saving_defaults.read(),
+                            style: "{BTN} {save_style}",
+                            disabled: !can_save_defaults,
                             onclick: {
                                 let collectionname = collectionname.clone();
+                                let tess = tesseract_value.clone();
+                                let easy = easyocr_value.clone();
                                 move |_| {
                                     let collectionname = collectionname.clone();
-                                    let tess = tesseract.read().clone();
-                                    let easy = easyocr.read().clone();
+                                    let tess = tess.clone();
+                                    let easy = easy.clone();
                                     if *saving_defaults.peek() { return; }
                                     saving_defaults.set(true);
                                     spawn(async move {
@@ -376,33 +433,41 @@ pub fn DatasetCreatePanel(
 
                     div {
                         button {
-                            style: "{BTN} {create_style}",
+                            style: "{BTN_PRIMARY} {create_style}",
                             disabled: !can_create,
                             onclick: {
                                 let collectionname = collectionname.clone();
+                                let tess = tesseract_value.clone();
+                                let easy = easyocr_value.clone();
                                 move |_| {
                                     let collectionname = collectionname.clone();
                                     let mount_name = mount_name.clone();
                                     let folder_value = target_folder.clone();
                                     let name = normalize_identifier(&dataset_name.read());
-                                    let tess = tesseract.read().clone();
-                                    let easy = easyocr.read().clone();
+                                    let tess = tess.clone();
+                                    let easy = easy.clone();
                                     let accept = accept_value;
                                     if *submitting.peek() { return; }
                                     submitting.set(true);
+                                    let collectionname_for_route = collectionname.clone();
                                     spawn(async move {
                                         msg.set(None);
                                         error_msg.set(None);
                                         match admin_create_dataset(collectionname, mount_name, folder_value, creating_folder, name, tess, easy, accept).await {
                                             Ok(collection_dataset) => {
-                                                msg.set(Some(tr!("dataset-create-panel-created-ingestion-has-started-follow", collection_dataset: collection_dataset.to_string())));
-                                                folder.set(String::new());
-                                                new_folder_name.set(String::new());
-                                                dataset_name.set(String::new());
-                                                accept_uploads.set(false);
-                                                folders_res.restart();
-                                                upload_datasets_res.restart();
-                                                on_created.call(collection_dataset);
+                                                // The dataset page is the confirmation. It opens once
+                                                // the page can read the new dataset.
+                                                for _ in 0..OPEN_ATTEMPTS {
+                                                    if admin_get_dataset(collection_dataset.clone()).await.is_ok() {
+                                                        break;
+                                                    }
+                                                    n0_future::time::sleep(std::time::Duration::from_millis(OPEN_WAIT_MS)).await;
+                                                }
+                                                on_created.call(collection_dataset.clone());
+                                                navigator().push(Route::AdminDatasetPage {
+                                                    collection_id: collectionname_for_route.clone(),
+                                                    dataset_id: collection_dataset,
+                                                });
                                             }
                                             Err(e) => error_msg.set(Some(e.to_string())),
                                         }

@@ -1,10 +1,13 @@
 // The upload driver of the upload page and of "Continue upload" on the batch detail page.
 //
 // It holds the browser File objects, walks dropped folders, sends `begin`, runs at most
-// three tus-js-client uploads at a time, and sends `commit` after the last file. A
-// "Continue upload" run commits after its last file only when it sends every file of the
-// batch that waits for bytes. Otherwise it ends with a `sent` event, and the batch stays
-// open for another selection or for Finish upload. Stop upload always commits. The Rust
+// MAX_ACTIVE tus-js-client uploads at a time, and sends `commit` when no file waits. A file
+// that fails gets MAX_ATTEMPTS attempts in total. A failed attempt puts the file behind the
+// files that have not started, and the commit runs also when files failed, so indexing
+// starts without a person. A "Continue upload" run commits only when it sends every file of
+// the batch that waits for bytes. Otherwise it ends with a `sent` event, and the batch stays
+// open for another selection or for Finish upload. Abort stops the transfers and asks the
+// server to delete the batch, with the files that it placed. The Rust
 // page keeps the selection list and builds the `begin` body, so the page and the server
 // measure the same bytes. The page and this script talk through one `document::eval`
 // channel: the page sends commands (`cmd`), and the script sends events (`kind`).
@@ -14,7 +17,12 @@
 (() => {
   if (window.hooverUploads) return;
 
-  const MAX_ACTIVE = 3;
+  // Files in transfer at one time. Most of the time of a small file is the round trips
+  // of its requests, so several files share the wait.
+  const MAX_ACTIVE = 8;
+  // Attempts of one file, the first one included. tus-js-client repeats a failed request
+  // inside one attempt with RETRY_DELAYS.
+  const MAX_ATTEMPTS = 3;
   const RETRY_DELAYS = [0, 1000, 3000, 5000, 10000, 30000];
   const PROGRESS_MS = 200;
   const ENDED = "This upload has ended.";
@@ -222,6 +230,15 @@
     return String((err && err.message) || err);
   }
 
+  // A failed attempt that the next attempt can change. An ended batch, a refused
+  // permission and a missing file stay failed.
+  function attemptAgain(err) {
+    const res = err && err.originalResponse;
+    if (!res) return true;
+    const status = res.getStatus();
+    return ![403, 404, 409, 410].includes(status);
+  }
+
   function shouldRetry(err) {
     const res = err && err.originalResponse;
     if (!res) return true;
@@ -235,7 +252,7 @@
   function newRun(batchId, items, chunkBytes, commitWhenDone) {
     return {
       batchId, chunkBytes, items, commitWhenDone, active: new Set(), paused: false,
-      stopping: false, ended: false, lastEmit: 0, timer: null,
+      stopping: false, ended: false, aborting: false, lastEmit: 0, timer: null,
     };
   }
 
@@ -255,9 +272,10 @@
       done: items.filter((it) => it.state === "done").length,
       count: items.length,
       in_flight: items.filter((it) => it.state === "active").slice(0, MAX_ACTIVE).map((it) => it.path),
+      slots: MAX_ACTIVE,
       failed: items.filter((it) => it.state === "failed").map((it) => ({ path: it.path, error: it.error })),
       paused: run.paused,
-      phase: run.ended ? "committing" : "transferring",
+      phase: run.aborting ? "aborting" : run.ended ? "committing" : "transferring",
     });
   }
 
@@ -270,6 +288,8 @@
         endpoint: "/_upload/files/",
         uploadUrl: item.resumeUrl || null,
         chunkSize: run.chunkBytes,
+        // The create request carries the first chunk, so a small file needs one request.
+        uploadDataDuringCreation: true,
         retryDelays: RETRY_DELAYS,
         metadata: { batch: run.batchId, file: String(item.fileNo) },
         headers: { "X-Hoover-Upload": "1" },
@@ -296,9 +316,16 @@
         },
         onError: (err) => {
           if (run !== owner || owner.ended) return;
-          item.state = "failed";
-          item.error = errorText(err);
           run.active.delete(item);
+          item.attempts += 1;
+          item.error = errorText(err);
+          if (item.attempts < MAX_ATTEMPTS && attemptAgain(err)) {
+            item.state = "queued";
+            run.items.splice(run.items.indexOf(item), 1);
+            run.items.push(item);
+          } else {
+            item.state = "failed";
+          }
           pump();
         },
       });
@@ -316,8 +343,7 @@
     }
     progress(true);
     const waiting = run.items.some((it) => it.state === "queued" || it.state === "active" || it.state === "paused");
-    const failed = run.items.some((it) => it.state === "failed");
-    if (!waiting && !failed) {
+    if (!waiting) {
       if (run.commitWhenDone) commit();
       else endWithoutCommit();
     }
@@ -391,7 +417,7 @@
     const batch = JSON.parse(text);
     const items = batch.files.map((f, i) => {
       const file = files.get(cmd.ids[i]);
-      return { fileNo: f.file_no, path: cmd.paths[i], file, size: file.size, acked: 0, state: "queued" };
+      return { fileNo: f.file_no, path: cmd.paths[i], file, size: file.size, acked: 0, state: "queued", attempts: 0 };
     });
     emit({ kind: "begun", batch_id: batch.batch_id });
     beginRun(batch.batch_id, items, cmd.chunk_bytes, true);
@@ -422,7 +448,7 @@
         continue;
       }
       items.push({
-        fileNo: m.file_no, path: m.path, file, size: file.size, acked: digest.offset, state: "queued",
+        fileNo: m.file_no, path: m.path, file, size: file.size, acked: digest.offset, state: "queued", attempts: 0,
         resumeUrl: digest.offset > 0 ? `/_upload/files/${cmd.batch_id}-${m.file_no}` : null,
       });
     }
@@ -432,6 +458,41 @@
     emit({ kind: "checked", mismatched, sending: items.length });
     // A run without files commits at once when every file of the batch has its bytes.
     if (items.length || commitWhenDone) beginRun(cmd.batch_id, items, cmd.chunk_bytes, commitWhenDone);
+  }
+
+  // Abort the batch: stop each transfer, then ask the server to delete the batch and the
+  // files that it placed. Without a run, as on the detail page, only the request goes.
+  // A failed request keeps the run ended, and Abort can be sent again.
+  async function abort(batchId) {
+    const owner = run;
+    if (owner) {
+      if (owner.ended && !owner.aborting) return;
+      owner.ended = true;
+      owner.aborting = true;
+      clearTimeout(owner.timer);
+      progress(true);
+      await Promise.all([...owner.active].map((item) => item.upload && item.upload.abort(false)));
+      owner.active.clear();
+    }
+    emit({ kind: "phase", phase: "aborting" });
+    try {
+      const res = await fetchPatient(`/_upload/${batchId}/abort`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        let message = text;
+        try { message = JSON.parse(text).message || text; } catch (_) {}
+        throw new Error(message || `HTTP ${res.status}`);
+      }
+      if (run === owner) run = null;
+      // The page returns to an empty selection.
+      files.clear();
+      window.removeEventListener("beforeunload", warnOnLeave);
+      emit({ kind: "aborted", batch_id: batchId });
+    } catch (err) {
+      emit({ kind: "abort_failed", message: String(err.message || err) });
+    }
   }
 
   function startRequest(cmd, task) {
@@ -476,14 +537,9 @@
           pump();
         }
         break;
-      case "retry":
-        if (run && !run.ended && !run.stopping) {
-          for (const item of run.items) if (item.state === "failed") { item.state = "queued"; item.error = ""; }
-          pump();
-        }
-        break;
-      case "stop":
-        if (run) { run.stopping = true; commit(); }
+      case "abort":
+        if (run && (!run.ended || run.aborting)) abort(run.batchId);
+        else if (!run && !pending && cmd.batch_id) abort(cmd.batch_id);
         break;
       case "retry_commit": commit(); break;
       case "detach": detach(); break;

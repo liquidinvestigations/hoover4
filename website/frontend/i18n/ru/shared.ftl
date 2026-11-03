@@ -137,6 +137,7 @@ shared-uploads-this-upload-has-ended = Эта загрузка завершен�
 shared-uploads-the-path-exists-in-the-dataset = Этот путь уже есть в папке набора данных.
 shared-uploads-the-server-could-not-recover-this = Серверу не удалось восстановить этот файл.
 shared-uploads-the-dataset-was-deleted-during-this = Набор данных был удалён во время этой загрузки.
+shared-uploads-the-upload-was-aborted = Загрузка была прервана.
 shared-uploads-the-dataset-was-purged-during-this = Набор данных был очищен во время этой загрузки.
 shared-uploads-selected-twice = Выбран дважды.
 shared-uploads-the-path-is-also-a-folder = Этот путь также является папкой другого выбранного файла.

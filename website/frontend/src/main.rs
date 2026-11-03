@@ -112,8 +112,19 @@ fn main() {
                         common::uploads::MANIFEST_MAX_BYTES,
                     )),
                 )
-                .route("/_upload/files", axum::routing::options(tus::options).post(tus::create))
-                .route("/_upload/files/", axum::routing::options(tus::options).post(tus::create))
+                // A creation request can carry the first chunk, so it has the limit of a PATCH.
+                .route(
+                    "/_upload/files",
+                    axum::routing::options(tus::options)
+                        .post(tus::create)
+                        .layer(axum::extract::DefaultBodyLimit::max(chunk_bytes)),
+                )
+                .route(
+                    "/_upload/files/",
+                    axum::routing::options(tus::options)
+                        .post(tus::create)
+                        .layer(axum::extract::DefaultBodyLimit::max(chunk_bytes)),
+                )
                 .route(
                     "/_upload/files/{upload_id}",
                     axum::routing::head(tus::head)
@@ -125,6 +136,7 @@ fn main() {
                         ),
                 )
                 .route("/_upload/{batch_id}/commit", axum::routing::post(upload_routes::commit))
+                .route("/_upload/{batch_id}/abort", axum::routing::post(upload_routes::abort))
                 .route("/_upload/{batch_id}/prefix/{file_no}", axum::routing::get(upload_routes::prefix))
                 .route(
                     "/_feedback/{report_id}/{asset}",
