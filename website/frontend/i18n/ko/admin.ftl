@@ -845,6 +845,11 @@ processing-update-ocr-explanation = { $files ->
    *[other] 파일 약 { $count }개에 현재 언어의 OCR 텍스트가 없거나, 설정에서 더 이상 포함하지 않는 언어의 OCR 텍스트가 남아 있습니다.
 } 현재 언어로 OCR을 실행하고, 제거된 언어의 텍스트는 삭제합니다.
 processing-update-ocr-runs = OCR 및 검색 가능한 PDF, 이후 새 텍스트의 개체 추출, 임베딩, 색인
+processing-update-pdf_text-title = 검색 가능한 PDF 텍스트
+processing-update-pdf_text-explanation = { $files ->
+   *[other] { $count }개 파일의 검색 가능한 PDF에 이전 텍스트 레이어가 있습니다.
+} 그 레이어는 서유럽 알파벳 밖의 모든 글자를 검은 사각형으로 복사했습니다. 서유럽 글자만 쓰는 언어의 PDF는 그대로 둡니다. 다른 PDF는 읽고, 검은 사각형이 있는 부분은 다시 만듭니다. 이미지 PDF는 저장된 OCR 단어를 사용합니다. PDF 페이지는 새 OCR 요청을 받습니다.
+processing-update-pdf_text-runs = 검색 가능한 PDF 부분, 그다음 다시 만든 PDF의 OCR 텍스트 색인
 processing-update-vectors-title = 벡터
 processing-update-vectors-explanation = { $files ->
    *[other] 텍스트가 있는 파일 { $count }개에 설치가 제공하는 임베딩 모델의 벡터가 없습니다.

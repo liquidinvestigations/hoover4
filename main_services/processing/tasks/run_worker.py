@@ -368,6 +368,7 @@ async def run_common_worker():
         submit_automatic_update,
         update_operation_state,
     )
+    from .P_admin.updates.pdf_text_layer import scan_pdf_text_layers
     from .P_admin.updates.workflows import (
         COORDINATOR_ID,
         ProcessingUpdates,
@@ -588,6 +589,7 @@ async def run_common_worker():
             list_update_table_plans,
             reparse_update_tables,
             list_update_virus_plans,
+            scan_pdf_text_layers,
           ],
           activity_executor=activity_executor,
           max_concurrent_activities=CONCURRENCY,

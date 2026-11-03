@@ -74,7 +74,7 @@ Rendering disables interactive forms and annotations.
 Each selected page produces one temporary raster.
 
 `FPDF_DeviceToPage` maps word boxes through CropBox offsets, page rotation, and MediaBox origins.
-A ReportLab page supplies invisible text in render mode 3.
+The builder writes a one-page PDF with invisible text in render mode 3.
 The builder inserts that page as a form into the unchanged output page.
 It uses a full save with PDFium flags zero.
 Unselected pages receive no overlay.
@@ -82,7 +82,11 @@ Unselected pages receive no overlay.
 Image mode preserves the original JPEG data.
 Other image formats use the smaller encoding from PNG and JPEG at quality 85.
 The page uses the stored image resolution, or 150 dpi when no resolution exists.
-The text layer uses Helvetica. Its PDF character coverage has the existing Windows-1252 limit.
+The text layer uses a Type0 font with Identity-H codes and a ToUnicode map of the characters on the page.
+It embeds Tesseract's glyphless font [pdf.ttf](pdf.ttf) (Apache-2.0), so every code has one empty glyph of the full em height.
+Copied text keeps every Unicode character, and each character box has the height of its OCR word.
+A word with right-to-left letters is stored in visual order, because PDF readers reorder it.
+Readers disagree on the order of a word that mixes right-to-left letters and digits.
 Returned page text preserves the OCR engine's Unicode text.
 
 ## Resource budgets remain independent.

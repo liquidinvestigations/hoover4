@@ -98,6 +98,9 @@ OCR_PAGE_IMAGE_COVERAGE = 0.10
 OCR_PAGE_TEXT_FLOOR = 20
 OCR_PAGE_RULE_VERSION = 1
 PDF_SEGMENTATION_VERSION = 1
+#: The text layer of a searchable PDF part (`pdf_ocr_parts.text_layer`). Version 1 wrote a
+#: black square for each character outside Windows-1252. Version 2 keeps every character.
+PDF_TEXT_LAYER_VERSION = 2
 
 
 def pdf_ocr_extracted_by(engine: str, languages: str) -> str:

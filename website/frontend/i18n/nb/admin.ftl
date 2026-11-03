@@ -855,6 +855,12 @@ processing-update-ocr-explanation = { $files ->
    *[other] Omtrent { $count } filer mangler OCR-tekst for de nåværende språkene, eller beholder OCR-tekst for språk som innstillingene ikke lenger omfatter.
 } OCR kjøres for de nåværende språkene, og teksten for de fjernede språkene slettes.
 processing-update-ocr-runs = OCR og søkbare PDF-er, deretter uthenting av entiteter, embedding og indeksering av den nye teksten
+processing-update-pdf_text-title = Tekst i søkbare PDF-er
+processing-update-pdf_text-explanation = { $files ->
+    [one] { $count } fil har søkbare PDF-er med et tidligere tekstlag.
+   *[other] { $count } filer har søkbare PDF-er med et tidligere tekstlag.
+} Det laget kopierte hver bokstav utenfor de vesteuropeiske alfabetene som en svart firkant. PDF-er på språk med bare vesteuropeiske bokstaver beholdes. De andre PDF-ene leses, og delene med svarte firkanter lages på nytt. En bilde-PDF bruker de lagrede OCR-ordene. En PDF-side får en ny OCR-forespørsel.
+processing-update-pdf_text-runs = Deler av søkbare PDF-er, deretter indeksering av OCR-teksten i de gjenskapte PDF-ene
 processing-update-vectors-title = Vektorer
 processing-update-vectors-explanation = { $files ->
     [one] { $count } fil med tekst mangler vektorer fra embedding-modellen som installasjonen bruker.

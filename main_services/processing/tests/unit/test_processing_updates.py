@@ -64,7 +64,7 @@ def test_a_fingerprint_changes_with_version_target_and_input(monkeypatch):
 
 def test_the_steps_of_a_scope_keep_registry_order():
     assert [s.step_id for s in registry.steps_of("dataset")] == [
-        "unfinished", "failed_files", "virus_scan", "tables", "ocr", "vectors", "folder_counts"]
+        "unfinished", "failed_files", "virus_scan", "tables", "ocr", "pdf_text", "vectors", "folder_counts"]
     assert [s.step_id for s in registry.steps_of("collection")] == ["search_schema"]
 
 
@@ -266,3 +266,26 @@ def test_an_operation_without_steps_fails_before_any_work(monkeypatch):
     with pytest.raises(ApplicationError):
         asyncio.run(ops_workflows.Operation()._processing_update(params))
     assert not started
+
+
+def test_pdf_text_layer_skips_only_windows_1252_language_passes():
+    from tasks.P_admin.updates.pdf_text_layer import keeps_every_letter
+
+    assert keeps_every_letter("tesseract", "eng")
+    assert keeps_every_letter("tesseract", "eng+deu+fra")
+    assert keeps_every_letter("easyocr", "en+fr+de")
+    assert not keeps_every_letter("tesseract", "eng+rus")
+    assert not keeps_every_letter("easyocr", "en+ru")
+    assert not keeps_every_letter("tesseract", "ron")
+    # Codes of one engine do not apply to the other.
+    assert not keeps_every_letter("easyocr", "eng")
+
+
+def test_pdf_text_layer_languages_have_windows_1252_letters():
+    from tasks.P_admin.updates.pdf_text_layer import WINDOWS_1252_LANGUAGES
+
+    samples = {"deu": "äöüßÄÖÜ„“", "fra": "àâæçéèêëîïôœùûüÿŒŸ«»", "spa": "áéíñóúü¿¡", "por": "ãõâêôç",
+               "swe": "åäöÅÄÖ", "isl": "ðþæöÐÞ", "est": "õäöüšž", "gle": "áéíóú"}
+    for code, letters in samples.items():
+        assert code in WINDOWS_1252_LANGUAGES["tesseract"]
+        letters.encode("cp1252")

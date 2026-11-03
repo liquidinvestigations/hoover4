@@ -837,6 +837,11 @@ processing-update-ocr-explanation = { $files ->
    *[other] 约有 { $count } 个文件缺少当前语言的 OCR 文本，或者保留着设置中已不再包含的语言的 OCR 文本。
 } 系统会按当前语言运行 OCR，并删除已移除语言的文本。
 processing-update-ocr-runs = OCR 和可搜索 PDF，然后是新文本的实体提取、嵌入和索引
+processing-update-pdf_text-title = 可搜索 PDF 的文本
+processing-update-pdf_text-explanation = { $files ->
+   *[other] { $count } 个文件的可搜索 PDF 使用旧的文本层。
+} 该文本层把西欧字母表以外的每个字母复制为黑色方块。只含西欧字母的语言的 PDF 保持不变。其他 PDF 会被读取，含黑色方块的部分会重新生成。图片 PDF 使用已保存的 OCR 单词。PDF 页面会发出新的 OCR 请求。
+processing-update-pdf_text-runs = 可搜索 PDF 的部分，然后为重新生成的 PDF 的 OCR 文本建立索引
 processing-update-vectors-title = 向量
 processing-update-vectors-explanation = { $files ->
    *[other] 有 { $count } 个含文本的文件，没有此安装所用嵌入模型的向量。

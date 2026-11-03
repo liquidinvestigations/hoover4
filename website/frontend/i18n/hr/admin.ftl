@@ -865,6 +865,13 @@ processing-update-ocr-explanation = { $files ->
    *[other] Otprilike { $count } datoteka nema OCR tekst za trenutne jezike ili zadržava OCR tekst jezika koje postavke više ne uključuju.
 } OCR se pokreće za trenutne jezike, a tekst uklonjenih jezika briše se.
 processing-update-ocr-runs = OCR i PDF-ovi s mogućnošću pretraživanja, zatim izdvajanje entiteta, ugrađivanje i indeksiranje novog teksta
+processing-update-pdf_text-title = Tekst pretraživih PDF-ova
+processing-update-pdf_text-explanation = { $files ->
+    [one] { $count } datoteka ima pretražive PDF-ove s ranijim slojem teksta.
+    [few] { $count } datoteke imaju pretražive PDF-ove s ranijim slojem teksta.
+   *[other] { $count } datoteka ima pretražive PDF-ove s ranijim slojem teksta.
+} Taj je sloj kopirao svako slovo izvan zapadnoeuropskih abeceda kao crni kvadrat. PDF-ovi jezika sa samo zapadnoeuropskim slovima ostaju nepromijenjeni. Ostali PDF-ovi se čitaju, a dijelovi s crnim kvadratima izrađuju se ponovno. PDF slike koristi spremljene OCR riječi. Stranica PDF-a dobiva novi OCR zahtjev.
+processing-update-pdf_text-runs = Dijelovi pretraživih PDF-ova, zatim indeksiranje OCR teksta ponovno izrađenih PDF-ova
 processing-update-vectors-title = Vektori
 processing-update-vectors-explanation = { $files ->
     [one] { $count } datoteka s tekstom nema vektore modela ugrađivanja koji instalacija poslužuje.

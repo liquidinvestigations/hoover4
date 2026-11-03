@@ -854,6 +854,12 @@ processing-update-ocr-explanation = { $files ->
    *[other] Yaklaşık { $count } dosyada güncel diller için OCR metni yok ya da ayarların artık içermediği dillerin OCR metni duruyor.
 } OCR güncel diller için çalışır ve kaldırılan dillerin metni silinir.
 processing-update-ocr-runs = OCR ve aranabilir PDF'ler, ardından yeni metnin varlık çıkarma, gömme ve dizinlemesi
+processing-update-pdf_text-title = Aranabilir PDF metni
+processing-update-pdf_text-explanation = { $files ->
+    [one] { $count } dosyanın önceki bir metin katmanına sahip aranabilir PDF'leri var.
+   *[other] { $count } dosyanın önceki bir metin katmanına sahip aranabilir PDF'leri var.
+} Bu katman, Batı Avrupa alfabeleri dışındaki her harfi siyah bir kare olarak kopyalıyordu. Yalnızca Batı Avrupa harfleri olan dillerin PDF'leri korunur. Diğer PDF'ler okunur ve siyah kare içeren parçalar yeniden oluşturulur. Bir görüntü PDF'si kayıtlı OCR sözcüklerini kullanır. Bir PDF sayfası yeni bir OCR isteği alır.
+processing-update-pdf_text-runs = Aranabilir PDF parçaları, ardından yeniden oluşturulan PDF'lerin OCR metninin dizinlenmesi
 processing-update-vectors-title = Vektörler
 processing-update-vectors-explanation = { $files ->
     [one] Metni olan { $count } dosyanın, kurulumun sunduğu gömme modelinden vektörü yok.

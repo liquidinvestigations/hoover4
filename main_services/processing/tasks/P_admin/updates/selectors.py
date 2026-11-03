@@ -33,6 +33,9 @@ Selector contracts, one for each step:
   candidates without a manifest of the current version. A JSON candidate has a JSON MIME
   type or a JSON file name in its stored detection. Settlement: the count is zero, which
   includes files whose new parse found no table (an `empty` manifest).
+* `pdf_text` selects live files with a searchable PDF part of text layer version 1 of a
+  current pair that the PDF builder can build. See `pdf_text_layer.py`. Settlement: the
+  count is zero and no part that the step removed is without a new part.
 * `folder_counts` selects folder nodes without counts, or every node after a version
   change of the counts. Settlement: no node lacks its counts.
 * `search_schema` selects the shard tables that miss a required column or have another
@@ -127,6 +130,11 @@ def target_key(step: UpdateStep, ctx: ScopeContext) -> Tuple[str, dict]:
     if step.step_id == "search_schema":
         target = schema_target()
         return json.dumps(target, sort_keys=True), {}
+    if step.step_id == "pdf_text":
+        from tasks.P_admin.updates.pdf_text_layer import layer_target
+
+        target = layer_target(ctx.scope_id, ctx.collectionname)
+        return json.dumps(target, sort_keys=True), target
     return "", {}
 
 
@@ -383,6 +391,16 @@ def select_tables(client, ctx: ScopeContext) -> Selection:
     return Selection(files, size, files, hash_sql if files else "", parameters, {})
 
 
+def select_pdf_text(client, ctx: ScopeContext, target: Optional[dict] = None) -> Selection:
+    from tasks.P_admin.updates.pdf_text_layer import layer_target, old_layer_sql, sql_parameters
+
+    target = target or layer_target(ctx.scope_id, ctx.collectionname)
+    hash_sql = old_layer_sql()
+    parameters = {"cd": ctx.scope_id, **sql_parameters(target)}
+    files, size = _count(client, hash_sql, parameters, ctx.scope_id)
+    return Selection(files, size, files, hash_sql if files else "", parameters, {})
+
+
 def select_folder_counts(client, ctx: ScopeContext) -> Selection:
     """Nodes without counts, or every node when the applied version is older.
 
@@ -469,6 +487,8 @@ def select(step: UpdateStep, ctx: ScopeContext, client=None, target: Optional[di
         return select_virus_scan(client, ctx)
     if step.step_id == "tables":
         return select_tables(client, ctx)
+    if step.step_id == "pdf_text":
+        return select_pdf_text(client, ctx, target)
     if step.step_id == "folder_counts":
         return select_folder_counts(client, ctx)
     raise ValueError(f"unknown update step {step.step_id!r}")

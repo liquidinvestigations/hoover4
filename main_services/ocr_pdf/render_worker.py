@@ -8,6 +8,7 @@ import json
 import math
 import os
 import sys
+import unicodedata
 
 import requests
 import pypdfium2 as pdfium
@@ -43,7 +44,11 @@ def _ocr_page(engine, languages, image_bytes):
     return response.json()
 
 
-FONT = "Helvetica"
+#: The width of every glyph of the text layer font, in thousandths of the font size.
+GLYPH_WIDTH = 500
+#: Tesseract's glyphless TrueType font (Apache-2.0). Glyph 1 is an empty glyph with the
+#: full em height, so PDFium gives each character the box of its OCR word.
+GLYPHLESS_FONT = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "pdf.ttf"), "rb").read()
 
 
 def text_objects(page):
@@ -101,14 +106,95 @@ def text_free_render(page, dpi):
             bitmap.close()
 
 
+def _number(value):
+    """Write a PDF real without an exponent."""
+    text = ("%.4f" % value).rstrip("0").rstrip(".")
+    return "0" if text in ("", "-0") else text
+
+
+def _to_unicode_cmap(characters):
+    """Map each two-byte code to its character, in blocks of the 100 entries that a CMap allows."""
+    lines = ["/CIDInit /ProcSet findresource begin", "12 dict begin", "begincmap",
+             "/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def",
+             "/CMapName /Adobe-Identity-UCS def", "/CMapType 2 def",
+             "1 begincodespacerange", "<0000> <FFFF>", "endcodespacerange"]
+    entries = list(characters.items())
+    for start in range(0, len(entries), 100):
+        block = entries[start:start + 100]
+        lines.append("%d beginbfchar" % len(block))
+        lines += ["<%04X> <%s>" % (code, char.encode("utf-16-be").hex().upper()) for char, code in block]
+        lines.append("endbfchar")
+    lines += ["endcmap", "CMapName currentdict /CMap defineresource pop", "end", "end"]
+    return "\n".join(lines).encode("ascii")
+
+
+def _text_layer_pdf(width, height, content, characters):
+    """A one-page PDF whose font gives each code one constant width and its character.
+
+    Every code maps to the one glyph of the embedded glyphless font. Text extraction
+    reads the ToUnicode map, so it returns every Unicode character.
+    """
+    import zlib
+
+    def stream(data, extra=b""):
+        packed = zlib.compress(data)
+        return b"<< /Length %d /Filter /FlateDecode%s >>\nstream\n%s\nendstream" % (len(packed), extra, packed)
+
+    glyph_map = b"\x00\x01" * (len(characters) + 1)
+
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        ("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %s %s] /Resources << /Font << /F1 5 0 R >> >> "
+         "/Contents 4 0 R >>" % (_number(width), _number(height))).encode("ascii"),
+        stream(content),
+        b"<< /Type /Font /Subtype /Type0 /BaseFont /GlyphLessFont /Encoding /Identity-H "
+        b"/DescendantFonts [6 0 R] /ToUnicode 8 0 R >>",
+        b"<< /Type /Font /Subtype /CIDFontType2 /BaseFont /GlyphLessFont "
+        b"/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> "
+        b"/FontDescriptor 7 0 R /DW %d /CIDToGIDMap 10 0 R >>" % GLYPH_WIDTH,
+        b"<< /Type /FontDescriptor /FontName /GlyphLessFont /Flags 4 /FontBBox [0 0 %d 1000] "
+        b"/ItalicAngle 0 /Ascent 1000 /Descent 0 /CapHeight 1000 /StemV 80 /FontFile2 9 0 R >>" % GLYPH_WIDTH,
+        stream(_to_unicode_cmap(characters)),
+        stream(GLYPHLESS_FONT, b" /Length1 %d" % len(GLYPHLESS_FONT)),
+        stream(glyph_map),
+    ]
+    out = bytearray(b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n")
+    offsets = []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n%s\nendobj\n" % (number, body)
+    xref = len(out)
+    out += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1)
+    out += b"".join(b"%010d 00000 n \n" % offset for offset in offsets)
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (len(objects) + 1, xref)
+    return bytes(out)
+
+
+def visual_order(text):
+    """Return a word with right-to-left letters in the left-to-right order of a PDF.
+
+    PDF readers apply the Unicode bidirectional algorithm to the stored order. A run of
+    digits keeps its order, and the other runs are reversed.
+    """
+    kinds = [unicodedata.bidirectional(char) for char in text]
+    if not any(kind in ("R", "AL") for kind in kinds):
+        return text
+    runs = []
+    for char, kind in zip(text, kinds):
+        digit = kind in ("EN", "AN")
+        if runs and runs[-1][0] == digit:
+            runs[-1][1].append(char)
+        else:
+            runs.append((digit, [char]))
+    return "".join("".join(chars if digit else reversed(chars)) for digit, chars in reversed(runs))
+
+
 def overlay_page(words, to_page, mediabox):
     """Create invisible words relative to the MediaBox origin."""
-    from reportlab.pdfbase.pdfmetrics import stringWidth
-    from reportlab.pdfgen import canvas as pdfcanvas
-
     x0, y0, x1, y1 = mediabox
-    buf = io.BytesIO()
-    c = pdfcanvas.Canvas(buf, pagesize=(x1 - x0, y1 - y0))
+    characters = {}
+    content = []
     drawn = 0
     for word in words:
         text = (word.get("text") or "").strip()
@@ -129,21 +215,20 @@ def overlay_page(words, to_page, mediabox):
         along = (end[0] - origin[0], end[1] - origin[1])
         rise = (up[0] - origin[0], up[1] - origin[1])
         length, size = math.hypot(*along), math.hypot(*rise)
-        natural = stringWidth(text, FONT, size)
+        natural = len(text) * size * GLYPH_WIDTH / 1000.0
         if length <= 0 or size <= 0 or natural <= 0:
             continue
-        t = c.beginText()
-        t.setTextRenderMode(3)
-        t.setFont(FONT, size)
-        t.setHorizScale(100.0 * length / natural)
-        t.setTextTransform(along[0] / length, along[1] / length, rise[0] / size, rise[1] / size,
-                           origin[0] - x0, origin[1] - y0)
-        t.textOut(text)
-        c.drawText(t)
+        # Code 0 stays unused, so a page can map 65535 distinct characters.
+        if len(characters) + len(set(text) - characters.keys()) > 0xFFFF:
+            continue
+        codes = "".join("%04X" % characters.setdefault(char, len(characters) + 1)
+                        for char in visual_order(text))
+        matrix = (along[0] / length, along[1] / length, rise[0] / size, rise[1] / size,
+                  origin[0] - x0, origin[1] - y0)
+        content.append("BT 3 Tr /F1 %s Tf %s Tz %s Tm <%s> Tj ET" % (
+            _number(size), _number(100.0 * length / natural), " ".join(_number(v) for v in matrix), codes))
         drawn += 1
-    c.showPage()
-    c.save()
-    return buf.getvalue(), drawn
+    return _text_layer_pdf(x1 - x0, y1 - y0, "\n".join(content).encode("ascii"), characters), drawn
 
 
 def selected_pages(count, pages):

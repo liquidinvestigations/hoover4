@@ -114,6 +114,16 @@ STEPS: Tuple[UpdateStep, ...] = (
                     "the text of the removed languages is deleted.",
         runs="OCR and searchable PDFs, then entity extraction, embedding and indexing of the new text"),
     UpdateStep(
+        step_id="pdf_text", scope=SCOPE_DATASET, version=1, stages=("pdf_text_layer",),
+        automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
+        title="Searchable PDF text",
+        explanation="{files} files have searchable PDFs with an earlier text layer. That layer copied each "
+                    "letter outside the Western European alphabets as a black square. PDFs of languages "
+                    "with only Western European letters are kept. The other PDFs are read, and the parts "
+                    "with black squares are built again. An image PDF uses the stored OCR words. A PDF "
+                    "page gets a new OCR request.",
+        runs="Searchable PDF parts, then OCR text indexing of the rebuilt PDFs"),
+    UpdateStep(
         step_id="vectors", scope=SCOPE_DATASET, version=1, stages=("embed", "index_vectors"),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Vectors",

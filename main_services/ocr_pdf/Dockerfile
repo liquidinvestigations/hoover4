@@ -21,6 +21,8 @@ RUN pip install --no-cache-dir \
 
 COPY ocr_pdf.py /app/ocr_pdf.py
 COPY render_worker.py /app/render_worker.py
+# Tesseract's glyphless font (Apache-2.0) for the invisible text layer.
+COPY pdf.ttf /app/pdf.ttf
 COPY tests /app/tests
 
 ENV HOST=0.0.0.0 \

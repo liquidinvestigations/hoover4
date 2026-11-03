@@ -855,6 +855,12 @@ processing-update-ocr-explanation = { $files ->
    *[other] Circa { $count } file non hanno testo OCR per le lingue attuali, oppure conservano testo OCR di lingue che le impostazioni non includono più.
 } L'OCR viene eseguito per le lingue attuali e il testo delle lingue rimosse viene eliminato.
 processing-update-ocr-runs = OCR e PDF ricercabili, poi estrazione delle entità, embedding e indicizzazione del nuovo testo
+processing-update-pdf_text-title = Testo dei PDF ricercabili
+processing-update-pdf_text-explanation = { $files ->
+    [one] { $count } file ha PDF ricercabili con un livello di testo precedente.
+   *[other] { $count } file hanno PDF ricercabili con un livello di testo precedente.
+} Quel livello copiava ogni lettera fuori dagli alfabeti dell’Europa occidentale come un quadrato nero. I PDF delle lingue con sole lettere dell’Europa occidentale restano invariati. Gli altri PDF vengono letti e le parti con quadrati neri vengono create di nuovo. Un PDF di immagine usa le parole OCR salvate. Una pagina PDF riceve una nuova richiesta OCR.
+processing-update-pdf_text-runs = Parti dei PDF ricercabili, poi l’indicizzazione del testo OCR dei PDF ricreati
 processing-update-vectors-title = Vettori
 processing-update-vectors-explanation = { $files ->
     [one] { $count } file con testo non ha vettori del modello di embedding che l'installazione serve.

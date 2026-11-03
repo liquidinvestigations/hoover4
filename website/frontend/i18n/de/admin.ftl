@@ -867,6 +867,12 @@ processing-update-ocr-explanation =
        *[other] Bei etwa { $count } Dateien fehlt OCR-Text für die aktuellen Sprachen, oder sie behalten OCR-Text von Sprachen, die die Einstellungen nicht mehr enthalten.
     } OCR läuft für die aktuellen Sprachen, und der Text der entfernten Sprachen wird gelöscht.
 processing-update-ocr-runs = OCR und durchsuchbare PDFs, danach die Entitätenerkennung, Einbettung und Indizierung des neuen Textes
+processing-update-pdf_text-title = Text durchsuchbarer PDFs
+processing-update-pdf_text-explanation = { $files ->
+    [one] { $count } Datei hat durchsuchbare PDFs mit einer früheren Textebene.
+   *[other] { $count } Dateien haben durchsuchbare PDFs mit einer früheren Textebene.
+} Diese Ebene kopierte jeden Buchstaben außerhalb der westeuropäischen Alphabete als schwarzes Quadrat. PDFs von Sprachen mit nur westeuropäischen Buchstaben bleiben unverändert. Die anderen PDFs werden gelesen, und die Teile mit schwarzen Quadraten werden neu erstellt. Ein Bild-PDF verwendet die gespeicherten OCR-Wörter. Eine PDF-Seite erhält eine neue OCR-Anfrage.
+processing-update-pdf_text-runs = Teile durchsuchbarer PDFs, danach die Indizierung des OCR-Textes der neu erstellten PDFs
 processing-update-vectors-title = Vektoren
 processing-update-vectors-explanation =
     { $files ->

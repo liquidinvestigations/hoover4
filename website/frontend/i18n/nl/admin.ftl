@@ -855,6 +855,12 @@ processing-update-ocr-explanation = { $files ->
    *[other] Ongeveer { $count } bestanden hebben geen OCR-tekst voor de huidige talen, of bewaren OCR-tekst van talen die de instellingen niet meer bevatten.
 } OCR draait voor de huidige talen en de tekst van de verwijderde talen wordt gewist.
 processing-update-ocr-runs = OCR en doorzoekbare PDF's, daarna entiteitsextractie, embedding en indexering van de nieuwe tekst
+processing-update-pdf_text-title = Tekst van doorzoekbare pdf's
+processing-update-pdf_text-explanation = { $files ->
+    [one] { $count } bestand heeft doorzoekbare pdf's met een eerdere tekstlaag.
+   *[other] { $count } bestanden hebben doorzoekbare pdf's met een eerdere tekstlaag.
+} Die laag kopieerde elke letter buiten de West-Europese alfabetten als een zwart vierkant. Pdf's van talen met alleen West-Europese letters blijven ongewijzigd. De andere pdf's worden gelezen, en de delen met zwarte vierkanten worden opnieuw gemaakt. Een afbeeldings-pdf gebruikt de opgeslagen OCR-woorden. Een pdf-pagina krijgt een nieuw OCR-verzoek.
+processing-update-pdf_text-runs = Delen van doorzoekbare pdf's, daarna de indexering van de OCR-tekst van de opnieuw gemaakte pdf's
 processing-update-vectors-title = Vectoren
 processing-update-vectors-explanation = { $files ->
     [one] { $count } bestand met tekst heeft geen vectoren van het embeddingmodel dat de installatie aanbiedt.

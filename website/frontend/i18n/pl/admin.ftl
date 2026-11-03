@@ -875,6 +875,14 @@ processing-update-ocr-explanation = { $files ->
    *[other] Około { $count } pliku nie ma tekstu OCR dla bieżących języków albo zachowuje tekst OCR języków, których ustawienia już nie obejmują.
 } OCR zostanie uruchomiony dla bieżących języków, a tekst usuniętych języków zostanie usunięty.
 processing-update-ocr-runs = OCR i PDF-y z możliwością przeszukiwania, potem wyodrębnianie encji, embedding i indeksowanie nowego tekstu
+processing-update-pdf_text-title = Tekst przeszukiwalnych plików PDF
+processing-update-pdf_text-explanation = { $files ->
+    [one] { $count } plik ma przeszukiwalne pliki PDF z wcześniejszą warstwą tekstu.
+    [few] { $count } pliki mają przeszukiwalne pliki PDF z wcześniejszą warstwą tekstu.
+    [many] { $count } plików ma przeszukiwalne pliki PDF z wcześniejszą warstwą tekstu.
+   *[other] { $count } pliku ma przeszukiwalne pliki PDF z wcześniejszą warstwą tekstu.
+} Ta warstwa kopiowała każdą literę spoza alfabetów zachodnioeuropejskich jako czarny kwadrat. Pliki PDF języków, które mają tylko litery zachodnioeuropejskie, pozostają bez zmian. Pozostałe pliki PDF są odczytywane, a części z czarnymi kwadratami są tworzone ponownie. PDF obrazu używa zapisanych słów OCR. Strona PDF otrzymuje nowe żądanie OCR.
+processing-update-pdf_text-runs = Części przeszukiwalnych plików PDF, potem indeksowanie tekstu OCR odtworzonych plików PDF
 processing-update-vectors-title = Wektory
 processing-update-vectors-explanation = { $files ->
     [one] { $count } plik z tekstem nie ma wektorów modelu embeddingów, który obsługuje instalacja.

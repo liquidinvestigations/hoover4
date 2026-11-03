@@ -853,6 +853,12 @@ processing-update-ocr-explanation = { $files ->
    *[other] About { $count } files have no OCR text for the current languages, or keep OCR text of languages that the settings no longer include.
 } OCR runs for the current languages, and the text of the removed languages is deleted.
 processing-update-ocr-runs = OCR and searchable PDFs, then entity extraction, embedding and indexing of the new text
+processing-update-pdf_text-title = Searchable PDF text
+processing-update-pdf_text-explanation = { $files ->
+    [one] { $count } file has searchable PDFs with an earlier text layer.
+   *[other] { $count } files have searchable PDFs with an earlier text layer.
+} That layer copied each letter outside the Western European alphabets as a black square. PDFs of languages with only Western European letters are kept. The other PDFs are read, and the parts with black squares are built again. An image PDF uses the stored OCR words. A PDF page gets a new OCR request.
+processing-update-pdf_text-runs = Searchable PDF parts, then OCR text indexing of the rebuilt PDFs
 processing-update-vectors-title = Vectors
 processing-update-vectors-explanation = { $files ->
     [one] { $count } file with text has no vectors of the embedding model that the installation serves.

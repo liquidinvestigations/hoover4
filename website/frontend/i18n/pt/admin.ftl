@@ -855,6 +855,12 @@ processing-update-ocr-explanation = { $files ->
    *[other] Cerca de { $count } ficheiros não têm texto de OCR para os idiomas atuais, ou mantêm texto de OCR de idiomas que as definições já não incluem.
 } O OCR é executado para os idiomas atuais, e o texto dos idiomas removidos é eliminado.
 processing-update-ocr-runs = OCR e PDF pesquisáveis, depois a extração de entidades, a incorporação e a indexação do texto novo
+processing-update-pdf_text-title = Texto dos PDF pesquisáveis
+processing-update-pdf_text-explanation = { $files ->
+    [one] { $count } ficheiro tem PDF pesquisáveis com uma camada de texto anterior.
+   *[other] { $count } ficheiros têm PDF pesquisáveis com uma camada de texto anterior.
+} Essa camada copiava cada letra fora dos alfabetos da Europa Ocidental como um quadrado preto. Os PDF de línguas que só têm letras da Europa Ocidental mantêm-se. Os outros PDF são lidos, e as partes com quadrados pretos são criadas de novo. Um PDF de imagem usa as palavras de OCR guardadas. Uma página de PDF recebe um novo pedido de OCR.
+processing-update-pdf_text-runs = Partes dos PDF pesquisáveis, depois a indexação do texto OCR dos PDF recriados
 processing-update-vectors-title = Vetores
 processing-update-vectors-explanation = { $files ->
     [one] { $count } ficheiro com texto não tem vetores do modelo de incorporação que a instalação serve.

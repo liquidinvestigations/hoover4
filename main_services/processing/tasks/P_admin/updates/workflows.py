@@ -57,6 +57,7 @@ with workflow.unsafe.imports_passed_through():
         submit_automatic_update,
         update_operation_state,
     )
+    from tasks.P_admin.updates.pdf_text_layer import scan_pdf_text_layers
     from tasks.P_admin.updates.params import (
         CheckUpdatesParams,
         RunUpdateParams,
@@ -239,6 +240,8 @@ class RunProcessingUpdate:
             return await self._failed_files(params, step)
         if step_id == "ocr":
             return await self._ocr(params, step)
+        if step_id == "pdf_text":
+            return await self._pdf_text(params, step)
         if step_id == "vectors":
             detail = json.loads(step.step.detail or "{}")
             done = await workflow.execute_child_workflow(
@@ -316,6 +319,18 @@ class RunProcessingUpdate:
             heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
         return json.dumps({"plans": result.get("plans", 0), "removed": obsolete, "purged": purged},
                           sort_keys=True)
+
+    async def _pdf_text(self, params: RunUpdateParams, step: StepParams) -> str:
+        counts = await workflow.execute_activity(scan_pdf_text_layers, step, start_to_close_timeout=timedelta(hours=6),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        result = {}
+        if counts["unbuilt_parts"]:
+            result = await workflow.execute_child_workflow(
+                "RerunOcr",
+                {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset,
+                 "op_id": params.op_id},
+                id=f"update-pdf-text-{params.op_id}", **self._child(params))
+        return json.dumps({**counts, "plans": result.get("plans", 0)}, sort_keys=True)
 
     async def _search_schema(self, params: RunUpdateParams, step: StepParams) -> str:
         result = await workflow.execute_activity(apply_search_schema, step, start_to_close_timeout=timedelta(minutes=60),

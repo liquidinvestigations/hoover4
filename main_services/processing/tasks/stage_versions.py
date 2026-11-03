@@ -20,7 +20,7 @@ from typing import Dict, Optional
 
 from tasks.P3_parse_files.scan_virus import SCAN_VERSION
 from tasks.P3_parse_files.table_formats import READER_VERSION
-from tasks.text_sources import OCR_PAGE_RULE_VERSION, PDF_SEGMENTATION_VERSION
+from tasks.text_sources import OCR_PAGE_RULE_VERSION, PDF_SEGMENTATION_VERSION, PDF_TEXT_LAYER_VERSION
 
 #: The output version of the folder count values that `build_vfs_nodes` writes.
 VFS_SUBTREE_STATS_VERSION = 1
@@ -42,6 +42,7 @@ STAGE_VERSIONS: Dict[str, int] = {
     "image_metadata": 1,
     "ocr_image": 1,
     "ocr_pdf": OCR_PAGE_RULE_VERSION,
+    "pdf_text_layer": PDF_TEXT_LAYER_VERSION,
     "audio": 1,
     "video": 1,
     "entities": 1,

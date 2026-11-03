@@ -419,6 +419,15 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
         if step_id == "tables":
             selection = selectors.select_tables(client, ctx)
             return selection.count == 0, f"{selection.count} files still have an earlier table reading."
+        if step_id == "pdf_text":
+            from tasks.P_admin.updates.pdf_text_layer import layer_target, unbuilt_tombstones
+
+            target = layer_target(scope_id, params.collectionname)
+            selection = selectors.select_pdf_text(client, ctx, target)
+            unbuilt = unbuilt_tombstones(client, scope_id, target)
+            return (selection.count == 0 and unbuilt == 0,
+                    f"{selection.count} files still have an earlier PDF text layer, and {unbuilt} "
+                    "removed PDF parts have no new part.")
         if step_id == "folder_counts":
             selection = selectors.select_folder_counts(
                 client, selectors.ScopeContext(scope_kind, scope_id, params.collectionname))

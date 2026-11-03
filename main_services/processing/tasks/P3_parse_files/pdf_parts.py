@@ -16,7 +16,7 @@ from tasks.P3_parse_files.batch_runner import BatchFile, BatchResult, FileResult
 from tasks.task_timing import SkippedOutcome
 from tasks.text_sources import (
     MIN_OCR_IMAGE_PX, OCR_PAGE_IMAGE_COVERAGE, OCR_PAGE_TEXT_FLOOR,
-    OCR_PAGE_RULE_VERSION, PDF_SEGMENTATION_VERSION, pdf_ocr_extracted_by,
+    OCR_PAGE_RULE_VERSION, PDF_SEGMENTATION_VERSION, PDF_TEXT_LAYER_VERSION, pdf_ocr_extracted_by,
 )
 
 PART_TARGET_BYTES = 25_000_000
@@ -55,6 +55,11 @@ def stored_path(path: str) -> tuple[str, str]:
 
 def write_row(client, table: str, row: dict, *, durable: bool = True) -> None:
     """Write one manifest row with the declared integer and array types."""
+    write_rows(client, table, [row], durable=durable)
+
+
+def write_rows(client, table: str, rows: list[dict], *, durable: bool = True) -> None:
+    """Write manifest rows with the same columns in one insert."""
     import pyarrow as pa
     from database.clickhouse import insert_arrow_durable, insert_parser_arrow
     types = {
@@ -62,11 +67,12 @@ def write_row(client, table: str, row: dict, *, durable: bool = True) -> None:
         "first_page": pa.uint32(), "last_page": pa.uint32(), "page_count": pa.uint32(),
         "rule_version": pa.uint16(), "size_bytes": pa.uint64(), "run_time_ms": pa.uint32(),
         "text_complete": pa.uint8(), "borrows_source": pa.uint8(), "is_deleted": pa.uint8(),
+        "text_layer": pa.uint8(),
         "ocr_pages": pa.list_(pa.uint32()), "page_numbers": pa.list_(pa.uint32()),
         "page_texts": pa.list_(pa.string()),
     }
-    arrow = pa.table({key: pa.array([value], type=types.get(key, pa.string()))
-                      for key, value in row.items()})
+    arrow = pa.table({key: pa.array([row[key] for row in rows], type=types.get(key, pa.string()))
+                      for key in rows[0]})
     (insert_arrow_durable if durable else insert_parser_arrow)(client, table, arrow)
 
 
@@ -292,7 +298,7 @@ def store_part(client, params: StageBatchParams, file: BatchFile, languages: str
               languages=languages, segmentation=PDF_SEGMENTATION_VERSION, part_index=file.part_index,
               first_page=file.first_page, last_page=file.last_page, blob_key=key, size_bytes=size,
               page_numbers=[number for number, _ in pages], page_texts=[text for _, text in pages],
-              borrows_source=int(borrowed)))
+              borrows_source=int(borrowed), text_layer=PDF_TEXT_LAYER_VERSION))
 
 
 def build_part(params: StageBatchParams, file: BatchFile) -> str | SkippedOutcome:

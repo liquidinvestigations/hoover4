@@ -433,6 +433,25 @@ def test_bad_word_box_does_not_fail_page(word):
     assert drawn == 0
 
 
+def test_text_layer_keeps_every_script_and_the_word_box():
+    texts = ["Привет", "Ελληνικά", "中文字", "العربية", "שלום", "हिन्दी", "𝔘𝔫𝔦", "é", "(a)\\b", "Şțăî€"]
+    words = [{"text": text, "left": 10 + index * 120, "top": 40, "width": 100, "height": 20}
+             for index, text in enumerate(texts)]
+    layer, drawn = render_worker.overlay_page(words, lambda x, y: (x, 200 - y), (0, 0, 1300, 200))
+    assert drawn == len(texts)
+    with pdfium.PdfDocument(layer) as document, closing(document[0]) as page, \
+            closing(page.get_textpage()) as text:
+        assert text.get_text_range().split() == texts
+        search = text.search("Привет")
+        try:
+            start, count = search.get_next()
+        finally:
+            search.close()
+        first, last = text.get_charbox(start), text.get_charbox(start + count - 1)
+        assert first[0] == pytest.approx(10, abs=0.5) and last[2] == pytest.approx(110, abs=0.5)
+        assert first[1] == pytest.approx(140, abs=0.5) and first[3] == pytest.approx(160, abs=0.5)
+
+
 def test_source_above_split_target_has_no_builder_cutoff(tmp_path):
     source = tmp_path / "large.pdf"
     source.write_bytes(native_pdf(1) + b"\n%" + b" " * 26_000_000)
