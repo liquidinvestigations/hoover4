@@ -16,9 +16,11 @@ use crate::{
 use common::{search_query::SearchQuery, search_result::DocumentIdentifier};
 use crate::tr;
 
+/// The query for the tab title: at most 20 characters, or its first 18 and an ellipsis. It
+/// counts characters, because a byte cut can fall inside a multi-byte letter and panic.
 fn title_ellipsis(title: String) -> String {
-    if title.len() > 20 {
-        title[..18].to_string() + "..."
+    if title.chars().count() > 20 {
+        title.chars().take(18).collect::<String>() + "..."
     } else {
         title
     }
@@ -149,5 +151,17 @@ fn SearchPageRootComponent(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::title_ellipsis;
+
+    #[test]
+    fn the_title_cuts_a_long_query_on_a_character_boundary() {
+        assert_eq!(title_ellipsis("Ступёнь Стян: Номер Otcp: Празннща".into()), "Ступёнь Стян: Номе...");
+        assert_eq!(title_ellipsis("short query".into()), "short query");
+        assert_eq!(title_ellipsis("ééééééééééééééééééééé".into()), "éééééééééééééééééé...");
     }
 }
