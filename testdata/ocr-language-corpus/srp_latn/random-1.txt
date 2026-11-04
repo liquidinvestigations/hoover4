@@ -1,0 +1,46 @@
+S Vikipedije, slobodne enciklopedije
+Familija serum albumina
+Model molekula albumina
+Identifikatori
+Simbol
+Serum_albumin
+Pfam
+PF00273
+Pfam klan
+CL0282
+InterPro
+IPR014760
+SMART
+SM00103
+PROSITE
+PS51438
+SKOP
+1ao6
+proširi
+Dostupne PDB strukture:
+Albumin je najzastupljeniji proteinkrvne plazme, čini oko 40-60% proteina krvne plazme. Albumin se stvara u jetri i njegov poluživot je 15-20 dana. Ima ulogu u transportu raznih materija putem krvne plazme. Nekonjugovani bilirubin, razni hormoni kao npr. tiroksin, tironin, polni hormoni, masne kiseline, joni (npr. kalcijum) razni lekovi (sulfonamidi, salicilati...) itd. transportuju se putem albumina. Vrlo važna uloga albumina je i u održavanju osmotskog pritiska krvne plazme. Smanjenjem njegove koncentracije usled gubitka (npr. kod nefrotskog sindroma, kod opekotina) ili smanjenom produkcijom (npr. usled insuficijencije jetre) mogu se javiti generalizovani otoci (najizraženiji je anasarka) used oticanja tečnosti van krvnih sudova. Njegovom razgradnjom oslobađaju se aminokiseline, koje se mogu koristiti u raznim metaboličkim procesima ćelija.
+Građa i osobineurediuredi izvor
+Albumin je globularni protein, koji se neprestano stvara u jetri, jer se neprestano i razgrađuje. Poluživot ovog proteina je 15-20 dana. Molekulska masa albumina je oko 66.000 daltona, a izoelektrična tačka između pH 4 i 5.8. Pri pH vrednosti od 7.4 (što je i pH vrednosti venske krvi) albumin se nalazi u vidu anjona, sa više od 200 negativnih naboja po molekulu. Upravo zbog ovog velikog broja disocijabilnih grupa u molekulu, kao i velike koncentracije albumina u krvi albumin ima veliki kapacitet za vezivanje drugih liganada (naročito pozitivnih jona kao npr. kalcijum, 40% jona kalcijuma u krvi se nalazi vezano za albumin). Međutim albumin vezuje i nepolarne molekule kao što su masne kiseline, nekonjugovani bilirubin, hormone: tiroksin, tironin, kortizol, aldosteron, zatim lekove itd. i transportuje ih putem krvi.
+Albumin je prost protein (ne sadrži druge grupe npr. ugljene hidrate, metale). Najvećim delom nalazi se u krvnoj plazmi (oko 40-60 g/l), dok se u ostalim ektracelularnim tečnostima nalazi manja količina albumina (oko 20-40 g/l). U procesu bubrežne filtracije samo se jedan mali deo albumina filtrira (prolazi kroz bubrežne glomerule), ali se u bubrežnim tubulima reapsorbuje putem pinocitoze. Naime membrana glomerula je takođe negativno naelektrisana kao i albumin, tako da ga odbija.
+Ulogaurediuredi izvor
+Albumin igra važnu ulogu u mnoštvu procesa:[1]
+Vrlo važna je njegova uloga u održavanju osmotskog pritiska krvne plazme (onkotski pritisak, videti takođe i osmoza). Zbog svoje veličine ne prolazi kroz većinu kapilarnih pora, tako da ostaje u plazmi i ”drži” molekule vode. Svaki gubitak albumina odnosno njegovo smanjeno stvaranje dovodi i do gubitka vode u ekstravazalnu sredinu, tako da se javljaju edemi (otoci). Edemi su najizraženiji kod nefrotskog sindroma, kada se preko bubrega gube velike količine albumina i drugih proteina. Kao posledica se javljaju edemi ruku, nogu, očnih kapaka, ascites (nagomilavanje tečnosti u trbušnoj maramici-peritoneum), generalizovani edemi-anasarka. Takođe i kod drugih bolesti npr. dijabetes, glomerulonefritisa itd. može doći do pojačanog izlučivanja albumina urinom. Kod opekotina dolazi do povećane propustljivosti krvnih sudova i izlaska albumina u ekstravazalnu sredinu, takođe se i deo albumina razgrađuje što je praćeno i izlaskom vode i nastankom otoka. Usled oštećenja i insuficijencije jetre (npr. ciroza jetre) kao glavnog mesta proizvodnje albumina, smanjuje se njegova koncentracija u krvi.
+Albumin transportuje razne hormone.
+Tranportuje takođe i masne kiseline (tzv. slobodne masne kiseline) putem krvi.
+Nekoljugovani bilirubin se transportuje vezan za albumin. Slobodni nekonjugovani bilirubin je toksičan za nervni sistem novorođenčeta, i može izazvati bolest kernikterus. Pri zasićenju svih vezivnih mesta za albumin vezuje se za glikoproteine krvne plazme, ali ne tako čvrsto kao za albumin, tako da se može i sloboditi, što može dovesti do pomenutog oboljenja.
+Mnogi lekovi se transportuju vezani za albumin.
+Albumin učestvuje i u održavanju stalne pH vrednosti krvi tj. funkcioniše kao pufer krvi.
+Poremećajiurediuredi izvor
+Hiperalbuminemija označava povećanu koncentraciju albumina u krvi. Javlja se kod dehidratacije.
+Hipoalbuminemija označava smanjenu koncentraciju albumina u krvi. Hipoalbuminemija se javlja kod:
+smanjenog stvaranja albumina-usled oboljenja jetre ili smanjenog unosa proteina,
+povećane razgradnje albumina (povećan katabolizam) npr. kod zapaljenja,
+smanjene apsorpcije aminokiselina u crevima,
+povećanja gubitka putem mokraće (nefrotski sindrom, dijabetes, glomerulonefritis, sistemski lupus itd.), kože (kod opekotina), fecesom (tumori, zapaljenja itd.),
+poremećaja u rasporedu (distribuciji) albumina između ekstra i intravaskularne tečnosti.
+Genetički poremećaji npr. analbuminemija su jako retki.
+Vidi jošurediuredi izvor
+Proteini krvne plazme
+Globulin
+Fibrinogen
+Nefrotski sindrom

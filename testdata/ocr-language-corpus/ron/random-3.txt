@@ -1,0 +1,43 @@
+De la Wikipedia, enciclopedia liberă
+Figuri asemenea
+În geometria euclidiană, două obiecte sunt asemenea dacă ambele au aceeași formă sau unul are aceeași formă ca imaginea în oglindă a celuilalt. Mai precis, unul poate fi obținut din celălalt prin scalare uniformă (mărire sau micșorare), eventual cu translații, rotații și reflexii suplimentare. Aceasta înseamnă că oricare obiect poate fi redimensionat, repoziționat și reflectat, astfel încât să coincidă exact cu celălalt obiect. Dacă două obiecte sunt asemenea, fiecare este congruent cu rezultatul unei anumite redimensionări uniforme a celuilalt.
+Translație
+Rotație
+Reflexie
+Scalare
+De exemplu, toate cercurile sunt asemenea între ele, toate pătratele sunt asemenea între ele și toate triunghiurile echilaterale sunt asemenea între ele. Pe de altă parte, elipsele nu sunt toate asemenea între ele, dreptunghiurile nu sunt toate asemenea între ele, iar triunghiurile isoscelele nu sunt toate asemenea între ele.
+Figurile prezentate în aceeași culoare sunt asemenea
+Dacă două unghiuri ale unui triunghi au măsuri egale cu măsurile a două unghiuri ale unui alt triunghi, atunci triunghiurile sunt asemenea. Laturile corespondente ale poliganelor asemenea sunt proporționale, iar unghiurile corespondente ale poligoanelor asemenea au aceeași măsură.
+Acest articol presupune că o scalare poate avea un factor de redimensionare de 1, astfel încât toate formele congruente sunt și asemenea, dar unele manuale școlare exclud în mod specific formele congruente de la definiția lor de forme asemenea, insistând că dimensiunile trebuie să fie diferite dacă formele se vor a fi asemenea.
+Triunghiuri asemeneamodificaremodificare sursă
+Două triunghiuri, △ABC și △A′B′C′, sunt asemenea dacă și numai dacă unghiurile corespondente au aceeași măsură: acest lucru implică faptul că sunt asemenea dacă și numai dacă lungimile laturilor corespondente sunt proporționale.[1] Se poate arăta că două triunghiuri care au unghiuri congruente (triunghiuri echiunghiulare) sunt asemenea, adică laturile corespondente se pot dovedi ca fiind proporționale. Aceasta este cunoscută sub numele de teorema asemănării pe caz UUU.[2] Rețineți că „UUU” este un mnemonic: fiecare dintre cele trei U se referă la un „unghi”. Datorită acestei teoreme, mai mulți autori simplifică definiția triunghiurilor asemenea pentru a necesita doar ca cele trei unghiuri corespondente să fie congruente.[3]
+Există mai multe afirmații, fiecare dintre acestea fiind necesară și suficientă pentru ca două triunghiuri să fie asemenea:
+Triunghiurile au două unghiuri congruente,[4] care în geometria euclidiană presupune că toate unghiurile lor sunt congruente.[5] Acesta este:
+Dacă ∠BAC este egal în măsură cu ∠B′A′C′ și ∠ABC este egal în măsură cu ∠A′B′C′, atunci aceasta presupune că ∠ACB este egal în măsură cu ∠A′C′B′, iar triunghiurile sunt asemenea.
+Toate laturile corespondente au lungimi cu același raport: [6]
+AB
+A′B′
+=
+BC
+B′C′
+=
+AC
+A′C′
+. Acest lucru este echivalent cu a spune că un triunghi (sau imaginea sa în oglindă) este o redimensionare a celuilalt.
+Două laturi au lungimi cu același raport, iar unghiurile dintre aceste laturi au aceeași măsură.[7] De exemplu:
+AB
+A′B′
+=
+BC
+B′C′
+și ∠ABC este egal în măsură cu ∠A′B′C′ .
+Acesta este cunoscut sub numele de criteriul de asemănare LUL. [8] „LUL” este un mnemonic: fiecare dintre cele două L-uri se referă la o „latură”; U se referă la un "unghi" dintre cele două părți.
+Când două triunghiuri △ABC și △A′B′C′ sunt asemenea, se scrie[9]:p. 22
+△ABC ∼ △A′B′C′ .
+Există mai multe rezultate elementare referitoare la triunghiuri asemenea în geometria euclidiană:[10]
+Oricare două triunghiuri echilaterale sunt asemenea.
+Două triunghiuri, ambele asemenea cu un al treilea triunghi, sunt asemenea între ele (tranzitivitatea asemănării triunghiurilor).
+Înălțimile corespondente ale triunghiurilor asemenea au același raport cu laturile corespondente.
+Două triunghiuri drepte sunt asemenea dacă ipotenuza și o altă latură au lungimi cu același raport.[11]
+Având un triunghi △ABC și un segment de dreaptăDE se poate găsi, cu riglă și compas, un punct F astfel încât △ABC ∼ △DEF. Afirmația conform căreia punctul F care îndeplinește această condiție există este axioma lui Wallis[12] și este logic echivalent cu axioma paralelelor a lui Euclid.[13] În geometria hiperbolică (unde axioma lui Wallis este falsă) triunghiurile asemenea sunt congruente.
+În tratamentul axiomatic al geometriei euclidiene dat de George D. Birkhoff (vezi axiomele lui Birkhoff), criteriul de asemănare LUL dat

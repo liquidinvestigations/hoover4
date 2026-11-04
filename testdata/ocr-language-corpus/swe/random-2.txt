@@ -1,0 +1,69 @@
+Hjälp gärna Wikipedia att åtgärda problemet genom att redigera artikeln eller diskutera saken på diskussionssidan.
+Nvidia Corporation
+Huvudkontoret för Nvidia Corporation
+Typ
+Publikt aktiebolagNasdaq: NVDA
+Säte
+Wilmington, DE, USA[1]
+Huvudkontor
+Santa Clara, CA, USA
+Nyckelpersoner
+Jensen HuangPresident, VDStephen C. Neal[a]Samordnande ledamot
+Bransch
+DatorteknologiElektronik
+Produkter
+Grafikprocessorer, huvudprocessorer, chipsets, drivers
+Tjänster
+Molntjänster
+Antal anställda
+~42 000 – 2026
+Historik
+Grundat
+5 april 1993
+Grundare
+Jensen HuangChris A. MalachowskyCurtis Priem
+Ersätter
+3dfx (2001)[3][4]Ageia (2008)[5]
+Ekonomi
+Omsättning
+▲$ 215,938 miljarder
+Rörelseresultat
+▲ $ 130,387 miljarder
+Vinstefterskatt
+▲ $ 120,067 miljarder
+Tillgångar
+▲ $ 206,803 miljarder
+Eget kapital
+▲ $ 157,293 miljarder
+Struktur
+Moderbolag
+3dfx Interactive
+Övrigt
+Slogan
+World leader in artificial intelligence.
+Webbplats
+Nvidia.com
+Fotnoter
+Statistik från 2026 års bokslut.[2]
+Redigera Wikidata
+Nvidia Geforce 400 GPU-mikroprocessor
+Nvidia Corporation (/ɛnˈvɪdiə/ en-VID-ee-ə) är ett amerikanskt elektronikföretag som grundades av Jensen Huang, Chris A. Malachowsky och Curtis Priem. Det är baserat i Santa Clara i Kalifornien och har drygt 26 000 anställda.[6][uppdateringbehövs] I mitten av 2024 var bolaget det näst största företaget sett till marknadsvärde (3,1 biljoner USD), endast Microsoft hade högre marknadsvärde.
+Nvidia designar grafikprocessorer och chipsets till moderkort. De är mest kända för grafikkortsserien GeForce men står även bakom en stor del av tekniken hos MicrosoftsXbox, men inte i uppföljaren Xbox 360. Från 2022 bestod en växande del av omsättningen av microchips till företag inom AI-sektorn, vilket renderade ökad omsättning och vinst samt kraftigt ökat börsvärde.
+Historikredigeraredigera wikitext
+Jensen Huang, Chris A. Malachowsky och Curtis Priem grundade företaget den 5 april 1993. Företaget höll sig lågt fram till 1997–1998, då det släppte sin grafikprodukt RIVA PC. I januari 1999 noterades Nvidia på Nasdaq-börsen och i maj samma år hade totalt 10 miljoner grafikprocessorer sålts. Till och med februari 2002 hade Nvidia sålt 100 miljoner grafikprocessorer.
+Idag är det Nvidia och dess rival Advanced Micro Devices (AMD köpte under 2006 upp grafikkortstillverkaren ATI Technologies) som levererar den mesta hårdvaran till separata grafikkort i vanliga hemdatorer. Nvidias GeForce-serie av grafikkort, först lanserad 1999, är jämförbar med AMD:s Radeon-serie. I dagsläget har konkurrenten AMD 19,5% av marknaden för separata grafikkort, medan Nvidia har 32,6%. Det bör dock sägas att en stor del av marknaden som helhet bygger på integrerade kretsar på processorn, där Intel har en dominerande position, följt av AMD.
+Nvidia, som under större delar av 2000-talet legat efter AMD i antal sålda grafikkretsar, lyckades under november/december 2006 nå en förstaplacering. Detta var mycket på grund av lanseringen av GeForce 8-serien, med GeForce 8800 GTX som flaggskepp. GeForce 8-grafikkortet var också den första grafikkretsen som stödde Microsofts nya DirectX 10. GeForce 8-serien grafikkort är troligen den mest lyckade någonsin.
+Produkterredigeraredigera wikitext
+Nvidia tillverkar grafikprocessorer, trådlösa kommunikationsprodukter, moderkort till PC-plattformen samt digitala mjukvarumediespelare. Hos Mac/PC-användarna är Nvidia mest känt för sin GeForce-serie, som även användes i Microsofts spelkonsol Xbox samt Nvidia:s moderkortkrets nForce. Bolaget har under senare delen av 2010-talet breddat sina affärsområden till att bli en marknadsdominerande leverantör av hård- och mjukvara för artificiell intelligens[7]
+Nvidia liknar sin rival AMD i många aspekter. Båda företagen har under en lång period tillverkat grafikkortskretsar till PC-marknaden för att sedan expandera verksamheten för andra marknader. AMD har periodvis satsat stort på att sälja färdiga kort (inte bara kretsar) under eget namn, vilket Nvidia i princip inte har gjort.
+December 2004 kom det till kännedom att Nvidia skulle utforma hårdvara till Sonys kommande spelkonsol Sony PlayStation 3. De exakta detaljerna om samarbetet har inte nämnts, men det Sony tillkännagett är att Nvidia ska utveckla PS3:ans GPU RSX; en modifierad version av G70.[uppdateringbehövs] Microsoft valde för spelkonsolen Xbox 360 istället Advanced Micro Devices för grafikhårdvaran.
+År 2016 släppte Nvidia GTX 10 serien (med arkitekturen Pascal) som gav rejält ökad prestanda och lägre energiförbrukning jämfört med tidigare GTX 900 generations serien med Maxwell arkitektur.[8][9]
+Grafikprodukterredigeraredigera wikitext
+NV1, en av Nvidias första produkter.
+RIVA 128, RIVA 128ZX - DirectX 5-stöd, nVIDIA:s första DirectX-kompatibla hårdvara.
+RIVA TNT, RIVA TNT2 - DirectX 6-stöd. Serien som gjorde nVIDIA marknadsledande.
+Geforce
+GeForce 256 (NV10) - DirectX 7-stöd, hårdvarutransformering och ljusbearbetning, introducerar DDR-minnesstöd.
+GeForce 2 (NV15) - Förbättrad version av GeForce 256
+GeForce 3 (NV20) - DirectX 8-stöd
+GeForce 4 (NV25) - Förbättrad version av GeForce 3

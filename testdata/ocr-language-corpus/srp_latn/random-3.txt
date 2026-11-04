@@ -1,0 +1,52 @@
+Ahalazija
+Rendgenski snimak proširenog jednjaka - idiopatska (primarna) ahalazija
+Latinski naziv
+Achalasia
+Specijalnost
+gastroenterologija, general surgery, Pleurektomija
+Klasifikacija i spoljašnji resursi
+MKB-10
+K22.0
+MKB-9-CM
+530.0
+OMIM
+200400
+DiseasesDB
+72
+MedlinePlus
+000267
+eMedicine
+radio/6med/16
+Patient UK
+achalasia-pro
+MeSH
+C06.405.117.119.500.432
+[uredi na Vikipodacima]
+Ahalazija, kardiospazam ili disinergija jednjaka predstavlja difuzni motorni poremećaj, koji se karakteriše oslabljenom peristaltikom i nemogućnošću relaksacije donjeg dela jednjaka.[1] Javlja se kod oba pola (češće kod muškaraca) između 30. i 60. godine života.[2]
+Etiologijaurediuredi izvor
+Promene nastaju usled poremećaja neuro-mišićnog aparata, odnosno nedostatka vlakana Aerbahovog nervnog pleksusa (spleta nerava) u mišićnom sloju zida jednjaka.[3][2] Smatra se da denervaciju Aerbahovog spleta uzrokuju različiti faktori: virusi, bakterije, paraziti, toksične materije, metabolički poremećaji, oštećenja nervnih vlakana u toku operativnih zahvata i sl.[1]
+Klinička slikaurediuredi izvor
+Parasimpatička vlakna koja imaju relaksirajuću ulogu u predelu donjeg sfinktera jednjaka nedostaju, i taj deo ne može da se normalno otvara za vreme prolaska hrane kroz jednjak. Bolest veoma često nastaje naglo sa pojavom disfagije (poremećaja gutanja), bilo posle stresnih situacija ili u toku akutnih bolesti gornjih respiratornih puteva. U početku se disfagija javlja tokom unošenja čvrste (nedovoljno sažvakane) hrane, a kasnije i kod unošenja kašaste i tečne hrane i napitaka. Tegobe vremenom postaju sve izraženije i bolesnici da bi progutali hranu uzimaju u toku obroka sve veću količinu tečnosti. U kasnijoj fazi bolesti dolazi do dilatacije (širenja) jednjaka i usporavanja tranzita kroz njega, što dovodi do pojave povraćanja, ruminacije (preživanja), osećaja lošeg zadaha iz usta, prelivanja hrane u dušnik i usnu duplju, kao i pojave aspiracionih bronhopneumonija i gubitka telesne težine. Bol u grudnom košu (nevezan za kardiovaskularna oboljenja) nastaje posle unošenja obilnih obroka i prestaje kada se jednjak isprazni.[1]
+Komplikacijeurediuredi izvor
+Kao komplikacije osnovne bolesti mogu da se jave: zastojni ezofagitis (upala jednjaka), erozije, ulceracije, stvaranje divertikula (džepastih proširenja), perforacije zida, a najteža komplikacija je maligno oboljenje jednjaka.[1]
+Dijagnozaurediuredi izvor
+Dijagnoza ahalazije se postavlja na osnovu anamneze, radioskopije i radiografije, endoskopije i histološkog nalaza.
+Lečenjeurediuredi izvor
+Primena nitrata sa dugotrajnim dejstvom ili blokatora kalcijumovih kanala smanjuje pritisak donjeg sfinktera jednjaka i poboljšava prolaz hrane. U upotrebi su i različiti pneumatski dilatatori kojima se postižu zadovoljavajući rezultati. Dijetetski režim (česti i manji obroci od tečno kašaste hrane bez jakih začina) smanjuju iritabilnu ulogu i sporije dolazi do erozivnih promena. Hirurško lečenje ima dugotrajniji efekat,[1] a potpuno izlečenje se postiže Helerovom kardiomiotomijom ili dilatacijom jednjaka balonom.[4][5]
+Referenceurediuredi izvor
+^ abvgd„Ахалазија једњака”. Архивирано из оригинала 16. 12. 2007. г. Приступљено 21. 12. 2007.
+^ ab„Кардиоспазам”. Архивирано из оригинала 2. 12. 2017. г. Приступљено 21. 12. 2007.
+^Hong SJ, Bhargava V, Jiang Y, DeBoer D, Mittal RK. Hong, S. J.; Bhargava, V.; Jiang, Y.; Denboer, D.; Mittal, R. K. (2010). „A unique esophageal motor pattern that involves longitudinal muscles is responsible for emptying in achalasia esophagus”. Gastroenterology. 139 (1): 102—11. PMC2950263. PMID20381493. doi:10.1053/j.gastro.2010.03.058.
+^„Ахалазија”. Архивирано из оригинала 15. 01. 2008. г. Приступљено 21. 12. 2007.
+^„Клинички центар Бања Лука”. Приступљено 21. 12. 2007.[mrtva veza]
+Spoljašnje vezeurediuredi izvor
+Pružanje pomoći, podrška i edukacija osoba obolelih od ahalazijeArhivirano na veb-sajtu Wayback Machine (1. novembar 2018) (jezik: engleski)
+Molimo Vas, obratite pažnju na važno upozorenjeu vezi sa temama iz oblasti medicine (zdravlja).
+proširi
+Normativna kontrola
+Portali:
+Medicina
+Hemija
+Ahalazija na srodnim projektima Vikipedije:
+Mediji na Ostavi
+Podaci na Vikipodacima

@@ -3,6 +3,8 @@
 # having the corpus.
 testdata/*
 !testdata/Readme.md
+# The OCR language corpus is small and benchmarks need the same images on each host.
+!testdata/ocr-language-corpus/
 .env.development
 copilot-instructions.md
 .context

@@ -1,0 +1,227 @@
+ISO 4217 iku standar internasional sing dikukuhaké déning International Organization for Standardization utawa ISO sing isi kodhe telung aksara (uga karan kodhe mata uang) sing ndèfinisèkaké jeneng mata uang utawa dhuwit sawijining nagara. Pratélan kodhe ISO4217 dianggo déning perbankan lan bisnis ing saindhenging donya.
+Kode aktif (diurut miturut abjad)besutbesut sumber
+Kode
+Nomor
+E
+Mata uang/dhuwit
+Wewengkon sing migunakaké
+AED
+784
+2
+Dirham Uni Emirat Arab
+Uni Emirat Arab
+AFN
+971
+2
+Afgani
+Afganistan
+ALL
+008
+2
+Lek Albania
+Albania
+AMD
+051
+2
+Dram Armenian
+Armenia
+ANG
+532
+2
+Guilder Antiles Walanda
+Antillen Walanda
+AOA
+973
+2
+Kwanza
+Angola
+ARS
+032
+2
+Peso Argentina
+Argentina
+AUD
+036
+2
+Dolar Australia
+Australia, Teritorial Australia di Antarktika, Pulau Natal, KapuloanCocos (Keeling), KapuloanHeard dan McDonald, Kiribati, Nauru, Pulo Norfolk, Tuvalu
+AWG
+533
+2
+Guilder Aruba
+Aruba
+AZN
+944
+2
+Manat Azerbaijan
+Azerbaijan
+BAM
+977
+2
+Convertible Marks
+Bosnia-Herzegovina
+BBD
+052
+2
+Dolar Barbados
+Barbados
+BDT
+050
+2
+Taka
+Bangladesh
+BGN
+975
+2
+Lev Bulgaria
+Bulgaria
+BHD
+048
+3
+Dinar Bahrain
+Bahrain
+BIF
+108
+0
+Frank Burundi
+Burundi
+BMD
+060
+2
+Dolar Bermuda
+Bermuda
+BND
+096
+2
+Dolar Brunei
+Brunei
+BOB
+068
+2
+Boliviano
+Bolivia
+BOV
+984
+2
+Mvdol Bolivia
+Bolivia
+BRL
+986
+2
+Real Brasil
+Brasil
+BSD
+044
+2
+Dolar Bahama
+Bahama
+BTN
+064
+2
+Ngultrum
+Bhutan
+BWP
+072
+2
+Pula Botswana
+Botswana
+BYR
+974
+0
+Rubel Bélarus
+Bélarus
+BZD
+084
+2
+Dolar Belize
+Belize
+CAD
+124
+2
+Dolar Kanadha
+Kanadha
+CDF
+976
+2
+Frank Kongo
+Républik Dhémokratik Kongo
+CHE
+947
+2
+WIR Bank
+Switserlan
+CHF
+756
+2
+Frank Switserlan
+Switserlan
+CHW
+948
+2
+WIR Bank
+Switserlan
+CLF
+990
+0
+Unidades de formento
+Chili
+CLP
+152
+0
+Peso Chili
+Chili
+CNY
+156
+2
+Yuan
+Républik Rakyat Cina
+COP
+170
+2
+Peso Kolombia
+Kolombia
+COU
+970
+2
+Unidad de Valor Real
+Kolombia
+CRC
+188
+2
+Colon Costa Rica
+Costa Rica
+CUP
+132
+2
+Peso Kuba
+Kuba
+CVE
+132
+2
+Eskudo
+Tanjung Verde
+CZK
+203
+2
+Koruna
+Ceko
+DJF
+262
+0
+Frank Djibouti
+Djibouti
+DKK
+208
+2
+Krone Dhènemarken
+Dhènemarken, Kapuloan Pharur, Grunlan
+DOP
+214
+2
+Peso Dominika
+Républik Dominika
+DZD
+012
+2
+Dinar Aljazair
+Aljazair

@@ -1,0 +1,61 @@
+STS-116
+Údaje o expedici
+Na stanici
+ISS
+Loď
+Discovery
+COSPAR
+2006-055A
+Členů expedice
+7
+Počet výstupů do vesmíru
+4
+Délka výstupů do vesmíru
+25 hodin a 45 minut
+Datum startu
+10. prosince2006 01:47:35 UTC
+Kosmodrom
+Kennedyho vesmírné středisko, Florida, USA
+Spojení se stanicí
+11. prosince2006 22:37 UTC
+Délka letu
+12 dní, 20 hodin, 44 minut
+z toho na stanici
+7 dní, 23 hodin a 33 minut
+Odlet ze stanice
+19. prosince2006 22:10 UTC
+Datum přistání
+22. prosince2006 22:32:00 UTC
+Místo přistání
+Kennedyho vesmírné středisko, Florida, USA
+Fotografie posádky
+Vzadu zleva: Curbeam, Patrick, Williamsová, Fuglesangvpředu: Oefelein, Higginbothamová, Polansky
+Navigace
+PředchozíSTS-115
+NásledujícíSTS-117
+STS-116 byla mise amerického raketoplánuDiscovery, který měla připojit k Mezinárodní vesmírné stanici další část příhradového nosníku P5, přepojit hlavní elektrický systém stanice a vyměnit třetího člena posádky (Thomase Reitera za Sunitu Williamsovou).
+Posádkaeditovateditovat zdroj
+Mark Polansky (2) – velitel – NASA
+William Anthony Oefelein (1) – pilot – NASA
+Robert Curbeam (3) – letový specialista – NASA
+Christer Fuglesang (1) – letový specialista – ESA
+Joan Higginbothamová (1) – letový specialista – NASA
+Nicholas Patrick (1) – letový specialista – NASA
+Pouze starteditovateditovat zdroj
+Sunita Williamsová (1) – posádka ISS – NASA
+Pouze přistáníeditovateditovat zdroj
+Thomas Reiter (2) – posádka ISS – ESA
+v závorkách je uveden dosavadní počet letů do vesmíru včetně této mise.
+Technické detailyeditovateditovat zdroj
+STS-116 (117); ISS 12A.1
+Orbiter: Discovery OV-103/Flight 33
+SSME výr č. 2050, 2054, 2058
+SRB výr. č. BI-128/RSRM-95
+Cíl miseeditovateditovat zdroj
+Hlavní náplní tohoto letu byla doprava a instalace další levoboční části příčného nosníku. Tentokrát část ITS-P5. Dalším podstatným úkolem této dvanáctidenní mise bylo přepojení elektrických a chladicích okruhů stanice z PVM-6 na PVM-4 (z nosníku ITS-P6 na nosník ITS-P4). Raketoplán dopravil kromě zmíněného nosníku také zásoby, které byly umístěny v modulu SpaceHAB-SM a paletě ICC. Na ISS dovezl dalšího člena čtrnácté základní posádky Sunitu Lyn Williamsovou, která byla na ISS až do června 2007, kdy si pro ni přiletí raketoplán Endeavour (STS-118).
+Přípravy na starteditovateditovat zdroj
+Přesun Discovery do montážní haly VAB
+Raketoplán Discovery byl 1. listopadu přepraven do montážní haly VAB, kde ho technici připojili k venkovní palivové nádrži ET a dvojici motorů SRB. Ve čtvrtek 9. listopadu v 6:29 začal přesun raketoplánu na startovací rampu 39-B. Téměř 7 kilometrů dlouhou cestu překonal speciální pásový transportér s Discovery za osm a půl hodiny. Ke startovací rampě dorazil v 15:03 středoevropského času. První pokus o start byl naplánován na 8. prosince v 3:35:47 středoevropského času. Mělo jít o první noční start raketoplánu po více než čtyřech letech, od mise STS-113 v listopadu 2002. Po havárii Columbie byly noční starty dočasně zrušené. Odpočítávání začalo 5. prosince v čase T-43 hodin. Počasí na Kennedyho vesmírném středisku nevypadalo dobře už den před plánovaným startem. Pravděpodobnost dobrého počasí v době startu byla jen 40%. Odpočítávání proběhlo až do okamžiku T-9 minut, kdy došlo k běžnému plánovanému přerušení. Přestože technici v MCC nepovolili start, odpočítávání se opět rozeběhlo a zastavilo v čase T – 5 minut. Krátce na to byl start z důvodu špatného počasí v tento den definitivně zrušen. Druhý pokus o start se uskutečnil v neděli 10. prosince v 2:47 SEČ. Přestože pravděpodobnost dobrého počasí byla ještě menší než v předcházejícím pokusu, přípravy na start pokračovaly. 9. prosince v čase 19:20 se začala hlavní palivová nádrž naplňovat palivem. Po půlnoci se počasí nečekaně zlepšilo, předpovědi dávaly 70% šanci na start. Všecky parametry hovořily pro start a tak po spuštění odpočívání po posledním přerušení odpočítávání 10. prosince proběhlo až do úplného konce. Zážehem přídavných motorů SRB ve 2:47 raketoplán úspěšně vystartoval na svoji 33. misi.
+Průběh letueditovateditovat zdroj
+Start, připojení k ISSeditovateditovat zdroj
+Raketoplán Discovery se ke svému třiatřicátému letu vydal s dvoudenním odkladem vynuceném špatným počasím na Kennedyho vesmírném středisku dne 10. prosince2006 brzo ráno světového času. Šlo o první noční start od havárie Columbie a vůbec první noční start od STS-113 v listopadu

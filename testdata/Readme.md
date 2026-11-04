@@ -7,6 +7,7 @@ Corpora and fixtures the pipeline tests and [main_services/verify-stack.sh](../m
 | `hoover-testdata/` | a fetched upstream fixture corpus, pulled by [main_services/fetch-testdata.sh](../main_services/fetch-testdata.sh) |
 | `enron-kaminski-v/` | a mail corpus in maildir-like folders |
 | `generated/` | fixtures produced for specific behaviours: large files, gaps, tables, wide rows, filename-only hits, rescan probes |
+| `ocr-language-corpus/` | labelled page images for OCR text and language detection, the only tracked corpus, see [its Readme](ocr-language-corpus/Readme.md) |
 
 Two properties of the mail corpus shape the tests that use it: the files carry no extensions,
 so type detection must work on content alone, and a fifth of the messages share a message id

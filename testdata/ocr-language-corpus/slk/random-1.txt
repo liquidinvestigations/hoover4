@@ -1,0 +1,31 @@
+Ukážka vozidlového piestového spaľovacieho motora: Vidlicový 12-valec Ferrari Testa Rossa 250 z roku 1958.
+Piestový spaľovací motor je špecifická podskupina spaľovacích motorov, v ktorého konštrukcii sa vyskytuje piest ako hlavný prvok mechanizmu transformujúceho energiu z paliva na mechanickú prácu.
+Bližšie informácie v hlavnom článku:Spaľovací motor
+Vymedzenie pojmuupraviťupraviť zdroj
+V prísnej interpretácii patria do skupiny piestových spaľovacích motorov motory s vnútorným aj vonkajším spaľovaním a motory s krúživým pohybom piesta - Wankelov motor.
+Vo voľnejšej interpretácii pojem piestový spaľovací motor označuje motor, pre ktorý sú splnené všetky 3 podmienky:
+motor s vnútorným spaľovaním
+motor s prerušovaným pracovným cyklom
+dvojtaktný
+štvortaktný
+motor s priamočiarym vratným pohybom piesta
+V súčasnosti sa pre označenie viac používa voľnejšia interpretácia pojmu, pretože ostatné typy piestových spaľovacích motorov (Wankelov motor, parný stroj, Stirlingov motor) sú využívané minimálne.
+Piestové motory s vnútorným spaľovanímupraviťupraviť zdroj
+Nižšie sú uvedené animácie troch základných konštrukčných riešení týchto motorov, z ktorých sú zrejmé rozdiely medzi nimi:
+štvortaktný zážihový motor
+dvojtaktný zážihový motor
+Wankelov motor (zážihový)
+štvortaktný motor vykoná pracovný cyklus počas 4 zdvihov piesta a 2 otáčok kľukového hriadeľa
+dvojtaktný motor vykoná pracovný cyklus počas 2 zdvihov piesta a 1 otáčky kľukového hriadeľa
+Wankelov motor vykoná pracovný cyklus počas jednej otáčky piesta
+Motory s vnútorným spaľovaním s priamočiarym pohybom piestaupraviťupraviť zdroj
+Piestový spaľovací motor, je najrozšírenejším pohonom automobilov, motocyklov, lodí a malých lietadiel. Je teda najpočetnejším zástupcom spaľovacích motorov v technických zariadeniach. Takmer výhradne sa používajú pre pohon motorových vozidiel. Do tejto skupiny motorov patria:
+dvojtaktné zážihové - malé motory napr. pre motocykle,
+štvortaktné zážihové - automobilové motory pre osobnú dopravu (laicky benzínové),
+dvojtaktné vznetové - motory používane v priemysle napríklad rôzne záložne generátory na výrobu el. energie a pod.,
+štvortaktné vznetové - automobilové motory pre osobnú a hlavne nákladnú dopravu (dieselové, naftové).
+Princíp činnostiupraviťupraviť zdroj
+Klasický piestový spaľovací motor mení spaľovaním zmesi chemickú energiu na mechanickú energiu pohybujúceho sa piestu, na tepelnú a kinetickú energiu výfukových plynov. Časť vytvorenej mechanickej energie sa spotrebuje na krytie strát.
+Jeden pracovný cyklus pozostáva z nasledovných fáz: naplnenia valca čerstvou náplňou, kompresia náplne, spaľovanie, expanzia - pracovná fáza cyklu, výfuk spalín. Tieto fázy môžu prebehnúť počas jednej otáčky kľukového hriadeľa pri dvojtaktných motoroch, alebo počas dvoch otáčok pri štvortaktných motoroch. Zapálenie zmesi môže zabezpečiť externý zdroj pri zážihových motoroch, alebo vznietenie paliva od ohriatej stlačenej náplne pri vznetových motoroch.
+Po zapálení zmesi v spaľovacom priestore, ktorý musí byť dokonale utesnený, vzniká veľký tlak. Tento pôsobí na piest motora, a posúva ho. Posuvný pohyb piestu sa prenáša cez ojnicu na kľukový hriadeľ a tým sa mení na rotačný. Piest sa vo valci pohybuje, pričom medzná poloha jeho pohybu najviac vzdialená od osi kľukového hriadeľa sa nazýva horná úvrať - HÚ a medzná poloha najbližšie k osi kľukového hriadeľa dolná úvrať - (DÚ).
+Počas spaľovania dosahuje teplota v spaľovacom priestore vo valci hodnotu až 2 500 stupňov Celzia. Pri každom pracovnom cykle

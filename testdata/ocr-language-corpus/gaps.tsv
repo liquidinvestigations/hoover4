@@ -1,0 +1,22 @@
+folder	entry	status	reason
+sck	EasyOCR sck (Nagpuri, also Sadri)	no image	No Wikipedia and no Incubator page exists. No Devanagari source was found.
+bgc	EasyOCR bgc (Haryanvi)	main page only	The Incubator articles use Arabic script. The EasyOCR model reads Devanagari. The articles in Devanagari are too short.
+abq	EasyOCR abq (Abaza)	main page only	The Incubator wiki has two pages over 800 bytes. The second page failed the text check.
+tab	EasyOCR tab (Tabassaran)	main page only	The Incubator wiki has three pages over 800 bytes. The other two pages are too short.
+dar	EasyOCR dar (Dargwa)	three articles, no main page	The Incubator wiki has no main page in this language.
+pi	EasyOCR pi (Pali)	three source texts, no main page	EasyOCR reads Pali in Latin script. Pali Wikipedia uses Devanagari and many of its pages are not Pali. The images use SuttaCentral root texts.
+mni	EasyOCR mni (Manipuri)	main page in Meetei Mayek	Articles use the Bengali Mayek title prefix of the wiki, which matches the EasyOCR model. The main page exists in Meetei Mayek only, and its manifest row states that script.
+gom	EasyOCR gom (Goan Konkani)	main page in two scripts	The main page holds Devanagari and Latin text together. Its manifest row has relaxed_fill set to true.
+aze_cyrl	Tesseract aze_cyrl	script converted	Azerbaijani Wikipedia has no Cyrillic form. The build maps Latin letters to Cyrillic letters one to one in the browser. The rows have script_transliterated set to true.
+deu_latf	Tesseract deu_latf	font applied	Wikisource holds these texts in Unicode. The build renders them in a Fraktur font.
+frk	Tesseract frk	font applied	Wikisource holds these texts in Unicode. The build renders them in a Fraktur font.
+enm	Tesseract enm	three source pages, no main page	No Wikipedia exists. The images use Wikisource.
+frm	Tesseract frm	three source pages, no main page	No Wikipedia exists. The images use Wikisource.
+grc	Tesseract grc	three source pages, no main page	No Wikipedia exists. The images use Wikisource.
+ita_old	Tesseract ita_old	three source pages, no main page	No Wikipedia exists. The images use Wikisource.
+kat_old	Tesseract kat_old	three source views, no main page	No Wikipedia exists. The images are three scroll positions of one Wikisource text.
+spa_old	Tesseract spa_old	three source pages, no main page	No Wikipedia exists. The images use Wikisource.
+syr	Tesseract syr	three source views, no main page	No Syriac Wikipedia exists. The images are three scroll positions of the Syriac Psalms on Wikisource.
+-	Tesseract chi_sim_vert, chi_tra_vert, jpn_vert, kor_vert	out of scope	These are vertical layout models of languages that the corpus covers in horizontal layout.
+-	Tesseract osd, equ	out of scope	These entries are an orientation model and a math model, and they have no language.
+-	The 37 Tesseract models in script/	out of scope	These are script models and they have no language.

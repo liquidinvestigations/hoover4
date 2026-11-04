@@ -1,0 +1,111 @@
+S Wikipedije, slobodne enciklopedije
+NGC 1659
+NGC 1659 (SDSS)
+Podaci posmatranjaEpoha: J2000.0
+Sazviježđe
+Eridan[1]
+Rektascenzija
+4sat.46m30,0s[2]
+Deklinacija
+-4° 47' 19'' [2]
+Crveni pomak
+0,015291[2]
+Radijalna brzina
+4575 ± 15[3]
+Udaljenost
+64,6 Mpc, 210,7 Msg(baz. na crveni pomak) [2]
+Tip
+galaksija (Sbc) [2]
+Prividne dimenzije
+Najveći prečnik: 1,50 u.m. (92 Ksg[b])Najmanji prečnik: 1,10 u.m. (67 Ksg[b]) [3]
+Prividna magnituda(V)
+12,5 (vidljivo)13,1 (B-Band) [2]
+Površinska svjetlost(V)
+13,0 mag/u.m.2[2]
+Apsolutna magnituda(V)
+-21.55 mag (vidljivo)-20.95 mag (B-band) [a]
+Uglovna pozicija
+50°[2]
+Ostale oznake
+PGC 15977•MCG -1-13-6•NGC 1677•IRAS 04440-0452[2][3]
+Karta
+Portal Astronomija
+NGC 1659 (također poznat kao IRAS 04440-0452, MCG -1-13-6, NGC 1677 i PGC 15977) je galaksija koja je udaljena oko 211 miliona sg od Zemlje i nalazi se u sazviježđuEridan. Najveći prečnik je 1,50 (92 hiljade sg) a najmanji 1,1 uglovnih minuta (67 hiljada sg).[b] Prvo otkriće je napravio John Frederick William Herschel28. novembra1786. godine.[2][4][5]
+Najbliži NGC/IC objektiurediuredi izvor
+Sljedeći spisak sadrži deset najbližih NGC/IC objekata.[c]
+Ime
+Udaljenost od NGC 1659(uglovnih minuta)[3][c]
+Rektascenzija (J2000)[3]
+Deklinacija (astronomija) (J2000)[3]
+Tip[3]
+IC 2091
+0,12
+4sat.46m40,1s
+-4° 40' 24''
+grupa zvijezda (*Grp)
+IC 2092
+0,17
+4sat.46m47,6s
+-4° 56' 39''
+trostruka zvijezda (*3)
+NGC 1656
+0,38
+4sat.45m53,3s
+-5° 8' 11''
+spiralna galaksija (S0-a)
+IC 2095
+0,66
+4sat.48m45,8s
+-5° 7' 30''
+spiralna galaksija (Sc)
+IC 2094
+0,74
+4sat.48m24,8s
+-5° 21' 9''
+spiralna galaksija (S)
+NGC 1665
+0,78
+4sat.48m17,0s
+-5° 25' 38''
+spiralna galaksija (S0)
+IC 2096
+0,82
+4sat.49m41,0s
+-4° 58' 43''
+trostruka zvijezda (*3)
+NGC 1643
+0,87
+4sat.43m43,9s
+-5° 19' 8''
+galaksija (Sbc)
+NGC 1645
+0,9
+4sat.44m6,3s
+-5° 27' 54''
+spiralna galaksija (S0-a/P)
+IC 2097
+1,02
+4sat.50m23,8s
+-5° 4' 51''
+nepravilna galaksija (Irr)
+Također pogledajteurediuredi izvor
+Novi opći katalog
+Spisak NGC objekata
+Spisak galaksija
+Bilješkeurediuredi izvor
+aPrividna magnituda od 12,5 – Apsolutna magnituda: M = m - 5 ((log10 DL) - 1), gdje je m=12,5 i DL=64,6 * 106.
+b 1,50 uglovnih minuta – S = A * D * 0,000291 * P, gdje je A=1,50, D=64,6 i P = 3,2616.
+c Bazirano na euklidsku udaljenost.
+Referenceurediuredi izvor
+(en)seds.orgArhivirano 26. 11. 2016. na Wayback Machine
+(en)(de)Entdeckung und Katalogisierung von Nebeln und Sternhaufen. "Wolfgang Steinicke-ov revizirani NGC i IC katalog". Arhivirano s originala, 18. 7. 2013. Pristupljeno 11. 4. 2013.
+(en)Rezultati za NGC 1659. "NASA/IPAC Extragalactic Database".
+Spisak posmatrača na Wolfgang Steinicke-om sajtu.
+Young, C., Sid. Mess. II, 252 (1883-84).
+Literaturaurediuredi izvor
+(en)Steinicke, Wolfgang (2007), Jakiel, Richard (ured.), Galaxies and How to Observe Them, Springer, ISBN978-1852337520
+(en)R. J. Buta, H. G. Corwin, Jr., S. C. Odewahn (2007). The de Vaucouleurs Atlas of Galaxies. Cambridge: Cambridge University. ISBN978-0521820486.
+(en)Sinnott, R. W. (1988). NGC 2000.0: The Complete New General Catalogue and Index Catalogues of Nebulae and Star Clusters. Sky Publishing. ISBN978-0-933346-51-2.
+Vanjski linkoviurediuredi izvor
+NGC 1659urediuredi izvor
+NGC 1659 na WikiSky stranici: DSS2, SDSS, GALEX, IRAS, Hydrogen α, X-Ray, Astrophoto, Sky Map, Članci i

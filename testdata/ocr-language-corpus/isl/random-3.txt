@@ -1,0 +1,34 @@
+Úr Wikipediu, frjálsa alfræðiritinu
+Sameinuð malón- og metýlmalónþvagsýring (e. „Combined malonic and methylmalonic aciduria, CMAMMA“), einnig kölluð sameinaður malón- og metýlmalónblóðsúr er arfgengur efnaskiptasjúkdómur (e. „metabolic disease“) sem einkennist af auknu magni malónsýru og metýlmalónsýru.[1] Sumir vísindamenn hafa lagt fram þá tilgátu að CMAMMA gæti verið ein algengasta tegund metýlmalónískra blóðsúra og hugsanlega einn algengasti meðfæddi misbrestur efnaskipta.[2] Sökum ótíðra greininga er sjúkdómurinn oft ekki uppgötvaður.[2][3]
+Einkenni og ummerkibreytabreyta frumkóða
+Klínískar svipgerðir CMAMMA eru afar misleitar og eru allt frá einkennalausum, vægum til alvarlegra einkenna.[4][5] Undirliggjandi lífeðlismeinafræði þess er ekki þekkt.[6] Greint hefur verið frá eftirfarandi einkennum:
+efnaskiptablóðsýring[7][5][8]
+dá[2][6]
+blóðsykursfall[2][7][6]
+flog[2][7][5][8]
+meltingarfærasjúkdómar[5][8]
+seinkun á þroska[2][5][8]
+taltöf[1][2][4]
+misbrestur á að dafna[2]
+geðsjúkdómar[2]
+minnisvandamál[2]
+vitræn hnignun[2]
+heilakvilli[4]
+hjartavöðvakvilli[7][5][8]
+útlitsfælniseinkenni[5][8]
+Þegar fyrstu einkennin koma fram í æsku eru þau líklegri til að vera millistig efnaskiptasjúkdóma, en hjá fullorðnum eru þau venjulega taugafræðileg einkenni.[2][5]
+Orsökbreytabreyta frumkóða
+Hægt er að skipta CMAMMA eftir orsökum í tvo aðskilda arfgenga kvilla: annar er skortur á hvatberaensíminu acyl-CoA í tengiensímaætt 3, kóðað af ACSF3 geninu (OMIM#614265); hinn kvillinn er skortur á malónýl-CoA dekarboxýlasa sem er kóðað af MLYCD geninu (OMIM#248360).[1][9]
+Greiningbreytabreyta frumkóða
+Sökum fjölbreyttra klínískra einkenna og þeirri staðreynd að sjúkdómurinn kemst oft í gegnum nýburaskimanir ógreindur er talið að CMAMMA sé vanviðurkennt einkenni.[1][7]
+Nýburaskimanirbreytabreyta frumkóða
+Þar sem CMAMMA af völdum ACSF3 leiðir ekki til uppsöfnunar metýlmalónýl-CoA, malónýl-CoA eða própíónýl-CoA, né heldur sjást frávik í acýlkarnitínsniði, er CMAMMA ekki greint með hefðbundnum blóðskimunum nýbura.[5][2][7]
+Sérstakt tilfelli er Quebec-hérað sem, auk blóðprufunnar, skimar einnig þvag á 21. degi eftir fæðingu með Nýburablóð- og þvagskimunaráætlun Quebec. Þetta gerir Quebec hérað áhugavert til CMAMMA rannsókna, þar sem þar er eini sjúklingahópurinn í heiminum án valbjögunar (e. „selection bias“).[7]
+Hlutfall malónsýru og metýlmalónsýrubreytabreyta frumkóða
+Með því að reikna út hlutfall malónsýru/metýlmalónsýru í blóðvökva er hægt að greina CMAMMA með skýrum hætti frá hefðbundnum metýlmalónískum blóðsúr. Þetta á bæði við um þá sem sýna svörun við B12 vítamíni og þá sem ekki svara meðferð með metýlmalóníska blóðsúra. Ekki hentar að nota malónsýrugildi og metýlmalónsýrugildi úr þvagi til að reikna út þetta hlutfall.[1]
+Í tilfellum CMAMMA vegna ACSF3 er stig metýlmalónsýru hærra en stig malónsýru. Aftur á móti á hið gagnstæða við um CMAMMA vegna skorts á malónýl-CoA dekarboxýlasa.[8][7]
+Erfðafræðileg prófbreytabreyta frumkóða
+Hægt er að greina CMAMMA með greiningu á ACSF3 og MLYCD genunum. Framlengd skimun á smitberum meðan á frjósemismeðferð stendur getur einnig borið kennsl á stökkbreytingar í ACSF3 geninu.[10]
+Tilvísanirbreytabreyta frumkóða
+de Sain-van der Velden, Monique G. M.; van der Ham, Maria; Jans, Judith J.; Visser, Gepke; Prinsen, Hubertus C. M. T.; Verhoeven-Duif, Nanda M.; van Gassen, Koen L. I.; van Hasselt, Peter M. (2016), Morava, Eva; Baumgartner, Matthias; Patterson, Marc; Rahman, Shamima (ritstjórar), „A New Approach for Fast Metabolic Diagnostics in CMAMMA“, JIMD Reports, Volume 30, 30.bindi, Springer Berlin Heidelberg, bls.15–22, doi:10.1007/8904_2016_531, ISBN978-3-662-53680-3, PMC5110436, PMID26915364
+NIH Intramural Sequencing Center Group; Sloan, Jennifer L; Johnston, Jennifer J; Manoli, Irini;

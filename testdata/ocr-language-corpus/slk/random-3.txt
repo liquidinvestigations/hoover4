@@ -1,0 +1,52 @@
+Prosím, pozrite si stránky pomocníka, odporúčanie pre encyklopedický štýl a článok vhodne upravte.
+Sabra
+Všeobecná charakteristika
+Posádka
+4
+Dĺžka
+9,4 m (s kanónom)
+Šírka
+3,1 m
+Výška
+3,6 m
+Hmotnosť
+55 t
+Pancier a výzbroj
+Pancier
+štandardné pancier (Mk. I)reaktívny pancier a bočné pancierové dosky na hornej vetvy pásu (Mk. II~)
+Hlavná výzbroj
+1x 120 mm kanon s hladkou hlavňou
+Druhotná výzbroj
+2x 7,62 mm/5,56 mm guľomet12,7 mm guľomet60 mm mínomet
+Pohyblivosť
+Motor
+Dieselový 12-válec Teledyne Continental AVDS 1790-5A 708,4 kW (950 hp) bez záťaže578 kW (775 hp) pri plnej záťaži
+Zavesenie
+nezávislé, vlečené rameno
+Rýchlosť na ceste
+48 km/h
+Výkon/hmotnosť
+Dosah
+450 km
+Izraelský tank Sabra bol vyvinutý ako súčasť modernizácie a následného rozvoja tanku Magach 7C. Pri modernizácii boli vymenené takmer všetky skupiny: bol vylepšený balistický profil pancierovania, tank bol vybavený reaktívnym pancierom, vyzbrojený hladkým 120 mm kanónom MG253, ktorý bol vyvinutý v Izraeli spoločnosťou Israel Military Industries (IMI), elektrohydraulické systémy sú nahradené plne elektrickými, je inštalovaný izraelský systém riadenia paľby. Taktiež pohonný a prevodový systém je nahradený oveľa výkonnejším a tým je výrazne zvýšená priechodnosť terénom.
+Celý modernizačný program bol najprv ponúknutý tureckej armáde ako variant ich modernizačného programu, neskôr bol tank ponúkaný ako súčasť exportného programu. Turecké Ministerstvo obrany vybralo pre svoj modernizačný program nasledujúcu verziu tanku Sabra (Sabra Mk.II), v ktorej boli odstránené čiastkové nedostatky predchádzajúcej verzie. Kontrakt bol podpísaný 29. marca 2002 s očakávanou hodnotou 688 miliónov USD. Prvý tank Sabra bol tureckým ozbrojeným silám dodaný na skúšku v roku 2005 a skúškami úspešne prešiel v máji 2006. Následne bolo modernizovaných medzi rokmi 2007 a 2009 170 bojových tankov. Modernizačný program bol zastrešovaný 2nd MMCC tureckej armády, modernizácia bola vykonávaná spoločnosťou IMI.
+Verziaupraviťupraviť zdroj
+Sabra Mk.I
+Mk.I je pôvodná modernizácia tanku Magach 7C. Tank Sabra bol v tejto verzii vybavený kanónom 120 mm, vyvinutým spoločnosťou IMI, bolo zosilnené pancierovanie a tank bol vybavený systémom riadenia paľby Knight, dodaným spoločnosťou Elbit Systems. Pohonná jednotka a prevodový systém bol tiež modernizovaný a bolo dosiahnuté zvýšenie priechodnosti terénom. Rovnako elektrohydraulický systém tanku Magach 7C bol nahradený izraelským plne elektrickým systémom.
+Sabra Mk.II
+Vo verzii Mk.I bola nízkoprofilová veža, použitá v predchádzajúcej verzii, nahradená mohutnejšou vežou M19 (v štýle M60 Patton) a vybavená guľometom 12,7 mm. Táto verzia je tiež vybavená nezávislým infračerveným systémom, určeným pre potreby veliteľa (CITV). Mk.I rovnako používa výkonnejšiu pohonnú jednotku MTU a novú prevodovku so štyrmi rýchlosťami vpred a dvoma vzad. Tank Sabra je vo verzii Mk.I vybavený reaktívnym pancierom. Modernizácia na túto verziu bola tiež ako v predchádzajúcom prípade zastrešovaná MMC s izraelskou podporou. Významná časť modernizačných dielov je vyrábaná v Turecku ako súčasť transferu technológií z Izraela.
+Sabra Mk.III
+Sabra Mk.III používa rovnakú technológiu pancierovania, kanón, systém varovania RWR/IR a pohonný systém ako Merkava Mk.IV. Najväčšie zmeny sú vo veži tanku, kedy sa jedná o zmeny v uložení munície a v systéme riadenia paľby. Prototyp tejto verzie, vyrobený spoločnosťou IMI, už bol úspešne testovaný a absolvoval streľby.
+Výzbrojupraviťupraviť zdroj
+Hlavnú výzbroj tanku Sabra tvorí kanón 120 mm, ktorý je interoperabilný so systémami zbraní a muníciou NATO.
+Skúsenosti z nasadeniaupraviťupraviť zdroj
+Vysoká odolnosť tanku, ktoré dosiahol po modernizácii spoločností Israelian Military Industry (IMI), sa preukázala pri nasadení v okolí základne Ba'ashiqah, ktorá leží približne 30 km severovýchodne od Mosulu v severnom Iraku. Militantná skupina Islamského štátu uskutočnila útok na operujúci tank, ktorý zasiahla raketou z kompletu 9K135 Kornet.[1] Aj napriek priamy zásah bol tank len ľahko poškodený, dodatočné pancierovanie na pravej prednej strane veže bolo zničené, však základné pancierovanie bolo nepoškodený a strela teda do tanku neprenikla - posádka tanku neutrpela žiadne obete na životoch alebo zranenia.
+Užívateliaupraviťupraviť zdroj
+Turecko – 170 ako M60T[2]
+Bojové nasadenieupraviťupraviť zdroj
+konflikt Turecko-PKK
+Libanonská vojna, 2006 (Sabra Mk.I)
+Vojna v Gaze, 2008 (Sabra Mk.II)
+Operácia Pillar of Defense, 2012 (Sabra Mk.II)
+Operácia Protective Edge, 2014 (Sabra Mk.II)
+Operácia OliveBranch, 2018 (M60-T Sabra)

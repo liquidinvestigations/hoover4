@@ -1,0 +1,49 @@
+Kodiċi telefoniċi internazzjonali
+Din hija lista ta' kodiċi telefoniċi, magħrufa wkoll bħala international direct dialing (IDD) codes, li jiġu wżati biex wieħed ikollu aċċess għal servizz internazzjonali tat-telefon. In-numru huma assenjati mill-Unjoni Internazzjonali tat-Telekomunikazzjoni fi standard E.164.
+In-numri huma kodiċi prefiss sabiex l-ebda numru ma jkollu l-parti inizzjali li tkun numru ieħor eżistenti. Il-kodiċi jiġi wżat biex wieħed iċempel fil-pajjiż speċifikat; kull pajjiż għandu wkoll prefiss internazzjonali li jiġi wżat biex wieħed ikun jista' jċempel barra l-pajjiż.
+Interazzjoni mal-kodiċi nazzjonaliimmodifikaimmodifika s-sors
+Ċerti pajjiżi (per eżempju, il-Ġermanja u r-Renju Unit) jirrikjedu li min iċempel ma jużax iż-"0" li jkun fil-bidu tal-kodiċi nazzjonali meta użat internazzjonalment. Dan għaliex iż-żero huwa indikazzjoni li warajh hemm prefiss nazzjonali u mhux sempliċi numru lokali. Dan huwa simili għal użu ta' trunk code f'pajjiżi bħall-Istati Uniti, li tuża' l-"1" fil-bidu biex tindika li warajh hemm kodiċi nazzjonali. Għal telefonati internazzjonali, il-prefiss nazzjonali huwa dejjem użat allura t-trunk code m'għandux użu. Per eżempju, biex iċempel lil xi ħadd il-Ġermanja bin-numru nazzjonali tat-telefon 089 123456, xi ħadd minn barra l-Ġermanja jkollu iċempel +49 89 123456, fejn il-+ ifisser il-prefiss internazzjonali. Din iżda, ma tappellax għal kull pajjiż (e.ż. l-Italja).
+Ħarsa ġeneraliimmodifikaimmodifika s-sors
++0: Mhux użat
++1: (NANP) US, CA, AI, AG, AS, BB, BS, VG, VI, KY, BM, GD, TC, MS, MP, GU, LC, DM, VC, PR, DO, TT, KN, JM
++20:EG
++210: --+211: --+212:MA+213:DZ+214: --+215: --+216:TN+217: --+218:LY+219: --
++220:GM+221:SN+222:MR+223:ML+224:GN+225:CI+226:BF+227:NE+228:TG+229:BJ
++230:MU+231:LR+232:SL+233:GH+234:NG+235:TD+236:CF+237:CM+238:CV+239:ST
++240:GQ+241:GA+242:CG+243:CD+244:AO+245:GW+246:IO+247:AC+248:SC+249:SD
++250:RW+251:ET+252:SO+253:DJ+254:KE+255:TZ+256:UG+257:BI+258:MZ+259: –
++260:ZM+261:MG+262:RE+263:ZW+264:NA+265:MW+266:LS+267:BW+268:SZ+269:KM
++27:ZA
++28: Mhux użat
++290:SH+291:ER+292: --+293: --+294: --+295: --+296: --+297:AW+298:FO+299:GL
++3: mhux assenjat (propost għall-UE)
++30:GR
++31:NL
++32:BE
++33:FR
++34:ES
++350:GI+351:PT+352:LU+353:IE+354:IS+355:AL+356:MT+357:CY+358:FI+359:BG
++36:HU
++370:LT+371:LV+372:EE+373:MD+374:AM+375:BY+376:AD+377:MC+378:SM+379:VA
++380:UA+381:RS+382:ME+383: --+384: --+385:HR+386:SI+387:BA+388:EU+389:MK
++39:IT
++40:RO
++41:CH
++420:CZ+421:SK+422: --+423:LI+424: --+425: --+426: --+427: --+428: --+429: --
++43:AT
++44:UK
++45:DK
++46:SE
++47:NO
++48:PL
++49:DE
++500:FK+501:BZ+502:GT+503:SV+504:HN+505:NI+506:CR+507:PA
++51:PE
++52:MX
++53:CU
++54:AR
++55:BR
++56:CL
++57:CO
++58:VE
++590:GP+591:BO+592:GY+593:EC+594:GF+595:PY+596:MQ+597:SR

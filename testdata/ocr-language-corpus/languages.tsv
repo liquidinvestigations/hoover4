@@ -1,0 +1,142 @@
+folder	tesseract	easyocr	iso639_1	iso639_3	name	script	wiki	variant	source	title_prefix	in_tessdata_fast	in_hoover4_tesseract	in_easyocr
+afr	afr	af	af	afr	Afrikaans	Latin	af		wikipedia		1	1	1
+amh	amh		am	amh	Amharic	Ethiopic	am		wikipedia		1	1	0
+ara	ara	ar	ar	ara	Arabic	Arabic	ar		wikipedia		1	1	1
+asm	asm	as	as	asm	Assamese	Bengali	as		wikipedia		1	1	1
+aze	aze	az	az	aze	Azerbaijani	Latin	az		wikipedia		1	1	1
+aze_cyrl	aze_cyrl		az	aze	Azerbaijani	Cyrillic	az	az-cyrl	wikipedia		1	1	0
+bel	bel	be	be	bel	Belarusian	Cyrillic	be		wikipedia		1	1	1
+ben	ben	bn	bn	ben	Bengali	Bengali	bn		wikipedia		1	1	1
+bod	bod		bo	bod	Tibetan	Tibetan	bo		wikipedia		1	1	0
+bos	bos	bs	bs	bos	Bosnian	Latin	bs		wikipedia		1	1	1
+bre	bre		br	bre	Breton	Latin	br		wikipedia		1	1	0
+bul	bul	bg	bg	bul	Bulgarian	Cyrillic	bg		wikipedia		1	1	1
+cat	cat		ca	cat	Catalan	Latin	ca		wikipedia		1	1	0
+ceb	ceb			ceb	Cebuano	Latin	ceb		wikipedia		1	1	0
+ces	ces	cs	cs	ces	Czech	Latin	cs		wikipedia		1	1	1
+chi_sim	chi_sim	ch_sim	zh	zho	Chinese (simplified)	Han	zh	zh-cn	wikipedia		1	1	1
+chi_tra	chi_tra	ch_tra	zh	zho	Chinese (traditional)	Han	zh	zh-tw	wikipedia		1	1	1
+chr	chr			chr	Cherokee	Cherokee	chr		wikipedia		1	1	0
+cos	cos		co	cos	Corsican	Latin	co		wikipedia		1	1	0
+cym	cym	cy	cy	cym	Welsh	Latin	cy		wikipedia		1	1	1
+dan	dan	da	da	dan	Danish	Latin	da		wikipedia		1	1	1
+deu	deu	de	de	deu	German	Latin	de		wikipedia		1	1	1
+deu_latf	deu_latf		de	deu	German (Fraktur)	Fraktur		wikisource	wikisource		1	0	0
+div	div		dv	div	Divehi	Thaana	dv		wikipedia		1	1	0
+dzo	dzo		dz	dzo	Dzongkha	Tibetan	dz		wikipedia		1	1	0
+ell	ell		el	ell	Greek	Greek	el		wikipedia		1	1	0
+eng	eng	en	en	eng	English	Latin	en		wikipedia		1	1	1
+enm	enm			enm	Middle English	Latin			wikisource		1	1	0
+epo	epo		eo	epo	Esperanto	Latin	eo		wikipedia		1	1	0
+est	est	et	et	est	Estonian	Latin	et		wikipedia		1	1	1
+eus	eus		eu	eus	Basque	Latin	eu		wikipedia		1	1	0
+fao	fao		fo	fao	Faroese	Latin	fo		wikipedia		1	1	0
+fas	fas	fa	fa	fas	Persian	Arabic	fa		wikipedia		1	1	1
+fil	fil	tl	tl	fil	Filipino	Latin	tl		wikipedia		1	1	1
+fin	fin		fi	fin	Finnish	Latin	fi		wikipedia		1	1	0
+fra	fra	fr	fr	fra	French	Latin	fr		wikipedia		1	1	1
+frk	frk		de	deu	German (Fraktur, tessdata code frk)	Fraktur			wikisource		1	1	0
+frm	frm			frm	Middle French	Latin			wikisource		1	1	0
+fry	fry		fy	fry	Western Frisian	Latin	fy		wikipedia		1	1	0
+gla	gla		gd	gla	Scottish Gaelic	Latin	gd		wikipedia		1	1	0
+gle	gle	ga	ga	gle	Irish	Latin	ga		wikipedia		1	1	1
+glg	glg		gl	glg	Galician	Latin	gl		wikipedia		1	1	0
+grc	grc			grc	Ancient Greek	Greek			wikisource		1	1	0
+guj	guj		gu	guj	Gujarati	Gujarati	gu		wikipedia		1	1	0
+hat	hat		ht	hat	Haitian Creole	Latin	ht		wikipedia		1	1	0
+heb	heb		he	heb	Hebrew	Hebrew	he		wikipedia		1	1	0
+hin	hin	hi	hi	hin	Hindi	Devanagari	hi		wikipedia		1	1	1
+hrv	hrv	hr	hr	hrv	Croatian	Latin	hr		wikipedia		1	1	1
+hun	hun	hu	hu	hun	Hungarian	Latin	hu		wikipedia		1	1	1
+hye	hye		hy	hye	Armenian	Armenian	hy		wikipedia		1	1	0
+iku	iku		iu	iku	Inuktitut	Canadian_Aboriginal	iu	ike-cans	wikipedia		1	1	0
+ind	ind	id	id	ind	Indonesian	Latin	id		wikipedia		1	1	1
+isl	isl	is	is	isl	Icelandic	Latin	is		wikipedia		1	1	1
+ita	ita	it	it	ita	Italian	Latin	it		wikipedia		1	1	1
+ita_old	ita_old			ita	Italian (old)	Latin			wikisource		1	1	0
+jav	jav		jv	jav	Javanese	Latin	jv		wikipedia		1	1	0
+jpn	jpn	ja	ja	jpn	Japanese	Japanese	ja		wikipedia		1	1	1
+kan	kan	kn	kn	kan	Kannada	Kannada	kn		wikipedia		1	1	1
+kat	kat		ka	kat	Georgian	Georgian	ka		wikipedia		1	1	0
+kat_old	kat_old			oge	Georgian (old)	Georgian			wikisource		1	1	0
+kaz	kaz		kk	kaz	Kazakh	Cyrillic	kk	kk-cyrl	wikipedia		1	1	0
+khm	khm		km	khm	Khmer	Khmer	km		wikipedia		1	1	0
+kir	kir		ky	kir	Kyrgyz	Cyrillic	ky		wikipedia		1	1	0
+kmr	kmr	ku	ku	kmr	Northern Kurdish	Latin	ku	ku-latn	wikipedia		1	1	1
+kor	kor	ko	ko	kor	Korean	Hangul	ko		wikipedia		1	1	1
+lao	lao		lo	lao	Lao	Lao	lo		wikipedia		1	1	0
+lat	lat	la	la	lat	Latin	Latin	la		wikipedia		1	1	1
+lav	lav	lv	lv	lav	Latvian	Latin	lv		wikipedia		1	1	1
+lit	lit	lt	lt	lit	Lithuanian	Latin	lt		wikipedia		1	1	1
+ltz	ltz		lb	ltz	Luxembourgish	Latin	lb		wikipedia		1	1	0
+mal	mal		ml	mal	Malayalam	Malayalam	ml		wikipedia		1	1	0
+mar	mar	mr	mr	mar	Marathi	Devanagari	mr		wikipedia		1	1	1
+mkd	mkd		mk	mkd	Macedonian	Cyrillic	mk		wikipedia		1	1	0
+mlt	mlt	mt	mt	mlt	Maltese	Latin	mt		wikipedia		1	1	1
+mon	mon	mn	mn	mon	Mongolian	Cyrillic	mn		wikipedia		1	1	1
+mri	mri	mi	mi	mri	Maori	Latin	mi		wikipedia		1	1	1
+msa	msa	ms	ms	msa	Malay	Latin	ms		wikipedia		1	1	1
+mya	mya		my	mya	Burmese	Myanmar	my		wikipedia		1	1	0
+nep	nep	ne	ne	nep	Nepali	Devanagari	ne		wikipedia		1	1	1
+nld	nld	nl	nl	nld	Dutch	Latin	nl		wikipedia		1	1	1
+nor	nor	no	no	nor	Norwegian	Latin	no		wikipedia		1	1	1
+oci	oci	oc	oc	oci	Occitan	Latin	oc		wikipedia		1	1	1
+ori	ori		or	ori	Odia	Oriya	or		wikipedia		1	1	0
+pan	pan		pa	pan	Punjabi	Gurmukhi	pa		wikipedia		1	1	0
+pol	pol	pl	pl	pol	Polish	Latin	pl		wikipedia		1	1	1
+por	por	pt	pt	por	Portuguese	Latin	pt		wikipedia		1	1	1
+pus	pus		ps	pus	Pashto	Arabic	ps		wikipedia		1	1	0
+que	que		qu	que	Quechua	Latin	qu		wikipedia		1	1	0
+ron	ron	ro	ro	ron	Romanian	Latin	ro		wikipedia		1	1	1
+rus	rus	ru	ru	rus	Russian	Cyrillic	ru		wikipedia		1	1	1
+san	san	sa	sa	san	Sanskrit	Devanagari	sa		wikipedia		1	1	1
+sin	sin		si	sin	Sinhala	Sinhala	si		wikipedia		1	1	0
+slk	slk	sk	sk	slk	Slovak	Latin	sk		wikipedia		1	1	1
+slv	slv	sl	sl	slv	Slovenian	Latin	sl		wikipedia		1	1	1
+snd	snd		sd	snd	Sindhi	Arabic	sd		wikipedia		1	1	0
+spa	spa	es	es	spa	Spanish	Latin	es		wikipedia		1	1	1
+spa_old	spa_old			spa	Spanish (old)	Latin			wikisource		1	1	0
+sqi	sqi	sq	sq	sqi	Albanian	Latin	sq		wikipedia		1	1	1
+srp	srp	rs_cyrillic	sr	srp	Serbian (Cyrillic)	Cyrillic	sr	sr-ec	wikipedia		1	1	1
+srp_latn	srp_latn	rs_latin	sr	srp	Serbian (Latin)	Latin	sr	sr-el	wikipedia		1	1	1
+sun	sun		su	sun	Sundanese	Latin	su		wikipedia		1	1	0
+swa	swa	sw	sw	swa	Swahili	Latin	sw		wikipedia		1	1	1
+swe	swe	sv	sv	swe	Swedish	Latin	sv		wikipedia		1	1	1
+syr	syr			syc	Syriac	Syriac			wikisource		1	1	0
+tam	tam	ta	ta	tam	Tamil	Tamil	ta		wikipedia		1	1	1
+tat	tat		tt	tat	Tatar	Cyrillic	tt	tt-cyrl	wikipedia		1	1	0
+tel	tel	te	te	tel	Telugu	Telugu	te		wikipedia		1	1	1
+tgk	tgk	tjk	tg	tgk	Tajik	Cyrillic	tg	tg-cyrl	wikipedia		1	1	1
+tha	tha	th	th	tha	Thai	Thai	th		wikipedia		1	1	1
+tir	tir		ti	tir	Tigrinya	Ethiopic	ti		wikipedia		1	1	0
+ton	ton		to	ton	Tongan	Latin	to		wikipedia		1	1	0
+tur	tur	tr	tr	tur	Turkish	Latin	tr		wikipedia		1	1	1
+uig	uig	ug	ug	uig	Uyghur	Arabic	ug		wikipedia		1	1	1
+ukr	ukr	uk	uk	ukr	Ukrainian	Cyrillic	uk		wikipedia		1	1	1
+urd	urd	ur	ur	urd	Urdu	Arabic	ur		wikipedia		1	1	1
+uzb	uzb	uz	uz	uzb	Uzbek	Latin	uz	uz-latn	wikipedia		1	1	1
+uzb_cyrl	uzb_cyrl		uz	uzb	Uzbek	Cyrillic	uz	uz-cyrl	wikipedia		1	1	0
+vie	vie	vi	vi	vie	Vietnamese	Latin	vi		wikipedia		1	1	1
+yid	yid		yi	yid	Yiddish	Hebrew	yi		wikipedia		1	1	0
+yor	yor		yo	yor	Yoruba	Latin	yo		wikipedia		1	1	0
+abq		abq		abq	Abaza	Cyrillic	abq		incubator		0	0	1
+ady		ady		ady	Adyghe	Cyrillic	ady		wikipedia		0	0	1
+ang		ang		anp	Angika	Devanagari	anp		wikipedia		0	0	1
+ava		ava	av	ava	Avar	Cyrillic	av		wikipedia		0	0	1
+bgc		bgc		bgc	Haryanvi	Devanagari	bgc		incubator		0	0	1
+bh		bh			Bihari (macrolanguage)	Devanagari	bh		wikipedia		0	0	1
+bho		bho		bho	Bhojpuri	Devanagari	bh		wikipedia		0	0	1
+che		che	ce	che	Chechen	Cyrillic	ce		wikipedia		0	0	1
+dar		dar		dar	Dargwa	Cyrillic	dar		incubator		0	0	1
+gom		gom		gom	Goan Konkani	Devanagari	gom	gom-deva	wikipedia		0	0	1
+inh		inh		inh	Ingush	Cyrillic	inh		wikipedia		0	0	1
+kbd		kbd		kbd	Kabardian	Cyrillic	kbd		wikipedia		0	0	1
+lbe		lbe		lbe	Lak	Cyrillic	lbe		wikipedia		0	0	1
+lez		lez		lez	Lezgian	Cyrillic	lez		wikipedia		0	0	1
+mah		mah		mag	Magahi	Devanagari	mag		wikipedia		0	0	1
+mai		mai		mai	Maithili	Devanagari	mai		wikipedia		0	0	1
+mni		mni		mni	Manipuri	Bengali	mni		wikipedia	ꯕꯦꯡꯒꯂꯤ ꯃꯌꯦꯛ:	0	0	1
+new		new		new	Newari	Devanagari	new		wikipedia		0	0	1
+pi		pi	pi	pli	Pali	Latin			suttacentral		0	0	1
+sck		sck		sck	Nagpuri (Sadri)	Devanagari	sck		incubator		0	0	1
+tab		tab		tab	Tabassaran	Cyrillic	tab		incubator		0	0	1
