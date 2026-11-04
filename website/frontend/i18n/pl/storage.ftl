@@ -90,7 +90,6 @@ uploads-driver-continue = Kontynuuj
 uploads-driver-pause = Wstrzymaj
 uploads-upload-button-upload = Prześlij
 uploads-upload-loading = Ładowanie...
-uploads-upload-this-collection-has-two-upload = Ta kolekcja ma dwa zbiory danych do przesyłania. Administrator musi wyłączyć jeden z nich.
 uploads-upload-you-cannot-upload-into-this = Nie możesz przesyłać plików do tej kolekcji.
 uploads-upload-you-cannot-upload-into-any = Nie możesz przesyłać plików do żadnej kolekcji.
 uploads-upload-hoover-search-upload = Hoover Search - Przesyłanie plików

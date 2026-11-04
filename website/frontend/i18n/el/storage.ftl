@@ -90,7 +90,6 @@ uploads-driver-continue = Συνέχεια
 uploads-driver-pause = Παύση
 uploads-upload-button-upload = Μεταφόρτωση
 uploads-upload-loading = Φόρτωση...
-uploads-upload-this-collection-has-two-upload = Αυτή η συλλογή έχει δύο σύνολα δεδομένων μεταφόρτωσης. Ένας διαχειριστής πρέπει να απενεργοποιήσει το ένα.
 uploads-upload-you-cannot-upload-into-this = Δεν μπορείτε να μεταφορτώσετε σε αυτή τη συλλογή.
 uploads-upload-you-cannot-upload-into-any = Δεν μπορείτε να μεταφορτώσετε σε καμία συλλογή.
 uploads-upload-hoover-search-upload = Hoover Search - Μεταφόρτωση

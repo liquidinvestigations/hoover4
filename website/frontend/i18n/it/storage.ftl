@@ -90,7 +90,6 @@ uploads-driver-continue = Continua
 uploads-driver-pause = Pausa
 uploads-upload-button-upload = Carica
 uploads-upload-loading = Caricamento in corso...
-uploads-upload-this-collection-has-two-upload = Questa raccolta ha due dataset di caricamento. Un amministratore deve disattivarne uno.
 uploads-upload-you-cannot-upload-into-this = Non puoi caricare file in questa raccolta.
 uploads-upload-you-cannot-upload-into-any = Non puoi caricare file in nessuna raccolta.
 uploads-upload-hoover-search-upload = Hoover Search - Caricamento

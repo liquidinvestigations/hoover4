@@ -88,7 +88,6 @@ uploads-driver-continue = Continue
 uploads-driver-pause = Pause
 uploads-upload-button-upload = Upload
 uploads-upload-loading = Loading...
-uploads-upload-this-collection-has-two-upload = This collection has two upload datasets. An administrator must disable one.
 uploads-upload-you-cannot-upload-into-this = You cannot upload into this collection.
 uploads-upload-you-cannot-upload-into-any = You cannot upload into any collection.
 uploads-upload-hoover-search-upload = Hoover Search - Upload

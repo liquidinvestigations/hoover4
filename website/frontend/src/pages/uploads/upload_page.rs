@@ -1,5 +1,5 @@
-//! `/upload?collection&folder`, the upload page. It selects the destination and the
-//! folder, collects files and folders, lists the files that fail a check, and sends
+//! `/upload?collection&dataset&folder`, the upload page. It selects the destination
+//! dataset and the folder, collects files and folders, lists the files that fail a check, and sends
 //! `begin`. The progress dialog then shows the transfer, and the batch detail page opens
 //! after `commit`.
 
@@ -50,6 +50,16 @@ fn refusal_from(status: u16, body: &str) -> BeginRefusal {
 }
 
 /// The checks of the page: [`check_manifest`] and the size of the `begin` body.
+/// The target of the address: the named dataset of the collection, the first upload
+/// dataset of the collection without a dataset, or the first target without a collection.
+pub fn chosen_target<'a>(targets: &'a [UploadTargetInfo], collection: &str, dataset: &str) -> Option<&'a UploadTargetInfo> {
+    match (collection.is_empty(), dataset.is_empty()) {
+        (true, _) => targets.first(),
+        (false, true) => targets.iter().find(|t| t.collection == collection),
+        (false, false) => targets.iter().find(|t| t.collection == collection && t.dataset == dataset),
+    }
+}
+
 pub fn page_problems(info: &LimitsResponse, folder: &str, request: &BeginRequest) -> (Vec<String>, Vec<FileProblem>) {
     let check = check_manifest(&info.limits, folder, &request.files);
     let mut batch = check.batch_problems;
@@ -77,7 +87,7 @@ pub(super) struct Transfer {
 }
 
 #[component]
-pub fn UploadPage(collection: String, folder: String) -> Element {
+pub fn UploadPage(collection: String, dataset: String, folder: String) -> Element {
     let info = use_resource(upload_page_info);
     let mut selection = use_signal(Vec::<SelectedFile>::new);
     let mut refusal = use_signal(|| None::<BeginRefusal>);
@@ -150,16 +160,8 @@ pub fn UploadPage(collection: String, folder: String) -> Element {
         None => rsx! { p { {tr!("uploads-upload-loading")} } },
         Some(Err(e)) => rsx! { ErrorBar { message: user_facing_message(&e) } },
         Some(Ok(info)) => {
-            let target = info
-                .targets
-                .iter()
-                .find(|t| t.collection == collection)
-                .or(if collection.is_empty() { info.targets.first() } else { None })
-                .cloned();
+            let target = chosen_target(&info.targets, &collection, &dataset).cloned();
             match target {
-                None if info.conflicts.contains(&collection) || (info.targets.is_empty() && !info.conflicts.is_empty()) => rsx! {
-                    p { class: "x-upload-none", {tr!("uploads-upload-this-collection-has-two-upload")} }
-                },
                 None if !collection.is_empty() => rsx! {
                     p { class: "x-upload-none", {tr!("uploads-upload-you-cannot-upload-into-this")} }
                 },
@@ -187,7 +189,7 @@ pub fn UploadPage(collection: String, folder: String) -> Element {
         Route::storage_root()
     } else {
         match info.read().as_ref() {
-            Some(Ok(info)) => match info.targets.iter().find(|t| t.collection == collection) {
+            Some(Ok(info)) => match chosen_target(&info.targets, &collection, &dataset) {
                 Some(t) => browser_route(&t.dataset, &folder),
                 None => Route::storage_root(),
             },
@@ -243,6 +245,7 @@ fn UploadForm(
         // the size check measures the body that the click sends.
         request_id: "0".repeat(32),
         collection: target.collection.clone(),
+        dataset: target.dataset.clone(),
         folder: folder.clone(),
         files,
     };
@@ -258,9 +261,10 @@ fn UploadForm(
     let chunk_bytes = info.limits.chunk_bytes;
     let blocked = transfer().is_some() || count == 0 || !batch_problems.is_empty() || !problems.is_empty();
 
-    let collection_for_select = target.collection.clone();
     let dataset = target.dataset.clone();
     let tree_collection = target.collection.clone();
+    let tree_dataset = target.dataset.clone();
+    let targets_for_select = info.targets.clone();
     let heading = tr!(
         "uploads-upload-uploading-files-to-folder",
         count: format_count(count as u64),
@@ -278,12 +282,20 @@ fn UploadForm(
             select {
                 id: "x-upload-destination",
                 style: "{SELECT} max-width: 420px;",
-                value: "{collection_for_select}",
                 onchange: move |e| {
-                    navigator().replace(Route::UploadPage { collection: e.value(), folder: "/".to_string() });
+                    // A dataset id names one dataset in the installation, so it selects the target.
+                    if let Some(t) = targets_for_select.iter().find(|t| t.dataset == e.value()) {
+                        navigator().replace(Route::UploadPage {
+                            collection: t.collection.clone(),
+                            dataset: t.dataset.clone(),
+                            folder: "/".to_string(),
+                        });
+                    }
                 },
+                // `selected` on the option, because a `value` on the select is set before
+                // its options exist and the browser then shows the first option.
                 for t in info.targets.iter() {
-                    option { key: "{t.collection}", value: "{t.collection}", "{t.collection} / {t.dataset}" }
+                    option { key: "{t.dataset}", value: "{t.dataset}", selected: t.dataset == dataset, "{t.collection} / {t.dataset}" }
                 }
             }
         } else {
@@ -294,7 +306,11 @@ fn UploadForm(
             dataset: dataset.clone(),
             selected: folder.clone(),
             on_select: move |path: String| {
-                navigator().replace(Route::UploadPage { collection: tree_collection.clone(), folder: path });
+                navigator().replace(Route::UploadPage {
+                    collection: tree_collection.clone(),
+                    dataset: tree_dataset.clone(),
+                    folder: path,
+                });
             },
         }
         div { style: "margin-top: 8px;", DropZone { driver } }
@@ -428,5 +444,21 @@ fn FileLine(
                 Icon { icon: MdClose, width: 16, height: 16 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_address_selects_one_dataset_of_a_collection_with_several() {
+        let target = |c: &str, d: &str| UploadTargetInfo { collection: c.into(), dataset: d.into() };
+        let targets = vec![target("legal", "legal_in"), target("press", "press_en"), target("press", "press_ru")];
+        assert_eq!(chosen_target(&targets, "press", "press_ru"), Some(&targets[2]));
+        assert_eq!(chosen_target(&targets, "press", ""), Some(&targets[1]));
+        assert_eq!(chosen_target(&targets, "", ""), Some(&targets[0]));
+        assert_eq!(chosen_target(&targets, "press", "legal_in"), None);
+        assert_eq!(chosen_target(&targets, "other", ""), None);
     }
 }

@@ -1,6 +1,6 @@
 //! The Upload button at the end of the breadcrumb bar of the file browser pages. It shows
-//! only when the user has an upload target. On a folder of an upload dataset of the user,
-//! the link names the collection and the folder.
+//! only when the user has an upload target. On an upload dataset of the user, the link
+//! names the collection, the dataset and the folder, so the page preselects that dataset.
 
 use common::uploads::UploadTargetInfo;
 use dioxus::prelude::*;
@@ -16,8 +16,12 @@ const BUTTON_STYLE: &str = "margin-left: auto; display: inline-flex; align-items
 /// The upload page for the browsed place. `folder` is empty outside a dataset folder.
 pub fn upload_route(targets: &[UploadTargetInfo], dataset: &str, folder: &str) -> Route {
     match targets.iter().find(|t| t.dataset == dataset) {
-        Some(t) if !folder.is_empty() => Route::UploadPage { collection: t.collection.clone(), folder: folder.to_string() },
-        _ => Route::UploadPage { collection: String::new(), folder: String::new() },
+        Some(t) => Route::UploadPage {
+            collection: t.collection.clone(),
+            dataset: t.dataset.clone(),
+            folder: folder.to_string(),
+        },
+        None => Route::UploadPage { collection: String::new(), dataset: String::new(), folder: String::new() },
     }
 }
 
@@ -44,14 +48,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_link_names_the_folder_only_inside_an_upload_dataset() {
-        let targets = vec![UploadTargetInfo { collection: "press".into(), dataset: "press_inbox".into() }];
-        assert_eq!(
-            upload_route(&targets, "press_inbox", "/2026"),
-            Route::UploadPage { collection: "press".into(), folder: "/2026".into() }
-        );
-        let empty = Route::UploadPage { collection: String::new(), folder: String::new() };
+    fn the_link_names_the_dataset_and_folder_only_inside_an_upload_dataset() {
+        let targets = vec![
+            UploadTargetInfo { collection: "press".into(), dataset: "press_inbox".into() },
+            UploadTargetInfo { collection: "press".into(), dataset: "press_ru".into() },
+        ];
+        let page = |dataset: &str, folder: &str| Route::UploadPage {
+            collection: "press".into(),
+            dataset: dataset.into(),
+            folder: folder.into(),
+        };
+        assert_eq!(upload_route(&targets, "press_inbox", "/2026"), page("press_inbox", "/2026"));
+        assert_eq!(upload_route(&targets, "press_ru", "/2026"), page("press_ru", "/2026"));
+        assert_eq!(upload_route(&targets, "press_ru", ""), page("press_ru", ""));
+        let empty = Route::UploadPage { collection: String::new(), dataset: String::new(), folder: String::new() };
         assert_eq!(upload_route(&targets, "press_other", "/2026"), empty);
-        assert_eq!(upload_route(&targets, "press_inbox", ""), empty);
     }
 }

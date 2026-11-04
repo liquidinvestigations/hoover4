@@ -90,7 +90,6 @@ uploads-driver-continue = Nastavi
 uploads-driver-pause = Pauziraj
 uploads-upload-button-upload = Prenesi
 uploads-upload-loading = Učitavanje...
-uploads-upload-this-collection-has-two-upload = Ova zbirka ima dva skupa podataka za prijenos. Administrator mora onemogućiti jedan od njih.
 uploads-upload-you-cannot-upload-into-this = Ne možete prenositi u ovu zbirku.
 uploads-upload-you-cannot-upload-into-any = Ne možete prenositi ni u jednu zbirku.
 uploads-upload-hoover-search-upload = Hoover pretraga - Prijenos

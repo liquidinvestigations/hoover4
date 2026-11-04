@@ -89,7 +89,6 @@ uploads-driver-continue = Devam et
 uploads-driver-pause = Duraklat
 uploads-upload-button-upload = Yükle
 uploads-upload-loading = Yükleniyor...
-uploads-upload-this-collection-has-two-upload = Bu koleksiyonun iki yükleme veri kümesi var. Bir yönetici birini devre dışı bırakmalı.
 uploads-upload-you-cannot-upload-into-this = Bu koleksiyona yükleme yapamazsınız.
 uploads-upload-you-cannot-upload-into-any = Hiçbir koleksiyona yükleme yapamazsınız.
 uploads-upload-hoover-search-upload = Hoover Arama - Yükleme

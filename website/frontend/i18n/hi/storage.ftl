@@ -90,7 +90,6 @@ uploads-driver-continue = जारी रखें
 uploads-driver-pause = रोकें
 uploads-upload-button-upload = अपलोड
 uploads-upload-loading = लोड हो रहा है...
-uploads-upload-this-collection-has-two-upload = इस संग्रह में दो अपलोड डेटासेट हैं। प्रशासक को एक को अक्षम करना होगा।
 uploads-upload-you-cannot-upload-into-this = आप इस संग्रह में अपलोड नहीं कर सकते।
 uploads-upload-you-cannot-upload-into-any = आप किसी भी संग्रह में अपलोड नहीं कर सकते।
 uploads-upload-hoover-search-upload = Hoover खोज - अपलोड

@@ -191,7 +191,7 @@ impl Clock for SystemClock {
     }
 }
 
-/// The current upload target of a user in one collection.
+/// The current upload target of a user: one upload dataset of a collection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
     pub collection: String,
@@ -204,9 +204,8 @@ pub struct Target {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TargetLookup {
     Target(Target),
-    /// The collection has more than one upload dataset.
-    Conflict(Vec<String>),
-    /// The user may not upload into the collection.
+    /// The user may not upload into the dataset, or it is not an upload dataset of the
+    /// collection.
     None,
     /// The user may upload into `upload_dataset`, but its folder does not open now, for
     /// example because the mount is not available. This is not a permission change.
@@ -232,7 +231,7 @@ impl std::error::Error for FolderUnavailable {}
 /// The permission check of every mutation: the uploader membership, the dataset setting
 /// and the mounted destination.
 pub trait UploadAccess: Send + Sync {
-    fn target(&self, username: &str, collection: &str) -> anyhow::Result<TargetLookup>;
+    fn target(&self, username: &str, collection: &str, dataset: &str) -> anyhow::Result<TargetLookup>;
 }
 
 /// One `upload_batches` row.
@@ -679,12 +678,10 @@ impl Service {
         if self.removal_changed(manifest)? {
             return Ok(None);
         }
-        Ok(match self.access.target(&manifest.username, &manifest.collection)? {
-            TargetLookup::Target(t) if t.upload_dataset == manifest.upload_dataset => Some(t),
-            TargetLookup::Unavailable { upload_dataset, reason } if upload_dataset == manifest.upload_dataset => {
-                return Err(FolderUnavailable(reason).into());
-            }
-            _ => None,
+        Ok(match self.access.target(&manifest.username, &manifest.collection, &manifest.upload_dataset)? {
+            TargetLookup::Target(t) => Some(t),
+            TargetLookup::Unavailable { reason, .. } => return Err(FolderUnavailable(reason).into()),
+            TargetLookup::None => None,
         })
     }
 

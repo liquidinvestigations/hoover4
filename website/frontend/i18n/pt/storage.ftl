@@ -90,7 +90,6 @@ uploads-driver-continue = Continuar
 uploads-driver-pause = Pausar
 uploads-upload-button-upload = Carregar
 uploads-upload-loading = A carregar...
-uploads-upload-this-collection-has-two-upload = Esta coleção tem dois conjuntos de dados de carregamento. Um administrador tem de desativar um deles.
 uploads-upload-you-cannot-upload-into-this = Não pode carregar ficheiros para esta coleção.
 uploads-upload-you-cannot-upload-into-any = Não pode carregar ficheiros para nenhuma coleção.
 uploads-upload-hoover-search-upload = Pesquisa Hoover - Carregamento

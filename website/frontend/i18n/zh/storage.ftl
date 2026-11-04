@@ -90,7 +90,6 @@ uploads-driver-continue = 继续
 uploads-driver-pause = 暂停
 uploads-upload-button-upload = 上传
 uploads-upload-loading = 正在加载…
-uploads-upload-this-collection-has-two-upload = 此文档集有两个上传数据集。管理员必须停用其中一个。
 uploads-upload-you-cannot-upload-into-this = 您无法向此文档集上传文件。
 uploads-upload-you-cannot-upload-into-any = 您无法向任何文档集上传文件。
 uploads-upload-hoover-search-upload = Hoover 搜索 - 上传

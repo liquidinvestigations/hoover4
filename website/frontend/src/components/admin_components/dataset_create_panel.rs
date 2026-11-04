@@ -22,7 +22,7 @@ use common::admin_types::{DatasetFolderOption, DatasetMountOption};
 use common::storage_tree::normalize_identifier;
 
 use crate::api::admin_api::{
-    admin_create_dataset, admin_get_collection_ocr_defaults, admin_get_dataset, admin_list_collection_upload_datasets,
+    admin_create_dataset, admin_get_collection_ocr_defaults, admin_get_dataset,
     admin_list_dataset_folders, admin_list_dataset_mounts, admin_set_collection_ocr_defaults,
 };
 use crate::components::admin_components::dataset_ocr_panel::{split_languages, tesseract_choices, LanguageChecklist};
@@ -89,9 +89,6 @@ pub fn DatasetCreatePanel(
     });
     let for_defaults = collectionname.clone();
     let mut defaults_res = use_resource(move || admin_get_collection_ocr_defaults(for_defaults.clone()));
-    let for_uploads = collectionname.clone();
-    let mut upload_datasets_res =
-        use_resource(move || admin_list_collection_upload_datasets(for_uploads.clone()));
     let mut accept_uploads = use_signal(|| false);
 
     let mut folder = use_signal(String::new);
@@ -156,22 +153,7 @@ pub fn DatasetCreatePanel(
         .as_ref()
         .and_then(|r| r.as_ref().err().map(|e| e.to_string()));
 
-    let upload_datasets: Vec<String> = upload_datasets_res
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().ok())
-        .cloned()
-        .unwrap_or_default();
-    let upload_datasets_error = upload_datasets_res
-        .read()
-        .as_ref()
-        .and_then(|r| r.as_ref().err().map(|e| e.to_string()));
-    let uploads_taken = !upload_datasets.is_empty();
-    let accept_value = *accept_uploads.read() && mount_writable && !uploads_taken;
-    let uploads_taken_note = match upload_datasets.as_slice() {
-        [one] => tr!("dataset-create-panel-already-accepts-uploads", one: one.to_string()),
-        many => tr!("dataset-create-panel-already-accept-uploads", many_join: (many.join(", ")).to_string()),
-    };
+    let accept_value = *accept_uploads.read() && mount_writable;
 
     let chosen = folder.read().clone();
     let creating_folder = chosen == NEW_FOLDER;
@@ -339,15 +321,9 @@ pub fn DatasetCreatePanel(
                             input {
                                 r#type: "checkbox",
                                 checked: accept_value,
-                                disabled: uploads_taken || upload_datasets_error.is_some(),
                                 onchange: move |e| accept_uploads.set(e.checked()),
                             }
                             {tr!("dataset-create-panel-accept-uploads")}
-                        }
-                        if let Some(err) = upload_datasets_error.clone() {
-                            p { style: "{HELP_TEXT} margin: 0;", {tr!("dataset-create-panel-the-upload-datasets-of-this", err: err.to_string())} }
-                        } else if uploads_taken {
-                            p { style: "{HELP_TEXT} margin: 0;", "{uploads_taken_note}" }
                         }
                     }
 

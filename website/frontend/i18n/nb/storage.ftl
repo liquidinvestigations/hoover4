@@ -90,7 +90,6 @@ uploads-driver-continue = Fortsett
 uploads-driver-pause = Pause
 uploads-upload-button-upload = Last opp
 uploads-upload-loading = Laster …
-uploads-upload-this-collection-has-two-upload = Denne samlingen har to opplastingsdatasett. En administrator må deaktivere ett av dem.
 uploads-upload-you-cannot-upload-into-this = Du kan ikke laste opp til denne samlingen.
 uploads-upload-you-cannot-upload-into-any = Du kan ikke laste opp til noen samling.
 uploads-upload-hoover-search-upload = Hoover Search – Opplasting

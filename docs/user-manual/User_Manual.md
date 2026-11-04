@@ -718,11 +718,12 @@ filter:
 ### Upload files and folders.
 
 An administrator can let you upload into a collection.
-The administrator turns on uploads for one dataset of the collection, and marks your group membership as uploader.
+The administrator turns on uploads for one or more datasets of the collection, and marks your group membership as uploader.
+Each upload dataset can have its own OCR languages.
 Then the breadcrumb bar of Storage shows **Upload** at its right end.
-Inside a folder of the upload dataset, **Upload** opens the upload page at that folder.
+Inside an upload dataset, **Upload** opens the upload page with that dataset and folder selected.
 
-1. Choose the collection in **Destination** when you can upload into more than one.
+1. Choose the collection and dataset in **Destination** when you can upload into more than one.
 2. Choose the destination folder in **Folder**.
 3. Drop files or folders on the drop zone, or click the drop zone to choose files.
    **Choose a folder** selects a whole folder with its subfolders.

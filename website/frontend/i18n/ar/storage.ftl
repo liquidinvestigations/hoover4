@@ -90,7 +90,6 @@ uploads-driver-continue = متابعة
 uploads-driver-pause = إيقاف مؤقت
 uploads-upload-button-upload = رفع
 uploads-upload-loading = جارٍ التحميل...
-uploads-upload-this-collection-has-two-upload = تحتوي هذه المجموعة على مجموعتي بيانات للرفع. يجب أن يعطّل مسؤول إحداهما.
 uploads-upload-you-cannot-upload-into-this = لا يمكنك الرفع إلى هذه المجموعة.
 uploads-upload-you-cannot-upload-into-any = لا يمكنك الرفع إلى أي مجموعة.
 uploads-upload-hoover-search-upload = بحث Hoover - الرفع

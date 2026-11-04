@@ -91,7 +91,6 @@ pub async fn limits(Extension(user): Extension<CurrentUser>) -> Response {
                 .into_iter()
                 .map(|t| UploadTargetInfo { collection: t.collectionname, dataset: t.collection_dataset })
                 .collect(),
-            conflicts: found.conflicts.into_iter().map(|c| c.collectionname).collect(),
         })
         .into_response(),
         Err(e) => error_response(e.into()),

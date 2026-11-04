@@ -12,10 +12,9 @@
 //!   setting rows and signals the processing update coordinator. The OCR step of the
 //!   dataset then waits with its new languages, and the automatic run starts it. The
 //!   `change_ocr_languages` kind stays for the command line and for old rows.
-//! * **One upload dataset per collection.** `uploads_enabled` is refused for a dataset whose
-//!   folder is not beneath a writable mount, and while another live dataset of the
-//!   collection has it. The check and the write hold the upload setting lock of the
-//!   collection (`db_auth::uploads::lock_upload_setting`), at creation and at each change.
+//! * **Any number of upload datasets per collection.** `uploads_enabled` is refused only for
+//!   a dataset that is not a disk dataset or whose folder is not beneath a writable mount.
+//!   Each upload dataset is a separate upload target.
 //! * **The creation form never takes a path.** It takes a mount name and a folder *name*.
 //!   The folder is validated against the listing of that mount and joined server-side. A
 //!   free-text path in a browser form is a way to point the ingest walker at any
@@ -738,13 +737,8 @@ pub async fn admin_set_collection_ocr_defaults(
 // ---------------------------------------------------------------------------
 
 /// The refusal of `uploads_enabled = true` for a dataset, or `None` when the setting may
-/// be written. `others` lists the other live datasets of the collection that have it.
-fn upload_refusal(
-    collection_dataset: &str,
-    dataset_type: &str,
-    writable_mount: bool,
-    others: &[String],
-) -> Option<String> {
+/// be written. Other upload datasets of the collection do not matter.
+fn upload_refusal(collection_dataset: &str, dataset_type: &str, writable_mount: bool) -> Option<String> {
     if dataset_type != "disk" {
         return Some(format!(
             "{collection_dataset} is not a disk dataset, so it cannot accept uploads."
@@ -755,17 +749,7 @@ fn upload_refusal(
             "The folder of {collection_dataset} is not in a writable dataset mount, so it cannot accept uploads."
         ));
     }
-    match others {
-        [] => None,
-        [other] => Some(format!(
-            "{other} already accepts uploads. A collection can have one upload dataset."
-        )),
-        many => Some(format!(
-            "The datasets {} already accept uploads. A collection can have one upload dataset. \
-             Turn off Accept uploads on all of them but one.",
-            many.join(", ")
-        )),
-    }
+    None
 }
 
 /// True when the dataset folder opens beneath a writable mount of `mounts`.
@@ -779,8 +763,7 @@ async fn opens_in_writable_mount(
 }
 
 /// Write `uploads_enabled` for a dataset, with the mounts in `mounts`. Turning it off is
-/// always accepted, so an administrator can clear a conflict. Turning it on holds the
-/// upload setting lock of the collection from the check to the write.
+/// always accepted.
 pub async fn set_uploads_enabled(
     collection_dataset: &str,
     on: bool,
@@ -789,16 +772,10 @@ pub async fn set_uploads_enabled(
     let facts = uploads::dataset_upload_facts(collection_dataset)
         .await?
         .ok_or_else(|| anyhow::anyhow!("dataset not found"))?;
-    let _guard = uploads::lock_upload_setting(&facts.collectionname).await;
     if on {
         let writable = facts.dataset_type == "disk"
             && opens_in_writable_mount(mounts, &facts.dataset_path).await?;
-        let others: Vec<String> = uploads::upload_datasets_of_collection(&facts.collectionname)
-            .await?
-            .into_iter()
-            .filter(|d| d != collection_dataset)
-            .collect();
-        if let Some(refusal) = upload_refusal(collection_dataset, &facts.dataset_type, writable, &others) {
+        if let Some(refusal) = upload_refusal(collection_dataset, &facts.dataset_type, writable) {
             return Err(guard::InvalidInput(refusal).into());
         }
     }
@@ -827,26 +804,7 @@ pub async fn admin_get_dataset_uploads(
     let writable_mount = facts.dataset_type == "disk"
         && opens_in_writable_mount(&dataset_mounts::dataset_mounts()?, &facts.dataset_path).await?;
     let enabled = read_setting(&collection_dataset, KEY_UPLOADS_ENABLED).await?.as_deref() == Some("true");
-    let other_upload_datasets = uploads::upload_datasets_of_collection(&facts.collectionname)
-        .await?
-        .into_iter()
-        .filter(|d| d != &collection_dataset)
-        .collect();
-    Ok(DatasetUploadsSetting {
-        writable_mount,
-        enabled,
-        other_upload_datasets,
-    })
-}
-
-/// The live datasets of a collection that accept uploads, for the creation form.
-pub async fn admin_list_collection_upload_datasets(
-    user: &CurrentUser,
-    collectionname: String,
-) -> anyhow::Result<Vec<String>> {
-    guard::require_admin(user)?;
-    collection_db_name(&collectionname)?;
-    uploads::upload_datasets_of_collection(&collectionname).await
+    Ok(DatasetUploadsSetting { writable_mount, enabled })
 }
 
 // ---------------------------------------------------------------------------
@@ -939,11 +897,9 @@ pub async fn admin_create_dataset_folder(
 /// With `new_folder` the server creates the folder in a writable mount after every other
 /// field is valid. Without it the folder must be in the listing of the mount.
 ///
-/// With `accept_uploads` the dataset becomes the upload dataset of the collection. The
-/// mount must be writable, and no other live dataset of the collection may accept uploads.
-/// The upload setting lock of the collection is held from that check until the setting
-/// is written. Without it, a stored `true` of an earlier dataset with the same id is
-/// written `false`.
+/// With `accept_uploads` the dataset becomes an upload dataset of the collection. The
+/// mount must be writable. Other upload datasets of the collection do not matter. Without
+/// it, a stored `true` of an earlier dataset with the same id is written `false`.
 #[allow(clippy::too_many_arguments)]
 pub async fn admin_create_dataset(
     user: &CurrentUser,
@@ -999,14 +955,6 @@ pub async fn admin_create_dataset(
     let tesseract = validate_languages(&tesseract_languages, "Tesseract languages")?;
     let easyocr = validate_easyocr_languages(&easyocr_languages)?;
     let (inherited_tesseract, inherited_easyocr) = inherited_ocr_languages(&collectionname).await?;
-
-    let upload_guard = uploads::lock_upload_setting(&collectionname).await;
-    if accept_uploads {
-        let others = uploads::upload_datasets_of_collection(&collectionname).await?;
-        if let Some(refusal) = upload_refusal(&collection_dataset, "disk", true, &others) {
-            return Err(guard::InvalidInput(refusal).into());
-        }
-    }
 
     if new_folder {
         admin_create_dataset_folder(user, mount_name.clone(), folder_name.clone()).await?;
@@ -1074,7 +1022,6 @@ pub async fn admin_create_dataset(
     } else if read_setting(&collection_dataset, KEY_UPLOADS_ENABLED).await?.as_deref() == Some("true") {
         write_setting(&collection_dataset, KEY_UPLOADS_ENABLED, "false").await?;
     }
-    drop(upload_guard);
 
     // Not a rescan: that only walks the disk and leaves the dataset scanned but
     // unprocessed, which reads as finished and is not. `add_dataset` sequences the three
@@ -1173,16 +1120,12 @@ mod tests {
     }
 
     #[test]
-    fn uploads_need_a_disk_dataset_in_a_writable_mount_and_no_other_upload_dataset() {
-        assert_eq!(upload_refusal("c_a", "disk", true, &[]), None);
-        let read_only = upload_refusal("c_a", "disk", false, &[]).unwrap();
+    fn uploads_need_a_disk_dataset_in_a_writable_mount() {
+        assert_eq!(upload_refusal("c_a", "disk", true), None);
+        let read_only = upload_refusal("c_a", "disk", false).unwrap();
         assert!(read_only.contains("not in a writable dataset mount"), "{read_only}");
-        let not_disk = upload_refusal("c_a", "s3", true, &[]).unwrap();
+        let not_disk = upload_refusal("c_a", "s3", true).unwrap();
         assert!(not_disk.contains("not a disk dataset"), "{not_disk}");
-        let second = upload_refusal("c_b", "disk", true, &["c_a".to_string()]).unwrap();
-        assert!(second.starts_with("c_a already accepts uploads"), "{second}");
-        let conflict = upload_refusal("c_c", "disk", true, &["c_a".to_string(), "c_b".to_string()]).unwrap();
-        assert!(conflict.contains("c_a, c_b"), "{conflict}");
     }
 
     #[test]

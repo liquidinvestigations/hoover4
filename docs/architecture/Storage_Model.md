@@ -56,7 +56,8 @@ an unauthorised dataset never reaches a database name. The mapping from dataset 
 is immutable and is cached in process.
 
 An upload dataset is a disk dataset whose folder is beneath a writable dataset mount and
-whose `dataset_settings` row `uploads_enabled` is `true`. A collection has at most one.
+whose `dataset_settings` row `uploads_enabled` is `true`. A collection can have several, for
+example one for each set of OCR languages.
 A membership row in `user_group_membership` has the flag `is_uploader`. The collection tables
 `upload_batches` and `upload_files` hold upload batch history. Their dataset column is
 `upload_dataset`, so a dataset purge, which deletes the rows of every collection table with a

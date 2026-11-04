@@ -298,8 +298,4 @@ pub struct DatasetUploadsSetting {
     pub writable_mount: bool,
     /// The stored value of `uploads_enabled`.
     pub enabled: bool,
-    /// The other live datasets of the collection that have `uploads_enabled`. With one
-    /// of them the checkbox is disabled. With two or more datasets that accept uploads,
-    /// the collection has a conflict that an administrator must clear.
-    pub other_upload_datasets: Vec<String>,
 }

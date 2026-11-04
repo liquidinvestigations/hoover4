@@ -90,7 +90,6 @@ uploads-driver-continue = המשך
 uploads-driver-pause = השהיה
 uploads-upload-button-upload = העלאה
 uploads-upload-loading = טוען...
-uploads-upload-this-collection-has-two-upload = באוסף הזה יש שני מערכי נתונים להעלאה. מנהל מערכת צריך להשבית אחד מהם.
 uploads-upload-you-cannot-upload-into-this = אין לכם הרשאה להעלות קבצים לאוסף הזה.
 uploads-upload-you-cannot-upload-into-any = אין לכם הרשאה להעלות קבצים לאף אוסף.
 uploads-upload-hoover-search-upload = Hoover Search - העלאה

@@ -4007,37 +4007,6 @@ mod upload_permission {
         collection_dataset
     }
 
-    /// Write `uploads_enabled = true` without the checks, as a restored backup could.
-    async fn force_enabled(collection_dataset: &str) {
-        #[derive(clickhouse::Row, serde::Serialize)]
-        struct SettingRow {
-            collection_dataset: String,
-            key: String,
-            value: String,
-            #[serde(with = "clickhouse::serde::time::datetime")]
-            updated_at: time::OffsetDateTime,
-            is_deleted: u8,
-            setting_version_us: u64,
-            version_is_precise: u8,
-        }
-        let now = time::OffsetDateTime::now_utc();
-        let client = get_global_client();
-        let mut insert = client.insert::<SettingRow>("dataset_settings").await.unwrap();
-        insert
-            .write(&SettingRow {
-                collection_dataset: collection_dataset.to_string(),
-                key: uploads::KEY_UPLOADS_ENABLED.to_string(),
-                value: "true".to_string(),
-                updated_at: now,
-                is_deleted: 0,
-                setting_version_us: u64::try_from(now.unix_timestamp_nanos() / 1_000).unwrap(),
-                version_is_precise: 1,
-            })
-            .await
-            .unwrap();
-        insert.end().await.unwrap();
-    }
-
     fn scratch_mount(label: &str) -> (std::path::PathBuf, Vec<DatasetMount>, Vec<DatasetMount>) {
         let root = std::env::temp_dir().join(format!("hoover4-w6-{label}-{}", suffix()));
         std::fs::create_dir_all(root.join("a")).unwrap();
@@ -4106,9 +4075,13 @@ mod upload_permission {
         assert_eq!(target_datasets(&targets(&alice, &mounts).await), vec![a.clone()]);
         // The same rows with the mount read-only give no target.
         assert!(targets(&alice, &read_only).await.targets.is_empty());
-        // A second dataset of the collection is refused.
-        let second = dataset_ocr::set_uploads_enabled(&b, true, &mounts).await.unwrap_err();
-        assert!(second.to_string().contains("already accepts uploads"), "{second}");
+        // A second dataset of the collection accepts uploads too, and each is a target.
+        dataset_ocr::set_uploads_enabled(&b, true, &mounts).await.unwrap();
+        let mut both = vec![a.clone(), b.clone()];
+        both.sort();
+        assert_eq!(target_datasets(&targets(&alice, &mounts).await), both);
+        dataset_ocr::set_uploads_enabled(&b, false, &mounts).await.unwrap();
+        assert_eq!(target_datasets(&targets(&alice, &mounts).await), vec![a.clone()]);
 
         // A member without the flag, an administrator without a flagged membership, and a
         // public collection without a grant give no target.
@@ -4141,19 +4114,6 @@ mod upload_permission {
         groups::sync_header_memberships(&dave, std::slice::from_ref(&group)).await.unwrap();
         assert_eq!(stored_flags(&dave, &group).await, Some((false, 0)));
 
-        // Two enabled datasets, written past the checks, are a conflict without a target.
-        force_enabled(&b).await;
-        let conflicted = targets(&alice, &mounts).await;
-        assert!(conflicted.targets.is_empty(), "{conflicted:?}");
-        assert_eq!(conflicted.conflicts.len(), 1);
-        assert_eq!(conflicted.conflicts[0].datasets, {
-            let mut d = vec![a.clone(), b.clone()];
-            d.sort();
-            d
-        });
-        dataset_ocr::set_uploads_enabled(&b, false, &mounts).await.unwrap();
-        assert_eq!(target_datasets(&targets(&alice, &mounts).await), vec![a.clone()]);
-
         // Turning uploads off and deleting the dataset end the target and keep history.
         dataset_ocr::set_uploads_enabled(&a, false, &mounts).await.unwrap();
         assert!(targets(&alice, &mounts).await.targets.is_empty());
@@ -4162,7 +4122,7 @@ mod upload_permission {
         set_dataset(&coll, "a", &format!("{root_path}/a"), 1).await;
         assert!(targets(&alice, &mounts).await.targets.is_empty());
         assert!(uploads::can_read_upload_history(&caller(&alice, false), &coll).await.unwrap());
-        // With the dataset deleted, another dataset may accept uploads.
+        // The other dataset accepts uploads on its own.
         dataset_ocr::set_uploads_enabled(&b, true, &mounts).await.unwrap();
         assert_eq!(target_datasets(&targets(&alice, &mounts).await), vec![b.clone()]);
         // A mount without the folder gives no target, and history stays.
@@ -4203,7 +4163,7 @@ mod upload_permission {
 
     #[tokio::test]
     #[ignore = "needs live stack"]
-    async fn concurrent_upload_setting_changes_leave_one_upload_dataset() {
+    async fn concurrent_upload_setting_changes_accept_both_datasets() {
         let s = suffix();
         let coll = format!("w6c_{s}");
         let (root, mounts, _) = scratch_mount("concurrent");
@@ -4218,8 +4178,8 @@ mod upload_permission {
                 dataset_ocr::set_uploads_enabled(&a, true, &mounts),
                 dataset_ocr::set_uploads_enabled(&b, true, &mounts),
             );
-            assert_eq!(u8::from(ra.is_ok()) + u8::from(rb.is_ok()), 1, "{ra:?} {rb:?}");
-            assert_eq!(uploads::upload_datasets_of_collection(&coll).await.unwrap().len(), 1);
+            assert!(ra.is_ok() && rb.is_ok(), "{ra:?} {rb:?}");
+            assert_eq!(uploads::upload_datasets_of_collection(&coll).await.unwrap().len(), 2);
             accepted += 1;
             for d in [&a, &b] {
                 dataset_ocr::set_uploads_enabled(d, false, &mounts).await.unwrap();

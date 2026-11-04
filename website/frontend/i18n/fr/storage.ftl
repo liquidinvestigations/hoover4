@@ -90,7 +90,6 @@ uploads-driver-continue = Poursuivre
 uploads-driver-pause = Pause
 uploads-upload-button-upload = Téléverser
 uploads-upload-loading = Chargement...
-uploads-upload-this-collection-has-two-upload = Cette collection a deux jeux de données de téléversement. Un administrateur doit en désactiver un.
 uploads-upload-you-cannot-upload-into-this = Vous ne pouvez pas téléverser dans cette collection.
 uploads-upload-you-cannot-upload-into-any = Vous ne pouvez téléverser dans aucune collection.
 uploads-upload-hoover-search-upload = Hoover Search - Téléversement

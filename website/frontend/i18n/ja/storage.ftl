@@ -90,7 +90,6 @@ uploads-driver-continue = 続ける
 uploads-driver-pause = 一時停止
 uploads-upload-button-upload = アップロード
 uploads-upload-loading = 読み込み中...
-uploads-upload-this-collection-has-two-upload = このコレクションにはアップロード用のデータセットが2つあります。管理者がどちらか一方を無効にする必要があります。
 uploads-upload-you-cannot-upload-into-this = このコレクションにはアップロードできません。
 uploads-upload-you-cannot-upload-into-any = どのコレクションにもアップロードできません。
 uploads-upload-hoover-search-upload = Hoover Search - アップロード

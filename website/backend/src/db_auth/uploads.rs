@@ -1,8 +1,9 @@
 //! Upload permission: the current upload targets of a user, and the readers of upload history.
 //!
-//! A user may upload into collection `c` when all three conditions hold.
+//! A user may upload into dataset `d` of collection `c` when all three conditions hold. A
+//! collection can have several upload datasets, and each one is a separate target.
 //!
-//! 1. A live disk dataset of `c` has the setting `uploads_enabled = 'true'`.
+//! 1. `d` is a live disk dataset of `c` with the setting `uploads_enabled = 'true'`.
 //! 2. The user has a live membership in a group `g` with `is_uploader = 1`.
 //! 3. `g` holds a live row in `collection_group_permissions` for `c`.
 //!
@@ -21,15 +22,13 @@
 
 use std::collections::BTreeMap;
 use std::os::fd::OwnedFd;
-use std::sync::LazyLock;
 
 use common::current_user::CurrentUser;
 
 use crate::dataset_mounts::{self, DatasetMount};
-use crate::db_auth::{lock_key, KeyedLocks};
 use crate::db_utils::clickhouse_utils::get_global_client;
 
-/// The `dataset_settings` key that makes a disk dataset the upload dataset of its collection.
+/// The `dataset_settings` key that makes a disk dataset an upload dataset of its collection.
 /// Its values are `true` and `false`.
 pub const KEY_UPLOADS_ENABLED: &str = "uploads_enabled";
 
@@ -40,7 +39,7 @@ const ENABLED_DATASETS: &str = "SELECT collection_dataset FROM dataset_settings 
      WHERE key = 'uploads_enabled' GROUP BY collection_dataset \
      HAVING argMax((value, is_deleted), setting_version_us) = ('true', 0)";
 
-/// One upload target: the upload dataset of a collection that the user may write now.
+/// One upload target: an upload dataset of a collection that the user may write now.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UploadTarget {
     pub collectionname: String,
@@ -50,15 +49,7 @@ pub struct UploadTarget {
     pub mount_name: String,
 }
 
-/// A collection in which more than one live dataset has `uploads_enabled`. It has no
-/// upload target until an administrator turns the setting off on all but one dataset.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UploadConflict {
-    pub collectionname: String,
-    pub datasets: Vec<String>,
-}
-
-/// The upload dataset of a collection whose folder is beneath a writable mount but does
+/// An upload dataset of a collection whose folder is beneath a writable mount but does
 /// not open now. The permission stands, so the receiver keeps the files of its batches.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UploadUnavailable {
@@ -72,7 +63,6 @@ pub struct UploadUnavailable {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct UploadTargets {
     pub targets: Vec<UploadTarget>,
-    pub conflicts: Vec<UploadConflict>,
     /// Not targets now. The upload page does not list them.
     pub unavailable: Vec<UploadUnavailable>,
 }
@@ -86,19 +76,8 @@ pub struct UploadCandidate {
     pub dataset_path: String,
 }
 
-/// The locks of the upload setting, keyed by collection. Dataset creation with "Accept
-/// uploads" and each change of the setting hold the lock of the collection from the check
-/// to the write.
-static UPLOAD_SETTING_LOCKS: KeyedLocks = LazyLock::new(Default::default);
-
-/// Wait for the upload setting lock of a collection.
-pub async fn lock_upload_setting(collectionname: &str) -> tokio::sync::OwnedMutexGuard<()> {
-    lock_key(&UPLOAD_SETTING_LOCKS, collectionname).await
-}
-
 /// The live disk datasets with `uploads_enabled` of each collection in which the user has
-/// conditions 2 and 3. Every such dataset of the collection is listed, so a conflict
-/// shows.
+/// conditions 2 and 3.
 async fn upload_candidates(username: &str) -> anyhow::Result<Vec<UploadCandidate>> {
     let client = get_global_client();
     client
@@ -244,32 +223,20 @@ pub fn open_dataset_folder(mounts: &[DatasetMount], dataset_path: &str) -> anyho
     Ok((mount.clone(), fd))
 }
 
-/// The targets and the conflicts of the candidate rows. A collection with one candidate
-/// is a target when `resolves` opens its folder and returns the mount name. `Ok(None)`
-/// from `resolves` means that no writable mount holds the path, and the collection has no
-/// target. An error means that the folder does not open, and the collection is
-/// unavailable. A collection with more than one candidate is a conflict, and no dataset
-/// of it is a target.
+/// The targets of the candidate rows, sorted by collection and dataset. A candidate is a
+/// target when `resolves` opens its folder and returns the mount name. `Ok(None)` from
+/// `resolves` means that no writable mount holds the path, and the dataset is no target.
+/// An error means that the folder does not open, and the dataset is unavailable.
 pub fn targets_from_candidates(
     candidates: Vec<UploadCandidate>,
     resolves: impl Fn(&str) -> Result<Option<String>, String>,
 ) -> UploadTargets {
-    let mut by_collection: BTreeMap<String, Vec<UploadCandidate>> = BTreeMap::new();
-    for candidate in candidates {
-        let datasets = by_collection.entry(candidate.collectionname.clone()).or_default();
-        if !datasets.iter().any(|d| d.collection_dataset == candidate.collection_dataset) {
-            datasets.push(candidate);
-        }
-    }
+    let unique: BTreeMap<(String, String), UploadCandidate> = candidates
+        .into_iter()
+        .map(|c| ((c.collectionname.clone(), c.collection_dataset.clone()), c))
+        .collect();
     let mut result = UploadTargets::default();
-    for (collectionname, mut datasets) in by_collection {
-        if datasets.len() > 1 {
-            let mut names: Vec<String> = datasets.into_iter().map(|d| d.collection_dataset).collect();
-            names.sort();
-            result.conflicts.push(UploadConflict { collectionname, datasets: names });
-            continue;
-        }
-        let dataset = datasets.pop().expect("one candidate");
+    for ((collectionname, _), dataset) in unique {
         match resolves(&dataset.dataset_path) {
             Ok(Some(mount_name)) => result.targets.push(UploadTarget {
                 collectionname,
@@ -368,7 +335,6 @@ mod tests {
                 mount_name: "uploads".to_string(),
             }]
         );
-        assert!(resolved.conflicts.is_empty());
     }
 
     #[test]
@@ -377,7 +343,7 @@ mod tests {
             vec![candidate("press", "press_inbox", "/uploads/press")],
             |_| Err("cannot open the dataset mount /uploads: No such file or directory".to_string()),
         );
-        assert!(resolved.targets.is_empty() && resolved.conflicts.is_empty());
+        assert!(resolved.targets.is_empty());
         assert_eq!(
             resolved.unavailable,
             vec![UploadUnavailable {
@@ -389,23 +355,20 @@ mod tests {
     }
 
     #[test]
-    fn two_upload_datasets_in_one_collection_are_a_conflict_without_a_target() {
+    fn each_upload_dataset_of_a_collection_is_a_target() {
         let resolved = targets_from_candidates(
             vec![
                 candidate("press", "press_b", "/uploads/b"),
                 candidate("press", "press_a", "/uploads/a"),
                 candidate("press", "press_a", "/uploads/a"),
+                candidate("press", "press_c", "/uploads/c"),
             ],
-            |_| Ok(Some("uploads".to_string())),
+            |path| if path == "/uploads/c" { Err("missing".to_string()) } else { Ok(Some("uploads".to_string())) },
         );
-        assert!(resolved.targets.is_empty());
-        assert_eq!(
-            resolved.conflicts,
-            vec![UploadConflict {
-                collectionname: "press".to_string(),
-                datasets: vec!["press_a".to_string(), "press_b".to_string()],
-            }]
-        );
+        let names: Vec<&str> = resolved.targets.iter().map(|t| t.collection_dataset.as_str()).collect();
+        assert_eq!(names, vec!["press_a", "press_b"]);
+        assert_eq!(resolved.unavailable.len(), 1);
+        assert_eq!(resolved.unavailable[0].collection_dataset, "press_c");
     }
 
     #[test]

@@ -241,18 +241,23 @@ impl DbAccess {
 }
 
 impl UploadAccess for DbAccess {
-    fn target(&self, username: &str, collection: &str) -> anyhow::Result<TargetLookup> {
+    fn target(&self, username: &str, collection: &str, dataset: &str) -> anyhow::Result<TargetLookup> {
         let targets = self.handle.block_on(crate::db_auth::uploads::upload_targets(username))?;
-        if let Some(conflict) = targets.conflicts.iter().find(|c| c.collectionname == collection) {
-            return Ok(TargetLookup::Conflict(conflict.datasets.clone()));
-        }
-        if let Some(unavailable) = targets.unavailable.iter().find(|u| u.collectionname == collection) {
+        if let Some(unavailable) = targets
+            .unavailable
+            .iter()
+            .find(|u| u.collectionname == collection && u.collection_dataset == dataset)
+        {
             return Ok(TargetLookup::Unavailable {
                 upload_dataset: unavailable.collection_dataset.clone(),
                 reason: unavailable.reason.clone(),
             });
         }
-        let Some(target) = targets.targets.into_iter().find(|t| t.collectionname == collection) else {
+        let Some(target) = targets
+            .targets
+            .into_iter()
+            .find(|t| t.collectionname == collection && t.collection_dataset == dataset)
+        else {
             return Ok(TargetLookup::None);
         };
         let mount = crate::dataset_mounts::mount_named(&target.mount_name)?;

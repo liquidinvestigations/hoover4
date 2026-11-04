@@ -90,7 +90,6 @@ uploads-driver-continue = Fortsæt
 uploads-driver-pause = Sæt på pause
 uploads-upload-button-upload = Upload
 uploads-upload-loading = Indlæser...
-uploads-upload-this-collection-has-two-upload = Denne samling har to uploaddatasæt. En administrator skal deaktivere det ene.
 uploads-upload-you-cannot-upload-into-this = Du kan ikke uploade til denne samling.
 uploads-upload-you-cannot-upload-into-any = Du kan ikke uploade til nogen samling.
 uploads-upload-hoover-search-upload = Hoover-søgning - Upload

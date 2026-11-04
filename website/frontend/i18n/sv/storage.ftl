@@ -90,7 +90,6 @@ uploads-driver-continue = Fortsätt
 uploads-driver-pause = Pausa
 uploads-upload-button-upload = Ladda upp
 uploads-upload-loading = Läser in...
-uploads-upload-this-collection-has-two-upload = Den här samlingen har två uppladdningsdatamängder. En administratör måste inaktivera en av dem.
 uploads-upload-you-cannot-upload-into-this = Du kan inte ladda upp till den här samlingen.
 uploads-upload-you-cannot-upload-into-any = Du kan inte ladda upp till någon samling.
 uploads-upload-hoover-search-upload = Hoover Search - Uppladdning

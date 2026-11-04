@@ -136,8 +136,8 @@ struct FakeAccess {
 }
 
 impl UploadAccess for FakeAccess {
-    fn target(&self, username: &str, collection: &str) -> anyhow::Result<TargetLookup> {
-        if username != USER || collection != COLLECTION {
+    fn target(&self, username: &str, collection: &str, dataset: &str) -> anyhow::Result<TargetLookup> {
+        if username != USER || collection != COLLECTION || dataset != DATASET {
             return Ok(TargetLookup::None);
         }
         Ok(self.target.lock().unwrap().clone())
@@ -244,6 +244,7 @@ fn request(id: &str, files: &[(&str, u64)]) -> BeginRequest {
     BeginRequest {
         request_id: id.to_string(),
         collection: COLLECTION.to_string(),
+        dataset: DATASET.to_string(),
         folder: "/in".to_string(),
         files: files
             .iter()
@@ -356,8 +357,12 @@ fn begin_refuses_each_problem_class_with_its_message() {
     assert_eq!(e.message, "The server has 10 B free for uploads. This upload needs 2 KiB.");
     env.free.0.store(u64::MAX, Ordering::SeqCst);
 
-    *env.access.target.lock().unwrap() = TargetLookup::Conflict(vec!["a".into(), "b".into()]);
-    assert_eq!(service.begin(USER, &request("r9", &[("z", 1)])).unwrap_err().status, 409);
+    // Another dataset of the collection is a separate target, and an empty one is refused.
+    let other = BeginRequest { dataset: "press_other".to_string(), ..request("r9", &[("z", 1)]) };
+    assert_eq!(service.begin(USER, &other).unwrap_err().status, 403);
+    let none = BeginRequest { dataset: String::new(), ..request("r9", &[("z", 1)]) };
+    let refused = service.begin(USER, &none).unwrap_err();
+    assert_eq!((refused.status, refused.message.as_str()), (400, "Select the dataset to upload into."));
     env.revoke();
     assert_eq!(service.begin(USER, &request("r9", &[("z", 1)])).unwrap_err().status, 403);
     assert_eq!(service.begin(USER, &request("bad id!", &[("z", 1)])).unwrap_err().status, 400);

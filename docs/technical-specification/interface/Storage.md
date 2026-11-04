@@ -18,7 +18,7 @@ The storage routes show readable collections, their datasets, and nested folder 
 | Open in Search | Open collection search with the current folder restriction. | The folder must resolve to its search identity. |
 | File row | Select the document preview. | Document access applies to the preview request. |
 | Dividers | Resize the sidebar or preview. | Double-click restores the default width. |
-| Upload | Open the upload page. Inside a folder of an upload dataset of the reader, it opens at that folder. | It shows only for a reader with an upload target. |
+| Upload | Open the upload page. Inside an upload dataset of the reader, it opens with that dataset and folder selected. | It shows only for a reader with an upload target. |
 
 ## States
 
@@ -43,14 +43,14 @@ Every document read retains collection access checks.
 
 ## Upload routes
 
-The website receives uploads into the upload dataset of a collection under `/_upload/`.
+The website receives uploads into the upload datasets of a collection under `/_upload/`. A collection can have several upload datasets.
 The upload pages below send them. [The receiver](../../../website/backend/src/uploads/) and [the tus handlers](../../../website/backend/src/server_extra/tus.rs) own the contract.
 Rows `F-store-10` to `F-store-13` of [the feature register](../Features.md) give the statuses of each refusal.
 
 | Route | Behavior | Constraint |
 |---|---|---|
-| `GET /_upload/limits` | Return the limits and the upload targets of the caller. | A collection with two upload datasets is listed as a conflict without a target. |
-| `POST /_upload/begin` | Check a manifest, reserve its paths and return the batch id and one tus address for each file. | The body is JSON of at most 16 MiB. No byte is accepted before these checks pass. It is refused while a deletion or a purge of the upload dataset is live. |
+| `GET /_upload/limits` | Return the limits and the upload targets of the caller. | Each upload dataset is one target. |
+| `POST /_upload/begin` | Check a manifest, reserve its paths and return the batch id and one tus address for each file. | The body names the collection and the upload dataset, and is JSON of at most 16 MiB. No byte is accepted before these checks pass. It is refused while a deletion or a purge of the upload dataset is live. |
 | tus requests under `/_upload/files/` | Create, read the offset of, append to and end the transfer of one file. | Each request needs `Tus-Resumable: 1.0.0` and `X-Hoover-Upload: 1`. Only the batch owner may send it. |
 | `GET /_upload/<batch_id>/prefix/<file_no>` | Return the SHA-256 of the acknowledged prefix. | Only the batch owner may read it. |
 | `POST /_upload/<batch_id>/commit` | End the transfer and return the detail address `/uploads/<collection>/<batch_id>`. | The body is JSON. A repeat returns the same address. |
@@ -69,13 +69,13 @@ Rows `F-store-15` and `F-store-16` of [the feature register](../Features.md) sta
 
 | Route | Page | Readers |
 |---|---|---|
-| `/upload?collection&folder` | The upload page. | Users with an upload target. |
+| `/upload?collection&dataset&folder` | The upload page. | Users with an upload target. |
 | `/uploads?collection` | The batch list. | Uploaders of the listed collections and administrators. |
 | `/uploads/<collection>/<batch_id>?page` | The batch detail. | Uploaders of the collection and administrators. |
 
 | Control | Behavior | Constraint |
 |---|---|---|
-| Destination | Select the upload target. | It is a select only with more than one target. Its value is in the address. |
+| Destination | Select the upload target, one "collection / dataset" for each upload dataset. | It is a select only with more than one target. The collection and the dataset are in the address. An address without a dataset selects the first upload dataset of the collection. |
 | Folder | Select the destination folder in the folder tree of the upload dataset. | The tree reads the structure index without a cache. The folder is in the address. |
 | Drop zone | Add dropped files and folders, or open the file dialog on a click. | The file dialog has no type filter. |
 | Choose a folder | Add a folder with its subfolders. | |
@@ -98,7 +98,6 @@ Rows `F-store-15` and `F-store-16` of [the feature register](../Features.md) sta
 | State | Display |
 |---|---|
 | No upload target | "You cannot upload into any collection." |
-| Two upload datasets | "This collection has two upload datasets. An administrator must disable one." |
 | Page check failure | The files that break a rule with the rule, and each batch limit that the selection exceeds. |
 | `begin` refusal | The files and rules, or the existing paths under "These paths exist in the folder:". |
 | Continue upload selection | The page shows the count of selected files outside the batch and each file whose bytes differ. It lists the waiting files that were not sent. |

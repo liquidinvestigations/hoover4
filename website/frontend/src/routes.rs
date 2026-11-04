@@ -115,10 +115,11 @@ pub enum Route {
         doc_viewer_state: UrlParam<Option<DocViewerState>>,
     },
 
-    // The upload page. Both values may be empty: an empty collection selects the first
-    // upload target, and an empty folder is the dataset root.
-    #[route("/upload?:collection&:folder")]
-    UploadPage { collection: String, folder: String },
+    // The upload page. Each value may be empty: an empty collection selects the first
+    // upload target, an empty dataset the first upload dataset of the collection, and an
+    // empty folder the dataset root. A link from before `dataset` decodes it as empty.
+    #[route("/upload?:collection&:dataset&:folder")]
+    UploadPage { collection: String, dataset: String, folder: String },
 
     // The batch list. It must be declared before the batch detail.
     #[route("/uploads?:collection")]

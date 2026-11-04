@@ -35,8 +35,7 @@ const ERROR_CHARS: usize = 2000;
 /// The refusal of a batch page for a reader without history access.
 const NO_HISTORY: &str = "forbidden: you cannot read the upload history of this collection";
 
-/// The limits and the current upload targets of the user. A collection with two upload
-/// datasets is listed in `conflicts` and has no target.
+/// The limits and the current upload targets of the user, one for each upload dataset.
 pub async fn upload_page_info(user: &CurrentUser) -> anyhow::Result<LimitsResponse> {
     let limits = crate::uploads::limits_from_env()?;
     let found = crate::db_auth::uploads::upload_targets(&user.username).await?;
@@ -47,7 +46,6 @@ pub async fn upload_page_info(user: &CurrentUser) -> anyhow::Result<LimitsRespon
             .into_iter()
             .map(|t| UploadTargetInfo { collection: t.collectionname, dataset: t.collection_dataset })
             .collect(),
-        conflicts: found.conflicts.into_iter().map(|c| c.collectionname).collect(),
     })
 }
 

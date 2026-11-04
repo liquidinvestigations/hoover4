@@ -24,11 +24,10 @@ use super::journal::{
 };
 use super::{random_id, sha256_hex, upload_url, Service, TargetLookup, UploadError, UploadResult};
 
-/// The text of a `begin` for a collection without an upload target of the user.
-pub const NO_TARGET_MESSAGE: &str = "You cannot upload into this collection.";
-/// The text of a `begin` for a collection with two upload datasets.
-pub const CONFLICT_MESSAGE: &str =
-    "This collection has two upload datasets. An administrator must disable one.";
+/// The text of a `begin` for a dataset that is not an upload target of the user.
+pub const NO_TARGET_MESSAGE: &str = "You cannot upload into this dataset.";
+/// The text of a `begin` without a dataset.
+pub const NO_DATASET_MESSAGE: &str = "Select the dataset to upload into.";
 /// The text of a `begin` while a deletion or a purge of the upload dataset is live.
 pub const REMOVAL_MESSAGE: &str =
     "This upload dataset is being deleted or purged. Uploads into it can start after that operation ends.";
@@ -51,6 +50,7 @@ pub fn manifest_digest(username: &str, request: &BeginRequest, folder: &str) -> 
     let canonical = serde_json::json!({
         "username": username,
         "collection": request.collection,
+        "dataset": request.dataset,
         "folder": folder,
         "files": files,
     });
@@ -111,9 +111,11 @@ impl Service {
         if !valid_request_id(&request.request_id) {
             return Err(UploadError::new(400, REQUEST_ID_MESSAGE));
         }
-        let target = match self.access.target(username, &request.collection)? {
+        if request.dataset.is_empty() {
+            return Err(UploadError::new(400, NO_DATASET_MESSAGE));
+        }
+        let target = match self.access.target(username, &request.collection, &request.dataset)? {
             TargetLookup::Target(target) => target,
-            TargetLookup::Conflict(_) => return Err(UploadError::new(409, CONFLICT_MESSAGE)),
             TargetLookup::None => return Err(UploadError::new(403, NO_TARGET_MESSAGE)),
             TargetLookup::Unavailable { reason, .. } => return Err(anyhow::Error::from(super::FolderUnavailable(reason)).into()),
         };

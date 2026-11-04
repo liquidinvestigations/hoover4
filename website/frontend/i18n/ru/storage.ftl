@@ -90,7 +90,6 @@ uploads-driver-continue = Продолжить
 uploads-driver-pause = Пауза
 uploads-upload-button-upload = Загрузить
 uploads-upload-loading = Загрузка...
-uploads-upload-this-collection-has-two-upload = В этой коллекции два набора данных для загрузки. Администратор должен отключить один из них.
 uploads-upload-you-cannot-upload-into-this = Вы не можете загружать файлы в эту коллекцию.
 uploads-upload-you-cannot-upload-into-any = Вы не можете загружать файлы ни в одну коллекцию.
 uploads-upload-hoover-search-upload = Hoover Search - Загрузка

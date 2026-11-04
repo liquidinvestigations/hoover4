@@ -234,14 +234,6 @@ fn DatasetUploadsControl(collection_dataset: String) -> Element {
         return rsx! {};
     }
     let mount_gone = !setting.writable_mount;
-    let others = setting.other_upload_datasets.join(", ");
-    let blocked_note = if setting.other_upload_datasets.len() == 1 {
-        tr!("admin-dataset-detail-already-accepts-uploads", others: others.to_string())
-    } else {
-        tr!("admin-dataset-detail-already-accept-uploads", others: others.to_string())
-    };
-    let blocked = !setting.enabled && !setting.other_upload_datasets.is_empty();
-    let conflict = setting.enabled && !setting.other_upload_datasets.is_empty();
     let enabled = setting.enabled;
 
     rsx! {
@@ -252,7 +244,7 @@ fn DatasetUploadsControl(collection_dataset: String) -> Element {
             input {
                 r#type: "checkbox",
                 checked: enabled,
-                disabled: blocked || *saving.read(),
+                disabled: *saving.read(),
                 onchange: {
                     let cd = collection_dataset.clone();
                     move |e: Event<FormData>| {
@@ -275,14 +267,6 @@ fn DatasetUploadsControl(collection_dataset: String) -> Element {
         }
         if mount_gone {
             p { style: "{HELP_TEXT} margin: 0;", {tr!("admin-dataset-detail-the-folder-of-this-dataset")} }
-        }
-        if blocked {
-            p { style: "{HELP_TEXT} margin: 0;", "{blocked_note}" }
-        }
-        if conflict {
-            p { style: "{HELP_TEXT} margin: 0; color: var(--x-danger);",
-                {tr!("admin-dataset-detail-this-dataset-and-accept-uploads", others: others.to_string())}
-            }
         }
     }
 }

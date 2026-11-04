@@ -202,7 +202,8 @@ impl Default for UploadLimits {
     }
 }
 
-/// One upload target of the user: the upload dataset of a collection.
+/// One upload target of the user: an upload dataset of a collection. A collection can have
+/// several.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UploadTargetInfo {
     pub collection: String,
@@ -214,8 +215,6 @@ pub struct UploadTargetInfo {
 pub struct LimitsResponse {
     pub limits: UploadLimits,
     pub targets: Vec<UploadTargetInfo>,
-    /// Collections with more than one upload dataset. They have no target.
-    pub conflicts: Vec<String>,
 }
 
 /// One file of a `begin` manifest.
@@ -235,6 +234,9 @@ pub struct BeginFile {
 pub struct BeginRequest {
     pub request_id: String,
     pub collection: String,
+    /// The upload dataset of the collection. A request without it is refused.
+    #[serde(default)]
+    pub dataset: String,
     pub folder: String,
     pub files: Vec<BeginFile>,
 }

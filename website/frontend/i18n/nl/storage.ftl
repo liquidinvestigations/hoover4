@@ -90,7 +90,6 @@ uploads-driver-continue = Hervatten
 uploads-driver-pause = Pauzeren
 uploads-upload-button-upload = Uploaden
 uploads-upload-loading = Laden...
-uploads-upload-this-collection-has-two-upload = Deze collectie heeft twee uploaddatasets. Een beheerder moet er een uitschakelen.
 uploads-upload-you-cannot-upload-into-this = Je kunt niet uploaden naar deze collectie.
 uploads-upload-you-cannot-upload-into-any = Je kunt naar geen enkele collectie uploaden.
 uploads-upload-hoover-search-upload = Hoover Zoeken - Upload

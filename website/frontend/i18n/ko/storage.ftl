@@ -90,7 +90,6 @@ uploads-driver-continue = 계속
 uploads-driver-pause = 일시 중지
 uploads-upload-button-upload = 업로드
 uploads-upload-loading = 불러오는 중...
-uploads-upload-this-collection-has-two-upload = 이 컬렉션에는 업로드 데이터셋이 두 개 있습니다. 관리자가 하나를 비활성화해야 합니다.
 uploads-upload-you-cannot-upload-into-this = 이 컬렉션에는 업로드할 수 없습니다.
 uploads-upload-you-cannot-upload-into-any = 어떤 컬렉션에도 업로드할 수 없습니다.
 uploads-upload-hoover-search-upload = Hoover 검색 - 업로드

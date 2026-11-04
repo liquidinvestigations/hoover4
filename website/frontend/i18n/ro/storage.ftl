@@ -90,7 +90,6 @@ uploads-driver-continue = Continuă
 uploads-driver-pause = Întrerupe
 uploads-upload-button-upload = Încarcă
 uploads-upload-loading = Se încarcă...
-uploads-upload-this-collection-has-two-upload = Această colecție are două seturi de date pentru încărcare. Un administrator trebuie să dezactiveze unul dintre ele.
 uploads-upload-you-cannot-upload-into-this = Nu poți încărca în această colecție.
 uploads-upload-you-cannot-upload-into-any = Nu poți încărca în nicio colecție.
 uploads-upload-hoover-search-upload = Hoover Search - Încărcare
