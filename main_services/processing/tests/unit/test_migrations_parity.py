@@ -158,6 +158,7 @@ EXPECTED_COLLECTION_TABLES = {
     "pdf_parts",
     "pdf_previews",
     "ocr_page_needs",
+    "ocr_detection",
     "pdf_ocr_parts",
     "pdf_parts_ready",
 }

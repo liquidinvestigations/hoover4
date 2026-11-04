@@ -21,9 +21,13 @@ RUN pip install --no-cache-dir \
         "fastapi>=0.115" \
         "uvicorn[standard]>=0.34" \
         "pydantic>=2.9" \
-        "pillow>=10.0"
+        "pillow>=10.0" \
+        "numpy>=2.0" \
+        "onnxruntime>=1.20" \
+        "opencv-python-headless>=4.10"
 
-COPY ocr_tesseract.py /app/ocr_tesseract.py
+COPY ocr_tesseract.py text_detection.py /app/
+COPY models /app/models
 
 ENV HOST=0.0.0.0 \
     PORT=8000

@@ -849,6 +849,12 @@ processing-update-ocr-explanation = { $files ->
    *[other] Περίπου { $count } αρχεία δεν έχουν κείμενο OCR για τις τρέχουσες γλώσσες ή κρατούν κείμενο OCR γλωσσών που οι ρυθμίσεις δεν περιλαμβάνουν πλέον.
 } Το OCR εκτελείται για τις τρέχουσες γλώσσες και το κείμενο των γλωσσών που αφαιρέθηκαν διαγράφεται.
 processing-update-ocr-runs = OCR και PDF με δυνατότητα αναζήτησης, έπειτα εξαγωγή οντοτήτων, embedding και ευρετηρίαση του νέου κειμένου
+processing-update-ocr_detection-title = Εντοπισμός OCR
+processing-update-ocr_detection-explanation = { $files ->
+    [one] { $count } αρχείο δεν έχει εντοπισμένο κείμενο, γραφή ή γλώσσα.
+   *[other] { $count } αρχεία δεν έχουν εντοπισμένο κείμενο, γραφή ή γλώσσα.
+} Εξετάζεται κάθε εικόνα και κάθε σελίδα που επιλέχθηκε για OCR. Ένα PDF στέλνει το πολύ 100 σελίδες. Το κείμενο OCR δεν αλλάζει.
+processing-update-ocr_detection-runs = Εντοπισμός, έπειτα τα χαρακτηριστικά αναζήτησης αυτών των αρχείων
 processing-update-pdf_text-title = Κείμενο αναζητήσιμων PDF
 processing-update-pdf_text-explanation = { $files ->
     [one] { $count } αρχείο έχει αναζητήσιμα PDF με προηγούμενο επίπεδο κειμένου.

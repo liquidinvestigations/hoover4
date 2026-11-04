@@ -1,10 +1,11 @@
-"""Select documents whose indexed folder or language attributes are stale.
+"""Select documents whose indexed folder, language or OCR attributes are stale.
 
 A content hash that gains another path does not create a processing plan. The
 page writer still has to refresh that document's folder attributes, or a folder
 filter keeps answering from the previous locations. A change to the document
-language rule has the same effect on the language filter. This module names
-those documents and rewrites their page rows. It does not extract, OCR, or embed.
+language rule has the same effect on the language filter, and new OCR detection
+rows have the same effect on the OCR filters. This module names those documents
+and rewrites their page rows. It does not extract, OCR, or embed.
 """
 
 from __future__ import annotations
@@ -178,17 +179,36 @@ def load_expected_language_ids(
     }
 
 
+def load_expected_ocr_ids(
+    collectionname: str, collection_dataset: str
+) -> tuple[dict[str, frozenset[int]], dict[str, frozenset[int]]]:
+    """Current `ocr_script` and `ocr_language` term ids per hash."""
+    from database.clickhouse import get_collection_client
+
+    from .activities import document_ocr_attributes
+    from .string_term_encodings import get_string_term_ids_by_field
+
+    with get_collection_client(collectionname) as client:
+        scripts, languages = document_ocr_attributes(client, collection_dataset)
+    fields = {"ocr_script": {name for names in scripts.values() for name in names},
+              "ocr_language": {code for codes in languages.values() for code in codes}}
+    ids = get_string_term_ids_by_field(collectionname, collection_dataset, fields)
+    return ({h: frozenset(ids["ocr_script"][name] for name in names) for h, names in scripts.items()},
+            {h: frozenset(ids["ocr_language"][code] for code in codes) for h, codes in languages.items()})
+
+
 def load_indexed_ids(
     collectionname: str, collection_dataset: str, assignments: dict[str, str]
-) -> tuple[dict[str, frozenset[int]], dict[str, frozenset[int]]]:
-    """Indexed `file_paths` and `language` per hash, read from each assigned pages table.
+) -> tuple[dict[str, frozenset[int]], ...]:
+    """Indexed `file_paths`, `language`, `ocr_script` and `ocr_language` per hash.
 
-    Reads the `filename_index` row, which carries the same document attributes as the
+    Each value is read from the assigned pages table. A table without the OCR columns
+    gives no OCR value, because the search schema step adds them. Reads the `filename_index` row, which carries the same document attributes as the
     document's other page rows. That row is identified by `extracted_by`, because a
     bound `page_id = -1` does not match the unsigned value Manticore stores for that
     sentinel.
     """
-    from database.manticore import get_manticore_client, shard_table_from_name
+    from database.manticore import get_manticore_client, shard_table_from_name, table_has_column
 
     from .activities import FILENAME_EXTRACTED_BY
 
@@ -198,10 +218,14 @@ def load_indexed_ids(
 
     paths: dict[str, frozenset[int]] = {}
     languages: dict[str, frozenset[int]] = {}
+    ocr_scripts: dict[str, frozenset[int]] = {}
+    ocr_languages: dict[str, frozenset[int]] = {}
     with get_manticore_client() as cnx:
         cur = cnx.cursor()
         for shard_name, hashes in by_shard.items():
             table = shard_table_from_name(shard_name)
+            has_ocr = table_has_column(table, "ocr_script")
+            columns = "file_hash, file_paths, language" + (", ocr_script, ocr_language" if has_ocr else "")
             for i in range(0, len(hashes), PATHS_SCAN_PAGE):
                 chunk = hashes[i:i + PATHS_SCAN_PAGE]
                 placeholders = ",".join(["%s"] * len(chunk))
@@ -209,22 +233,25 @@ def load_indexed_ids(
                 # stores `page_id` as unsigned 4294967295, and a bound `-1`
                 # matches no row through this client.
                 cur.execute(
-                    f"SELECT file_hash, file_paths, language FROM {table} "
+                    f"SELECT {columns} FROM {table} "
                     "WHERE collection_dataset = %s AND extracted_by = %s "
                     f"AND file_hash IN ({placeholders}) "
                     f"LIMIT {len(chunk)} OPTION max_matches={len(chunk)}",
                     (collection_dataset, FILENAME_EXTRACTED_BY, *chunk),
                 )
-                for file_hash, file_paths, language in cur.fetchall() or []:
-                    paths[file_hash] = parse_mva_ids(file_paths)
-                    languages[file_hash] = parse_mva_ids(language)
-    return paths, languages
+                for row in cur.fetchall() or []:
+                    paths[row[0]] = parse_mva_ids(row[1])
+                    languages[row[0]] = parse_mva_ids(row[2])
+                    if has_ocr:
+                        ocr_scripts[row[0]] = parse_mva_ids(row[3])
+                        ocr_languages[row[0]] = parse_mva_ids(row[4])
+    return paths, languages, ocr_scripts, ocr_languages
 
 
 def list_stale_location_hashes(
     collectionname: str, collection_dataset: str, item_hashes: list[str] | None = None
 ) -> tuple[list[str], int, str]:
-    """Hashes whose indexed folder closure or languages differ from current values.
+    """Hashes whose indexed folder closure, languages or OCR values differ from current values.
 
     Returns the selected hashes, the indexed document count, and the mechanism
     name. A supplied `item_hashes` list is intersected with that stale set when
@@ -232,15 +259,20 @@ def list_stale_location_hashes(
     """
     expected_paths = load_expected_path_ids(collectionname, collection_dataset)
     assignments = load_shard_assignments(collectionname, collection_dataset)
-    indexed_paths, indexed_languages = load_indexed_ids(
+    indexed_paths, indexed_languages, indexed_scripts, indexed_ocr_languages = load_indexed_ids(
         collectionname, collection_dataset, assignments
     )
     expected_languages = {
         file_hash: frozenset() for file_hash in indexed_languages
     } | load_expected_language_ids(collectionname, collection_dataset)
+    scripts, ocr_languages = load_expected_ocr_ids(collectionname, collection_dataset)
+    expected_scripts = {file_hash: frozenset() for file_hash in indexed_scripts} | scripts
+    expected_ocr_languages = {file_hash: frozenset() for file_hash in indexed_ocr_languages} | ocr_languages
     stale = sorted(
         set(hashes_with_stale_locations(expected_paths, indexed_paths))
         | set(hashes_with_stale_locations(expected_languages, indexed_languages))
+        | set(hashes_with_stale_locations(expected_scripts, indexed_scripts))
+        | set(hashes_with_stale_locations(expected_ocr_languages, indexed_ocr_languages))
     )
     if item_hashes:
         wanted = set(item_hashes)

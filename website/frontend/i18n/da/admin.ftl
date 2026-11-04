@@ -849,6 +849,12 @@ processing-update-ocr-explanation = { $files ->
    *[other] Omkring { $count } filer har ingen OCR-tekst for de nuværende sprog, eller beholder OCR-tekst på sprog, som indstillingerne ikke længere omfatter.
 } OCR kører for de nuværende sprog, og teksten på de fjernede sprog slettes.
 processing-update-ocr-runs = OCR og søgbare PDF'er, derefter entitetsudtrækning, embedding og indeksering af den nye tekst
+processing-update-ocr_detection-title = OCR-registrering
+processing-update-ocr_detection-explanation = { $files ->
+    [one] { $count } fil har ingen registreret tekst, skrift eller sprog.
+   *[other] { $count } filer har ingen registreret tekst, skrift eller sprog.
+} Hvert billede og hver side, der er valgt til OCR, undersøges. En PDF sender højst 100 sider. OCR-teksten ændres ikke.
+processing-update-ocr_detection-runs = Registrering, derefter søgeattributterne for disse filer
 processing-update-pdf_text-title = Tekst i søgbare PDF'er
 processing-update-pdf_text-explanation = { $files ->
     [one] { $count } fil har søgbare PDF'er med et tidligere tekstlag.

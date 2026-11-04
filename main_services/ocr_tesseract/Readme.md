@@ -24,6 +24,8 @@ Two failure modes put it here:
 GET  /health  -> {"status", "engine", "languages_available", "concurrency", ...}
 POST /ocr     {"image_b64": "...", "languages": "eng+ron", "psm": 3}
               -> {"text", "confidence", "engine", "languages", "run_time_ms", "words": [...]}
+POST /detect  {"image_b64": "..."}
+              -> {"has_text", "box_count", "confident_boxes", "script", "model", "text", "run_time_ms"}
 ```
 
 - **`languages` is one pass.** Tesseract takes `eng+ron` in a single invocation and picks
@@ -38,6 +40,17 @@ When Leptonica rejects a JPEG scan header, Pillow attempts to decode the complet
 A successful decode produces a lossless PNG for one Tesseract retry within the original subprocess timeout.
 The retry preserves the image dimensions and pixel orientation.
 An undecodable image keeps its original failure.
+
+## Text detection
+
+`/detect` describes one image on the CPU in [text_detection.py](text_detection.py).
+A PP-OCRv6 tiny detector finds text boxes. An image has text with at least 3 boxes of a score of 0.6 or more.
+A line model names the script of the 6 longest lines, and the most frequent label decides.
+A line that stands on end turns to the side where the labels agree most. A line with light text is inverted.
+One Tesseract call reads up to 4 lines with the script model of that name, and the output goes back as `text`.
+The worker identifies the language from that text. The route shares the OCR slots and the `503` rule.
+An image without text returns after the detector.
+The models are local files, listed in [models/Readme.md](models/Readme.md).
 
 ## Operational notes
 

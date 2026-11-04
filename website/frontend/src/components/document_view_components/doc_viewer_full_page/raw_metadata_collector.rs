@@ -2,6 +2,7 @@
 
 use common::{
     document_metadata::DocumentMetadataTableInfo,
+    ocr_detection::{DocumentOcrDetection, OcrDetectionValue},
     document_provenance::{DocumentDates, DocumentEmail, format_epoch_utc},
     document_tables::TableOverview,
     search_result::DocumentIdentifier,
@@ -11,7 +12,7 @@ use dioxus_free_icons::{
     Icon,
     icons::{
         go_icons::GoCopy,
-        md_action_icons::{MdBugReport, MdDateRange},
+        md_action_icons::{MdBugReport, MdDateRange, MdTranslate},
         md_communication_icons::MdEmail,
         md_editor_icons::MdTableChart,
         md_file_icons::MdAttachment,
@@ -97,6 +98,7 @@ pub fn RawMetadataCollector(document_identifier: ReadSignal<DocumentIdentifier>)
             ",
             // Curated first, raw dumps after. These two answer the questions people
             // arrive with; the tables below answer "what else is there".
+            OcrDetectionSection { document_identifier }
             DatesSection { document_identifier }
             EmailSection { document_identifier }
             TableSection { document_identifier }
@@ -399,6 +401,66 @@ fn DatesSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
     }
 }
 
+/// One line of detected values with their page counts, or a statement that none exists.
+#[component]
+fn OcrDetectionValues(label: String, values: Vec<OcrDetectionValue>) -> Element {
+    let joined = values.iter().map(|item| format!("{} ({})", item.value, item.pages)).collect::<Vec<_>>().join(", ");
+    rsx! {
+        div {
+            b { "{label}: " }
+            if values.is_empty() {
+                {tr!("raw-metadata-collector-ocr-detection-undetermined")}
+            } else {
+                "{joined}"
+            }
+        }
+    }
+}
+
+/// Text, script and language that the OCR detection stage found. A document that the
+/// stage did not examine, such as an email, shows no section.
+#[component]
+fn OcrDetectionSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element {
+    let document_identifier_value = document_identifier();
+    let detection = use_resource(use_reactive!(|document_identifier_value| {
+        async move { get_ocr_detection(document_identifier_value).await }
+    }));
+
+    let body = match detection().clone() {
+        None => rsx! {
+            div { style: "color: rgba(0,0,0,0.55);", {tr!("raw-metadata-collector-loading-the-ocr-detection")} }
+        },
+        Some(Err(error)) => rsx! {
+            div {
+                class: "x-error-display",
+                style: "color: rgb(160,30,30);",
+                {tr!("raw-metadata-collector-could-not-load-the-ocr-detection", error: error.to_string())}
+            }
+        },
+        Some(Ok(DocumentOcrDetection { pages_examined: 0, .. })) => return rsx! {},
+        Some(Ok(found)) => rsx! {
+            div {
+                class: "x-ocr-detection",
+                {tr!("raw-metadata-collector-ocr-detection-pages", with_text: found.pages_with_text, examined: found.pages_examined)}
+            }
+            OcrDetectionValues { label: tr!("raw-metadata-collector-ocr-detection-language"), values: found.languages }
+            OcrDetectionValues { label: tr!("raw-metadata-collector-ocr-detection-script"), values: found.scripts }
+        },
+    };
+
+    rsx! {
+        li {
+            style: SECTION_STYLE,
+            h1 {
+                style: SECTION_HEADER_STYLE,
+                Icon { icon: MdTranslate, style: "width: 19px; height: 19px;" }
+                {tr!("raw-metadata-collector-ocr-detection")}
+            }
+            {body}
+        }
+    }
+}
+
 /// The antivirus state: the effective verdict, or the status of the latest attempt
 /// when no scan completed, with the signature and the signature database version.
 #[component]
@@ -545,6 +607,22 @@ fn EmailSection(document_identifier: ReadSignal<DocumentIdentifier>) -> Element 
             }
         }
     }
+}
+
+#[server]
+async fn get_ocr_detection(
+    document_identifier: DocumentIdentifier,
+) -> Result<DocumentOcrDetection, ServerFnError> {
+    let user = crate::api::server_auth::extract_user().await?;
+    backend::auth::permissions::assert_can_read(&user, &document_identifier.collection_dataset)
+        .await
+        .map_err(crate::api::error_util::to_server_fn_error)?;
+    backend::api::documents::ocr_detection::document_detection(
+        &document_identifier.collection_dataset,
+        &document_identifier.file_hash,
+    )
+    .await
+    .map_err(crate::api::error_util::to_server_fn_error)
 }
 
 #[server]

@@ -76,6 +76,7 @@ backend). The fan-out, the match builder and the caching boundary are
 [../../architecture/Search_Architecture.md](../../architecture/Search_Architecture.md).
 
 Language values show English names and accept a code or name in facet search.
+Detected OCR language values follow the same rule. Detected OCR script values show the script name.
 Text source values show the source labels of the document viewer and omit the filename row.
 A text source filter matches a document through its text from a selected source.
 The Red flags child of Entities shows category titles from the scanner catalog.

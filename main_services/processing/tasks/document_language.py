@@ -14,9 +14,23 @@ def language_model():
     return fasttext.load_model(str(MODEL_PATH))
 
 
-def detect_language(text: str) -> str:
+#: The language of a Tesseract script model with one language in practice. These scripts
+#: need no reading and no language model.
+SINGLE_LANGUAGE_SCRIPTS = {
+    "Armenian": "hy", "Canadian_Aboriginal": "iu", "Cherokee": "chr", "Georgian": "ka", "Greek": "el",
+    "Gujarati": "gu", "Gurmukhi": "pa", "HanS": "zh", "HanT": "zh", "Hangul": "ko", "Japanese": "ja",
+    "Kannada": "kn", "Khmer": "km", "Lao": "lo", "Malayalam": "ml", "Myanmar": "my", "Oriya": "or",
+    "Sinhala": "si", "Syriac": "syr", "Tamil": "ta", "Telugu": "te", "Thaana": "dv", "Thai": "th",
+    "Vietnamese": "vi",
+}
+#: The letters that a sample of OCR detection needs. It holds a few lines, so the limit is
+#: lower than the limit of a complete text source.
+DETECTED_SAMPLE_LETTERS = 20
+
+
+def detect_language(text: str, min_letters: int = 200) -> str:
     sample = text[:4000]
-    if sum(character.isalpha() for character in sample) < 200:
+    if sum(character.isalpha() for character in sample) < min_letters:
         return "und"
     try:
         labels, scores = language_model().predict(sample.replace("\n", " ").replace("\r", " "), k=1)
@@ -24,6 +38,11 @@ def detect_language(text: str) -> str:
     except Exception:
         log.exception("Document language detection failed.")
         return "und"
+
+
+def detected_language(model: str, text: str) -> str:
+    """The language of one OCR detection result from its script model and its sample."""
+    return SINGLE_LANGUAGE_SCRIPTS.get(model) or detect_language(text, DETECTED_SAMPLE_LETTERS)
 
 
 def source_language(pages) -> str:

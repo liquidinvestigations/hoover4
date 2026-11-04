@@ -87,6 +87,9 @@ automatically. Start it with the button when the cause is fixed.
 
 The OCR step runs OCR for the current languages, deletes the text of removed languages and
 indexes the changed text. Saved OCR results provide their text without another OCR request.
+The OCR detection step examines images and pages selected for OCR that have no detection
+result. It stores text, script and language, and updates the OCR filters of search. OCR
+settings and OCR text do not change. It needs the Tesseract service.
 The failed files step runs the failed stages again. The automatic run retries a file once
 for each new version of the stage that failed. **Retry** on the processing page also repeats
 failed files.

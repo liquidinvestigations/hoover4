@@ -13,8 +13,11 @@ def part_lists(items, limit: int):
     return [items[index::count] for index in range(count)] if count else []
 
 
-async def run_pdf_chain(files, run_stage, engines=None, *, cursor_context=None):
-    """Return preparation and variant outcomes without moving text through workflows."""
+async def run_pdf_chain(files, run_stage, engines=None, *, cursor_context=None, detect=False):
+    """Return preparation and variant outcomes without moving text through workflows.
+
+    `detect` runs the OCR detection stage on the prepared sources that have OCR pages.
+    """
     preparation = {}
     variants = {}
     originals = [file for file in files if file.source_kind == "original"]
@@ -43,6 +46,10 @@ async def run_pdf_chain(files, run_stage, engines=None, *, cursor_context=None):
         list_limit = int((result.value or {}).get("part_lists", 4))
         for part in (result.value or {}).get("parts", []):
             jobs.append(dataclasses.replace(file, **part))
+
+    if detect:
+        await run_stage("detect_ocr_text_batch",
+                        [file for file in prepared if available[file.item_hash].get("has_ocr_pages")])
 
     async def variant(engine):
         chosen = [file for file in prepared

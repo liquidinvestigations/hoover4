@@ -849,6 +849,12 @@ processing-update-ocr-explanation = { $files ->
    *[other] लगभग { $count } फ़ाइलों में वर्तमान भाषाओं का OCR टेक्स्ट नहीं है, या वे उन भाषाओं का OCR टेक्स्ट रखती हैं जो अब सेटिंग में नहीं हैं।
 } OCR वर्तमान भाषाओं के लिए चलता है, और हटाई गई भाषाओं का टेक्स्ट मिटा दिया जाता है।
 processing-update-ocr-runs = OCR और खोजने योग्य PDF, फिर नए टेक्स्ट का इकाई निष्कर्षण, एम्बेडिंग और इंडेक्सिंग
+processing-update-ocr_detection-title = OCR पहचान
+processing-update-ocr_detection-explanation = { $files ->
+    [one] { $count } फ़ाइल का कोई पहचाना गया पाठ, लिपि या भाषा नहीं है।
+   *[other] { $count } फ़ाइलों का कोई पहचाना गया पाठ, लिपि या भाषा नहीं है।
+} हर छवि और OCR के लिए चुने गए हर पृष्ठ की जाँच होती है। एक PDF अधिकतम 100 पृष्ठ भेजता है। OCR पाठ नहीं बदलता।
+processing-update-ocr_detection-runs = पहचान, फिर इन फ़ाइलों के खोज गुण
 processing-update-pdf_text-title = खोजने योग्य PDF का टेक्स्ट
 processing-update-pdf_text-explanation = { $files ->
     [one] { $count } फ़ाइल में पुरानी टेक्स्ट परत वाले खोजने योग्य PDF हैं।

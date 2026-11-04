@@ -839,6 +839,11 @@ processing-update-ocr-explanation = { $files ->
    *[other] 現在の言語のOCRテキストがない、または設定にもう含まれていない言語のOCRテキストが残っているファイルが、約 { $count } 個あります。
 } 現在の言語でOCRを実行し、削除された言語のテキストを削除します。
 processing-update-ocr-runs = OCRと検索可能なPDF、続いて新しいテキストのエンティティの抽出、埋め込み、インデックス作成
+processing-update-ocr_detection-title = OCR検出
+processing-update-ocr_detection-explanation = { $files ->
+   *[other] 検出されたテキスト、文字体系、言語がないファイルが { $count } 個あります。
+} 各画像とOCRの対象に選ばれた各ページを調べます。1つのPDFから送るのは最大100ページです。OCRテキストは変わりません。
+processing-update-ocr_detection-runs = 検出、続いてこれらのファイルの検索属性
 processing-update-pdf_text-title = 検索可能な PDF のテキスト
 processing-update-pdf_text-explanation = { $files ->
    *[other] 以前のテキストレイヤーを持つ検索可能な PDF のファイルが { $count } 個あります。

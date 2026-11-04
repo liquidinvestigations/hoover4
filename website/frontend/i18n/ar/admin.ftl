@@ -872,6 +872,14 @@ processing-update-ocr-explanation = { $files ->
    *[other] نحو { $count } ملفًا بلا نص OCR للغات الحالية، أو تحتفظ بنص OCR للغات لم تعد في الإعدادات.
 } يُشغَّل OCR للغات الحالية، ويُحذف نص اللغات المُزالة.
 processing-update-ocr-runs = OCR وملفات PDF القابلة للبحث، ثم استخراج الكيانات والتضمين والفهرسة للنص الجديد
+processing-update-ocr_detection-title = اكتشاف OCR
+processing-update-ocr_detection-explanation = { $files ->
+    [one] ملف واحد بلا نص أو خط كتابة أو لغة مكتشفة.
+    [two] ملفان بلا نص أو خط كتابة أو لغة مكتشفة.
+    [few] { $count } ملفات بلا نص أو خط كتابة أو لغة مكتشفة.
+   *[other] { $count } ملفًا بلا نص أو خط كتابة أو لغة مكتشفة.
+} تُفحص كل صورة وكل صفحة محددة لـ OCR. يرسل ملف PDF ما لا يزيد عن 100 صفحة. لا يتغير نص OCR.
+processing-update-ocr_detection-runs = الاكتشاف، ثم سمات البحث لهذه الملفات
 processing-update-pdf_text-title = نص ملفات PDF القابلة للبحث
 processing-update-pdf_text-explanation = { $files ->
     [one] ملف واحد له ملفات PDF قابلة للبحث بطبقة نص سابقة.

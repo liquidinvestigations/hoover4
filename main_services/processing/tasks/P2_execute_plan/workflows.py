@@ -62,6 +62,7 @@ with workflow.unsafe.imports_passed_through():
     )
     from tasks.P3_parse_files.parse_mime import LOCAL_DETECTORS
     from tasks.P3_parse_files.parse_archives import SPLIT_VOLUME_PATCH, split_set_sizes
+    from tasks.P3_parse_files.ocr_detection import OCR_DETECTION_PATCH
     from tasks.P3_parse_files.scan_virus import CLAMAV_SCAN_PATCH
     from tasks.P3_parse_files.split_volumes import is_volume_name
     from tasks.text_sources import OCR_ENGINES
@@ -737,7 +738,8 @@ class ProcessItemsBatched:
                 from tasks.P3_parse_files.pdf_cursor import PDF_CURSOR_PATCH
                 preparation, variants = await run_pdf_chain(
                     sources, run_stage,
-                    cursor_context=params if workflow.patched(PDF_CURSOR_PATCH) else None)
+                    cursor_context=params if workflow.patched(PDF_CURSOR_PATCH) else None,
+                    detect=workflow.patched(OCR_DETECTION_PATCH))
                 for i in indexes:
                     if files[i].item_hash in preparation:
                         put(i, "make_pdf_preview" if preparation[files[i].item_hash].task_name == "make_pdf_preview" else "pdf_process",
@@ -833,6 +835,12 @@ class ProcessItemsBatched:
         async def image_chain() -> None:
             # OCR reads the preview of an uncommon image format, so it waits for it.
             await preview_stage("image")
+            # The stage describes the image and changes no OCR pass. A failed file gets
+            # no error row, and the update step selects it again.
+            if workflow.patched(OCR_DETECTION_PATCH):
+                await run_stage("detect_ocr_text_batch", [
+                    batch_file(i, mime_types=combined[i]["mime_types"], routes=["image"])
+                    for i in with_route("image")])
             async def image_engine(engine):
                 await single("run_ocr_batch", "image", ocr_error_name(engine), engine=engine)
                 if parts_version:

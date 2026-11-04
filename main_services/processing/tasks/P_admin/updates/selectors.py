@@ -28,6 +28,9 @@ Selector contracts, one for each step:
   `skipped_size` or `incomplete`. A failed or disabled attempt is selected again.
   Settlement: the count is zero and every infected hash of the dataset has `virus_hit`
   set on its search rows.
+* `ocr_detection` selects, when the Tesseract service is configured, live images and live
+  PDF sources with OCR pages that have no `ocr_detection` row of the current version.
+  Settlement: the count is zero.
 * `tables` selects live files with a table manifest of an older reader version that is a
   JSON candidate or that an earlier reader cut at the column limit, and live JSON
   candidates without a manifest of the current version. A JSON candidate has a JSON MIME
@@ -111,6 +114,13 @@ def virus_target() -> dict:
     return {"virus_scan": "on" if clamav_enabled() else "off"}
 
 
+def detection_target() -> dict:
+    from tasks.ocr_client import engine_configured
+    from tasks.text_sources import ENGINE_TESSERACT
+
+    return {"ocr_detection": "on" if engine_configured(ENGINE_TESSERACT) else "off"}
+
+
 def schema_target() -> dict:
     return {"columns": required_page_columns()}
 
@@ -126,6 +136,9 @@ def target_key(step: UpdateStep, ctx: ScopeContext) -> Tuple[str, dict]:
         return json.dumps(target, sort_keys=True), target
     if step.step_id == "virus_scan":
         target = virus_target()
+        return json.dumps(target, sort_keys=True), target
+    if step.step_id == "ocr_detection":
+        target = detection_target()
         return json.dumps(target, sort_keys=True), target
     if step.step_id == "search_schema":
         target = schema_target()
@@ -431,6 +444,28 @@ _DESCRIBE_TYPES = {"string": "string", "text": "text", "int": "uint", "bigint": 
                    "multi64": "mva64", "multi": "mva", "float": "float", "bool": "bool"}
 
 
+def detection_hash_sql() -> Tuple[str, dict]:
+    """The files that the `ocr_detection` step examines, as a subquery with parameters."""
+    from tasks.stage_versions import STAGE_VERSIONS
+
+    sql = (
+        f"SELECT hash FROM ({_LIVE}) WHERE (hash IN (SELECT image_hash FROM image "
+        "WHERE collection_dataset = {cd:String}) OR hash IN (SELECT hash FROM ocr_page_needs FINAL "
+        "WHERE collection_dataset = {cd:String} AND length(ocr_pages) > 0)) "
+        "AND hash NOT IN (SELECT hash FROM ocr_detection WHERE collection_dataset = {cd:String} "
+        "AND detector_version = {od_version:UInt16})")
+    return sql, {"od_version": STAGE_VERSIONS["ocr_detection"]}
+
+
+def select_ocr_detection(client, ctx: ScopeContext) -> Selection:
+    if detection_target()["ocr_detection"] != "on":
+        return Selection(detail={"ocr_detection": "off"})
+    hash_sql, extra = detection_hash_sql()
+    parameters = {"cd": ctx.scope_id, **extra}
+    files, size = _count(client, hash_sql, parameters, ctx.scope_id)
+    return Selection(files, size, files, hash_sql if files else "", parameters, {"ocr_detection": "on"})
+
+
 def required_page_columns() -> List[List[str]]:
     """The `[name, type]` columns of a shard pages table, from its DDL."""
     from database.manticore import pages_table_ddl
@@ -485,6 +520,8 @@ def select(step: UpdateStep, ctx: ScopeContext, client=None, target: Optional[di
         return select_vectors(client, ctx, target)
     if step.step_id == "virus_scan":
         return select_virus_scan(client, ctx)
+    if step.step_id == "ocr_detection":
+        return select_ocr_detection(client, ctx)
     if step.step_id == "tables":
         return select_tables(client, ctx)
     if step.step_id == "pdf_text":

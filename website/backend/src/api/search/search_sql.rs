@@ -67,6 +67,8 @@ const SEARCH_FIELDS: &[&str] = &[
     "file_types",
     "language",
     "red_flags",
+    "ocr_script",
+    "ocr_language",
     "file_mime_types",
     "file_extensions",
     "file_paths",

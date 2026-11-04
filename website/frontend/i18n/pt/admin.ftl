@@ -849,6 +849,12 @@ processing-update-ocr-explanation = { $files ->
    *[other] Cerca de { $count } ficheiros não têm texto de OCR para os idiomas atuais, ou mantêm texto de OCR de idiomas que as definições já não incluem.
 } O OCR é executado para os idiomas atuais, e o texto dos idiomas removidos é eliminado.
 processing-update-ocr-runs = OCR e PDF pesquisáveis, depois a extração de entidades, a incorporação e a indexação do texto novo
+processing-update-ocr_detection-title = Deteção de OCR
+processing-update-ocr_detection-explanation = { $files ->
+    [one] { $count } ficheiro não tem texto, escrita nem idioma detetados.
+   *[other] { $count } ficheiros não têm texto, escrita nem idioma detetados.
+} É examinada cada imagem e cada página selecionada para OCR. Um PDF envia no máximo 100 páginas. O texto de OCR não muda.
+processing-update-ocr_detection-runs = Deteção, depois os atributos de pesquisa destes ficheiros
 processing-update-pdf_text-title = Texto dos PDF pesquisáveis
 processing-update-pdf_text-explanation = { $files ->
     [one] { $count } ficheiro tem PDF pesquisáveis com uma camada de texto anterior.

@@ -18,6 +18,7 @@ and its version.
 
 from typing import Dict, Optional
 
+from tasks.P3_parse_files.ocr_detection import OCR_DETECTION_VERSION
 from tasks.P3_parse_files.scan_virus import SCAN_VERSION
 from tasks.P3_parse_files.table_formats import READER_VERSION
 from tasks.text_sources import OCR_PAGE_RULE_VERSION, PDF_SEGMENTATION_VERSION, PDF_TEXT_LAYER_VERSION
@@ -42,6 +43,7 @@ STAGE_VERSIONS: Dict[str, int] = {
     "image_metadata": 1,
     "ocr_image": 1,
     "ocr_pdf": OCR_PAGE_RULE_VERSION,
+    "ocr_detection": OCR_DETECTION_VERSION,
     "pdf_text_layer": PDF_TEXT_LAYER_VERSION,
     "audio": 1,
     "video": 1,

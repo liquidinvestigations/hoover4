@@ -151,6 +151,7 @@ def test_three_files_schedule_each_stage_once_with_its_files_and_queue(monkeypat
         "extract_plaintext_batch": ["e"],
         "parse_image_metadata_batch": ["i"],
         "make_image_preview_batch": ["i"],
+        "detect_ocr_text_batch": ["i"],
         "parse_email_headers_batch": ["e"],
         "extract_email_attachments_batch": ["e"],
         "pdf_metadata_batch": ["p"],
@@ -166,6 +167,7 @@ def test_three_files_schedule_each_stage_once_with_its_files_and_queue(monkeypat
     # OCR reads the preview of an uncommon image format, so the preview comes first.
     names = [name for name, _, _ in group.calls]
     assert names.index("make_image_preview_batch") < names.index("run_ocr_batch")
+    assert names.index("make_image_preview_batch") < names.index("detect_ocr_text_batch")
     [preview] = group.scheduled("make_image_preview_batch")
     assert preview.files[0].routes == ["image"]
 

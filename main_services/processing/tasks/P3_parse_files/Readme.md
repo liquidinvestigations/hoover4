@@ -316,6 +316,7 @@ input order. The rows of each file carry the per-file function name.
 |---|---|---|---|
 | `clamav_scan_batch` | `scan_file` | ClamAV | none, a scan without a verdict is a skipped outcome |
 | `detect_mime_batch` | `detect_mime_all` | common | `detector_error_<name>` for each detector |
+| `detect_ocr_text_batch` | `_detect_file` | OCR | none, the `ocr_detection` update step selects the file again |
 | `tika_text_batch` | `run_tika_and_store` | Tika | `tika_text_batch` |
 | `extract_plaintext_batch` | `extract_plaintext_chunks` | common | the same |
 | `parse_office_xml_batch` | `parse_office_xml_and_store` | common | the same |
@@ -525,6 +526,21 @@ error of its own.
 The archive stage version is 2. The "Failed files" update step retries each earlier
 archive failure once with the new rule. The group workflow uses the patch
 `split-volume-sets`, so a group that started before the change keeps its old routes.
+
+## The OCR detection stage describes a file.
+
+`detect_ocr_text_batch` in [ocr_detection.py](ocr_detection.py) runs after the image preview
+and after PDF preparation. It sends each image, and each page that `ocr_page_needs` selected,
+to `POST /detect` of `hoover4-tesseract-cpu`. A PDF source sends up to 100 evenly spaced pages,
+rendered at 200 dpi in the worker. The worker sets the language from the script model or with
+`lid.176` on the sample: at least 20 letters and a score of 0.5, otherwise `und`.
+
+Each image and page takes one `ocr_detection` row. An image that the service cannot read, a page
+that cannot be rendered and an image under the OCR size gate store a row without text, so the
+update step does not select them again. The stage selects no OCR language and no OCR pass.
+A box without the Tesseract service skips the stage. `index_text_pages` writes each value of a
+document with text to `ocr_script` and `ocr_language`. The group workflow uses the patch
+`ocr-detection`.
 
 ## The antivirus stage runs first.
 

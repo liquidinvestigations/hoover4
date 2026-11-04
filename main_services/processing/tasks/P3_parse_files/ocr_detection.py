@@ -1,0 +1,170 @@
+"""The OCR detection stage: text presence, script and language of images and OCR pages.
+
+The stage describes a file. It selects no OCR language and no OCR pass, so a wrong result
+changes search filters and the document metadata, and leaves OCR text as it is.
+
+An image takes one row. A PDF source takes one row for each page that `ocr_page_needs`
+selected, up to `MAX_DETECTED_PAGES` evenly spaced pages, which bounds one try of one file.
+Each result is a decision: an image that the service cannot read, a page that cannot be
+rendered, and an image under the OCR size gate store a row without text.
+
+A failed file is not a processing error. The `ocr_detection` update step selects each file
+without a row of the current version, as the antivirus step does.
+"""
+
+import logging
+import os
+import subprocess
+import tempfile
+import time
+from typing import List, Optional, Sequence
+
+from temporalio import activity
+
+from tasks.document_language import detected_language
+from tasks.heartbeat import with_heartbeat
+from tasks.ocr_client import detect_text, engine_configured
+from tasks.P3_parse_files.batch_runner import BatchFile, BatchResult, StageBatchParams, run_batch
+from tasks.P3_parse_files.image_loader import image_dimensions
+from tasks.task_timing import SkippedOutcome
+from tasks.text_sources import ENGINE_TESSERACT, MIN_OCR_IMAGE_PX
+
+log = logging.getLogger(__name__)
+
+#: The logical version of the stage output. `STAGE_VERSIONS["ocr_detection"]` reads it.
+OCR_DETECTION_VERSION = 1
+#: The workflow patch that runs the stage in a new group.
+OCR_DETECTION_PATCH = "ocr-detection"
+#: The largest number of pages that one PDF source sends.
+MAX_DETECTED_PAGES = 100
+#: The render resolution of a PDF page. It matches the OCR render.
+RENDER_DPI = 200
+RENDER_TIMEOUT_SECONDS = 120
+
+KIND_IMAGE = "image"
+
+
+def spaced_pages(pages: Sequence[int], limit: int = MAX_DETECTED_PAGES) -> List[int]:
+    """At most `limit` evenly spaced values of `pages`, with the first value kept."""
+    if len(pages) <= limit:
+        return list(pages)
+    step = len(pages) / limit
+    return [pages[int(index * step)] for index in range(limit)]
+
+
+def _row(collection_dataset: str, file_hash: str, kind: str, page: int, found: Optional[dict]) -> dict:
+    found = found or {}
+    return dict(collection_dataset=collection_dataset, hash=file_hash, source_kind=kind, page_id=page,
+                detector_version=OCR_DETECTION_VERSION, has_text=1 if found.get("has_text") else 0,
+                box_count=int(found.get("box_count") or 0), script=found.get("script") or "",
+                language=detected_language(found.get("model") or "", found.get("text") or ""),
+                run_time_ms=int(found.get("run_time_ms") or 0))
+
+
+def store_rows(client, rows: List[dict]) -> None:
+    """Write the rows of one file through the parser insert buffer of the current stage."""
+    import pyarrow as pa
+
+    from database.clickhouse import insert_parser_arrow
+
+    types = {"page_id": pa.uint32(), "detector_version": pa.uint16(), "has_text": pa.uint8(),
+             "box_count": pa.uint32(), "run_time_ms": pa.uint32()}
+    insert_parser_arrow(client, "ocr_detection", pa.table(
+        {key: pa.array([row[key] for row in rows], type=types.get(key, pa.string())) for key in rows[0]}))
+
+
+def image_rows(collection_dataset: str, file_hash: str, image_bytes: bytes) -> List[dict]:
+    """The row of one image. An image under the OCR size gate sends no request."""
+    size = image_dimensions(image_bytes) if image_bytes else None
+    if not image_bytes or (size is not None and min(size) < MIN_OCR_IMAGE_PX):
+        return [_row(collection_dataset, file_hash, KIND_IMAGE, 1, None)]
+    return [_row(collection_dataset, file_hash, KIND_IMAGE, 1, detect_text(image_bytes))]
+
+
+def render_page(path: str, page: int) -> Optional[bytes]:
+    """One JPEG page, or `None` when pdftoppm cannot render it."""
+    with tempfile.TemporaryDirectory(prefix="hoover4-ocr-detection-") as folder:
+        out = os.path.join(folder, "page")
+        try:
+            result = subprocess.run(
+                ["pdftoppm", "-r", str(RENDER_DPI), "-f", str(page), "-l", str(page), "-jpeg",
+                 "-jpegopt", "quality=88", "-singlefile", path, out],
+                capture_output=True, timeout=RENDER_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            log.warning("[P3] page %d render timed out for OCR detection: %s", page, path)
+            return None
+        if result.returncode != 0 or not os.path.exists(out + ".jpg"):
+            log.warning("[P3] page %d render failed for OCR detection: %s", page, path)
+            return None
+        with open(out + ".jpg", "rb") as handle:
+            return handle.read()
+
+
+def pdf_rows(collection_dataset: str, file_hash: str, kind: str, path: str, pages: Sequence[int]) -> List[dict]:
+    """One row for each spaced page of a PDF source."""
+    rows = []
+    for page in spaced_pages(pages):
+        rendered = render_page(path, page)
+        rows.append(_row(collection_dataset, file_hash, kind, page, detect_text(rendered) if rendered else None))
+    return rows
+
+
+def stored_pdf_pages(client, collection_dataset: str, file_hash: str, kind: str) -> List[int]:
+    rows = client.query(
+        "SELECT ocr_pages FROM ocr_page_needs FINAL WHERE collection_dataset = {cd:String} "
+        "AND hash = {h:String} AND source_kind = {k:String} LIMIT 1",
+        parameters={"cd": collection_dataset, "h": file_hash, "k": kind}).result_rows
+    return list(rows[0][0]) if rows else []
+
+
+def already_detected(client, collection_dataset: str, file_hash: str) -> bool:
+    rows = client.query(
+        "SELECT count() FROM ocr_detection WHERE collection_dataset = {cd:String} AND hash = {h:String} "
+        "AND detector_version = {v:UInt16}",
+        parameters={"cd": collection_dataset, "h": file_hash, "v": OCR_DETECTION_VERSION}).result_rows
+    return bool(rows and rows[0][0])
+
+
+def read_image(client, collection_dataset: str, file_hash: str, path: str) -> bytes:
+    """The preview of an uncommon image format, else the original bytes."""
+    from tasks.P3_parse_files.image_preview import read_preview_bytes
+
+    preview = read_preview_bytes(client, collection_dataset, file_hash)
+    if preview is not None:
+        return preview
+    with open(path, "rb") as handle:
+        return handle.read()
+
+
+def _detect_file(params: StageBatchParams, file: BatchFile) -> str | SkippedOutcome:
+    from database.clickhouse import get_collection_client
+    from tasks.P3_parse_files.pdf_parts import source_file
+
+    if not engine_configured(ENGINE_TESSERACT):
+        return SkippedOutcome("ocr_detection_skipped_not_configured")
+    started = time.time()
+    cd = params.collection_dataset
+    with get_collection_client(params.collectionname) as client:
+        if already_detected(client, cd, file.item_hash):
+            return SkippedOutcome("ocr_detection_already_done")
+        if "image" in file.routes:
+            rows = image_rows(cd, file.item_hash, read_image(client, cd, file.item_hash, file.file_path))
+        else:
+            pages = stored_pdf_pages(client, cd, file.item_hash, file.source_kind)
+            if not pages:
+                return SkippedOutcome("ocr_detection_no_pages")
+            with source_file(client, params, file) as path:
+                rows = pdf_rows(cd, file.item_hash, file.source_kind, path, pages)
+        store_rows(client, rows)
+    log.info("[P3] OCR detection of %s: %d rows in %d ms", file.item_hash, len(rows),
+             int((time.time() - started) * 1000))
+    return "ocr_detection_ok"
+
+
+@activity.defn
+@with_heartbeat
+def detect_ocr_text_batch(params: StageBatchParams) -> BatchResult:
+    """Store the detection rows of the images and PDF sources of one group."""
+    return run_batch("detect_ocr_text_batch", params.files, key=lambda f: f.item_hash,
+                     size=lambda f: f.file_size_bytes, step=lambda f: _detect_file(params, f),
+                     task_name="detect_ocr_text")

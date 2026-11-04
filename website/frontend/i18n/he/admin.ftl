@@ -859,6 +859,13 @@ processing-update-ocr-explanation = { $files ->
    *[other] בערך ל-{ $count } קבצים אין טקסט OCR לשפות הנוכחיות, או שנשאר בהם טקסט OCR של שפות שההגדרות כבר אינן כוללות.
 } OCR רץ לשפות הנוכחיות, והטקסט של השפות שהוסרו נמחק.
 processing-update-ocr-runs = OCR וקובצי PDF הניתנים לחיפוש, ואחריהם חילוץ ישויות, הטמעה ואינדוקס של הטקסט החדש
+processing-update-ocr_detection-title = זיהוי OCR
+processing-update-ocr_detection-explanation = { $files ->
+    [one] לקובץ אחד אין טקסט, כתב או שפה שזוהו.
+    [two] לשני קבצים אין טקסט, כתב או שפה שזוהו.
+   *[other] ל-{ $count } קבצים אין טקסט, כתב או שפה שזוהו.
+} כל תמונה וכל עמוד שנבחר ל-OCR נבדקים. קובץ PDF שולח לכל היותר 100 עמודים. טקסט ה-OCR אינו משתנה.
+processing-update-ocr_detection-runs = זיהוי, ואחריו תכונות החיפוש של קבצים אלה
 processing-update-pdf_text-title = טקסט של קובצי PDF ניתנים לחיפוש
 processing-update-pdf_text-explanation = { $files ->
     [one] לקובץ אחד יש קובצי PDF ניתנים לחיפוש עם שכבת טקסט קודמת.

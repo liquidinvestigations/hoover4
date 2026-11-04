@@ -54,6 +54,7 @@ its explicit stored page identifier in `selected_source_page`, and its selected 
 | image preview | the image format has a stored JPEG preview | the viewer shows the preview |
 | archive | the document is an archive or a mail store | the Archive or Email Archive tab opens first, with one metadata section titled with the archive kind. Its rows give the extracted file count and size, the archive file size and dates, the dates inside, and the processing errors. Counts and sizes show in `code`, and an unknown value shows as `Unknown`. The empty-source message is not shown |
 | image not shown | the browser cannot show the image and no preview exists | a note and a link that downloads the file |
+| OCR detection | the Metadata tab is open and the OCR detection stage examined the document | an OCR detection section at the top of the tab, with the pages with text, the examined pages, and each detected language and script with its page count |
 | antivirus | the Metadata tab is open | an Antivirus section with the effective verdict, or the status of the latest attempt when no scan completed, and the engine, signature database and scan time. An `infected` file shows `Virus found: <signature>.` in red, and the more-actions menu shows `Download Document` crossed out. The raw `virus_scan_results` table lists every attempt |
 | processing pending | no operation has reached the document | the page states that processing has not reached this document |
 | processing active | its unfinished plan belongs to an active operation | the page states that processing runs |

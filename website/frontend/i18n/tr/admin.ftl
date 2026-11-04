@@ -848,6 +848,12 @@ processing-update-ocr-explanation = { $files ->
    *[other] Yaklaşık { $count } dosyada güncel diller için OCR metni yok ya da ayarların artık içermediği dillerin OCR metni duruyor.
 } OCR güncel diller için çalışır ve kaldırılan dillerin metni silinir.
 processing-update-ocr-runs = OCR ve aranabilir PDF'ler, ardından yeni metnin varlık çıkarma, gömme ve dizinlemesi
+processing-update-ocr_detection-title = OCR algılaması
+processing-update-ocr_detection-explanation = { $files ->
+    [one] { $count } dosyanın algılanan metni, yazı sistemi veya dili yok.
+   *[other] { $count } dosyanın algılanan metni, yazı sistemi veya dili yok.
+} Her görsel ve OCR için seçilen her sayfa incelenir. Bir PDF en fazla 100 sayfa gönderir. OCR metni değişmez.
+processing-update-ocr_detection-runs = Algılama, ardından bu dosyaların arama öznitelikleri
 processing-update-pdf_text-title = Aranabilir PDF metni
 processing-update-pdf_text-explanation = { $files ->
     [one] { $count } dosyanın önceki bir metin katmanına sahip aranabilir PDF'leri var.

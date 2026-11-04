@@ -849,6 +849,12 @@ processing-update-ocr-explanation = { $files ->
    *[other] Ongeveer { $count } bestanden hebben geen OCR-tekst voor de huidige talen, of bewaren OCR-tekst van talen die de instellingen niet meer bevatten.
 } OCR draait voor de huidige talen en de tekst van de verwijderde talen wordt gewist.
 processing-update-ocr-runs = OCR en doorzoekbare PDF's, daarna entiteitsextractie, embedding en indexering van de nieuwe tekst
+processing-update-ocr_detection-title = OCR-detectie
+processing-update-ocr_detection-explanation = { $files ->
+    [one] { $count } bestand heeft geen gedetecteerde tekst, schrift of taal.
+   *[other] { $count } bestanden hebben geen gedetecteerde tekst, schrift of taal.
+} Elke afbeelding en elke voor OCR geselecteerde pagina wordt onderzocht. Een pdf stuurt maximaal 100 pagina’s. De OCR-tekst verandert niet.
+processing-update-ocr_detection-runs = Detectie, daarna de zoekkenmerken van deze bestanden
 processing-update-pdf_text-title = Tekst van doorzoekbare pdf's
 processing-update-pdf_text-explanation = { $files ->
     [one] { $count } bestand heeft doorzoekbare pdf's met een eerdere tekstlaag.

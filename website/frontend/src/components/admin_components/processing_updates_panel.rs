@@ -303,9 +303,9 @@ fn count_unit(count: u64, unit: &str) -> String {
 
 /// The steps of the pipeline registry (`P_admin/updates/registry.py`) that the catalog
 /// translates. Another step shows the English texts that the pipeline stored.
-const TRANSLATED_STEPS: [&str; 9] = [
-    "search_schema", "unfinished", "failed_files", "virus_scan", "tables", "ocr", "pdf_text", "vectors",
-    "folder_counts",
+const TRANSLATED_STEPS: [&str; 10] = [
+    "search_schema", "unfinished", "failed_files", "virus_scan", "tables", "ocr", "ocr_detection", "pdf_text",
+    "vectors", "folder_counts",
 ];
 
 /// The title, the explanation and the runs of one step, in the interface language.

@@ -839,6 +839,11 @@ processing-update-ocr-explanation = { $files ->
    *[other] 파일 약 { $count }개에 현재 언어의 OCR 텍스트가 없거나, 설정에서 더 이상 포함하지 않는 언어의 OCR 텍스트가 남아 있습니다.
 } 현재 언어로 OCR을 실행하고, 제거된 언어의 텍스트는 삭제합니다.
 processing-update-ocr-runs = OCR 및 검색 가능한 PDF, 이후 새 텍스트의 개체 추출, 임베딩, 색인
+processing-update-ocr_detection-title = OCR 감지
+processing-update-ocr_detection-explanation = { $files ->
+   *[other] 파일 { $count }개에 감지된 텍스트, 문자 체계, 언어가 없습니다.
+} 각 이미지와 OCR 대상으로 선택된 각 페이지를 검사합니다. PDF 하나당 최대 100쪽을 보냅니다. OCR 텍스트는 바뀌지 않습니다.
+processing-update-ocr_detection-runs = 감지, 이후 해당 파일의 검색 속성
 processing-update-pdf_text-title = 검색 가능한 PDF 텍스트
 processing-update-pdf_text-explanation = { $files ->
    *[other] { $count }개 파일의 검색 가능한 PDF에 이전 텍스트 레이어가 있습니다.

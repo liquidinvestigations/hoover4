@@ -280,6 +280,16 @@ The image shows the filter language controls.
 The languages detected in the documents' text. For an email, the language comes from its
 body and not from its headers.
 
+### Detected OCR language and Detected OCR script
+
+These two filters use the OCR detection of images and scanned pages. A short sample of each
+page is examined before and apart from OCR, so the value does not depend on the OCR languages
+of the dataset. Use them to find scans in a language or a writing system that the dataset does
+not cover. A document with several pages can have several values.
+
+The **Metadata** tab of a document shows the same values at the top, in **OCR detection**, with
+the number of pages for each value. A page with few words can have no value.
+
 ### Text source
 
 <a href="img/filter-text-source.png"><img src="img/filter-text-source.png" alt="Filter text source" width="100%"></a>

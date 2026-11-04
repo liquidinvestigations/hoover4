@@ -360,6 +360,7 @@ async def run_common_worker():
         list_update_table_plans,
         reparse_update_tables,
         list_update_virus_plans,
+        list_update_detection_plans,
         obsolete_ocr_variants,
         refresh_update_checks,
         report_update_progress,
@@ -376,6 +377,7 @@ async def run_common_worker():
         UpdateDatasetVectors,
         UpdateDatasetTables,
         UpdateDatasetVirusScan,
+        UpdateDatasetOcrDetection,
     )
     from .stage_versions import register_stage_versions
     from .visibility import ensure_search_attributes
@@ -477,6 +479,7 @@ async def run_common_worker():
             UpdateDatasetVectors,
             UpdateDatasetTables,
             UpdateDatasetVirusScan,
+            UpdateDatasetOcrDetection,
           ],
           activities=[
             plan_folder_ranges,
@@ -589,6 +592,7 @@ async def run_common_worker():
             list_update_table_plans,
             reparse_update_tables,
             list_update_virus_plans,
+            list_update_detection_plans,
             scan_pdf_text_layers,
           ],
           activity_executor=activity_executor,
@@ -675,9 +679,11 @@ async def run_ocr_worker():
     # as many slots as the builder, so the worker never sends it more requests than it
     # runs. The image slots and the builder slots together must stay under the Tesseract
     # admission, which deploy.py checks.
+    from .P3_parse_files.ocr_detection import detect_ocr_text_batch
     from .P3_parse_files.parse_ocr import run_ocr_batch
     from .P3_parse_files.parse_ocr_pdf import run_ocr_pdf_batch
     from .P3_parse_files.pdf_parts import run_ocr_pdf_parts_batch, run_ocr_pdf_part_cursor
+    from .P_admin.updates.activities import detect_update_files
     from .P3_parse_files.image_pdf import make_image_pdf_batch
     from .P3_parse_files.pdf_preview import make_pdf_preview_batch
     from .visibility import ensure_search_attributes
@@ -701,7 +707,7 @@ async def run_ocr_worker():
           workflows=[],
           # run_ocr_pdf_batch stays on this queue for the batches that groups scheduled
           # here before the PDF queue existed, and for their retries.
-          activities=[run_ocr_batch, run_ocr_pdf_batch],
+          activities=[run_ocr_batch, run_ocr_pdf_batch, detect_ocr_text_batch, detect_update_files],
           activity_executor=image_executor,
           max_concurrent_activities=image_slots,
           max_concurrent_workflow_tasks=image_slots*2,

@@ -831,6 +831,11 @@ processing-update-ocr-explanation = { $files ->
    *[other] 约有 { $count } 个文件缺少当前语言的 OCR 文本，或者保留着设置中已不再包含的语言的 OCR 文本。
 } 系统会按当前语言运行 OCR，并删除已移除语言的文本。
 processing-update-ocr-runs = OCR 和可搜索 PDF，然后是新文本的实体提取、嵌入和索引
+processing-update-ocr_detection-title = OCR 检测
+processing-update-ocr_detection-explanation = { $files ->
+   *[other] 有 { $count } 个文件没有检测到的文本、文字系统或语言。
+} 系统会检查每张图片和每个选定进行 OCR 的页面。一个 PDF 最多发送 100 页。OCR 文本不会改变。
+processing-update-ocr_detection-runs = 检测，然后是这些文件的搜索属性
 processing-update-pdf_text-title = 可搜索 PDF 的文本
 processing-update-pdf_text-explanation = { $files ->
    *[other] { $count } 个文件的可搜索 PDF 使用旧的文本层。

@@ -1,6 +1,7 @@
 //! Document API routes and module exports.
 
 pub mod antivirus;
+pub mod ocr_detection;
 pub mod document_text;
 pub mod download_document;
 pub mod get_document_card_facts;

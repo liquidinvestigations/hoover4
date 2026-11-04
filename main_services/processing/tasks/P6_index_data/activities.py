@@ -168,6 +168,11 @@ _SCALAR_COLUMNS = (
 )
 
 
+#: MVA columns that a shard table gets through the search schema step. A writer puts them on
+#: the row only for a table that has them, as it does for `virus_hit`.
+_OCR_MVA_COLUMNS = ('ocr_script', 'ocr_language')
+
+
 def pages_replace_sql(pages_table: str, row: dict) -> str:
     """REPLACE INTO statement for one pages row.
 
@@ -177,9 +182,10 @@ def pages_replace_sql(pages_table: str, row: dict) -> str:
     ``pages_table`` comes from ``shard_table_from_name`` (validated).
     """
     scalars = _row_scalars(row)
-    columns = ', '.join(('id',) + scalars + _MVA_COLUMNS)
+    mva_columns = _MVA_COLUMNS + tuple(name for name in _OCR_MVA_COLUMNS if name in row)
+    columns = ', '.join(('id',) + scalars + mva_columns)
     placeholders = ', '.join(['%s'] * (1 + len(scalars)))
-    mvas = ', '.join(row.get(name) or '()' for name in _MVA_COLUMNS)
+    mvas = ', '.join(row.get(name) or '()' for name in mva_columns)
     return f"""REPLACE INTO {pages_table} ({columns}) VALUES ({placeholders}, {mvas})"""
 
 
@@ -392,9 +398,13 @@ def write_page_batches(client, table: str, collection_dataset: str,
 
     from database.manticore import table_has_column
     virus_column = table_has_column(table, 'virus_hit')
+    ocr_columns = table_has_column(table, 'ocr_script')
     for row in rows:
         if not virus_column:
             row.pop('virus_hit', None)
+        if not ocr_columns:
+            for name in _OCR_MVA_COLUMNS:
+                row.pop(name, None)
         encoded = bind_manticore_sql(
             client, pages_replace_sql(table, row),
             pages_replace_params(collection_dataset, row),
@@ -732,7 +742,7 @@ def write_text_pages(params: IndexShardParams) -> IndexedTextResult:
 def refresh_stale_document_locations(
     params: RefreshDocumentLocationsParams,
 ) -> RefreshDocumentLocationsResult:
-    """Rewrite page rows for documents whose folder or language attributes are stale.
+    """Rewrite page rows for documents whose folder, language or OCR attributes are stale.
 
     Rebuilds no shard tables and does not run extraction, OCR, or embedding.
     Vectors stay as they are. Callers rebuild ClickHouse `vfs_nodes` first so
@@ -789,6 +799,28 @@ def document_languages(client, collection_dataset: str,
         GROUP BY file_hash HAVING length(languages) > 0
     """, parameters=parameters).result_rows
     return {file_hash: list(languages) for file_hash, languages in rows}
+
+
+def document_ocr_attributes(client, collection_dataset: str, item_hashes: list[str] | None = None
+                            ) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    """The detected OCR scripts and languages of each document, by file hash.
+
+    Each distinct value of a page with text counts. `item_hashes` limits the read, and
+    `None` reads the whole dataset.
+    """
+    hash_filter = " AND hash IN {hashes:Array(String)}" if item_hashes is not None else ""
+    parameters = {"ds": collection_dataset}
+    if item_hashes is not None:
+        parameters["hashes"] = item_hashes
+    rows = client.query(f"""
+        SELECT hash, groupUniqArrayIf(script, script != ''),
+            groupUniqArrayIf(language, language NOT IN ('und', ''))
+        FROM ocr_detection FINAL
+        WHERE collection_dataset = {{ds:String}} AND has_text = 1{hash_filter}
+        GROUP BY hash
+    """, parameters=parameters).result_rows
+    return ({h: list(scripts) for h, scripts, _ in rows if scripts},
+            {h: list(languages) for h, _, languages in rows if languages})
 
 
 def primary_filename(basenames) -> str:
@@ -1009,6 +1041,8 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
 
     with get_collection_client(params.collectionname) as client:
         languages_by_hash = document_languages(client, collection_dataset, item_hashes)
+        ocr_scripts_by_hash, ocr_languages_by_hash = document_ocr_attributes(
+            client, collection_dataset, item_hashes)
 
     container_parents = container_parents_from_nodes(node_rows)
 
@@ -1064,6 +1098,8 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
         'filetype': all_filetypes, 'mime_type': all_mime_types, 'extension': all_extensions,
         'vfs_node': all_node_keys, 'email_address': all_addresses,
         'language': {code for codes in languages_by_hash.values() for code in codes},
+        'ocr_script': {name for names in ocr_scripts_by_hash.values() for name in names},
+        'ocr_language': {code for codes in ocr_languages_by_hash.values() for code in codes},
     })
     filetype_ids = term_ids['filetype']
     mime_type_ids = term_ids['mime_type']
@@ -1071,6 +1107,8 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
     node_key_ids = term_ids['vfs_node']
     address_ids = term_ids['email_address']
     language_ids = term_ids['language']
+    ocr_script_ids = term_ids['ocr_script']
+    ocr_language_ids = term_ids['ocr_language']
 
     from database.manticore import DATE_UNKNOWN, SIZE_UNKNOWN
 
@@ -1095,6 +1133,8 @@ def document_metadata(params: IndexShardParams) -> dict[str, dict]:
         basenames = sorted({os.path.basename(row['path']) for row in rows if row['path']})
         metadata[file_hash] = {
             "language": repr_manticore_tuple(sorted(language_ids[code] for code in languages_by_hash.get(file_hash, []))),
+            "ocr_script": repr_manticore_tuple(sorted(ocr_script_ids[name] for name in ocr_scripts_by_hash.get(file_hash, []))),
+            "ocr_language": repr_manticore_tuple(sorted(ocr_language_ids[code] for code in ocr_languages_by_hash.get(file_hash, []))),
             "file_types": repr_manticore_tuple([filetype_ids[ft] for ft in item['file_types']]),
             "file_mime_types": repr_manticore_tuple([mime_type_ids[mt] for mt in item['mime_types']]),
             "file_extensions": repr_manticore_tuple([extension_ids[ext] for ext in item['extensions']]),

@@ -869,6 +869,14 @@ processing-update-ocr-explanation = { $files ->
    *[other] Примерно у { $count } файлов нет текста OCR для текущих языков либо остался текст OCR языков, которых больше нет в настройках.
 } OCR выполняется для текущих языков, а текст удалённых языков удаляется.
 processing-update-ocr-runs = OCR и PDF с текстовым слоем, затем извлечение сущностей, эмбеддинги и индексация нового текста
+processing-update-ocr_detection-title = Определение OCR
+processing-update-ocr_detection-explanation = { $files ->
+    [one] У { $count } файла нет обнаруженного текста, письменности и языка.
+    [few] У { $count } файлов нет обнаруженного текста, письменности и языка.
+    [many] У { $count } файлов нет обнаруженного текста, письменности и языка.
+   *[other] У { $count } файлов нет обнаруженного текста, письменности и языка.
+} Проверяются каждое изображение и каждая страница, выбранная для OCR. PDF отправляет не более 100 страниц. Текст OCR не меняется.
+processing-update-ocr_detection-runs = Определение, затем поисковые атрибуты этих файлов
 processing-update-pdf_text-title = Текст PDF с поиском
 processing-update-pdf_text-explanation = { $files ->
     [one] { $count } файл имеет PDF с поиском с прежним текстовым слоем.

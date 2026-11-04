@@ -114,6 +114,13 @@ STEPS: Tuple[UpdateStep, ...] = (
                     "the text of the removed languages is deleted.",
         runs="OCR and searchable PDFs, then entity extraction, embedding and indexing of the new text"),
     UpdateStep(
+        step_id="ocr_detection", scope=SCOPE_DATASET, version=1, stages=("ocr_detection",),
+        automatic=True, uses_input_revision=True, prerequisites=("search_schema",), requires=(),
+        title="OCR detection",
+        explanation="{files} files have no detected text, script or language. Each image and each page "
+                    "selected for OCR is examined. A PDF sends at most 100 pages. OCR text does not change.",
+        runs="Detection, then the search attributes of these files"),
+    UpdateStep(
         step_id="pdf_text", scope=SCOPE_DATASET, version=1, stages=("pdf_text_layer",),
         automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
         title="Searchable PDF text",

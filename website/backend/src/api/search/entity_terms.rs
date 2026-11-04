@@ -53,6 +53,8 @@ const TERM_FIELD_OF: &[(&str, &str)] = &[
     ("re_email", "regex_email"),
     ("language", "language"),
     ("red_flags", "red_flags"),
+    ("ocr_script", "ocr_script"),
+    ("ocr_language", "ocr_language"),
     ("re_phone", "regex_phone"),
     ("re_bank_account", "regex_bank_account"),
     ("re_company_id", "regex_company_id"),
@@ -134,9 +136,9 @@ pub async fn search_entity_terms(
     let titles = if term_fields.contains(&"red_flags") {
         crate::api::documents::signals::signal_titles().await?
     } else { std::collections::HashMap::new() };
-    let where_argument = if term_fields == ["language"] || term_fields == ["red_flags"] {
+    let where_argument = if term_fields == ["language"] || term_fields == ["ocr_language"] || term_fields == ["red_flags"] {
         let lower = needle.to_lowercase();
-        let values: Vec<String> = if term_fields == ["language"] {
+        let values: Vec<String> = if term_fields != ["red_flags"] {
             common::signals::language_names().iter().filter(|(code, name)|
                 code.contains(&lower) || name.to_lowercase().contains(&lower))
                 .map(|(code, _)| code.clone()).collect()
@@ -209,7 +211,7 @@ pub async fn search_entity_terms(
             };
             hits.push(EntityTermHit {
                 term_id,
-                term_display: if row.term_field == "language" {
+                term_display: if row.term_field == "language" || row.term_field == "ocr_language" {
                     common::signals::language_name(&row.term_display)
                 } else { titles.get(&row.term_display).cloned().unwrap_or(row.term_display) },
                 term_field: row.term_field,

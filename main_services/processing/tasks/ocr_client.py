@@ -100,11 +100,32 @@ def run_ocr(engine: str, languages: str, image_bytes: bytes,
     )
 
 
+def detect_text(image_bytes: bytes) -> Optional[dict]:
+    """The `/detect` answer of the Tesseract service for one image.
+
+    Returns `None` when the service read the bytes and found no processable image, because
+    a retry sends the same bytes. Every other failure raises and takes the Temporal retry.
+    """
+    import requests
+
+    endpoints = [(provider, url.removesuffix("/ocr") + "/detect")
+                 for provider, url in _endpoints_for(ENGINE_TESSERACT)]
+    try:
+        result = post_json(endpoints, {"image_b64": base64.b64encode(image_bytes).decode("ascii")},
+                           read_timeout=OCR_READ_TIMEOUT, service="ocr")
+    except requests.HTTPError as exc:
+        if getattr(exc.response, "status_code", None) in (413, 422):
+            return None
+        raise
+    return result.data if isinstance(result.data, dict) else None
+
+
 __all__ = [
     "OcrOutcome",
     "OCR_READ_TIMEOUT",
     "RemoteUnavailable",
     "READ_TIMEOUT",
+    "detect_text",
     "engine_configured",
     "run_ocr",
 ]

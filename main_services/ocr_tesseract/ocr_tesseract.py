@@ -18,6 +18,9 @@ Contract
 ``POST /ocr``   ``{"image_b64": ..., "languages": "eng+ron"}``
                 -> ``{"text", "confidence", "engine", "languages", "run_time_ms",
                       "words": [...]}``
+``POST /detect`` ``{"image_b64": ...}``
+                -> ``{"has_text", "box_count", "confident_boxes", "script", "model", "text",
+                      "run_time_ms"}``
 ``GET /health`` -> ``{"status", "engine", "languages_available", ...}``
 
 The request is JSON with base64 rather than multipart because the client
@@ -47,9 +50,12 @@ from contextlib import asynccontextmanager
 from typing import List
 
 import anyio.to_thread
+import cv2
 from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 from PIL import Image
+
+import text_detection
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 log = logging.getLogger("ocr_tesseract")
@@ -204,6 +210,69 @@ def _run_tesseract(image_bytes: bytes, languages: str, psm: int) -> tuple:
     return text, confidence, words
 
 
+class DetectRequest(BaseModel):
+    image_b64: str = Field(..., description="Base64 of the image bytes, any format Pillow reads")
+
+
+class DetectResponse(BaseModel):
+    has_text: bool
+    box_count: int
+    confident_boxes: int
+    script: str
+    model: str
+    text: str
+    run_time_ms: int
+
+
+def _read_page(page, model: str) -> str:
+    """Read one stack of lines with one Tesseract script model."""
+    png = cv2.imencode(".png", page)[1].tobytes()
+    result = subprocess.run(
+        ["tesseract", "stdin", "stdout", "-l", model, "--oem", "1", "--psm", "6"],
+        input=png, capture_output=True, timeout=OCR_SUBPROCESS_TIMEOUT_S,
+    )
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or b"").decode("utf-8", "ignore")[-400:])
+    return (result.stdout or b"").decode("utf-8", "replace").strip()
+
+
+def _decoded_request_image(image_b64: str) -> bytes:
+    try:
+        image_bytes = base64.b64decode(image_b64, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"image_b64 is not valid base64: {exc}")
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="image_b64 decoded to zero bytes")
+    if len(image_bytes) > OCR_MAX_IMAGE_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"image is {len(image_bytes)} bytes, limit is {OCR_MAX_IMAGE_BYTES}",
+        )
+    return image_bytes
+
+
+@app.post("/detect", response_model=DetectResponse)
+def detect(request: DetectRequest):
+    """Report text presence and the script, and read a sample for language identification."""
+    if not _inflight.acquire(blocking=False):
+        raise HTTPException(status_code=503, detail="OCR queue is full", headers={"Retry-After": "5"})
+    try:
+        image_bytes = _decoded_request_image(request.image_b64)
+        started = time.time()
+        try:
+            found = _pool.submit(text_detection.detect, image_bytes, _read_page, _LANGUAGES).result()
+        except subprocess.TimeoutExpired:
+            raise HTTPException(status_code=504, detail="tesseract timed out")
+        except (RuntimeError, OSError, ValueError, Image.DecompressionBombError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        return DetectResponse(has_text=found.has_text, box_count=found.box_count,
+                              confident_boxes=found.confident_boxes, script=found.script,
+                              model=found.model, text=found.text,
+                              run_time_ms=int((time.time() - started) * 1000))
+    finally:
+        _inflight.release()
+
+
 @app.get("/health")
 async def health():
     """Reports what this instance can actually do, not what it was asked to do.
@@ -238,18 +307,7 @@ def ocr(request: OcrRequest, response: Response):
             headers={"Retry-After": "5"},
         )
     try:
-        try:
-            image_bytes = base64.b64decode(request.image_b64, validate=True)
-        except (binascii.Error, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=f"image_b64 is not valid base64: {exc}")
-
-        if not image_bytes:
-            raise HTTPException(status_code=400, detail="image_b64 decoded to zero bytes")
-        if len(image_bytes) > OCR_MAX_IMAGE_BYTES:
-            raise HTTPException(
-                status_code=413,
-                detail=f"image is {len(image_bytes)} bytes, limit is {OCR_MAX_IMAGE_BYTES}",
-            )
+        image_bytes = _decoded_request_image(request.image_b64)
 
         missing = [code for code in request.languages.split("+")
                    if code and _LANGUAGES and code not in _LANGUAGES]

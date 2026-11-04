@@ -1,6 +1,9 @@
-# Keep the build context to the two files the image needs. The repo root holds
+# Keep the build context to the files the image needs. The repo root holds
 # hundreds of MB of test corpora and untracked scratch directories; a widened
 # context would silently ship them into every build.
 *
 !ocr_tesseract.py
 !Dockerfile
+!text_detection.py
+!models
+!models/**

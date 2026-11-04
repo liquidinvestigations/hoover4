@@ -81,6 +81,8 @@ pub enum FilterCategory {
     Collections,
     FileTypes,
     Language,
+    OcrLanguage,
+    OcrScript,
     TextSource,
     FileSize,
     FileLocation,
@@ -91,10 +93,12 @@ pub enum FilterCategory {
 }
 
 impl FilterCategory {
-    pub const ALL: [FilterCategory; 10] = [
+    pub const ALL: [FilterCategory; 12] = [
         FilterCategory::Collections,
         FilterCategory::FileTypes,
         FilterCategory::Language,
+        FilterCategory::OcrLanguage,
+        FilterCategory::OcrScript,
         FilterCategory::TextSource,
         FilterCategory::FileSize,
         FilterCategory::FileLocation,
@@ -109,6 +113,8 @@ impl FilterCategory {
             FilterCategory::Collections => tr!("search-filter-modal-collections"),
             FilterCategory::FileTypes => tr!("search-filter-modal-file-types"),
             FilterCategory::Language => tr!("search-filter-modal-language"),
+            FilterCategory::OcrLanguage => tr!("search-filter-modal-ocr-language"),
+            FilterCategory::OcrScript => tr!("search-filter-modal-ocr-script"),
             FilterCategory::TextSource => tr!("search-filter-modal-text-source"),
             FilterCategory::FileSize => tr!("search-filter-modal-file-size"),
             FilterCategory::FileLocation => tr!("search-filter-modal-file-location"),
@@ -125,6 +131,8 @@ impl FilterCategory {
             FilterCategory::Collections => &["collection_dataset"],
             FilterCategory::FileTypes => &["file_types"],
             FilterCategory::Language => &["language"],
+            FilterCategory::OcrLanguage => &["ocr_language"],
+            FilterCategory::OcrScript => &["ocr_script"],
             // A selected source matches a document through its text from that source.
             FilterCategory::TextSource => &["extracted_by"],
             FilterCategory::FileLocation => &["file_paths"],
@@ -191,6 +199,8 @@ pub fn term_field_of(facet_field: &str) -> Option<&'static str> {
     match facet_field {
         "file_types" => Some("filetype"),
         "language" => Some("language"),
+        "ocr_language" => Some("ocr_language"),
+        "ocr_script" => Some("ocr_script"),
         "red_flags" => Some("red_flags"),
         "file_paths" => Some("vfs_node"),
         "email_from" | "email_to" => Some("email_address"),
@@ -785,6 +795,22 @@ fn FilterModalDialog(
                                     placeholder: tr!("search-filter-modal-search-languages").to_string(),
                                 }
                             },
+                            FilterCategory::OcrLanguage => rsx! {
+                                SearchableFacetPane {
+                                    count_query, pending, field: "ocr_language".to_string(),
+                                    map_string_terms: term_field_prop("ocr_language"),
+                                    placeholder: tr!("search-filter-modal-search-ocr-languages").to_string(),
+                                }
+                            },
+                            FilterCategory::OcrScript => rsx! {
+                                SearchableFacetPane {
+                                    count_query, pending, field: "ocr_script".to_string(),
+                                    map_string_terms: term_field_prop("ocr_script"),
+                                    placeholder: tr!("search-filter-modal-search-ocr-scripts").to_string(),
+                                    // A few scripts per corpus, all on screen.
+                                    server_side: false,
+                                }
+                            },
                             FilterCategory::TextSource => rsx! {
                                 SearchableFacetPane {
                                     count_query, pending, field: "extracted_by".to_string(),
@@ -829,6 +855,8 @@ fn CategoryIcon(category: FilterCategory) -> Element {
         FilterCategory::Collections => rsx! { Icon { icon: GoDatabase, style } },
         FilterCategory::FileTypes => rsx! { Icon { icon: MdInsertDriveFile, style } },
         FilterCategory::Language => rsx! { Icon { icon: MdInfo, style } },
+        FilterCategory::OcrLanguage => rsx! { Icon { icon: MdInfo, style } },
+        FilterCategory::OcrScript => rsx! { Icon { icon: MdInfo, style } },
         FilterCategory::TextSource => rsx! { Icon { icon: MdTextFields, style } },
         FilterCategory::FileSize => rsx! { Icon { icon: MdStraighten, style } },
         FilterCategory::FileLocation => rsx! { Icon { icon: MdStorage, style } },

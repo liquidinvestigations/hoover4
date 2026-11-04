@@ -316,6 +316,8 @@ SIZE_UNKNOWN = -1
 #: every query rather than an empty result.
 DOCUMENT_COLUMNS = (
     'language',
+    'ocr_script',
+    'ocr_language',
     'file_types',
     'file_mime_types',
     'file_extensions',
@@ -398,6 +400,8 @@ def pages_table_ddl(table_name: str) -> str:
             page_text text,
             language multi64,
             red_flags multi64,
+            ocr_script multi64,
+            ocr_language multi64,
             ner_per multi64,
             ner_org multi64,
             ner_loc multi64,

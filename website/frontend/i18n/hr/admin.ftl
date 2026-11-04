@@ -859,6 +859,13 @@ processing-update-ocr-explanation = { $files ->
    *[other] Otprilike { $count } datoteka nema OCR tekst za trenutne jezike ili zadržava OCR tekst jezika koje postavke više ne uključuju.
 } OCR se pokreće za trenutne jezike, a tekst uklonjenih jezika briše se.
 processing-update-ocr-runs = OCR i PDF-ovi s mogućnošću pretraživanja, zatim izdvajanje entiteta, ugrađivanje i indeksiranje novog teksta
+processing-update-ocr_detection-title = OCR otkrivanje
+processing-update-ocr_detection-explanation = { $files ->
+    [one] { $count } datoteka nema otkriveni tekst, pismo ni jezik.
+    [few] { $count } datoteke nemaju otkriveni tekst, pismo ni jezik.
+   *[other] { $count } datoteka nema otkriveni tekst, pismo ni jezik.
+} Pregledava se svaka slika i svaka stranica odabrana za OCR. PDF šalje najviše 100 stranica. OCR tekst se ne mijenja.
+processing-update-ocr_detection-runs = Otkrivanje, zatim atributi pretrage ovih datoteka
 processing-update-pdf_text-title = Tekst pretraživih PDF-ova
 processing-update-pdf_text-explanation = { $files ->
     [one] { $count } datoteka ima pretražive PDF-ove s ranijim slojem teksta.

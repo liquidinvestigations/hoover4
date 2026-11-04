@@ -859,6 +859,13 @@ processing-update-ocr-explanation = { $files ->
    *[other] Aproximativ { $count } de fișiere nu au text OCR pentru limbile curente sau păstrează text OCR pentru limbi pe care setările nu le mai includ.
 } OCR rulează pentru limbile curente, iar textul limbilor eliminate este șters.
 processing-update-ocr-runs = OCR și PDF-uri cu text căutabil, apoi extragerea de entități, embedding și indexarea textului nou
+processing-update-ocr_detection-title = Detectare OCR
+processing-update-ocr_detection-explanation = { $files ->
+    [one] { $count } fișier nu are text, scriere sau limbă detectate.
+    [few] { $count } fișiere nu au text, scriere sau limbă detectate.
+   *[other] { $count } de fișiere nu au text, scriere sau limbă detectate.
+} Fiecare imagine și fiecare pagină selectată pentru OCR sunt examinate. Un PDF trimite cel mult 100 de pagini. Textul OCR nu se schimbă.
+processing-update-ocr_detection-runs = Detectarea, apoi atributele de căutare ale acestor fișiere
 processing-update-pdf_text-title = Textul PDF-urilor căutabile
 processing-update-pdf_text-explanation = { $files ->
     [one] { $count } fișier are PDF-uri căutabile cu un strat de text anterior.

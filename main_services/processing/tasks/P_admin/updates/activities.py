@@ -410,6 +410,9 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
             variants, pairs = selectors.obsolete_ocr_outputs(client, scope_id, keep)
             return (not variants and not pairs,
                     f"OCR text of removed languages remains: {variants + [' '.join(p) for p in pairs]}")
+        if step_id == "ocr_detection":
+            selection = selectors.select_ocr_detection(client, ctx)
+            return selection.count == 0, f"{selection.count} files have no OCR detection result."
         if step_id == "virus_scan":
             selection = selectors.select_virus_scan(client, ctx)
             stale = infected_without_attribute(params.collectionname, scope_id)
@@ -701,6 +704,75 @@ def scan_update_files(params: TablePlanParams) -> int:
                 os.remove(path)
     finally:
         shutil.rmtree(out_dir, ignore_errors=True)
+    return len(rows)
+
+
+@activity.defn
+@with_heartbeat
+def list_update_detection_plans(params: VirusPlansParams) -> List[str]:
+    """At most 100 plans after `after` that hold a file that the `ocr_detection` step selects."""
+    from database.clickhouse import get_collection_client
+
+    hash_sql, extra = selectors.detection_hash_sql()
+    with get_collection_client(params.collectionname) as client:
+        rows = client.query(
+            "SELECT DISTINCT plan_hash FROM processing_plan_hits WHERE collection_dataset = {cd:String} "
+            f"AND plan_hash > {{after:String}} AND item_hash IN ({hash_sql}) ORDER BY plan_hash LIMIT 100",
+            parameters={"cd": params.collection_dataset, "after": params.after, **extra}).result_rows
+    return [row[0] for row in rows]
+
+
+@activity.defn
+@with_heartbeat
+def detect_update_files(params: TablePlanParams) -> int:
+    """Examine the selected files of one plan, one at a time, and store their rows."""
+    import shutil
+
+    from database.clickhouse import get_collection_client
+    from tasks.P2_execute_plan.activities import write_blob_files
+    from tasks.P3_parse_files import ocr_detection
+    from tasks.P3_parse_files.batch_runner import BatchFile, StageBatchParams
+    from tasks.P3_parse_files.pdf_parts import source_file
+
+    hash_sql, extra = selectors.detection_hash_sql()
+    cd = params.collection_dataset
+    out_dir = os.path.join("/tmp/hoover4", cd, f"update-detection-{params.plan_hash}")
+    os.makedirs(out_dir, exist_ok=True)
+    clock = HeartbeatClock()
+    with get_collection_client(params.collectionname) as client:
+        rows = client.query(
+            "SELECT h.item_hash, b.size, b.s3_path FROM (SELECT DISTINCT item_hash FROM processing_plan_hits "
+            "WHERE collection_dataset = {cd:String} AND plan_hash = {plan:String} "
+            f"AND item_hash IN ({hash_sql})) AS h "
+            "LEFT JOIN (SELECT blob_hash, any(blob_size_bytes) AS size, any(s3_path) AS s3_path FROM blobs "
+            "WHERE collection_dataset = {cd:String} GROUP BY blob_hash) AS b ON b.blob_hash = h.item_hash",
+            parameters={"cd": cd, "plan": params.plan_hash, **extra}).result_rows
+        scope = StageBatchParams(collectionname=params.collectionname, collection_dataset=cd,
+                                 plan_hash=params.plan_hash, files=[], op_id=params.op_id)
+        try:
+            for file_hash, size, s3_path in rows:
+                clock.beat(f"detect {file_hash}")
+                path = os.path.join(out_dir, file_hash)
+                write_blob_files(params.collectionname, cd, [
+                    {"item_hash": file_hash, "file_size_bytes": int(size or 0), "s3_url": s3_path or "", "path": path}],
+                    context=f"{cd}/{params.plan_hash}")
+                try:
+                    found = []
+                    for kind in ("original", "preview"):
+                        pages = ocr_detection.stored_pdf_pages(client, cd, file_hash, kind)
+                        if pages:
+                            file = BatchFile(item_hash=file_hash, file_path=path, source_kind=kind)
+                            with source_file(client, scope, file) as source:
+                                found = ocr_detection.pdf_rows(cd, file_hash, kind, source, pages)
+                            break
+                    if not found:
+                        found = ocr_detection.image_rows(
+                            cd, file_hash, ocr_detection.read_image(client, cd, file_hash, path))
+                    ocr_detection.store_rows(client, found)
+                finally:
+                    os.remove(path)
+        finally:
+            shutil.rmtree(out_dir, ignore_errors=True)
     return len(rows)
 
 

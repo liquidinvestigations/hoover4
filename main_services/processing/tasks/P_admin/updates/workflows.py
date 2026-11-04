@@ -41,7 +41,9 @@ with workflow.unsafe.imports_passed_through():
         apply_search_schema,
         begin_update_step,
         check_processing_updates,
+        detect_update_files,
         finish_update_step,
+        list_update_detection_plans,
         list_update_table_plans,
         list_update_virus_plans,
         retire_cached_searches,
@@ -70,6 +72,7 @@ with workflow.unsafe.imports_passed_through():
         VectorPlansParams,
     )
     from tasks.P_admin.updates.registry import SCOPE_DATASET
+    from tasks.P6_index_data.params import RefreshDocumentLocationsParams, RefreshDocumentLocationsResult
     from tasks.visibility import dataset_search_attributes
     from tasks.workflow_window import run_with_window
 
@@ -255,6 +258,12 @@ class RunProcessingUpdate:
                 UpdateDatasetVirusScan.run,
                 VirusPlansParams(params.op_id, params.collectionname, params.collection_dataset),
                 id=f"update-virus-{params.op_id}", **self._child(params))
+            return json.dumps(result, sort_keys=True)
+        if step_id == "ocr_detection":
+            result = await workflow.execute_child_workflow(
+                UpdateDatasetOcrDetection.run,
+                VirusPlansParams(params.op_id, params.collectionname, params.collection_dataset),
+                id=f"update-detection-{params.op_id}", **self._child(params))
             return json.dumps(result, sort_keys=True)
         if step_id == "tables":
             done = await workflow.execute_child_workflow(
@@ -495,6 +504,56 @@ class UpdateDatasetVirusScan:
                 scan_update_files,
                 TablePlanParams(params.op_id, params.collectionname, params.collection_dataset, plan_hash),
                 task_queue="processing-clamav-queue", start_to_close_timeout=timedelta(hours=6),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+
+        results = await run_with_window([lambda h=h: plan(h) for h in plans], VECTOR_PLAN_WINDOW)
+        failed = 0
+        for result in results:
+            if isinstance(result, BaseException):
+                if is_cancellation(result):
+                    raise result
+                failed += 1
+        workflow.continue_as_new(VirusPlansParams(
+            params.op_id, params.collectionname, params.collection_dataset,
+            plans[-1], params.done + len(plans), params.failed + failed))
+
+
+@workflow.defn
+class UpdateDatasetOcrDetection:
+    """The OCR detection of the files that the `ocr_detection` step selects, plan by plan.
+
+    The requests run on the OCR queue, so they share its slots with new ingestion. After the
+    last page, the location refresh rewrites the search rows whose OCR attributes changed.
+    Pages of at most 100 plans, four at a time, with continue-as-new after each.
+    """
+
+    @workflow.run
+    async def run(self, params: VirusPlansParams) -> dict:
+        plans = await workflow.execute_activity(
+            list_update_detection_plans, params, start_to_close_timeout=timedelta(minutes=15),
+            heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+        if not plans:
+            refreshed = await workflow.execute_activity(
+                "refresh_stale_document_locations",
+                RefreshDocumentLocationsParams(params.collectionname, params.collection_dataset, []),
+                result_type=RefreshDocumentLocationsResult,
+                task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(hours=6),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
+            scope = TablePlansParams(params.op_id, params.collectionname, params.collection_dataset)
+            if refreshed.refreshed_count:
+                await workflow.execute_activity(
+                    retire_cached_searches, scope, task_queue="processing-indexing-queue",
+                    start_to_close_timeout=timedelta(minutes=5), heartbeat_timeout=HEARTBEAT_TIMEOUT,
+                    retry_policy=_RETRY)
+            if params.failed:
+                raise ApplicationError(f"{params.failed} plans failed OCR detection", non_retryable=True)
+            return {"plans": params.done, "refreshed_files": refreshed.refreshed_count}
+
+        async def plan(plan_hash: str):
+            await workflow.execute_activity(
+                detect_update_files,
+                TablePlanParams(params.op_id, params.collectionname, params.collection_dataset, plan_hash),
+                task_queue="processing-ocr-queue", start_to_close_timeout=timedelta(hours=6),
                 heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=_RETRY)
 
         results = await run_with_window([lambda h=h: plan(h) for h in plans], VECTOR_PLAN_WINDOW)
