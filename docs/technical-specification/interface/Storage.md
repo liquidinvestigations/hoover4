@@ -40,6 +40,8 @@ The storage routes show readable collections, their datasets, and nested folder 
 A container's members do not add their bytes again at its parent's level.
 The tree windows large sibling groups and deep ancestor chains.
 Every document read retains collection access checks.
+The permitted-storage response includes optional collection display names and existing dataset display names.
+Missing display names retain the canonical identifiers.
 
 ## Upload routes
 
@@ -54,7 +56,7 @@ Rows `F-store-10` to `F-store-13` of [the feature register](../Features.md) give
 | tus requests under `/_upload/files/` | Create, read the offset of, append to and end the transfer of one file. | Each request needs `Tus-Resumable: 1.0.0` and `X-Hoover-Upload: 1`. Only the batch owner may send it. |
 | `GET /_upload/<batch_id>/prefix/<file_no>` | Return the SHA-256 of the acknowledged prefix. | Only the batch owner may read it. |
 | `POST /_upload/<batch_id>/commit` | End the transfer and return the detail address `/uploads/<collection>/<batch_id>`. | The body is JSON. A repeat returns the same address. |
-| `POST /_upload/<batch_id>/abort` | Delete an `uploading` batch, the files that it placed and the folders that it created. | The body is JSON. Only the batch owner may send it. A batch whose commit started is a 409. |
+| `POST /_upload/<batch_id>/abort` | Delete an `uploading` batch, the files that it placed and the folders that it created. | The body is JSON. Only the batch owner may send it. A batch whose commit intent was recorded is a 409. Abort intent survives recovery without queueing files. |
 
 A transfer change needs the batch owner and a current upload target: the uploader membership,
 the dataset setting and the writable mount. A removed permission stops new bytes and

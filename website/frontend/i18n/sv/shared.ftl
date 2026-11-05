@@ -268,3 +268,5 @@ shared-uploads-name-too-long = Ett namn i sökvägen är längre än 255 byte.
 shared-uploads-name-is-dot = Ett namn i sökvägen är . eller ..
 shared-boards-budget-grew = {" "}(budget +{ $n } utforskningar)
 shared-boards-budget-unchanged = {" "}(budgeten är oförändrad, utredningstavlan har nått sin gräns för utforskningar)
+
+shared-email-graph-selected-copy-removed = Den valda kopian av e-postmeddelandet finns inte längre.

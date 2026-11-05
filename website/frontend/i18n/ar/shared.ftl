@@ -268,3 +268,5 @@ shared-uploads-name-too-long = يزيد طول أحد الأسماء في الم
 shared-uploads-name-is-dot = أحد الأسماء في المسار هو . أو ..
 shared-boards-budget-grew = {" "}(الميزانية +{ $n } استكشافات)
 shared-boards-budget-unchanged = {" "}(الميزانية لم تتغير، فاللوحة عند حد الاستكشاف)
+
+shared-email-graph-selected-copy-removed = لم تعد نسخة البريد الإلكتروني المحددة موجودة.

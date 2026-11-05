@@ -146,6 +146,19 @@ impl BatchStore for ClickHouseStore {
         })
     }
 
+    fn collection_deleted(&self, collection: &str) -> anyhow::Result<bool> {
+        self.handle.block_on(async {
+            // FINAL removes tombstones from this registry's ReplacingMergeTree reader.
+            let states = crate::db_utils::clickhouse_utils::get_global_client()
+                .query("SELECT min(is_deleted), max(is_deleted) FROM collections WHERE collectionname = ? AND updated_at = (SELECT max(updated_at) FROM collections WHERE collectionname = ?) GROUP BY collectionname")
+                .bind(collection)
+                .bind(collection)
+                .fetch_all::<(u8, u8)>()
+                .await?;
+            Ok(states.first() == Some(&(1, 1)))
+        })
+    }
+
     fn dataset_live(&self, upload_dataset: &str) -> anyhow::Result<bool> {
         self.handle.block_on(async {
             let live = crate::db_utils::clickhouse_utils::get_global_client()

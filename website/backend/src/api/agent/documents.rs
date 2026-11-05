@@ -1053,7 +1053,7 @@ async fn documents_email_body(
 
     // The website's graph page always asks for these two budgets. A person changes only
     // the centre.
-    let graph = get_email_graph::get_email_graph(user, centre, MAX_GRAPH_NODES, MAX_GRAPH_DEPTH)
+    let graph = get_email_graph::get_email_graph_scoped(user, centre, MAX_GRAPH_NODES, MAX_GRAPH_DEPTH, Some(std::slice::from_ref(&body.collectionname)))
         .await
         .map_err(AgentError::from_anyhow)?;
     let graph = AgentEmailGraph {
@@ -1081,6 +1081,7 @@ async fn documents_email_body(
             })
             .collect(),
         cluster_size: graph.cluster_size,
+        cluster_size_complete: graph.cluster_size_complete,
         truncated: graph.truncated,
     };
 

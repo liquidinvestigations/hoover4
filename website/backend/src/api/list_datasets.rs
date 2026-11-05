@@ -69,18 +69,20 @@ pub(crate) async fn list_permitted_datasets(user: &CurrentUser) -> anyhow::Resul
         .collect())
 }
 
-/// The whole collections > datasets skeleton the storage tree renders, in ONE query.
-///
-/// The tree is lazy below this point: a dataset's folders are fetched when its row is
-/// expanded, never on mount. This call must therefore stay a single round trip however
-/// many collections and datasets exist. The tree is on every storage surface and in the
-/// filter modal, and one call per row was the shape of the viewer defect that wedged
-/// ClickHouse with 41 queries per page load.
+/// Read permitted datasets and collection names in batches for the shared storage tree.
+/// Folder-presence reads use each collection's structure index without result caching.
 pub async fn list_permitted_collection_tree(
     user: &CurrentUser,
 ) -> anyhow::Result<Vec<CollectionNode>> {
     let mut tree = group_by_collection(list_permitted_datasets(user).await?);
+    if tree.is_empty() { return Ok(tree); }
+    let names: HashMap<String, String> = get_global_client()
+        .query("SELECT collectionname, fullname FROM collections FINAL WHERE is_deleted = 0 AND collectionname IN ?")
+        .bind(tree.iter().map(|node| node.collectionname.clone()).collect::<Vec<_>>())
+        .fetch_all::<(String, String)>()
+        .await?.into_iter().collect();
     for collection in &mut tree {
+        collection.display_name = names.get(&collection.collectionname).filter(|name| !name.is_empty()).cloned();
         let table = format!("{}_vfs", collection.collectionname);
         let response = manticore_search_sql_uncached::<FolderPresenceRow>(format!(
             "SELECT collection_dataset FROM {table} WHERE parent_key IN ({}) AND kind != 1 GROUP BY collection_dataset LIMIT {} {} ;",
@@ -118,6 +120,7 @@ fn group_by_collection(datasets: Vec<DatasetSummary>) -> Vec<CollectionNode> {
                 node.datasets.push(dataset)
             }
             _ => nodes.push(CollectionNode {
+                display_name: None,
                 collectionname: dataset.collectionname.clone(),
                 datasets: vec![dataset],
             }),

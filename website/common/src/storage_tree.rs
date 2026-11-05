@@ -64,6 +64,8 @@ impl DatasetSummary {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct CollectionNode {
     pub collectionname: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
     pub datasets: Vec<DatasetSummary>,
 }
 

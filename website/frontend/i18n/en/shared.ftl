@@ -266,3 +266,5 @@ shared-uploads-name-too-long = A name in the path is longer than 255 bytes.
 shared-uploads-name-is-dot = A name in the path is . or ..
 shared-boards-budget-grew = {" "}(budget +{ $n } explores)
 shared-boards-budget-unchanged = {" "}(budget unchanged, the board is at its explore limit)
+
+shared-email-graph-selected-copy-removed = The selected email copy no longer exists.

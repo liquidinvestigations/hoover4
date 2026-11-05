@@ -265,3 +265,5 @@ shared-uploads-name-too-long = Un nume din cale este mai lung de 255 de octeți.
 shared-uploads-name-is-dot = Un nume din cale este . sau ..
 shared-boards-budget-grew = {" "}(bugetul de explorări crește cu { $n })
 shared-boards-budget-unchanged = {" "}(bugetul rămâne neschimbat, tabloul a atins limita de explorări)
+
+shared-email-graph-selected-copy-removed = Copia selectată a mesajului de e-mail nu mai există.

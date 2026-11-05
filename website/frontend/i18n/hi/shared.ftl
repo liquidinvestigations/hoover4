@@ -268,3 +268,5 @@ shared-uploads-name-too-long = पथ का कोई नाम 255 बाइ�
 shared-uploads-name-is-dot = पथ का कोई नाम . या .. है
 shared-boards-budget-grew = {" "}(बजट +{ $n } खोजबीन)
 shared-boards-budget-unchanged = {" "}(बजट अपरिवर्तित, बोर्ड अपनी खोजबीन की सीमा पर है)
+
+shared-email-graph-selected-copy-removed = चुने गए ईमेल की प्रति अब मौजूद नहीं है।

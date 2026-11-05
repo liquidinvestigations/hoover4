@@ -272,6 +272,7 @@ pub fn ResolveMissingItems(
     let mut facet_values = Vec::new();
     for value in missing_values.read().clone() {
         facet_values.push(common::search_result::SearchResultFacetItem {
+            descriptor: None,
             display_string: match &value {
                 FacetOriginalValue::Int(i) => {
                     if let Some(s) = map.get(i) {

@@ -265,3 +265,5 @@ shared-uploads-name-too-long = שם בנתיב ארוך מ-255 בייטים.
 shared-uploads-name-is-dot = שם בנתיב הוא . או ..
 shared-boards-budget-grew = {" "}(התקציב +{ $n } חקירות)
 shared-boards-budget-unchanged = {" "}(התקציב לא השתנה, הלוח הגיע למגבלת החקירות)
+
+shared-email-graph-selected-copy-removed = עותק הודעת הדואר האלקטרוני שנבחר אינו קיים עוד.

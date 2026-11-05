@@ -274,6 +274,10 @@ pub trait BatchStore: Send + Sync {
     fn write_files(&self, collection: &str, rows: &[FileRecord]) -> anyhow::Result<()>;
     /// The stored state of a batch, or `None` when no row exists.
     fn batch_state(&self, collection: &str, upload_dataset: &str, batch_id: &str) -> anyhow::Result<Option<String>>;
+    /// Whether the registry proves collection deletion. Errors preserve its journals.
+    fn collection_deleted(&self, _collection: &str) -> anyhow::Result<bool> {
+        Ok(false)
+    }
     /// Whether the dataset has a live registry row. The sweep stops the transfers of a
     /// deleted dataset.
     fn dataset_live(&self, _upload_dataset: &str) -> anyhow::Result<bool> {

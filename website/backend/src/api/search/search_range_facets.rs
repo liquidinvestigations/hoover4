@@ -128,6 +128,7 @@ pub async fn search_numeric_facet(
         .iter()
         .enumerate()
         .map(|(index, count)| SearchResultFacetItem {
+            descriptor: Some(common::search_result::FacetTermDescriptor { kind: "size_range".into(), code: index.to_string() }),
             display_string: SIZE_BUCKET_LABELS[index].to_string(),
             original_value: FacetOriginalValue::Int(index as u64),
             count: *count,

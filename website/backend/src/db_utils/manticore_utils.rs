@@ -137,11 +137,15 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
     cache_salt: &str,
 ) -> anyhow::Result<RawSarchResult<T>> {
     let query_hash = sha256::digest(format!("{cache_salt}\n{sql}"));
-    if let Ok(cached_response) = get_cached_response(&query_hash, &sql).await
-        && let Ok(response) = serde_json::from_str::<RawSarchResult<T>>(&cached_response)
-    {
-        tracing::debug!("search cache HIT: {query_hash}");
-        return Ok(response);
+    if let Ok(cached_response) = get_cached_response(&query_hash, &sql).await {
+        match decode_search_response::<T>(&cached_response) {
+            Ok(response) => {
+                tracing::debug!("search cache HIT: {query_hash}");
+                return Ok(response);
+            }
+            Err(error) if is_search_timeout(&error) => return Err(error),
+            Err(_) => {}
+        }
     }
     tracing::debug!("search cache MISS: {query_hash}");
     let t0 = std::time::Instant::now();
@@ -149,13 +153,7 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
     tracing::debug!("search response: {} bytes", response_txt.len());
     let t1 = std::time::Instant::now();
     let dt_ms = t1.duration_since(t0).as_millis() as u32;
-    let response: RawSarchResult<T> = serde_json::from_str(&response_txt)?;
-    if response.timed_out {
-        anyhow::bail!(SearchTimedOut(format!(
-            "Manticore gave up on this query after {}s and returned partial counts",
-            search_timeout_seconds()
-        )));
-    }
+    let response = decode_search_response::<T>(&response_txt)?;
     if insert_cache(&query_hash, &sql, &response_txt, dt_ms)
         .await
         .is_ok()
@@ -165,6 +163,18 @@ pub async fn manticore_search_sql<T: DeserializeOwned + std::fmt::Debug>(
         // Not an error path for the caller: the answer is already in hand and the next
         // identical query costs the same again.
         tracing::debug!("search cache insert failed: {query_hash}");
+    }
+    Ok(response)
+}
+
+/// Reject partial results before returning or caching them.
+fn decode_search_response<T: DeserializeOwned>(body: &str) -> anyhow::Result<RawSarchResult<T>> {
+    let response: RawSarchResult<T> = serde_json::from_str(body)?;
+    if response.timed_out {
+        anyhow::bail!(SearchTimedOut(format!(
+            "Manticore gave up on this query after {}s and returned partial counts",
+            search_timeout_seconds()
+        )));
     }
     Ok(response)
 }
@@ -239,7 +249,7 @@ async fn manticore_post(sql: String) -> anyhow::Result<String> {
 pub async fn manticore_search_sql_uncached<T: DeserializeOwned + std::fmt::Debug>(
     sql: String,
 ) -> anyhow::Result<RawSarchResult<T>> {
-    Ok(serde_json::from_str(&manticore_post(sql).await?)?)
+    decode_search_response(&manticore_post(sql).await?)
 }
 
 /// One row of a raw-mode Manticore result: column name to value.
@@ -388,6 +398,13 @@ async fn insert_cache(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn partial_search_results_are_typed_errors() {
+        let body = r#"{"hits":{"hits":[],"total":0,"total_relation":"eq"},"timed_out":true,"took":30,"aggregations":null}"#;
+        assert!(is_search_timeout(&decode_search_response::<serde_json::Value>(body).unwrap_err()));
+        assert!(decode_search_response::<serde_json::Value>(&body.replace("true", "false")).is_ok());
+    }
 
     #[tokio::test(start_paused = true)]
     async fn dictionary_cache_write_stops_at_the_lookup_deadline() {

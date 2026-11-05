@@ -130,9 +130,18 @@ pub struct SearchResultHitCount {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchResultFacetItem {
+    #[serde(default)]
+    pub descriptor: Option<FacetTermDescriptor>,
     pub display_string: String,
     pub original_value: FacetOriginalValue,
     pub count: u64,
+}
+
+/// Canonical facet text for translation without changing filter identities.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FacetTermDescriptor {
+    pub kind: String,
+    pub code: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialOrd, Ord, PartialEq, Eq)]

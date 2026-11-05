@@ -389,6 +389,15 @@ Source ownership uses [website/backend/src/uploads/placement.rs](../../website/b
 
 `POST /_upload/<batch_id>/abort` needs `Content-Type: application/json` and the owner. It refuses a batch that is no longer `uploading` with 409. It writes the stop marker and waits up to 75 seconds for the exclusive batch lock, then answers 423. Under the lock it removes each file that the batch placed or was placing from the dataset folder. It removes an entry only when the placement record names its identity. An entry that another writer replaced stays. It removes the owned part of an interrupted copy, and each folder that a placement of the batch created when the folder is empty. A folder that existed before the batch stays. Every file and the batch get the error "The upload was aborted.", and the batch becomes `cancelled`. The rows are written, and the upload space of the batch is deleted. No queue signal is sent. A repeated abort of an aborted batch answers 204.
 
+New terminal requests record a versioned commit or Abort intent before waiting for active transfer locks.
+The first recorded intent owns the terminal transition.
+Recovery completes recorded Abort intent without placing or queueing files.
+Legacy stop markers retain their previous commit meaning because they contain no separate intent.
+The sweep removes journals and owned temporary parts only after the global registry proves collection deletion.
+Missing registry rows and registry errors preserve the journal.
+Conflicting live and deleted rows at the latest registry timestamp also preserve the journal.
+Collection cleanup preserves published destination files.
+
 Source ownership uses [website/backend/src/uploads/commit.rs](../../website/backend/src/uploads/commit.rs).
 
 ## F-store-14

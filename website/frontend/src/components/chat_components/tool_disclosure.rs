@@ -725,6 +725,7 @@ mod tests {
         use common::storage_tree::DatasetSummary;
         use crate::data_definitions::url_param::UrlParam;
         let tree = vec![CollectionNode {
+            display_name: None,
             collectionname: "enron".into(),
             datasets: vec![DatasetSummary { collection_dataset: "enron_mail".into(), ..Default::default() },
                            DatasetSummary { collection_dataset: "enron_files".into(), ..Default::default() }],

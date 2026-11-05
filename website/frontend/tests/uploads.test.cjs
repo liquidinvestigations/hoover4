@@ -50,9 +50,8 @@ test('a failed commit remains retryable and repeated retry sends once', async ()
   let commits = 0; const second = deferred();
   const h = setup(async url => url.endsWith('/begin') ? reply(201, batch) : (++commits === 1 ? reply(503, { message: 'temporarily unavailable' }) : second.promise));
   h.driver.command(h.begin); await flush();
-  h.driver.command({ cmd: 'stop' }); await flush();
+  h.uploads[0].options.onSuccess(); await flush();
   assert.equal(h.events.at(-1).kind, 'commit_failed');
-  assert.equal(h.uploads[0].aborted, true);
   h.driver.command({ cmd: 'retry_commit' }); h.driver.command({ cmd: 'retry_commit' }); await flush();
   assert.equal(commits, 2);
   second.resolve(reply(200, { detail: '/uploads/c/b1' })); await flush();
@@ -109,4 +108,28 @@ test('prefix SHA-256 matches the standard digest at block boundaries', () => {
     const data = Buffer.alloc(size, 97);
     assert.equal(h.driver.sha256Hex(data), createHash('sha256').update(data).digest('hex'));
   }
+});
+
+for (const status of [200, 503]) {
+  test(`a delayed abort response (${status}) cannot change a replacement page`, async () => {
+    const response = deferred();
+    const h = setup(async url => url.endsWith('/begin') ? reply(201, batch) : response.promise);
+    h.driver.command(h.begin); await flush();
+    h.driver.command({ cmd: 'abort' }); await flush();
+    const nextEvents = [];
+    h.driver.attach(event => nextEvents.push(event));
+    response.resolve(reply(status, { message: 'failed' })); await flush();
+    assert.deepEqual(nextEvents, []);
+  });
+}
+
+test('a transfer cancellation failure remains retryable', async () => {
+  const h = setup(async url => url.endsWith('/begin') ? reply(201, batch) : reply(200, {}));
+  h.driver.command(h.begin); await flush();
+  h.uploads[0].abort = async () => { throw new Error('cancel failed'); };
+  h.driver.command({ cmd: 'abort' }); await flush();
+  assert.equal(h.events.at(-1).kind, 'abort_failed');
+  h.uploads[0].abort = async () => {};
+  h.driver.command({ cmd: 'abort' }); await flush();
+  assert.equal(h.events.at(-1).kind, 'aborted');
 });

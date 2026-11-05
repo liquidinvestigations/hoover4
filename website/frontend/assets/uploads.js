@@ -85,6 +85,7 @@
   }
 
   async function onDrop(transfer) {
+    const token = generation;
     const out = [];
     const entries = [];
     for (const item of transfer.items || []) {
@@ -96,7 +97,7 @@
     } else {
       for (const file of transfer.files || []) out.push({ file, path: file.name });
     }
-    addFiles(out);
+    if (token === generation) addFiles(out);
   }
 
   function input(id, folder) {
@@ -363,16 +364,20 @@
   async function commit() {
     if (!run || run.ended || pending) return;
     const owner = run;
+    const token = generation;
+    const current = () => token === generation && run === owner;
     owner.ended = true;
     progress(true);
     emit({ kind: "phase", phase: "committing" });
     try {
       await Promise.all([...owner.active].map((item) => item.upload && item.upload.abort(false)));
+      if (!current()) return;
       const res = await fetchPatient(`/_upload/${owner.batchId}/commit`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
       });
+      if (!current()) return;
       const text = await res.text();
-      if (run !== owner) return;
+      if (!current()) return;
       let body = {};
       try { body = JSON.parse(text); } catch (_) { body = { message: text }; }
       if (!res.ok) throw new Error(body.message || `HTTP ${res.status}`);
@@ -380,7 +385,7 @@
       window.removeEventListener("beforeunload", warnOnLeave);
       emit({ kind: "committed", detail: body.detail });
     } catch (err) {
-      if (run !== owner) return;
+      if (!current()) return;
       owner.ended = false;
       owner.stopping = true;
       emit({ kind: "commit_failed", message: String(err) });
@@ -401,6 +406,7 @@
       res = await fetch("/_upload/begin", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: cmd.body,
       });
+      if (token !== generation) return;
       text = await res.text();
       if (token !== generation) return;
     } catch (err) {
@@ -439,11 +445,16 @@
         throw new Error((await res.text()) || ENDED);
       }
       if (!res.ok) {
-        mismatched.push({ path: m.path, error: (await res.text()) || `HTTP ${res.status}` });
+        const message = await res.text();
+        if (token !== generation) return;
+        mismatched.push({ path: m.path, error: message || `HTTP ${res.status}` });
         continue;
       }
       const digest = await res.json();
-      if (digest.offset > 0 && (await prefixDigest(file, digest.offset)) !== digest.sha256) {
+      if (token !== generation) return;
+      const prefix = digest.offset > 0 ? await prefixDigest(file, digest.offset) : null;
+      if (token !== generation) return;
+      if (digest.offset > 0 && prefix !== digest.sha256) {
         mismatched.push({ path: m.path, error: "" });
         continue;
       }
@@ -465,6 +476,12 @@
   // A failed request keeps the run ended, and Abort can be sent again.
   async function abort(batchId) {
     const owner = run;
+    const token = generation;
+    const current = () => token === generation && run === owner;
+    if (owner ? owner.abortPending : pending) return;
+    if (owner) owner.abortPending = true;
+    else pending = true;
+    try {
     if (owner) {
       if (owner.ended && !owner.aborting) return;
       owner.ended = true;
@@ -472,26 +489,35 @@
       clearTimeout(owner.timer);
       progress(true);
       await Promise.all([...owner.active].map((item) => item.upload && item.upload.abort(false)));
+      if (!current()) return;
       owner.active.clear();
     }
     emit({ kind: "phase", phase: "aborting" });
-    try {
       const res = await fetchPatient(`/_upload/${batchId}/abort`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
       });
+      if (!current()) return;
       if (!res.ok) {
         const text = await res.text();
+        if (!current()) return;
         let message = text;
         try { message = JSON.parse(text).message || text; } catch (_) {}
         throw new Error(message || `HTTP ${res.status}`);
       }
+      pending = false;
       if (run === owner) run = null;
       // The page returns to an empty selection.
       files.clear();
       window.removeEventListener("beforeunload", warnOnLeave);
       emit({ kind: "aborted", batch_id: batchId });
     } catch (err) {
+      if (!current()) return;
       emit({ kind: "abort_failed", message: String(err.message || err) });
+    } finally {
+      if (current()) {
+        if (owner) owner.abortPending = false;
+        else pending = false;
+      }
     }
   }
 

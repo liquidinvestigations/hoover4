@@ -732,9 +732,11 @@ pub struct AgentEmailGraphEdge {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentEmailGraph {
+    #[serde(default)]
+    pub cluster_size_complete: bool,
     pub nodes: Vec<AgentEmailGraphNode>,
     pub edges: Vec<AgentEmailGraphEdge>,
-    /// Counts the messages of the whole connected component.
+    /// Counts returned logical messages. Completeness identifies a complete component.
     pub cluster_size: u32,
     /// True when the node or depth budget stopped the walk.
     pub truncated: bool,

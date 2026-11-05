@@ -265,3 +265,5 @@ shared-uploads-name-too-long = Un nombre de la ruta tiene más de 255 bytes.
 shared-uploads-name-is-dot = Un nombre de la ruta es . o ..
 shared-boards-budget-grew = {" "}(presupuesto +{ $n } exploraciones)
 shared-boards-budget-unchanged = {" "}(presupuesto sin cambios, el tablero está en su límite de exploraciones)
+
+shared-email-graph-selected-copy-removed = La copia del correo seleccionada ya no existe.

@@ -96,7 +96,7 @@ impl Service {
     /// Remove the owned part file of a copy placement, when it exists. Without `root`,
     /// the dataset folder that the placement record names is opened. A folder that no
     /// longer exists holds no part. A folder that exists but does not open is an error.
-    fn remove_owned_part(&self, manifest: &Manifest, file: &FileJournal, root: Option<&OwnedFd>) -> anyhow::Result<()> {
+    pub(super) fn remove_owned_part(&self, manifest: &Manifest, file: &FileJournal, root: Option<&OwnedFd>) -> anyhow::Result<()> {
         let Some(placement) = file.placement.as_ref() else { return Ok(()) };
         if placement.method != PlaceMethod::Copy {
             return Ok(());

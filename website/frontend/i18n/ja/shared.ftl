@@ -265,3 +265,5 @@ shared-uploads-name-too-long = パス内の名前が255バイトを超えてい�
 shared-uploads-name-is-dot = パス内の名前が . または .. です。
 shared-boards-budget-grew = {" "}(予算 +{ $n } 回の探索)
 shared-boards-budget-unchanged = {" "}(予算は変わらず、ボードは探索の上限に達しています)
+
+shared-email-graph-selected-copy-removed = 選択したメールのコピーはもう存在しません。

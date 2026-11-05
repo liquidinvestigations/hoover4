@@ -101,7 +101,9 @@ pub async fn highlight_email_headers(
         if let Some(hit) = response.hits.hits.into_iter().next() {
             for (index, text) in batch.iter().enumerate() {
                 if let Some(highlighted) = hit._source.get(&format!("h{index}")) {
-                    result.insert(text.clone(), decompose_text_into_spans(highlighted.clone()));
+                    if let Some(spans) = exact_highlight_spans(highlighted, text) {
+                        result.insert(text.clone(), spans);
+                    }
                 }
             }
         }
@@ -121,49 +123,12 @@ pub async fn search_document_text_for_hits(
     page_hit_rows(&document_identifier, &find_query, &extracted_by, page_id).await
 }
 
-const START_MARK: &str = "<hoover4_strong>";
-const END_MARK: &str = "</hoover4_strong>";
-
-/// The spans of one highlighted index text, when that text is the stored text `stored`
-/// with only the highlight markers added. The comparison is exact: no whitespace or
-/// character is normalised, so the spans and their offsets describe the stored text.
-/// Adjacent marked parts form one span, as in [`decompose_text_into_spans`]. `None` when
-/// the index text differs from the stored text, or its markers do not pair.
+/// Validate the complete index text against the source or its index projection.
+/// Mapped spans retain complete source text and source byte boundaries.
+/// Omitted content separates marked spans with the same match ordinal.
+/// Malformed markers and text outside both accepted forms return `None`.
 pub fn exact_highlight_spans(highlighted: &str, stored: &str) -> Option<Vec<common::text_highlight::HighlightTextSpan>> {
-    use common::text_highlight::HighlightTextSpan;
-    let mut spans: Vec<HighlightTextSpan> = Vec::new();
-    let mut rest = highlighted;
-    let mut marked = false;
-    let mut plain = String::with_capacity(stored.len());
-    while !rest.is_empty() {
-        let (mark, next) = if marked { (END_MARK, START_MARK) } else { (START_MARK, END_MARK) };
-        let end = rest.find(mark).unwrap_or(rest.len());
-        let part = &rest[..end];
-        if part.contains(next) {
-            return None;
-        }
-        if !part.is_empty() {
-            plain.push_str(part);
-            match spans.last_mut() {
-                Some(last) if last.is_highlighted == marked => last.text.push_str(part),
-                _ => spans.push(HighlightTextSpan { text: part.to_string(), is_highlighted: marked, index: 0 }),
-            }
-        }
-        if end == rest.len() {
-            break;
-        }
-        rest = &rest[end + mark.len()..];
-        marked = !marked;
-    }
-    if marked || plain != stored {
-        return None;
-    }
-    let mut index = 0;
-    for span in spans.iter_mut().filter(|span| span.is_highlighted) {
-        span.index = index;
-        index += 1;
-    }
-    Some(spans)
+    common::text_projection::highlight_spans(highlighted, stored)
 }
 
 /// The raw highlighted texts of the index rows of one page, in index order, markers

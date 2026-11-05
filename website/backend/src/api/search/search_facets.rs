@@ -96,6 +96,7 @@ fn reconcile_dataset_facets(
     }
     for value in missing {
         facets.facet_values.push(SearchResultFacetItem {
+            descriptor: None,
             display_string: value.clone(),
             original_value: FacetOriginalValue::String(value.clone()),
             count: 0,
@@ -117,6 +118,7 @@ fn facet_items_from_pairs(
         }
         present_values.insert(value.clone());
         items.push(SearchResultFacetItem {
+            descriptor: None,
             display_string: match &value {
                 serde_json::Value::String(s) => s.clone(),
                 serde_json::Value::Number(n) => n.as_u64().unwrap_or(0).to_string(),
@@ -152,12 +154,18 @@ async fn map_term_display_strings(
         }
     }
     let collections = crate::db_utils::clickhouse_utils::list_permitted_collections(user).await?;
-    let display_strings = fetch_db_terms_for_ints(&collections, ints, map_string_terms).await?;
+    let display_strings = fetch_db_terms(&collections, ints, map_string_terms.clone(), false).await?;
+    let titles = if map_string_terms == "red_flags" { crate::api::documents::signals::signal_titles().await? } else { HashMap::new() };
     for item in facet_values.iter_mut() {
         if let FacetOriginalValue::Int(i) = item.original_value
             && let Some(display_string) = display_strings.get(&i)
         {
-            item.display_string = display_string.clone();
+            item.descriptor = Some(common::search_result::FacetTermDescriptor {
+                kind: map_string_terms.clone(), code: display_string.clone(),
+            });
+            item.display_string = if matches!(map_string_terms.as_str(), "language" | "ocr_language") {
+                common::signals::language_name(display_string)
+            } else { titles.get(display_string).cloned().unwrap_or_else(|| display_string.clone()) };
         }
     }
     Ok(())
@@ -275,6 +283,7 @@ fn label_text_sources(items: &mut Vec<SearchResultFacetItem>) {
     });
     for item in items.iter_mut() {
         if let FacetOriginalValue::String(value) = &item.original_value {
+            item.descriptor = Some(common::search_result::FacetTermDescriptor { kind: "text_source".into(), code: value.clone() });
             item.display_string = common::document_sources::text_source_label(value);
         }
     }
@@ -459,6 +468,12 @@ pub async fn fetch_db_terms_for_ints(
     ints: Vec<u64>,
     field_name: String,
 ) -> anyhow::Result<HashMap<u64, String>> {
+    fetch_db_terms(collections, ints, field_name, true).await
+}
+
+async fn fetch_db_terms(
+    collections: &[String], ints: Vec<u64>, field_name: String, legacy_labels: bool,
+) -> anyhow::Result<HashMap<u64, String>> {
     if ints.is_empty() || collections.is_empty() {
         return Ok(HashMap::new());
     }
@@ -519,9 +534,9 @@ pub async fn fetch_db_terms_for_ints(
         crate::api::documents::signals::signal_titles().await?
     } else { HashMap::new() };
     for value in merged.values_mut() {
-        if field_name == "language" || field_name == "ocr_language" {
+        if legacy_labels && (field_name == "language" || field_name == "ocr_language") {
             *value = common::signals::language_name(value);
-        } else if let Some(title) = titles.get(value) {
+        } else if legacy_labels && let Some(title) = titles.get(value) {
             *value = title.clone();
         }
     }
@@ -540,6 +555,7 @@ mod tests {
             facet_values: values
                 .iter()
                 .map(|(value, count)| SearchResultFacetItem {
+                    descriptor: None,
                     display_string: value.to_string(),
                     original_value: FacetOriginalValue::String(value.to_string()),
                     count: *count,

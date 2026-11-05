@@ -268,3 +268,5 @@ shared-uploads-name-too-long = Nazwa w ścieżce jest dłuższa niż 255 bajtów
 shared-uploads-name-is-dot = Nazwa w ścieżce to . lub ..
 shared-boards-budget-grew = {" "}(budżet +{ $n } eksploracji)
 shared-boards-budget-unchanged = {" "}(budżet bez zmian, tablica osiągnęła limit eksploracji)
+
+shared-email-graph-selected-copy-removed = Wybrana kopia wiadomości e-mail już nie istnieje.

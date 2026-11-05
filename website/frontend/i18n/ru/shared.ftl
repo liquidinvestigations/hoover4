@@ -268,3 +268,5 @@ shared-uploads-name-too-long = Имя в пути длиннее 255 байт.
 shared-uploads-name-is-dot = Имя в пути равно . или ..
 shared-boards-budget-grew = {" "}(бюджет исследований +{ $n })
 shared-boards-budget-unchanged = {" "}(бюджет не изменился, на доске достигнут предел исследований)
+
+shared-email-graph-selected-copy-removed = Выбранная копия электронного письма больше не существует.

@@ -268,3 +268,5 @@ shared-uploads-name-too-long = Et navn i stien er lengre enn 255 byte.
 shared-uploads-name-is-dot = Et navn i stien er . eller ..
 shared-boards-budget-grew = {" "}(budsjett +{ $n } utforskninger)
 shared-boards-budget-unchanged = {" "}(budsjettet er uendret, tavlen har nådd grensen for utforskninger)
+
+shared-email-graph-selected-copy-removed = Den valgte kopien av e-posten finnes ikke lenger.

@@ -173,9 +173,20 @@ impl EmailEnvelope {
     }
 }
 
+/// One authorized stored copy of a logical email message.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EmailGraphOccurrence {
+    pub collectionname: String,
+    pub document_identifier: DocumentIdentifier,
+}
+
 /// One message in the graph.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct EmailGraphNode {
+    #[serde(default)]
+    pub logical_id: String,
+    #[serde(default)]
+    pub occurrences: Vec<EmailGraphOccurrence>,
     pub document_identifier: DocumentIdentifier,
     pub subject: String,
     pub from_display: String,
@@ -214,9 +225,13 @@ impl EmailGraphEdge {
 /// A bounded neighbourhood of one message.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 pub struct EmailGraph {
+    #[serde(default)]
+    pub cluster_size_complete: bool,
+    #[serde(default)]
+    pub occurrences_truncated: bool,
     pub nodes: Vec<EmailGraphNode>,
     pub edges: Vec<EmailGraphEdge>,
-    /// The true size of the component, so the page can say how much it is not showing.
+    /// The logical node count returned by this read. A truncated graph can contain more nodes.
     pub cluster_size: u32,
     /// The budget stopped the walk before the component was exhausted.
     pub truncated: bool,
@@ -225,6 +240,8 @@ pub struct EmailGraph {
 /// Node budget for one graph page. Clamped server-side: a client asking for more gets
 /// this.
 pub const MAX_GRAPH_NODES: u32 = 50;
+/// Maximum authorized stored occurrences returned by one graph read.
+pub const MAX_GRAPH_OCCURRENCES: usize = 500;
 /// Hops from the centre. Clamped server-side for the same reason.
 pub const MAX_GRAPH_DEPTH: u32 = 3;
 

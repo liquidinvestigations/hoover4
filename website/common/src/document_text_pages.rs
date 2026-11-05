@@ -95,10 +95,9 @@ pub struct TextPageNavigation {
 /// The text of one stored page, or why there is none.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TextPageBody {
-    /// The latest stored version of the page. `spans` hold the find-query highlights when
-    /// the query matched this page and the matching index row holds this stored text, and
-    /// one plain span of the stored text otherwise. The spans never show index text that
-    /// differs from the stored text.
+    /// Spans retain the latest stored text.
+    /// Query highlights require exact source text or deterministic projection validation.
+    /// Otherwise one plain span retains the stored text.
     Text {
         page_id: u32,
         version: u64,
@@ -117,7 +116,7 @@ impl TextPageBody {
     /// The number of find-query matches that the spans show.
     pub fn match_count(&self) -> u32 {
         match self {
-            Self::Text { spans, .. } => spans.iter().filter(|span| span.is_highlighted).count() as u32,
+            Self::Text { spans, .. } => spans.iter().filter(|span| span.is_highlighted).map(|span| span.index).collect::<std::collections::BTreeSet<_>>().len() as u32,
             _ => 0,
         }
     }
@@ -165,11 +164,10 @@ pub enum TextMatchStep {
 /// A source hit count in the source selector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub enum HitCountState {
-    /// The count finished over index rows that each hold the stored text of their page.
+    /// The count finished over index rows verified against stored text or its deterministic projection.
     /// Zero is a successful empty result.
     Exact(u64),
-    /// The count stopped at a read limit. The rows read hold the stored text of their
-    /// pages, so the stored text holds at least this many.
+    /// The count stopped at a read limit. Verified source mappings establish this lower bound.
     AtLeast(u64),
     /// The count did not finish in its time limit.
     TimedOut,
@@ -232,11 +230,11 @@ mod tests {
 
     #[test]
     fn the_match_count_reads_the_highlighted_spans() {
-        let span = |text: &str, is_highlighted| HighlightTextSpan { text: text.into(), is_highlighted, index: 0 };
+        let span = |text: &str, is_highlighted, index| HighlightTextSpan { text: text.into(), is_highlighted, index };
         let body = TextPageBody::Text {
             page_id: 3,
             version: 1,
-            spans: vec![span("a ", false), span("x", true), span(" b ", false), span("x", true)],
+            spans: vec![span("a ", false, 0), span("x", true, 0), span(" b ", false, 0), span("x", true, 1)],
             highlight_error: None,
         };
         assert_eq!(body.match_count(), 2);

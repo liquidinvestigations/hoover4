@@ -46,3 +46,7 @@ pub mod uploads;
 pub mod vfs;
 
 pub mod signals;
+
+pub mod text_projection;
+
+pub mod document_matches;

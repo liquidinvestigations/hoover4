@@ -33,11 +33,10 @@ pub enum SourceCount {
     Unavailable,
 }
 
-/// The text hits of one document read, after each index row is checked against the
-/// stored text of its page.
+/// The text hits of one document read, verified against stored text or its index projection.
 #[derive(Debug, Default, PartialEq)]
 pub struct TextCounts {
-    /// The matches of each page whose first stored-text row was found, once per page.
+    /// The matches from the first verified index row of each page, counted once.
     pub hits: Vec<DocumentTextSourceHitCount>,
     /// The read returned [`DOCUMENT_HIT_ROW_LIMIT`] rows, so more pages can match.
     pub stopped_at_limit: bool,
@@ -47,24 +46,23 @@ pub struct TextCounts {
 
 /// The validated text hits of a document. `rows` are the index rows as
 /// `(extracted_by, page_id, highlighted text)`, and `stored` maps each stored page to the
-/// SHA-256 of its latest text. A row of a page without stored text is obsolete and counts
-/// nothing. Each page counts once, from its first row whose text is the stored text, with
+/// complete latest text. A row of a page without stored text is obsolete and counts
+/// nothing. Each page counts once from its first verified source or projection row, with
 /// the match semantics of the viewer highlights ([`exact_highlight_spans`]).
 pub fn count_validated(rows: &[(String, u32, String)], stored: &HashMap<(String, u32), String>, stopped_at_limit: bool) -> TextCounts {
     let mut counted: HashMap<(String, u32), u64> = HashMap::new();
     let mut unmatched: BTreeSet<(String, u32)> = BTreeSet::new();
     for (extracted_by, page_id, text) in rows {
         let key = (extracted_by.clone(), *page_id);
-        let Some(digest) = stored.get(&key) else { continue };
+        let Some(body) = stored.get(&key) else { continue };
         if counted.contains_key(&key) {
             continue;
         }
-        let plain = text.replace("<hoover4_strong>", "").replace("</hoover4_strong>", "");
-        let spans = (sha256::digest(plain.as_str()) == *digest).then(|| exact_highlight_spans(text, &plain)).flatten();
+        let spans = exact_highlight_spans(text, body);
         match spans {
             Some(spans) => {
                 unmatched.remove(&key);
-                counted.insert(key, spans.iter().filter(|span| span.is_highlighted).count() as u64);
+                counted.insert(key, spans.iter().filter(|span| span.is_highlighted).map(|span| span.index).collect::<BTreeSet<_>>().len() as u64);
             }
             None => {
                 unmatched.insert(key);
@@ -79,34 +77,72 @@ pub fn count_validated(rows: &[(String, u32, String)], stored: &HashMap<(String,
     TextCounts { hits, stopped_at_limit, differs: unmatched.into_iter().map(|(extracted_by, _)| extracted_by).collect() }
 }
 
-/// The text hits of a document, checked against `text_content`. One index read and one
-/// digest read of the matching pages. The caller has verified read access.
+const VALIDATION_BATCH_BYTES: u64 = 8 * 1024 * 1024;
+const VALIDATION_BATCH_PAGES: usize = 32;
+
+/// Plan exact page keys under a byte budget. An oversized page runs alone.
+fn validation_batches(pages: Vec<(String, u32, u64)>) -> Vec<Vec<(String, u32)>> {
+    let mut batches = Vec::new();
+    let mut batch = Vec::new();
+    let mut bytes = 0u64;
+    for (source, page, size) in pages {
+        let size = if size == 0 { VALIDATION_BATCH_BYTES } else { size };
+        if !batch.is_empty() && (batch.len() >= VALIDATION_BATCH_PAGES || bytes.saturating_add(size) > VALIDATION_BATCH_BYTES) {
+            batches.push(std::mem::take(&mut batch)); bytes = 0;
+        }
+        batch.push((source, page)); bytes = bytes.saturating_add(size);
+        if bytes >= VALIDATION_BATCH_BYTES {
+            batches.push(std::mem::take(&mut batch)); bytes = 0;
+        }
+    }
+    if !batch.is_empty() { batches.push(batch); }
+    batches
+}
+
+/// Validate exact matching pages in bounded source batches. Missing pages are obsolete.
+pub(crate) async fn visit_validated_pages(
+    identifier: &DocumentIdentifier,
+    rows: Vec<(String, u32, String)>,
+    mut visit: impl FnMut(String, u32, Option<Vec<common::text_highlight::HighlightTextSpan>>),
+) -> anyhow::Result<()> {
+    if rows.is_empty() { return Ok(()); }
+    let client = get_client_for_dataset(&identifier.collection_dataset).await?;
+    let mut grouped: std::collections::BTreeMap<(String, u32), Vec<String>> = std::collections::BTreeMap::new();
+    for (source, page, text) in rows { grouped.entry((source, page)).or_default().push(text); }
+    let keys: Vec<(String, u32)> = grouped.keys().cloned().collect();
+    let sizes = client.query(
+        "SELECT extracted_by, page_id, argMax(text_bytes, version) AS body_bytes FROM text_content
+         WHERE collection_dataset = ? AND file_hash = ? AND (extracted_by, page_id) IN ?
+         GROUP BY extracted_by, page_id ORDER BY extracted_by, page_id"
+    ).bind(&identifier.collection_dataset).bind(&identifier.file_hash).bind(&keys)
+        .fetch_all::<(String, u32, u64)>().await?;
+    for batch in validation_batches(sizes) {
+        let bodies = client.query(
+            "SELECT extracted_by, page_id, argMax(text, version) AS body FROM text_content
+             WHERE collection_dataset = ? AND file_hash = ? AND (extracted_by, page_id) IN ?
+             GROUP BY extracted_by, page_id"
+        ).bind(&identifier.collection_dataset).bind(&identifier.file_hash).bind(&batch)
+            .fetch_all::<(String, u32, String)>().await?;
+        for (source, page, body) in bodies {
+            let spans = grouped.get(&(source.clone(), page)).and_then(|rows| rows.iter().find_map(|text| exact_highlight_spans(text, &body)));
+            visit(source, page, spans);
+        }
+    }
+    Ok(())
+}
+
+/// Read index hits once, then validate source text in exact page and byte batches.
 pub(crate) async fn validated_text_counts(identifier: &DocumentIdentifier, find_query: &str) -> anyhow::Result<TextCounts> {
     let rows = document_hit_texts(identifier, find_query).await?;
-    let stopped_at_limit = rows.len() >= DOCUMENT_HIT_ROW_LIMIT;
-    if rows.is_empty() {
-        return Ok(TextCounts { stopped_at_limit, ..Default::default() });
-    }
-    let sources: Vec<String> = rows.iter().map(|row| row.0.clone()).collect::<BTreeSet<_>>().into_iter().collect();
-    let pages: Vec<u32> = rows.iter().map(|row| row.1).collect::<BTreeSet<_>>().into_iter().collect();
-    let client = get_client_for_dataset(&identifier.collection_dataset).await?;
-    let stored = client
-        .query(
-            "SELECT extracted_by, page_id, lower(hex(SHA256(argMax(text, version)))) AS body_digest
-            FROM text_content
-            WHERE collection_dataset = ? AND file_hash = ? AND has(?, extracted_by) AND has(?, page_id)
-            GROUP BY extracted_by, page_id",
-        )
-        .bind(&identifier.collection_dataset)
-        .bind(&identifier.file_hash)
-        .bind(&sources)
-        .bind(&pages)
-        .fetch_all::<(String, u32, String)>()
-        .await?
-        .into_iter()
-        .map(|(extracted_by, page_id, digest)| ((extracted_by, page_id), digest))
-        .collect();
-    Ok(count_validated(&rows, &stored, stopped_at_limit))
+    let mut result = TextCounts { stopped_at_limit: rows.len() >= DOCUMENT_HIT_ROW_LIMIT, ..Default::default() };
+    visit_validated_pages(identifier, rows, |source, page, spans| {
+        if let Some(spans) = spans {
+            let hit_count = spans.iter().filter(|span| span.is_highlighted).map(|span| span.index).collect::<BTreeSet<_>>().len() as u64;
+            result.hits.push(DocumentTextSourceHitCount { extracted_by: source, page_id: page, hit_count });
+        } else { result.differs.insert(source); }
+    }).await?;
+    result.hits.sort_by(|a, b| (&a.extracted_by, a.page_id).cmp(&(&b.extracted_by, b.page_id)));
+    Ok(result)
 }
 
 /// The hit count of every source, one entry for each source in the order given, and the
@@ -120,8 +156,7 @@ pub struct SourceCounts {
 /// The hit count of every source, for the website's source selector. A count that fails
 /// or does not finish in [`PDF_SEARCH_TIMEOUT`] keeps that state, and a count that
 /// stopped at the text read's row limit is a lower bound. A text count counts only index
-/// rows that hold the stored text of their page, and a source with a page whose rows hold
-/// another text has no count ([`SourceCount::Unavailable`]).
+/// rows verified against stored text or its deterministic index projection. A source with stale text has no count ([`SourceCount::Unavailable`]).
 pub async fn search_document_item_count(
     user: &CurrentUser,
     document_identifier: DocumentIdentifier,
@@ -383,8 +418,20 @@ mod tests {
         );
     }
 
+    #[test]
+    fn validation_batching_bounds_pages_and_bytes_without_dropping_oversized_pages() {
+        let mut pages = (0..100).map(|page| ("text".to_string(), page, 1)).collect::<Vec<_>>();
+        pages.extend([("other".into(), 1, VALIDATION_BATCH_BYTES + 1), ("other".into(), 2, 0), ("text".into(), 101, 2)]);
+        let batches = validation_batches(pages);
+        assert_eq!(batches.iter().map(Vec::len).sum::<usize>(), 103);
+        assert!(batches.iter().all(|batch| batch.len() <= VALIDATION_BATCH_PAGES));
+        assert_eq!(batches.len(), 7);
+        assert_eq!(batches[4], vec![("other".into(), 1)]);
+        assert_eq!(batches[5], vec![("other".into(), 2)]);
+    }
+
     fn stored(pages: &[(&str, u32, &str)]) -> HashMap<(String, u32), String> {
-        pages.iter().map(|(source, page, text)| (((*source).to_string(), *page), sha256::digest(*text))).collect()
+        pages.iter().map(|(source, page, text)| (((*source).to_string(), *page), (*text).to_string())).collect()
     }
 
     fn row(source: &str, page: u32, text: &str) -> (String, u32, String) {

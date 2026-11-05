@@ -268,3 +268,5 @@ shared-uploads-name-too-long = 路径中有名称超过 255 字节。
 shared-uploads-name-is-dot = 路径中有名称为 . 或 ..
 shared-boards-budget-grew = {" "}（预算增加 { $n } 次探索）
 shared-boards-budget-unchanged = {" "}（预算不变，调查板已达探索上限）
+
+shared-email-graph-selected-copy-removed = 所选电子邮件副本已不存在。

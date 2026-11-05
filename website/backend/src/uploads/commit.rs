@@ -15,7 +15,8 @@
 //! | no manifest or no batch journal | `begin` stopped before it answered. Remove the batch folder. |
 //! | rows not recorded, no request record for the batch | `begin` never answered. Remove the batch. |
 //! | rows not recorded, request record present | Write the rows. |
-//! | `uploading` with the stop marker | A commit did not get the lock or stopped. Commit. |
+//! | recorded Abort intent | Complete cancellation without queueing files. |
+//! | `uploading` with the stop marker | Complete its recorded commit or legacy stop. |
 //! | `uploading`, journal activity older than `abandon_hours` | Commit as a stop. |
 //! | `uploading` | Truncate unacknowledged bytes, place complete files, mirror activity. |
 //! | `committing`, at startup or older than 10 minutes | Finish the commit. |
@@ -100,6 +101,7 @@ impl Service {
         let mut state = batch.state.clone();
         if state == batch_state::UPLOADING {
             self.require_target(&manifest)?;
+            self.reserve_intent(batch_id, "commit")?;
             let marker = self.space.stopping(batch_id);
             if !marker.exists() {
                 std::fs::File::create(&marker).map_err(anyhow::Error::from)?;
@@ -120,6 +122,26 @@ impl Service {
             state,
             detail: detail_address(&manifest.collection, batch_id),
         })
+    }
+
+    /// Reserve the terminal intent before waiting for active transfers.
+    fn reserve_intent(&self, batch_id: &str, intent: &str) -> UploadResult<()> {
+        let dir = self.space.batch_dir(batch_id);
+        let _lock = fsutil::lock(&dir.join("intent.lock"), true, true)?;
+        let path = dir.join("intent-v1.json");
+        if let Some(previous) = fsutil::read_json::<String>(&path)? {
+            if previous != intent {
+                return Err(UploadError::ended(409));
+            }
+        } else {
+            fsutil::write_json(&path, &intent, &self.faults, "terminal.intent")?;
+        }
+        Ok(())
+    }
+
+    fn abort_intended(&self, batch_id: &str) -> anyhow::Result<bool> {
+        Ok(fsutil::read_json::<String>(&self.space.batch_dir(batch_id).join("intent-v1.json"))?
+            .as_deref() == Some("abort"))
     }
 
     fn mark_committing(&self, batch: &mut BatchJournal) -> anyhow::Result<()> {
@@ -226,6 +248,8 @@ impl Service {
     }
 
     fn notify_queue(&self, manifest: &Manifest, batch: &mut BatchJournal) -> anyhow::Result<()> {
+        anyhow::ensure!(!self.store.collection_deleted(&manifest.collection)?, "The upload collection was deleted.");
+        anyhow::ensure!(!self.abort_intended(&manifest.batch_id)?, "The upload was aborted.");
         self.notifier.notify(&manifest.collection, &manifest.upload_dataset, &manifest.batch_id)?;
         self.faults.hit("finish.notified")?;
         batch.notified_ms = self.clock.now_ms();
@@ -288,6 +312,23 @@ impl Service {
             self.remove_batch_dir(batch_id)?;
             return Ok(SweepOutcome::Removed);
         };
+        if self.store.collection_deleted(&manifest.collection)? {
+            for entry in &manifest.files {
+                let file = journal::read_file(&self.space, &manifest, entry.file_no)?;
+                self.remove_owned_part(&manifest, &file, None)?;
+            }
+            batch.state = batch_state::CANCELLED.to_string();
+            self.archive(&manifest, &batch)?;
+            drop(lock);
+            self.release_reservation(&manifest)?;
+            return Ok(SweepOutcome::Removed);
+        }
+        if self.abort_intended(batch_id)? {
+            self.abort_locked(&manifest, &mut batch)?;
+            drop(lock);
+            self.release_reservation(&manifest)?;
+            return Ok(SweepOutcome::Removed);
+        }
         if !batch.files_recorded {
             let record = fsutil::read_json::<journal::RequestRecord>(&self.space.request_record(&manifest.request_key))?;
             if record.map(|r| r.batch_id) != Some(batch_id.to_string()) {
@@ -326,6 +367,7 @@ impl Service {
         let outcome = match batch.state.as_str() {
             batch_state::UPLOADING if self.space.stopping(batch_id).exists() => {
                 // The owner asked for the commit, which did not record `committing`.
+                self.reserve_intent(batch_id, "commit").map_err(|e| anyhow::anyhow!(e.message))?;
                 self.mark_committing(&mut batch)?;
                 tracing::info!("upload batch {batch_id} has the stop marker and is committed");
                 self.finish_locked(&manifest, &mut batch, None)?;
@@ -353,6 +395,7 @@ impl Service {
                 }
                 self.flush_files(&manifest, &mut placed)?;
                 if now - activity > self.limits.abandon_hours as i64 * 3_600_000 {
+                    self.reserve_intent(batch_id, "commit").map_err(|e| anyhow::anyhow!(e.message))?;
                     let marker = self.space.stopping(batch_id);
                     if !marker.exists() {
                         std::fs::File::create(&marker)?;
@@ -428,6 +471,8 @@ impl Service {
     /// a `queued` batch of a deleted dataset as `failed`.
     fn stop_locked(&self, manifest: &Manifest, batch: &mut BatchJournal, reason: &str) -> anyhow::Result<()> {
         if batch.state == batch_state::UPLOADING {
+            if self.abort_intended(&manifest.batch_id)? { return self.abort_locked(manifest, batch); }
+            self.reserve_intent(&manifest.batch_id, "commit").map_err(|e| anyhow::anyhow!(e.message))?;
             let marker = self.space.stopping(&manifest.batch_id);
             if !marker.exists() {
                 std::fs::File::create(&marker)?;
@@ -494,6 +539,8 @@ impl Service {
         if batch.state != batch_state::UPLOADING {
             return Err(UploadError::ended(409));
         }
+        self.reserve_intent(batch_id, "abort")?;
+        self.faults.hit("abort.intent")?;
         let marker = self.space.stopping(batch_id);
         if !marker.exists() {
             std::fs::File::create(&marker).map_err(anyhow::Error::from)?;
@@ -505,6 +552,14 @@ impl Service {
         if batch.state != batch_state::UPLOADING {
             return Err(UploadError::ended(409));
         }
+        self.abort_locked(&manifest, &mut batch)?;
+        drop(lock);
+        let _dataset = fsutil::lock(&self.space.dataset_lock(&manifest.upload_dataset), true, true)?;
+        fsutil::remove_file(&self.space.live_dir(&manifest.upload_dataset).join(batch_id))?;
+        Ok(())
+    }
+
+    fn abort_locked(&self, manifest: &Manifest, batch: &mut BatchJournal) -> anyhow::Result<()> {
         let mut files: Vec<FileJournal> = Vec::with_capacity(manifest.files.len());
         let mut removed: Vec<u32> = Vec::new();
         let mut folder = None;
@@ -543,16 +598,8 @@ impl Service {
         batch.error = ABORTED_MESSAGE.to_string();
         batch.version += 1;
         self.save_batch(&batch, "abort.cancelled")?;
-        self.flush_batch(&manifest, &mut batch)?;
-        self.archive(&manifest, &batch)?;
-        drop(lock);
-        let _dataset = fsutil::lock(&self.space.dataset_lock(&manifest.upload_dataset), true, true)?;
-        fsutil::remove_file(&self.space.live_dir(&manifest.upload_dataset).join(batch_id))?;
-        tracing::info!(
-            "upload batch {batch_id} aborted by its owner: {} of {} files removed from the dataset folder",
-            removed.len(),
-            manifest.files.len()
-        );
+        self.flush_batch(manifest, batch)?;
+        self.archive(manifest, batch)?;
         Ok(())
     }
 

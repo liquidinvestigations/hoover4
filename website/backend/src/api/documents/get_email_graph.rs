@@ -200,178 +200,170 @@ pub async fn get_email_envelope(
 /// One row of `email_edges`, as read.
 type EdgeRow = (String, String, String, String, String, f32, String);
 
-/// A bounded neighbourhood of `centre`, breadth-first, both bounds clamped server-side.
-///
-/// Breadth-first rather than depth-first: with a 50-node budget on a component of
-/// thousands, a depth-first walk spends the whole budget on one arm and the picture it
-/// draws is a line, not a neighbourhood. The prompt's "depth-first order" is about
-/// exhausting a cluster, and the budget makes that impossible either way, so the budget
-/// is spent on the nodes NEAREST the centre, which is what a person opening the graph on
-/// a message is asking for.
+/// Read permitted exact-hash message occurrences before grouping logical graph nodes.
+/// Node and depth limits apply to logical messages. Occurrence expansion has a separate limit.
 pub async fn get_email_graph(
     user: &CurrentUser,
     centre: DocumentIdentifier,
     max_nodes: u32,
     max_depth: u32,
 ) -> anyhow::Result<EmailGraph> {
-    permissions::assert_can_read(user, &centre.collection_dataset).await?;
-    let max_nodes = max_nodes.clamp(1, MAX_GRAPH_NODES) as usize;
-    let max_depth = max_depth.clamp(1, MAX_GRAPH_DEPTH);
-    let collectionname = resolve_collection(&centre.collection_dataset).await?;
-    let client = get_client_for_dataset(&centre.collection_dataset).await?;
-
-    let mut visited: HashSet<(String, String)> = HashSet::new();
-    let mut kept_edges: Vec<EmailGraphEdge> = Vec::new();
-    let mut seen_edges: HashSet<(String, String, String, String, String)> = HashSet::new();
-    let mut queue: VecDeque<((String, String), u32)> = VecDeque::new();
-    let centre_key = (centre.collection_dataset.clone(), centre.file_hash.clone());
-    visited.insert(centre_key.clone());
-    queue.push_back((centre_key.clone(), 0));
-    let mut truncated = false;
-    // Nodes whose expansion the budget refused. Recorded per node so the page can say
-    // "there is more here" on the exact node it is true of.
-    let mut truncated_nodes: HashSet<(String, String)> = HashSet::new();
-
-    while let Some(((dataset, hash), depth)) = queue.pop_front() {
-        if depth >= max_depth {
-            // Not an error: the frontier of a depth-limited walk always has some.
-            truncated_nodes.insert((dataset, hash));
-            truncated = true;
-            continue;
-        }
-        // Both directions in one query. Only one direction of an edge is stored and the
-        // graph is undirected for traversal; the arrow the interface draws comes from
-        // `kind`, not from which column a row happened to land in.
-        let rows: Vec<EdgeRow> = client
-            .query(
-                "SELECT src_dataset, src_hash, dst_dataset, dst_hash, toString(kind),
-                        confidence, evidence
-                 FROM email_edges FINAL
-                 WHERE collectionname = ?
-                   AND ((src_dataset = ? AND src_hash = ?) OR (dst_dataset = ? AND dst_hash = ?))
-                 ORDER BY confidence DESC, kind ASC, dst_hash ASC
-                 LIMIT ?",
-            )
-            .bind(&collectionname)
-            .bind(&dataset)
-            .bind(&hash)
-            .bind(&dataset)
-            .bind(&hash)
-            .bind(max_nodes as u64 * 4)
-            .fetch_all()
-            .await?;
-
-        for (src_dataset, src_hash, dst_dataset, dst_hash, kind, confidence, evidence) in rows {
-            let src = (src_dataset.clone(), src_hash.clone());
-            let dst = (dst_dataset.clone(), dst_hash.clone());
-            let other = if src == (dataset.clone(), hash.clone()) { dst.clone() } else { src.clone() };
-            if !visited.contains(&other) {
-                if visited.len() >= max_nodes {
-                    truncated = true;
-                    truncated_nodes.insert((dataset.clone(), hash.clone()));
-                    continue;
-                }
-                visited.insert(other.clone());
-                queue.push_back((other, depth + 1));
-            }
-            let edge_key =
-                (src_dataset.clone(), src_hash.clone(), kind.clone(), dst_dataset.clone(), dst_hash.clone());
-            if seen_edges.insert(edge_key) {
-                kept_edges.push(EmailGraphEdge {
-                    src: DocumentIdentifier { collection_dataset: src_dataset, file_hash: src_hash },
-                    dst: DocumentIdentifier { collection_dataset: dst_dataset, file_hash: dst_hash },
-                    kind,
-                    confidence,
-                    evidence,
-                });
-            }
-        }
-    }
-
-    // Edges to nodes the budget refused are dropped: an edge with only one end drawn is
-    // a line into nothing, and the node it came from already says it was truncated.
-    kept_edges.retain(|edge| {
-        visited.contains(&(edge.src.collection_dataset.clone(), edge.src.file_hash.clone()))
-            && visited.contains(&(edge.dst.collection_dataset.clone(), edge.dst.file_hash.clone()))
-    });
-
-    // One metadata read per dataset present, not per node.
-    let mut by_dataset: HashMap<String, Vec<String>> = HashMap::new();
-    for (dataset, hash) in &visited {
-        by_dataset.entry(dataset.clone()).or_default().push(hash.clone());
-    }
-    let mut nodes = Vec::with_capacity(visited.len());
-    for (dataset, hashes) in by_dataset {
-        // A dataset in the same collection the user cannot read must not leak a subject.
-        if permissions::assert_can_read(user, &dataset).await.is_err() {
-            continue;
-        }
-        let dataset_client = get_client_for_dataset(&dataset).await?;
-        let rows: Vec<(String, String, i64, u8)> = dataset_client
-            .query(
-                "SELECT h.email_hash, h.subject, toInt64(h.date_sent), h.date_sent_known
-                 FROM email_headers AS h FINAL
-                 WHERE h.collection_dataset = ? AND h.email_hash IN ?",
-            )
-            .bind(&dataset)
-            .bind(&hashes)
-            .fetch_all()
-            .await?;
-        let senders: Vec<(String, String)> = dataset_client
-            .query(
-                "SELECT email_hash, any(address) FROM email_addresses FINAL
-                 WHERE collection_dataset = ? AND email_hash IN ? AND toString(role) = 'from'
-                 GROUP BY email_hash",
-            )
-            .bind(&dataset)
-            .bind(&hashes)
-            .fetch_all()
-            .await?;
-        let sender_by_hash: HashMap<String, String> = senders.into_iter().collect();
-        for (email_hash, subject, date_sent, date_sent_known) in rows {
-            let key = (dataset.clone(), email_hash.clone());
-            nodes.push(EmailGraphNode {
-                is_centre: key == centre_key,
-                truncated: truncated_nodes.contains(&key),
-                from_display: sender_by_hash.get(&email_hash).cloned().unwrap_or_default(),
-                document_identifier: DocumentIdentifier {
-                    collection_dataset: dataset.clone(),
-                    file_hash: email_hash,
-                },
-                subject,
-                date_sent,
-                date_sent_known: date_sent_known == 1,
-            });
-        }
-    }
-    // Stable order: the simulation seeds new nodes from this list and a shuffled order
-    // would make the same graph settle differently on every navigation.
-    nodes.sort_by(|a, b| {
-        (a.date_sent, &a.document_identifier.collection_dataset, &a.document_identifier.file_hash)
-            .cmp(&(
-                b.date_sent,
-                &b.document_identifier.collection_dataset,
-                &b.document_identifier.file_hash,
-            ))
-    });
-
-    let cluster: Vec<u32> = client
-        .query(
-            "SELECT cluster_size FROM email_clusters FINAL
-             WHERE collectionname = ? AND collection_dataset = ? AND email_hash = ? LIMIT 1",
-        )
-        .bind(&collectionname)
-        .bind(&centre.collection_dataset)
-        .bind(&centre.file_hash)
-        .fetch_all()
-        .await?;
-    let cluster_size = cluster.into_iter().next().unwrap_or(nodes.len() as u32);
-
-    Ok(EmailGraph {
-        truncated: truncated || (cluster_size as usize) > nodes.len(),
-        cluster_size,
-        nodes,
-        edges: kept_edges,
-    })
+    get_email_graph_scoped(user, centre, max_nodes, max_depth, None).await
 }
 
+/// Preserve a caller's collection scope while grouping its readable occurrences.
+pub async fn get_email_graph_scoped(
+    user: &CurrentUser, centre: DocumentIdentifier, max_nodes: u32, max_depth: u32,
+    collection_scope: Option<&[String]>,
+) -> anyhow::Result<EmailGraph> {
+    permissions::assert_can_read(user, &centre.collection_dataset).await?;
+    let centre_client = get_client_for_dataset(&centre.collection_dataset).await?;
+    let live = centre_client.query("SELECT count() FROM vfs_files FINAL WHERE collection_dataset = ? AND hash = ? AND is_deleted = 0")
+        .bind(&centre.collection_dataset).bind(&centre.file_hash).fetch_one::<u64>().await?;
+    anyhow::ensure!(live > 0, "The selected email copy no longer exists.");
+    let max_nodes = max_nodes.clamp(1, MAX_GRAPH_NODES) as usize;
+    let max_depth = max_depth.clamp(1, MAX_GRAPH_DEPTH);
+    let permitted = crate::api::list_datasets::list_permitted_datasets(user).await?;
+    let mut collections: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+    for dataset in permitted {
+        if collection_scope.is_some_and(|scope| !scope.contains(&dataset.collectionname)) { continue; }
+        collections.entry(dataset.collectionname).or_default().push(dataset.collection_dataset);
+    }
+    anyhow::ensure!(collections.values().any(|datasets| datasets.contains(&centre.collection_dataset)), "forbidden: no read access to graph collection scope");
+    let collection_by_dataset: HashMap<String, String> = collections.iter().flat_map(|(collection, datasets)| datasets.iter().map(move |dataset| (dataset.clone(), collection.clone()))).collect();
+    let mut queue = VecDeque::from([(centre.file_hash.clone(), 0)]);
+    let mut visited = HashSet::from([centre.file_hash.clone()]);
+    let mut nodes: Vec<EmailGraphNode> = Vec::new();
+    let mut edges: Vec<EmailGraphEdge> = Vec::new();
+    let mut occurrence_count = 0usize;
+    let mut occurrences_truncated = false;
+    let mut truncated = false;
+    while let Some((hash, depth)) = queue.pop_front() {
+        let mut occurrences = Vec::new();
+        let mut metadata = HashMap::new();
+        for (collection, datasets) in &collections {
+            let client = crate::db_utils::clickhouse_utils::get_collection_client(collection);
+            let remaining = common::email_graph::MAX_GRAPH_OCCURRENCES.saturating_sub(occurrence_count);
+            let rows: Vec<(String, String, i64, u8)> = client.query(
+                "SELECT collection_dataset, subject, toInt64(date_sent), date_sent_known
+                 FROM email_headers FINAL WHERE collection_dataset IN ? AND email_hash = ?
+                 AND (collection_dataset, email_hash) IN
+                   (SELECT collection_dataset, hash FROM vfs_files FINAL WHERE hash = ? AND is_deleted = 0)
+                 ORDER BY collection_dataset LIMIT ?"
+            ).bind(datasets).bind(&hash).bind(&hash).bind((remaining + 1) as u64).fetch_all().await?;
+            if rows.len() > remaining { occurrences_truncated = true; }
+            for (dataset, subject, date, known) in rows.into_iter().take(remaining) {
+                metadata.insert(dataset.clone(), (subject, date, known));
+                occurrences.push(DocumentIdentifier { collection_dataset: dataset, file_hash: hash.clone() });
+                occurrence_count += 1;
+            }
+        }
+        // Keep the selected occurrence even when earlier aliases exhausted the bound.
+        if hash == centre.file_hash && !occurrences.contains(&centre) {
+            occurrences_truncated = true;
+            let client = get_client_for_dataset(&centre.collection_dataset).await?;
+            let rows: Vec<(String, i64, u8)> = client.query(
+                "SELECT subject, toInt64(date_sent), date_sent_known FROM email_headers FINAL
+                 WHERE collection_dataset = ? AND email_hash = ? LIMIT 1"
+            ).bind(&centre.collection_dataset).bind(&hash).fetch_all().await?;
+            if let Some(row) = rows.into_iter().next() {
+                if occurrence_count == common::email_graph::MAX_GRAPH_OCCURRENCES {
+                    occurrences.pop();
+                    occurrence_count -= 1;
+                }
+                metadata.insert(centre.collection_dataset.clone(), row);
+                occurrences.push(centre.clone());
+                occurrence_count += 1;
+            }
+        }
+        occurrences.sort_by(|a, b| a.collection_dataset.cmp(&b.collection_dataset));
+        occurrences.dedup();
+        let representative = if hash == centre.file_hash { occurrences.iter().find(|o| **o == centre) } else { occurrences.first() };
+        let Some(representative) = representative.cloned() else { continue };
+        let (subject, date_sent, known) = metadata.remove(&representative.collection_dataset).unwrap();
+        let mut node_truncated = depth >= max_depth;
+        if depth < max_depth {
+            for (collection, datasets) in &collections {
+                let aliases: Vec<String> = occurrences.iter().filter(|occurrence| collection_by_dataset.get(&occurrence.collection_dataset) == Some(collection)).map(|occurrence| occurrence.collection_dataset.clone()).collect();
+                if aliases.is_empty() { continue; }
+                let client = crate::db_utils::clickhouse_utils::get_collection_client(collection);
+                let limit = max_nodes * 4;
+                let rows: Vec<EdgeRow> = client.query(
+                    "SELECT src_dataset, src_hash, dst_dataset, dst_hash, toString(kind), confidence, evidence
+                     FROM email_edges FINAL WHERE collectionname = ?
+                     AND src_dataset IN ? AND dst_dataset IN ?
+                     AND ((src_hash = ? AND src_dataset IN ?) OR (dst_hash = ? AND dst_dataset IN ?))
+                     ORDER BY confidence DESC, kind, src_hash, dst_hash LIMIT ?"
+                ).bind(collection).bind(datasets).bind(datasets).bind(&hash).bind(&aliases).bind(&hash).bind(&aliases)
+                    .bind((limit + 1) as u64).fetch_all().await?;
+                if rows.len() > limit { node_truncated = true; }
+                let keys: Vec<(String, String)> = rows.iter().flat_map(|row| [(row.0.clone(), row.1.clone()), (row.2.clone(), row.3.clone())]).collect();
+                let live: HashSet<(String, String)> = if keys.is_empty() { HashSet::new() } else {
+                    client.query("SELECT DISTINCT collection_dataset, hash FROM vfs_files FINAL WHERE (collection_dataset, hash) IN ? AND is_deleted = 0")
+                        .bind(&keys).fetch_all::<(String, String)>().await?.into_iter().collect()
+                };
+                for (src_dataset, src_hash, dst_dataset, dst_hash, kind, confidence, evidence) in rows.into_iter().take(limit) {
+                    if !live.contains(&(src_dataset.clone(), src_hash.clone())) || !live.contains(&(dst_dataset.clone(), dst_hash.clone())) || (src_hash == dst_hash && kind == "identity") { continue; }
+                    let other = if src_hash == hash { &dst_hash } else { &src_hash };
+                    if !visited.contains(other) {
+                        if visited.len() >= max_nodes { node_truncated = true; continue; }
+                        visited.insert(other.clone());
+                        queue.push_back((other.clone(), depth + 1));
+                    }
+                    edges.push(EmailGraphEdge {
+                        src: DocumentIdentifier { collection_dataset: src_dataset, file_hash: src_hash },
+                        dst: DocumentIdentifier { collection_dataset: dst_dataset, file_hash: dst_hash },
+                        kind, confidence, evidence,
+                    });
+                }
+            }
+        }
+        truncated |= node_truncated;
+        nodes.push(EmailGraphNode {
+            logical_id: hash.clone(),
+            occurrences: occurrences.into_iter().map(|document_identifier| common::email_graph::EmailGraphOccurrence {
+                collectionname: collection_by_dataset[&document_identifier.collection_dataset].clone(), document_identifier,
+            }).collect(),
+            document_identifier: representative,
+            subject, from_display: String::new(), date_sent, date_sent_known: known == 1,
+            truncated: node_truncated, is_centre: hash == centre.file_hash,
+        });
+    }
+    let mut by_dataset: HashMap<String, Vec<String>> = HashMap::new();
+    for node in &nodes {
+        by_dataset.entry(node.document_identifier.collection_dataset.clone()).or_default()
+            .push(node.document_identifier.file_hash.clone());
+    }
+    for (dataset, hashes) in by_dataset {
+        let client = get_client_for_dataset(&dataset).await?;
+        let senders: HashMap<String, String> = client.query(
+            "SELECT email_hash, min(address) FROM email_addresses FINAL
+             WHERE collection_dataset = ? AND email_hash IN ? AND toString(role) = 'from'
+             GROUP BY email_hash"
+        ).bind(&dataset).bind(&hashes).fetch_all::<(String, String)>().await?.into_iter().collect();
+        for node in nodes.iter_mut().filter(|node| node.document_identifier.collection_dataset == dataset) {
+            node.from_display = senders.get(&node.logical_id).cloned().unwrap_or_default();
+        }
+    }
+    let representatives: HashMap<String, DocumentIdentifier> = nodes.iter().map(|node| (node.logical_id.clone(), node.document_identifier.clone())).collect();
+    let mut grouped: std::collections::BTreeMap<(String, String, String), EmailGraphEdge> = std::collections::BTreeMap::new();
+    for mut edge in edges {
+        let (Some(src), Some(dst)) = (representatives.get(&edge.src.file_hash), representatives.get(&edge.dst.file_hash)) else { continue };
+        edge.src = src.clone(); edge.dst = dst.clone();
+        let key = (src.file_hash.clone(), dst.file_hash.clone(), edge.kind.clone());
+        match grouped.get_mut(&key) {
+            Some(previous) => {
+                previous.confidence = previous.confidence.max(edge.confidence);
+                if !previous.evidence.split('\n').any(|value| value == edge.evidence) {
+                    previous.evidence.push('\n'); previous.evidence.push_str(&edge.evidence);
+                }
+            }
+            None => { grouped.insert(key, edge); }
+        }
+    }
+    nodes.sort_by(|a, b| (a.date_sent, &a.logical_id).cmp(&(b.date_sent, &b.logical_id)));
+    // Stored component sizes count occurrences and cannot describe logical nodes.
+    let cluster_size = nodes.len() as u32;
+    Ok(EmailGraph { cluster_size_complete: !truncated && !occurrences_truncated, nodes, edges: grouped.into_values().collect(), cluster_size,
+        truncated: truncated || occurrences_truncated, occurrences_truncated })
+}

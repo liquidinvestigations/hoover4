@@ -89,9 +89,8 @@ first 50 page ids with hits. Page 0 counts as no page. With no page and no query
 first stored page of the source, which can be above 1. Page ids can have gaps, and a positive page id
 with no stored page is `404`.
 It continues with `TextPage` positions. `documents/search_text` lists the hits of one source in
-page order, 50 a page, with `HitKey` positions, and reads only the pages that hold them. A hit
-and a hit count come only from an index row that holds the stored text of its page, with
-the rule of the viewer. `count_state` is `exact` when every matching index row was checked,
+page order, 50 a page, with `HitKey` positions, and reads only the pages that hold them. A hit and its count require exact stored text or its verified deterministic index projection.
+They use the viewer's validation rule. `count_state` is `exact` when every matching index row was checked,
 and `lower_bound` when the index read stopped at the viewer's 1,000-row limit or an index row
 of the source holds another text. A `lower_bound` search has no `total` and sets `partial`.
 The `source` of a text read is the viewer's source revision, with the stored page count, the
@@ -99,8 +98,7 @@ page range and the highest writer version. `documents/sources` lists
 every source kind with the viewer's hit counts. A PDF count that does not finish before the
 deadline answers `count_state` `timed_out` for that source only. A count that fails answers
 `failed`, and a text or Email count whose read stopped at the 1,000-row limit answers
-`partial`. A text or Email count counts only index rows that hold the stored text of their
-page. A source with a page whose index rows hold another text answers `unavailable`. Each of
+`partial`. A text or Email count requires exact stored text or its verified deterministic index projection. A source with a page whose index rows hold another text answers `unavailable`. Each of
 these sets `partial` on the response. A query that the index refuses is
 `400`, as in `documents/search_text`. `documents/metadata` cuts a
 value over 2,000 characters and marks it with `cut`. `documents/email` takes `node`, the graph
@@ -170,6 +168,13 @@ The pages `/upload`, `/uploads` and `/uploads/<collection>/<batch_id>` in
 vendored as `frontend/assets/vendor/tus.min.js`. [frontend/assets/vendor/Readme.md](frontend/assets/vendor/Readme.md)
 records its source and SHA-256. The pages read through the server functions of
 [backend/src/api/uploads_api.rs](backend/src/api/uploads_api.rs).
+
+New terminal upload requests persist their commit or Abort intent before waiting for transfer locks.
+Recovery completes Abort without queueing files.
+Legacy stop markers retain their earlier commit behavior.
+Confirmed collection tombstones permit journal and owned temporary-part cleanup.
+Missing registry rows and registry errors preserve recovery data.
+Published destination files remain after collection cleanup.
 
 ## Testing
 

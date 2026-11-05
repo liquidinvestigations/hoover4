@@ -450,6 +450,7 @@ mod tests {
 
     fn bucket(id: &str, count: u64) -> SearchResultFacetItem {
         SearchResultFacetItem {
+            descriptor: None,
             display_string: id.to_string(),
             original_value: FacetOriginalValue::String(id.to_string()),
             count,
@@ -459,6 +460,7 @@ mod tests {
     fn tree() -> Vec<CollectionNode> {
         vec![
             CollectionNode {
+                display_name: None,
                 collectionname: "enron".to_string(),
                 datasets: vec![
                     DatasetSummary {
@@ -478,6 +480,7 @@ mod tests {
                 ],
             },
             CollectionNode {
+                display_name: None,
                 collectionname: "testdata".to_string(),
                 datasets: vec![DatasetSummary {
                     collection_dataset: "testdata_zips".to_string(),

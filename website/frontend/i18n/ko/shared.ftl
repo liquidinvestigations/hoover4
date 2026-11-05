@@ -268,3 +268,5 @@ shared-uploads-name-too-long = 경로의 이름 중 255바이트보다 긴 것�
 shared-uploads-name-is-dot = 경로의 이름 중 . 또는 .. 인 것이 있습니다.
 shared-boards-budget-grew = {" "}(예산 +탐색 { $n }회)
 shared-boards-budget-unchanged = {" "}(예산 변동 없음, 보드가 탐색 한도에 도달함)
+
+shared-email-graph-selected-copy-removed = 선택한 이메일 사본이 더 이상 존재하지 않습니다.

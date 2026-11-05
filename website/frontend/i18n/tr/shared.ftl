@@ -268,3 +268,5 @@ shared-uploads-name-too-long = Yoldaki bir ad 255 bayttan uzun.
 shared-uploads-name-is-dot = Yoldaki bir ad . ya da ..
 shared-boards-budget-grew = {" "}(bütçe +{ $n } keşif)
 shared-boards-budget-unchanged = {" "}(bütçe değişmedi, pano keşif sınırında)
+
+shared-email-graph-selected-copy-removed = Seçilen e-posta kopyası artık mevcut değil.

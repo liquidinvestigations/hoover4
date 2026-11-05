@@ -268,3 +268,5 @@ shared-uploads-name-too-long = Een naam in het pad is langer dan 255 bytes.
 shared-uploads-name-is-dot = Een naam in het pad is . of ..
 shared-boards-budget-grew = {" "}(budget +{ $n } verkenningen)
 shared-boards-budget-unchanged = {" "}(budget ongewijzigd, het bord zit op zijn verkenningslimiet)
+
+shared-email-graph-selected-copy-removed = De geselecteerde kopie van de e-mail bestaat niet meer.

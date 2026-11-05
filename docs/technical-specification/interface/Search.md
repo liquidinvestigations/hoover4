@@ -115,3 +115,10 @@ flowchart TD
     L --> E[No matching documents]
     L --> F[Request error and retry]
 ```
+
+## Facet term descriptors
+
+Facet responses retain canonical filter values and add optional term descriptors.
+A descriptor identifies its kind and canonical code for interface translation.
+Language, datatype, text-source, and size-range descriptors preserve the existing request identities.
+Legacy display text remains available.

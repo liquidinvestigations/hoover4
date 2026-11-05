@@ -101,8 +101,8 @@ A match step reads index rows of the selected source only, in batches, so the ma
 A match step skips index rows whose page has no stored text and returns each page once.
 A match action reads at most 4 match steps. An action that reads its allowance shows "Search incomplete", and the next action in that direction continues from its boundary. A step in progress shows "Searching", and a failed step shows "Match search failed" with Retry.
 A change of document, source, query or page stops the match steps of the earlier state, and their late results change nothing.
-Highlights come from an index row only when its text without the highlight markers equals the stored page. Otherwise the stored page shows without highlights, with the note "The search index holds another version of this page."
-A source match count counts only index rows whose text equals the stored page. A source whose index holds another version shows `?` in place of a count.
+Highlights require an exact match against the stored page or its deterministic index projection. The projection trims outer whitespace and limits encoded runs. Mapped highlights preserve complete source text and omit removed encoded content. Stale or malformed highlights remain unavailable.
+A source match count requires exact stored text or its verified deterministic index projection. A source whose index holds another version shows `?` in place of a count.
 PDF pointer coordinates remain correct at each browser zoom.
 The email headers, expanded details, attachments and body share one scroll container.
 A filename-only search match opens the table without a row filter.
@@ -127,3 +127,23 @@ PDF search reads all relevant parts and maps each hit to its document page.
 Searchable sources include retained native text and their own OCR text.
 Image Preview OCR precedes the image source.
 Complete multipart downloads use temporary assembly with access verification and cancellation cleanup.
+
+## Match target response
+
+The backend match response identifies the document and find query.
+Header targets identify the field, occurrence, and character span.
+Equal recipient values retain distinct occurrence identities.
+Body targets identify the extractor, page, and match ordinal.
+Count completeness distinguishes complete, limited, and unavailable validation.
+Request failures remain errors.
+
+## Email graph response
+
+The graph reader groups exact file hashes across readable collections.
+Each logical node retains its readable collection, dataset, and file occurrences.
+Removed VFS occurrences do not appear.
+The selected readable occurrence remains the representative.
+A removed selected occurrence returns an error.
+Node limits apply after grouping, and occurrence expansion has a separate limit.
+The response reports occurrence truncation and count completeness.
+Conflicting nonidentical files remain separate.

@@ -542,6 +542,8 @@ mod tests {
 
     fn node(hash: &str, date: i64, known: bool) -> EmailGraphNode {
         EmailGraphNode {
+            logical_id: hash.into(),
+            occurrences: Vec::new(),
             document_identifier: DocumentIdentifier {
                 collection_dataset: "ds".to_string(),
                 file_hash: hash.to_string(),
@@ -582,6 +584,8 @@ mod tests {
     #[test]
     fn a_diff_keeps_surviving_nodes_and_seeds_new_ones_near_their_neighbours() {
         let graph = EmailGraph {
+            cluster_size_complete: true,
+            occurrences_truncated: false,
             nodes: vec![node("a", 1_000, true), node("b", 2_000, true)],
             edges: vec![edge("a", "b", 1.0)],
             cluster_size: 2,
@@ -628,6 +632,8 @@ mod tests {
     #[test]
     fn a_settled_layout_does_not_move_on_the_next_tick() {
         let graph = EmailGraph {
+            cluster_size_complete: true,
+            occurrences_truncated: false,
             nodes: vec![node("a", 1_000, true), node("b", 2_000, true), node("c", 3_000, true), node("d", 0, false)],
             edges: vec![edge("a", "b", 0.9), edge("b", "c", 0.9), edge("a", "d", 0.5)],
             ..Default::default()

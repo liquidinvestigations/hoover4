@@ -45,6 +45,7 @@ struct MemStore {
     claimed: Mutex<HashMap<String, String>>,
     fail: AtomicBool,
     deleted: AtomicBool,
+    collection_deleted: AtomicBool,
     removal_live: AtomicBool,
     removal_id: Mutex<String>,
 }
@@ -104,6 +105,11 @@ impl BatchStore for MemStore {
             return Ok(Some(state.clone()));
         }
         Ok(self.latest_batch(batch_id).map(|b| b.state))
+    }
+
+    fn collection_deleted(&self, _collection: &str) -> anyhow::Result<bool> {
+        if self.fail.load(Ordering::SeqCst) { anyhow::bail!("registry unavailable"); }
+        Ok(self.collection_deleted.load(Ordering::SeqCst))
     }
 
     fn dataset_live(&self, _dataset: &str) -> anyhow::Result<bool> {
@@ -1148,4 +1154,39 @@ fn a_completed_cli_purge_stops_an_existing_transfer() {
     assert!(!service.space.data(&batch.batch_id, 0).exists());
     let next = service.begin(USER, &request("after-purge", &[("next", 4)])).unwrap();
     assert!(service.tus_create(USER, &next.batch_id, 0, 4).is_ok());
+}
+
+#[test]
+fn persisted_abort_intent_recovers_without_queueing_files() {
+    let env = Env::new(false);
+    let first = env.service();
+    let id = first.begin(USER, &request("abort-crash", &[("one", 4)])).unwrap().batch_id;
+    send_file(&first, &id, 0, &content(0, 4)).unwrap();
+    first.faults.arm("abort.intent");
+    assert!(first.abort(USER, &id).is_err());
+    assert!(first.space.batch_dir(&id).join("intent-v1.json").exists());
+    let restarted = env.service();
+    restarted.sweep_batch(&id, true).unwrap();
+    assert!(!restarted.space.batch_dir(&id).exists());
+    assert!(read_dest(&env, "/in/one").is_none());
+    assert!(env.notifier.calls.lock().unwrap().is_empty());
+    assert_eq!(env.store.latest_batch(&id).unwrap().state, batch_state::CANCELLED);
+}
+
+#[test]
+fn deleted_collection_cleanup_preserves_committed_files_and_registry_errors_preserve_journals() {
+    let env = Env::new(false);
+    let service = env.service();
+    let id = service.begin(USER, &request("collection-delete", &[("one", 4)])).unwrap().batch_id;
+    send_file(&service, &id, 0, &content(0, 4)).unwrap();
+    service.commit(USER, &id).unwrap();
+    service.finish(&id).unwrap();
+    env.store.fail.store(true, Ordering::SeqCst);
+    assert!(service.sweep_batch(&id, true).is_err());
+    assert!(service.space.batch_dir(&id).exists());
+    env.store.fail.store(false, Ordering::SeqCst);
+    env.store.collection_deleted.store(true, Ordering::SeqCst);
+    assert_eq!(service.sweep_batch(&id, true).unwrap(), commit::SweepOutcome::Removed);
+    assert!(!service.space.batch_dir(&id).exists());
+    assert_eq!(read_dest(&env, "/in/one"), Some(content(0, 4)));
 }
