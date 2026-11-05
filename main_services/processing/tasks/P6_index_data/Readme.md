@@ -92,6 +92,10 @@ text lives only in ClickHouse `string_term_id_to_text`, so there is not even a s
 a facet query to match. A typed needle has to be resolved to term ids first, and
 `index_entity_terms` builds the table that does it.
 
+The writer includes document language, OCR language, OCR script, and red-flag terms.
+The `search_terms` processing update rewrites existing dataset terms when its stage version changes.
+Settlement verifies stored term identities and values in batches of 500.
+
 Without it a "Search X" box narrows the buckets already on screen, which on a corpus with
 tens of thousands of distinct values answers "nothing matches" for values that are
 present.

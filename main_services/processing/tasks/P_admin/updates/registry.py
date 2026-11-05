@@ -147,6 +147,12 @@ STEPS: Tuple[UpdateStep, ...] = (
                     "installation serves. Their vectors are computed and indexed.",
         runs="Embedding and vector indexing"),
     UpdateStep(
+        step_id="search_terms", scope=SCOPE_DATASET, version=1, stages=("index_terms",),
+        automatic=True, uses_input_revision=False, prerequisites=("search_schema",), requires=(),
+        title="Search terms",
+        explanation="{files} search tables need current filter terms. Language, OCR, script, and red-flag terms become searchable.",
+        runs="Filter term indexing and verification", unit="tables"),
+    UpdateStep(
         step_id="folder_counts", scope=SCOPE_DATASET, version=1, stages=("vfs_stats",),
         automatic=True, uses_input_revision=False, prerequisites=(), requires=(),
         title="Folder counts",

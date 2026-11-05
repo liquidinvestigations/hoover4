@@ -1603,6 +1603,10 @@ def index_vfs_structure(params: BuildVfsNodesParams) -> str:
 #: `message_id` and the scanner's other unindexed types are stored in ClickHouse and get
 #: no rows here, there is no facet for them to search.
 SEARCHABLE_TERM_FIELDS = (
+    'language',
+    'ocr_language',
+    'ocr_script',
+    'red_flags',
     'ner',
     'email_address',
     'regex_email',

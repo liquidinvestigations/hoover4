@@ -120,6 +120,7 @@ are in [updates/registry.py](updates/registry.py), in run order.
 | `pdf_text` | dataset | Files with a searchable PDF part of text layer version 1 for a current language pass that the PDF builder can build | `scan_pdf_text_layers` gives version 2 to the parts of language passes with Windows-1252 alphabets, to borrowed parts, and to parts whose `pdftotext` text has no black square. It removes the other parts, sets their variant to `text_complete = 0` and the `overlay` form, then `RerunOcr` builds the removed parts again. | No part of version 1 remains, and no removed part is without a new part. |
 | `vectors` | dataset | Files with text and no vectors of the served embedding model | `UpdateDatasetVectors`, which runs P5 and P6 vectors on 4 plans at a time | Each selected plan ran. |
 | `folder_counts` | dataset | Folders without counts, or every folder when the stage version is newer than the applied one | `build_vfs_nodes` | No folder lacks counts. |
+| `search_terms` | dataset | The applied term-index version is absent or earlier. | `index_entity_terms` publishes the current filter terms. | Each expected term has its current identity and value in the search table. |
 
 The first observed stage version remains its baseline.
 Historical archive errors on a direct release upgrade require explicit retry.

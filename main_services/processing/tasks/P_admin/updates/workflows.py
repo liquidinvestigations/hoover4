@@ -287,6 +287,13 @@ class RunProcessingUpdate:
                 TablePlansParams(params.op_id, params.collectionname, params.collection_dataset),
                 id=f"update-tables-{params.op_id}", **self._child(params))
             return f"read the tables of {done} plans again"
+        if step_id == "search_terms":
+            await workflow.execute_activity(
+                "index_entity_terms",
+                {"collectionname": params.collectionname, "collection_dataset": params.collection_dataset},
+                task_queue="processing-indexing-queue", start_to_close_timeout=timedelta(minutes=30),
+                heartbeat_timeout=HEARTBEAT_TIMEOUT, retry_policy=RetryPolicy(maximum_attempts=2))
+            return "filter terms written"
         if step_id == "folder_counts":
             await workflow.execute_activity(
                 "build_vfs_nodes",

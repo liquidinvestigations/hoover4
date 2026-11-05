@@ -421,6 +421,48 @@ def select_pdf_text(client, ctx: ScopeContext, target: Optional[dict] = None) ->
     return Selection(files, size, files, hash_sql if files else "", parameters, {})
 
 
+def select_search_terms(ctx: ScopeContext) -> Selection:
+    """Select the dataset's term table until its current version is applied."""
+    step = STEPS_BY_ID["search_terms"]
+    applied = ctx.applied.get(step.step_id, {})
+    try:
+        version = json.loads(applied.get("detail") or "{}").get("version", "")
+    except ValueError:
+        version = ""
+    count = int(version != step_version(step))
+    return Selection(count=count, automatic=count)
+
+
+def missing_search_terms(client, ctx: ScopeContext) -> int:
+    """Count missing or changed terms with bounded reads from both datastores."""
+    from database.manticore import create_entities_table, get_manticore_client
+    from tasks.P6_index_data.activities import SEARCHABLE_TERM_FIELDS, entity_term_row_id
+
+    table = create_entities_table(ctx.collectionname)
+    after = ("", -1)
+    missing = 0
+    with get_manticore_client() as connection:
+        cursor = connection.cursor()
+        while True:
+            rows = client.query(
+                "SELECT term_field, term_id, term_value FROM string_term_id_to_text FINAL "
+                "WHERE collection_dataset = {cd:String} AND term_field IN {fields:Array(String)} "
+                "AND (term_field, term_id) > ({field:String}, {id:Int64}) "
+                "ORDER BY term_field, term_id LIMIT 500",
+                parameters={"cd": ctx.scope_id, "fields": list(SEARCHABLE_TERM_FIELDS),
+                            "field": after[0], "id": after[1]}).result_rows
+            if not rows:
+                return missing
+            expected = {entity_term_row_id(field, int(term_id)): (field, int(term_id), value)
+                        for field, term_id, value in rows}
+            ids = ",".join(str(row_id) for row_id in expected)
+            cursor.execute(f"SELECT id, term_field, term_id, term_display FROM {table} "
+                           f"WHERE id IN ({ids}) LIMIT 500 OPTION max_matches=500")
+            actual = {int(row[0]): (row[1], int(row[2]), row[3]) for row in cursor.fetchall()}
+            missing += sum(actual.get(row_id) != value for row_id, value in expected.items())
+            after = (rows[-1][0], int(rows[-1][1]))
+
+
 def select_folder_counts(client, ctx: ScopeContext) -> Selection:
     """Nodes without counts, or every node when the applied version is older.
 
@@ -548,6 +590,8 @@ def select(step: UpdateStep, ctx: ScopeContext, client=None, target: Optional[di
         return select_tables(client, ctx)
     if step.step_id == "pdf_text":
         return select_pdf_text(client, ctx, target)
+    if step.step_id == "search_terms":
+        return select_search_terms(ctx)
     if step.step_id == "folder_counts":
         return select_folder_counts(client, ctx)
     raise ValueError(f"unknown update step {step.step_id!r}")

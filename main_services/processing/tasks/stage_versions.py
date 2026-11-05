@@ -52,6 +52,7 @@ STAGE_VERSIONS: Dict[str, int] = {
     "embed": 1,
     "index_text": 2,
     "index_vectors": 2,
+    "index_terms": 2,
     "vfs_stats": VFS_SUBTREE_STATS_VERSION,
 }
 

@@ -437,6 +437,9 @@ def _settle(params: StepParams) -> Tuple[bool, str]:
             return (selection.count == 0 and unbuilt == 0,
                     f"{selection.count} files still have an earlier PDF text layer, and {unbuilt} "
                     "removed PDF parts have no new part.")
+        if step_id == "search_terms":
+            missing = selectors.missing_search_terms(client, ctx)
+            return missing == 0, f"{missing} filter terms remain absent or incorrect."
         if step_id == "folder_counts":
             selection = selectors.select_folder_counts(
                 client, selectors.ScopeContext(scope_kind, scope_id, params.collectionname))
